@@ -3918,7 +3918,7 @@ describe("UpdatesPage", () => {
 
     describe("after a restart: what the history kept", () => {
       // A launch before this one kept these (`get_history`); this window
-      // has run nothing yet.
+      // has run nothing yet. Each carries `dismissed`, as Rust sends it.
       function kept(name: string, finishedAt: number, fields: Partial<HistoryRecord> = {}): HistoryRecord {
         return {
           run: "earlier",
@@ -3932,6 +3932,7 @@ describe("UpdatesPage", () => {
           to_version: "2.0",
           result: "Succeeded",
           verified: true,
+          dismissed: false,
           ...fields,
         };
       }
@@ -3941,7 +3942,8 @@ describe("UpdatesPage", () => {
         mockInvoke.mockImplementation((cmd: string, args?: InvokeArgs) => {
           if (cmd === "get_history") return Promise.resolve(view);
           if (cmd === "clear_history") {
-            view = { ...view, cleared_before: Date.now() };
+            // Rust's `HistoryStore::clear`: every kept record is dismissed.
+            view = { ...view, cleared_before: Date.now(), records: view.records.map((record) => ({ ...record, dismissed: true })) };
             return Promise.resolve(view);
           }
           return answer(cmd, args);
@@ -4078,18 +4080,37 @@ describe("UpdatesPage", () => {
         await i18n.changeLanguage("en");
       });
 
-      it("keeps the recorded password row out of selection and Update All, even after clearing history", async () => {
-        answerHistory({ run: "this-launch", cleared_before: Date.now(), records: [
+      // r22 W1: Clear marks every record `dismissed` (f17); that tidies
+      // the list but does not resolve the stop (docs/what-we-run.md).
+      it.each([
+        ["pressed in this window", false],
+        ["read back after a restart", true],
+      ] as const)("keeps the recorded password row's View Steps, out of selection, the count and Update All, after Clear %s", async (_when, clearedEarlier) => {
+        answerHistory({ run: "this-launch", cleared_before: clearedEarlier ? Date.now() : null, records: [
           kept("onyx", Date.now() - 1000, { key: onyxKey, to_version: null,
-            verified: false, result: { Failed: { cause: "needsPassword" } } }),
+            verified: false, result: { Failed: { cause: "needsPassword" } }, dismissed: clearedEarlier }),
         ] });
         renderPage();
-        await screen.findByRole("button", { name: "View steps: onyx" });
-        expect(within(await findRow("onyx")).queryByRole("checkbox")).toBeNull();
+        if (!clearedEarlier) {
+          const section = await screen.findByRole("region", { name: "Update History" });
+          await within(section).findByRole("button", { name: "View steps: onyx" });
+          fireEvent.click(within(section).getByRole("button", { name: "Clear the Update History list" }));
+          await waitFor(() => expect(justUpdated()).toBeNull());
+          expect(mockInvoke).toHaveBeenCalledWith("clear_history");
+        }
+        const row = await findRow("onyx");
+        expect(await within(row).findByRole("button", { name: "View steps: onyx" })).toBeInTheDocument();
+        expect(within(row).queryByRole("checkbox")).toBeNull();
+        expect(within(row).queryByRole("button", { name: ROW_UPDATE })).toBeNull();
+        expect(await screen.findByText("1 update available, 1 needs your password")).toBeInTheDocument();
         fireEvent.click(screen.getByRole("button", { name: "Update All" }));
-        await screen.findByRole("alertdialog");
+        const confirm = await screen.findByRole("alertdialog");
         await waitFor(() => expect(calls("plan_operation").length).toBeGreaterThan(0));
         expect(calls("plan_operation").map(([, args]) => (args as { request: OpRequest }).request.name)).not.toContain("onyx");
+        fireEvent.click(within(confirm).getByRole("button", { name: "Cancel" }));
+        await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+        fireEvent.click(screen.getByRole("checkbox", { name: SELECT_ALL }));
+        expect(useUiStore.getState().selectedUpdates).toEqual([artifactKeyId(glibKey)]);
       });
 
       it.each(["Succeeded", "Cancelled"] as const)("a later recorded %s supersedes a password stop", async (result) => {
@@ -4187,7 +4208,12 @@ describe("UpdatesPage", () => {
       });
     });
 
-    it("keeps an update this window saw hidden after a kept Clear, when the web view has reloaded since", async () => {
+    // As Rust sends it since f17 (`dismissed: true`), and the legacy
+    // shape whose cutoff alone says so.
+    it.each([
+      ["dismissed", { dismissed: true }],
+      ["legacy cutoff", {}],
+    ] as const)("keeps an update this window saw hidden after a kept Clear, when the web view has reloaded since (%s)", async (_shape, wire) => {
       // A reload forgets `clearedJustUpdated`; the backend still lists
       // op 7, and the history says Clear came after it finished.
       operations = [operation(glibKey, { status: "Done", outcome: "Succeeded" })];
@@ -4211,6 +4237,7 @@ describe("UpdatesPage", () => {
             to_version: "2.90.0",
             result: "Succeeded",
             verified: true,
+            ...wire,
           },
         ],
       };

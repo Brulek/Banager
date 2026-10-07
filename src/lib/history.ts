@@ -73,23 +73,28 @@ export function listedResult(result: HistoryResult): boolean {
  * in Terminal since, or uninstalled, it no longer is, and 「未能更新」
  * would say what Banager cannot know is still true. While it is offered,
  * its row lists it too. A recorded Homebrew password stop also gives
- * that row View Steps through `usePasswordRecoveryKeys`.
+ * that row View Steps through `usePasswordRecoveryKeys`, which reads
+ * the records Clear dismissed too (`includeDismissed`): Clear tidies the
+ * list, it does not resolve the stop. A record kept after Clear is newer
+ * than every one Clear dismissed, whatever the clock said.
  */
 export function recentUpdates(
   view: HistoryView,
   operations: readonly OpSummary[],
   now: number,
   offered: ReadonlySet<string>,
+  { includeDismissed = false }: { includeDismissed?: boolean } = {},
 ): HistoryRecord[] {
   const seenHere = new Set(
     operations.map((op) => artifactKeyId({ instance_id: op.instance_id, kind: op.artifact_kind, name: op.name })),
   );
   const newest = new Map<string, HistoryRecord>();
   for (const record of view.records) {
-    if (!Number.isFinite(new Date(record.finished_at).getTime()) || isDismissed(view, record)) continue;
+    if (!Number.isFinite(new Date(record.finished_at).getTime())) continue;
+    if (!includeDismissed && isDismissed(view, record)) continue;
     const id = artifactKeyId(record.key);
     const seen = newest.get(id);
-    if (seen === undefined || record.finished_at > seen.finished_at) newest.set(id, record);
+    if (seen === undefined || keptLater(view, record, seen)) newest.set(id, record);
   }
   const since = now - RECENT_DAYS * DAY_MS;
   return [...newest.entries()]
@@ -103,6 +108,16 @@ export function recentUpdates(
     )
     .map(([, record]) => record)
     .sort((a, b) => b.finished_at - a.finished_at);
+}
+
+/**
+ * Whether `record` was kept after `other`: Clear dismisses every record
+ * already kept, so one it did not dismiss came later; else by time.
+ */
+function keptLater(view: HistoryView, record: HistoryRecord, other: HistoryRecord): boolean {
+  const dismissed = isDismissed(view, record);
+  if (dismissed !== isDismissed(view, other)) return !dismissed;
+  return record.finished_at > other.finished_at;
 }
 
 /** Legacy wire data uses its cutoff; current records always carry a boolean. */

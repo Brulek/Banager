@@ -414,7 +414,9 @@ Steps in Update History and on the offered update (also in Installed).
 The offered row and Update All do not retry that recorded password stop.
 A newer operation supersedes it; once the update is no longer offered,
 the recovery action is no longer needed. Clearing the history display does
-not resolve the stop. The existing 30-day recent-history window applies.
+not resolve the stop: the records Clear dismissed still count for it, and
+a record kept after Clear counts as newer than every one it dismissed.
+The existing 30-day recent-history window applies.
 Each View Steps opening calls the existing `plan_operation` preview path
 for the same source, artifact kind and name (Homebrew's upgrade preview
 runs no command). It must pass the planner's current checks; a refused

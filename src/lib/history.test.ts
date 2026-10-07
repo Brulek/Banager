@@ -284,3 +284,30 @@ it("a dismissed future-dated record cannot shadow the same tool updated after Cl
   const fresh = { ...record("git", { finished_at: NOW }), dismissed: false };
   expect(recentUpdates(view([old, fresh], { cleared_before: NOW + DAY }), [], NOW, offered())).toEqual([fresh]);
 });
+
+describe("a recorded password stop is not resolved by Clear (r22 W1)", () => {
+  const stop = { Failed: { cause: "needsPassword" } } as const;
+
+  it("lists a dismissed stop when dismissal is ignored, as `get_history` sends it after Clear", () => {
+    const cleared = { ...record("onyx", { result: stop, to_version: null, verified: false }), dismissed: true };
+    expect(recentUpdates(view([cleared], { cleared_before: NOW }), [], NOW, offered("onyx"))).toEqual([]);
+    expect(recentUpdates(view([cleared], { cleared_before: NOW }), [], NOW, offered("onyx"), { includeDismissed: true })).toEqual([cleared]);
+    // Legacy wire data (no `dismissed`, a cutoff) reads the same way.
+    const legacy = record("onyx", { result: stop, to_version: null, verified: false });
+    expect(recentUpdates(view([legacy], { cleared_before: NOW }), [], NOW, offered("onyx"), { includeDismissed: true })).toEqual([legacy]);
+  });
+
+  it("still lets a later update supersede the stop, cleared or not", () => {
+    const earlier = { ...record("onyx", { finished_at: NOW - 2_000, result: stop }), dismissed: true };
+    const later = { ...record("onyx", { finished_at: NOW - 1_000 }), dismissed: true };
+    expect(recentUpdates(view([later, earlier]), [], NOW, offered("onyx"), { includeDismissed: true })).toEqual([later]);
+  });
+
+  it("never lets a dismissed future-dated stop shadow an update finished after Clear", () => {
+    // The clock was ahead when the stop was kept, then put right; the
+    // update after Clear has an earlier time but came later.
+    const old = { ...record("onyx", { finished_at: NOW + DAY, result: stop }), dismissed: true };
+    const fresh = { ...record("onyx", { finished_at: NOW }), dismissed: false };
+    expect(recentUpdates(view([fresh, old], { cleared_before: NOW + DAY }), [], NOW, offered("onyx"), { includeDismissed: true })).toEqual([fresh]);
+  });
+});
