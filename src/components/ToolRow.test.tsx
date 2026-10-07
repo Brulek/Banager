@@ -759,6 +759,61 @@ describe("ToolRow", () => {
       }
     });
 
+    it("counts only what the source's words keep when cut, so two copies of one package say their versions alike", () => {
+      // wheel from two Pythons, 0.45.1 → 0.46.1 on both: the longer words,
+      // 「pip（/opt/homebrew/bin/python3.11）」, counted whole, dropped the
+      // version it is now from on one row and not the other, beside it. The
+      // words give way first (`RowNote`): what they keep at the least -- a
+      // "…" and their last 12 characters, 13 of 7 -- is what is counted,
+      // whichever Python. The name 36, so 127 with the words; the column
+      // at its widest 105 ("0.45.1 → 0.46.1"), 56 as "→ 0.46.1": a block
+      // of 176 has room.
+      const layout = (block: number) =>
+        vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+          const width = this.hasAttribute("data-version")
+            ? (this.querySelector("[aria-hidden]")?.textContent ?? this.textContent ?? "").length * 7
+            : this.className.includes("ml-3 min-w-0 flex-1")
+              ? block
+              : 0;
+          return new DOMRect(0, 0, width, 16);
+        });
+      const copy = (where: string) => (
+        <ListWidthProvider value={ROW_FIT_WIDTHS.compact}>
+          <ToolRow
+            adapterId="pip"
+            sourceLabel={where}
+            name="wheel"
+            showSource
+            description="Python package"
+            version="0.45.1 → 0.46.1"
+            newVersion="0.46.1"
+            action={<button type="button">Update</button>}
+          />
+        </ListWidthProvider>
+      );
+      for (const [block, shown] of [
+        [300, "0.45.1 → 0.46.1"],
+        [176, "0.45.1 → 0.46.1"],
+        [175, "→ 0.46.1"],
+      ] as const) {
+        for (const where of ["pip（/opt/homebrew/bin/python3.11）", "pip（/opt/homebrew/bin/python3）"]) {
+          const box = layout(block);
+          try {
+            const { container, unmount } = renderWithProviders(copy(where));
+            const version = container.querySelector("[data-version]") as HTMLElement;
+            expect([where, block, version.querySelector("[aria-hidden]")?.textContent ?? version.textContent]).toEqual([
+              where,
+              block,
+              shown,
+            ]);
+            unmount();
+          } finally {
+            box.mockRestore();
+          }
+        }
+      }
+    });
+
     it("measures no change where the fit shows it whole or not at all, nor a version that is no update", () => {
       const box = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect");
       try {

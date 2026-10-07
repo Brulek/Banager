@@ -2,7 +2,7 @@ import { Fragment, useId, useLayoutEffect, useRef, useState, type KeyboardEvent,
 import { useTranslation } from "react-i18next";
 import type { ArtifactKey } from "../lib/types";
 import { keepsOwnMenu } from "../lib/contextMenu";
-import { endCut, middleCut, textMeasurer } from "../lib/middleCut";
+import { ELLIPSIS, endCut, middleCut, textMeasurer } from "../lib/middleCut";
 import { ToolAvatar } from "./ToolAvatar";
 import { BUTTON } from "./ui/controls";
 import { RowMenuContext, type OpenMenuAt } from "./ui/Menu";
@@ -270,6 +270,16 @@ const NOTE_CLASS = "ml-1.5 min-w-0 truncate text-small text-muted";
  * 「…/python3）」, 「…（Intel）」 beside 「…（Apple芯片）」.
  */
 const NOTE_TAIL = 12;
+
+/**
+ * What of the source's words `note` a row keeps at the least before it
+ * gives the version it is from up: "…" and their last `NOTE_TAIL`
+ * characters, what tells two copies of one source apart (`RowNote`) --
+ * or, too short to cut, the words whole.
+ */
+function noteKept(note: string): string {
+  return note.length <= NOTE_TAIL + 1 ? note : `${ELLIPSIS}${note.slice(-NOTE_TAIL)}`;
+}
 
 /**
  * The source's words after the name (`showSource`), fitted to what the name
@@ -597,15 +607,17 @@ export function ToolRow({
       const column = Math.max(Math.ceil(measureCell(version)), parseFloat(getComputedStyle(cell).minWidth) || 0);
       let nameNeeds = Math.ceil(measureName(namePath?.name ?? name)) + 1;
       // What else stands on the name's line in sight: the source's words
-      // (R3), whole -- measured by their text, as their box is whatever
-      // the name has left them (`NOTE_CLASS`), and the choice would turn on
-      // itself.
+      // (R3) -- measured by their text, as their box is whatever the name
+      // has left them (`NOTE_CLASS`), and the choice would turn on itself.
+      // Only what they keep at the least once cut (`noteKept`): they give
+      // way before the version it is from does, so two copies of a package
+      // whose sources' words differ in length say their versions alike.
       for (const other of Array.from(nameLine.children)) {
         if (other === nameText || getComputedStyle(other).position === "absolute") continue;
         const measureNote = other.hasAttribute("data-row-note") && other instanceof HTMLElement ? textMeasurer(other) : null;
         const width =
           measureNote !== null
-            ? Math.ceil(measureNote(other.getAttribute("title") ?? other.textContent ?? ""))
+            ? Math.ceil(measureNote(noteKept(other.getAttribute("title") ?? other.textContent ?? "")))
             : other.getBoundingClientRect().width;
         nameNeeds += width + parseFloat(getComputedStyle(other).marginLeft || "0");
       }
