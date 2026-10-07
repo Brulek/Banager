@@ -16,7 +16,8 @@ import {
 } from "../lib/operations";
 import { failedRunWords } from "../lib/runResult";
 import { viewLogKey } from "./FailureNextStep";
-import { useUiStore } from "../store/ui";
+import { outcomeCause } from "../lib/failureCause";
+import { useUiStore, type LogLine } from "../store/ui";
 import type { TFunction } from "i18next";
 import type { OpSummary } from "../lib/types";
 import { OutcomeIcon } from "./OutcomeIcon";
@@ -38,6 +39,17 @@ function needsALook(tone: OutcomeTone): boolean {
 }
 
 /**
+ * Whether the log of `op` has anything in it, as the log shows it
+ * (`LogDrawer`): a line it printed, or a note Banager kept. What a cancel
+ * offers to look at -- what had already happened -- is that: one cancelled
+ * while it waited its turn printed nothing, and its log would open on an
+ * empty page (r24 W5).
+ */
+function printedAnything(op: OpSummary, logs: readonly LogLine[]): boolean {
+  return logs.some((line) => line.opId === op.id) || (op.follow_up_warnings?.length ?? 0) > 0;
+}
+
+/**
  * The strip at the foot of the window that says what Banager is doing, in
  * the manner of a Mac window's status bar (spec §3.10): 28 high, the
  * window's own background, a hairline over it, its words 11/14 in the
@@ -51,7 +63,7 @@ function needsALook(tone: OutcomeTone): boolean {
  * runs that nothing can stop. Once everything is done, how it went in
  * place of where it stood -- 「已更新3个工具」, 「1个更新失败，2个已成功」, 「git：
  * 更新 · 网络连接失败」, 「2个已取消」 -- with its log where it needs a look
- * or was cancelled, and a close ×.
+ * or was cancelled once it had printed something, and a close ×.
  * What it does is said in front wherever the words do not say it
  * (`operationWords`). What a program wrote -- a tool's error, macOS's
  * reason a program would not start -- is said here only with "Show
@@ -239,8 +251,8 @@ export function OperationBar() {
       tone = operationTone(op);
       words = t("operations.current", { name: nameOf(op), status: operationWords(t, op, logs, technical) });
       // The log of anything but a plain success: to see what went wrong,
-      // or -- after a cancel -- what had already happened.
-      logOf = tone === "success" ? undefined : op;
+      // or -- after a cancel -- what had already happened, where anything had.
+      logOf = tone === "success" || (tone === "cancelled" && !printedAnything(op, logs)) ? undefined : op;
     } else if (newestToLook !== undefined) {
       tone = tones.includes("failure") ? "failure" : "attention";
       // Failures said as failures, with what else the run came to --
@@ -270,9 +282,13 @@ export function OperationBar() {
           ? t("operations.batch.finished", { succeeded, cancelled: cancelled.length })
           : t("failureSteps.bar.cancelled", { count: cancelled.length });
       // Their logs, as one operation's bar offers its own after a cancel:
-      // what had already happened -- 「查看2个日志」, stepping through them.
-      if (cancelled.length > 1) logsOf = cancelled;
-      else logOf = cancelled[0];
+      // what had already happened -- 「查看2个日志」, stepping through them --
+      // of those that had started and printed something. Cancel All while
+      // most still waited their turn: the one that ran, never an empty page
+      // for each of the rest; none at all where none had started.
+      const looked = cancelled.filter((op) => printedAnything(op, logs));
+      if (looked.length > 1) logsOf = looked;
+      else logOf = looked[0];
     }
     lead = <OutcomeIcon tone={tone} size={12} />;
     said = (

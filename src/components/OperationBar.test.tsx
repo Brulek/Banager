@@ -778,10 +778,34 @@ describe("OperationBar", () => {
       op(1, "git", "Done", "Succeeded"),
     ]);
     await findByText("1 succeeded, 1 cancelled");
-    // The cancelled one's log, as a single operation's bar offers it after a
-    // cancel: what had already happened (r24 W5).
+    // Cancelled while it waited its turn, it printed nothing: no log to
+    // offer, which would open on an empty page (r24 W5, skeptic).
+    expect(queryByRole("button", { name: "View Log" })).toBeNull();
+
+    // A new run: one cancelled once it had started and printed, one updated.
+    await listNow(queryClient, [
+      op(6, "httpie", "Running"),
+      op(5, "tree", "Running"),
+      op(4, "wget", "Done", "Cancelled"),
+      op(3, "gh", "Done", "Succeeded"),
+      op(2, "jq", "Done", "Succeeded"),
+      op(1, "git", "Done", "Succeeded"),
+    ]);
+    await findByText(/Working on/);
+    useUiStore.getState().appendLog({ opId: 6, stream: "Stdout", line: "==> Upgrading httpie" });
+    await listNow(queryClient, [
+      op(6, "httpie", "Done", "Cancelled"),
+      op(5, "tree", "Done", "Succeeded"),
+      op(4, "wget", "Done", "Cancelled"),
+      op(3, "gh", "Done", "Succeeded"),
+      op(2, "jq", "Done", "Succeeded"),
+      op(1, "git", "Done", "Succeeded"),
+    ]);
+    await findByText("1 succeeded, 1 cancelled");
+    // Its log, as a single operation's bar offers it after a cancel: what
+    // had already happened (r24 W5).
     fireEvent.click(getByRole("button", { name: "View Log" }));
-    expect(useUiStore.getState().focusedOpId).toBe(4);
+    expect(useUiStore.getState().focusedOpId).toBe(6);
   });
 
   it("leaves out a zero when every one of a run was cancelled, and offers their logs (r24 W5)", async () => {
@@ -790,7 +814,10 @@ describe("OperationBar", () => {
     try {
       const { findByText, getByRole, queryByText, queryClient, unmount } = renderWithProviders(<OperationBar />);
       await waitFor(() => expect(queryClient.getQueryData(queryKeys.operations)).toEqual([]));
-      await listNow(queryClient, [op(2, "httpie", "Queued"), op(1, "git", "Running")]);
+      await listNow(queryClient, [op(2, "httpie", "Running"), op(1, "git", "Running")]);
+      // Each had started, and printed something, before Cancel All.
+      useUiStore.getState().appendLog({ opId: 1, stream: "Stdout", line: "==> Upgrading git" });
+      useUiStore.getState().appendLog({ opId: 2, stream: "Stdout", line: "==> Upgrading httpie" });
       await listNow(queryClient, [op(2, "httpie", "Done", "Cancelled"), op(1, "git", "Done", "Cancelled")]);
 
       await findByText("2个已取消");
@@ -810,6 +837,62 @@ describe("OperationBar", () => {
     await listNow(queryClient, [op(4, "wget", "Done", "Cancelled"), op(3, "gh", "Done", "Cancelled")]);
     await findByText("2 cancelled");
     expect(queryByText(/0 succeeded/)).toBeNull();
+  });
+
+  it("offers the logs only of the cancelled ones that printed something, never an empty page (r24 W5, skeptic)", async () => {
+    // Cancel All while one ran and the rest still waited their turn: only
+    // the one that ran has a log with anything in it.
+    const { findByText, getByRole, queryByRole, queryClient } = renderWithProviders(<OperationBar />);
+    await waitFor(() => expect(queryClient.getQueryData(queryKeys.operations)).toEqual([]));
+    await listNow(queryClient, [op(3, "node@22", "Queued"), op(2, "gemini-cli", "Queued"), op(1, "git", "Running")]);
+    useUiStore.getState().appendLog({ opId: 1, stream: "Stdout", line: "==> Upgrading git" });
+    await listNow(queryClient, [
+      op(3, "node@22", "Done", "Cancelled"),
+      op(2, "gemini-cli", "Done", "Cancelled"),
+      op(1, "git", "Done", "Cancelled"),
+    ]);
+    await findByText("3 cancelled");
+    expect(queryByRole("button", { name: /View \d+ Logs/ })).toBeNull();
+    fireEvent.click(getByRole("button", { name: "View Log" }));
+    expect(useUiStore.getState().focusedOpId).toBe(1);
+    expect(useUiStore.getState().logRun).toEqual([]);
+
+    // A new run, every one cancelled before its turn: nothing to look at.
+    await listNow(queryClient, [
+      op(5, "tree", "Queued"),
+      op(4, "wget", "Queued"),
+      op(3, "node@22", "Done", "Cancelled"),
+      op(2, "gemini-cli", "Done", "Cancelled"),
+      op(1, "git", "Done", "Cancelled"),
+    ]);
+    await findByText("Working on 1 of 2");
+    await listNow(queryClient, [
+      op(5, "tree", "Done", "Cancelled"),
+      op(4, "wget", "Done", "Cancelled"),
+      op(3, "node@22", "Done", "Cancelled"),
+      op(2, "gemini-cli", "Done", "Cancelled"),
+      op(1, "git", "Done", "Cancelled"),
+    ]);
+    await findByText("2 cancelled");
+    expect(queryByRole("button", { name: "View Log" })).toBeNull();
+    expect(queryByRole("button", { name: /View \d+ Logs/ })).toBeNull();
+    expect(getByRole("button", { name: "Close" })).toBeInTheDocument();
+  });
+
+  it("offers a single cancelled operation's log only where it printed something", async () => {
+    // Cancelled before it printed a line: its log would be an empty page.
+    operations = [op(7, "wget", "Done", "Cancelled")];
+    const first = renderWithProviders(<OperationBar />);
+    await first.findByText("wget: Update · Cancelled");
+    expect(first.queryByRole("button", { name: "View Log" })).toBeNull();
+    first.unmount();
+
+    // Once it has: what had already happened.
+    useUiStore.getState().appendLog({ opId: 7, stream: "Stdout", line: "==> Downloading wget" });
+    const second = renderWithProviders(<OperationBar />);
+    await second.findByText("wget: Update · Cancelled");
+    fireEvent.click(second.getByRole("button", { name: "View Log" }));
+    expect(useUiStore.getState().focusedOpId).toBe(7);
   });
 
   it("calls what it acts on by the name its row shows, and keeps it once the row is gone", async () => {
