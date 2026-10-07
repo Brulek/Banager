@@ -5476,9 +5476,15 @@ mod plan_execute_tests {
 
     impl CaskroomPrefix {
         fn new(label: &str, receipts: &[(&str, &str)]) -> CaskroomPrefix {
+            // A count of its own as well as the clock: two tests that ask
+            // for the same label within one tick of the clock, as parallel
+            // tests can, would otherwise share a folder and each other's
+            // receipts.
+            static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
             let dir = std::env::temp_dir().join(format!(
-                "banager-brew-caskroom-{label}-{}-{}",
+                "banager-brew-caskroom-{label}-{}-{}-{}",
                 std::process::id(),
+                NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
                 std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap()
