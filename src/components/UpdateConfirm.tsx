@@ -5,7 +5,7 @@ import { adapterIdOf, adapterLabel, instanceLabels, planErrorDetail, refusalSent
 import { modelPath } from "../lib/names";
 import { isRoutineNote, warningLines, type WarningLine } from "../lib/warnings";
 import { majorJump } from "../lib/versionJump";
-import { CHANGED_SINCE_SHOWN, letGoPolicy, startShown } from "../lib/heldPlans";
+import { CHANGED_SINCE_SHOWN, letGoPolicy, PLAN_LIFETIME_MS, startShown } from "../lib/heldPlans";
 import { artifactKeyId, useUiStore } from "../store/ui";
 import type { ArtifactKey, InstalledArtifact, IssuedPlan, OpRequest, UpdateCandidate } from "../lib/types";
 import { CommandPreview } from "./CommandPreview";
@@ -296,6 +296,8 @@ export function useUpdateConfirm({ nameOf, compare, sourceLabelFor }: UpdateConf
       submit: (planId: string) => submitMutation.mutateAsync(planId),
     };
 
+    const batchDeadline = askedAtRef.current + PLAN_LIFETIME_MS;
+
     // Sequential, not concurrent: each item's result is recorded before the
     // next is sent, so a failure part-way leaves an exact record of what did
     // start. A started item leaves the selection at once, so a retry after a
@@ -307,7 +309,7 @@ export function useUpdateConfirm({ nameOf, compare, sourceLabelFor }: UpdateConf
       if (!item.issued) continue;
       try {
         const letGo = letGoPolicy(planned, askedAtRef.current, performance.now());
-        const opId = await startShown(item.issued, toRequest(item.candidate), letGo, through);
+        const opId = await startShown(item.issued, toRequest(item.candidate), letGo, through, batchDeadline);
         items[i] = { ...item, submittedOpId: opId };
         // Which version this operation is for, so its row can tell its
         // outcome from a later version's (`useUpdateOperationFor`).

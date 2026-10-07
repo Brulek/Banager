@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   CHANGED_SINCE_SHOWN,
   EXPIRED,
@@ -96,9 +96,10 @@ async function startEach(
   letGo: LetGo,
 ): Promise<Array<number | string>> {
   const out: Array<number | string> = [];
+  const batchDeadline = performance.now() + PLAN_LIFETIME_MS;
   for (const issued of shown) {
     try {
-      out.push(await startShown(issued, issued.plan.request, letGo, backend.through));
+      out.push(await startShown(issued, issued.plan.request, letGo, backend.through, batchDeadline));
     } catch (e) {
       out.push((e as Error).message);
     }
@@ -167,6 +168,54 @@ describe("startShown, for Update all of more tools than the backend holds", () =
     expect(backend.planned).toHaveLength(1100);
   });
 
+  it("allows a replacement at the original deadline, including a delay after planning resolves", async () => {
+    const backend = heldBackend();
+    const [shown] = await preview(backend, ["jq"]);
+    backend.held.clear();
+    let now = PLAN_LIFETIME_MS - 1000;
+    const clock = vi.spyOn(performance, "now").mockImplementation(() => now);
+    const plan = backend.through.plan;
+    backend.through.plan = async (req) => {
+      const replacement = await plan(req);
+      queueMicrotask(() => { now = PLAN_LIFETIME_MS; });
+      return replacement;
+    };
+    try {
+      await expect(startShown(shown, shown.plan.request, "planAgain", backend.through, PLAN_LIFETIME_MS)).resolves.toBe(1);
+      expect(backend.submitted).toHaveLength(1);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it.each(["submit", "plan", "continuation"] as const)("refuses an evicted plan when %s crosses the original batch deadline", async (delayed) => {
+    const backend = heldBackend();
+    const [shown] = await preview(backend, ["jq"]);
+    backend.held.clear();
+    let now = PLAN_LIFETIME_MS - 1000;
+    const clock = vi.spyOn(performance, "now").mockImplementation(() => now);
+    if (delayed === "continuation") {
+      const plan = backend.through.plan;
+      backend.through.plan = async (req) => {
+        const replacement = await plan(req);
+        queueMicrotask(() => { now += 5000; });
+        return replacement;
+      };
+    } else if (delayed === "plan") {
+      const plan = backend.through.plan;
+      backend.through.plan = async (req) => { now += 5000; return plan(req); };
+    } else {
+      const submit = backend.through.submit;
+      backend.through.submit = async (id) => { now += 5000; return submit(id); };
+    }
+    try {
+      await expect(startShown(shown, shown.plan.request, "planAgain", backend.through, PLAN_LIFETIME_MS)).rejects.toThrow(EXPIRED);
+      expect(backend.submitted).toEqual([]);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
   it("does not start one whose plan came out different, and starts the rest", async () => {
     // tool-0003's second plan names a different command: it was let go,
     // and what it would run now is not what was shown.
@@ -197,7 +246,7 @@ describe("startShown, for Update all of more tools than the backend holds", () =
     listed.through.plan = async () => {
       throw new Error(JSON.stringify({ kind: "not_listed" }));
     };
-    await expect(startShown(shown[0], shown[0].plan.request, "planAgain", listed.through)).rejects.toThrow(
+    await expect(startShown(shown[0], shown[0].plan.request, "planAgain", listed.through, performance.now() + PLAN_LIFETIME_MS)).rejects.toThrow(
       JSON.stringify({ kind: "not_listed" }),
     );
     // Held, but refused for another reason: nothing is planned again.
@@ -206,7 +255,7 @@ describe("startShown, for Update all of more tools than the backend holds", () =
     expired.through.submit = async () => {
       throw new Error(EXPIRED);
     };
-    await expect(startShown(one, one.plan.request, "planAgain", expired.through)).rejects.toThrow(EXPIRED);
+    await expect(startShown(one, one.plan.request, "planAgain", expired.through, performance.now() + PLAN_LIFETIME_MS)).rejects.toThrow(EXPIRED);
     expect(expired.planned).toHaveLength(1);
   });
 
@@ -226,7 +275,7 @@ describe("startShown, for Update all of more tools than the backend holds", () =
     for (const issued of shown) {
       const backend = heldBackend();
       for (const letGo of ["planAgain", "expired"] as const) {
-        await expect(startShown(issued, issued.plan.request, letGo, backend.through)).rejects.toThrow(UNKNOWN);
+        await expect(startShown(issued, issued.plan.request, letGo, backend.through, performance.now() + PLAN_LIFETIME_MS)).rejects.toThrow(UNKNOWN);
       }
       expect(backend.planned).toEqual([]);
     }
@@ -251,7 +300,7 @@ describe("startShown, for an update a brew cleanup follows (U9)", () => {
     const shown = await same.through.plan(request("wget"));
     await same.through.submit(shown.id);
     // Let go: planned again, and the same two commands start.
-    await expect(startShown(shown, shown.plan.request, "planAgain", same.through)).resolves.toBe(2);
+    await expect(startShown(shown, shown.plan.request, "planAgain", same.through, performance.now() + PLAN_LIFETIME_MS)).resolves.toBe(2);
     expect(same.planned).toHaveLength(2);
     // Planned again with another follow-up: not the plan shown, not started.
     const other = heldBackend((req, nth) =>
@@ -259,7 +308,7 @@ describe("startShown, for an update a brew cleanup follows (U9)", () => {
     );
     const first = await other.through.plan(request("wget"));
     await other.through.submit(first.id);
-    await expect(startShown(first, first.plan.request, "planAgain", other.through)).rejects.toThrow(CHANGED_SINCE_SHOWN);
+    await expect(startShown(first, first.plan.request, "planAgain", other.through, performance.now() + PLAN_LIFETIME_MS)).rejects.toThrow(CHANGED_SINCE_SHOWN);
   });
 });
 

@@ -138,21 +138,25 @@ function messageOf(e: unknown): string {
  * When the backend no longer holds `shown` (`unknown`) and `shown` is an
  * upgrade's command (`isUpgradeCommand`), `letGo` says what then: with
  * `planAgain`, `request` is planned again, and the new plan submitted only
- * when it is `shown`'s (`samePlan`). Otherwise nothing more is asked.
+ * when it is `shown`'s (`samePlan`) and the original monotonic
+ * `batchDeadline` has not passed. Re-planning never renews that deadline.
+ * Otherwise nothing more is asked.
  */
 export async function startShown(
   shown: IssuedPlan,
   request: OpRequest,
   letGo: LetGo,
   through: StartThrough,
+  batchDeadline: number,
 ): Promise<number> {
   try {
     return await through.submit(shown.id);
   } catch (e) {
     if (letGo === "asSent" || !isUpgradeCommand(shown.plan) || !isUnknownPlan(messageOf(e))) throw e;
-    if (letGo === "expired") throw new Error(EXPIRED);
+    if (letGo === "expired" || performance.now() > batchDeadline) throw new Error(EXPIRED);
   }
   const again = await through.plan(request);
   if (!samePlan(shown.plan, again.plan)) throw new Error(CHANGED_SINCE_SHOWN);
+  if (performance.now() > batchDeadline) throw new Error(EXPIRED);
   return through.submit(again.id);
 }
