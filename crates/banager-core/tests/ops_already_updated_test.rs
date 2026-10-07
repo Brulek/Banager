@@ -267,9 +267,22 @@ async fn test_an_update_an_earlier_update_of_the_batch_completed_says_so() {
     let harfbuzz = plan_upgrade(&adapter, "harfbuzz").await;
     let libpng = plan_upgrade(&adapter, "libpng").await;
     let first = manager.submit_toward(harfbuzz, Some("14.5.0".to_string()), None);
-    let second = manager.submit_toward(libpng, Some("1.6.59".to_string()), None);
+    // The history is handed the same: what `Session::submit` records.
+    let told = Arc::new(Mutex::new(None));
+    let tell = told.clone();
+    let second = manager.submit_toward(
+        libpng,
+        Some("1.6.59".to_string()),
+        Some(Box::new(move |ended| {
+            *tell.lock().unwrap() = Some((ended.outcome.clone(), ended.already_updated));
+        })),
+    );
     assert_eq!(manager.wait(first).await, Some(Outcome::Succeeded));
     assert_eq!(manager.wait(second).await, Some(Outcome::Succeeded));
+    assert_eq!(
+        *told.lock().unwrap(),
+        Some((Outcome::Succeeded, Some(AlreadyUpdated::ByEarlierUpdate)))
+    );
     assert_eq!(already_updated(&manager, first), None, "harfbuzz moved");
     assert_eq!(
         already_updated(&manager, second),

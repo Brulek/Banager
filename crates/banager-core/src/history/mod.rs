@@ -28,7 +28,9 @@ mod failure_cause;
 pub use failure_cause::{failure_cause, FailureCause};
 
 use crate::events::OpId;
-use crate::model::{AdapterId, ArtifactKey, ArtifactKind, Attention, Fault, OpKind, Outcome};
+use crate::model::{
+    AdapterId, AlreadyUpdated, ArtifactKey, ArtifactKind, Attention, Fault, OpKind, Outcome,
+};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::{mpsc, Arc, Condvar, Mutex, Weak};
@@ -114,6 +116,14 @@ pub struct HistoryRecord {
     /// the reading after it found the package gone. `false` for an update
     /// taken as done on presence alone, with nothing to compare.
     pub verified: bool,
+    /// For an update that succeeded though its own command changed
+    /// nothing, as it was already at the version its confirmed plan aimed
+    /// for when its turn came: how it got there, as far as Banager saw
+    /// (`AlreadyUpdated`; `OpSummary::already_updated` in ops/mod.rs).
+    /// Absent for every other record, and in one written before it
+    /// existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub already_updated: Option<AlreadyUpdated>,
 }
 
 /// What the window is given (`get_history`): this launch's `run`, when the
@@ -165,6 +175,9 @@ pub struct Ended<'a> {
     /// The installed version read before an update, and after it.
     pub before: Option<&'a str>,
     pub after: Option<&'a str>,
+    /// What the operation's summary says of an update already at its
+    /// target when its turn came (`OpSummary::already_updated`).
+    pub already_updated: Option<AlreadyUpdated>,
 }
 
 /// The record for an operation that ended, or `None` for one that is not
@@ -236,6 +249,9 @@ pub fn record_for(
         kind,
         from_version,
         to_version,
+        already_updated: ended
+            .already_updated
+            .filter(|_| result == HistoryResult::Succeeded),
         result,
         verified,
     })
@@ -723,6 +739,7 @@ mod tests {
             started: true,
             before: Some("3.31.6"),
             after: Some("4.0.0"),
+            already_updated: None,
         }
     }
 
@@ -755,6 +772,41 @@ mod tests {
         assert_eq!(r.from_version.as_deref(), Some("3.31.6"));
         assert_eq!(r.to_version.as_deref(), Some("4.0.0"));
         assert_eq!((r.run.as_str(), r.op_id, r.finished_at), ("run1", 4, NOW));
+    }
+
+    #[test]
+    fn test_an_update_already_at_its_target_is_kept_as_succeeded_and_says_how() {
+        // r6 y3-batch, finding 2: libpng, upgraded by harfbuzz's update
+        // earlier in the same Update all, read 1.6.59 before its own
+        // command and after it.
+        let k = key("libpng");
+        let mut e = ended(&k, &Outcome::Succeeded);
+        e.before = Some("1.6.59");
+        e.after = Some("1.6.59");
+        e.already_updated = Some(AlreadyUpdated::ByEarlierUpdate);
+        let r = record_for(&e, &started("libpng"), "r", NOW).unwrap();
+        assert_eq!(r.result, HistoryResult::Succeeded);
+        assert_eq!(r.already_updated, Some(AlreadyUpdated::ByEarlierUpdate));
+        assert_eq!(r.to_version.as_deref(), Some("1.6.59"));
+        // This update's own command did not move it: not "read the change".
+        assert!(!r.verified);
+        let json = serde_json::to_string(&r).unwrap();
+        assert!(
+            json.contains(
+                r#""result":"Succeeded","verified":false,"already_updated":"ByEarlierUpdate""#
+            ),
+            "{json}"
+        );
+        // A record from before the field existed reads as none.
+        let older = json.replace(r#","already_updated":"ByEarlierUpdate""#, "");
+        let back: HistoryRecord = serde_json::from_str(&older).unwrap();
+        assert_eq!(back.already_updated, None);
+        // Only an update that succeeded says it.
+        let unchanged = Outcome::NeedsAttention(Attention::UnchangedAfterUpgrade);
+        let mut e = ended(&k, &unchanged);
+        e.already_updated = Some(AlreadyUpdated::BeforeItsTurn);
+        let r = record_for(&e, &started("libpng"), "r", NOW).unwrap();
+        assert_eq!(r.already_updated, None);
     }
 
     #[test]

@@ -1340,13 +1340,14 @@ impl OperationManager {
                         r.started,
                         r.before_version.clone(),
                         r.after_version.clone(),
+                        r.already_updated,
                     )
                 })
             } else {
                 None
             }
         };
-        if let Some((on_finish, request, started, before, after)) = ended {
+        if let Some((on_finish, request, started, before, after, already_updated)) = ended {
             let key = ArtifactKey {
                 instance_id: request.instance_id,
                 kind: request.artifact_kind,
@@ -1360,6 +1361,7 @@ impl OperationManager {
                 started,
                 before: before.as_deref(),
                 after: after.as_deref(),
+                already_updated,
             };
             // A callback that panicked must not leave the operation
             // unfinished for good: it ends all the same, with no record.

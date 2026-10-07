@@ -140,6 +140,7 @@ async fn test_a_password_inside_sudos_words_is_masked_and_the_cause_still_read()
             started: true,
             before: Some("1.0"),
             after: Some("1.0"),
+            already_updated: None,
         },
         &Started {
             display_name: "example".to_string(),
