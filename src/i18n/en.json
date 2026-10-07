@@ -1687,7 +1687,7 @@
       "generic": "The words above are the error message from {{program}} itself. You can {{again}} later. If it still fails, click View Log, then Copy Log, and send the log to someone who can help.",
       "withCause": "The words above are the error message from {{program}} itself. {{line}}",
       "inTerminal": "The words above are the error message from {{program}} itself. {{line}} You can click View Log and run the command it gives in Terminal.",
-      "noLog": "The words above are the error message from {{program}} itself. You can {{again}} later. If it still fails, show these words to someone who can help."
+      "noLog": "The words above are the error message from {{program}} itself. You can {{again}} later. If it still fails, click Copy Error Details and send them to someone who can help."
     }
   },
   "failureMore": {

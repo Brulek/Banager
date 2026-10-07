@@ -5,7 +5,7 @@ import { outcomeCause } from "../lib/failureCause";
 import type { LogEntry } from "../store/ui";
 import { CopyButton } from "./CopyButton";
 import { DisclosureButton } from "./DisclosureButton";
-import { TRY_AGAIN_KEYS } from "./FailureNextStep";
+import { TRY_AGAIN_KEYS, subtitleStep } from "./FailureNextStep";
 
 /**
  * The words a failure kept (`Failed.summary`: the last lines of the
@@ -33,9 +33,9 @@ export function missingLogSummary(op: OpSummary, logs: readonly LogEntry[]): str
  * setting, which nothing here would point to -- with Copy Error Details
  * under them, as a source's kept words have (`SourceDiagnostic`): Copy Log
  * has no line left to copy, and the step says to send them (r21 C9). With
- * it on, the subtitle has the words and `SubtitleStep` the step. Keyed by
- * the operation where it is used, so each log of a run opens with its
- * details closed.
+ * it on, the subtitle has the words, `SubtitleStep` the step and
+ * `SubtitleWordsCopy` their Copy Error Details. Keyed by the operation
+ * where it is used, so each log of a run opens with its details closed.
  */
 export function MissingFailureLog({
   op,
@@ -81,6 +81,49 @@ export function MissingFailureLog({
           ) : null}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * With "Show technical details" on, the words a failure kept where the
+ * log's subtitle is the only place left that shows them, or null: this
+ * window's log has none of the operation's lines (`missingLogSummary`),
+ * or none of its stderr lines, which the step under the subtitle says
+ * (`subtitleStep`). The subtitle does not select, and Copy Log has none
+ * of those words to copy.
+ */
+export function subtitleWordsToCopy(op: OpSummary, logs: readonly LogEntry[], technical: boolean): string | null {
+  if (!technical) return null;
+  const gone = missingLogSummary(op, logs);
+  if (gone !== null) return gone;
+  if (subtitleStep(op, logs, technical) === null) return null;
+  const outcome = op.outcome;
+  if (outcome === null || typeof outcome === "string" || !("Failed" in outcome)) return null;
+  return outcome.Failed.summary.trim();
+}
+
+/**
+ * Copy Error Details for the words in the log's subtitle
+ * (`subtitleWordsToCopy`), at the left under the step that names it, as
+ * it is under the unfolded words with technical details off
+ * (`MissingFailureLog`): it copies those words alone.
+ */
+export function SubtitleWordsCopy({
+  op,
+  logs,
+  technical,
+}: {
+  op: OpSummary;
+  logs: readonly LogEntry[];
+  technical: boolean;
+}) {
+  const { t } = useTranslation();
+  const words = subtitleWordsToCopy(op, logs, technical);
+  if (words === null) return null;
+  return (
+    <div className="mb-3 flex items-center justify-start">
+      <CopyButton text={words} label={t("failureRecovery.copy")} size="regular" />
     </div>
   );
 }

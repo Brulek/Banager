@@ -297,6 +297,9 @@ describe("the kept error words' one name", () => {
     // The step names both buttons it sends the person to (r21 C9).
     expect(strings.get("failureRecovery.next")).toContain(strings.get("failureRecovery.details"));
     expect(strings.get("failureRecovery.next")).toContain(strings.get("failureRecovery.copy"));
+    // With technical details on, the step under the subtitle that has the
+    // words names the same button, under it (skeptic, after r21 C9).
+    expect(strings.get("failure.toolWords.noLog")).toContain(strings.get("failureRecovery.copy"));
     expect(strings.get("sourceDiagnostic.next")).toContain(strings.get("sourceDiagnostic.copy"));
     expect(strings.get("sourceDiagnostic.text")).not.toMatch(/Startup|启动|啟動/);
   });

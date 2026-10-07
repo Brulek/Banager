@@ -440,10 +440,15 @@ with a login masked out), the log view says the log is no longer
 available. With technical details off, Show Error Details reveals that
 summary, with Copy Error Details under it, which copies that summary
 alone, and a failure whose cause is not recognised also says how to try
-again and to send those details to someone who can help. A failure that
-kept no words gets no such line, as its log may never have had one. This
-fetches no old output and writes no log file. Copy Log stays disabled
-for an empty log.
+again and to send those details to someone who can help. With technical
+details on, the log view's subtitle shows that summary instead, and a
+Copy Error Details button over the log copies that summary alone -- also
+where the log still has other lines of the operation but none it wrote
+to stderr -- and, for a cause that is not recognised, the sentence under
+the subtitle says to click it and send the details to someone who can
+help. A failure that kept no words gets no such line, as its log may
+never have had one. This fetches no old output and writes no log file.
+Copy Log stays disabled for an empty log.
 
 ## When commands run
 

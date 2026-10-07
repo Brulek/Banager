@@ -109,7 +109,8 @@ export function FailureNextStep({ op, logs, id }: { op: OpSummary; logs: readonl
  *   which is in the log): the cause's line, then where the command is.
  * - `noLog`: the log's subtitle, where this window's log has none of the
  *   tool's lines any more (it keeps the newest 2,000): how to try again,
- *   and no Copy Log, which would copy nothing of them.
+ *   then Copy Error Details, under it (`SubtitleWordsCopy`) -- not Copy
+ *   Log, which would copy nothing of them.
  */
 export const TOOL_WORDS_STEP_KEYS = {
   generic: "failure.toolWords.generic",

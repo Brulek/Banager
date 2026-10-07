@@ -988,16 +988,20 @@ describe("LogDrawer, a tool's own words left only in the subtitle", () => {
     status: "Done",
     outcome: { Failed: { exit_code: exitCode, summary, cause: failureCause(summary) } },
   });
+  // The step names the button under it, as the step with details off
+  // does (r21 C9): the subtitle does not select, and Copy Log has none of
+  // the words (skeptic).
   const sentence = {
-    en: "The words above are the error message from Homebrew itself. You can click Retry later. If it still fails, show these words to someone who can help.",
-    "zh-CN": "上面是Homebrew自己的报错。可以稍后点按“重试”；还是失败，就把这段报错告诉懂的人。",
+    en: "The words above are the error message from Homebrew itself. You can click Retry later. If it still fails, click Copy Error Details and send them to someone who can help.",
+    "zh-CN": "上面是Homebrew自己的报错。可以稍后点按“重试”；还是失败，就点按“拷贝错误详情”，发给懂的人看。",
+    "zh-Hant": "上面是Homebrew自己顯示的錯誤訊息。可以稍後點按「再試一次」；還是失敗，就點按「拷貝錯誤詳細資訊」，傳給懂的人看。",
   };
 
-  it("says whose they are under the subtitle when this window's log has none of its lines, in both languages", async () => {
+  it("says whose they are under the subtitle when this window's log has none of its lines, in each language", async () => {
     technicalOn();
     operations = [failed("Error: wget: something went wrong")];
     try {
-      for (const lang of ["en", "zh-CN"] as const) {
+      for (const lang of ["en", "zh-CN", "zh-Hant"] as const) {
         await i18n.changeLanguage(lang);
         const view = renderWithProviders(<LogDrawer />);
         const step = await view.findByText(sentence[lang]);
@@ -1046,6 +1050,102 @@ describe("LogDrawer, a tool's own words left only in the subtitle", () => {
     const view = renderWithProviders(<LogDrawer />);
     await view.findByText("Couldn't update");
     expect(view.container.ownerDocument.querySelector("[data-failure-next-step]")).toBeNull();
+    // Its words are behind Show Error Details, closed: no Copy Error
+    // Details until they are unfolded.
+    expect(view.queryByRole("button", { name: "Copy Error Details" })).toBeNull();
+  });
+
+  // The subtitle has the words with the setting on, but it does not
+  // select, and Copy Log has none of them: Copy Error Details, under the
+  // step that names it, copies them (skeptic, after r21 C9).
+  const clipboard = () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    return writeText;
+  };
+  const noClipboard = () => Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+
+  it.each(["en", "zh-CN", "zh-Hant"] as const)(
+    "gives the words in the subtitle their own Copy Error Details under the step when the log is gone (%s)",
+    async (language) => {
+      technicalOn();
+      const summary = "Error: wget: something went wrong";
+      operations = [failed(summary)];
+      await i18n.changeLanguage(language);
+      try {
+        const writeText = clipboard();
+        const view = renderWithProviders(<LogDrawer />);
+        expect(await view.findByText(i18n.t("failureRecovery.logGone"))).toBeInTheDocument();
+        const step = view.getByText(sentence[language]);
+        const copy = view.getByRole("button", { name: i18n.t("failureRecovery.copy") });
+        // Under the step that names it, over the log.
+        expect(step.compareDocumentPosition(copy) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(copy.compareDocumentPosition(view.getByRole("log")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        // The setting on has no disclosure: the words are in the subtitle.
+        expect(view.queryByRole("button", { name: i18n.t("failureRecovery.details") })).toBeNull();
+        expect(view.getByRole("button", { name: i18n.t("operations.copyLog") })).toBeDisabled();
+        fireEvent.click(copy);
+        await waitFor(() => expect(writeText).toHaveBeenCalledWith(summary));
+        view.unmount();
+      } finally {
+        noClipboard();
+        await i18n.changeLanguage("en");
+      }
+    },
+  );
+
+  it("gives Copy Error Details where a cause's step is over the gone log, and for macOS's words, too", async () => {
+    technicalOn();
+    try {
+      // A cause: its step is over the log, and no sentence under the
+      // subtitle -- the words are still only in the subtitle.
+      const network = "curl: (6) Could not resolve host: ghcr.io";
+      operations = [failed(network)];
+      let writeText = clipboard();
+      const cause = renderWithProviders(<LogDrawer />);
+      await cause.findByText("Check your internet connection, then try again.");
+      fireEvent.click(cause.getByRole("button", { name: "Copy Error Details" }));
+      await waitFor(() => expect(writeText).toHaveBeenCalledWith(network));
+      cause.unmount();
+
+      // macOS's words for a path it would not move to the Trash.
+      operations = [failed("Operation not permitted", null)];
+      writeText = clipboard();
+      const trash = renderWithProviders(<LogDrawer />);
+      await trash.findByText(i18n.t("failureRecovery.logGone"));
+      fireEvent.click(trash.getByRole("button", { name: "Copy Error Details" }));
+      await waitFor(() => expect(writeText).toHaveBeenCalledWith("Operation not permitted"));
+      trash.unmount();
+    } finally {
+      noClipboard();
+    }
+  });
+
+  it("gives Copy Error Details where the log has lines of the operation but none of its words", async () => {
+    technicalOn();
+    const summary = "Error: wget: something went wrong";
+    operations = [failed(summary)];
+    act(() => {
+      useUiStore.getState().appendLog({ opId: 1, stream: "Stdout", line: "==> Upgrading wget" });
+    });
+    const view = renderWithProviders(<LogDrawer />);
+    // Not gone, so not said to be; the step under the subtitle names the button.
+    await view.findByText(sentence.en);
+    expect(view.queryByText(i18n.t("failureRecovery.logGone"))).toBeNull();
+    expect(view.getByRole("button", { name: "Copy Error Details" })).toBeInTheDocument();
+    expect(view.getByRole("button", { name: "Copy Log" })).toBeEnabled();
+  });
+
+  it("gives no Copy Error Details where the log has the words", async () => {
+    technicalOn();
+    operations = [failed("Error: wget: something went wrong")];
+    act(() => {
+      useUiStore.getState().appendLog({ opId: 1, stream: "Stderr", line: "Error: wget: something went wrong" });
+    });
+    const view = renderWithProviders(<LogDrawer />);
+    await view.findByText(/^The lines above are the error message from Homebrew itself\./);
+    expect(view.queryByRole("button", { name: "Copy Error Details" })).toBeNull();
+    expect(view.getByRole("button", { name: "Copy Log" })).toBeEnabled();
   });
 });
 

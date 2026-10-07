@@ -21,7 +21,7 @@ import { Dialog } from "./ui/Dialog";
 import { BUTTON } from "./ui/controls";
 import { ScrollArea } from "./ui/ScrollArea";
 import { OutcomeIcon } from "./OutcomeIcon";
-import { MissingFailureLog, missingLogSummary } from "./MissingFailureLog";
+import { MissingFailureLog, SubtitleWordsCopy, missingLogSummary } from "./MissingFailureLog";
 import { PasswordCommand } from "./PasswordCommand";
 import { FailureNextStep, SubtitleStep, failureLogStep, subtitleStep } from "./FailureNextStep";
 import { SpinnerIcon } from "./icons";
@@ -122,7 +122,8 @@ export function noteText(t: TFunction, note: LogNote): string {
  * for a failure, whose words they are and what to do next, Copy Log among
  * it (`FailureNextStep`) -- or, with technical details on and none of the
  * tool's lines left in this window's log, under the subtitle that still
- * has its words (`SubtitleStep`). Where none of a failure's lines are
+ * has its words (`SubtitleStep`), with Copy Error Details for those words
+ * under it (`SubtitleWordsCopy`). Where none of a failure's lines are
  * left, it says the log is no longer available and, with details off,
  * what to do next and the words it kept behind Show Error Details
  * (`MissingFailureLog`). That text selects, as nothing else in the
@@ -311,6 +312,9 @@ export function LogDrawer() {
       {operation !== undefined ? (
         <SubtitleStep op={operation} logs={logs} technical={technical} id={overStepId} />
       ) : null}
+      {/* And there, the words' own Copy Error Details: the subtitle does
+          not select, and Copy Log has none of them. */}
+      {operation !== undefined ? <SubtitleWordsCopy op={operation} logs={logs} technical={technical} /> : null}
       {/* Where sudo wanted a password: the command to run in Terminal. */}
       {operation !== undefined ? <PasswordCommand op={operation} /> : null}
       <ScrollArea
