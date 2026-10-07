@@ -277,19 +277,100 @@ fn test_what_we_run_promises_the_three_brew_flags_are_never_passed_but_for_u9s_f
     // of a formula with more than one version installed and no pin,
     // which `test_plan_never_passes_zap_force_or_ignore_dependencies` and
     // the brew adapter's `old_versions` tests keep true.
+    // y1-keg (r6) adds the second: `brew link --force` of a keg-only
+    // formula the person linked, after its update -- and the same bullet
+    // promises `--overwrite`, which would delete another program's file,
+    // is never passed, and that no `brew link` runs bare.
     let promised = never_list_bullets(&doc).into_iter().any(|bullet| {
         bullet.starts_with("Never passes")
             && bullet.contains("Homebrew")
-            && ["--zap", "--force", "--ignore-dependencies"]
+            && ["--zap", "--force", "--ignore-dependencies", "--overwrite"]
                 .iter()
                 .all(|flag| bullet.contains(flag))
-            && ["uninstall", "more than one version", "no pin"]
-                .iter()
-                .all(|words| bullet.contains(words))
+            && [
+                "uninstall",
+                "more than one version",
+                "no pin",
+                "`brew link`",
+                "keg-only",
+                "bare `brew link`",
+            ]
+            .iter()
+            .all(|words| bullet.contains(words))
     });
     assert!(
         promised,
-        "docs/what-we-run.md has no never-list bullet promising Homebrew is never passed --zap or --ignore-dependencies, and --force only to uninstall a formula with more than one version and no pin"
+        "docs/what-we-run.md has no never-list bullet promising Homebrew is never passed --zap, --ignore-dependencies or --overwrite, --force only to uninstall a formula with more than one version and no pin and to brew link a keg-only formula, and never a bare brew link"
+    );
+}
+
+#[test]
+fn test_what_we_run_shows_the_link_after_a_keg_only_formulas_update_and_what_it_reads() {
+    // y1-keg (r6): the author asked for a keg-only formula they linked by
+    // hand to stay in Terminal through its update ("能否自动修复"). The
+    // command Banager runs for it is in the write-command table with its
+    // time limit, and the section says what is read to decide, and when
+    // it refuses instead.
+    let doc = read_doc();
+    let homebrew = section_body(&doc, "Homebrew").expect("a `## Homebrew` section");
+    let link = homebrew
+        .lines()
+        .find(|line| line.starts_with('|') && line.contains("`<brew> link --formula --force {name}`"))
+        .unwrap_or_else(|| {
+            panic!("Homebrew's write-command table has no row for `<brew> link --formula --force {{name}}`")
+        });
+    assert!(
+        link.contains(&format!("{} s", BrewAdapter::RELINK_TIMEOUT_SECS)),
+        "the link's row does not state its time limit: {link}"
+    );
+    let folded = homebrew.split_whitespace().collect::<Vec<_>>().join(" ");
+    for words in [
+        "keg-only",
+        "<prefix>/var/homebrew/linked/<name>",
+        "<prefix>/opt/<name>",
+        "`keg_only_reason`",
+        "`--overwrite`",
+        "`UpdateBlocked::LinkTaken`",
+        "`Fault::LinkTaken`",
+        "`LogNote::NoLongerLinked`",
+        "`upgrade.rb:635-643`",
+        "`install.rb:633-641`",
+    ] {
+        assert!(
+            folded.contains(words),
+            "the `## Homebrew` section does not say {words:?} of the link after a keg-only formula's update"
+        );
+    }
+    // And the files it reads are listed with the rest.
+    let reads =
+        section_body(&doc, "Files Banager reads").expect("a `## Files Banager reads` section");
+    let reads = reads.split_whitespace().collect::<Vec<_>>().join(" ");
+    for words in ["<prefix>/var/homebrew/linked/<name>", "<prefix>/opt/<name>"] {
+        assert!(
+            reads.contains(words),
+            "`## Files Banager reads` does not name {words:?}"
+        );
+    }
+}
+
+#[test]
+fn test_what_we_run_quotes_the_update_preview_saying_a_keg_only_formula_is_linked_back() {
+    // y1-keg (r6): the line the update's preview shows first, quoted as
+    // the app shows it -- `kegLinks.relinks` in zh-CN.json.
+    let locale: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string("../../src/i18n/zh-CN.json").expect("read zh-CN.json"),
+    )
+    .expect("zh-CN.json is JSON");
+    let line = locale["kegLinks"]["relinks"]
+        .as_str()
+        .expect("kegLinks.relinks")
+        .replace("{{name}}", "node@22");
+    let doc = read_doc();
+    let homebrew = section_body(&doc, "Homebrew").expect("a `## Homebrew` section");
+    let joined: String = homebrew.lines().map(str::trim).collect();
+    assert!(
+        joined.contains(&format!("「{line}」")),
+        "the `## Homebrew` section does not quote the update preview's line {line:?}"
     );
 }
 
