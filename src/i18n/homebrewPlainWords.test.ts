@@ -52,3 +52,55 @@ describe("Homebrew's catalogue, in plain words", () => {
     expect(zhHant.operations.status.waitingForBrewUpdate).toBe("正在等待Homebrew檢查新版本…");
   });
 });
+
+/**
+ * r24 W9: `brew link` had two Chinese names -- 「接在终端里 / 接回 / 接上」
+ * over an update's command that reads `brew link`, 「链接」 on the notice,
+ * the Fix sheet, its button and the operation bar -- and a person could
+ * not tell they were the same thing, the one that matters, since the Fix
+ * sheet's 「链接」 is the way out. One name: 链接 / 連結, as English says
+ * "link" in all of them.
+ */
+describe("Homebrew's link, by one name", () => {
+  const ofTheLink = (locale: unknown) =>
+    entries(locale).filter(
+      ([key]) =>
+        key.startsWith("kegLinks.") ||
+        /(^|\.)notLinked$/.test(key) ||
+        key === "operations.outcome.BanagerFailed.LinkTakenDetail" ||
+        key.startsWith("noAnswer.sheet.") ||
+        key.startsWith("noAnswer.op."),
+    );
+
+  it.each([
+    ["zh-CN", zhCN, "链接"],
+    ["zh-Hant", zhHant, "連結"],
+  ])("says 链接 / 連結 for it throughout %s", (_name, locale, word) => {
+    const sentences = ofTheLink(locale);
+    expect(sentences.length).toBeGreaterThanOrEqual(20);
+    // 接 alone, with 链接 / 連結 taken out: 接在、接回、接上、接到、接不回;
+    // and 断开 / 斷開 for unlinking, which is 解除链接 / 解除連結.
+    const otherName = /接[在回上到不]|断开|斷開/;
+    expect(sentences.filter(([, text]) => otherName.test(text.replaceAll(word, "")))).toEqual([]);
+    // The ones that are about the link say it by that name.
+    for (const key of ["kegLinks.relinks", "kegLinks.blockedBadge", "kegLinks.logNoLongerLinkedLead"]) {
+      expect(sentences.find(([each]) => each === key)?.[1]).toContain(word);
+    }
+    expect(sentences.find(([each]) => each === "failureMore.cause.notLinked")?.[1]).toContain(word);
+  });
+
+  it("says what the update's sheet says in the words of the Fix sheet's button", () => {
+    expect(zhCN.kegLinks.relinks).toBe(
+      "{{name}}已链接到终端。更新会先解除链接，再由Homebrew重新链接；更新后会检查，没有链接上就再链接一次。",
+    );
+    expect(zhCN.noAnswer.sheet.confirm).toBe("链接");
+    expect(zhHant.kegLinks.relinks).toBe(
+      "{{name}}已連結到終端機。更新會先解除連結，再由Homebrew重新連結；更新後會檢查，沒有連結上就再連結一次。",
+    );
+    expect(zhHant.noAnswer.sheet.confirm).toBe("連結");
+    // Unlinking is 解除, never 取消: 「取消链接」 is the button that cancels a link.
+    expect(zhCN.noAnswer.op.cancel).toBe("取消链接");
+    expect(zhCN.kegLinks.relinks).not.toContain("取消链接");
+    expect(zhHant.kegLinks.relinks).not.toContain("取消連結");
+  });
+});

@@ -1189,7 +1189,7 @@ planned as any other's):
   own link to it, the preview says first that it is linked into
   Terminal, that the update unlinks it and Homebrew links it back, and
   that it is checked after (`Warning::HomebrewRelinksAfterUpdate`,
-  「node@22已接在终端里。更新会先断开它，再由Homebrew接回；更新后会检查，没接回就把它接上。」;
+  「node@22已链接到终端。更新会先解除链接，再由Homebrew重新链接；更新后会检查，没有链接上就再链接一次。」;
   behind its ⓘ the commands and the command), and shows the upgrade,
   `brew link --formula --force {name}` and, when one follows, the
   cleanup, in the order they run. Once the upgrade has exited 0 the links
@@ -1214,7 +1214,7 @@ planned as any other's):
   `formula_installer.rb:1297`). Then the links are read once more, and the
   commands the preview named that no longer lead into it are named in the
   log with how to link it back (`LogNote::NoLongerLinked`,
-  「node@22没有重新接到终端里，输入node或npm不再运行它。……」). How the link
+  「node@22没有重新链接到终端，输入node或npm不再运行它。……」). How the link
   ends never changes the update's outcome. After an update that
   succeeded, this note and the cleanup's `OldVersionsNotCleanedUp`
   (above) are also kept on the operation apart from its log
@@ -1230,7 +1230,7 @@ planned as any other's):
   unlink leaves and the link stops at -- the update would take the
   formula's commands out of Terminal with no way to link them back short
   of deleting that file. So a check marks the update as one that cannot
-  be done here (`UpdateBlocked::LinkTaken`, 「无法重新接上」, no button),
+  be done here (`UpdateBlocked::LinkTaken`, 「无法重新链接」, no button),
   with the places it found (`Warning::LinkPlacesHeld`, said under the
   row's sentence as 「挡住它的文件：/opt/homebrew/bin/npm等2个」), its
   preview is refused, and an update already confirmed whose place was
@@ -1910,7 +1910,7 @@ first, so `/opt/homebrew/bin/node` was gone; npm's launcher,
 directory`, exit 127), and nothing on screen said why. Its other links went
 too: corepack's, so `/opt/homebrew/bin/pnpm`, a link into
 `lib/node_modules/corepack`, led nowhere. Three things now answer for it:
-the reason said here; the failed update's cause, 「新版本没有接到终端里」
+the reason said here; the failed update's cause, 「新版本没有链接到终端」
 (`FailureCause::NotLinked`, read off that line); and npm's own update,
 which is no longer offered where npm is a formula's
 (`UpdateBlocked::UpdatesWithFormula`, npm, below), so it cannot happen

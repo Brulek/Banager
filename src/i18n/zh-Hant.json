@@ -546,19 +546,19 @@
     }
   },
   "kegLinks": {
-    "relinks": "{{name}}已接在終端機裡。更新會先中斷它的連結，再由Homebrew接回；更新後會檢查，沒接回就把它接上。",
-    "relinksDetail": "它接在終端機裡的指令：{{commands}}。沒接回時會執行brew link --formula --force {{name}}；遇到其他程式的檔案，它會停下，不會覆寫。",
-    "relinksDetailNoCommands": "沒接回時會執行brew link --formula --force {{name}}；遇到其他程式的檔案，它會停下，不會覆寫。",
-    "logRelinking": "更新已完成，接著執行brew link --formula --force {{name}}，把它重新接到終端機裡。",
-    "logStillLinked": "Homebrew已把{{name}}重新接到終端機裡，不需要執行brew link。",
-    "logNoLongerLinked": "{{name}}沒有重新接到終端機裡，輸入{{commands}}不再執行它。要接回去，可以在終端機裡執行brew link --formula --force {{name}}；如果有檔案擋住，它會說出是哪一個。",
-    "logNoLongerLinkedLead": "{{name}}沒有重新接到終端機裡，輸入{{commands}}不再執行它。要接回去，可以在終端機裡執行下面的指令。",
+    "relinks": "{{name}}已連結到終端機。更新會先解除連結，再由Homebrew重新連結；更新後會檢查，沒有連結上就再連結一次。",
+    "relinksDetail": "它連結到終端機的指令：{{commands}}。沒有連結上時會執行brew link --formula --force {{name}}；遇到其他程式的檔案，它會停下，不會覆寫。",
+    "relinksDetailNoCommands": "沒有連結上時會執行brew link --formula --force {{name}}；遇到其他程式的檔案，它會停下，不會覆寫。",
+    "logRelinking": "更新已完成，接著執行brew link --formula --force {{name}}，把它重新連結到終端機。",
+    "logStillLinked": "Homebrew已把{{name}}重新連結到終端機，不需要執行brew link。",
+    "logNoLongerLinked": "{{name}}沒有重新連結到終端機，輸入{{commands}}不再執行它。要重新連結，可以在終端機裡執行brew link --formula --force {{name}}；如果有檔案擋住，它會說出是哪一個。",
+    "logNoLongerLinkedLead": "{{name}}沒有重新連結到終端機，輸入{{commands}}不再執行它。要重新連結，可以在終端機裡執行下面的指令。",
     "logNoLongerLinkedAfter": "如果有檔案擋住，指令會說出是哪一個。",
-    "blockedBadge": "無法重新接上",
-    "blockedDetail": "它已接在終端機裡，但它的指令位置上現在有別的檔案。更新會中斷它的連結，之後接不回去，所以無法在這裡更新。",
+    "blockedBadge": "無法重新連結",
+    "blockedDetail": "它已連結到終端機，但它的指令位置上現在有別的檔案。更新會解除連結，之後連結不上，所以無法在這裡更新。",
     "held": "擋住它的檔案：{{path}}",
     "heldMany": "擋住它的檔案：{{path}}等{{number}}個",
-    "blockedRefused": "無法更新：更新後它接不回終端機。"
+    "blockedRefused": "無法更新：更新後無法把它重新連結到終端機。"
   },
   "modelDownload": {
     "note": "需要下載已更改的模型檔案，最多約{{size}}。"
@@ -941,7 +941,7 @@
         "HomebrewSettingsChangedDetail": "沒有執行Homebrew。請重新開啟確認視窗，查看它現在會刪除什麼。",
         "LinkTaken": "未能開始：{{path}}已被另一個程式佔用",
         "LinkTakenMany": "未能開始：{{path}}等{{number}}個檔案已被另一個程式佔用",
-        "LinkTakenDetail": "更新會先中斷這個工具的連結，被佔用的檔案會擋住它重新接上，終端機裡就會找不到它的指令。沒有更新，它仍可在終端機裡使用。",
+        "LinkTakenDetail": "更新會先解除這個工具的連結，被佔用的檔案會擋住它重新連結，終端機裡就會找不到它的指令。沒有更新，它仍可在終端機裡使用。",
         "Internal": "未能完成：發生內部錯誤，沒有改動",
         "LinkRollbackRisk": "未能開始：連結{{name}}可能刪除已有的連結",
         "LinkRollbackRiskDetail": "確認視窗開啟後出現了指向它的連結，若連結中途停止，Homebrew也會刪除它們。沒有開始連結，它們維持原樣。"
@@ -1566,7 +1566,7 @@
       "appMissing": "App已不在原本的位置",
       "unsupported": "不支援這台Mac",
       "timedOut": "執行逾時",
-      "notLinked": "新版本沒有接到終端機裡",
+      "notLinked": "新版本沒有連結到終端機",
       "changed": "確認後有了變化",
       "internal": "發生內部錯誤"
     },
@@ -1586,7 +1586,7 @@
       "appMissing": "App已不在原本的位置，可能已被移到垃圾桶或刪除；還要使用，就把它放回「應用程式」後再試一次，不再需要可以解除安裝它。",
       "unsupported": "這個版本無法在這台Mac上執行，錯誤訊息裡寫著它的要求。",
       "timedOut": "執行逾時，請稍後再試。",
-      "notLinked": "新版本已安裝，但沒有接到終端機裡，在終端機裡輸入它的指令可能找不到它；通常是有同名的檔案擋住了，處理後再試一次。",
+      "notLinked": "新版本已安裝，但沒有連結到終端機，在終端機裡輸入它的指令可能找不到它；通常是有同名的檔案擋住了，處理後再試一次。",
       "changed": "確認後有了變化，請重新開啟確認視窗後再試一次。",
       "internal": "發生內部錯誤，請稍後再試。"
     }

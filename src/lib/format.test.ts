@@ -475,7 +475,7 @@ describe("outcomeKey for Banager's own failures", () => {
       "未能开始：{{path}}等{{number}}个文件已被另一个程序占用",
     );
     expect(zhCN.operations.outcome.BanagerFailed.LinkTakenDetail).toBe(
-      "更新会先断开这个工具，被占用的文件会挡住它重新接上，终端里就会找不到它的命令。没有更新，它仍可在终端里使用。",
+      "更新会先解除这个工具的链接，被占用的文件会挡住它重新链接，终端里就会找不到它的命令。没有更新，它仍可在终端里使用。",
     );
     expect(en.operations.logNote.movedToTrash).toContain("{{trashedTo}}");
     expect(zhCN.operations.logNote.movedToTrash).toContain("{{trashedTo}}");

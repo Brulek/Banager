@@ -387,8 +387,8 @@ describe("operationFailureCause", () => {
     expect(lookup(zhCN, FAILURE_CAUSE_KEYS.appMissing.word)).toBe("App已不在原来的位置");
     // Homebrew's link step (review of r6 y3-batch, finding 2): said as
     // y1-keg says a formula's commands are in Terminal.
-    expect(lookup(zhCN, FAILURE_CAUSE_KEYS.notLinked.word)).toBe("新版本没有接到终端里");
-    expect(lookup(zhHant, FAILURE_CAUSE_KEYS.notLinked.word)).toBe("新版本沒有接到終端機裡");
+    expect(lookup(zhCN, FAILURE_CAUSE_KEYS.notLinked.word)).toBe("新版本没有链接到终端");
+    expect(lookup(zhHant, FAILURE_CAUSE_KEYS.notLinked.word)).toBe("新版本沒有連結到終端機");
     expect(lookup(zhCN, FAILURE_CAUSE_KEYS.appMissing.next)).toContain("废纸篓");
     expect(lookup(zhHant, FAILURE_CAUSE_KEYS.appMissing.next)).toContain("垃圾桶");
   });

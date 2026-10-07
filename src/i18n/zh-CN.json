@@ -546,19 +546,19 @@
     }
   },
   "kegLinks": {
-    "relinks": "{{name}}已接在终端里。更新会先断开它，再由Homebrew接回；更新后会检查，没接回就把它接上。",
-    "relinksDetail": "它接在终端里的命令：{{commands}}。没接回时会运行brew link --formula --force {{name}}；遇到其他程序的文件，它会停下，不会覆盖。",
-    "relinksDetailNoCommands": "没接回时会运行brew link --formula --force {{name}}；遇到其他程序的文件，它会停下，不会覆盖。",
-    "logRelinking": "更新已完成，接着运行brew link --formula --force {{name}}，把它重新接到终端里。",
-    "logStillLinked": "Homebrew已把{{name}}重新接到终端里，不需要运行brew link。",
-    "logNoLongerLinked": "{{name}}没有重新接到终端里，输入{{commands}}不再运行它。要接回去，可以在终端里运行brew link --formula --force {{name}}；如果有文件挡住，它会说出是哪个。",
-    "logNoLongerLinkedLead": "{{name}}没有重新接到终端里，输入{{commands}}不再运行它。要接回去，可以在终端里运行下面的命令。",
+    "relinks": "{{name}}已链接到终端。更新会先解除链接，再由Homebrew重新链接；更新后会检查，没有链接上就再链接一次。",
+    "relinksDetail": "它链接到终端的命令：{{commands}}。没有链接上时会运行brew link --formula --force {{name}}；遇到其他程序的文件，它会停下，不会覆盖。",
+    "relinksDetailNoCommands": "没有链接上时会运行brew link --formula --force {{name}}；遇到其他程序的文件，它会停下，不会覆盖。",
+    "logRelinking": "更新已完成，接着运行brew link --formula --force {{name}}，把它重新链接到终端。",
+    "logStillLinked": "Homebrew已把{{name}}重新链接到终端，不需要运行brew link。",
+    "logNoLongerLinked": "{{name}}没有重新链接到终端，输入{{commands}}不再运行它。要重新链接，可以在终端里运行brew link --formula --force {{name}}；如果有文件挡住，它会说出是哪个。",
+    "logNoLongerLinkedLead": "{{name}}没有重新链接到终端，输入{{commands}}不再运行它。要重新链接，可以在终端里运行下面的命令。",
     "logNoLongerLinkedAfter": "如果有文件挡住，命令会说出是哪个。",
-    "blockedBadge": "无法重新接上",
-    "blockedDetail": "它已接在终端里，但它的命令位置上现在有别的文件。更新会断开它，之后接不回去，所以无法在这里更新。",
+    "blockedBadge": "无法重新链接",
+    "blockedDetail": "它已链接到终端，但它的命令位置上现在有别的文件。更新会解除链接，之后链接不上，所以无法在这里更新。",
     "held": "挡住它的文件：{{path}}",
     "heldMany": "挡住它的文件：{{path}}等{{number}}个",
-    "blockedRefused": "无法更新：更新后它接不回终端。"
+    "blockedRefused": "无法更新：更新后无法把它重新链接到终端。"
   },
   "modelDownload": {
     "note": "需要下载已更改的模型文件，最多约{{size}}。"
@@ -941,7 +941,7 @@
         "HomebrewSettingsChangedDetail": "没有运行Homebrew。请重新打开确认窗口，查看它现在会删除什么。",
         "LinkTaken": "未能开始：{{path}}已被另一个程序占用",
         "LinkTakenMany": "未能开始：{{path}}等{{number}}个文件已被另一个程序占用",
-        "LinkTakenDetail": "更新会先断开这个工具，被占用的文件会挡住它重新接上，终端里就会找不到它的命令。没有更新，它仍可在终端里使用。",
+        "LinkTakenDetail": "更新会先解除这个工具的链接，被占用的文件会挡住它重新链接，终端里就会找不到它的命令。没有更新，它仍可在终端里使用。",
         "Internal": "未能完成：发生内部错误，没有改动",
         "LinkRollbackRisk": "未能开始：链接{{name}}可能删除已有的链接",
         "LinkRollbackRiskDetail": "确认窗口打开后出现了指向它的链接，如果链接中途停止，Homebrew也会删除它们。没有开始链接，它们保持原样。"
@@ -1566,7 +1566,7 @@
       "appMissing": "App已不在原来的位置",
       "unsupported": "不支持这台Mac",
       "timedOut": "运行超时",
-      "notLinked": "新版本没有接到终端里",
+      "notLinked": "新版本没有链接到终端",
       "changed": "确认后有了变化",
       "internal": "发生内部错误"
     },
@@ -1586,7 +1586,7 @@
       "appMissing": "App已不在原来的位置，可能已被移到废纸篓或删除；还要用，就把它放回“应用程序”后重试，不再需要可以卸载它。",
       "unsupported": "这个版本不能在这台Mac上运行，报错里写着它的要求。",
       "timedOut": "运行超时，请稍后再试。",
-      "notLinked": "新版本已装好，但没有接到终端里，在终端里输入它的命令可能找不到它；通常是有同名的文件挡住了，处理后重试。",
+      "notLinked": "新版本已装好，但没有链接到终端，在终端里输入它的命令可能找不到它；通常是有同名的文件挡住了，处理后重试。",
       "changed": "确认后有了变化，请重新打开确认窗口后重试。",
       "internal": "发生内部错误，请稍后再试。"
     }

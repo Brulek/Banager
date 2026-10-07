@@ -298,17 +298,17 @@ describe("LogDrawer", () => {
       [
         "zh-CN",
         [
-          "更新已完成，接着运行brew link --formula --force node@22，把它重新接到终端里。",
-          "Homebrew已把node@22重新接到终端里，不需要运行brew link。",
-          "node@22没有重新接到终端里，输入node或npm不再运行它。要接回去，可以在终端里运行brew link --formula --force node@22；如果有文件挡住，它会说出是哪个。",
+          "更新已完成，接着运行brew link --formula --force node@22，把它重新链接到终端。",
+          "Homebrew已把node@22重新链接到终端，不需要运行brew link。",
+          "node@22没有重新链接到终端，输入node或npm不再运行它。要重新链接，可以在终端里运行brew link --formula --force node@22；如果有文件挡住，它会说出是哪个。",
         ],
       ],
       [
         "zh-Hant",
         [
-          "更新已完成，接著執行brew link --formula --force node@22，把它重新接到終端機裡。",
-          "Homebrew已把node@22重新接到終端機裡，不需要執行brew link。",
-          "node@22沒有重新接到終端機裡，輸入node或npm不再執行它。要接回去，可以在終端機裡執行brew link --formula --force node@22；如果有檔案擋住，它會說出是哪一個。",
+          "更新已完成，接著執行brew link --formula --force node@22，把它重新連結到終端機。",
+          "Homebrew已把node@22重新連結到終端機，不需要執行brew link。",
+          "node@22沒有重新連結到終端機，輸入node或npm不再執行它。要重新連結，可以在終端機裡執行brew link --formula --force node@22；如果有檔案擋住，它會說出是哪一個。",
         ],
       ],
     ];

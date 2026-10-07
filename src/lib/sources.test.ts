@@ -1915,15 +1915,15 @@ describe("UPDATE_BLOCKED_KEYS.LinkTaken (y1-keg)", () => {
   });
 
   it("says in one word, and then why, that an update could not link it back into Terminal", () => {
-    expect(i18n.getFixedT("zh-CN")(UPDATE_BLOCKED_KEYS.LinkTaken.badge)).toBe("无法重新接上");
-    expect(i18n.getFixedT("zh-Hant")(UPDATE_BLOCKED_KEYS.LinkTaken.badge)).toBe("無法重新接上");
+    expect(i18n.getFixedT("zh-CN")(UPDATE_BLOCKED_KEYS.LinkTaken.badge)).toBe("无法重新链接");
+    expect(i18n.getFixedT("zh-Hant")(UPDATE_BLOCKED_KEYS.LinkTaken.badge)).toBe("無法重新連結");
     expect(i18n.getFixedT("en")(UPDATE_BLOCKED_KEYS.LinkTaken.badge)).toBe("Can't link back");
     // Not who linked it, which is not known (y1-keg review).
     expect(i18n.getFixedT("zh-CN")(UPDATE_BLOCKED_KEYS.LinkTaken.detail)).toBe(
-      "它已接在终端里，但它的命令位置上现在有别的文件。更新会断开它，之后接不回去，所以无法在这里更新。",
+      "它已链接到终端，但它的命令位置上现在有别的文件。更新会解除链接，之后链接不上，所以无法在这里更新。",
     );
     expect(i18n.getFixedT("zh-Hant")(UPDATE_BLOCKED_KEYS.LinkTaken.detail)).toBe(
-      "它已接在終端機裡，但它的指令位置上現在有別的檔案。更新會中斷它的連結，之後接不回去，所以無法在這裡更新。",
+      "它已連結到終端機，但它的指令位置上現在有別的檔案。更新會解除連結，之後連結不上，所以無法在這裡更新。",
     );
     expect(i18n.getFixedT("en")(UPDATE_BLOCKED_KEYS.LinkTaken.detail)).toBe(
       "It's linked into Terminal, but another file is now where one of its commands goes. An update would unlink it with no way to link it back, so it can't be updated here.",
@@ -1935,7 +1935,7 @@ describe("UPDATE_BLOCKED_KEYS.LinkTaken (y1-keg)", () => {
     expect(planErrorMessage(i18n.getFixedT("en"), raw, "Homebrew", false)).toBe(
       "Couldn't update it: it couldn't be linked back into Terminal afterwards.",
     );
-    expect(planErrorMessage(i18n.getFixedT("zh-CN"), raw, "Homebrew", false)).toBe("无法更新：更新后它接不回终端。");
+    expect(planErrorMessage(i18n.getFixedT("zh-CN"), raw, "Homebrew", false)).toBe("无法更新：更新后无法把它重新链接到终端。");
   });
 });
 

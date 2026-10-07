@@ -1189,10 +1189,10 @@ describe("y1-keg: a keg-only formula linked into Terminal is linked back after i
     // formula can turn keg-only after it was linked: who linked it is not
     // known, so it is not said (y1-keg review).
     expect(warningText(zh, relinks)).toBe(
-      "node@22已接在终端里。更新会先断开它，再由Homebrew接回；更新后会检查，没接回就把它接上。",
+      "node@22已链接到终端。更新会先解除链接，再由Homebrew重新链接；更新后会检查，没有链接上就再链接一次。",
     );
     expect(warningText(zhHant, relinks)).toBe(
-      "node@22已接在終端機裡。更新會先中斷它的連結，再由Homebrew接回；更新後會檢查，沒接回就把它接上。",
+      "node@22已連結到終端機。更新會先解除連結，再由Homebrew重新連結；更新後會檢查，沒有連結上就再連結一次。",
     );
     expect(warningText(enT, relinks)).toBe(
       "node@22 is linked into Terminal. The update unlinks it first and Homebrew links it back; Banager checks afterwards and links it if it isn't.",
@@ -1202,17 +1202,17 @@ describe("y1-keg: a keg-only formula linked into Terminal is linked back after i
     // a cask's link, and unlinks the formulae its formula names
     // (`keg.rb:850-856`, `unlink.rb:8-17`), as docs/what-we-run.md says.
     expect(warningLine(zh, relinks)?.detail).toBe(
-      "它接在终端里的命令：node、npm、npx。没接回时会运行brew link --formula --force node@22；遇到其他程序的文件，它会停下，不会覆盖。",
+      "它链接到终端的命令：node、npm、npx。没有链接上时会运行brew link --formula --force node@22；遇到其他程序的文件，它会停下，不会覆盖。",
     );
     expect(warningLine(zhHant, relinks)?.detail).toBe(
-      "它接在終端機裡的指令：node、npm、npx。沒接回時會執行brew link --formula --force node@22；遇到其他程式的檔案，它會停下，不會覆寫。",
+      "它連結到終端機的指令：node、npm、npx。沒有連結上時會執行brew link --formula --force node@22；遇到其他程式的檔案，它會停下，不會覆寫。",
     );
     expect(warningLine(enT, relinks)?.detail).toBe(
       "Its commands in Terminal: node, npm, npx. If they aren't back, Banager runs brew link --formula --force node@22, which stops rather than overwrite another program's file.",
     );
     // Linked by its record alone, with no command of its own.
     expect(warningLine(zh, noCommands)?.detail).toBe(
-      "没接回时会运行brew link --formula --force openssl@3；遇到其他程序的文件，它会停下，不会覆盖。",
+      "没有链接上时会运行brew link --formula --force openssl@3；遇到其他程序的文件，它会停下，不会覆盖。",
     );
     expect(warningDetailKey(noCommands)).toBe("kegLinks.relinksDetailNoCommands");
   });
