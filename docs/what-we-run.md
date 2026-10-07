@@ -2184,12 +2184,20 @@ with the version unchanged. Planning an upgrade repeats the
 inventory and receipt check and refuses a constraint or unknown receipt.
 The preview carries a fingerprint of that tool's name, environment path and
 parsed receipt, including its saved requirements, constraints, overrides and
-options. Its installed version is not in it: a tool updated another way before
-its turn (`uv tool upgrade` in Terminal, say) was installed the same way, and
-the readings around the command judge its version, so at the confirmed target
-it is reported as already updated (How Banager runs anything). Immediately
-before a saved upgrade runs, Banager repeats the existing
-`tool list --show-paths` read and bounded receipt read. A changed environment
+options; of the commands the receipt lists, only which packages they come from
+(the tool's own, and any added with `--with-executables-from`), since the
+upgrade installs those packages' commands again. Its installed version is not
+in it, nor the commands themselves, which uv writes again for the version it
+installs: a tool updated another way before its turn (`uv tool upgrade` in
+Terminal, say) was installed the same way, even when its new version brought a
+command or dropped one, and the readings around the command judge its version,
+so at the confirmed target it is reported as already updated (How Banager runs
+anything). That upgrade also writes into the receipt's options any setting of
+the person's own uv settings the receipt did not have yet (uv prefers the
+command line, then the receipt, then those settings); one added there since the
+tool was last installed or upgraded changes the receipt, and the plan is
+refused as below. Immediately before a saved upgrade runs, Banager repeats the
+existing `tool list --show-paths` read and bounded receipt read. A changed environment
 path or receipt, a tool the list no longer names (or names twice) or an
 unreadable receipt refuses the plan as changed since shown, before any upgrade
 command. A list that does not answer -- uv gone (between the unlink and the link

@@ -182,18 +182,58 @@ fn upgrade_basis(artifact: &InstalledArtifact) -> Result<String, String> {
     )
     .map_err(|_| "could not read uv tool requirements".to_string())?;
     unconstrained_requirement(&text, &artifact.key.name)?;
-    let receipt: toml::Value =
+    let mut receipt: toml::Value =
         toml::from_str(&text).map_err(|_| "could not parse uv tool requirements".to_string())?;
     // Not the installed version: a tool updated another way before its
     // turn (`uv tool upgrade` in Terminal) was installed the same way, and
     // the readings around the command judge its version -- at the
     // confirmed target it is already updated (`AlreadyUpdated::
     // BeforeItsTurn`), not changed since shown (r20 R20-1).
+    let commands_from = commands_from(&mut receipt, &artifact.key.name);
     Ok(super::plan_basis(serde_json::json!([
         artifact.key.name,
         path,
-        receipt
+        receipt,
+        commands_from
     ])))
+}
+
+/// Takes the commands (`entrypoints`) out of a parsed receipt, and gives
+/// which packages' commands `uv tool upgrade` installs again in their
+/// place: the `from` of each, and the tool's own, PEP 503 names.
+///
+/// The commands themselves follow the installed version, as the version
+/// does: an upgrade that changes the tool removes them and writes the
+/// ones the new version provides, from the packages the receipt's `from`
+/// names and the tool itself (uv 0.12.17
+/// `crates/uv/src/commands/tool/upgrade.rs:597-623`, `finalize_tool_install`
+/// in `common.rs:733-799`), so a version that brought a command -- as
+/// huggingface_hub 0.34 brought `hf` -- was installed the same way (r20
+/// R20-1, skeptic finding 2). An older uv wrote no `from`; the upgrade
+/// skips such an entry and installs the tool's own all the same. Which
+/// packages is still the way it was installed: one added with
+/// `--with-executables-from` would have its commands installed again by
+/// the upgrade, which the preview did not say. `entrypoints` that is not
+/// a list of tables stays in the receipt, compared as it is.
+fn commands_from(receipt: &mut toml::Value, name: &str) -> std::collections::BTreeSet<String> {
+    let mut packages = std::collections::BTreeSet::from([normalized(name)]);
+    let Some(tool) = receipt.get_mut("tool").and_then(toml::Value::as_table_mut) else {
+        return packages;
+    };
+    let Some(toml::Value::Array(entries)) = tool.get("entrypoints") else {
+        return packages;
+    };
+    if !entries.iter().all(toml::Value::is_table) {
+        return packages;
+    }
+    packages.extend(
+        entries
+            .iter()
+            .filter_map(|entry| entry.get("from").and_then(toml::Value::as_str))
+            .map(normalized),
+    );
+    tool.remove("entrypoints");
+    packages
 }
 
 /// The words a tool's row says when something saved in its receipt can
@@ -1798,6 +1838,71 @@ ruff v0.15.0 (/Users/someone/.local/share/uv/tools/ruff)
             runner.calls().last().unwrap(),
             &[uv.as_str(), "tool", "upgrade", "ruff"]
         );
+    }
+
+    /// What the fingerprint keeps of a receipt's `entrypoints`: which
+    /// packages' commands the upgrade installs again, not the commands.
+    /// uv writes the commands the installed version provides each time it
+    /// upgrades a tool (`finalize_tool_install`, uv 0.12.17), so a new
+    /// version with another command is the same plan; an older uv wrote
+    /// them with no `from`, and `uv tool upgrade` always installs the
+    /// tool's own (r20 R20-1, skeptic finding 2).
+    #[tokio::test]
+    async fn r20_uv_commands_a_version_brings_are_not_a_change_but_their_packages_are() {
+        let entry = |name: &str, from: Option<&str>| {
+            let from = from
+                .map(|from| format!(", from = '{from}'"))
+                .unwrap_or_default();
+            format!("{{name = '{name}', install-path = '/Users/x/.local/bin/{name}'{from}}}")
+        };
+        let receipt = |entries: &[String]| {
+            format!(
+                "[tool]\nrequirements = [{{name = 'ruff'}}]\nentrypoints = [{}]\n\n[tool.options]\nexclude-newer-package = {{}}\n",
+                entries.join(", ")
+            )
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let shown = receipt(&[entry("ruff", Some("ruff"))]);
+        let (inst, runner) = own_uv(dir.path(), "0.15.0", &shown);
+        let adapter = UvAdapter::new(runner);
+        /// The fingerprint of ruff's upgrade planned with `text` as its
+        /// receipt.
+        async fn basis_with(
+            adapter: &UvAdapter,
+            inst: &ManagerInstance,
+            env: &std::path::Path,
+            text: &str,
+        ) -> Option<String> {
+            std::fs::write(env.join("uv-receipt.toml"), text).unwrap();
+            adapter
+                .plan(inst, &request(OpKind::Upgrade))
+                .await
+                .unwrap()
+                .basis
+        }
+        let basis = |text: String| {
+            let (adapter, inst, env) = (&adapter, &inst, dir.path());
+            async move { basis_with(adapter, inst, env, &text).await }
+        };
+        let shown = basis(shown).await;
+        assert!(shown.is_some());
+        for same in [
+            // The new version brought a command.
+            receipt(&[entry("ruff", Some("ruff")), entry("ruff-lsp", Some("ruff"))]),
+            // Or took its only one away for another name.
+            receipt(&[entry("ruff-cli", Some("ruff"))]),
+            // An older uv's receipt, with no `from`.
+            receipt(&[entry("ruff", None)]),
+            // None listed: the tool's own are still the ones installed.
+            receipt(&[]),
+        ] {
+            assert_eq!(basis(same.clone()).await, shown, "{same}");
+        }
+        // Another package's commands installed with ruff's
+        // (`--with-executables-from black`): the upgrade would install
+        // them again, which the preview did not say.
+        let black = receipt(&[entry("black", Some("black")), entry("ruff", Some("ruff"))]);
+        assert_ne!(basis(black).await, shown);
     }
 
     #[tokio::test]

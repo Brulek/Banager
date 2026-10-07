@@ -14,7 +14,8 @@
 //! is the designed `AlreadyUpdated::BeforeItsTurn`, as for Homebrew, npm,
 //! pipx and Ollama -- not "changed since shown": the installed version is
 //! for the readings around the command to judge, not part of the
-//! fingerprint.
+//! fingerprint, and neither are the commands uv installed for it (a new
+//! version can bring one) nor the compiler Cargo built it with.
 //!
 //! R20-2: when the read before the command does not answer -- the
 //! program is gone, its launcher cannot start (`env: node: No such file
@@ -345,6 +346,42 @@ async fn test_a_uv_tool_at_its_target_before_its_turn_was_already_updated() {
     assert_eq!(outcome, Outcome::Succeeded, "{how:?}");
     assert_eq!(how, Some(AlreadyUpdated::BeforeItsTurn));
     assert_eq!(upgrades, 1, "the confirmed command ran, as previewed");
+}
+
+#[tokio::test]
+async fn test_a_uv_tool_whose_new_version_added_a_command_was_already_updated() {
+    // The new version brought a command the old one did not have, as
+    // huggingface_hub 0.34 brought `hf`: uv's receipt lists the commands
+    // it installed for the version it installed, so it moved with the
+    // version. Where they come from (ruff itself) did not.
+    let (outcome, how, upgrades) = ruff_updated_in_terminal(|dir, env| {
+        std::fs::write(
+            env.join("uv-receipt.toml"),
+            ruff_receipt(dir, &[("ruff", "ruff"), ("ruff-lsp", "ruff")]),
+        )
+        .unwrap()
+    })
+    .await;
+    assert_eq!(outcome, Outcome::Succeeded, "{how:?}");
+    assert_eq!(how, Some(AlreadyUpdated::BeforeItsTurn));
+    assert_eq!(upgrades, 1, "the confirmed command ran, as previewed");
+}
+
+#[tokio::test]
+async fn test_a_uv_tool_now_installing_another_packages_commands_is_still_changed_since_shown() {
+    // The receipt now has uv install `black`'s commands with ruff's (a
+    // `uv tool install --with-executables-from black ruff`): the upgrade
+    // would install them again, which the preview did not say.
+    let (outcome, _, upgrades) = ruff_updated_in_terminal(|dir, env| {
+        std::fs::write(
+            env.join("uv-receipt.toml"),
+            ruff_receipt(dir, &[("black", "black"), ("ruff", "ruff")]),
+        )
+        .unwrap()
+    })
+    .await;
+    assert_eq!(outcome, Outcome::BanagerFailed(Fault::ChangedSinceShown));
+    assert_eq!(upgrades, 0, "nothing written");
 }
 
 // --- Cargo ----------------------------------------------------------------
