@@ -4104,7 +4104,9 @@ have Banager open just any URL. A tool's homepage in the Installed page's
 details is a link (the author's request of 2026-10-07, in place of
 decision S9's copy-only): a click sends the address shown to Banager's own
 `open_homepage` (`src-tauri/src/homepage.rs`), which has the default
-browser open it, through AppKit (`NSWorkspace openURL:`), only when it is,
+browser open it, through AppKit (`NSWorkspace openURL:`, which starts the
+browser when it is not running: with the Open Ollama button, the one
+application Banager launches outside the runner), only when it is,
 exactly, the homepage of a tool in the current snapshot, trimmed, as that
 tool's source reported it (Homebrew's `homepage`, a standalone
 installer's recipe) -- and an `http` or `https` address with a host. Any
