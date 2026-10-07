@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { displayToken, elapsedSince, formatBytes, outcomeArgs, outcomeDetailKey, outcomeKey } from "./format";
+import { displayToken, elapsedSince, formatBytes, outcomeArgs, outcomeDetailKey, outcomeKey, outcomeStepKey } from "./format";
 import type { Fault, Outcome } from "./types";
 import en from "../i18n/en.json";
 import zhCN from "../i18n/zh-CN.json";
@@ -149,12 +149,13 @@ describe("outcomeKey", () => {
     expect(zhCN.operations.outcome.BanagerFailed.Internal).toMatch(claimsNothingChanged);
   });
 
-  it("says an update that changed nothing changed nothing, and points to the log", () => {
+  it("says an update that changed nothing changed nothing, and what to do next", () => {
     // Rust sends this when the tool exited 0 and the installed version
     // read before the update equals the one read after
     // (`run_operation` in crates/banager-core/src/ops/mod.rs). It used to
-    // arrive as plain "Succeeded". The bar says what happened; the drawer
-    // says where to look.
+    // arrive as plain "Succeeded". The bar says what happened; the drawer,
+    // over the log, says what to do: Retry, then Copy Log -- not "the
+    // operation log shows what it printed", said over that log (r24 W4).
     const unchanged: Outcome = { NeedsAttention: "UnchangedAfterUpgrade" };
     expect(outcomeKey(unchanged)).toBe("NeedsAttention.UnchangedAfterUpgrade");
     expect(outcomeArgs(unchanged)).toEqual({});
@@ -164,11 +165,55 @@ describe("outcomeKey", () => {
     expect(zhCN.operations.outcome.NeedsAttention.UnchangedAfterUpgrade).toBe("显示已更新，但版本没有变化");
     expect(outcomeDetailKey(unchanged)).toBe("operations.outcome.NeedsAttention.UnchangedAfterUpgradeDetail");
     expect(en.operations.outcome.NeedsAttention.UnchangedAfterUpgradeDetail).toBe(
-      "The operation log shows what it printed.",
+      "You can click Retry. If the version still doesn't change, click Copy Log and send the log to someone who can help.",
     );
     expect(zhCN.operations.outcome.NeedsAttention.UnchangedAfterUpgradeDetail).toBe(
-      "可以在操作日志中查看它输出了什么。",
+      "可以点按“重试”；版本还是没有变化，就点按“拷贝日志”，发给懂的人看。",
     );
+    expect(zhHant.operations.outcome.NeedsAttention.UnchangedAfterUpgradeDetail).toBe(
+      "可以點按「再試一次」；版本還是沒有變化，就點按「拷貝記錄」，傳給懂的人看。",
+    );
+  });
+
+  it("ends the three steps that point at the log at Copy Log, by its own name, and never over an empty log (r24 W4)", () => {
+    const pointing: Outcome[] = [
+      { NeedsAttention: "UnchangedAfterUpgrade" },
+      { NeedsAttention: "NotLinkedAfterLink" },
+      { Failed: { exit_code: 1, summary: "", cause: null } },
+    ];
+    for (const [locale, copyLog, retry, fix] of [
+      [en, en.operations.copyLog, en.updates.retry, en.noAnswer.fix],
+      [zhCN, zhCN.operations.copyLog, zhCN.updates.retry, zhCN.noAnswer.fix],
+      [zhHant, zhHant.operations.copyLog, zhHant.updates.retry, zhHant.noAnswer.fix],
+    ] as const) {
+      const outcome = locale.operations.outcome;
+      for (const detail of [
+        outcome.NeedsAttention.UnchangedAfterUpgradeDetail,
+        outcome.NeedsAttention.NotLinkedAfterLinkDetail,
+        outcome.FailedSilentDetail,
+      ]) {
+        expect(detail).toContain(copyLog);
+        // Not the log the sentence is said over, by another name.
+        expect(detail).not.toMatch(/operation log|操作日志|操作記錄/);
+      }
+      expect(outcome.NeedsAttention.UnchangedAfterUpgradeDetail).toContain(retry);
+      expect(outcome.NeedsAttention.NotLinkedAfterLinkDetail).toContain(fix);
+      // How to try again by what was tried (`TRY_AGAIN_KEYS`).
+      expect(outcome.FailedSilentDetail).toContain("{{again}}");
+      expect(outcome.emptyLogDetail).toContain("{{again}}");
+      expect(outcome.emptyLogDetail).not.toContain(copyLog);
+    }
+    for (const each of pointing) {
+      // A log with lines: the step, ending at Copy Log.
+      expect(outcomeStepKey(each, true)).toBe(outcomeDetailKey(each));
+      // Copy Log is off over a log with none: only how to try again.
+      expect(outcomeStepKey(each, false)).toBe("operations.outcome.emptyLogDetail");
+    }
+    // Every other step is the same over an empty log: none ends at Copy Log.
+    for (const other of ["Unconfirmed", { NeedsAttention: "BackAfterUninstall" }, { BanagerFailed: "Panicked" }] as Outcome[]) {
+      expect(outcomeStepKey(other, false)).toBe(outcomeDetailKey(other));
+    }
+    expect(outcomeStepKey("Succeeded", false)).toBeNull();
   });
 
   it("says files showed up again after a path-list uninstall, that the log names them, and what to do", () => {
@@ -208,6 +253,7 @@ describe("outcomeKey", () => {
       { NeedsAttention: "GoneAfterUpgrade" },
       { NeedsAttention: "UnchangedAfterUpgrade" },
       { NeedsAttention: "BackAfterUninstall" },
+      { NeedsAttention: "NotLinkedAfterLink" },
       { Failed: { exit_code: 1, summary: "Error: No such keg", cause: failureCause("Error: No such keg") } },
       { Failed: { exit_code: 1, summary: " ", cause: failureCause(" ") } },
       { BanagerFailed: "Panicked" },
@@ -232,6 +278,7 @@ describe("outcomeKey", () => {
       ["Unconfirmed", "operations.outcome.UnconfirmedDetail"],
       ["NeedsAttention.UnchangedAfterUpgrade", "operations.outcome.NeedsAttention.UnchangedAfterUpgradeDetail"],
       ["NeedsAttention.BackAfterUninstall", "operations.outcome.NeedsAttention.BackAfterUninstallDetail"],
+      ["NeedsAttention.NotLinkedAfterLink", "operations.outcome.NeedsAttention.NotLinkedAfterLinkDetail"],
       ["FailedSilent", "operations.outcome.FailedSilentDetail"],
       ["BanagerFailed.Panicked", "operations.outcome.BanagerFailed.PanickedDetail"],
       ["BanagerFailed.HomebrewStillUpdating", "operations.outcome.BanagerFailed.HomebrewStillUpdatingDetail"],

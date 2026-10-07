@@ -337,7 +337,8 @@
       "succeeded": "已更新",
       "failed": "未能更新",
       "cancelled": "已取消",
-      "check": "结果不符",
+      "check": "需要查看",
+      "unconfirmed": "结果未确认",
       "viewLogLabel": "查看日志：{{name}}"
     },
     "justUpdated": {
@@ -912,15 +913,16 @@
         "GoneBeforeUpgrade": "未开始更新：已找不到它",
         "GoneAfterUpgrade": "显示已更新，但它不见了",
         "UnchangedAfterUpgrade": "显示已更新，但版本没有变化",
-        "UnchangedAfterUpgradeDetail": "可以在操作日志中查看它输出了什么。",
+        "UnchangedAfterUpgradeDetail": "可以点按“重试”；版本还是没有变化，就点按“拷贝日志”，发给懂的人看。",
         "BackAfterUninstall": "移走后，原处又出现了文件",
         "BackAfterUninstallDetail": "请先退出此工具。如果列表中仍有它，请再卸载一次；否则请将日志中列出的文件手动移到废纸篓。",
         "NotLinkedAfterLink": "显示已完成，但没有链接",
-        "NotLinkedAfterLinkDetail": "可以在操作日志中查看Homebrew输出了什么。"
+        "NotLinkedAfterLinkDetail": "可以再点按“修复…”；还是没有链接，就点按“拷贝日志”，发给懂的人看。"
       },
       "Failed": "未能完成：{{summary}}",
       "FailedSilent": "未能完成，程序没有给出原因",
-      "FailedSilentDetail": "可以在操作日志中查看它的输出。",
+      "FailedSilentDetail": "可以稍后{{again}}；还是失败，就点按“拷贝日志”，发给懂的人看。",
+      "emptyLogDetail": "可以稍后{{again}}。",
       "BanagerFailed": {
         "ChangedSinceShown": "未能开始：确认窗口打开后，它的安装位置或安装方式有了变化，或无法读取",
         "ChangedSinceShownDetail": "没有改动。请重新打开确认窗口，查看它现在会做什么。",

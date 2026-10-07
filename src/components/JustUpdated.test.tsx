@@ -456,7 +456,7 @@ describe("JustUpdated", () => {
     }
   });
 
-  it("says what did not add up, in plain words beside an orange sign, not the row's short 「结果不符」", () => {
+  it("says what did not add up, in plain words beside an orange sign, not the row's short 「需要查看」", () => {
     const toCheck: JustUpdatedEntry[] = [
       {
         ...entry,
@@ -473,7 +473,7 @@ describe("JustUpdated", () => {
     // its title (walk-2 W2-12).
     const words = within(unchanged).getByText("Didn't update: same version");
     expect(why(words)).toBe("The command said it finished, but the version read before and after the update is the same.");
-    expect(within(unchanged).queryByText("Unexpected result")).toBeNull();
+    expect(within(unchanged).queryByText(i18n.t("updates.progress.check"))).toBeNull();
     expect(within(unchanged).queryByText(/reported success/)).toBeNull();
     expect(within(words).getByRole("img", { name: "Needs attention" }).querySelector("svg")).toHaveClass(
       "text-warning",

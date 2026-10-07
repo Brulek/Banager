@@ -3515,15 +3515,18 @@ describe("UpdatesPage", () => {
       expect(await within(await findRow("glib")).findByText("Cancelled")).toBeInTheDocument();
     });
 
-    it.each<[string, OpSummary["outcome"]]>([
-      ["could not be confirmed", "Unconfirmed"],
-      ["needs attention", { NeedsAttention: "UnchangedAfterUpgrade" }],
-    ])("asks to check an update whose result %s, with a way to its log", async (_name, outcome) => {
+    // Two words, as they are two things (r24 W4): found not to be what the
+    // tool said -- the operation bar's 「需要查看」 -- and not known either
+    // way, as a Cancel All leaves the ones running -- the log's 「结果未确认」.
+    it.each<[string, OpSummary["outcome"], string]>([
+      ["could not be confirmed", "Unconfirmed", "Result unconfirmed"],
+      ["needs attention", { NeedsAttention: "UnchangedAfterUpgrade" }, "Needs attention"],
+    ])("asks to check an update whose result %s, with a way to its log", async (_name, outcome, text) => {
       operations = [operation(glibKey, { id: 11, status: "Done", outcome })];
       started(11, "2.90.0");
       const { getByRole } = renderPage();
 
-      const word = await within(await findRow("glib")).findByText("Unexpected result");
+      const word = await within(await findRow("glib")).findByText(text);
       // 12 orange ⚠︎ and the word in the label colour.
       const toLog = getByRole("button", { name: "View log: glib" });
       expect(toLog.className).toContain("text-foreground");
@@ -3536,7 +3539,8 @@ describe("UpdatesPage", () => {
     const endings: Array<[string, OpSummary["outcome"], string]> = [
       ["failed", { Failed: { exit_code: 1, summary: "Error: glib: no bottle", cause: failureCause("Error: glib: no bottle") } }, "Couldn't update"],
       ["was cancelled", "Cancelled", "Cancelled"],
-      ["asks to be checked", { NeedsAttention: "UnchangedAfterUpgrade" }, "Unexpected result"],
+      ["asks to be checked", { NeedsAttention: "UnchangedAfterUpgrade" }, "Needs attention"],
+      ["could not be confirmed", "Unconfirmed", "Result unconfirmed"],
     ];
 
     it.each(endings)(
@@ -3807,7 +3811,7 @@ describe("UpdatesPage", () => {
       renderPage();
 
       expect(await within(await findRow("glib")).findByText("Couldn't update")).toBeInTheDocument();
-      expect(within(rowOf("onyx")).getByText("Unexpected result")).toBeInTheDocument();
+      expect(within(rowOf("onyx")).getByText("Needs attention")).toBeInTheDocument();
       const section = await screen.findByRole("region", { name: "Update History" });
       const lines = within(section).getAllByRole("listitem");
       expect(lines.map((line) => line.querySelector("span[title]")?.textContent)).toEqual(["gh", "jq"]);
@@ -4161,7 +4165,7 @@ describe("UpdatesPage", () => {
         const section = await screen.findByRole("region", { name: "Update History" });
         const lines = within(section).getAllByRole("listitem");
         expect(lines.map((line) => line.querySelector("span[title]")?.textContent)).toEqual(["cmake"]);
-        expect(section.textContent).not.toMatch(/Couldn't update|Unexpected result/);
+        expect(section.textContent).not.toMatch(/Couldn't update|Needs attention|Result unconfirmed/);
       });
 
       it("lists a kept failure beside the tool's row on purpose: the row is a plain update, the line says the last try did not work", async () => {
@@ -5523,7 +5527,7 @@ describe("UpdatesPage", () => {
   const claudeEndings: Array<[string, OpSummary["outcome"], string, boolean]> = [
     ["failed", { Failed: { exit_code: 1, summary: "Error: download failed", cause: failureCause("Error: download failed") } }, "Couldn't update", true],
     ["was cancelled", "Cancelled", "Cancelled", false],
-    ["asks to be checked", { NeedsAttention: "UnchangedAfterUpgrade" }, "Unexpected result", true],
+    ["asks to be checked", { NeedsAttention: "UnchangedAfterUpgrade" }, "Needs attention", true],
   ];
 
   it.each(claudeEndings)(

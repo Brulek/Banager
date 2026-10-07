@@ -13,9 +13,10 @@ import { CheckIcon, InfoIcon, SpinnerIcon, WarningFilledIcon } from "./icons";
  * What a row shows in place of its Update button while an update of it is
  * under way or has just finished (`UpdateProgress`). `failed` and `check`
  * keep the operation's id, for the log they offer; `failed`, why, where
- * the tool's own words say (`outcomeCause`), or null; `succeeded` with a
- * follow-up warning, the id and how many warnings, which its words count
- * ("Updated with a warning").
+ * the tool's own words say (`outcomeCause`), or null; `check`, whether
+ * Banager found the opposite of what the tool said (`attention`) or could
+ * not tell (`unconfirmed`); `succeeded` with a follow-up warning, the id
+ * and how many warnings, which its words count ("Updated with a warning").
  */
 export type RowProgress =
   | { kind: "pendingAction"; operation: OpSummary }
@@ -25,17 +26,19 @@ export type RowProgress =
   | { kind: "succeeded"; warningOpId?: number; warnings?: number }
   | { kind: "cancelled" }
   | { kind: "failed"; opId: number; cause: FailureCause | null }
-  | { kind: "check"; opId: number };
+  | { kind: "check"; opId: number; why: "attention" | "unconfirmed" };
 
 /**
  * How a finished update ended, for its row. "Check" -- look at the log --
  * for every outcome that is neither a plain success nor a plain failure:
- * the tool said it worked and Banager could not confirm it (`Unconfirmed`)
- * or found the opposite (`NeedsAttention`). A finished operation with no
- * outcome, which the backend never sends, claims nothing either way.
+ * the tool said it worked and Banager could not confirm it (`Unconfirmed`,
+ * 「结果未确认」 -- a Cancel All stops the ones running this way) or found
+ * the opposite (`NeedsAttention`, 「需要查看」, the operation bar's word for
+ * it). A finished operation with no outcome, which the backend never
+ * sends, claims nothing either way.
  */
 function outcomeProgress(outcome: Outcome | null, opId: number): RowProgress {
-  if (outcome === null) return { kind: "check", opId };
+  if (outcome === null) return { kind: "check", opId, why: "unconfirmed" };
   if (typeof outcome === "string") {
     switch (outcome) {
       case "Succeeded":
@@ -43,14 +46,14 @@ function outcomeProgress(outcome: Outcome | null, opId: number): RowProgress {
       case "Cancelled":
         return { kind: "cancelled" };
       case "Unconfirmed":
-        return { kind: "check", opId };
+        return { kind: "check", opId, why: "unconfirmed" };
       default: {
         const unhandled: never = outcome;
         return unhandled;
       }
     }
   }
-  if ("NeedsAttention" in outcome) return { kind: "check", opId };
+  if ("NeedsAttention" in outcome) return { kind: "check", opId, why: "attention" };
   if ("Failed" in outcome || "BanagerFailed" in outcome) return { kind: "failed", opId, cause: outcomeCause(outcome) };
   const unhandled: never = outcome;
   return unhandled;
@@ -275,7 +278,7 @@ export function progressWord(t: Translate, progress: RowProgress): string {
     case "failed":
       return progress.cause === null ? t("updates.progress.failed") : t(FAILURE_CAUSE_KEYS[progress.cause].word);
     case "check":
-      return t("updates.progress.check");
+      return progress.why === "unconfirmed" ? t("updates.progress.unconfirmed") : t("updates.progress.check");
   }
 }
 
@@ -293,7 +296,8 @@ export interface UpdateProgressProps {
  * green ✓ and 「已更新」. How it ended when it did not update is a word
  * that opens its log: 「未能更新」 in the red for text -- or why, where the
  * tool's own words say, 「网络连接失败」 (`failureCause`) -- and a 12
- * orange ⚠︎ and 「结果不符」 where the result is not what the tool said.
+ * orange ⚠︎ and 「需要查看」 where the result is not what the tool said, or
+ * 「结果未确认」 where Banager could not tell.
  * An ending the row can retry (`isRetryable`) stands in the status column,
  * beside the row's Retry, which takes the button's place. Such a word has
  * an ⓘ after it, as every status word with a why has (`StatusChip`): red

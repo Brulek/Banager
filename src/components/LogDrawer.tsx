@@ -6,7 +6,7 @@ import { useUiStore } from "../store/ui";
 import { useCancelOperation, useOperations, useSettings } from "../lib/queries";
 import { copyStatusText, useCopyCommand } from "../lib/clipboard";
 import { FAILURE_CAUSE_KEYS, outcomeCause } from "../lib/failureCause";
-import { outcomeDetailKey } from "../lib/format";
+import { outcomeStepKey } from "../lib/format";
 import { namesInSentence } from "../lib/sources";
 import {
   OP_CANCEL_KEYS,
@@ -23,7 +23,7 @@ import { ScrollArea } from "./ui/ScrollArea";
 import { OutcomeIcon } from "./OutcomeIcon";
 import { MissingFailureLog, SubtitleWordsCopy, missingLogSummary } from "./MissingFailureLog";
 import { PasswordCommand } from "./PasswordCommand";
-import { FailureNextStep, SubtitleStep, failureLogStep, subtitleStep } from "./FailureNextStep";
+import { FailureNextStep, SubtitleStep, TRY_AGAIN_KEYS, failureLogStep, subtitleStep } from "./FailureNextStep";
 import { SpinnerIcon } from "./icons";
 
 const NEAR_BOTTOM_PX = 32;
@@ -198,7 +198,9 @@ export function LogDrawer() {
     const status = statusKey(op, logs);
     const done = op.status === "Done" && op.outcome !== null;
     const cause = done ? outcomeCause(op.outcome) : null;
-    const detailKey = done && op.outcome !== null ? outcomeDetailKey(op.outcome) : null;
+    // Over a log with no line, a step that ends at Copy Log -- off there --
+    // says only how to try again (`outcomeStepKey`).
+    const detailKey = done && op.outcome !== null ? outcomeStepKey(op.outcome, visibleLogs.length > 0) : null;
     const cancel = cancelState(op);
     const words = operationWords(t, op, logs, technical);
     return {
@@ -220,8 +222,14 @@ export function LogDrawer() {
           </span>
         ),
       // What to do now, in one sentence: the cause's next step where the
-      // tool's words give one, else the outcome's own, else nothing.
-      next: cause !== null ? t(FAILURE_CAUSE_KEYS[cause].next) : detailKey === null ? null : t(detailKey),
+      // tool's words give one, else the outcome's own, else nothing. How
+      // to try again is said by what was tried (`TRY_AGAIN_KEYS`).
+      next:
+        cause !== null
+          ? t(FAILURE_CAUSE_KEYS[cause].next)
+          : detailKey === null
+            ? null
+            : t(detailKey, { again: t(TRY_AGAIN_KEYS[op.kind]) }),
       stop:
         cancel === "none" ? null : (
           <button

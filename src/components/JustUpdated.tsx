@@ -28,7 +28,7 @@ import { GROUP } from "./ui/group";
  * history where they gave none or where the cause's words point at them
  * (`causeKeepsItsLine`), the tool's first error line (`detail`); or
  * the tool said it worked and Banager found nothing changed, or could not
- * confirm it -- the row's 「结果不符」.
+ * confirm it -- the row's 「需要查看」 or 「结果未确认」.
  */
 export type JustUpdatedEnding =
   | { kind: "succeeded"; already?: AlreadyUpdated; warnings?: FollowUpWarning[] }
@@ -273,7 +273,7 @@ function EndingWords({ entry }: { entry: JustUpdatedEntry }) {
     case "attention":
       tone = "attention";
       // What did not add up, in its own plain words, rather than the row's
-      // short 「结果不符」, which says nothing here, where there is no log
+      // short 「需要查看」, which says nothing here, where there is no log
       // one click away. A version read unchanged after the update is said
       // as what it means: it did not update.
       if (typeof ending.outcome !== "string" && ending.outcome.NeedsAttention === "UnchangedAfterUpgrade") {

@@ -371,7 +371,8 @@
       "succeeded": "Updated",
       "failed": "Couldn't update",
       "cancelled": "Cancelled",
-      "check": "Unexpected result",
+      "check": "Needs attention",
+      "unconfirmed": "Result unconfirmed",
       "viewLogLabel": "View log: {{name}}"
     },
     "justUpdated": {
@@ -990,15 +991,16 @@
         "GoneBeforeUpgrade": "Update didn't start: it's no longer installed",
         "GoneAfterUpgrade": "Update reported success, but it's gone",
         "UnchangedAfterUpgrade": "Update reported success, but the version didn't change",
-        "UnchangedAfterUpgradeDetail": "The operation log shows what it printed.",
+        "UnchangedAfterUpgradeDetail": "You can click Retry. If the version still doesn't change, click Copy Log and send the log to someone who can help.",
         "BackAfterUninstall": "Files showed up again after the uninstall",
         "BackAfterUninstallDetail": "Quit the tool first. If it's still listed, uninstall it again; otherwise move the files named in the log to the Trash yourself.",
         "NotLinkedAfterLink": "Reported done, but it isn't linked",
-        "NotLinkedAfterLinkDetail": "The operation log shows what Homebrew printed."
+        "NotLinkedAfterLinkDetail": "You can click Fix… again. If it still isn't linked, click Copy Log and send the log to someone who can help."
       },
       "Failed": "Couldn't finish: {{summary}}",
       "FailedSilent": "Couldn't finish, and the program didn't say why",
-      "FailedSilentDetail": "The operation log shows its output.",
+      "FailedSilentDetail": "You can {{again}} later. If it still fails, click Copy Log and send the log to someone who can help.",
+      "emptyLogDetail": "You can {{again}} later.",
       "BanagerFailed": {
         "ChangedSinceShown": "Couldn't start: where or how it's installed changed after the confirmation opened, or couldn't be read",
         "ChangedSinceShownDetail": "Nothing was changed. Open the confirmation again to see what it does now.",

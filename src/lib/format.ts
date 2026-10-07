@@ -104,7 +104,7 @@ export function outcomeDetailKey(outcome: Outcome): string | null {
     }
   }
   // The tool's own words are the sentence; a tool that said nothing gets
-  // pointed at its output.
+  // how to try again, then Copy Log (`outcomeStepKey`).
   if ("Failed" in outcome) return outcome.Failed.summary.trim() ? null : "operations.outcome.FailedSilentDetail";
   if ("BanagerFailed" in outcome) {
     const fault = outcome.BanagerFailed;
@@ -137,6 +137,32 @@ export function outcomeDetailKey(outcome: Outcome): string | null {
   }
   const unhandled: never = outcome;
   return unhandled;
+}
+
+/**
+ * The steps that end at Copy Log, in the house shape of a failure's step
+ * under the log (`failureSteps.log.generic`): what to try once more --
+ * Retry on the row, Fix… on the notice, or `{{again}}` by the kind of
+ * operation (`TRY_AGAIN_KEYS`) -- then 「拷贝日志」, to send to someone who
+ * can help. A sentence that only pointed at "the operation log" was said
+ * over that very log, with nothing after it (r24 W4).
+ */
+const ENDS_AT_COPY_LOG: ReadonlySet<string> = new Set([
+  "operations.outcome.NeedsAttention.UnchangedAfterUpgradeDetail",
+  "operations.outcome.NeedsAttention.NotLinkedAfterLinkDetail",
+  "operations.outcome.FailedSilentDetail",
+]);
+
+/**
+ * What the log window says to do next about `outcome` (`outcomeDetailKey`),
+ * for a log that has lines or none (`logHasLines`). Copy Log is off over a
+ * log with no line -- a tool that printed nothing, or a window reloaded
+ * since -- so a step that ends at it says only how to try again there.
+ */
+export function outcomeStepKey(outcome: Outcome, logHasLines: boolean): string | null {
+  const key = outcomeDetailKey(outcome);
+  if (key !== null && !logHasLines && ENDS_AT_COPY_LOG.has(key)) return "operations.outcome.emptyLogDetail";
+  return key;
 }
 
 /** Interpolation values for `operations.outcome.<outcomeKey(outcome)>`. */

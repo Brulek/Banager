@@ -152,17 +152,44 @@ describe("passwordStepsOpId", () => {
       { kind: "cancelling" },
       { kind: "succeeded" },
       { kind: "cancelled" },
-      { kind: "check", opId: 3 },
+      { kind: "check", opId: 3, why: "attention" },
+      { kind: "check", opId: 8, why: "unconfirmed" },
       { kind: "failed", opId: 4, cause: null },
       { kind: "failed", opId: 5, cause: "network" },
       { kind: "failed", opId: 6, cause: "passwordNotAccepted" },
       { kind: "failed", opId: 7, cause: "needsPassword" },
     ];
-    expect(every.map(passwordStepsOpId)).toEqual([null, null, null, null, null, null, null, null, null, 7]);
+    expect(every.map(passwordStepsOpId)).toEqual([null, null, null, null, null, null, null, null, null, null, 7]);
     expect(passwordStepsOpId(null)).toBeNull();
     for (const progress of every.filter((each) => each.kind === "failed")) {
       expect(isRetryable(progress), JSON.stringify(progress)).toBe(passwordStepsOpId(progress) === null);
     }
+  });
+});
+
+describe("the word of an update that asks to be checked (r24 W4)", () => {
+  // Found not to be what the tool said, and not known either way, are two
+  // things: a Cancel All ends the ones running as `Unconfirmed`, and
+  // 「结果不符」 over them said something was found that was not.
+  const attention = (outcome: OpSummary["outcome"]) => progressOf({ ...upgradeOf("glib", "Done"), outcome });
+  it.each([
+    ["en", "Needs attention", "Result unconfirmed", "2 need attention"],
+    ["zh-CN", "需要查看", "结果未确认", "2个需要查看"],
+    ["zh-Hant", "需要查看", "結果未確認", "2個需要查看"],
+  ])("says %s: the bar's word for a contradiction, the log's for an unknown", (language, found, unknown, bar) => {
+    const t = i18n.getFixedT(language);
+    const unchanged = attention({ NeedsAttention: "UnchangedAfterUpgrade" });
+    const unconfirmed = attention("Unconfirmed");
+    expect(unchanged).toEqual({ kind: "check", opId: 1, why: "attention" });
+    expect(unconfirmed).toEqual({ kind: "check", opId: 1, why: "unconfirmed" });
+    expect(progressWord(t, unchanged)).toBe(found);
+    expect(progressWord(t, unconfirmed)).toBe(unknown);
+    // The same words as the operation bar's count and the log's subtitle.
+    expect(t("failureSteps.bar.needsAttention", { count: 2 })).toBe(bar);
+    expect(t("operations.outcome.Unconfirmed")).toBe(unknown);
+    // Both still offer Retry beside them.
+    expect(isRetryable(unchanged)).toBe(true);
+    expect(isRetryable(unconfirmed)).toBe(true);
   });
 });
 

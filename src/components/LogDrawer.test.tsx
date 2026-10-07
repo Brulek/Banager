@@ -1218,12 +1218,56 @@ describe("evicted failure log", () => {
 
   it("claims no lost log for a failure the tool said nothing about", async () => {
     // An empty summary: stderr was empty, so the log may never have had a
-    // line -- "no longer available" would be a guess.
+    // line -- "no longer available" would be a guess. Copy Log is off over
+    // it, so the step says only how to try again (r24 W4).
     operations = [{ ...runningOp, kind: "Upgrade", status: "Done", outcome: { Failed: { exit_code: 1, summary: "", cause: null } } }];
     const view = renderWithProviders(<LogDrawer />);
-    await view.findByText(i18n.t("operations.outcome.FailedSilentDetail"));
+    await view.findByText("You can click Retry later.");
+    expect(view.getByRole("button", { name: i18n.t("operations.copyLog") })).toBeDisabled();
+    expect(view.queryByText(/Copy Log and send/)).toBeNull();
     expect(view.queryByText(i18n.t("failureRecovery.logGone"))).toBeNull();
     expect(view.queryByRole("button", { name: i18n.t("failureRecovery.details") })).toBeNull();
+  });
+
+  // r24 W4: each said "the operation log shows …" over that very log, and
+  // nothing after it. Now a step in the house shape -- what to try, by the
+  // button's own name, then Copy Log, which is on, as the log has lines.
+  it.each<[string, OpSummary, string, string]>([
+    [
+      "an update that changed nothing",
+      { ...runningOp, kind: "Upgrade", status: "Done", outcome: { NeedsAttention: "UnchangedAfterUpgrade" } },
+      "You can click Retry. If the version still doesn't change, click Copy Log and send the log to someone who can help.",
+      "可以点按“重试”；版本还是没有变化，就点按“拷贝日志”，发给懂的人看。",
+    ],
+    [
+      "a link that linked nothing",
+      { ...runningOp, kind: "Link", name: "node@22", status: "Done", outcome: { NeedsAttention: "NotLinkedAfterLink" } },
+      "You can click Fix… again. If it still isn't linked, click Copy Log and send the log to someone who can help.",
+      "可以再点按“修复…”；还是没有链接，就点按“拷贝日志”，发给懂的人看。",
+    ],
+    [
+      "an uninstall that failed in no words",
+      { ...runningOp, kind: "Uninstall", status: "Done", outcome: { Failed: { exit_code: 1, summary: "", cause: null } } },
+      "You can uninstall it again later. If it still fails, click Copy Log and send the log to someone who can help.",
+      "可以稍后重新卸载；还是失败，就点按“拷贝日志”，发给懂的人看。",
+    ],
+  ])("says what to do next about %s, ending at Copy Log", async (_name, op, english, chinese) => {
+    operations = [op];
+    useUiStore.getState().appendLog({ opId: 1, stream: "Stdout", line: "==> Pouring something" });
+    try {
+      for (const [language, step] of [["en", english], ["zh-CN", chinese]] as const) {
+        await i18n.changeLanguage(language);
+        const view = renderWithProviders(<LogDrawer />);
+        const dialog = await view.findByRole("dialog");
+        await within(dialog).findByText(step);
+        // Said as the dialog opens, after its subtitle.
+        expect(dialog.getAttribute("aria-describedby")?.split(" ")).toContain(within(dialog).getByText(step).id);
+        expect(view.getByRole("button", { name: i18n.t("operations.copyLog") })).toBeEnabled();
+        view.unmount();
+      }
+    } finally {
+      await i18n.changeLanguage("en");
+    }
   });
 
   // The read npm and uv take right before a confirmed command, when it
