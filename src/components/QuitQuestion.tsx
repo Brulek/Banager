@@ -4,7 +4,15 @@ import { useQueryClient } from "@tanstack/react-query";
 import { listOperations, quitAnyway, quitKeptWaiting, quitQuestionShown } from "../lib/api";
 import { queryKeys, useOperations } from "../lib/queries";
 import { isActive, runsToItsEnd, useOperationName } from "../lib/operations";
-import { QUIT_NO_CANCEL_KEYS, quitBodyKey, quitStops, tellRustTwice, useQuitRequests } from "../lib/quit";
+import {
+  QUIT_CHECKING_KEYS,
+  QUIT_NO_CANCEL_KEYS,
+  quitBodyKey,
+  quitLetsFinish,
+  quitStops,
+  tellRustTwice,
+  useQuitRequests,
+} from "../lib/quit";
 import type { OpSummary } from "../lib/types";
 import { SheetText } from "./SheetParts";
 import { WarningFilledIcon } from "./icons";
@@ -17,9 +25,11 @@ import { BUTTON } from "./ui/controls";
  * window back, and this asks, in the app's sheet (`Dialog`):
  * 「还有2个操作未完成」, a line on what quitting now does -- it stops them,
  * and, while a command is under way, the tool it works on can be left half
- * done (`quitBodyKey`) -- a line for each one that has started and that
- * nothing can stop, such as rustup's self update, which quitting does not
- * stop, and two buttons, one over the other: on top, the default
+ * done (`quitBodyKey`) -- a line for each one checking its result, which
+ * quitting lets finish, up to a few seconds (`quitLetsFinish`), a line for
+ * each one that has started and that nothing can stop, such as rustup's
+ * self update, which quitting does not stop, and two buttons, one over the
+ * other: on top, the default
  * 「继续等待」, "Keep Waiting", which leaves Banager running, has the focus
  * as the sheet opens, and is what Escape does -- not 「取消」, "Cancel",
  * which beside 「全部取消」 and 「取消卸载」 read as cancelling the
@@ -111,8 +121,12 @@ export function QuitQuestion() {
   const count = active.length;
   const body = quitBodyKey(active);
   const bodyId = useId();
+  const finishing = active.filter(quitLetsFinish);
   const unstoppable = active.filter(runsToItsEnd);
-  const describedBy = [...(body === null ? [] : [bodyId]), ...unstoppable.map((op) => `${bodyId}-${op.id}`)].join(" ");
+  const describedBy = [
+    ...(body === null ? [] : [bodyId]),
+    ...[...finishing, ...unstoppable].map((op) => `${bodyId}-${op.id}`),
+  ].join(" ");
 
   // It goes, and Banager stays: Rust is told, so that its wait for word
   // from the page does not quit.
@@ -139,8 +153,8 @@ export function QuitQuestion() {
       title={t("quit.title", { count })}
       // A question to answer before anything else, as NSAlert's.
       alert
-      // What quitting now would stop, then what nothing can stop: the
-      // question's text, said as it opens.
+      // What quitting now would stop, what it lets finish, then what
+      // nothing can stop: the question's text, said as it opens.
       describedBy={describedBy === "" ? undefined : describedBy}
       initialFocus={keepWaitingButton}
       // Two answers that read as long as a sentence side by side: one over
@@ -165,6 +179,11 @@ export function QuitQuestion() {
     >
       {question !== null && <OnScreen question={question} />}
       {body !== null && <SheetText id={bodyId}>{t(body, { count: quitStops(active).length })}</SheetText>}
+      {finishing.map((op, index) => (
+        <SheetText key={op.id} id={`${bodyId}-${op.id}`} className={body !== null || index > 0 ? "mt-2" : ""}>
+          {t(QUIT_CHECKING_KEYS[op.kind], { name: nameOf(op) })}
+        </SheetText>
+      ))}
       {unstoppable.map((op) => (
         <p key={op.id} id={`${bodyId}-${op.id}`} className="mt-2 flex gap-1.5 text-body text-foreground">
           <WarningFilledIcon size={12} className="mt-0.5 shrink-0 text-warning" />

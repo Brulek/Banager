@@ -5,7 +5,15 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type EventCallback } from "@tauri-apps/api/event";
 import { fakeMenuBar } from "../test/menuBar";
 import { QUIT_REQUESTED_EVENT } from "./api";
-import { commandUnderWay, quitBodyKey, quitStops, tellRustTwice, useQuitRequests } from "./quit";
+import {
+  QUIT_CHECKING_KEYS,
+  commandUnderWay,
+  quitBodyKey,
+  quitLetsFinish,
+  quitStops,
+  tellRustTwice,
+  useQuitRequests,
+} from "./quit";
 import type { OpKind, OpStatus, OpSummary } from "./types";
 
 const mockInvoke = vi.mocked(invoke);
@@ -38,12 +46,46 @@ describe("whether an operation's command may be running", () => {
   });
 });
 
+describe("which operations a quit lets finish", () => {
+  it("is one checking its result, and no other", () => {
+    // Its command has ended; the quit waits for the reading after it
+    // (src-tauri/src/quit.rs, `waits_for`), so that its record is kept.
+    expect(quitLetsFinish(op(1, "Upgrade", "Verifying"))).toBe(true);
+    expect(quitLetsFinish(op(1, "Uninstall", "Verifying"))).toBe(true);
+    const not: OpStatus[] = ["Queued", "Running", "CancelRequested", "Cancelling", "Done"];
+    for (const status of not) expect(quitLetsFinish(op(1, "Upgrade", status)), status).toBe(false);
+    // One that nothing can stop has a line of its own already.
+    expect(quitLetsFinish({ ...op(1, "Upgrade", "Verifying"), cancel_policy: "NoCancel" })).toBe(false);
+  });
+
+  it("is not among what quitting stops, and has a line of its own in the words of its kind", () => {
+    const checking = op(1, "Upgrade", "Verifying");
+    expect(quitStops([checking, op(2, "Upgrade", "Queued")]).map((each) => each.id)).toEqual([2]);
+    expect(QUIT_CHECKING_KEYS).toEqual({
+      Install: "quit.checking.Install",
+      Uninstall: "quit.checking.Uninstall",
+      Upgrade: "quit.checking.Upgrade",
+      Link: "noAnswer.op.quitChecking",
+    });
+  });
+});
+
 describe("what the question says under its title", () => {
   it("says only that quitting stops them when no command is under way", () => {
-    // Queued: nothing started. Verifying: the command has ended.
+    // Queued: nothing started.
     expect(quitBodyKey([op(1, "Upgrade", "Queued")])).toBe("quit.body.stops");
-    expect(quitBodyKey([op(1, "Uninstall", "Verifying"), op(2, "Upgrade", "Queued")])).toBe(
-      "quit.body.stops",
+    expect(quitBodyKey([op(1, "Upgrade", "Queued"), op(2, "Uninstall", "Queued")])).toBe("quit.body.stops");
+  });
+
+  it("does not say that quitting stops one checking its result, which it lets finish", () => {
+    // r38 skeptic 1: the quit waits for it, 7 seconds at the most, and
+    // its record is kept; its own line says so.
+    expect(quitBodyKey([op(1, "Upgrade", "Verifying")])).toBeNull();
+    expect(quitBodyKey([op(1, "Upgrade", "Verifying"), op(2, "Uninstall", "Verifying")])).toBeNull();
+    // Beside it, what quitting stops is "the others".
+    expect(quitBodyKey([op(1, "Uninstall", "Verifying"), op(2, "Upgrade", "Queued")])).toBe("quit.body.othersStop");
+    expect(quitBodyKey([op(1, "Upgrade", "Verifying"), op(2, "Upgrade", "Running")])).toBe(
+      "quit.body.othersHalfDone",
     );
   });
 

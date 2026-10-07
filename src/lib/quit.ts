@@ -19,8 +19,9 @@ import type { OpKind, OpSummary } from "./types";
 /**
  * Whether `op`'s command may be running now: Running, or being cancelled,
  * which stops a command already running. A Queued operation has started
- * nothing, and a Verifying one's command has ended: quitting stops them,
- * and leaves no tool half done.
+ * nothing, which quitting stops, and a Verifying one's command has ended,
+ * which quitting lets finish (`quitLetsFinish`): neither leaves a tool
+ * half done.
  */
 export function commandUnderWay(op: OpSummary): boolean {
   return op.status === "Running" || op.status === "CancelRequested" || op.status === "Cancelling";
@@ -39,13 +40,40 @@ const HALF_DONE_KEYS: Record<OpKind, string> = {
 };
 
 /**
+ * Whether a quit lets `op` finish rather than stopping it: its command has
+ * ended, and Banager is checking the result (Verifying). Quitting cancels
+ * nothing of it and waits for that reading -- 7 seconds after 「退出」 at
+ * the most, as for the commands it stops -- so that the operation's record
+ * is kept (src-tauri/src/quit.rs, `waits_for`, `STOP_WITHIN`). One that
+ * nothing can stop (`runsToItsEnd`) has its own line already.
+ */
+export function quitLetsFinish(op: OpSummary): boolean {
+  return op.status === "Verifying" && !runsToItsEnd(op);
+}
+
+/**
+ * The line the question adds for an operation a quit lets finish
+ * (`quitLetsFinish`), in the words of its kind: its result is being
+ * checked, and quitting now waits up to a few seconds for that. A
+ * `Record` over `OpKind`, so a kind added to the mirror without words here
+ * fails `tsc`.
+ */
+export const QUIT_CHECKING_KEYS: Record<OpKind, string> = {
+  Install: "quit.checking.Install",
+  Uninstall: "quit.checking.Uninstall",
+  Upgrade: "quit.checking.Upgrade",
+  Link: "noAnswer.op.quitChecking",
+};
+
+/**
  * The operations of `active` that quitting stops: all but one that has
  * started and that nothing can stop (`runsToItsEnd`), which runs on
- * without Banager (src-tauri/src/quit.rs, `quit_now`). Their number is the
- * `count` of `quitBodyKey`'s line.
+ * without Banager (src-tauri/src/quit.rs, `quit_now`), and one checking
+ * its result, which quitting lets finish (`quitLetsFinish`). Their number
+ * is the `count` of `quitBodyKey`'s line.
  */
 export function quitStops(active: OpSummary[]): OpSummary[] {
-  return active.filter((op) => !runsToItsEnd(op));
+  return active.filter((op) => !runsToItsEnd(op) && !quitLetsFinish(op));
 }
 
 /**
@@ -55,8 +83,9 @@ export function quitStops(active: OpSummary[]): OpSummary[] {
  * the tool it works on can be left half done: in the words of its kind
  * when every command under way is of one kind (updated, uninstalled), and
  * in words for any kind when they are of more than one. Beside one that
- * nothing can stop, which has a line of its own, it says "the others";
- * with nothing but such ones, there is no line.
+ * nothing can stop, or one checking its result -- each has a line of its
+ * own -- it says "the others"; with nothing but such ones, there is no
+ * line.
  */
 export function quitBodyKey(active: OpSummary[]): string | null {
   const stops = quitStops(active);

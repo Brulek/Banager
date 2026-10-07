@@ -471,7 +471,7 @@ describe("the question before a quit", () => {
   });
 
   it.each([
-    ["only that quitting stops them, when nothing has started", [op(1, "wget", "Queued"), op(2, "jq", "Verifying")], "Quitting now stops them."],
+    ["only that quitting stops them, when nothing has started", [op(1, "wget", "Queued"), op(2, "jq", "Queued")], "Quitting now stops them."],
     [
       "what an uninstall may leave",
       [op(1, "wget", "Running", { kind: "Uninstall" })],
@@ -493,6 +493,53 @@ describe("the question before a quit", () => {
     const dialog = await asked(rust, /hasn't finished|haven't finished/);
 
     expect(within(dialog).getByText(line)).toBeInTheDocument();
+  });
+
+  it("says that quitting waits for one checking its result, not that it stops it", async () => {
+    // r38 skeptic 1: a quit lets it finish -- 7 seconds at the most -- so
+    // that its record is kept (src-tauri/src/quit.rs, `waits_for`).
+    operations = [op(1, "jq", "Verifying")];
+    const { rust, queryClient } = await mounted();
+    const dialog = await asked(rust, "1 operation hasn't finished");
+
+    const line = "The result of jq's update is being checked. Quitting now waits up to a few seconds for that.";
+    expect(within(dialog).getByText(line)).toBeInTheDocument();
+    expect(within(dialog).queryByText(/Quitting now stops/)).toBeNull();
+    expect(dialog).toHaveAccessibleDescription(line);
+
+    // Beside one that quitting stops, that one is "the other one".
+    await listNow(queryClient, [op(1, "jq", "Verifying"), op(2, "wget", "Queued", { kind: "Uninstall" })]);
+    await waitFor(() => expect(within(dialog).getByText("Quitting now stops the other one.")).toBeInTheDocument());
+    expect(dialog).toHaveAccessibleDescription(`Quitting now stops the other one. ${line}`);
+  });
+
+  it.each([
+    ["Install", "The result of jq's install is being checked. Quitting now waits up to a few seconds for that."],
+    ["Uninstall", "The result of jq's uninstall is being checked. Quitting now waits up to a few seconds for that."],
+    ["Link", "The result of jq's link is being checked. Quitting now waits up to a few seconds for that."],
+  ] as const)("says it of an operation checking its result in the words of its kind: %s", async (kind, line) => {
+    operations = [op(1, "jq", "Verifying", { kind })];
+    const { rust } = await mounted();
+    const dialog = await asked(rust, "1 operation hasn't finished");
+
+    expect(within(dialog).getByText(line)).toBeInTheDocument();
+  });
+
+  it.each([
+    ["zh-CN", "还有1个操作未完成", "正在核对“jq”的更新结果。现在退出会先等它核对完，最多几秒。"],
+    ["zh-Hant", "還有1個操作未完成", "正在核對「jq」的更新結果。現在結束會先等它核對完，最多幾秒。"],
+  ])("says in %s that quitting waits for one checking its result", async (language, title, line) => {
+    await i18n.changeLanguage(language);
+    try {
+      operations = [op(1, "jq", "Verifying")];
+      const { rust } = await mounted();
+      const dialog = await asked(rust, title);
+
+      expect(within(dialog).getByText(line)).toBeInTheDocument();
+      expect(within(dialog).queryByText(/中断|中斷/)).toBeNull();
+    } finally {
+      await i18n.changeLanguage("en");
+    }
   });
 
   it("asks in Chinese", async () => {

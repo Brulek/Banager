@@ -719,8 +719,12 @@ quitting (Quit Banager, ⌘Q; Quit in the Dock icon's menu; logging out,
 restarting or shutting down) first brings the window back and asks:
 *N operations haven't finished* (「还有N个操作未完成」), with *Keep Waiting*
 (「继续等待」, which has the focus, and which Escape does) and
-*Quit* (「退出」), and it names an operation that has started
-and cannot be cancelled, such as rustup's self update. Every one of those
+*Quit* (「退出」); it names an operation checking its result, which
+quitting waits up to a few seconds for rather than stops, and one that
+has started and cannot be cancelled, such as rustup's self update
+(`quitLetsFinish` and `runsToItsEnd`, `src/lib/quit.ts` and
+`src/lib/operations.ts`), and its line about what quitting stops leaves
+both out. Every one of those
 quits ends in AppKit's `terminate:`, which asks the application
 delegate's `applicationShouldTerminate:`; Banager adds that method to the
 delegate as it starts (`guard_quitting` in `src-tauri/src/quit.rs`) and

@@ -857,7 +857,8 @@
       "again": "link it again",
       "quitBody_one": "Quitting now stops it, and the tool it's linking can be left half-linked.",
       "quitBody_other": "Quitting now stops them, and a tool that's being linked can be left half-linked.",
-      "quitNoCancel": "{{name}}'s link has started and can't be cancelled. Wait for it to finish before you quit."
+      "quitNoCancel": "{{name}}'s link has started and can't be cancelled. Wait for it to finish before you quit.",
+      "quitChecking": "The result of {{name}}'s link is being checked. Quitting now waits up to a few seconds for that."
     },
     "withFormula": {
       "badge": "Updates with Node",
@@ -1059,6 +1060,11 @@
       "othersStop_other": "Quitting now stops the others.",
       "othersHalfDone_one": "Quitting now stops the other one, and the tool it's working on can be left half-done.",
       "othersHalfDone_other": "Quitting now stops the others, and the tools they're working on can be left half-done."
+    },
+    "checking": {
+      "Install": "The result of {{name}}'s install is being checked. Quitting now waits up to a few seconds for that.",
+      "Uninstall": "The result of {{name}}'s uninstall is being checked. Quitting now waits up to a few seconds for that.",
+      "Upgrade": "The result of {{name}}'s update is being checked. Quitting now waits up to a few seconds for that."
     },
     "noCancel": {
       "Install": "{{name}}'s install has started and can't be cancelled. Wait for it to finish before you quit.",
