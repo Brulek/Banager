@@ -37,6 +37,10 @@
 //! it.
 //! - Any `scheme://user:password@` in the text (`mask_url_logins`),
 //!   or `scheme://user@` in the text, whatever its source: the whole login.
+//!   Each address is read as a mirror's is: where its authority is no host
+//!   and port, its login is all before the last `@` of its word, so a
+//!   password with a raw `/`, `?` or `#` from a tool's own settings file
+//!   (`~/.npmrc`, `pip.conf`) is masked as it would be in a setting.
 //!
 //! Both put [`MASK`] where a secret was, and leave the rest of the line as
 //! the tool wrote it. Where a rule cannot tell, it masks too much rather
@@ -535,13 +539,80 @@ static URL_LOGIN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"([A-Za-z][A-Za-z0-9+.\-]*://)([^\s/?#'"`<>]*)@"#).expect("a valid pattern")
 });
 
+/// Where an address starts, anywhere in a text: a scheme and its `://`.
+static URL_START: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"[A-Za-z][A-Za-z0-9+.\-]*://").expect("a valid pattern"));
+
 /// Masks both parts of any URL login, including a username alone: Git
 /// configuration can supply a token there without an imported setting.
+///
+/// Two passes. The first masks the userinfo before the last `@` of each
+/// authority, as it ends at the first `/`, `?` or `#` (`URL_LOGIN`). The
+/// second ([`mask_unread_url_logins`]) reads each address again as a
+/// mirror's address is read: where its authority is no host and port -- a
+/// raw `/`, `?` or `#` in a password cut it short -- its login is all
+/// before the last `@` of its word.
 pub fn mask_url_logins(text: &str) -> Cow<'_, str> {
-    URL_LOGIN.replace_all(text, |captures: &regex::Captures<'_>| {
+    let masked = URL_LOGIN.replace_all(text, |captures: &regex::Captures<'_>| {
         let pair = captures[2].contains(':');
         format!("{}{}@", &captures[1], if pair { "****:****" } else { MASK })
-    })
+    });
+    match mask_unread_url_logins(&masked) {
+        Cow::Owned(again) => Cow::Owned(again),
+        Cow::Borrowed(_) => masked,
+    }
+}
+
+/// The second pass of [`mask_url_logins`] (r25's M1): each address in
+/// `text`, to the end of its word (`ends_a_word`), read by the rules a
+/// mirror's is (`mirror_login_end`), so that a login the settings' rules
+/// would mask is masked here too, whatever file it came from.
+///
+/// A login with a raw `/`, `?` or `#` in its password, from a file Banager
+/// does not read -- `https-proxy=http://alice:Ab3/xY+9@proxy.corp:8080` in
+/// `~/.npmrc`, an `index-url` in `pip.conf` -- leaves an authority that is
+/// no host and port (`alice:Ab3`), which the first pass passes over, and
+/// the tools print it back as written: Node's `[DEP0170]` warning on every
+/// npm command, pip's `Looking in indexes:` and its `Failed to parse:`.
+/// Here its login is all before the last `@` of its word. Where the
+/// authority reads as a host, the first pass already masked whatever
+/// login it holds, and an `@` after it is the path's: nothing changes.
+///
+/// Each address is read on its own, so one inside another's word
+/// (`https://pypi.org/simple,https://alice:Ab3/x@pypi.corp/`) is read
+/// too; one inside a login just masked (`rev://` in a password) is not.
+fn mask_unread_url_logins(text: &str) -> Cow<'_, str> {
+    let mut out = String::new();
+    let mut done = 0;
+    for start in URL_START.find_iter(text) {
+        if start.start() < done {
+            // Inside the login this pass has just masked.
+            continue;
+        }
+        let after = &text[start.end()..];
+        let word = &after[..after.find(ends_a_word).unwrap_or(after.len())];
+        let Some(at) = mirror_login_end(word) else {
+            continue;
+        };
+        let login = &word[..at];
+        let mask = if login.contains(':') {
+            "****:****"
+        } else {
+            MASK
+        };
+        if login == mask {
+            // Masked by the first pass, where it stood.
+            continue;
+        }
+        out.push_str(&text[done..start.end()]);
+        out.push_str(mask);
+        done = start.end() + at;
+    }
+    if done == 0 {
+        return Cow::Borrowed(text);
+    }
+    out.push_str(&text[done..]);
+    Cow::Owned(out)
 }
 
 /// Not part of a word for [`before_cut`] and [`after_cut`]: white space and
@@ -1383,6 +1454,171 @@ mod tests {
             ("no address here", "no address here"),
         ] {
             assert_eq!(r.redact(said), expected, "{said}");
+        }
+    }
+
+    /// What Node 22.23.3 (node@22, whose npm is 10.9.9) wrote to stderr on
+    /// this Mac, once in every npm command, for a `~/.npmrc` whose
+    /// `https-proxy` or `registry` it cannot read as an address: npm's
+    /// config validation (`nopt`'s `validateUrl`) hands each to Node's
+    /// legacy `url.parse`, which reads `alice:Ab3` as a host and a port
+    /// that is no number, and warns with the address as written (r25).
+    fn node_warns(url: &str) -> String {
+        format!(
+            "(node:4242) [DEP0170] DeprecationWarning: The URL {url} is invalid. \
+             Future versions of Node.js will throw an error."
+        )
+    }
+
+    /// pip 26.2.1's last two lines for a `proxy` (in `pip.conf`, or
+    /// `--proxy`) urllib3 cannot read: `parse_url` finds no host and port in
+    /// `alice:Ab3` and raises with the address as written, which requests
+    /// raises again as `InvalidURL` (the shape `PIP_SAID` holds).
+    fn pip_cannot_parse(url: &str) -> String {
+        format!(
+            "pip._vendor.urllib3.exceptions.LocationParseError: Failed to parse: {url}\n\
+             pip._vendor.requests.exceptions.InvalidURL: Failed to parse: {url}"
+        )
+    }
+
+    #[test]
+    fn test_a_login_from_a_tools_own_settings_file_with_a_raw_slash_query_or_hash_is_masked() {
+        // r25's M1: a login no imported setting holds -- written into
+        // `~/.npmrc` or `pip.conf` -- with a `/`, `?` or `#` in its
+        // password as is. Its authority (`alice:Ab3`) is no host and port,
+        // so it is read to the last `@` of its word, as a mirror setting's
+        // would be: with no setting known, with one that holds no login,
+        // and with one whose login is another.
+        for r in [
+            Redactor::default(),
+            redactor(&[("https_proxy", "http://proxy.example:3128")]),
+            redactor(&[("https_proxy", CURL_PROXY)]),
+        ] {
+            for (said, expected) in [
+                (
+                    node_warns("http://alice:Ab3/xY+9@proxy.corp:8080"),
+                    node_warns("http://****:****@proxy.corp:8080"),
+                ),
+                (
+                    node_warns("https://alice:Ab3?xY9@npm.corp/"),
+                    node_warns("https://****:****@npm.corp/"),
+                ),
+                (
+                    node_warns("https://ci-bot:pa#ss@npm.corp/"),
+                    node_warns("https://****:****@npm.corp/"),
+                ),
+                // A token alone, cut short by its `/`.
+                (
+                    node_warns("https://ghp_tok/en42abc@npm.corp/"),
+                    node_warns("https://****@npm.corp/"),
+                ),
+                // pip's own `redact_auth_from_url` splits with `urlsplit`,
+                // which ends the netloc at the `/`, finds no `@` in it and
+                // prints the index as is ...
+                (
+                    "Looking in indexes: https://alice:Ab3/xY+9@pypi.corp/simple".to_string(),
+                    "Looking in indexes: https://****:****@pypi.corp/simple".to_string(),
+                ),
+                // ... and with an `@` in the password too, masks it only
+                // up to that `@`: the rest is masked here.
+                (
+                    "Looking in indexes: https://alice:****@ss/w0rd@pypi.corp/simple".to_string(),
+                    "Looking in indexes: https://****:****@pypi.corp/simple".to_string(),
+                ),
+                (
+                    pip_cannot_parse("http://alice:Ab3/xY+9@proxy.corp:8080"),
+                    pip_cannot_parse("http://****:****@proxy.corp:8080"),
+                ),
+                // Beside a public index, and in one word with it: each
+                // address is read on its own.
+                (
+                    "Looking in indexes: https://pypi.org/simple, https://alice:Ab3/xY+9@pypi.corp/simple"
+                        .to_string(),
+                    "Looking in indexes: https://pypi.org/simple, https://****:****@pypi.corp/simple"
+                        .to_string(),
+                ),
+                (
+                    "https://pypi.org/simple,https://alice:Ab3/xY+9@pypi.corp/simple".to_string(),
+                    "https://pypi.org/simple,https://****:****@pypi.corp/simple".to_string(),
+                ),
+                // `p@ss/w0rd`: the first pass ends at the first `@`, this
+                // one at the last.
+                (
+                    "fatal: unable to access 'https://u:p@ss/w0rd@registry.mirror.example/': 403"
+                        .to_string(),
+                    "fatal: unable to access 'https://****:****@registry.mirror.example/': 403"
+                        .to_string(),
+                ),
+                // R2's `://` in a password, from a file: one login, whole.
+                (
+                    node_warns("https://review-user:rev://secret@npm.corp/"),
+                    node_warns("https://****:****@npm.corp/"),
+                ),
+            ] {
+                let masked = r.redact(&said);
+                assert_eq!(masked, expected, "{said}");
+                assert_eq!(mask_url_logins(&said), expected, "{said}");
+                // And masking again changes nothing more.
+                assert_eq!(r.redact(&masked), masked, "{said}");
+            }
+        }
+    }
+
+    #[test]
+    fn test_an_address_whose_authority_reads_as_a_host_keeps_every_at_after_it() {
+        // The second pass changes nothing where the authority is a host,
+        // with or without a port, however many `@` follow it in a path,
+        // query or fragment -- the shapes tools print every day -- nor
+        // where there is no authority at all, and copies nothing.
+        for r in [
+            Redactor::default(),
+            redactor(&[("https_proxy", CURL_PROXY)]),
+        ] {
+            for public in [
+                "==> Fetching https://formulae.brew.sh/api/formula/python@3.13.json",
+                "==> Downloading https://ghcr.io/v2/homebrew/core/python/3.13/manifests/3.13.7",
+                "npm error 404 Not Found - GET https://registry.npmjs.org/@types%2fnode - Not found",
+                "npm http fetch GET 200 https://registry.npmjs.org/@scope/pkg/-/pkg-1.0.0.tgz",
+                "   Compiling foo v0.1.0 (git+https://github.com/x/y?branch=main#foo@0.1.0)",
+                "Collecting x @ git+https://github.com/x/y.git@v1.2",
+                "Looking in indexes: https://mirror.example:8443/x/user@example.com/simple",
+                "https://nexus:8081/repository/npm/@scope/pkg",
+                "http://nexus/repository/npm/@scope/",
+                "http://localhost/x@y",
+                "https://[::1]:8443/a@b",
+                "https://192.0.2.7/dist/foo@1.2.3.4/",
+                "https://mirror.example?mail=a@b.example",
+                "https://mirror.example#a@b.example",
+                "https://mirror.example./x/user@example.com",
+                "path+file:///Users/me@corp/foo#bar@0.1.0",
+                "file:///Users/me@corp/rustup",
+                "mailto:someone@example.com",
+                "git@github.com:Homebrew/brew.git",
+            ] {
+                assert!(
+                    matches!(r.redact(public), Cow::Borrowed(same) if same == public),
+                    "{public}"
+                );
+                assert!(
+                    matches!(mask_url_logins(public), Cow::Borrowed(same) if same == public),
+                    "{public}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_an_address_the_rules_read_as_a_host_and_a_path_is_left_as_written() {
+        // The limit docs/what-we-run.md states for both rules: a password
+        // whose first part reads as a port, or a token alone whose first
+        // part reads as a host, with a `/` right after it, is read as the
+        // rules read it -- and pip too, which prints it as is -- an
+        // address with a path and no login.
+        for said in [
+            "Looking in indexes: https://user:1234/rest@mirror.example/simple",
+            "Looking in indexes: https://tok/en@mirror.example/simple",
+        ] {
+            assert_eq!(Redactor::default().redact(said), said);
         }
     }
 

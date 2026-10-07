@@ -235,10 +235,23 @@ user name that is the Mac account's masks it in every path a tool prints
 part in every word that holds it (`pass`: "a ****word is required").
 Besides, the complete login of any `scheme://user:password@` or
 `scheme://user@` in the output is masked, whatever setting or file it came
-from, including Git configuration. Both user name and password are hidden:
+from, including Git configuration and a tool's own settings file
+(`~/.npmrc`, `pip.conf`). Both user name and password are hidden:
 either may be a token. This generic rule ends at the authority, so an `@`
-in a public path, query or fragment stays as written. It does not discover
-bare tokens supplied by files outside the imported settings.
+in a public path, query or fragment stays as written; it reads each
+address in the output, to the next white space or quote, by the rules a
+mirror's address is read by above, so where the authority is no host and
+port its login is all before the last `@` there. A `/`, `?` or `#`
+written into a password in `~/.npmrc` is masked so: Node prints such an
+address back, as written, on every npm command (`[DEP0170]
+DeprecationWarning: The URL http://****:****@proxy.corp:8080 is invalid`,
+Node 22.23.3 with npm 10.9.9), and pip in `Looking in indexes:` and
+`Failed to parse:` (pip 26.2.1). The two kinds of address the rules read
+as having a path and no login (`https://user:1234/rest@…`,
+`https://tok/en@…`) are not masked by it either. It does
+not discover bare tokens supplied by files outside the imported settings,
+nor a user name a tool prints on its own (npm, reading such a proxy's
+user name as its host, says `getaddrinfo ENOTFOUND <name>`).
 
 Why an operation failed is not read off what the mask left. The runner
 reads it off the last five lines the tool wrote to stderr as the tool

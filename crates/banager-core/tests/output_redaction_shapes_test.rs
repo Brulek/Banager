@@ -2,7 +2,9 @@
 //! or masked where there was none (R3), end to end: settings from the
 //! login shell, a command printing what git, curl, npm and pip printed for
 //! them on this Mac, and what reaches the operation's log, its failure
-//! summary and the command's output (`runner::redact`).
+//! summary and the command's output (`runner::redact`); and (r25's M1) a
+//! login no setting holds, from a tool's own settings file, its password
+//! with a raw `/`, `?` or `#`, as Node and pip print it back.
 //!
 //! A file of its own: `login_path::accept` sets state for the whole
 //! process, and each file under tests/ runs in a process of its own, so no
@@ -271,4 +273,175 @@ async fn test_curls_own_error_for_a_proxy_with_a_scheme_separator_in_its_passwor
             output.stderr
         );
     }
+}
+
+/// r25's M1: a login in a tool's own settings file, which no imported
+/// setting holds -- `https-proxy=http://alice:Ab3/xY+9@proxy.corp:8080` in
+/// `~/.npmrc`; in `pip.conf`, an `index-url` with the same password and a
+/// `proxy` with a `?` in its password -- so only the generic rule can find
+/// it. Node 22.23.3 warns about the npm address once in every npm 10.9.9
+/// command (its config validation hands it to `url.parse`, which reads
+/// `alice:Ab3` as a host and a port that is no number); npm then reads the
+/// proxy's host as `alice`. pip 26.2.1 prints the index as is in `Looking
+/// in indexes:` (its own `redact_auth_from_url` ends the netloc at the
+/// `/` and finds no `@` in it; with an `@` in the password it masks only up
+/// to that `@`), and the proxy in its last two lines. The last five
+/// stderr lines are the failure's summary.
+const CONFIG_FILES_SAY: &str = r##"
+printf '%s\n' 'Looking in indexes: https://pypi.org/simple, https://alice:Ab3/xY+9@pypi.corp/simple'
+printf '%s\n' 'Looking in indexes: https://alice:****@ss/w0rd@pypi.corp/simple'
+printf '%s\n' 'Looking in indexes: https://mirror.example:8443/x/user@example.com/simple'
+printf '%s\n' '(node:4242) [DEP0170] DeprecationWarning: The URL http://alice:Ab3/xY+9@proxy.corp:8080 is invalid. Future versions of Node.js will throw an error.' >&2
+printf '%s\n' '(Use `node --trace-deprecation ...` to show where the warning was created)' >&2
+printf '%s\n' 'npm error network request to https://registry.npmjs.org/@types%2fnode failed, reason: getaddrinfo ENOTFOUND alice' >&2
+printf '%s\n' 'pip._vendor.urllib3.exceptions.LocationParseError: Failed to parse: http://ci-bot:pa?ss42@proxy.corp:3128' >&2
+printf '%s\n' 'pip._vendor.requests.exceptions.InvalidURL: Failed to parse: http://ci-bot:pa?ss42@proxy.corp:3128' >&2
+exit 1
+"##;
+
+/// What each line of `CONFIG_FILES_SAY` reads masked, in order: stdout's
+/// three, then stderr's five. The public index's `@` stays. `alice`, the
+/// user name npm took for the proxy's host, stays as npm printed it: a
+/// bare word from a file Banager does not read, which no rule can tell
+/// from a host's name (docs/what-we-run.md: bare tokens from such files
+/// are not discovered).
+const CONFIG_FILES_MASKED: &[&str] = &[
+    "Looking in indexes: https://pypi.org/simple, https://****:****@pypi.corp/simple",
+    "Looking in indexes: https://****:****@pypi.corp/simple",
+    "Looking in indexes: https://mirror.example:8443/x/user@example.com/simple",
+    "(node:4242) [DEP0170] DeprecationWarning: The URL http://****:****@proxy.corp:8080 is invalid. Future versions of Node.js will throw an error.",
+    "(Use `node --trace-deprecation ...` to show where the warning was created)",
+    "npm error network request to https://registry.npmjs.org/@types%2fnode failed, reason: getaddrinfo ENOTFOUND alice",
+    "pip._vendor.urllib3.exceptions.LocationParseError: Failed to parse: http://****:****@proxy.corp:3128",
+    "pip._vendor.requests.exceptions.InvalidURL: Failed to parse: http://****:****@proxy.corp:3128",
+];
+
+/// The passwords above, and their parts.
+const CONFIG_FILE_SECRETS: &[&str] = &["Ab3", "xY+9", "ss/w0rd", "w0rd", "ci-bot", "pa?ss42"];
+
+fn assert_no_config_file_secret(what: &str, text: &str) {
+    for secret in CONFIG_FILE_SECRETS {
+        assert!(!text.contains(secret), "{what} holds {secret:?}:\n{text}");
+    }
+}
+
+fn config_files_say(output_use: OutputUse) -> CommandSpec {
+    CommandSpec {
+        program: PathBuf::from("/bin/sh"),
+        args: vec!["-c".to_string(), CONFIG_FILES_SAY.to_string()],
+        env: vec![],
+        cwd: None,
+        timeout: Duration::from_secs(30),
+        output_use,
+    }
+}
+
+#[tokio::test]
+async fn test_a_login_from_a_tools_own_settings_file_is_masked_in_the_log_and_the_summary() {
+    // The operation's log (Copy Log) and its failure summary (Copy Error
+    // Details), through `run_plan` as every npm and pip operation runs.
+    accept_the_settings();
+    let runner: Arc<dyn CommandRunner> = Arc::new(RealRunner::without_this_macs_settings());
+    let spec = config_files_say(OutputUse::Transcript);
+    let plan = Plan {
+        request: OpRequest {
+            kind: OpKind::Upgrade,
+            instance_id: "npm".to_string(),
+            artifact_kind: ArtifactKind::Package,
+            name: "typescript".to_string(),
+        },
+        action: PlanAction::Command {
+            program: spec.program,
+            args: spec.args,
+            env: vec![],
+        },
+        needs_password: false,
+        locks: vec![ResourceLock("npm".to_string())],
+        cancel_policy: CancelPolicy::KillThenReconcile,
+        warnings: vec![],
+        affected: vec![],
+        basis: None,
+        timeout_secs: 30,
+    };
+    let sink = Arc::new(VecSink::new());
+    let outcome = run_plan(
+        &runner,
+        &plan,
+        sink.clone() as Arc<dyn EventSink>,
+        7,
+        CancellationToken::new(),
+    )
+    .await
+    .expect("the plan runs");
+    let mut lines: Vec<String> = sink
+        .snapshot()
+        .into_iter()
+        .filter_map(|event| match event {
+            OperationEvent::Log { line, .. } => Some(line),
+            _ => None,
+        })
+        .collect();
+    for line in &lines {
+        assert_no_config_file_secret("a log line", line);
+    }
+    // stdout and stderr are read side by side: compare as sets.
+    lines.sort();
+    let mut expected: Vec<String> = CONFIG_FILES_MASKED
+        .iter()
+        .map(|line| line.to_string())
+        .collect();
+    expected.sort();
+    assert_eq!(lines, expected);
+    let Outcome::Failed {
+        exit_code, summary, ..
+    } = outcome
+    else {
+        panic!("expected a failure, got {outcome:?}");
+    };
+    assert_eq!(exit_code, Some(1));
+    assert_no_config_file_secret("the failure summary", &summary);
+    assert_eq!(
+        summary.lines().collect::<Vec<_>>(),
+        CONFIG_FILES_MASKED[3..].to_vec()
+    );
+}
+
+#[tokio::test]
+async fn test_a_login_from_a_tools_own_settings_file_is_masked_in_what_a_read_and_a_source_keep() {
+    // What a command's caller reads off it: a check's reason (npm's
+    // `lookup_failure_reason` takes stderr's first line), the read before
+    // a confirmed npm or uv run (g1's `read_before_run` logs its stderr),
+    // and a source that did not answer (f13b's diagnostic, shown by Show
+    // Error Details and copied by Copy Error Details and Copy Diagnostic
+    // Info).
+    accept_the_settings();
+    let output = RealRunner::without_this_macs_settings()
+        .run(
+            config_files_say(OutputUse::Transcript),
+            None,
+            CancellationToken::new(),
+        )
+        .await
+        .expect("the command runs");
+    assert_eq!(output.exit_code, Some(1));
+    assert_eq!(
+        output.stdout,
+        format!("{}\n", CONFIG_FILES_MASKED[..3].join("\n"))
+    );
+    assert_eq!(
+        output.stderr,
+        format!("{}\n", CONFIG_FILES_MASKED[3..].join("\n"))
+    );
+
+    let result = RealRunner::without_this_macs_settings()
+        .run(
+            config_files_say(OutputUse::Parsed),
+            None,
+            CancellationToken::new(),
+        )
+        .await;
+    let why = banager_core::runner::no_answer::of(&result).expect("a source that did not answer");
+    let diagnostic = why.diagnostic.expect("its diagnostic");
+    assert_no_config_file_secret("the source's diagnostic", &diagnostic);
+    assert_eq!(diagnostic, CONFIG_FILES_MASKED[3..].join("\n"));
 }

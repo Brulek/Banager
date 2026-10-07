@@ -2038,6 +2038,11 @@ fn test_what_we_run_says_a_login_in_a_setting_is_masked_in_what_tools_print() {
         "(`Outcome::Failed`'s `cause`)",
         "a ****word is required",
         "What a check or a source failed with is still read off its masked words",
+        // r25's M1: a login from a tool's own settings file, cut short by a
+        // raw `/`, `?` or `#`, read by the mirror rules (`mask_url_logins`).
+        "a tool's own settings file (`~/.npmrc`, `pip.conf`)",
+        "by the rules a mirror's address is read by above",
+        "`[DEP0170] DeprecationWarning: The URL http://****:****@proxy.corp:8080 is invalid`",
     ] {
         assert!(
             folded.contains(phrase),
