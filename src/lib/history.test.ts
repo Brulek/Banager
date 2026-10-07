@@ -82,8 +82,9 @@ describe("the history's wire shape", () => {
     );
     expect(already.already_updated).toBe("ByEarlierUpdate");
     expect(JSON.parse(JSON.stringify(already))).toEqual(already);
-    const warned: HistoryRecord = JSON.parse(wire.replace('"verified":true}',
-      '"verified":true,"follow_up_warnings":[{"OldVersionsNotCleanedUp":{"name":"cmake","exit_code":1}},{"NoLongerLinked":{"name":"cmake","commands":["cmake"]}}]}'));
+    // Rust writes the warnings after `verified` and before `dismissed`.
+    const warned: HistoryRecord = JSON.parse(wire.replace('"verified":true,',
+      '"verified":true,"follow_up_warnings":[{"OldVersionsNotCleanedUp":{"name":"cmake","exit_code":1}},{"NoLongerLinked":{"name":"cmake","commands":["cmake"]}}],'));
     expect(warned.result).toBe("Succeeded");
     expect(warned.follow_up_warnings).toHaveLength(2);
     expect(JSON.parse(JSON.stringify(warned))).toEqual(warned);

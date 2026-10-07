@@ -1368,7 +1368,10 @@ mod tests {
         }
         let written: serde_json::Value =
             serde_json::from_slice(&std::fs::read(dir.file()).unwrap()).unwrap();
-        assert_eq!(written["format"], 1, "the format stays the same");
+        assert_eq!(
+            written["format"], HISTORY_FORMAT,
+            "written in the current format, as every write is"
+        );
         let records = written["records"].as_array().unwrap();
         let by_name = |name: &str| {
             records
@@ -1384,11 +1387,11 @@ mod tests {
                 {"NoLongerLinked": {"name": "node@22", "commands": ["node", "npm"]}}
             ])
         );
-        // The older record is written back as it was: no new key.
-        assert_eq!(
-            by_name("jq"),
-            serde_json::from_str::<serde_json::Value>(earlier).unwrap()
-        );
+        // The older record is written back as it was but for Clear's
+        // `dismissed`, which every record now carries: no warnings key.
+        let mut as_it_was = serde_json::from_str::<serde_json::Value>(earlier).unwrap();
+        as_it_was["dismissed"] = serde_json::json!(false);
+        assert_eq!(by_name("jq"), as_it_was);
         let reopened = HistoryStore::open_with_clock(dir.file(), || NOW);
         let view = reopened.view();
         let node = view
