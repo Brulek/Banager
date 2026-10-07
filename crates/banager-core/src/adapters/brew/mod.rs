@@ -5581,8 +5581,13 @@ mod plan_execute_tests {
         let mut adapter = BrewAdapter::new(runner.clone())
             .with_recorded_uninstall_fn(cask_receipt::read_recorded);
         adapter.inspect_cask_links = true;
+        // Its own brew, so that what the run reads again before the
+        // uninstall (`require_uninstall_as_previewed`, from the program's
+        // prefix) is this Caskroom too, never the Mac's own Homebrew.
+        let brew = prefix.0.join("bin/brew");
         let inst = ManagerInstance {
             prefix: prefix.0.clone(),
+            exe_path: brew.clone(),
             ..test_instance()
         };
         assert_eq!(
@@ -5595,7 +5600,7 @@ mod plan_execute_tests {
         }));
         // The mock runner answers the uninstall: nothing real runs.
         let uninstall = vec![
-            "/opt/homebrew/bin/brew",
+            brew.to_str().unwrap(),
             "uninstall",
             "--cask",
             "google-chrome",
