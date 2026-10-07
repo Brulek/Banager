@@ -392,21 +392,19 @@ impl NpmAdapter {
                 Duration::from_secs(60),
             )
             .await?;
-        // `npm ls -g --depth=0 --json` can exit 1 for non-fatal peer
-        // mismatches, but only a valid tree makes that a usable inventory.
+        // `npm ls -g --depth=0 --json` exits 1 for problems it found in a
+        // tree it did read (`ELSPROBLEMS`: the packages, then `problems`
+        // and an `error` merged in), and for an error with no errno -- with
+        // no tree at all. Only the first is a list; the reason for anything
+        // else is stderr's, which the runner masks, never stdout's, which
+        // it does not (`CommandOutput::stdout`).
         if output.exit_code != Some(0) && output.exit_code != Some(1) {
             return Err(AdapterError::CommandFailed {
                 code: output.exit_code,
-                stderr: if output.stderr.trim().is_empty() {
-                    output.stdout
-                } else {
-                    output.stderr
-                },
+                stderr: output.stderr,
             });
         }
         let parsed = parse_ls_global(&output.stdout, &inst.id);
-        // Exit 1 is useful only with an actual dependency tree. Error-only
-        // JSON, invalid JSON and stderr-only failures are not an empty list.
         if output.exit_code == Some(1) {
             let has_tree = serde_json::from_str::<serde_json::Value>(&output.stdout)
                 .ok()
@@ -414,11 +412,7 @@ impl NpmAdapter {
             if parsed.is_err() || !has_tree {
                 return Err(AdapterError::CommandFailed {
                     code: output.exit_code,
-                    stderr: if output.stderr.trim().is_empty() {
-                        output.stdout
-                    } else {
-                        output.stderr
-                    },
+                    stderr: output.stderr,
                 });
             }
         }
@@ -696,9 +690,25 @@ pub(crate) fn parse_ls_global(
 ) -> Result<Vec<InstalledArtifact>, crate::adapters::AdapterError> {
     let root: LsGlobalRoot = serde_json::from_str(json)
         .map_err(|e| crate::adapters::AdapterError::Parse(e.to_string()))?;
+    // Only an `error` and no tree: npm could not read its packages, which
+    // is not "none installed". Named by npm's code alone (`ENOTDIR`), and
+    // only when it is one: the rest is stdout as npm wrote it, with no
+    // login masked out of it (`CommandOutput::stdout`).
     if root.dependencies.is_none() {
         if let Some(error) = root.error {
-            return Err(AdapterError::Parse(error.to_string()));
+            let code = error
+                .get("code")
+                .and_then(|code| code.as_str())
+                .filter(|code| {
+                    (1..=32).contains(&code.len())
+                        && code
+                            .chars()
+                            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
+                });
+            return Err(AdapterError::Parse(match code {
+                Some(code) => format!("npm answered with its error {code}, not its packages"),
+                None => "npm answered with an error, not its packages".to_string(),
+            }));
         }
     }
     let mut out: Vec<InstalledArtifact> = root
@@ -1521,77 +1531,150 @@ mod tests {
         );
     }
 
+    /// `npm ls -g --depth=0 --json`'s run, answered with `stdout`,
+    /// `stderr` and exit `code`.
+    fn ls_global_answering(code: i32, stdout: &str, stderr: &str) -> Arc<MockRunner> {
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec!["/opt/homebrew/bin/npm", "ls", "-g", "--depth=0", "--json"],
+            CommandOutput {
+                stderr_cause: Default::default(),
+                exit_code: Some(code),
+                stdout: stdout.into(),
+                stderr: stderr.into(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        runner
+    }
+
+    /// As npm 10.9.9 answered `npm ls -g --depth=0 --json` with a prefix
+    /// whose `lib` it could not look into (recorded 2026-10-07, the path
+    /// shortened): exit 236 (errno -20), only an `error` object on stdout,
+    /// and the same said on stderr.
+    const LS_ENOTDIR_STDOUT: &str = r#"{
+  "error": {
+    "code": "ENOTDIR",
+    "summary": "ENOTDIR: not a directory, lstat '/Users/me/prefix/lib'",
+    "detail": ""
+  }
+}"#;
+    const LS_ENOTDIR_STDERR: &str = "npm error code ENOTDIR\n\
+        npm error syscall lstat\n\
+        npm error path /Users/me/prefix/lib\n\
+        npm error errno -20\n\
+        npm error ENOTDIR: not a directory, lstat '/Users/me/prefix/lib'\n";
+
     #[tokio::test]
-    async fn test_f20_inventory_error_without_a_tree_is_a_failure_with_its_reason() {
-        for (code, stdout, stderr) in [
-            (
-                1,
-                r#"{"error":{"code":"EACCES","summary":"permission denied"}}"#,
-                "",
-            ),
-            (1, "", "npm error EACCES permission denied"),
-            (1, "not json", "npm error EACCES permission denied"),
-            (1, "{}", "npm error EACCES permission denied"),
-            (1, r#"{"dependencies":[]}"#, "npm error permission denied"),
-            (2, r#"{"error":{"summary":"permission denied"}}"#, ""),
+    async fn test_inventory_without_a_package_tree_is_a_failed_reading_with_npms_stderr() {
+        for (code, stdout) in [
+            (236, LS_ENOTDIR_STDOUT),
+            // npm exits 1 for an error with no errno.
+            (1, LS_ENOTDIR_STDOUT),
+            (1, ""),
+            (1, "not json"),
+            // npm's own answer for a prefix with nothing in it, but on exit 1.
+            (1, r#"{"name":"lib"}"#),
+            (1, r#"{"name":"lib","dependencies":[]}"#),
         ] {
-            let runner = Arc::new(MockRunner::new());
-            runner.respond(
-                vec!["/opt/homebrew/bin/npm", "ls", "-g", "--depth=0", "--json"],
-                CommandOutput {
-                    stderr_cause: Default::default(),
-                    exit_code: Some(code),
-                    stdout: stdout.into(),
-                    stderr: stderr.into(),
-                    timed_out: false,
-                    cancelled: false,
-                },
-            );
+            let runner = ls_global_answering(code, stdout, LS_ENOTDIR_STDERR);
             let result = NpmAdapter::new(runner).inventory(&test_instance()).await;
             assert!(
-                matches!(&result, Err(AdapterError::CommandFailed { code: Some(actual), stderr }) if *actual == code && stderr.contains("permission denied")),
+                matches!(&result, Err(AdapterError::CommandFailed { code: Some(actual), stderr })
+                    if *actual == code && stderr.starts_with("npm error code ENOTDIR")),
+                "exit {code}, stdout {stdout:?}: {result:?}"
+            );
+        }
+    }
+
+    /// stdout is the runner's as npm wrote it (`OutputUse::Parsed`): no
+    /// proxy login is masked out of it, as one is out of stderr
+    /// (`CommandOutput::stdout`, runner/redact.rs). npm says a proxy's
+    /// login back when it cannot read it (``Invalid protocol `user:` ``).
+    #[tokio::test]
+    async fn test_a_failed_readings_reason_is_never_read_off_stdout() {
+        let stdout = r#"{"error":{"code":"EINVALIDPROXY","summary":"Invalid protocol `ada:` in ada:hunter22@proxy.example:8080","detail":""}}"#;
+        for code in [1, 236] {
+            let runner = ls_global_answering(code, stdout, "");
+            let result = NpmAdapter::new(runner).inventory(&test_instance()).await;
+            assert!(
+                matches!(&result, Err(AdapterError::CommandFailed { code: Some(actual), .. }) if *actual == code),
                 "{result:?}"
+            );
+            let said = result.unwrap_err().to_string();
+            assert!(
+                !said.contains("hunter22") && !said.contains("ada"),
+                "{said}"
             );
         }
     }
 
     #[tokio::test]
-    async fn test_f20_inventory_keeps_valid_empty_and_nonfatal_trees() {
+    async fn test_inventory_reads_an_empty_prefix_and_a_tree_npm_found_problems_in() {
+        // The tree npm writes when `npm ls` finds problems (npm 10.9.9,
+        // recorded 2026-10-07 from a project; a global tree is the same
+        // shape): the packages, `problems`, and an `error` merged in.
+        let with_problems = r#"{
+  "name": "lib",
+  "problems": ["invalid: tool@1.0.0 /opt/homebrew/lib/node_modules/tool"],
+  "dependencies": {
+    "npm": {"version": "10.9.9", "overridden": false},
+    "tool": {
+      "version": "1.0.0",
+      "overridden": false,
+      "invalid": "\"^2.0.0\" from the root project",
+      "problems": ["invalid: tool@1.0.0 /opt/homebrew/lib/node_modules/tool"]
+    }
+  },
+  "error": {
+    "code": "ELSPROBLEMS",
+    "summary": "invalid: tool@1.0.0 /opt/homebrew/lib/node_modules/tool",
+    "detail": ""
+  }
+}"#;
         for (code, stdout, count) in [
+            // npm 10.9.9's answer for a global prefix with nothing in it.
+            (0, r#"{"name":"lib"}"#, 0),
             (0, "{}", 0),
-            (0, r#"{"dependencies":{}}"#, 0),
-            (1, r#"{"dependencies":{},"problems":["peer mismatch"]}"#, 0),
-            (
-                1,
-                r#"{"dependencies":{"tool":{"version":"1.0"}},"error":{"code":"ELSPROBLEMS"}}"#,
-                1,
-            ),
+            (0, r#"{"name":"lib","dependencies":{}}"#, 0),
+            (1, r#"{"name":"lib","dependencies":{}}"#, 0),
+            (1, with_problems, 2),
         ] {
-            let runner = Arc::new(MockRunner::new());
-            runner.respond(
-                vec!["/opt/homebrew/bin/npm", "ls", "-g", "--depth=0", "--json"],
-                CommandOutput {
-                    stderr_cause: Default::default(),
-                    exit_code: Some(code),
-                    stdout: stdout.into(),
-                    stderr: "peer mismatch".into(),
-                    timed_out: false,
-                    cancelled: false,
-                },
-            );
+            let runner = ls_global_answering(code, stdout, "npm error code ELSPROBLEMS\n");
             let artifacts = NpmAdapter::new(runner)
                 .inventory(&test_instance())
                 .await
-                .unwrap();
-            assert_eq!(artifacts.len(), count);
+                .unwrap_or_else(|e| panic!("exit {code}, stdout {stdout:?}: {e}"));
+            assert_eq!(artifacts.len(), count, "exit {code}, stdout {stdout:?}");
         }
     }
 
     #[test]
-    fn test_f20_error_only_json_is_not_an_empty_inventory_even_on_exit_zero() {
-        let result = parse_ls_global(r#"{"error":{"summary":"permission denied"}}"#, "npm:prefix");
+    fn test_an_error_only_answer_on_exit_zero_is_no_reading_and_names_only_npms_code() {
+        let result = parse_ls_global(
+            r#"{"error":{"code":"EINVALIDPROXY","summary":"Invalid protocol `ada:` in ada:hunter22@proxy.example:8080"}}"#,
+            "npm:prefix",
+        );
+        let Err(AdapterError::Parse(reason)) = result else {
+            panic!("an error-only answer is not an empty list: {result:?}");
+        };
+        assert!(reason.contains("EINVALIDPROXY"), "{reason}");
         assert!(
-            matches!(result, Err(AdapterError::Parse(reason)) if reason.contains("permission denied"))
+            !reason.contains("hunter22") && !reason.contains("ada"),
+            "{reason}"
+        );
+        // A code that is not one of npm's names is not said at all.
+        let result = parse_ls_global(
+            r#"{"error":{"code":"ada:hunter22@proxy.example","summary":""}}"#,
+            "npm:prefix",
+        );
+        let Err(AdapterError::Parse(reason)) = result else {
+            panic!("an error-only answer is not an empty list: {result:?}");
+        };
+        assert!(
+            !reason.contains("hunter22") && !reason.contains("ada"),
+            "{reason}"
         );
     }
 
