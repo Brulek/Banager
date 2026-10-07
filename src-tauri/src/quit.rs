@@ -5,7 +5,9 @@
 //! bar's 「全部取消」 does (`Session::cancel`): one still queued never
 //! starts, and a running command is stopped partway, which can leave the
 //! tool it was updating or uninstalling half done. Banager waits for those
-//! commands to stop, `STOP_WITHIN` at the most, then quits (`quit_now`).
+//! commands to stop, and for its reading back of what each did, which
+//! keeps the operation's history record, `STOP_WITHIN` at the most, then
+//! quits (`quit_now`).
 //! A running operation that cannot be cancelled -- rustup's self update or
 //! self uninstall (`operations.noCancelHint`) -- is not stopped: its command
 //! runs on without Banager (`quit_now` says what becomes of it).
@@ -16,7 +18,7 @@
 //! answers yes and Banager quits as it always has. While one is not, the
 //! quit is called off, the window comes back, and the page asks
 //! (src/components/QuitQuestion.tsx): 「还有N个操作未完成」, with
-//! 「取消」, which leaves Banager running, and 「退出」, which quits
+//! 「继续等待」, which leaves Banager running, and 「退出」, which quits
 //! (`quit_anyway`).
 //!
 //! A quit is called off only while the page is there to ask: one that
@@ -84,12 +86,14 @@ pub const QUIT_REQUESTED_EVENT: &str = "quit://requested";
 pub const SHOW_WITHIN: Duration = Duration::from_secs(2);
 
 /// How long a quit waits, once it has cancelled what can be cancelled, for
-/// those commands to stop (`waits_for`) before Banager quits all the same.
-/// Longer than the runner's grace after SIGTERM (`STOP_GRACE`, 5 seconds),
-/// at the end of which it SIGKILLs whatever of a command is left: so every
-/// command a quit cancels has had that SIGKILL sent by the time Banager
-/// quits. A command that honours SIGTERM ends in milliseconds, and Banager
-/// quits as soon as every one has.
+/// those commands to stop and for Banager to read back what each did, so
+/// that its history record is kept (`waits_for`), before Banager quits all
+/// the same. Longer than the runner's grace after SIGTERM (`STOP_GRACE`, 5
+/// seconds), at the end of which it SIGKILLs whatever of a command is
+/// left: so every command a quit cancels has had that SIGKILL sent by the
+/// time Banager quits. A command that honours SIGTERM ends in
+/// milliseconds, the reading after it in a second or so, and Banager quits
+/// as soon as every operation is done.
 pub const STOP_WITHIN: Duration = Duration::from_secs(7);
 
 /// How often a quit that waits for commands to stop looks at them again.
@@ -171,15 +175,26 @@ pub fn cancels(op: &OpSummary) -> bool {
 }
 
 /// Whether a quit waits for `op` before Banager quits: while it may still
-/// start a command (queued), or its command is still being stopped (a
-/// cancel requested, or running and cancellable). `Cancelling`, `Verifying`
-/// and `Done` come once its command has ended (`run_operation`); a running
-/// `NoCancel` one does not end on Banager's account, and is not waited for.
+/// start a command (queued), its command is still being stopped (a cancel
+/// requested, or running and cancellable), or its command has ended and
+/// Banager is reading back what it did (`Cancelling`, `Verifying`): the
+/// operation's history record is kept only once that reading has ended
+/// (`OperationManager::finish`), and the exit writes only the records
+/// kept by then (`history::flush_on_exit`), so a quit that left before
+/// would leave the update or uninstall it stopped, or that had just
+/// finished, out of Update History. That reading is Banager's own and
+/// read-only -- for Homebrew one `brew info --json=v2 --installed`, a
+/// second or so -- and `STOP_WITHIN` bounds the whole wait. `Done` is
+/// over; a running `NoCancel` one does not end on Banager's account, and
+/// is not waited for until its command has ended by itself.
 pub fn waits_for(op: &OpSummary) -> bool {
     match op.status {
-        OpStatus::Queued | OpStatus::CancelRequested => true,
+        OpStatus::Queued
+        | OpStatus::CancelRequested
+        | OpStatus::Cancelling
+        | OpStatus::Verifying => true,
         OpStatus::Running => op.cancel_policy != CancelPolicy::NoCancel,
-        OpStatus::Cancelling | OpStatus::Verifying | OpStatus::Done => false,
+        OpStatus::Done => false,
     }
 }
 
@@ -401,11 +416,12 @@ async fn wait_for_the_page(guard: &QuitGuard, question: u64, within: Duration) -
 /// showed (`quit_unless_shown`). A quit that comes while this runs is called
 /// off, and this goes on (`QuitGuard::stop`). First every operation that can
 /// be cancelled is, as
-/// 「全部取消」 does, and Banager waits for those commands to stop,
-/// `STOP_WITHIN` at the most (`stop_then_quit`); then it quits through
-/// tauri's own `AppHandle::exit`, which asks AppKit nothing and ends in
-/// `RunEvent::Exit` as a quit from the menu does, the window's size and
-/// place saved with it.
+/// 「全部取消」 does, and Banager waits for those commands to stop and for
+/// its reading back of what each did, `STOP_WITHIN` at the most
+/// (`stop_operations`); then it quits through tauri's own `AppHandle::exit`,
+/// which asks AppKit nothing and ends in `RunEvent::Exit` as a quit from
+/// the menu does, the window's size and place saved with it, and the
+/// history's last records written (`history::flush_on_exit`).
 ///
 /// That exit is tao's `process::exit`: nothing still running in Banager
 /// gets to clean up, and the runner's `GroupedChild`, which SIGKILLs its
@@ -420,20 +436,25 @@ async fn wait_for_the_page(guard: &QuitGuard, question: u64, within: Duration) -
 async fn quit_now<R: Runtime>(app: &AppHandle<R>) {
     app.state::<QuitGuard>().stop();
     if let Some(state) = app.try_state::<AppState>() {
-        let session = &state.session;
-        stop_then_quit(
-            || session.operations(),
-            |id| {
-                // Refused only for a running `NoCancel` one, which `cancels`
-                // does not pick, or one that has just ended: nothing to do.
-                let _ = session.cancel(id);
-            },
-            STOP_WITHIN,
-            || (),
-        )
-        .await;
+        stop_operations(&state.session, STOP_WITHIN).await;
     }
     app.exit(0);
+}
+
+/// `quit_now`'s part on the session: `stop_then_quit` over its operations,
+/// cancelling with `Session::cancel`, `within` at the most.
+async fn stop_operations(session: &banager_core::session::Session, within: Duration) {
+    stop_then_quit(
+        || session.operations(),
+        |id| {
+            // Refused only for a running `NoCancel` one, which `cancels`
+            // does not pick, or one that has just ended: nothing to do.
+            let _ = session.cancel(id);
+        },
+        within,
+        || (),
+    )
+    .await;
 }
 
 /// Whether the page listens for `QUIT_REQUESTED_EVENT` and answers it
@@ -659,7 +680,7 @@ mod tests {
     }
 
     #[test]
-    fn test_a_quit_waits_for_what_may_still_start_or_is_still_being_stopped() {
+    fn test_a_quit_waits_for_what_may_still_start_is_being_stopped_or_is_being_read_back() {
         use CancelPolicy::{KillThenReconcile as Kill, NoCancel};
         let waits = |status, policy| waits_for(&op_with(1, status, policy));
         assert!(waits(OpStatus::Queued, Kill));
@@ -673,8 +694,14 @@ mod tests {
             !waits(OpStatus::Running, NoCancel),
             "it does not end on Banager's account"
         );
-        for status in [OpStatus::Cancelling, OpStatus::Verifying, OpStatus::Done] {
-            assert!(!waits(status, Kill), "{status:?}: its command has ended");
+        for policy in [Kill, NoCancel] {
+            for status in [OpStatus::Cancelling, OpStatus::Verifying] {
+                assert!(
+                    waits(status, policy),
+                    "{status:?}, {policy:?}: its command has ended, and its record comes once Banager has read back what it did"
+                );
+            }
+            assert!(!waits(OpStatus::Done, policy), "{policy:?}: over");
         }
     }
 
@@ -744,6 +771,14 @@ mod tests {
         // The runner stops 1; 2 ends without starting.
         fake.set(1, OpStatus::Verifying);
         fake.set(2, OpStatus::Done);
+        assert!(
+            tokio::time::timeout(Duration::from_millis(60), quitting.as_mut())
+                .await
+                .is_err(),
+            "it waits while Banager reads back what 1's command did"
+        );
+        assert_eq!(*fake.done.borrow(), ["cancel 1", "cancel 2"]);
+        fake.set(1, OpStatus::Done);
         quitting.await;
         assert_eq!(
             *fake.done.borrow(),
@@ -757,7 +792,6 @@ mod tests {
     async fn test_a_quit_with_nothing_to_stop_quits_at_once() {
         let fake = Fake::new(vec![
             op(1, OpStatus::Done),
-            op(2, OpStatus::Verifying),
             op_with(3, OpStatus::Running, CancelPolicy::NoCancel),
         ]);
         let quit = std::cell::Cell::new(false);
@@ -778,7 +812,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_a_quit_quits_once_the_wait_is_over_though_a_command_has_not_stopped() {
-        let fake = Fake::new(vec![op(1, OpStatus::Running)]);
+        // 2's reading back has not ended either: the same wait bounds it.
+        let fake = Fake::new(vec![op(1, OpStatus::Running), op(2, OpStatus::Verifying)]);
         let within = Duration::from_millis(50);
         let started = std::time::Instant::now();
         let quit = std::cell::Cell::new(false);
@@ -1154,5 +1189,278 @@ mod tests {
             "a panic quits, and does not unwind into AppKit"
         );
         *DECIDE.lock().unwrap() = None;
+    }
+}
+
+/// What a quit leaves in the history file (r38 S1): `quit_now`'s own wait
+/// (`stop_operations`) and the exit's write (`history::flush_on_exit`), over
+/// a real `Session` with the real `HistoryStore` in an app-data folder of the
+/// test's own. The adapter is a fake: nothing runs, and no folder of this
+/// Mac is read.
+#[cfg(test)]
+mod history_at_quit_tests {
+    use super::*;
+    use crate::events::ChannelSink;
+    use async_trait::async_trait;
+    use banager_core::adapters::{Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome};
+    use banager_core::events::{EventSink, OpId};
+    use banager_core::model::{
+        ArtifactKey, ArtifactKind, InstalledArtifact, ManagerInstance, OpKind, OpRequest, Outcome,
+        Plan, PlanAction, Reconciled, ResourceLock, SearchHit, UpdateCandidate, UpdateChannel,
+    };
+    use banager_core::runner::HostEnv;
+    use banager_core::session::Session;
+    use banager_core::settings::Settings;
+    use std::path::{Path, PathBuf};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Arc, Mutex};
+    use tokio_util::sync::CancellationToken;
+
+    /// How long the fake's reading after the command takes: Homebrew's
+    /// `brew info --json=v2 --installed` takes a second or so on an
+    /// ordinary Mac; shorter here, and still far longer than a quit that
+    /// does not wait for it takes to leave.
+    const READ_BACK: Duration = Duration::from_millis(400);
+
+    /// One source offering jq 1.0 → 1.1. Its update's command exits 0 at
+    /// once, or, when `runs_until_cancelled`, runs until the quit cancels
+    /// it, answering as `run_plan` answers a command stopped partway
+    /// (`Unconfirmed`). Its reading before the command answers at once;
+    /// the one after takes `READ_BACK`.
+    struct ReadsBack {
+        meta: AdapterMeta,
+        runs_until_cancelled: bool,
+        readings: AtomicUsize,
+    }
+
+    #[async_trait]
+    impl Adapter for ReadsBack {
+        fn meta(&self) -> &AdapterMeta {
+            &self.meta
+        }
+
+        async fn detect(&self, _env: &HostEnv) -> Vec<ManagerInstance> {
+            vec![banager_core::testing::manager_instance(
+                "readsback",
+                "readsback:1",
+            )]
+        }
+
+        async fn inventory(
+            &self,
+            inst: &ManagerInstance,
+        ) -> Result<Vec<InstalledArtifact>, AdapterError> {
+            Ok(vec![banager_core::testing::installed_artifact(
+                &inst.id,
+                ArtifactKind::Formula,
+                "jq",
+            )])
+        }
+
+        async fn check_updates(
+            &self,
+            inst: &ManagerInstance,
+            _opts: &CheckOptions,
+        ) -> Result<CheckOutcome, AdapterError> {
+            Ok(CheckOutcome {
+                candidates: vec![UpdateCandidate {
+                    key: ArtifactKey {
+                        instance_id: inst.id.clone(),
+                        kind: ArtifactKind::Formula,
+                        name: "jq".to_string(),
+                    },
+                    current: "1.0".to_string(),
+                    target: "1.1".to_string(),
+                    channel: UpdateChannel::Native,
+                    checkable: true,
+                    warnings: Vec::new(),
+                    blocked: None,
+                    download_bytes: None,
+                }],
+                ..CheckOutcome::default()
+            })
+        }
+
+        async fn search(
+            &self,
+            _inst: &ManagerInstance,
+            _query: &str,
+        ) -> Result<Vec<SearchHit>, AdapterError> {
+            Ok(Vec::new())
+        }
+
+        async fn plan(
+            &self,
+            inst: &ManagerInstance,
+            req: &OpRequest,
+        ) -> Result<Plan, AdapterError> {
+            Ok(Plan {
+                request: req.clone(),
+                action: PlanAction::Command {
+                    program: inst.exe_path.clone(),
+                    args: vec!["upgrade".to_string(), req.name.clone()],
+                    env: vec![],
+                },
+                needs_password: false,
+                locks: vec![ResourceLock(inst.id.clone())],
+                cancel_policy: CancelPolicy::KillThenReconcile,
+                warnings: vec![],
+                affected: vec![],
+                basis: None,
+                timeout_secs: 60,
+            })
+        }
+
+        async fn execute(
+            &self,
+            _plan: &Plan,
+            _sink: Arc<dyn EventSink>,
+            _op_id: OpId,
+            cancel: CancellationToken,
+        ) -> Result<Outcome, AdapterError> {
+            if self.runs_until_cancelled {
+                cancel.cancelled().await;
+                return Ok(Outcome::Unconfirmed);
+            }
+            Ok(Outcome::Succeeded)
+        }
+
+        async fn reconcile(
+            &self,
+            _inst: &ManagerInstance,
+            _key: &ArtifactKey,
+        ) -> Result<Reconciled, AdapterError> {
+            let after = self.readings.fetch_add(1, Ordering::SeqCst) > 0;
+            if after {
+                tokio::time::sleep(READ_BACK).await;
+            }
+            let updated = after && !self.runs_until_cancelled;
+            Ok(Reconciled {
+                present: true,
+                version: Some(if updated { "1.1" } else { "1.0" }.to_string()),
+            })
+        }
+    }
+
+    fn app_data_dir(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "banager-quit-history-{tag}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// Each record in `dir`'s history file as "name result", or none when
+    /// there is no file.
+    fn records_in(dir: &Path) -> Option<Vec<String>> {
+        let bytes = std::fs::read(dir.join(crate::history::HISTORY_FILE)).ok()?;
+        let file: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        Some(
+            file["records"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|r| {
+                    format!(
+                        "{} {}",
+                        r["key"]["name"].as_str().unwrap(),
+                        r["result"].as_str().unwrap()
+                    )
+                })
+                .collect(),
+        )
+    }
+
+    /// Starts jq's update on a session with the history attached in `dir`,
+    /// waits until it is `at` -- where it is when the person answers
+    /// 「退出」 -- then quits as `quit_now` does and exits as
+    /// `RunEvent::Exit` does; hands back what the history file holds then.
+    async fn quit_with_the_update(
+        dir: &Path,
+        runs_until_cancelled: bool,
+        at: OpStatus,
+    ) -> Vec<String> {
+        let adapter: Arc<dyn Adapter> = Arc::new(ReadsBack {
+            meta: AdapterMeta {
+                id: "readsback".to_string(),
+                name: "readsback".to_string(),
+                kind: "fake".to_string(),
+                platforms: vec!["macos".to_string()],
+                homepage: "https://example.invalid".to_string(),
+                schema_version: 1,
+                verified_versions: vec![],
+            },
+            runs_until_cancelled,
+            readings: AtomicUsize::new(0),
+        });
+        let sink = ChannelSink::new();
+        let state = AppState {
+            session: Session::with_adapters(sink.clone(), vec![adapter], None),
+            settings_path: dir.join("settings.json"),
+            settings: Mutex::new(Settings::default()),
+            channel_sink: sink,
+            last_broadcast_generation: std::sync::atomic::AtomicU64::new(0),
+            rounds: Mutex::new(Default::default()),
+            notified: Mutex::new(Default::default()),
+            login_path: std::sync::OnceLock::new(),
+        };
+        crate::history::attach(&state, dir);
+        let session = &state.session;
+        session
+            .refresh(&crate::state::test_round_env(), &CheckOptions::default())
+            .await;
+        let issued = session
+            .issue_plan(&OpRequest {
+                kind: OpKind::Upgrade,
+                instance_id: "readsback:1".to_string(),
+                artifact_kind: ArtifactKind::Formula,
+                name: "jq".to_string(),
+            })
+            .await
+            .expect("planned");
+        session.submit(issued.id).expect("submitted");
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while !session.operations().iter().any(|op| op.status == at) {
+            assert!(std::time::Instant::now() < deadline, "never {at:?}");
+            tokio::time::sleep(Duration::from_millis(2)).await;
+        }
+
+        stop_operations(session, STOP_WITHIN).await;
+        assert_eq!(
+            unfinished(&session.operations()),
+            0,
+            "the quit left once the update was done"
+        );
+        crate::history::flush_on_exit(&state);
+        records_in(dir).unwrap_or_default()
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_a_quit_while_an_update_checks_its_result_keeps_its_record() {
+        let dir = app_data_dir("verifying");
+        let records = quit_with_the_update(&dir, false, OpStatus::Verifying).await;
+        assert_eq!(
+            records,
+            ["jq Succeeded"],
+            "the update whose command had exited 0 is in Update History after the restart"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_a_quit_that_stops_a_running_update_keeps_its_record() {
+        let dir = app_data_dir("running");
+        let records = quit_with_the_update(&dir, true, OpStatus::Running).await;
+        assert_eq!(
+            records,
+            ["jq Unconfirmed"],
+            "the update the quit stopped partway is in Update History, its result not confirmed"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

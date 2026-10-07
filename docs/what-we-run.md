@@ -695,9 +695,14 @@ showed — first cancels every operation that can be cancelled, as the
 operation bar's *Stop All* does: one still queued never runs, and a
 running command gets SIGTERM, then SIGKILL 5 seconds later for whatever
 of it is left, which can leave the tool it was updating or uninstalling
-half done. Banager quits once those commands have stopped, 7 seconds
-after *Quit* at the most (`quit_now` in `src-tauri/src/quit.rs`);
-another quit meanwhile — ⌘Q, the Dock's Quit, a logout — is called off,
+half done. Banager quits once those commands have stopped and it has
+read back what each did — its own read-only reading that ends every
+update or uninstall, after which the operation's record is kept in
+`history.json` (Files Banager writes, below) — 7 seconds after *Quit* at
+the most (`quit_now` and `waits_for` in `src-tauri/src/quit.rs`); an
+operation already checking its result when *Quit* is chosen is waited
+for the same way, so Update History lists it after the next launch.
+Another quit meanwhile — ⌘Q, the Dock's Quit, a logout — is called off,
 and does not cut that wait short.
 A running operation that cannot be cancelled — rustup's self update or
 self uninstall — is not stopped: Banager sends it no signal, and it runs
