@@ -181,7 +181,32 @@ pub fn needed_by(
     env: &HostEnv,
     budget: Budget,
 ) -> NeededBy {
+    needed_by_on_path(package, brew, instances, artifacts, env, true, budget)
+}
+
+/// `needed_by`, for sources a refresh looked for along `env`'s `PATH`,
+/// which `path_known` says was the login shell's or not
+/// (`Session::refresh_recording_on`). Every kind of source in `HOSTED` is
+/// found only on `PATH` (`resolve_exe`), so on a `PATH` that was not the
+/// login shell's -- Finder's four folders, when reading it failed -- one
+/// that runs on the package may simply not have been found: `instances`
+/// is then no list of what runs on it. Such a look is in doubt about every
+/// kind of source (`unseen_sources`), and does not finish when the package
+/// could be what one of them runs on (`Look::could_be`): a `node`, a
+/// Python, uv, Ollama. jq could not, and its preview says nothing of it.
+pub fn needed_by_on_path(
+    package: &InstalledArtifact,
+    brew: &ManagerInstance,
+    instances: &[ManagerInstance],
+    artifacts: &[InstalledArtifact],
+    env: &HostEnv,
+    path_known: bool,
+    budget: Budget,
+) -> NeededBy {
     let mut look = Look::new(&env.home, budget);
+    if !path_known {
+        look.doubts.extend(unseen_sources());
+    }
     let Some(roots) = own_folders(package, brew, &mut look) else {
         return NeededBy {
             warnings: Vec::new(),
@@ -388,6 +413,33 @@ impl Doubt {
         }
         doubts
     }
+}
+
+/// The name each kind of source in `HOSTED` is found by on `PATH`
+/// (`resolve_exe` in each adapter's `detect`; pip's is any of its
+/// candidate Pythons, a Python whatever it is called).
+const FOUND_AS: [(&str, &str); 6] = [
+    ("npm", "npm"),
+    ("pip", "python3"),
+    ("pipx", "pipx"),
+    ("uv", "uv"),
+    ("cargo", "cargo"),
+    ("ollama", "ollama"),
+];
+
+/// The doubts about sources a refresh could not have found
+/// (`needed_by_on_path`): each kind's program as it is found on `PATH`,
+/// with npm's `node` (`Doubt::of_program`), and a Python for the
+/// environments of pipx's and uv's tools.
+fn unseen_sources() -> Vec<Doubt> {
+    let mut doubts = Vec::new();
+    for (adapter_id, name) in FOUND_AS {
+        doubts.extend(Doubt::of_program(adapter_id, Path::new(name)));
+        if has_environments(adapter_id) {
+            doubts.push(Doubt::Python);
+        }
+    }
+    doubts
 }
 
 /// Whether `name` is a Python interpreter's: `python`, `pypy` or `graalpy`
@@ -729,6 +781,22 @@ impl Look {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_a_path_not_the_login_shells_doubts_every_kind_of_source() {
+        // One name for each kind `HOSTED` lists, in its order, so a kind
+        // added there cannot be left out of the doubt (`unseen_sources`).
+        assert_eq!(FOUND_AS.map(|(adapter_id, _)| adapter_id), HOSTED);
+        let doubts = unseen_sources();
+        for program in ["npm", "node", "pipx", "uv", "cargo", "ollama"] {
+            assert!(
+                doubts.contains(&Doubt::Program(program.to_string())),
+                "{program}"
+            );
+        }
+        assert!(doubts.contains(&Doubt::Python));
+        assert!(!doubts.contains(&Doubt::Anything));
+    }
     use crate::model::{InstanceStatus, Scope};
     use std::os::unix::fs::{symlink, PermissionsExt};
 

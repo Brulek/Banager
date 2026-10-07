@@ -215,7 +215,7 @@ impl Session {
         // of their own from here, outside the snapshot (`sizes.rs`).
         self.measure_sizes(round, &snapshot, env);
         self.note_kept_data_home(&env.home);
-        self.note_needed_by_env(env);
+        self.note_needed_by_env(env, path_known);
         (round, snapshot)
     }
 

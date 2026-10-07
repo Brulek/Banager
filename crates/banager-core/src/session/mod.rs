@@ -387,9 +387,10 @@ pub struct Session {
     kept_data_home: Mutex<Option<std::path::PathBuf>>,
     /// The `PATH` and home folder the last refresh read, which a Homebrew
     /// uninstall's preview looks with for the sources that run on the
-    /// package (`needed_by.rs`); `None` before the first refresh, and always
-    /// in a session that does not measure sizes.
-    needed_by_env: Mutex<Option<crate::runner::HostEnv>>,
+    /// package (`needed_by.rs`), and whether that `PATH` was the login
+    /// shell's (the round's `path_known`); `None` before the first refresh,
+    /// and always in a session that does not measure sizes.
+    needed_by_env: Mutex<Option<(crate::runner::HostEnv, bool)>>,
     /// Where each finished update and uninstall is kept across launches
     /// (`attach_history`), or nothing: the shell attaches the one in
     /// Banager's application data directory as it starts; tests attach

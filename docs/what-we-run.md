@@ -4582,6 +4582,23 @@ cask's own app that cannot be followed leaves that cask's look
 unfinished, whatever met it. A path that is not there at all is known
 not to run on any package.
 
+Every one of those sources is found only along `PATH`. After a refresh
+whose `PATH` was not the login shell's -- reading it failed, and the
+round ran on the minimal `PATH` an app opened from Finder starts with,
+in which no Homebrew's or home folder's npm, pip, pipx, uv, Cargo or
+Ollama is found -- the sources that refresh listed are
+no list of what runs on a package. So the look is then in doubt about
+every one of those kinds of source, by the program each is found as
+(`npm` with its `node`, a Python, `pipx`, `uv`, `cargo`, `ollama`; and a
+Python for pipx's and uv's tools), and judges them as above
+(`needed_by::needed_by_on_path`, told by `Session::note_needed_by_env`
+whether the round's `PATH` was the login shell's): a `node`, `node@22`,
+a `python@3.N`, `uv` or Ollama's preview says it could not check, and
+jq's says nothing of it. It names only what it did find, and does not
+refuse the uninstall. A refresh on the login shell's `PATH` looks for
+those sources again, and a preview confirmed after such a refresh listed
+a source's tool the preview never looked at is spent, as above.
+
 ## Diagnostic info: read-only, no command runs
 
 Settings' Diagnostics group (「诊断」) has Copy Diagnostic Info (「拷贝诊断信息」); the Help menu's

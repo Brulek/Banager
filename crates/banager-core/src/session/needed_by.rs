@@ -161,39 +161,46 @@ pub(super) fn names_a_source(plan: &Plan) -> bool {
 impl Session {
     /// Remembers the `PATH` and home folder the last refresh read, which
     /// `with_needed_by` looks with: which `node` npm is run with, and the
-    /// places never looked into. Only for a session that looks at the disk
-    /// (`Session::new`, `with_adapters_and_sizes`), as with the data an
-    /// uninstall leaves behind, so a test refreshing a fake source never
-    /// has the links on its paths followed.
-    pub(super) fn note_needed_by_env(&self, env: &HostEnv) {
+    /// places never looked into. And whether that `PATH` was the login
+    /// shell's (`path_known`, the round's own): the sources that run on a
+    /// package are found only along `PATH`, so a round on Finder's few
+    /// folders may have found none of them (`needed_by::needed_by_on_path`).
+    /// Only for a session that looks at the disk (`Session::new`,
+    /// `with_adapters_and_sizes`), as with the data an uninstall leaves
+    /// behind, so a test refreshing a fake source never has the links on
+    /// its paths followed.
+    pub(super) fn note_needed_by_env(&self, env: &HostEnv, path_known: bool) {
         if self.sizes.is_some() {
-            *self.needed_by_env.lock().unwrap() = Some(env.clone());
+            *self.needed_by_env.lock().unwrap() = Some((env.clone(), path_known));
         }
     }
 
     /// `plan`, with a `Warning::NeededBySource` after its own warnings for
-    /// each source that runs on `subject`'s package (`needed_by::needed_by`,
-    /// on a blocking thread, within `needed_by::BUDGET`), and with
-    /// `Warning::DependentsUnknown` when that look did not finish -- or did
-    /// not come back within `GRACE` of its budget -- and the plan does not
-    /// say it already. `plan` as it is with no subject, and before any
-    /// refresh.
+    /// each source that runs on `subject`'s package
+    /// (`needed_by::needed_by_on_path`, on a blocking thread, within
+    /// `needed_by::BUDGET`), and with `Warning::DependentsUnknown` when that
+    /// look did not finish -- or did not come back within `GRACE` of its
+    /// budget -- and the plan does not say it already. A look after a round
+    /// whose `PATH` was not the login shell's does not finish for a package
+    /// a source it could not have found may run on. `plan` as it is with
+    /// no subject, and before any refresh.
     pub(super) async fn with_needed_by(&self, mut plan: Plan, subject: Option<Subject>) -> Plan {
         let Some(subject) = subject else {
             return plan;
         };
-        let Some(env) = self.needed_by_env.lock().unwrap().clone() else {
+        let Some((env, path_known)) = self.needed_by_env.lock().unwrap().clone() else {
             return plan;
         };
         let budget = needed_by::BUDGET;
         let found = bounded(
             move || {
-                needed_by::needed_by(
+                needed_by::needed_by_on_path(
                     &subject.package,
                     &subject.brew,
                     &subject.instances,
                     &subject.artifacts,
                     &env,
+                    path_known,
                     budget,
                 )
             },
@@ -258,6 +265,9 @@ mod tests {
         instance: ManagerInstance,
         rows: Mutex<Vec<(ArtifactKind, &'static str)>>,
         brew: Option<BrewAdapter>,
+        /// Found only when its program's folder is on the round's `PATH`,
+        /// as every source `needed_by` looks at is (`resolve_exe`).
+        found_on_path: bool,
     }
 
     #[async_trait]
@@ -266,7 +276,16 @@ mod tests {
             &self.meta
         }
 
-        async fn detect(&self, _env: &HostEnv) -> Vec<ManagerInstance> {
+        async fn detect(&self, env: &HostEnv) -> Vec<ManagerInstance> {
+            let folder = self.instance.exe_path.parent();
+            if self.found_on_path
+                && !env
+                    .path_dirs
+                    .iter()
+                    .any(|dir| Some(dir.as_path()) == folder)
+            {
+                return Vec::new();
+            }
             vec![self.instance.clone()]
         }
 
@@ -433,6 +452,7 @@ mod tests {
             },
             rows: Mutex::new(rows),
             brew: None,
+            found_on_path: false,
         })
     }
 
@@ -624,6 +644,7 @@ mod tests {
                 },
                 rows: Mutex::new(rows),
                 brew: None,
+                found_on_path: false,
             })
         };
         let brew = fake(
@@ -966,6 +987,7 @@ mod tests {
             },
             rows: Mutex::new(vec![(ArtifactKind::Formula, "node@22")]),
             brew: Some(BrewAdapter::new(runner.clone())),
+            found_on_path: false,
         });
         let npm = Arc::new(Fake {
             meta: test_support::fake_adapter_meta("npm"),
@@ -979,6 +1001,7 @@ mod tests {
                 (ArtifactKind::Package, "corepack"),
             ]),
             brew: None,
+            found_on_path: false,
         });
         let session = Session::with_adapters_and_sizes(
             Arc::new(VecSink::new()),
@@ -1103,6 +1126,120 @@ mod tests {
                 program: true,
                 tools: 3,
             }]
+        );
+    }
+
+    #[tokio::test]
+    async fn test_a_round_on_a_path_not_the_login_shells_leaves_a_runtimes_dependents_unknown() {
+        // r37 F3: npm is found only along `PATH`. A round on Finder's few
+        // folders -- the login shell's `PATH` not read -- finds Homebrew
+        // and no npm, so a look over that round's sources finds nothing on
+        // the linked `node`, which is no proof that nothing runs on it.
+        // Its preview says the look did not finish; jq's, which no source
+        // runs on, says nothing of it. Once the login shell's `PATH` is
+        // read, the same `node` names npm and is refused.
+        let root = Root::new("path-unread");
+        root.link_into_bin("node/24.9.0");
+        let prefix = root.path("opt/homebrew");
+        let jq = prefix.join("Cellar/jq/1.8.1/bin/jq");
+        std::fs::create_dir_all(jq.parent().unwrap()).unwrap();
+        std::fs::write(&jq, b"#!/bin/sh\n").unwrap();
+        std::fs::set_permissions(&jq, std::fs::Permissions::from_mode(0o755)).unwrap();
+        root.link("opt/homebrew/opt/jq", "../Cellar/jq/1.8.1");
+        std::fs::create_dir_all(root.path("usr/bin")).unwrap();
+        let brew = fake(
+            "brew",
+            BREW,
+            prefix.join("bin/brew"),
+            prefix.clone(),
+            vec![
+                (ArtifactKind::Formula, "jq"),
+                (ArtifactKind::Formula, "node"),
+            ],
+        );
+        let npm = Arc::new(Fake {
+            meta: test_support::fake_adapter_meta("npm"),
+            instance: ManagerInstance {
+                exe_path: prefix.join("bin/npm"),
+                prefix: prefix.clone(),
+                ..test_support::make_instance("npm", NPM)
+            },
+            rows: Mutex::new(vec![
+                (ArtifactKind::Package, "npm"),
+                (ArtifactKind::Package, "@openai/codex"),
+                (ArtifactKind::Package, "prettier"),
+            ]),
+            brew: None,
+            found_on_path: true,
+        });
+        let session =
+            Session::with_adapters_and_sizes(Arc::new(VecSink::new()), vec![brew, npm], None);
+        let env = |path_dirs: Vec<PathBuf>| HostEnv {
+            path_dirs,
+            home: root.path("home"),
+            euid: 501,
+            cargo_home: None,
+            rustup_home: None,
+            zdotdir: None,
+            ollama_host: None,
+        };
+        let finder = env(vec![root.path("usr/bin")]);
+        let login = env(vec![prefix.join("bin"), root.path("usr/bin")]);
+        let refresh_on = |env: HostEnv, path_known: bool| {
+            let session = session.clone();
+            async move {
+                session
+                    .refresh_recording_on(
+                        &env,
+                        path_known,
+                        &CheckOptions::default(),
+                        |_, _| {},
+                        |_| {},
+                    )
+                    .await
+                    .1
+            }
+        };
+
+        let unread = refresh_on(finder, false).await;
+        let ids: Vec<&str> = unread.instances.iter().map(|i| i.id.as_str()).collect();
+        assert_eq!(ids, vec![BREW], "npm is not found on Finder's folders");
+        let node = session.issue_plan(&uninstall("node")).await.unwrap();
+        assert_eq!(needed(&node.plan), Vec::new());
+        assert!(
+            node.plan.warnings.contains(&Warning::DependentsUnknown),
+            "a runtime's preview on a round that could not find its sources \
+             says the look did not finish: {:?}",
+            node.plan.warnings
+        );
+        let bystander = session.issue_plan(&uninstall("jq")).await.unwrap();
+        assert!(
+            !bystander
+                .plan
+                .warnings
+                .contains(&Warning::DependentsUnknown),
+            "jq is nothing a source runs on: {:?}",
+            bystander.plan.warnings
+        );
+        assert!(session.operations().is_empty(), "nothing was submitted");
+
+        let read = refresh_on(login, true).await;
+        assert!(read.instances.iter().any(|i| i.id == NPM));
+        let node = session.issue_plan(&uninstall("node")).await.unwrap();
+        assert_eq!(
+            needed(&node.plan),
+            vec![Warning::NeededBySource {
+                instance_id: NPM.to_string(),
+                program: true,
+                tools: 2,
+            }]
+        );
+        assert!(!node.plan.warnings.contains(&Warning::DependentsUnknown));
+        assert_eq!(
+            session.submit(node.id),
+            Err(SubmitError::UninstallBlocked {
+                reason: UninstallBlocked::NeededBySource
+            })
         );
     }
 
