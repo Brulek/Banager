@@ -1015,10 +1015,11 @@ export function buildWorld(state: ScenarioState): World {
   addCodexCommands(world);
   markSourcePrograms(world);
   // Not linked, so none of its commands is where Terminal looks: the
-  // command check finds none of them (`?state=nonode`).
-  if (state === "nonode") {
+  // command check finds none of them (`?state=nonode`, `nonode-intel`).
+  if (state === "nonode" || state === "nonode-intel") {
+    const formulae = [...NO_NODE_FORMULAE, ...NO_NODE_INTEL_FORMULAE];
     for (const row of world.artifacts) {
-      if (NO_NODE_FORMULAE.some((fix) => sameKey(fix.key, row.key))) row.facts = { ...row.facts, commands: [] };
+      if (formulae.some((fix) => sameKey(fix.key, row.key))) row.facts = { ...row.facts, commands: [] };
     }
   }
   return world;
@@ -1129,7 +1130,17 @@ function scenarioWorld(state: ScenarioState): World {
       world.greedyUpdates = [];
       return world;
     case "nonode":
-      withNoNode(world);
+      withNoNode(world, NO_NODE_FORMULAE);
+      return world;
+    case "nonode-intel":
+      // A second Homebrew, in /usr/local, as `withNotices` adds it, but
+      // answering: sorted by adapter id, after the first.
+      world.instances.splice(
+        world.instances.findIndex((i) => i.id === IDS.brew) + 1,
+        0,
+        instance("brew", IDS.brewIntel, "/usr/local/bin/brew", "/usr/local", "7.0.3"),
+      );
+      withNoNode(world, [...NO_NODE_FORMULAE, ...NO_NODE_INTEL_FORMULAE]);
       return world;
   }
 }
@@ -1196,21 +1207,33 @@ export const NO_NODE_FORMULAE: readonly LinkFix[] = [
 ];
 
 /**
+ * What `?state=nonode-intel` offers besides: the same `node@20`, at the
+ * same version, in the Intel Homebrew in /usr/local -- after the first
+ * Homebrew's, as `link_fixes::fill` keeps two of one name and version in
+ * the order the sources are listed. Fix… tells the two apart by their
+ * Homebrew (r7 F1).
+ */
+export const NO_NODE_INTEL_FORMULAE: readonly LinkFix[] = [
+  { key: key(IDS.brewIntel, "Formula", "node@20"), version: "20.19.5" },
+];
+
+/**
  * `?state=nonode`, the author's Mac on 2026-10-07: npm updated itself
  * (`npm install -g npm@latest`), which put npm's own `npm` where the
  * `node@22` they had linked by hand had its link; the next `brew upgrade
  * node@22` could not link the new version over it, so no `node` was left
  * where Terminal looks, and npm's launcher (`#!/usr/bin/env node`) could
- * not start: `NotResponding`, with why (`no_answer`), and the two formulae
- * that have `node` as its fixes, newest first -- what `link_fixes::fill`
- * gives. Its rows are last time's, as a source that did not answer keeps
- * them. Once a Link puts `node@20` back, npm is that formula's, and its
- * own update is not offered: it updates with the formula
- * (`UpdatesWithFormula`), so the same thing cannot happen again.
+ * not start: `NotResponding`, with why (`no_answer`), and `formulae` --
+ * the two that have `node`, and in `nonode-intel` the Intel Homebrew's
+ * too -- as its fixes, newest first: what `link_fixes::fill` gives. Each
+ * is listed in its own Homebrew. Its rows are last time's, as a source
+ * that did not answer keeps them. Once a Link puts `node@20` back, npm is
+ * that formula's, and its own update is not offered: it updates with the
+ * formula (`UpdatesWithFormula`), so the same thing cannot happen again.
  */
-function withNoNode(world: World): void {
+function withNoNode(world: World, formulae: readonly LinkFix[]): void {
   allAnswering(world);
-  for (const fix of NO_NODE_FORMULAE) {
+  for (const fix of formulae) {
     // The pretend Mac's own node@22 is the one `brew upgrade` moved on.
     const listed = world.artifacts.find((a) => sameKey(a.key, fix.key));
     if (listed !== undefined) {
@@ -1218,14 +1241,14 @@ function withNoNode(world: World): void {
       continue;
     }
     world.artifacts.push(
-      artifact(IDS.brew, "Formula", fix.key.name, fix.version, {
+      artifact(fix.key.instance_id, "Formula", fix.key.name, fix.version, {
         description: "Open-source, cross-platform JavaScript runtime environment",
         homepage: "https://nodejs.org/",
         installed_at: daysAgo(14),
       }),
     );
   }
-  world.updates = world.updates.filter((u) => !NO_NODE_FORMULAE.some((fix) => sameKey(fix.key, u.key)));
+  world.updates = world.updates.filter((u) => !formulae.some((fix) => sameKey(fix.key, u.key)));
   world.updates.push(
     update(key(IDS.npm, "Package", "npm"), "12.0.2", "12.2.0", "Native", { blocked: "UpdatesWithFormula" }),
   );
@@ -1237,7 +1260,7 @@ function withNoNode(world: World): void {
   npm.status = {
     unavailable: "NotResponding",
     notes: [],
-    no_answer: { kind: "CouldNotStart", missing_program: "node", link_fixes: [...NO_NODE_FORMULAE] },
+    no_answer: { kind: "CouldNotStart", missing_program: "node", link_fixes: [...formulae] },
   };
 }
 

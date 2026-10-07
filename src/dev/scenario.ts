@@ -48,6 +48,10 @@ import type { Page } from "../store/ui";
  *   gives the Terminal command that would link it anyway; for `node@20`, a
  *   Link that puts npm back, after which npm's own update is shown as
  *   updating with Node (`withNoNode` in ./mockData.ts).
+ * - `nonode-intel`: `nonode`, on a Mac that also has an Intel Homebrew in
+ *   /usr/local with the same `node@20` at the same version: Fix… offers
+ *   three choices, each saying where its Homebrew is (「Apple芯片」,
+ *   「Intel」), and the Intel one is linked by `/usr/local/bin/brew` (r7 F1).
  */
 export const SCENARIO_STATES = [
   "full",
@@ -67,6 +71,7 @@ export const SCENARIO_STATES = [
   "refused",
   "unchecked",
   "nonode",
+  "nonode-intel",
 ] as const;
 export type ScenarioState = (typeof SCENARIO_STATES)[number];
 

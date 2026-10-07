@@ -450,6 +450,50 @@ describe("the browser preview's mock backend", () => {
     expect(ownUpdate?.blocked).toBe("UpdatesWithFormula");
   });
 
+  it("offers the same node@20 from a second, Intel Homebrew with ?state=nonode-intel, linked by that Homebrew's brew", async () => {
+    // r7 F1: one formula name at one version in two Homebrews. The Intel
+    // one is listed right after the first, as the backend sorts sources.
+    const { backend, events } = backendFor({ state: "nonode-intel" });
+    const before = await answer<Snapshot>(backend.invoke("refresh"));
+    const ids = before.instances.map((i) => i.id);
+    expect(ids.indexOf("brew:/usr/local")).toBe(ids.indexOf("brew:/opt/homebrew") + 1);
+    const npm = before.instances.find((i) => i.adapter_id === "npm");
+    expect(npm?.status.no_answer?.link_fixes).toEqual([
+      { key: { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "node@22" }, version: "22.23.3_1" },
+      { key: { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "node@20" }, version: "20.19.5" },
+      { key: { instance_id: "brew:/usr/local", kind: "Formula", name: "node@20" }, version: "20.19.5" },
+    ]);
+    // Listed in its own Homebrew, unlinked, so none of its commands is found.
+    const intelNode = before.artifacts.find((a) => a.key.instance_id === "brew:/usr/local" && a.key.name === "node@20");
+    expect(intelNode?.version).toBe("20.19.5");
+    expect(intelNode?.facts.commands).toEqual([]);
+    const issued = await answer<IssuedPlan>(
+      backend.invoke("plan_operation", {
+        request: { kind: "Link", instance_id: "brew:/usr/local", artifact_kind: "Formula", name: "node@20" },
+      }),
+    );
+    expect(issued.plan.action).toEqual({
+      Command: {
+        program: "/usr/local/bin/brew",
+        args: ["link", "--formula", "--force", "node@20"],
+        env: expect.any(Array) as unknown as [string, string][],
+      },
+    });
+    expect(issued.plan.locks).toEqual(["brew:/usr/local"]);
+    const opId = await answer<number>(backend.invoke("submit_operation", { planId: issued.id }));
+    await vi.runAllTimersAsync();
+    const own = operationEvents(events, opId);
+    expect(own[own.length - 1]).toEqual({ Finished: { op_id: opId, outcome: "Succeeded" } });
+    const after = await answer<Snapshot>(backend.invoke("refresh"));
+    expect(after.instances.find((i) => i.adapter_id === "npm")?.status.no_answer).toBeNull();
+  });
+
+  it("keeps ?state=nonode to the author's Mac, with one Homebrew", async () => {
+    const { backend } = backendFor({ state: "nonode" });
+    const snapshot = await answer<Snapshot>(backend.invoke("refresh"));
+    expect(snapshot.instances.filter((i) => i.adapter_id === "brew").map((i) => i.id)).toEqual(["brew:/opt/homebrew"]);
+  });
+
   it("installs about 800 real tools with ?state=many, one in seven with an update, the same on every run", async () => {
     const { backend } = backendFor({ state: "many" });
     const snapshot = await answer<Snapshot>(backend.invoke("refresh"));
