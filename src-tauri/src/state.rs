@@ -87,14 +87,22 @@ impl AppState {
     /// login shell's, as one value, after `read_login_path`: from one look
     /// at the `PATH` read (`runner::login_path::round_env`), so a read that
     /// works while the round runs changes neither for it
-    /// (`Session::refresh_recording_on`). Where nothing set a read up (a
-    /// test), the process's own `PATH` and what the session was told.
+    /// (`Session::refresh_recording_on`). Where nothing set a read up, the
+    /// process's own `PATH` and what the session was told -- except in this
+    /// crate's tests, where nothing sets one up and the environment is
+    /// `test_round_env`'s: no `PATH` folder and a home folder that is never
+    /// made, so that no test lists this Mac's `PATH` folders or looks in
+    /// its home.
     pub async fn round_env(&self) -> (HostEnv, bool) {
         self.read_login_path().await;
         if self.login_path.get().is_some() {
             banager_core::runner::login_path::round_env()
         } else {
-            (HostEnv::discover(), self.session.login_path_restored())
+            #[cfg(not(test))]
+            let env = HostEnv::discover();
+            #[cfg(test)]
+            let env = test_round_env();
+            (env, self.session.login_path_restored())
         }
     }
 
@@ -125,6 +133,23 @@ impl AppState {
         settings::save(&self.settings_path, &new_settings)?;
         *settings = new_settings;
         Ok(())
+    }
+}
+
+/// The environment a test's refresh rounds read (`AppState::round_env`):
+/// none of this Mac's -- no `PATH` folder, a home folder under the temp
+/// folder that no test makes, no Cargo, rustup or Ollama setting -- with
+/// the process's own effective user.
+#[cfg(test)]
+pub(crate) fn test_round_env() -> HostEnv {
+    HostEnv {
+        path_dirs: Vec::new(),
+        home: std::env::temp_dir().join(format!("banager-shell-test-home-{}", std::process::id())),
+        euid: HostEnv::discover().euid,
+        cargo_home: None,
+        rustup_home: None,
+        zdotdir: None,
+        ollama_host: None,
     }
 }
 

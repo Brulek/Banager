@@ -1220,9 +1220,11 @@ mod tests {
         refresh_impl(&state).await.expect("refresh");
         let generation = state.session.snapshot().generation;
         // No `PATH` entries and a home that does not exist: of the scan's
-        // candidate directories only `/usr/local/bin` can be read on the
-        // machine running this, and reading is all that happens to it.
-        // The command itself passes `HostEnv::discover()`.
+        // candidate directories only the one outside the home folder can
+        // be read, `/usr/local/bin`, stood in for by a folder of the
+        // test's own holding one program -- never this Mac's -- and
+        // reading is all that happens to it. The command itself passes
+        // `HostEnv::discover()`.
         let env = HostEnv {
             path_dirs: Vec::new(),
             home: std::env::temp_dir().join(format!("banager-ipc-scan-{}", std::process::id())),
@@ -1232,8 +1234,20 @@ mod tests {
             zdotdir: None,
             ollama_host: None,
         };
+        let system_bin =
+            std::env::temp_dir().join(format!("banager-ipc-scan-bin-{}", std::process::id()));
+        std::fs::create_dir_all(&system_bin).expect("the stand-in folder");
+        let stray = system_bin.join("stray");
+        std::fs::write(&stray, b"#!/bin/sh\n").expect("a program");
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&stray, std::fs::Permissions::from_mode(0o755))
+                .expect("executable");
+        }
+        state.session.set_unknown_scan_system_bin(&system_bin);
 
         let scan = scan_unknown_impl(&state.session, &env);
+        let _ = std::fs::remove_dir_all(&system_bin);
 
         // The fake instance's executable is `/bin/true`, which no scanned
         // directory holds, so attribution is not the subject here --
@@ -1250,6 +1264,12 @@ mod tests {
             scan.scanned.iter().all(|dir| !dir.path.starts_with("~")),
             "nothing under the non-existent home was read: {:?}",
             scan.scanned
+        );
+        assert!(
+            scan.entries
+                .iter()
+                .any(|entry| entry.path.ends_with("stray")),
+            "the stand-in folder was read: {scan:?}"
         );
     }
 
