@@ -127,7 +127,7 @@ export function revealInFinder(path: string): Promise<void> {
  * Installed page's details, through Banager's own `open_homepage`
  * (src-tauri/src/homepage.rs): only an address that is, exactly, the
  * homepage -- trimmed -- of a tool in the current snapshot, refused
- * otherwise as `not_listed`, and an `http` or `https` one, refused
+ * otherwise as `not_listed`, and an `https` one, refused
  * otherwise as `not_web`. Then it asks macOS to open that address and
  * nothing else (`NSWorkspace openURL:`): no command runs, and the window
  * never leaves Banager's page.

@@ -1118,7 +1118,8 @@ fn test_what_we_run_says_what_the_homepage_link_opens_and_that_it_adds_no_permis
     for said in [
         "NSWorkspace openURL:",
         "only when it is, exactly, the homepage of a tool in the current snapshot",
-        "an `http` or `https` address with a host",
+        "an `https` address with a host",
+        "a plain `http` homepage is shown to copy",
         "No command runs and Banager connects to nothing",
         "The window is given no new permission for it",
     ] {

@@ -215,15 +215,31 @@ export function homepageHost(address: string): string | null {
 }
 
 /**
+ * Whether the default browser may be asked to open `address` from the
+ * inspector (`HomepageLink`): an `https` address with a host, as
+ * src-tauri/src/homepage.rs opens and no other -- decision S9 allows a
+ * source's `https` homepage, and no plain `http` one.
+ */
+function opensInBrowser(address: string): boolean {
+  try {
+    const url = new URL(address);
+    return url.protocol === "https:" && url.hostname !== "";
+  } catch {
+    return false;
+  }
+}
+
+/**
  * The inspector's 「主页」 fact, for any source that reported one: the
  * site's host (`homepageHost`) -- a whole address wrapped into ragged
  * lines at a slash in a 260 pane -- as a link that opens the whole address
  * in the default browser (`HomepageLink`), the whole address its tooltip;
  * and 「拷贝链接」 under it, which copies the whole address, its 「已拷贝」
  * beside it (`CopyButton`), by its button rather than by selecting it, as
- * the inspector selects only versions and a location. An address that is
- * not an http(s) one with a host is shown whole, as text, and only copied:
- * Banager opens no other kind (src-tauri/src/homepage.rs).
+ * the inspector selects only versions and a location. A plain `http`
+ * homepage is its host as text, and an address that is not an http(s)
+ * one with a host is shown whole, as text: both only copied, as Banager
+ * opens only an `https` homepage (`opensInBrowser`).
  *
  * While the page lists the first check's list (`preview`, from
  * `useInstalledSnapshot`), the host is text, not a link: the backend opens
@@ -243,7 +259,7 @@ export function homepageFact(
     term: t("brewStatus.homepage"),
     value: (
       <span className="flex flex-col items-end gap-1">
-        {host !== null && !preview ? (
+        {host !== null && !preview && opensInBrowser(address) ? (
           <HomepageLink address={address} host={host} />
         ) : (
           <span data-homepage="" title={address} className="break-words">

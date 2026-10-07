@@ -4109,10 +4109,12 @@ browser when it is not running: with the Open Ollama button, the one
 application Banager launches outside the runner), only when it is,
 exactly, the homepage of a tool in the current snapshot, trimmed, as that
 tool's source reported it (Homebrew's `homepage`, a standalone
-installer's recipe) -- and an `http` or `https` address with a host. Any
+installer's recipe) -- and an `https` address with a host: decision S9
+allows a source's `https` homepage, so a plain `http` homepage is shown to
+copy, not as a link. Any
 other address is refused before anything is parsed (`not_listed`), and a
-homepage a tool lists that is any other kind of address -- `file:`,
-`ftp:`, an app's own scheme -- is refused too (`not_web`). No command
+homepage a tool lists that is any other kind of address -- plain `http`,
+`file:`, `ftp:`, an app's own scheme -- is refused too (`not_web`). No command
 runs and Banager connects to nothing: the browser loads the page, under
 the browser's own settings. The window is given no new permission for
 it: Banager's own commands are behind no permission of their own
@@ -4238,8 +4240,8 @@ configured, `index.crates.io`, and cargo still follows a
 - Never launches an application from a refresh; `open -a Ollama` runs
   only when the button is pressed.
 - Never opens a web address the window names: a click on a tool's
-  homepage opens, in the default browser, only an `http` or `https`
-  homepage a tool in the current snapshot lists (Network).
+  homepage opens, in the default browser, only an `https` homepage a
+  tool in the current snapshot lists (Network).
 - Never opens a tool to make it update itself: a self-updating tool's row
   tells the user how, and Banager runs nothing.
 - Never asks for, stores or types a password; `SUDO_ASKPASS` is passed

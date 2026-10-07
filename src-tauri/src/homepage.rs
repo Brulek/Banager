@@ -5,7 +5,8 @@
 //! The window sends the address it shows, and is refused any other: the
 //! address must be, exactly, the homepage some tool in the snapshot this
 //! side holds lists (`InstalledArtifact::homepage`, trimmed as the page
-//! trims it), and an `http` or `https` address with a host. So a page
+//! trims it), and an `https` address with a host -- decision S9 allows a
+//! source's `https` homepage, and no plain `http` one. So a page
 //! that ran someone else's script could have the browser open only a page
 //! Banager itself listed -- never an address of the script's own, carrying
 //! what the page has read -- and never a `file:`, an app's own scheme, or
@@ -27,16 +28,16 @@ fn not_listed_json() -> String {
     serde_json::json!({ "kind": "not_listed" }).to_string()
 }
 
-/// The refusal of a homepage a tool lists that is not an `http` or `https`
-/// address with a host -- what a tap's formula may say -- which the
-/// default browser is not asked to open.
+/// The refusal of a homepage a tool lists that is not an `https` address
+/// with a host -- plain `http`, or whatever a tap's formula may say --
+/// which the default browser is not asked to open.
 fn not_web_json() -> String {
     serde_json::json!({ "kind": "not_web" }).to_string()
 }
 
 /// `address`, as the default browser may be asked to open it: exactly --
 /// no case folded, no slash added -- the homepage, trimmed, of a tool in
-/// `snapshot`, and an `http` or `https` address with a host, parsed. An
+/// `snapshot`, and an `https` address with a host, parsed. An
 /// empty address names no homepage. Refused as `not_listed` otherwise,
 /// before anything is parsed, and as `not_web` when the homepage listed is
 /// another kind of address.
@@ -52,7 +53,7 @@ pub(crate) fn listed_homepage(snapshot: &Snapshot, address: &str) -> Result<Url,
     }
     let url = Url::parse(address).map_err(|_| not_web_json())?;
     let has_host = url.host_str().is_some_and(|host| !host.is_empty());
-    if !matches!(url.scheme(), "http" | "https") || !has_host {
+    if url.scheme() != "https" || !has_host {
         return Err(not_web_json());
     }
     Ok(url)
@@ -73,7 +74,7 @@ pub(crate) fn open_homepage_impl(
 }
 
 /// The default browser, on `url`: one call to AppKit, `NSWorkspace
-/// openURL:`, which hands an `http` or `https` URL to whichever browser
+/// openURL:`, which hands an `https` URL to whichever browser
 /// the Mac has as its default (System Settings → Desktop & Dock → Default
 /// web browser), starting it when it is not running. The URL as
 /// `listed_homepage` parsed it -- so the scheme macOS reads is the one
@@ -103,7 +104,7 @@ fn open_in_browser(_url: &Url) -> Result<(), String> {
 }
 
 /// Has the default browser open `address` when it is, exactly, a homepage
-/// a tool in the current snapshot lists, and an `http` or `https` address
+/// a tool in the current snapshot lists, and an `https` address
 /// (`listed_homepage`), through AppKit (`open_in_browser`); runs no command.
 /// Any other address is refused, as `not_listed` or `not_web`; one macOS
 /// did not open comes back as `open_failed`.
@@ -238,8 +239,8 @@ mod tests {
 
     #[test]
     fn test_a_listed_homepage_that_is_no_web_address_is_not_opened() {
-        // A tap's formula can say anything in its homepage; only an http or
-        // https address with a host goes to the browser -- no file, no
+        // A tap's formula can say anything in its homepage; only an https
+        // address with a host goes to the browser -- no file, no
         // app's own scheme, nothing macOS would hand another application.
         let odd = [
             "file:///etc/hosts",
@@ -260,11 +261,15 @@ mod tests {
             "{results:?}"
         );
         assert_eq!(asked, Vec::<String>::new());
-        // Plain http is a web address: some projects' homepages still are.
-        let http = snapshot(&[Some("http://www.lua.org/")]);
-        let (results, asked) = opened(&http, &["http://www.lua.org/"]);
-        assert_eq!(results, [Ok(())]);
-        assert_eq!(asked, ["http://www.lua.org/"]);
+        // Plain http is not opened either: decision S9 allows a source's
+        // `https` homepage only. The page shows it to copy.
+        let http = snapshot(&[Some("http://www.lua.org/"), Some("http://localhost:8080/")]);
+        let (results, asked) = opened(&http, &["http://www.lua.org/", "http://localhost:8080/"]);
+        assert_eq!(
+            results,
+            [Err(NOT_WEB.to_string()), Err(NOT_WEB.to_string())]
+        );
+        assert_eq!(asked, Vec::<String>::new());
     }
 
     #[test]

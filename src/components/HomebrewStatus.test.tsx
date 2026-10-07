@@ -175,6 +175,20 @@ describe("homepageFact", () => {
     expect(invoke).toHaveBeenCalledWith("open_homepage", { address: "https://jqlang.github.io/jq/" });
   });
 
+  it("offers no link for a plain http homepage: its host as text, to copy", () => {
+    // Decision S9 allows a source's https homepage only; the backend
+    // refuses any other (`not_web`), so the page offers none.
+    vi.mocked(invoke).mockReset();
+    const { container } = renderWithProviders(<>{homepageFact(enT, "http://www.lua.org/", false)?.value}</>);
+    expect(screen.queryByRole("link")).toBeNull();
+    const shown = container.querySelector("[data-homepage]") as HTMLElement;
+    expect(shown.tagName).toBe("SPAN");
+    expect(shown.textContent).toBe("lua.org");
+    expect(shown).toHaveAttribute("title", "http://www.lua.org/");
+    expect(screen.getByRole("button", { name: "Copy Link" })).toBeInTheDocument();
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
   it("offers no link while the first check's list is shown: the host as text, to copy", () => {
     // The backend opens only a homepage its committed snapshot lists, and
     // the list the page shows meanwhile is not committed: a link would

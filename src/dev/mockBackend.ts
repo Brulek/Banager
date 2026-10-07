@@ -764,7 +764,7 @@ export function createMockBackend(scenario: Scenario): MockBackend {
     },
     async open_homepage(args) {
       // `homepage::open_homepage_impl`: only, exactly, the trimmed homepage
-      // of a tool in the committed snapshot, and an http(s) one with a host.
+      // of a tool in the committed snapshot, and an https one with a host.
       // The preview opens no browser: it says in the console what it was
       // asked to open (with ./mockTauri.ts's marker, `MOCK_MARKER`).
       const address = args.address as string;
@@ -777,7 +777,7 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       } catch {
         url = null;
       }
-      if (url === null || (url.protocol !== "http:" && url.protocol !== "https:") || url.hostname === "") {
+      if (url === null || url.protocol !== "https:" || url.hostname === "") {
         throw JSON.stringify({ kind: "not_web" });
       }
       console.info(`[banager-ui-preview-mock] Open homepage in the default browser, not done in the preview: ${url.href}`);
