@@ -73,7 +73,9 @@ fn normalize_ollama_host(raw: &str) -> Option<String> {
     // Ollama uses 11434 for a schemeless host, but the scheme's default
     // (80/443) for an explicitly supplied http(s) URL. Preserve an explicit
     // port 80 too: url::Url elides it, so inspect the original authority.
-    let authority = trimmed.split('/').next().unwrap_or(trimmed);
+    let authority = trimmed.split(['/', '?', '#']).next().unwrap_or(trimmed);
+    // A colon in userinfo is not a port; only inspect the host after it.
+    let authority = authority.rsplit('@').next().unwrap_or(authority);
     let explicit_port = if authority.starts_with('[') {
         authority
             .split_once(']')
@@ -410,5 +412,30 @@ mod tests {
         // produce something stranger than the default.
         assert_eq!(normalize_ollama_host("ftp://10.0.0.5:11434"), None);
         assert_eq!(normalize_ollama_host("file:///etc/passwd"), None);
+    }
+}
+
+#[cfg(test)]
+mod login_host_tests {
+    use super::normalize_ollama_host;
+
+    #[test]
+    fn schemeless_login_colons_are_not_ports() {
+        for (raw, expected) in [
+            ("alice:secret@server", "http://alice:secret@server:11434"),
+            ("alice:s%40cret@server:80", "http://alice:s%40cret@server"),
+            ("alice:secret@[::1]", "http://alice:secret@[::1]:11434"),
+            ("alice:secret@[::1]:1234", "http://alice:secret@[::1]:1234"),
+            ("alice@server", "http://alice@server:11434"),
+            (":secret@server", "http://:secret@server:11434"),
+            ("http://alice:secret@server", "http://alice:secret@server"),
+            ("https://alice:secret@server", "https://alice:secret@server"),
+        ] {
+            assert_eq!(
+                normalize_ollama_host(raw).as_deref(),
+                Some(expected),
+                "{raw}"
+            );
+        }
     }
 }

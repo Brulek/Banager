@@ -48,14 +48,56 @@ use regex::Regex;
 use std::borrow::Cow;
 use std::sync::LazyLock;
 
-/// A persistent Ollama instance id, with URL userinfo removed. Runtime
-/// ids still carry the daemon URL used for authentication; history and
-/// settings must not persist that login. Preserve every other byte so
+/// An Ollama instance id, with URL userinfo removed. Detection uses this
+/// for public ids while retaining authentication privately; history and
+/// settings also scrub legacy ids. Preserve every other byte so
 /// credential-free ids keep matching. Mirrored by `artifactKeyId` in TS.
 pub(crate) fn without_ollama_login(id: &str) -> Cow<'_, str> {
     static LOGIN: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r"^(ollama:https?://)[^/?#|]*@").expect("a valid pattern"));
     LOGIN.replace(id, "${1}")
+}
+
+/// A complete endpoint, rather than a URL embedded in prose: quote characters
+/// can be valid userinfo here and must not terminate the match.
+pub fn mask_ollama_host(host: &str) -> Cow<'_, str> {
+    static LOGIN: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"^((?:[A-Za-z][A-Za-z0-9+.\-]*://)?)([^/?#]*)@").unwrap());
+    LOGIN.replace(host, |c: &regex::Captures<'_>| {
+        format!(
+            "{}{}@",
+            &c[1],
+            if c[2].contains(':') {
+                "****:****"
+            } else {
+                MASK
+            }
+        )
+    })
+}
+
+/// A window-facing environment. Keep the execution environment untouched.
+/// Normalized hosts have a scheme; accepting the bare form here also protects
+/// older callers and test/mock data, including one-character usernames.
+pub fn preview_env(env: &[(String, String)]) -> Vec<(String, String)> {
+    env.iter()
+        .map(|(name, value)| {
+            let shown = if name == "OLLAMA_HOST" {
+                mask_ollama_host(value).into_owned()
+            } else {
+                value.clone()
+            };
+            (name.clone(), shown)
+        })
+        .collect()
+}
+
+/// Serialization is a preview boundary, never a source for execution.
+pub(crate) fn serialize_preview_env<S: serde::Serializer>(
+    env: &[(String, String)],
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    serde::Serialize::serialize(&preview_env(env), serializer)
 }
 
 /// What stands where a secret was.
@@ -145,7 +187,7 @@ impl Redactor {
         let mut redactor = Redactor::default();
         for (name, value) in settings {
             if let Some(address) = Address::of(name, value) {
-                redactor.mask_login(value, &address);
+                redactor.mask_login(value, &address, name == "OLLAMA_HOST");
             }
         }
         // `MASK` itself, or any run of `*`, is no secret: replacing it
@@ -164,11 +206,11 @@ impl Redactor {
     }
 
     /// The rules for one setting's login: `value` read as `address`.
-    fn mask_login(&mut self, value: &str, address: &Address<'_>) {
+    fn mask_login(&mut self, value: &str, address: &Address<'_>, force: bool) {
         let (user, password) = address.user_and_password();
         let user_anywhere = !user.is_empty() && masked_anywhere(user);
         let has_password = password.is_some_and(|password| !password.is_empty());
-        if !user_anywhere && !has_password {
+        if !force && !user_anywhere && !has_password {
             // A name alone that is no secret -- `git@github.com:…` names
             // an ssh user -- or no login at all (`http://:@proxy`).
             return;
@@ -232,6 +274,11 @@ impl Redactor {
     /// same-named settings of Banager's own environment, which a command
     /// inherits when the login shell did not set them.
     pub fn for_commands(accepted: Option<&LoginEnv>) -> Redactor {
+        Self::for_command_env(accepted, &[])
+    }
+
+    /// Include command overrides and inherited OLLAMA_HOST in output masking.
+    pub fn for_command_env(accepted: Option<&LoginEnv>, env: &[(String, String)]) -> Redactor {
         let mut settings: Vec<(String, String)> = accepted
             .map(|found| found.imported.clone())
             .unwrap_or_default();
@@ -239,6 +286,14 @@ impl Redactor {
             IMPORTED
                 .iter()
                 .filter_map(|name| Some((name.to_string(), std::env::var(name).ok()?))),
+        );
+        if let Ok(host) = std::env::var("OLLAMA_HOST") {
+            settings.push(("OLLAMA_HOST".to_string(), host));
+        }
+        settings.extend(
+            env.iter()
+                .filter(|(name, _)| name == "OLLAMA_HOST")
+                .cloned(),
         );
         Redactor::for_settings(
             settings
@@ -1418,5 +1473,93 @@ mod tests {
         let wide = "é".repeat(CUT_WINDOW);
         assert!(before_cut(&wide).ends_with(MASK));
         assert!(after_cut(&wide).starts_with(MASK));
+    }
+}
+
+#[cfg(test)]
+mod ollama_preview_tests {
+    use super::*;
+    use crate::model::PlanAction;
+
+    #[test]
+    fn ollama_preview_masks_all_login_shapes_and_preserves_other_values() {
+        for (raw, shown) in [
+            (
+                "http://alice:s%40cret@server:11434",
+                "http://****:****@server:11434",
+            ),
+            ("https://a@server", "https://****@server"),
+            ("http://:pw@[::1]:11434", "http://****:****@[::1]:11434"),
+            ("a:b@server:80", "****:****@server:80"),
+            ("http://a'@server", "http://****@server"),
+            (
+                "http://server/path@name?q=a@b",
+                "http://server/path@name?q=a@b",
+            ),
+            ("http://server:11434", "http://server:11434"),
+        ] {
+            let env = vec![
+                ("OLLAMA_HOST".into(), raw.into()),
+                ("OTHER".into(), raw.into()),
+            ];
+            let preview = preview_env(&env);
+            assert_eq!(preview[0].1, shown);
+            assert_eq!(preview[1].1, raw);
+            assert_eq!(env[0].1, raw);
+            assert_eq!(preview_env(&preview), preview);
+        }
+    }
+
+    #[test]
+    fn both_command_variants_serialize_masked_but_keep_execution_environment() {
+        let env = vec![(
+            "OLLAMA_HOST".into(),
+            "http://alice:secret@server:11434".into(),
+        )];
+        for action in [
+            PlanAction::Command {
+                program: "/mock/ollama".into(),
+                args: vec!["pull".into()],
+                env: env.clone(),
+            },
+            PlanAction::CommandThen {
+                program: "/mock/ollama".into(),
+                args: vec!["pull".into()],
+                env: env.clone(),
+                then: vec![vec!["rm".into()]],
+            },
+        ] {
+            let wire = serde_json::to_string(&action).unwrap();
+            assert!(!wire.contains("alice"));
+            assert!(!wire.contains("secret"));
+            assert!(wire.contains("http://****:****@server:11434"));
+            let back: PlanAction = serde_json::from_str(&wire).unwrap();
+            assert_eq!(serde_json::to_string(&back).unwrap(), wire);
+            match action {
+                PlanAction::Command { env: actual, .. }
+                | PlanAction::CommandThen { env: actual, .. } => assert_eq!(actual, env),
+                _ => unreachable!(),
+            }
+        }
+    }
+
+    #[test]
+    fn command_output_masks_ollama_login_from_explicit_environment() {
+        let env = vec![("OLLAMA_HOST".into(), "alice:s%40cret@server".into())];
+        let redactor = Redactor::for_command_env(None, &env);
+        for text in [
+            "alice:s%40cret@server",
+            "failed for alice with s@cret",
+            "s%40cret",
+        ] {
+            let shown = redactor.redact(text);
+            assert!(!shown.contains("alice"));
+            assert!(!shown.contains("s@cret"));
+            assert!(!shown.contains("s%40cret"));
+        }
+        let short = Redactor::for_settings([("OLLAMA_HOST", "http://a'@server")]);
+        assert!(!short
+            .redact("GET http://a'@server/api/tags")
+            .contains("a'@"));
     }
 }

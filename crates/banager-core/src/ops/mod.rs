@@ -347,6 +347,7 @@ pub struct OpSummary {
     /// can ask for the password Banager has no way to
     /// (`PasswordCommand.tsx`) -- keeps `HOMEBREW_NO_AUTOREMOVE=1` and the
     /// rest, and does no more there than it would have done here.
+    /// OLLAMA_HOST userinfo is masked; this is not an execution environment.
     pub env_preview: Vec<(String, String)>,
     /// The plan's `cancel_policy`. The front end reads it with `status` to
     /// offer no Cancel button for a Running `NoCancel` op
@@ -590,7 +591,7 @@ impl OperationManager {
                     } => {
                         let mut argv = vec![program.to_string_lossy().to_string()];
                         argv.extend(args.iter().cloned());
-                        (argv, env.clone())
+                        (argv, crate::runner::redact::preview_env(env))
                     }
                     // No command runs, so there is no argv to preview: an
                     // empty list, never an invented one. (The uninstall

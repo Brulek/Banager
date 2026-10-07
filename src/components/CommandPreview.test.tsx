@@ -300,3 +300,14 @@ describe("CommandPreview", () => {
     expect(zhCN.commandPreview.show_other).toBe("查看命令");
   });
 });
+
+it("shows a masked Ollama login when the command disclosure opens", async () => {
+  renderWithProviders(<CommandPreview plans={[{ id: "private-host", action: {
+    Command: { program: "/mock/ollama", args: ["pull", "qwen:latest"],
+      env: [["OLLAMA_HOST", "http://alice:s%40cret@server:11434"]] },
+  } }]} />);
+  await userEvent.setup().click(screen.getByRole("button", { name: "Show Command" }));
+  const code = document.querySelector("code");
+  expect(code?.textContent).toContain("http://****:****@server:11434");
+  expect(code?.textContent).not.toMatch(/alice|s%40cret/);
+});

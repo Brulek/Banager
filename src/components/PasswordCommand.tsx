@@ -4,6 +4,7 @@ import { outcomeCause } from "../lib/failureCause";
 import type { OpSummary } from "../lib/types";
 import { commandText } from "./CommandPreview";
 import { displayToken } from "../lib/format";
+import { previewEnvValue } from "../lib/previewEnv";
 import { adapterIdOf } from "../lib/sources";
 import { BUTTON } from "./ui/controls";
 
@@ -43,7 +44,7 @@ export function terminalCommandParts(op: OpSummary): { env: string[]; command: s
   if (program === undefined) return null;
   const env = (op.env_preview ?? []).filter(([name]) => !LEFT_OUT.has(name));
   return {
-    env: env.map(([name, value]) => `${name}=${displayToken(value)}`),
+    env: env.map(([name, value]) => `${name}=${displayToken(previewEnvValue(name, value))}`),
     command: [program, ...args].map(displayToken),
   };
 }

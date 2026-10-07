@@ -2,6 +2,7 @@ import { useId, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { displayToken } from "../lib/format";
+import { previewEnvValue } from "../lib/previewEnv";
 import { useSettings } from "../lib/queries";
 import type { PlanAction } from "../lib/types";
 import { SMALL_WRAPPING } from "./ui/group";
@@ -30,7 +31,7 @@ export interface CommandPreviewProps {
 export function commandText(action: Extract<PlanAction, { Command: unknown }>): string {
   const { program, args, env } = action.Command;
   return [
-    ...env.map(([name, value]) => `${name}=${displayToken(value)}`),
+    ...env.map(([name, value]) => `${name}=${displayToken(previewEnvValue(name, value))}`),
     ...[program, ...args].map(displayToken),
   ].join(" ");
 }

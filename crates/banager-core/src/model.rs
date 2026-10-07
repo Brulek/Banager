@@ -1784,6 +1784,8 @@ pub enum PlanAction {
     Command {
         program: PathBuf,
         args: Vec<String>,
+        // Only the preview crosses the wire. Session keeps the real plan.
+        #[serde(serialize_with = "crate::runner::redact::serialize_preview_env")]
         env: Vec<(String, String)>,
     },
     /// A command and its follow-ups, all with one program and one
@@ -1814,6 +1816,8 @@ pub enum PlanAction {
     CommandThen {
         program: PathBuf,
         args: Vec<String>,
+        // Only the preview crosses the wire. Session keeps the real plan.
+        #[serde(serialize_with = "crate::runner::redact::serialize_preview_env")]
         env: Vec<(String, String)>,
         then: Vec<Vec<String>>,
     },

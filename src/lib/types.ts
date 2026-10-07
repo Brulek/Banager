@@ -638,7 +638,9 @@ export interface ManagerInstance {
 export type CancelPolicy = "KillThenReconcile" | "NoCancel";
 /**
  * Mirrors `PlanAction` in crates/banager-core/src/model.rs: what a plan
- * does when it runs. Externally tagged single-key objects. `Command` is
+ * does when it runs. Externally tagged single-key objects. Environment values
+ * are previews: OLLAMA_HOST userinfo is masked before IPC; the backend retains
+ * the real environment in its held plan, submitted by id only. `Command` is
  * one program and one argv, spawned by `run_plan`; `TrashPaths` is a
  * path-list uninstall of a tool installed by its own installer, which
  * Banager carries out itself by moving each path to the Trash (phase 4
@@ -700,7 +702,8 @@ export interface OpSummary {
   /**
    * The variables the plan's command is given (Rust `OpSummary::env_preview`,
    * crates/banager-core/src/ops/mod.rs), in its order; empty for a plan that
-   * runs no command. Always sent; optional here only so the many operation
+   * runs no command. OLLAMA_HOST userinfo is masked before IPC. Always
+   * sent; optional here only so the many operation
    * fixtures that predate it need not spell out an empty list -- a reader
    * takes a missing one as empty (`PasswordCommand.tsx`).
    */

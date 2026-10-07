@@ -785,7 +785,7 @@ impl CommandRunner for RealRunner {
         // whole (curl's "Unsupported proxy syntax in 'http://user:pw@…'"):
         // what this run hands on, and the transcripts a person reads, have
         // it masked (`runner::redact`, F2 of the decisions-round review).
-        let redactor = Arc::new(Redactor::for_commands(accepted.as_ref()));
+        let redactor = Arc::new(Redactor::for_command_env(accepted.as_ref(), &spec.env));
         cmd.envs(spec.env.iter().cloned());
         if let Some(cwd) = &spec.cwd {
             cmd.current_dir(cwd);

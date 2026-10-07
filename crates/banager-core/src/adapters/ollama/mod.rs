@@ -16,14 +16,16 @@ use crate::model::{
     UninstallScope, UpdateCandidate, UpdateChannel, Warning,
 };
 use crate::protected::{look, Protected};
+use crate::runner::redact::{without_ollama_login, Redactor};
 use crate::runner::{resolve_exe, CommandRunner, CommandSpec, HostEnv, OutputUse};
 use async_trait::async_trait;
 use parse::{
     changed_blob_bytes, config_digest, is_manifest_list, layer_digests, parse_tags, parse_version,
     split_model_reference,
 };
+use std::collections::HashMap;
 use std::path::{Component, Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
@@ -170,10 +172,9 @@ fn host_for(env: &HostEnv) -> String {
         .unwrap_or_else(|| DEFAULT_HOST.to_string())
 }
 
-/// The daemon URL an instance was detected against. `detect` encodes it in
-/// the instance id as `ollama:{host}`, which is how `inventory` and
-/// `check_updates` — which the `Adapter` trait gives only an instance —
-/// reach it without a `HostEnv` of their own or any adapter-level state.
+/// The public daemon endpoint, without login information. Detection retains
+/// the authenticated endpoint privately in the adapter; local-host checks
+/// need only this credential-free address.
 fn host_of(inst: &ManagerInstance) -> &str {
     inst.id.strip_prefix("ollama:").unwrap_or(DEFAULT_HOST)
 }
@@ -260,6 +261,8 @@ pub struct OllamaAdapter {
     runner: Arc<dyn CommandRunner>,
     http: Arc<dyn HttpClient>,
     meta: AdapterMeta,
+    // Runtime authentication stays in the adapter, not in snapshot/operation ids.
+    hosts: Mutex<HashMap<String, String>>,
     /// Whether Ollama.app is installed, which is the difference between
     /// the two states a silent daemon can be in. Production always gets
     /// [`real_ollama_app_present`]; tests inject a fixed answer through
@@ -278,8 +281,18 @@ impl OllamaAdapter {
             runner,
             http,
             meta,
+            hosts: Mutex::new(HashMap::new()),
             app_present_fn: real_ollama_app_present,
         }
+    }
+
+    fn endpoint(&self, inst: &ManagerInstance) -> String {
+        self.hosts
+            .lock()
+            .unwrap()
+            .get(&inst.id)
+            .cloned()
+            .unwrap_or_else(|| host_of(inst).to_string())
     }
 
     #[cfg(test)]
@@ -342,8 +355,11 @@ impl OllamaAdapter {
                 .map(|r| r.status == 200)
                 .unwrap_or(false);
         let unverified_version = self.meta.unverified_version(&version);
+        let id = without_ollama_login(&crate::model::instance_id(&self.meta.id, Some(&host)))
+            .into_owned();
+        self.hosts.lock().unwrap().insert(id.clone(), host.clone());
         vec![ManagerInstance {
-            id: crate::model::instance_id(&self.meta.id, Some(&host)),
+            id,
             adapter_id: self.meta.id.clone(),
             exe_path,
             prefix: env.home.join(".ollama"),
@@ -392,7 +408,9 @@ impl OllamaAdapter {
         &self,
         inst: &ManagerInstance,
     ) -> Result<Vec<InstalledArtifact>, AdapterError> {
-        let url = format!("{}/api/tags", host_of(inst));
+        let host = self.endpoint(inst);
+        let redactor = Redactor::for_settings([("OLLAMA_HOST", host.as_str())]);
+        let url = format!("{host}/api/tags");
         let resp = self
             .http
             .send(HttpRequest {
@@ -404,15 +422,20 @@ impl OllamaAdapter {
             .await
             .map_err(|e| AdapterError::CommandFailed {
                 code: None,
-                stderr: format!("GET {url}: {e}"),
+                stderr: redactor.redact(&format!("GET {url}: {e}")).into_owned(),
             })?;
         if resp.status != 200 {
             return Err(AdapterError::CommandFailed {
                 code: Some(resp.status as i32),
-                stderr: resp.body,
+                stderr: redactor.redact(&resp.body).into_owned(),
             });
         }
-        parse_tags(&resp.body, &inst.id)
+        parse_tags(&resp.body, &inst.id).map_err(|error| match error {
+            AdapterError::Parse(message) => {
+                AdapterError::Parse(redactor.redact(&message).into_owned())
+            }
+            other => other,
+        })
     }
 
     /// Returns `Ok(None)` when the local and registry manifests' layer-digest
@@ -724,7 +747,7 @@ impl OllamaAdapter {
             action: PlanAction::Command {
                 program: inst.exe_path.clone(),
                 args,
-                env: vec![("OLLAMA_HOST".to_string(), host_of(inst).to_string())],
+                env: vec![("OLLAMA_HOST".to_string(), self.endpoint(inst))],
             },
             needs_password: false,
             locks: vec![lock],
@@ -813,6 +836,165 @@ impl Adapter for OllamaAdapter {
 
 #[cfg(test)]
 mod tests {
+    #[derive(Default)]
+    struct EnvRecorder(Mutex<Vec<CommandSpec>>);
+
+    #[async_trait]
+    impl CommandRunner for EnvRecorder {
+        async fn run(
+            &self,
+            spec: CommandSpec,
+            _on_line: Option<crate::runner::LineCallback>,
+            _cancel: CancellationToken,
+        ) -> Result<crate::runner::CommandOutput, crate::runner::RunnerError> {
+            self.0.lock().unwrap().push(spec);
+            Ok(crate::runner::CommandOutput {
+                stdout: "ollama version is 0.34.1".into(),
+                stderr: String::new(),
+                exit_code: Some(0),
+                timed_out: false,
+                cancelled: false,
+                stderr_cause: Default::default(),
+            })
+        }
+    }
+
+    /// Detection, inventory, planning, the operation's summary and its
+    /// execution, for an `OLLAMA_HOST` with a login and for the ordinary
+    /// one with none. With a login, nothing the window is sent carries it
+    /// (the instance, the model keys, the plan, the summary), while every
+    /// request and every command still gets the address as written. With
+    /// none, the id, the keys and the plan's `OLLAMA_HOST` are exactly the
+    /// address, as before: the keys saved in settings and history match.
+    #[tokio::test]
+    async fn login_stays_private_through_detect_plan_execution_and_inventory() {
+        let tags = std::fs::read_to_string("../../adapters/fixtures/ollama/0.34.1/api-tags.json")
+            .expect("read ollama api-tags.json fixture");
+        for (host, public_id, preview) in [
+            (
+                "http://alice:s%40cret@server:11434",
+                "ollama:http://server:11434",
+                "http://****:****@server:11434",
+            ),
+            (
+                DEFAULT_HOST,
+                "ollama:http://127.0.0.1:11434",
+                "http://127.0.0.1:11434",
+            ),
+        ] {
+            let dir = isolated_path_dir("private-login");
+            let url = format!("{host}/api/tags");
+            let runner = Arc::new(EnvRecorder::default());
+            let http = Arc::new(MockHttpClient::new());
+            http.respond(
+                &url,
+                HttpResponse {
+                    status: 200,
+                    body: tags.clone(),
+                },
+            );
+            let adapter = Arc::new(OllamaAdapter::new(runner.clone(), http.clone()));
+            let env = HostEnv {
+                path_dirs: vec![dir.clone()],
+                home: dir.clone(),
+                euid: 501,
+                cargo_home: None,
+                rustup_home: None,
+                zdotdir: None,
+                ollama_host: Some(host.into()),
+            };
+            let inst = adapter.detect(&env).await.remove(0);
+            assert_eq!(inst.id, public_id);
+            assert!(!serde_json::to_string(&inst).unwrap().contains("alice"));
+            let models = adapter.inventory(&inst).await.unwrap();
+            assert_eq!(models.len(), 1, "{host}");
+            for model in &models {
+                assert_eq!(model.key.instance_id, public_id);
+            }
+            assert!(!serde_json::to_string(&models).unwrap().contains("alice"));
+            let mut manager =
+                crate::ops::OperationManager::new(Arc::new(crate::events::VecSink::new()));
+            manager.register_adapter(adapter.clone());
+            let manager = Arc::new(manager);
+            manager.register_instance(inst.clone());
+            for kind in [OpKind::Install, OpKind::Upgrade, OpKind::Uninstall] {
+                let req = OpRequest {
+                    kind,
+                    instance_id: inst.id.clone(),
+                    artifact_kind: crate::model::ArtifactKind::Model,
+                    name: "qwen3.8:27b-mlx".into(),
+                };
+                let plan = adapter.plan(&inst, &req).await.unwrap();
+                let wire = serde_json::to_value(&plan).unwrap();
+                assert_eq!(
+                    wire["action"]["Command"]["env"],
+                    serde_json::json!([["OLLAMA_HOST", preview]])
+                );
+                let wire = wire.to_string();
+                assert!(!wire.contains("alice"));
+                assert!(!wire.contains("s%40cret"));
+                let id = manager.submit(plan);
+                manager.wait(id).await;
+                let summary = manager
+                    .summaries()
+                    .into_iter()
+                    .find(|s| s.id == id)
+                    .unwrap();
+                assert_eq!(
+                    summary.env_preview,
+                    vec![("OLLAMA_HOST".into(), preview.into())]
+                );
+                let wire = serde_json::to_string(&summary).unwrap();
+                assert!(!wire.contains("alice"));
+                let back: crate::ops::OpSummary = serde_json::from_str(&wire).unwrap();
+                assert_eq!(back, summary);
+            }
+            let calls = runner.0.lock().unwrap();
+            let writes: Vec<_> = calls.iter().filter(|c| c.args[0] != "--version").collect();
+            assert_eq!(writes.len(), 3);
+            for call in writes {
+                assert_eq!(call.env, vec![("OLLAMA_HOST".into(), host.into())]);
+            }
+            // Detection, the inventory and each operation's check after it.
+            assert!(http.calls().len() >= 5, "{:?}", http.calls());
+            assert!(http.calls().iter().all(|called| called == &url));
+            drop(calls);
+            std::fs::remove_dir_all(dir).unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn inventory_masks_transport_status_and_parse_errors() {
+        let host = "http://alice:s%40cret@server:11434";
+        let url = format!("{host}/api/tags");
+        let inst = test_instance(host, PathBuf::from("/mock"));
+        for status in [0, 401, 200] {
+            let http = Arc::new(MockHttpClient::new());
+            let echoed = format!("{url} alice s@cret s%40cret");
+            if status == 0 {
+                http.fail(&url, &echoed);
+            } else {
+                http.respond(
+                    &url,
+                    HttpResponse {
+                        status,
+                        body: if status == 200 {
+                            serde_json::json!({"models": echoed}).to_string()
+                        } else {
+                            echoed
+                        },
+                    },
+                );
+            }
+            let adapter = OllamaAdapter::new(Arc::new(MockRunner::new()), http.clone());
+            let error = adapter.inventory(&inst).await.unwrap_err().to_string();
+            for secret in ["alice", "s%40cret", "s@cret"] {
+                assert!(!error.contains(secret), "{error}");
+            }
+            assert_eq!(http.calls(), vec![url.clone()]);
+        }
+    }
+
     #[tokio::test]
     async fn regression_f01_local_daemon_rejects_an_unrelated_manifest() {
         // The default store keeps the recorded qwen3.8 manifest as a
