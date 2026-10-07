@@ -1147,3 +1147,62 @@ describe("the menu bar's items that act in the page", () => {
     await waitFor(() => expect(getByRole("button", { name: "Check Again" })).not.toHaveAttribute("aria-disabled"));
   });
 });
+
+// R08 G10: the first page unmounts while its mutation is still pending.
+// Use the real App navigation and useSaveSettings; only persistence is fake.
+async function f08SettingsAcrossNavigation(firstFails: boolean) {
+  vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (this: HTMLElement) {
+    return this.getAttribute("data-index") === null ? 600 : 56;
+  });
+  vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(800);
+  const key = snapshot.artifacts[0].key;
+  const snap: Snapshot = { ...snapshot, updates: [{
+    key, current: "1.8.2", target: "1.9.0", checkable: true, blocked: null,
+    warnings: [], channel: "Native",
+  }] };
+  let persisted: Settings = { ...defaultSettings, auto_check_every: "Day" };
+  const pending: { value: Settings; resolve: () => void; reject: (error: Error) => void }[] = [];
+  mockBackend(snap, persisted);
+  const fallback = mockInvoke.getMockImplementation()!;
+  mockInvoke.mockImplementation((cmd, args) => {
+    if (cmd === "get_settings") return Promise.resolve(persisted);
+    if (cmd === "set_settings") {
+      const value = (args as { settings: Settings }).settings;
+      return new Promise<void>((resolve, reject) => {
+        pending.push({ value, resolve: () => { persisted = value; resolve(); }, reject });
+      });
+    }
+    return fallback(cmd, args);
+  });
+  const { findByRole, getByRole, queryClient } = renderWithProviders(<App />);
+  fireEvent.click(getByRole("button", { name: "Updates" }));
+  await findByRole("button", { name: "Update jq" });
+  fireEvent.click(getByRole("button", { name: "More actions for jq" }));
+  fireEvent.click(await findByRole("menuitem", { name: "Don't Remind Me About This Tool" }));
+  await waitFor(() => expect(pending).toHaveLength(1));
+  expect(pending[0].value.ignored_updates).toEqual([key]);
+  fireEvent.click(getByRole("button", { name: "Settings" }));
+  const automatic = await findByRole("combobox", { name: "Check for updates" });
+  fireEvent.change(automatic, { target: { value: "Day" } });
+  // Let React start the second mutation before resolving the first. A
+  // central queue may defer persistence; do not require concurrent writes.
+  await act(async () => { await Promise.resolve(); });
+  await act(async () => {
+    if (firstFails) pending[0].reject(new Error("first save failed"));
+    else pending[0].resolve();
+  });
+  await waitFor(() => expect(pending).toHaveLength(2));
+  await act(async () => pending[1].resolve());
+  await waitFor(() => expect(queryClient.getQueryData<Settings>(queryKeys.settings)?.auto_check_every).toBe("Day"));
+  expect(persisted.auto_check_every).toBe("Day");
+  expect(persisted.auto_check).toBe(true);
+  expect(persisted.ignored_updates).toEqual(firstFails ? [] : [key]);
+  expect(queryClient.getQueryData<Settings>(queryKeys.settings)).toEqual(persisted);
+}
+
+it.skip("bug: G10: an update hidden on Updates is lost when Settings saves before that save finishes", async () => {
+  await f08SettingsAcrossNavigation(false);
+});
+it("f08 G10 retains the second edit when the previous page's save fails", async () => {
+  await f08SettingsAcrossNavigation(true);
+});
