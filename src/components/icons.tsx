@@ -109,6 +109,19 @@ export function CheckCircleIcon(props: IconProps) {
   );
 }
 
+/**
+ * Kept private: a closed padlock, a half-circle shackle over a rounded
+ * body with its keyhole -- SF Symbols' lock, as tall as the circled icons.
+ */
+export function PrivacyIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="5" y="11" width="14" height="10" rx="2.5" />
+      <path d="M8 11V7.5A4 4 0 0 1 16 7.5V11M12 15V17" />
+    </Icon>
+  );
+}
+
 /** Done: a check mark on its own. */
 export function CheckIcon(props: IconProps) {
   return (

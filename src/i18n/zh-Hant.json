@@ -8,7 +8,7 @@
     "title": "歡迎使用{{name}}",
     "listTitle": "看清裝了什麼",
     "confirmTitle": "更新、解除安裝都由你確認",
-    "settingsTitle": "不改終端機設定，不收集資料",
+    "privacyTitle": "不收集資料",
     "start": "開始使用"
   },
   "inventoryPreview": {

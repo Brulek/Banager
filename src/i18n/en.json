@@ -8,7 +8,7 @@
     "title": "Welcome to {{name}}",
     "listTitle": "See What's Installed",
     "confirmTitle": "You Confirm Every Update and Uninstall",
-    "settingsTitle": "No Terminal Changes, No Data Collected",
+    "privacyTitle": "No Data Collected",
     "start": "Get Started"
   },
   "inventoryPreview": {

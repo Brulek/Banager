@@ -1,5 +1,6 @@
+import type { ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { invoke, type InvokeArgs } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
@@ -9,6 +10,7 @@ import { queryKeys } from "../lib/queryKeys";
 import type { Settings, Snapshot } from "../lib/types";
 import { openWelcomeSheet, useWelcomeAgain } from "../lib/welcome";
 import { fakeMenuBar } from "../test/menuBar";
+import { PrivacyIcon, SettingsIcon } from "./icons";
 import { WelcomeSheet, welcomeDue } from "./WelcomeSheet";
 import { BUTTON } from "./ui/controls";
 
@@ -96,12 +98,17 @@ describe("WelcomeSheet", () => {
     expect(points.map((point) => point.textContent)).toEqual([
       "See What's Installed",
       "You Confirm Every Update and Uninstall",
-      "No Terminal Changes, No Data Collected",
+      "No Data Collected",
     ]);
     // Each point's symbol is decoration: its title says it.
     for (const point of points) {
       expect(point.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
     }
+    // The privacy title has the padlock beside it, not the Settings
+    // page's gear, which spoke for the Terminal promise it no longer makes.
+    const drawing = (icon: ReactElement) => render(icon).container.querySelector("svg")?.innerHTML;
+    expect(points[2].querySelector("svg")?.innerHTML).toBe(drawing(<PrivacyIcon />));
+    expect(points[2].querySelector("svg")?.innerHTML).not.toBe(drawing(<SettingsIcon />));
     const start = within(sheet).getByRole("button", { name: "Get Started" });
     expect(start).toHaveClass(...BUTTON.large.default.split(" "));
     expect(within(sheet).getAllByRole("button")).toHaveLength(1);
@@ -114,30 +121,36 @@ describe("WelcomeSheet", () => {
     const sheet = await screen.findByRole("dialog", { name: "欢迎使用Banager" });
     expect(within(sheet).getByText("看清装了什么")).toBeInTheDocument();
     expect(within(sheet).getByText("更新、卸载都由你确认")).toBeInTheDocument();
-    expect(within(sheet).getByText("不改终端配置，不收集数据")).toBeInTheDocument();
+    expect(within(sheet).getByText("不收集数据")).toBeInTheDocument();
     expect(within(sheet).getAllByRole("listitem").map((point) => point.textContent)).toEqual([
       "看清装了什么",
       "更新、卸载都由你确认",
-      "不改终端配置，不收集数据",
+      "不收集数据",
     ]);
     expect(within(sheet).getByRole("button", { name: "开始使用" })).toBeInTheDocument();
   });
 
-  it("has no sentence under its titles, in any language", async () => {
+  it.each([
+    ["en", "No Data Collected"],
+    ["zh-CN", "不收集数据"],
+    ["zh-Hant", "不收集資料"],
+  ])("keeps %s titles alone without promising Terminal settings never change", async (language, privacyTitle) => {
     // The author asked for the titles alone (2026-10-07): each point is
-    // one line, its symbol and its title.
-    for (const language of ["en", "zh-CN", "zh-Hant"] as const) {
-      await i18n.changeLanguage(language);
-      const { unmount } = renderWithProviders(<WelcomeSheet />);
-      const sheet = await screen.findByRole("dialog");
-      for (const point of within(sheet).getAllByRole("listitem")) {
-        expect(point.querySelectorAll("p"), language).toHaveLength(1);
-      }
-      unmount();
+    // one line, its symbol and its title. Rustup's confirmed uninstall
+    // edits shell startup files, so the third title promises privacy only.
+    await i18n.changeLanguage(language);
+    renderWithProviders(<WelcomeSheet />);
+    const sheet = await screen.findByRole("dialog");
+    const points = within(sheet).getAllByRole("listitem");
+    expect(points).toHaveLength(3);
+    expect(points[2].textContent).toBe(privacyTitle);
+    for (const point of points) {
+      expect(point.querySelectorAll("p"), language).toHaveLength(1);
     }
-    for (const key of ["welcome.listText", "welcome.confirmText", "welcome.settingsText"]) {
+    for (const key of ["welcome.listText", "welcome.confirmText", "welcome.settingsText", "welcome.settingsTitle"]) {
       expect(i18n.exists(key), key).toBe(false);
     }
+    expect(i18n.t("welcome.privacyTitle")).toBe(privacyTitle);
   });
 
   it("never shows once it has been seen", async () => {

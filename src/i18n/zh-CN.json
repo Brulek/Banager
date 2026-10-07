@@ -8,7 +8,7 @@
     "title": "欢迎使用{{name}}",
     "listTitle": "看清装了什么",
     "confirmTitle": "更新、卸载都由你确认",
-    "settingsTitle": "不改终端配置，不收集数据",
+    "privacyTitle": "不收集数据",
     "start": "开始使用"
   },
   "inventoryPreview": {

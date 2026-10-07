@@ -5,7 +5,7 @@ import { queryKeys } from "../lib/queryKeys";
 import { useSaveSettings, useSettings } from "../lib/queries";
 import type { Settings } from "../lib/types";
 import { useWelcomeAgain } from "../lib/welcome";
-import { CheckCircleIcon, InstalledIcon, SettingsIcon } from "./icons";
+import { CheckCircleIcon, InstalledIcon, PrivacyIcon } from "./icons";
 import { Dialog } from "./ui/Dialog";
 import { BUTTON } from "./ui/controls";
 
@@ -19,11 +19,15 @@ const APP_NAME = "Banager";
  * applies -- the sidebar's 「来源」 and 「其他程序」 once the first check
  * has answered, every preview before an update or uninstall, and
  * docs/what-we-run.md.
+ *
+ * The third promises privacy alone: no Terminal promise, as rustup's own
+ * uninstall, once confirmed, edits shell startup files (docs/what-we-run.md,
+ * rustup's "Shell startup files"), which the second title already covers.
  */
 const POINTS: { icon: ComponentType<{ size?: number; className?: string }>; title: string }[] = [
   { icon: InstalledIcon, title: "welcome.listTitle" },
   { icon: CheckCircleIcon, title: "welcome.confirmTitle" },
-  { icon: SettingsIcon, title: "welcome.settingsTitle" },
+  { icon: PrivacyIcon, title: "welcome.privacyTitle" },
 ];
 
 /**

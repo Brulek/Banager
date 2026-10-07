@@ -176,7 +176,7 @@ in a few plain sentences each — a command Terminal can't find, why some tools 
 Programs, sizes, major updates and the automatic check — with a button named for the page it opens
 (*Show in Installed*, *Show in Updates*…) where the answer can be acted on.
 
-The first time Banager opens, a welcome sheet shows three short titles — see what's installed; you confirm every update and uninstall; no Terminal changes and no data collected — and nothing more. The first check runs behind it. However
+The first time Banager opens, a welcome sheet shows three short titles — see what's installed; you confirm every update and uninstall; no data collected — and nothing more. The first check runs behind it. However
 you close it — **Get Started**, Return, Escape or a click beside it — its settings file records that
 it was shown, and it doesn't open on its own again; **Welcome to Banager** in the Help menu shows it
 again at any time.
@@ -590,7 +590,7 @@ Banager 开着时还会每天做一次同样的检查，查到的更新都不安
 “装了两份”、Mac 密码、卸载后留下什么、Banager 自己会改动什么、“其他程序”、占用空间、大版本更新和自动检查；
 能动手处理的，旁边有“查看”按钮，直接打开对应的页面或“已安装”里的显示选项。
 
-第一次打开 Banager 时，会出现一个欢迎页，只有三个短标题：看清装了什么；更新、卸载都由你确认；不改终端配置，不收集数据。第一次检查在它背后照常进行。不管怎样关掉它——点“开始使用”、按回车或 Esc、点它外面——设置文件都会记下
+第一次打开 Banager 时，会出现一个欢迎页，只有三个短标题：看清装了什么；更新、卸载都由你确认；不收集数据。第一次检查在它背后照常进行。不管怎样关掉它——点“开始使用”、按回车或 Esc、点它外面——设置文件都会记下
 已经看过，以后不会自己再出现；随时可以从菜单栏“帮助”里的“欢迎使用Banager”再打开。
 
 关掉窗口——点它的红色按钮，或从菜单栏选“文件”菜单里的“关闭窗口”（⌘W）——Banager 仍在运行，进行中的操作照常
