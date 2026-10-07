@@ -253,6 +253,20 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_version_reads_the_cli_version_when_no_daemon_answers() {
+        // What `ollama --version` prints with no daemon at `OLLAMA_HOST`,
+        // which is how Banager runs it (`VERSION_PROBE_HOST`): Ollama
+        // 0.40.0 `cmd/cmd.go:2303-2321`, `versionHandler`, the two
+        // `fmt.Println`/`Printf` lines with its own version last.
+        assert_eq!(
+            parse_version(
+                "Warning: could not connect to a running Ollama instance\nWarning: client version is 0.40.0\n"
+            ),
+            Some("0.40.0".to_string())
+        );
+    }
+
+    #[test]
     fn test_parse_tags_from_the_recorded_fixture() {
         let json = std::fs::read_to_string("../../adapters/fixtures/ollama/0.34.1/api-tags.json")
             .expect("read ollama api-tags.json fixture");

@@ -159,7 +159,8 @@ It knows the logins of the settings the command was handed -- those read
 from the login shell, and the same names in Banager's own environment,
 which a command inherits when the shell did not set them -- and of
 `OLLAMA_HOST`: Banager's own, which every command inherits, and the one an
-Ollama command is given (Ollama). Each value is
+Ollama command is given (Ollama) -- the address for a pull or rm, port 0
+of this Mac for `ollama --version`. Each value is
 read by fixed rules, never by what its parts look like:
 
 - a scheme counts only where the value starts with one (a letter, then
@@ -2820,7 +2821,14 @@ Verified against Ollama 0.34.1 (`adapters/meta/ollama.toml`).
 
 **Detect.** `ollama` is the first `ollama` on `PATH`; `<ollama> --version`
 (30 s) — never `ollama list`, which on macOS launches Ollama.app as a side
-effect, and a background refresh must never launch an application. The
+effect, and a background refresh must never launch an application. That
+command asks the daemon at `OLLAMA_HOST` for its version before printing
+its own, so Banager runs it with `OLLAMA_HOST=127.0.0.1:0`
+(`VERSION_PROBE_HOST`): port 0 of this Mac, where nothing can listen. It
+connects to nothing and sends nothing, and prints at once that it could
+not connect and the version of the `ollama` found, the one Banager shows
+-- where an `OLLAMA_HOST` naming a machine that is not there would have
+held every refresh for up to 30 seconds. The
 daemon is asked over HTTP instead: `GET {host}/api/tags` (10 s), where
 `{host}` is `OLLAMA_HOST` from the environment, read the way Ollama reads
 it (`envconfig.Host`, whose own test table Banager's tests repeat) and
@@ -2860,8 +2868,8 @@ Command output masking also includes the inherited or explicitly supplied
 `OLLAMA_HOST`, including decoded, encoded and HTTP Basic forms under the
 redactor's existing short-secret rules (How Banager runs anything).
 History and settings still remove logins from legacy keys before storing
-instance ids (Files Banager writes). The version command has no added
-environment variables.
+instance ids (Files Banager writes). The version command is given one
+variable, `OLLAMA_HOST=127.0.0.1:0` (above), which has no login.
 
 One `OLLAMA_HOST` survives that normalisation and is then never asked:
 an `https://` `OLLAMA_HOST` is refused by the https allowlist in the
@@ -2880,7 +2888,7 @@ still does not connect to such an address; recorded in
 
 | Purpose | Request or argv | Timeout |
 |---|---|---|
-| Version | `<ollama> --version` | 30 s |
+| Version (with `OLLAMA_HOST=127.0.0.1:0`, so no daemon is asked) | `<ollama> --version` | 30 s |
 | Is the daemon answering (detect) | `GET {host}/api/tags` | 10 s |
 | List pulled models (`inventory`) | `GET {host}/api/tags` | 30 s |
 | Is a model current (`check_updates`, per model) | `GET https://registry.ollama.ai/v2/{namespace}/{name}/manifests/{tag}` with `Accept: application/vnd.docker.distribution.manifest.v2+json` | 30 s |

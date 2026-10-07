@@ -187,6 +187,19 @@ const PULL_TIMEOUT_SECS: u64 = crate::runner::real::MAX_TIMEOUT.as_secs();
 /// npm, pipx or uv uninstall gets.
 const RM_TIMEOUT_SECS: u64 = 600;
 
+/// The `OLLAMA_HOST` `ollama --version` is run with: port 0 of this Mac,
+/// where nothing can listen. That command asks the daemon at
+/// `OLLAMA_HOST` for its version before it prints its own (0.40
+/// `cmd/cmd.go` `versionHandler`, through `api.ClientFromEnvironment`,
+/// whose connect waits up to 30 s): inherited, an `OLLAMA_HOST` naming a
+/// machine that is not there held every refresh for that long before the
+/// daemon was even asked (r40 R40-5). Here the connection fails at once,
+/// with nothing sent, and the command says "could not connect" and then
+/// "client version is X" -- the version of the `ollama` found, the one
+/// this row is about, which `parse_version` reads from the last word as
+/// it always did. No host is added: this is this Mac, never answered.
+const VERSION_PROBE_HOST: &str = "127.0.0.1:0";
+
 /// Ollama's own default daemon URL, used whenever the host environment did
 /// not set `OLLAMA_HOST`.
 pub const DEFAULT_HOST: &str = "http://127.0.0.1:11434";
@@ -350,11 +363,13 @@ impl OllamaAdapter {
     }
 
     /// The `ollama` binary's own version is read via a lightweight CLI call
-    /// (`ollama --version`), which — unlike `ollama list` — touches neither
-    /// the daemon nor the macOS GUI app. Daemon health is read separately,
-    /// over HTTP, so a background refresh never shells out to `ollama list`
-    /// (this phase's ruling: reads stay on HTTP, in part because `ollama
-    /// list` launches Ollama.app as a side effect on macOS).
+    /// (`ollama --version`), which — unlike `ollama list` — never launches
+    /// the macOS GUI app, and is pointed at a port nothing can listen on
+    /// (`VERSION_PROBE_HOST`) so that it asks no daemon either. Daemon
+    /// health is read separately, over HTTP, so a background refresh never
+    /// shells out to `ollama list` (this phase's ruling: reads stay on
+    /// HTTP, in part because `ollama list` launches Ollama.app as a side
+    /// effect on macOS).
     pub async fn detect(&self, env: &HostEnv) -> Vec<ManagerInstance> {
         let Some(exe_path) = resolve_exe("ollama", env) else {
             return Vec::new();
@@ -365,7 +380,7 @@ impl OllamaAdapter {
                 CommandSpec {
                     program: exe_path.clone(),
                     args: vec!["--version".to_string()],
-                    env: Vec::new(),
+                    env: vec![("OLLAMA_HOST".to_string(), VERSION_PROBE_HOST.to_string())],
                     cwd: None,
                     timeout: Duration::from_secs(30),
                     output_use: OutputUse::Parsed,
@@ -1952,6 +1967,56 @@ mod tests {
                 .expect("execute");
         assert_eq!(outcome, Outcome::Succeeded);
         assert_eq!(sink.snapshot().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_the_version_command_asks_no_daemon_whatever_ollama_host_says() {
+        // r40 R40-5: `ollama --version` asks the daemon at `OLLAMA_HOST`
+        // first. With one naming a home server not on this network, it
+        // waited up to 30 s every refresh. It is now given port 0 of this
+        // Mac -- for every `OLLAMA_HOST`, none included -- while the
+        // daemon is still asked over HTTP at the address the user set.
+        for (ollama_host, tags) in [
+            (
+                Some("http://192.168.1.20:11434"),
+                "http://192.168.1.20:11434/api/tags",
+            ),
+            (None, "http://127.0.0.1:11434/api/tags"),
+        ] {
+            let dir = isolated_path_dir("version-probe");
+            let runner = Arc::new(EnvRecorder::default());
+            let http = Arc::new(MockHttpClient::new());
+            http.respond(
+                tags,
+                HttpResponse {
+                    status: 200,
+                    body: r#"{"models":[]}"#.to_string(),
+                },
+            );
+            let adapter = OllamaAdapter::new(runner.clone(), http.clone());
+            let env = HostEnv {
+                path_dirs: vec![dir.clone()],
+                home: dir.clone(),
+                euid: 501,
+                cargo_home: None,
+                rustup_home: None,
+                zdotdir: None,
+                ollama_host: ollama_host.map(str::to_string),
+            };
+            let inst = adapter.detect(&env).await.remove(0);
+            assert_eq!(inst.version.as_deref(), Some("0.34.1"));
+            assert!(inst.available(), "{ollama_host:?}");
+            let specs = runner.0.lock().unwrap();
+            assert_eq!(specs.len(), 1);
+            assert_eq!(specs[0].args, vec!["--version"]);
+            assert_eq!(
+                specs[0].env,
+                vec![("OLLAMA_HOST".to_string(), "127.0.0.1:0".to_string())]
+            );
+            assert_eq!(http.calls(), vec![tags.to_string()]);
+            drop(specs);
+            std::fs::remove_dir_all(dir).unwrap();
+        }
     }
 
     #[tokio::test]
