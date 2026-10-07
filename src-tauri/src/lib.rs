@@ -1,6 +1,7 @@
 mod auto_check;
 pub mod events;
 mod history;
+mod homepage;
 mod ipc;
 mod menu;
 mod navigation;
@@ -176,6 +177,7 @@ pub fn run() {
             ipc::open_ollama_app,
             ipc::scan_unknown,
             reveal::reveal_in_finder,
+            homepage::open_homepage,
             ipc::artifact_icon,
             ipc::get_sizes,
             ipc::get_system_facts,

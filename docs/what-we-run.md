@@ -4099,9 +4099,25 @@ not built into Banager: `src-tauri/Cargo.toml` does not depend on it,
 permission to call. Nothing in Banager called it once Banager's own
 `reveal_in_finder`, the Other Programs page's Show in Finder, asked
 Finder through AppKit to show a file the newest scan found, which
-connects to nothing (Unknown-source scan, above). The
-window cannot have it open a URL: there is no homepage link; when one
-ships, this paragraph changes. And the Tauri updater
+connects to nothing (Unknown-source scan, above). Nor can the window
+have Banager open just any URL. A tool's homepage in the Installed page's
+details is a link (the author's request of 2026-10-07, in place of
+decision S9's copy-only): a click sends the address shown to Banager's own
+`open_homepage` (`src-tauri/src/homepage.rs`), which has the default
+browser open it, through AppKit (`NSWorkspace openURL:`), only when it is,
+exactly, the homepage of a tool in the current snapshot, trimmed, as that
+tool's source reported it (Homebrew's `homepage`, a standalone
+installer's recipe) -- and an `http` or `https` address with a host. Any
+other address is refused before anything is parsed (`not_listed`), and a
+homepage a tool lists that is any other kind of address -- `file:`,
+`ftp:`, an app's own scheme -- is refused too (`not_web`). No command
+runs and Banager connects to nothing: the browser loads the page, under
+the browser's own settings. The window is given no new permission for
+it: Banager's own commands are behind no permission of their own
+(`src-tauri/build.rs` declares no app manifest), and
+`src-tauri/capabilities/default.json` is as it was; the opener plugin
+stays out. The window itself still never leaves Banager's page
+(`src-tauri/src/navigation.rs`). And the Tauri updater
 plugin is compiled in and configured with the endpoint
 `https://github.com/Brulek/Banager/releases/latest/download/latest.json`
 (`src-tauri/tauri.conf.json`, `plugins.updater`), but nothing in Banager
@@ -4219,6 +4235,9 @@ configured, `index.crates.io`, and cargo still follows a
   upgrade.
 - Never launches an application from a refresh; `open -a Ollama` runs
   only when the button is pressed.
+- Never opens a web address the window names: a click on a tool's
+  homepage opens, in the default browser, only an `http` or `https`
+  homepage a tool in the current snapshot lists (Network).
 - Never opens a tool to make it update itself: a self-updating tool's row
   tells the user how, and Banager runs nothing.
 - Never asks for, stores or types a password; `SUDO_ASKPASS` is passed

@@ -10,8 +10,9 @@
 //! be given none of Banager's commands (Tauri checks the origin of every
 //! call, and `capabilities/default.json` names none but Banager's own), so
 //! this closes the way out, not a way in. Nothing in Banager's own page
-//! links away from it: no homepage link ships (docs/what-we-run.md,
-//! Network).
+//! links away from it: a tool's homepage opens in the default browser,
+//! through Banager's own `open_homepage` (homepage.rs), never in this
+//! window (docs/what-we-run.md, Network).
 
 use tauri::plugin::{Builder, TauriPlugin};
 use tauri::{Runtime, Url};

@@ -1094,6 +1094,65 @@ fn test_what_we_run_names_the_opener_permission_the_window_has_and_what_show_in_
     );
 }
 
+#[test]
+fn test_what_we_run_says_what_the_homepage_link_opens_and_that_it_adds_no_permission() {
+    // The command the details panel's homepage link calls
+    // (`src-tauri/src/homepage.rs`), registered in `run()`.
+    let path = Path::new("../../src-tauri/src/lib.rs");
+    let lib =
+        std::fs::read_to_string(path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    let registered = lib.contains("homepage::open_homepage,");
+    let doc = read_doc();
+    let network = section_body(&doc, "Network").unwrap_or_else(|| {
+        panic!("docs/what-we-run.md has no `## Network` section for the hosts Banager connects to")
+    });
+    let network = network.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert_eq!(
+        network.contains("`open_homepage`"),
+        registered,
+        "the `## Network` section of docs/what-we-run.md does not say whether the window can have a homepage opened, as src-tauri/src/lib.rs registers it"
+    );
+    if !registered {
+        return;
+    }
+    for said in [
+        "NSWorkspace openURL:",
+        "only when it is, exactly, the homepage of a tool in the current snapshot",
+        "an `http` or `https` address with a host",
+        "No command runs and Banager connects to nothing",
+        "The window is given no new permission for it",
+    ] {
+        assert!(
+            network.contains(said),
+            "the `## Network` section of docs/what-we-run.md does not say {said:?} of the homepage link"
+        );
+    }
+    // What it says of the permissions holds: no app manifest that would
+    // put Banager's own commands behind permissions, and no permission of
+    // the opener's or the shell's.
+    let path = Path::new("../../src-tauri/build.rs");
+    let build =
+        std::fs::read_to_string(path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    assert!(
+        !build.contains("app_manifest"),
+        "src-tauri/build.rs declares an app manifest"
+    );
+    let path = Path::new("../../src-tauri/capabilities/default.json");
+    let text =
+        std::fs::read_to_string(path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    assert!(
+        !text.contains("\"opener:") && !text.contains("\"shell:"),
+        "src-tauri/capabilities/default.json gives the window an opener or shell permission"
+    );
+    let never = section_body(&doc, "What Banager never does")
+        .expect("a `## What Banager never does` section");
+    let never = never.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(
+        never.contains("Never opens a web address the window names"),
+        "the `## What Banager never does` section of docs/what-we-run.md does not bound the homepage link"
+    );
+}
+
 /// A fresh, canonical directory under the system temp dir, removed when
 /// the test ends, for the synthetic `claude` files the `PATH`-look test
 /// below builds: real links and real executable files, never run, since
