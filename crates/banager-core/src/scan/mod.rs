@@ -465,7 +465,12 @@ pub fn uv_python_dir(home: &Path) -> PathBuf {
 ///    resolves to. rustup's thirteen proxies in `~/.cargo/bin` are
 ///    relative links to `rustup`, and so is the cargo instance's own
 ///    `cargo`; grok's `agent` and `grok` links resolve to one download.
-///    Or, both leading nowhere, the entry would lead to the same missing
+///    Or it is that very file under another name, by device and inode
+///    (`Stat::same_as`, the `fstatat` the walk makes of each entry
+///    already): where an older rustup made its proxies, they are hard
+///    links to `rustup` (`adapters/standalone/recipe.rs`, "links to rustup
+///    on some Macs and hard links on others"), each a regular file of its
+///    own path that no path comparison places. Or, both leading nowhere, the entry would lead to the same missing
 ///    file as an instance's `exe_path` would (`dead_end`): the launcher-only
 ///    state again, where grok's `~/.grok/bin/agent` would lead to the
 ///    download its launcher would, and so would a fallback link the
@@ -515,6 +520,13 @@ struct Known {
     /// followed, or -- for one that leads into a protected place -- the
     /// path as far as that, the rest as written.
     exe_canonical: Vec<(PathBuf, InstanceId)>,
+    /// Rule 1 for a file by another name: what `fstatat` said of the
+    /// regular file each instance's `exe_path` leads to, its device and
+    /// inode telling that file from any other (`Stat::same_as`) -- rustup's
+    /// hard-linked proxies are `rustup` itself. From the same look
+    /// `exe_canonical` comes from; none for an `exe_path` that leads
+    /// nowhere or into a protected place, where nothing was looked at.
+    exe_files: Vec<(Stat, InstanceId)>,
     /// Rule 1 for a link that leads nowhere: where each instance's
     /// `exe_path` that leads nowhere would lead (`dead_end`), with the
     /// instance. Empty unless some instance's `exe_path` leads nowhere;
@@ -567,10 +579,18 @@ struct CaskCommand {
 /// and neither is entered. `None` when nothing is there, or a folder on
 /// the way cannot be searched.
 fn leads_to(path: &Path, protected: &Protected) -> Option<PathBuf> {
+    leads_to_with_stat(path, protected).0
+}
+
+/// `leads_to`, and what `fstatat` said of what is there, from the same
+/// look: `None` for the stat whenever nothing there was looked at (it is
+/// not there, or it is in a protected place). Read by `Known::index` for
+/// each instance's `exe_path` (rule 1, `exe_files`).
+fn leads_to_with_stat(path: &Path, protected: &Protected) -> (Option<PathBuf>, Option<Stat>) {
     match protected::resolve(path, protected, true) {
-        Resolution::Found(real, _) => Some(real),
-        Resolution::Protected(at) => by_name(at, protected),
-        Resolution::Missing | Resolution::Refused => None,
+        Resolution::Found(real, stat) => (Some(real), Some(stat)),
+        Resolution::Protected(at) => (by_name(at, protected), None),
+        Resolution::Missing | Resolution::Refused => (None, None),
     }
 }
 
@@ -617,10 +637,15 @@ impl Known {
     ) -> Known {
         let mut exe_raw = Vec::with_capacity(instances.len());
         let mut exe_canonical = Vec::with_capacity(instances.len());
+        let mut exe_files = Vec::with_capacity(instances.len());
         let mut exe_dead_ends = Vec::new();
         for inst in instances {
             exe_raw.push((inst.exe_path.clone(), inst.id.clone()));
-            match leads_to(&inst.exe_path, protected) {
+            let (leads, stat) = leads_to_with_stat(&inst.exe_path, protected);
+            if let Some(stat) = stat.filter(Stat::is_file) {
+                exe_files.push((stat, inst.id.clone()));
+            }
+            match leads {
                 Some(leads) => exe_canonical.push((leads, inst.id.clone())),
                 None => {
                     if let Some(end) = dead_end(&inst.exe_path, protected) {
@@ -703,6 +728,7 @@ impl Known {
         Known {
             exe_raw,
             exe_canonical,
+            exe_files,
             exe_dead_ends,
             artifact_roots,
             cask_commands,
@@ -712,18 +738,20 @@ impl Known {
     }
 
     /// The source that put `raw` (in the folder `dir`, where it leads;
-    /// leading to `leads` -- `leads_to`, `None` for a broken link; `kind`
-    /// what it is; `text`, a link's own text) there, by the first rule
+    /// `found`, what `examine` made of it: where it leads -- `leads_to`,
+    /// `None` for a broken link --, what it is, a link's own text, and what
+    /// `fstatat` said of the file it leads to) there, by the first rule
     /// that matches -- or `None`: unknown.
     fn claimant(
         &self,
         raw: &Path,
         dir: &Path,
-        leads: Option<&Path>,
-        text: Option<&Path>,
-        kind: EntryKind,
+        found: &Examined,
         protected: &Protected,
     ) -> Option<&InstanceId> {
+        let leads = found.leads.as_deref();
+        let text = found.text.as_deref();
+        let kind = found.entry.kind;
         if let Some((_, id)) = self.exe_raw.iter().find(|(exe, _)| exe == raw) {
             return Some(id);
         }
@@ -734,6 +762,13 @@ impl Known {
                 .find(|(exe, _)| same_place(exe, leads))
             {
                 return Some(id);
+            }
+            // The launcher's very file under another name: a hard link to
+            // it (rustup's proxies, where an older rustup made them so).
+            if let Some(seen) = found.entry.seen.as_ref().filter(|seen| seen.is_file()) {
+                if let Some((_, id)) = self.exe_files.iter().find(|(file, _)| file.same_as(seen)) {
+                    return Some(id);
+                }
             }
             if let Some((_, id)) = self
                 .artifact_roots
@@ -1134,14 +1169,7 @@ pub fn scan_dirs(
             let Some(found) = examine(&folder, &canonical, &name, &raw, env, &protected) else {
                 continue;
             };
-            match known.claimant(
-                &raw,
-                &canonical,
-                found.leads.as_deref(),
-                found.text.as_deref(),
-                found.entry.kind,
-                &protected,
-            ) {
+            match known.claimant(&raw, &canonical, &found, &protected) {
                 Some(_) => attributed += 1,
                 None => entries.push(found.entry),
             }
@@ -1575,7 +1603,8 @@ mod tests {
             // rustup's root is the Cargo home, whose `bin/` is the very
             // directory being scanned: nothing of rustup's is placed by
             // its prefix. rustup itself and its thirteen proxies resolve
-            // to the launcher (rule 1); `cargo install`ed programs carry
+            // to the launcher, or are it by another name (rule 1);
+            // `cargo install`ed programs carry
             // their path on cargo's artifacts (rule 2).
             (
                 "standalone-rustup",
@@ -1626,16 +1655,24 @@ mod tests {
         };
         let protected = Protected::new(&tmp);
         let known = Known::index(&[outer_inst, inner_inst], &[], &[], &tmp, &protected);
+        let found = Examined {
+            entry: UnknownEntry {
+                path: entry.clone(),
+                kind: EntryKind::File,
+                resolved: Some(entry.clone()),
+                link_target: None,
+                size_bytes: None,
+                modified_at: None,
+                owned_by_me: true,
+                app_bundle: None,
+                seen: None,
+            },
+            leads: Some(entry.clone()),
+            text: None,
+        };
         assert_eq!(
             known
-                .claimant(
-                    &entry,
-                    &inner_bin,
-                    Some(&entry),
-                    None,
-                    EntryKind::File,
-                    &protected
-                )
+                .claimant(&entry, &inner_bin, &found, &protected)
                 .map(String::as_str),
             Some("ollama:http://inner:11434")
         );

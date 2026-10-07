@@ -483,15 +483,18 @@ fn test_rule_0_claims_an_instances_launcher_and_nothing_else_in_its_directory() 
 
 #[test]
 fn test_rule_1_claims_everything_that_resolves_to_an_instances_launcher() {
-    // `~/.cargo/bin`: rustup itself, thirteen proxies that are relative
-    // symlinks to it, and one crate installed with `cargo install`. The
-    // cargo instance's own executable is one of the proxies, so
-    // everything that resolves to `rustup` is cargo's. `hexyl` is not
-    // by this rule: with no artifact carrying its path it is listed,
-    // honestly; the test after this one gives cargo's inventory its say.
-    let home = Home::new("rule-1");
-    let bin = home.dir(".cargo/bin");
-    exe(&bin, "rustup", b"x");
+    // `~/.cargo/bin`: rustup itself, thirteen proxies, and one crate
+    // installed with `cargo install`. The proxies are relative symlinks to
+    // `rustup` on most Macs, and hard links to it where an older rustup
+    // made them (`recipe.rs`, "links to rustup on some Macs and hard links
+    // on others"): either way each is rustup's very file, by device and
+    // inode when not by where it leads. The cargo instance's own
+    // executable is one of the proxies, so every one of them is cargo's
+    // or rustup's, never a stranger's. `hexyl` is not by this rule: with
+    // no artifact carrying its path it is listed, honestly; the test after
+    // this one gives cargo's inventory its say. Nor is a copy of rustup's
+    // bytes in a file of its own (`rust-copy`): the same contents are not
+    // the same file.
     let proxies = [
         "cargo",
         "cargo-clippy",
@@ -507,31 +510,60 @@ fn test_rule_1_claims_everything_that_resolves_to_an_instances_launcher() {
         "rustdoc",
         "rustfmt",
     ];
-    for proxy in proxies {
-        link(&bin, proxy, Path::new("rustup"));
+    for hard_links in [false, true] {
+        let home = Home::new(if hard_links { "rule-1-hard" } else { "rule-1" });
+        let bin = home.dir(".cargo/bin");
+        let rustup = exe(&bin, "rustup", b"x");
+        for proxy in proxies {
+            if hard_links {
+                fs::hard_link(&rustup, bin.join(proxy)).expect("hard link");
+            } else {
+                link(&bin, proxy, Path::new("rustup"));
+            }
+        }
+        exe(&bin, "hexyl", b"x");
+        exe(&bin, "rust-copy", b"x");
+        let cargo_home = home.path().join(".cargo");
+        let cargo = ManagerInstance {
+            exe_path: bin.join("cargo"),
+            prefix: cargo_home.clone(),
+            ..manager_instance("cargo", &format!("cargo:{}", cargo_home.display()))
+        };
+        let standalone_rustup = ManagerInstance {
+            exe_path: rustup.clone(),
+            prefix: cargo_home,
+            ..manager_instance("standalone-rustup", "standalone-rustup")
+        };
+        // Either instance alone accounts for all fourteen: rustup's by its
+        // own launcher, cargo's by the proxy that is its executable.
+        for instances in [
+            vec![cargo.clone()],
+            vec![standalone_rustup.clone()],
+            vec![cargo, standalone_rustup],
+        ] {
+            let scan = scan_dirs(
+                std::slice::from_ref(&bin),
+                &home.env(vec![]),
+                &instances,
+                &[],
+                &[],
+                ScanBudget::default(),
+            );
+
+            let ids: Vec<&str> = instances.iter().map(|i| i.id.as_str()).collect();
+            assert_eq!(
+                scan.attributed, 14,
+                "hard links: {hard_links}, {ids:?}: {:?}",
+                scan.entries
+            );
+            let listed: Vec<PathBuf> = scan.entries.iter().map(|e| e.path.clone()).collect();
+            assert_eq!(
+                listed,
+                vec![tilde(".cargo/bin/hexyl"), tilde(".cargo/bin/rust-copy")],
+                "hard links: {hard_links}, {ids:?}"
+            );
+        }
     }
-    exe(&bin, "hexyl", b"x");
-    let cargo = ManagerInstance {
-        exe_path: bin.join("cargo"),
-        prefix: home.path().join(".cargo"),
-        ..manager_instance(
-            "cargo",
-            &format!("cargo:{}", home.path().join(".cargo").display()),
-        )
-    };
-
-    let scan = scan_dirs(
-        &[bin],
-        &home.env(vec![]),
-        &[cargo],
-        &[],
-        &[],
-        ScanBudget::default(),
-    );
-
-    assert_eq!(scan.attributed, 14, "{:?}", scan.entries);
-    assert_eq!(scan.entries.len(), 1, "{:?}", scan.entries);
-    assert_eq!(scan.entries[0].path, tilde(".cargo/bin/hexyl"));
 }
 
 #[test]

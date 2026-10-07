@@ -4023,7 +4023,12 @@ comes after the sources' state changed waits for it and then scans
 A program is *not* listed when a known source accounts for it
 (`Known::claimant`): it is a source's own executable, or resolves to the
 same file one does (`~/.cargo/bin/cargo` and rustup's other proxies all
-resolve to `rustup`), or — a link that leads nowhere — would lead to the
+resolve to `rustup`), or is that very file by another name, with the same
+device and inode (rustup's proxies where an older rustup made them as hard
+links to `rustup`, each a regular file of its own name; the device and
+inode come from the look the scan already takes at each entry and at the
+source's own executable, nothing more is read), or — a
+link that leads nowhere — would lead to the
 same missing file as a source's own executable that leads nowhere too
 (Grok Build's `~/.grok/bin/agent` beside its launcher once
 `~/.grok/downloads` is gone: the Uninstall that finishes that state moves
