@@ -886,8 +886,11 @@ export function UpdatesPage() {
    * Whether the row may say its tool usually updates itself: an actionable
    * row of a tool with its own installer that updates itself in the
    * background (`auto_updates`, set by the standalone adapter from its
-   * recipe; spec D5). The row is real -- it compares the launcher's live
-   * version with the published one -- and keeps its button; the chip says
+   * recipe and, for Claude Code, from whether its ~/.claude/settings.json
+   * turns its updater off: r39 S2; spec D5). The row is real -- it
+   * compares the launcher's live version with the published one -- and
+   * keeps its button (a row held back, such as Claude Code's whose
+   * settings turn every update off, is not actionable); the chip says
    * the tool usually does this itself. It does so when it runs, and typing
    * its name runs this copy only where no note says otherwise
    * (`NAME_MAY_NOT_RUN_THIS_COPY`; the notice at the top says why): there
