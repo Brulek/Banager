@@ -5255,23 +5255,7 @@ configured, `index.crates.io`, and cargo still follows a
   was updating and the reading before was refused, presence afterwards is
   all there is to go on (Homebrew's section).
 
-## Known bugs not fixed yet
-
-Each of these is reproduced by a test that is kept out of the ordinary run
-(`#[ignore = "bug: …"]`) and fails until the bug is fixed;
-`cargo test -- --ignored` runs them. Until then, what this document says
-above holds only as narrowed here.
-
-- A Homebrew uninstall still runs when, since its confirmation was shown,
-  `brew.env` has turned autoremove on or now sits in a protected place
-  Banager does not look into; a cask uninstall still runs when the cask's
-  install receipt has gained removal steps the confirmation did not show.
-- An npm uninstall runs against whatever global prefix npm is set to when
-  it starts, which can be another installation than the one confirmed.
-- A Cargo update still runs `cargo install --force` from crates.io after
-  the installed copy was replaced from Git or a local path, or rebuilt with
-  other features, since its confirmation; a uv upgrade still runs after
-  the tool's receipt gained a version constraint or became unreadable.
+## Not tested yet
 
 Put Back itself is still untested (“Moving files to the Trash” above).
 Testing it needs a throwaway macOS account, Banager started from Finder
