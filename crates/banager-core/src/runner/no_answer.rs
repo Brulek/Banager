@@ -122,6 +122,16 @@ mod tests {
         }
     }
 
+    /// What a source's no-answer says of the kind and the missing program
+    /// alone, without the diagnostic and cause it keeps beside them.
+    fn kind_of(why: Option<NoAnswer>) -> Option<NoAnswer> {
+        why.map(|why| NoAnswer {
+            diagnostic: None,
+            cause: None,
+            ..why
+        })
+    }
+
     fn said(kind: NoAnswerKind, missing_program: Option<&str>) -> Option<NoAnswer> {
         Some(NoAnswer {
             diagnostic: None,
@@ -322,7 +332,7 @@ mod tests {
         let stderr = "env: python3: No such file or directory\nwarning: trying node\nenv: node: No such file or directory\n";
         assert_eq!(missing_program(stderr).as_deref(), Some("node"));
         assert_eq!(
-            of(&Ok(ran(Some(127), stderr))),
+            kind_of(of(&Ok(ran(Some(127), stderr)))),
             said(NoAnswerKind::CouldNotStart, Some("node"))
         );
     }
@@ -344,7 +354,7 @@ mod tests {
         // 126 is found but not runnable: whatever `env` line is in its
         // stderr, no program is missing.
         assert_eq!(
-            of(&Ok(ran(Some(126), ENV_NODE))),
+            kind_of(of(&Ok(ran(Some(126), ENV_NODE)))),
             said(NoAnswerKind::CouldNotStart, None)
         );
     }
@@ -356,7 +366,7 @@ mod tests {
         let failed = Ok(ran(Some(127), ENV_NODE));
         assert_eq!(unless_answered(&Some("11.6.2".to_string()), &failed), None);
         assert_eq!(
-            unless_answered(&None::<String>, &failed),
+            kind_of(unless_answered(&None::<String>, &failed)),
             said(NoAnswerKind::CouldNotStart, Some("node"))
         );
     }
