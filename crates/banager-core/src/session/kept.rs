@@ -3,17 +3,17 @@
 //! it.
 
 use super::Session;
+use crate::adapters::AdapterError;
 use crate::kept_data;
-use crate::model::{InstalledArtifact, OpKind, OpRequest, Plan};
+use crate::model::{InstalledArtifact, ManagerInstance, OpKind, OpRequest, Plan};
 use std::path::Path;
 
-/// The family of the artifact `req` uninstalls, as the snapshot tags it
-/// (`facts.family`); `None` for any other operation, and for an artifact
+/// The selected installed artifact, including its family and removal path; `None` for any other operation, and for an artifact
 /// with none or not listed.
-pub(super) fn family_of_uninstall(
+pub(super) fn subject_of_uninstall(
     artifacts: &[InstalledArtifact],
     req: &OpRequest,
-) -> Option<String> {
+) -> Option<InstalledArtifact> {
     if req.kind != OpKind::Uninstall {
         return None;
     }
@@ -24,7 +24,8 @@ pub(super) fn family_of_uninstall(
                 && a.key.kind == req.artifact_kind
                 && a.key.name == req.name
         })
-        .and_then(|a| a.facts.family.clone())
+        .filter(|a| a.facts.family.is_some())
+        .cloned()
 }
 
 impl Session {
@@ -44,22 +45,37 @@ impl Session {
     /// the plan does not already name (`kept_data::kept_data`), measured on
     /// a blocking thread within `kept_data::BUDGET`. `plan` as it is with
     /// no family, before any refresh, or when that thread fails.
-    pub(super) async fn with_kept_data(&self, mut plan: Plan, family: Option<String>) -> Plan {
-        let Some(family) = family else {
-            return plan;
+    pub(super) async fn with_kept_data(
+        &self,
+        mut plan: Plan,
+        subject: Option<InstalledArtifact>,
+        instance: &ManagerInstance,
+    ) -> Result<Plan, AdapterError> {
+        let Some(subject) = subject else {
+            return Ok(plan);
         };
         let Some(home) = self.kept_data_home.lock().unwrap().clone() else {
-            return plan;
+            return Ok(plan);
+        };
+        let family = subject.facts.family.clone().expect("family of uninstall");
+        let Some(roots) = kept_data::removal_roots(instance, &subject, &plan) else {
+            return Ok(plan);
         };
         let named = kept_data::named_paths(&plan.warnings);
         let found = tokio::task::spawn_blocking(move || {
-            kept_data::kept_data(&home, &family, &named, kept_data::BUDGET)
+            kept_data::check_kept_paths(&home, &family, &named, &roots)?;
+            Ok::<_, AdapterError>(kept_data::kept_data(
+                &home,
+                &family,
+                &named,
+                kept_data::BUDGET,
+            ))
         })
         .await;
         if let Ok(kept) = found {
-            plan.warnings.extend(kept);
+            plan.warnings.extend(kept?);
         }
-        plan
+        Ok(plan)
     }
 }
 
@@ -69,8 +85,9 @@ mod tests {
     use crate::adapters::{Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome};
     use crate::events::{EventSink, OpId, VecSink};
     use crate::model::{
-        ArtifactKey, ArtifactKind, InstallReason, InstalledArtifact, KeptData, KeptWhat,
-        ManagerInstance, OpKind, OpRequest, Outcome, Plan, Reconciled, SearchHit, Warning,
+        ArtifactKey, ArtifactKind, CaskStep, InstallReason, InstalledArtifact, KeptData, KeptWhat,
+        ManagerInstance, OpKind, OpRequest, Outcome, Plan, Reconciled, SearchHit, UninstallScope,
+        Warning,
     };
     use crate::runner::HostEnv;
     use crate::session::Session;
@@ -87,6 +104,8 @@ mod tests {
         kind: ArtifactKind,
         name: String,
         warnings: Vec<Warning>,
+        path: Option<PathBuf>,
+        recorded: Option<InstalledArtifact>,
     }
 
     #[async_trait]
@@ -103,6 +122,9 @@ mod tests {
             &self,
             inst: &ManagerInstance,
         ) -> Result<Vec<InstalledArtifact>, AdapterError> {
+            if let Some(artifact) = &self.recorded {
+                return Ok(vec![artifact.clone()]);
+            }
             Ok(vec![InstalledArtifact {
                 key: ArtifactKey {
                     instance_id: inst.id.clone(),
@@ -116,7 +138,7 @@ mod tests {
                 homepage: None,
                 size_bytes: None,
                 installed_at: None,
-                path: None,
+                path: self.path.clone(),
                 auto_updates: false,
                 uninstall_blocked: None,
                 facts: Default::default(),
@@ -145,7 +167,14 @@ mod tests {
             req: &OpRequest,
         ) -> Result<Plan, AdapterError> {
             let mut plan = test_support::fake_plan(inst, req);
-            plan.warnings = self.warnings.clone();
+            if self.recorded.is_some() && self.meta.id == "uv" {
+                // Real uv uninstall planning, with a runner that can never
+                // spawn a package manager on the host.
+                let adapter =
+                    crate::adapters::uv::UvAdapter::new(Arc::new(crate::runner::MockRunner::new()));
+                plan = adapter.plan(inst, req).await?;
+            }
+            plan.warnings.extend(self.warnings.clone());
             Ok(plan)
         }
 
@@ -175,6 +204,8 @@ mod tests {
             kind,
             name: name.to_string(),
             warnings,
+            path: None,
+            recorded: None,
         })
     }
 
@@ -248,6 +279,216 @@ mod tests {
         };
         session.refresh(&env, &CheckOptions::default()).await;
         session
+    }
+
+    #[tokio::test]
+    async fn test_data_link_into_removed_environment_is_not_promised_kept() {
+        use std::os::unix::fs::symlink;
+        for adapter_id in ["uv", "pipx", "npm", "brew"] {
+            let home = Home::new(adapter_id);
+            let (kind, name, root, data) = match adapter_id {
+                "uv" => (
+                    ArtifactKind::Tool,
+                    "mistral-vibe",
+                    ".local/share/uv/tools/mistral-vibe",
+                    ".vibe",
+                ),
+                "pipx" => (
+                    ArtifactKind::Tool,
+                    "mistral-vibe",
+                    ".local/share/pipx/venvs/mistral-vibe",
+                    ".vibe",
+                ),
+                "npm" => (
+                    ArtifactKind::Package,
+                    "@openai/codex",
+                    "prefix/lib/node_modules/@openai/codex",
+                    ".codex",
+                ),
+                _ => (
+                    ArtifactKind::Formula,
+                    "ollama",
+                    "prefix/Cellar/ollama/1.0",
+                    ".ollama/models",
+                ),
+            };
+            home.file(&format!("{root}/user-data/config"), 32);
+            let data_path = home.0.join(data);
+            std::fs::create_dir_all(data_path.parent().unwrap()).unwrap();
+            symlink(home.0.join(root).join("user-data"), &data_path).unwrap();
+            let mut adapter = fake(adapter_id, kind, name, vec![]);
+            let inner = Arc::get_mut(&mut adapter).unwrap();
+            inner.path = (adapter_id != "npm").then(|| home.0.join(root));
+            inner.instance.prefix = home.0.join("prefix");
+            if adapter_id == "uv" {
+                inner.recorded = crate::adapters::uv::parse_tool_list_show_paths(
+                    &format!(
+                        "mistral-vibe v1.0.0 ({})\n- vibe ({})\n",
+                        home.0.join(root).display(),
+                        home.0.join(".local/bin/vibe").display()
+                    ),
+                    &inner.instance.id,
+                )
+                .pop();
+            } else if adapter_id == "pipx" {
+                let json = serde_json::json!({"venvs": {"mistral-vibe": {"metadata": {"main_package": {
+                    "package": "mistral-vibe", "package_version": "1.0.0",
+                    "app_paths": [{"__Path__": home.0.join(root).join("bin/vibe"), "__type__": "Path"}]
+                }}}}});
+                inner.recorded =
+                    crate::adapters::pipx::parse_list(&json.to_string(), &inner.instance.id)
+                        .unwrap()
+                        .pop();
+            } else if adapter_id == "npm" {
+                let json =
+                    serde_json::json!({"dependencies": {"@openai/codex": {"version": "1.0.0"}}});
+                inner.recorded =
+                    crate::adapters::npm::parse_ls_global(&json.to_string(), &inner.instance.id)
+                        .unwrap()
+                        .pop();
+            } else if adapter_id == "brew" {
+                let json = serde_json::json!({"formulae": [{"name": "ollama", "installed": [{"version": "1.0"}]}], "casks": []});
+                inner.recorded = crate::adapters::brew::parse::parse_info_installed(
+                    &json.to_string(),
+                    &inner.instance.id,
+                )
+                .unwrap()
+                .pop();
+            }
+            let session = session_over(adapter, &home.0, true).await;
+            let result = session
+                .issue_plan(&request(adapter_id, OpKind::Uninstall, kind, name))
+                .await;
+            assert!(
+                matches!(result, Err(AdapterError::UninstallUnsafe { .. })),
+                "{adapter_id}: {result:?}"
+            );
+            assert!(data_path.join("config").is_file());
+        }
+    }
+
+    /// A data folder kept in `~/Documents` (or iCloud Drive, Dropbox) and
+    /// linked from its usual place is nowhere an uninstall deletes: it is
+    /// still said to stay, unmeasured, and never refuses the uninstall --
+    /// while one whose way there runs through what goes is refused.
+    #[tokio::test]
+    async fn test_a_data_folder_kept_in_a_protected_place_still_uninstalls() {
+        use std::os::unix::fs::symlink;
+        let home = Home::new("documents");
+        home.file("Documents/claude-data/settings.json", 4_000);
+        symlink(home.0.join("Documents/claude-data"), home.0.join(".claude")).unwrap();
+        let name = "@anthropic-ai/claude-code";
+        let mut adapter = fake("npm", ArtifactKind::Package, name, vec![]);
+        Arc::get_mut(&mut adapter).unwrap().instance.prefix = home.0.join("prefix");
+        let session = session_over(adapter.clone(), &home.0, true).await;
+        let issued = session
+            .issue_plan(&request(
+                "npm",
+                OpKind::Uninstall,
+                ArtifactKind::Package,
+                name,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(
+            kept(&issued.plan),
+            vec![("~/.claude".to_string(), KeptData::ToolData, false)]
+        );
+
+        // The same folder reached through a link inside npm's package.
+        let package = home
+            .0
+            .join("prefix/lib/node_modules/@anthropic-ai/claude-code");
+        std::fs::create_dir_all(&package).unwrap();
+        symlink(home.0.join("Documents/claude-data"), package.join("data")).unwrap();
+        std::fs::remove_file(home.0.join(".claude")).unwrap();
+        symlink(package.join("data"), home.0.join(".claude")).unwrap();
+        let refused = session
+            .issue_plan(&request(
+                "npm",
+                OpKind::Uninstall,
+                ArtifactKind::Package,
+                name,
+            ))
+            .await;
+        assert!(
+            matches!(refused, Err(AdapterError::UninstallUnsafe { .. })),
+            "{refused:?}"
+        );
+    }
+
+    /// Ollama's app as Homebrew records it (`ollama-app`: `uninstall
+    /// launchctl: "com.ollama.ollama", quit: "com.electron.ollama"`, then
+    /// `app` and `binary`): a cask with steps that delete no files of the
+    /// user's still says the models stay. One whose steps run a program or
+    /// delete paths says nothing of what stays, and is not refused.
+    #[tokio::test]
+    async fn test_a_cask_with_steps_that_delete_no_files_still_names_the_models() {
+        let home = Home::new("ollama-app");
+        home.file(".ollama/models/blobs/sha256-a", 9_000);
+        let steps = |scope, step, items: &[&str]| {
+            vec![
+                Warning::UninstallScope { what: scope },
+                Warning::CaskUninstallStep {
+                    step,
+                    items: items.iter().map(|item| item.to_string()).collect(),
+                    only_if: None,
+                },
+                Warning::CaskUninstallStep {
+                    step: CaskStep::QuitsApps,
+                    items: vec!["com.electron.ollama".to_string()],
+                    only_if: None,
+                },
+            ]
+        };
+        for (warnings, named) in [
+            (
+                steps(
+                    UninstallScope::HomebrewCaskStepsAutoremoves,
+                    CaskStep::RemovesServices,
+                    &["com.ollama.ollama"],
+                ),
+                true,
+            ),
+            (
+                steps(
+                    UninstallScope::HomebrewCaskStepsUnseen,
+                    CaskStep::RunsScript,
+                    &["/Applications/Ollama.app/uninstall.sh"],
+                ),
+                false,
+            ),
+            (
+                steps(
+                    UninstallScope::HomebrewCaskSteps,
+                    CaskStep::Deletes,
+                    &["~/.ollama"],
+                ),
+                false,
+            ),
+        ] {
+            let session = session_over(
+                fake("brew", ArtifactKind::Cask, "ollama-app", warnings.clone()),
+                &home.0,
+                true,
+            )
+            .await;
+            let issued = session
+                .issue_plan(&request(
+                    "brew",
+                    OpKind::Uninstall,
+                    ArtifactKind::Cask,
+                    "ollama-app",
+                ))
+                .await
+                .unwrap();
+            let expected = if named {
+                vec![("~/.ollama/models".to_string(), KeptData::Models, true)]
+            } else {
+                Vec::new()
+            };
+            assert_eq!(kept(&issued.plan), expected, "{warnings:?}");
+        }
     }
 
     #[tokio::test]

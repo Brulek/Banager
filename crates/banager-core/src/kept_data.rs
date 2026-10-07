@@ -1,7 +1,7 @@
 //! What an uninstall leaves behind: the folders and files a tool keeps its
-//! own data in, which no source's uninstall command touches -- `npm
-//! uninstall -g`, `brew uninstall` (no `--zap`), the path-list uninstalls
-//! alike -- named in the uninstall preview so nobody is surprised that
+//! own data in. The session checks their resolved paths against the
+//! selected installation before promising they survive; unknown removal
+//! scope adds no promise. Safe paths are named in the uninstall preview so nobody is surprised that
 //! `~/.claude` is still there, nor wonders where 40 GB of models went.
 //!
 //! Which paths: the data folders of the tool's family in the bundled table
@@ -38,6 +38,135 @@ use crate::model::{KeptData, OthersData, Warning};
 use crate::size::{look_at, LookBudget, Looked, Protected, SizeBudget};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
+
+/// What `plan`, an uninstall of `artifact`, deletes, as far as Banager
+/// knows it: the paths a path-list uninstall moves; a uv or pipx tool's
+/// environment, npm's package folder, a formula's folder in the Cellar,
+/// or a cask's Caskroom folder and app; and the commands the source
+/// named. `None` -- no data path is then said to stay -- where what goes
+/// is not known: another source, or a cask whose record runs a program
+/// or Ruby, deletes or trashes paths, removes a package's files, or was
+/// not read. A cask whose extra steps delete none of the user's files
+/// (quitting apps, removing services or login items) is known. Reads
+/// nothing and runs nothing.
+pub(crate) fn removal_roots(
+    instance: &crate::model::ManagerInstance,
+    artifact: &crate::model::InstalledArtifact,
+    plan: &crate::model::Plan,
+) -> Option<Vec<PathBuf>> {
+    use crate::model::{ArtifactKind, CaskStep, PlanAction, UninstallScope};
+    if let PlanAction::TrashPaths { paths, .. } = &plan.action {
+        return Some(paths.clone());
+    }
+    let mut roots = match instance.adapter_id.as_str() {
+        "uv" | "pipx" => vec![artifact.path.clone()?],
+        "npm" => vec![instance
+            .prefix
+            .join("lib/node_modules")
+            .join(&artifact.key.name)],
+        "brew" if artifact.key.kind == ArtifactKind::Formula => {
+            vec![instance
+                .prefix
+                .join("Cellar")
+                .join(artifact.key.name.rsplit('/').next()?)]
+        }
+        "brew" if artifact.key.kind == ArtifactKind::Cask => {
+            let known = plan.warnings.iter().all(|warning| match warning {
+                Warning::UninstallScope { what } => matches!(
+                    what,
+                    UninstallScope::HomebrewCaskPlain
+                        | UninstallScope::HomebrewCaskPlainThirdParty
+                        | UninstallScope::HomebrewCaskSteps
+                        | UninstallScope::HomebrewCaskStepsAutoremoves
+                        | UninstallScope::HomebrewCaskStepsOnly
+                ),
+                Warning::CaskUninstallStep { step, .. } => !matches!(
+                    step,
+                    CaskStep::Deletes
+                        | CaskStep::DeletesUnnamed
+                        | CaskStep::Trashes
+                        | CaskStep::RemovesPackages
+                        | CaskStep::RunsScript
+                        | CaskStep::RunsOwnSteps
+                ),
+                _ => true,
+            });
+            if !known {
+                return None;
+            }
+            crate::commands::cask_places(&instance.prefix, artifact)
+        }
+        _ => return None,
+    };
+    // The launchers disappear too; a data path can depend on a link in
+    // this list even when its final destination is outside the environment.
+    roots.extend(
+        artifact
+            .facts
+            .command_inputs
+            .provided
+            .iter()
+            .map(|command| command.path.clone()),
+    );
+    Some(roots)
+}
+
+/// Refuses (`OverlapsKept`, the data path named) when a data path of
+/// `family` that is there and not in `named` is, or leads into, one of
+/// `roots` -- or when the way there passes through one, a link inside a
+/// removed environment included, or holds one. The way is the standalone
+/// removal's (`the_way_to`): one that leads into a protected place
+/// (`~/Documents`, iCloud Drive) is followed to the place's edge and no
+/// further, and is kept, as no root is ever in such a place. One that
+/// cannot be looked up refuses. Reads links and folders only, never what
+/// a data file holds.
+pub(crate) fn check_kept_paths(
+    home: &Path,
+    family: &str,
+    named: &[String],
+    roots: &[PathBuf],
+) -> Result<(), crate::adapters::AdapterError> {
+    use crate::adapters::standalone::removal::the_way_to;
+    use crate::adapters::AdapterError;
+    use crate::model::UninstallUnsafeReason;
+    use crate::protected::{self, Resolution};
+    let protected = Protected::new(home);
+    let refuse = |path: &str| AdapterError::UninstallUnsafe {
+        path: path.to_string(),
+        reason: UninstallUnsafeReason::OverlapsKept,
+    };
+    for (path, _) in data_paths(family) {
+        if named.iter().any(|named| named == path) {
+            continue;
+        }
+        let Some(absolute) = under_home(home, path) else {
+            continue;
+        };
+        // A missing data path promises nothing; one that cannot be looked
+        // up is no ground for saying it stays.
+        let target = match protected::resolve(&absolute, &protected, true) {
+            Resolution::Missing => continue,
+            Resolution::Found(target, _) | Resolution::Protected(target) => target,
+            Resolution::Refused => return Err(refuse(path)),
+        };
+        let way = the_way_to(&absolute, &protected).map_err(|_| refuse(path))?;
+        for root in roots {
+            let location = match protected::resolve(root, &protected, false) {
+                Resolution::Found(location, _) => location,
+                Resolution::Missing => continue,
+                _ => return Err(refuse(path)),
+            };
+            if way
+                .iter()
+                .any(|step| protected::starts_with_folded(step, &location))
+                || protected::starts_with_folded(&location, &target)
+            {
+                return Err(refuse(path));
+            }
+        }
+    }
+    Ok(())
+}
 
 /// The family whose tool's models are kept: Homebrew's `ollama` formula and
 /// `ollama-app` cask (`ai-tools.json`).
@@ -249,6 +378,63 @@ mod tests {
             Warning::KeepsData { size, .. } => *size,
             other => panic!("expected KeepsData, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn test_kept_data_checks_intermediate_links_and_accepts_a_separate_folder() {
+        let home = Home::new("environment-overlap");
+        let root = home.0.join(".local/share/uv/tools/mistral-vibe");
+        home.file(".local/share/uv/tools/mistral-vibe/bin/vibe", 10);
+        home.file("separate/settings", 20);
+        let data = home.0.join(".vibe");
+        // The final destination survives, but the intermediate link goes.
+        symlink(home.0.join("separate"), root.join("data-link")).unwrap();
+        symlink(root.join("data-link"), &data).unwrap();
+        let roots = vec![root.clone()];
+        assert!(check_kept_paths(&home.0, "mistral-vibe", &[], &roots).is_err());
+        std::fs::remove_file(&data).unwrap();
+        // A folder ancestor goes through the environment then back out.
+        symlink(root.join("data-link/settings"), &data).unwrap();
+        assert!(check_kept_paths(&home.0, "mistral-vibe", &[], &roots).is_err());
+        std::fs::remove_file(&data).unwrap();
+        symlink("separate", &data).unwrap();
+        assert!(check_kept_paths(&home.0, "mistral-vibe", &[], &roots).is_ok());
+        assert_eq!(kept_data(&home.0, "mistral-vibe", &[], BUDGET).len(), 1);
+        std::fs::remove_file(&data).unwrap();
+        // Component boundaries matter: the similarly named sibling stays.
+        home.file(".local/share/uv/tools/mistral-vibe-other/settings", 20);
+        symlink(".local/share/uv/tools/mistral-vibe-other", &data).unwrap();
+        assert!(check_kept_paths(&home.0, "mistral-vibe", &[], &roots).is_ok());
+        assert_eq!(
+            std::fs::read(home.0.join("separate/settings")).unwrap(),
+            vec![7; 20]
+        );
+    }
+
+    #[test]
+    fn test_kept_data_refuses_unknown_resolution_and_a_root_inside_its_data() {
+        let home = Home::new("unresolved-data");
+        home.file(".local/share/uv/tools/mistral-vibe/bin/vibe", 10);
+        let roots = vec![home.0.join(".local/share/uv/tools/mistral-vibe")];
+        let data = home.0.join(".vibe");
+        symlink(".vibe", &data).unwrap();
+        assert!(check_kept_paths(&home.0, "mistral-vibe", &[], &roots).is_err());
+        std::fs::remove_file(&data).unwrap();
+        symlink(".local/share/uv/tools", &data).unwrap();
+        assert!(check_kept_paths(&home.0, "mistral-vibe", &[], &roots).is_err());
+        std::fs::remove_file(&data).unwrap();
+        // A data folder in a protected place is outside every root: kept.
+        symlink("Documents/private-data", &data).unwrap();
+        assert!(check_kept_paths(&home.0, "mistral-vibe", &[], &roots).is_ok());
+        // Reached through a link inside the environment: refused.
+        std::fs::remove_file(&data).unwrap();
+        symlink(
+            home.0.join("Documents/private-data"),
+            roots[0].join("data-link"),
+        )
+        .unwrap();
+        symlink(roots[0].join("data-link"), &data).unwrap();
+        assert!(check_kept_paths(&home.0, "mistral-vibe", &[], &roots).is_err());
     }
 
     #[test]

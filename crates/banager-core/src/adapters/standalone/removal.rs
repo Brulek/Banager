@@ -484,7 +484,7 @@ fn push_steps(left: &mut Vec<Step>, path: &Path) {
 /// links than `MOST_LINKS`, a folder Banager may not look into -- is an
 /// error, as the system's own lookup (`stat`) gives one. Read by
 /// `kept_places` and `dead_after`.
-fn the_way_to(path: &Path, protected: &Protected) -> std::io::Result<Vec<PathBuf>> {
+pub(crate) fn the_way_to(path: &Path, protected: &Protected) -> std::io::Result<Vec<PathBuf>> {
     let mut left = Vec::new();
     push_steps(&mut left, &std::path::absolute(path)?);
     // Where the lookup has got to: a real folder, never a link.

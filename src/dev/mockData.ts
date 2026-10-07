@@ -476,6 +476,10 @@ function everythingElse(): { artifacts: InstalledArtifact[]; updates: UpdateCand
     // uv: carried forward from the last refresh it answered.
     artifact(IDS.uv, "Tool", "pre-commit", "4.3.0", { path: inHome(".local/share/uv/tools/pre-commit") }),
     artifact(IDS.uv, "Tool", "ruff", "0.14.3", { path: inHome(".local/share/uv/tools/ruff") }),
+    // ~/.vibe leads into this environment's user-data folder.
+    artifact(IDS.uv, "Tool", "mistral-vibe", "1.0.0", {
+      path: inHome(".local/share/uv/tools/mistral-vibe"),
+    }),
   ];
   const updates: UpdateCandidate[] = [
     // Installed from a git repository: never checkable.

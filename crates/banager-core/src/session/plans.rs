@@ -328,7 +328,7 @@ impl Session {
                     .cloned(),
                 blocked_upgrade(&snapshot.updates, req),
                 blocked_uninstall(&snapshot.artifacts, req),
-                super::kept::family_of_uninstall(&snapshot.artifacts, req),
+                super::kept::subject_of_uninstall(&snapshot.artifacts, req),
                 lists_request(
                     &snapshot.instances,
                     &snapshot.updates,
@@ -401,7 +401,7 @@ impl Session {
             .expect("the planning semaphore is never closed");
         let plan = adapter.plan(&instance, req).await?;
         // What the uninstall leaves behind, named (`kept.rs`).
-        let plan = self.with_kept_data(plan, family).await;
+        let plan = self.with_kept_data(plan, family, &instance).await?;
         // The other sources that run on a Homebrew package, which `brew
         // uses` does not name (`needed_by.rs`): listed with its dependents,
         // and such a preview is never run (`submit`).

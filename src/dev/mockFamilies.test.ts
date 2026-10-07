@@ -27,6 +27,7 @@ describe("the preview's AI tool families", () => {
       ["standalone-agy", "agy", "antigravity-cli"],
       ["standalone-claude", "claude", "claude-code"],
       ["standalone-grok", "grok", "grok-build"],
+      ["uv", "mistral-vibe", "mistral-vibe"],
       ["npm", "@openai/codex", "codex"],
       ["npm", "opencode-ai", "opencode"],
       ["brew", "gemini-cli", "gemini-cli"],

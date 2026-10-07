@@ -3949,7 +3949,29 @@ may name such a folder, and it runs only with `--zap`. So the uninstall
 preview names them (「卸载后会保留」, "Stays after uninstalling"):
 `Session::issue_plan` (`crates/banager-core/src/session/kept.rs`) adds a
 line for each of these that is there, for an uninstall of a tool of that
-family on any source (`crates/banager-core/src/kept_data.rs`):
+family whose removal is known (`crates/banager-core/src/kept_data.rs`,
+`removal_roots`): a uv or pipx tool's environment, npm's package folder,
+a Homebrew formula's folder in the Cellar, a cask's Caskroom folder and
+app, the paths a path-list uninstall moves, and the commands the source
+named. A cask whose recorded uninstall runs a program or Ruby, deletes or
+trashes paths or removes a package's files, or whose record was not read,
+has no line: what it removes is not known. A cask whose extra steps
+delete none of the user's files -- Ollama's app quits and removes its
+service -- keeps its line. Before saying a path stays, Banager follows it
+and every link on the way there with the standalone removal's lookup
+(`removal::the_way_to`): a path that is, leads into or passes through
+what the uninstall removes -- `~/.vibe` linked into the uv environment it
+deletes, or through a link inside it -- or that holds it, refuses the
+uninstall with that path named (`UninstallUnsafeReason::OverlapsKept`;
+the confirmation suggests moving what it links to out of the tool's
+folder first). One that leads into a protected place (`~/Documents`,
+iCloud Drive) is followed to the place's edge, is kept and said with no
+size, as before; one Banager cannot look up refuses. A path that is not
+there is not listed. These are reads of links and folders only: nothing
+in a data file is read and nothing is moved. The check is made for the
+preview; a link changed after the confirmation is not looked at again.
+
+The named paths are:
 
 | Tool | Paths looked at |
 |---|---|

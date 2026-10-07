@@ -703,7 +703,10 @@ pub enum UninstallUnsafeReason {
     /// recipe lists it (`~/.claude -> ~/.local/share/claude`) -- or a kept
     /// path that is there could not be placed, or the way from it to what
     /// it leads to could not be followed. `path` is the kept path (ruling
-    /// 25 of the step C plan).
+    /// 25 of the step C plan). Also an AI tool's data path that is, leads
+    /// into, passes through or holds what another source's uninstall
+    /// removes (`kept_data::check_kept_paths`), `path` the data path as
+    /// the table spells it.
     OverlapsKept,
     /// A cask uninstall would remove a link the cask recorded that now
     /// leads to another tool's file, or that Banager cannot follow or

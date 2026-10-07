@@ -108,10 +108,10 @@ describe("the browser preview's mock backend", () => {
     expect([...sent].sort()).toEqual([...MOCK_COMMANDS].sort());
   });
 
-  it("refuses a cask whose command link is now another source's in the preview", async () => {
+  it("refuses cask foreign links and data inside a removed environment in the preview", async () => {
     const { backend } = backendFor({ state: "many" });
     const snapshot = await answer<Snapshot>(backend.invoke("refresh"));
-    for (const [name, kind, reason] of [["codex", "Cask", "cask_link_not_owned"]] as const) {
+    for (const [name, kind, reason] of [["codex", "Cask", "cask_link_not_owned"], ["mistral-vibe", "Tool", "overlaps_kept"]] as const) {
       const artifact = snapshot.artifacts.find((a) => a.key.name === name && a.key.kind === kind)!;
       expect(artifact).toBeDefined();
       const result = backend.invoke("plan_operation", { request: {
@@ -563,7 +563,7 @@ describe("the browser preview's mock backend", () => {
     // Two of them the rows `withHomebrewState` adds, four the AI tools `aiTools` adds, one Codex's own install
     // (`codexStandalone`), one npm's Claude Code (`addMany`), whose uninstall preview names what stays
     // (./mockKeptData.ts), and five pip packages of two Pythons (`secondPython`).
-    expect(artifacts.length).toBe(807);
+    expect(artifacts.length).toBe(808);
     const ids = artifacts.map((a) => artifactKeyId(a.key));
     expect(new Set(ids).size).toBe(ids.length);
     const count = (instanceId: string) => artifacts.filter((a) => a.key.instance_id === instanceId).length;
@@ -608,7 +608,7 @@ describe("the browser preview's mock backend", () => {
     const byId = new Map(artifacts.map((a) => [artifactKeyId(a.key), a]));
     for (const row of many.artifacts) expect(byId.get(artifactKeyId(row.key))).toEqual(row);
     const count = (instanceId: string) => artifacts.filter((a) => a.key.instance_id === instanceId).length;
-    expect(artifacts.length).toBe(4899);
+    expect(artifacts.length).toBe(4900);
     expect(count("brew:/opt/homebrew")).toBe(3895);
     expect(artifacts.filter((a) => a.key.kind === "Cask")).toHaveLength(337);
     for (const id of ["npm:/opt/homebrew", "pipx", "uv", "cargo:/Users/you/.cargo"]) expect(count(id)).toBeGreaterThan(100);

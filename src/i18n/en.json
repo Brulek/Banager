@@ -908,7 +908,7 @@
       "notOwnedByYou": "Couldn't move {{path}} because it belongs to another user.",
       "notWhatInstructionsExpect": "Couldn't move {{path}} because it isn't what was expected.",
       "notWhatInstructionsExpectDetail": "It, or a folder it's in, links somewhere else, or it's the wrong kind of file or can't be read.",
-      "overlapsKept": "Couldn't uninstall because there's no way to confirm that removing the files leaves {{path}}, which is kept, untouched."
+      "overlapsKept": "Couldn't uninstall because there's no way to confirm that removing the files leaves {{path}}, which is kept, untouched. If it links into the tool's own folder, move what it links to somewhere else first."
     }
   },
   "planAgain": {

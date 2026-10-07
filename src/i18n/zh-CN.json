@@ -837,7 +837,7 @@
       "notOwnedByYou": "无法移动{{path}}，因为它属于另一个用户。",
       "notWhatInstructionsExpect": "无法移动{{path}}，因为它和预期的不一样。",
       "notWhatInstructionsExpectDetail": "它或它所在的文件夹链接到了别处，或者类型不对、无法读取。",
-      "overlapsKept": "无法卸载，因为不能确认移走文件时不会碰到要保留的{{path}}。"
+      "overlapsKept": "无法卸载，因为不能确认移走文件时不会碰到要保留的{{path}}。如果它链接到这个工具自己的文件夹里，请先把它链接到的内容移到别处。"
     }
   },
   "planAgain": {

@@ -837,7 +837,7 @@
       "notOwnedByYou": "無法移動{{path}}，因為它屬於另一個使用者。",
       "notWhatInstructionsExpect": "無法移動{{path}}，因為它和預期的不一樣。",
       "notWhatInstructionsExpectDetail": "它或它所在的檔案夾連結到了別處，或者類型不對、無法讀取。",
-      "overlapsKept": "無法解除安裝，因為不能確認移走檔案時不會碰到要保留的{{path}}。"
+      "overlapsKept": "無法解除安裝，因為不能確認移走檔案時不會碰到要保留的{{path}}。如果它連結到這個工具自己的檔案夾裡，請先把它連結到的內容移到別處。"
     }
   },
   "planAgain": {

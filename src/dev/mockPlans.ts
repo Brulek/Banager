@@ -291,6 +291,9 @@ export function buildPlan(world: World, inst: ManagerInstance, request: OpReques
   if (request.kind === "Uninstall" && inst.adapter_id === "brew" && request.artifact_kind === "Cask" && request.name === "codex") {
     throw refusal({ kind: "uninstall_unsafe", reason: "cask_link_not_owned", path: "/opt/homebrew/bin/codex" });
   }
+  if (request.kind === "Uninstall" && inst.adapter_id === "uv" && request.name === "mistral-vibe") {
+    throw refusal({ kind: "uninstall_unsafe", reason: "overlaps_kept", path: "~/.vibe" });
+  }
   const { kind, name } = request;
   const upgrade = kind === "Upgrade";
   const plan: Plan = {
