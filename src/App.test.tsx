@@ -10,7 +10,7 @@ import { useNoBrowserContextMenu } from "./lib/contextMenu";
 import { queryKeys } from "./lib/queryKeys";
 import { useUiStore } from "./store/ui";
 import type { InvokeArgs } from "@tauri-apps/api/core";
-import type { OpRequest, OpSummary, Settings, Snapshot, UnknownEntry, UnknownScan } from "./lib/types";
+import type { OpRequest, OpSummary, Settings, Sizes, Snapshot, UnknownEntry, UnknownScan } from "./lib/types";
 import { NO_FACTS } from "./lib/types";
 
 // The real hook, watched: `App` calls it once each time it draws, and
@@ -499,6 +499,76 @@ describe("App", () => {
     await act(async () => finish?.());
     await waitFor(() => expect(checkAgain).not.toHaveAttribute("aria-disabled"));
     expect(status).toHaveTextContent(/^Updating…$/);
+  });
+
+  it("keeps the Installed page's subtitle to its count while an operation is under way, through its checks (r24 W7, skeptic)", async () => {
+    // Every operation that ends starts a check, and every check a new round,
+    // whose sizes are measured again: 「正在检查…」 and the size took turns in
+    // the subtitle, a live region, through an Update All on this page too.
+    const jq = snapshot.artifacts[0];
+    const measured = { bytes: 2_000_000, partial: false, at_least: false };
+    const sizes: Sizes = {
+      round: snapshot.round,
+      done: true,
+      artifacts: [{ key: jq.key, version: jq.version, measured, old_versions: null }],
+      models: [],
+      total: measured,
+      sources: [{ instance_id: jq.key.instance_id, measured }],
+    };
+    let operations: OpSummary[] = [];
+    const answer = mockInvoke.getMockImplementation() as (cmd: string, args?: InvokeArgs) => Promise<unknown>;
+    let checks = 0;
+    let finish: (() => void) | undefined;
+    mockInvoke.mockImplementation((cmd: string, args?: InvokeArgs) => {
+      if (cmd === "list_operations") return Promise.resolve(operations);
+      if (cmd === "get_sizes") return Promise.resolve(sizes);
+      // The first check answers; the next one runs until `finish`.
+      if (cmd === "refresh" && ++checks > 1) {
+        return new Promise((resolve) => {
+          finish = () => resolve(answer(cmd, args));
+        });
+      }
+      return answer(cmd, args);
+    });
+    // Ended whatever happens here: a check left running would hold the next test's.
+    onTestFinished(() => finish?.());
+    const { getByRole, findByRole, queryClient } = renderWithProviders(<App />);
+    fireEvent.click(await findByRole("button", { name: "Installed" }));
+    const status = getByRole("heading", { level: 1 }).nextElementSibling as HTMLElement;
+    expect(status).toHaveAttribute("role", "status");
+    // Nothing under way: the count, and what the tools take.
+    await waitFor(() => expect(status).toHaveTextContent(/^1 tool · .+/));
+
+    // An update under way: the count alone, which no check takes away.
+    operations = [
+      {
+        id: 1,
+        kind: "Upgrade",
+        instance_id: jq.key.instance_id,
+        artifact_kind: jq.key.kind,
+        name: jq.key.name,
+        status: "Running",
+        outcome: null,
+        argv_preview: [],
+        cancel_policy: "KillThenReconcile",
+      },
+    ];
+    await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.operations }));
+    await waitFor(() => expect(status).toHaveTextContent(/^1 tool$/));
+    const checkAgain = within(getByRole("banner")).getByRole("button", { name: "Check Again" });
+    await waitFor(() => expect(checkAgain).not.toHaveAttribute("aria-disabled"));
+    fireEvent.click(checkAgain);
+    await waitFor(() => expect(checkAgain).toHaveAttribute("title", "Check Again (⌘R) · Checking…"));
+    expect(status).toHaveTextContent(/^1 tool$/);
+    await waitFor(() => expect(finish).toBeDefined());
+    await act(async () => finish?.());
+    await waitFor(() => expect(checkAgain).not.toHaveAttribute("aria-disabled"));
+    expect(status).toHaveTextContent(/^1 tool$/);
+
+    // The run over: what the tools take, once more.
+    operations = [{ ...operations[0], status: "Done", outcome: "Succeeded" }];
+    await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.operations }));
+    await waitFor(() => expect(status).toHaveTextContent(/^1 tool · .+/));
   });
 
   it("opens the Updates page from Review updates with every row it can update ticked", async () => {

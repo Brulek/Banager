@@ -19,7 +19,8 @@ import { QuitQuestion } from "./components/QuitQuestion";
 import { WelcomeSheet } from "./components/WelcomeSheet";
 import { useOperationEvents, useRefreshInFlight, useStartupRefresh } from "./lib/events";
 import { useInventoryPreview } from "./lib/inventoryPreview";
-import { useSizes, useSnapshot, useUnknownScan } from "./lib/queries";
+import { useOperations, useSizes, useSnapshot, useUnknownScan } from "./lib/queries";
+import { isActive } from "./lib/operations";
 import { modelsTotalText } from "./lib/sizes";
 import { sizeTotalsOf, sourceTotalText } from "./lib/sizeTotals";
 import { instanceLabels } from "./lib/sources";
@@ -62,14 +63,16 @@ function headerActions(page: Page): ReactNode {
  * (`useUpdatesHeadline`); 「51个工具」, everything installed, as the
  * sidebar counts it; 「5个程序」, what the last scan found; nothing for
  * nothing, which the page says in a sentence of its own -- or, on the
- * pages about the sources, 「正在检查…」 while a check runs, except on the
- * Updates page while some are updating, whose 「正在更新…」 stays -- on the
+ * pages about the sources, 「正在检查…」 while a check runs, except while
+ * operations are under way, whose checks leave the page's own words in
+ * place -- the Updates page's 「正在更新…」, the Installed page's count
+ * without its size -- on the
  * Installed page, while the first check lists what it found before its
  * update checks are done (`useInventoryPreview`), 「已找到51个工具 · 正在
  * 检查更新…」 -- and, as an
  * alert, 「无法完成检查」 once one has failed (`startupRefreshError`, which
  * every refresh sets or clears), in place of a count the check could not
- * bring up to date. On one source alone, the Installed page counts that
+ * bring up to date, once no operation is under way. On one source alone, the Installed page counts that
  * source's tools, 「30个工具」, under its name (`useShownSource`) -- and on
  * Ollama's, its models and what they take together, 「2个模型 · Ollama模型共约6.2 GB」
  * (`modelsTotalText`); on any other, or on all of them, what the tools
@@ -91,6 +94,10 @@ function usePageSubtitle(page: Page): PageSubtitle | null {
   const scan = useUnknownScan();
   // The first check's list, while that check is still checking for updates.
   const preview = useInventoryPreview();
+  // Whether an operation Banager started is under way: each one that ends
+  // starts a check (`useOperationEvents`).
+  const { data: operations } = useOperations();
+  const underway = (operations ?? []).some(isActive);
   const said = (text: string | null): PageSubtitle | null => (text === null ? null : { text, failed: false });
   // None for none, as the sidebar shows no 0: the page says it has
   // nothing in a sentence of its own.
@@ -121,17 +128,18 @@ function usePageSubtitle(page: Page): PageSubtitle | null {
       if (checking && page === "installed" && preview !== null) {
         return said(t("inventoryPreview.subtitle", { count: preview.artifacts.length }));
       }
-      // On the Updates page, while some are updating, its headline --
-      // 「正在更新…」 -- before all else: every update that ends starts a
-      // check, so 「正在检查…」 would take its place and give it back again
-      // and again through the run, in a live region (r24 W7) -- one thing
-      // heard at a time (decision I21d). How a check went is said once
-      // the run is over.
-      if (page === "updates" && updatesHeadline !== null && updatesHeadline === t("updatesMore.updating")) {
+      // While operations are under way, the page's own words before all
+      // else: every operation that ends starts a check, so 「正在检查…」
+      // would take their place and give it back again and again through
+      // an Update All or a batch uninstall, in a live region (r24 W7) --
+      // one thing heard at a time (decision I21d). On the Updates page,
+      // its headline, 「正在更新…」 while some are updating. How a check
+      // went is said once the run is over.
+      if (page === "updates" && (underway || (updatesHeadline !== null && updatesHeadline === t("updatesMore.updating")))) {
         return said(updatesHeadline);
       }
-      if (checking) return said(t("common.checking"));
-      if (lastCheckFailed) return { text: t("header.checkFailed"), failed: true };
+      if (checking && !underway) return said(t("common.checking"));
+      if (lastCheckFailed && !underway) return { text: t("header.checkFailed"), failed: true };
       if (page === "updates") return said(updatesHeadline);
       // On one source alone, that source's: its name is the title. On
       // Ollama's, what its models take together after it, once measured;
@@ -151,8 +159,12 @@ function usePageSubtitle(page: Page): PageSubtitle | null {
           ).length;
           return said(t("clarity.shownOfAll", { count: shown, total: inSource.length }));
         }
-        const models = shownSource === null ? null : modelsTotalText(t, sizes, shownSource, snapshot?.round);
-        const total = models === null ? viewTotal(shownSource) : null;
+        // No size while operations are under way: each check after one
+        // is a new round, whose sizes are measured again (`sizeTotalsOf`),
+        // and the size would come and go in the live region with each.
+        const models =
+          underway || shownSource === null ? null : modelsTotalText(t, sizes, shownSource, snapshot?.round);
+        const total = underway || models !== null ? null : viewTotal(shownSource);
         // Ollama's page counts models, 「2个模型」.
         const ollama = snapshot?.instances.find((instance) => instance.id === shownSource)?.adapter_id === "ollama";
         // The count, and what they take after it (`rest`), which the
