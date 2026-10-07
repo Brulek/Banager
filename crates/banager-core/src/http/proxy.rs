@@ -57,6 +57,42 @@ pub fn proxy_for(
     named.or_else(|| system(url))
 }
 
+/// Every setting `proxy_for` reads through its `var`: each one of
+/// `runner::login_path::IMPORTED`, so `command_var` answers for it.
+pub const SETTINGS: &[&str] = &[
+    "http_proxy",
+    "HTTP_PROXY",
+    "https_proxy",
+    "HTTPS_PROXY",
+    "all_proxy",
+    "ALL_PROXY",
+    "no_proxy",
+    "NO_PROXY",
+];
+
+/// The value each of `SETTINGS` had at one moment, as a `var` gave it:
+/// what one `RealHttpClient` connection pool is kept for (R5 of the f19
+/// review). Two are equal when every setting is. No `Debug`: a proxy's
+/// value can hold a password.
+#[derive(Clone, PartialEq, Eq)]
+pub struct Settings(Vec<Option<String>>);
+
+impl Settings {
+    /// Each of `SETTINGS` as `var` gives it now.
+    pub fn read(var: impl Fn(&str) -> Option<String>) -> Settings {
+        Settings(SETTINGS.iter().map(|name| var(name)).collect())
+    }
+
+    /// `name`'s value as it was read, for `proxy_for`'s `var`; `None` for
+    /// a name that is not one of `SETTINGS`.
+    pub fn var(&self, name: &str) -> Option<String> {
+        SETTINGS
+            .iter()
+            .position(|setting| *setting == name)
+            .and_then(|at| self.0[at].clone())
+    }
+}
+
 /// The proxy this Mac's own network settings name for `url` (System
 /// Settings > Network > Details > Proxies): its web proxy (HTTP) for an
 /// http address, its secure web proxy (HTTPS) for an https one -- what a
@@ -301,6 +337,66 @@ mod tests {
             from_matcher(&unset, &Url::parse("https://pypi.org/").unwrap()),
             None
         );
+    }
+
+    /// R5 of the f19 review: a `RealHttpClient` pool is kept for one
+    /// `Settings`, and its requests choose their proxy from that alone --
+    /// so `Settings` must hold every setting `proxy_for` reads, or a change
+    /// to one it left out would reach a pool kept for other settings. And
+    /// each must be one `command_var` answers for.
+    #[test]
+    fn test_settings_hold_every_setting_proxy_for_reads() {
+        let asked = std::cell::RefCell::new(Vec::<String>::new());
+        let record = |name: &str| {
+            asked.borrow_mut().push(name.to_string());
+            None
+        };
+        for url in [
+            "https://crates.io/api/v1/crates/ripgrep",
+            "http://192.168.1.20:11434/api/tags",
+        ] {
+            proxy_for(&Url::parse(url).unwrap(), record, |_| None);
+        }
+        let asked = asked.into_inner();
+        for name in &asked {
+            assert!(SETTINGS.contains(&name.as_str()), "{name} is not kept");
+        }
+        for name in SETTINGS {
+            assert!(asked.iter().any(|asked| asked == name), "{name} is unread");
+            assert!(
+                crate::runner::login_path::IMPORTED.contains(name),
+                "{name} is not imported"
+            );
+        }
+        // What was read is what `var` gives, and a change to any one
+        // setting makes other settings.
+        let read = Settings::read(vars(&[
+            ("http_proxy", "http://someone:secret@a:1"),
+            ("NO_PROXY", "straight.invalid"),
+        ]));
+        assert_eq!(
+            read.var("http_proxy").as_deref(),
+            Some("http://someone:secret@a:1")
+        );
+        assert_eq!(read.var("NO_PROXY").as_deref(), Some("straight.invalid"));
+        assert_eq!(read.var("https_proxy"), None);
+        assert_eq!(read.var("PIP_INDEX_URL"), None);
+        assert!(
+            read == Settings::read(vars(&[
+                ("NO_PROXY", "straight.invalid"),
+                ("http_proxy", "http://someone:secret@a:1"),
+            ]))
+        );
+        for name in SETTINGS {
+            let changed = Settings::read(|asked| {
+                if asked == *name {
+                    Some("http://b:2".to_string())
+                } else {
+                    read.var(asked)
+                }
+            });
+            assert!(changed != read, "{name}");
+        }
     }
 
     const EVERY_PROXY: &[(&str, &str)] = &[

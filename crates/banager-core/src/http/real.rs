@@ -16,6 +16,7 @@
 //! sign-in page does, an alert, a reset -- is the network: it may well
 //! clear by itself.
 
+use super::proxy::Settings;
 use super::{HttpClient, HttpError, HttpRequest, HttpResponse};
 use async_trait::async_trait;
 
@@ -98,8 +99,23 @@ pub fn host_allowed(url: &str) -> Result<(), HttpError> {
 }
 
 pub struct RealHttpClient {
-    client: reqwest::Client,
+    /// The reqwest client -- and so the connections it keeps open -- for
+    /// the proxy settings it was made under (`client`).
+    current: std::sync::Mutex<Pooled>,
     max_body_bytes: usize,
+}
+
+/// One reqwest client, and the proxy settings its requests choose their
+/// proxy from (`build`).
+struct Pooled {
+    settings: Settings,
+    client: reqwest::Client,
+}
+
+/// The proxy settings a command Banager runs gets now: the login shell's,
+/// else the process environment's (`command_var`).
+fn proxy_settings() -> Settings {
+    Settings::read(crate::runner::login_path::command_var)
 }
 
 impl RealHttpClient {
@@ -111,46 +127,82 @@ impl RealHttpClient {
     /// behaviour can be tested at the byte, at a few kilobytes rather than
     /// a few megabytes.
     pub fn with_body_limit(max_body_bytes: usize) -> RealHttpClient {
-        let user_agent = format!("banager/{}", env!("CARGO_PKG_VERSION"));
-        let client = reqwest::Client::builder()
-            .tls_backend_rustls()
-            .user_agent(user_agent)
-            // reqwest's default is `Policy::limited(10)`: up to ten
-            // redirects, to any host, with no https-only guard — so an
-            // https request could be walked to plain http, or to a host
-            // Banager never chose, carrying its headers with it. None of
-            // the hosts this client talks to -- `ALLOWED_HTTPS_HOSTS` over
-            // https, and the Ollama daemon over http -- ever needs a
-            // redirect, so the policy is `none` and `send` below turns a
-            // 3xx into an error instead of handing it back as a response.
-            .redirect(reqwest::redirect::Policy::none())
-            // The proxy the login shell's settings name, else the
-            // process environment's, else this Mac's own network settings
-            // (System Settings > Network > Proxies, which a proxy app in
-            // its "system proxy" mode sets), selected for new connections.
-            // Existing pooled connections can keep their previous route
-            // after settings change. Never proxy this Mac itself, as the
-            // Ollama daemon usually is, or what `no_proxy` names
-            // (`super::proxy`, U12). Naming a proxy here
-            // turns off reqwest's own reading of the environment and of
-            // the network settings (`ClientBuilder::proxy`), which had no
-            // exception for this Mac: `system_proxy` reads the network
-            // settings the way it did.
-            .proxy(reqwest::Proxy::custom(|url| {
-                super::proxy::proxy_for(
-                    url,
-                    crate::runner::login_path::command_var,
-                    super::proxy::system_proxy,
-                )
-            }))
-            .timeout(std::time::Duration::from_secs(30))
-            .build()
-            .expect("reqwest client with the rustls TLS backend must build");
+        let settings = proxy_settings();
         RealHttpClient {
-            client,
+            current: std::sync::Mutex::new(Pooled {
+                client: build(settings.clone()),
+                settings,
+            }),
             max_body_bytes,
         }
     }
+
+    /// The reqwest client for the proxy settings as they are now (R5 of
+    /// the f19 review): the one made before while they have not changed,
+    /// so the connections it keeps open are used again; once they have, a
+    /// new one, with none open, in its place. A new one because reqwest
+    /// chooses a request's proxy as it opens a connection, but puts a
+    /// plain-http request's `Proxy-Authorization` on as the request is
+    /// sent, from the proxy chosen then (`proxy_auth`), and hyper-util
+    /// sends the request down any idle connection to the same address
+    /// (`PoolKey`: its scheme and host alone), whatever proxy that was
+    /// opened through -- so a login in new settings would go to the proxy
+    /// the old ones named. Each client chooses from the settings it was
+    /// made under alone (`build`), so a request carries only the login of
+    /// the proxy its connection goes to. A request the old client has
+    /// under way finishes on it, and its connections close once no request
+    /// holds it. Read under the lock, so requests that see a change at once
+    /// make one new client, not one each in turn.
+    fn client(&self) -> reqwest::Client {
+        let mut current = self.current.lock().unwrap_or_else(|e| e.into_inner());
+        let now = proxy_settings();
+        if current.settings != now {
+            *current = Pooled {
+                client: build(now.clone()),
+                settings: now,
+            };
+        }
+        current.client.clone()
+    }
+}
+
+/// A reqwest client whose requests choose their proxy from `settings`
+/// (`RealHttpClient::client`).
+fn build(settings: Settings) -> reqwest::Client {
+    let user_agent = format!("banager/{}", env!("CARGO_PKG_VERSION"));
+    reqwest::Client::builder()
+        .tls_backend_rustls()
+        .user_agent(user_agent)
+        // reqwest's default is `Policy::limited(10)`: up to ten
+        // redirects, to any host, with no https-only guard — so an
+        // https request could be walked to plain http, or to a host
+        // Banager never chose, carrying its headers with it. None of
+        // the hosts this client talks to -- `ALLOWED_HTTPS_HOSTS` over
+        // https, and the Ollama daemon over http -- ever needs a
+        // redirect, so the policy is `none` and `send` below turns a
+        // 3xx into an error instead of handing it back as a response.
+        .redirect(reqwest::redirect::Policy::none())
+        // The proxy the login shell's settings name, else the process
+        // environment's -- as `settings` holds them, so a read that ends
+        // after this client is made counts from the next request, on a
+        // client made for it (`RealHttpClient::client`) -- else this Mac's
+        // own network settings (System Settings > Network > Proxies, which
+        // a proxy app in its "system proxy" mode sets), read as a
+        // connection opens; and never for this Mac itself, as the Ollama
+        // daemon usually is, or for what `no_proxy` names (`super::proxy`,
+        // U12). The network settings hold no login -- `system_proxy` hands
+        // reqwest a host and port alone -- and are not part of `settings`:
+        // a connection opened before such an app was turned on or off can
+        // still be used after. Naming a proxy here turns off reqwest's own
+        // reading of the environment and of the network settings
+        // (`ClientBuilder::proxy`), which had no exception for this Mac:
+        // `system_proxy` reads the network settings the way it did.
+        .proxy(reqwest::Proxy::custom(move |url| {
+            super::proxy::proxy_for(url, |name| settings.var(name), super::proxy::system_proxy)
+        }))
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .expect("reqwest client with the rustls TLS backend must build")
 }
 
 impl Default for RealHttpClient {
@@ -237,7 +289,7 @@ impl RealHttpClient {
         let method = reqwest::Method::from_bytes(req.method.as_bytes())
             .map_err(|e| HttpError::Refused(format!("invalid method {:?}: {e}", req.method)))?;
         let mut builder = self
-            .client
+            .client()
             .request(method, req.url.as_str())
             .timeout(req.timeout);
         for (name, value) in &req.headers {

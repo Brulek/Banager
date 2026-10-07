@@ -2101,3 +2101,27 @@ fn test_adapter_directory_budgets_and_incomplete_outcomes_are_documented() {
         );
     }
 }
+
+/// R5 of the f19 review: the promise that a proxy's login goes to that
+/// proxy alone holds when the settings change while Banager is open,
+/// because `RealHttpClient` leaves the connections made under other proxy
+/// settings (`tests/http_proxy_pool_test.rs`); the Network section says
+/// so, and says what is not compared.
+#[test]
+fn test_what_we_run_says_a_proxy_settings_change_gets_new_connections() {
+    let doc = read_doc();
+    let body = section_body(&doc, "Network").expect("a `## Network` section");
+    let folded = body.split_whitespace().collect::<Vec<_>>().join(" ");
+    for phrase in [
+        "gives that login to that proxy alone, also when the settings change while Banager is open",
+        "at each of its own requests Banager reads the login shell's and its own environment's proxy settings again",
+        "it leaves those connections and opens new ones (`http::real::RealHttpClient`)",
+        "This Mac's network settings hold no login",
+        "are not part of that comparison",
+    ] {
+        assert!(
+            folded.contains(phrase),
+            "the `## Network` section of docs/what-we-run.md does not say {phrase:?} about a change to the proxy settings"
+        );
+    }
+}

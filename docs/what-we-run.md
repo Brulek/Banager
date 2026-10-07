@@ -4941,7 +4941,18 @@ above, and only because the user's own settings -- Terminal's or this
 Mac's -- name it; the host a
 request is for is still checked against the table first, and a refused
 one never reaches the proxy. A proxy setting that holds a login
-(`http://name:password@host:port`) gives that login to that proxy alone.
+(`http://name:password@host:port`) gives that login to that proxy alone,
+also when the settings change while Banager is open (a read of the login
+shell that works after one that failed, say): at each of its own requests
+Banager reads the login shell's and its own environment's proxy settings
+again, and when they are not the ones its open connections were made
+under, it leaves those connections and opens new ones
+(`http::real::RealHttpClient`). Otherwise a plain-http request -- the one
+to an Ollama on another machine -- could go down a connection kept open
+to the proxy named before, carrying the login of the proxy named now,
+which reqwest adds to each such request as it is sent. This Mac's network
+settings hold no login (Banager reads a host and a port from them) and
+are not part of that comparison.
 The mirror settings change nothing here: Banager's own checks still ask
 the hosts in the table.
 
