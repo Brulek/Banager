@@ -550,6 +550,8 @@
     "logRelinking": "更新已完成，接着运行brew link --formula --force {{name}}，把它重新接到终端里。",
     "logStillLinked": "Homebrew已把{{name}}重新接到终端里，不需要运行brew link。",
     "logNoLongerLinked": "{{name}}没有重新接到终端里，输入{{commands}}不再运行它。要接回去，可以在终端里运行brew link --formula --force {{name}}；如果有文件挡住，它会说出是哪个。",
+    "logNoLongerLinkedLead": "{{name}}没有重新接到终端里，输入{{commands}}不再运行它。要接回去，可以在终端里运行下面的命令。",
+    "logNoLongerLinkedAfter": "如果有文件挡住，命令会说出是哪个。",
     "blockedBadge": "无法重新接上",
     "blockedDetail": "它已接在终端里，但它的命令位置上现在有别的文件。更新会断开它，之后接不回去，所以无法在这里更新。",
     "held": "挡住它的文件：{{path}}",

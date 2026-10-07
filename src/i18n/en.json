@@ -606,6 +606,8 @@
     "logRelinking": "The update is done. Running brew link --formula --force {{name}} to link it back into Terminal.",
     "logStillLinked": "Homebrew linked {{name}} back into Terminal itself, so brew link wasn't needed.",
     "logNoLongerLinked": "{{name}} isn't linked back into Terminal, so typing {{commands}} no longer runs it. To link it back, run brew link --formula --force {{name}} in Terminal; if a file is in the way, it says which.",
+    "logNoLongerLinkedLead": "{{name}} isn't linked back into Terminal, so typing {{commands}} no longer runs it. To link it back, you can run this command in Terminal.",
+    "logNoLongerLinkedAfter": "If a file is in the way, the command says which.",
     "blockedBadge": "Can't link back",
     "blockedDetail": "It's linked into Terminal, but another file is now where one of its commands goes. An update would unlink it with no way to link it back, so it can't be updated here.",
     "held": "In the way: {{path}}",

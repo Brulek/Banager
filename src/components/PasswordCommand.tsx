@@ -62,6 +62,34 @@ function unbrokenTokens(tokens: string[]) {
 }
 
 /**
+ * A command for Terminal, set as code that selects whole: the settings it
+ * runs with (`env`), technical and muted on a line of their own, then the
+ * command, each a list of tokens (`displayToken`) a line breaks between
+ * and never inside. Named by a group around it (`label`): a name on
+ * <code> itself is not one assistive technology reliably reads. The
+ * password steps' (`PasswordInstructions`) and a saved relink warning's
+ * (`FollowUpWarnings`); the copy button and the sentences are the caller's.
+ */
+export function CommandCode({ label, env = [], command }: { label: string; env?: string[]; command: string[] }) {
+  return (
+    <div role="group" aria-label={label}>
+      {/* What a person reads first is the command they run. One code
+          block, which selects and copies as the one line it is. */}
+      <code className="block select-all break-words rounded-control bg-group px-2.5 py-2 font-mono text-small text-foreground">
+        {env.length > 0 ? (
+          <span data-command-env="" className="block text-muted">
+            {unbrokenTokens(env)}{" "}
+          </span>
+        ) : null}
+        <span data-command-argv="" className="block">
+          {unbrokenTokens(command)}
+        </span>
+      </code>
+    </div>
+  );
+}
+
+/**
  * Whether `op` ran Homebrew: the one source whose steps run `sudo` (a
  * cask's installer or uninstaller), and the one whose command this hands
  * over -- the `brew` argv with Homebrew's variables. Another source whose
@@ -118,23 +146,7 @@ export function PasswordInstructions({ preview: op }: { preview: TerminalPreview
   return (
     <div className="mb-3 flex flex-col gap-2">
       <p className="break-words text-body text-foreground">{t("needsPassword.intro")}</p>
-      {/* Named by a group around it: a name on <code> itself is not
-          one assistive technology reliably reads. */}
-      <div role="group" aria-label={t("needsPassword.commandLabel")}>
-        {/* The settings on a muted line of their own, then the command:
-            what a person reads first is the command they run. One code
-            block, which selects and copies as the one line it is. */}
-        <code className="block select-all break-words rounded-control bg-group px-2.5 py-2 font-mono text-small text-foreground">
-          {parts.env.length > 0 ? (
-            <span data-command-env="" className="block text-muted">
-              {unbrokenTokens(parts.env)}{" "}
-            </span>
-          ) : null}
-          <span data-command-argv="" className="block">
-            {unbrokenTokens(parts.command)}
-          </span>
-        </code>
-      </div>
+      <CommandCode label={t("needsPassword.commandLabel")} env={parts.env} command={parts.command} />
       <div className="flex items-center gap-2">
         <button type="button" onClick={() => copy(command)} className={BUTTON.regular.grey}>
           {t("common.copyCommand")}

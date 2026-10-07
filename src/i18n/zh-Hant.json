@@ -550,6 +550,8 @@
     "logRelinking": "更新已完成，接著執行brew link --formula --force {{name}}，把它重新接到終端機裡。",
     "logStillLinked": "Homebrew已把{{name}}重新接到終端機裡，不需要執行brew link。",
     "logNoLongerLinked": "{{name}}沒有重新接到終端機裡，輸入{{commands}}不再執行它。要接回去，可以在終端機裡執行brew link --formula --force {{name}}；如果有檔案擋住，它會說出是哪一個。",
+    "logNoLongerLinkedLead": "{{name}}沒有重新接到終端機裡，輸入{{commands}}不再執行它。要接回去，可以在終端機裡執行下面的指令。",
+    "logNoLongerLinkedAfter": "如果有檔案擋住，指令會說出是哪一個。",
     "blockedBadge": "無法重新接上",
     "blockedDetail": "它已接在終端機裡，但它的指令位置上現在有別的檔案。更新會中斷它的連結，之後接不回去，所以無法在這裡更新。",
     "held": "擋住它的檔案：{{path}}",
