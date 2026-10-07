@@ -244,7 +244,13 @@ export function Menu({ label, items }: MenuProps) {
           // Takes the focus itself when opened at a point (`startAt`).
           tabIndex={-1}
           onKeyDown={onMenuKeyDown}
-          style={point === null ? undefined : { left: point.left, top: point.top }}
+          style={
+            point !== null
+              ? { left: point.left, top: point.top }
+              : placement.shift === 0
+                ? undefined
+                : { transform: `translateX(${placement.shift}px)` }
+          }
           // A macOS menu (spec §3.10): at least 180 wide, the corners of a
           // group, 5 in, the menu's shadow and hairline and no other edge.
           className={`absolute z-30 flex min-w-45 flex-col rounded-group bg-surface p-[5px] shadow-menu outline-none ${

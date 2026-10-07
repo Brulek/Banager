@@ -78,6 +78,11 @@ export function panelBounds(element: HTMLElement): { top: number; bottom: number
 export interface Placement {
   side: "below" | "above";
   align: "start" | "end";
+  /**
+   * How far the panel is moved sideways from where `align` puts it, in
+   * pixels, leftwards when negative: 0 wherever one of the two edges fits.
+   */
+  shift: number;
 }
 
 /**
@@ -87,24 +92,37 @@ export interface Placement {
  * operation bar. Lined up with the button's `preferred` edge, unless the
  * panel would then run past the list's or the window's side and fits the
  * other way: a notice's "Details" near the right of a narrow window opens
- * leftwards instead of past the window's edge. Measured once each time the
- * panel opens, from the button, so the answer does not depend on where
- * the panel happened to be drawn first.
+ * leftwards instead of past the window's edge. Where it fits neither way
+ * -- an ⓘ near the middle of a list the details panel has narrowed to a
+ * third of an 800-wide window (r30 Z2) -- it keeps the preferred edge and
+ * is moved sideways (`shift`) until it is inside the list, so nothing in
+ * it is cut off at the list's edge; a popover's arrow, `fromMiddle` from
+ * its side, moves the other way and still points at the button, and it is
+ * never moved so far that the arrow would come nearer its side than that.
+ * Measured once each time the panel opens, from the button, so the answer
+ * does not depend on where the panel happened to be drawn first.
+ *
+ * `fromMiddle`: where the panel's lined-up edge is -- that far to the
+ * side of the button's middle, as a popover stands from its arrow
+ * (`Popover`), or, `null`, on the button's own edge (`Menu`).
  */
 export function usePlacement(
   open: boolean,
   trigger: RefObject<HTMLElement | null>,
   panel: RefObject<HTMLElement | null>,
   preferred: "start" | "end" = "start",
+  fromMiddle: number | null = null,
 ): Placement {
-  const [placement, setPlacement] = useState<Placement>({ side: "below", align: preferred });
+  const [placement, setPlacement] = useState<Placement>({ side: "below", align: preferred, shift: 0 });
   useLayoutEffect(() => {
     // Only a change is set: every closed chip and menu on a list runs this
     // when it mounts, and an equal new object would draw each one twice.
     const settle = (next: Placement) =>
-      setPlacement((was) => (was.side === next.side && was.align === next.align ? was : next));
+      setPlacement((was) =>
+        was.side === next.side && was.align === next.align && was.shift === next.shift ? was : next,
+      );
     if (!open) {
-      settle({ side: "below", align: preferred });
+      settle({ side: "below", align: preferred, shift: 0 });
       return;
     }
     const button = trigger.current;
@@ -116,12 +134,46 @@ export function usePlacement(
     const below = bounds.bottom - rect.bottom;
     const above = rect.top - bounds.top;
     const width = content.offsetWidth;
-    const fitsFromStart = rect.left + width <= bounds.right;
-    const fitsFromEnd = rect.right - width >= bounds.left;
+    const middle = rect.left + rect.width / 2;
+    // The panel's left side lined up from the start, its right from the end.
+    const startLeft = fromMiddle === null ? rect.left : middle - fromMiddle;
+    const endRight = fromMiddle === null ? rect.right : middle + fromMiddle;
+    const fitsFromStart = startLeft + width <= bounds.right;
+    const fitsFromEnd = endRight - width >= bounds.left;
     let align = preferred;
     if (preferred === "start" && !fitsFromStart && fitsFromEnd) align = "end";
     if (preferred === "end" && !fitsFromEnd && fitsFromStart) align = "start";
-    settle({ side: below < needed && above > below ? "above" : "below", align });
-  }, [open, trigger, panel, preferred]);
+    settle({
+      side: below < needed && above > below ? "above" : "below",
+      align,
+      shift: shiftInside(align === "start" ? startLeft : endRight - width, width, bounds, middle, fromMiddle),
+    });
+  }, [open, trigger, panel, preferred, fromMiddle]);
   return placement;
+}
+
+/**
+ * How far to move a panel whose left side is at `left` so that it is
+ * inside `bounds`: back from the right side first, then off the left one,
+ * which wins in a list narrower than the panel, where its start is what
+ * is read first. With an arrow (`fromMiddle`), never so far that the
+ * arrow, pointing at `middle`, would come nearer either of the panel's
+ * sides than `fromMiddle`. In whole pixels, rounded inwards, so its text
+ * is not drawn between two and no part of a pixel is left over the side.
+ */
+function shiftInside(
+  left: number,
+  width: number,
+  bounds: { left: number; right: number },
+  middle: number,
+  fromMiddle: number | null,
+): number {
+  let shift = 0;
+  if (left + width > bounds.right) shift = bounds.right - (left + width);
+  if (left + shift < bounds.left) shift = bounds.left - left;
+  if (fromMiddle !== null) {
+    shift = Math.min(shift, middle - fromMiddle - left);
+    shift = Math.max(shift, middle + fromMiddle - width - left);
+  }
+  return shift < 0 ? Math.floor(shift) : Math.ceil(shift);
 }

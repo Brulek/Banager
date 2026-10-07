@@ -236,6 +236,36 @@ describe("Menu", () => {
     expect(css).toContain("--color-glyph-rest: rgb(255 255 255 / 0.45);");
   });
 
+  it("hangs from its button moved inside a list too narrow for either edge, as a popover is (r30 Z2)", () => {
+    const { getByRole } = render(
+      <div data-list="" style={{ overflowY: "auto" }}>
+        <Menu label="More actions for glib" items={items()} />
+      </div>,
+    );
+    // A list at 208..540 and the ⋯ at 360..384; the menu 200 wide: from
+    // the button's right it would start at 184, from its left end at 560.
+    const rects = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      if (this.tagName === "BUTTON") return new DOMRect(360, 100, 24, 24);
+      if (this.dataset.list !== undefined) return new DOMRect(208, 0, 332, 560);
+      return new DOMRect(0, 0, 0, 0);
+    });
+    const width = vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(200);
+    const height = vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(90);
+    try {
+      fireEvent.click(getByRole("button", { name: "More actions for glib" }));
+      const menu = getByRole("menu");
+      // Still lined up with the button's right, moved 24 right: 208..408.
+      expect(menu.className).toContain("right-0");
+      expect(menu.style.transform).toBe("translateX(24px)");
+    } finally {
+      rects.mockRestore();
+      width.mockRestore();
+      height.mockRestore();
+    }
+  });
+
   it("opens at a point for its row, and turns up and leftwards where the window has no room", () => {
     const opener = createRef<OpenMenuAt | null>() as { current: OpenMenuAt | null };
     const { getByRole } = render(

@@ -124,6 +124,9 @@ describe("Popover placement", () => {
     const panel = openPanel("start");
     expect(panel).toHaveAttribute("data-align", "start");
     expect(panel.className).toContain("left-[calc(50%-24px)]");
+    // Where it fits, it is not moved, and nor is its arrow.
+    expect(panel.style.transform).toBe("");
+    expect((panel.querySelector("[data-popover-arrow]") as unknown as HTMLElement).style.left).toBe("");
   });
 
   it("opens leftwards from near the window's right edge instead of past it", () => {
@@ -136,6 +139,71 @@ describe("Popover placement", () => {
   it("opens rightwards from near the window's left edge when asked to line up with the button's right", () => {
     layOut(20, 80);
     expect(openPanel("end")).toHaveAttribute("data-align", "start");
+  });
+
+  // The ⓘ beside a list notice in the list column the details panel has
+  // narrowed to 332 (208..540) at an 800-wide window: the ⓘ at 365..385,
+  // the panel 260 wide. From the ⓘ's middle it would run to 611, and lined
+  // up from its right it would start at 139 -- past the column either way
+  // (r30 Z2, measured in the mock).
+  function inNarrowList(left: number, right: number, list = { left: 208, right: 540 }, align: "start" | "end" = "start") {
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      if (this.tagName === "BUTTON") {
+        return { left, right, top: 100, bottom: 120, width: right - left, height: 20 } as DOMRect;
+      }
+      if (this.dataset.list !== undefined) {
+        return { ...list, top: 0, bottom: 560, width: list.right - list.left, height: 560 } as DOMRect;
+      }
+      return { left: 0, right: 0, top: 0, bottom: 0, width: 0, height: 0 } as DOMRect;
+    });
+    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(260);
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(120);
+    const { getByRole } = render(
+      <div data-list="" style={{ overflowY: "auto" }}>
+        <p>
+          npm couldn't run.{" "}
+          <Popover trigger="ⓘ" triggerLabel="Details: npm" triggerClassName="info" align={align}>
+            <span>It ran into an error.</span>
+            <button type="button">Copy Error Details</button>
+          </Popover>
+        </p>
+      </div>,
+    );
+    const button = getByRole("button", { name: "Details: npm" });
+    fireEvent.click(button);
+    const panel = document.getElementById(button.getAttribute("aria-controls") ?? "") as HTMLElement;
+    return { panel, arrow: panel.querySelector("[data-popover-arrow]") as SVGElement, getByRole };
+  }
+
+  it("is moved inside a list too narrow for either edge, so nothing in it is cut off (r30 Z2)", () => {
+    const { panel, arrow, getByRole } = inNarrowList(365, 385);
+    // Still lined up from the start, then moved 71 left: 351 - 71 = 280,
+    // and 280 + 260 = 540, the list's right side.
+    expect(panel).toHaveAttribute("data-align", "start");
+    expect(panel.className).toContain("left-[calc(50%-24px)]");
+    expect(panel.style.transform).toBe("translateX(-71px)");
+    // Its button inside it, where the list shows it.
+    expect(panel).toContainElement(getByRole("button", { name: "Copy Error Details" }));
+    // The arrow moved the other way: its middle 24 + 71 in from the
+    // panel's side, at 280 + 95 = 375, the ⓘ's middle.
+    expect((arrow as unknown as HTMLElement).style.left).toBe(`${17 + 71}px`);
+    expect((arrow as unknown as HTMLElement).style.right).toBe("");
+  });
+
+  it("is moved rightwards when lined up from the end and too wide for either edge", () => {
+    // The same list, the ⓘ at 363..383 (middle 373): from its right the
+    // panel would start at 397 - 260 = 137, 71 short of 208.
+    const { panel, arrow } = inNarrowList(363, 383, undefined, "end");
+    expect(panel).toHaveAttribute("data-align", "end");
+    expect(panel.style.transform).toBe("translateX(71px)");
+    expect((arrow as unknown as HTMLElement).style.right).toBe(`${17 + 71}px`);
+  });
+
+  it("keeps its start inside a list narrower than itself, its arrow still at the ⓘ", () => {
+    // 200 wide: the start, which is read first, wins: 186 - 86 = 100.
+    const { panel, arrow } = inNarrowList(200, 220, { left: 100, right: 300 });
+    expect(panel.style.transform).toBe("translateX(-86px)");
+    expect((arrow as unknown as HTMLElement).style.left).toBe(`${17 + 86}px`);
   });
 
   it("opens upwards at the foot of the window, and downwards where there is room", () => {

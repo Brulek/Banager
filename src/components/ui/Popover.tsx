@@ -1,6 +1,9 @@
 import { useCallback, useId, useRef, useState, type ReactNode } from "react";
 import { useDismiss, usePlacement } from "./floating";
 
+/** How far the panel's side stands from the button's middle, where its arrow points: 24. */
+const ARROW_IN = 24;
+
 export interface PopoverProps {
   /** What the button shows: a chip's word and ⓘ, or "Details". */
   trigger: ReactNode;
@@ -44,9 +47,10 @@ export function Popover({ trigger, triggerLabel, triggerClassName, align = "star
   const panelRef = useRef<HTMLSpanElement>(null);
   const close = useCallback(() => setOpen(false), []);
   useDismiss(open, close, wrapperRef, triggerRef);
-  const placement = usePlacement(open, triggerRef, panelRef, align);
+  const placement = usePlacement(open, triggerRef, panelRef, align, ARROW_IN);
   const above = placement.side === "above";
   const fromEnd = placement.align === "end";
+  const { shift } = placement;
 
   return (
     <span
@@ -71,11 +75,12 @@ export function Popover({ trigger, triggerLabel, triggerClassName, align = "star
           id={panelId}
           data-side={placement.side}
           data-align={placement.align}
+          style={shift === 0 ? undefined : { transform: `translateX(${shift}px)` }}
           className={`absolute z-30 block w-65 whitespace-normal rounded-group bg-popover p-3 text-left text-body-long font-normal text-foreground shadow-menu ${
             fromEnd ? "right-[calc(50%-24px)]" : "left-[calc(50%-24px)]"
           } ${above ? "bottom-full mb-[9px]" : "top-full mt-[9px]"}`}
         >
-          <PopoverArrow above={above} fromEnd={fromEnd} />
+          <PopoverArrow above={above} fromEnd={fromEnd} shift={shift} />
           {children}
         </span>
       ) : null}
@@ -87,9 +92,10 @@ export function Popover({ trigger, triggerLabel, triggerClassName, align = "star
  * The popover's arrow, 14 by 7, its tip rounded as AppKit's is: the
  * panel's fill, and its hairline along the two slanting sides, so that it
  * reads as part of the panel. Its middle is 24 in from the panel's side,
- * where the button's middle is.
+ * where the button's middle is -- and further in by as much as the panel
+ * was moved (`shift`) to stay inside its list, so it still points there.
  */
-function PopoverArrow({ above, fromEnd }: { above: boolean; fromEnd: boolean }) {
+function PopoverArrow({ above, fromEnd, shift }: { above: boolean; fromEnd: boolean; shift: number }) {
   return (
     <svg
       data-popover-arrow=""
@@ -97,6 +103,13 @@ function PopoverArrow({ above, fromEnd }: { above: boolean; fromEnd: boolean }) 
       width={14}
       height={7}
       viewBox="0 0 14 7"
+      style={
+        shift === 0
+          ? undefined
+          : fromEnd
+            ? { right: ARROW_IN - 7 + shift }
+            : { left: ARROW_IN - 7 - shift }
+      }
       className={`absolute ${fromEnd ? "right-[17px]" : "left-[17px]"} ${
         above ? "top-full rotate-180" : "bottom-full"
       } overflow-visible text-black/15 dark:text-white/15`}
