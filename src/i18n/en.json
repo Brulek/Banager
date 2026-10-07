@@ -1006,7 +1006,7 @@
         "PathChangedDetail": "The log lists anything already moved to the Trash. Open the confirmation again.",
         "FormulaChanged": "Couldn't start: {{name}} changed in Homebrew after the confirmation opened",
         "FormulaChangedDetail": "Nothing was removed. Open the confirmation again to see which versions it removes.",
-        "HomebrewSettingsChanged": "Couldn't start: Homebrew's settings changed after the confirmation opened, or couldn't be read",
+        "HomebrewSettingsChanged": "Couldn't start: Homebrew's settings or uninstall details changed after the confirmation opened, or couldn't be read",
         "HomebrewSettingsChangedDetail": "Homebrew wasn't run. Open the confirmation again to see what it deletes now.",
         "LinkTaken": "Couldn't start: another program is using {{path}}",
         "LinkTakenMany": "Couldn't start: another program is using {{path}} and {{others}} more",

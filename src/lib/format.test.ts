@@ -351,16 +351,22 @@ describe("outcomeKey for Banager's own failures", () => {
       "operations.outcome.BanagerFailed.HomebrewSettingsChangedDetail",
     );
     expect(en.operations.outcome.BanagerFailed.HomebrewSettingsChanged).toBe(
-      "Couldn't start: Homebrew's settings changed after the confirmation opened, or couldn't be read",
+      "Couldn't start: Homebrew's settings or uninstall details changed after the confirmation opened, or couldn't be read",
     );
     expect(en.operations.outcome.BanagerFailed.HomebrewSettingsChangedDetail).toBe(
       "Homebrew wasn't run. Open the confirmation again to see what it deletes now.",
     );
     expect(zhCN.operations.outcome.BanagerFailed.HomebrewSettingsChanged).toBe(
-      "未能开始：确认窗口打开后，Homebrew的设置有了变化，或无法读取",
+      "未能开始：确认窗口打开后，Homebrew的设置或卸载内容有了变化，或无法读取",
     );
     expect(zhCN.operations.outcome.BanagerFailed.HomebrewSettingsChangedDetail).toBe(
       "没有运行Homebrew。请重新打开确认窗口，查看它现在会删除什么。",
+    );
+    expect(zhHant.operations.outcome.BanagerFailed.HomebrewSettingsChanged).toBe(
+      "未能開始：確認視窗開啟後，Homebrew的設定或解除安裝內容有了變化，或無法讀取",
+    );
+    expect(zhHant.operations.outcome.BanagerFailed.HomebrewSettingsChangedDetail).toBe(
+      "沒有執行Homebrew。請重新開啟確認視窗，查看它現在會刪除什麼。",
     );
     // y1-keg: a keg-only formula's update found another program in its
     // commands' places and ran nothing. It names the first place, and how

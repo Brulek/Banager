@@ -2056,15 +2056,17 @@ pub enum Fault {
     /// (`BrewAdapter::require_kegs_as_previewed`); read by
     /// `faultKey`/`faultArgs` in src/lib/format.ts.
     FormulaChanged { name: String },
-    /// An install or update through Homebrew was not started, because what
-    /// Homebrew would delete by itself after it, read again right before
+    /// An install, update or uninstall through Homebrew was not started.
+    /// What Homebrew would delete, read again right before
     /// the command, is more than the preview said: a `brew.env` changed
     /// since then takes Banager's `HOMEBREW_NO_INSTALL_CLEANUP=1` or
     /// `HOMEBREW_NO_AUTOREMOVE=1` back, or can no longer be read, or no
     /// longer names a formula the preview said `HOMEBREW_NO_CLEANUP_FORMULAE`
-    /// leaves out. Nothing was started; a new preview says what Homebrew
-    /// deletes now. Built by `BrewAdapter::execute`
-    /// (`BrewAdapter::require_cleanup_as_previewed`); read by `faultKey`
+    /// leaves out, or a cask's recorded uninstall scope or steps changed.
+    /// Nothing was started; a new preview says what Homebrew deletes now.
+    /// Built by `BrewAdapter::execute`
+    /// (`BrewAdapter::require_cleanup_as_previewed` and
+    /// `BrewAdapter::require_uninstall_as_previewed`); read by `faultKey`
     /// in src/lib/format.ts.
     HomebrewSettingsChanged,
     /// The update of the keg-only formula `name`, linked into the prefix

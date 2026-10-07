@@ -623,7 +623,7 @@ impl BrewAdapter {
     /// from Banager's environment, as Homebrew's is (`env_var_fn`).
     fn uninstall_scope(
         &self,
-        inst: &ManagerInstance,
+        prefix: &Path,
         req: &OpRequest,
         switches: &HomebrewSwitches,
         trust: Option<&TrustList>,
@@ -641,7 +641,7 @@ impl BrewAdapter {
         let home = (self.env_var_fn)("HOME")
             .filter(|home| !home.is_empty())
             .map(PathBuf::from);
-        let recorded = (self.recorded_uninstall_fn)(&inst.prefix, &req.name);
+        let recorded = (self.recorded_uninstall_fn)(prefix, &req.name);
         let classified = match &recorded {
             Some(recorded) => cask_receipt::classify(recorded, home.as_deref()),
             None => Classified::Unknown,
@@ -1235,7 +1235,12 @@ impl BrewAdapter {
     /// Re-read the uninstall's settings after the update wait, before any
     /// command can run. Autoremove must have been disclosed, and every
     /// formula the preview excluded must still be excluded. An already
-    /// disclosed "may" and "will" cover the same removal scope.
+    /// disclosed "may" and "will" cover the same removal scope. A cask
+    /// must still have the scope and steps the confirmation showed, read
+    /// through the same receipt, trust and app-name readers as the preview.
+    /// Its sentence is read with the autoremove the preview said: autoremove
+    /// is the check above's to judge, and one turned off since then deletes
+    /// less than the sentence shown, which is no reason to stop.
     fn require_uninstall_as_previewed(&self, plan: &Plan) -> Result<(), Fault> {
         if plan.request.kind != OpKind::Uninstall {
             return Ok(());
@@ -1265,6 +1270,29 @@ impl BrewAdapter {
                 _ => true,
             });
             if !disclosed || !exclusions_remain {
+                return Err(Fault::HomebrewSettingsChanged);
+            }
+        }
+        if plan.request.artifact_kind == ArtifactKind::Cask {
+            let trust = now.user_config_home.as_deref().and_then(self.trust_list_fn);
+            let as_previewed = HomebrewSwitches {
+                no_autoremove: !disclosed,
+                ..now
+            };
+            let (scope, steps) =
+                self.uninstall_scope(&prefix, &plan.request, &as_previewed, trust.as_ref());
+            let shown: Vec<_> = plan
+                .warnings
+                .iter()
+                .filter(|warning| {
+                    matches!(
+                        warning,
+                        Warning::UninstallScope { .. } | Warning::CaskUninstallStep { .. }
+                    )
+                })
+                .collect();
+            let current: Vec<_> = std::iter::once(&scope).chain(steps.iter()).collect();
+            if shown != current {
                 return Err(Fault::HomebrewSettingsChanged);
             }
         }
@@ -2500,7 +2528,7 @@ impl BrewAdapter {
                     .as_deref()
                     .and_then(self.trust_list_fn);
                 let (scope, cask_steps) =
-                    self.uninstall_scope(inst, req, &switches, trust.as_ref());
+                    self.uninstall_scope(&inst.prefix, req, &switches, trust.as_ref());
                 let forgets = trust
                     .as_ref()
                     .and_then(|trust| Self::forgets_trust(trust, req))
@@ -5372,7 +5400,7 @@ mod plan_execute_tests {
         name: &str,
     ) -> Plan {
         runner.respond(
-            vec!["/opt/homebrew/bin/brew", "uses", "--installed", name],
+            vec![inst.exe_path.to_str().unwrap(), "uses", "--installed", name],
             CommandOutput {
                 stderr_cause: Default::default(),
                 exit_code: Some(0),
@@ -8516,6 +8544,154 @@ mod plan_execute_tests {
                 }
             }
         }
+    }
+
+    const F30A_PLAIN_CASK: &str = r#"{"source":{"tap":"homebrew/cask"},"uninstall_artifacts":[{"app":["Example.app"]}],"uninstall_flight_blocks":false}"#;
+    const F30A_DELETE_CASK: &str = r#"{"source":{"tap":"homebrew/cask"},"uninstall_artifacts":[{"app":["Example.app"]},{"uninstall":[{"delete":"~/Library/Example"}]}],"uninstall_flight_blocks":false}"#;
+
+    async fn f30a_cask_receipt_recheck(
+        before_receipt: &str,
+        after_receipt: Option<&str>,
+        saved_caskfile: bool,
+    ) {
+        let prefix = CaskroomPrefix::new("f30a", &[("example", before_receipt)]);
+        let runner = Arc::new(MockRunner::new());
+        let adapter = BrewAdapter::new(runner.clone())
+            .with_recorded_uninstall_fn(cask_receipt::read_recorded);
+        // Keep the executable and the receipt in the same synthetic prefix,
+        // exactly as detect constructs an instance. No real brew is run.
+        let inst = ManagerInstance {
+            exe_path: prefix.0.join("bin/brew"),
+            prefix: prefix.0.clone(),
+            ..test_instance()
+        };
+        let plan = cask_uninstall(&runner, &adapter, &inst, "example").await;
+        assert_eq!(
+            plan.warnings
+                .iter()
+                .any(|w| matches!(w, Warning::CaskUninstallStep { .. })),
+            before_receipt == F30A_DELETE_CASK,
+            "precondition: the preview shows the receipt's own steps: {:?}",
+            plan.warnings
+        );
+        if let Some(after) = after_receipt {
+            let path = if saved_caskfile {
+                prefix
+                    .0
+                    .join("Caskroom/example/.metadata/1.0/20260928000000.000/Casks/example.json")
+            } else {
+                prefix
+                    .0
+                    .join("Caskroom/example/.metadata/INSTALL_RECEIPT.json")
+            };
+            std::fs::write(path, after).unwrap();
+            let fresh = cask_uninstall(&runner, &adapter, &inst, "example").await;
+            assert_ne!(
+                fresh.warnings, plan.warnings,
+                "precondition: a new preview changes the removal details"
+            );
+            if after == F30A_DELETE_CASK {
+                assert!(fresh
+                    .warnings
+                    .iter()
+                    .any(|w| matches!(w, Warning::CaskUninstallStep { .. })));
+            }
+        }
+        runner.respond(
+            vec![
+                inst.exe_path.to_str().unwrap(),
+                "uninstall",
+                "--cask",
+                "example",
+            ],
+            f08_ok(),
+        );
+        let before = runner.calls().len();
+        let result = adapter
+            .execute(&plan, Arc::new(VecSink::new()), 1, CancellationToken::new())
+            .await;
+        if after_receipt.is_some() {
+            assert_eq!(
+                runner.calls().len(),
+                before,
+                "changed receipt must run no command: {result:?}"
+            );
+            assert_eq!(
+                result.unwrap(),
+                Outcome::BanagerFailed(Fault::HomebrewSettingsChanged)
+            );
+        } else {
+            assert_eq!(result.unwrap(), Outcome::Succeeded);
+            assert_eq!(runner.calls().len(), before + 1);
+        }
+    }
+
+    async fn f08_cask_receipt_changes(expands: bool) {
+        f30a_cask_receipt_recheck(F30A_PLAIN_CASK, expands.then_some(F30A_DELETE_CASK), false)
+            .await;
+    }
+
+    #[tokio::test]
+    async fn f30a_g08_changed_targets_unreadable_and_saved_caskfile() {
+        // A step of the same kind with a different target also needs consent.
+        let moved = F30A_DELETE_CASK.replace("~/Library/Example", "~/Library/Different");
+        f30a_cask_receipt_recheck(F30A_DELETE_CASK, Some(&moved), false).await;
+        // Losing the receipt makes the old promise unknowable.
+        f30a_cask_receipt_recheck(F30A_PLAIN_CASK, Some("not JSON"), false).await;
+        // Homebrew prefers artifacts in the saved caskfile over the receipt.
+        let saved = r#"{"artifacts":[{"app":["Example.app"]},{"uninstall":[{"delete":"~/Library/Example"}]}]}"#;
+        f30a_cask_receipt_recheck(F30A_PLAIN_CASK, Some(saved), true).await;
+        // A disclosed delete step, unchanged, is still executable.
+        f30a_cask_receipt_recheck(F30A_DELETE_CASK, None, false).await;
+    }
+
+    #[tokio::test]
+    async fn f08_g08_expanded_cask_receipt_refuses_saved_uninstall() {
+        f08_cask_receipt_changes(true).await;
+    }
+    #[tokio::test]
+    async fn f08_g08_unchanged_cask_receipt_executes() {
+        f08_cask_receipt_changes(false).await;
+    }
+
+    /// Less than the preview said runs: a cask with a delete step, shown
+    /// while a `brew.env` turned Homebrew's autoremove on, still uninstalls
+    /// once that file is gone -- its sentence then says nothing else is
+    /// deleted, which is less, not more, than the one confirmed.
+    #[tokio::test]
+    async fn f30a_g08_cask_steps_run_after_autoremove_turned_off() {
+        let prefix = CaskroomPrefix::new("f30a-off", &[("example", F30A_DELETE_CASK)]);
+        let runner = Arc::new(MockRunner::new());
+        let mut adapter = BrewAdapter::new(runner.clone())
+            .with_recorded_uninstall_fn(cask_receipt::read_recorded)
+            .with_brew_env_fn(|_| brew_env::EnvFile::Read(b"HOMEBREW_NO_AUTOREMOVE=0\n".to_vec()));
+        let inst = ManagerInstance {
+            exe_path: prefix.0.join("bin/brew"),
+            prefix: prefix.0.clone(),
+            ..test_instance()
+        };
+        let plan = cask_uninstall(&runner, &adapter, &inst, "example").await;
+        assert!(
+            plan.warnings.contains(&Warning::UninstallScope {
+                what: UninstallScope::HomebrewCaskStepsAutoremoves
+            }) && plan.warnings.contains(&Warning::HomebrewAutoremoves),
+            "precondition: the preview said autoremove runs: {:?}",
+            plan.warnings
+        );
+        adapter.brew_env_fn = |_| brew_env::EnvFile::Skipped;
+        let uninstall = vec![
+            inst.exe_path.to_str().unwrap(),
+            "uninstall",
+            "--cask",
+            "example",
+        ];
+        runner.respond(uninstall.clone(), f08_ok());
+        let before = runner.calls().len();
+        let result = adapter
+            .execute(&plan, Arc::new(VecSink::new()), 1, CancellationToken::new())
+            .await;
+        assert_eq!(result.unwrap(), Outcome::Succeeded);
+        assert_eq!(runner.calls()[before..], [uninstall]);
     }
 
     /// U9 (r6): an update deletes the old versions of the formula it

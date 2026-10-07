@@ -1368,7 +1368,7 @@ cleans up, or may, and the preview had no line saying it would or might;
 that clean-up autoremoves, or may, and the preview had no line for that;
 or a formula the preview said `HOMEBREW_NO_CLEANUP_FORMULAE` leaves out
 is no longer left out -- nothing runs, and the operation ends as
-「未能开始：确认窗口打开后，Homebrew的设置有了变化，或无法读取」, asking
+「未能开始：确认窗口打开后，Homebrew的设置或卸载内容有了变化，或无法读取」, asking
 for the confirmation to be opened again (`Fault::HomebrewSettingsChanged`).
 Less than the preview said, or "will" where it said "may", or the
 reverse, runs.
@@ -1381,6 +1381,18 @@ excluded from autoremove in the preview is no longer excluded, it returns
 confirmation again to see the current removal scope. Already disclosed
 "may" and "will" cover the same scope; this autoremove check also allows
 disabling autoremove or adding exclusions.
+
+For a cask uninstall, that same execution check re-reads the receipt and
+saved caskfile, settings, trust list and app names used by the preview's
+`uninstall_scope`. The displayed scope and each extra step, including its
+targets and conditions, must still match the confirmed plan; the scope is
+read with the autoremove the preview said, so autoremove turned off since
+then does not stop a cask whose sentence mentioned it. A new delete
+step, changed target, or newly unreadable record refuses the old plan as
+`Fault::HomebrewSettingsChanged`. An unchanged preview remains executable.
+These are the existing read-only readers; the check runs no command and
+writes no file. It checks again after the update wait, but does not lock
+out external edits between these reads and Homebrew opening its files.
 
 **The trust list.** After `brew uninstall`, Homebrew deletes the entry its
 trust list holds for each package it uninstalled — a cask by its full
@@ -1797,18 +1809,19 @@ looked at and counts as unknown (`brew.env`, above);
 only the lines that set `HOMEBREW_NO_AUTO_UPDATE`, `HOMEBREW_NO_AUTOREMOVE`,
 `HOMEBREW_NO_INSTALL_CLEANUP`, `HOMEBREW_XDG_CONFIG_HOME`,
 `HOMEBREW_SYSTEM_ENV_TAKES_PRIORITY`, `HOMEBREW_NO_CLEANUP_FORMULAE` or
-`HOMEBREW_NO_REQUIRE_TAP_TRUST` are used. A cask's uninstall preview
-also reads, under `<prefix>/Caskroom/<token>` — the last part of the
-cask's name, and only when that is a folder and not a link
-(`read_recorded`) — the names in its `.metadata` folder and in each folder
+`HOMEBREW_NO_REQUIRE_TAP_TRUST` are used. A cask's uninstall preview, and
+its check just before the uninstall runs, also read, under
+`<prefix>/Caskroom/<token>` — the last part of the cask's name, and
+only when that is a folder and not a link (`read_recorded`) — the names in its `.metadata` folder and in each folder
 there, whether `Casks/<token>.json`, `Casks/<token>.internal.json` or
 `Casks/<token>.rb` exists in the newest, then `.metadata/INSTALL_RECEIPT.json`
 and, when it is the one there, the `.json` caskfile: each is opened
 without waiting (links followed), checked with `fstat` once open, and read
 and parsed as JSON only when that says it is a regular file of at most
 16 MiB. The `.internal.json` and `.rb`
-caskfiles are never opened. Every uninstall preview, formula or cask, also
-reads Homebrew's trust list, `trust.json` in the folder `bin/brew` takes
+caskfiles are never opened. Every uninstall preview, formula or cask, and
+the check before a cask uninstall runs, also read Homebrew's trust list,
+`trust.json` in the folder `bin/brew` takes
 for the user's Homebrew config — `$XDG_CONFIG_HOME/homebrew`,
 `$HOMEBREW_XDG_CONFIG_HOME/homebrew` or `~/.homebrew`, as for the user's
 `brew.env` (`trust::read_trust_list` in
@@ -4346,10 +4359,11 @@ not read (`protected::look`; How Banager runs anything, above):
   the uninstall preview; its `brew.env` files, during every install,
   uninstall and upgrade preview, again right before an install, upgrade
   or uninstall runs, and right before the cleanup that follows an update;
-  during a cask's uninstall preview, the
+  during a cask's uninstall preview and again before it runs, the
   names in its `<prefix>/Caskroom/<token>/.metadata` folder and in the
   folders there, the caskfile Homebrew saved when it is JSON, and
-  `INSTALL_RECEIPT.json`; during every uninstall preview, its trust list,
+  `INSTALL_RECEIPT.json`; during every uninstall preview and again before
+  a cask uninstall runs, its trust list,
   `trust.json` in the user's Homebrew config folder; during a formula's
   upgrade and uninstall preview, the names in `<prefix>/Cellar/<name>` and
   whether `<prefix>/var/homebrew/pinned/<name>` is there (Homebrew's
@@ -4362,6 +4376,9 @@ not read (`protected::look`; How Banager runs anything, above):
   `<prefix>/var/homebrew/linked/<name>`, its text and whether it leads to
   a folder, and during a check the same for each keg-only formula with an
   update (Homebrew's section, "Keg-only formulae linked into Terminal").
+- For a cask uninstall with a quit step, during its preview and again
+  before execution: the recorded apps' `Contents/Info.plist`, only to read
+  their bundle IDs and name the apps the step quits (`quit_app_names`).
 - A Homebrew cask's app, when the window asks for its icon: `lstat` of the
   `.app` Homebrew named for that cask, and the icon macOS finds for it
   through `NSWorkspace iconForFile:` — Banager opens no file in the app
@@ -5239,6 +5256,7 @@ that has been set up.
 - Homebrew 公式更新通常会预览并在成功后运行指定名称的清理，删除该公式的旧版本、过期缓存下载及缓存中所有未引用的下载。固定版本、无法读取版本或固定记录、用户关闭清理、`brew.env` 启用自动清理或无法确定其影响时，不安排这一步。`brew.env` 启用的自动清理范围更广，预览会另行说明。
 - 未固定且装有多个版本的公式，卸载会移除所有已安装版本及链接，确认框会列出版本。保存在其他位置的设置和数据保留；启用自动移除依赖时，会另行说明。
 - Homebrew 卸载开始前会重新读取 `brew.env`。若现在会或可能自动移除依赖，而预览没有说明，或预览承诺保留的公式不再排除，则不运行命令，并提示重新打开确认窗口。
+- cask 卸载开始前也会重新读取安装记录及预览所用的信任设置和 App 名称。删除范围、步骤、目标或条件与预览不同时，不运行命令，并提示重新打开确认窗口。检查不会锁住外部程序，仍可能在读取后发生变化。
 - `brew.env` 读取清单包括 `HOMEBREW_NO_AUTO_UPDATE`。它被设为空时，会阻止可能触发未跟踪自动更新的命令。
 - `OLLAMA_HOST` 地址中的登录信息会用于该服务的 HTTP 基本认证。普通 HTTP 不加密这些信息。发给窗口的实例标识不含登录信息；命令预览、操作摘要和库存错误会遮蔽登录信息，实际请求和命令仍使用原值。拷贝的预览命令也保留遮蔽，需要自行补入登录信息。历史和忽略、跳过、稍后提醒设置保存前会去除地址中的用户名与密码；旧文件读取时也会脱敏并尝试重写。写入失败可能使旧内容仍留在磁盘，较新格式的历史文件不会被覆盖。
 - Claude Code、Antigravity CLI 和 Grok Build 卸载后，除了检查启动器，还会检查卸载清单中的其他路径；Antigravity 也会重新列出备份。可选路径还会检查归属及应保留的路径，不运行版本命令。
@@ -5253,6 +5271,7 @@ that has been set up.
 - Homebrew 公式更新通常會預覽並在成功後執行指定名稱的清理，刪除該公式的舊版本、過期快取下載及快取中所有未參照的下載。固定版本、無法讀取版本或固定記錄、使用者關閉清理、`brew.env` 啟用自動清理或無法確定其影響時，不安排這一步。`brew.env` 啟用的自動清理範圍更廣，預覽會另外說明。
 - 未固定且裝有多個版本的公式，移除時會移除所有已安裝版本及連結，確認視窗會列出版本。儲存在其他位置的設定和資料保留；啟用自動移除相依套件時，會另外說明。
 - Homebrew 移除開始前會重新讀取 `brew.env`。若現在會或可能自動移除相依套件，而預覽沒有說明，或預覽承諾保留的公式不再排除，則不執行指令，並提示重新開啟確認視窗。
+- cask 移除開始前也會重新讀取安裝記錄及預覽所用的信任設定和 App 名稱。刪除範圍、步驟、目標或條件與預覽不同時，不執行指令，並提示重新開啟確認視窗。檢查不會鎖住外部程式，仍可能在讀取後發生變化。
 - `brew.env` 讀取清單包括 `HOMEBREW_NO_AUTO_UPDATE`。它被設為空值時，會阻止可能觸發未追蹤自動更新的命令。
 - `OLLAMA_HOST` 網址中的登入資訊會用於該服務的 HTTP 基本驗證。一般 HTTP 不會加密這些資訊。傳給視窗的實例識別碼不含登入資訊；命令預覽、操作摘要和庫存錯誤會遮蔽登入資訊，實際要求和命令仍使用原值。拷貝的預覽命令也保留遮蔽，需要自行補入登入資訊。歷程和忽略、略過、稍後提醒設定儲存前會去除網址中的使用者名稱與密碼；舊檔案讀取時也會遮蔽登入資訊並嘗試重新寫入。寫入失敗可能使舊內容仍留在磁碟，較新格式的歷程檔案不會被覆寫。
 - Claude Code、Antigravity CLI 和 Grok Build 移除後，除了檢查啟動器，還會檢查移除清單中的其他路徑；Antigravity 也會重新列出備份。選用路徑還會檢查歸屬及應保留的路徑，不執行版本命令。
