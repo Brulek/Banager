@@ -159,7 +159,9 @@
 //! Ollama has none in the table: its models folder is named by
 //! `kept_data::OLLAMA_MODELS`, and the rest of `~/.ollama` is not named.
 //!
-//! Versions are deliberately not in the table: they change weekly.
+//! Versions are deliberately not in the table: they change weekly. A
+//! Homebrew cask's channel is not a version: `@latest` and `@prerelease`
+//! are part of the token of a cask of its own.
 //!
 //! Matching is by source kind (`family_for`): an npm package name only on
 //! an npm instance, a formula name only against formulae and a cask name
@@ -593,6 +595,32 @@ mod tests {
         }
     }
 
+    /// Whether `s` carries a version number: an `@` before a digit
+    /// (`node@22`, `@openai/codex@0.1.0`) or a digit, a dot and a digit
+    /// (`1.2`).
+    fn has_version_number(s: &str) -> bool {
+        let b = s.as_bytes();
+        b.windows(2).any(|w| w[0] == b'@' && w[1].is_ascii_digit())
+            || b.windows(3)
+                .any(|w| w[0].is_ascii_digit() && w[1] == b'.' && w[2].is_ascii_digit())
+    }
+
+    #[test]
+    fn test_tells_a_version_number_from_a_homebrew_channel() {
+        for versioned in ["node@22", "python@3.14", "@openai/codex@0.1.0", "codex 1.2"] {
+            assert!(has_version_number(versioned), "{versioned}");
+        }
+        // A cask's channel is part of its token, not a version.
+        for name in [
+            "claude-code@latest",
+            "copilot-cli@prerelease",
+            "@anthropic-ai/claude-code",
+            "~/.aider.model.metadata.json",
+        ] {
+            assert!(!has_version_number(name), "{name}");
+        }
+    }
+
     #[test]
     fn test_the_table_carries_no_version_numbers() {
         // Versions change weekly; the table is ids, names and folders.
@@ -614,7 +642,31 @@ mod tests {
             }
         }
         walk(&raw, "");
-        assert!(!TABLE_JSON.contains("@latest"));
+        // Nor does any string a family is made of: no versioned formula
+        // (`node@22`), no npm package pinned to a version, no dotted
+        // number. A Homebrew cask's channel is no version: `@latest` and
+        // `@prerelease` are part of the token of a cask of its own
+        // (`claude-code@latest`, `copilot-cli@prerelease`), which Homebrew
+        // updates as it does any other.
+        for f in families() {
+            let strings = [&f.id, &f.name_en]
+                .into_iter()
+                .chain(f.members.iter().map(|m| &m.name))
+                .chain(&f.data_paths);
+            for s in strings {
+                assert!(!has_version_number(s), "{}: {s}", f.id);
+            }
+            for m in f.members.iter().filter(|m| m.source == MemberSource::Npm) {
+                // An npm name has an `@` only before its scope:
+                // `pkg@latest` is what to install, not a package's name.
+                assert!(
+                    !m.name.get(1..).is_some_and(|rest| rest.contains('@')),
+                    "{}: {}",
+                    f.id,
+                    m.name
+                );
+            }
+        }
     }
 
     #[test]
