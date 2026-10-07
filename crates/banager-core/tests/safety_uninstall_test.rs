@@ -370,8 +370,27 @@ async fn test_an_uninstall_runs_exactly_the_command_its_preview_showed_and_nothi
             .await
             .unwrap_or_else(|e| panic!("{what}: execute: {e}"));
         let dispatched = runner.specs();
-        // The write, after any read that comes right before it (npm's
-        // prefix, uv's list), which is run with its own read's settings.
+        assert_eq!(
+            dispatched.len(),
+            planned + expected.len() + 1,
+            "{what}: the documented recheck and the write, and nothing more"
+        );
+        // Each read run right before the write keeps the confirmed
+        // environment, as the write does: npm's `npm prefix -g` asks the
+        // npm that will run with it (`NpmAdapter::ENV`). uv's list alone is
+        // run as the inventory runs it (`NO_COLOR=1`), a uv plan adding no
+        // variables.
+        for (call, read) in dispatched[planned..].iter().zip(&expected) {
+            let read_env = if instance.adapter_id == "uv" {
+                vec![("NO_COLOR".to_string(), "1".to_string())]
+            } else {
+                env.clone()
+            };
+            assert_eq!(
+                call.env, read_env,
+                "{what}: the read {read:?} keeps the confirmed environment"
+            );
+        }
         assert_eq!(
             dispatched.last().unwrap().env,
             *env,
