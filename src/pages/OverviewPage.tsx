@@ -271,7 +271,7 @@ function ProblemRow({ notice }: { notice: SourceNoticeSpec }) {
             {t(notice.titleKey, values)}
           </p>
           <p className={`${SMALL_WRAPPING} text-muted`}>{t(notice.descriptionKey, values)}</p>
-          {notice.diagnostic ? <SourceDiagnostic notice={notice} /> : null}
+          {notice.diagnostic ? <SourceDiagnostic notice={notice} describedBy={titleId} /> : null}
           {/* A <div>: the error's own "Details" panel is one. */}
           {error !== null ? (
             <div role="alert" className="text-small text-danger-text">

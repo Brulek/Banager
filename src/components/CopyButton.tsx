@@ -27,12 +27,19 @@ export function CopyButton({
   label,
   ariaLabel,
   size = "small",
+  describedBy,
   buttonRef,
   data,
 }: {
   text: string | (() => string);
   label: string;
   ariaLabel?: string;
+  /**
+   * The id of what it copies from, where the same button is drawn once
+   * for each of several: a source's 「拷贝错误详情」 on the Overview,
+   * described by its row's title.
+   */
+  describedBy?: string;
   size?: "small" | "regular";
   buttonRef?: Ref<HTMLButtonElement>;
   /** A `data-*` attribute's name for the button, to find it by (`copy-diagnostics`). */
@@ -50,6 +57,7 @@ export function CopyButton({
         ref={buttonRef}
         type="button"
         aria-label={ariaLabel}
+        aria-describedby={describedBy}
         onClick={() => copy(typeof text === "string" ? text : text())}
         className={size === "small" ? BUTTON.small.grey : BUTTON.regular.grey}
         {...dataProps}

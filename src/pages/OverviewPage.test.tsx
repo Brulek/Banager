@@ -1658,8 +1658,11 @@ describe("a problem row's sign and button (p1 polish)", () => {
       expect(signRow.contains(title)).toBe(true);
       expect(signRow.className.split(" ")).toContain("items-start");
       expect(signRow.className.split(" ")).not.toContain("items-center");
-      // The 24 button centred on the title's 16 line: 4 above its top.
-      const button = [...row.querySelectorAll("button")].find((b) => b.getAttribute("aria-describedby") === title.id)!;
+      // The 24 button centred on the title's 16 line: 4 above its top --
+      // the row's own, beside the title; those of the diagnostic under it
+      // are described by the title too (r27 A1).
+      const button = row.querySelector<HTMLButtonElement>(":scope > button")!;
+      expect(button).toHaveAttribute("aria-describedby", title.id);
       expect(button.className.split(" ")).toContain("-mt-1");
     };
     rows.forEach(check);
@@ -1668,6 +1671,55 @@ describe("a problem row's sign and button (p1 polish)", () => {
     fireEvent.click(disclosure);
     expect(disclosure).toHaveAttribute("aria-expanded", "true");
     check(disclosure.closest("li")!);
+  });
+
+  // r27 A1: two sources that failed at startup, each with its words kept.
+  // Their 「查看错误详情」 and 「拷贝错误详情」 are named alike; each is told
+  // apart by its row's title, as the row's own Check Again is.
+  it.each([
+    ["en", "npm ran into an error", "pipx ran into an error", "Show Error Details", "Copy Error Details", "Check Again"],
+    ["zh-CN", "npm运行时出错", "pipx运行时出错", "查看错误详情", "拷贝错误详情", "重新检查"],
+  ])("tell each source's error details apart by its row's title, in %s", async (language, npmTitle, pipxTitle, show, copy, checkAgain) => {
+    await i18n.changeLanguage(language);
+    try {
+      const failed = (id: string, adapterId: string, diagnostic: string) =>
+        instance(id, adapterId, {
+          version: null,
+          status: {
+            unavailable: "NotResponding",
+            notes: [],
+            no_answer: { kind: "ExitedWithError", missing_program: null, link_fixes: [], cause: null, diagnostic },
+          },
+        });
+      served = snapshotWith({
+        instances: [
+          brew,
+          failed("npm:/opt/homebrew", "npm", "npm error config Invalid npmrc"),
+          failed("pipx:/opt/homebrew/bin/pipx", "pipx", "pipx: bad interpreter: No such file or directory"),
+        ],
+      });
+      const { findByRole } = renderOverview();
+      const list = await findByRole("list", { name: i18n.t("overview.attentionLabel") });
+      // What a screen reader's list of buttons holds: each word twice, each
+      // with the source it is for.
+      const describedAs = (name: string) => {
+        const buttons = within(list).getAllByRole("button", { name });
+        expect(buttons).toHaveLength(2);
+        expect(buttons[0]).toHaveAccessibleDescription(npmTitle);
+        expect(buttons[1]).toHaveAccessibleDescription(pipxTitle);
+      };
+      describedAs(show);
+      describedAs(checkAgain);
+      for (const button of within(list).getAllByRole("button", { name: show })) fireEvent.click(button);
+      describedAs(copy);
+      // Unfolded, still the disclosure it was: open, and what it opened named.
+      for (const button of within(list).getAllByRole("button", { name: show })) {
+        expect(button).toHaveAttribute("aria-expanded", "true");
+        expect(document.getElementById(button.getAttribute("aria-controls") ?? "")).not.toBeNull();
+      }
+    } finally {
+      await i18n.changeLanguage("en");
+    }
   });
 
   // r24 W2: a problem row goes once what its button did has fixed it, and

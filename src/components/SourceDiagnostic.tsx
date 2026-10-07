@@ -10,15 +10,21 @@ import { DisclosureButton } from "./DisclosureButton";
  * behind a closed disclosure as Homebrew's caveats are: the cause's line
  * where one was read, the next step, the source's own words and Copy.
  * Only the runner's bounded, redacted diagnostic reaches this control.
+ *
+ * `describedBy` is the id of the title of the row it is in, where several
+ * sources' rows are drawn at once -- the Overview's problems: their
+ * 「查看错误详情」 and 「拷贝错误详情」 alike, a screen reader tells them
+ * apart by it, as it does the row's own button (r27 A1). Inside a list
+ * line's ⓘ there is one at a time, after an ⓘ named for its source.
  */
-export function SourceDiagnostic({ notice }: { notice: SourceNoticeSpec }) {
+export function SourceDiagnostic({ notice, describedBy }: { notice: SourceNoticeSpec; describedBy?: string }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const panelId = useId();
   if (!notice.diagnostic) return null;
   return (
     <div className="mt-1">
-      <DisclosureButton open={open} panelId={panelId} onToggle={() => setOpen(!open)}>
+      <DisclosureButton open={open} panelId={panelId} onToggle={() => setOpen(!open)} describedBy={describedBy}>
         {t("sourceDiagnostic.label")}
       </DisclosureButton>
       {open ? (
@@ -31,7 +37,7 @@ export function SourceDiagnostic({ notice }: { notice: SourceNoticeSpec }) {
           >
             {notice.diagnostic}
           </p>
-          <CopyButton text={notice.diagnostic} label={t("sourceDiagnostic.copy")} />
+          <CopyButton text={notice.diagnostic} label={t("sourceDiagnostic.copy")} describedBy={describedBy} />
         </div>
       ) : null}
     </div>
