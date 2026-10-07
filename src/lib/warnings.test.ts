@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   deletesForGood,
   isCaution,
+  isRoutineNote,
   skipsTrash,
   warningArgs,
   warningDetailKey,
@@ -572,6 +573,7 @@ const EVERY_VARIANT: Warning[] = [
   { HomebrewForgetsTrust: { name: "someone/tap/thing" } },
   { HomebrewCleansUpOldVersions: { versions: ["1.25.0"] } },
   { HomebrewRemovesEveryVersion: { versions: ["1.25.0", "1.26.0"] } },
+  { HomebrewRelinksAfterUpdate: { name: "node@22", commands: ["node", "npm"] } },
   { UninstallScope: { what: "HomebrewCaskPlain" } },
   { CaskUninstallStep: { step: "Deletes", items: ["~/Library/Application Support/Foo"] } },
   { Message: "boom" },
@@ -686,7 +688,7 @@ describe("warningGroup", () => {
           "UninstallScope" in warning
         ),
     );
-    expect(notes).toHaveLength(29);
+    expect(notes).toHaveLength(30);
     for (const warning of notes) expect(warningGroup(warning)).toBe("note");
     // Every kind of a cask's extra steps.
     for (const step of EVERY_STEP) {
@@ -1158,6 +1160,51 @@ describe("warningLines", () => {
         'warnings.uninstallScope.HomebrewFormulaOnly({"name":"node@22"})',
       ]);
     }
+  });
+});
+
+describe("y1-keg: a keg-only formula linked by hand is linked back after its update", () => {
+  const zh = i18n.getFixedT("zh-CN");
+  const enT = i18n.getFixedT("en");
+  const zhHant = i18n.getFixedT("zh-Hant");
+  const relinks: Warning = { HomebrewRelinksAfterUpdate: { name: "node@22", commands: ["node", "npm", "npx"] } };
+  const noCommands: Warning = { HomebrewRelinksAfterUpdate: { name: "openssl@3", commands: [] } };
+
+  it("says the update unlinks it and that it is linked back, with the commands and the command behind the ⓘ", () => {
+    expect(warningText(zh, relinks)).toBe(
+      "node@22是Homebrew不会自动接到终端里的工具，你之前手动接上了。更新会断开它，更新后会再把它接上。",
+    );
+    expect(warningText(zhHant, relinks)).toBe(
+      "node@22是Homebrew不會自動接到終端機裡的工具，你之前手動接上了。更新會中斷它的連結，更新後會再把它接上。",
+    );
+    expect(warningText(enT, relinks)).toBe(
+      "Homebrew doesn't link node@22 into Terminal, and you linked it yourself. The update unlinks it; Banager links it back afterwards.",
+    );
+    expect(warningLine(zh, relinks)?.detail).toBe(
+      "它接在终端里的命令：node、npm、npx。更新后如果它们没有接回去，会运行brew link --force node@22，不会替换其他程序的文件。",
+    );
+    expect(warningLine(zhHant, relinks)?.detail).toBe(
+      "它接在終端機裡的指令：node、npm、npx。更新後如果它們沒有接回去，會執行brew link --force node@22，不會取代其他程式的檔案。",
+    );
+    expect(warningLine(enT, relinks)?.detail).toBe(
+      "Its commands in Terminal: node, npm, npx. If they aren't back after the update, Banager runs brew link --force node@22, which replaces no other program's files.",
+    );
+    // Linked by its record alone, with no command of its own.
+    expect(warningLine(zh, noCommands)?.detail).toBe(
+      "更新后如果它没有接回去，会运行brew link --force openssl@3，不会替换其他程序的文件。",
+    );
+    expect(warningDetailKey(noCommands)).toBe("kegLinks.relinksDetailNoCommands");
+  });
+
+  it("is a note of how the update goes: no caution, nothing deleted, and not routine", () => {
+    expect(warningKey(relinks)).toBe("kegLinks.relinks");
+    expect(warningArgs(relinks, "、")).toEqual({ name: "node@22", commands: "node、npm、npx" });
+    expect(warningGroup(relinks)).toBe("note");
+    expect(isCaution(relinks)).toBe(false);
+    expect(deletesForGood(relinks)).toBe(false);
+    // Unlike the cleanup's line, which every formula's update has, this one
+    // is about the person's own setup: a batch lists it among the notes.
+    expect(isRoutineNote(relinks)).toBe(false);
   });
 });
 

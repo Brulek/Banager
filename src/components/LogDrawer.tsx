@@ -82,6 +82,19 @@ function noteText(t: TFunction, note: LogNote): string {
   if ("OldVersionsCleanupSkipped" in note) {
     return t("brewVersions.logCleanupSkipped");
   }
+  // y1-keg: what became of a keg-only formula's link after its update --
+  // `brew link` starts (its own lines follow), Homebrew had linked it back
+  // itself, or which commands typed in Terminal no longer run it.
+  if ("RelinkingAfterUpdate" in note) {
+    return t("kegLinks.logRelinking", { name: note.RelinkingAfterUpdate.name });
+  }
+  if ("StillLinkedAfterUpdate" in note) {
+    return t("kegLinks.logStillLinked", { name: note.StillLinkedAfterUpdate.name });
+  }
+  if ("NoLongerLinked" in note) {
+    const { name, commands } = note.NoLongerLinked;
+    return t("kegLinks.logNoLongerLinked", { name, commands: commands.join(t("common.listSeparator")) });
+  }
   const unhandled: never = note;
   return unhandled;
 }

@@ -280,6 +280,57 @@ describe("LogDrawer", () => {
     }
   });
 
+  it("says what became of a keg-only formula's link after its update, in each language (y1-keg)", async () => {
+    const notes = [
+      { RelinkingAfterUpdate: { name: "node@22" } },
+      { StillLinkedAfterUpdate: { name: "node@22" } },
+      { NoLongerLinked: { name: "node@22", commands: ["node", "npm"] } },
+    ] as const;
+    const expected: [string, string[]][] = [
+      [
+        "en",
+        [
+          "The update is done. Running brew link --force node@22 to link it back into Terminal.",
+          "Homebrew linked node@22 back into Terminal itself, so brew link wasn't needed.",
+          "node@22 isn't linked back into Terminal, so typing node, npm no longer runs it. To link it back, run brew link --force node@22 in Terminal; if a file is in the way, it says which.",
+        ],
+      ],
+      [
+        "zh-CN",
+        [
+          "更新已完成，接着运行brew link --force node@22，把它重新接到终端里。",
+          "Homebrew已把node@22重新接到终端里，不需要运行brew link。",
+          "node@22没有重新接到终端里，输入node、npm不再运行它。要接回去，可以在终端里运行brew link --force node@22；如果有文件挡住，它会说出是哪个。",
+        ],
+      ],
+      [
+        "zh-Hant",
+        [
+          "更新已完成，接著執行brew link --force node@22，把它重新接到終端機裡。",
+          "Homebrew已把node@22重新接到終端機裡，不需要執行brew link。",
+          "node@22沒有重新接到終端機裡，輸入node、npm不再執行它。要接回去，可以在終端機裡執行brew link --force node@22；如果有檔案擋住，它會說出是哪一個。",
+        ],
+      ],
+    ];
+    try {
+      for (const [language, lines] of expected) {
+        await i18n.changeLanguage(language);
+        act(() => useUiStore.setState({ logs: [] }));
+        const { findByText, getByRole, unmount } = renderWithProviders(<LogDrawer />);
+        act(() => {
+          useUiStore.getState().appendLog({ opId: 1, stream: "Stdout", line: "==> Upgrading node@22" });
+          for (const note of notes) useUiStore.getState().appendLog({ opId: 1, note });
+        });
+        await findByText("==> Upgrading node@22");
+        const shown = Array.from(getByRole("log").querySelectorAll("p")).map((p) => p.textContent);
+        expect(shown).toEqual(["==> Upgrading node@22", ...lines]);
+        unmount();
+      }
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+
   it("says which stream a failed read cut short", async () => {
     const { findByText } = renderWithProviders(<LogDrawer />);
 

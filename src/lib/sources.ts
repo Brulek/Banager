@@ -887,6 +887,21 @@ export const UPDATE_BLOCKED_KEYS: Record<UpdateBlocked, UpdateBlockedCopy> = {
     note: disabledNote,
     refused: "updates.disabledBlocked.refused",
   },
+  LinkTaken: {
+    // y1-keg: a keg-only formula the person linked into Terminal, where
+    // another program now holds one of its commands' places -- npm's own
+    // copy of itself, after an update of npm with npm. The update would
+    // unlink it, and nothing gets past that file to link it back, so its
+    // commands would be gone from Terminal. Nothing to run: Banager does
+    // not pass `--overwrite`, which would delete the other program's file.
+    badge: "kegLinks.blockedBadge",
+    detail: "kegLinks.blockedDetail",
+    commandInDetail: false,
+    command: () => "",
+    typed: null,
+    note: () => null,
+    refused: "kegLinks.blockedRefused",
+  },
 };
 
 /**

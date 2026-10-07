@@ -301,6 +301,8 @@ export function warningKey(warning: Warning): string | null {
   // U9: plural on `{{count}}`, the versions it names.
   if ("HomebrewCleansUpOldVersions" in warning) return "brewVersions.cleansUp";
   if ("HomebrewRemovesEveryVersion" in warning) return "brewVersions.removesEvery";
+  // y1-keg: a keg-only formula linked by hand is linked back after its update.
+  if ("HomebrewRelinksAfterUpdate" in warning) return "kegLinks.relinks";
   if ("HomebrewNoCleanupFormulae" in warning) {
     const { old_versions: oldVersions, autoremove } = warning.HomebrewNoCleanupFormulae;
     return NO_CLEANUP_FORMULAE_KEYS[oldVersions ? (autoremove ? "both" : "oldVersions") : "autoremove"];
@@ -359,6 +361,10 @@ export function warningArgs(warning: Warning, separator = ", "): Record<string, 
   if ("HomebrewRemovesEveryVersion" in warning) {
     const versions = warning.HomebrewRemovesEveryVersion.versions;
     return { count: versions.length, versions: versions.join(separator) };
+  }
+  if ("HomebrewRelinksAfterUpdate" in warning) {
+    const { name, commands } = warning.HomebrewRelinksAfterUpdate;
+    return { name, commands: commands.join(separator) };
   }
   if ("HomebrewNoCleanupFormulae" in warning) {
     const names = warning.HomebrewNoCleanupFormulae.names;
@@ -491,6 +497,12 @@ export function warningDetailKey(warning: Warning): string | null {
   if ("HomebrewForgetsTrust" in warning) return "uninstall.forgetsTrustDetail";
   // How: the command, and that it is what Homebrew does by default.
   if ("HomebrewCleansUpOldVersions" in warning) return "brewVersions.cleansUpDetail";
+  // Which commands, and the command Banager runs if they are not back.
+  if ("HomebrewRelinksAfterUpdate" in warning) {
+    return warning.HomebrewRelinksAfterUpdate.commands.length > 0
+      ? "kegLinks.relinksDetail"
+      : "kegLinks.relinksDetailNoCommands";
+  }
   if ("LeavesShellConfigLine" in warning) {
     return warning.LeavesShellConfigLine.certain
       ? "warnings.leavesShellConfigLineDetail"
@@ -557,6 +569,7 @@ export function warningGroup(warning: Warning): WarningGroup {
     "HomebrewForgetsTrust" in warning ||
     "HomebrewCleansUpOldVersions" in warning ||
     "HomebrewRemovesEveryVersion" in warning ||
+    "HomebrewRelinksAfterUpdate" in warning ||
     "CaskUninstallStep" in warning ||
     "Message" in warning
   ) {
@@ -636,6 +649,8 @@ export function deletesForGood(warning: Warning): boolean {
     // the old versions are said by name, as how it goes (U9).
     "HomebrewCleansUpOldVersions" in warning ||
     "HomebrewRemovesEveryVersion" in warning ||
+    // `brew link` deletes nothing (y1-keg: never `--overwrite`).
+    "HomebrewRelinksAfterUpdate" in warning ||
     "UninstallScope" in warning ||
     "KeepsData" in warning ||
     "Message" in warning
@@ -788,6 +803,8 @@ export function isCaution(warning: Warning): boolean {
     // What Homebrew does by default, each version named (U9).
     "HomebrewCleansUpOldVersions" in warning ||
     "HomebrewRemovesEveryVersion" in warning ||
+    // How Banager keeps what the person linked in Terminal (y1-keg).
+    "HomebrewRelinksAfterUpdate" in warning ||
     "UninstallScope" in warning ||
     "KeepsData" in warning
   ) {

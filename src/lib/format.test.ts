@@ -216,6 +216,7 @@ describe("outcomeKey", () => {
       { BanagerFailed: { PathChanged: { path: "~/.local/bin/claude" } } },
       { BanagerFailed: { FormulaChanged: { name: "wget" } } },
       { BanagerFailed: "HomebrewSettingsChanged" },
+      { BanagerFailed: { LinkTaken: { name: "node@22", paths: ["/opt/homebrew/bin/npm"] } } },
       { BanagerFailed: "Internal" },
     ];
     const lookup = (locale: unknown, key: string): unknown =>
@@ -236,6 +237,7 @@ describe("outcomeKey", () => {
       ["BanagerFailed.PathChanged", "operations.outcome.BanagerFailed.PathChangedDetail"],
       ["BanagerFailed.FormulaChanged", "operations.outcome.BanagerFailed.FormulaChangedDetail"],
       ["BanagerFailed.HomebrewSettingsChanged", "operations.outcome.BanagerFailed.HomebrewSettingsChangedDetail"],
+      ["BanagerFailed.LinkTaken", "operations.outcome.BanagerFailed.LinkTakenDetail"],
     ]);
     for (const [, detail] of withStep) {
       expect(typeof lookup(en, detail as string), detail as string).toBe("string");
@@ -255,6 +257,8 @@ describe("outcomeKey for Banager's own failures", () => {
     { PathChanged: { path: "~/.local/bin/claude" } },
     { FormulaChanged: { name: "wget" } },
     "HomebrewSettingsChanged",
+    { LinkTaken: { name: "node@22", paths: ["/opt/homebrew/bin/npm"] } },
+    { LinkTaken: { name: "node@22", paths: ["/opt/homebrew/bin/npm", "/opt/homebrew/bin/npx"] } },
     "Internal",
   ];
 
@@ -355,6 +359,29 @@ describe("outcomeKey for Banager's own failures", () => {
     );
     expect(zhCN.operations.outcome.BanagerFailed.HomebrewSettingsChangedDetail).toBe(
       "没有运行Homebrew。请重新打开确认窗口，查看它现在会删除什么。",
+    );
+    // y1-keg: a keg-only formula's update found another program in its
+    // commands' places and ran nothing. It names the first place, and how
+    // many there are when more than one; the next sentence says why that
+    // stops an update, and that the tool still works.
+    const npm = { BanagerFailed: { LinkTaken: { name: "node@22", paths: ["/opt/homebrew/bin/npm"] } } } as const;
+    const both = {
+      BanagerFailed: { LinkTaken: { name: "node@22", paths: ["/opt/homebrew/bin/npm", "/opt/homebrew/bin/npx"] } },
+    } as const;
+    expect(outcomeKey(npm)).toBe("BanagerFailed.LinkTaken");
+    expect(outcomeKey(both)).toBe("BanagerFailed.LinkTakenMany");
+    expect(outcomeArgs(both)).toEqual({ name: "node@22", path: "/opt/homebrew/bin/npm", number: 2, others: 1 });
+    expect(outcomeDetailKey(both)).toBe("operations.outcome.BanagerFailed.LinkTakenDetail");
+    expect(en.operations.outcome.BanagerFailed.LinkTaken).toBe("Couldn't start: another program is using {{path}}");
+    expect(en.operations.outcome.BanagerFailed.LinkTakenMany).toBe(
+      "Couldn't start: another program is using {{path}} and {{others}} more",
+    );
+    expect(zhCN.operations.outcome.BanagerFailed.LinkTaken).toBe("未能开始：{{path}}已被另一个程序占用");
+    expect(zhCN.operations.outcome.BanagerFailed.LinkTakenMany).toBe(
+      "未能开始：{{path}}等{{number}}个文件已被另一个程序占用",
+    );
+    expect(zhCN.operations.outcome.BanagerFailed.LinkTakenDetail).toBe(
+      "更新会先断开这个工具，被占用的文件会挡住它重新接上，终端里就会找不到它的命令。没有更新，它仍可在终端里使用。",
     );
     expect(en.operations.logNote.movedToTrash).toContain("{{trashedTo}}");
     expect(zhCN.operations.logNote.movedToTrash).toContain("{{trashedTo}}");

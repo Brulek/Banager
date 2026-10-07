@@ -543,6 +543,17 @@
       "HomebrewFormula": "删除Homebrew安装的“{{name}}”和指向它的链接。"
     }
   },
+  "kegLinks": {
+    "relinks": "{{name}}是Homebrew不会自动接到终端里的工具，你之前手动接上了。更新会断开它，更新后会再把它接上。",
+    "relinksDetail": "它接在终端里的命令：{{commands}}。更新后如果它们没有接回去，会运行brew link --force {{name}}，不会替换其他程序的文件。",
+    "relinksDetailNoCommands": "更新后如果它没有接回去，会运行brew link --force {{name}}，不会替换其他程序的文件。",
+    "logRelinking": "更新已完成，接着运行brew link --force {{name}}，把它重新接到终端里。",
+    "logStillLinked": "Homebrew已把{{name}}重新接到终端里，不需要运行brew link。",
+    "logNoLongerLinked": "{{name}}没有重新接到终端里，输入{{commands}}不再运行它。要接回去，可以在终端里运行brew link --force {{name}}；如果有文件挡住，它会说出是哪个。",
+    "blockedBadge": "无法重新接上",
+    "blockedDetail": "它是你手动接到终端里的，现在另一个程序占用了它的命令的位置。更新会断开它，之后接不回去，所以无法在这里更新。",
+    "blockedRefused": "无法更新：更新后它接不回终端。"
+  },
   "modelDownload": {
     "note": "需要下载已更改的模型文件，最多约{{size}}。"
   },
@@ -830,6 +841,9 @@
         "FormulaChangedDetail": "没有改动。请重新打开确认窗口，查看会删除哪些版本。",
         "HomebrewSettingsChanged": "未能开始：确认窗口打开后，Homebrew的设置有了变化，或无法读取",
         "HomebrewSettingsChangedDetail": "没有运行Homebrew。请重新打开确认窗口，查看它现在会删除什么。",
+        "LinkTaken": "未能开始：{{path}}已被另一个程序占用",
+        "LinkTakenMany": "未能开始：{{path}}等{{number}}个文件已被另一个程序占用",
+        "LinkTakenDetail": "更新会先断开这个工具，被占用的文件会挡住它重新接上，终端里就会找不到它的命令。没有更新，它仍可在终端里使用。",
         "Internal": "未能完成：发生内部错误，没有改动"
       }
     },

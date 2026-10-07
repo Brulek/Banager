@@ -543,6 +543,17 @@
       "HomebrewFormula": "刪除Homebrew安裝的「{{name}}」和指向它的連結。"
     }
   },
+  "kegLinks": {
+    "relinks": "{{name}}是Homebrew不會自動接到終端機裡的工具，你之前手動接上了。更新會中斷它的連結，更新後會再把它接上。",
+    "relinksDetail": "它接在終端機裡的指令：{{commands}}。更新後如果它們沒有接回去，會執行brew link --force {{name}}，不會取代其他程式的檔案。",
+    "relinksDetailNoCommands": "更新後如果它沒有接回去，會執行brew link --force {{name}}，不會取代其他程式的檔案。",
+    "logRelinking": "更新已完成，接著執行brew link --force {{name}}，把它重新接到終端機裡。",
+    "logStillLinked": "Homebrew已把{{name}}重新接到終端機裡，不需要執行brew link。",
+    "logNoLongerLinked": "{{name}}沒有重新接到終端機裡，輸入{{commands}}不再執行它。要接回去，可以在終端機裡執行brew link --force {{name}}；如果有檔案擋住，它會說出是哪一個。",
+    "blockedBadge": "無法重新接上",
+    "blockedDetail": "它是你手動接到終端機裡的，現在另一個程式佔用了它的指令的位置。更新會中斷它的連結，之後接不回去，所以無法在這裡更新。",
+    "blockedRefused": "無法更新：更新後它接不回終端機。"
+  },
   "modelDownload": {
     "note": "需要下載已更改的模型檔案，最多約{{size}}。"
   },
@@ -830,6 +841,9 @@
         "FormulaChangedDetail": "沒有改動。請重新開啟確認視窗，查看會刪除哪些版本。",
         "HomebrewSettingsChanged": "未能開始：確認視窗開啟後，Homebrew的設定有了變化，或無法讀取",
         "HomebrewSettingsChangedDetail": "沒有執行Homebrew。請重新開啟確認視窗，查看它現在會刪除什麼。",
+        "LinkTaken": "未能開始：{{path}}已被另一個程式佔用",
+        "LinkTakenMany": "未能開始：{{path}}等{{number}}個檔案已被另一個程式佔用",
+        "LinkTakenDetail": "更新會先中斷這個工具的連結，被佔用的檔案會擋住它重新接上，終端機裡就會找不到它的指令。沒有更新，它仍可在終端機裡使用。",
         "Internal": "未能完成：發生內部錯誤，沒有改動"
       }
     },

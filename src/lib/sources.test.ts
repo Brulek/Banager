@@ -1851,6 +1851,37 @@ describe("UPDATE_BLOCKED_KEYS.Disabled", () => {
   });
 });
 
+describe("UPDATE_BLOCKED_KEYS.LinkTaken (y1-keg)", () => {
+  const key = { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "node@22" } satisfies ArtifactKey;
+
+  it("has nothing to run: Banager does not pass --overwrite, which would delete another program's file", () => {
+    expect(UPDATE_BLOCKED_KEYS.LinkTaken.command(key, instance())).toBe("");
+    expect(UPDATE_BLOCKED_KEYS.LinkTaken.commandInDetail).toBe(false);
+    expect(UPDATE_BLOCKED_KEYS.LinkTaken.typed).toBeNull();
+    expect(UPDATE_BLOCKED_KEYS.LinkTaken.note(key, instance(), undefined)).toBeNull();
+  });
+
+  it("says in one word, and then why, that an update could not link it back into Terminal", () => {
+    expect(i18n.getFixedT("zh-CN")(UPDATE_BLOCKED_KEYS.LinkTaken.badge)).toBe("无法重新接上");
+    expect(i18n.getFixedT("zh-Hant")(UPDATE_BLOCKED_KEYS.LinkTaken.badge)).toBe("無法重新接上");
+    expect(i18n.getFixedT("en")(UPDATE_BLOCKED_KEYS.LinkTaken.badge)).toBe("Can't link back");
+    expect(i18n.getFixedT("zh-CN")(UPDATE_BLOCKED_KEYS.LinkTaken.detail)).toBe(
+      "它是你手动接到终端里的，现在另一个程序占用了它的命令的位置。更新会断开它，之后接不回去，所以无法在这里更新。",
+    );
+    expect(i18n.getFixedT("en")(UPDATE_BLOCKED_KEYS.LinkTaken.detail)).toBe(
+      "You linked it into Terminal yourself, and another program now uses one of its commands' places. An update would unlink it with no way to link it back, so it can't be updated here.",
+    );
+  });
+
+  it("is what a stale page's refusal says", () => {
+    const raw = JSON.stringify({ kind: "update_blocked", reason: "LinkTaken" });
+    expect(planErrorMessage(i18n.getFixedT("en"), raw, "Homebrew", false)).toBe(
+      "Couldn't update it: it couldn't be linked back into Terminal afterwards.",
+    );
+    expect(planErrorMessage(i18n.getFixedT("zh-CN"), raw, "Homebrew", false)).toBe("无法更新：更新后它接不回终端。");
+  });
+});
+
 describe("UPDATE_BLOCKED_KEYS.Pinned's note", () => {
   it("says on a pinned pipx tool that pipx's unpin also unpins what was injected, and nothing on Homebrew's", () => {
     const pipxKey = { instance_id: "pipx", kind: "Tool", name: "poetry" } satisfies ArtifactKey;
