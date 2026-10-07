@@ -272,6 +272,14 @@ impl StandaloneAdapter {
         self
     }
 
+    /// Test support (`test-support`): the folder `detect` will seat as
+    /// `Detected::machine_root`, so that an integration test, built
+    /// without `cfg(test)`, can hold `new` to `/` without looking there.
+    #[cfg(feature = "test-support")]
+    pub fn machine_root(&self) -> &Path {
+        &self.machine_root
+    }
+
     /// Test seam, like `BrewAdapter::with_background_change`: the gap a
     /// path-list uninstall keeps after each move -- zero in tests, so no
     /// test waits seconds per item. Public so `tests/` can use it too.

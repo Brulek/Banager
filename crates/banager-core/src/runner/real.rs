@@ -3176,4 +3176,87 @@ mod tests {
             "Cloning https://****@github.com/review/homebrew-tap"
         );
     }
+
+    /// The setting `test_the_apps_runner_hands_on_banagers_own_proxy_setting_with_its_login_masked`
+    /// gives the process it runs this test in, and nothing else.
+    const INHERITED_PROXY: &str = "http://h1-agent:h1-sesame@192.0.2.1:9";
+
+    #[test]
+    fn test_the_apps_runner_hands_on_banagers_own_proxy_setting_with_its_login_masked() {
+        // `RealRunner::new`, the runner `Session::new` builds, hands a
+        // command the proxy and mirror settings of Banager's own
+        // environment, and masks their logins in what the command prints;
+        // only the tests' runner hands on none of them.
+        assert!(RealRunner::new().inherit_settings);
+        assert!(RealRunner::default().inherit_settings);
+        assert!(!RealRunner::without_this_macs_settings().inherit_settings);
+        // Proved through a command: this test binary again, running
+        // `inherited_setting_child` alone, with `https_proxy` set for that
+        // process only -- never in this one's environment -- and none of
+        // the settings of the Mac running the test.
+        let mut child = std::process::Command::new(std::env::current_exe().unwrap());
+        child.args([
+            "--exact",
+            "runner::real::tests::inherited_setting_child",
+            "--test-threads=1",
+        ]);
+        for name in crate::runner::login_path::IMPORTED
+            .iter()
+            .chain(&["OLLAMA_HOST"])
+        {
+            child.env_remove(name);
+        }
+        let ran = child
+            .env("BANAGER_TEST_INHERITED_SETTING", "1")
+            .env("https_proxy", INHERITED_PROXY)
+            .output()
+            .expect("run this test binary again");
+        let said = String::from_utf8_lossy(&ran.stdout);
+        assert!(
+            ran.status.success(),
+            "{said}{}",
+            String::from_utf8_lossy(&ran.stderr)
+        );
+        assert!(said.contains("1 passed"), "the child test ran: {said}");
+    }
+
+    /// Run by the test above in a process of its own whose environment
+    /// holds `INHERITED_PROXY`; in any other run it does nothing.
+    #[tokio::test]
+    async fn inherited_setting_child() {
+        if std::env::var_os("BANAGER_TEST_INHERITED_SETTING").is_none() {
+            return;
+        }
+        // The setting, and its password alone, where no URL pattern can
+        // find it: only a mask made from the inherited setting hides it.
+        let (lines, on_line) = collected();
+        let output = RealRunner::new()
+            .run(
+                CommandSpec {
+                    program: sh(),
+                    args: vec![
+                        "-c".to_string(),
+                        "printf '%s\\n' \"proxy=$https_proxy\" 'password=h1-sesame'".to_string(),
+                    ],
+                    env: vec![],
+                    cwd: None,
+                    timeout: std::time::Duration::from_secs(10),
+                    output_use: OutputUse::Transcript,
+                },
+                on_line,
+                CancellationToken::new(),
+            )
+            .await
+            .expect("spawn /bin/sh");
+        assert_eq!(output.exit_code, Some(0));
+        let expected = "proxy=http://****:****@192.0.2.1:9\npassword=****\n";
+        assert_eq!(output.stdout, expected);
+        assert_eq!(
+            *lines.lock().unwrap(),
+            expected
+                .lines()
+                .map(|line| (Stream::Stdout, line.to_string()))
+                .collect::<Vec<_>>()
+        );
+    }
 }

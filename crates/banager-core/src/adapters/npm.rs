@@ -189,6 +189,15 @@ impl NpmAdapter {
         self
     }
 
+    /// Test support (`test-support`): what a plan's Homebrew queue key
+    /// makes of the folder at `path` (`brew::prefix_lock`), so that an
+    /// integration test can hold `new` to the real reader
+    /// (`brew::PREFIX_IDENTITY_FN`) on folders of its own.
+    #[cfg(feature = "test-support")]
+    pub fn prefix_identity(&self, path: &Path) -> Option<(u64, u64)> {
+        (self.prefix_identity_fn)(path)
+    }
+
     #[cfg(test)]
     fn with_prefix_read_only_fn(mut self, f: fn(&Path) -> Option<ReadOnlyReason>) -> NpmAdapter {
         self.prefix_read_only_fn = f;

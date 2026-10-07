@@ -221,4 +221,23 @@ mod tests {
         );
         let _ = std::fs::remove_dir_all(&home);
     }
+
+    #[test]
+    fn test_a_session_scans_usr_local_bin_until_a_test_gives_a_folder_of_its_own() {
+        // What every session the app builds scans outside the home folder
+        // (`Session::new` and the test constructors share `build_with`):
+        // `/usr/local/bin`, the spec's one such folder. Read off the field,
+        // not by scanning: nothing here looks at this Mac's folder.
+        assert_eq!(crate::scan::SYSTEM_BIN, "/usr/local/bin");
+        let session = Session::with_adapters(Arc::new(VecSink::new()), Vec::new(), None);
+        assert_eq!(
+            *session.unknown_scan_system_bin.lock().unwrap(),
+            Path::new("/usr/local/bin")
+        );
+        session.set_unknown_scan_system_bin(Path::new("/stand-in/usr/local/bin"));
+        assert_eq!(
+            *session.unknown_scan_system_bin.lock().unwrap(),
+            Path::new("/stand-in/usr/local/bin")
+        );
+    }
 }

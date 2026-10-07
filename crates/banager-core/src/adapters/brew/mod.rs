@@ -684,6 +684,15 @@ impl BrewAdapter {
         self
     }
 
+    /// Test support (`test-support`): what this adapter's queue key makes
+    /// of the folder at `path` (`prefix_lock`), so that an integration
+    /// test can hold `new` to the real reader (`PREFIX_IDENTITY_FN`) on
+    /// folders of its own, never a discovery prefix.
+    #[cfg(feature = "test-support")]
+    pub fn prefix_identity(&self, path: &Path) -> Option<(u64, u64)> {
+        (self.prefix_identity_fn)(path)
+    }
+
     /// A recorded link that cannot be confirmed as this cask's. Checked
     /// at preview and again immediately before running its uninstall.
     fn cask_link_conflict(&self, prefix: &Path, req: &OpRequest) -> Option<PathBuf> {
