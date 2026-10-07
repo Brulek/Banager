@@ -398,7 +398,27 @@ impl Session {
                 Detection::Spawned(handle) => handle,
             };
             match handle.await {
-                Ok(found) => instances.extend(resume_unanswered_npm(found, &previous.instances)),
+                Ok(found) => {
+                    let mut found = resume_unanswered_npm(found, &previous.instances);
+                    // What typing a tool's name in Terminal runs is said
+                    // only against the login shell's `PATH`, as the rows'
+                    // own verdicts are (`commands::start_reading`): on
+                    // Finder's few folders every tool with its own
+                    // installer would be "not on PATH" -- beside the
+                    // Overview's own "couldn't read Terminal's settings".
+                    // Detect judged against `env` regardless
+                    // (`route::shadow_note`), so its placement notes come
+                    // off here. Only this round's detections: an instance
+                    // carried from last round keeps what was said then.
+                    if !path_known {
+                        for inst in &mut found {
+                            inst.status
+                                .notes
+                                .retain(|note| !note.is_about_terminals_path());
+                        }
+                    }
+                    instances.extend(found);
+                }
                 Err(_join_err) => {
                     // A detection that panicked (or was cancelled) said
                     // nothing at all, which is not the same news as "this
@@ -3151,6 +3171,83 @@ mod tests {
             "and so is cargo: {after:?}"
         );
         let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[tokio::test]
+    async fn test_a_round_on_a_path_not_the_login_shells_says_nothing_of_what_typing_a_tool_runs() {
+        // r37 F1, with the real adapter: Claude Code where its installer
+        // puts it, `~/.local/bin` not on the `PATH` the round was given.
+        // Read from the login shell, that `PATH` makes the notice true --
+        // typing `claude` finds nothing. Not read, it is Finder's few
+        // folders, and the notice would be a claim about Terminal's `PATH`
+        // beside "couldn't read Terminal's settings": detect still makes
+        // it, and the round drops it, as the rows' verdicts say nothing
+        // then either.
+        use crate::adapters::standalone::recipes::CLAUDE;
+        use crate::adapters::standalone::StandaloneAdapter;
+        use crate::http::MockHttpClient;
+        use crate::trash::MockTrasher;
+
+        let tree = crate::testing::TempTree::new("refresh-claude-path");
+        let real = tree.file(".local/share/claude/versions/2.1.0", 0o755);
+        let launcher = tree.link(".local/bin/claude", &real);
+        let finder = HostEnv {
+            path_dirs: vec![tree.dir("usr/bin"), tree.dir("bin")],
+            home: tree.root.clone(),
+            euid: 501,
+            cargo_home: None,
+            rustup_home: None,
+            zdotdir: None,
+            ollama_host: None,
+        };
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec![launcher.to_str().unwrap(), "--version"],
+            exited_0("2.1.0 (Claude Code)\n"),
+        );
+        let claude: Arc<dyn Adapter> = Arc::new(StandaloneAdapter::new(
+            &CLAUDE,
+            runner.clone(),
+            Arc::new(MockHttpClient::new()),
+            Arc::new(MockTrasher::new()),
+        ));
+        let session = Session::with_adapters(Arc::new(VecSink::new()), vec![claude], None);
+        let notes_on = |path_known: bool| {
+            let session = session.clone();
+            let env = finder.clone();
+            async move {
+                let (_, snapshot) = session
+                    .refresh_recording_on(
+                        &env,
+                        path_known,
+                        &CheckOptions::default(),
+                        |_, _| {},
+                        |_| {},
+                    )
+                    .await;
+                snapshot
+                    .instances
+                    .iter()
+                    .find(|i| i.id == "standalone-claude")
+                    .expect("Claude Code is found where its installer put it")
+                    .status
+                    .notes
+                    .clone()
+            }
+        };
+
+        assert_eq!(
+            notes_on(false).await,
+            Vec::<InstanceNote>::new(),
+            "no word on Terminal's PATH from a round that could not read it"
+        );
+        assert_eq!(
+            notes_on(true).await,
+            vec![InstanceNote::NotOnPath],
+            "read from the login shell, the same PATH makes the notice true"
+        );
+        // And a round that cannot read it again does not keep last round's.
+        assert_eq!(notes_on(false).await, Vec::<InstanceNote>::new());
     }
 
     #[tokio::test]

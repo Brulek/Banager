@@ -194,7 +194,8 @@ pub enum InstanceNote {
     /// put that program earlier on `PATH` than a copy that is not on it.
     /// Produced by `StandaloneAdapter::detect` (`route::shadow_note`) for a
     /// tool installed by its own installer; read by `sourceNoticesFor` in
-    /// src/lib/sources.ts.
+    /// src/lib/sources.ts. Never kept from a round whose `PATH` was not
+    /// the login shell's (`is_about_terminals_path`).
     NotOnPath,
     /// Typing the name runs another program with that name instead of this
     /// copy, and this copy is on `PATH` behind it: the first executable of
@@ -246,6 +247,25 @@ impl InstanceNote {
             | InstanceNote::ShadowedByHomebrew
             | InstanceNote::ShadowedByNpm
             | InstanceNote::ShadowedByOther
+            | InstanceNote::LauncherOnly => false,
+        }
+    }
+
+    /// Whether this note says what typing the tool's name in Terminal
+    /// runs (`NotOnPath`, `ShadowedBy*`): a claim about Terminal's `PATH`,
+    /// which `route::shadow_note` judges against the `PATH` the round was
+    /// given. `refresh_round` drops these from what a round's detect
+    /// found when that `PATH` was not the login shell's (`path_known`),
+    /// as the command check then judges no row (`commands::start_reading`).
+    /// Exhaustive, as `is_from_update_check` is.
+    pub(crate) fn is_about_terminals_path(self) -> bool {
+        match self {
+            InstanceNote::NotOnPath
+            | InstanceNote::ShadowedByHomebrew
+            | InstanceNote::ShadowedByNpm
+            | InstanceNote::ShadowedByOther => true,
+            InstanceNote::IndexMayBeStale
+            | InstanceNote::IndexUpdating
             | InstanceNote::LauncherOnly => false,
         }
     }

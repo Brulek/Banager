@@ -3015,7 +3015,15 @@ listed under Files Banager reads); that is a notice, not a command. A
 `PATH` folder in one of the places Banager never reads (Which copy a
 command runs, below) -- `~/Documents`, iCloud Drive, `/Volumes` and the
 rest -- or a `claude` that leads into one, is not looked into: when it
-comes before this copy, or could be this copy, there is no notice.
+comes before this copy, or could be this copy, there is no notice. When
+the login shell's `PATH` could not be read (How Banager runs anything,
+above), the `PATH` Banager has is the few folders an app opened from
+Finder starts with, which says nothing of Terminal's: that refresh gives
+none of these notices, for this tool or any other with its own installer
+(`Session::refresh_round` drops them from what its detection found, by
+`InstanceNote::is_about_terminals_path`), as it says nothing of which
+copy any command runs (Which copy a command runs, below). A source an
+operation kept that refresh from looking at keeps the notice it had.
 
 **Environment Banager adds to version reads** (`CLAUDE.version.env`;
 upgrade adds no override and inherits ambient variables):
@@ -4088,9 +4096,9 @@ The answer is judged against the `PATH` Banager has: the login shell's,
 restored at launch (How Banager runs anything, above). When restoring it
 failed, the shell says so (`Session::note_login_path` in `run()`,
 `src-tauri/src/lib.rs`): this check reads none of the `PATH` folders, and
-nothing is said about which copy runs (the notice under a tool with its
-own installer still looks its one command up on the `PATH` Banager has,
-as that tool's section says). An alias, a shell function, or a `PATH` that
+nothing is said about which copy runs -- nor, under a tool with its own
+installer, that typing its name does not run it (Claude Code's section
+says how that notice is made, and that it is then left out). An alias, a shell function, or a `PATH` that
 only a new terminal window or an editor's terminal sets is not seen; the
 details say that an alias, a new window or an editor's terminal may
 differ. Nothing is said about a Homebrew formula installed as a

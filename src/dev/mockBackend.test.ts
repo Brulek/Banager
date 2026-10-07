@@ -1555,6 +1555,12 @@ describe("the mock backend's facts for the diagnostic text (get_system_facts)", 
     const commands = snapshot.artifacts.flatMap((artifact) => artifact.facts.commands);
     expect(commands.length).toBeGreaterThan(0);
     expect(commands.every((command) => command.state === null)).toBe(true);
+    // Nor is a tool with its own installer said to be missing from
+    // Terminal (`refresh_round` drops its PATH note): read, Grok Build is.
+    const grok = (s: Snapshot) => s.instances.find((instance) => instance.adapter_id === "standalone-grok")!;
+    expect(grok(snapshot).status.notes).toEqual([]);
+    const readSnapshot = await answer<Snapshot>(backendFor().backend.invoke("refresh"));
+    expect(grok(readSnapshot).status.notes).toEqual(["NotOnPath"]);
   });
 
   it("has no verdict, with a folder at the end of PATH unread, for a command no folder read leads to", async () => {

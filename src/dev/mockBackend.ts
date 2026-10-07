@@ -13,7 +13,9 @@ import type {
   CommandFact,
   HistoryView,
   InstalledArtifact,
+  InstanceNote,
   IssuedPlan,
+  ManagerInstance,
   OpRequest,
   OpStatus,
   OpSummary,
@@ -234,6 +236,35 @@ function judgedFor(path: ScenarioPath, artifacts: InstalledArtifact[]): Installe
   );
 }
 
+/** The notes that say what typing a tool's name in Terminal runs (`InstanceNote::is_about_terminals_path`). */
+const TERMINAL_PATH_NOTES: readonly InstanceNote[] = [
+  "NotOnPath",
+  "ShadowedByHomebrew",
+  "ShadowedByNpm",
+  "ShadowedByOther",
+];
+
+/**
+ * `instances` as a round's detection leaves them for `?path=`: with
+ * `default`, where the login shell's `PATH` was never read, no tool is said
+ * to be missing from Terminal or behind another program there
+ * (`refresh_round` drops those notes, as `judgedFor` leaves no verdict).
+ */
+function placedFor(path: ScenarioPath, instances: ManagerInstance[]): ManagerInstance[] {
+  if (path !== "default") return instances;
+  return instances.map((instance) =>
+    instance.status.notes.some((note) => TERMINAL_PATH_NOTES.includes(note))
+      ? {
+          ...instance,
+          status: {
+            ...instance.status,
+            notes: instance.status.notes.filter((note) => !TERMINAL_PATH_NOTES.includes(note)),
+          },
+        }
+      : instance,
+  );
+}
+
 export function createMockBackend(scenario: Scenario): MockBackend {
   const world: World = buildWorld(scenario.state);
   // The protected places' Mac: npm's folder is in one too.
@@ -291,7 +322,7 @@ export function createMockBackend(scenario: Scenario): MockBackend {
   function snapshotContent(from: World, current: Settings) {
     return {
       detect: from.detect,
-      instances: from.instances,
+      instances: placedFor(scenario.path, from.instances),
       // Which AI coding tool each is, set here once, as `families::assign`
       // does where Rust puts a snapshot together.
       // With `?path=default` the login shell's `PATH` was never read: no
@@ -441,7 +472,8 @@ export function createMockBackend(scenario: Scenario): MockBackend {
         world.artifacts.filter((a) => answering.has(a.key.instance_id)),
       ).map((a) => ({ ...a, facts: { ...a.facts, commands: [] } }));
       if (artifacts.length === 0) return;
-      emit({ InventoryPreview: { round: previewRound, instances: world.instances, artifacts } });
+      const instances = placedFor(scenario.path, world.instances);
+      emit({ InventoryPreview: { round: previewRound, instances, artifacts } });
     }, TIMING.inventory);
   }
 
