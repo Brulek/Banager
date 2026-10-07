@@ -4077,7 +4077,10 @@ the confirmation suggests moving what it links to out of the tool's
 folder first). One that leads into a protected place (`~/Documents`,
 iCloud Drive) is followed to the place's edge, is kept and said with no
 size, as before; one Banager cannot look up refuses. A path that is not
-there is not listed. These are reads of links and folders only: nothing
+there is not listed. To compare, Banager looks up where each path the
+uninstall removes is, following the links among its folders but not its
+own last name (`protected::resolve` in `kept_data::check_kept_paths`).
+These are reads of links and folders only: nothing
 in a data file is read and nothing is moved. The check is made for the
 preview; a link changed after the confirmation is not looked at again.
 
@@ -4634,9 +4637,13 @@ not read (`protected::look`; How Banager runs anything, above):
   coding tool: the folders and files the table names for its family
   (`~/.claude`, `~/.codex`, `~/.grok`, …; Data an uninstall leaves behind,
   above, lists every one) or `~/.ollama/models`, with `lstat`, `readdir`
-  and `readlink` — never a file's contents, and never anything in the
-  places disk use never looks into (Data an uninstall leaves behind,
-  above).
+  and `readlink`; and, before saying one that is there stays, where it
+  and each link on the way there lead, and where each path the uninstall
+  removes is, the links among that path's folders followed
+  (`kept_data::check_kept_paths`; `lstat` and `readlink`, one step at a
+  time, never into a protected place) — never a file's contents, and
+  never anything in the places disk use never looks into (Data an
+  uninstall leaves behind, above).
 - What runs on a Homebrew package, during the uninstall preview of a
   formula or cask: where `<prefix>/Cellar` or `<prefix>/Caskroom` and the
   cask's app lead; where the program Banager runs for npm, pip, pipx, uv,

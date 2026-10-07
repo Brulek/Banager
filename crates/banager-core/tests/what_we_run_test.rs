@@ -2306,3 +2306,40 @@ fn test_what_we_run_never_list_says_a_previewed_update_no_longer_offered_may_sti
         "`## When commands run` no longer states the exception the never-list points to"
     );
 }
+
+/// r26 D3, "also missing there": before an uninstall preview says an AI
+/// coding tool's data stays, `kept_data::check_kept_paths` follows each
+/// data path that is there and each link on the way (`the_way_to`), and
+/// looks up where each path the uninstall removes is (`removal_roots`),
+/// the links among its folders followed and its last name not
+/// (`protected::resolve(root, .., false)`). `## Files Banager reads`
+/// names those reads with the rest of what that preview reads, and the
+/// section it points to says the removed paths are looked up.
+#[test]
+fn test_what_we_run_lists_the_kept_data_overlap_reads_with_what_an_uninstall_leaves_behind() {
+    let doc = read_doc();
+    let reads =
+        section_body(&doc, "Files Banager reads").expect("a `## Files Banager reads` section");
+    let bullet = reads
+        .split("\n- ")
+        .find(|bullet| bullet.starts_with("What an uninstall leaves behind"))
+        .expect("the `What an uninstall leaves behind` bullet of `## Files Banager reads`");
+    let bullet = bullet.split_whitespace().collect::<Vec<_>>().join(" ");
+    for words in [
+        "before saying one that is there stays, where it and each link on the way there lead, and where each path the uninstall removes is, the links among that path's folders followed",
+        "(`kept_data::check_kept_paths`; `lstat` and `readlink`, one step at a time, never into a protected place)",
+        "never a file's contents",
+    ] {
+        assert!(
+            bullet.contains(words),
+            "the `What an uninstall leaves behind` bullet of `## Files Banager reads` does not say {words:?}: {bullet}"
+        );
+    }
+    let kept = section_body(&doc, "Data an uninstall leaves behind")
+        .expect("a `## Data an uninstall leaves behind` section");
+    let kept = kept.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(
+        kept.contains("To compare, Banager looks up where each path the uninstall removes is, following the links among its folders but not its own last name (`protected::resolve` in `kept_data::check_kept_paths`)."),
+        "`## Data an uninstall leaves behind` does not say the paths an uninstall removes are looked up for the overlap check"
+    );
+}
