@@ -950,7 +950,13 @@ fn keg(
     look: &mut Look,
     claims: &mut Vec<Claim>,
 ) -> Option<()> {
-    if artifact.version.is_empty() {
+    // Each one folder's name, as Homebrew names a keg: a name with a `/`
+    // in it, or a `..`, is no keg of this formula's, and is not looked up.
+    let one_name = |name: &str| {
+        let mut parts = Path::new(name).components();
+        matches!(parts.next(), Some(Component::Normal(_))) && parts.next().is_none()
+    };
+    if !one_name(&artifact.display_name) || !one_name(&artifact.version) {
         return Some(());
     }
     let own = inst.prefix.join("Cellar").join(&artifact.display_name);

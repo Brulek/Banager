@@ -891,6 +891,31 @@ fn test_an_unlinked_formulas_keg_is_read_as_its_folders_are_and_never_in_a_prote
     })
     .is_none());
 
+    // A version that is no one folder's name names no keg: nothing read.
+    let mut odd = rows.clone();
+    odd[0].version = "../jq/1".into();
+    let answer = judge_with(
+        &folders,
+        &instances,
+        &odd,
+        &tree.root,
+        true,
+        Look::new(&tree.root, budget),
+    )
+    .unwrap();
+    assert_eq!(answer.commands, vec![vec![], vec![]]);
+    odd[0].version = String::new();
+    let answer = judge_with(
+        &folders,
+        &instances,
+        &odd,
+        &tree.root,
+        true,
+        Look::new(&tree.root, budget),
+    )
+    .unwrap();
+    assert_eq!(answer.commands, vec![vec![], vec![]]);
+
     // The keg's `bin` a link into Documents: not followed.
     fs::remove_dir_all(tree.at("brew/Cellar/gemini-cli/1/bin")).unwrap();
     tree.file("Documents/kegbin/gemini", 0o755);
