@@ -2837,8 +2837,10 @@ quotes around it are dropped; a bare `host:port` gets `http://` in front;
 a bare host without a port gets port 11434, including `user:password@host`
 (the colon in a login is not a port); a port alone (`:11500`) means this
 Mac, `127.0.0.1`; an IPv6 address without brackets (`::1`) is one; a bare
-`ollama.com` is `https://ollama.com` (and so refused, below); explicit
-http/https schemes retain their 80/443 defaults; a port that is not a
+`ollama.com` is `https://ollama.com` (and so refused, below); an explicit
+`http://` or `https://` keeps its scheme's own 80 or 443, but only
+written in lower case, as Ollama compares it (`HTTP://` is http on port
+11434); a port that is not a
 number from 0 to 65535 is replaced by the default, as Ollama does. A
 value that still does not make an http(s) URL is ignored and the default
 used, and so is one with an `@` after its host: a login whose password

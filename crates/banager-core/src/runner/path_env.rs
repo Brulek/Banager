@@ -59,7 +59,8 @@ pub struct HostEnv {
 /// envconfig_reads_it` repeats -- and only then made a url: spaces and any
 /// `"` or `'` around it dropped; no scheme means `http`, and port 11434
 /// where none is given, while an explicit `http://` or `https://` keeps the
-/// scheme's own 80 or 443; a bare `ollama.com` is `https://ollama.com`;
+/// scheme's own 80 or 443 -- written so, in lower case, as Ollama compares
+/// it; `HTTP://` is http on 11434; a bare `ollama.com` is `https://ollama.com`;
 /// everything from the first `/` after the host is its path; a host that
 /// is an IP address without brackets (`::1`) is one; a port that is not a
 /// number from 0 to 65535 is the default one; and a port with no host
@@ -88,8 +89,13 @@ fn normalize_ollama_host(raw: &str) -> Option<String> {
     let (scheme, rest, default_port) = match value.split_once("://") {
         None if value == "ollama.com" => ("https", "ollama.com:443", 443),
         None => ("http", value, 11434),
-        Some((scheme, rest)) if scheme.eq_ignore_ascii_case("http") => ("http", rest, 80),
-        Some((scheme, rest)) if scheme.eq_ignore_ascii_case("https") => ("https", rest, 443),
+        // `scheme == "http"`, as written: only these two bring their own
+        // port. Any other spelling (`HTTP://`) keeps 11434, and Ollama's
+        // request, which Go's `url.Parse` lowercases, is http(s) all the same.
+        Some(("http", rest)) => ("http", rest, 80),
+        Some(("https", rest)) => ("https", rest, 443),
+        Some((scheme, rest)) if scheme.eq_ignore_ascii_case("http") => ("http", rest, 11434),
+        Some((scheme, rest)) if scheme.eq_ignore_ascii_case("https") => ("https", rest, 11434),
         Some(_) => return None,
     };
     let (authority, path) = rest.split_once('/').unwrap_or((rest, ""));
@@ -358,6 +364,33 @@ mod tests {
             assert_eq!(
                 banager, same_daemon,
                 "Ollama's {case:?}: {raw:?} is {ollama}"
+            );
+        }
+    }
+
+    /// Not in Ollama's table: a scheme not written in lower case.
+    /// `envconfig.Host` compares it as written (`scheme == "http"`), so
+    /// only `http://` and `https://` bring their own 80 and 443, and
+    /// `HTTP://` keeps 11434; its request then reads the url back with
+    /// Go's `url.Parse`, which lowercases the scheme (go1.25.0
+    /// `src/net/url/url.go:531-534`), so it still speaks http to it.
+    #[test]
+    fn test_a_scheme_not_in_lower_case_keeps_ollamas_own_port() {
+        for (raw, expected) in [
+            ("HTTP://1.2.3.4", "http://1.2.3.4:11434"),
+            ("Http://1.2.3.4:4321", "http://1.2.3.4:4321"),
+            ("HTTPS://example.com", "https://example.com:11434"),
+            (
+                "hTTp://alice:secret@server",
+                "http://alice:secret@server:11434",
+            ),
+            ("http://1.2.3.4", "http://1.2.3.4"),
+            ("https://example.com", "https://example.com"),
+        ] {
+            assert_eq!(
+                normalize_ollama_host(raw).as_deref(),
+                Some(expected),
+                "{raw}"
             );
         }
     }
