@@ -954,6 +954,60 @@ pub async fn run_plan(
     }
 }
 
+/// What the read an adapter takes right before a confirmed command, to
+/// see that what the preview was worked out from still holds (npm's
+/// `npm prefix -g`, uv's `uv tool list --show-paths`), leaves the
+/// operation with (r20 R20-2).
+///
+/// Only a read that answers can say something changed since the
+/// preview: one that exited 0 is `Answered`, for the adapter to compare,
+/// and an answer too long to read (`OutputTooLarge`) is "changed since
+/// shown" as an answer it cannot read would be. A read that did not
+/// answer says nothing about the plan -- the same program would not have
+/// run the command either -- so the operation ends as running the command
+/// would have, and nothing is written:
+/// - the program is not there, or macOS would not start it: the runner's
+///   own error, returned as `run_plan` returns it (`Fault::ProgramMissing`,
+///   `Fault::SpawnFailed`);
+/// - it exited non-zero: `Failed` with the read's exit code, its last
+///   five lines of stderr and their cause, as `run_plan` reports a command
+///   that exits non-zero -- npm's `env: node: No such file or directory`
+///   when `node` is gone, kept with its line (`FailureCause::NotFound`);
+/// - it did not finish (the read's deadline, or a signal it did not
+///   send): `Failed` with no exit code. Not `Unconfirmed`, which says the
+///   command may have taken effect: none was started.
+pub(crate) fn read_before_run(
+    read: Result<crate::runner::CommandOutput, AdapterError>,
+) -> Result<ReadBeforeRun, AdapterError> {
+    let output = match read {
+        Ok(output) => output,
+        Err(AdapterError::Runner(crate::runner::RunnerError::OutputTooLarge { .. })) => {
+            return Ok(ReadBeforeRun::Ends(Outcome::BanagerFailed(
+                crate::model::Fault::ChangedSinceShown,
+            )))
+        }
+        Err(error) => return Err(error),
+    };
+    let finished = !output.timed_out && !output.cancelled;
+    if finished && output.exit_code == Some(0) {
+        return Ok(ReadBeforeRun::Answered(output));
+    }
+    Ok(ReadBeforeRun::Ends(Outcome::Failed {
+        exit_code: output.exit_code.filter(|_| finished),
+        summary: crate::runner::failure_summary(&output.stderr),
+        cause: output.failure_cause(),
+    }))
+}
+
+/// See [`read_before_run`].
+pub(crate) enum ReadBeforeRun {
+    /// The read exited 0: its answer, for the adapter to compare with
+    /// the preview's.
+    Answered(crate::runner::CommandOutput),
+    /// The operation ends here, with nothing written.
+    Ends(Outcome),
+}
+
 /// `"cargo 1.98.1 (…)"` -> `Some("1.98.1")`. Several tools (cargo, uv, pip)
 /// print their version as the second whitespace-separated token of the first
 /// line; this is that rule, once. Tools that print it differently — pipx's
@@ -969,6 +1023,78 @@ pub fn second_token(text: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The read before a confirmed command (r20 R20-2): only an exit 0
+    /// is an answer to compare; anything else ends the operation as the
+    /// command would have, nothing written.
+    #[test]
+    fn test_a_read_before_the_command_that_did_not_answer_ends_as_the_command_would_have() {
+        use crate::history::FailureCause;
+        use crate::runner::{CommandOutput, RunnerError};
+        let output = |exit_code: Option<i32>, stderr: &str| CommandOutput {
+            stderr_cause: Default::default(),
+            exit_code,
+            stdout: "/opt/homebrew\n".to_string(),
+            stderr: stderr.to_string(),
+            timed_out: false,
+            cancelled: false,
+        };
+        let ends = |read| match read_before_run(read) {
+            Ok(ReadBeforeRun::Ends(outcome)) => Some(outcome),
+            Ok(ReadBeforeRun::Answered(_)) => None,
+            Err(error) => panic!("{error}"),
+        };
+        assert_eq!(ends(Ok(output(Some(0), "npm warn config\n"))), None);
+        assert_eq!(
+            ends(Ok(output(
+                Some(127),
+                "env: node: No such file or directory\n"
+            ))),
+            Some(Outcome::Failed {
+                exit_code: Some(127),
+                summary: "env: node: No such file or directory".to_string(),
+                cause: Some(FailureCause::NotFound),
+            })
+        );
+        // Stopped at its deadline, or by a signal it did not send: no
+        // exit code to report, even one the runner saw during the stop.
+        for stopped in [
+            CommandOutput {
+                timed_out: true,
+                ..output(None, "")
+            },
+            CommandOutput {
+                cancelled: true,
+                ..output(Some(0), "")
+            },
+            output(None, ""),
+        ] {
+            assert_eq!(
+                ends(Ok(stopped)),
+                Some(Outcome::Failed {
+                    exit_code: None,
+                    summary: String::new(),
+                    cause: None,
+                })
+            );
+        }
+        // An answer too long to read is one that cannot be compared.
+        assert_eq!(
+            ends(Err(AdapterError::Runner(RunnerError::OutputTooLarge {
+                limit: 1
+            }))),
+            Some(Outcome::BanagerFailed(
+                crate::model::Fault::ChangedSinceShown
+            ))
+        );
+        // The program gone is the runner's error, as `run_plan` returns it.
+        assert!(matches!(
+            read_before_run(Err(AdapterError::Runner(RunnerError::NotFound(
+                "/opt/homebrew/bin/npm".into()
+            )))),
+            Err(AdapterError::Runner(RunnerError::NotFound(_)))
+        ));
+    }
 
     #[tokio::test]
     async fn test_registry_deadline_keeps_completed_answers_and_cancels_the_rest() {

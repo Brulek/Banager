@@ -1939,9 +1939,15 @@ pub enum Outcome {
     /// as-is but for surrounding whitespace, quoted inside a translated
     /// sentence, or says the program gave no reason when it is blank
     /// (`outcomeKey` and `outcomeArgs` in `src/lib/format.ts`).
-    /// Two places build it. A command that ran and exited non-zero:
+    /// Three places build it. A command that ran and exited non-zero:
     /// `exit_code` is the command's, and `summary` the last five lines of
-    /// its stderr (`run_plan` in `adapters/mod.rs`). A path-list uninstall
+    /// its stderr (`run_plan` in `adapters/mod.rs`). The read npm and uv
+    /// take right before a confirmed command (`npm prefix -g`, `uv tool
+    /// list --show-paths`), when it exited non-zero or did not finish: the
+    /// command was not started, `exit_code` is the read's (`None` when it
+    /// did not finish) and `summary` the last five lines of the read's
+    /// stderr -- npm's `env: node: No such file or directory`, say
+    /// (`read_before_run` in `adapters/mod.rs`). A path-list uninstall
     /// the system refused: no command ran, so `exit_code` is `None`, and
     /// `summary` is macOS's own description of the refusal -- the
     /// `NSError`'s localized description, `TrashError::Refused`
@@ -2075,9 +2081,16 @@ pub enum Fault {
     /// `BrewAdapter::require_uninstall_as_previewed`); read by `faultKey`
     /// in src/lib/format.ts.
     HomebrewSettingsChanged,
-    /// The confirmed operation's basis changed or could not be read again.
-    /// No write command ran. Uses the same changed-since-shown explanation
-    /// as a batch whose newly prepared plan differs from its preview.
+    /// The confirmed operation's basis changed or could not be read again:
+    /// read right before the command, what the preview was worked out from
+    /// answered differently (another npm prefix, a uv receipt or Cargo
+    /// record that changed, a tool missing from uv's list or listed twice)
+    /// or no longer reads as one (a receipt or record gone or unreadable).
+    /// A read whose program did not answer at all is not this: npm's and
+    /// uv's end as running the command would have (`read_before_run` in
+    /// `adapters/mod.rs`). No write command ran. Uses the same
+    /// changed-since-shown explanation as a batch whose newly prepared plan
+    /// differs from its preview.
     ChangedSinceShown,
     /// The update of the keg-only formula `name`, linked into the prefix
     /// with Homebrew's record, was not started, because something else is

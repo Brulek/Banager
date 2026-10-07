@@ -420,26 +420,39 @@ impl UvAdapter {
         program: &Path,
         instance_id: &str,
     ) -> Result<Vec<InstalledArtifact>, AdapterError> {
-        let output = self
-            .run_uv(
-                program,
-                vec![
-                    "tool".to_string(),
-                    "list".to_string(),
-                    "--show-paths".to_string(),
-                ],
-                Duration::from_secs(60),
-            )
-            .await?;
+        let output = self.list_tools(program).await?;
         if output.exit_code != Some(0) {
             return Err(AdapterError::CommandFailed {
                 code: output.exit_code,
                 stderr: output.stderr,
             });
         }
+        self.tools_in(&output.stdout, instance_id)
+    }
+
+    /// `uv tool list --show-paths`, run by `program`.
+    async fn list_tools(&self, program: &Path) -> Result<CommandOutput, AdapterError> {
+        self.run_uv(
+            program,
+            vec![
+                "tool".to_string(),
+                "list".to_string(),
+                "--show-paths".to_string(),
+            ],
+            Duration::from_secs(60),
+        )
+        .await
+    }
+
+    /// The tools a `uv tool list --show-paths` that exited 0 printed.
+    fn tools_in(
+        &self,
+        stdout: &str,
+        instance_id: &str,
+    ) -> Result<Vec<InstalledArtifact>, AdapterError> {
         let uninstall_blocked = self.uninstall_blocked();
-        let artifacts = parse_tool_list_show_paths(&output.stdout, instance_id);
-        require_parsed_tools(&output.stdout, artifacts.len())?;
+        let artifacts = parse_tool_list_show_paths(stdout, instance_id);
+        require_parsed_tools(stdout, artifacts.len())?;
         Ok(artifacts
             .into_iter()
             .map(|artifact| InstalledArtifact {
@@ -589,20 +602,33 @@ impl UvAdapter {
     ) -> Result<Outcome, AdapterError> {
         if plan.request.kind == OpKind::Upgrade {
             let current = match &plan.action {
-                PlanAction::Command { program, .. } if plan.basis.is_some() => self
-                    .inventory_at(program, &plan.request.instance_id)
-                    .await
-                    .ok()
-                    .and_then(|installed| {
-                        let mut matching = installed
-                            .iter()
-                            .filter(|artifact| artifact.key.name == plan.request.name);
-                        let artifact = matching.next()?;
-                        if matching.next().is_some() {
-                            return None;
-                        }
-                        upgrade_basis(artifact).ok()
-                    }),
+                PlanAction::Command { program, .. } if plan.basis.is_some() => {
+                    let read = self.list_tools(program).await;
+                    if cancel.is_cancelled() {
+                        return Ok(Outcome::Cancelled);
+                    }
+                    // A list that did not answer -- uv gone (as between
+                    // `brew upgrade uv`'s unlink and link), failing, or not
+                    // in time -- ends as running uv would have, with
+                    // nothing written; only an answer that no longer reads
+                    // as the preview did is a change (r20 R20-2).
+                    let output = match super::read_before_run(read)? {
+                        super::ReadBeforeRun::Answered(output) => output,
+                        super::ReadBeforeRun::Ends(outcome) => return Ok(outcome),
+                    };
+                    self.tools_in(&output.stdout, &plan.request.instance_id)
+                        .ok()
+                        .and_then(|installed| {
+                            let mut matching = installed
+                                .iter()
+                                .filter(|artifact| artifact.key.name == plan.request.name);
+                            let artifact = matching.next()?;
+                            if matching.next().is_some() {
+                                return None;
+                            }
+                            upgrade_basis(artifact).ok()
+                        })
+                }
                 _ => None,
             };
             if cancel.is_cancelled() {

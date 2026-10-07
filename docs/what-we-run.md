@@ -2010,9 +2010,15 @@ the environment and every `npmrc` (`@npmcli/config` 9.0.0, `lib/index.js:42-48`,
 move the operation away from the prefix its permission check and locks were
 taken for. Immediately before executing a saved plan, Banager repeats the
 existing `<npm> prefix -g` read with the plan's program and environment, without
-`--prefix` (30 s). A different answer, a failed read or no usable answer refuses
-the plan as changed since shown; no write command runs. An unchanged answer
-allows only the original, prefix-pinned argv to run. Search and
+`--prefix` (30 s). An answer naming another prefix, or an empty or relative one,
+refuses the plan as changed since shown. A read that does not answer changes
+nothing about the plan -- npm could not have run the write either -- so the
+operation ends as running npm would have: npm gone is a missing program, a
+non-zero exit is npm's own failure with the last lines it wrote (`env: node: No
+such file or directory` when `node` is gone, say: a Homebrew `node` an earlier
+update of the same Update all could not link again), and a read that runs out of
+its 30 s is a failure with no exit code. No write command runs either way. An
+unchanged answer allows only the original, prefix-pinned argv to run. Search and
 `<npm> prefix -g` itself run without `--prefix`.
 
 Naming the prefix has two side effects. npm then reads its global settings
@@ -2181,8 +2187,12 @@ the readings around the command judge its version, so at the confirmed target
 it is reported as already updated (How Banager runs anything). Immediately
 before a saved upgrade runs, Banager repeats the existing
 `tool list --show-paths` read and bounded receipt read. A changed environment
-path or receipt, a missing tool or an unreadable receipt refuses the plan as
-changed since shown, before any upgrade command. An unchanged record runs the
+path or receipt, a tool the list no longer names (or names twice) or an
+unreadable receipt refuses the plan as changed since shown, before any upgrade
+command. A list that does not answer -- uv gone (between the unlink and the link
+of a `brew upgrade uv` running beside it, say), exiting non-zero or not
+answering within 60 s -- ends as running uv would have, as npm's prefix read
+does (npm's section), and no upgrade command runs. An unchanged record runs the
 original argv.
 The fingerprint also participates when a batch prepares an evicted plan again;
 identical commands cannot hide a changed installation basis. No receipt contents

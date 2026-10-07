@@ -40,9 +40,12 @@ pub const MAX_EVICTED: usize = 10_000;
 /// `run_plan` turns its exit code and stderr into `Ok(Outcome::Failed)`.
 ///
 /// What today's adapters can return from `execute`: a runner error from
-/// `run_plan` (`NotFound` and `Spawn` are states of the Mac and get their
-/// own `Fault`; `OutputTooLarge` cannot happen for a transcript run and
-/// `NoMock` is a test runner's), brew's root refusal (the gate refuses a
+/// `run_plan`, or from the read npm and uv take right before it
+/// (`read_before_run` in adapters/mod.rs returns their runner errors as
+/// `run_plan` would; `NotFound` and `Spawn` are states of the Mac and get
+/// their own `Fault`; `OutputTooLarge` cannot happen for a transcript run,
+/// and `read_before_run` answers it for a read, and `NoMock` is a test
+/// runner's), brew's root refusal (the gate refuses a
 /// root Homebrew first, as `Unavailable::RefusesAsRoot`) and pip's
 /// `Unsupported` (no pip `Plan` can exist: every pip instance is read-only
 /// by design, so `issue_plan`'s gate refuses before pip's `plan()` would).

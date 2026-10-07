@@ -609,7 +609,7 @@ impl NpmAdapter {
         // --prefix to this read: that would merely echo our own answer.
         // The write below still uses the *confirmed* argv, even if config
         // changes again between this read and spawning it.
-        let output = self
+        let read = self
             .runner
             .run(
                 CommandSpec {
@@ -627,10 +627,15 @@ impl NpmAdapter {
         if cancel.is_cancelled() {
             return Ok(Outcome::Cancelled);
         }
-        if !matches!(output, Ok(ref output) if output.exit_code == Some(0)
-            && !output.timed_out && !output.cancelled
-            && Path::new(output.stdout.trim()) == prefix)
-        {
+        // A read that did not answer -- npm gone, its launcher finding no
+        // `node`, no answer in time -- ends as running npm would have,
+        // with nothing written; only another (or an empty or relative)
+        // prefix is a change since the preview (r20 R20-2).
+        let output = match super::read_before_run(read.map_err(AdapterError::from))? {
+            super::ReadBeforeRun::Answered(output) => output,
+            super::ReadBeforeRun::Ends(outcome) => return Ok(outcome),
+        };
+        if Path::new(output.stdout.trim()) != prefix {
             return Ok(refused);
         }
         run_plan(&self.runner, plan, sink, op_id, cancel).await
@@ -2860,12 +2865,19 @@ mod tests {
             "changed" => *runner.current.lock().unwrap() = b.path().to_owned(),
             "race" => *runner.switch_after_prefix.lock().unwrap() = Some(b.path().to_owned()),
             "failed" => *runner.prefix_reply.lock().unwrap() = Some(f08_npm_output("", 1)),
+            "no node" => {
+                *runner.prefix_reply.lock().unwrap() = Some(CommandOutput {
+                    stderr: "env: node: No such file or directory\n".into(),
+                    ..f08_npm_output("", 127)
+                })
+            }
             "empty" => *runner.prefix_reply.lock().unwrap() = Some(f08_npm_output("", 0)),
             "relative" => {
                 *runner.prefix_reply.lock().unwrap() = Some(f08_npm_output("relative", 0))
             }
             "timeout" => {
                 *runner.prefix_reply.lock().unwrap() = Some(CommandOutput {
+                    exit_code: None,
                     timed_out: true,
                     ..f08_npm_output(a.path().to_str().unwrap(), 0)
                 })
@@ -2893,15 +2905,44 @@ mod tests {
                 writes.is_empty(),
                 "changed prefix must refuse the saved plan: {writes:?}; {result:?}"
             );
-            assert!(
-                matches!(
-                    result,
-                    Ok(Outcome::BanagerFailed(
-                        crate::model::Fault::ChangedSinceShown
-                    ))
+            // A read that did not answer says what running npm would have
+            // said, not that anything changed (r20 R20-2); one that
+            // answered with another, empty or relative prefix did change.
+            match change {
+                "failed" => assert_eq!(
+                    result.unwrap(),
+                    Outcome::Failed {
+                        exit_code: Some(1),
+                        summary: String::new(),
+                        cause: None,
+                    }
                 ),
-                "explicit stale-preview refusal: {result:?}"
-            );
+                "no node" => assert_eq!(
+                    result.unwrap(),
+                    Outcome::Failed {
+                        exit_code: Some(127),
+                        summary: "env: node: No such file or directory".into(),
+                        cause: Some(crate::history::FailureCause::NotFound),
+                    }
+                ),
+                "timeout" => assert_eq!(
+                    result.unwrap(),
+                    Outcome::Failed {
+                        exit_code: None,
+                        summary: String::new(),
+                        cause: None,
+                    }
+                ),
+                _ => assert!(
+                    matches!(
+                        result,
+                        Ok(Outcome::BanagerFailed(
+                            crate::model::Fault::ChangedSinceShown
+                        ))
+                    ),
+                    "explicit stale-preview refusal: {result:?}"
+                ),
+            }
         } else {
             assert_eq!(result.unwrap(), Outcome::Succeeded);
             assert_eq!(writes, [a.path().to_owned()]);
@@ -2939,6 +2980,14 @@ mod tests {
         for change in ["failed", "empty", "relative", "timeout"] {
             f30b_prefix_change(change).await;
         }
+    }
+
+    /// npm's launcher with no `node` on `PATH` (a `brew upgrade node`
+    /// earlier in Update all that could not link it again): the read fails
+    /// as the update would have, and says so (r20 R20-2).
+    #[tokio::test]
+    async fn r20_npm_prefix_read_with_no_node_says_what_is_missing_without_a_write() {
+        f30b_prefix_change("no node").await;
     }
 
     #[tokio::test]
