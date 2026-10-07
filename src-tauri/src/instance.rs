@@ -69,9 +69,14 @@ pub fn guard<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
 /// at the same one (`open -n`). Asking macOS only to activate the running
 /// copy (`activateWithOptions:`) sent no reopen event, so a closed window
 /// stayed closed, and macOS may refuse that request from an app not yet in
-/// front. A running copy without a bundle -- a bare binary -- is asked to
-/// activate as before. No command runs and nothing is written; nothing
-/// asks for a permission.
+/// front. Only a `.app` folder is opened (`is_app_bundle`). A copy run as
+/// a bare binary (`tauri dev`, `pnpm tauri:mock`) has no bundle
+/// identifier, so macOS does not list it here at all, and nothing is done
+/// for it; were one listed, its `bundleURL` would be the executable
+/// itself, which `openURL:` would hand to whatever opens such a file --
+/// Terminal, which runs it -- so it is asked only to activate, as before,
+/// as is a copy with no `bundleURL`, or one `openURL:` refuses. No command
+/// runs and nothing is written; nothing asks for a permission.
 #[cfg(target_os = "macos")]
 fn reopen_existing(identifier: &str) {
     use objc2_app_kit::{NSApplicationActivationOptions, NSRunningApplication, NSWorkspace};
@@ -84,9 +89,10 @@ fn reopen_existing(identifier: &str) {
     // `==` is `isEqual:`, which Apple names for telling two running
     // applications apart.
     for application in applications.iter().filter(|app| **app != *current) {
-        let reopened = application
-            .bundleURL()
-            .is_some_and(|bundle| workspace.openURL(&bundle));
+        let reopened = application.bundleURL().is_some_and(|bundle| {
+            let extension = bundle.pathExtension().map(|ext| ext.to_string());
+            is_app_bundle(extension.as_deref()) && workspace.openURL(&bundle)
+        });
         if !reopened {
             application.activateWithOptions(NSApplicationActivationOptions::ActivateAllWindows);
         }
@@ -95,6 +101,15 @@ fn reopen_existing(identifier: &str) {
 
 #[cfg(not(target_os = "macos"))]
 fn reopen_existing(_identifier: &str) {}
+
+/// Whether a running copy's `bundleURL`, by its path extension
+/// (`extension`, `pathExtension`), is an app bundle -- a `.app` folder,
+/// which `openURL:` hands to LaunchServices to reopen -- rather than a bare
+/// executable, whose extension is empty.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn is_app_bundle(extension: Option<&str>) -> bool {
+    extension.is_some_and(|extension| extension.eq_ignore_ascii_case("app"))
+}
 
 #[cfg(test)]
 mod tests {
@@ -123,6 +138,28 @@ mod tests {
         assert!(production.contains("reopen_existing(&app.config().identifier)"));
         assert!(production.contains(".bundleURL()"));
         assert!(production.contains("workspace.openURL(&bundle)"));
+    }
+
+    #[test]
+    fn only_an_app_bundle_is_handed_to_open_url() {
+        // r38 skeptic 3: a running copy built as a bare binary (`tauri
+        // dev`, `pnpm tauri:mock`) has as its `bundleURL` the executable
+        // itself, and `openURL:` would hand that to whatever opens such a
+        // file -- Terminal, which runs it. Only a `.app` folder is opened;
+        // anything else is asked to activate, as before r38 S5.
+        assert!(is_app_bundle(Some("app")));
+        assert!(is_app_bundle(Some("APP")));
+        assert!(!is_app_bundle(Some("")));
+        assert!(!is_app_bundle(None));
+        assert!(!is_app_bundle(Some("command")));
+        let production = include_str!("instance.rs")
+            .split("#[cfg(test)]")
+            .next()
+            .unwrap();
+        assert!(production.contains("bundle.pathExtension()"));
+        // `&&`: the bundle is opened only once it is a `.app` folder.
+        assert!(production
+            .contains("is_app_bundle(extension.as_deref()) && workspace.openURL(&bundle)"));
     }
 
     #[test]

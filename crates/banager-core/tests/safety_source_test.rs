@@ -413,9 +413,10 @@ fn test_only_the_runner_open_ollama_the_homepage_link_and_reopening_banager_star
                 && entry.contains("workspace.openURLs_withApplicationAtURL_configuration_completionHandler("))
             // A second launch reopening the Banager already running: the
             // app bundle LaunchServices lists as running under Banager's
-            // own bundle identifier (`instance::reopen_existing`), which
-            // macOS answers with the reopen event; it starts Banager anew
-            // only should that copy have quit in between (r38 S5).
+            // own bundle identifier (`instance::reopen_existing`), and only
+            // a `.app` folder (`is_app_bundle`), which macOS answers with
+            // the reopen event; it starts Banager anew only should that
+            // copy have quit in between (r38 S5, skeptic 3).
             || (entry.starts_with("src-tauri/src/instance.rs:")
                 && entry.contains("workspace.openURL(&bundle)"))
     };

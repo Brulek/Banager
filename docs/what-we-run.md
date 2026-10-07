@@ -5059,9 +5059,11 @@ Applications, or `open -n` — asks macOS to open the running copy's own app
 bundle, as Finder does when an app that is running is opened again
 (`NSWorkspace openURL:`, `reopen_existing` in `src-tauri/src/instance.rs`):
 macOS sends that copy the event a click on its Dock icon sends, and its
-window comes back even if it was closed. The second instance then exits
-before reading or writing these files; it runs no command and asks for no
-permission. If the lock cannot be taken for another reason (a file system
+window comes back even if it was closed. Only a `.app` folder is handed
+to `openURL:` (`is_app_bundle`); a running copy whose bundle address is
+anything else is only asked to come to the front. The second instance
+then exits before reading or writing these files; it runs no command and
+asks for no permission. If the lock cannot be taken for another reason (a file system
 without locks, or a directory that cannot be made), Banager starts without it,
 as it did before the lock existed. This coordinates builds that implement the
 lock; older builds do not participate in this protocol.
