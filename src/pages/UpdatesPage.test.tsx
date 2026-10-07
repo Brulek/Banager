@@ -6081,6 +6081,43 @@ describe("UpdatesPage", () => {
     expect(queryByText(/Couldn't confirm whether it's another copy/)).toBeNull();
   });
 
+  it("keeps the npm note on Claude Code's command where no row of this page says which copy runs (r24 W8, skeptic)", async () => {
+    // The same two copies, but this page lists no update of the one Terminal
+    // does not run: no 「终端用另一份」 here, so the notice is all this page
+    // says of which program typing `claude` runs -- first with no update
+    // listed at all, then with npm's copy's alone, whose row has no word.
+    const npmKey: ArtifactKey = { instance_id: "npm:/usr/local", kind: "Package", name: "@anthropic-ai/claude-code" };
+    instances = [...snapshot.instances, { ...claudeInstance, status: { unavailable: null, notes: ["ShadowedByNpm"] } }];
+    artifacts = [
+      {
+        ...claudeArtifact,
+        facts: { ...NO_FACTS, family: "claude-code", commands: [{ name: "claude", state: { ShadowedBy: { by: npmKey } } }] },
+      },
+      {
+        ...claudeArtifact,
+        key: npmKey,
+        display_name: "@anthropic-ai/claude-code",
+        uninstall_blocked: null,
+        facts: { ...NO_FACTS, family: "claude-code", commands: [{ name: "claude", state: "Runs" }] },
+      },
+    ];
+    updates = [];
+    const none = renderPage();
+    expect(await none.findByText("Typing claude in Terminal runs a program with that name from npm")).toBeInTheDocument();
+    expect(none.queryByText("Not used in Terminal")).toBeNull();
+    none.unmount();
+
+    // npm's prefix writable here, so its row has its update and its word.
+    instances = instances.map((instance) =>
+      instance.id === "npm:/usr/local" ? { ...instance, read_only_reason: null } : instance,
+    );
+    updates = [{ ...claudeUpdate, key: npmKey }];
+    const npmOnly = renderPage();
+    const npmRow = await findRow("@anthropic-ai/claude-code");
+    expect(within(npmRow).queryByText("Not used in Terminal")).toBeNull();
+    expect(npmOnly.getByText("Typing claude in Terminal runs a program with that name from npm")).toBeInTheDocument();
+  });
+
   it("does not say everything is up to date when Claude Code's launcher is left without its program: there was no installed version to check", async () => {
     // Its program files are gone, so `StandaloneAdapter::check_updates`
     // returns before reading either version: there is no installed one to

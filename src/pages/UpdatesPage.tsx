@@ -18,7 +18,7 @@ import {
 } from "../lib/sources";
 import { copyStatusText, useCopyCommand } from "../lib/clipboard";
 import { useOperationName } from "../lib/operations";
-import { commandsSaidOnRows, withoutJudgedPathNotices } from "../lib/commands";
+import { commandsSaidOnRows, twinVerdict, withoutJudgedPathNotices } from "../lib/commands";
 import { useTranslatedDescription } from "../lib/toolDescriptions";
 import { listedName, modelPath, nameKey, namesUnderSeveralSources } from "../lib/names";
 import { rankedComparator } from "../lib/sortRank";
@@ -677,9 +677,18 @@ export function UpdatesPage() {
   // check.
   const notices = useMemo(() => {
     const installed = installedCountByInstance(snapshot?.artifacts ?? []);
-    // Less a launcher's PATH sentence where its tool's rows say what typing
-    // it runs (`commandsSaidOnRows`: 「终端用另一份」; r24 W8).
-    const judged = commandsSaidOnRows(snapshot?.artifacts ?? []);
+    // Less a launcher's PATH sentence where a row of this page says what
+    // typing it runs (`commandsSaidOnRows`; r24 W8): a row with an update
+    // whose word is 「终端用另一份」 (`notUsedWord`). Where this page lists
+    // no update of that copy, no row here says which copy runs, and the
+    // notice is all it says of it.
+    const saidHere = actionableRows.flatMap((candidate) => {
+      const artifact = artifactsById.get(artifactKeyId(candidate.key));
+      return artifact !== undefined && twinVerdict(artifact, twins.get(artifactKeyId(candidate.key)))?.kind === "unused"
+        ? [artifact]
+        : [];
+    });
+    const judged = commandsSaidOnRows(saidHere, twins);
     const unfinished = snapshot ? unfinishedChecksNotice(t, snapshot.errors, snapshot.instances) : null;
     const lookups = failedLookupsNotice(t, visibleUpdates.filter(isFailedLookup));
     return [
@@ -692,7 +701,7 @@ export function UpdatesPage() {
         ),
       ),
     ];
-  }, [snapshot, sourceLabelFor, t]);
+  }, [snapshot, sourceLabelFor, t, actionableRows, artifactsById, twins]);
   // Two lines or more fold into one (`SourceNotices`).
   const noticeFold = useNoticeFold(notices.length);
 
