@@ -1522,9 +1522,6 @@ mod tests {
         );
     }
 
-    /// Every artifact in a committed snapshot says which AI coding tool it
-    /// is, set once where the round puts the snapshot together
-    /// (`families::assign`) from the adapter its instance belongs to.
     #[tokio::test]
     async fn test_refresh_offers_the_unlinked_formula_an_npm_that_could_not_start_needs() {
         // Finding (1) of the 2026-10-07 run: npm found no `node`, and
@@ -1575,6 +1572,9 @@ mod tests {
         );
     }
 
+    /// Every artifact in a committed snapshot says which AI coding tool it
+    /// is, set once where the round puts the snapshot together
+    /// (`families::assign`) from the adapter its instance belongs to.
     #[tokio::test]
     async fn test_refresh_tags_each_artifact_with_its_ai_tool_family() {
         let (adapter, state) = FakeAdapter::new("brew");
