@@ -1101,7 +1101,7 @@ pub enum Warning {
     /// version it replaces and links the new one back only where Homebrew
     /// recorded a `brew link` (`brew::links`); so once the update has
     /// exited 0 Banager reads the links again and, where the formula is not
-    /// linked as `brew link` leaves it, runs `brew link --force <name>`
+    /// linked as `brew link` leaves it, runs `brew link --formula --force <name>`
     /// (`PlanAction::CommandThen`; no `--overwrite`: it replaces no other
     /// program's file). y1-keg (r6), after `node@22`'s update took `node`
     /// out of Terminal on 2026-10-07. Produced by `BrewAdapter::plan` for
@@ -1644,7 +1644,7 @@ pub enum PlanAction {
     /// a formula's upgrade, and carried out only by `BrewAdapter::execute`;
     /// `run_plan` refuses it. Its follow-ups, in this order:
     ///
-    /// - `brew link --force <name>`, for a keg-only formula linked into the
+    /// - `brew link --formula --force <name>`, for a keg-only formula linked into the
     ///   prefix (`Warning::HomebrewRelinksAfterUpdate`, y1-keg, r6): run
     ///   only when, read again after the update, the formula is not linked
     ///   as `brew link` leaves it (`LogNote::StillLinkedAfterUpdate` when it
@@ -1658,7 +1658,7 @@ pub enum PlanAction {
     ///   `LogNote::OldVersionsNotCleanedUp`).
     ///
     /// On the wire `then` is a list of argvs:
-    /// `"then":[["link","--force","node@22"],["cleanup","node@22"]]`.
+    /// `"then":[["link","--formula","--force","node@22"],["cleanup","node@22"]]`.
     CommandThen {
         program: PathBuf,
         args: Vec<String>,
@@ -3237,13 +3237,14 @@ mod tests {
             then: vec![
                 vec![
                     "link".to_string(),
+                    "--formula".to_string(),
                     "--force".to_string(),
                     "node@22".to_string(),
                 ],
                 vec!["cleanup".to_string(), "node@22".to_string()],
             ],
         };
-        let json = r#"{"CommandThen":{"program":"/opt/homebrew/bin/brew","args":["upgrade","--formula","node@22"],"env":[],"then":[["link","--force","node@22"],["cleanup","node@22"]]}}"#;
+        let json = r#"{"CommandThen":{"program":"/opt/homebrew/bin/brew","args":["upgrade","--formula","node@22"],"env":[],"then":[["link","--formula","--force","node@22"],["cleanup","node@22"]]}}"#;
         assert_eq!(serde_json::to_string(&action).unwrap(), json);
         assert_eq!(serde_json::from_str::<PlanAction>(json).unwrap(), action);
         for (warning, json) in [

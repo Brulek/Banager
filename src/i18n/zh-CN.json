@@ -545,9 +545,9 @@
   },
   "kegLinks": {
     "relinks": "{{name}}是Homebrew不会自动接到终端里的工具，你之前手动接上了。更新会断开它，更新后会再把它接上。",
-    "relinksDetail": "它接在终端里的命令：{{commands}}。更新后如果它们没有接回去，会运行brew link --force {{name}}，不会替换其他程序的文件。",
-    "relinksDetailNoCommands": "更新后如果它没有接回去，会运行brew link --force {{name}}，不会替换其他程序的文件。",
-    "logRelinking": "更新已完成，接着运行brew link --force {{name}}，把它重新接到终端里。",
+    "relinksDetail": "它接在终端里的命令：{{commands}}。更新后如果它们没有接回去，会运行brew link --formula --force {{name}}，不会替换其他程序的文件。",
+    "relinksDetailNoCommands": "更新后如果它没有接回去，会运行brew link --formula --force {{name}}，不会替换其他程序的文件。",
+    "logRelinking": "更新已完成，接着运行brew link --formula --force {{name}}，把它重新接到终端里。",
     "logStillLinked": "Homebrew已把{{name}}重新接到终端里，不需要运行brew link。",
     "logNoLongerLinked": "{{name}}没有重新接到终端里，输入{{commands}}不再运行它。要接回去，可以在终端里运行brew link --force {{name}}；如果有文件挡住，它会说出是哪个。",
     "blockedBadge": "无法重新接上",

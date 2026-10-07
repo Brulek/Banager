@@ -900,13 +900,13 @@ describe("types", () => {
         args: ["upgrade", "--formula", "node@22"],
         env: [],
         then: [
-          ["link", "--force", "node@22"],
+          ["link", "--formula", "--force", "node@22"],
           ["cleanup", "node@22"],
         ],
       },
     };
     expect(JSON.stringify(both)).toBe(
-      '{"CommandThen":{"program":"/opt/homebrew/bin/brew","args":["upgrade","--formula","node@22"],"env":[],"then":[["link","--force","node@22"],["cleanup","node@22"]]}}',
+      '{"CommandThen":{"program":"/opt/homebrew/bin/brew","args":["upgrade","--formula","node@22"],"env":[],"then":[["link","--formula","--force","node@22"],["cleanup","node@22"]]}}',
     );
     expect(roundTrip(both)).toEqual(both);
     const relinks: Warning = { HomebrewRelinksAfterUpdate: { name: "node@22", commands: ["node", "npm"] } };

@@ -290,7 +290,7 @@ describe("LogDrawer", () => {
       [
         "en",
         [
-          "The update is done. Running brew link --force node@22 to link it back into Terminal.",
+          "The update is done. Running brew link --formula --force node@22 to link it back into Terminal.",
           "Homebrew linked node@22 back into Terminal itself, so brew link wasn't needed.",
           "node@22 isn't linked back into Terminal, so typing node, npm no longer runs it. To link it back, run brew link --force node@22 in Terminal; if a file is in the way, it says which.",
         ],
@@ -298,7 +298,7 @@ describe("LogDrawer", () => {
       [
         "zh-CN",
         [
-          "更新已完成，接着运行brew link --force node@22，把它重新接到终端里。",
+          "更新已完成，接着运行brew link --formula --force node@22，把它重新接到终端里。",
           "Homebrew已把node@22重新接到终端里，不需要运行brew link。",
           "node@22没有重新接到终端里，输入node、npm不再运行它。要接回去，可以在终端里运行brew link --force node@22；如果有文件挡住，它会说出是哪个。",
         ],
@@ -306,7 +306,7 @@ describe("LogDrawer", () => {
       [
         "zh-Hant",
         [
-          "更新已完成，接著執行brew link --force node@22，把它重新接到終端機裡。",
+          "更新已完成，接著執行brew link --formula --force node@22，把它重新接到終端機裡。",
           "Homebrew已把node@22重新接到終端機裡，不需要執行brew link。",
           "node@22沒有重新接到終端機裡，輸入node、npm不再執行它。要接回去，可以在終端機裡執行brew link --force node@22；如果有檔案擋住，它會說出是哪一個。",
         ],

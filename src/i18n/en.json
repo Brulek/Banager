@@ -601,9 +601,9 @@
   },
   "kegLinks": {
     "relinks": "Homebrew doesn't link {{name}} into Terminal, and you linked it yourself. The update unlinks it; Banager links it back afterwards.",
-    "relinksDetail": "Its commands in Terminal: {{commands}}. If they aren't back after the update, Banager runs brew link --force {{name}}, which replaces no other program's files.",
-    "relinksDetailNoCommands": "If it isn't linked back after the update, Banager runs brew link --force {{name}}, which replaces no other program's files.",
-    "logRelinking": "The update is done. Running brew link --force {{name}} to link it back into Terminal.",
+    "relinksDetail": "Its commands in Terminal: {{commands}}. If they aren't back after the update, Banager runs brew link --formula --force {{name}}, which replaces no other program's files.",
+    "relinksDetailNoCommands": "If it isn't linked back after the update, Banager runs brew link --formula --force {{name}}, which replaces no other program's files.",
+    "logRelinking": "The update is done. Running brew link --formula --force {{name}} to link it back into Terminal.",
     "logStillLinked": "Homebrew linked {{name}} back into Terminal itself, so brew link wasn't needed.",
     "logNoLongerLinked": "{{name}} isn't linked back into Terminal, so typing {{commands}} no longer runs it. To link it back, run brew link --force {{name}} in Terminal; if a file is in the way, it says which.",
     "blockedBadge": "Can't link back",

@@ -346,7 +346,7 @@ impl BrewAdapter {
     /// for the trust document's test, which finds it in its table.
     pub const CLEANUP_TIMEOUT_SECS: u64 = 10 * 60;
 
-    /// How long the `brew link --force <name>` after an upgrade may run
+    /// How long the `brew link --formula --force <name>` after an upgrade may run
     /// (y1-keg): it makes one formula's links in the prefix, which takes
     /// seconds even for node's thousands of files. Public for the trust
     /// document's test, which finds it in its table.
@@ -879,7 +879,7 @@ impl BrewAdapter {
     }
 
     /// The commands of the keg-only formula `req` names that its update
-    /// unlinks and Banager links back after it (`brew link --force`,
+    /// unlinks and Banager links back after it (`brew link --formula --force`,
     /// `Warning::HomebrewRelinksAfterUpdate`, y1-keg): those whose places
     /// in the prefix lead into it now, by name. `Ok(None)` for anything but
     /// such a formula's update (`linked_keg_only`). Refused as
@@ -2351,7 +2351,12 @@ impl BrewAdapter {
                     );
                     then.insert(
                         0,
-                        vec!["link".to_string(), "--force".to_string(), req.name.clone()],
+                        vec![
+                            "link".to_string(),
+                            "--formula".to_string(),
+                            "--force".to_string(),
+                            req.name.clone(),
+                        ],
                     );
                 }
                 let action = if then.is_empty() {
@@ -2482,7 +2487,7 @@ impl BrewAdapter {
     }
 
     /// For the update of a keg-only formula its preview said Banager links
-    /// back (a `brew link --force` follow-up, y1-keg), its links read again
+    /// back (a `brew link --formula --force` follow-up, y1-keg), its links read again
     /// right before it runs. Another program holding one of its commands'
     /// places now -- npm's own copy of itself in `bin/npm`, put there by an
     /// update of npm since the preview -- is `Fault::LinkTaken`, and
@@ -2520,7 +2525,7 @@ impl BrewAdapter {
         }
     }
 
-    /// The `brew link --force <name>` that follows the update of a keg-only
+    /// The `brew link --formula --force <name>` that follows the update of a keg-only
     /// formula linked into `prefix`, once it has exited 0 (y1-keg): `link`,
     /// the plan of that one command. Not run where Homebrew linked it back
     /// itself (`LogNote::StillLinkedAfterUpdate`), nor after a Cancel; how

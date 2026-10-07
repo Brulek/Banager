@@ -232,7 +232,7 @@ describe("CommandPreview", () => {
                 args: ["upgrade", "--formula", "node@22"],
                 env: [],
                 then: [
-                  ["link", "--force", "node@22"],
+                  ["link", "--formula", "--force", "node@22"],
                   ["cleanup", "node@22"],
                 ],
               },
@@ -243,7 +243,7 @@ describe("CommandPreview", () => {
     );
 
     const upgrade = await screen.findByText("/opt/homebrew/bin/brew upgrade --formula node@22");
-    const link = screen.getByText("/opt/homebrew/bin/brew link --force node@22");
+    const link = screen.getByText("/opt/homebrew/bin/brew link --formula --force node@22");
     const cleanup = screen.getByText("/opt/homebrew/bin/brew cleanup node@22");
     expect(link.tagName).toBe("CODE");
     expect(upgrade.compareDocumentPosition(link) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

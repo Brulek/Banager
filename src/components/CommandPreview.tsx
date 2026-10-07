@@ -38,7 +38,7 @@ export function commandText(action: Extract<PlanAction, { Command: unknown }>): 
 /**
  * Every command a plan runs, each as `commandText` gives it, in the order
  * they run: one for a `Command`; for a `CommandThen`, a Homebrew update and
- * each follow-up that runs once it has succeeded -- `brew link --force`
+ * each follow-up that runs once it has succeeded -- `brew link --formula --force`
  * (y1-keg), `brew cleanup` (U9) -- under the same variables; none for a
  * `TrashPaths`.
  */

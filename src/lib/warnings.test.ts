@@ -1181,17 +1181,17 @@ describe("y1-keg: a keg-only formula linked by hand is linked back after its upd
       "Homebrew doesn't link node@22 into Terminal, and you linked it yourself. The update unlinks it; Banager links it back afterwards.",
     );
     expect(warningLine(zh, relinks)?.detail).toBe(
-      "它接在终端里的命令：node、npm、npx。更新后如果它们没有接回去，会运行brew link --force node@22，不会替换其他程序的文件。",
+      "它接在终端里的命令：node、npm、npx。更新后如果它们没有接回去，会运行brew link --formula --force node@22，不会替换其他程序的文件。",
     );
     expect(warningLine(zhHant, relinks)?.detail).toBe(
-      "它接在終端機裡的指令：node、npm、npx。更新後如果它們沒有接回去，會執行brew link --force node@22，不會取代其他程式的檔案。",
+      "它接在終端機裡的指令：node、npm、npx。更新後如果它們沒有接回去，會執行brew link --formula --force node@22，不會取代其他程式的檔案。",
     );
     expect(warningLine(enT, relinks)?.detail).toBe(
-      "Its commands in Terminal: node, npm, npx. If they aren't back after the update, Banager runs brew link --force node@22, which replaces no other program's files.",
+      "Its commands in Terminal: node, npm, npx. If they aren't back after the update, Banager runs brew link --formula --force node@22, which replaces no other program's files.",
     );
     // Linked by its record alone, with no command of its own.
     expect(warningLine(zh, noCommands)?.detail).toBe(
-      "更新后如果它没有接回去，会运行brew link --force openssl@3，不会替换其他程序的文件。",
+      "更新后如果它没有接回去，会运行brew link --formula --force openssl@3，不会替换其他程序的文件。",
     );
     expect(warningDetailKey(noCommands)).toBe("kegLinks.relinksDetailNoCommands");
   });

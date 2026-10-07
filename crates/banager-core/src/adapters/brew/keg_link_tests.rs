@@ -95,7 +95,7 @@ async fn an_update_of_a_keg_only_formula_linked_with_brew_link_links_it_back_aft
     );
     assert_eq!(
         follow_ups(&plan),
-        [strings(&["link", "--force", "node@22"])]
+        [strings(&["link", "--formula", "--force", "node@22"])]
     );
     assert_eq!(
         plan.warnings,
@@ -111,7 +111,7 @@ async fn an_update_of_a_keg_only_formula_linked_with_brew_link_links_it_back_aft
     assert_eq!(
         follow_ups(&plan),
         [
-            strings(&["link", "--force", "node@22"]),
+            strings(&["link", "--formula", "--force", "node@22"]),
             strings(&["cleanup", "node@22"]),
         ]
     );
@@ -140,7 +140,7 @@ async fn an_update_of_a_keg_only_formula_linked_by_hand_links_it_back_after() {
         .expect("plan");
     assert_eq!(
         follow_ups(&plan),
-        [strings(&["link", "--force", "node@22"])]
+        [strings(&["link", "--formula", "--force", "node@22"])]
     );
     assert_eq!(plan.warnings, [relinks("node@22", &["node"])]);
     std::fs::remove_dir_all(&prefix).unwrap();
@@ -259,7 +259,7 @@ async fn an_inventory_tells_the_preview_which_formulae_are_keg_only_and_linkable
         .expect("plan");
     assert_eq!(
         follow_ups(&plan),
-        [strings(&["link", "--force", "node@22"])]
+        [strings(&["link", "--formula", "--force", "node@22"])]
     );
     std::fs::remove_dir_all(&prefix).unwrap();
 }
@@ -555,7 +555,7 @@ async fn a_keg_only_formula_linked_by_hand_is_linked_back_after_its_update() {
         runner.calls(),
         [
             strings(&["upgrade", "--formula", "node@22"]),
-            strings(&["link", "--force", "node@22"]),
+            strings(&["link", "--formula", "--force", "node@22"]),
         ]
     );
     assert_eq!(
@@ -728,7 +728,7 @@ async fn the_link_runs_before_the_cleanup() {
         runner.calls(),
         [
             strings(&["upgrade", "--formula", "node@22"]),
-            strings(&["link", "--force", "node@22"]),
+            strings(&["link", "--formula", "--force", "node@22"]),
             strings(&["cleanup", "node@22"]),
         ]
     );

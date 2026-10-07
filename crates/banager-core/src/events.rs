@@ -117,13 +117,13 @@ pub enum LogNote {
     /// The upgrade of the keg-only formula `name` exited 0, and, read again
     /// (`brew::links`), it is not linked into the prefix as `brew link`
     /// leaves it: Banager now runs the plan's follow-up
-    /// `brew link --force <name>` (`Warning::HomebrewRelinksAfterUpdate`,
+    /// `brew link --formula --force <name>` (`Warning::HomebrewRelinksAfterUpdate`,
     /// y1-keg, r6); what that command prints follows. From
     /// `BrewAdapter::execute`; worded by `LogDrawer.tsx`.
     RelinkingAfterUpdate { name: String },
     /// The upgrade of the keg-only formula `name` exited 0 and, read again,
     /// Homebrew had linked it back itself -- it does where it recorded a
-    /// `brew link` -- so the plan's `brew link --force <name>` was not run.
+    /// `brew link` -- so the plan's `brew link --formula --force <name>` was not run.
     /// From `BrewAdapter::execute`; worded by `LogDrawer.tsx`.
     StillLinkedAfterUpdate { name: String },
     /// After the update of the keg-only formula `name` -- its

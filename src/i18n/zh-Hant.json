@@ -545,9 +545,9 @@
   },
   "kegLinks": {
     "relinks": "{{name}}是Homebrew不會自動接到終端機裡的工具，你之前手動接上了。更新會中斷它的連結，更新後會再把它接上。",
-    "relinksDetail": "它接在終端機裡的指令：{{commands}}。更新後如果它們沒有接回去，會執行brew link --force {{name}}，不會取代其他程式的檔案。",
-    "relinksDetailNoCommands": "更新後如果它沒有接回去，會執行brew link --force {{name}}，不會取代其他程式的檔案。",
-    "logRelinking": "更新已完成，接著執行brew link --force {{name}}，把它重新接到終端機裡。",
+    "relinksDetail": "它接在終端機裡的指令：{{commands}}。更新後如果它們沒有接回去，會執行brew link --formula --force {{name}}，不會取代其他程式的檔案。",
+    "relinksDetailNoCommands": "更新後如果它沒有接回去，會執行brew link --formula --force {{name}}，不會取代其他程式的檔案。",
+    "logRelinking": "更新已完成，接著執行brew link --formula --force {{name}}，把它重新接到終端機裡。",
     "logStillLinked": "Homebrew已把{{name}}重新接到終端機裡，不需要執行brew link。",
     "logNoLongerLinked": "{{name}}沒有重新接到終端機裡，輸入{{commands}}不再執行它。要接回去，可以在終端機裡執行brew link --force {{name}}；如果有檔案擋住，它會說出是哪一個。",
     "blockedBadge": "無法重新接上",

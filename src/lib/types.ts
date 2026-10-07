@@ -414,7 +414,7 @@ export type Warning =
    * y1-keg (r6): `name` is a keg-only formula linked into the prefix, so
    * `commands` are in Terminal; its update unlinks it, and once the update
    * exits 0 Banager links it back where Homebrew did not
-   * (`brew link --force <name>`, a `CommandThen` follow-up).
+   * (`brew link --formula --force <name>`, a `CommandThen` follow-up).
    */
   | { HomebrewRelinksAfterUpdate: { name: string; commands: string[] } }
   | { UninstallScope: { what: UninstallScope } }
@@ -575,7 +575,7 @@ export type PlanAction =
   /**
    * `program args`, then -- only once that exits 0 -- `program` with each
    * argv of `then` in turn, under the same `env`: a Homebrew formula's
-   * upgrade and its follow-ups, `brew link --force <name>` (y1-keg) and
+   * upgrade and its follow-ups, `brew link --formula --force <name>` (y1-keg) and
    * `brew cleanup <name>` (U9). A follow-up's end decides nothing about the
    * operation; the log says it. The preview shows every command.
    */
@@ -881,7 +881,7 @@ export type LogNote =
   // let that cleanup run, or could not be read, so it did not.
   | { OldVersionsCleanupSkipped: { name: string } }
   // y1-keg (r6): after the update of a keg-only formula linked into its
-  // prefix -- `brew link --force <name>` starts; Homebrew had linked it back
+  // prefix -- `brew link --formula --force <name>` starts; Homebrew had linked it back
   // itself, so it did not; and which of the commands its preview named are
   // no longer in Terminal.
   | { RelinkingAfterUpdate: { name: string } }
