@@ -607,7 +607,14 @@ Banager too, and that 2-second wait then does not quit, even when the
 word that the question was on screen did not get through; the window
 sends each of the two words once more should it fail. A quit repeated
 before the window has said the question is on screen asks the same
-question again and starts no second wait. A refresh alone never
+question again and starts no second wait, and the window reads the
+operations for that number once: the question it shows, or the quit it
+makes when nothing is left to wait for, comes from that one read. Once
+*Keep Waiting*, Escape, *Quit* or the question going by itself has
+answered a question, a reply to it that comes late -- or to a question a
+newer one replaced, or after the window stopped listening -- shows no
+question, changes no list and quits nothing; a later quit, with a new
+number, asks again. A refresh alone never
 holds a quit (`src-tauri/src/quit.rs`, `src/lib/quit.ts`,
 `src/components/QuitQuestion.tsx`). Force Quit still quits at once.
 

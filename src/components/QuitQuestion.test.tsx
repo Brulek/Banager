@@ -544,3 +544,58 @@ describe("the question before a quit", () => {
     }
   });
 });
+
+describe("quit request identity", () => {
+  async function heldRequests() {
+    operations = [op(1, "wget", "Running")];
+    const mountedQuestion = await mounted();
+    await waitFor(() => expect(mountedQuestion.queryClient.getQueryData(queryKeys.operations)).toEqual(operations));
+    const replies: ((value: OpSummary[]) => void)[] = [];
+    const original = mockInvoke.getMockImplementation()!;
+    mockInvoke.mockImplementation((cmd, args) => cmd === "list_operations"
+      ? new Promise<OpSummary[]>((resolve) => replies.push(resolve))
+      : original(cmd, args));
+    return { ...mountedQuestion, replies };
+  }
+
+  it.each([{ late: [] }, { late: [op(1, "wget", "Running")] }])("coalesces repeated numbers and retires Keep Waiting before late replies $late", async ({ late }) => {
+    const { rust, replies } = await heldRequests();
+    act(() => {
+      rust.hear(QUIT_REQUESTED_EVENT, 1);
+      rust.hear(QUIT_REQUESTED_EVENT, 1);
+    });
+    await act(async () => replies[0](operations));
+    const dialog = await screen.findByRole("alertdialog");
+    await userEvent.setup().click(within(dialog).getByRole("button", { name: "Keep Waiting" }));
+    await act(async () => {
+      replies.slice(1).forEach((reply) => reply(late));
+      rust.hear(QUIT_REQUESTED_EVENT, 1); // Even a delayed duplicate is retired.
+    });
+    expect(replies).toHaveLength(1);
+    expect(sent("quit_anyway")).toBe(0);
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+
+  it("ignores an older reply after a newer question is on screen", async () => {
+    const { rust, replies } = await heldRequests();
+    act(() => {
+      rust.hear(QUIT_REQUESTED_EVENT, 1);
+      rust.hear(QUIT_REQUESTED_EVENT, 2);
+    });
+    await act(async () => replies[1](operations));
+    await screen.findByRole("alertdialog");
+    await act(async () => replies[0]([]));
+    expect(sent("quit_anyway")).toBe(0);
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("button", { name: "Keep Waiting" }));
+    expect(mockInvoke.mock.calls.filter(([cmd]) => cmd === "quit_kept_waiting")).toEqual([["quit_kept_waiting", { question: 2 }]]);
+  });
+
+  it("ignores a pending reply after unmount", async () => {
+    const { rust, replies, unmount } = await heldRequests();
+    act(() => rust.hear(QUIT_REQUESTED_EVENT, 1));
+    unmount();
+    await act(async () => replies[0]([]));
+    expect(sent("quit_anyway")).toBe(0);
+  });
+});

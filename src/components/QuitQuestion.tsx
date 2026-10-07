@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
-import { quitAnyway, quitKeptWaiting, quitQuestionShown } from "../lib/api";
-import { freshOperations, queryKeys, useOperations } from "../lib/queries";
+import { listOperations, quitAnyway, quitKeptWaiting, quitQuestionShown } from "../lib/api";
+import { queryKeys, useOperations } from "../lib/queries";
 import { isActive, runsToItsEnd, useOperationName } from "../lib/operations";
 import { QUIT_NO_CANCEL_KEYS, quitBodyKey, quitStops, tellRustTwice, useQuitRequests } from "../lib/quit";
 import type { OpSummary } from "../lib/types";
@@ -28,7 +28,7 @@ import { BUTTON } from "./ui/controls";
  * stay held meanwhile).
  *
  * It goes by the operations as the backend lists them when Rust asks
- * (`freshOperations`): with none left undone by then, Banager quits
+ * (`listOperations`): with none left undone by then, Banager quits
  * without asking, as the user asked. Asked, it counts them as they go on,
  * and goes away by itself once every one has finished: nothing is left to
  * wait for, and Banager stays, with how they went on the operation bar.
@@ -54,8 +54,20 @@ export function QuitQuestion() {
   const [question, setQuestion] = useState<number | null>(null);
   const [quitting, setQuitting] = useState(false);
   const keepWaitingButton = useRef<HTMLButtonElement>(null);
+  // Keep the newest number even after answering, so delayed duplicates
+  // cannot create another continuation. Rust's numbers increase.
+  const request = useRef<{ number: number; answered: boolean } | null>(null);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      if (request.current) request.current.answered = true;
+    };
+  }, []);
 
   const quit = useCallback(() => {
+    if (request.current) request.current.answered = true;
     setQuitting(true);
     quitAnyway().then(
       () => {
@@ -71,13 +83,24 @@ export function QuitQuestion() {
   }, []);
 
   useQuitRequests((asking) => {
+    if (!mounted.current || (request.current !== null && asking <= request.current.number)) return;
+    const pending = { number: asking, answered: false };
+    request.current = pending;
+    const current = () => mounted.current && request.current === pending && !pending.answered;
     const answer = (listed: OpSummary[] | undefined) => {
+      if (!current()) return;
       if ((listed ?? []).some(isActive)) {
         setAsked(true);
         setQuestion(asking);
       } else quit();
     };
-    freshOperations(queryClient).then(answer, (e: unknown) => {
+    listOperations().then((listed) => {
+      // An obsolete read must not dismiss a newer sheet through its cache.
+      if (!current()) return;
+      queryClient.setQueryData(queryKeys.operations, listed);
+      answer(listed);
+    }, (e: unknown) => {
+      if (!current()) return;
       // The list as the page last heard it, then.
       console.error("list_operations failed", e);
       answer(queryClient.getQueryData<OpSummary[]>(queryKeys.operations));
@@ -94,9 +117,11 @@ export function QuitQuestion() {
   // It goes, and Banager stays: Rust is told, so that its wait for word
   // from the page does not quit.
   const keepWaiting = useCallback(() => {
+    const pending = request.current;
+    if (pending) pending.answered = true;
     setAsked(false);
-    if (question !== null) void tellRustTwice(() => quitKeptWaiting(question), "quit_kept_waiting");
-  }, [question]);
+    if (pending !== null) void tellRustTwice(() => quitKeptWaiting(pending.number), "quit_kept_waiting");
+  }, []);
 
   // Everything finished while it asked: it goes, and Banager stays -- and
   // it does not come back by itself when something starts later. Not while
