@@ -430,15 +430,40 @@ fn is_proxy(name: &str) -> bool {
 /// of the value, as a proxy's is: which masks too much rather than too
 /// little when such a value also has an `@` in its path.
 fn mirror_login_end(after: &str) -> Option<usize> {
+    match mirror_login_reading(after) {
+        LoginEnd::None => None,
+        LoginEnd::At(at) => Some(at),
+        LoginEnd::LastAt => after.rfind('@'),
+    }
+}
+
+/// Where [`mirror_login_end`] ends a login, before it looks for the last
+/// `@` of the value: that reads the whole value, and a caller reading
+/// many addresses in one word knows the word's last `@` already
+/// ([`mask_unread_url_logins`]).
+enum LoginEnd {
+    /// The address has no login.
+    None,
+    /// At this `@` of its authority.
+    At(usize),
+    /// At the last `@` of the value, if it has one: the rules cannot read
+    /// its authority.
+    LastAt,
+}
+
+/// [`mirror_login_end`]'s reading of `after`, but for the last `@` of the
+/// value (`LoginEnd::LastAt`). It reads `after` only to the end of its
+/// authority.
+fn mirror_login_reading(after: &str) -> LoginEnd {
     let authority = &after[..after.find(['/', '?', '#']).unwrap_or(after.len())];
     if authority.is_empty() {
         // `file:///…`, or a path: no host, so no login either.
-        return None;
+        return LoginEnd::None;
     }
     match authority.rfind('@') {
-        Some(at) if reads_as_host(&authority[at + 1..], true) => Some(at),
-        None if reads_as_host(authority, false) => None,
-        _ => after.rfind('@'),
+        Some(at) if reads_as_host(&authority[at + 1..], true) => LoginEnd::At(at),
+        None if reads_as_host(authority, false) => LoginEnd::None,
+        _ => LoginEnd::LastAt,
     }
 }
 
@@ -577,22 +602,53 @@ pub fn mask_url_logins(text: &str) -> Cow<'_, str> {
 /// Here its login is all before the last `@` of its word. Where the
 /// authority reads as a host, the first pass already masked whatever
 /// login it holds, and an `@` after it is the path's: nothing changes.
+/// A host the rules do not read as one (`verdaccio_local`, `例子.测试`) is
+/// read as a login cut short too: with an `@` after it in its word, all
+/// before that `@` is masked, more than needed rather than less, as a
+/// token alone can hold an `_` as well (`https://ghp_tok/en@…`).
 ///
 /// Each address is read on its own, so one inside another's word
 /// (`https://pypi.org/simple,https://alice:Ab3/x@pypi.corp/`) is read
 /// too; one inside a login just masked (`rev://` in a password) is not.
+///
+/// Where a word ends, and its last `@`, are found once for the word, not
+/// once for each address in it: a word of many addresses with no white
+/// space -- a tool's or a script's line can be one, up to the
+/// transcript's 1 MiB -- is read in one go, not once for every address
+/// (r9 k1's skeptic timed 39 s and more for 1 MiB, in the reader task,
+/// where Cancel cannot reach it). Each address's authority
+/// ends at the next address's `://` at the latest, so reading them all
+/// reads the text once too.
 fn mask_unread_url_logins(text: &str) -> Cow<'_, str> {
     let mut out = String::new();
     let mut done = 0;
+    // The word of the last address read: where it ends, and its last `@`.
+    let mut word_end = 0;
+    let mut last_at = None;
     for start in URL_START.find_iter(text) {
         if start.start() < done {
             // Inside the login this pass has just masked.
             continue;
         }
-        let after = &text[start.end()..];
-        let word = &after[..after.find(ends_a_word).unwrap_or(after.len())];
-        let Some(at) = mirror_login_end(word) else {
-            continue;
+        if start.start() >= word_end {
+            // A new word. An address holds nothing that ends a word, so
+            // one that starts before the last word's end is in that word,
+            // and ends at its end.
+            let rest = &text[start.end()..];
+            word_end = start.end() + rest.find(ends_a_word).unwrap_or(rest.len());
+            last_at = text[start.end()..word_end]
+                .rfind('@')
+                .map(|at| start.end() + at);
+        }
+        let word = &text[start.end()..word_end];
+        let at = match mirror_login_reading(word) {
+            LoginEnd::None => continue,
+            LoginEnd::At(at) => at,
+            // The last `@` of the word, when it is after this address.
+            LoginEnd::LastAt => match last_at {
+                Some(at) if at >= start.end() => at - start.end(),
+                _ => continue,
+            },
         };
         let login = &word[..at];
         let mask = if login.contains(':') {
@@ -1623,6 +1679,69 @@ mod tests {
     }
 
     #[test]
+    fn test_an_address_whose_host_the_rules_cannot_read_is_masked_to_the_last_at_of_its_word() {
+        // r9 k1's skeptic: a host the rules do not read as one -- a name
+        // with an `_`, letters other than A to Z, a `${…}` placeholder, an
+        // IPv6 address with a zone, a `:` with no port -- is read as an
+        // authority a password cut short, as docs/what-we-run.md says:
+        // with an `@` after it in its word, all before that `@` is masked,
+        // more than needed rather than less. Reading an `_` as part of a
+        // host would leave a token alone with an `_` and a `/` in it as
+        // written (`https://ghp_tok/en42abc@npm.corp/`, masked above).
+        // With no `@` after it, nothing changes.
+        for r in [
+            Redactor::default(),
+            redactor(&[("https_proxy", CURL_PROXY)]),
+        ] {
+            for (said, expected) in [
+                (
+                    "npm http fetch GET 200 http://npm_registry:4873/@scope%2fpkg 12ms",
+                    "npm http fetch GET 200 http://****:****@scope%2fpkg 12ms",
+                ),
+                (
+                    "npm error 404 Not Found - GET http://verdaccio_local/@myorg/pkg - not found",
+                    "npm error 404 Not Found - GET http://****@myorg/pkg - not found",
+                ),
+                ("https://例子.测试/包@1.0", "https://****@1.0"),
+                ("http://${REGISTRY}/@scope/pkg", "http://****@scope/pkg"),
+                ("http://[fe80::1%25en0]:8080/@x", "http://****:****@x"),
+                ("http://host:/x@y", "http://****:****@y"),
+            ] {
+                assert_eq!(r.redact(said), expected, "{said}");
+                assert_eq!(r.redact(expected), expected, "{said}");
+            }
+            for unread in [
+                "npm http fetch GET 200 http://npm_registry:4873/pkg 12ms",
+                "https://例子.测试/包",
+                "http://${REGISTRY}/simple",
+                "http://[fe80::1%25en0]:8080/x",
+            ] {
+                assert!(
+                    matches!(r.redact(unread), Cow::Borrowed(same) if same == unread),
+                    "{unread}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_a_login_the_generic_rule_cannot_see_is_left_as_written() {
+        // Limits docs/what-we-run.md states, and Settings' ⓘ hedges ("that
+        // Banager recognizes"), for a login no setting Banager knows holds:
+        // a quote or white space in a password ends the address's word
+        // before its `@`, so neither pass finds a login in it; and a
+        // proxy's login written with no scheme, as configparser quotes a
+        // line of `pip.conf`, has no `scheme://` for either pass to read.
+        for said in [
+            "Looking in indexes: https://alice:Ab3/xY'9@pypi.corp/simple",
+            "Looking in indexes: https://alice:Ab3/xY 9@pypi.corp/simple",
+            "file: '/Users/me/.config/pip/pip.conf', line: 1\n'proxy = alice:Ab3xY9secret@proxy.corp:8080\\n'",
+        ] {
+            assert_eq!(Redactor::default().redact(said), said);
+        }
+    }
+
+    #[test]
     fn test_masking_twice_changes_nothing_more() {
         let r = redactor(&[
             ("https_proxy", CURL_PROXY),
@@ -1637,6 +1756,148 @@ mod tests {
             let once = r.redact(said).into_owned();
             assert_eq!(r.redact(&once), once);
         }
+    }
+
+    #[test]
+    fn test_a_long_word_of_addresses_is_read_once() {
+        // r9 k1's skeptic: one word with no white space and an address
+        // every few bytes. The second pass found each address's word end,
+        // and its last `@`, again for every address in it -- a quadratic
+        // reading, 2.1 s for 256 KiB and 39 s and more for 1 MiB as the
+        // skeptic timed it -- on every line and on the whole transcript,
+        // in the reader task, where Cancel cannot reach it. In a debug
+        // build, a word of 256 KiB took 72 s that way; read once per word
+        // it takes about 75 ms (and 1 MiB about 300 ms). The bound is far
+        // above that on a busy Mac and far below the old reading. Each
+        // word is read up to three times, for the least noise, and the
+        // fastest reading counts.
+        const SIZE: usize = 256 * 1024;
+        for (unit, tail, expected_tail) in [
+            // Hosts the rules read: nothing to mask.
+            ("http://a/,", "", ""),
+            ("http://a/@,", "", ""),
+            // No host and port, and no `@`: no login.
+            ("x://", "", ""),
+            // No host and port, one `@` at the very end: one login.
+            ("x://", "@h.example", "****:****@h.example"),
+        ] {
+            let word = format!("{}{tail}", unit.repeat(SIZE / unit.len()));
+            let expected = if expected_tail.is_empty() {
+                word.clone()
+            } else {
+                format!("{unit}{expected_tail}")
+            };
+            let bound = std::time::Duration::from_secs(2);
+            let mut fastest = std::time::Duration::MAX;
+            for _ in 0..3 {
+                let started = std::time::Instant::now();
+                let masked = mask_url_logins(&word);
+                fastest = fastest.min(started.elapsed());
+                assert!(masked == expected, "{unit}…{tail}");
+                if fastest < bound {
+                    break;
+                }
+            }
+            assert!(
+                fastest < bound,
+                "a {SIZE}-byte word of {unit:?} took {fastest:?}"
+            );
+        }
+    }
+
+    /// The second pass as r25's fix wrote it, reading each address's word
+    /// to its end, and to its last `@`, once for every address in it.
+    fn reading_each_word_again(text: &str) -> Cow<'_, str> {
+        let mut out = String::new();
+        let mut done = 0;
+        for start in URL_START.find_iter(text) {
+            if start.start() < done {
+                continue;
+            }
+            let after = &text[start.end()..];
+            let word = &after[..after.find(ends_a_word).unwrap_or(after.len())];
+            let Some(at) = mirror_login_end(word) else {
+                continue;
+            };
+            let login = &word[..at];
+            let mask = if login.contains(':') {
+                "****:****"
+            } else {
+                MASK
+            };
+            if login == mask {
+                continue;
+            }
+            out.push_str(&text[done..start.end()]);
+            out.push_str(mask);
+            done = start.end() + at;
+        }
+        if done == 0 {
+            return Cow::Borrowed(text);
+        }
+        out.push_str(&text[done..]);
+        Cow::Owned(out)
+    }
+
+    #[test]
+    fn test_reading_a_word_once_masks_what_reading_it_for_each_address_did() {
+        // Finding a word's end and its last `@` once for the word changes
+        // what is read, not what is masked: on texts made of the pieces
+        // every rule turns on -- schemes, logins, `/`, `?`, `#`, `@`,
+        // hosts, ports, what ends a word and what does not, a mask the
+        // first pass left -- the pass masks what r25's did, and copies
+        // nothing where it copied nothing.
+        const PIECES: [&str; 22] = [
+            "https://",
+            "x://",
+            "git+ssh://",
+            "alice",
+            ":",
+            "Ab3",
+            "/",
+            "?",
+            "#",
+            "@",
+            "pypi.corp",
+            "nexus",
+            ":8080",
+            "_",
+            "例",
+            ",",
+            " ",
+            "'",
+            "<",
+            "\n",
+            "****:****",
+            "****",
+        ];
+        let mut seed: u64 = 0x2545_f491_4f6c_dd1d;
+        let mut next = move |below: usize| {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            usize::try_from(seed % below as u64).expect("a small number")
+        };
+        let mut masked = 0;
+        for _ in 0..20_000 {
+            let text: String = (0..1 + next(14))
+                .map(|_| PIECES[next(PIECES.len())])
+                .collect();
+            let (now, then) = (
+                mask_unread_url_logins(&text),
+                reading_each_word_again(&text),
+            );
+            assert_eq!(now, then, "{text:?}");
+            assert_eq!(
+                matches!(now, Cow::Borrowed(_)),
+                matches!(then, Cow::Borrowed(_)),
+                "{text:?}"
+            );
+            masked += usize::from(matches!(now, Cow::Owned(_)));
+        }
+        // Enough of them hold a login the pass masks for the comparison
+        // to mean something.
+        assert!(masked > 1_000, "{masked} masked");
     }
 
     #[test]
