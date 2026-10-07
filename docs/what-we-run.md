@@ -434,8 +434,14 @@ nothing more for it and does not retry it on its own.
 After a restart, a retained Homebrew `needsPassword` update offers View
 Steps in Update History and on the offered update (also in Installed).
 The offered row and Update All do not retry that recorded password stop.
-A newer operation supersedes it; while the tool is offered no update,
-the recorded stop shows no recovery action. The stop is kept per tool,
+An operation the tool's row shows supersedes it -- an update or an
+uninstall under way, or an update that ended for the version the row
+offers -- and so does a later record the history kept. A stop of this
+launch that the row no longer shows, because the window reloaded (the
+error screen's Reload) and forgot which version each update was for,
+gives that row View Steps from its record as after a restart
+(`usePasswordRecoveryKeys` in `src/lib/passwordRecovery.ts`). While the
+tool is offered no update, the recorded stop shows no recovery action. The stop is kept per tool,
 not per version: if the source offers a newer version within the 30-day
 window below, that update offers View Steps too, which plans the newer
 update (below). Clearing the history display does

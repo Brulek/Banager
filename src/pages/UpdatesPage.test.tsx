@@ -4473,6 +4473,78 @@ describe("UpdatesPage", () => {
         expect(screen.queryByRole("button", { name: "View steps: onyx" })).toBeNull();
       });
 
+      // r35 U3: a password stop of this launch, then the page reloads (the
+      // error screen's Reload): the window forgets which version op 7 was
+      // for (`updateTargets`), and the backend still lists op 7.
+      describe("a password stop of this launch, before and after the page reloads", () => {
+        const stopped = () =>
+          operation(onyxKey, {
+            id: 7,
+            status: "Done",
+            outcome: {
+              Failed: {
+                exit_code: 1,
+                summary: "sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper",
+                cause: "needsPassword",
+              },
+            },
+          });
+        const thisLaunch = () =>
+          kept("onyx", Date.now() - 1000, {
+            run: "this-launch",
+            op_id: 7,
+            key: onyxKey,
+            from_version: "5.0.2",
+            to_version: null,
+            verified: false,
+            result: { Failed: { cause: "needsPassword" } },
+          });
+
+        async function expectHeldWithSteps() {
+          const row = await findRow("onyx");
+          expect(await within(row).findByRole("button", { name: "View steps: onyx" })).toBeInTheDocument();
+          expect(within(row).queryByRole("checkbox")).toBeNull();
+          expect(within(row).queryByRole("button", { name: ROW_UPDATE })).toBeNull();
+          expect(await screen.findByText("1 update available, 1 needs your password")).toBeInTheDocument();
+          // Update All leaves it out: it would stop at the password again.
+          fireEvent.click(screen.getByRole("button", { name: "Update All" }));
+          const confirm = await screen.findByRole("alertdialog");
+          await waitFor(() => expect(calls("plan_operation").length).toBeGreaterThan(0));
+          expect(plannedNames()).not.toContain("onyx");
+          fireEvent.click(within(confirm).getByRole("button", { name: "Cancel" }));
+          await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+        }
+
+        it("holds its row with View Steps before the reload, from its own operation", async () => {
+          operations = [stopped()];
+          started(7, "5.1.0");
+          answerHistory({ run: "this-launch", cleared_before: null, records: [thisLaunch()] });
+          renderPage();
+          await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("get_history"));
+          await expectHeldWithSteps();
+        });
+
+        it("still holds it with View Steps after the reload, from this launch's record, not a checkbox and Update", async () => {
+          operations = [stopped()];
+          answerHistory({ run: "this-launch", cleared_before: null, records: [thisLaunch()] });
+          renderPage();
+          await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("get_history"));
+          await expectHeldWithSteps();
+        });
+
+        it("lets an update the row shows say how it stands, over an earlier stop's View Steps", async () => {
+          // Started again after the reload: the row shows that one.
+          operations = [operation(onyxKey, { id: 8, status: "Running" }), stopped()];
+          started(8, "5.1.0");
+          answerHistory({ run: "this-launch", cleared_before: null, records: [thisLaunch()] });
+          renderPage();
+          await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("get_history"));
+          const row = await findRow("onyx");
+          expect(await within(row).findByText("Updating…")).toBeInTheDocument();
+          expect(within(row).queryByRole("button", { name: "View steps: onyx" })).toBeNull();
+        });
+      });
+
       it("keeps Clear: the history notes the time, and what was shown stays hidden", async () => {
         answerHistory({
           run: "this-launch",

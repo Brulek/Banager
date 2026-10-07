@@ -65,7 +65,7 @@ export function listedResult(result: HistoryResult): boolean {
  * window's own -- finished in the last `RECENT_DAYS` and not dismissed by
  * a Clear (`isDismissed`). Newest per tool, so an update that failed and then worked is
  * listed as the one that worked, and one uninstalled since not at all.
- * None for a tool this window has an operation of (`operations`): that
+ * None for a tool whose say is this window's (`seenHere`, below): its
  * operation decides, whatever the history says, so an update this window
  * saw finish is listed once.
  *
@@ -83,17 +83,20 @@ export function listedResult(result: HistoryResult): boolean {
  * list, it does not resolve the stop. A record kept since the last Clear
  * is newer than every one a Clear dismissed, whatever the clock said;
  * otherwise the later finish is (`keptLater`).
+ *
+ * `seenHere`, by `artifactKeyId`, the tools whose say is this window's:
+ * for the list, those it has an operation of (`toolsWithOperations`); for
+ * `usePasswordRecoveryKeys`, those whose row shows one, so that a stop of
+ * this launch the row no longer shows -- the page reloaded -- still
+ * counts from its record (r35 U3).
  */
 export function recentUpdates(
   view: HistoryView,
-  operations: readonly OpSummary[],
+  seenHere: ReadonlySet<string>,
   now: number,
   offered: ReadonlySet<string>,
   { includeDismissed = false }: { includeDismissed?: boolean } = {},
 ): HistoryRecord[] {
-  const seenHere = new Set(
-    operations.map((op) => artifactKeyId({ instance_id: op.instance_id, kind: op.artifact_kind, name: op.name })),
-  );
   const newest = new Map<string, HistoryRecord>();
   for (const record of view.records) {
     if (!Number.isFinite(new Date(record.finished_at).getTime())) continue;
@@ -114,6 +117,17 @@ export function recentUpdates(
     )
     .map(([, record]) => record)
     .sort((a, b) => b.finished_at - a.finished_at);
+}
+
+/**
+ * The tools this window has an operation of, by `artifactKeyId`: the
+ * ones whose update 「最近的更新记录」 takes from the window's own list
+ * (`justUpdatedOps`), not from the history (`recentUpdates`).
+ */
+export function toolsWithOperations(operations: readonly OpSummary[]): Set<string> {
+  return new Set(
+    operations.map((op) => artifactKeyId({ instance_id: op.instance_id, kind: op.artifact_kind, name: op.name })),
+  );
 }
 
 /**

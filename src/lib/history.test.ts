@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { failureCause, type FailureCause } from "./failureCause";
-import { RECENT_DAYS, clearedHere, recentUpdates, verifiedHere } from "./history";
+import { RECENT_DAYS, clearedHere, recentUpdates, toolsWithOperations, verifiedHere } from "./history";
 import { artifactKeyId } from "../store/ui";
 import type { HistoryRecord, HistoryView, OpSummary } from "./types";
 
@@ -89,7 +89,7 @@ describe("the history's wire shape", () => {
     expect(warned.follow_up_warnings).toHaveLength(2);
     expect(JSON.parse(JSON.stringify(warned))).toEqual(warned);
     expect(parsed.follow_up_warnings ?? []).toEqual([]);
-    expect(recentUpdates(view([warned]), [], warned.finished_at + DAY, new Set())).toEqual([warned]);
+    expect(recentUpdates(view([warned]), new Set(), warned.finished_at + DAY, new Set())).toEqual([warned]);
   });
 
   it("names a failure's cause as the window does: the cases Rust's reading is tested on", () => {
@@ -110,11 +110,11 @@ describe("recentUpdates", () => {
     for (const login of ["alice:secret", "alice:s%40cret", "token", ":secret"]) {
       const liveId = `ollama:http://${login}@server:11434`;
       const offered = new Set([artifactKeyId({ ...key, instance_id: liveId })]);
-      expect(recentUpdates(view([kept]), [], NOW, offered)).toEqual([kept]);
+      expect(recentUpdates(view([kept]), new Set(), NOW, offered)).toEqual([kept]);
       const live = { ...op(7, key.name), instance_id: liveId, artifact_kind: key.kind };
-      expect(recentUpdates(view([kept]), [live], NOW, offered)).toEqual([]);
+      expect(recentUpdates(view([kept]), toolsWithOperations([live]), NOW, offered)).toEqual([]);
       const elsewhere = new Set([artifactKeyId({ ...key, instance_id: "ollama:http://other:11434" })]);
-      expect(recentUpdates(view([kept]), [], NOW, elsewhere)).toEqual([]);
+      expect(recentUpdates(view([kept]), new Set(), NOW, elsewhere)).toEqual([]);
     }
   });
 
@@ -125,7 +125,7 @@ describe("recentUpdates", () => {
         record("cmake", { finished_at: NOW - DAY, to_version: "4.0" }),
         record("git", { finished_at: NOW - 2 * DAY }),
       ]),
-      [],
+      new Set(),
       NOW,
       offered(),
     );
@@ -152,7 +152,7 @@ describe("recentUpdates", () => {
         ],
         { cleared_before: NOW - 4 * DAY },
       ),
-      [],
+      new Set(),
       NOW,
       // Every one still offered, so that is not what leaves them out.
       offered("old", "cleared", "oldFailure", "clearedFailure", "stopped", "gone", "removed", "kept"),
@@ -168,7 +168,7 @@ describe("recentUpdates", () => {
         record("unconfirmed", { finished_at: NOW - 4 * DAY, result: "Unconfirmed" }),
         record("worked", { finished_at: NOW - 3 * DAY }),
       ]),
-      [],
+      new Set(),
       NOW,
       offered("failed", "unchanged", "unconfirmed"),
     );
@@ -192,7 +192,7 @@ describe("recentUpdates", () => {
         record("jq", { finished_at: NOW - 3 * DAY, ...failed }),
         record("jq", { finished_at: NOW - DAY, result: "Cancelled" }),
       ]),
-      [],
+      new Set(),
       NOW,
       offered("cmake", "git", "jq"),
     );
@@ -208,7 +208,7 @@ describe("recentUpdates", () => {
       record("git", { run: "earlier", op_id: 7, finished_at: NOW - 9 * DAY }),
       record("jq"),
     ]);
-    expect(recentUpdates(history, [op(7, "cmake"), op(8, "git")], NOW, offered()).map((r) => r.key.name)).toEqual([
+    expect(recentUpdates(history, toolsWithOperations([op(7, "cmake"), op(8, "git")]), NOW, offered()).map((r) => r.key.name)).toEqual([
       "jq",
     ]);
   });
@@ -222,15 +222,15 @@ describe("recentUpdates", () => {
       record("unconfirmed", { finished_at: NOW - 3 * DAY, result: "Unconfirmed" }),
       record("worked", { finished_at: NOW - 4 * DAY }),
     ]);
-    expect(recentUpdates(history, [], NOW, offered()).map((r) => r.key.name)).toEqual(["worked"]);
+    expect(recentUpdates(history, new Set(), NOW, offered()).map((r) => r.key.name)).toEqual(["worked"]);
     // A success is listed whether or not a newer update is offered.
-    expect(recentUpdates(history, [], NOW, offered("failed", "worked")).map((r) => r.key.name)).toEqual([
+    expect(recentUpdates(history, new Set(), NOW, offered("failed", "worked")).map((r) => r.key.name)).toEqual([
       "failed",
       "worked",
     ]);
     // Offered under another source is not this tool.
     const elsewhere = new Set([artifactKeyId({ instance_id: "npm:/usr/local", kind: "Formula", name: "failed" })]);
-    expect(recentUpdates(history, [], NOW, elsewhere).map((r) => r.key.name)).toEqual(["worked"]);
+    expect(recentUpdates(history, new Set(), NOW, elsewhere).map((r) => r.key.name)).toEqual(["worked"]);
   });
 
   it("lists an update installed though a step after it failed whether or not it is still offered, as one that worked (r35 U2)", () => {
@@ -282,21 +282,21 @@ describe("persisted dismissal after a backward clock correction", () => {
     const wire = JSON.stringify(view([old, fresh], { cleared_before: NOW + DAY }));
     const parsed: HistoryView = JSON.parse(wire);
     expect(JSON.stringify(parsed)).toBe(wire);
-    expect(recentUpdates(parsed, [], NOW, offered()).map((r) => r.key.name)).toEqual(["fresh"]);
+    expect(recentUpdates(parsed, new Set(), NOW, offered()).map((r) => r.key.name)).toEqual(["fresh"]);
     expect(clearedHere(parsed, 1)).toBe(true);
     expect(clearedHere(parsed, 2)).toBe(false);
   });
   it("ignores an out-of-range date before choosing the latest record for a tool", () => {
     const good = record("git");
     const bad = record("git", { finished_at: 9_000_000_000_000_000 });
-    expect(recentUpdates(view([good, bad]), [], NOW, offered())).toEqual([good]);
+    expect(recentUpdates(view([good, bad]), new Set(), NOW, offered())).toEqual([good]);
   });
 });
 
 it("a dismissed future-dated record cannot shadow the same tool updated after Clear", () => {
   const old = { ...record("git", { finished_at: NOW + DAY }), dismissed: true };
   const fresh = { ...record("git", { finished_at: NOW }), dismissed: false };
-  expect(recentUpdates(view([old, fresh], { cleared_before: NOW + DAY }), [], NOW, offered())).toEqual([fresh]);
+  expect(recentUpdates(view([old, fresh], { cleared_before: NOW + DAY }), new Set(), NOW, offered())).toEqual([fresh]);
 });
 
 describe("a recorded password stop is not resolved by Clear (r22 W1)", () => {
@@ -304,17 +304,17 @@ describe("a recorded password stop is not resolved by Clear (r22 W1)", () => {
 
   it("lists a dismissed stop when dismissal is ignored, as `get_history` sends it after Clear", () => {
     const cleared = { ...record("onyx", { result: stop, to_version: null, verified: false }), dismissed: true };
-    expect(recentUpdates(view([cleared], { cleared_before: NOW }), [], NOW, offered("onyx"))).toEqual([]);
-    expect(recentUpdates(view([cleared], { cleared_before: NOW }), [], NOW, offered("onyx"), { includeDismissed: true })).toEqual([cleared]);
+    expect(recentUpdates(view([cleared], { cleared_before: NOW }), new Set(), NOW, offered("onyx"))).toEqual([]);
+    expect(recentUpdates(view([cleared], { cleared_before: NOW }), new Set(), NOW, offered("onyx"), { includeDismissed: true })).toEqual([cleared]);
     // Legacy wire data (no `dismissed`, a cutoff) reads the same way.
     const legacy = record("onyx", { result: stop, to_version: null, verified: false });
-    expect(recentUpdates(view([legacy], { cleared_before: NOW }), [], NOW, offered("onyx"), { includeDismissed: true })).toEqual([legacy]);
+    expect(recentUpdates(view([legacy], { cleared_before: NOW }), new Set(), NOW, offered("onyx"), { includeDismissed: true })).toEqual([legacy]);
   });
 
   it("still lets a later update supersede the stop, cleared or not", () => {
     const earlier = { ...record("onyx", { finished_at: NOW - 2_000, result: stop }), dismissed: true };
     const later = { ...record("onyx", { finished_at: NOW - 1_000 }), dismissed: true };
-    expect(recentUpdates(view([later, earlier]), [], NOW, offered("onyx"), { includeDismissed: true })).toEqual([later]);
+    expect(recentUpdates(view([later, earlier]), new Set(), NOW, offered("onyx"), { includeDismissed: true })).toEqual([later]);
   });
 
   it("never lets a dismissed future-dated stop shadow an update finished after Clear", () => {
@@ -322,6 +322,6 @@ describe("a recorded password stop is not resolved by Clear (r22 W1)", () => {
     // update after Clear has an earlier time but came later.
     const old = { ...record("onyx", { finished_at: NOW + DAY, result: stop }), dismissed: true };
     const fresh = { ...record("onyx", { finished_at: NOW }), dismissed: false };
-    expect(recentUpdates(view([fresh, old], { cleared_before: NOW + DAY }), [], NOW, offered("onyx"), { includeDismissed: true })).toEqual([fresh]);
+    expect(recentUpdates(view([fresh, old], { cleared_before: NOW + DAY }), new Set(), NOW, offered("onyx"), { includeDismissed: true })).toEqual([fresh]);
   });
 });

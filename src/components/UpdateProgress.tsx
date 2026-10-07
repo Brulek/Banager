@@ -211,7 +211,7 @@ export function useStartableUpdates(): UpdateCandidate[] | undefined {
   const { data: snapshot } = useSnapshot();
   const { data: settings } = useSettings();
   const operationFor = useUpdateOperationFor();
-  const passwordRecoveryKeys = usePasswordRecoveryKeys();
+  const passwordRecoveryKeys = usePasswordRecoveryKeys(operationFor);
   // What the page offers to install moves with the snapshot and the
   // settings only; the operations, which move at every step of every
   // update, only take rows out of it.
@@ -240,7 +240,7 @@ export function useCountedUpdates(): UpdateCandidate[] | undefined {
   const { data: snapshot } = useSnapshot();
   const { data: settings } = useSettings();
   const operationFor = useUpdateOperationFor();
-  const passwordRecoveryKeys = usePasswordRecoveryKeys();
+  const passwordRecoveryKeys = usePasswordRecoveryKeys(operationFor);
   // As `useStartableUpdates`: the snapshot and the settings decide what
   // is counted, the operations only take rows out of it.
   const counted = useMemo(

@@ -29,7 +29,7 @@ import {
   justUpdatedOps,
   type JustUpdatedEntry,
 } from "../components/JustUpdated";
-import { clearedHere, recentUpdates, useClearHistory, useHistory, verifiedHere } from "../lib/history";
+import { clearedHere, recentUpdates, toolsWithOperations, useClearHistory, useHistory, verifiedHere } from "../lib/history";
 import { NO_HISTORY } from "../lib/types";
 import { RowAction, ToolRow } from "../components/ToolRow";
 import { StatusChip, type StatusChipProps } from "../components/StatusChip";
@@ -167,7 +167,7 @@ export function useUpdatesHeadline(): string | null {
   const { data: settings } = useSettings();
   const show = useUiStore((s) => s.updatesShow);
   const operationFor = useUpdateOperationFor();
-  const passwordRecoveryKeys = usePasswordRecoveryKeys();
+  const passwordRecoveryKeys = usePasswordRecoveryKeys(operationFor);
   const startable = useStartableUpdates();
   const counted = useCountedUpdates();
   const inView = useMemo(() => {
@@ -355,7 +355,7 @@ export function UpdatesPage() {
   const setFocusedOpId = useUiStore((s) => s.setFocusedOpId);
   const setDrawerOpen = useUiStore((s) => s.setDrawerOpen);
   const operationFor = useUpdateOperationFor();
-  const passwordRecoveryKeys = usePasswordRecoveryKeys();
+  const passwordRecoveryKeys = usePasswordRecoveryKeys(operationFor);
   const { data: operations } = useOperations();
   const opName = useOperationName(operations);
   const updateTargets = useUiStore((s) => s.updateTargets);
@@ -641,7 +641,7 @@ export function UpdatesPage() {
     });
     // A failure or one to check, only while its update is still offered.
     const offered = new Set((snapshot?.updates ?? []).map((candidate) => artifactKeyId(candidate.key)));
-    const kept = recentUpdates(history, operations ?? [], Date.now(), offered).flatMap((record): JustUpdatedEntry[] => {
+    const kept = recentUpdates(history, toolsWithOperations(operations ?? []), Date.now(), offered).flatMap((record): JustUpdatedEntry[] => {
       const ending = endingOfRecord(record.result, record.already_updated ?? null, record.follow_up_warnings);
       if (ending === null) return [];
       return [

@@ -496,7 +496,7 @@ export function InstalledPage() {
   const toggleUninstall = useUiStore((s) => s.toggleUninstall);
   const keepUninstalls = useUiStore((s) => s.keepUninstalls);
   const operationFor = useUpdateOperationFor();
-  const passwordRecoveryKeys = usePasswordRecoveryKeys();
+  const passwordRecoveryKeys = usePasswordRecoveryKeys(operationFor);
   const { data: operations } = useOperations();
   // How much each tool takes on disk, measured after each check (`sizeFact`).
   const { data: sizes } = useSizes();

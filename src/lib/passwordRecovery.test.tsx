@@ -4,8 +4,9 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useHistory } from "./history";
 import { usePasswordRecoveryKeys } from "./passwordRecovery";
+import { useUpdateOperationFor } from "../components/UpdateProgress";
 import { queryKeys } from "./queryKeys";
-import { artifactKeyId } from "../store/ui";
+import { artifactKeyId, useUiStore } from "../store/ui";
 import type { ArtifactKey, HistoryRecord, HistoryView, OpSummary, Snapshot } from "./types";
 
 const BREW = "brew:/opt/homebrew";
@@ -51,7 +52,10 @@ function render(history: HistoryView, operations: OpSummary[] = [], offering: Sn
     <QueryClientProvider client={client}>{children}</QueryClientProvider>
   );
   // The history the hook read beside its answer, to wait for Clear's.
-  return { client, ...renderHook(() => ({ keys: usePasswordRecoveryKeys(), history: useHistory().data }), { wrapper }) };
+  return {
+    client,
+    ...renderHook(() => ({ keys: usePasswordRecoveryKeys(useUpdateOperationFor()), history: useHistory().data }), { wrapper }),
+  };
 }
 
 describe("usePasswordRecoveryKeys", () => {
@@ -105,5 +109,41 @@ describe("usePasswordRecoveryKeys", () => {
       expect([...result.current.keys]).toEqual([artifactKeyId(onyx)]);
       unmount();
     }
+  });
+
+  describe("an operation of this launch (r35 U3)", () => {
+    // Op 7, this launch's update of onyx, stopped where sudo wanted the
+    // password; the history kept it before the operation said Done.
+    const op7: OpSummary = {
+      id: 7,
+      kind: "Upgrade",
+      instance_id: BREW,
+      artifact_kind: "Cask",
+      name: "onyx",
+      status: "Done",
+      outcome: { Failed: { exit_code: 1, summary: "sudo: a terminal is required to read the password", cause: "needsPassword" } },
+      argv_preview: ["/opt/homebrew/bin/brew", "upgrade", "--cask", "onyx"],
+      cancel_policy: "KillThenReconcile",
+    };
+    const record = () => stop({ run: "now", op_id: 7, finished_at: Date.now() - 1_000 });
+
+    it("leaves the tool to its row while the row shows the operation", () => {
+      useUiStore.getState().rememberUpdateTarget(7, "5.1.0");
+      const { result } = render({ run: "now", cleared_before: null, records: [record()] }, [op7]);
+      expect(result.current.keys.size).toBe(0);
+    });
+
+    it("counts it from its record once the row no longer shows it -- the page reloaded, the backend still lists op 7", () => {
+      // `updateTargets` lives in the page's memory: empty after a reload.
+      expect(useUiStore.getState().updateTargets).toEqual({});
+      const { result } = render({ run: "now", cleared_before: null, records: [record()] }, [op7]);
+      expect([...result.current.keys]).toEqual([artifactKeyId(onyx)]);
+    });
+
+    it("leaves it to its row while another update of it is under way there", () => {
+      const running: OpSummary = { ...op7, id: 8, status: "Running", outcome: null };
+      const { result } = render({ run: "now", cleared_before: null, records: [record()] }, [running, op7]);
+      expect(result.current.keys.size).toBe(0);
+    });
   });
 });

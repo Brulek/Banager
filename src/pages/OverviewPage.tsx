@@ -484,7 +484,7 @@ export function OverviewPage() {
   const checkFailure = useUiStore((s) => s.startupRefreshError);
   const { checkAgain, checking } = useCheckAgain();
   const operationFor = useUpdateOperationFor();
-  const passwordRecoveryKeys = usePasswordRecoveryKeys();
+  const passwordRecoveryKeys = usePasswordRecoveryKeys(operationFor);
   const refreshedAt = snapshot?.refreshed_at ?? null;
   const now = useMinuteClock(refreshedAt);
   // What the first check has found installed, while it still checks for
