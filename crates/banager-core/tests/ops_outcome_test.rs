@@ -38,6 +38,9 @@ enum ReconcileBehavior {
 struct FakeAdapter {
     meta: AdapterMeta,
     reconcile_behavior: ReconcileBehavior,
+    /// What `execute` answers: `Succeeded` but in the cases of a tool's
+    /// own failure (`run_failed_case`).
+    executed: Outcome,
     /// Every `reconcile` and `execute` call, in the order they happened.
     calls: Mutex<Vec<&'static str>>,
 }
@@ -55,6 +58,7 @@ impl FakeAdapter {
                 verified_versions: vec![],
             },
             reconcile_behavior,
+            executed: Outcome::Succeeded,
             calls: Mutex::new(Vec::new()),
         }
     }
@@ -123,10 +127,11 @@ impl Adapter for FakeAdapter {
         _cancel: CancellationToken,
     ) -> Result<Outcome, AdapterError> {
         self.calls.lock().unwrap().push("execute");
-        // Every scenario in this file models a command that reported
-        // success; the interesting variable is what `reconcile` finds
-        // afterward.
-        Ok(Outcome::Succeeded)
+        // Nearly every scenario in this file models a command that
+        // reported success; the interesting variable is what `reconcile`
+        // finds afterward. The others are a tool's own failure
+        // (`run_failed_case`).
+        Ok(self.executed.clone())
     }
 
     async fn reconcile(
@@ -191,9 +196,40 @@ async fn run_case_with_calls(
     kind: OpKind,
     reconcile_behavior: ReconcileBehavior,
 ) -> (Outcome, Vec<&'static str>) {
+    run_case_as(
+        kind,
+        ArtifactKind::Formula,
+        Outcome::Succeeded,
+        reconcile_behavior,
+    )
+    .await
+}
+
+/// `run_case`, with `execute` answering `executed` -- a tool's own failure
+/// -- for a package of `artifact_kind`.
+async fn run_failed_case(
+    kind: OpKind,
+    artifact_kind: ArtifactKind,
+    executed: Outcome,
+    reconcile_behavior: ReconcileBehavior,
+) -> Outcome {
+    run_case_as(kind, artifact_kind, executed, reconcile_behavior)
+        .await
+        .0
+}
+
+async fn run_case_as(
+    kind: OpKind,
+    artifact_kind: ArtifactKind,
+    executed: Outcome,
+    reconcile_behavior: ReconcileBehavior,
+) -> (Outcome, Vec<&'static str>) {
     let sink = Arc::new(VecSink::new());
     let mut manager = OperationManager::new(sink);
-    let adapter = Arc::new(FakeAdapter::new(reconcile_behavior));
+    let adapter = Arc::new(FakeAdapter {
+        executed,
+        ..FakeAdapter::new(reconcile_behavior)
+    });
     manager.register_adapter(adapter.clone());
     let manager = Arc::new(manager);
 
@@ -202,7 +238,7 @@ async fn run_case_with_calls(
     let req = OpRequest {
         kind,
         instance_id: inst.id.clone(),
-        artifact_kind: ArtifactKind::Formula,
+        artifact_kind,
         name: "pkg".to_string(),
     };
     let plan = adapter.plan(&inst, &req).await.expect("plan");
@@ -477,6 +513,113 @@ async fn test_succeeded_upgrade_that_removed_the_package_is_still_gone_after_upg
         outcome,
         Outcome::NeedsAttention(Attention::GoneAfterUpgrade)
     );
+}
+
+// r35 U2: a tool that exited non-zero after the version it reads had
+// moved -- Homebrew's post-install or link step failing after the new keg
+// was poured. The update is installed; a step after it failed. Only the
+// two readings can say so, and only when both name a version and they
+// differ: anything less keeps the tool's own `Failed`.
+
+fn tool_failed(exit_code: Option<i32>) -> Outcome {
+    Outcome::Failed {
+        exit_code,
+        summary: "Warning: The post-install step did not complete successfully".to_string(),
+        cause: None,
+    }
+}
+
+#[tokio::test]
+async fn test_an_upgrade_whose_tool_failed_after_its_version_moved_was_updated_with_a_step_that_failed(
+) {
+    let outcome = run_failed_case(
+        OpKind::Upgrade,
+        ArtifactKind::Formula,
+        tool_failed(Some(1)),
+        ReconcileBehavior::Readings(vec![at("1.6.58"), at("1.6.59")]),
+    )
+    .await;
+    assert_eq!(
+        outcome,
+        Outcome::NeedsAttention(Attention::UpdatedButStepFailed {
+            version: Some("1.6.59".to_string())
+        })
+    );
+}
+
+#[tokio::test]
+async fn test_a_models_update_that_failed_after_its_digest_moved_names_no_version() {
+    // A model's "version" is its digest, which Banager never shows (the
+    // history keeps none for a model either, `history::record_for`).
+    let outcome = run_failed_case(
+        OpKind::Upgrade,
+        ArtifactKind::Model,
+        tool_failed(Some(1)),
+        ReconcileBehavior::Readings(vec![at("sha256:aaa"), at("sha256:bbb")]),
+    )
+    .await;
+    assert_eq!(
+        outcome,
+        Outcome::NeedsAttention(Attention::UpdatedButStepFailed { version: None })
+    );
+}
+
+#[tokio::test]
+async fn test_an_upgrade_whose_tool_failed_without_a_moved_version_keeps_its_failure() {
+    let gone = Some(Reconciled {
+        present: false,
+        version: None,
+    });
+    let empty = Some(Reconciled {
+        present: true,
+        version: Some(String::new()),
+    });
+    for (readings, what) in [
+        (vec![at("1.6.58"), at("1.6.58")], "the same version"),
+        (vec![None, at("1.6.59")], "no reading before"),
+        (vec![at("1.6.58"), None], "no reading after"),
+        (vec![at("1.6.58"), gone], "gone after"),
+        (vec![empty.clone(), empty], "no version to compare"),
+    ] {
+        let outcome = run_failed_case(
+            OpKind::Upgrade,
+            ArtifactKind::Formula,
+            tool_failed(Some(1)),
+            ReconcileBehavior::Readings(readings),
+        )
+        .await;
+        assert_eq!(outcome, tool_failed(Some(1)), "{what}");
+    }
+}
+
+#[tokio::test]
+async fn test_an_upgrade_whose_command_never_ran_keeps_its_failure_whatever_the_readings() {
+    // npm's and uv's read right before the command, when it did not
+    // finish, is a `Failed` with no exit code: the command was not
+    // started, so a version that moved meanwhile is not its doing
+    // (`read_before_run` in adapters/mod.rs).
+    let outcome = run_failed_case(
+        OpKind::Upgrade,
+        ArtifactKind::Package,
+        tool_failed(None),
+        ReconcileBehavior::Readings(vec![at("5.9.2"), at("5.9.3")]),
+    )
+    .await;
+    assert_eq!(outcome, tool_failed(None));
+}
+
+#[tokio::test]
+async fn test_an_install_or_uninstall_whose_tool_failed_keeps_its_failure() {
+    for kind in [OpKind::Install, OpKind::Uninstall] {
+        let outcome = run_failed_case(
+            kind,
+            ArtifactKind::Formula,
+            tool_failed(Some(1)),
+            ReconcileBehavior::Readings(vec![at("1.6.58"), at("1.6.59")]),
+        )
+        .await;
+        assert_eq!(outcome, tool_failed(Some(1)), "{kind:?}");
+    }
 }
 
 #[tokio::test]

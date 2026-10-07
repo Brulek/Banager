@@ -48,7 +48,9 @@ pub struct FinishedRun {
     /// `Outcome::Failed` and `Outcome::BanagerFailed`: did not happen.
     pub failed: u32,
     /// `Outcome::NeedsAttention` and `Outcome::Unconfirmed`: the tool said
-    /// it worked and Banager could not confirm it, or found otherwise.
+    /// it worked and Banager could not confirm it, or found otherwise -- or
+    /// an update is installed and a step after it failed
+    /// (`Attention::UpdatedButStepFailed`).
     pub attention: u32,
 }
 

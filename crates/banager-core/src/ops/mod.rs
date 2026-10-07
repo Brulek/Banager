@@ -84,11 +84,13 @@ fn execute_error_outcome(e: AdapterError) -> Outcome {
     Outcome::BanagerFailed(fault)
 }
 
-/// What an upgrade whose tool exited 0 did to the installed version, judged
+/// What an upgrade whose tool exited did to the installed version, judged
 /// from two `reconcile` readings of the same artifact: one taken before the
-/// command ran and one after (both in `run_operation`). Only the exit-0 arm
-/// asks: for a command that was stopped partway, the tools' version fields
-/// prove nothing either way (the `Ok(Outcome::Unconfirmed)` arm says why).
+/// command ran and one after (both in `run_operation`). The exit-0 arm asks,
+/// and the arm of a tool's own failure (`Attention::UpdatedButStepFailed`
+/// when it moved): for a command that was stopped partway, the tools'
+/// version fields prove nothing either way (the `Ok(Outcome::Unconfirmed)`
+/// arm says why).
 enum VersionChange {
     /// Both readings name a version, and they differ.
     Changed,
@@ -1357,13 +1359,69 @@ impl OperationManager {
                     },
                 }
             }
+            // An upgrade whose command ran and exited non-zero, and whose
+            // installed version moved from the one read before it to
+            // another: the tool failed after the new version was in place
+            // (r35 U2). Homebrew pours and links the new keg before the
+            // formula's post-install step, and pours it before linking;
+            // either step failing is `Homebrew.failed` and exit 1
+            // (`FormulaInstaller#post_install`, formula_installer.rb:1478-1486,
+            // and `#link`, :1313/:1321, in Homebrew 7.0.8), and so is a
+            // formula that depends on it failing its own upgrade after it.
+            // The new version is installed, the next check no longer offers
+            // the update, and 「未能更新」 with nothing to retry would be
+            // false: it is `UpdatedButStepFailed`, the version it moved to
+            // with it (none for a model's digest), the log saying which
+            // step. A cask's failed upgrade puts its old version back first
+            // (`purge_versioned_files`, `revert_upgrade`, cask/upgrade.rb:
+            // 506-510), so it reads unchanged and stays `Failed`; only a
+            // rollback that also failed leaves the new version read here,
+            // and Homebrew says so in the log.
+            //
+            // Only a version that moved decides it, as for an exit 0: not
+            // the same version, nothing to compare (`VersionChange`), a
+            // reading after that failed, or a package gone -- each keeps
+            // the tool's own `Failed`. Only a command that exited (an exit
+            // code): npm's and uv's read before the command that did not
+            // finish is a `Failed` with none, the command never started
+            // (`read_before_run` in adapters/mod.rs). One that did finish
+            // and failed also never started the command, and is told apart
+            // from it by nothing here: a version another program moved in
+            // the seconds between Banager's reading before and that read
+            // would be said as this one's.
+            Ok(Outcome::Failed {
+                exit_code: Some(code),
+                summary,
+                cause,
+            }) => {
+                let moved_to = match (&reconciled, plan.request.kind) {
+                    (Ok(r), OpKind::Upgrade) if r.present => {
+                        match version_change(before.as_ref(), r) {
+                            VersionChange::Changed => Some(r.version.clone()),
+                            VersionChange::Unchanged | VersionChange::Unknown => None,
+                        }
+                    }
+                    _ => None,
+                };
+                match moved_to {
+                    Some(version) => Outcome::NeedsAttention(Attention::UpdatedButStepFailed {
+                        version: version
+                            .filter(|_| plan.request.artifact_kind != ArtifactKind::Model),
+                    }),
+                    None => Outcome::Failed {
+                        exit_code: Some(code),
+                        summary,
+                        cause,
+                    },
+                }
+            }
             // Anything else `execute` answered stands as it is, whatever
-            // the reading after says -- a tool's own `Failed`, Banager's
-            // `BanagerFailed`, and a path-list uninstall's
-            // `NeedsAttention(BackAfterUninstall)`, which its own last look
-            // found (adapters/standalone/removal.rs). (`Cancelled` stands
-            // too, and never gets here: it ended before the reading after,
-            // above.)
+            // the reading after says -- a tool's own `Failed` but for the
+            // one above, Banager's `BanagerFailed`, and a path-list
+            // uninstall's `NeedsAttention(BackAfterUninstall)`, which its
+            // own last look found (adapters/standalone/removal.rs).
+            // (`Cancelled` stands too, and never gets here: it ended before
+            // the reading after, above.)
             Ok(other) => other,
             Err(e) => execute_error_outcome(e),
         };

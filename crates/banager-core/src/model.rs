@@ -1935,9 +1935,11 @@ pub enum Outcome {
     /// reported success but reconcile disagrees -- or a
     /// path-list uninstall moved everything on its list and then found part
     /// of what the list names there (`Attention::BackAfterUninstall`, from
-    /// its own last look). Carries which disagreement, never a sentence: the
-    /// front end words it in the user's language (the drawer and the
-    /// operation bar both show it).
+    /// its own last look), or an upgrade's tool failed after the version
+    /// reconcile reads had moved (`Attention::UpdatedButStepFailed`).
+    /// Carries which disagreement, never a sentence: the front end words it
+    /// in the user's language (the drawer and the operation bar both show
+    /// it).
     NeedsAttention(Attention),
     /// Another program failed the operation, and `summary` is that
     /// program's own words and nothing of Banager's -- but for a proxy's or
@@ -1961,7 +1963,11 @@ pub enum Outcome {
     /// description of the refusal -- the `NSError`'s localized
     /// description, `TrashError::Refused` (`removal::execute_removal`,
     /// which also writes it to the log as a `LogNote::TrashFailed`). A
-    /// failure of Banager's own is `BanagerFailed`, never this. A command
+    /// failure of Banager's own is `BanagerFailed`, never this. An
+    /// upgrade's command that exited non-zero once the installed version
+    /// had moved is not this either but `NeedsAttention(Attention::
+    /// UpdatedButStepFailed)`: `run_operation` reads the version after it
+    /// and finds the update installed. A command
     /// a signal or Banager's deadline ended before it could exit reported
     /// no failure, and may have taken effect: it is `Unconfirmed`, never
     /// this (`run_plan` in `adapters/mod.rs`). The read before a command
@@ -2138,8 +2144,9 @@ pub enum Fault {
 
 /// What reconcile found before an upgrade or that the command's success did not account
 /// for -- or, for `BackAfterUninstall`, what a path-list uninstall's own
-/// last look found. See [`Outcome::NeedsAttention`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+/// last look found; or, for `UpdatedButStepFailed`, what it found that the
+/// tool's own failure did not account for. See [`Outcome::NeedsAttention`].
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Attention {
     /// The locked before-reading found the tool absent. Nothing was started.
     GoneBeforeUpgrade,
@@ -2181,6 +2188,20 @@ pub enum Attention {
     /// by `run_operation` (`crates/banager-core/src/ops/mod.rs`); read by
     /// `attentionKey` in src/lib/format.ts.
     NotLinkedAfterLink,
+    /// An upgrade's tool exited non-zero, and the installed version read
+    /// after it had moved from the one read before it: the new version is
+    /// installed, and a step after it failed -- Homebrew's post-install or
+    /// link step after the new keg was poured, its check of the formulae
+    /// that depend on it, a tool's own updater failing after it switched
+    /// versions (r35 U2). Its log says which step. `version` is the one
+    /// read after, the version it was updated to; `None` for a model, whose
+    /// "version" is a digest Banager never shows. Built by `run_operation`
+    /// (`crates/banager-core/src/ops/mod.rs`) only when both readings name a
+    /// version and they differ, and only for a command that ran and exited
+    /// non-zero; read by `attentionKey` in src/lib/format.ts. The one
+    /// variant with data, so `history.json` that holds it is format 3
+    /// (`history::HISTORY_FORMAT`).
+    UpdatedButStepFailed { version: Option<String> },
 }
 
 /// How an update that `Succeeded` came to be done when its own command
@@ -3417,6 +3438,27 @@ mod tests {
             serde_json::to_string(&Outcome::NeedsAttention(Attention::NotLinkedAfterLink)).unwrap(),
             r#"{"NeedsAttention":"NotLinkedAfterLink"}"#
         );
+    }
+
+    #[test]
+    fn test_an_update_with_a_failed_step_carries_its_version_on_the_wire() {
+        // The one `Attention` with data (r35 U2): the version the update
+        // moved to, `null` for a model's digest. `src/lib/types.ts` mirrors
+        // it as `{ UpdatedButStepFailed: { version: string | null } }`.
+        for (version, json) in [
+            (
+                Some("3.13.8".to_string()),
+                r#"{"NeedsAttention":{"UpdatedButStepFailed":{"version":"3.13.8"}}}"#,
+            ),
+            (
+                None,
+                r#"{"NeedsAttention":{"UpdatedButStepFailed":{"version":null}}}"#,
+            ),
+        ] {
+            let outcome = Outcome::NeedsAttention(Attention::UpdatedButStepFailed { version });
+            assert_eq!(serde_json::to_string(&outcome).unwrap(), json);
+            assert_eq!(serde_json::from_str::<Outcome>(json).unwrap(), outcome);
+        }
     }
 
     #[test]

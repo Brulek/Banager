@@ -577,8 +577,24 @@ as needing attention, with one exception for that unchanged upgrade: if
 its version is already at or beyond the confirmed target, it succeeds
 and says it was already updated (`already_at_target`), for every source.
 Without a target it can compare against, or below that target, it still
-needs attention. The one case with less
-to go on: when the reading before an upgrade was refused — on Homebrew,
+needs attention. An upgrade whose command exited non-zero after its version
+moved -- the version read before it and the one read after both name a
+version, and they differ -- is reported as updated with a step that failed,
+needing attention, not as one that could not be updated: "Updated to
+3.13.8, but a step after it failed — see the log"
+(「已更新到3.13.8，但之后有一步失败了，请查看日志」;
+「已更新到3.13.8，但之後有一步失敗了，請查看記錄」), with no version named for
+a model (`Attention::UpdatedButStepFailed` in `run_operation`). Homebrew
+fails that way when a formula's post-install or link step fails after its
+new version was poured (Homebrew's section). Every source's update is
+judged this way: each one's non-zero exit reaches `run_operation` as the
+tool's own failure (`run_plan`). One whose version did not move, whose
+readings have nothing to compare, or whose command never started (npm's
+or uv's read before it did not finish) keeps the tool's failure; npm's or
+uv's read that finished and failed started no command either, and a
+version another program moved in the seconds between Banager's reading
+and that read would be said as updated. The one case with less to go
+on: when the reading before an upgrade was refused — on Homebrew,
 while a `brew update` a refresh left running is still going (Homebrew's
 section) — there is nothing to compare, and an upgrade that exits 0 is
 reported as a success whenever the package is still present afterwards,
@@ -914,8 +930,9 @@ It is titled Banager and says how the run went in the window's language:
 ended, "N updated, N couldn't be updated" (「N个已更新，N个未能更新」;
 「N個已更新，N個未能更新」), with "N need attention" (「N个需要查看」;
 「N個需要查看」) for one the tool said worked and Banager could not
-confirm. An update that stopped where `sudo` wanted the Mac's password,
-which Banager cannot ask for, is told of as the operation bar and the
+confirm, or one updated whose step after it failed. An update that
+stopped where `sudo` wanted the Mac's password, which Banager cannot ask
+for, is told of as the operation bar and the
 Updates page tell of it, not as one that couldn't be updated: "N updated,
 N need your password" (「N个已更新，N个需要输入密码」;
 「N個已更新，N個需要輸入密碼」). Rust reads that cause off the last
@@ -1817,7 +1834,8 @@ no reading before: `inventory` refuses at once with `IndexUpdating`, no
 `brew info` runs, and there is nothing to compare the reading after with
 — so an upgrade that then exits 0 is reported as a success whenever the
 package is still installed afterwards, whether or not its version moved
-(the `Unknown` arm of `run_operation`). This is one way an exit-0
+(the `Unknown` arm of `run_operation`), and one that exits non-zero as
+the failure it reports. This is one way an exit-0
 upgrade whose version did not move is not reported as needing attention;
 Claude Code's section names another. A third: one whose version, read
 before its command and after, is already at least the version the
@@ -1847,6 +1865,22 @@ person's `.npmrc`, npm installs nothing -- needs attention, and the
 history keeps it so, not as updated (r11 F1). Homebrew's own hyphenated
 versions (ImageMagick's `7.1.1-47`) still count when equal, which is how
 `brew outdated` and `brew info` both spell them.
+
+A formula's upgrade pours its new version and links it, then runs its
+post-install step; when the link or the post-install step fails, Homebrew
+says so ("The `brew link` step did not complete successfully", "The
+post-install step did not complete successfully", and how to run it again
+on its own) and exits 1 with the new version installed
+(`FormulaInstaller#link` and `#post_install`, formula_installer.rb:1313,
+:1321 and :1478-1486 in Homebrew 7.0.8). The reading after it then shows
+the new version, so the update is reported as updated with a step that
+failed, needing attention, and the next check no longer offers it; the
+log has Homebrew's words for the step. The cleanup and the link back that
+follow an update run only after it exits 0, so neither runs after one of
+these. A cask's failed upgrade puts its old version back before it exits
+(cask/upgrade.rb:506-510), and reads as before: it is reported as failed
+-- unless that rollback failed too, which Homebrew says in the log, and
+the new version's record is still there to read.
 
 **Files this adapter reads.** Besides checking that the three candidate
 paths exist, the uninstall preview looks at Homebrew's own update lock,
@@ -4920,7 +4954,9 @@ confirmed plan aimed for when its turn came -- an earlier update of the
 same Update all had upgraded it as a dependency, say -- also keeps that it
 was so, and whether an earlier update of the same Homebrew and kind that
 may have changed something had ended in between. An update that
-succeeded though a step after it did not end as planned also keeps a
+succeeded though a step after it did not end as planned -- or one whose
+tool failed once its new version was installed, kept as needing attention
+with the version it moved to (`Attention::UpdatedButStepFailed`) -- also keeps a
 note of each such step (`follow_up_warnings`, at most two, read off the
 log's own notes, never its lines): a `brew cleanup` that did not finish
 (`OldVersionsNotCleanedUp`: the formula's name and the cleanup's exit
@@ -4975,9 +5011,11 @@ its own, after each operation finishes and after Clear. A missing,
 unreadable or malformed file is an empty history and is replaced at the
 next record. Individual records with dates outside JavaScript Date's range are
 dropped without discarding valid records; invalid Clear/retention timestamps
-are ignored. New writes use format 2, including the current outcome and failure
-variants and per-record dismissal. All existing format-1 shapes remain readable.
-Older format-1 builds leave format-2 files untouched; a file a newer Banager wrote is left exactly as it is. To
+are ignored. New writes use format 3, including the current outcome and failure
+variants and per-record dismissal. All existing format-1 and format-2 shapes
+remain readable. Older format-1 and format-2 builds leave format-3 files
+untouched (format 3 holds `UpdatedButStepFailed`, which they cannot read); a
+file a newer Banager wrote is left exactly as it is. To
 remove the history, quit Banager and delete `history.json`; it starts
 empty at the next launch. Clear does not delete it.
 

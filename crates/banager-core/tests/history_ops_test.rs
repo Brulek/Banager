@@ -10,21 +10,24 @@ use banager_core::events::{EventSink, LogNote, OpId, OperationEvent, VecSink};
 use banager_core::follow_up::FollowUpWarning;
 use banager_core::history::{HistoryKind, HistoryResult, HistoryStore, Started};
 use banager_core::model::{
-    ArtifactKey, ArtifactKind, CancelPolicy, InstalledArtifact, ManagerInstance, OpKind, OpRequest,
-    OpStatus, Outcome, Plan, PlanAction, Reconciled, ResourceLock, SearchHit,
+    ArtifactKey, ArtifactKind, Attention, CancelPolicy, InstalledArtifact, ManagerInstance, OpKind,
+    OpRequest, OpStatus, Outcome, Plan, PlanAction, Reconciled, ResourceLock, SearchHit,
 };
 use banager_core::ops::{OnFinish, OperationManager};
 use banager_core::runner::HostEnv;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
-/// Reads `1.0` before an update and `2.0` after it; its `execute` answers
-/// `outcome` without running anything.
+/// Reads `1.0` before an update and `2.0` after it -- or `1.0` both times
+/// with `hold_version` -- and its `execute` answers `outcome` without
+/// running anything.
 struct FakeAdapter {
     meta: AdapterMeta,
     reconciles: Mutex<usize>,
+    hold_version: AtomicBool,
     outcome: Outcome,
     notes: Mutex<Vec<LogNote>>,
 }
@@ -98,7 +101,14 @@ impl Adapter for FakeAdapter {
         *n += 1;
         Ok(Reconciled {
             present: true,
-            version: Some(if *n == 1 { "1.0" } else { "2.0" }.to_string()),
+            version: Some(
+                if *n == 1 || self.hold_version.load(Ordering::SeqCst) {
+                    "1.0"
+                } else {
+                    "2.0"
+                }
+                .to_string(),
+            ),
         })
     }
 }
@@ -142,6 +152,7 @@ fn fixture_with(tag: &str, outcome: Outcome) -> Fixture {
             verified_versions: vec![],
         },
         reconciles: Mutex::new(0),
+        hold_version: AtomicBool::new(false),
         outcome,
         notes: Mutex::new(Vec::new()),
     });
@@ -417,4 +428,102 @@ async fn test_follow_up_warnings_cross_operation_wire_and_history_without_changi
     assert_eq!(record.result, HistoryResult::Succeeded);
     assert!(record.verified);
     assert_eq!(record.follow_up_warnings, expected);
+}
+
+/// r35 U2: the tool exited non-zero after the version it reads had moved
+/// -- Homebrew's post-install step failed after the new keg was poured
+/// and linked, say. The update is installed, so it is kept as one that
+/// needs a look, with the version it moved to, the reading Banager saw
+/// change, and what the step left unlinked -- not as 「未能更新」 with no
+/// version, which a restart then stopped listing once nothing offered the
+/// update any more.
+#[tokio::test]
+async fn test_an_update_whose_tool_failed_after_its_version_moved_is_kept_as_updated_with_a_failed_step(
+) {
+    let f = fixture_with(
+        "step-failed",
+        Outcome::Failed {
+            exit_code: Some(1),
+            summary: "Warning: The post-install step did not complete successfully".to_string(),
+            cause: None,
+        },
+    );
+    *f.adapter.notes.lock().unwrap() = vec![LogNote::NoLongerLinked {
+        name: "cmake".into(),
+        commands: vec!["cmake".into()],
+    }];
+    let plan = f
+        .adapter
+        .plan(&f.instance, &upgrade(&f.instance))
+        .await
+        .unwrap();
+    let id = f.manager.submit_with(plan, Some(on_finish(&f.store)));
+    let stepped = Outcome::NeedsAttention(Attention::UpdatedButStepFailed {
+        version: Some("2.0".to_string()),
+    });
+    assert_eq!(f.manager.wait(id).await, Some(stepped.clone()));
+    let summary = f
+        .manager
+        .summaries()
+        .into_iter()
+        .find(|s| s.id == id)
+        .unwrap();
+    // On the wire as the window reads it (`Attention` in src/lib/types.ts).
+    assert_eq!(
+        serde_json::to_value(&summary).unwrap()["outcome"],
+        serde_json::json!({"NeedsAttention": {"UpdatedButStepFailed": {"version": "2.0"}}})
+    );
+    assert!(f.store.flush(Duration::from_secs(5)));
+    let reopened = HistoryStore::open(f.dir.join("history.json"));
+    let record = &reopened.view().records[0];
+    assert_eq!(
+        record.result,
+        HistoryResult::NeedsAttention(match stepped {
+            Outcome::NeedsAttention(attention) => attention,
+            _ => unreachable!(),
+        })
+    );
+    assert_eq!(record.from_version.as_deref(), Some("1.0"));
+    assert_eq!(record.to_version.as_deref(), Some("2.0"));
+    assert!(record.verified, "Banager read the version change itself");
+    assert_eq!(
+        record.follow_up_warnings,
+        vec![FollowUpWarning::NoLongerLinked {
+            name: "cmake".into(),
+            commands: vec!["cmake".into()],
+        }]
+    );
+}
+
+/// The same failure with the version as it was: the update did not happen,
+/// and stays 「未能更新」 with the tool's line and no version after it.
+#[tokio::test]
+async fn test_an_update_whose_tool_failed_with_its_version_unchanged_is_kept_as_failed() {
+    let f = fixture_with(
+        "failed-unchanged",
+        Outcome::Failed {
+            exit_code: Some(1),
+            summary: "Error: cmake: Failed to download resource".to_string(),
+            cause: None,
+        },
+    );
+    let plan = f
+        .adapter
+        .plan(&f.instance, &upgrade(&f.instance))
+        .await
+        .unwrap();
+    // Both readings 1.0: the version did not move.
+    f.adapter.hold_version.store(true, Ordering::SeqCst);
+    let id = f.manager.submit_with(plan, Some(on_finish(&f.store)));
+    assert!(matches!(
+        f.manager.wait(id).await,
+        Some(Outcome::Failed {
+            exit_code: Some(1),
+            ..
+        })
+    ));
+    let record = &f.store.view().records[0];
+    assert!(matches!(record.result, HistoryResult::Failed { .. }));
+    assert_eq!(record.to_version, None);
+    assert!(!record.verified);
 }

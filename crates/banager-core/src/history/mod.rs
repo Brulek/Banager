@@ -44,8 +44,12 @@ use std::sync::{mpsc, Arc, Condvar, Mutex, Weak};
 use std::time::Duration;
 
 /// The file's format. A file that says a higher one was written by a newer
-/// Banager: this one reads none of it and never writes over it.
-pub const HISTORY_FORMAT: u32 = 2;
+/// Banager: this one reads none of it and never writes over it. 2 since
+/// `GoneBeforeUpgrade` and per-record dismissal (r17 F5); 3 since
+/// `Attention::UpdatedButStepFailed` (r35 U2), which a format-2 build
+/// would drop as a record it cannot read and then write the rest over.
+/// Every earlier format still reads.
+pub const HISTORY_FORMAT: u32 = 3;
 
 /// JavaScript Date's inclusive millisecond range, also exactly representable.
 pub fn valid_timestamp_ms(value: i64) -> bool {
@@ -125,14 +129,17 @@ pub struct HistoryRecord {
     /// that reading has none, the one the list showed. `None` for a model,
     /// whose "version" is a digest, never shown.
     pub from_version: Option<String>,
-    /// The version read back after an update whose tool exited 0. `None`
-    /// for an uninstall, for an update that failed or was stopped, and for
-    /// a model.
+    /// The version read back after an update whose tool exited 0, or after
+    /// one whose tool failed once the version had moved
+    /// (`Attention::UpdatedButStepFailed`). `None` for an uninstall, for an
+    /// update that failed otherwise or was stopped, and for a model.
     pub to_version: Option<String>,
     pub result: HistoryResult,
-    /// Whether Banager saw the result for itself: for an update, that the
-    /// installed version it read before the command and the one it read
-    /// after differ (a model's digests included); for an uninstall, that
+    /// Whether Banager saw the result for itself: for an update that
+    /// succeeded, or whose tool failed once its version had moved
+    /// (`Attention::UpdatedButStepFailed`), that the installed version it
+    /// read before the command and the one it read after differ (a
+    /// model's digests included); for an uninstall, that
     /// the reading after it found the package gone. `false` for an update
     /// taken as done on presence alone, with nothing to compare.
     pub verified: bool,
@@ -144,10 +151,11 @@ pub struct HistoryRecord {
     /// existed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub already_updated: Option<AlreadyUpdated>,
-    /// For an update that succeeded, what of its follow-up did not end as
-    /// planned (`FollowUpWarning`: a `brew cleanup` that did not finish,
-    /// commands left unlinked), so that 「最近的更新记录」 can still say so
-    /// after a restart. Absent for every other record, and in one written
+    /// For an update that succeeded, or whose tool failed once its version
+    /// had moved (`Attention::UpdatedButStepFailed`), what of its follow-up
+    /// did not end as planned (`FollowUpWarning`: a `brew cleanup` that did
+    /// not finish, commands left unlinked), so that 「最近的更新记录」 can
+    /// still say so after a restart. Absent for every other record, and in one written
     /// before it existed; a note this build does not know is skipped, not
     /// the record (`follow_up::known_warnings`).
     #[serde(
@@ -239,7 +247,7 @@ pub fn record_for(
     let result = match ended.outcome {
         Outcome::Succeeded => HistoryResult::Succeeded,
         Outcome::Cancelled => HistoryResult::Cancelled,
-        Outcome::NeedsAttention(a) => HistoryResult::NeedsAttention(*a),
+        Outcome::NeedsAttention(a) => HistoryResult::NeedsAttention(a.clone()),
         // Read as the tool wrote it, before a login was masked out of the
         // summary (`Outcome::Failed`'s `cause`), never off the summary.
         // Where it names none, the summary's first error line, masked --
@@ -270,16 +278,22 @@ pub fn record_for(
     };
     let known = |v: Option<&str>| v.filter(|v| !v.is_empty()).map(str::to_string);
     let (before, after) = (known(ended.before), known(ended.after));
+    // Done: it succeeded, or it is an update whose tool failed once its
+    // version had moved (`UpdatedButStepFailed`), which is installed and
+    // kept as one that succeeded is -- the version it moved to, Banager's
+    // own reading of the change, what its follow-up left -- but needing a
+    // look.
+    let done = result == HistoryResult::Succeeded
+        || matches!(
+            result,
+            HistoryResult::NeedsAttention(Attention::UpdatedButStepFailed { .. })
+        );
     let verified = match kind {
-        HistoryKind::Update => {
-            result == HistoryResult::Succeeded
-                && before.is_some()
-                && after.is_some()
-                && before != after
-        }
+        HistoryKind::Update => done && before.is_some() && after.is_some() && before != after,
         HistoryKind::Uninstall => result == HistoryResult::Succeeded,
     };
-    let exited_zero = matches!(
+    // Exited 0, or installed though it did not.
+    let version_read_back = matches!(
         result,
         HistoryResult::Succeeded | HistoryResult::NeedsAttention(_)
     );
@@ -289,7 +303,7 @@ pub fn record_for(
         match kind {
             HistoryKind::Update => (
                 before.or_else(|| known(started.listed_version.as_deref())),
-                after.filter(|_| exited_zero),
+                after.filter(|_| version_read_back),
             ),
             HistoryKind::Uninstall => (known(started.listed_version.as_deref()), None),
         }
@@ -308,7 +322,7 @@ pub fn record_for(
         kind,
         from_version,
         to_version,
-        follow_up_warnings: if result == HistoryResult::Succeeded {
+        follow_up_warnings: if done {
             ended.follow_up_warnings.clone()
         } else {
             Vec::new()
@@ -1180,8 +1194,8 @@ mod tests {
         let dismissed: Vec<bool> = store.view().records.iter().map(|r| r.dismissed).collect();
         assert_eq!(dismissed, [false, false, false, false, true, true, true]);
 
-        // The next write is format 2 with each dismissal spelled out, and
-        // reads back the same whatever the kept Clear time says.
+        // The next write is the current format with each dismissal spelled
+        // out, and reads back the same whatever the kept Clear time says.
         let k = key("wget");
         let mut e = ended(&k, &Outcome::Succeeded);
         e.op_id = 9;
@@ -1189,7 +1203,7 @@ mod tests {
         assert!(store.flush(Duration::from_secs(5)));
         let bytes = std::fs::read(dir.file()).unwrap();
         let file: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(file["format"], 2);
+        assert_eq!(file["format"], HISTORY_FORMAT);
         assert_eq!(file["cleared_before"], cleared);
         assert_eq!(file["trusted_at"], written["trusted_at"]);
         assert!(file["records"]
@@ -1313,6 +1327,96 @@ mod tests {
         legacy["format"] = serde_json::json!(1);
         std::fs::write(dir.file(), serde_json::to_vec(&legacy).unwrap()).unwrap();
         assert_eq!(format_one_reader::clear_and_rewrite(&dir.file(), NOW), 1);
+    }
+
+    /// r35 U2's `UpdatedButStepFailed` is a result no build before it can
+    /// read: a format-2 build would drop that record and write the rest
+    /// over the file, as a format-1 build did with `GoneBeforeUpgrade`
+    /// (r17 F5). So the file is format 3, which every earlier build treats
+    /// as a newer Banager's (`load`), and every format-2 file still reads
+    /// whole.
+    #[test]
+    fn test_an_update_with_a_failed_step_is_written_in_a_format_earlier_builds_leave_alone() {
+        let dir = TempDir::new("format-three");
+        // A format-2 file as the build before this one wrote it: every
+        // record with its `dismissed`.
+        let mut two: serde_json::Value = serde_json::from_str(FORMAT_ONE_FILE).unwrap();
+        two["format"] = serde_json::json!(2);
+        for record in two["records"].as_array_mut().unwrap() {
+            record["dismissed"] = serde_json::json!(false);
+        }
+        std::fs::write(dir.file(), serde_json::to_vec(&two).unwrap()).unwrap();
+        let store = HistoryStore::open_with_clock(dir.file(), now);
+        assert_eq!(store.view().records.len(), 7, "a format-2 file reads whole");
+        let k = key("fontconfig");
+        let stepped = Outcome::NeedsAttention(Attention::UpdatedButStepFailed {
+            version: Some("4.0.0".to_string()),
+        });
+        store.record(&ended(&k, &stepped), &started("fontconfig"));
+        assert!(store.flush(Duration::from_secs(5)));
+        let bytes = std::fs::read(dir.file()).unwrap();
+        let file: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(file["format"], 3);
+        let written = file["records"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["key"]["name"] == "fontconfig")
+            .unwrap()
+            .clone();
+        assert_eq!(
+            written["result"],
+            serde_json::json!({"NeedsAttention": {"UpdatedButStepFailed": {"version": "4.0.0"}}})
+        );
+        assert_eq!(written["to_version"], "4.0.0");
+        // An earlier build reads none of it and never writes over it.
+        format_one_reader::clear_and_rewrite(&dir.file(), NOW);
+        assert_eq!(std::fs::read(dir.file()).unwrap(), bytes);
+        let reopened = HistoryStore::open_with_clock(dir.file(), now);
+        assert_eq!(reopened.view().records.len(), 8);
+        assert_eq!(
+            reopened.view().records[0].result,
+            HistoryResult::NeedsAttention(Attention::UpdatedButStepFailed {
+                version: Some("4.0.0".to_string()),
+            })
+        );
+        // The record is one a build without the variant drops: the frozen
+        // reader keeps none of it in a file marked as its own.
+        let mut legacy = file;
+        legacy["format"] = serde_json::json!(1);
+        legacy["records"] = serde_json::json!([written]);
+        std::fs::write(dir.file(), serde_json::to_vec(&legacy).unwrap()).unwrap();
+        assert_eq!(format_one_reader::clear_and_rewrite(&dir.file(), NOW), 0);
+    }
+
+    /// What `record_for` keeps of an update whose tool failed after its
+    /// version moved (r35 U2): the version it moved to, Banager's own
+    /// reading of the change, and what the step left unlinked -- as for one
+    /// that succeeded, but needing a look.
+    #[test]
+    fn test_an_update_with_a_failed_step_keeps_its_new_version_and_its_warnings() {
+        use crate::follow_up::FollowUpWarning;
+        let k = key("node@22");
+        let stepped = Outcome::NeedsAttention(Attention::UpdatedButStepFailed {
+            version: Some("4.0.0".to_string()),
+        });
+        let mut e = ended(&k, &stepped);
+        e.follow_up_warnings = vec![FollowUpWarning::NoLongerLinked {
+            name: "node@22".into(),
+            commands: vec!["node".into()],
+        }];
+        let r = record_for(&e, &started("node@22"), "run1", NOW).unwrap();
+        assert_eq!(
+            r.result,
+            HistoryResult::NeedsAttention(Attention::UpdatedButStepFailed {
+                version: Some("4.0.0".to_string()),
+            })
+        );
+        assert_eq!(r.from_version.as_deref(), Some("3.31.6"));
+        assert_eq!(r.to_version.as_deref(), Some("4.0.0"));
+        assert!(r.verified);
+        assert_eq!(r.follow_up_warnings, e.follow_up_warnings);
+        assert_eq!(r.already_updated, None);
     }
 
     #[test]
@@ -2339,8 +2443,12 @@ mod tests {
     #[test]
     fn test_a_newer_banagers_file_is_never_written_over() {
         let dir = TempDir::new("newer");
-        let bytes = br#"{"format":3,"records":[{"what":"a newer shape"}]}"#;
-        std::fs::write(dir.file(), bytes).unwrap();
+        let bytes = format!(
+            r#"{{"format":{},"records":[{{"what":"a newer shape"}}]}}"#,
+            HISTORY_FORMAT + 1
+        )
+        .into_bytes();
+        std::fs::write(dir.file(), &bytes).unwrap();
         let store = HistoryStore::open_with_clock(dir.file(), now);
         assert_eq!(store.view().records, vec![]);
         let k = key("cmake");

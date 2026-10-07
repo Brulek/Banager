@@ -72,14 +72,26 @@ fn fixture(path: &str) -> String {
 }
 
 fn exited_0(stdout: &str, stderr: &str) -> CommandOutput {
+    exited(0, stdout, stderr)
+}
+
+fn exited(code: i32, stdout: &str, stderr: &str) -> CommandOutput {
     CommandOutput {
         stderr_cause: Default::default(),
-        exit_code: Some(0),
+        exit_code: Some(code),
         stdout: stdout.to_string(),
         stderr: stderr.to_string(),
         timed_out: false,
         cancelled: false,
     }
+}
+
+/// An update whose tool exited non-zero after the installed version had
+/// moved to `version`: installed, and a step after it failed (r35 U2).
+fn updated_but_a_step_failed(version: &str) -> Outcome {
+    Outcome::NeedsAttention(Attention::UpdatedButStepFailed {
+        version: Some(version.to_string()),
+    })
 }
 
 /// How a command was stopped partway, as the runner reports it.
@@ -441,6 +453,123 @@ async fn test_a_cask_upgrade_cancelled_before_it_wrote_the_new_version_is_unconf
     assert_eq!(outcome, Outcome::Unconfirmed);
 }
 
+#[tokio::test]
+async fn test_a_formula_whose_post_install_step_failed_is_updated_and_says_a_step_failed() {
+    // r35 U2. Homebrew pours and links the new keg, then runs the
+    // formula's post-install step; when that step fails it says so with
+    // `opoo`, how to run it again on stdout, sets `Homebrew.failed` and
+    // exits 1 (`FormulaInstaller#post_install`, formula_installer.rb:1478-1486
+    // in Homebrew 7.0.8). The new version is installed and linked, and the
+    // next check no longer offers it: "Couldn't update" would be false,
+    // and there would be nothing to retry. fontconfig, whose post-install
+    // rebuilds the font cache, is 2.18.3 in the recording.
+    let after = brew_info(|info| {
+        let fontconfig = formula(info, "fontconfig");
+        let mut new_keg = fontconfig["installed"][0].clone();
+        new_keg["version"] = "2.18.4".into();
+        fontconfig["installed"]
+            .as_array_mut()
+            .unwrap()
+            .push(new_keg);
+        fontconfig["linked_keg"] = "2.18.4".into();
+    });
+    let outcome = brew_upgrade_formula(
+        "fontconfig",
+        exited(
+            1,
+            "==> Upgrading fontconfig\n  2.18.3 -> 2.18.4\n\nYou can try again using:\n  brew postinstall fontconfig\n",
+            "Warning: The post-install step did not complete successfully\n",
+        ),
+        vec![brew_info(|_| {}), after],
+    )
+    .await;
+    assert_eq!(outcome, updated_but_a_step_failed("2.18.4"));
+}
+
+#[tokio::test]
+async fn test_a_formula_whose_link_step_failed_is_updated_and_says_a_step_failed() {
+    // r35 U2, the other step after the pour: a file in the way of a link
+    // is `ofail "The `brew link` step did not complete successfully"`
+    // (formula_installer.rb:1313 in Homebrew 7.0.8), exit 1. The new keg
+    // is installed, unlinked: `linked_keg` null, so the version read is the
+    // last keg's (`parse_info_installed`), the new one.
+    let after = brew_info(|info| {
+        let aria2 = formula(info, "aria2");
+        let mut new_keg = aria2["installed"][0].clone();
+        new_keg["version"] = "1.37.0_3".into();
+        aria2["installed"].as_array_mut().unwrap().push(new_keg);
+        aria2["linked_keg"] = serde_json::Value::Null;
+    });
+    let outcome = brew_upgrade_formula(
+        "aria2",
+        exited(
+            1,
+            "The formula built, but is not symlinked into /opt/homebrew\n",
+            "Error: The `brew link` step did not complete successfully\n",
+        ),
+        vec![brew_info(|_| {}), after],
+    )
+    .await;
+    assert_eq!(outcome, updated_but_a_step_failed("1.37.0_3"));
+}
+
+#[tokio::test]
+async fn test_a_formula_upgrade_that_failed_before_its_version_moved_still_failed() {
+    // A failure before the pour leaves the old keg linked (Homebrew relinks
+    // it unless the new version is installed, install.rb:652 in Homebrew
+    // 7.0.8): the version reads as before, and the update did not happen.
+    let recorded = brew_info(|_| {});
+    let outcome = brew_upgrade_formula(
+        "aria2",
+        exited(
+            1,
+            "",
+            "Error: aria2: Failed to download resource \"aria2\"\n",
+        ),
+        vec![recorded.clone(), recorded],
+    )
+    .await;
+    assert!(
+        matches!(
+            outcome,
+            Outcome::Failed {
+                exit_code: Some(1),
+                ..
+            }
+        ),
+        "{outcome:?}"
+    );
+}
+
+#[tokio::test]
+async fn test_a_cask_upgrade_homebrew_rolled_back_still_failed() {
+    // A cask's upgrade that fails puts the old app back and removes the
+    // new version's metadata (`purge_versioned_files`, `revert_upgrade`;
+    // cask/upgrade.rb:506-510 in Homebrew 7.0.8) before it exits 1: the
+    // version reads as before. `moved.rb:140` words the refusal.
+    let recorded = brew_info(|_| {});
+    let outcome = brew_upgrade_cask(
+        "onyx",
+        exited(
+            1,
+            "",
+            "Error: It seems there is already an App at '/Applications/OnyX.app'.\n",
+        ),
+        vec![recorded.clone(), recorded],
+    )
+    .await;
+    assert!(
+        matches!(
+            outcome,
+            Outcome::Failed {
+                exit_code: Some(1),
+                ..
+            }
+        ),
+        "{outcome:?}"
+    );
+}
+
 // --- pipx -----------------------------------------------------------------
 
 const PIPX: &str = "/opt/homebrew/bin/pipx";
@@ -506,6 +635,47 @@ async fn test_a_pipx_upgrade_that_moved_its_version_succeeded() {
     )
     .await;
     assert_eq!(outcome, Outcome::Succeeded);
+}
+
+#[tokio::test]
+async fn test_a_pipx_upgrade_that_exited_non_zero_after_its_version_moved_says_a_step_failed() {
+    // r35 U2's rule, whatever the source: the tool's own failure after
+    // the version it reports moved. pipx was not made to fail to record
+    // this; the outcome depends only on the exit code and the two
+    // readings, not on the words.
+    let before = fixture("pipx/1.17.3/list.json");
+    let after = before.replace(r#""package_version": "5.0""#, r#""package_version": "6.1""#);
+    assert_ne!(after, before, "the fixture's version field was not found");
+    let outcome = pipx_upgrade(
+        exited(
+            1,
+            "upgraded package cowsay\n",
+            "error: a later step failed\n",
+        ),
+        vec![before, after],
+    )
+    .await;
+    assert_eq!(outcome, updated_but_a_step_failed("6.1"));
+}
+
+#[tokio::test]
+async fn test_a_pipx_upgrade_that_failed_with_its_version_unchanged_still_failed() {
+    let recorded = fixture("pipx/1.17.3/list.json");
+    let outcome = pipx_upgrade(
+        exited(1, "", "error: could not upgrade cowsay\n"),
+        vec![recorded.clone(), recorded],
+    )
+    .await;
+    assert!(
+        matches!(
+            outcome,
+            Outcome::Failed {
+                exit_code: Some(1),
+                ..
+            }
+        ),
+        "{outcome:?}"
+    );
 }
 
 #[tokio::test]
@@ -651,6 +821,24 @@ async fn test_a_uv_upgrade_that_moved_its_version_succeeded() {
     )
     .await;
     assert_eq!(outcome, Outcome::Succeeded);
+}
+
+#[tokio::test]
+async fn test_a_uv_upgrade_that_exited_non_zero_after_its_version_moved_says_a_step_failed() {
+    // r35 U2's rule on uv: illustrative words, as for pipx.
+    let before = fixture("uv/0.12.17/tool-list-show-paths.txt");
+    let after = before.replace("ruff v0.15.0", "ruff v0.15.1");
+    assert_ne!(after, before, "the fixture's version was not found");
+    let outcome = uv_upgrade(
+        exited(
+            2,
+            "",
+            "Updated ruff v0.15.0 -> v0.15.1\nerror: a later step failed\n",
+        ),
+        vec![before, after],
+    )
+    .await;
+    assert_eq!(outcome, updated_but_a_step_failed("0.15.1"));
 }
 
 // --- Claude Code (standalone, phase 4 step B) ------------------------------
@@ -971,6 +1159,23 @@ async fn test_a_claude_update_that_moved_the_version_succeeded() {
     assert_eq!(outcome, Outcome::Succeeded);
 }
 
+#[tokio::test]
+async fn test_a_claude_update_that_exited_non_zero_after_its_version_moved_says_a_step_failed() {
+    // r35 U2's rule on a tool with its own updater: the launcher answers
+    // the new version, and `claude update` exited 1 after it. The words
+    // are illustrative (`claude update` was never made to fail).
+    let outcome = claude_upgrade(
+        exited(
+            1,
+            "Successfully updated from 2.1.281 to version 2.1.290\n",
+            "Error: a later step failed\n",
+        ),
+        vec!["2.1.281", "2.1.290"],
+    )
+    .await;
+    assert_eq!(outcome, updated_but_a_step_failed("2.1.290"));
+}
+
 // --- rustup (standalone, phase 4 step E) -----------------------------------
 
 /// A native rustup layout in a temp home: `~/.cargo/bin/rustup`, an
@@ -1080,6 +1285,27 @@ async fn test_a_rustup_self_update_that_moved_the_version_succeeded() {
 }
 
 #[tokio::test]
+async fn test_a_rustup_self_update_that_exited_non_zero_after_its_version_moved_says_a_step_failed()
+{
+    // r35 U2's rule on rustup; illustrative words, as above.
+    let runner = Arc::new(ScriptedRunner::default());
+    let (home, adapter, inst) =
+        rustup_home_and_instance(&runner, &["1.29.1", "1.29.1", "1.30.0"]).await;
+    let launcher = inst.exe_path.to_string_lossy().to_string();
+    runner.script(
+        &[launcher.as_str(), "self", "update"],
+        vec![exited(
+            1,
+            "  rustup updated - 1.30.0 (from 1.29.1)\n",
+            "error: a later step failed\n",
+        )],
+    );
+    let outcome = upgrade(&runner, adapter, inst, ArtifactKind::Binary, "rustup").await;
+    let _ = std::fs::remove_dir_all(&home);
+    assert_eq!(outcome, updated_but_a_step_failed("1.30.0"));
+}
+
+#[tokio::test]
 async fn test_a_rustup_self_update_stopped_by_the_timeout_is_unconfirmed_whatever_the_readings_say()
 {
     // `rustup self update` is NoCancel, so the timeout is its only stop,
@@ -1144,6 +1370,21 @@ impl CommandRunner for BinstallRunner {
 /// `.crates2.json`), through cargo-binstall in a temp Cargo root, the
 /// binstall run rewriting `.crates.toml` to `after` when there is one.
 async fn cargo_binstall_upgrade(after: Option<&str>) -> Outcome {
+    cargo_binstall_upgrade_ending(
+        after,
+        exited_0(
+            "",
+            "INFO resolve: Resolving package: 'hexyl'\nINFO Done in 2.1s\n",
+        ),
+    )
+    .await
+}
+
+/// `cargo_binstall_upgrade`, the binstall run ending as `binstall_output`.
+async fn cargo_binstall_upgrade_ending(
+    after: Option<&str>,
+    binstall_output: CommandOutput,
+) -> Outcome {
     use banager_core::adapters::cargo::CargoAdapter;
     use std::os::unix::fs::PermissionsExt;
     static NEXT_ROOT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
@@ -1188,10 +1429,7 @@ async fn cargo_binstall_upgrade(after: Option<&str>) -> Outcome {
             "sparse+https://index.crates.io/",
             "hexyl",
         ],
-        vec![exited_0(
-            "",
-            "INFO resolve: Resolving package: 'hexyl'\nINFO Done in 2.1s\n",
-        )],
+        vec![binstall_output],
     );
     let adapter = Arc::new(CargoAdapter::new(
         Arc::new(BinstallRunner {
@@ -1231,5 +1469,24 @@ async fn test_a_cargo_binstall_upgrade_that_changed_nothing_is_not_reported_as_u
     assert_eq!(
         cargo_binstall_upgrade(None).await,
         Outcome::NeedsAttention(Attention::UnchangedAfterUpgrade)
+    );
+}
+
+#[tokio::test]
+async fn test_a_cargo_binstall_upgrade_that_exited_non_zero_after_its_version_moved_says_a_step_failed(
+) {
+    // r35 U2's rule on Cargo: `.crates.toml` says 0.18.0 and cargo-binstall
+    // exited 1 after it. Illustrative words, as for pipx.
+    assert_eq!(
+        cargo_binstall_upgrade_ending(
+            Some("0.18.0"),
+            exited(
+                1,
+                "",
+                "INFO resolve: Resolving package: 'hexyl'\nERROR a later step failed\n",
+            ),
+        )
+        .await,
+        updated_but_a_step_failed("0.18.0")
     );
 }

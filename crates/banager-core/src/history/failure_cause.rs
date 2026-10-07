@@ -29,8 +29,9 @@ use std::sync::OnceLock;
 /// (`failure_cause`); the next six only off an operation's
 /// (`operation_failure_cause`); the last two are never read off words but
 /// kept by the history for a failure of Banager's own (`record_for`).
-/// New histories use format 2: older format-1 readers leave the file
-/// untouched before trying to parse variants they may not know.
+/// New histories use the current format (`HISTORY_FORMAT`): readers of an
+/// earlier one leave the file untouched before trying to parse variants
+/// they may not know.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum FailureCause {
