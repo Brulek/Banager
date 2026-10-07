@@ -741,13 +741,13 @@
       "missingFixWithRows_other": "找不到它需要的{{program}}。Homebrew安裝的{{formula}}中有它，但沒有連結到終端機找得到的地方。用{{source}}安裝的{{count}}個工具顯示的是它上次回應時的結果。",
       "CouldNotStart": "它的程式無法啟動，無法列出它安裝的內容。",
       "CouldNotStartWithRows_other": "它的程式無法啟動。有{{count}}個工具是用{{source}}安裝的，顯示的是它上次回應時的結果。",
-      "ExitedWithError": "它執行時出錯，無法列出它安裝的內容。請稍後重新檢查。",
-      "ExitedWithErrorWithRows_other": "它執行時出錯。有{{count}}個工具是用{{source}}安裝的，顯示的是它上次回應時的結果，請稍後重新檢查。"
+      "ExitedWithError": "它執行時出錯，無法列出它安裝的內容。原因解決之前，重新檢查也會出錯。",
+      "ExitedWithErrorWithRows_other": "它執行時出錯。有{{count}}個工具是用{{source}}安裝的，顯示的是它上次回應時的結果。原因解決之前，重新檢查也會出錯。"
     },
     "row": {
       "missing": "{{source}}無法執行：找不到它需要的{{program}}。",
       "CouldNotStart": "{{source}}無法執行：它的程式無法啟動。",
-      "ExitedWithError": "{{source}}執行時出錯。請稍後點按「重新檢查」。"
+      "ExitedWithError": "{{source}}執行時出錯。原因解決之前，重新檢查也會出錯。"
     },
     "statusWord": {
       "CouldNotStart": "無法執行",

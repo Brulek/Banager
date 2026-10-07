@@ -85,12 +85,20 @@ describe("why a source did not answer", () => {
     const failed = npm({ kind: "ExitedWithError", missing_program: null, link_fixes: [] });
     expect(said(failed, "zh-CN")).toMatchObject({
       title: "npm运行时出错",
-      description: "它运行时出错，无法列出它安装的内容。请稍后重新检查。",
+      // Not "check again later": waiting does not fix a lasting error
+      // (a malformed ~/.npmrc, a rustup with no default toolchain).
+      description: "它运行时出错，无法列出它安装的内容。原因解决之前，重新检查也会出错。",
     });
     expect(said(failed, "zh-CN", 2).description).toBe(
-      "它运行时出错。有2个工具是用npm安装的，显示的是它上次响应时的结果，请稍后重新检查。",
+      "它运行时出错。有2个工具是用npm安装的，显示的是它上次响应时的结果。原因解决之前，重新检查也会出错。",
     );
     expect(said(failed, "en").title).toBe("npm ran into an error");
+    expect(said(failed, "en").description).toBe(
+      "It ran into an error, so what it has installed can't be shown. Checking again won't help until the cause is fixed.",
+    );
+    expect(said(failed, "zh-Hant").description).toBe(
+      "它執行時出錯，無法列出它安裝的內容。原因解決之前，重新檢查也會出錯。",
+    );
   });
 
   it("keeps 'not responding' for one that ran out of time, or that says no reason", () => {
@@ -128,7 +136,7 @@ describe("why a source did not answer", () => {
     );
     const failed = noAnswerRow(npm({ kind: "ExitedWithError", missing_program: null, link_fixes: [] }));
     expect(i18n.getFixedT("en")(failed!.key, { ...failed!.values, source: "npm" })).toBe(
-      "npm ran into an error. Click Check Again later.",
+      "npm ran into an error. Checking again won't help until the cause is fixed.",
     );
     const t = i18n.getFixedT("zh-CN");
     expect(sourceStateWords(t, npm(missingNode()))).toEqual(["无法运行"]);

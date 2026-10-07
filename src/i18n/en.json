@@ -806,14 +806,14 @@
       "CouldNotStart": "Its program couldn't start, so what it has installed can't be shown.",
       "CouldNotStartWithRows_one": "Its program couldn't start. One tool was installed with {{source}}, and it's shown as it was when {{source}} last responded.",
       "CouldNotStartWithRows_other": "Its program couldn't start. {{count}} tools were installed with {{source}}, and they're shown as they were when {{source}} last responded.",
-      "ExitedWithError": "It ran into an error, so what it has installed can't be shown. Check again later.",
-      "ExitedWithErrorWithRows_one": "It ran into an error. One tool was installed with {{source}}, and it's shown as it was when {{source}} last responded. Check again later.",
-      "ExitedWithErrorWithRows_other": "It ran into an error. {{count}} tools were installed with {{source}}, and they're shown as they were when {{source}} last responded. Check again later."
+      "ExitedWithError": "It ran into an error, so what it has installed can't be shown. Checking again won't help until the cause is fixed.",
+      "ExitedWithErrorWithRows_one": "It ran into an error. One tool was installed with {{source}}, and it's shown as it was when {{source}} last responded. Checking again won't help until the cause is fixed.",
+      "ExitedWithErrorWithRows_other": "It ran into an error. {{count}} tools were installed with {{source}}, and they're shown as they were when {{source}} last responded. Checking again won't help until the cause is fixed."
     },
     "row": {
       "missing": "{{source}} can't run: it can't find the {{program}} it needs.",
       "CouldNotStart": "{{source}} can't run: its program couldn't start.",
-      "ExitedWithError": "{{source}} ran into an error. Click Check Again later."
+      "ExitedWithError": "{{source}} ran into an error. Checking again won't help until the cause is fixed."
     },
     "statusWord": {
       "CouldNotStart": "Can't run",

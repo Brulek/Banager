@@ -741,13 +741,13 @@
       "missingFixWithRows_other": "找不到它需要的{{program}}。Homebrew安装的{{formula}}中有它，但没有链接到终端能找到的地方。用{{source}}安装的{{count}}个工具显示的是它上次响应时的结果。",
       "CouldNotStart": "它的程序无法启动，无法列出它安装的内容。",
       "CouldNotStartWithRows_other": "它的程序无法启动。有{{count}}个工具是用{{source}}安装的，显示的是它上次响应时的结果。",
-      "ExitedWithError": "它运行时出错，无法列出它安装的内容。请稍后重新检查。",
-      "ExitedWithErrorWithRows_other": "它运行时出错。有{{count}}个工具是用{{source}}安装的，显示的是它上次响应时的结果，请稍后重新检查。"
+      "ExitedWithError": "它运行时出错，无法列出它安装的内容。原因解决之前，重新检查也会出错。",
+      "ExitedWithErrorWithRows_other": "它运行时出错。有{{count}}个工具是用{{source}}安装的，显示的是它上次响应时的结果。原因解决之前，重新检查也会出错。"
     },
     "row": {
       "missing": "{{source}}无法运行：找不到它需要的{{program}}。",
       "CouldNotStart": "{{source}}无法运行：它的程序无法启动。",
-      "ExitedWithError": "{{source}}运行时出错。请稍后点按“重新检查”。"
+      "ExitedWithError": "{{source}}运行时出错。原因解决之前，重新检查也会出错。"
     },
     "statusWord": {
       "CouldNotStart": "无法运行",
