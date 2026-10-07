@@ -2401,7 +2401,8 @@ fn test_what_we_run_says_uvs_list_before_an_upgrade_waits_for_uvs_lock_and_stops
 
 /// r26 D3: a cask's uninstall preview, and its check just before the
 /// uninstall runs, look at where each link the cask's record names leads
-/// (`cask_link_conflict` in `adapters/brew/mod.rs`, `cask_links::conflict`).
+/// (`cask_link_conflict` in `adapters/brew/mod.rs`, `cask_links::conflict`),
+/// and, since r34 U1, at each one's own text (`commands::names_staged`).
 /// Both lists of what Homebrew's adapter reads name those reads, and
 /// point at the paragraph that says why.
 #[test]
@@ -2418,7 +2419,7 @@ fn test_what_we_run_lists_the_cask_link_reads_of_an_uninstall_with_the_rest_of_h
         .expect("Homebrew's `Files this adapter reads` paragraph");
     let own = own.split_whitespace().collect::<Vec<_>>().join(" ");
     for words in [
-        "A cask's uninstall preview, and its check just before the uninstall runs, also look at where the links its record names lead",
+        "A cask's uninstall preview, and its check just before the uninstall runs, also look at the text of each link its record names and where it leads",
         "(`cask_links::conflict` in `crates/banager-core/src/adapters/brew/cask_links.rs`)",
         "`binary`, `command_wrapper`, `manpage` and completion link",
         "`<prefix>/bin`, `<prefix>/share/man/man<section>`, Homebrew's four completion folders",
@@ -2444,7 +2445,7 @@ fn test_what_we_run_lists_the_cask_link_reads_of_an_uninstall_with_the_rest_of_h
         .collect::<Vec<_>>()
         .join(" ");
     for words in [
-        "`INSTALL_RECEIPT.json`, and where each link that record names leads",
+        "`INSTALL_RECEIPT.json`, and the text of each link that record names and where it leads",
         "`binary`, `command_wrapper`, `manpage` and completion links in `<prefix>/bin`, `<prefix>/share/man/man<section>`",
         "where its Caskroom folder, its recorded apps",
         "`<prefix>/Cellar`",

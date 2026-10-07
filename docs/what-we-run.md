@@ -1460,9 +1460,19 @@ stanza names, a `~/` one under the home folder), `manpage` links in
 folders, each renamed as Homebrew renames it
 (`cask/artifact/{relocated,manpage,*completion}.rb`, `cask/config.rb`).
 Homebrew's `Symlinked#unlink` removes whatever link is at such a place,
-except one into a formula's keg (`conflicting_formula`). So a link that
-now leads somewhere else than the cask's Caskroom folder, an app it
-recorded or the absolute source its stanza names -- npm's package after
+except one into a formula's keg (`conflicting_formula`). A link whose own
+text (`readlink`, nothing it names followed) names a place inside the
+cask's Caskroom folder, `<prefix>/Caskroom/<token>/`, where Homebrew
+stages every file it links, is the cask's whatever that place leads to --
+Homebrew's own test (`Symlinked#target_links_to_source?`,
+`target.readlink == source`). Flutter's `dart` and `flutter` are such
+links: they name their staged paths, which lead, through the link Homebrew
+left in the Caskroom when it moved the suite to `<prefix>/share/flutter`
+(`Moved#post_move`), out of the Caskroom (`commands::names_staged`). A
+text with a `..` after a name in it is not taken at its word, since that
+name may itself be a link; that link is followed like any other. So a
+link that now leads somewhere else than the cask's Caskroom folder, an app
+it recorded or the absolute source its stanza names -- npm's package after
 `npm install -g --force`, another cask, a standalone program -- refuses
 the uninstall (`UninstallUnsafeReason::CaskLinkNotOwned`): the
 confirmation says that path may now belong to another tool, that nothing
@@ -1472,7 +1482,8 @@ or a file, which Homebrew does not touch), a link to nothing (an app
 dragged to the Trash left its command link behind; removing it stops
 nothing that works), and a link into `<prefix>/Cellar`, which Homebrew
 skips. A link Banager cannot follow (a protected place, a folder it may
-not read) or a linking stanza it cannot place refuses. A cask with no
+not read) whose text names no place in the Caskroom folder, or a linking
+stanza Banager cannot place, refuses. A cask with no
 readable record -- installed before Homebrew recorded its uninstall, or
 one Banager cannot read (`cask_receipt::read_recorded`) -- has nothing
 that names a link, and uninstalls as before with the general sentence;
@@ -1878,8 +1889,8 @@ takes the account's home from the user database instead
 the two read different files, and the uninstall confirmation may say or
 leave out the trust list line wrongly. Nothing is run or changed because
 of it. A cask's uninstall preview, and its check just before the uninstall
-runs, also look at where the links its record names lead, as A cask's
-links, above, says (`cask_links::conflict` in
+runs, also look at the text of each link its record names and where it
+leads, as A cask's links, above, says (`cask_links::conflict` in
 `crates/banager-core/src/adapters/brew/cask_links.rs`): the place of each
 `binary`, `command_wrapper`, `manpage` and completion link -- in
 `<prefix>/bin`, `<prefix>/share/man/man<section>`, Homebrew's four
@@ -3723,7 +3734,8 @@ replaced by a link while it is read is never followed.
   ("Points into a protected place") where a size and a date would be, shows
   no path, and its Show in Finder is off (`EntryKind::ProtectedSymlink`).
   The link's own text is kept, and used only to find the app it points
-  into.
+  into and, for a link a cask's `binary` stanza names, whether it names a
+  place in that cask's folder in `Caskroom`.
 - Which source a program belongs to is still decided for a path that
   leads into these places, by name alone: the path as far as the links
   outside them lead, the rest as written (a `..` in it folded by name),
@@ -3795,10 +3807,14 @@ Banager reads one path per cask, the first `app` stanza's, and also the
 links the cask's `binary` stanzas put on the disk (the absolute `target`
 `brew info --installed --json=v2` writes beside each stanza): an entry
 that *is* one of those links, and resolves into the file the stanza
-names, the cask's folder in `Caskroom`, or that `.app`, is the cask's
-(the same rule as "Which copy a command runs") — so a command inside a
-second `.app` of the same cask, or of a cask whose `app` entry carries no
-absolute `target`, is not listed. A command that no `binary` stanza
+names, the cask's folder in `Caskroom`, or that `.app` -- or whose own
+text names a place inside the cask's folder in `Caskroom`, wherever that
+place leads (Homebrew's own test; Homebrew's section, "A cask's links") --
+is the cask's (the same rule as "Which copy a command runs") — so a
+command inside a second `.app` of the same cask, or of a cask whose `app`
+entry carries no absolute `target`, is not listed, nor are Flutter's
+`dart` and `flutter`, which lead into the suite Homebrew moved to
+`<prefix>/share/flutter`. A command that no `binary` stanza
 names and that lives neither inside that `.app` nor under `Caskroom`
 (one a `pkg` put on the disk) is still listed here although Homebrew
 installed it, and so is a link of a stanza's name that leads somewhere
@@ -3854,7 +3870,7 @@ It reads:
 |---|---|
 | every `PATH` folder, in `PATH`'s order; the `bin` and `sbin` folders of every Homebrew prefix and the `bin` folder of every npm prefix | where the folder leads, then `read_dir`, one level deep: each folder once, however many entries name it. An empty or relative `PATH` entry is skipped, and so is a folder that does not exist or that no shell could reach. A `PATH` folder that is there but cannot be listed is kept in its place, unread, as a protected one is (`read_folders`) |
 | each entry in a Homebrew or npm prefix's `bin` (and Homebrew's `sbin`) | where it leads: which formula's folder in `Cellar`, or which package's in `lib/node_modules` |
-| each command a source's own answer names: a cask's `binary` link (`brew info --installed --json=v2`), a pipx app and `~/.local/bin/<its name>`, a uv tool's executable (`uv tool list --show-paths`), a Cargo crate's binaries in `<CARGO_HOME>/bin` (`.crates2.json`), a tool with its own installer's launcher and the commands its installer puts beside it (Grok Build's `agent`, rustup's proxies) | where it leads: whether into that tool's own folder, and whether to a file with an execute bit |
+| each command a source's own answer names: a cask's `binary` link (`brew info --installed --json=v2`), a pipx app and `~/.local/bin/<its name>`, a uv tool's executable (`uv tool list --show-paths`), a Cargo crate's binaries in `<CARGO_HOME>/bin` (`.crates2.json`), a tool with its own installer's launcher and the commands its installer puts beside it (Grok Build's `agent`, rustup's proxies) | where it leads: whether into that tool's own folder, and whether to a file with an execute bit. A cask's link that leads elsewhere also has its own text read (`readlink`, from its folder, every link on the way to that folder followed): one that names a place inside the cask's folder in `Caskroom` is the cask's, as Homebrew takes it (Flutter's `dart`, into the suite Homebrew moved to `<prefix>/share/flutter`; Homebrew's section, "A cask's links") |
 | in each `PATH` folder, the entry of each name some tool provides, however the folder spells it that a Mac's disk takes for the same name (typing `node` runs `NODE`; `protected::same_name`) | where it leads, and whether to a file with an execute bit, in `PATH`'s order |
 
 "Where it leads" is found as `realpath` would find it, but with only
@@ -3866,7 +3882,10 @@ same way, from `/`, with no link followed) -- each step checked against the plac
 (the rules of `protected::resolve`, the walk the disk-use measurement
 uses, which judging follows through `protected::Round`).
 Within one refresh, each name on the way is `lstat`ed, and each link
-read, at most once as it is spelled (`protected::Round`), and a folder
+read, at most once as it is spelled (`protected::Round`) -- but for a
+cask's link that leads elsewhere, whose text is read once more (above),
+and a link in a Homebrew or npm `bin` that leads into a protected place,
+whose first step is (below) -- and a folder
 opened a second time is kept open until the answers are made (64 at
 most), so that a later path below it starts there rather than at `/`;
 all of it is let go once the answers are made, never kept into the next
@@ -4523,8 +4542,9 @@ not read (`protected::look`; How Banager runs anything, above):
   during a cask's uninstall preview and again before it runs, the
   names in its `<prefix>/Caskroom/<token>/.metadata` folder and in the
   folders there, the caskfile Homebrew saved when it is JSON, and
-  `INSTALL_RECEIPT.json`, and where each link that record names leads --
-  its `binary`, `command_wrapper`, `manpage` and completion links in
+  `INSTALL_RECEIPT.json`, and the text of each link that record names and
+  where it leads -- its `binary`, `command_wrapper`, `manpage` and
+  completion links in
   `<prefix>/bin`, `<prefix>/share/man/man<section>`, the completion
   folders or the target its stanza names (a `~/` one under the home
   folder) -- and where its Caskroom folder, its

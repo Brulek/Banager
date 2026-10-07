@@ -5745,6 +5745,141 @@ mod plan_execute_tests {
         assert!(runner.calls().iter().any(|argv| *argv == uninstall));
     }
 
+    /// r34 U1. Flutter's cask, recorded and laid out as Homebrew 7 leaves
+    /// it (homebrew/cask 3.47.6, from the Homebrew API: `suite "flutter",
+    /// target: "#{HOMEBREW_PREFIX}/share/flutter"`, `binary
+    /// "flutter/bin/dart"`, `binary "flutter/bin/flutter"`): the suite
+    /// moved to `<prefix>/share/flutter`, a link to it where it was staged,
+    /// and each command linked to its staged path. Its uninstall is offered
+    /// and runs -- it was refused as "may now belong to another tool" --
+    /// and npm's link put at `bin/dart` after the preview still stops it
+    /// before Homebrew starts.
+    #[tokio::test]
+    async fn test_flutters_cask_uninstalls_with_its_commands_through_its_moved_suite() {
+        use std::os::unix::fs::symlink;
+        let prefix = CaskroomPrefix::new("flutter", &[("flutter", "{}")]);
+        let suite = prefix.0.join("share/flutter");
+        let receipt = serde_json::json!({
+            "homebrew_version": "7.0.8",
+            "loaded_from_api": true,
+            "source": { "tap": "homebrew/cask", "version": "3.47.6" },
+            "uninstall_artifacts": [
+                { "suite": ["flutter", { "target": suite.to_str().unwrap() }] },
+                { "binary": ["flutter/bin/dart"] },
+                { "binary": ["flutter/bin/flutter"] },
+                { "zap": [{ "trash": "~/.flutter" }] }
+            ]
+        });
+        std::fs::write(
+            prefix
+                .0
+                .join("Caskroom/flutter/.metadata/INSTALL_RECEIPT.json"),
+            receipt.to_string(),
+        )
+        .unwrap();
+        std::fs::create_dir_all(suite.join("bin")).unwrap();
+        let staged = prefix.0.join("Caskroom/flutter/3.47.6/flutter");
+        std::fs::create_dir_all(staged.parent().unwrap()).unwrap();
+        symlink(&suite, &staged).unwrap();
+        let bin = prefix.0.join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        for command in ["dart", "flutter"] {
+            std::fs::write(suite.join("bin").join(command), "flutter").unwrap();
+            symlink(staged.join("bin").join(command), bin.join(command)).unwrap();
+        }
+        let runner = Arc::new(MockRunner::new());
+        let mut adapter = BrewAdapter::new(runner.clone())
+            .with_recorded_uninstall_fn(cask_receipt::read_recorded)
+            .with_env_var_fn(someones_home);
+        adapter.inspect_cask_links = true;
+        // Its own brew, so that what the run reads again is this prefix.
+        let brew = bin.join("brew");
+        let inst = ManagerInstance {
+            prefix: prefix.0.clone(),
+            exe_path: brew.clone(),
+            ..test_instance()
+        };
+        let plan = cask_uninstall(&runner, &adapter, &inst, "flutter").await;
+        assert!(plan.warnings.contains(&Warning::UninstallScope {
+            what: UninstallScope::HomebrewCaskPlain
+        }));
+        let uninstall = vec![brew.to_str().unwrap(), "uninstall", "--cask", "flutter"];
+        runner.respond(
+            uninstall.clone(),
+            CommandOutput {
+                stderr_cause: Default::default(),
+                exit_code: Some(0),
+                stdout: String::new(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let outcome = adapter
+            .execute(
+                &plan,
+                Arc::new(VecSink::new()),
+                903,
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(outcome, Outcome::Succeeded);
+        assert_eq!(
+            runner
+                .calls()
+                .iter()
+                .filter(|argv| **argv == uninstall)
+                .count(),
+            1
+        );
+
+        // npm's `dart` put over Flutter's after the preview: not started.
+        let plan = cask_uninstall(&runner, &adapter, &inst, "flutter").await;
+        let npm = prefix.0.join("lib/node_modules/dart/bin/dart.js");
+        std::fs::create_dir_all(npm.parent().unwrap()).unwrap();
+        std::fs::write(&npm, "npm").unwrap();
+        std::fs::remove_file(bin.join("dart")).unwrap();
+        symlink(&npm, bin.join("dart")).unwrap();
+        let outcome = adapter
+            .execute(
+                &plan,
+                Arc::new(VecSink::new()),
+                904,
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            outcome,
+            Outcome::BanagerFailed(Fault::PathChanged {
+                path: bin.join("dart").to_string_lossy().into_owned()
+            })
+        );
+        assert_eq!(
+            runner
+                .calls()
+                .iter()
+                .filter(|argv| **argv == uninstall)
+                .count(),
+            1
+        );
+        // And no preview is offered with it there.
+        let req = OpRequest {
+            kind: OpKind::Uninstall,
+            instance_id: inst.id.clone(),
+            artifact_kind: ArtifactKind::Cask,
+            name: "flutter".into(),
+        };
+        assert!(matches!(
+            adapter.plan(&inst, &req).await,
+            Err(AdapterError::UninstallUnsafe {
+                reason: crate::model::UninstallUnsafeReason::CaskLinkNotOwned,
+                ..
+            })
+        ));
+    }
+
     /// The home folder the constructed receipts were built for
     /// (`adapters/fixtures-derived/brew/7.0.6/README.md`).
     fn someones_home(name: &str) -> Option<OsString> {

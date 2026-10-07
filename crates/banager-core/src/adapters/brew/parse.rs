@@ -242,8 +242,9 @@ struct CaskArtifact {
 /// adds beside the stanza (the link: `/opt/homebrew/bin/agent`), with the
 /// file the stanza links as where that link must lead when it is an
 /// absolute path (`within`; `commands::judge` adds the cask's own folder in
-/// `Caskroom` and its app). A stanza without an absolute `target` names no
-/// command: there is no saying where its link is.
+/// `Caskroom` and its app, and takes a link whose own text names a place in
+/// that folder: `commands::names_staged`). A stanza without an absolute
+/// `target` names no command: there is no saying where its link is.
 fn cask_commands(artifacts: &[CaskArtifact]) -> Vec<ProvidedCommand> {
     artifacts
         .iter()

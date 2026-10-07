@@ -829,6 +829,93 @@ fn test_rule_2_claims_a_cask_binary_link_into_a_second_app_or_an_app_with_no_tar
 }
 
 #[test]
+fn test_rule_2_claims_flutters_commands_through_the_suite_it_moved() {
+    // r34 U1. `brew install --cask flutter` (homebrew/cask 3.47.6: `suite
+    // "flutter", target: "#{HOMEBREW_PREFIX}/share/flutter"`, `binary
+    // "flutter/bin/dart"`, `binary "flutter/bin/flutter"`) moves the suite
+    // to `<prefix>/share/flutter`, leaves a link to it where it was staged
+    // (`Caskroom/flutter/3.47.6/flutter`) and links each command to its
+    // staged path. Where the link leads is in no place of the cask's, so
+    // both were listed as programs no source installed while Installed
+    // listed Flutter under Homebrew. A link whose own text names a place
+    // in the cask's Caskroom folder is the cask's (Homebrew's own
+    // `target_links_to_source?`, `commands::names_staged`); one whose
+    // text climbs out of the suite with a `..` is followed, and npm's
+    // file it leads to stays listed.
+    let home = Home::new("rule-2-flutter");
+    let prefix = home.dir("opt/homebrew");
+    let prefix_bin = home.dir("opt/homebrew/bin");
+    let suite = home.path().join("opt/homebrew/share/flutter");
+    let suite_bin = home.dir("opt/homebrew/share/flutter/bin");
+    exe(&suite_bin, "dart", b"#!/bin/sh\n");
+    exe(&suite_bin, "flutter", b"#!/bin/sh\n");
+    let staged = link(
+        &home.dir("opt/homebrew/Caskroom/flutter/3.47.6"),
+        "flutter",
+        &suite,
+    );
+    let dart = link(&prefix_bin, "dart", &staged.join("bin/dart"));
+    let flutter = link(&prefix_bin, "flutter", &staged.join("bin/flutter"));
+    let brew = ManagerInstance {
+        exe_path: prefix.join("bin/brew"),
+        prefix: prefix.clone(),
+        ..manager_instance("brew", &format!("brew:{}", prefix.display()))
+    };
+    let info = serde_json::json!({
+        "formulae": [],
+        "casks": [{
+            "token": "flutter",
+            "full_token": "flutter",
+            "name": ["Flutter SDK"],
+            "installed": "3.47.6",
+            "artifacts": [
+                {
+                    "suite": ["flutter", { "target": suite.display().to_string() }],
+                    "target": suite.display().to_string()
+                },
+                { "binary": ["flutter/bin/dart"], "target": dart.display().to_string() },
+                { "binary": ["flutter/bin/flutter"], "target": flutter.display().to_string() },
+                { "zap": [{ "trash": "~/.flutter" }] }
+            ]
+        }]
+    });
+    let artifacts = parse_info_installed(&info.to_string(), &brew.id).expect("parse");
+    let scan = |brew: &ManagerInstance| {
+        scan_dirs(
+            std::slice::from_ref(&prefix_bin),
+            &home.env(vec![]),
+            std::slice::from_ref(brew),
+            &artifacts,
+            &[],
+            ScanBudget::default(),
+        )
+    };
+
+    let found = scan(&brew);
+    assert!(found.entries.is_empty(), "{:?}", found.entries);
+    assert_eq!(found.attributed, 2);
+
+    // By name still in the Caskroom folder; on the disk, out of the suite
+    // into npm's package.
+    let npm = exe(
+        &home.dir("opt/homebrew/lib/node_modules/dart/bin"),
+        "dart.js",
+        b"#!/usr/bin/env node\n",
+    );
+    fs::remove_file(&dart).unwrap();
+    link(
+        &prefix_bin,
+        "dart",
+        &staged.join("../../lib/node_modules/dart/bin/dart.js"),
+    );
+    assert_eq!(fs::canonicalize(&dart).unwrap(), npm);
+    let found = scan(&brew);
+    let listed: Vec<PathBuf> = found.entries.iter().map(|e| e.path.clone()).collect();
+    assert_eq!(listed, vec![tilde("opt/homebrew/bin/dart")]);
+    assert_eq!(found.attributed, 1, "flutter");
+}
+
+#[test]
 fn test_rule_3_claims_a_link_into_homebrews_cellar_but_not_into_the_rest_of_its_prefix() {
     // An Intel Mac: `/usr/local/bin` is both Homebrew's bin and where
     // third-party installers drop things. A link into `Cellar` is

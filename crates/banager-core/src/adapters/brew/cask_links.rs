@@ -5,15 +5,20 @@
 //! the installed record and protected path metadata only.
 
 use super::cask_receipt::{app_targets, Recorded};
+use crate::commands;
 use crate::protected::{self, Protected, Resolution};
 use serde_json::Value;
 use std::path::{Component, Path, PathBuf};
 
 /// The first recorded link of `token`'s whose place holds a link that is
 /// not the cask's, or that Banager cannot place or follow; `None` when
-/// every one is the cask's or is left alone. A link is the cask's when it
-/// leads into the cask's Caskroom folder, an app it recorded, or the
-/// absolute source its stanza names. Left alone, and so no conflict: a
+/// every one is the cask's or is left alone. A link is the cask's when its
+/// own text names a place inside the cask's Caskroom folder, before
+/// anything is followed (`commands::names_staged`, Homebrew's own
+/// `target_links_to_source?`: Flutter's commands, through the suite it
+/// moved to `<prefix>/share/flutter`), or when it leads into the cask's
+/// Caskroom folder, an app it recorded, or the absolute source its stanza
+/// names. Left alone, and so no conflict: a
 /// place with no link (nothing there, or a file Homebrew does not touch),
 /// a link to nothing (removing it stops nothing that works), and a link
 /// into `<prefix>/Cellar`, which Homebrew skips (`conflicting_formula`).
@@ -28,7 +33,7 @@ pub(super) fn conflict(
     applications: &Path,
 ) -> Option<PathBuf> {
     let protected = Protected::new(home);
-    let root = prefix.join("Caskroom").join(token.rsplit('/').next()?);
+    let root = commands::caskroom_folder(prefix, token);
     let mut roots = vec![root.clone()];
     for app in app_targets(recorded) {
         let app = PathBuf::from(app);
@@ -44,6 +49,7 @@ pub(super) fn conflict(
         _ => None,
     };
     let owners: Vec<PathBuf> = roots.iter().filter_map(|place| real(place)).collect();
+    let staged: Vec<PathBuf> = std::iter::once(root.clone()).chain(real(&root)).collect();
     let cellar = real(&prefix.join("Cellar"));
     for artifact in &recorded.artifacts {
         let Some(stanzas) = artifact.as_object() else {
@@ -55,11 +61,23 @@ pub(super) fn conflict(
                 Placed::Unknown => return Some(root),
                 Placed::At(link, source) => (link, source),
             };
-            match protected::resolve(&link, &protected, false) {
+            let at = match protected::resolve(&link, &protected, false) {
                 Resolution::Missing => continue,
                 Resolution::Found(_, stat) if !stat.is_symlink() => continue,
-                Resolution::Found(_, _) => {}
+                Resolution::Found(at, _) => at,
                 _ => return Some(link),
+            };
+            // Its own text, from the folder it is in: one that names a
+            // place in the Caskroom folder is the cask's, whatever that
+            // place leads to.
+            let names_staged = at.parent().is_some_and(|folder| {
+                protected::look::link_text(&at, &protected)
+                    .ok()
+                    .and_then(|text| commands::link_names(folder, &text))
+                    .is_some_and(|named| commands::names_staged(&named, &staged))
+            });
+            if names_staged {
+                continue;
             }
             let target = match protected::resolve(&link, &protected, true) {
                 Resolution::Found(target, _) => target,
@@ -318,6 +336,107 @@ mod tests {
             );
             tmp.link(&own, &link);
         }
+    }
+
+    /// Flutter's record as Homebrew 7 writes it (homebrew/cask 3.47.6:
+    /// `suite "flutter", target: "#{HOMEBREW_PREFIX}/share/flutter"`,
+    /// `binary "flutter/bin/dart"`, `binary "flutter/bin/flutter"`, from
+    /// the Homebrew API), and its disk as Homebrew leaves it: the suite
+    /// moved to `<prefix>/share/flutter`, a link to it left where it was
+    /// staged (`Moved#post_move`: `FileUtils.ln_sf target, source`), and
+    /// each command linked to its staged path, literally
+    /// (`Symlinked#create_filesystem_link`).
+    struct Flutter {
+        tmp: Tmp,
+        record: Recorded,
+        dart: PathBuf,
+        staged: PathBuf,
+    }
+
+    impl Flutter {
+        fn new(label: &str) -> Flutter {
+            let tmp = Tmp::new(label);
+            let prefix = tmp.prefix();
+            let suite = prefix.join("share/flutter");
+            for command in ["dart", "flutter"] {
+                tmp.file(&suite.join("bin").join(command));
+            }
+            let staged = prefix.join("Caskroom/flutter/3.47.6/flutter");
+            tmp.link(&suite, &staged);
+            for command in ["dart", "flutter"] {
+                tmp.link(
+                    &staged.join("bin").join(command),
+                    &prefix.join("bin").join(command),
+                );
+            }
+            let record = recorded(serde_json::json!([
+                { "suite": ["flutter", { "target": suite.to_str().unwrap() }] },
+                { "binary": ["flutter/bin/dart"] },
+                { "binary": ["flutter/bin/flutter"] },
+                { "zap": [{ "trash": "~/.flutter" }] },
+            ]));
+            Flutter {
+                dart: prefix.join("bin/dart"),
+                staged,
+                record,
+                tmp,
+            }
+        }
+
+        fn conflict(&self) -> Option<PathBuf> {
+            let tmp = &self.tmp;
+            conflict(
+                &tmp.prefix(),
+                "flutter",
+                &self.record,
+                &tmp.home(),
+                &tmp.applications(),
+            )
+        }
+    }
+
+    /// A link whose own text names a place in the cask's Caskroom folder
+    /// is the cask's, whatever that place leads to: Homebrew's own test
+    /// (`target_links_to_source?`, `target.readlink == source`). Flutter's
+    /// `bin/dart` leads, through the staged `flutter` link, to
+    /// `<prefix>/share/flutter/bin/dart`, no folder of the cask's.
+    #[test]
+    fn test_flutters_commands_through_its_moved_suite_are_its_own() {
+        let flutter = Flutter::new("flutter");
+        assert_eq!(flutter.conflict(), None);
+        // Spelled from the folder the link is in, as another tool might.
+        flutter.tmp.link(
+            Path::new("../Caskroom/flutter/3.47.6/flutter/bin/dart"),
+            &flutter.dart,
+        );
+        assert_eq!(flutter.conflict(), None);
+    }
+
+    /// Only the link's own text is taken for the cask's: a link that names
+    /// anything else is followed and judged as before.
+    #[test]
+    fn test_a_flutter_command_taken_over_or_named_elsewhere_still_refuses() {
+        let flutter = Flutter::new("flutter-taken");
+        let prefix = flutter.tmp.prefix();
+        let npm = prefix.join("lib/node_modules/dart/bin/dart.js");
+        flutter.tmp.file(&npm);
+        // npm's link (`npm install -g --force`).
+        flutter.tmp.link(&npm, &flutter.dart);
+        assert_eq!(flutter.conflict(), Some(flutter.dart.clone()));
+        // Another cask's staged file, its token beginning with this one's.
+        let other = prefix.join("Caskroom/flutter@beta/3.48.0/flutter/bin/dart");
+        flutter.tmp.file(&other);
+        flutter.tmp.link(&other, &flutter.dart);
+        assert_eq!(flutter.conflict(), Some(flutter.dart.clone()));
+        // By name it stays in the Caskroom folder; on the disk the `..`
+        // climbs out of `share/flutter`, where the staged link leads, into
+        // npm's package. Its text is not taken at its word.
+        let climbs = flutter
+            .staged
+            .join("../../lib/node_modules/dart/bin/dart.js");
+        flutter.tmp.link(&climbs, &flutter.dart);
+        assert_eq!(std::fs::canonicalize(&flutter.dart).unwrap(), npm);
+        assert_eq!(flutter.conflict(), Some(flutter.dart.clone()));
     }
 
     /// What Homebrew leaves or removes without anything that worked

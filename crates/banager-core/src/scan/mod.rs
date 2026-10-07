@@ -492,9 +492,13 @@ pub fn uv_python_dir(home: &Path) -> PathBuf {
 ///    there (`CommandInputs.provided`, the absolute `target` brew writes
 ///    beside the stanza), and it resolves where `commands::judge` asks a
 ///    cask's command to lead -- the file the stanza names, the cask's
-///    folder in `Caskroom`, or its app (`commands::cask_places`). That
-///    claims a command inside a second `.app` of the same cask, and one
-///    of a cask whose `app` entry carries no absolute `target`; a
+///    folder in `Caskroom`, or its app (`commands::cask_places`) -- or its
+///    own text names a place in that Caskroom folder, wherever that leads
+///    (`commands::names_staged`, Homebrew's own test). That
+///    claims a command inside a second `.app` of the same cask, one
+///    of a cask whose `app` entry carries no absolute `target`, and
+///    Flutter's, which lead into the suite Homebrew moved to
+///    `<prefix>/share/flutter`; a
 ///    command no `binary` stanza names (one a `pkg` put on the disk) is
 ///    still listed, and so is a link of a stanza's name that leads
 ///    anywhere else.
@@ -518,12 +522,8 @@ struct Known {
     exe_dead_ends: Vec<(PathBuf, InstanceId)>,
     artifact_roots: Vec<(PathBuf, InstanceId)>,
     /// Rule 2 for a cask's commands: each link a `binary` stanza put in a
-    /// folder (`CommandInputs.provided` of a `Cask` artifact), as its
-    /// folder leads (`leads_to`) and its own name -- the link itself, not
-    /// where it leads -- with the places it must lead into
-    /// (`ProvidedCommand.within` and `commands::cask_places`, each where
-    /// it leads) and the instance.
-    cask_commands: Vec<(PathBuf, Vec<PathBuf>, InstanceId)>,
+    /// folder (`CommandInputs.provided` of a `Cask` artifact).
+    cask_commands: Vec<CaskCommand>,
     /// Rule 3: every `owned_roots` of every instance, where it leads
     /// (`leads_to`), with the instance that owns it. A root that does not
     /// exist (Homebrew with no casks has no `Caskroom`) is simply absent;
@@ -537,6 +537,22 @@ struct Known {
     /// simply absent; a tool with no instance contributes nothing, so its
     /// leftover backup is listed.
     backups: Vec<(PathBuf, Glob, InstanceId)>,
+}
+
+/// One link a cask's `binary` stanza put in a folder, for rule 2.
+struct CaskCommand {
+    /// The link as its folder leads (`leads_to`) and its own name -- the
+    /// link itself, not where it leads.
+    link: PathBuf,
+    /// The places it must lead into to be the cask's
+    /// (`ProvidedCommand.within` and `commands::cask_places`), each where
+    /// it leads.
+    places: Vec<PathBuf>,
+    /// The cask's folder in `Caskroom`, as spelled and as it leads: a link
+    /// whose own text names a place in it is the cask's, wherever that
+    /// place leads (`commands::names_staged`).
+    staged: Vec<PathBuf>,
+    instance: InstanceId,
 }
 
 /// Where `path` leads, for attribution: every link on the way followed
@@ -631,6 +647,14 @@ impl Known {
                 let places: Vec<PathBuf> = prefix
                     .map(|prefix| commands::cask_places(prefix, artifact))
                     .unwrap_or_default();
+                let staged: Vec<PathBuf> = prefix
+                    .map(|prefix| commands::caskroom_folder(prefix, &artifact.key.name))
+                    .into_iter()
+                    .flat_map(|folder| {
+                        let leads = leads_to(&folder, protected);
+                        std::iter::once(folder).chain(leads)
+                    })
+                    .collect();
                 artifact
                     .facts
                     .command_inputs
@@ -645,7 +669,12 @@ impl Known {
                             .chain(&places)
                             .filter_map(|place| leads_to(place, protected))
                             .collect();
-                        Some((link, places, artifact.key.instance_id.clone()))
+                        Some(CaskCommand {
+                            link,
+                            places,
+                            staged: staged.clone(),
+                            instance: artifact.key.instance_id.clone(),
+                        })
                     })
             })
             .collect();
@@ -684,13 +713,14 @@ impl Known {
 
     /// The source that put `raw` (in the folder `dir`, where it leads;
     /// leading to `leads` -- `leads_to`, `None` for a broken link; `kind`
-    /// what it is) there, by the first rule that matches -- or `None`:
-    /// unknown.
+    /// what it is; `text`, a link's own text) there, by the first rule
+    /// that matches -- or `None`: unknown.
     fn claimant(
         &self,
         raw: &Path,
         dir: &Path,
         leads: Option<&Path>,
+        text: Option<&Path>,
         kind: EntryKind,
         protected: &Protected,
     ) -> Option<&InstanceId> {
@@ -713,13 +743,19 @@ impl Known {
                 return Some(id);
             }
             // A cask's `binary` link, by its own place, leading where the
-            // cask's command must.
+            // cask's command must -- or naming, by its own text, a place
+            // in the cask's Caskroom folder (`commands::names_staged`).
             if let Some(name) = raw.file_name() {
                 let at = dir.join(name);
-                if let Some((_, _, id)) = self.cask_commands.iter().find(|(link, places, _)| {
-                    same_place(link, &at) && places.iter().any(|place| is_under(leads, place))
+                let named = text.and_then(|text| commands::link_names(dir, text));
+                if let Some(command) = self.cask_commands.iter().find(|command| {
+                    same_place(&command.link, &at)
+                        && (command.places.iter().any(|place| is_under(leads, place))
+                            || named.as_deref().is_some_and(|named| {
+                                commands::names_staged(named, &command.staged)
+                            }))
                 }) {
-                    return Some(id);
+                    return Some(&command.instance);
                 }
             }
             // The longest matching root: the closest owner when roots nest.
@@ -866,11 +902,13 @@ fn placed(path: &Path, protected: &Protected) -> Option<PathBuf> {
     Some(folder.join(name))
 }
 
-/// One entry `examine` describes: the row, and where it leads for the
-/// rules (`leads_to`'s answer; `None` for a broken link).
+/// One entry `examine` describes: the row, where it leads for the rules
+/// (`leads_to`'s answer; `None` for a broken link), and a link's own text,
+/// for rule 2's cask links (`commands::names_staged`).
 struct Examined {
     entry: UnknownEntry,
     leads: Option<PathBuf>,
+    text: Option<PathBuf>,
 }
 
 /// One directory entry as the page will describe it, or `None` for the
@@ -902,8 +940,13 @@ fn examine(
 ) -> Option<Examined> {
     let lstat = folder.stat_at(name).ok()?;
     let at = dir.join(name);
-    let (kind, resolved, link_target, meta, leads) = if lstat.is_symlink() {
-        let text = folder.read_link_at(name).ok();
+    let link = lstat.is_symlink();
+    let text = if link {
+        folder.read_link_at(name).ok()
+    } else {
+        None
+    };
+    let (kind, resolved, link_target, meta, leads) = if link {
         let link_target = text
             .as_ref()
             .map(|target| target.to_string_lossy().into_owned());
@@ -971,6 +1014,7 @@ fn examine(
             seen: meta,
         },
         leads,
+        text,
     })
 }
 
@@ -1094,6 +1138,7 @@ pub fn scan_dirs(
                 &raw,
                 &canonical,
                 found.leads.as_deref(),
+                found.text.as_deref(),
                 found.entry.kind,
                 &protected,
             ) {
@@ -1587,6 +1632,7 @@ mod tests {
                     &entry,
                     &inner_bin,
                     Some(&entry),
+                    None,
                     EntryKind::File,
                     &protected
                 )

@@ -435,6 +435,46 @@ fn test_a_grok_build_shaped_cask_provides_both_its_names_from_one_file() {
 }
 
 #[test]
+fn test_flutters_cask_runs_its_commands_through_the_suite_it_moved() {
+    // r34 U1. The cask as `brew info --installed --json=v2` lists it
+    // (homebrew/cask 3.47.6: a `suite` moved to `<prefix>/share/flutter`,
+    // two `binary` stanzas relative to it), and its disk as Homebrew
+    // leaves it: a link to the moved suite where it was staged, and each
+    // command linked to its staged path. Where the commands lead is in no
+    // place of the cask's; their own text names its Caskroom folder.
+    let home = Home::new("flutter");
+    let brew = home.dir("brew");
+    home.exe("brew/share/flutter/bin/dart");
+    home.exe("brew/share/flutter/bin/flutter");
+    let staged = home.link(
+        "brew/Caskroom/flutter/3.47.6/flutter",
+        &home.at("brew/share/flutter"),
+    );
+    home.link("brew/bin/dart", &staged.join("bin/dart"));
+    home.link("brew/bin/flutter", &staged.join("bin/flutter"));
+    let json = format!(
+        r#"{{"formulae": [], "casks": [{{
+            "token": "flutter", "full_token": "flutter", "name": ["Flutter SDK"],
+            "installed": "3.47.6",
+            "artifacts": [
+                {{ "suite": ["flutter", {{ "target": "{suite}" }}], "target": "{suite}" }},
+                {{ "binary": ["flutter/bin/dart"], "target": "{bin}/dart" }},
+                {{ "binary": ["flutter/bin/flutter"], "target": "{bin}/flutter" }},
+                {{ "zap": [{{ "trash": "~/.flutter" }}] }}
+            ]
+        }}]}}"#,
+        suite = brew.join("share/flutter").display(),
+        bin = brew.join("bin").display()
+    );
+    let brew_id = format!("brew:{}", brew.display());
+    let artifacts = parse_info_installed(&json, &brew_id).expect("parse");
+    let instances = vec![instance("brew", &brew_id, &brew, &brew.join("bin/brew"))];
+
+    let found = verdicts(&home, &[brew.join("bin")], &instances, &artifacts);
+    assert_eq!(found[0], vec![runs("dart"), runs("flutter")]);
+}
+
+#[test]
 fn test_a_broken_link_and_a_file_with_no_execute_bit_are_passed_over() {
     let home = Home::new("passed-over");
     let real = home.exe(".local/share/claude/versions/2.1.281");

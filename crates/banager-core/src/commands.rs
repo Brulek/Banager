@@ -16,7 +16,9 @@
 //! - a Homebrew cask: its `binary` stanzas' links (`brew/parse.rs`),
 //!   when they lead into the cask's folder in `Caskroom`, its app, or the
 //!   file the stanza names -- `grok-build` links one file as `grok` and as
-//!   `agent`;
+//!   `agent` -- or when a link's own text names a place in that Caskroom
+//!   folder, wherever it leads (`names_staged`: Flutter's, into the suite
+//!   Homebrew moved to `<prefix>/share/flutter`);
 //! - an npm package: the links in `<prefix>/bin` that lead into
 //!   `<prefix>/lib/node_modules/<package>/`;
 //! - a pipx tool: every app in its environment (`app_paths`), found in
@@ -450,6 +452,30 @@ impl Look {
         }
     }
 
+    /// Whether the link at `link` is a cask's by its own text
+    /// (`names_staged`): its text read from its folder, every link on the
+    /// way to that folder followed, as `linked` reads a link's first step;
+    /// `staged`, the cask's folder in `Caskroom`, as spelled and as it
+    /// leads. `false` when the folder or the text cannot be read.
+    fn names_staged(&mut self, link: &Path, staged: &Path) -> bool {
+        let (Some(folder), Some(name)) = (link.parent(), link.file_name()) else {
+            return false;
+        };
+        let Some(folder) = self.canonical(folder) else {
+            return false;
+        };
+        let Ok(text) = protected::look::link_text(&folder.join(name), self.round.protected())
+        else {
+            return false;
+        };
+        let Some(named) = link_names(&folder, &text) else {
+            return false;
+        };
+        let mut folders = vec![staged.to_path_buf()];
+        folders.extend(self.canonical(staged));
+        names_staged(&named, &folders)
+    }
+
     /// Whether `path` is a file a shell would run (`executable`).
     fn executable(&mut self, path: &Path) -> bool {
         match self.resolve(path) {
@@ -698,7 +724,7 @@ fn claims(
                 "brew" | "npm" => {}
                 "pipx" => pipx(index, &artifacts[index], home, look, &mut claims),
                 id if id.starts_with("standalone-") => standalone(inst, index, look, &mut claims),
-                _ => named(index, &artifacts[index], &[], look, &mut claims),
+                _ => named(index, &artifacts[index], &[], None, look, &mut claims),
             }
             if look.unread {
                 look.unavailable.insert(index);
@@ -881,7 +907,8 @@ fn lexically_joined(folder: &Path, text: &Path) -> PathBuf {
 
 /// A cask's `binary` links (`brew/parse.rs`), each when it leads into the
 /// cask's folder in `Caskroom` (a staged file, `grok-build`'s `grok`), its
-/// app, or the file its stanza names.
+/// app, or the file its stanza names -- or when its own text names a
+/// place in that Caskroom folder (`names_staged`), wherever that leads.
 fn cask(
     inst: &ManagerInstance,
     index: usize,
@@ -890,7 +917,8 @@ fn cask(
     claims: &mut Vec<Claim>,
 ) {
     let roots = cask_places(&inst.prefix, artifact);
-    named(index, artifact, &roots, look, claims);
+    let staged = caskroom_folder(&inst.prefix, &artifact.key.name);
+    named(index, artifact, &roots, Some(&staged), look, claims);
 }
 
 /// Where a cask's `binary` link may lead, besides the file its stanza
@@ -898,29 +926,71 @@ fn cask(
 /// `<prefix>/Caskroom` and the app it moved (`InstalledArtifact.path`).
 /// Read by `cask` here and by the unknown-source scan (`scan::Known`), so
 /// the Other Programs page and "which copy runs" claim a cask's command
-/// by one rule.
+/// by one rule -- with `names_staged`, for a link that names a place in
+/// that Caskroom folder.
 pub(crate) fn cask_places(prefix: &Path, artifact: &InstalledArtifact) -> Vec<PathBuf> {
-    // `Caskroom/<token>`: the short token, which a tapped cask's key
-    // (`user/tap/token`) ends with.
-    let token = artifact
-        .key
-        .name
-        .rsplit('/')
-        .next()
-        .unwrap_or(&artifact.key.name);
-    let mut roots = vec![prefix.join("Caskroom").join(token)];
+    let mut roots = vec![caskroom_folder(prefix, &artifact.key.name)];
     roots.extend(artifact.path.clone());
     roots
 }
 
+/// A cask's folder in `<prefix>/Caskroom`: `Caskroom/<token>`, the short
+/// token, which a tapped cask's full name (`user/tap/token`) ends with.
+pub(crate) fn caskroom_folder(prefix: &Path, name: &str) -> PathBuf {
+    let token = name.rsplit('/').next().unwrap_or(name);
+    prefix.join("Caskroom").join(token)
+}
+
+/// The place a link's own text names, as a path from `folder`, the folder
+/// the link is in with every link on the way to it followed -- nothing
+/// the text names is looked at. A leading `..` climbs from that folder, as
+/// the system's lookup climbs. `None` when a `..` comes after a name in
+/// the text: that name may itself be a link (Flutter's staged `flutter`
+/// is one), and then only following it says where the `..` goes.
+pub(crate) fn link_names(folder: &Path, text: &Path) -> Option<PathBuf> {
+    let mut named = false;
+    for part in text.components() {
+        match part {
+            Component::Normal(_) => named = true,
+            Component::ParentDir if named => return None,
+            _ => {}
+        }
+    }
+    Some(lexically_joined(folder, text))
+}
+
+/// Whether a cask's link is the cask's by Homebrew's own test, made
+/// before the link is followed: `named`, the place its own text names
+/// (`link_names`), is inside the cask's folder in `Caskroom` -- one of
+/// `folders`, that folder as spelled and as it leads -- where Homebrew
+/// stages every source it links (`Relocated#source`, under the cask's
+/// `staged_path`; `Symlinked#target_links_to_source?`, `target.readlink ==
+/// source`, `cask/artifact/{relocated,symlinked}.rb`). Not where that
+/// place leads: Flutter's `bin/dart` names
+/// `Caskroom/flutter/<version>/flutter/bin/dart`, which leads, through
+/// the `flutter` link its `suite` stanza left there when it moved the
+/// suite (`Moved#post_move`), to `<prefix>/share/flutter/bin/dart`, no
+/// folder of the cask's. Read by `cask` here, by the unknown-source scan
+/// (`scan::Known`) and by a cask's uninstall (`brew/cask_links.rs`).
+pub(crate) fn names_staged(named: &Path, folders: &[PathBuf]) -> bool {
+    let named = protected::without_data_volume(named);
+    folders.iter().any(|folder| {
+        protected::strip_prefix_folded(&named, &protected::without_data_volume(folder))
+            .is_some_and(|inside| inside.components().next().is_some())
+    })
+}
+
 /// The commands an artifact's source named (`CommandInputs.provided`),
 /// each when it leads, every link followed, into one of its `within` or
-/// `extra_roots` -- or anywhere, when neither names a place. The folder a
-/// command is in is the one its path names.
+/// `extra_roots` -- or anywhere, when neither names a place -- or, for a
+/// cask, when the link's own text names a place in `staged`, its folder
+/// in `Caskroom` (`names_staged`). The folder a command is in is the one
+/// its path names.
 fn named(
     index: usize,
     artifact: &InstalledArtifact,
     extra_roots: &[PathBuf],
+    staged: Option<&Path>,
     look: &mut Look,
     claims: &mut Vec<Claim>,
 ) {
@@ -939,6 +1009,7 @@ fn named(
             && !roots
                 .iter()
                 .any(|root| protected::starts_with_folded(&target, root))
+            && !staged.is_some_and(|staged| look.names_staged(&provided.path, staged))
         {
             continue;
         }
