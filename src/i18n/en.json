@@ -643,7 +643,10 @@
     "twinOthersCount_other": "The other {{count}} copies were installed by {{sources}}.",
     "twinRuns": "Typing {{command}} in Terminal runs this copy.",
     "twinRunsCopyFrom": "Typing {{command}} in Terminal runs the copy from {{source}}.",
-    "twinNotFound": "Typing {{command}} in Terminal doesn't find this copy."
+    "twinNotFound": "Typing {{command}} in Terminal doesn't find this copy.",
+    "notLinked": "Homebrew didn't link it where Terminal looks",
+    "notLinkedDetail": "Usually a file of the same name was in the way when Homebrew installed it. Typing it in Terminal doesn't run this copy.",
+    "twinNotLinked": "Homebrew didn't link this copy where Terminal looks."
   },
   "pathLine": {
     "sentence": "To let Terminal find it, add this line to the end of a shell startup file such as ~/.zshrc, then open a new Terminal window. To see the change here, quit and reopen this app.",

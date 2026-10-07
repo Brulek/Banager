@@ -703,6 +703,82 @@ fn test_homebrews_node_owns_the_commands_its_corepack_links_lead_to_through_npms
 }
 
 #[test]
+fn test_an_ai_tools_formula_homebrew_did_not_link_is_named_from_its_keg_with_no_verdict() {
+    // r36 V5: `npm i -g @google/gemini-cli` under Homebrew's node, then
+    // `brew install gemini-cli`. The keg installs as Homebrew's npm-based
+    // formulae lay it out (`bin/gemini` -> `../libexec/bin/gemini` ->
+    // `../lib/node_modules/@google/gemini-cli/dist/index.js`, its `opt`
+    // link made), but its link step stops at npm's `bin/gemini`, and
+    // `brew info` says `linked_keg: null`. Nothing in `<prefix>/bin` leads
+    // into the keg, so its commands came from nowhere and the two copies
+    // never paired. Now the keg's own `bin` names them, with no verdict
+    // -- not "not found", which would send people to put the keg on PATH --
+    // unless a PATH folder reaches the keg after all. A formula of no AI
+    // tool's, unlinked too, is not read.
+    let home = Home::new("unlinked-gemini");
+    let prefix = home.dir("homebrew");
+    let package = "lib/node_modules/@google/gemini-cli/dist/index.js";
+    home.exe(&format!("homebrew/{package}"));
+    home.link("homebrew/bin/gemini", Path::new(&format!("../{package}")));
+    let keg = "homebrew/Cellar/gemini-cli/0.60.0";
+    home.exe(&format!("{keg}/libexec/{package}"));
+    home.link(
+        &format!("{keg}/libexec/bin/gemini"),
+        Path::new(&format!("../{package}")),
+    );
+    home.link(
+        &format!("{keg}/bin/gemini"),
+        Path::new("../libexec/bin/gemini"),
+    );
+    home.link(
+        "homebrew/opt/gemini-cli",
+        Path::new("../Cellar/gemini-cli/0.60.0"),
+    );
+    home.exe("homebrew/Cellar/jq/1.8.1/bin/jq");
+    let brew_id = format!("brew:{}", prefix.display());
+    let npm_id = format!("npm:{}", prefix.display());
+    let instances = vec![
+        instance("brew", &brew_id, &prefix, &prefix.join("bin/brew")),
+        instance("npm", &npm_id, &prefix, &prefix.join("bin/npm")),
+    ];
+    let json = r#"{
+        "formulae": [
+            { "name": "gemini-cli", "keg_only": false, "linked_keg": null,
+              "installed": [{ "version": "0.60.0", "installed_on_request": true }] },
+            { "name": "jq", "keg_only": false, "linked_keg": null,
+              "installed": [{ "version": "1.8.1", "installed_on_request": true }] }
+        ],
+        "casks": []
+    }"#;
+    let mut artifacts = parse_info_installed(json, &brew_id).expect("parse");
+    assert!(artifacts.iter().all(|artifact| artifact.facts.unlinked));
+    artifacts.push(artifact(
+        &npm_id,
+        ArtifactKind::Package,
+        "@google/gemini-cli",
+    ));
+    banager_core::families::assign(&instances, &mut artifacts);
+    assert_eq!(artifacts[0].facts.family.as_deref(), Some("gemini-cli"));
+    assert_eq!(artifacts[2].facts.family.as_deref(), Some("gemini-cli"));
+    let npm_key = artifacts[2].key.clone();
+
+    let found = verdicts(&home, &[prefix.join("bin")], &instances, &artifacts);
+    assert_eq!(
+        found,
+        vec![vec![unjudged("gemini")], vec![], vec![runs("gemini")]]
+    );
+    // The keg's own folder on PATH, after npm's: then it is said.
+    let found = verdicts(
+        &home,
+        &[prefix.join("bin"), prefix.join("opt/gemini-cli/bin")],
+        &instances,
+        &artifacts,
+    );
+    assert_eq!(found[0], vec![shadowed("gemini", Some(&npm_key))]);
+    assert_eq!(found[2], vec![runs("gemini")]);
+}
+
+#[test]
 fn test_a_formula_that_comes_first_is_another_program_with_the_name() {
     // Homebrew's formula `grok`, a regular-expression tool, before Grok
     // Build's own `grok`: what runs is named by its artifact, which is not

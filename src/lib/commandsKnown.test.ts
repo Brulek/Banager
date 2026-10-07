@@ -78,6 +78,15 @@ describe("toolsNotJudged", () => {
       ]),
     ).toBe(1);
   });
+
+  it("leaves out a formula Homebrew didn't link, whose details say so, unless its keg couldn't be read (r36 V5)", () => {
+    const unlinked = (commands_unavailable: boolean) => ({
+      reason: "Requested" as const,
+      facts: { ...NO_FACTS, commands: [{ name: "gemini", state: null }], commands_unavailable, unlinked: true },
+    });
+    expect(toolsNotJudged([unlinked(false)])).toBe(0);
+    expect(toolsNotJudged([unlinked(true)])).toBe(1);
+  });
 });
 
 describe("toolsNamesIncomplete", () => {

@@ -4082,6 +4082,7 @@ It reads:
 |---|---|
 | every `PATH` folder, in `PATH`'s order; the `bin` and `sbin` folders of every Homebrew prefix and the `bin` folder of every npm prefix | where the folder leads, then `read_dir`, one level deep: each folder once, however many entries name it. An empty or relative `PATH` entry is skipped, and so is a folder that does not exist or that no shell could reach. A `PATH` folder that is there but cannot be listed is kept in its place, unread, as a protected one is (`read_folders`) |
 | each entry in a Homebrew or npm prefix's `bin` (and Homebrew's `sbin`) | where it leads: which formula's folder in `Cellar`, or which package's in `lib/node_modules` |
+| for a formula of an AI coding tool Banager knows (`families.rs`) that Homebrew has not linked -- not keg-only, and `brew info` says `linked_keg: null` (its link step stopped at another program's file, as `brew install gemini-cli` does at npm's `bin/gemini`, or it was unlinked) -- the `bin` and `sbin` of its keg, `<prefix>/Cellar/<name>/<version>`, the version its row shows (`commands::keg`) | where the folder leads, then `read_dir`, as for the folders above, and where each entry leads: those that lead into the formula's own folder in `Cellar` are its commands. They are named so its other copies are known as copies (**Installed twice**), with no folder of theirs and so never "not found": what typing them runs is said only where a `PATH` folder reaches the keg. Its details say Homebrew didn't link it where Terminal looks. No other formula's keg is read. Working out the answer, which lists these folders, stops after 100,000 of their names as after its 5 seconds |
 | each command a source's own answer names: a cask's `binary` link (`brew info --installed --json=v2`), a pipx app and `~/.local/bin/<its name>`, a uv tool's executable (`uv tool list --show-paths`), a Cargo crate's binaries in `<CARGO_HOME>/bin` (`.crates2.json`), a tool with its own installer's launcher and the commands its installer puts beside it (Grok Build's `agent`, rustup's proxies) | where it leads: whether into that tool's own folder, and whether to a file with an execute bit. A cask's link that leads elsewhere also has its own text read (`readlink`, from its folder, every link on the way to that folder followed): one that names a place inside the cask's folder in `Caskroom` is the cask's, as Homebrew takes it (Flutter's `dart`, into the suite Homebrew moved to `<prefix>/share/flutter`; Homebrew's section, "A cask's links") |
 | in each `PATH` folder, the entry of each name some tool provides, however the folder spells it that a Mac's disk takes for the same name (typing `node` runs `NODE`; `protected::same_name`) | where it leads, and whether to a file with an execute bit, in `PATH`'s order |
 
@@ -4163,8 +4164,9 @@ says how that notice is made, and that it is then left out). An alias, a shell f
 only a new terminal window or an editor's terminal sets is not seen; the
 details say that an alias, a new window or an editor's terminal may
 differ. Nothing is said about a Homebrew formula installed as a
-dependency, and a keg-only one is never said to be missing from Terminal
-(Homebrew keeps it off `PATH` on purpose); one linked by hand (`brew link
+dependency, and neither a keg-only one (Homebrew keeps it off `PATH` on
+purpose) nor one Homebrew has not linked (above) is ever said to be
+missing from Terminal; a keg-only one linked by hand (`brew link
 --force`) has its links in `<prefix>/bin`, and which copy runs is said of
 them as of any formula's. The folder of a
 command Terminal cannot find can be copied (*Copy Path*, in
@@ -4998,7 +5000,8 @@ not read (`protected::look`; How Banager runs anything, above):
   — never a file's contents (What runs on a Homebrew package, above).
 - Which copy a command runs, at every refresh: the names in each `PATH`
   folder and in each Homebrew and npm prefix's `bin` (and Homebrew's
-  `sbin`), one level deep, and where each entry a command could be leads
+  `sbin`), and in the `bin` and `sbin` of the keg of an AI coding tool's
+  formula Homebrew has not linked, one level deep, and where each entry a command could be leads
   and whether it can run (`lstat` and `readlink`, one step at a time, or
   one lookup that follows no link for the plain names at the end of a
   path; never into a protected place) — never a file's contents (Which

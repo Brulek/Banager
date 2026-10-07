@@ -57,6 +57,42 @@ describe("CommandsGroup", () => {
     expect(none).toBeEmptyDOMElement();
   });
 
+  // r36 V5: npm's `gemini`, then `brew install gemini-cli`, whose link
+  // step stops at npm's file. Its commands come from its keg, with no
+  // verdict; the group says Homebrew didn't link it, the why behind its ⓘ.
+  it("says a formula Homebrew didn't link is not where Terminal looks, in every language", async () => {
+    const geminiKey: ArtifactKey = { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "gemini-cli" };
+    const unlinked: InstalledArtifact = {
+      ...artifact(geminiKey, "gemini-cli", [{ name: "gemini", state: null }]),
+      facts: { ...NO_FACTS, family: "gemini-cli", commands: [{ name: "gemini", state: null }], unlinked: true },
+    };
+    const { container, getByRole, getByText, unmount } = group(unlinked);
+    expect(lines(container)).toEqual([["gemini", "Homebrew didn't link it where Terminal looks"]]);
+    fireEvent.click(getByRole("button", { name: "Details: gemini" }));
+    expect(
+      getByText(
+        "Usually a file of the same name was in the way when Homebrew installed it. Typing it in Terminal doesn't run this copy.",
+      ),
+    ).toBeInTheDocument();
+    unmount();
+    // The same commands with no verdict, linked: nothing to say, as before.
+    const { container: linked } = group({ ...unlinked, facts: { ...unlinked.facts, unlinked: false } });
+    expect(linked).toBeEmptyDOMElement();
+    for (const [language, text] of [
+      ["zh-CN", "Homebrew没有把它链接到终端能找到的地方"],
+      ["zh-Hant", "Homebrew沒有把它連結到終端機找得到的地方"],
+    ] as const) {
+      await i18n.changeLanguage(language);
+      try {
+        const { container: zh, unmount: done } = group(unlinked);
+        expect(lines(zh)).toEqual([["gemini", text]]);
+        done();
+      } finally {
+        await i18n.changeLanguage("en");
+      }
+    }
+  });
+
   it("titles the group with what the verdicts are judged against behind its ⓘ", () => {
     const { getByRole, getByText } = group(artifact(nativeKey, "claude-code", [{ name: "claude", state: "Runs" }]));
     expect(getByRole("heading", { name: /In Terminal/ })).toBeInTheDocument();
@@ -336,6 +372,42 @@ describe("twinChip", () => {
     const twins = twinsByArtifact([rustup, rust]);
     const chip = twinChip(t, rustup, twins.get("standalone-rustup|Binary|rustup"), sourceLabelFor);
     expect(detailText(chip?.detail)).toEqual(["Homebrew has a copy too."]);
+  });
+
+  it("says Homebrew didn't link the formula's copy where npm's runs (r36 V5)", async () => {
+    const geminiNpmKey: ArtifactKey = { instance_id: "npm:/opt/homebrew", kind: "Package", name: "@google/gemini-cli" };
+    const geminiKey: ArtifactKey = { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "gemini-cli" };
+    const npm = artifact(geminiNpmKey, "gemini-cli", [{ name: "gemini", state: "Runs" }]);
+    const formula: InstalledArtifact = {
+      ...artifact(geminiKey, "gemini-cli", []),
+      facts: { ...NO_FACTS, family: "gemini-cli", commands: [{ name: "gemini", state: null }], unlinked: true },
+    };
+    const twins = twinsByArtifact([npm, formula]);
+    const onFormula = twinChip(t, formula, twins.get("brew:/opt/homebrew|Formula|gemini-cli"), sourceLabelFor);
+    expect(onFormula?.label).toBe("Installed twice");
+    expect(detailText(onFormula?.detail)).toEqual([
+      "npm has a copy too.",
+      "Homebrew didn't link this copy where Terminal looks.",
+    ]);
+    // The inspector's 「状态」 says where the other copy is, and no more:
+    // 「在终端里输入时」 says the rest.
+    expect(detailText(onFormula?.inspectorDetail)).toEqual(["npm has a copy too."]);
+    const onNpm = twinChip(t, npm, twins.get("npm:/opt/homebrew|Package|@google/gemini-cli"), sourceLabelFor);
+    expect(detailText(onNpm?.detail)).toEqual([
+      "Homebrew has a copy too.",
+      "Typing gemini in Terminal runs this copy.",
+    ]);
+    await i18n.changeLanguage("zh-Hant");
+    try {
+      const zh = i18n.getFixedT("zh-Hant");
+      const chip = twinChip(zh, formula, twins.get("brew:/opt/homebrew|Formula|gemini-cli"), sourceLabelFor);
+      expect(detailText(chip?.detail)).toEqual([
+        "npm也裝了一份。",
+        "Homebrew沒有把這一份連結到終端機找得到的地方。",
+      ]);
+    } finally {
+      await i18n.changeLanguage("en");
+    }
   });
 
   it("is no word at all for a tool with no other copy", () => {

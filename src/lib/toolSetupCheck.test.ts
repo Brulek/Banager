@@ -532,6 +532,36 @@ describe("toolSetupCheck's command lines", () => {
       "fine Terminal finds every installed tool, and none is installed more than once",
     ]);
   });
+
+  it("counts a formula Homebrew didn't link as a second copy, not as a tool it couldn't check (r36 V5)", () => {
+    // npm's `gemini`, then `brew install gemini-cli`, whose link step
+    // stopped at npm's file: its commands come from its keg, with no
+    // verdict. It used to have none, and this said 「终端都能找到已安装的
+    // 工具，也没有装了不止一份的」.
+    const snapshot = fineSnapshot();
+    snapshot.artifacts.push(
+      artifact({ instance_id: NPM, kind: "Package", name: "@google/gemini-cli" }, { family: "gemini-cli", commands: [runs("gemini")] }),
+    );
+    const formula = artifact(
+      { instance_id: BREW, kind: "Formula", name: "gemini-cli" },
+      { family: "gemini-cli", commands: [{ name: "gemini", state: null }] },
+    );
+    formula.facts.unlinked = true;
+    snapshot.artifacts.push(formula);
+    expect(shape(toolSetupCheck(en, input({ snapshot })))["Commands"]).toEqual([
+      "fine Terminal finds every installed tool",
+      "note 1 tool is installed more than once, 2 copies in all → installed:twins",
+    ]);
+    expect(shape(toolSetupCheck(zh, input({ snapshot })))["命令"]).toEqual([
+      "fine 终端都能找到已安装的工具",
+      "note 1个工具装了不止一份，共2份 → installed:twins",
+    ]);
+    // Its keg could not all be read: then it is one it couldn't check.
+    formula.facts.commands_unavailable = true;
+    expect(shape(toolSetupCheck(en, input({ snapshot })))["Commands"]).toContain(
+      "note Couldn't check whether Terminal finds 1 tool",
+    );
+  });
 });
 
 describe("toolSetupCheck's Homebrew lines", () => {

@@ -587,7 +587,10 @@
     "twinOthersCount_other": "另外{{count}}份由{{sources}}安裝。",
     "twinRuns": "在終端機裡輸入「{{command}}」，執行的是這一份。",
     "twinRunsCopyFrom": "在終端機裡輸入「{{command}}」，執行的是{{source}}裝的那一份。",
-    "twinNotFound": "在終端機裡輸入「{{command}}」，找不到這一份。"
+    "twinNotFound": "在終端機裡輸入「{{command}}」，找不到這一份。",
+    "notLinked": "Homebrew沒有把它連結到終端機找得到的地方",
+    "notLinkedDetail": "通常是Homebrew安裝它時有同名的檔案擋住了。在終端機裡輸入時不會執行這一份。",
+    "twinNotLinked": "Homebrew沒有把這一份連結到終端機找得到的地方。"
   },
   "pathLine": {
     "sentence": "若要讓終端機找到它，可以把這一行加到~/.zshrc等終端機設定檔的結尾，再新開一個終端機視窗。若要在這裡看到變化，請結束並重新開啟此App。",

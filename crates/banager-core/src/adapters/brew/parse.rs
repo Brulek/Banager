@@ -392,6 +392,11 @@ pub fn parse_info_installed(
             uninstall_blocked: f.pinned.then_some(UninstallBlocked::Pinned),
             facts: ArtifactFacts {
                 homebrew: homebrew_facts(&f.status, other_versions),
+                // Not keg-only, a keg installed, and no record of a `brew
+                // link`: its link step did not complete, or it was unlinked
+                // (r36 V5). A keg-only one is off `PATH` by Homebrew's own
+                // rule, which says nothing more.
+                unlinked: !keg_only && picked.is_some() && f.linked_keg.is_none(),
                 command_inputs: CommandInputs {
                     keg_only,
                     keg_only_by_macos: keg_only && keg_only_by_macos(f.keg_only_reason.as_ref()),
@@ -1323,6 +1328,39 @@ mod tests {
         assert_eq!(
             linked,
             vec![("node@22", false), ("node@20", true), ("jq", true)]
+        );
+    }
+
+    #[test]
+    fn parse_info_installed_says_a_formula_homebrew_did_not_link_is_unlinked() {
+        // r36 V5: `npm i -g @google/gemini-cli`, then `brew install
+        // gemini-cli`: the keg installs, its link step stops at npm's
+        // `bin/gemini`, and `linked_keg` is null. A keg-only formula with no
+        // link is Homebrew's own rule, not this; a linked one is not either.
+        let json = r#"{
+            "formulae": [
+                { "name": "gemini-cli", "keg_only": false, "linked_keg": null,
+                  "installed": [{ "version": "0.60.0" }] },
+                { "name": "node@22", "keg_only": true, "linked_keg": null,
+                  "installed": [{ "version": "22.23.3_1" }] },
+                { "name": "jq", "keg_only": false, "linked_keg": "1.8.1",
+                  "installed": [{ "version": "1.8.1" }] }
+            ],
+            "casks": [{ "token": "claude-code", "installed": "2.1.281" }]
+        }"#;
+        let result = parse_info_installed(json, "brew:/opt/homebrew").expect("parse");
+        let unlinked: Vec<(&str, bool)> = result
+            .iter()
+            .map(|a| (a.key.name.as_str(), a.facts.unlinked))
+            .collect();
+        assert_eq!(
+            unlinked,
+            vec![
+                ("gemini-cli", true),
+                ("node@22", false),
+                ("jq", false),
+                ("claude-code", false)
+            ]
         );
     }
 

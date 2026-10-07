@@ -587,7 +587,10 @@
     "twinOthersCount_other": "另外{{count}}份由{{sources}}安装。",
     "twinRuns": "在终端里输入“{{command}}”，运行的是这一份。",
     "twinRunsCopyFrom": "在终端里输入“{{command}}”，运行的是{{source}}装的那一份。",
-    "twinNotFound": "在终端里输入“{{command}}”，找不到这一份。"
+    "twinNotFound": "在终端里输入“{{command}}”，找不到这一份。",
+    "notLinked": "Homebrew没有把它链接到终端能找到的地方",
+    "notLinkedDetail": "通常是Homebrew安装它时有同名的文件挡住了。在终端里输入时不会运行这一份。",
+    "twinNotLinked": "Homebrew没有把这一份链接到终端能找到的地方。"
   },
   "pathLine": {
     "sentence": "要让终端找到它，可以把这一行加到~/.zshrc等终端配置文件的末尾，再新开一个终端窗口。要在这里看到变化，请退出并重新打开此App。",

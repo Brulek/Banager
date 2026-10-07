@@ -129,9 +129,23 @@ export interface ArtifactFacts {
   commands: CommandFact[];
   /** Some command ownership paths could not be checked safely. */
   commands_unavailable: boolean;
+  /**
+   * A Homebrew formula Homebrew has not linked: not keg-only, and no
+   * record of a `brew link` -- its link step stopped at another program's
+   * file, or it was unlinked. Its commands are not where Terminal looks;
+   * an AI coding tool's are named from its keg with no verdict, so its
+   * other copies pair with it (r36 V5). False for everything else.
+   */
+  unlinked: boolean;
 }
 /** Shared by every artifact with nothing more to say: never mutate it. */
-export const NO_FACTS: ArtifactFacts = { family: null, homebrew: null, commands: [], commands_unavailable: false };
+export const NO_FACTS: ArtifactFacts = {
+  family: null,
+  homebrew: null,
+  commands: [],
+  commands_unavailable: false,
+  unlinked: false,
+};
 /**
  * Homebrew's own state for one formula or cask, copied from `brew info
  * --installed --json=v2`. Mirrors `HomebrewFacts` in

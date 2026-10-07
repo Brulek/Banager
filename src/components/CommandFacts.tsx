@@ -128,8 +128,11 @@ function verdictOf(
  * the line to add to a shell startup file and Copy Line (`PathLineRow`,
  * the author's decision U15 a). The ⓘ by the title says what
  * the verdicts are judged against, and what that does not see: an alias,
- * a terminal opened later or an editor's. Nothing when Banager said
- * nothing about any of the tool's commands.
+ * a terminal opened later or an editor's. For a formula Homebrew has not
+ * linked (`ArtifactFacts.unlinked`), its commands with no verdict on a
+ * last line of their own, 「Homebrew没有把它链接到终端能找到的地方」, its
+ * ⓘ the usual why (r36 V5). Nothing when Banager said nothing about any
+ * of the tool's commands.
  */
 export function CommandsGroup({
   artifact,
@@ -143,7 +146,15 @@ export function CommandsGroup({
   const { t } = useTranslation();
   const titleId = useId();
   const groups: CommandGroup[] = commandGroups(artifact.facts.commands);
-  if (groups.length === 0) return null;
+  // A formula Homebrew has not linked: its commands, named from its keg
+  // with no verdict, on a line of their own that says so (r36 V5).
+  const unlinked = artifact.facts.unlinked
+    ? mainCommandFirst(
+        artifact.facts.commands.filter((command) => command.state === null).map((command) => command.name),
+        artifact,
+      )
+    : [];
+  if (groups.length === 0 && unlinked.length === 0) return null;
   const title = t("commands.title");
   return (
     <section data-commands="" aria-labelledby={titleId} className="mt-4">
@@ -189,6 +200,21 @@ export function CommandsGroup({
             </Fragment>
           );
         })}
+        {unlinked.length > 0 ? (
+          <li data-command-line="" className={GROUP_ROW_TWO_LINES}>
+            <div className="min-w-0 flex-1">
+              <p className="break-words text-body text-foreground">{namesOf(t, unlinked)}</p>
+              <p data-command-verdict="" className={`mt-0.5 break-words ${SMALL_WRAPPING} text-muted`}>
+                <TextWithInfo
+                  text={t("commands.notLinked")}
+                  label={t("common.detailsLabel", { title: namesText(t, unlinked) })}
+                >
+                  {t("commands.notLinkedDetail")}
+                </TextWithInfo>
+              </p>
+            </div>
+          </li>
+        ) : null}
       </ul>
     </section>
   );
@@ -242,7 +268,9 @@ function whereTheOthersAre(t: Translate, twins: Twin[], sourceLabelFor: SourceLa
  * source installed too (`twinsByArtifact`: the same AI coding tool, a
  * command of the same name) -- null for one that is not. Behind its ⓘ,
  * where the other copy is from, and what typing the shared command runs:
- * this copy, the other one, or not this one. A status word like the
+ * this copy, the other one, or not this one -- or, for a formula Homebrew
+ * has not linked whose shared commands have no verdict, that it did not
+ * link this copy where Terminal looks (r36 V5). A status word like the
  * others (`StatusChip`), shown on the row unless what the source allows
  * or why the tool cannot be uninstalled comes first (`chipsOf`).
  */
@@ -272,6 +300,11 @@ export function twinChip(
         runs = t("commands.twinRunsCopyFrom", { command, source: installedBy(t, by.instance_id, sourceLabelFor) });
       }
     }
+  } else if (artifact.facts.unlinked && states.every((other) => other === null)) {
+    // A formula Homebrew could not link over the other copy's file (npm's
+    // `gemini` before `brew install gemini-cli`, r36 V5): what the row can
+    // say of this copy is that it is not where Terminal looks.
+    runs = t("commands.twinNotLinked");
   }
   return {
     id: "twin",

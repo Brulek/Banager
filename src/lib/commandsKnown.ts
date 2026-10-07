@@ -53,14 +53,18 @@ export const COMMANDS_UNKNOWN_KEYS: Record<Exclude<CommandsKnown, "known">, stri
  *
  * Not counted: a Homebrew dependency, whose commands are never judged
  * (`judged` there: nobody typed its name to install it -- the Installed
- * page folds it away as a component); and a tool with a command Terminal
- * cannot find, already counted as one (`hasCommandNotOnPath`). Read from
- * the commands as the window has them; nothing is asked for.
+ * page folds it away as a component); a tool with a command Terminal
+ * cannot find, already counted as one (`hasCommandNotOnPath`); and a
+ * formula Homebrew has not linked (`unlinked`), whose commands, named from
+ * its keg, have no verdict because nothing puts them where Terminal looks
+ * -- its details say so, not that it could not be checked (r36 V5). Read
+ * from the commands as the window has them; nothing is asked for.
  */
 export function toolsNotJudged(artifacts: Pick<InstalledArtifact, "facts" | "reason">[]): number {
   return artifacts.filter(
     ({ facts, reason }) =>
       reason !== "Dependency" &&
+      !(facts.unlinked && !facts.commands_unavailable) &&
       (facts.commands_unavailable || facts.commands.some(({ state }) => state === null)) &&
       !facts.commands.some(({ state }) => typeof state === "object" && state !== null && "NotOnPath" in state),
   ).length;

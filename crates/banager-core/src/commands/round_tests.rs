@@ -814,3 +814,92 @@ fn test_unresolved_shared_prefix_claims_preserve_coverage_without_reading_protec
         assert_nothing_protected_looked_at(&calls, &Protected::new(&tree.root));
     }
 }
+
+#[test]
+fn test_an_unlinked_formulas_keg_is_read_as_its_folders_are_and_never_in_a_protected_place() {
+    // r36 V5: an AI coding tool's formula Homebrew did not link has its
+    // commands named from its keg (`keg`). Through the round as through
+    // `protected::resolve`, the same names; a keg whose `bin` leads into
+    // Documents is never looked into, and the formula's names are then
+    // said to be incomplete (`commands_unavailable`).
+    let tree = Tree::new("unlinked-keg");
+    tree.dir("brew/bin");
+    tree.file(
+        "brew/Cellar/gemini-cli/1/libexec/lib/node_modules/@google/gemini-cli/dist/index.js",
+        0o755,
+    );
+    tree.link_keeping_first(
+        "brew/Cellar/gemini-cli/1/libexec/bin/gemini",
+        "../lib/node_modules/@google/gemini-cli/dist/index.js",
+    );
+    tree.link_keeping_first(
+        "brew/Cellar/gemini-cli/1/bin/gemini",
+        "../libexec/bin/gemini",
+    );
+    // A file in the keg's `bin` that leads out of the keg is not its.
+    tree.file("elsewhere/helper", 0o755);
+    tree.link_keeping_first(
+        "brew/Cellar/gemini-cli/1/bin/helper",
+        "../../../../../elsewhere/helper",
+    );
+    let instances = vec![instance("brew", tree.at("brew"))];
+    let mut gemini = artifact("brew", "gemini-cli", ArtifactKind::Formula);
+    gemini.facts.unlinked = true;
+    // Unlinked too, but no AI tool's: its keg is not read.
+    let mut jq = artifact("brew", "jq", ArtifactKind::Formula);
+    jq.facts.unlinked = true;
+    tree.file("brew/Cellar/jq/1/bin/jq", 0o755);
+    let rows = vec![gemini, jq];
+    let budget = CommandBudget::default();
+    let folders = read_folders(
+        &[tree.at("brew/bin")],
+        &bin_folders(&instances),
+        &tree.root,
+        budget,
+    );
+    let check = |budget: CommandBudget| {
+        judge_with(
+            &folders,
+            &instances,
+            &rows,
+            &tree.root,
+            true,
+            Look::new(&tree.root, budget),
+        )
+    };
+    let (answer, made) = calls::measure(|| check(budget).unwrap());
+    assert_eq!(
+        answer.commands,
+        vec![
+            vec![CommandFact {
+                name: "gemini".into(),
+                state: None
+            }],
+            vec![]
+        ]
+    );
+    assert!(answer.unavailable.is_empty());
+    assert_eq!(
+        judged(true, &tree.root, &folders, &instances, &rows, true),
+        Some(answer.commands)
+    );
+    assert_nothing_protected_looked_at(&made, &Protected::new(&tree.root));
+    // Its names count against the half's entries, as the first half's do.
+    assert!(check(CommandBudget {
+        max_entries: 1,
+        ..budget
+    })
+    .is_none());
+
+    // The keg's `bin` a link into Documents: not followed.
+    fs::remove_dir_all(tree.at("brew/Cellar/gemini-cli/1/bin")).unwrap();
+    tree.file("Documents/kegbin/gemini", 0o755);
+    tree.link_keeping_first(
+        "brew/Cellar/gemini-cli/1/bin",
+        "../../../../Documents/kegbin",
+    );
+    let (answer, made) = calls::measure(|| check(budget).unwrap());
+    assert!(answer.commands[0].is_empty());
+    assert_eq!(answer.unavailable, HashSet::from([0]));
+    assert_nothing_protected_looked_at(&made, &Protected::new(&tree.root));
+}

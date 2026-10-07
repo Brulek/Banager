@@ -469,6 +469,21 @@ pub struct ArtifactFacts {
     /// Command ownership could not be fully checked, including commands
     /// omitted because their paths could not be resolved safely.
     pub commands_unavailable: bool,
+    /// A Homebrew formula Homebrew has not linked: not keg-only, and no
+    /// record of a `brew link` (`CommandInputs::link_recorded`, `brew
+    /// info`'s `linked_keg: null`). Its install stopped at the link step --
+    /// another program's file was where one of its commands goes ("The
+    /// `brew link` step did not complete successfully"; npm's `gemini`
+    /// before `brew install gemini-cli`, r36 V5) -- or someone ran `brew
+    /// unlink`. None of its commands is in `<prefix>/bin`, so typing one
+    /// does not run this copy unless its keg's own folder is on `PATH`.
+    /// Set by `parse_info_installed` (`adapters/brew/parse.rs`); false for
+    /// every other artifact, a keg-only formula included (Homebrew keeps
+    /// that one off `PATH` on purpose). For an AI coding tool's formula,
+    /// `commands::judge` names its commands from its keg, with no verdict,
+    /// so its other copies pair with it; the window says it is not linked
+    /// (src/components/CommandFacts.tsx).
+    pub unlinked: bool,
     /// What the inventory read about this artifact's commands, for
     /// `commands::judge`: never on the wire (the window has `commands`,
     /// which is the answer), so not in the TypeScript mirror either.
@@ -2602,7 +2617,7 @@ mod tests {
         let facts = ArtifactFacts::default();
         assert_eq!(
             serde_json::to_string(&facts).unwrap(),
-            r#"{"family":null,"homebrew":null,"commands":[],"commands_unavailable":false}"#
+            r#"{"family":null,"homebrew":null,"commands":[],"commands_unavailable":false,"unlinked":false}"#
         );
         // A payload written before a fact existed still reads.
         assert_eq!(
@@ -2615,14 +2630,14 @@ mod tests {
         };
         assert_eq!(
             serde_json::to_string(&claude).unwrap(),
-            r#"{"family":"claude-code","homebrew":null,"commands":[],"commands_unavailable":false}"#
+            r#"{"family":"claude-code","homebrew":null,"commands":[],"commands_unavailable":false,"unlinked":false}"#
         );
     }
 
     #[test]
     fn test_unavailable_commands_round_trip_even_when_every_claim_was_dropped() {
         // Same literal as src/lib/types.test.ts; old payloads default to false.
-        let wire = r#"{"family":null,"homebrew":null,"commands":[],"commands_unavailable":true}"#;
+        let wire = r#"{"family":null,"homebrew":null,"commands":[],"commands_unavailable":true,"unlinked":false}"#;
         let facts = ArtifactFacts {
             commands_unavailable: true,
             ..Default::default()
@@ -2634,6 +2649,25 @@ mod tests {
             serde_json::from_str::<ArtifactFacts>(old).unwrap(),
             ArtifactFacts::default()
         );
+    }
+
+    #[test]
+    fn test_an_unlinked_formula_says_so_on_the_wire_and_older_payloads_read_as_linked() {
+        // Same literal as src/lib/types.test.ts (r36 V5).
+        let wire = r#"{"family":"gemini-cli","homebrew":null,"commands":[{"name":"gemini","state":null}],"commands_unavailable":false,"unlinked":true}"#;
+        let facts = ArtifactFacts {
+            family: Some("gemini-cli".to_string()),
+            commands: vec![CommandFact {
+                name: "gemini".to_string(),
+                state: None,
+            }],
+            unlinked: true,
+            ..Default::default()
+        };
+        assert_eq!(serde_json::to_string(&facts).unwrap(), wire);
+        assert_eq!(serde_json::from_str::<ArtifactFacts>(wire).unwrap(), facts);
+        let old = r#"{"family":null,"homebrew":null,"commands":[],"commands_unavailable":false}"#;
+        assert!(!serde_json::from_str::<ArtifactFacts>(old).unwrap().unlinked);
     }
 
     #[test]
@@ -2658,7 +2692,7 @@ mod tests {
         let json = serde_json::to_string(&facts).unwrap();
         assert_eq!(
             json,
-            r#"{"family":null,"homebrew":{"deprecated":null,"disabled":{"date":"2026-09-01","reason":"fails_gatekeeper_check","replacement":"onyx"},"caveats":"Turn on \"Launch at login\".\n","other_versions":["3.6.3"]},"commands":[],"commands_unavailable":false}"#
+            r#"{"family":null,"homebrew":{"deprecated":null,"disabled":{"date":"2026-09-01","reason":"fails_gatekeeper_check","replacement":"onyx"},"caveats":"Turn on \"Launch at login\".\n","other_versions":["3.6.3"]},"commands":[],"commands_unavailable":false,"unlinked":false}"#
         );
         assert_eq!(serde_json::from_str::<ArtifactFacts>(&json).unwrap(), facts);
         // Fields a payload leaves out read as empty.
@@ -2712,6 +2746,7 @@ mod tests {
                 },
             ],
             commands_unavailable: false,
+            unlinked: false,
             command_inputs: CommandInputs {
                 provided: vec![ProvidedCommand {
                     name: "claude".to_string(),
@@ -2733,7 +2768,7 @@ mod tests {
                 r#"{"name":"grok","state":{"NotOnPath":{"dir":"~/.grok/bin"}}},"#,
                 r#"{"name":"rg","state":{"ShadowedBy":{"by":null}}},"#,
                 r#"{"name":"curl","state":null}"#,
-                "],\"commands_unavailable\":false}"
+                "],\"commands_unavailable\":false,\"unlinked\":false}"
             )
         );
         // The inputs stay behind: what comes back is the answer alone.

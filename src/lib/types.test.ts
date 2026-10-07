@@ -155,7 +155,7 @@ describe("types", () => {
     // The literal `test_homebrew_facts_spell_every_field_on_the_wire_and_read_back`
     // in crates/banager-core/src/model.rs asserts, byte for byte.
     const wire =
-      '{"family":null,"homebrew":{"deprecated":null,"disabled":{"date":"2026-09-01","reason":"fails_gatekeeper_check","replacement":"onyx"},"caveats":"Turn on \\"Launch at login\\".\\n","other_versions":["3.6.3"]},"commands":[],"commands_unavailable":false}';
+      '{"family":null,"homebrew":{"deprecated":null,"disabled":{"date":"2026-09-01","reason":"fails_gatekeeper_check","replacement":"onyx"},"caveats":"Turn on \\"Launch at login\\".\\n","other_versions":["3.6.3"]},"commands":[],"commands_unavailable":false,"unlinked":false}';
     const facts = {
       family: null,
       homebrew: {
@@ -166,16 +166,31 @@ describe("types", () => {
       },
       commands: [],
       commands_unavailable: false,
+      unlinked: false,
     } satisfies ArtifactFacts;
     expect(JSON.stringify(facts)).toBe(wire);
     expect(roundTrip<ArtifactFacts>(JSON.parse(wire) as ArtifactFacts)).toEqual(facts);
-    expect(JSON.stringify(NO_FACTS)).toBe('{"family":null,"homebrew":null,"commands":[],"commands_unavailable":false}');
+    expect(JSON.stringify(NO_FACTS)).toBe('{"family":null,"homebrew":null,"commands":[],"commands_unavailable":false,"unlinked":false}');
   });
 
   it("round-trips unavailable command coverage even when all claims were dropped", () => {
     // Same literal as Rust's test_unavailable_commands_round_trip_even_when_every_claim_was_dropped.
-    const wire = '{"family":null,"homebrew":null,"commands":[],"commands_unavailable":true}';
+    const wire = '{"family":null,"homebrew":null,"commands":[],"commands_unavailable":true,"unlinked":false}';
     const facts: ArtifactFacts = { ...NO_FACTS, commands_unavailable: true };
+    expect(JSON.stringify(facts)).toBe(wire);
+    expect(roundTrip<ArtifactFacts>(JSON.parse(wire))).toEqual(facts);
+  });
+
+  it("reads an unlinked formula as the Rust side writes it (r36 V5)", () => {
+    // Same literal as Rust's test_an_unlinked_formula_says_so_on_the_wire_and_older_payloads_read_as_linked.
+    const wire =
+      '{"family":"gemini-cli","homebrew":null,"commands":[{"name":"gemini","state":null}],"commands_unavailable":false,"unlinked":true}';
+    const facts: ArtifactFacts = {
+      ...NO_FACTS,
+      family: "gemini-cli",
+      commands: [{ name: "gemini", state: null }],
+      unlinked: true,
+    };
     expect(JSON.stringify(facts)).toBe(wire);
     expect(roundTrip<ArtifactFacts>(JSON.parse(wire))).toEqual(facts);
   });
@@ -299,6 +314,7 @@ describe("types", () => {
         { name: "curl", state: null },
       ],
       commands_unavailable: false,
+      unlinked: false,
     };
     const wire =
       '{"family":null,"homebrew":null,"commands":[' +
@@ -307,11 +323,11 @@ describe("types", () => {
       '{"name":"grok","state":{"NotOnPath":{"dir":"~/.grok/bin"}}},' +
       '{"name":"rg","state":{"ShadowedBy":{"by":null}}},' +
       '{"name":"curl","state":null}' +
-      '],"commands_unavailable":false}';
+      '],"commands_unavailable":false,"unlinked":false}';
     expect(JSON.stringify(facts)).toBe(wire);
     expect(roundTrip(facts)).toEqual(facts);
     // `ArtifactFacts::default()`.
-    expect(JSON.stringify(NO_FACTS)).toBe('{"family":null,"homebrew":null,"commands":[],"commands_unavailable":false}');
+    expect(JSON.stringify(NO_FACTS)).toBe('{"family":null,"homebrew":null,"commands":[],"commands_unavailable":false,"unlinked":false}');
     const states: CommandState[] = facts.commands.flatMap((command) => (command.state === null ? [] : [command.state]));
     expect(states).toHaveLength(4);
   });

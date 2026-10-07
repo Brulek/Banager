@@ -12,7 +12,10 @@
 //! What each source provides:
 //!
 //! - a Homebrew formula: the links in `<prefix>/bin` and `<prefix>/sbin`
-//!   that lead, every link followed, into `<prefix>/Cellar/<name>/`;
+//!   that lead, every link followed, into `<prefix>/Cellar/<name>/`; for
+//!   an AI coding tool's formula Homebrew has not linked
+//!   (`ArtifactFacts::unlinked`), the names in its keg's own `bin` and
+//!   `sbin` instead, with no folder and so no "not found" (`keg`);
 //! - a Homebrew cask: its `binary` stanzas' links (`brew/parse.rs`),
 //!   when they lead into the cask's folder in `Caskroom`, its app, or the
 //!   file the stanza names -- `grok-build` links one file as `grok` and as
@@ -34,8 +37,9 @@
 //!   links on some Macs).
 //!
 //! Read-only in the strictest sense, as the unknown-source scan is:
-//! `read_dir` of each folder once -- `PATH`'s, and the bin folders of
-//! Homebrew's and npm's prefixes -- then where the entries a command could
+//! `read_dir` of each folder once -- `PATH`'s, the bin folders of
+//! Homebrew's and npm's prefixes, and an unlinked AI tool formula's keg
+//! folders (`keg`) -- then where the entries a command could
 //! be lead, followed one step at a time (`lstat` and `readlink` of each
 //! step, from the folder before it held open, `protected::resolve`; each
 //! folder listed from `/` with no link followed, `dirfd`) -- each name
@@ -378,6 +382,10 @@ struct Look {
     reference: bool,
     started: Instant,
     budget: CommandBudget,
+    /// The names this half has listed itself: an unlinked formula's keg
+    /// folders (`keg`), held to `budget.max_entries` as the first half's
+    /// reads are.
+    examined: usize,
 }
 
 impl Look {
@@ -391,6 +399,7 @@ impl Look {
             reference: false,
             started: Instant::now(),
             budget,
+            examined: 0,
         }
     }
 
@@ -486,6 +495,7 @@ impl Look {
 
     fn over(&self) -> bool {
         self.started.elapsed() >= self.budget.max_duration
+            || self.examined > self.budget.max_entries
     }
 }
 
@@ -721,6 +731,9 @@ fn claims(
                 "brew" if artifacts[index].key.kind == ArtifactKind::Cask => {
                     cask(inst, index, &artifacts[index], look, &mut claims)
                 }
+                "brew" if named_from_keg(&artifacts[index]) => {
+                    keg(inst, index, &artifacts[index], look, &mut claims)?
+                }
                 "brew" | "npm" => {}
                 "pipx" => pipx(index, &artifacts[index], home, look, &mut claims),
                 id if id.starts_with("standalone-") => standalone(inst, index, look, &mut claims),
@@ -903,6 +916,91 @@ fn lexically_joined(folder: &Path, text: &Path) -> PathBuf {
         }
     }
     at
+}
+
+/// Whether a Homebrew formula's commands are named from its keg rather
+/// than from `<prefix>/bin`: one Homebrew has not linked
+/// (`ArtifactFacts::unlinked`), that is a copy of an AI coding tool
+/// (`families::family_for`, the table `twinsByArtifact` pairs copies by).
+/// Its names are there so its other copies pair with it -- npm's `gemini`
+/// that runs, beside the `gemini-cli` formula Homebrew could not link
+/// over it (r36 V5); no other formula's keg is read.
+fn named_from_keg(artifact: &InstalledArtifact) -> bool {
+    artifact.key.kind == ArtifactKind::Formula
+        && artifact.facts.unlinked
+        && crate::families::family_for("brew", &artifact.key).is_some()
+}
+
+/// The commands in an unlinked formula's own keg (`named_from_keg`):
+/// `<prefix>/Cellar/<name>/<version>/bin` and `sbin`, the version the row
+/// shows -- what `brew link` would put in `<prefix>/bin` and `sbin` -- each
+/// when it leads into the formula's own folder in `Cellar`, as `linked`
+/// asks of a link. Each folder is listed as `read_folders` lists one: where
+/// it leads, followed one step at a time, and then its names, opened from
+/// `/` with no link followed; never in or through a protected place. No
+/// folder of the command's (`Claim::folder`): nothing puts the keg on
+/// `PATH`, so the command gets no "not found" -- the window says the
+/// formula is not linked instead -- and a verdict only where a `PATH`
+/// folder reaches the keg after all. `None` when the time or the entries
+/// ran out.
+fn keg(
+    inst: &ManagerInstance,
+    index: usize,
+    artifact: &InstalledArtifact,
+    look: &mut Look,
+    claims: &mut Vec<Claim>,
+) -> Option<()> {
+    if artifact.version.is_empty() {
+        return Some(());
+    }
+    let own = inst.prefix.join("Cellar").join(&artifact.display_name);
+    let keg = own.join(&artifact.version);
+    let Some(own) = look.canonical(&own) else {
+        return Some(());
+    };
+    for dir in [keg.join("bin"), keg.join("sbin")] {
+        let (canonical, meta) = match look.resolve(&dir) {
+            Resolution::Found(canonical, meta) if meta.is_dir() => (canonical, meta),
+            Resolution::Found(..) | Resolution::Missing => continue,
+            Resolution::Protected(_) | Resolution::Refused => {
+                look.unread = true;
+                continue;
+            }
+        };
+        let entries = Dir::open_path(&canonical, true)
+            .ok()
+            .filter(|(_, opened)| opened.same_as(&meta))
+            .and_then(|(folder, _)| folder.entries().ok());
+        let Some(entries) = entries else {
+            look.unread = true;
+            continue;
+        };
+        for entry in entries {
+            look.examined += 1;
+            if look.over() {
+                return None;
+            }
+            let Ok(name) = entry else {
+                continue;
+            };
+            let Some(command) = name.to_str() else {
+                continue;
+            };
+            let Some(target) = look.canonical(&canonical.join(&name)) else {
+                continue;
+            };
+            if !protected::starts_with_folded(&target, &own) {
+                continue;
+            }
+            claims.push(Claim {
+                artifact: index,
+                name: command.to_string(),
+                target,
+                folder: None,
+            });
+        }
+    }
+    Some(())
 }
 
 /// A cask's `binary` links (`brew/parse.rs`), each when it leads into the

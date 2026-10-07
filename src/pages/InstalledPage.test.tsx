@@ -3729,6 +3729,48 @@ describe("which copy of a command runs (advantages round, item 4)", () => {
     expect(screen.queryByText(/Couldn't confirm whether it's another copy/)).toBeNull();
   });
 
+  it("pairs an AI tool's formula Homebrew didn't link with npm's copy, and says it isn't linked (r36 V5)", async () => {
+    // `npm i -g @google/gemini-cli` under Homebrew's node, then `brew
+    // install gemini-cli`: its link step stopped at npm's `bin/gemini`, so
+    // its commands come from its keg, with no verdict.
+    const npmGemini: InstalledArtifact = {
+      ...npmClaude,
+      display_name: "@google/gemini-cli",
+      key: { instance_id: npm.id, kind: "Package", name: "@google/gemini-cli" },
+      facts: { ...NO_FACTS, family: "gemini-cli", commands: [{ name: "gemini", state: "Runs" }] },
+    };
+    const formulaGemini: InstalledArtifact = {
+      ...formula("gemini-cli"),
+      facts: {
+        ...NO_FACTS,
+        family: "gemini-cli",
+        commands: [{ name: "gemini", state: null }],
+        unlinked: true,
+      },
+    };
+    served = {
+      ...snapshot,
+      instances: [brew, npm],
+      artifacts: [...snapshot.artifacts, npmGemini, formulaGemini],
+      updates: [],
+    };
+    renderInstalled();
+
+    const row = await findRow("gemini-cli");
+    expect(chipsOf(row)).toEqual(["Installed twice"]);
+    expect(chipsOf(rowOf("@google/gemini-cli"))).toEqual(["Installed twice"]);
+    expect(chipDetail(row, "Installed twice")).toHaveTextContent(
+      "npm has a copy too.Homebrew didn't link this copy where Terminal looks.",
+    );
+    expect(chipDetail(rowOf("@google/gemini-cli"), "Installed twice")).toHaveTextContent(
+      "Homebrew has a copy too.Typing gemini in Terminal runs this copy.",
+    );
+    const inspector = await openDetails("gemini-cli");
+    expect([...inspector.querySelectorAll("[data-command-line]")].map((line) => line.textContent?.trim())).toEqual([
+      "geminiHomebrew didn't link it where Terminal looks",
+    ]);
+  });
+
   it("leaves the note on grok out where its rows say Installed twice, though Cursor's agent comes first (r36 V3)", async () => {
     // Grok Build from Homebrew's cask (`grok` and `agent`) and from its own
     // installer, with Cursor's `~/.local/bin/agent` first on PATH: `grok`
