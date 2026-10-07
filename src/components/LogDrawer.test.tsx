@@ -7,7 +7,7 @@ import { LogDrawer } from "./LogDrawer";
 import { useUiStore } from "../store/ui";
 import { queryKeys } from "../lib/queryKeys";
 import i18n from "../i18n";
-import type { OpSummary, Outcome } from "../lib/types";
+import type { LogNote, OpSummary, Outcome } from "../lib/types";
 import { BUTTON } from "./ui/controls";
 import { failureCause } from "../lib/failureCause";
 
@@ -281,11 +281,11 @@ describe("LogDrawer", () => {
   });
 
   it("says what became of a keg-only formula's link after its update, in each language (y1-keg)", async () => {
-    const notes = [
+    const notes: LogNote[] = [
       { RelinkingAfterUpdate: { name: "node@22" } },
       { StillLinkedAfterUpdate: { name: "node@22" } },
       { NoLongerLinked: { name: "node@22", commands: ["node", "npm"] } },
-    ] as const;
+    ];
     const expected: [string, string[]][] = [
       [
         "en",

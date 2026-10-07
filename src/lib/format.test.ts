@@ -364,10 +364,10 @@ describe("outcomeKey for Banager's own failures", () => {
     // commands' places and ran nothing. It names the first place, and how
     // many there are when more than one; the next sentence says why that
     // stops an update, and that the tool still works.
-    const npm = { BanagerFailed: { LinkTaken: { name: "node@22", paths: ["/opt/homebrew/bin/npm"] } } } as const;
-    const both = {
+    const npm: Outcome = { BanagerFailed: { LinkTaken: { name: "node@22", paths: ["/opt/homebrew/bin/npm"] } } };
+    const both: Outcome = {
       BanagerFailed: { LinkTaken: { name: "node@22", paths: ["/opt/homebrew/bin/npm", "/opt/homebrew/bin/npx"] } },
-    } as const;
+    };
     expect(outcomeKey(npm)).toBe("BanagerFailed.LinkTaken");
     expect(outcomeKey(both)).toBe("BanagerFailed.LinkTakenMany");
     expect(outcomeArgs(both)).toEqual({ name: "node@22", path: "/opt/homebrew/bin/npm", number: 2, others: 1 });
