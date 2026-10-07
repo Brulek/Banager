@@ -1086,6 +1086,50 @@ planned as any other's):
   is followed by the same reading, and the same log line names what is no
   longer in Terminal.
 
+The same link runs on its own for the formula a source's notice offers,
+once its preview is confirmed (`OpKind::Link`, `NoAnswer::link_fixes`;
+why it is offered: Why a source did not answer, below): `brew link
+--formula --force {name}` (`link_argv`, `LINK_TIMEOUT_SECS`, 300 s; no
+password, no download, no update of Homebrew). It is planned only for a
+formula the last inventory listed as keg-only and linkable -- not one
+keg-only because of macOS, which `brew link` refuses at Homebrew's
+default prefix while exiting 0, nor one that is not keg-only -- and
+refused otherwise (`AdapterError::Unsupported`). Its preview reads the
+formula's links as an update's does (`brew::links`) and says the
+commands it puts where Terminal looks (`Warning::LinkPutsCommands`,
+`KegLinks::command_names`: what it links of the keg's `bin` and `sbin`;
+linking `node@20` changes which `node`, `npm`, `npx` and `corepack`
+Terminal runs for everything, not only for the source that needed it),
+and every place it would stop at -- the same places that make an update
+`UpdateBlocked::LinkTaken`: a file, a link that leads anywhere else, a
+person's own link into the formula (`Warning::LinkConflicts`,
+`KegLinks::held_paths`). Where there is one, the preview offers no Link
+button, `Session::submit` refuses the plan whatever the window sends
+(`SubmitError::LinkBlocked`), and the sheet shows instead, as text to
+copy, `<brew> link --formula --force --overwrite {name}`, which deletes
+what is in the way, for the person to run in Terminal if they choose,
+and Check Again for after; Banager never runs it. A place taken after the
+preview is left to Homebrew's own refusal, which links nothing and takes
+back what it linked: unlike an update, which unlinks first, a link on its
+own loses nothing, so its places are not read again before it runs.
+After it its links are read again, and it counts as done only where
+Homebrew's record is there and every command's place holds Homebrew's
+link to it (`KegLinks::fully_linked`, the reading that tells whether the
+link after an update is needed; `Adapter::reconcile_link`, no command
+runs): `brew link` also exits 0 having linked nothing ("Refusing to link
+macOS provided/shadowed software"), which is said as needing attention
+(`Attention::NotLinkedAfterLink`). A link is not kept in the history: it
+updates and uninstalls nothing.
+
+"Linked", for the update and for the link on its own alike, is
+Homebrew's record of a `brew link`, `<prefix>/var/homebrew/linked/<name>`
+(`Keg#linked?`): read off the disk at a preview and around a run
+(`KegLinks::recorded`), and, in a refresh's snapshot, as `brew info
+--installed --json=v2`'s `linked_keg`, which is Homebrew's own reading of
+that record (`Formula#linked_keg`, `linked_version`,
+`formula.rb:1004-1007`, `1103-1107`, `3146`; `CommandInputs::link_recorded`),
+where it decides which formulae a source's notice offers.
+
 Not guarded: an update of another formula that depends on this one,
 which upgrades it first where it is outdated, unlinking and linking it
 again (`FormulaInstaller#install_dependency`,
@@ -1096,8 +1140,9 @@ the commands it took away; and a person's own link straight into the
 version replaced, with no record, which leads to nothing once that
 version is cleaned up (by Banager's cleanup after the update, too) --
 `brew link` would link every command of the formula, not only those, so
-that is left to the person. What is read, at the preview, right before
-the upgrade, after it and after the link (`brew::links`, through
+that is left to the person. What is read -- for an update at its
+preview, right before it, after it and after its link; for a link on its
+own at its preview and after it (`brew::links`, through
 `protected::look`: `lstat`, `readlink` and `realpath` only): where
 `<prefix>/opt/<name>` and `<prefix>/Cellar/<name>` lead and the text of
 the first, the names in the `bin` and `sbin` of the keg `opt` leads to,
@@ -1462,27 +1507,28 @@ preview):
 | Uninstall a formula with more than one version installed and no pin | `<brew> uninstall --formula --force {name}` | 1800 s | No |
 | Uninstall a cask | `<brew> uninstall --cask {name}` | 1800 s | Sometimes — Homebrew runs `sudo`, for example when the cask's recorded uninstall deletes paths (`delete:`), removes a background service (`launchctl:`) or a kernel extension (`kext:`), removes an installer package that is installed (`pkgutil:`), or runs a program the cask marks to run as root |
 | Upgrade one formula | `<brew> upgrade --formula {name}` | 1800 s | No |
-| Then, once that upgrade has exited 0, link a keg-only formula whose link Homebrew recorded back into the prefix, where Homebrew did not (Keg-only formulae linked into Terminal, below) | `<brew> link --formula --force {name}` | 300 s | No |
+| Then, once that upgrade has exited 0, link a keg-only formula whose link Homebrew recorded back into the prefix, where Homebrew did not (Keg-only formulae linked into Terminal, above) | `<brew> link --formula --force {name}` | 300 s | No |
 | Then, once that upgrade has exited 0, delete the formula's old versions (Old versions, below) | `<brew> cleanup {name}` | 600 s | No |
 | Upgrade one cask | `<brew> upgrade --cask {name}` | 1800 s | Sometimes — as for install |
-| Link a keg-only formula another source's launcher could not find a program of (Why a source did not answer, below) | `<brew> link --force {name}` | 300 s | No |
+| Link, on its own, a keg-only formula another source's launcher could not find a program of, once its preview is confirmed (Keg-only formulae linked into Terminal, above) | `<brew> link --formula --force {name}` | 300 s | No |
 
 Every one of these argvs is exactly the verb, the kind flag and the name
 (`test_plan_never_passes_zap_force_or_ignore_dependencies` in the same
 file), but for the two the author's decision U9 added (Old versions,
 below) -- the `brew cleanup {name}` that follows a formula's upgrade, and
 the `--force` of the uninstall of a formula with more than one version --
-the one added for a keg-only formula linked into Terminal (Keg-only
-formulae linked into Terminal, below): the `brew link --formula --force {name}` that
-follows its upgrade; and the link of a keg-only formula another source's
-launcher needs, whose `--force` is what Homebrew asks before it links a
-keg-only formula (`test_a_link_plans_brew_link_force_and_says_what_is_in_the_way`).
+and the one link Banager runs (Keg-only formulae linked into Terminal,
+above), `brew link --formula --force {name}` (`link_argv`), whose
+`--force` is what Homebrew asks before it links a keg-only formula: after
+the upgrade of one whose link Homebrew recorded, and on its own for the
+formula a source's notice offers
+(`test_a_link_plans_brew_link_formula_force_and_says_what_is_in_the_way`).
 Banager never passes `--zap`, `--ignore-dependencies`
 or `--overwrite` to Homebrew, never passes `--force` to anything but that
-uninstall and those two links, and never runs a bare `brew upgrade`, a
+uninstall and that link, and never runs a bare `brew upgrade`, a
 bare `brew cleanup` or a bare `brew link`: upgrades are one confirmed
 artifact per invocation, a cleanup or a link after an upgrade names the
-formula just upgraded, and the other link names the formula a source's
+formula just upgraded, and a link on its own names the formula a source's
 notice offered. Before a write command starts,
 `execute` waits up to ten minutes (`OP_UPDATE_WAIT`) for a `brew update`
 still running in the background; if it is still running after that,
@@ -1556,19 +1602,10 @@ takes the account's home from the user database instead
 (`Trust.trust_file`, `trust.rb:27-43`), so where `$HOME` points elsewhere
 the two read different files, and the uninstall confirmation may say or
 leave out the trust list line wrongly. Nothing is run or changed because
-of it. The link preview (`OpKind::Link`) reads what `brew link --force
-{name}` would do in `bin` (`link::link_preview` in
-`crates/banager-core/src/adapters/brew/link.rs`): the formula's commands,
-which the preview names as what the link puts where Terminal looks
-(`Warning::LinkPutsCommands`), and what stands in their way: where
-`<prefix>/opt/<name>` leads (the version being linked,
-`Cellar/<name>/<version>`), the names in `<prefix>/opt/<name>/bin`,
-and where `<prefix>/bin/<each of them>` leads, every link followed; one
-that leads anywhere but into that version's folder -- another installed
-version's included, which Homebrew does not replace either -- is in
-the way (`Warning::LinkConflicts`), and one that leads nowhere is not, as
-Homebrew replaces it. Only `bin` is read, only names and where links lead,
-never a file's contents.
+of it. A keg-only formula's links -- for its update, and for the link a
+source's notice offers -- are read as Keg-only formulae linked into
+Terminal, above, says (`brew::links`): names and links only, never a
+file's contents.
 
 ## Why a source did not answer, and the link that fixes it: nothing runs until a link is confirmed
 
@@ -1590,7 +1627,7 @@ first, so `/opt/homebrew/bin/node` was gone; npm's launcher,
 directory`, exit 127), and nothing on screen said why. Its other links went
 too: corepack's, so `/opt/homebrew/bin/pnpm`, a link into
 `lib/node_modules/corepack`, led nowhere. Three things now answer for it:
-the reason said here; the failed update's cause, 「已装好，但未能链接」
+the reason said here; the failed update's cause, 「新版本没有接到终端里」
 (`FailureCause::NotLinked`, read off that line); and npm's own update,
 which is no longer offered where npm is a formula's
 (`UpdateBlocked::UpdatesWithFormula`, npm, below), so it cannot happen
@@ -1621,37 +1658,20 @@ installer, and Ollama, which is asked over HTTP, have none yet.
 program, once a refresh round has every source's rows
 (`link_fixes::fill`, from the snapshot alone -- working out the reason
 and the formulae offered reads nothing and runs nothing; the link itself
-runs only once its preview is confirmed):
-the formulae of a Homebrew source Banager can act on that are keg-only and
-not linked (`keg_only` and `linked_keg` of `brew info --installed
---json=v2`, already read for the inventory) and named for the program
-(`node`, or `node@<version>`), newest first (`NoAnswer::link_fixes`).
-The source's notice says why it did not answer and offers them; each is
-planned as `brew link --force {name}` (Homebrew's write commands, above),
-previewed with what stands in the way (Homebrew's files, above), and runs
-only once confirmed, as every operation does. The window may ask for the
+runs only once its preview is confirmed): the formulae of a Homebrew
+source Banager can act on that are keg-only, not because of macOS, and
+not linked (`keg_only`, `keg_only_reason` and `linked_keg` of `brew info
+--installed --json=v2`, already read for the inventory) and named for the
+program (`node`, or `node@<version>`), newest first
+(`NoAnswer::link_fixes`). The source's notice says why it did not answer
+and offers them; each is the one link Banager runs, `<brew> link
+--formula --force {name}` -- the same command, read the same way, as the
+link after a keg-only formula's update (Homebrew's section, "Keg-only
+formulae linked into Terminal", which says what its preview reads and
+names, when it is refused, and when it counts as done) -- and runs only
+once confirmed, as every operation does. The window may ask for the
 preview of a link only of a formula a source's reason offers
-(`Session::issue_listed_plan`). A link is not kept in the history: it
-updates and uninstalls nothing. One that exits 0 counts as done only when
-the reading after it -- the inventory's `brew info --installed
---json=v2`, as after every operation -- says the formula is linked
-(`linked_keg`, `Adapter::reconcile_link`): `brew link` also exits 0
-having linked nothing ("Refusing to link macOS provided/shadowed
-software"), which is said as needing attention
-(`Attention::NotLinkedAfterLink`). Where `bin` holds a file of one of the
-formula's command names already -- npm's own `npm`, after npm was updated
-through itself -- Homebrew would link nothing and say so; the preview says
-it first and offers no Link button, `Session::submit` refuses such a plan
-whatever the window sends (`SubmitError::LinkBlocked`), and `--overwrite`,
-which would replace that file, is never passed. In its place the sheet
-shows, as text to copy, the command that would link it anyway --
-`<brew> link --force --overwrite {name}`, which deletes what is in the
-way -- for the person to run in Terminal if they choose, and Check Again
-for after; Banager never runs it. The preview also names the commands the
-link puts where Terminal looks (`Warning::LinkPutsCommands`), and the
-version they would run: linking a formula changes which `node`, `npm`,
-`npx` and `corepack` Terminal runs for everything, not only for the
-source that needed it.
+(`Session::issue_listed_plan`).
 
 ## npm
 
@@ -1730,7 +1750,7 @@ Its row in the list says so where Uninstall would be
 gate and `NpmAdapter::plan` refuse it. Its update is offered as any
 package's, but for one case: where the `npm` in the prefix's `bin` is a
 Homebrew formula's -- a link that leads, every link followed, into
-`<prefix>/Cellar/`, which is what `brew link --force node@22` puts there
+`<prefix>/Cellar/`, which is what `brew link --formula --force node@22` puts there
 -- its update is not offered (`UpdateBlocked::UpdatesWithFormula`), and
 `NpmAdapter::plan` refuses it too. `<npm> install -g npm@latest` would
 replace that link with npm's own, and the formula's next `brew upgrade`
@@ -2159,10 +2179,11 @@ version of this crate is already installed" — it is how cargo upgrades a
 binary. The only other `--force` Banager passes to any tool is Homebrew's:
 to the uninstall of a formula with more than one version installed and no
 pin, which deletes every version (Homebrew's section, "Old versions"), and
-to the `brew link` after the update of a keg-only formula whose link
-Homebrew recorded, which lets it link a keg-only formula and stops rather
-than overwrite another program's file (Homebrew's section, "Keg-only
-formulae linked into Terminal").
+to `brew link --formula --force`, after the update of a keg-only formula
+whose link Homebrew recorded and on its own for the one a source's notice
+offers, which lets it link a keg-only formula and stops rather than
+overwrite another program's file (Homebrew's section, "Keg-only formulae
+linked into Terminal").
 
 ## Ollama
 
@@ -3919,16 +3940,13 @@ not read (`protected::look`; How Banager runs anything, above):
   whether `<prefix>/var/homebrew/pinned/<name>` is there (Homebrew's
   section, "Old versions"); for a keg-only formula's upgrade, during its
   preview, right before it, after it and after the `brew link` that
-  follows, where `<prefix>/opt/<name>` leads and its text, the names in
-  its keg's `bin` and `sbin`, what is at those names in `<prefix>/bin` and
-  `<prefix>/sbin`, its text and where it leads, and
+  follows, and for the link a source's notice offers, during its preview
+  and after it, where `<prefix>/opt/<name>` leads and its text, the names
+  in its keg's `bin` and `sbin`, what is at those names in `<prefix>/bin`
+  and `<prefix>/sbin`, its text and where it leads, and
   `<prefix>/var/homebrew/linked/<name>`, its text and whether it leads to
   a folder, and during a check the same for each keg-only formula with an
-  update (Homebrew's section, "Keg-only formulae linked into Terminal");
-  during a link's preview, where
-  `<prefix>/opt/<name>` leads, the names in its `bin` and where
-  `<prefix>/bin/<each of them>` leads (Homebrew's section, "Files this
-  adapter reads").
+  update (Homebrew's section, "Keg-only formulae linked into Terminal").
 - A Homebrew cask's app, when the window asks for its icon: `lstat` of the
   `.app` Homebrew named for that cask, and the icon macOS finds for it
   through `NSWorkspace iconForFile:` — Banager opens no file in the app
@@ -4499,15 +4517,15 @@ configured, `index.crates.io`, and cargo still follows a
 - Never passes `--zap`, `--ignore-dependencies` or `--overwrite` to
   Homebrew, nor `--force` but to the uninstall of a formula with more than
   one version installed and no pin, so that every version goes (the brew
-  plan tests; the author's decision U9), to the `brew link` that links
-  a keg-only formula whose link Homebrew recorded back after its update,
-  and to the `brew link` of a keg-only formula another source's launcher
-  needs (Why a source did not answer) -- each of which without
-  `--overwrite` stops rather than overwrite another
-  program's file -- but for a cask's link, which Homebrew replaces, and
-  the formulae it names as linking over it, which it unlinks first
-  (Homebrew's section, "Keg-only formulae linked into Terminal"); and
-  never runs a bare
+  plan tests; the author's decision U9), and to the one `brew link`
+  Banager runs, `brew link --formula --force {name}` of a keg-only
+  formula -- after the update of one whose link Homebrew recorded, and on
+  its own for one another source's launcher needs (Why a source did not
+  answer) -- which without `--overwrite` stops rather than overwrite
+  another program's file -- but for a cask's link, which Homebrew
+  replaces, and the formulae it names as linking over it, which it
+  unlinks first (Homebrew's section, "Keg-only formulae linked into
+  Terminal"); and never runs a bare
   `brew upgrade`, a bare `brew cleanup` or a bare `brew link`.
 - Never runs a `brew` command without `HOMEBREW_NO_AUTOREMOVE=1`, which
   keeps Homebrew from uninstalling packages the command does not name,

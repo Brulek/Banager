@@ -277,7 +277,7 @@ fn test_what_we_run_promises_the_three_brew_flags_are_never_passed_but_for_u9s_f
     // of a formula with more than one version installed and no pin,
     // which `test_plan_never_passes_zap_force_or_ignore_dependencies` and
     // the brew adapter's `old_versions` tests keep true.
-    // y1-keg (r6) adds the second: `brew link --force` of a keg-only
+    // y1-keg (r6) adds the second: `brew link --formula --force` of a keg-only
     // formula the person linked, after its update -- and the same bullet
     // promises `--overwrite`, which would delete another program's file,
     // is never passed, and that no `brew link` runs bare.
@@ -320,7 +320,7 @@ fn test_what_we_run_shows_the_link_after_a_keg_only_formulas_update_and_what_it_
             panic!("Homebrew's write-command table has no row for `<brew> link --formula --force {{name}}`")
         });
     assert!(
-        link.contains(&format!("{} s", BrewAdapter::RELINK_TIMEOUT_SECS)),
+        link.contains(&format!("{} s", BrewAdapter::LINK_TIMEOUT_SECS)),
         "the link's row does not state its time limit: {link}"
     );
     let folded = homebrew.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -357,6 +357,50 @@ fn test_what_we_run_shows_the_link_after_a_keg_only_formulas_update_and_what_it_
         assert!(
             reads.contains(words),
             "`## Files Banager reads` does not name {words:?}"
+        );
+    }
+}
+
+#[test]
+fn test_what_we_run_shows_one_link_for_an_update_and_for_a_notices_fix() {
+    // y2-int (r6): y1-keg's link after a keg-only formula's update and
+    // y2-npmwhy's link a source's notice offers are one command, read and
+    // refused the same way (`link_argv`, `brew::links`): both rows of the
+    // write-command table spell it the same, with the same time limit, and
+    // the one section says how the link on its own is previewed, refused
+    // and read after.
+    let doc = read_doc();
+    let homebrew = section_body(&doc, "Homebrew").expect("a `## Homebrew` section");
+    let rows: Vec<&str> = homebrew
+        .lines()
+        .filter(|line| line.starts_with('|') && line.contains("<brew> link "))
+        .collect();
+    assert_eq!(rows.len(), 2, "{rows:#?}");
+    for row in &rows {
+        assert!(
+            row.contains("`<brew> link --formula --force {name}`")
+                && row.contains(&format!("{} s", BrewAdapter::LINK_TIMEOUT_SECS)),
+            "a link row spells the command or its time limit otherwise: {row}"
+        );
+    }
+    assert!(!doc.contains("`<brew> link --force {name}`"));
+    assert!(!doc.contains("link::link_preview"));
+    let folded = homebrew.split_whitespace().collect::<Vec<_>>().join(" ");
+    for words in [
+        "`OpKind::Link`",
+        "`Warning::LinkPutsCommands`",
+        "`Warning::LinkConflicts`",
+        "`KegLinks::held_paths`",
+        "`KegLinks::fully_linked`",
+        "`SubmitError::LinkBlocked`",
+        "`Attention::NotLinkedAfterLink`",
+        "`CommandInputs::link_recorded`",
+        "`<brew> link --formula --force --overwrite {name}`",
+        "Banager never runs it",
+    ] {
+        assert!(
+            folded.contains(words),
+            "the `## Homebrew` section does not say {words:?} of the link a source's notice offers"
         );
     }
 }
