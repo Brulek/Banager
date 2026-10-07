@@ -7,8 +7,9 @@
 //! Which paths: the data folders of the tool's family in the bundled table
 //! (`families.rs`, `data_paths`, each from the vendor's own docs or
 //! source), and
-//! for the Ollama family -- Homebrew's formula `ollama` and cask
-//! `ollama-app` -- the models folder, `~/.ollama/models` (Ollama's FAQ; the
+//! for the Ollama family -- Homebrew's formula `ollama` and casks
+//! `ollama-app` and `ollama-binary` -- the models folder,
+//! `~/.ollama/models` (Ollama's FAQ; the
 //! `OLLAMA_MODELS` a shell may set is not in Banager's environment, so a
 //! models folder elsewhere is not named). Only a path that is there gets a
 //! line, and only one the plan does not already name: Claude Code's own
@@ -169,7 +170,7 @@ pub(crate) fn check_kept_paths(
 }
 
 /// The family whose tool's models are kept: Homebrew's `ollama` formula and
-/// `ollama-app` cask (`ai-tools.json`).
+/// `ollama-app` and `ollama-binary` casks (`ai-tools.json`).
 pub const OLLAMA_FAMILY: &str = "ollama";
 
 /// Where Ollama keeps the models it downloaded, by default.

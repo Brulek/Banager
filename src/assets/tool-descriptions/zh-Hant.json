@@ -2686,6 +2686,7 @@
   "cask:obs": "直播與螢幕錄影開放原始碼軟體",
   "cask:obsidian": "基於本機Markdown純文字檔案夾的知識庫",
   "cask:ollama-app": "在本機執行大語言模型的應用程式",
+  "cask:ollama-binary": "在本機執行大語言模型的命令列工具",
   "cask:omnidisksweeper": "找出並刪除無用的大檔案",
   "cask:onedrive": "雲端儲存用戶端",
   "cask:only-switch": "選單列系統與實用功能開關",

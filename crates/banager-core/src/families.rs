@@ -159,6 +159,55 @@
 //! Ollama has none in the table: its models folder is named by
 //! `kept_data::OLLAMA_MODELS`, and the rest of `~/.ollama` is not named.
 //!
+//! # Homebrew packages added 2026-10-08
+//!
+//! Eight Homebrew packages of these tools were missing (review r36, V4),
+//! so no view said such a tool was installed twice. Each was checked
+//! against Homebrew's own data on the author's Mac, read and never run,
+//! with nothing fetched: the API cache Homebrew 7.0.8 wrote on 2026-10-07
+//! (`~/Library/Caches/Homebrew/api/internal/packages.arm64_golden_gate.
+//! jws.json`; homebrew/core at 535a4e1f, homebrew/cask at 0d5785eb), its
+//! signature checked with `openssl` against Homebrew's own key
+//! (`Library/Homebrew/api/homebrew-1.pem`, PS512, as `api.rb`'s
+//! `verify_jws_signature` checks it). It holds each package's
+//! description, homepage and download, a cask's `binary` and `zap`
+//! stanzas and a formula's commands. `brew` was not run; this Mac has no
+//! homebrew/core or homebrew/cask tap to read.
+//!
+//! - Antigravity CLI: the cask `antigravity-cli` ("Google Antigravity
+//!   CLI", antigravity.google/product/antigravity-cli; downloaded from
+//!   storage.googleapis.com/antigravity-public; links its program as
+//!   `agy`, the command the `agy` recipe installs; its `zap` is the one
+//!   cited above).
+//! - Claude Code: the cask `claude-code@latest` ("Claude Code",
+//!   claude.com/product/claude-code; downloaded from
+//!   downloads.claude.ai/claude-code-releases, as the cask `claude-code`;
+//!   links `claude`). The two conflict: only one can be installed.
+//! - GitHub Copilot CLI: the cask `copilot-cli@prerelease` ("GitHub
+//!   Copilot CLI"; downloaded from github/copilot-cli's releases; links
+//!   `copilot`; its `zap` trashes `~/.copilot`). It conflicts with the
+//!   cask `copilot-cli`.
+//! - Factory Droid: the cask `droid` ("AI-powered software engineering
+//!   agent by Factory", docs.factory.ai; downloaded from
+//!   downloads.factory.ai/factory-cli; links `droid`; its `zap` trashes
+//!   `~/.factory`). Not the cask `factory`, Factory's desktop app, which
+//!   links no command.
+//! - Ollama: the cask `ollama-binary` ("Ollama", ollama.com; downloaded
+//!   from ollama/ollama's releases; links `ollama`, with no app). It
+//!   conflicts with the cask `ollama-app`.
+//! - Kimi Code: the formula `kimi-code` ("AI coding agent for your
+//!   terminal", moonshotai.github.io/kimi-code), built from npm's
+//!   `@moonshot-ai/kimi-code`; Homebrew deprecated `kimi-cli` with
+//!   `kimi-code` as its replacement. Not the cask `kimi`, Moonshot's chat
+//!   app.
+//! - Mistral Vibe: the formula `mistral-vibe` (github.com/mistralai/
+//!   mistral-vibe), built from PyPI's `mistral-vibe`.
+//! - OpenClaw: the formula `openclaw-cli` (openclaw.ai), built from npm's
+//!   `openclaw`. Not the cask `openclaw`, OpenClaw's app, which links no
+//!   command.
+//!
+//! Each joins its family's data folders as they are; none adds one.
+//!
 //! Versions are deliberately not in the table: they change weekly. A
 //! Homebrew cask's channel is not a version: `@latest` and `@prerelease`
 //! are part of the token of a cask of its own.
@@ -168,7 +217,8 @@
 //! only against casks, a PyPI name on pipx, uv and pip (normalised as PEP
 //! 503 does, so `Aider_Chat` is `aider-chat`), and a recipe id only on that
 //! recipe's own standalone source. Ollama *models* are not members of
-//! anything; the formula `ollama` and the cask `ollama-app` are.
+//! anything; the formula `ollama` and the casks `ollama-app` and
+//! `ollama-binary` are.
 //!
 //! The family is set once per refresh round, where the snapshot is put
 //! together (`assign`, called from `session/refresh.rs`), not by each
@@ -224,7 +274,8 @@ pub struct Family {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Table {
-    /// The day every name in `families` was checked.
+    /// The day the table was checked as a whole; a member added since
+    /// says its own day in `method` and the module doc.
     verified: String,
     /// How they were checked, in a sentence.
     #[allow(dead_code)]
@@ -423,6 +474,18 @@ mod tests {
         (MemberSource::Standalone, "agy"),
         (MemberSource::Cask, "grok-build"),
         (MemberSource::Standalone, "grok"),
+        // Not in appendix B: Homebrew's other packages of these tools,
+        // checked on 2026-10-08 against Homebrew's own signed API cache on
+        // the author's Mac (module doc, "Homebrew packages added
+        // 2026-10-08"; review r36, V4).
+        (MemberSource::Cask, "antigravity-cli"),
+        (MemberSource::Cask, "claude-code@latest"),
+        (MemberSource::Cask, "copilot-cli@prerelease"),
+        (MemberSource::Cask, "droid"),
+        (MemberSource::Cask, "ollama-binary"),
+        (MemberSource::Formula, "kimi-code"),
+        (MemberSource::Formula, "mistral-vibe"),
+        (MemberSource::Formula, "openclaw-cli"),
     ];
 
     #[test]
@@ -878,5 +941,135 @@ mod tests {
             .filter_map(|a| Some((a.key.name.as_str(), a.facts.family.as_deref()?)))
             .collect();
         assert_eq!(tagged, [("ollama", "ollama")]);
+    }
+
+    /// Asserts that `assign` puts `member` and `twin`, each listed by an
+    /// instance of its own adapter, in the family `id`: what every view
+    /// that says a tool is installed twice goes by (`twinsByArtifact`,
+    /// src/lib/commands.ts), as do the AI Tools filter and the kept-data
+    /// line of an uninstall.
+    fn assert_same_tool(
+        id: &str,
+        member: (&str, ArtifactKind, &str),
+        twin: (&str, ArtifactKind, &str),
+    ) {
+        let instances = [instance(member.0, "member"), instance(twin.0, "twin")];
+        let mut artifacts = [
+            artifact("member", member.1, member.2),
+            artifact("twin", twin.1, twin.2),
+        ];
+        assign(&instances, &mut artifacts);
+        let families: Vec<_> = artifacts
+            .iter()
+            .map(|a| a.facts.family.as_deref())
+            .collect();
+        assert_eq!(families, [Some(id), Some(id)], "{member:?} and {twin:?}");
+    }
+
+    #[test]
+    fn test_homebrews_antigravity_cli_cask_is_antigravity_cli() {
+        // Review r36 V4: the cask and Antigravity CLI's own install both
+        // put `agy` on the Mac, and no view said the tool was there twice.
+        assert_same_tool(
+            "antigravity-cli",
+            ("brew", ArtifactKind::Cask, "antigravity-cli"),
+            ("standalone-agy", ArtifactKind::Binary, "agy"),
+        );
+        assert_eq!(
+            id_for("brew", ArtifactKind::Formula, "antigravity-cli"),
+            None
+        );
+    }
+
+    #[test]
+    fn test_homebrews_claude_code_latest_cask_is_claude_code() {
+        assert_same_tool(
+            "claude-code",
+            ("brew", ArtifactKind::Cask, "claude-code@latest"),
+            ("standalone-claude", ArtifactKind::Binary, "claude"),
+        );
+        assert_same_tool(
+            "claude-code",
+            ("brew", ArtifactKind::Cask, "claude-code@latest"),
+            ("npm", ArtifactKind::Package, "@anthropic-ai/claude-code"),
+        );
+        // `@latest` on npm is what to install, never a package's name.
+        assert_eq!(
+            id_for(
+                "npm",
+                ArtifactKind::Package,
+                "@anthropic-ai/claude-code@latest"
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn test_homebrews_copilot_cli_prerelease_cask_is_github_copilot_cli() {
+        assert_same_tool(
+            "copilot-cli",
+            ("brew", ArtifactKind::Cask, "copilot-cli@prerelease"),
+            ("npm", ArtifactKind::Package, "@github/copilot"),
+        );
+        // Homebrew's `copilot` formula is AWS's ECS tool.
+        assert_eq!(id_for("brew", ArtifactKind::Formula, "copilot"), None);
+    }
+
+    #[test]
+    fn test_homebrews_droid_cask_is_factory_droid() {
+        assert_same_tool(
+            "droid",
+            ("brew", ArtifactKind::Cask, "droid"),
+            ("npm", ArtifactKind::Package, "droid"),
+        );
+        // Factory's desktop app links no command: it is no copy of Droid.
+        assert_eq!(id_for("brew", ArtifactKind::Cask, "factory"), None);
+        assert_eq!(id_for("brew", ArtifactKind::Formula, "droid"), None);
+    }
+
+    #[test]
+    fn test_homebrews_ollama_binary_cask_is_ollama_and_keeps_its_models() {
+        assert_same_tool(
+            "ollama",
+            ("brew", ArtifactKind::Cask, "ollama-binary"),
+            ("brew", ArtifactKind::Formula, "ollama"),
+        );
+        // So its uninstall preview names the models folder, as the app's.
+        let family = id_for("brew", ArtifactKind::Cask, "ollama-binary").unwrap();
+        assert!(crate::kept_data::data_paths(family)
+            .iter()
+            .any(|(path, _)| *path == crate::kept_data::OLLAMA_MODELS));
+    }
+
+    #[test]
+    fn test_homebrews_kimi_code_formula_is_kimi_code() {
+        assert_same_tool(
+            "kimi-code",
+            ("brew", ArtifactKind::Formula, "kimi-code"),
+            ("npm", ArtifactKind::Package, "@moonshot-ai/kimi-code"),
+        );
+        // Moonshot's chat app is another program.
+        assert_eq!(id_for("brew", ArtifactKind::Cask, "kimi"), None);
+    }
+
+    #[test]
+    fn test_homebrews_mistral_vibe_formula_is_mistral_vibe() {
+        assert_same_tool(
+            "mistral-vibe",
+            ("brew", ArtifactKind::Formula, "mistral-vibe"),
+            ("uv", ArtifactKind::Tool, "mistral-vibe"),
+        );
+        assert_eq!(id_for("brew", ArtifactKind::Cask, "mistral-vibe"), None);
+    }
+
+    #[test]
+    fn test_homebrews_openclaw_cli_formula_is_openclaw() {
+        assert_same_tool(
+            "openclaw",
+            ("brew", ArtifactKind::Formula, "openclaw-cli"),
+            ("npm", ArtifactKind::Package, "openclaw"),
+        );
+        // OpenClaw's app links no command.
+        assert_eq!(id_for("brew", ArtifactKind::Cask, "openclaw"), None);
     }
 }

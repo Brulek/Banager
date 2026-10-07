@@ -2686,6 +2686,7 @@
   "cask:obs": "直播与录屏开源软件",
   "cask:obsidian": "基于本地Markdown纯文本文件夹的知识库",
   "cask:ollama-app": "在本机运行大语言模型的应用",
+  "cask:ollama-binary": "在本机运行大语言模型的命令行工具",
   "cask:omnidisksweeper": "找出并删除无用的大文件",
   "cask:onedrive": "云存储客户端",
   "cask:only-switch": "菜单栏系统与实用功能开关",

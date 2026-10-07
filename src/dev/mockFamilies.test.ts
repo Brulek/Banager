@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Snapshot } from "../lib/types";
+import { twinsByArtifact, twinVerdict } from "../lib/commands";
+import type { ArtifactKey, CommandFact, InstalledArtifact, Snapshot } from "../lib/types";
+import { NO_FACTS } from "../lib/types";
+import { artifactKeyId } from "../store/ui";
 import { createMockBackend } from "./mockBackend";
 import { mockFamilyOf } from "./mockFamilies";
 import { DEFAULT_SCENARIO } from "./scenario";
@@ -56,5 +59,46 @@ describe("the preview's AI tool families", () => {
     expect(mockFamilyOf("standalone-rustup", key("Binary", "rustup"))).toBeNull();
     expect(mockFamilyOf("standalone-codex", key("Binary", "codex"))).toBe("codex");
     expect(mockFamilyOf("ollama", key("Model", "llama3.2:3b"))).toBeNull();
+  });
+
+  it("puts each Homebrew package review r36 V4 found missing in its tool's family, so a second copy is one", () => {
+    // The same table as families.rs: each of the eight is its tool.
+    for (const [kind, name, family] of [
+      ["Cask", "antigravity-cli", "antigravity-cli"],
+      ["Cask", "claude-code@latest", "claude-code"],
+      ["Cask", "copilot-cli@prerelease", "copilot-cli"],
+      ["Cask", "droid", "droid"],
+      ["Cask", "ollama-binary", "ollama"],
+      ["Formula", "kimi-code", "kimi-code"],
+      ["Formula", "mistral-vibe", "mistral-vibe"],
+      ["Formula", "openclaw-cli", "openclaw"],
+    ] as const) {
+      expect(mockFamilyOf("brew", { instance_id: "brew:/opt/homebrew", kind, name }), name).toBe(family);
+    }
+    // Antigravity CLI's own install and Homebrew's cask both put `agy` on
+    // the Mac, Homebrew's first on PATH: two copies of one tool, and
+    // typing `agy` runs the cask's -- not "another program with this name".
+    const artifact = (key: ArtifactKey, adapterId: string, commands: CommandFact[]): InstalledArtifact => ({
+      key,
+      display_name: key.name,
+      version: "1.0",
+      reason: "Requested",
+      description: null,
+      homepage: null,
+      size_bytes: null,
+      installed_at: null,
+      path: null,
+      auto_updates: false,
+      uninstall_blocked: null,
+      facts: { ...NO_FACTS, family: mockFamilyOf(adapterId, key), commands },
+    });
+    const caskKey: ArtifactKey = { instance_id: "brew:/opt/homebrew", kind: "Cask", name: "antigravity-cli" };
+    const cask = artifact(caskKey, "brew", [{ name: "agy", state: "Runs" }]);
+    const own = artifact({ instance_id: "standalone-agy", kind: "Binary", name: "agy" }, "standalone-agy", [
+      { name: "agy", state: { ShadowedBy: { by: caskKey } } },
+    ]);
+    const twins = twinsByArtifact([cask, own]);
+    expect(twinVerdict(own, twins.get(artifactKeyId(own.key)))).toEqual({ kind: "unused", command: "agy", by: cask });
+    expect(twinVerdict(cask, twins.get(artifactKeyId(cask.key)))?.kind).toBe("runs");
   });
 });

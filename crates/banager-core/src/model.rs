@@ -1001,7 +1001,8 @@ pub enum Warning {
     /// bundled table (`families.rs`, `data_paths`: `~/.claude`,
     /// `~/.claude.json`, `~/.codex`, `~/.gemini`, … -- every family's but
     /// Ollama's; docs/what-we-run.md lists them all) and, for the
-    /// Ollama family (formula `ollama`, cask `ollama-app`), the models
+    /// Ollama family (formula `ollama`, casks `ollama-app` and
+    /// `ollama-binary`), the models
     /// folder `~/.ollama/models`. One per path that is there, in the
     /// table's order, `path` as the table spells it (`~` for the home
     /// folder): data for a sentence, never a path Banager acts on. `size`

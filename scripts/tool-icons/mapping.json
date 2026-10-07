@@ -1,5 +1,5 @@
 {
-  "note": "Reviewed mapping, 2026-09-28: automatic candidates, each confirmed by two independent reviewers (Simple Icons matches by name/maker; GitHub organization avatars by eye). Standalone tools and sources checked by hand. Glyphs whose own license is non-commercial, no-derivatives, GPL or custom are not used (2026-09-28); those tools fall back to a reviewed organization avatar or to no logo. Round 2 (2026-09-28 night): Homebrew ranks 1001–2500 incl. third-party taps, same two-reviewer process. Round 3 (2026-09-29): npm packages of projects whose Simple Icons logo is shippable -- the npm twin of a Homebrew formula already mapped (typescript, vite, esbuild, bun, deno …) and other widely installed ones -- each checked against its npm registry entry's repository (the project's own), no guesses; framework CLIs as \"maker\", as @angular/cli. Round 5 (2026-10-02): the members of the AI-tool families (crates/banager-core/data/ai-tools.json) that had no logo, each tied to its vendor by the vendor's own registry entry, docs or site: an npm or PyPI twin of a formula already mapped takes the formula's logo (gemini-cli, kimi, mistral-vibe, ampcode); CodeBuddy Code is Simple Icons' CodeBuddy (codebuddy.cn, whose CLI docs install @tencent-ai/codebuddy-code); Qoder's avatar is the GitHub organization qoder.com links (QoderAI); goose's is aaif-goose, where Homebrew's block-goose-cli now builds from; the others are the GitHub organization of the package's repository (iflow-ai, charmbracelet, augmentcode, Factory-AI, openclaw); Ollama's app cask has Ollama's logo and Grok Build's cask xAI's, as their standalone and formula twins do. Round 6 (2026-10-06, decision I9): Claude Code's own installer, as a tool (standalone:claude) and as a source (standalone-claude), takes Claude Code's logo (si:claudecode), as its npm package and its cask do, in place of Claude's (si:claude), which nothing names now; one product, one logo. src/assets/tool-icons/pack.json was edited to match rather than rebuilt (a rebuild downloads every avatar again); src/lib/toolIcons.test.ts holds the two to each other.",
+  "note": "Reviewed mapping, 2026-09-28: automatic candidates, each confirmed by two independent reviewers (Simple Icons matches by name/maker; GitHub organization avatars by eye). Standalone tools and sources checked by hand. Glyphs whose own license is non-commercial, no-derivatives, GPL or custom are not used (2026-09-28); those tools fall back to a reviewed organization avatar or to no logo. Round 2 (2026-09-28 night): Homebrew ranks 1001–2500 incl. third-party taps, same two-reviewer process. Round 3 (2026-09-29): npm packages of projects whose Simple Icons logo is shippable -- the npm twin of a Homebrew formula already mapped (typescript, vite, esbuild, bun, deno …) and other widely installed ones -- each checked against its npm registry entry's repository (the project's own), no guesses; framework CLIs as \"maker\", as @angular/cli. Round 5 (2026-10-02): the members of the AI-tool families (crates/banager-core/data/ai-tools.json) that had no logo, each tied to its vendor by the vendor's own registry entry, docs or site: an npm or PyPI twin of a formula already mapped takes the formula's logo (gemini-cli, kimi, mistral-vibe, ampcode); CodeBuddy Code is Simple Icons' CodeBuddy (codebuddy.cn, whose CLI docs install @tencent-ai/codebuddy-code); Qoder's avatar is the GitHub organization qoder.com links (QoderAI); goose's is aaif-goose, where Homebrew's block-goose-cli now builds from; the others are the GitHub organization of the package's repository (iflow-ai, charmbracelet, augmentcode, Factory-AI, openclaw); Ollama's app cask has Ollama's logo and Grok Build's cask xAI's, as their standalone and formula twins do. Round 6 (2026-10-06, decision I9): Claude Code's own installer, as a tool (standalone:claude) and as a source (standalone-claude), takes Claude Code's logo (si:claudecode), as its npm package and its cask do, in place of Claude's (si:claude), which nothing names now; one product, one logo. src/assets/tool-icons/pack.json was edited to match rather than rebuilt (a rebuild downloads every avatar again); src/lib/toolIcons.test.ts holds the two to each other. Round 7 (2026-10-08, review r36 V4): the Homebrew packages that joined the AI-tool families take their family's logo, one product, one logo: the casks copilot-cli@prerelease (GitHub Copilot), droid (Factory-AI, as npm's droid) and ollama-binary (Ollama), the formula openclaw-cli (openclaw, as npm's openclaw), and the cask antigravity-cli, which had Google's (si:google, still used by others), now Antigravity's avatar (gh:google-antigravity), as Antigravity CLI's own install; each tied to its vendor by Homebrew's own record of it (crates/banager-core/src/families.rs, \"Homebrew packages added 2026-10-08\"). pack.json was edited to match, as in round 6.",
   "tools": {
     "brew:a2ps": {
       "icon": "si:gnu",
@@ -2609,6 +2609,10 @@
       "icon": "gh:open-cascade-sas",
       "relation": "maker"
     },
+    "brew:openclaw-cli": {
+      "icon": "gh:openclaw",
+      "relation": "same"
+    },
     "brew:opencode": {
       "icon": "si:opencode",
       "relation": "same"
@@ -4450,8 +4454,8 @@
       "relation": "maker"
     },
     "cask:antigravity-cli": {
-      "icon": "si:google",
-      "relation": "maker"
+      "icon": "gh:google-antigravity",
+      "relation": "same"
     },
     "cask:autodesk-fusion": {
       "icon": "si:autodesk",
@@ -4501,6 +4505,10 @@
       "icon": "si:githubcopilot",
       "relation": "same"
     },
+    "cask:copilot-cli@prerelease": {
+      "icon": "si:githubcopilot",
+      "relation": "same"
+    },
     "cask:cursor-cli": {
       "icon": "si:cursor",
       "relation": "maker"
@@ -4520,6 +4528,10 @@
     "cask:dotnet-sdk@9": {
       "icon": "si:dotnet",
       "relation": "same"
+    },
+    "cask:droid": {
+      "icon": "gh:Factory-AI",
+      "relation": "maker"
     },
     "cask:elgato-stream-deck": {
       "icon": "si:elgato",
@@ -4670,6 +4682,10 @@
       "relation": "same"
     },
     "cask:ollama-app": {
+      "icon": "si:ollama",
+      "relation": "same"
+    },
+    "cask:ollama-binary": {
       "icon": "si:ollama",
       "relation": "same"
     },

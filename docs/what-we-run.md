@@ -3208,7 +3208,8 @@ itself.
 `~/.local/bin/agy` — never an `agy` found through `PATH` — and checks with
 `lstat` and `realpath` that it is a regular file: the installer copies the
 binary there, and a link of that name is somebody else's (the Homebrew
-cask's `agy` is a link into its Caskroom, and is Homebrew's row). There is
+cask `antigravity-cli`'s `agy` is a link into its Caskroom, and is
+Homebrew's row; the AI Tools filter puts the two in one family). There is
 no launcher-only state: the file *is* the program. Banager then runs
 `<agy> --version` (30 s) with `AGY_CLI_DISABLE_AUTO_UPDATE=true` in its
 environment, the switch Google documents for its background updater. On
@@ -4314,7 +4315,7 @@ The named paths are:
 | Goose | `~/.local/share/goose`, `~/.config/goose` |
 | Mistral Vibe | `~/.vibe` |
 | OpenClaw | `~/.openclaw`, `~/.clawdbot` |
-| Ollama (Homebrew's formula `ollama`, cask `ollama-app`) | `~/.ollama/models` |
+| Ollama (Homebrew's formula `ollama`, casks `ollama-app` and `ollama-binary`) | `~/.ollama/models` |
 | Antigravity CLI | `~/.gemini/antigravity-cli` |
 | Grok Build | `~/.grok`, measured without `~/.grok/downloads` |
 
