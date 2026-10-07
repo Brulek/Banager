@@ -170,8 +170,10 @@ impl KegLinks {
 /// How the formula `name` (a tap's `user/tap/name` is `name` in the
 /// prefix) stands in `prefix`, or `None` when that cannot be told: no
 /// `opt/<name>`, one that does not lead into `Cellar/<name>`, its record
-/// or a command folder of its keg that cannot be looked at, or any of it
-/// in or through a protected place.
+/// or a command folder of its keg that cannot be looked at, `bin` and
+/// `sbin` together holding more names than one directory budget
+/// (`look::ListingBudget`) -- never the commands of part of them -- or any
+/// of it in or through a protected place.
 pub(crate) fn read_links(prefix: &Path, name: &str) -> Option<KegLinks> {
     let protected = Protected::of_this_process();
     let short = name.rsplit('/').next().filter(|short| plain(short))?;

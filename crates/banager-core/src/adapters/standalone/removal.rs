@@ -227,9 +227,14 @@ struct Item {
 /// -- so it still goes last (spec §6.2). A
 /// match is a regular file (never a link) directly in the pattern's folder
 /// whose name is prefix + something + suffix (`Glob::matches_name`), in
-/// name order so the preview is stable. A missing folder matches nothing;
-/// an unreadable, protected or over-budget folder refuses the whole list.
-/// All patterns share one directory budget, including nonmatching names.
+/// name order so the preview is stable. A missing folder matches nothing.
+/// One that cannot be listed in full -- unreadable, protected, or more
+/// names than one directory budget (`look::ListingBudget`, shared by all
+/// the patterns, the names that do not match counted too) -- is no list at
+/// all: the `Err` is the pattern itself (`~/.local/bin/agy.*.old`), where
+/// the preview refuses (`plan_removal`), a run stops (`take_turn`) and the
+/// last look cannot tell (`left_behind`); a part of the folder is never
+/// taken for all of it.
 /// Every match is optional: it may be gone by its turn, and one Banager
 /// cannot confirm is the tool's is kept and said, like an optional listed
 /// path.
@@ -250,12 +255,13 @@ fn listed_items(job: &Job) -> Result<Vec<Item>, PathBuf> {
     let mut budget = look::ListingBudget::default();
     for glob in job.globs {
         let dir = glob.dir_under(home);
+        let pattern = || dir.join(format!("{}*{}", glob.prefix, glob.suffix));
         let listing = match look::list(&dir, &protected) {
             Ok(listing) => listing,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
-            Err(_) => return Err(dir),
+            Err(_) => return Err(pattern()),
         };
-        let found = listing.names(&mut budget).map_err(|_| dir.clone())?;
+        let found = listing.names(&mut budget).map_err(|_| pattern())?;
         let mut names: Vec<String> = found
             .into_iter()
             .filter_map(|name| name.into_string().ok())
@@ -807,12 +813,14 @@ pub fn plan_removal(job: &Job) -> Result<Removal, AdapterError> {
     let mut moved = Vec::new();
     let mut warnings = Vec::new();
     let mut not_ours = Vec::new();
-    for item in listed_items(job).map_err(|path| {
-        AdapterError::Refused(format!(
-            "could not check backup files in {}",
-            path.display()
-        ))
-    })? {
+    // A pattern whose folder cannot be listed in full refuses at the
+    // pattern, with the sentence for a path that cannot be read -- a state
+    // of this Mac, never `Refused` (the page's "internal error") -- and so
+    // does `execute_removal`'s fresh look, as `PathChanged`.
+    let items = listed_items(job).map_err(|pattern| {
+        Refusal::new(&pattern, UninstallUnsafeReason::NotWhatInstructionsExpect).into_error(home)
+    })?;
+    for item in items {
         // Check 2: is it there? `lstat`, so a dangling launcher counts.
         match look::lstat(&item.path, &look.protected) {
             Ok(_) => {}
@@ -1448,10 +1456,16 @@ mod tests {
         identity_of(&look::lstat(path, &Protected::default()).expect("lstat"))
     }
 
-    #[test]
-    fn bounded_backup_search_refuses_preview_turn_and_reconciliation() {
+    #[tokio::test]
+    async fn bounded_backup_search_refuses_preview_run_turn_and_reconciliation() {
+        // A pattern folder too large to list within its budget: the
+        // preview refuses at the pattern (the page's own sentence, not an
+        // internal error), a confirmed run stops before the trasher is
+        // called with that same path, and the final check is unknown --
+        // never a list of backups read from part of the folder.
         let home = TempHome::new("bounded-removal");
         claude_layout(&home, "2.1.281");
+        home.file(".local/bin/claude.1727000000.old");
         let mut job = claude_job(&detected(home.path()));
         job.globs = only_glob(Glob {
             dir: "~/.local/bin",
@@ -1460,21 +1474,72 @@ mod tests {
             what: RemovedWhat::Backups,
         });
         let preview = plan_removal(&job).unwrap();
+        assert!(preview
+            .paths
+            .contains(&home.path().join(".local/bin/claude.1727000000.old")));
         for n in 0..4097 {
             home.file(&format!(".local/bin/unrelated-{n}"));
         }
-        assert!(plan_removal(&job).is_err());
-        assert!(left_behind(&job, &preview.paths).is_err());
-        assert!(matches!(
-            take_turn(
-                &job,
-                &preview.paths[0],
-                preview.identities[0],
-                &[],
-                &MockTrasher::new()
-            ),
-            Turn::Changed(_)
-        ));
+        let pattern = home.path().join(".local/bin/claude.*.old");
+        match plan_removal(&job) {
+            Err(AdapterError::UninstallUnsafe { path, reason }) => {
+                assert_eq!(path, "~/.local/bin/claude.*.old");
+                assert_eq!(reason, UninstallUnsafeReason::NotWhatInstructionsExpect);
+            }
+            other => panic!("expected the preview's refusal, got {other:?}"),
+        }
+        assert_eq!(left_behind(&job, &preview.paths), Err(pattern.clone()));
+        match take_turn(
+            &job,
+            &preview.paths[0],
+            preview.identities[0],
+            &[],
+            &MockTrasher::new(),
+        ) {
+            Turn::Changed(at) => assert_eq!(at, pattern),
+            _ => panic!("expected the turn to stop at the pattern"),
+        }
+        let mock = Arc::new(MockTrasher::new());
+        let trasher: Arc<dyn Trasher> = mock.clone();
+        let (outcome, _) = run(&job, &preview, &trasher, no_gap(), CancellationToken::new()).await;
+        assert_eq!(outcome, path_changed("~/.local/bin/claude.*.old"));
+        assert!(mock.calls().is_empty());
+    }
+
+    #[test]
+    fn a_pattern_folder_that_cannot_be_listed_refuses_rather_than_matching_nothing() {
+        // `~/.local/bin` searchable but not readable: the launcher can be
+        // looked at, its backups cannot be listed. Before f22 this matched
+        // nothing and the preview moved the launcher alone, leaving any
+        // backup behind unsaid.
+        use std::os::unix::fs::PermissionsExt;
+        let home = TempHome::new("unlistable-pattern-folder");
+        let layout = claude_layout(&home, "2.1.281");
+        home.file(".local/bin/claude.1727000000.old");
+        let mut job = claude_job(&detected(home.path()));
+        job.globs = only_glob(Glob {
+            dir: "~/.local/bin",
+            prefix: "claude.",
+            suffix: ".old",
+            what: RemovedWhat::Backups,
+        });
+        let bin = home.path().join(".local/bin");
+        if std::fs::metadata(&bin).unwrap().uid() == 0 {
+            eprintln!("running as root: permissions stop nothing, check skipped");
+            return;
+        }
+        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o311)).unwrap();
+        let answer = plan_removal(&job);
+        let launcher_seen = std::fs::symlink_metadata(&layout.launcher).is_ok();
+        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(launcher_seen, "the launcher itself can still be looked at");
+        match answer {
+            Err(AdapterError::UninstallUnsafe { path, reason }) => {
+                assert_eq!(path, "~/.local/bin/claude.*.old");
+                assert_eq!(reason, UninstallUnsafeReason::NotWhatInstructionsExpect);
+            }
+            other => panic!("expected the preview's refusal, got {other:?}"),
+        }
     }
 
     #[test]

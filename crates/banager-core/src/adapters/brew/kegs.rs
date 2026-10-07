@@ -27,8 +27,10 @@ pub(crate) struct Kegs {
 
 /// The kegs of the formula `name` (a tap's `user/tap/name` is `name` in
 /// the Cellar) under `prefix`, or `None` when its folder in the Cellar
-/// cannot be listed: not there, not a folder, or in or through a
-/// protected place. A version is a folder's name; a file there is none.
+/// cannot be listed in full: not there, not a folder, in or through a
+/// protected place, or more names than one directory budget
+/// (`look::ListingBudget`) -- never the versions of part of it. A version
+/// is a folder's name; a file there is none.
 pub(crate) fn read_kegs(prefix: &Path, name: &str) -> Option<Kegs> {
     let protected = Protected::of_this_process();
     let short = name.rsplit('/').next().filter(|short| plain(short))?;

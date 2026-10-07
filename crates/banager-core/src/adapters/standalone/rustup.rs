@@ -921,25 +921,41 @@ mod tests {
 
     #[test]
     fn bounded_rustup_roots_refuse_an_unchecked_tail() {
+        // Exactly the budget's 4096 names is a complete check; one more
+        // and the names after the 4096th -- where a link could be -- were
+        // never looked at, so the gate refuses at the root.
         let home = TempHome::new("bounded-rustup-root");
-        home.dir(".cargo");
-        for n in 0..4097 {
+        let cargo_home = home.dir(".cargo");
+        for n in 0..4096 {
             home.file(&format!(".cargo/file-{n}"));
         }
-        assert!(standard_roots(&detected(home.path(), &home.path().join(".cargo"))).is_err());
+        let d = detected(home.path(), &cargo_home);
+        assert!(standard_roots(&d).is_ok());
+        home.file(".cargo/file-4096");
+        assert_eq!(
+            standard_roots(&d),
+            Err(GateRefusal {
+                reason: UninstallBlocked::NoSafeMethod,
+                path: cargo_home,
+            })
+        );
     }
 
     #[test]
     fn bounded_rustup_preview_refuses_incomplete_toolchains_or_programs() {
         for folder in [".rustup/toolchains", ".cargo/bin"] {
             let home = TempHome::new("bounded-rustup-preview");
-            home.dir(".cargo");
+            let cargo_home = home.dir(".cargo");
             home.dir(folder);
             for n in 0..4097 {
                 home.file(&format!("{folder}/file-{n}"));
             }
-            assert!(
-                preview_with(&detected(home.path(), &home.path().join(".cargo")), &[]).is_err(),
+            assert_eq!(
+                preview_with(&detected(home.path(), &cargo_home), &[]),
+                Err(GateRefusal {
+                    reason: UninstallBlocked::NoSafeMethod,
+                    path: home.path().join(folder),
+                }),
                 "{folder}"
             );
         }

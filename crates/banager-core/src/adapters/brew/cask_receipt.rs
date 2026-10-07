@@ -153,7 +153,10 @@ fn caskroom_token(name: &str) -> Option<&str> {
 /// two levels under `.metadata` (hidden names skipped, as Ruby's `Dir.glob`
 /// skips them), the one with the greatest name -- the first of those, in
 /// sorted order, when two share it -- and in it the first of
-/// `Casks/<token>.json`, `.internal.json` and `.rb` that exists.
+/// `Casks/<token>.json`, `.internal.json` and `.rb` that exists. `None`
+/// when `.metadata` or any version folder in it cannot be listed in full,
+/// the whole search within one directory budget (`look::ListingBudget`):
+/// the greatest name of part of them need not be the one Homebrew picks.
 fn saved_caskfile(metadata: &Path, token: &str, protected: &Protected) -> Option<PathBuf> {
     let mut newest: Option<(Vec<u8>, PathBuf)> = None;
     let mut budget = look::ListingBudget::default();
