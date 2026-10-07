@@ -4301,14 +4301,17 @@ than linked, is a folder like any other there and is measured:
 |---|---|
 | a Homebrew formula | `<prefix>/Cellar/<name>/<version>`; the names in `<prefix>/Cellar/<name>`, and each other version's folder there, as its other versions |
 | a Homebrew cask with an app | the `.app` Homebrew names for it (Homebrew's section, `brew info --installed --json=v2`) and `<prefix>/Caskroom/<token>` |
+| a Homebrew cask with no app whose program Homebrew keeps in its own folder — Claude Code, Codex, Copilot CLI, Cursor CLI, Grok Build, Droid and the like: every stanza `brew info --installed --json=v2` lists for it is a `binary` link or one that leaves its files there (completions, manual pages, an installer script, Homebrew's own uninstall and zap steps), and the file each `binary` stanza links is in that folder | `<prefix>/Caskroom/<token>` |
 | an npm package | `<prefix>/lib/node_modules/<name>` |
 | a pipx or uv tool | its environment, the folder its own listing names |
 | a Cargo crate | each program `<CARGO_HOME>/.crates2.json` says it installed, in `<CARGO_HOME>/bin` (that file is read again for this, only when it is a regular file of at most 16 MiB, as the Cargo source reads it: a larger one is refused by its size, not read, and the crate is measured as its own listing names it) |
 | Claude Code, Antigravity CLI, Grok Build, rustup, Codex, opencode | the program file its launcher leads to |
 | Ollama's models | `~/.ollama/models/blobs`, once for all of them, when the Ollama Banager asks is on this Mac |
 
-Nothing else is measured: not pip's packages, not a cask with no app (a
-font, a `pkg`), not a tool's settings, caches or downloads. On the way to
+Nothing else is measured: not pip's packages, not any other cask with no
+app (a font, a `pkg`, one whose `suite` Homebrew moved elsewhere, as
+Flutter's, or whose command links a file outside its folder in
+`Caskroom`), not a tool's settings, caches or downloads. On the way to
 each folder, every folder above it is `lstat`ed and a link among them read
 (`readlink`), so that where it leads is known before anything there is
 looked at; the folder before each step is held open, so a folder already

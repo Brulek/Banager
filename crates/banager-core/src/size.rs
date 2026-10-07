@@ -9,8 +9,13 @@
 //! - a Homebrew formula: its keg, `<prefix>/Cellar/<name>/<version>`; and,
 //!   apart, the other kegs in `<prefix>/Cellar/<name>`, its old versions;
 //! - a Homebrew cask with an app: the `.app` Homebrew names for it and
-//!   `<prefix>/Caskroom/<token>`. A cask with no app (a font, a `pkg`) is
-//!   not measured: what it installed is elsewhere;
+//!   `<prefix>/Caskroom/<token>`;
+//! - a Homebrew cask with no app that keeps its program in
+//!   `<prefix>/Caskroom/<token>` -- Claude Code, Codex, Grok Build: `binary`
+//!   stanzas linking files in that folder, and no stanza that moves or
+//!   installs anything elsewhere (`commands_staged_in`) -- that folder. Any
+//!   other cask with no app (a font, a `pkg`, Flutter's `suite`) is not
+//!   measured: what it installed is elsewhere;
 //! - an npm package: `<prefix>/lib/node_modules/<name>`;
 //! - a pipx or uv tool: its environment (`InstalledArtifact.path`);
 //! - a Cargo crate: the programs it installed in `<CARGO_HOME>/bin`, as
@@ -816,9 +821,16 @@ fn roots_of(
                     Some((vec![keg], 1))
                 }
                 ArtifactKind::Cask => {
-                    let app = artifact.path.clone().filter(|path| path.is_absolute())?;
                     let caskroom = inst.prefix.join("Caskroom").join(short);
-                    Some((vec![app, caskroom], 2))
+                    match artifact.path.clone().filter(|path| path.is_absolute()) {
+                        Some(app) => Some((vec![app, caskroom], 2)),
+                        // No app: measured only when every command its
+                        // `binary` stanzas link is a file in its own
+                        // Caskroom folder, so that the program is there.
+                        None => {
+                            commands_staged_in(artifact, &caskroom).then(|| (vec![caskroom], 1))
+                        }
+                    }
                 }
                 _ => None,
             }
@@ -857,6 +869,38 @@ fn roots_of(
         id if id.starts_with("standalone-") => absolute_path().map(|roots| (roots, 1)),
         _ => None,
     }
+}
+
+/// Whether a cask with no app keeps its program in `caskroom`, its own
+/// folder in `<prefix>/Caskroom`: every stanza it has leaves what it
+/// installed there (`CommandInputs.cask_stays_in_caskroom`, from
+/// `brew/parse.rs`: `binary` links, completions, an installer script,
+/// Homebrew's own uninstall and zap steps -- no `suite`, `pkg`, font or
+/// anything else that moves a file out), it has `binary` stanzas
+/// (`CommandInputs.provided`), and the file each one links is in that
+/// folder -- named relative to it, as Homebrew's Claude Code, Codex,
+/// Copilot CLI, Cursor CLI, Grok Build and Droid name theirs (`within`
+/// empty), or by an absolute path inside it, as a cask whose installer
+/// script fills its folder names its own
+/// (`<prefix>/Caskroom/miniconda/base/condabin/conda`). Otherwise what the
+/// folder holds is not the program, or not all of it -- the package a
+/// `pkg` installed from, the link to a `suite` Homebrew moved (Flutter's
+/// SDK, in `<prefix>/share/flutter`), a file inside an app -- and the cask
+/// is not measured; nor is one with no `binary` stanza (a font, a `pkg`
+/// alone). A path with a `..` in it is taken as elsewhere: by name alone,
+/// nobody knows where it stays.
+fn commands_staged_in(artifact: &InstalledArtifact, caskroom: &Path) -> bool {
+    let inputs = &artifact.facts.command_inputs;
+    inputs.cask_stays_in_caskroom
+        && !inputs.provided.is_empty()
+        && inputs.provided.iter().all(|command| {
+            command.within.iter().all(|file| {
+                file.starts_with(caskroom)
+                    && !file
+                        .components()
+                        .any(|part| part == std::path::Component::ParentDir)
+            })
+        })
 }
 
 /// `<cargo_home>/.crates2.json`'s programs per crate, every name a plain
@@ -2389,6 +2433,165 @@ mod tests {
                 + du(&prefix.join("Cellar/jq/1.8.2"))
                 + du(&scratch.path("Applications/iTerm.app"))
                 + du(&prefix.join("Caskroom/iterm2"))
+        );
+    }
+
+    #[test]
+    fn test_a_cask_whose_commands_are_all_in_its_caskroom_folder_is_that_folder() {
+        // Homebrew's Claude Code, Codex, Copilot CLI, Cursor CLI, Grok
+        // Build, Droid: `binary` stanzas and no app, the program staged in
+        // `<prefix>/Caskroom/<token>/<version>` and only linked into
+        // `bin`. Measured as that folder, the way an app's cask is
+        // measured with it -- read by the real `parse_info_installed`, as
+        // `brew info --installed --json=v2` writes them (the stanza names
+        // its file relative to that folder, or, for one an installer
+        // script filled, absolutely inside it). Not measured: a cask whose
+        // command is elsewhere (a `pkg` put it in `/usr/local/share`: what
+        // its Caskroom folder holds is the package, not the program), one
+        // with a stanza that moves files out of the folder (Flutter's
+        // `suite`, moved to `<prefix>/share/flutter`, leaves only a link
+        // behind, which would measure as a few bytes) or one Banager does
+        // not know, a font, and a stanza whose path climbs out of the
+        // folder.
+        let scratch = Scratch::new("binary-cask");
+        let home = scratch.dir("home");
+        let prefix = scratch.dir("homebrew");
+        let claude = scratch.file("homebrew/Caskroom/claude-code/2.1.285/claude", 300_000);
+        // A hard link in the folder: once, as everywhere.
+        std::fs::hard_link(
+            &claude,
+            prefix.join("Caskroom/claude-code/2.1.285/claude-again"),
+        )
+        .unwrap();
+        scratch.file(
+            "homebrew/Caskroom/claude-code/.metadata/2.1.285/20261008/Casks/claude-code.json",
+            2_000,
+        );
+        scratch.file("homebrew/Caskroom/miniconda/base/condabin/conda", 40_000);
+        scratch.file("homebrew/Caskroom/miniconda/py314/Miniconda3.sh", 90_000);
+        scratch.file(
+            "homebrew/Caskroom/dotnet-sdk/10.0.401/dotnet-sdk.pkg",
+            200_000,
+        );
+        scratch.file(
+            "homebrew/Caskroom/codex/0.130.0/codex-aarch64-apple-darwin",
+            90_000,
+        );
+        scratch.file("homebrew/Caskroom/font-x/1.0/X.ttf", 5_000);
+        scratch.file("homebrew/Caskroom/odd/1.0/odd", 1_000);
+        scratch.file("homebrew/share/flutter/bin/flutter", 500_000);
+        scratch.dir("homebrew/Caskroom/flutter/3.35.0");
+        symlink(
+            prefix.join("share/flutter"),
+            prefix.join("Caskroom/flutter/3.35.0/flutter"),
+        )
+        .unwrap();
+        scratch.file("homebrew/Caskroom/wrapped/1.0/wrapped", 1_000);
+        let bin = prefix.join("bin");
+        let caskroom = prefix.join("Caskroom");
+        let json = serde_json::json!({
+            "formulae": [],
+            "casks": [
+                {
+                    "token": "claude-code",
+                    "name": ["Claude Code"],
+                    "installed": "2.1.285",
+                    "artifacts": [
+                        { "binary": ["claude"], "target": bin.join("claude") },
+                        { "zap": [{ "trash": ["~/.claude.json"] }] }
+                    ]
+                },
+                {
+                    "token": "codex",
+                    "installed": "0.130.0",
+                    "artifacts": [
+                        {
+                            "binary": ["codex-aarch64-apple-darwin", { "target": "codex" }],
+                            "target": bin.join("codex")
+                        },
+                        { "generate_completions_from_executable": ["codex", "completion"] },
+                        { "zap": [{ "trash": ["~/.codex"] }] }
+                    ]
+                },
+                {
+                    "token": "flutter",
+                    "installed": "3.35.0",
+                    "artifacts": [
+                        { "suite": ["flutter"], "target": prefix.join("share/flutter") },
+                        { "binary": ["flutter/bin/flutter"], "target": bin.join("flutter") }
+                    ]
+                },
+                {
+                    "token": "wrapped",
+                    "installed": "1.0",
+                    "artifacts": [
+                        { "binary": ["wrapped"], "target": bin.join("wrapped") },
+                        { "a_stanza_from_a_later_homebrew": ["wrapped"] }
+                    ]
+                },
+                {
+                    "token": "miniconda",
+                    "installed": "py314",
+                    "artifacts": [
+                        { "installer": [{ "script": { "executable": "Miniconda3.sh" } }] },
+                        {
+                            "binary": [caskroom.join("miniconda/base/condabin/conda")],
+                            "target": bin.join("conda")
+                        }
+                    ]
+                },
+                {
+                    "token": "dotnet-sdk",
+                    "installed": "10.0.401",
+                    "artifacts": [
+                        { "pkg": ["dotnet-sdk.pkg"] },
+                        { "binary": ["/usr/local/share/dotnet/dotnet"], "target": bin.join("dotnet") }
+                    ]
+                },
+                {
+                    "token": "font-x",
+                    "installed": "1.0",
+                    "artifacts": [{ "font": ["X.ttf"], "target": home.join("Library/Fonts/X.ttf") }]
+                },
+                {
+                    "token": "odd",
+                    "installed": "1.0",
+                    "artifacts": [{
+                        "binary": [caskroom.join("odd/../dotnet-sdk/10.0.401/dotnet-sdk.pkg")],
+                        "target": bin.join("odd")
+                    }]
+                }
+            ]
+        });
+        let id = "brew:homebrew";
+        let artifacts =
+            crate::adapters::brew::parse::parse_info_installed(&json.to_string(), id).unwrap();
+        assert!(artifacts.iter().all(|a| a.path.is_none()), "no app");
+        let (meter, _) = recording_meter(SizeBudget::default());
+        let sizes = run(
+            &meter,
+            1,
+            &[instance("brew", id, &prefix)],
+            &artifacts,
+            &home,
+        );
+        assert!(sizes.done);
+        let measured = |name: &str| size_of(&sizes, name).and_then(|size| size.measured);
+        let claude_code = measured("claude-code").unwrap();
+        assert_eq!(claude_code.bytes, du(&caskroom.join("claude-code")));
+        assert!(!claude_code.partial && !claude_code.at_least);
+        let codex = measured("codex").unwrap();
+        assert_eq!(codex.bytes, du(&caskroom.join("codex")));
+        let miniconda = measured("miniconda").unwrap();
+        assert_eq!(miniconda.bytes, du(&caskroom.join("miniconda")));
+        for name in ["flutter", "wrapped", "dotnet-sdk", "font-x", "odd"] {
+            assert!(size_of(&sizes, name).is_none(), "{name}");
+        }
+        assert_eq!(
+            sizes.total.unwrap().bytes,
+            du(&caskroom.join("claude-code"))
+                + du(&caskroom.join("codex"))
+                + du(&caskroom.join("miniconda"))
         );
     }
 

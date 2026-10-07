@@ -5,10 +5,12 @@
  * Dev-only, like everything in src/dev.
  *
  * Measured: Homebrew formulae (their other versions apart), casks with an
- * app, npm packages, pipx and uv tools, crates, and the tools with their
- * own installer. Not: pip packages, a cask with no app, a tool whose
- * program is gone, and an Ollama model, which keeps the size Ollama gives
- * it -- the models are measured together, as their folder.
+ * app, casks with no app that keep their program in their Caskroom folder
+ * (`COMMANDS_IN_CASKROOM`), npm packages, pipx and uv tools, crates, and
+ * the tools with their own installer. Not: pip packages, any other cask
+ * with no app (a font, a `pkg`), a tool whose program is gone, and an
+ * Ollama model, which keeps the size Ollama gives it -- the models are
+ * measured together, as their folder.
  */
 import type { ArtifactSize, InstalledArtifact, ManagerInstance, Measured, ModelsSize, Sizes } from "../lib/types";
 
@@ -47,6 +49,8 @@ const KNOWN: Record<string, number> = {
   // Casks with an app.
   iterm2: 182.3 * MB,
   "visual-studio-code": 612.4 * MB,
+  // A cask with no app, its program in its Caskroom folder.
+  "android-platform-tools": 38.6 * MB,
   // npm, Cargo, pipx, uv and the tools with their own installer.
   corepack: 0.9 * MB,
   npm: 11.2 * MB,
@@ -82,6 +86,34 @@ const OTHER_VERSIONS: Record<string, number> = {
   "youtube-dl": 8.4 * MB,
 };
 
+/**
+ * The preview's casks with no app that size.rs measures as their folder in
+ * `<prefix>/Caskroom` (`commands_staged_in`): every stanza a `binary` link
+ * into that folder or one that leaves its files there, as Homebrew's cask
+ * API has them in October 2026. What decides it (`CommandInputs`) is never
+ * on the wire, so the preview names them. Not Flutter: its `suite` is
+ * moved to `<prefix>/share/flutter`.
+ */
+const COMMANDS_IN_CASKROOM = new Set([
+  "1password-cli",
+  "android-platform-tools",
+  "antigravity-cli",
+  "aws-vault-binary",
+  "claude-code",
+  "clickhouse",
+  "codeql",
+  "coderabbit",
+  "codex",
+  "copilot-cli",
+  "cursor-cli",
+  "gcloud-cli",
+  "gitkraken-cli",
+  "miniconda",
+  "miniforge",
+  "ngrok",
+  "tuist",
+]);
+
 /** One that could not all be read, and one the round's budget cut short. */
 const PARTIAL = new Set(["pre-commit"]);
 const AT_LEAST = new Set(["visual-studio-code"]);
@@ -106,7 +138,9 @@ function measured(name: string, bytes: number): Measured {
 function isMeasured(artifact: InstalledArtifact, adapterId: string): boolean {
   switch (adapterId) {
     case "brew":
-      return artifact.key.kind === "Formula" ? artifact.version !== "" : artifact.path !== null;
+      return artifact.key.kind === "Formula"
+        ? artifact.version !== ""
+        : artifact.path !== null || COMMANDS_IN_CASKROOM.has(artifact.key.name);
     case "npm":
       return true;
     case "pipx":

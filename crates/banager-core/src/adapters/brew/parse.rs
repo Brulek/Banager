@@ -7,6 +7,7 @@ use crate::model::{
 use serde::de::IgnoredAny;
 use serde::Deserialize;
 use serde_json::Value;
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 // Both partitions are required, deliberately. `brew info --installed
@@ -215,8 +216,8 @@ fn homebrew_facts(status: &StatusFields, other_versions: Vec<String>) -> Option<
 /// is the cask's `path`. A `binary` stanza's `target` is the link in
 /// `<prefix>/bin` itself -- the command -- which the unknown-source scan
 /// finds by reading that directory and `cask_commands` names for
-/// `commands::judge` and for that scan's rule 2 (`scan::Known`); no other
-/// stanza's entry is read.
+/// `commands::judge` and for that scan's rule 2 (`scan::Known`). Of every
+/// other stanza only its name is read (`other`, `stays_in_caskroom`).
 #[derive(Debug, Deserialize)]
 struct CaskArtifact {
     /// Present exactly when this entry is an `app` stanza. What it holds
@@ -235,6 +236,58 @@ struct CaskArtifact {
     binary: Option<serde_json::Value>,
     #[serde(default)]
     target: Option<String>,
+    /// The entry's other keys, by name only, what each holds never looked
+    /// at: the stanza's name when it is neither `app` nor `binary` (`zap`,
+    /// `uninstall`, `pkg`, `suite`, `font`, ...). Read by
+    /// `stays_in_caskroom`.
+    #[serde(flatten)]
+    other: BTreeMap<String, IgnoredAny>,
+}
+
+/// The stanzas that leave what a cask installed in its folder in
+/// `<prefix>/Caskroom`: `binary` (a link into it, read through its own
+/// field), the completions and manual pages Homebrew links or makes from
+/// it, an installer script (run in that folder: Homebrew's Miniconda and
+/// gcloud-cli install into it), staying staged, and Homebrew's own steps
+/// before and after an install or uninstall and its uninstall and zap
+/// lists. Named as the stanzas are, by Homebrew's `dsl_key` and in the
+/// spellings of the steps the API names (`postflight_steps`); any other
+/// stanza -- `app`, `suite`, `pkg`, `artifact`, a font, a plug-in, one a
+/// later Homebrew adds -- may put files elsewhere.
+const STAYS_IN_CASKROOM: &[&str] = &[
+    "bash_completion",
+    "fish_completion",
+    "generate_completions_from_executable",
+    "installer",
+    "manpage",
+    "postflight",
+    "postflight_steps",
+    "preflight",
+    "preflight_steps",
+    "stage_only",
+    "uninstall",
+    "uninstall_postflight",
+    "uninstall_postflight_steps",
+    "uninstall_preflight",
+    "uninstall_preflight_steps",
+    "zap",
+    "zsh_completion",
+];
+
+/// Whether a cask's stanzas all leave what it installed in its folder in
+/// `Caskroom` (`STAYS_IN_CASKROOM`) and one of them is a `binary`: Homebrew's
+/// Claude Code (`binary`, `zap`), Codex (`binary`,
+/// `generate_completions_from_executable`, `zap`). For
+/// `CommandInputs.cask_stays_in_caskroom`, which `size::roots_of` reads.
+fn stays_in_caskroom(artifacts: &[CaskArtifact]) -> bool {
+    artifacts.iter().any(|artifact| artifact.binary.is_some())
+        && artifacts.iter().all(|artifact| {
+            artifact.app.is_none()
+                && artifact
+                    .other
+                    .keys()
+                    .all(|stanza| STAYS_IN_CASKROOM.contains(&stanza.as_str()))
+        })
 }
 
 /// The commands a cask's `binary` stanzas put in `<prefix>/bin`, for
@@ -446,6 +499,7 @@ pub fn parse_info_installed(
                 homebrew: homebrew_facts(&c.status, Vec::new()),
                 command_inputs: CommandInputs {
                     provided: cask_commands(&c.artifacts),
+                    cask_stays_in_caskroom: stays_in_caskroom(&c.artifacts),
                     ..Default::default()
                 },
                 ..Default::default()
@@ -1198,6 +1252,86 @@ mod tests {
         );
         // What the window gets is the verdicts, which nothing has made yet.
         assert!(result[0].facts.commands.is_empty());
+    }
+
+    #[test]
+    fn parse_info_installed_says_which_casks_leave_everything_in_their_caskroom_folder() {
+        // `cask_stays_in_caskroom`, for the disk-use measurement: a cask
+        // with a `binary` stanza and nothing but stanzas that leave what
+        // it installed in its Caskroom folder (the shapes of Homebrew's
+        // `claude-code`, `codex` and `gcloud-cli` casks in its cask API).
+        // Not one with an app, a `suite` (Flutter's), a `pkg`, a font, a
+        // stanza Banager does not know, or no `binary` at all.
+        let json = r#"{
+            "formulae": [],
+            "casks": [
+                { "token": "claude-code", "installed": "2.1.285", "artifacts": [
+                    { "binary": ["claude"], "target": "/opt/homebrew/bin/claude" },
+                    { "zap": [{ "trash": ["~/.claude.json"] }] }
+                ] },
+                { "token": "codex", "installed": "0.130.0", "artifacts": [
+                    { "binary": ["codex-aarch64-apple-darwin", { "target": "codex" }], "target": "/opt/homebrew/bin/codex" },
+                    { "generate_completions_from_executable": ["codex", "completion"] },
+                    { "zap": [{ "trash": ["~/.codex"] }] }
+                ] },
+                { "token": "gcloud-cli", "installed": "560.0.0", "artifacts": [
+                    { "preflight": null },
+                    { "uninstall": [{ "delete": "/opt/homebrew/Caskroom/gcloud-cli/latest" }] },
+                    { "installer": [{ "script": { "executable": "google-cloud-sdk/install.sh" } }] },
+                    { "binary": ["google-cloud-sdk/bin/gcloud"], "target": "/opt/homebrew/bin/gcloud" },
+                    { "bash_completion": ["google-cloud-sdk/completion.bash.inc"], "target": "/opt/homebrew/etc/bash_completion.d/gcloud" },
+                    { "postflight": null },
+                    { "zap": [{ "trash": ["~/.config/gcloud"] }] }
+                ] },
+                { "token": "flutter", "installed": "3.35.0", "artifacts": [
+                    { "suite": ["flutter"], "target": "/opt/homebrew/share/flutter" },
+                    { "binary": ["flutter/bin/flutter"], "target": "/opt/homebrew/bin/flutter" }
+                ] },
+                { "token": "visual-studio-code", "installed": "1.116.1", "artifacts": [
+                    { "app": ["Visual Studio Code.app"], "target": "/Applications/Visual Studio Code.app" },
+                    { "binary": ["/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code"], "target": "/opt/homebrew/bin/code" }
+                ] },
+                { "token": "dotnet-sdk", "installed": "10.0.401", "artifacts": [
+                    { "pkg": ["dotnet-sdk-10.0.401-osx-arm64.pkg"] },
+                    { "binary": ["/usr/local/share/dotnet/dotnet"], "target": "/opt/homebrew/bin/dotnet" }
+                ] },
+                { "token": "later", "installed": "1.0", "artifacts": [
+                    { "binary": ["later"], "target": "/opt/homebrew/bin/later" },
+                    { "command_wrapper": ["later"] }
+                ] },
+                { "token": "font-jetbrains-mono", "installed": "2.304", "artifacts": [
+                    { "font": ["JetBrainsMono.ttf"], "target": "/Users/someone/Library/Fonts/JetBrainsMono.ttf" }
+                ] },
+                { "token": "zap-only", "installed": "1.0", "artifacts": [{ "zap": [] }] }
+            ]
+        }"#;
+
+        let result = parse_info_installed(json, "brew:/opt/homebrew").expect("parse");
+
+        let stays: Vec<&str> = result
+            .iter()
+            .filter(|a| a.facts.command_inputs.cask_stays_in_caskroom)
+            .map(|a| a.key.name.as_str())
+            .collect();
+        assert_eq!(stays, vec!["claude-code", "codex", "gcloud-cli"]);
+        // Reading the names of the other stanzas costs nothing else.
+        let code = result
+            .iter()
+            .find(|a| a.key.name == "visual-studio-code")
+            .unwrap();
+        assert_eq!(
+            code.path,
+            Some(PathBuf::from("/Applications/Visual Studio Code.app"))
+        );
+        assert_eq!(code.facts.command_inputs.provided.len(), 1);
+        // The recorded 7.0.3 casks all have an app: none.
+        let recorded =
+            std::fs::read_to_string("../../adapters/fixtures/brew/7.0.3/info-installed.json")
+                .expect("read the recorded brew info");
+        assert!(parse_info_installed(&recorded, "brew:/opt/homebrew")
+            .expect("parse")
+            .iter()
+            .all(|a| !a.facts.command_inputs.cask_stays_in_caskroom));
     }
 
     #[test]

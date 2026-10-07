@@ -13,8 +13,8 @@ import { artifactKeyId } from "../store/ui";
  * once, which adding up each tool's own size would not. `atLeast` is true
  * whenever the number is short of what the tools in it take -- a part
  * could not be read, the budget ran out, or a tool in it has no size at
- * all (a pip package, a cask with no app, a model whose folder was not
- * measured) -- and the words then say 「…以上」. Never what could be freed:
+ * all (a pip package, a font or a `pkg` cask, a model whose folder was
+ * not measured) -- and the words then say 「…以上」. Never what could be freed:
  * nothing here offers to remove anything.
  */
 export interface SizeTotal {

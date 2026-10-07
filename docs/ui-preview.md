@@ -207,7 +207,9 @@ Paths are under a generic home folder, `/Users/you`.
   version -- git, node@22, python@3.13, gettext, libuv, openssl@3,
   readline and youtube-dl keep other kegs, and each one's versions and
   size agree -- 「612.4 MB以上」 for Visual Studio Code (the
-  round's budget ran out) and 「约22.7 MB，部分无法读取」 for pre-commit. A
+  round's budget ran out) and 「约22.7 MB，部分无法读取」 for pre-commit.
+  Android SDK Platform-Tools, a cask with no app whose program Homebrew
+  keeps in its Caskroom folder, says 「约38.6 MB」. A
   tool measured before at the same version shows at once. pip's packages,
   the font and a model get no measured size (a model keeps its own,
   said as 「占用空间 约2 GB」), and the Ollama source's page says

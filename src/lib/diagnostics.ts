@@ -320,7 +320,7 @@ export function diagnosticsText(t: Translate, input: DiagnosticsInput): string {
   );
   // The toolbar's total and hedge (`sizeTotalsOf`): measured for this
   // snapshot's round, and 「…以上」 when some tool has no size in it -- a
-  // pip package, a cask with no app -- as well as when the budget ran out.
+  // pip package, a font or a `pkg` cask -- as well as when the budget ran out.
   const total = sizeTotalsOf(sizes ?? undefined, snapshot ?? undefined).all;
   if (total !== null) {
     lines.push(t("diagnostics.text.diskTotal", { size: sourceTotalText(t, total) }));

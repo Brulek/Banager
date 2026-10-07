@@ -279,8 +279,9 @@ describe("the browser preview's mock backend", () => {
       { SizesChanged: { round: 1 } },
       { SizesChanged: { round: 1 } },
     ]);
-    // What size.rs never measures is never listed: pip's packages, a cask
-    // with no app, Ollama's models (they keep their own size).
+    // What size.rs never measures is never listed: pip's packages, a font
+    // cask, Ollama's models (they keep their own size); a cask with no app
+    // whose program is in its Caskroom folder is.
     const listed = new Set(measured.artifacts.map((size) => artifactKeyId(size.key)));
     for (const artifact of snapshot.artifacts) {
       const id = artifactKeyId(artifact.key);
@@ -290,6 +291,7 @@ describe("the browser preview's mock backend", () => {
     }
     expect(listed.has("brew:/opt/homebrew|Cask|font-jetbrains-mono")).toBe(false);
     expect(listed.has("brew:/opt/homebrew|Cask|iterm2")).toBe(true);
+    expect(listed.has("brew:/opt/homebrew|Cask|android-platform-tools")).toBe(true);
     // A formula with other kegs, one partial, one cut short, the models.
     const node = measured.artifacts.find((size) => size.key.name === "node@22");
     expect(node?.old_versions?.bytes).toBeGreaterThan(0);

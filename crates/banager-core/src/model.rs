@@ -601,6 +601,16 @@ pub struct CommandInputs {
     /// Terminal looks by Homebrew's doing, and `brew link --formula
     /// --force` puts them there.
     pub link_recorded: bool,
+    /// A Homebrew cask whose every stanza is of a kind that leaves what it
+    /// installed in its folder in `<prefix>/Caskroom` (`brew/parse.rs`,
+    /// `STAYS_IN_CASKROOM`): `binary` links into that folder, completions
+    /// and manual pages made from it, an installer script, Homebrew's own
+    /// uninstall and zap steps -- no `app`, `suite`, `pkg`, font or other
+    /// stanza that moves or installs a file elsewhere. Read by
+    /// `size::roots_of`, which measures that folder for such a cask when its
+    /// `binary` stanzas all link files in it (Homebrew's Claude Code,
+    /// Codex, Grok Build). False for every other artifact.
+    pub cask_stays_in_caskroom: bool,
 }
 
 /// One command a source's own answer names (`CommandInputs.provided`).
@@ -2781,6 +2791,7 @@ mod tests {
                 keg_only: true,
                 keg_only_by_macos: true,
                 link_recorded: false,
+                cask_stays_in_caskroom: true,
             },
         };
         let json = serde_json::to_string(&facts).unwrap();
