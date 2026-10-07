@@ -27,8 +27,11 @@
 //! read that answers with something else (another prefix, a changed
 //! receipt) is "changed since shown".
 //!
-//! Every program sits inside the test's own temp folder, so nothing here
-//! reads this Mac's Homebrew or home.
+//! Every program sits inside the test's own temp folder, and the adapters
+//! are given the integration tests' hooks -- npm's Homebrew queue key
+//! looks at no discovery prefix (`looking_at_no_homebrew_prefix`), uv
+//! reads no `UV_TOOL_DIR` (`with_tool_dir_fn`) -- so nothing here reads
+//! this Mac's Homebrew, home or environment.
 
 use async_trait::async_trait;
 use banager_core::adapters::cargo::CargoAdapter;
@@ -297,7 +300,7 @@ async fn ruff_updated_in_terminal(
     );
     runner.script(&upgrade, vec![exited(0, "", "Nothing to upgrade\n")]);
     let ran = confirm_then_run(
-        Arc::new(UvAdapter::new(runner.clone())),
+        Arc::new(UvAdapter::new(runner.clone()).with_tool_dir_fn(|| None)),
         &inst,
         request(&inst, OpKind::Upgrade, ArtifactKind::Tool, "ruff"),
         Some("0.16.8"),
@@ -488,7 +491,7 @@ fn npm_instance(dir: &Path) -> ManagerInstance {
 async fn npm_update(dir: &Path, runner: &Arc<ScriptedRunner>) -> Ran {
     let inst = npm_instance(dir);
     confirm_then_run(
-        Arc::new(NpmAdapter::new(runner.clone())),
+        Arc::new(NpmAdapter::new(runner.clone()).looking_at_no_homebrew_prefix()),
         &inst,
         request(&inst, OpKind::Upgrade, ArtifactKind::Package, "typescript"),
         Some("5.9.3"),
@@ -616,7 +619,7 @@ async fn uv_update(
         vec![exited(0, "", "Updated ruff v0.15.0 -> v0.16.8\n")],
     );
     let ran = confirm_then_run(
-        Arc::new(UvAdapter::new(runner.clone())),
+        Arc::new(UvAdapter::new(runner.clone()).with_tool_dir_fn(|| None)),
         &inst,
         request(&inst, OpKind::Upgrade, ArtifactKind::Tool, "ruff"),
         Some("0.16.8"),
