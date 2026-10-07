@@ -36,7 +36,12 @@ fn root() -> PathBuf {
 
 /// Files compiled only for tests (each declared under `#[cfg(test)]` or
 /// the `test-support` feature in its parent; checked below).
-const TEST_ONLY: [(&str, &str, &str); 8] = [
+const TEST_ONLY: [(&str, &str, &str); 9] = [
+    (
+        "crates/banager-core/src/history/format_one_reader.rs",
+        "crates/banager-core/src/history/mod.rs",
+        "mod format_one_reader;",
+    ),
     (
         "crates/banager-core/src/adapters/ollama/manifest_layout_tests.rs",
         "crates/banager-core/src/adapters/ollama/mod.rs",

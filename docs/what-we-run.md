@@ -4625,7 +4625,9 @@ a random, exclusively created `history.json.tmp.<random>` beside it by the
 same atomic writer as settings and renamed into place, on a thread of
 its own, after each operation finishes and after Clear. A missing,
 unreadable or malformed file is an empty history and is replaced at the
-next record; a file a newer Banager wrote is left exactly as it is. To
+next record. New writes use format 2, including the current outcome and failure
+variants. All existing format-1 shapes remain readable.
+Older format-1 builds leave format-2 files untouched; a file a newer Banager wrote is left exactly as it is. To
 remove the history, quit Banager and delete `history.json`; it starts
 empty at the next launch. Clear does not delete it.
 

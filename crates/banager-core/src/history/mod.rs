@@ -28,6 +28,8 @@
 //! operation's way to its end.
 
 mod failure_cause;
+#[cfg(test)]
+mod format_one_reader;
 
 pub use failure_cause::{failure_cause, operation_failure_cause, FailureCause};
 
@@ -43,7 +45,7 @@ use std::time::Duration;
 
 /// The file's format. A file that says a higher one was written by a newer
 /// Banager: this one reads none of it and never writes over it.
-pub const HISTORY_FORMAT: u32 = 1;
+pub const HISTORY_FORMAT: u32 = 2;
 
 /// How many records the file keeps: the newest.
 pub const MAX_RECORDS: usize = 1_000;
@@ -975,6 +977,52 @@ mod tests {
         .expect("an update is kept");
         r.op_id = finished_at as u64;
         r
+    }
+
+    #[test]
+    fn test_f5_current_enum_values_require_a_newer_format() {
+        let dir = TempDir::new("f5-downgrade");
+        let mut gone = record_at("gone", NOW);
+        gone.result = HistoryResult::NeedsAttention(Attention::GoneBeforeUpgrade);
+        let mut failed = record_at("failed", NOW);
+        failed.result = HistoryResult::Failed {
+            cause: Some(FailureCause::DiskFull),
+            detail: None,
+        };
+        // Existing releases wrote these shapes as format 1. Keep reading them.
+        std::fs::write(
+            dir.file(),
+            serde_json::to_vec(&serde_json::json!({
+                "format": 1, "cleared_before": null, "records": [gone, failed]
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let store = HistoryStore::open_with_clock(dir.file(), now);
+        assert_eq!(store.view().records.len(), 2);
+        store.clear();
+        assert!(store.flush(Duration::from_secs(5)));
+        let bytes = std::fs::read(dir.file()).unwrap();
+        let file: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        // The actual previous reader checks this before attempting typed records.
+        assert!(file["format"].as_u64().unwrap() > 1);
+        assert_eq!(
+            file["records"][0]["result"]["NeedsAttention"],
+            "GoneBeforeUpgrade"
+        );
+        format_one_reader::clear_and_rewrite(&dir.file(), NOW);
+        assert_eq!(
+            std::fs::read(dir.file()).unwrap(),
+            bytes,
+            "downgrade leaves newer bytes untouched"
+        );
+        let next = HistoryStore::open_with_clock(dir.file(), now);
+        assert_eq!(next.view().records.len(), 2);
+        // Prove this fixture really has the former defect for the former shape.
+        let mut legacy = file;
+        legacy["format"] = serde_json::json!(1);
+        std::fs::write(dir.file(), serde_json::to_vec(&legacy).unwrap()).unwrap();
+        assert_eq!(format_one_reader::clear_and_rewrite(&dir.file(), NOW), 1);
     }
 
     #[test]
@@ -1972,7 +2020,7 @@ mod tests {
         assert!(store.flush(Duration::from_secs(5)));
         let file: serde_json::Value =
             serde_json::from_slice(&std::fs::read(dir.file()).unwrap()).unwrap();
-        assert_eq!(file["format"], 1);
+        assert_eq!(file["format"], HISTORY_FORMAT);
         assert_eq!(file["records"].as_array().unwrap().len(), 1);
     }
 
@@ -1993,7 +2041,7 @@ mod tests {
     #[test]
     fn test_a_newer_banagers_file_is_never_written_over() {
         let dir = TempDir::new("newer");
-        let bytes = br#"{"format":2,"records":[{"what":"a newer shape"}]}"#;
+        let bytes = br#"{"format":3,"records":[{"what":"a newer shape"}]}"#;
         std::fs::write(dir.file(), bytes).unwrap();
         let store = HistoryStore::open_with_clock(dir.file(), now);
         assert_eq!(store.view().records, vec![]);
