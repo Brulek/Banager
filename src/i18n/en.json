@@ -1388,6 +1388,7 @@
       "incomplete": "Check: incomplete, {{sources}} didn't finish",
       "incompletePlain": "Check: incomplete",
       "notFound": "Not found in Terminal: {{number}}",
+      "notLinked": "Not linked by Homebrew: {{number}}",
       "twins": "Tools installed more than once: {{number}}",
       "diskTotal": "Space used: {{size}}",
       "noFacts": "System info: couldn't read"
@@ -1435,7 +1436,11 @@
       "twins_one": "{{count}} tool is installed more than once, {{copies}} copies in all",
       "twins_other": "{{count}} tools are installed more than once, {{copies}} copies in all",
       "twinsDetail": "Different sources each installed a copy of the same tool. Typing its command in Terminal runs only one of them.",
-      "twinsFine": "No tool is installed more than once"
+      "twinsFine": "No tool is installed more than once",
+      "notLinked_one": "Homebrew didn't link {{count}} tool where Terminal looks",
+      "notLinked_other": "Homebrew didn't link {{count}} tools where Terminal looks",
+      "notLinkedDetailOne": "Usually a file of the same name was in the way when Homebrew installed it. Typing its commands in Terminal doesn't run it.",
+      "notLinkedDetailMany": "Usually a file of the same name was in the way when Homebrew installed them. Typing their commands in Terminal doesn't run them."
     },
     "homebrew": {
       "fine": "Homebrew hasn't disabled or deprecated any tool, and keeps no other versions",

@@ -1270,6 +1270,7 @@
       "incomplete": "检查结果：不完整，{{sources}}未检查完",
       "incompletePlain": "检查结果：不完整",
       "notFound": "终端找不到：{{number}}个",
+      "notLinked": "Homebrew没有链接：{{number}}个",
       "twins": "装了不止一份的工具：{{number}}个",
       "diskTotal": "占用空间：{{size}}",
       "noFacts": "系统信息：无法读取"
@@ -1315,7 +1316,10 @@
       "notOnPathFine": "终端都能找到已安装的工具",
       "twins_other": "{{count}}个工具装了不止一份，共{{copies}}份",
       "twinsDetail": "同一个工具由不同的来源各装了一份。在终端里输入它的命令，只会运行其中一份。",
-      "twinsFine": "没有装了不止一份的工具"
+      "twinsFine": "没有装了不止一份的工具",
+      "notLinked_other": "Homebrew没有把{{count}}个工具链接到终端能找到的地方",
+      "notLinkedDetailOne": "通常是Homebrew安装它时有同名的文件挡住了。在终端里输入它的命令时不会运行它。",
+      "notLinkedDetailMany": "通常是Homebrew安装它们时有同名的文件挡住了。在终端里输入它们的命令时不会运行它们。"
     },
     "homebrew": {
       "fine": "没有Homebrew已停用或弃用的工具，也没有保留的其他版本",

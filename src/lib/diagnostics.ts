@@ -29,7 +29,7 @@ import { useTranslation } from "react-i18next";
 import { create } from "zustand";
 import { getSystemFacts } from "./api";
 import { twinsByArtifact, type Twin } from "./commands";
-import { commandsKnown, toolsNotJudged } from "./commandsKnown";
+import { commandsKnown, toolsNotJudged, toolsNotLinked } from "./commandsKnown";
 import { updatesUnchecked } from "./uncheckedStandalone";
 import { useSizes, useSnapshot } from "./queries";
 import { sizeTotalsOf, sourceTotalText } from "./sizeTotals";
@@ -308,6 +308,11 @@ export function diagnosticsText(t: Translate, input: DiagnosticsInput): string {
   );
   const notJudged = judged ? toolsNotJudged(artifacts) : 0;
   if (notJudged > 0) lines.push(t("setupCheckCoverage.diagnosticsNotChecked", { number: notJudged }));
+  // Tools Homebrew didn't link that are no copy of another, as Check Tool
+  // Setup names them (`toolsNotLinked`): not in 「终端找不到」's count, whose
+  // tools have a folder Terminal doesn't search.
+  const notLinked = judged ? toolsNotLinked(artifacts).length : 0;
+  if (notLinked > 0) lines.push(t("diagnostics.text.notLinked", { number: notLinked }));
   lines.push(
     commandsKnown(artifacts, false, "names") === "known"
       ? t("diagnostics.text.twins", { number: toolsInstalledTwice(artifacts) })

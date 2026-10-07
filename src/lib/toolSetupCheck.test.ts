@@ -562,6 +562,51 @@ describe("toolSetupCheck's command lines", () => {
       "note Couldn't check whether Terminal finds 1 tool",
     );
   });
+
+  it("names a tool Homebrew didn't link that is no copy of another, not saying Terminal finds all (q1b skeptic 2)", () => {
+    // `brew unlink ollama`, or Ollama.app's own CLI in the way of `brew
+    // install ollama`: the formula's `ollama`, named from its keg, has no
+    // verdict, and no other copy runs it. Its details say Homebrew didn't
+    // link it; this used to say 「终端都能找到已安装的工具…」 beside it.
+    const snapshot = fineSnapshot();
+    const formula = artifact(
+      { instance_id: BREW, kind: "Formula", name: "ollama" },
+      { family: "ollama", commands: [{ name: "ollama", state: null }] },
+    );
+    formula.facts.unlinked = true;
+    snapshot.artifacts.push(formula);
+    expect(shape(toolSetupCheck(en, input({ snapshot })))["Commands"]).toEqual([
+      "note Homebrew didn't link 1 tool where Terminal looks · ollama",
+      "fine No tool is installed more than once",
+    ]);
+    expect(shape(toolSetupCheck(zh, input({ snapshot })))["命令"]).toEqual([
+      "note Homebrew没有把1个工具链接到终端能找到的地方 · ollama",
+      "fine 没有装了不止一份的工具",
+    ]);
+    expect(shape(toolSetupCheck(zhHant, input({ snapshot })))["指令"]).toEqual([
+      "note Homebrew沒有把1個工具連結到終端機找得到的地方 · ollama",
+      "fine 沒有裝了不止一份的工具",
+    ]);
+    const line = toolSetupCheck(en, input({ snapshot })).sections.find((s) => s.id === "commands")!.lines[0];
+    expect(line.detail).toBe(
+      "Usually a file of the same name was in the way when Homebrew installed it. Typing its commands in Terminal doesn't run it.",
+    );
+    // Beside a tool Terminal can't find, both.
+    snapshot.artifacts.push(
+      artifact({ instance_id: NPM, kind: "Package", name: "tsx" }, { commands: [notOnPath("tsx")] }),
+    );
+    expect(shape(toolSetupCheck(en, input({ snapshot })))["Commands"]).toEqual([
+      "warning 1 tool can't be found in Terminal → installed:notOnPath",
+      "note Homebrew didn't link 1 tool where Terminal looks · ollama",
+      "fine No tool is installed more than once",
+    ]);
+    // Its keg first on PATH after all: it has a verdict, and is found.
+    snapshot.artifacts.pop();
+    formula.facts.commands = [runs("ollama")];
+    expect(shape(toolSetupCheck(en, input({ snapshot })))["Commands"]).toEqual([
+      "fine Terminal finds every installed tool, and none is installed more than once",
+    ]);
+  });
 });
 
 describe("toolSetupCheck's Homebrew lines", () => {

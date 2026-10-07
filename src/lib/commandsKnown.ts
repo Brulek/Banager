@@ -1,4 +1,6 @@
+import { twinsByArtifact, type Twin } from "./commands";
 import type { InstalledArtifact } from "./types";
+import { artifactKeyId } from "../store/ui";
 
 /**
  * Whether the list in view can say anything about which copy of a command
@@ -22,7 +24,7 @@ import type { InstalledArtifact } from "./types";
 export type CommandsKnown = "known" | "previewing" | "unjudged";
 
 export function commandsKnown(
-  artifacts: Pick<InstalledArtifact, "facts">[],
+  artifacts: readonly Pick<InstalledArtifact, "facts">[],
   preview: boolean,
   need: "names" | "verdicts",
 ): CommandsKnown {
@@ -57,8 +59,10 @@ export const COMMANDS_UNKNOWN_KEYS: Record<Exclude<CommandsKnown, "known">, stri
  * cannot find, already counted as one (`hasCommandNotOnPath`); and a
  * formula Homebrew has not linked (`unlinked`), whose commands, named from
  * its keg, have no verdict because nothing puts them where Terminal looks
- * -- its details say so, not that it could not be checked (r36 V5). Read
- * from the commands as the window has them; nothing is asked for.
+ * -- its details say so, not that it could not be checked (r36 V5), and
+ * Check Tool Setup names it where it is no copy of another
+ * (`toolsNotLinked`). Read from the commands as the window has them;
+ * nothing is asked for.
  */
 export function toolsNotJudged(artifacts: Pick<InstalledArtifact, "facts" | "reason">[]): number {
   return artifacts.filter(
@@ -68,6 +72,32 @@ export function toolsNotJudged(artifacts: Pick<InstalledArtifact, "facts" | "rea
       (facts.commands_unavailable || facts.commands.some(({ state }) => state === null)) &&
       !facts.commands.some(({ state }) => typeof state === "object" && state !== null && "NotOnPath" in state),
   ).length;
+}
+
+/**
+ * The tools Homebrew has not linked (`unlinked`) whose commands, named
+ * from their keg, Terminal does not find -- at least one with no verdict
+ * -- and that are no copy of another tool (`twins`, `twinsByArtifact`):
+ * `brew unlink ollama`, or Ollama.app's own CLI in the way of `brew
+ * install ollama`. Their details say Homebrew didn't link them
+ * (`CommandsGroup`); Check Tool Setup names them, and never says 「终端都能
+ * 找到已安装的工具」 beside them, nor does the copied text leave them out
+ * (q1b skeptic 2). One with another copy is among those installed more
+ * than once, beside the copy Terminal runs, as any copy Terminal does not
+ * run is; a dependency, whose commands are never judged, is not counted.
+ * Said only where the round judged the commands (`commandsKnown`).
+ */
+export function toolsNotLinked(
+  artifacts: readonly InstalledArtifact[],
+  twins: ReadonlyMap<string, Twin[]> = twinsByArtifact(artifacts),
+): InstalledArtifact[] {
+  return artifacts.filter(
+    (artifact) =>
+      artifact.facts.unlinked &&
+      artifact.reason !== "Dependency" &&
+      artifact.facts.commands.some(({ state }) => state === null) &&
+      !twins.has(artifactKeyId(artifact.key)),
+  );
 }
 
 /**

@@ -1270,6 +1270,7 @@
       "incomplete": "檢查結果：不完整，{{sources}}未檢查完",
       "incompletePlain": "檢查結果：不完整",
       "notFound": "終端機找不到：{{number}}個",
+      "notLinked": "Homebrew沒有連結：{{number}}個",
       "twins": "裝了不止一份的工具：{{number}}個",
       "diskTotal": "佔用空間：{{size}}",
       "noFacts": "系統資訊：無法讀取"
@@ -1315,7 +1316,10 @@
       "notOnPathFine": "終端機都能找到已安裝的工具",
       "twins_other": "{{count}}個工具裝了不止一份，共{{copies}}份",
       "twinsDetail": "同一個工具由不同的來源各裝了一份。在終端機裡輸入它的指令，只會執行其中一份。",
-      "twinsFine": "沒有裝了不止一份的工具"
+      "twinsFine": "沒有裝了不止一份的工具",
+      "notLinked_other": "Homebrew沒有把{{count}}個工具連結到終端機找得到的地方",
+      "notLinkedDetailOne": "通常是Homebrew安裝它時有同名的檔案擋住了。在終端機裡輸入它的指令時不會執行它。",
+      "notLinkedDetailMany": "通常是Homebrew安裝它們時有同名的檔案擋住了。在終端機裡輸入它們的指令時不會執行它們。"
     },
     "homebrew": {
       "fine": "沒有Homebrew已停用或棄用的工具，也沒有保留的其他版本",

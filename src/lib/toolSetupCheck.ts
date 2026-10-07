@@ -3,7 +3,8 @@
  * set up, said in short lines a person reads at a glance -- whether the
  * login shell's settings were read, and how many of the folders Terminal
  * looks in for commands; each source's state; how many tools Terminal
- * cannot find, and how many are installed more than once; what Homebrew
+ * cannot find, how many are installed more than once, and which Homebrew
+ * didn't link where Terminal looks; what Homebrew
  * disabled, deprecated or keeps other versions of; and the disk measured.
  * Help's 「检查工具环境…」, the Overview's row and a button in Settings'
  * 「诊断」 open it (`ToolSetupSheet`).
@@ -19,7 +20,7 @@
  * settings unread -- has the orange ⚠︎ the Overview gives a warning.
  */
 import { create } from "zustand";
-import { commandsKnown, toolsNamesIncomplete, toolsNotJudged } from "./commandsKnown";
+import { commandsKnown, toolsNamesIncomplete, toolsNotJudged, toolsNotLinked } from "./commandsKnown";
 import { copiesOfToolsInstalledTwice, sourceStateWords, toolsInstalledTwice, type Translate } from "./diagnostics";
 import { twinsByArtifact } from "./commands";
 import { discoverCounts, keepsOtherVersions, notOnPathDetailKey, type DiscoverShow } from "./families";
@@ -274,7 +275,11 @@ function sourceLines(t: Translate, input: ToolSetupInput): SetupLine[] {
  * not (`commandsKnown`), as the diagnostic text says it. Where it looked at
  * some tools' commands and not at others' (`toolsNotJudged`), 「终端都能找到」
  * is said of the tools checked, and how many it could not check under it:
- * never 「每个已安装的工具」 of tools it did not check.
+ * never 「每个已安装的工具」 of tools it did not check. A tool Homebrew
+ * didn't link that is no copy of another (`toolsNotLinked`) has a line of
+ * its own, its name under it -- no 查看: no 「显示」 choice lists it, and
+ * its details say why -- in place of 「终端都能找到」 when nothing else is
+ * missing (q1b skeptic 2).
  */
 /**
  * Whether 「命令」 has its ⚠︎ line, as `commandLines` gives it: once the
@@ -299,7 +304,16 @@ function commandLines(t: Translate, input: ToolSetupInput): SetupLine[] {
   // Tools some of whose commands could not be listed: the twins found are
   // among the others only.
   const namesIncomplete = names ? toolsNamesIncomplete(artifacts) : 0;
-  if (verdicts && notJudged === 0 && names && namesIncomplete === 0 && notOnPath === 0 && twins === 0) {
+  const notLinked = verdicts ? toolsNotLinked(artifacts, copiesOf) : [];
+  if (
+    verdicts &&
+    notJudged === 0 &&
+    names &&
+    namesIncomplete === 0 &&
+    notOnPath === 0 &&
+    notLinked.length === 0 &&
+    twins === 0
+  ) {
     return [line("allFine", "fine", t("setupCheck.commands.allFine"))];
   }
   const lines: SetupLine[] = [];
@@ -313,13 +327,23 @@ function commandLines(t: Translate, input: ToolSetupInput): SetupLine[] {
         view: { kind: "installed", show: "notOnPath" },
       }),
     );
-  } else {
+  } else if (notLinked.length === 0) {
     lines.push(
       line(
         "notOnPath",
         "fine",
         t(notJudged === 0 ? "setupCheck.commands.notOnPathFine" : "setupCheckCoverage.notOnPathFine"),
       ),
+    );
+  }
+  if (notLinked.length > 0) {
+    lines.push(
+      line("notLinked", "note", t("setupCheck.commands.notLinked", { count: notLinked.length }), {
+        detail: t(
+          notLinked.length === 1 ? "setupCheck.commands.notLinkedDetailOne" : "setupCheck.commands.notLinkedDetailMany",
+        ),
+        secondary: notLinked.map((artifact) => artifact.display_name || artifact.key.name).join(t("common.listSeparator")),
+      }),
     );
   }
   if (notJudged > 0) {

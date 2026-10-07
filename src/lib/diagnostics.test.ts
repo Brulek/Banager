@@ -474,6 +474,26 @@ describe("the command counts", () => {
     // Every tool checked: no such line.
     expect(diagnosticsText(en, input())).not.toContain("Not checked in Terminal");
   });
+
+  it("says how many tools Homebrew didn't link, as Check Tool Setup names them (q1b skeptic 2)", () => {
+    // `brew unlink ollama`: its `ollama`, named from its keg, has no
+    // verdict, and no other copy runs it.
+    const ollama = artifact({ instance_id: BREW, kind: "Formula", name: "ollama" }, "0.12.0", "ollama", [
+      { name: "ollama", state: null },
+    ]);
+    const unlinked = {
+      ...SNAPSHOT,
+      artifacts: [...SNAPSHOT.artifacts, { ...ollama, facts: { ...ollama.facts, unlinked: true } }],
+    };
+    expect(diagnosticsText(en, input({ snapshot: unlinked }))).toMatch(
+      /\nNot found in Terminal: 1\nNot linked by Homebrew: 1\nTools installed more than once: 1\n/,
+    );
+    expect(diagnosticsText(zh, input({ snapshot: unlinked }))).toMatch(
+      /\n终端找不到：1个\nHomebrew没有链接：1个\n装了不止一份的工具：1个\n/,
+    );
+    // Not where there is none.
+    expect(diagnosticsText(en, input())).not.toContain("Not linked by Homebrew");
+  });
 });
 
 describe("the home folder, wherever a path can carry it", () => {
