@@ -140,7 +140,7 @@ function detailOf(summary: string): string | null {
     .filter((line) => line !== "" && line !== "[…]");
   const bookkeeping = /^npm (?:err!|error) (?:code|errno|syscall|path|dest|signal|command|cwd|\d{3}\s*$|a complete log|log files)/i;
   const line =
-    lines.find((each) => /^(?:error|fatal|npm (?:err!|error))\b|^E:/i.test(each) && !bookkeeping.test(each)) ?? lines.at(-1);
+    lines.find((each) => /^(?:error|fatal|npm (?:err!|error))\b|^E:/i.test(each) && !bookkeeping.test(each)) ?? lines[lines.length - 1];
   if (line === undefined) return null;
   const unlabelled =
     line.replace(/^(?:(?:error|fatal)\b\s*(?:\[[^\]]*\])?\s*:?|npm (?:err!|error)\b|E:)\s*/i, "").trim() || line;
