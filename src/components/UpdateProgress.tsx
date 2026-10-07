@@ -84,8 +84,9 @@ export function isRetryable(progress: RowProgress): boolean {
  * The operation of an update that stopped where sudo wanted the Mac's
  * password with no way to ask (`needsPassword`), whose log has the steps
  * for Terminal; null for any other progress. The one test of it for a row:
- * no Retry (`isRetryable`), 「查看步骤」 in Retry's place, and the status
- * column that word stands in.
+ * no Retry (`isRetryable`), the button that opens its log in Retry's place
+ * -- 「查看步骤」, or 「查看日志」 where the log has no command to hand over
+ * (`viewLogKey`) -- and the status column that word stands in.
  */
 export function passwordStepsOpId(progress: RowProgress | null): number | null {
   return progress !== null && progress.kind === "failed" && progress.cause === "needsPassword" ? progress.opId : null;

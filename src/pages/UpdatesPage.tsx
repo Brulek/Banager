@@ -46,6 +46,7 @@ import { useRovingRow } from "../components/rovingRows";
 import { FirstCheck } from "../components/StatusRing";
 import { EmptyState } from "../components/EmptyState";
 import { CHECKED_KEYS, elapsedText, useMinuteClock } from "../components/PageHeader";
+import { viewLogKey } from "../components/FailureNextStep";
 import {
   holdsRow,
   isRetryable,
@@ -1098,8 +1099,12 @@ export function UpdatesPage() {
     // and the way on is the command for Terminal in its log. That is said
     // as a button of its own, 「查看步骤」, in the button's place, the word
     // standing where Retry's word would (walk-2 W2-5): a red word alone
-    // read as a dead end, and the steps as a log for programmers.
+    // read as a dead end, and the steps as a log for programmers. Named as
+    // the operation bar names it (`viewLogKey`): 「查看日志」 where the log
+    // has no command to hand over -- sudo's words from a source other than
+    // Homebrew (r26 skeptic).
     const passwordSteps = passwordStepsOpId(progress);
+    const stepsKey = op === null ? "common.viewLog" : viewLogKey(op);
     const recordedPassword = passwordRecoveryKeys.has(artifactKeyId(candidate.key));
     const outcome =
       progress !== null ? <UpdateProgress progress={progress} name={name} onViewLog={viewLog} /> : null;
@@ -1117,8 +1122,15 @@ export function UpdatesPage() {
       recordedPassword ? (
         <PasswordRecovery artifactKey={candidate.key} name={name} />
       ) : passwordSteps !== null ? (
-        <RowAction onClick={() => viewLog(passwordSteps)} ariaLabel={t("needsPassword.viewStepsLabel", { name })}>
-          {t("needsPassword.viewSteps")}
+        <RowAction
+          onClick={() => viewLog(passwordSteps)}
+          ariaLabel={
+            stepsKey === "needsPassword.viewSteps"
+              ? t("needsPassword.viewStepsLabel", { name })
+              : t("updates.progress.viewLogLabel", { name })
+          }
+        >
+          {t(stepsKey)}
         </RowAction>
       ) : progress !== null && !retry ? (
         outcome

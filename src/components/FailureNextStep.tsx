@@ -41,14 +41,19 @@ export const TRY_AGAIN_KEYS: Record<OpKind, string> = {
 
 /**
  * The name of the button that opens `op`'s log: 「查看步骤」 where sudo
- * wanted the Mac's password with no way to ask (`needsPassword`), whose log
- * has the command for Terminal (walk-2 W2-5), else 「查看日志」. One rule for
- * every such button -- the operation bar's, a batch uninstall's result
- * row's (r24 W6) -- and for a sentence that names it
+ * wanted the Mac's password with no way to ask (`needsPassword`) and the
+ * log has the command for Terminal (`showsPasswordCommand`: Homebrew's,
+ * walk-2 W2-5), else 「查看日志」 -- also over a log with sudo's words from
+ * another source, which has the cause and Copy Log but no steps
+ * (`copyOnly`, r26 skeptic). One rule for every such button -- the
+ * operation bar's, a batch uninstall's result row's (r24 W6), an update's
+ * row's in Retry's place -- and for a sentence that names it
  * (`failure.toolWords.inTerminal`).
  */
 export function viewLogKey(op: OpSummary): "needsPassword.viewSteps" | "common.viewLog" {
-  return outcomeCause(op.outcome) === "needsPassword" ? "needsPassword.viewSteps" : "common.viewLog";
+  return outcomeCause(op.outcome) === "needsPassword" && showsPasswordCommand(op)
+    ? "needsPassword.viewSteps"
+    : "common.viewLog";
 }
 
 /** Which sentence goes under the log of a failure with `cause`. */

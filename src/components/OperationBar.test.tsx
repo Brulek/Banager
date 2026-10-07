@@ -719,6 +719,24 @@ describe("OperationBar", () => {
     });
   });
 
+  it("keeps View Log for a password stop whose log has no command for Terminal: a source other than Homebrew (r26 W6 skeptic)", async () => {
+    // `PasswordCommand` hands over only Homebrew's command; npm's log has
+    // the cause and Copy Log, no steps (`copyOnly`).
+    const { findByText, findByRole, queryByRole, queryClient } = renderWithProviders(<OperationBar />);
+    await waitFor(() => expect(queryClient.getQueryData(queryKeys.operations)).toEqual([]));
+    const sudo = "sudo: a terminal is required to read the password\nsudo: a password is required";
+    await listNow(queryClient, [
+      op(22, "prettier", "Done", { Failed: { exit_code: 1, summary: sudo, cause: failureCause(sudo) } }, {
+        instance_id: "npm:/opt/homebrew/bin/npm",
+        artifact_kind: "Package",
+        argv_preview: ["/opt/homebrew/bin/npm", "install", "-g", "prettier@latest"],
+      }),
+    ]);
+    await findByText("prettier: Update · Needs your password");
+    expect(await findByRole("button", { name: "View Log" })).toBeInTheDocument();
+    expect(queryByRole("button", { name: "View Steps" })).toBeNull();
+  });
+
   it("opens every log of a run that needs a look, from the first, and a log opened on one has none to step through", async () => {
     const { findByText, getByRole, queryClient } = renderWithProviders(<OperationBar />);
     await waitFor(() => expect(queryClient.getQueryData(queryKeys.operations)).toEqual([]));

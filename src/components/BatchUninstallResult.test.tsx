@@ -290,6 +290,49 @@ describe("what a batch uninstall did not uninstall", () => {
     }
   });
 
+  it("names a password stop's button View Log where its log has no command for Terminal: a source other than Homebrew (r26 W6 skeptic)", async () => {
+    // npm's corepack under the browser mock's `password` outcome: sudo's
+    // words, but `PasswordCommand` hands over only Homebrew's command, so
+    // its log has no steps -- only the cause and Copy Log (`copyOnly`).
+    technical = true;
+    const sudo = "sudo: a terminal is required to read the password\nsudo: a password is required";
+    const corepack: ArtifactKey = { instance_id: "npm:/opt/homebrew/bin/npm", kind: "Package", name: "corepack" };
+    useUiStore.getState().setUninstallBatch({ id: 2, items: [{ key: corepack, name: "corepack", opId: 31, after: [] }] });
+    operations = [
+      {
+        ...op(31, "corepack", "Done", { Failed: { exit_code: 1, summary: sudo, cause: failureCause(sudo) } }),
+        instance_id: corepack.instance_id,
+        artifact_kind: "Package",
+        argv_preview: ["/opt/homebrew/bin/npm", "uninstall", "-g", "corepack"],
+      },
+    ];
+    try {
+      for (const lang of ["en", "zh-CN"] as const) {
+        await i18n.changeLanguage(lang);
+        const view = renderWithProviders(<BatchUninstallResult />);
+        const item = await waitFor(() => {
+          const found = document.querySelector<HTMLElement>("[data-batch-result-item]");
+          expect(found).not.toBeNull();
+          return found as HTMLElement;
+        });
+        const button = item.querySelector("button") as HTMLButtonElement;
+        expect(button.textContent).toBe(i18n.t("common.viewLog"));
+        expect(button).toHaveAccessibleName(i18n.t("batchUninstall.viewLogOf", { name: "corepack" }));
+        // And the sentence under its words sends no one to steps.
+        const step = await waitFor(() => {
+          const found = item.querySelector("[data-failure-next-step]");
+          expect(found).not.toBeNull();
+          return found as HTMLElement;
+        });
+        expect(step).toHaveTextContent(i18n.t("failure.line.needsPassword"));
+        expect(step).not.toHaveTextContent(i18n.t("needsPassword.viewSteps"));
+        view.unmount();
+      }
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+
   it("says no such sentence with technical details off: the row says the cause, or 「未能卸载」", async () => {
     useUiStore.getState().setUninstallBatch(record);
     const unknown: Outcome = { Failed: { exit_code: 1, summary: "Error: wget: something went wrong", cause: failureCause("Error: wget: something went wrong") } };

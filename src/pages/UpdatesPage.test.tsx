@@ -3343,6 +3343,53 @@ describe("UpdatesPage", () => {
       expect(useUiStore.getState().selectedUpdates).toEqual([artifactKeyId(onyxKey)]);
     });
 
+    it("names that button View Log where the log has no command for Terminal: a source other than Homebrew (r26 W6 skeptic)", async () => {
+      // An npm package whose install script ran sudo: the same stop, no
+      // Retry, but `PasswordCommand` hands over only Homebrew's command, so
+      // its log has the cause and Copy Log and no steps (`copyOnly`) -- the
+      // operation bar's name for it too (`viewLogKey`).
+      const prettierKey: ArtifactKey = { instance_id: "npm:/opt/homebrew", kind: "Package", name: "prettier" };
+      instances = [
+        ...snapshot.instances,
+        {
+          id: "npm:/opt/homebrew",
+          adapter_id: "npm",
+          exe_path: "/opt/homebrew/bin/npm",
+          prefix: "/opt/homebrew",
+          scope: "User",
+          version: "12.0.2",
+          status: { unavailable: null, notes: [] },
+          answered_at: null,
+          unverified_version: null,
+          read_only_reason: null,
+        },
+      ];
+      updates = [
+        ...snapshot.updates,
+        { key: prettierKey, current: "3.6.2", target: "3.7.0", channel: "Registry", checkable: true, warnings: [], blocked: null },
+      ];
+      const sudo = "sudo: a terminal is required to read the password\nsudo: a password is required";
+      operations = [
+        operation(prettierKey, {
+          id: 12,
+          status: "Done",
+          outcome: { Failed: { exit_code: 1, summary: sudo, cause: failureCause(sudo) } },
+          argv_preview: ["/opt/homebrew/bin/npm", "install", "-g", "prettier@3.7.0"],
+        }),
+      ];
+      started(12, "3.7.0");
+      renderPage();
+
+      const prettier = await findRow("prettier");
+      await within(prettier).findByText("Needs your password");
+      expect(within(prettier).queryByRole("button", { name: "View steps: prettier" })).toBeNull();
+      expect(within(prettier).queryByText("View Steps")).toBeNull();
+      const log = within(prettier).getByText("View Log").closest("button") as HTMLButtonElement;
+      fireEvent.click(log);
+      expect(useUiStore.getState()).toMatchObject({ focusedOpId: 12, drawerOpen: true, logRun: [] });
+      expect(within(prettier).queryByRole("button", { name: ROW_RETRY })).toBeNull();
+    });
+
     // walk-4 W4-1: after Update All, every update stopped at sudo's
     // password. The rows still offer their updates; the header said
     // "Nothing to update here" over them.
