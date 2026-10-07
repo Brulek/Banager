@@ -442,8 +442,9 @@ impl LookupFailure {
     }
 }
 
-/// Four lookups at a time per source, with a two-minute budget for this
-/// registry phase. Completed answers survive a deadline; unfinished and
+/// Four lookups at a time per source (fewer where a host's own limit in
+/// `get_ok` says so: crates.io takes one), with a two-minute budget for
+/// this registry phase. Completed answers survive a deadline; unfinished and
 /// unstarted lookups are transient failures, never up-to-date answers.
 /// Batches preserve inventory order without spawning detached tasks.
 pub(crate) async fn registry_checks<F, T>(lookups: Vec<F>) -> Vec<Result<T, LookupFailure>>
@@ -505,7 +506,10 @@ where
 // Shared across instances: even two installations of a source respect
 // the same host limit. The registry phase deadline includes permit waits.
 static PYPI_LOOKUPS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(4);
-static CARGO_LOOKUPS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(4);
+// One at a time, as before: crates.io asks API users for at most one
+// request per second (crates.io/data-access, "crates.io API"), so its
+// lookups never overlap; only the phase budget is new for Cargo.
+static CARGO_LOOKUPS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(1);
 static OLLAMA_LOOKUPS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(4);
 
 /// The one GET of a lookup that asks a server, whose only good answer is a
