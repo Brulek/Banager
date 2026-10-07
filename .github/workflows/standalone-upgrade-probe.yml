@@ -23,6 +23,10 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 45
     steps:
+      - name: a timeout command (the runner image has neither timeout nor gtimeout)
+        run: |
+          brew install coreutils
+          command -v gtimeout
       - name: throwaway home
         run: |
           echo "PROBE_HOME=$(mktemp -d)" >> "$GITHUB_ENV"
