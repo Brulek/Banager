@@ -67,6 +67,11 @@ export type ScenarioState = (typeof SCENARIO_STATES)[number];
  * does under Banager (`needsPassword` in src/lib/failureCause.ts).
  * `mixed`: the 2nd, 4th, … operation of the session fails, every other one
  * succeeds -- a batch with some of it left to look at.
+ * `already`: every update finds its package already at its new version when
+ * its turn comes, as an earlier update of an Update all that upgraded it as a
+ * dependency leaves it (r6 y3-batch): done, the first of a source
+ * 「轮到它时已是新版本」, the rest 「已由前面的更新一并完成」
+ * (`OpSummary.already_updated`). Anything else ends as `succeeded`.
  */
 export const SCENARIO_OUTCOMES = [
   "succeeded",
@@ -77,6 +82,7 @@ export const SCENARIO_OUTCOMES = [
   "banager",
   "password",
   "mixed",
+  "already",
 ] as const;
 export type ScenarioOutcome = (typeof SCENARIO_OUTCOMES)[number];
 

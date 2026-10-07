@@ -12,7 +12,17 @@
  * back from when the preview opened; today's two never reach back past
  * midnight, so they are today's at any hour.
  */
-import type { ArtifactKey, HistoryRecord, HistoryResult, HistoryView, OpRequest, Outcome } from "../lib/types";
+import type {
+  AlreadyUpdated,
+  ArtifactKey,
+  Fault,
+  HistoryRecord,
+  HistoryResult,
+  HistoryView,
+  OpRequest,
+  Outcome,
+} from "../lib/types";
+import { operationFailureCause } from "../lib/failureCause";
 import { IDS, key } from "./mockData";
 
 const MINUTE = 60 * 1000;
@@ -83,6 +93,30 @@ const SEEDED = [
     result: { Failed: { cause: "network" } },
     verified: false,
   }),
+  // r6 y3-batch. An Update all yesterday: pcre2 was upgraded as a
+  // dependency by the update before it, so its own found it done
+  // (「已由前面的更新一并完成」); the cask's app had been moved out of
+  // Applications (「未能更新：App已不在原来的位置」); tokei failed in words no
+  // cause names, kept as its first error line (「原因：…」 behind the ⓘ).
+  // The two failures are listed while the last check offers them.
+  kept(21, DAY + 6 * MINUTE, key(IDS.brew, "Formula", "pcre2"), "brew", "10.47", "10.47", {
+    verified: false,
+    already_updated: "ByEarlierUpdate",
+  }),
+  kept(22, DAY + 4 * MINUTE, key(IDS.brew, "Cask", "android-platform-tools"), "brew", "36.0.0", null, {
+    display_name: "Android SDK Platform-Tools",
+    result: { Failed: { cause: "appMissing" } },
+    verified: false,
+  }),
+  kept(23, DAY + 2 * MINUTE, key(IDS.cargo, "Binary", "tokei"), "cargo", "12.1.2", null, {
+    result: {
+      Failed: {
+        cause: null,
+        detail: "failed to compile `tokei v13.0.1`, intermediate artifacts can be found at `~/Library/Caches/cargo-install`",
+      },
+    },
+    verified: false,
+  }),
 ];
 
 /** The history the preview opens with, newest first, as `get_history` answers it. */
@@ -94,15 +128,53 @@ export function mockHistory(now: number): HistoryView {
   };
 }
 
+/**
+ * `history::failure_detail`, as far as the preview needs it: the first line
+ * that says it is an error (npm's bookkeeping aside), or the last, its
+ * label off, the home folder as `~`, cut to 160 characters.
+ */
+function detailOf(summary: string): string | null {
+  const lines = summary
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line !== "" && line !== "[…]");
+  const bookkeeping = /^npm (?:err!|error) (?:code|errno|syscall|path|dest|signal|command|cwd|\d{3}\s*$|a complete log|log files)/i;
+  const line =
+    lines.find((each) => /^(?:error|fatal|npm (?:err!|error))\b|^E:/i.test(each) && !bookkeeping.test(each)) ?? lines.at(-1);
+  if (line === undefined) return null;
+  const unlabelled =
+    line.replace(/^(?:(?:error|fatal)\b\s*(?:\[[^\]]*\])?\s*:?|npm (?:err!|error)\b|E:)\s*/i, "").trim() || line;
+  const masked = unlabelled.replace(/\/Users\/[^/\s'"`]+/g, "~");
+  return masked.length <= 160 ? masked : `${masked.slice(0, 159)}…`;
+}
+
+/** `history::fault_result`: a cause for each of Banager's own failures. */
+function faultResult(fault: Fault): HistoryResult {
+  if (typeof fault === "string") {
+    return { Failed: { cause: fault === "HomebrewSettingsChanged" ? "changed" : "internal" } };
+  }
+  if ("HomebrewStillUpdating" in fault) return { Failed: { cause: "homebrewUpdating" } };
+  if ("ProgramMissing" in fault) return { Failed: { cause: "notFound" } };
+  if ("SpawnFailed" in fault) {
+    const cause = operationFailureCause(fault.SpawnFailed.detail);
+    if (cause !== null) return { Failed: { cause } };
+    const detail = detailOf(fault.SpawnFailed.detail);
+    return { Failed: detail === null ? { cause: null } : { cause: null, detail } };
+  }
+  return { Failed: { cause: "changed" } };
+}
+
 /** `history::record_for`'s category for an outcome. */
 function resultOf(outcome: Outcome): HistoryResult {
   if (outcome === "Succeeded" || outcome === "Unconfirmed" || outcome === "Cancelled") return outcome;
   if ("NeedsAttention" in outcome) return { NeedsAttention: outcome.NeedsAttention };
-  if ("Failed" in outcome) return { Failed: { cause: outcome.Failed.cause } };
-  const fault = outcome.BanagerFailed;
-  return {
-    Failed: { cause: typeof fault !== "string" && "HomebrewStillUpdating" in fault ? "homebrewUpdating" : null },
-  };
+  if ("Failed" in outcome) {
+    const { cause, summary } = outcome.Failed;
+    if (cause !== null) return { Failed: { cause } };
+    const detail = detailOf(summary);
+    return { Failed: detail === null ? { cause: null } : { cause: null, detail } };
+  }
+  return faultResult(outcome.BanagerFailed);
 }
 
 /**
@@ -121,6 +193,8 @@ export function mockRecord(args: {
   before: string | null;
   after: string | null;
   now: number;
+  /** The operation's `already_updated`, kept for one that succeeded. */
+  alreadyUpdated?: AlreadyUpdated | null;
 }): HistoryRecord | null {
   const { request, outcome } = args;
   if (request.kind === "Install") return null;
@@ -140,8 +214,16 @@ export function mockRecord(args: {
     from_version: model ? null : args.before,
     to_version: model || !update || !exitedZero ? null : args.after,
     result,
+    // An update already at its new version did not move it itself: the
+    // real readings before and after are the same (the preview moves its
+    // row only to show it done).
     verified: update
-      ? result === "Succeeded" && args.before !== null && args.after !== null && args.before !== args.after
+      ? result === "Succeeded" &&
+        !args.alreadyUpdated &&
+        args.before !== null &&
+        args.after !== null &&
+        args.before !== args.after
       : result === "Succeeded",
+    ...(result === "Succeeded" && args.alreadyUpdated ? { already_updated: args.alreadyUpdated } : {}),
   };
 }

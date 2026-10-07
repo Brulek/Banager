@@ -496,6 +496,31 @@ describe("the browser preview's mock backend", () => {
     expect(after.updates.some((u) => u.key.name === "android-platform-tools")).toBe(true);
   });
 
+  it("under ?outcome=already, says how each update already at its new version was done, and keeps it (r6 y3-batch)", async () => {
+    const { backend } = backendFor({ outcome: "already" });
+    await answer(backend.invoke("refresh"));
+    const [git, wget] = await submitUpgrades(backend, "git", "wget");
+    await vi.runAllTimersAsync();
+    const ops = (await backend.invoke("list_operations")) as OpSummary[];
+    const of = (id: number) => ops.find((op) => op.id === id);
+    expect(of(git)).toMatchObject({ outcome: "Succeeded", already_updated: "BeforeItsTurn" });
+    expect(of(wget)).toMatchObject({ outcome: "Succeeded", already_updated: "ByEarlierUpdate" });
+    const history = await answer<HistoryView>(backend.invoke("get_history"));
+    const kept = history.records.find((record) => record.op_id === wget);
+    expect(kept).toMatchObject({ result: "Succeeded", already_updated: "ByEarlierUpdate", verified: false });
+  });
+
+  it("under ?outcome=failed, keeps a failure no cause names with its first error line (r6 y3-batch)", async () => {
+    const { backend } = backendFor({ outcome: "failed" });
+    await answer(backend.invoke("refresh"));
+    const [tokei] = await submitUpgrades(backend, "tokei");
+    await vi.runAllTimersAsync();
+    const history = await answer<HistoryView>(backend.invoke("get_history"));
+    expect(history.records.find((record) => record.op_id === tokei)?.result).toEqual({
+      Failed: { cause: null, detail: "failed to compile `tokei v13.0.1`" },
+    });
+  });
+
   it("runs operations that share a source one after the other", async () => {
     const { backend, events } = backendFor();
     await answer(backend.invoke("refresh"));

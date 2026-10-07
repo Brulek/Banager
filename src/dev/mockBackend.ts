@@ -47,7 +47,7 @@ import { mockSizes } from "./mockSizes";
 import { mockSystemFacts } from "./mockDiagnostics";
 import { mockHistory, mockRecord } from "./mockHistory";
 import type { Scenario, ScenarioPath } from "./scenario";
-import { failureCause } from "../lib/failureCause";
+import { operationFailureCause } from "../lib/failureCause";
 
 /** Every command the backend registers (`generate_handler!` in src-tauri/src/lib.rs). */
 export const MOCK_COMMANDS = [
@@ -466,6 +466,19 @@ export function createMockBackend(scenario: Scenario): MockBackend {
     stopTimers(op);
     op.summary.status = "Done";
     op.summary.outcome = outcome;
+    // `?outcome=already`: done because it was already at its new version,
+    // by an update of the same source before it when one has ended, as
+    // `OperationManager::already_at_target` tells them apart.
+    if (scenario.outcome === "already" && outcome === "Succeeded" && op.plan.request.kind === "Upgrade") {
+      const earlier = [...operations.values()].some(
+        (other) =>
+          other.summary.id < op.summary.id &&
+          other.summary.kind === "Upgrade" &&
+          other.summary.status === "Done" &&
+          other.summary.instance_id === op.summary.instance_id,
+      );
+      op.summary.already_updated = earlier ? "ByEarlierUpdate" : "BeforeItsTurn";
+    }
     const target = requestKey(op.plan.request);
     // Read before `apply`, which changes the row in place.
     const row = world.artifacts.find((a) => sameKey(a.key, target));
@@ -483,6 +496,7 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       before: before?.version ?? null,
       after: world.artifacts.find((a) => sameKey(a.key, target))?.version ?? null,
       now: Date.now(),
+      alreadyUpdated: op.summary.already_updated ?? null,
     });
     if (record !== null) history = { ...history, records: [record, ...history.records] };
     if (op.started) {
@@ -523,7 +537,7 @@ export function createMockBackend(scenario: Scenario): MockBackend {
         ? playOutcome(op.plan, subject, scripted)
         : {
             lines: refused.map((line): LogLine => ({ stream: "Stderr", line })),
-            outcome: { Failed: { exit_code: 1, summary: refused.join("\n"), cause: failureCause(refused.join("\n")) } } satisfies Outcome,
+            outcome: { Failed: { exit_code: 1, summary: refused.join("\n"), cause: operationFailureCause(refused.join("\n")) } } satisfies Outcome,
           };
     const { outcome } = played;
     // An update a `brew cleanup` follows (U9) goes on to it once it succeeded.
