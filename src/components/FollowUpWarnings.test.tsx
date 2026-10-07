@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { renderWithProviders } from "../test/setup";
 import i18n from "../i18n";
 import type { FollowUpWarning } from "../lib/types";
@@ -112,4 +113,30 @@ describe("a saved follow-up warning's log (p1 polish)", () => {
     expect(group.querySelector("code")?.textContent).toBe("brew link --formula --force node@22");
     expect(within(dialog).getByRole("button", { name: copyName })).toBeInTheDocument();
   });
+
+  it.each([
+    ["en", "Updated with a warning", "Only its warning was saved; the full log is no longer available.", "Copy Command"],
+    ["zh-CN", "已更新，有警告", "这里只保留了警告，完整日志已不再保留。", "拷贝命令"],
+  ])(
+    "takes the focus itself as it opens, not Copy Command past the warning, and gives it back on Escape, in %s (r27 A2)",
+    async (language, subtitle, saved, copyName) => {
+      await i18n.changeLanguage(language);
+      const user = userEvent.setup();
+      // node@22 left unlinked: Copy Command is the dialog's first control.
+      renderWithProviders(
+        <FollowUpWarnings warnings={[{ NoLongerLinked: { name: "node@22", commands: ["node", "npm"] } }]} opId={null} name="node@22" />,
+      );
+      const viewLog = screen.getByRole("button", { name: i18n.t("updates.progress.viewLogLabel", { name: "node@22" }) });
+      viewLog.focus();
+      await user.keyboard(" ");
+      const dialog = await screen.findByRole("dialog", { name: "node@22" });
+      // A screen reader reads its name and what describes it, then the warning.
+      await waitFor(() => expect(dialog).toHaveFocus());
+      expect(within(dialog).getByRole("button", { name: copyName })).not.toHaveFocus();
+      expect(dialog).toHaveAccessibleDescription(`${subtitle} ${saved}`);
+      await user.keyboard("{Escape}");
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      await waitFor(() => expect(viewLog).toHaveFocus());
+    },
+  );
 });

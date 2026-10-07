@@ -79,6 +79,10 @@ export function FollowUpWarnings({ warnings, opId, name }: {
       }
       describedBy={savedId}
       width="log"
+      // The dialog takes the focus itself, as the log and the recorded
+      // password stop's do: on its first control, Copy Command, a screen
+      // reader would go past the warning it is about (r27 A2).
+      focusSelf
       // Copy Log at the foot's left and Done on the right, as the log's.
       footerStart={
         <>
