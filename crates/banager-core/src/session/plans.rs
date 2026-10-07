@@ -101,6 +101,15 @@ pub(crate) struct StoredPlan {
     pub(crate) target_version: Option<String>,
 }
 
+/// Only the target and original lifetime, not an executable plan. One per
+/// listed tool, pruned to the current inventory/offers and ten minutes on
+/// each planning request. Re-planning a vanished offer cannot renew it.
+#[derive(Clone)]
+pub(super) struct ListedUpgrade {
+    target: Option<String>,
+    issued_monotonic: Instant,
+}
+
 /// The version the check offered `req`, when it is an `Upgrade` that one
 /// of `updates` -- one snapshot's -- lists with a newer version to go to:
 /// that candidate's `target`. `None` where the target is no such version
@@ -224,7 +233,10 @@ impl Session {
     /// src-tauri/src/ipc.rs): the same, but only for what the snapshot it
     /// reads lists (`lists_request`) -- an update the page was offered, a
     /// tool it was shown installed -- refused as `AdapterError::NotListed`
-    /// otherwise, after the gates `issue_plan` keeps and before any adapter
+    /// otherwise, except for a recently previewed update still installed:
+    /// its offer may have disappeared because an earlier update did it.
+    /// The original target and lifetime survive full-plan eviction. All
+    /// other refusals apply before any adapter
     /// is asked. Without it an `Upgrade` of a name no source lists is
     /// planned as any upgrade is -- `npm install -g <name>@latest`, `cargo
     /// install --force <name>`, `ollama pull <name>` -- which installs
@@ -258,8 +270,39 @@ impl Session {
         // read under that same lock, so all of them come from the one
         // snapshot `generation` names -- as are the sources a Homebrew
         // uninstall's preview looks at for what runs on it (`needed_by`).
-        let (generation, instance, blocked, uninstall_blocked, family, listed, needed_by, target) = {
+        let key = crate::model::ArtifactKey {
+            instance_id: req.instance_id.clone(),
+            kind: req.artifact_kind,
+            name: req.name.clone(),
+        };
+        let (
+            generation,
+            instance,
+            blocked,
+            uninstall_blocked,
+            family,
+            listed,
+            needed_by,
+            target,
+            remembered,
+        ) = {
             let snapshot = self.snapshot.lock().unwrap();
+            let mut recent = self.listed_upgrades.lock().unwrap();
+            let keys: std::collections::HashSet<_> = snapshot
+                .artifacts
+                .iter()
+                .map(|a| &a.key)
+                .chain(snapshot.updates.iter().map(|u| &u.key))
+                .collect();
+            recent.retain(|key, offered| {
+                keys.contains(key) && !has_expired(offered.issued_monotonic.elapsed())
+            });
+            let remembered = (listed_only
+                && req.kind == OpKind::Upgrade
+                && !snapshot.updates.iter().any(|u| u.key == key)
+                && snapshot.artifacts.iter().any(|a| a.key == key))
+            .then(|| recent.get(&key).cloned())
+            .flatten();
             (
                 snapshot.generation,
                 snapshot
@@ -277,7 +320,11 @@ impl Session {
                     req,
                 ),
                 super::needed_by::subject(&snapshot.instances, &snapshot.artifacts, req),
-                offered_version(&snapshot.updates, req),
+                remembered
+                    .as_ref()
+                    .map(|r| r.target.clone())
+                    .unwrap_or_else(|| offered_version(&snapshot.updates, req)),
+                remembered,
             )
         };
         let instance = instance.ok_or_else(|| AdapterError::SourceGone {
@@ -323,7 +370,7 @@ impl Session {
         // Last of the gates: a source that cannot act, or a package its
         // tool will refuse, is the bigger news than a row gone from the
         // list.
-        if listed_only && !listed {
+        if listed_only && !listed && remembered.is_none() {
             return Err(AdapterError::NotListed);
         }
         let adapter = self.adapters.get(&instance.adapter_id).ok_or_else(|| {
@@ -345,7 +392,19 @@ impl Session {
         let plan = self.with_needed_by(plan, needed_by).await;
         let id = random_plan_id();
         let issued_at = self.now();
-        let issued_monotonic = Instant::now();
+        let issued_monotonic = remembered
+            .as_ref()
+            .map(|r| r.issued_monotonic)
+            .unwrap_or_else(Instant::now);
+        if listed_only && req.kind == OpKind::Upgrade {
+            self.listed_upgrades.lock().unwrap().insert(
+                key,
+                ListedUpgrade {
+                    target: target.clone(),
+                    issued_monotonic,
+                },
+            );
+        }
         let issued = IssuedPlan {
             id: id.clone(),
             plan,
@@ -1957,6 +2016,159 @@ mod tests {
                 .submit(id)
                 .expect("a plan of a batch of 300 is still held when its turn comes");
         }
+    }
+
+    #[tokio::test]
+    async fn test_f20_evicted_listed_update_keeps_its_target_after_a_dependency_update() {
+        let adapter = FakeAdapter::new(vec![test_support::make_instance("fake", "fake:1")]);
+        let offers: Vec<_> = (0..super::MAX_ISSUED_PLANS + 1)
+            .map(|n| candidate(&format!("tool-{n}"), None))
+            .collect();
+        adapter.set_updates(offers.clone());
+        adapter.set_artifacts(vec![installed_on(
+            "fake:1",
+            ArtifactKind::Formula,
+            "tool-0",
+            None,
+        )]);
+        let session = Session::with_adapters(Arc::new(VecSink::new()), vec![adapter.clone()], None);
+        let dir = crate::testing::unique_temp_path("f20-history");
+        let store = crate::history::HistoryStore::open(dir.join("history.json"));
+        session.attach_history(store.clone());
+        session
+            .refresh(&test_support::non_root_env(), &CheckOptions::default())
+            .await;
+        let req = request(OpKind::Upgrade, "tool-0");
+        let shown = session.issue_listed_plan(&req).await.unwrap();
+        for offer in offers.iter().skip(1) {
+            session
+                .issue_listed_plan(&request(OpKind::Upgrade, &offer.key.name))
+                .await
+                .unwrap();
+        }
+        assert_eq!(session.submit(shown.id), Err(SubmitError::Unknown));
+        // An earlier update brought this installed dependency to the offered
+        // target. The following refresh no longer offers its update.
+        adapter.set_updates(vec![]);
+        *adapter.version_read.lock().unwrap() = Some("1.1".into());
+        session
+            .refresh(&test_support::non_root_env(), &CheckOptions::default())
+            .await;
+        let again = session
+            .issue_listed_plan(&req)
+            .await
+            .expect("replan the shown update");
+        assert_eq!(again.plan, shown.plan);
+        let op = session.submit(again.id).unwrap();
+        assert_eq!(session.ops.wait(op).await, Some(Outcome::Succeeded));
+        assert_eq!(
+            session.operations()[0].already_updated,
+            Some(crate::model::AlreadyUpdated::BeforeItsTurn)
+        );
+        assert_eq!(
+            session.history().records[0].result,
+            crate::history::HistoryResult::Succeeded
+        );
+        assert!(store.flush(Duration::from_secs(5)));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn test_f20_remembered_offer_requires_the_same_installed_tool_and_expires() {
+        let adapter = FakeAdapter::new(vec![test_support::make_instance("fake", "fake:1")]);
+        adapter.set_updates(vec![candidate("jq", None)]);
+        let installed = installed_on("fake:1", ArtifactKind::Formula, "jq", None);
+        adapter.set_artifacts(vec![installed.clone()]);
+        let session = Session::with_adapters(Arc::new(VecSink::new()), vec![adapter.clone()], None);
+        session
+            .refresh(&test_support::non_root_env(), &CheckOptions::default())
+            .await;
+        let req = request(OpKind::Upgrade, "jq");
+        session.issue_listed_plan(&req).await.unwrap();
+        adapter.set_updates(vec![]);
+        session
+            .refresh(&test_support::non_root_env(), &CheckOptions::default())
+            .await;
+        let original_time =
+            session.listed_upgrades.lock().unwrap()[&installed.key].issued_monotonic;
+        let again = session.issue_listed_plan(&req).await.unwrap();
+        assert_eq!(
+            session.issued_plans.lock().unwrap()[&again.id].issued_monotonic,
+            original_time
+        );
+        assert_eq!(session.listed_upgrades.lock().unwrap().len(), 1);
+        for other in [
+            OpRequest {
+                artifact_kind: ArtifactKind::Cask,
+                ..req.clone()
+            },
+            request(OpKind::Upgrade, "never-offered"),
+        ] {
+            assert!(matches!(
+                session.issue_listed_plan(&other).await,
+                Err(AdapterError::NotListed)
+            ));
+        }
+        session
+            .listed_upgrades
+            .lock()
+            .unwrap()
+            .get_mut(&installed.key)
+            .unwrap()
+            .issued_monotonic = std::time::Instant::now() - PLAN_LIFETIME - Duration::from_secs(1);
+        assert!(matches!(
+            session.issue_listed_plan(&req).await,
+            Err(AdapterError::NotListed)
+        ));
+        assert!(session.listed_upgrades.lock().unwrap().is_empty());
+        // A fresh preview cannot authorize a package after it disappears.
+        adapter.set_updates(vec![candidate("jq", None)]);
+        session
+            .refresh(&test_support::non_root_env(), &CheckOptions::default())
+            .await;
+        session.issue_listed_plan(&req).await.unwrap();
+        adapter.set_updates(vec![]);
+        adapter.set_artifacts(vec![]);
+        session
+            .refresh(&test_support::non_root_env(), &CheckOptions::default())
+            .await;
+        assert!(matches!(
+            session.issue_listed_plan(&req).await,
+            Err(AdapterError::NotListed)
+        ));
+        assert!(session.listed_upgrades.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_f20_replanned_update_below_its_original_target_is_not_done() {
+        let adapter = FakeAdapter::new(vec![test_support::make_instance("fake", "fake:1")]);
+        adapter.set_updates(vec![candidate("jq", None)]);
+        adapter.set_artifacts(vec![installed_on(
+            "fake:1",
+            ArtifactKind::Formula,
+            "jq",
+            None,
+        )]);
+        *adapter.version_read.lock().unwrap() = Some("1.0".into());
+        let session = Session::with_adapters(Arc::new(VecSink::new()), vec![adapter.clone()], None);
+        session
+            .refresh(&test_support::non_root_env(), &CheckOptions::default())
+            .await;
+        let req = request(OpKind::Upgrade, "jq");
+        session.issue_listed_plan(&req).await.unwrap();
+        adapter.set_updates(vec![]);
+        session
+            .refresh(&test_support::non_root_env(), &CheckOptions::default())
+            .await;
+        let again = session.issue_listed_plan(&req).await.unwrap();
+        let op = session.submit(again.id).unwrap();
+        assert_eq!(
+            session.ops.wait(op).await,
+            Some(Outcome::NeedsAttention(
+                crate::model::Attention::UnchangedAfterUpgrade
+            ))
+        );
+        assert_eq!(session.operations()[0].already_updated, None);
     }
 
     #[tokio::test]

@@ -349,6 +349,8 @@ pub struct Session {
     pub(crate) issued_plans: Mutex<HashMap<PlanId, plans::StoredPlan>>,
     #[cfg(not(any(test, feature = "test-support")))]
     issued_plans: Mutex<HashMap<PlanId, plans::StoredPlan>>,
+    /// Recent listed upgrade targets survive eviction of the full preview.
+    listed_upgrades: Mutex<HashMap<crate::model::ArtifactKey, plans::ListedUpgrade>>,
     now_fn: Option<fn() -> i64>,
     /// Turns among the plans being worked out (`plans::PLANS_AT_ONCE`).
     planning: tokio::sync::Semaphore,
@@ -519,6 +521,7 @@ impl Session {
             last_committed_round: AtomicU64::new(0),
             refreshes_under_way: AtomicUsize::new(0),
             issued_plans: Mutex::new(HashMap::new()),
+            listed_upgrades: Mutex::new(HashMap::new()),
             now_fn,
             planning: tokio::sync::Semaphore::new(plans::PLANS_AT_ONCE),
             background_change,
