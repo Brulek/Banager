@@ -28,7 +28,7 @@ export const KEPT: Record<string, { path: string; what: "ToolData" | "Models"; s
   // Its folder leads into ~/Documents, which is never measured: the path alone.
   "gemini-cli": [{ path: "~/.gemini", what: "ToolData", size: null }],
   // The models folder: the layers Ollama's own sizes count (./mockSizes.ts) and their manifests.
-  ollama: [{ path: "~/.ollama/models", what: "Models", size: about(6.62 * GB + 0.2 * MB) }],
+  ollama: [{ path: "~/.ollama/models", what: "Models", size: about(11.3 * GB + 0.2 * MB) }],
   // Its sessions, logins and logs, then its settings (opencode's own docs).
   opencode: [
     { path: "~/.local/share/opencode", what: "ToolData", size: about(21.7 * MB) },

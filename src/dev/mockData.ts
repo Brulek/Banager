@@ -195,6 +195,14 @@ function uncheckable(
   };
 }
 
+/** A model the Ollama adapter does not look up -- one from a registry
+ *  other than registry.ollama.ai: `uncheckable_candidate` with
+ *  `LookupFailure::not_looked_up`, its reason then `NotLookedUpHere`. */
+function notLookedUp(artifactKey: ArtifactKey, current: string, reason: string): UpdateCandidate {
+  const row = uncheckable(artifactKey, current, "Digest", { Message: reason });
+  return { ...row, warnings: [...row.warnings, "NotLookedUpHere"] };
+}
+
 const DAY = 86_400;
 /** 2026-09-01T00:00:00Z: install dates count back from here. */
 const SEPTEMBER_2026 = 1_788_220_800;
@@ -419,6 +427,7 @@ function brewGreedyUpdates(): UpdateCandidate[] {
 export const MODELS = {
   coder: "modelscope.cn/Qwen/Qwen2.5-Coder-7B-Instruct-GGUF:Q4_K_M",
   llama: "llama3.2:3b",
+  qwen: "qwen2.5-coder:7b",
 } as const;
 
 function everythingElse(): { artifacts: InstalledArtifact[]; updates: UpdateCandidate[] } {
@@ -431,13 +440,16 @@ function everythingElse(): { artifacts: InstalledArtifact[]; updates: UpdateCand
     artifact(IDS.npm, "Package", "npm", "12.0.2"),
     artifact(IDS.npm, "Package", "prettier", "3.8.1"),
     artifact(IDS.npm, "Package", "typescript", "6.0.2"),
-    // Ollama: one model from a third-party registry (its update warns about
-    // the host), one from Ollama's own library.
+    // Ollama: one model from a third-party registry, which Banager does not
+    // look up, and two from Ollama's own library.
     artifact(IDS.ollama, "Model", MODELS.coder, "52e05d4a30959ae2542932b2c473f476dca0ce371aaf9a2227badf4e3eeec4f4", {
       size_bytes: 4_683_087_520,
     }),
     artifact(IDS.ollama, "Model", MODELS.llama, "8e4cdead7463ce276b20d4e33341950d7bb40847f70a9882567a188e24ec1f66", {
       size_bytes: 2_019_393_189,
+    }),
+    artifact(IDS.ollama, "Model", MODELS.qwen, "dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364", {
+      size_bytes: 4_683_087_389,
     }),
     // pip (Homebrew's Python): read-only by design. pip reports only
     // Unknown or Dependency, never Requested.
@@ -486,15 +498,23 @@ function everythingElse(): { artifacts: InstalledArtifact[]; updates: UpdateCand
     uncheckable(key(IDS.cargo, "Binary", "jj-cli"), "0.35.0", "Registry", "NonRegistrySource"),
     update(key(IDS.cargo, "Binary", "tokei"), "12.1.2", "13.0.1", "Registry"),
     update(key(IDS.npm, "Package", "typescript"), "6.0.2", "6.0.3", "Native"),
-    // Two manifests' digests, not versions: a "new version" marker.
-    update(
+    // A model from another registry is never looked up: "Can't check",
+    // with the reason `check_one_model` (crates/banager-core/src/adapters/
+    // ollama/mod.rs) gives, and never an update (r40 R40-6).
+    notLookedUp(
       key(IDS.ollama, "Model", MODELS.coder),
       "52e05d4a30959ae2542932b2c473f476dca0ce371aaf9a2227badf4e3eeec4f4",
+      "models from modelscope.cn are not looked up; only those from registry.ollama.ai are",
+    ),
+    // Two manifests' digests, not versions: a "new version" marker.
+    update(
+      key(IDS.ollama, "Model", MODELS.qwen),
+      "dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364",
       "sha256:2a548b8405827e18697cc78e00b1c445de40756c6e6a1be1a4e37964a4e17342",
       "Digest",
       // A GGUF republished: its one weights file changed, so the most the
       // pull downloads is about the whole model (`download_bytes`).
-      { download_bytes: 4_683_087_520 },
+      { download_bytes: 4_683_087_389 },
     ),
     // pip is read-only: listed, never offered.
     update(key(IDS.pip, "Package", "requests"), "2.32.4", "2.32.5", "Native"),
@@ -756,8 +776,14 @@ function offline(world: World): void {
   const kept = world.updates.filter((u) => {
     const adapterId = adapterOf.get(u.key.instance_id) ?? "";
     // brew checked its own list; uv's rows are last time's anyway; a git
-    // crate says why it is never checkable.
-    return adapterId === "brew" || adapterId === "uv" || u.warnings.includes("NonRegistrySource");
+    // crate says why it is never checkable, and a model from another
+    // registry why it is never looked up.
+    return (
+      adapterId === "brew" ||
+      adapterId === "uv" ||
+      u.warnings.includes("NonRegistrySource") ||
+      u.warnings.includes("NotLookedUpHere")
+    );
   });
   const failed = world.artifacts.flatMap((a): UpdateCandidate[] => {
     const adapterId = adapterOf.get(a.key.instance_id) ?? "";

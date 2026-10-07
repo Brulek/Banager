@@ -464,7 +464,7 @@ describe("the browser preview's mock backend", () => {
     // mask, so the default preview shows the address itself, never `****`.
     const { backend } = backendFor();
     const snapshot = await answer<Snapshot>(backend.invoke("refresh"));
-    const [upgrade] = await planUpgrades(backend, MODELS.coder);
+    const [upgrade] = await planUpgrades(backend, MODELS.qwen);
     const ollama = snapshot.instances.find((i) => i.id === upgrade?.plan.request.instance_id);
     expect(ollama?.id).toBe("ollama:http://127.0.0.1:11434");
     const remove = await answer<IssuedPlan>(
@@ -473,7 +473,7 @@ describe("the browser preview's mock backend", () => {
       }),
     );
     for (const [issued, verb, name] of [
-      [upgrade, "pull", MODELS.coder],
+      [upgrade, "pull", MODELS.qwen],
       [remove, "rm", MODELS.llama],
     ] as const) {
       expect(issued?.plan.action).toEqual({
@@ -484,6 +484,35 @@ describe("the browser preview's mock backend", () => {
         },
       });
     }
+  });
+
+  it("never offers an update of a model from another registry, which the adapter never looks up (r40 R40-6)", async () => {
+    // `check_one_model` returns a model whose name begins with a host other
+    // than registry.ollama.ai as "Can't check" before it reads or asks
+    // anything -- online or not. The update with a known download is a
+    // library model's.
+    for (const scenario of [{}, { state: "offline" }] as const) {
+      const { backend } = backendFor(scenario);
+      const snapshot = await answer<Snapshot>(backend.invoke("refresh"));
+      const modelscope = snapshot.updates.find((u) => u.key.name === MODELS.coder);
+      expect(modelscope).toMatchObject({
+        checkable: false,
+        target: modelscope?.current,
+        channel: "Digest",
+        warnings: [
+          { Message: "models from modelscope.cn are not looked up; only those from registry.ollama.ai are" },
+          "NotLookedUpHere",
+        ],
+      });
+      expect(modelscope?.download_bytes ?? null).toBeNull();
+    }
+    const { backend } = backendFor();
+    const snapshot = await answer<Snapshot>(backend.invoke("refresh"));
+    expect(snapshot.updates.find((u) => u.key.name === MODELS.qwen)).toMatchObject({
+      checkable: true,
+      channel: "Digest",
+      download_bytes: 4_683_087_389,
+    });
   });
 
   it("has npm unable to start for want of node with ?state=nonode, and a link that puts it back", async () => {
@@ -619,7 +648,7 @@ describe("the browser preview's mock backend", () => {
     // Two of them the rows `withHomebrewState` adds, four the AI tools `aiTools` adds, one Codex's own install
     // (`codexStandalone`), one npm's Claude Code (`addMany`), whose uninstall preview names what stays
     // (./mockKeptData.ts), and five pip packages of two Pythons (`secondPython`).
-    expect(artifacts.length).toBe(808);
+    expect(artifacts.length).toBe(809);
     const ids = artifacts.map((a) => artifactKeyId(a.key));
     expect(new Set(ids).size).toBe(ids.length);
     const count = (instanceId: string) => artifacts.filter((a) => a.key.instance_id === instanceId).length;
@@ -664,7 +693,7 @@ describe("the browser preview's mock backend", () => {
     const byId = new Map(artifacts.map((a) => [artifactKeyId(a.key), a]));
     for (const row of many.artifacts) expect(byId.get(artifactKeyId(row.key))).toEqual(row);
     const count = (instanceId: string) => artifacts.filter((a) => a.key.instance_id === instanceId).length;
-    expect(artifacts.length).toBe(4900);
+    expect(artifacts.length).toBe(4901);
     expect(count("brew:/opt/homebrew")).toBe(3895);
     expect(artifacts.filter((a) => a.key.kind === "Cask")).toHaveLength(337);
     for (const id of ["npm:/opt/homebrew", "pipx", "uv", "cargo:/Users/you/.cargo"]) expect(count(id)).toBeGreaterThan(100);
@@ -731,7 +760,7 @@ describe("the browser preview's mock backend", () => {
     // model, whose digests are never compared, updates as ever.
     const { backend, events } = backendFor({ outcome: "already" });
     await answer(backend.invoke("refresh"));
-    const [git, wget, typescript, coder] = await submitUpgrades(backend, "git", "wget", "typescript", MODELS.coder);
+    const [git, wget, typescript, coder] = await submitUpgrades(backend, "git", "wget", "typescript", MODELS.qwen);
     await vi.runAllTimersAsync();
     const ops = (await backend.invoke("list_operations")) as OpSummary[];
     const of = (id: number) => ops.find((op) => op.id === id);

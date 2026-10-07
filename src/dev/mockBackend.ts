@@ -518,7 +518,9 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       const row = world.artifacts.find((a) => sameKey(a.key, target));
       if (candidate !== undefined && row !== undefined) {
         const previous = row.version;
-        // A model's version is its local manifest digest: a new one.
+        // A model's version is its local manifest's digest: once pulled,
+        // that of the manifest it was offered (`manifest_digest` in
+        // crates/banager-core/src/adapters/ollama/mod.rs), bare.
         row.version = target.kind === "Model" ? candidate.target.replace("sha256:", "") : candidate.target;
         if (row.path !== null && previous !== "") row.path = row.path.split(previous).join(row.version);
         // A standalone tool is its own source: its version is the tool's.

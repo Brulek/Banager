@@ -119,7 +119,7 @@ const PARTIAL = new Set(["pre-commit"]);
 const AT_LEAST = new Set(["visual-studio-code"]);
 
 /** What the models of an Ollama take together: its folder, each shared layer once. */
-const MODELS_FOLDER = 6.62 * GB;
+const MODELS_FOLDER = 11.3 * GB;
 
 /** A size for a tool the table has no line for (`?state=many`): 0.5 MB to 300 MB, the same on every run. */
 function sizeFromName(name: string): number {

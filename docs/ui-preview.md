@@ -145,10 +145,13 @@ Paths are under a generic home folder, `/Users/you`.
   page says why over the list, where other pages have 「全选」.
   **Cargo**: one crate from crates.io with an update that compiles
   locally, one installed from git that can never be checked. **Ollama**:
-  two models, each with a new version: the third-party registry's one
-  says its update downloads up to about 4.7 GB; the size of the update of
-  the one from Ollama's own library is not known, so it says only that
-  the changed files are downloaded.
+  three models. Two from Ollama's own library have a new version:
+  qwen2.5-coder:7b's update says it downloads up to about 4.7 GB;
+  the size of llama3.2:3b's is not known, so it says only that the
+  changed files are downloaded. The third, from ModelScope
+  (`modelscope.cn/Qwen/…`), is "Can't check" under "N more can't be
+  updated here", as the real app says of every model from a registry
+  other than Ollama's own, which it never looks up (r40 R40-6).
 - **Tools with their own installer**: Claude Code (updates itself, and has
   an update), rustup (an update that cannot be cancelled once it starts),
   Antigravity CLI (a newer version it can only install itself), Grok
@@ -213,9 +216,9 @@ Paths are under a generic home folder, `/Users/you`.
   tool measured before at the same version shows at once. pip's packages,
   the font and a model get no measured size (a model keeps its own,
   said as 「占用空间 约2 GB」), and the Ollama source's page says
-  「2个模型 · Ollama模型共约6.6 GB」 under its title, its tooltip saying that
+  「3个模型 · Ollama模型共约11.3 GB」 under its title, its tooltip saying that
   files several models share count once.
-  The Installed page's sort has 「按大小」 ("By Size"): the two models
+  The Installed page's sort has 「按大小」 ("By Size"): the three models
   first, then Visual Studio Code and node@22, a tool with no size last;
   while it is on, each row shows its size where the version was
   (「约4.7 GB」, 「正在计算…」, or 「—」).
@@ -229,20 +232,20 @@ Paths are under a generic home folder, `/Users/you`.
   row (`onlyHomebrewDates`), so the order is the app's.
   Sorted 「按来源」, each source's heading says what it takes after its
   count, 「Homebrew · 33个 · 2.6 GB以上」 (the font has no size, so "or more"),
-  「Ollama · 2个模型 · 约6.6 GB」 as its models' line says; pip has no number. The
-  toolbar says the whole list's, 「58个工具 · 10.6 GB以上」, or one
+  「Ollama · 3个模型 · 约11.3 GB」 as its models' line says; pip has no number. The
+  toolbar says the whole list's, 「62个工具 · 15.8 GB以上」, or one
   source's on its page. No number while the round measures, or while a
   search or the 「显示」 popup narrows a heading's count; while the popup
   shows only some, the toolbar says how many of how many,
-  「58个工具中的2个」. A total counts a
+  「62个工具中的2个」. A total counts a
   formula's other versions (其他版本), which its row's size leaves out, so a heading
   can be more than its rows add up to; an ⓘ after a heading or the
   subtitle with a total says so (other versions in, caches out), named
   with what it explains, 「详情：Homebrew · 2.6 GB以上」. In an English
   window at its narrowest, 800 wide (`?lang=en&page=installed`, the
-  browser window 800 wide), the toolbar has no room for 「· 10.6 GB or
+  browser window 800 wide), the toolbar has no room for 「· 15.8 GB or
   more」, which wraps out of sight, and its ⓘ is hidden with it: the line
-  reads 「58 tools」 alone. 960 wide, or in Chinese at 800, the line is
+  reads 「62 tools」 alone. 960 wide, or in Chinese at 800, the line is
   whole with its ⓘ after it.
 - The Installed page's 「显示」 popup also offers 「装了不止一份」: on the
   default pretend Mac, Codex's own install and npm's @openai/codex; with
@@ -302,7 +305,7 @@ Paths are under a generic home folder, `/Users/you`.
   (`src/dev/mockKeptData.ts`): Codex (npm) `~/.codex`, about 38.4 MB;
   Gemini CLI (Homebrew) `~/.gemini` with no size, as for a folder that
   leads into `~/Documents`; Homebrew's ollama `~/.ollama/models`, about
-  6.6 GB; and, with `?state=many`, Claude Code from npm `~/.claude` and
+  11.3 GB; and, with `?state=many`, Claude Code from npm `~/.claude` and
   `~/.claude.json`. Each has Copy Path and nothing that deletes. Under
   Gemini CLI's and ollama's list one line says what isn't needed can go to
   the Trash in Finder; not under npm's Codex's, nor under Claude Code's
@@ -317,7 +320,7 @@ Paths are under a generic home folder, `/Users/you`.
   `corepack` are not counted); `python@3.13`, `pipx` (from Homebrew),
   「pip及其1个工具」 and 「pipx装的3个工具」, whose venvs' Python it is;
   Homebrew's `pipx`, 「pipx及其3个工具」; Homebrew's `ollama`, 「Ollama及其
-  2个模型」. The sentence under the list says which tools to uninstall
+  3个模型」. The sentence under the list says which tools to uninstall
   first. With `?state=notices`, npm is the one from nodejs.org, and nothing
   runs on `node@22`. npm's own `npm` row says 「无法在此卸载」 where its
   Uninstall would be, and why behind it.
@@ -384,7 +387,7 @@ value falls back to the default and logs a warning in the console.
 | | `hidden` | The only updates are the skipped, put-off and never-remind-me ones. |
 | | `stale` | The last refresh could not finish for two sources. |
 | | `notices` | Every source notice with a look of its own: Homebrew still downloading its catalogue (its operations wait for it first, and its uninstall previews are refused), npm read-only with an unverified version, Ollama not running (Open Ollama starts it), another `claude` first on the PATH, Grok Build's launcher left without its program, and a second Homebrew, the Intel one in `/usr/local`, that does not answer (so the sidebar names the two "Apple silicon" and "Intel"). uv, which does not answer either, answered 47 minutes before the mock started, so its notice says when (「显示的是它今天08:25响应时的结果」, on the Overview and behind the ⓘ of its line), as does Tool Setup's line for it; the Intel Homebrew, never heard from, says no time. The Updates and Installed pages fold them into one line, the first warning, with "N more notes" at its end to show them all. |
-| | `offline` | No registry answered: Homebrew's catalogue could not be downloaded, and every other lookup is "could not check". |
+| | `offline` | No registry answered: Homebrew's catalogue could not be downloaded, and every other lookup is "could not check" -- the network's fault, but for the git crate and the ModelScope model, which are never looked up and say why as they do online. |
 | | `many` | About 800 things installed, as on a Mac that has used Homebrew for a while: the Mac above, every source answering, and 741 more real tools (`src/dev/mockManyNames.ts`) -- 580 Homebrew formulae, 40 of them libraries it installed for the others; 70 casks, 25 of them apps; 40 npm packages, 13 pipx and 12 uv tools, 20 crates and 6 Ollama models -- each one the logo pack and the description tables have. About one in seven has an update: 125 rows on the Updates page have one Banager can install. Each tool's version, install day and update come from a seeded stream of its own, so every run shows the same list. In English, those formulae and casks read "Homebrew package" or "App installed with Homebrew": the preview has no Homebrew catalogue to take their descriptions from. And a second Python of Homebrew's, python@3.11's, beside `python3`: pip lists pip, setuptools and wheel under both, so their rows name the source after the name, 「pip（/opt/homebrew/bin/python3.11）」 and 「pip（/opt/homebrew/bin/python3）」, and wheel has a read-only update in both (search the Installed page for `wheel`). The name stays whole; the source's words give way, cut in their middle to keep the end that tells them apart -- beside the inspector at 800, 「…3.11）」 and 「…on3）」. |
 | | `huge` | About 5,000 things installed (4,897), as on a Mac whose owner has several thousand formulae and casks: `many`'s Mac, and about 4,100 more tools made from its names the way sources name a tool's relatives (`src/dev/mockHugeNames.ts`) -- a versioned formula (`hugo@2`), a `-cli` or `-utils` beside it, a library (`libuv`), a cask's `@beta`, an npm `create-` package (`@google/create-gemini-cli`), a `cargo-` subcommand -- 3,893 of them Homebrew's (335 casks), the rest npm, pipx, uv and Cargo. About one in seven has an update. Each new tool puts a command on the Mac, about one in forty in a folder Terminal does not search, so 「终端里找不到」 has rows at this size too. Their names are none the logo pack or the description tables know: the rows show the neutral tile -- with the prompt, but for the casks -- their source's mark on its corner, and their source's line. For timing the long lists ("Large list" below). |
 | | `preview` | The first refresh lists what is installed and then never finishes checking for updates, as a real launch looks while `brew update` runs: the Installed page lists the Mac above -- less uv, which is not answering and so is never asked for its list -- with every Uninstall off and "Found N tools · Checking for updates…" in its toolbar; the sidebar counts them, the Overview says how many with See Tools, and the Updates page keeps its spinner. (The other states that have tools to list -- all but `loading`, `error`, `refresh-error`, `empty` and `nothing` -- send this list on their first refresh too, 300 ms in, and still answer at 900 ms.) |
