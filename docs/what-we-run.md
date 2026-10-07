@@ -4054,6 +4054,18 @@ a source's program, a pipx or uv tool's environment (a venv kept in
 one of those places; one on the way to which a folder could not be
 searched; and a pipx or uv tool with no environment Banager knows of --
 when the package could be what that path leads to (`Look::could_be`).
+A pip launcher in a folder named `shims` -- as found on `PATH` or where its
+links lead, any case -- is a version manager's (pyenv's `~/.pyenv/shims` or
+`$PYENV_ROOT/shims`, asdf's, mise's), and is also an unresolved Python
+dependency (`Doubt::Python`) unless it leads into the package's own folders:
+a readable pyenv script can dispatch to Homebrew's Python through `global
+system`. It is told by the folder's name, not by `PYENV_ROOT`, which an app
+opened from the Dock does not have; nothing new is read. No command is added
+to resolve that runtime choice, and no dependency is invented. The same
+candidate-runtime filter below decides whether to show the existing
+incomplete-check warning. A launcher that leads into the package -- mise's
+shims are links to mise itself -- still names it as needed.
+
 What the path would have to lead to is judged by what it is for, not
 only by its name, for a link can change both a program's name and where
 in a keg it is: `~/bin/python3` may lead to python@3.13's

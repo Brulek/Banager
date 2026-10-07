@@ -211,7 +211,12 @@ pub fn needed_by(
         // lead to: into the package, or not, or not known (`Doubt`). Its
         // program not followed is moot when its interpreter leads in.
         let mut doubts = Vec::new();
-        let mut program = match look.leads_into(&source.exe_path, &roots) {
+        let into = if source.adapter_id == "pip" {
+            look.python_leads_into(&source.exe_path, &roots)
+        } else {
+            look.leads_into(&source.exe_path, &roots)
+        };
+        let mut program = match into {
             Some(into) => into,
             None => {
                 doubts.extend(Doubt::of_program(&source.adapter_id, &source.exe_path));
@@ -482,6 +487,41 @@ impl Look {
             Leads::Nowhere => Some(false),
             Leads::Unknown => None,
         }
+    }
+
+    /// `leads_into` for a pip source's Python. A launcher in a folder
+    /// named `shims` -- pyenv's (`~/.pyenv/shims`, or under any
+    /// `PYENV_ROOT`), asdf's, mise's -- is a version manager's, which
+    /// chooses the Python it runs when it runs, Homebrew's among them for
+    /// `system` (`pyenv-which` takes its shims off `PATH` and runs the
+    /// next Python there). So one outside the package's folders, readable
+    /// or not, proves nothing about where Python runs from: `None`, which
+    /// is `Doubt::Python`. Told by the folder, as found and where its
+    /// links lead, not by `PYENV_ROOT`: an app opened from the Dock does
+    /// not have the shell's. One that leads into the folders still does --
+    /// mise's shims are links to mise itself.
+    fn python_leads_into(&mut self, path: &Path, roots: &[PathBuf]) -> Option<bool> {
+        let real = match self.resolve(path) {
+            Leads::To(real) => real,
+            Leads::Nowhere => return Some(false),
+            Leads::Unknown => return None,
+        };
+        let real = protected::without_data_volume(&real);
+        if roots
+            .iter()
+            .any(|root| protected::starts_with_folded(&real, &protected::without_data_volume(root)))
+        {
+            return Some(true);
+        }
+        let in_shims = |path: &Path| {
+            path.parent()
+                .and_then(Path::file_name)
+                .is_some_and(|folder| protected::same_path(Path::new(folder), Path::new("shims")))
+        };
+        if in_shims(path) || in_shims(&real) {
+            return None;
+        }
+        Some(false)
     }
 
     /// Whether `package` could be what one of the doubts met leads to
@@ -1198,6 +1238,136 @@ mod tests {
             needed(&pipx_formula.warnings),
             vec![("pipx".to_string(), true, 5)]
         );
+    }
+
+    #[test]
+    fn test_f12_custom_pyenv_root_and_alias_are_unknown() {
+        let root = Root::new("f12-custom-pyenv");
+        root.python_313();
+        let shim = root.program("custom pyenv/shims/python");
+        let alias = root.link("home/bin/python3", shim.to_str().unwrap());
+        let upper = root.path("custom pyenv/SHIMS/python");
+        let roots = vec![root.path("opt/homebrew/Cellar/python@3.13")];
+        for program in [shim, alias, upper] {
+            let mut look = Look::new(&root.home(), BUDGET);
+            assert_eq!(look.python_leads_into(&program, &roots), None);
+        }
+        // A Python of its own outside the keg, in no shims folder: proven
+        // not to be the package's, as before.
+        let other = root.program("unrelated/bin/python");
+        let mut look = Look::new(&root.home(), BUDGET);
+        assert_eq!(look.python_leads_into(&other, &roots), Some(false));
+        let keg = root.path("opt/homebrew/bin/python3.13");
+        let mut look = Look::new(&root.home(), BUDGET);
+        assert_eq!(look.python_leads_into(&keg, &roots), Some(true));
+    }
+
+    #[test]
+    fn test_f12_readable_pyenv_shim_leaves_python_dependency_unknown() {
+        let root = Root::new("f12-pyenv-system");
+        root.python_313();
+        root.program("opt/homebrew/Cellar/jq/1.8/bin/jq");
+        let shim = root.program("home/.pyenv/shims/python3.13");
+        let alias = root.link("home/bin/python3", shim.to_str().unwrap());
+        for program in [shim, alias] {
+            let pip = instance("pip", "pip:shim", program, root.path("home/.pyenv/shims"));
+            let instances = vec![brew(&root), pip];
+            let rows = vec![with_reason(
+                row("pip:shim", ArtifactKind::Package, "rich"),
+                InstallReason::Unknown,
+            )];
+            let env = root.env(&["home/.pyenv/shims", "opt/homebrew/bin"]);
+            let found = needed_by(
+                &formula("python@3.13"),
+                &instances[0],
+                &instances,
+                &rows,
+                &env,
+                BUDGET,
+            );
+            assert!(
+                !found.complete,
+                "a readable shim is not proof of no Python dependency"
+            );
+            assert!(found.warnings.is_empty(), "do not invent a dependency");
+            let jq = needed_by(
+                &formula("jq"),
+                &instances[0],
+                &instances,
+                &rows,
+                &env,
+                BUDGET,
+            );
+            assert!(jq.complete, "uncertainty concerns Python, not jq");
+            let bootstrap = vec![with_reason(
+                row("pip:shim", ArtifactKind::Package, "pip"),
+                InstallReason::Unknown,
+            )];
+            assert!(
+                needed_by(
+                    &formula("python@3.13"),
+                    &instances[0],
+                    &instances,
+                    &bootstrap,
+                    &env,
+                    BUDGET
+                )
+                .complete
+            );
+        }
+    }
+
+    /// Banager opened from the Dock has no `PYENV_ROOT` of the shell's, so
+    /// a pyenv kept elsewhere is told by its folder, as asdf's and mise's
+    /// shims are: each can run `system`, Homebrew's Python. mise's shims
+    /// are links to mise itself, so uninstalling mise still names the pip
+    /// that needs it.
+    #[test]
+    fn test_f12_review_shims_of_any_version_manager_leave_python_unknown() {
+        let root = Root::new("f12-any-shims");
+        root.python_313();
+        let mise = root.program("opt/homebrew/Cellar/mise/2026.9.0/bin/mise");
+        let custom = root.program("tools/pyenv/shims/python3");
+        let asdf = root.program("home/.asdf/shims/python3");
+        let mise_shim = root.link(
+            "home/.local/share/mise/shims/python3",
+            mise.to_str().unwrap(),
+        );
+        let custom_alias = root.link("home/bin/python3", custom.to_str().unwrap());
+        for program in [custom, asdf, mise_shim.clone(), custom_alias] {
+            let pip = instance("pip", "pip:shim", program.clone(), root.path("home"));
+            let instances = vec![brew(&root), pip];
+            let rows = vec![with_reason(
+                row("pip:shim", ArtifactKind::Package, "rich"),
+                InstallReason::Unknown,
+            )];
+            let env = root.env(&["opt/homebrew/bin"]);
+            let found = needed_by(
+                &formula("python@3.13"),
+                &instances[0],
+                &instances,
+                &rows,
+                &env,
+                BUDGET,
+            );
+            assert!(!found.complete, "{}", program.display());
+            assert!(found.warnings.is_empty(), "{}", program.display());
+            let manager = needed_by(
+                &formula("mise"),
+                &instances[0],
+                &instances,
+                &rows,
+                &env,
+                BUDGET,
+            );
+            assert!(manager.complete, "{}", program.display());
+            let expected = if program == mise_shim {
+                vec![("pip:shim".to_string(), true, 1)]
+            } else {
+                Vec::new()
+            };
+            assert_eq!(needed(&manager.warnings), expected, "{}", program.display());
+        }
     }
 
     #[test]
