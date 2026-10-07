@@ -75,8 +75,9 @@ export function listedResult(result: HistoryResult): boolean {
  * its row lists it too. A recorded Homebrew password stop also gives
  * that row View Steps through `usePasswordRecoveryKeys`, which reads
  * the records Clear dismissed too (`includeDismissed`): Clear tidies the
- * list, it does not resolve the stop. A record kept after Clear is newer
- * than every one Clear dismissed, whatever the clock said.
+ * list, it does not resolve the stop. A record kept since the last Clear
+ * is newer than every one a Clear dismissed, whatever the clock said;
+ * otherwise the later finish is (`keptLater`).
  */
 export function recentUpdates(
   view: HistoryView,
@@ -111,8 +112,12 @@ export function recentUpdates(
 }
 
 /**
- * Whether `record` was kept after `other`: Clear dismisses every record
- * already kept, so one it did not dismiss came later; else by time.
+ * Whether `record` was kept after `other`, as far as the history can say:
+ * Clear dismisses every record already kept, so one not dismissed came
+ * after the last Clear, and so after every dismissed one. Else by finish
+ * time, the only order left (`dismissed` is a boolean, and the file is
+ * kept sorted by `finished_at`), which a clock set wrong can mislead:
+ * between two records that two different Clears dismissed, say.
  */
 function keptLater(view: HistoryView, record: HistoryRecord, other: HistoryRecord): boolean {
   const dismissed = isDismissed(view, record);

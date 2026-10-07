@@ -11,6 +11,10 @@ import { artifactKeyId } from "../store/ui";
  * history; Clear does not: it marks every record dismissed
  * (`HistoryStore::clear`), which tidies 「最近的更新记录」 but does not resolve
  * the stop, so the records it dismissed count here too (`includeDismissed`).
+ * Per tool, not per version: a stop kept on one version still counts while
+ * the source offers a newer one, within `RECENT_DAYS`. The step that asked
+ * for the password is the cask's own, which a newer version most likely
+ * runs too, and View Steps plans whichever update is offered.
  */
 export function usePasswordRecoveryKeys(): ReadonlySet<string> {
   const { data: history = NO_HISTORY } = useHistory();

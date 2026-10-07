@@ -412,10 +412,14 @@ nothing more for it and does not retry it on its own.
 After a restart, a retained Homebrew `needsPassword` update offers View
 Steps in Update History and on the offered update (also in Installed).
 The offered row and Update All do not retry that recorded password stop.
-A newer operation supersedes it; once the update is no longer offered,
-the recovery action is no longer needed. Clearing the history display does
+A newer operation supersedes it; while the tool is offered no update,
+the recorded stop shows no recovery action. The stop is kept per tool,
+not per version: if the source offers a newer version within the 30-day
+window below, that update offers View Steps too, which plans the newer
+update (below). Clearing the history display does
 not resolve the stop: the records Clear dismissed still count for it, and
-a record kept after Clear counts as newer than every one it dismissed.
+a record kept since the last Clear counts as newer than every one a Clear
+dismissed; otherwise the later finish time counts as newer.
 The existing 30-day recent-history window applies.
 Each View Steps opening calls the existing `plan_operation` preview path
 for the same source, artifact kind and name (Homebrew's upgrade preview

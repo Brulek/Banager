@@ -42,9 +42,9 @@ function stop(fields: Partial<HistoryRecord> = {}): HistoryRecord {
   };
 }
 
-function render(history: HistoryView, operations: OpSummary[] = []) {
+function render(history: HistoryView, operations: OpSummary[] = [], offering: Snapshot = snapshot) {
   const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity, retry: false } } });
-  client.setQueryData(queryKeys.snapshot, snapshot);
+  client.setQueryData(queryKeys.snapshot, offering);
   client.setQueryData(queryKeys.operations, operations);
   client.setQueryData(queryKeys.history, history);
   const wrapper = ({ children }: { children: ReactNode }) => (
@@ -86,5 +86,24 @@ describe("usePasswordRecoveryKeys", () => {
       ],
     });
     expect(result.current.keys.size).toBe(0);
+  });
+
+  it("is kept per tool, not per version: a newer version offered within the window still gets View Steps", () => {
+    // Updated in Terminal from 5.0.2 to 5.1.0 since; the source now offers
+    // 5.2.0. The step that asked for the password is the cask's own, and
+    // View Steps plans whichever update is offered.
+    const newer: Snapshot = {
+      ...snapshot,
+      updates: [{ ...snapshot.updates[0], current: "5.1.0", target: "5.2.0" }],
+    };
+    for (const dismissed of [false, true]) {
+      const { result, unmount } = render(
+        { run: "later", cleared_before: null, records: [stop({ finished_at: Date.now() - 10 * 24 * 60 * 60 * 1_000, dismissed })] },
+        [],
+        newer,
+      );
+      expect([...result.current.keys]).toEqual([artifactKeyId(onyx)]);
+      unmount();
+    }
   });
 });
