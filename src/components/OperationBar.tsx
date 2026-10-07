@@ -15,7 +15,7 @@ import {
   type OperationRun,
   type OutcomeTone,
 } from "../lib/operations";
-import { failedRunWords } from "../lib/runResult";
+import { cancelledRunWords, failedRunWords } from "../lib/runResult";
 import { viewLogKey } from "./FailureNextStep";
 import { useUiStore } from "../store/ui";
 import type { TFunction } from "i18next";
@@ -246,12 +246,15 @@ export function OperationBar() {
       tone = tones.includes("failure") ? "failure" : "attention";
       // Failures said as failures, with what else the run came to --
       // 「2个更新失败，3个已成功」; 「需要查看」 only for a run with none.
+      // With some cancelled, each part, as a failure's run says them --
+      // 「3个需要查看，10个已取消」 after Cancel All (r35 U1); 「13个中有3个
+      // 需要查看」 would leave the ten not updated unsaid.
       // All succeeded but for a warning left after: 「已更新2个工具，1个有
       // 警告」 where every one was an update, and in words for any
       // operation where not -- an uninstall started while an update ran
       // was not updated (r31 E1): 「2个都已成功，1个有警告」.
       words =
-        failedRunWords(t, inRun) ?? (tones.every((each) => each === "success")
+        failedRunWords(t, inRun) ?? cancelledRunWords(t, inRun, toLook) ?? (tones.every((each) => each === "success")
           ? t(updates ? "followUpWarning.batch" : "followUpWarning.batchSucceeded", { count: toLook.length, total })
           : t("operations.batch.needsAttention", { count: toLook.length, total }));
       if (toLook.length > 1) logsOf = toLook;

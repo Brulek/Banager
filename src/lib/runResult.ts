@@ -73,3 +73,30 @@ export function failedRunWords(t: Translate, ops: readonly OpSummary[]): string 
   if (cancelled > 0) parts.push(t("failureSteps.bar.cancelled", { count: cancelled }));
   return parts.join(t("overview.listSeparator"));
 }
+
+/**
+ * The bar's words for a finished run of several with nothing failed in
+ * it, something to look at -- `looked`, the ones the bar counts as
+ * needing a look: an attention ending, or a success with a warning after
+ * it -- and something cancelled, or null for one with nothing cancelled.
+ * Cancel All during an Update All leaves the updates it stopped while
+ * they ran unconfirmed and the ones still waiting their turn cancelled
+ * (r35 U1): the parts as `failedRunWords` joins them, in its order --
+ * 「3个需要查看，10个已取消」, 「1个已成功，3个需要查看，9个已取消」 -- not
+ * 「13个中有3个需要查看」, which reads as though the other ten were fine.
+ */
+export function cancelledRunWords(
+  t: Translate,
+  ops: readonly OpSummary[],
+  looked: readonly OpSummary[],
+): string | null {
+  const { failed, cancelled } = runTally(ops);
+  if (failed > 0 || cancelled === 0 || looked.length === 0) return null;
+  const lookedAt = new Set(looked.map((op) => op.id));
+  const succeeded = ops.filter((op) => !lookedAt.has(op.id) && outcomeTone(op.outcome) === "success").length;
+  const parts: string[] = [];
+  if (succeeded > 0) parts.push(t("failureSteps.bar.succeeded", { count: succeeded }));
+  parts.push(t("failureSteps.bar.needsAttention", { count: looked.length }));
+  parts.push(t("failureSteps.bar.cancelled", { count: cancelled }));
+  return parts.join(t("overview.listSeparator"));
+}

@@ -374,6 +374,58 @@ describe("OperationBar", () => {
     });
   });
 
+  it("says the cancelled apart from the ones to check after Cancel All during an Update All (r35 U1)", async () => {
+    // Update All of 13 on three sources; Cancel All while the first three
+    // ran: those end Unconfirmed, the ten still waiting their turn Cancelled.
+    const names = ["aider-chat", "platform-tools", "claude", "gemini-cli", "gh", "git", "grok", "httpie", "jq", "ruff", "rustup", "tokei", "wget"];
+    const running = new Set([0, 1, 2]);
+    const { findByText, getByRole, queryByText, queryClient } = renderWithProviders(<OperationBar />);
+    await waitFor(() => expect(queryClient.getQueryData(queryKeys.operations)).toEqual([]));
+    await listNow(queryClient, names.map((name, index) => op(13 - index, name, running.has(index) ? "Running" : "Queued")));
+    await findByText(/Working on/);
+    for (const index of running) {
+      useUiStore.getState().appendLog({ opId: 13 - index, stream: "Stdout", line: `==> Upgrading ${names[index]}` });
+    }
+    await listNow(
+      queryClient,
+      names.map((name, index) => op(13 - index, name, "Done", running.has(index) ? "Unconfirmed" : "Cancelled")),
+    );
+    await findByText("3 need attention, 10 cancelled");
+    // Not as though the other ten were fine.
+    expect(queryByText("3 of 13 need attention")).toBeNull();
+    expect(getByRole("img", { name: "Needs attention" })).toBeInTheDocument();
+    // The three to check, as before.
+    fireEvent.click(getByRole("button", { name: "View 3 Logs" }));
+    expect(useUiStore.getState().logRun).toEqual([11, 12, 13]);
+    await act(async () => {
+      await i18n.changeLanguage("zh-CN");
+    });
+    await findByText("3个需要查看，10个已取消");
+    expect(queryByText("13个中有3个需要查看")).toBeNull();
+    await act(async () => {
+      await i18n.changeLanguage("zh-Hant");
+    });
+    await findByText("3個需要查看，10個已取消");
+    await act(async () => {
+      await i18n.changeLanguage("en");
+    });
+  });
+
+  it("names what worked too, and a success with a warning among the ones to check, beside the cancelled (r35 U1)", async () => {
+    const { findByText, queryClient } = renderWithProviders(<OperationBar />);
+    await waitFor(() => expect(queryClient.getQueryData(queryKeys.operations)).toEqual([]));
+    await listNow(queryClient, [op(4, "wget", "Queued"), op(3, "jq", "Queued"), op(2, "node@22", "Running"), op(1, "git", "Running")]);
+    await listNow(queryClient, [
+      op(4, "wget", "Done", "Cancelled"),
+      op(3, "jq", "Done", "Succeeded"),
+      op(2, "node@22", "Done", "Succeeded", {
+        follow_up_warnings: [{ NoLongerLinked: { name: "node@22", commands: ["node", "npm"] } }],
+      }),
+      op(1, "git", "Done", "Unconfirmed"),
+    ]);
+    await findByText("1 succeeded, 2 need attention, 1 cancelled");
+  });
+
   it("counts the failures, the successes and the cancelled of a run that was not all one kind", async () => {
     const { findByText, queryClient } = renderWithProviders(<OperationBar />);
     await waitFor(() => expect(queryClient.getQueryData(queryKeys.operations)).toEqual([]));

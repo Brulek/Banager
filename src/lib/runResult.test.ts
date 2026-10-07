@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import i18n from "../i18n";
 import type { OpKind, OpSummary, Outcome } from "./types";
-import { failedRunWords, runTally } from "./runResult";
+import { cancelledRunWords, failedRunWords, runTally } from "./runResult";
 import { failureCause } from "./failureCause";
 
 function op(id: number, outcome: Outcome, kind: OpKind = "Upgrade"): OpSummary {
@@ -110,5 +110,32 @@ describe("failedRunWords", () => {
     expect(failedRunWords(t, uninstalls)).toBe("已卸载2个，1个没有卸载");
     expect(failedRunWords(t, [op(1, failed, "Uninstall"), op(2, failed, "Uninstall")])).toBe("2个没有卸载");
     expect(failedRunWords(t, [op(1, failed, "Install"), op(2, "Succeeded")])).toBe("1个失败，1个已成功");
+  });
+});
+
+describe("cancelledRunWords (r35 U1)", () => {
+  const looked = (ops: OpSummary[]) => ops.filter((each) => each.outcome !== "Succeeded" && each.outcome !== "Cancelled");
+
+  it("says the ones to check and the cancelled apart, after Cancel All during an Update All", async () => {
+    const run = [
+      ...[1, 2, 3].map((id) => op(id, "Unconfirmed")),
+      ...[4, 5, 6, 7, 8, 9, 10, 11, 12, 13].map((id) => op(id, "Cancelled")),
+    ];
+    expect(cancelledRunWords(t, run, looked(run))).toBe("3 need attention, 10 cancelled");
+    await i18n.changeLanguage("zh-CN");
+    expect(cancelledRunWords(t, run, looked(run))).toBe("3个需要查看，10个已取消");
+  });
+
+  it("names what worked first, as failedRunWords orders the parts", () => {
+    const run = [op(1, "Succeeded"), op(2, { NeedsAttention: "UnchangedAfterUpgrade" }), op(3, "Cancelled"), op(4, "Cancelled")];
+    expect(cancelledRunWords(t, run, looked(run))).toBe("1 succeeded, 1 needs attention, 2 cancelled");
+  });
+
+  it("leaves a run with a failure to failedRunWords, and one with nothing cancelled or nothing to check to the bar's other words", () => {
+    const withFailure = [op(1, failed), op(2, "Unconfirmed"), op(3, "Cancelled")];
+    expect(cancelledRunWords(t, withFailure, looked(withFailure))).toBeNull();
+    const noneCancelled = [op(1, "Succeeded"), op(2, "Unconfirmed")];
+    expect(cancelledRunWords(t, noneCancelled, looked(noneCancelled))).toBeNull();
+    expect(cancelledRunWords(t, [op(1, "Succeeded"), op(2, "Cancelled")], [])).toBeNull();
   });
 });
