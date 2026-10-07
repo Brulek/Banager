@@ -2193,7 +2193,7 @@ impl BrewAdapter {
                             program,
                             args,
                             env,
-                            then: vec!["cleanup".to_string(), req.name.clone()],
+                            then: vec![vec!["cleanup".to_string(), req.name.clone()]],
                         }
                     }
                     None => PlanAction::Command { program, args, env },
@@ -2262,11 +2262,11 @@ impl BrewAdapter {
         else {
             return run_plan(&self.runner, plan, sink, op_id, cancel).await;
         };
-        // An upgrade, then the `brew cleanup` of the formula's old
-        // versions (U9): each through `run_plan`, which streams its lines
-        // into this operation's log. The upgrade's end is the operation's;
-        // the cleanup runs only after it succeeded, and how it ends is said
-        // in the log, never in the outcome -- the update is done either way.
+        // An upgrade, then its follow-ups (`PlanAction::CommandThen`): each
+        // through `run_plan`, which streams its lines into this operation's
+        // log. The upgrade's end is the operation's; a follow-up runs only
+        // after it succeeded, and how it ends is said in the log, never in
+        // the outcome -- the update is done either way.
         let step = |args: &[String], timeout_secs| Plan {
             action: PlanAction::Command {
                 program: program.clone(),
@@ -2287,6 +2287,31 @@ impl BrewAdapter {
         if outcome != Outcome::Succeeded {
             return Ok(outcome);
         }
+        for follow_up in then {
+            if follow_up.first().map(String::as_str) == Some("cleanup") {
+                let cleanup = step(follow_up, Self::CLEANUP_TIMEOUT_SECS);
+                self.clean_up_old_versions(plan, &cleanup, &sink, op_id, &cancel)
+                    .await;
+            }
+        }
+        Ok(outcome)
+    }
+
+    /// The `brew cleanup <name>` that follows a formula's update once it
+    /// has exited 0 (U9): `cleanup`, the plan of that one command. Not run
+    /// after a Cancel, nor where the person's settings, asked again at its
+    /// turn, no longer allow it; how it ends is said in the log.
+    async fn clean_up_old_versions(
+        &self,
+        plan: &Plan,
+        cleanup: &Plan,
+        sink: &Arc<dyn EventSink>,
+        op_id: OpId,
+        cancel: &CancellationToken,
+    ) {
+        let PlanAction::Command { program, env, .. } = &cleanup.action else {
+            return;
+        };
         let name = plan.request.name.clone();
         let note = |note| sink.emit(OperationEvent::Note { op_id, note });
         if cancel.is_cancelled() {
@@ -2295,7 +2320,7 @@ impl BrewAdapter {
                 name,
                 exit_code: None,
             });
-            return Ok(outcome);
+            return;
         }
         // Asked again at its turn (review F4, r6): settings changed since
         // the preview, or that can no longer be read, stop it here.
@@ -2304,31 +2329,23 @@ impl BrewAdapter {
             .is_none()
         {
             note(LogNote::OldVersionsCleanupSkipped { name });
-            return Ok(outcome);
+            return;
         }
         note(LogNote::CleaningUpOldVersions { name: name.clone() });
-        let exit_code = match run_plan(
-            &self.runner,
-            &step(then, Self::CLEANUP_TIMEOUT_SECS),
-            sink.clone(),
-            op_id,
-            cancel,
-        )
-        .await
-        {
-            Ok(Outcome::Succeeded) => {
-                let versions = self.versions_kept(program, plan);
-                if !versions.is_empty() {
-                    note(LogNote::OldVersionsKept { name, versions });
+        let exit_code =
+            match run_plan(&self.runner, cleanup, sink.clone(), op_id, cancel.clone()).await {
+                Ok(Outcome::Succeeded) => {
+                    let versions = self.versions_kept(program, plan);
+                    if !versions.is_empty() {
+                        note(LogNote::OldVersionsKept { name, versions });
+                    }
+                    return;
                 }
-                return Ok(outcome);
-            }
-            Ok(Outcome::Failed { exit_code, .. }) => exit_code,
-            // Cancelled, out of time, or never started.
-            Ok(_) | Err(_) => None,
-        };
+                Ok(Outcome::Failed { exit_code, .. }) => exit_code,
+                // Cancelled, out of time, or never started.
+                Ok(_) | Err(_) => None,
+            };
         note(LogNote::OldVersionsNotCleanedUp { name, exit_code });
-        Ok(outcome)
     }
 
     /// The versions the update's preview said its `brew cleanup` deletes
@@ -7161,9 +7178,14 @@ mod plan_execute_tests {
             );
         }
 
+        /// The update's argv and the `brew cleanup` that follows it, when
+        /// one does.
         fn upgrade_then_cleanup(plan: &Plan) -> Option<(&[String], &[String])> {
             match &plan.action {
-                PlanAction::CommandThen { args, then, .. } => Some((args, then)),
+                PlanAction::CommandThen { args, then, .. } => then
+                    .iter()
+                    .find(|argv| argv.first().map(String::as_str) == Some("cleanup"))
+                    .map(|cleanup| (args.as_slice(), cleanup.as_slice())),
                 _ => None,
             }
         }

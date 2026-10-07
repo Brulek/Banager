@@ -114,6 +114,27 @@ pub enum LogNote {
     /// is left of its old versions is still listed as the tool's other
     /// versions. From `BrewAdapter::execute`; worded by `LogDrawer.tsx`.
     OldVersionsCleanupSkipped { name: String },
+    /// The upgrade of the keg-only formula `name` exited 0, and, read again
+    /// (`brew::links`), it is not linked into the prefix as `brew link`
+    /// leaves it: Banager now runs the plan's follow-up
+    /// `brew link --force <name>` (`Warning::HomebrewRelinksAfterUpdate`,
+    /// y1-keg, r6); what that command prints follows. From
+    /// `BrewAdapter::execute`; worded by `LogDrawer.tsx`.
+    RelinkingAfterUpdate { name: String },
+    /// The upgrade of the keg-only formula `name` exited 0 and, read again,
+    /// Homebrew had linked it back itself -- it does where it recorded a
+    /// `brew link` -- so the plan's `brew link --force <name>` was not run.
+    /// From `BrewAdapter::execute`; worded by `LogDrawer.tsx`.
+    StillLinkedAfterUpdate { name: String },
+    /// After the update of the keg-only formula `name` -- its
+    /// `brew link --force` not run (a Cancel), or run and the formula still
+    /// not linked after it, or the update itself failed -- `commands`, of
+    /// those its preview said were in Terminal
+    /// (`Warning::HomebrewRelinksAfterUpdate`), lead into it no longer:
+    /// typed in Terminal, they are not found, or run another program. The
+    /// line says how to link it back. From `BrewAdapter::execute`; worded
+    /// by `LogDrawer.tsx`.
+    NoLongerLinked { name: String, commands: Vec<String> },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -337,6 +358,37 @@ mod tests {
             serde_json::from_str::<OperationEvent>(json).unwrap(),
             skipped
         );
+    }
+
+    #[test]
+    fn test_the_keg_only_relink_notes_are_on_the_wire_as_the_mirror_spells_them() {
+        // y1-keg (r6): what becomes of a keg-only formula's link after its
+        // update, as `LogNote` in src/lib/types.ts spells it.
+        for (note, json) in [
+            (
+                LogNote::RelinkingAfterUpdate {
+                    name: "node@22".to_string(),
+                },
+                r#"{"Note":{"op_id":7,"note":{"RelinkingAfterUpdate":{"name":"node@22"}}}}"#,
+            ),
+            (
+                LogNote::StillLinkedAfterUpdate {
+                    name: "node@22".to_string(),
+                },
+                r#"{"Note":{"op_id":7,"note":{"StillLinkedAfterUpdate":{"name":"node@22"}}}}"#,
+            ),
+            (
+                LogNote::NoLongerLinked {
+                    name: "node@22".to_string(),
+                    commands: vec!["node".to_string(), "npm".to_string()],
+                },
+                r#"{"Note":{"op_id":7,"note":{"NoLongerLinked":{"name":"node@22","commands":["node","npm"]}}}}"#,
+            ),
+        ] {
+            let event = OperationEvent::Note { op_id: 7, note };
+            assert_eq!(serde_json::to_string(&event).unwrap(), json);
+            assert_eq!(serde_json::from_str::<OperationEvent>(json).unwrap(), event);
+        }
     }
 
     #[test]

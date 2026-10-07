@@ -1088,6 +1088,20 @@ pub enum Warning {
     /// version installed and no pin, right after its `UninstallScope`;
     /// read by `warningKey` and `warningArgs` in src/lib/warnings.ts.
     HomebrewRemovesEveryVersion { versions: Vec<String> },
+    /// The keg-only formula `name` -- one Homebrew leaves out of its `bin`
+    /// on purpose -- is linked into the prefix, by `brew link --force` or by
+    /// hand, so that `commands` (its commands whose places in the prefix
+    /// lead into it now, by name) are in Terminal. Its update unlinks the
+    /// version it replaces and links the new one back only where Homebrew
+    /// recorded a `brew link` (`brew::links`); so once the update has
+    /// exited 0 Banager reads the links again and, where the formula is not
+    /// linked as `brew link` leaves it, runs `brew link --force <name>`
+    /// (`PlanAction::CommandThen`; no `--overwrite`: it replaces no other
+    /// program's file). y1-keg (r6), after `node@22`'s update took `node`
+    /// out of Terminal on 2026-10-07. Produced by `BrewAdapter::plan` for
+    /// such a formula's `Upgrade`, first; read by `warningKey`,
+    /// `warningArgs` and `warningDetailKey` in src/lib/warnings.ts.
+    HomebrewRelinksAfterUpdate { name: String, commands: Vec<String> },
     /// What this uninstall removes and what it leaves, in the one sentence
     /// the uninstall confirmation shows under the tool: which sentence is
     /// `what` (`UninstallScope`). At most one per plan, and only on an
@@ -1481,6 +1495,22 @@ pub enum UpdateBlocked {
     /// (no button, no checkbox) and by `UPDATE_BLOCKED_KEYS.Disabled` in
     /// src/lib/sources.ts.
     Disabled,
+    /// A keg-only Homebrew formula linked into its prefix (`brew link
+    /// --force`, or by hand), where something else holds the place of one
+    /// of its commands now -- most often npm's own copy of itself, put in
+    /// `<prefix>/bin/npm` by an update of npm with npm. The update would
+    /// unlink the formula, and nothing gets past such a file to link it
+    /// back (`Keg::ConflictError`), so its commands would be gone from
+    /// Terminal (y1-keg, r6). Produced by `BrewAdapter::check_updates` for
+    /// a candidate the inventory of the same check lists as keg-only
+    /// (`brew::links`), and by `BrewAdapter::plan`'s `Upgrade` arm inside
+    /// `AdapterError::UpdateBlocked`, the gate's late twin. Loses to
+    /// `Disabled` and `Pinned`, which Homebrew refuses before it unlinks
+    /// anything. Read by the gate (`blocked_upgrade`), by `updateStateOf`
+    /// (no button, no checkbox) and by `UPDATE_BLOCKED_KEYS.LinkTaken` in
+    /// src/lib/sources.ts. An update already confirmed when the place is
+    /// taken is refused right before it runs instead (`Fault::LinkTaken`).
+    LinkTaken,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -1584,7 +1614,7 @@ pub struct ResourceLock(pub String); // "brew:/opt/homebrew"
 /// `Command` only, it refuses the others), `BrewAdapter::execute`
 /// (`CommandThen`), `OperationManager::summaries`'s `argv_preview` and
 /// `env_preview` (`ops/mod.rs`; the first command of a `CommandThen`,
-/// empty for `TrashPaths`), `CommandPreview.tsx` (both commands of a
+/// empty for `TrashPaths`), `CommandPreview.tsx` (every command of a
 /// `CommandThen`, one sentence for `TrashPaths`) and the hand-written
 /// mirror in `src/lib/types.ts`. Externally tagged on the wire like every
 /// other enum here: `{"Command":{"program":…,"args":[…],"env":[…]}}`,
@@ -1599,24 +1629,35 @@ pub enum PlanAction {
         args: Vec<String>,
         env: Vec<(String, String)>,
     },
-    /// Two commands with one program and one environment: `program args`,
-    /// and only once that has exited 0 -- and, asked again then, the
-    /// person's settings still allow it (`LogNote::
-    /// OldVersionsCleanupSkipped` when they do not) -- `program then`, a
-    /// follow-up whose
-    /// own end decides nothing about the operation -- the first command's
-    /// work is done whatever becomes of it -- and is said in the log
-    /// instead (`LogNote::CleaningUpOldVersions`,
-    /// `LogNote::OldVersionsNotCleanedUp`). The preview shows both. Built
-    /// only by `BrewAdapter::plan`, for a formula's upgrade followed by
-    /// `brew cleanup <name>` (`Warning::HomebrewCleansUpOldVersions`, the
-    /// author's decision U9, r6), and carried out only by
-    /// `BrewAdapter::execute`; `run_plan` refuses it.
+    /// A command and its follow-ups, all with one program and one
+    /// environment: `program args`, and only once that has exited 0, each
+    /// argv of `then` in turn, `program` before it -- each a follow-up whose
+    /// own end decides nothing about the operation (the first command's
+    /// work is done whatever becomes of it) and is said in the log instead.
+    /// The preview shows every one. Built only by `BrewAdapter::plan`, for
+    /// a formula's upgrade, and carried out only by `BrewAdapter::execute`;
+    /// `run_plan` refuses it. Its follow-ups, in this order:
+    ///
+    /// - `brew link --force <name>`, for a keg-only formula linked into the
+    ///   prefix (`Warning::HomebrewRelinksAfterUpdate`, y1-keg, r6): run
+    ///   only when, read again after the update, the formula is not linked
+    ///   as `brew link` leaves it (`LogNote::StillLinkedAfterUpdate` when it
+    ///   is, `LogNote::RelinkingAfterUpdate` before it runs,
+    ///   `LogNote::NoLongerLinked` when it is still not linked after);
+    /// - `brew cleanup <name>` (`Warning::HomebrewCleansUpOldVersions`, the
+    ///   author's decision U9, r6): run only when, asked again then, the
+    ///   person's settings still allow it (`LogNote::
+    ///   OldVersionsCleanupSkipped` when they do not;
+    ///   `LogNote::CleaningUpOldVersions`,
+    ///   `LogNote::OldVersionsNotCleanedUp`).
+    ///
+    /// On the wire `then` is a list of argvs:
+    /// `"then":[["link","--force","node@22"],["cleanup","node@22"]]`.
     CommandThen {
         program: PathBuf,
         args: Vec<String>,
         env: Vec<(String, String)>,
-        then: Vec<String>,
+        then: Vec<Vec<String>>,
     },
     /// No command. `execute` moves each path to the Trash, in this order
     /// (the tool's launcher last, spec §6.2), after re-checking it. The
@@ -1844,6 +1885,19 @@ pub enum Fault {
     /// (`BrewAdapter::require_cleanup_as_previewed`); read by `faultKey`
     /// in src/lib/format.ts.
     HomebrewSettingsChanged,
+    /// The update of the keg-only formula `name`, linked into the prefix,
+    /// was not started, because something else holds the place of one of
+    /// its commands there now -- `paths`, each a full path such as
+    /// `/opt/homebrew/bin/npm`: a copy npm put there of itself, another
+    /// formula's link, a file. The update unlinks the version it replaces,
+    /// and neither Homebrew's own link afterwards nor
+    /// `brew link --force` gets past such a file (`Keg::ConflictError`):
+    /// the formula's commands would be gone from Terminal, as `node` went
+    /// on 2026-10-07 (y1-keg, r6). Nothing was started; the formula stays
+    /// linked as it is. Built by `BrewAdapter::execute`
+    /// (`BrewAdapter::require_link_places_free`); read by
+    /// `faultKey`/`faultArgs` in src/lib/format.ts.
+    LinkTaken { name: String, paths: Vec<String> },
     /// Something on Banager's side did not add up (an unregistered
     /// adapter or instance, a queue that closed, an error `execute` has no
     /// business returning). A bug in Banager, not a state of the Mac.
@@ -2159,6 +2213,16 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<UpdateBlocked>(r#""Disabled""#).unwrap(),
             UpdateBlocked::Disabled
+        );
+        // A keg-only formula linked by hand whose command's place another
+        // program holds (y1-keg), read by `UPDATE_BLOCKED_KEYS.LinkTaken`.
+        assert_eq!(
+            serde_json::to_string(&UpdateBlocked::LinkTaken).unwrap(),
+            r#""LinkTaken""#
+        );
+        assert_eq!(
+            serde_json::from_str::<UpdateBlocked>(r#""LinkTaken""#).unwrap(),
+            UpdateBlocked::LinkTaken
         );
     }
 
@@ -2976,6 +3040,16 @@ mod tests {
             serde_json::to_string(&Outcome::BanagerFailed(Fault::HomebrewSettingsChanged)).unwrap(),
             r#"{"BanagerFailed":"HomebrewSettingsChanged"}"#
         );
+        // y1-keg (r6): a keg-only formula's update found another program
+        // in its commands' places, and ran nothing.
+        assert_eq!(
+            serde_json::to_string(&Outcome::BanagerFailed(Fault::LinkTaken {
+                name: "node@22".to_string(),
+                paths: vec!["/opt/homebrew/bin/npm".to_string()],
+            }))
+            .unwrap(),
+            r#"{"BanagerFailed":{"LinkTaken":{"name":"node@22","paths":["/opt/homebrew/bin/npm"]}}}"#
+        );
         for fault in [
             Fault::Panicked,
             Fault::HomebrewStillUpdating { minutes: 10 },
@@ -2983,6 +3057,13 @@ mod tests {
                 name: "wget".to_string(),
             },
             Fault::HomebrewSettingsChanged,
+            Fault::LinkTaken {
+                name: "node@22".to_string(),
+                paths: vec![
+                    "/opt/homebrew/bin/npm".to_string(),
+                    "/opt/homebrew/bin/npx".to_string(),
+                ],
+            },
             Fault::Internal,
         ] {
             let json = serde_json::to_string(&Outcome::BanagerFailed(fault.clone())).unwrap();
@@ -3131,12 +3212,41 @@ mod tests {
                 "wget".to_string(),
             ],
             env: vec![("HOMEBREW_NO_AUTOREMOVE".to_string(), "1".to_string())],
-            then: vec!["cleanup".to_string(), "wget".to_string()],
+            then: vec![vec!["cleanup".to_string(), "wget".to_string()]],
         };
-        let json = r#"{"CommandThen":{"program":"/opt/homebrew/bin/brew","args":["upgrade","--formula","wget"],"env":[["HOMEBREW_NO_AUTOREMOVE","1"]],"then":["cleanup","wget"]}}"#;
+        let json = r#"{"CommandThen":{"program":"/opt/homebrew/bin/brew","args":["upgrade","--formula","wget"],"env":[["HOMEBREW_NO_AUTOREMOVE","1"]],"then":[["cleanup","wget"]]}}"#;
+        assert_eq!(serde_json::to_string(&action).unwrap(), json);
+        assert_eq!(serde_json::from_str::<PlanAction>(json).unwrap(), action);
+        // y1-keg (r6): a keg-only formula linked into the prefix gets its
+        // `brew link --force` first, then the cleanup.
+        let action = PlanAction::CommandThen {
+            program: PathBuf::from("/opt/homebrew/bin/brew"),
+            args: vec![
+                "upgrade".to_string(),
+                "--formula".to_string(),
+                "node@22".to_string(),
+            ],
+            env: vec![],
+            then: vec![
+                vec![
+                    "link".to_string(),
+                    "--force".to_string(),
+                    "node@22".to_string(),
+                ],
+                vec!["cleanup".to_string(), "node@22".to_string()],
+            ],
+        };
+        let json = r#"{"CommandThen":{"program":"/opt/homebrew/bin/brew","args":["upgrade","--formula","node@22"],"env":[],"then":[["link","--force","node@22"],["cleanup","node@22"]]}}"#;
         assert_eq!(serde_json::to_string(&action).unwrap(), json);
         assert_eq!(serde_json::from_str::<PlanAction>(json).unwrap(), action);
         for (warning, json) in [
+            (
+                Warning::HomebrewRelinksAfterUpdate {
+                    name: "node@22".to_string(),
+                    commands: vec!["node".to_string(), "npm".to_string()],
+                },
+                r#"{"HomebrewRelinksAfterUpdate":{"name":"node@22","commands":["node","npm"]}}"#,
+            ),
             (
                 Warning::HomebrewCleansUpOldVersions {
                     versions: vec!["1.24.0".to_string(), "1.25.0".to_string()],

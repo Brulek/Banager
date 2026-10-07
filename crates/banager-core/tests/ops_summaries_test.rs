@@ -402,7 +402,7 @@ async fn test_summaries_preview_the_first_command_of_a_plan_of_two() {
                 "wget".to_string(),
             ],
             env: env.clone(),
-            then: vec!["cleanup".to_string(), "wget".to_string()],
+            then: vec![vec!["cleanup".to_string(), "wget".to_string()]],
         },
         needs_password: false,
         locks: vec![ResourceLock("fake:1".to_string())],
