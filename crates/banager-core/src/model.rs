@@ -1613,6 +1613,25 @@ pub enum UpdateBlocked {
     /// src/lib/sources.ts. An update already confirmed when the place is
     /// taken is refused right before it runs instead (`Fault::LinkTaken`).
     LinkTaken,
+    /// npm's own package, where the `npm` in its prefix's `bin` is a
+    /// Homebrew formula's: a link that leads, every link followed, into
+    /// `<prefix>/Cellar/` -- `node@22` linked by hand (`brew link --force`)
+    /// puts its own npm there. `npm install -g npm@latest` replaces that
+    /// link with npm's own, and the next `brew upgrade node@22` cannot link
+    /// the new version over it: Homebrew stops at the file ("The `brew
+    /// link` step did not complete successfully"), and leaves no `node`
+    /// where Terminal looks -- what happened on the author's Mac on
+    /// 2026-10-07 (review of track y2-npmwhy, finding 2). Such an npm
+    /// updates with its formula. Produced by `NpmAdapter::check_updates`
+    /// (`adapters/npm.rs`) from a read of where `<prefix>/bin/npm` leads
+    /// (`real_npm_comes_with_formula`), and, for the same read, by
+    /// `NpmAdapter::plan`'s `Upgrade` arm inside `AdapterError::UpdateBlocked`
+    /// (the late twin). Not a state npm reports: the exception to the rule
+    /// above, because the update it would block breaks another source.
+    /// Read by the gate (`blocked_upgrade`), by `updateStateOf` (no button,
+    /// no checkbox) and by `UPDATE_BLOCKED_KEYS.UpdatesWithFormula` in
+    /// src/lib/sources.ts.
+    UpdatesWithFormula,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -2343,6 +2362,17 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<UpdateBlocked>(r#""LinkTaken""#).unwrap(),
             UpdateBlocked::LinkTaken
+        );
+        // npm that a Homebrew formula linked into its prefix
+        // (`NpmAdapter::check_updates`), read by
+        // `UPDATE_BLOCKED_KEYS.UpdatesWithFormula`.
+        assert_eq!(
+            serde_json::to_string(&UpdateBlocked::UpdatesWithFormula).unwrap(),
+            r#""UpdatesWithFormula""#
+        );
+        assert_eq!(
+            serde_json::from_str::<UpdateBlocked>(r#""UpdatesWithFormula""#).unwrap(),
+            UpdateBlocked::UpdatesWithFormula
         );
     }
 

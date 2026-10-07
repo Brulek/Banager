@@ -481,9 +481,13 @@ export type Warning =
  * one of its commands' places (y1-keg), whose update would take its
  * commands out of Terminal. Read through `UPDATE_BLOCKED_KEYS` in
  * src/lib/sources.ts, a `Record` over this union, so a variant added here
- * without copy fails `tsc` rather than rendering nothing.
+ * without copy fails `tsc` rather than rendering nothing. `UpdatesWithFormula`
+ * by npm's `check_updates` for npm's own package where the `npm` in its
+ * prefix is a Homebrew formula's link (`node@22` linked by hand): updating
+ * it through npm would take that link away, and the formula's next update
+ * could not link.
  */
-export type UpdateBlocked = "Pinned" | "SelfUpdatesOnly" | "Disabled" | "LinkTaken";
+export type UpdateBlocked = "Pinned" | "SelfUpdatesOnly" | "Disabled" | "LinkTaken" | "UpdatesWithFormula";
 export interface UpdateCandidate {
   key: ArtifactKey;
   current: string;

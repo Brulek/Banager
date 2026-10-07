@@ -1196,12 +1196,17 @@ export const NO_NODE_FORMULAE: readonly LinkFix[] = [
 ];
 
 /**
- * `?state=nonode`, the author's Mac on 2026-10-07: `brew upgrade node@22`
- * unlinked the `node@22` they had linked by hand, `/opt/homebrew/bin/node`
- * is gone, and npm's launcher (`#!/usr/bin/env node`) could not start:
- * `NotResponding`, with why (`no_answer`), and the two formulae that have
- * `node` as its fixes, newest first -- what `link_fixes::fill` gives. Its
- * rows are last time's, as a source that did not answer keeps them.
+ * `?state=nonode`, the author's Mac on 2026-10-07: npm updated itself
+ * (`npm install -g npm@latest`), which put npm's own `npm` where the
+ * `node@22` they had linked by hand had its link; the next `brew upgrade
+ * node@22` could not link the new version over it, so no `node` was left
+ * where Terminal looks, and npm's launcher (`#!/usr/bin/env node`) could
+ * not start: `NotResponding`, with why (`no_answer`), and the two formulae
+ * that have `node` as its fixes, newest first -- what `link_fixes::fill`
+ * gives. Its rows are last time's, as a source that did not answer keeps
+ * them. Once a Link puts `node@20` back, npm is that formula's, and its
+ * own update is not offered: it updates with the formula
+ * (`UpdatesWithFormula`), so the same thing cannot happen again.
  */
 function withNoNode(world: World): void {
   allAnswering(world);
@@ -1221,6 +1226,9 @@ function withNoNode(world: World): void {
     );
   }
   world.updates = world.updates.filter((u) => !NO_NODE_FORMULAE.some((fix) => sameKey(fix.key, u.key)));
+  world.updates.push(
+    update(key(IDS.npm, "Package", "npm"), "12.0.2", "12.2.0", "Native", { blocked: "UpdatesWithFormula" }),
+  );
   const npm = findInstance(world, IDS.npm);
   // What it says again once it can run (`apply` in ./mockBackend.ts).
   NO_NODE_ANSWERS_AGAIN.set(npm.id, npm.version);

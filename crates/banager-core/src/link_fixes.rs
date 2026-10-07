@@ -5,10 +5,19 @@
 //!
 //! The case it exists for (finding (1) of the 2026-10-07 run): `node@22`
 //! is keg-only, so Homebrew puts none of its commands where Terminal looks
-//! unless someone runs `brew link --force node@22`; the author had, and the
-//! next `brew upgrade node@22` unlinked the old version and did not link
-//! the new one. `/opt/homebrew/bin/node` was gone, and with it every npm
-//! command. `brew link --force node@22` puts it back.
+//! unless someone runs `brew link --force node@22`; the author had. Then
+//! npm updated itself (`npm install -g npm@latest`), which replaced the
+//! `bin/npm` link `node@22` had put there with npm's own; the next `brew
+//! upgrade node@22` unlinked the old version and, linking the new one, met
+//! that file, which Homebrew had not linked: it took back what it had
+//! linked and failed ("The `brew link` step did not complete
+//! successfully"). Homebrew does link a keg again that was linked before an
+//! upgrade (upgrade.rb:643 in Homebrew 7.0.8); the file in the way stopped
+//! it. `/opt/homebrew/bin/node` was gone, and with it every npm command.
+//! `brew link --force node@22` puts it back once nothing is in the way
+//! (`adapters/brew/link.rs`); npm's own update is no longer offered where
+//! npm is a formula's, so it does not happen again that way
+//! (`UpdateBlocked::UpdatesWithFormula`).
 //!
 //! A formula is offered when it is, by the snapshot alone -- nothing is
 //! read from the disk and nothing runs here:

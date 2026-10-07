@@ -2,9 +2,11 @@
  * Why a source did not answer, in words (`InstanceStatus.no_answer`,
  * `NoAnswer` in crates/banager-core/src/model.rs), and the fix a source's
  * notice offers for it. Finding (1) of the 2026-10-07 run: npm's launcher,
- * `#!/usr/bin/env node`, found no `node` after `brew upgrade node@22`
- * unlinked it, and every page said only 「npm没有响应」 -- "not responding",
- * which is true only of a source that ran and did not answer in time.
+ * `#!/usr/bin/env node`, found no `node` after `brew upgrade node@22` could
+ * not link its new version (npm's own self-update had put its `npm` where
+ * the formula's link was), and every page said only 「npm没有响应」 -- "not
+ * responding", which is true only of a source that ran and did not answer
+ * in time.
  *
  * A source that ran out of time (`TimedOut`), or whose reason the core
  * could not tell, keeps the "not responding" words it always had. One that

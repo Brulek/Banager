@@ -782,6 +782,11 @@
       "again": "重新链接",
       "quitBody_other": "现在退出会中断操作，正在链接的工具有只链接一半的风险。",
       "quitNoCancel": "“{{name}}”的链接已开始，无法取消。请等它完成后再退出。"
+    },
+    "withFormula": {
+      "badge": "随Node更新",
+      "detail": "这个npm是Homebrew安装的Node自带的，会随Node一起更新。在这里单独更新它，Homebrew下次更新Node时会出错。",
+      "refused": "无法在这里更新，它会随Homebrew安装的Node一起更新。"
     }
   },
   "loginPathNotice": {

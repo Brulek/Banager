@@ -1570,15 +1570,31 @@ the way (`Warning::LinkConflicts`), and one that leads nowhere is not, as
 Homebrew replaces it. Only `bin` is read, only names and where links lead,
 never a file's contents.
 
-## Why a source did not answer, and the link that fixes it: no command runs
+## Why a source did not answer, and the link that fixes it: nothing runs until a link is confirmed
 
 A source that did not answer is `NotResponding`, and the window used to say
 only that it was "not responding" -- which is true only of one that ran
-and did not answer in time. On 2026-10-07 the author's npm said so after
-`brew upgrade node@22` had unlinked `node@22` (keg-only, linked by hand
-with `brew link --force`): `/opt/homebrew/bin/node` was gone, npm's
-launcher, `#!/usr/bin/env node`, could not start (`env: node: No such
-file or directory`, exit 127), and nothing on screen said why.
+and did not answer in time. On 2026-10-07 the author's npm said so. Their
+`node@22` is keg-only and had been linked by hand (`brew link --force`),
+so `/opt/homebrew/bin/npm` was Homebrew's link into its keg. Banager's
+Update All first updated npm through itself (`npm install -g npm@latest`,
+10.9.9 to 12.2.0, 09:55:57), which replaced that link with npm's own.
+Homebrew does link again a keg that was linked before an upgrade
+(`link_keg = keg.linked?`, upgrade.rb:643 in Homebrew 7.0.8), but when
+`brew upgrade node@22` then poured 22.23.3_1 and linked it, it met npm's
+`bin/npm`, which it had not linked, raised `ConflictError`, took back what
+it had linked, and failed the run ("The `brew link` step did not complete
+successfully", exit 1 at 09:57:31). The old version had been unlinked
+first, so `/opt/homebrew/bin/node` was gone; npm's launcher,
+`#!/usr/bin/env node`, could not start (`env: node: No such file or
+directory`, exit 127), and nothing on screen said why. Its other links went
+too: corepack's, so `/opt/homebrew/bin/pnpm`, a link into
+`lib/node_modules/corepack`, led nowhere. Three things now answer for it:
+the reason said here; the failed update's cause, 「已装好，但未能链接」
+(`FailureCause::NotLinked`, read off that line); and npm's own update,
+which is no longer offered where npm is a formula's
+(`UpdateBlocked::UpdatesWithFormula`, npm, below), so it cannot happen
+again that way.
 
 **Why.** Each package manager's `detect` hands the result of the command
 that did not answer -- npm's `npm prefix -g` or `npm --version`, the
@@ -1603,7 +1619,9 @@ installer, and Ollama, which is asked over HTTP, have none yet.
 
 **The fix it offers.** For a source that could not start for want of a
 program, once a refresh round has every source's rows
-(`link_fixes::fill`, from the snapshot alone -- nothing is read or run):
+(`link_fixes::fill`, from the snapshot alone -- working out the reason
+and the formulae offered reads nothing and runs nothing; the link itself
+runs only once its preview is confirmed):
 the formulae of a Homebrew source Banager can act on that are keg-only and
 not linked (`keg_only` and `linked_keg` of `brew info --installed
 --json=v2`, already read for the inventory) and named for the program
@@ -1710,7 +1728,22 @@ would remove the npm every other package is updated and uninstalled with.
 Its row in the list says so where Uninstall would be
 (`UninstallBlocked::SourceProgram`, set by `parse_ls_global`), and both the
 gate and `NpmAdapter::plan` refuse it. Its update is offered as any
-package's.
+package's, but for one case: where the `npm` in the prefix's `bin` is a
+Homebrew formula's -- a link that leads, every link followed, into
+`<prefix>/Cellar/`, which is what `brew link --force node@22` puts there
+-- its update is not offered (`UpdateBlocked::UpdatesWithFormula`), and
+`NpmAdapter::plan` refuses it too. `<npm> install -g npm@latest` would
+replace that link with npm's own, and the formula's next `brew upgrade`
+could not link its new version over it: Homebrew stops at a file it did
+not link, and leaves no `node` where Terminal looks -- what happened on the
+author's Mac on 2026-10-07 (Why a source did not answer, above). Such an
+npm updates with its formula. To tell, `check_updates` (only when it lists
+npm's own update) and the plan of that update read where
+`<prefix>/Cellar` and `<prefix>/bin/npm` lead (`real_npm_comes_with_formula`
+in `npm.rs`): each link one step at a time, never into or through a
+protected place, never a file's contents; anything it cannot tell is not
+a formula's. The unversioned `node` formula's npm is a copy in
+`<prefix>/lib/node_modules/npm`, outside the Cellar, and keeps its update.
 
 Under the package, the uninstall confirmation says that its folder in
 npm's global folder and its commands go, that npm runs none of its code,
@@ -3891,14 +3924,20 @@ not read (`protected::look`; How Banager runs anything, above):
   `<prefix>/sbin`, its text and where it leads, and
   `<prefix>/var/homebrew/linked/<name>`, its text and whether it leads to
   a folder, and during a check the same for each keg-only formula with an
-  update (Homebrew's section, "Keg-only formulae linked into Terminal").
+  update (Homebrew's section, "Keg-only formulae linked into Terminal");
+  during a link's preview, where
+  `<prefix>/opt/<name>` leads, the names in its `bin` and where
+  `<prefix>/bin/<each of them>` leads (Homebrew's section, "Files this
+  adapter reads").
 - A Homebrew cask's app, when the window asks for its icon: `lstat` of the
   `.app` Homebrew named for that cask, and the icon macOS finds for it
   through `NSWorkspace iconForFile:` — Banager opens no file in the app
   (App icons, above).
 - npm: whether `{prefix}/lib/node_modules`, `{prefix}/lib` or `{prefix}`
   is writable, via `access(2)` (`faccessat` of the folder held open; one
-  in a protected place is taken as not writable).
+  in a protected place is taken as not writable); where `{prefix}/Cellar`
+  and `{prefix}/bin/npm` lead, when a check lists npm's own update or its
+  update is planned, to tell a Homebrew formula's npm (npm's section).
 - pip: the canonical path of each interpreter found, to count it once;
   for one in `/usr/bin`, where `usr/bin/<its name>` in the developer
   directory `xcode-select -p` names leads, and whether that is an

@@ -427,6 +427,10 @@ describe("the browser preview's mock backend", () => {
     const answered = after.instances.find((i) => i.adapter_id === "npm");
     expect(answered?.status).toEqual({ unavailable: null, notes: [], no_answer: null });
     expect(answered?.version).toBe("12.0.2");
+    // npm is now the linked formula's: its own update waits for the
+    // formula's, so the same self-update cannot take the link away again.
+    const ownUpdate = after.updates.find((u) => u.key.instance_id === answered?.id && u.key.name === "npm");
+    expect(ownUpdate?.blocked).toBe("UpdatesWithFormula");
   });
 
   it("installs about 800 real tools with ?state=many, one in seven with an update, the same on every run", async () => {

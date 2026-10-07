@@ -946,6 +946,22 @@ export const UPDATE_BLOCKED_KEYS: Record<UpdateBlocked, UpdateBlockedCopy> = {
     note: linkHeldNote,
     refused: "kegLinks.blockedRefused",
   },
+  UpdatesWithFormula: {
+    // npm whose `npm` is a Homebrew formula's link (`node@22` linked by
+    // hand): it updates with that formula. Updated through npm, its own
+    // copy takes the link's place and the formula's next update cannot
+    // link -- what left the author's Mac with no `node` on 2026-10-07.
+    // The sentence names no formula: the reason carries none, and "the
+    // Node that Homebrew installed" is what the person knows it as.
+    // Nothing to run.
+    badge: "noAnswer.withFormula.badge",
+    detail: "noAnswer.withFormula.detail",
+    commandInDetail: false,
+    command: () => "",
+    typed: null,
+    note: () => null,
+    refused: "noAnswer.withFormula.refused",
+  },
 };
 
 /**

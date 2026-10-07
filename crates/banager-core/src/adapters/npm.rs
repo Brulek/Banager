@@ -7,8 +7,8 @@ use crate::events::{EventSink, OpId};
 use crate::model::{
     ArtifactKey, ArtifactKind, CancelPolicy, InstallReason, InstalledArtifact, InstanceStatus,
     ManagerInstance, OpKind, OpRequest, Outcome, Plan, PlanAction, ReadOnlyReason, Reconciled,
-    ResourceLock, Scope, SearchHit, Unavailable, UninstallBlocked, UninstallScope, UpdateCandidate,
-    UpdateChannel, Warning,
+    ResourceLock, Scope, SearchHit, Unavailable, UninstallBlocked, UninstallScope, UpdateBlocked,
+    UpdateCandidate, UpdateChannel, Warning,
 };
 
 /// npm's own package, as `npm ls -g` lists it beside the user's: the npm
@@ -82,6 +82,33 @@ fn real_prefix_read_only(prefix: &Path) -> Option<ReadOnlyReason> {
     not_writable(prefix)
 }
 
+/// Whether the `npm` in `prefix`'s `bin` is a Homebrew formula's: a link
+/// that leads, every link followed, into `<prefix>/Cellar/` -- what
+/// `brew link --force node@22` puts there (`UpdateBlocked::UpdatesWithFormula`).
+/// The unversioned `node` formula's npm is a copy in
+/// `<prefix>/lib/node_modules/npm`, outside the Cellar, and is not; nor is
+/// npm's own, after `npm install -g npm`. Read-only: where two links lead,
+/// one step at a time and never into or through a protected place
+/// (`protected::look`); `false` for anything it cannot tell.
+fn real_npm_comes_with_formula(prefix: &Path) -> bool {
+    let protected = Protected::of_this_process();
+    let Ok(cellar) = look::real_path(&prefix.join("Cellar"), &protected) else {
+        return false;
+    };
+    match look::target(&prefix.join("bin").join(OWN_PACKAGE), &protected) {
+        Ok((real, _)) => real.starts_with(&cellar),
+        Err(_) => false,
+    }
+}
+
+/// `NpmAdapter::npm_comes_with_formula_fn` as `NpmAdapter::new` sets it: the
+/// real read in every build but this crate's unit tests, where nothing is
+/// read unless a test installs a reader.
+#[cfg(not(test))]
+const DEFAULT_NPM_COMES_WITH_FORMULA_FN: fn(&Path) -> bool = real_npm_comes_with_formula;
+#[cfg(test)]
+const DEFAULT_NPM_COMES_WITH_FORMULA_FN: fn(&Path) -> bool = |_| false;
+
 /// The sentence an uninstall says under the tool (`UninstallScope::Npm`),
 /// for the npm `version` Banager detected (`npm --version`), only when that
 /// is 7 or later. npm 7 and later run no script of the package's on
@@ -123,6 +150,10 @@ pub struct NpmAdapter {
     /// is why this takes `&Path` (the prefix) rather than a
     /// `&ManagerInstance` that does not exist yet.
     prefix_read_only_fn: fn(&Path) -> Option<ReadOnlyReason>,
+    /// How to tell whether the `npm` in a prefix's `bin` is a Homebrew
+    /// formula's (`real_npm_comes_with_formula`), whose own update is then
+    /// not offered (`UpdateBlocked::UpdatesWithFormula`).
+    npm_comes_with_formula_fn: fn(&Path) -> bool,
 }
 
 impl NpmAdapter {
@@ -139,6 +170,7 @@ impl NpmAdapter {
             runner,
             meta,
             prefix_read_only_fn: real_prefix_read_only,
+            npm_comes_with_formula_fn: DEFAULT_NPM_COMES_WITH_FORMULA_FN,
         }
     }
 
@@ -146,6 +178,37 @@ impl NpmAdapter {
     fn with_prefix_read_only_fn(mut self, f: fn(&Path) -> Option<ReadOnlyReason>) -> NpmAdapter {
         self.prefix_read_only_fn = f;
         self
+    }
+
+    /// Test-only hook: whether the prefix's `npm` is a Homebrew formula's
+    /// (see `npm_comes_with_formula_fn`).
+    #[cfg(test)]
+    fn with_npm_comes_with_formula_fn(mut self, f: fn(&Path) -> bool) -> NpmAdapter {
+        self.npm_comes_with_formula_fn = f;
+        self
+    }
+
+    /// `candidates`, npm's own marked `UpdatesWithFormula` where the npm in
+    /// `inst`'s prefix is a Homebrew formula's: its update would take that
+    /// formula's link away (`UpdateBlocked::UpdatesWithFormula`). The link
+    /// is read only when npm's own is among them.
+    fn with_formulas_npm_marked(
+        &self,
+        inst: &ManagerInstance,
+        mut candidates: Vec<UpdateCandidate>,
+    ) -> Vec<UpdateCandidate> {
+        let lists_own = candidates
+            .iter()
+            .any(|candidate| candidate.key.name == OWN_PACKAGE && candidate.blocked.is_none());
+        if lists_own && (self.npm_comes_with_formula_fn)(&inst.prefix) {
+            for candidate in candidates
+                .iter_mut()
+                .filter(|candidate| candidate.key.name == OWN_PACKAGE)
+            {
+                candidate.blocked = Some(UpdateBlocked::UpdatesWithFormula);
+            }
+        }
+        candidates
     }
 
     fn env_vec(&self) -> Vec<(String, String)> {
@@ -353,14 +416,15 @@ impl NpmAdapter {
         // Exit 0 is the plain answer: whatever is on stdout is the result,
         // and stdout that will not parse is a real parse error.
         if output.exit_code == Some(0) {
-            return Ok(parse_outdated_global(&output.stdout, &inst.id)?.into());
+            let found = parse_outdated_global(&output.stdout, &inst.id)?;
+            return Ok(self.with_formulas_npm_marked(inst, found).into());
         }
         // npm exits 1 whenever it *finds* anything outdated — a result, not
         // a failure (per-adapter contract table). So a non-zero exit that
         // came with findings is that result...
         if let Ok(found) = parse_outdated_global(&output.stdout, &inst.id) {
             if !found.is_empty() {
-                return Ok(found.into());
+                return Ok(self.with_formulas_npm_marked(inst, found).into());
             }
         }
         // ...and a non-zero exit with nothing to show for it is a lookup
@@ -431,6 +495,17 @@ impl NpmAdapter {
         if req.kind == OpKind::Uninstall && req.name == OWN_PACKAGE {
             return Err(AdapterError::UninstallBlocked {
                 reason: UninstallBlocked::SourceProgram,
+            });
+        }
+        // npm that a Homebrew formula linked into the prefix updates with
+        // it (`UpdateBlocked::UpdatesWithFormula`): the gate's late twin,
+        // for a page from before the formula was linked.
+        if req.kind == OpKind::Upgrade
+            && req.name == OWN_PACKAGE
+            && (self.npm_comes_with_formula_fn)(&inst.prefix)
+        {
+            return Err(AdapterError::UpdateBlocked {
+                reason: UpdateBlocked::UpdatesWithFormula,
             });
         }
         // npm's own lock, and that of a Homebrew at npm's global prefix
@@ -1280,6 +1355,119 @@ mod tests {
             .expect("exit 1 means updates were found, not a failure")
             .candidates;
         assert_eq!(candidates.len(), 1);
+    }
+
+    /// A prefix as the author's was before 2026-10-07: `node@22` linked by
+    /// hand, so `<prefix>/bin/npm` is Homebrew's link into the keg's own
+    /// npm. `own` false: npm's own copy, as after `npm install -g npm`.
+    fn prefix_with_npm(tag: &str, own: bool) -> PathBuf {
+        use std::os::unix::fs::symlink;
+        let root = crate::testing::unique_temp_path(&format!("npm-formula-{tag}"));
+        let keg = root.join("Cellar/node@22/22.23.3_1");
+        std::fs::create_dir_all(keg.join("lib/node_modules/npm/bin")).unwrap();
+        std::fs::write(keg.join("lib/node_modules/npm/bin/npm-cli.js"), b"").unwrap();
+        std::fs::create_dir_all(keg.join("bin")).unwrap();
+        symlink(
+            "../lib/node_modules/npm/bin/npm-cli.js",
+            keg.join("bin/npm"),
+        )
+        .unwrap();
+        std::fs::create_dir_all(root.join("lib/node_modules/npm/bin")).unwrap();
+        std::fs::write(root.join("lib/node_modules/npm/bin/npm-cli.js"), b"").unwrap();
+        std::fs::create_dir_all(root.join("bin")).unwrap();
+        let target = if own {
+            "../lib/node_modules/npm/bin/npm-cli.js"
+        } else {
+            "../Cellar/node@22/22.23.3_1/bin/npm"
+        };
+        symlink(target, root.join("bin/npm")).unwrap();
+        root
+    }
+
+    #[test]
+    fn test_an_npm_a_homebrew_formula_linked_is_that_formulas() {
+        // Finding (2) of the y2-npmwhy review: `npm install -g npm@latest`
+        // in a prefix whose `bin/npm` is Homebrew's link into `node@22`'s
+        // keg replaces that link, and the next `brew upgrade node@22`
+        // cannot link the new version over it.
+        let formulas = prefix_with_npm("formulas", false);
+        let own = prefix_with_npm("own", true);
+        let elsewhere = crate::testing::unique_temp_path("npm-formula-none");
+        let found = (
+            real_npm_comes_with_formula(&formulas),
+            real_npm_comes_with_formula(&own),
+            real_npm_comes_with_formula(&elsewhere),
+        );
+        let _ = std::fs::remove_dir_all(&formulas);
+        let _ = std::fs::remove_dir_all(&own);
+        assert_eq!(found, (true, false, false));
+    }
+
+    #[tokio::test]
+    async fn test_npm_that_comes_with_a_homebrew_formula_is_not_offered_its_own_update() {
+        let runner = Arc::new(MockRunner::new());
+        let json = r#"{
+            "npm": {"current": "10.9.9", "wanted": "10.9.9", "latest": "12.2.0", "dependent": "global", "location": "/opt/homebrew/lib/node_modules/npm"},
+            "prettier": {"current": "3.8.1", "wanted": "3.8.2", "latest": "3.8.2", "dependent": "global", "location": "/opt/homebrew/lib/node_modules/prettier"}
+        }"#;
+        runner.respond(
+            vec!["/opt/homebrew/bin/npm", "outdated", "-g", "--json"],
+            CommandOutput {
+                stderr_cause: Default::default(),
+                exit_code: Some(1),
+                stdout: json.to_string(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        async fn blocked(adapter: &NpmAdapter) -> Vec<(String, Option<UpdateBlocked>)> {
+            let mut found: Vec<(String, Option<UpdateBlocked>)> = adapter
+                .check_updates(&test_instance(), &CheckOptions::default())
+                .await
+                .expect("checked")
+                .candidates
+                .into_iter()
+                .map(|candidate| (candidate.key.name, candidate.blocked))
+                .collect();
+            found.sort_by(|a, b| a.0.cmp(&b.0));
+            found
+        }
+        let formulas = NpmAdapter::new(runner.clone()).with_npm_comes_with_formula_fn(|_| true);
+        assert_eq!(
+            blocked(&formulas).await,
+            vec![
+                ("npm".to_string(), Some(UpdateBlocked::UpdatesWithFormula)),
+                ("prettier".to_string(), None),
+            ]
+        );
+        let own = NpmAdapter::new(runner).with_npm_comes_with_formula_fn(|_| false);
+        assert_eq!(
+            blocked(&own).await,
+            vec![("npm".to_string(), None), ("prettier".to_string(), None)]
+        );
+
+        // The gate's late twin: planned from a page that is out of date.
+        let inst = test_instance();
+        let upgrade = |name: &str| OpRequest {
+            kind: OpKind::Upgrade,
+            instance_id: inst.id.clone(),
+            artifact_kind: ArtifactKind::Package,
+            name: name.to_string(),
+        };
+        let formulas = NpmAdapter::new(Arc::new(MockRunner::new()))
+            .with_prefix_read_only_fn(|_| None)
+            .with_npm_comes_with_formula_fn(|_| true);
+        match formulas.plan(&inst, &upgrade("npm")).await {
+            Err(AdapterError::UpdateBlocked { reason }) => {
+                assert_eq!(reason, UpdateBlocked::UpdatesWithFormula)
+            }
+            other => panic!("expected UpdateBlocked, got {other:?}"),
+        }
+        formulas
+            .plan(&inst, &upgrade("prettier"))
+            .await
+            .expect("every other package is updated as before");
     }
 
     #[tokio::test]
