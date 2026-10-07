@@ -2707,12 +2707,22 @@ impl BrewAdapter {
             });
             return;
         }
-        // Asked again at its turn (review F4, r6): settings changed since
-        // the preview, or that can no longer be read, stop it here.
-        if self
+        // Recheck settings and the deletion set. The newest keg is kept by
+        // cleanup; every older keg must have appeared in the confirmation.
+        let allowed = self
             .cleanup_allowed(&Self::prefix_for(program), &name, env)
-            .is_none()
-        {
+            .is_some_and(|kegs| {
+                let named = plan.warnings.iter().find_map(|warning| match warning {
+                    Warning::HomebrewCleansUpOldVersions { versions } => Some(versions),
+                    _ => None,
+                });
+                named.is_some_and(|named| {
+                    kegs.versions
+                        .split_last()
+                        .is_some_and(|(_, old)| old.iter().all(|version| named.contains(version)))
+                })
+            });
+        if !allowed {
             note(LogNote::OldVersionsCleanupSkipped { name });
             return;
         }
@@ -8326,6 +8336,45 @@ mod plan_execute_tests {
                         }
                     ),
                 ]
+            );
+        }
+
+        #[tokio::test]
+        async fn regression_f01_cleanup_skips_unconfirmed_old_kegs() {
+            let runner = Arc::new(MockRunner::new());
+            runner.respond(
+                vec!["/opt/homebrew/bin/brew", "upgrade", "--formula", "wget"],
+                ok("", "", 0),
+            );
+            runner.respond(
+                vec!["/opt/homebrew/bin/brew", "cleanup", "wget"],
+                ok("", "", 0),
+            );
+            let plan = BrewAdapter::new(runner.clone())
+                .with_kegs_fn(two_versions)
+                .plan(
+                    &test_instance(),
+                    &request(OpKind::Upgrade, ArtifactKind::Formula, "wget"),
+                )
+                .await
+                .unwrap();
+            let sink = Arc::new(VecSink::new());
+            let outcome = BrewAdapter::new(runner.clone())
+                .with_kegs_fn(|_, _| {
+                    Some(Kegs {
+                        versions: ["1.24.0", "1.25.0", "1.25.1", "1.26.0"]
+                            .map(str::to_string)
+                            .to_vec(),
+                        pinned: false,
+                    })
+                })
+                .execute(&plan, sink.clone(), 7, CancellationToken::new())
+                .await
+                .unwrap();
+            assert!(matches!(outcome, Outcome::Succeeded));
+            assert_eq!(runner.calls().len(), 1, "unconfirmed 1.25.1 must survive");
+            assert!(
+                format!("{:?}", sink.events.lock().unwrap()).contains("OldVersionsCleanupSkipped")
             );
         }
 

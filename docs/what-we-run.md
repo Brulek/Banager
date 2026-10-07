@@ -930,10 +930,13 @@ came back on the Installed page, still installed. So:
   pinned formula. When the answer is no longer yes -- the person
   turned the cleanup off or named the formula since the preview, pinned
   it, a `brew.env` took Banager's `1` back or can no longer be read, or
-  the Cellar cannot -- the cleanup does not run, and the log says so
-  (`LogNote::OldVersionsCleanupSkipped`, 「没有运行brew cleanup：确认窗口
-  打开后，Homebrew的设置有了变化，或无法读取。……」); the update's
-  outcome is unchanged. The update's preview says
+  the Cellar cannot -- or the Cellar now holds an old version the preview
+  did not name (one installed in Terminal while the confirmation was open:
+  every version there but the newest, the one the update put in, must be
+  one the preview named; review r7 F3) -- the cleanup does not run, and
+  the log says so (`LogNote::OldVersionsCleanupSkipped`, 「没有运行brew
+  cleanup：确认窗口打开后，Homebrew的设置或已安装版本有了变化，或无法核对。……」);
+  the update's outcome is unchanged. The update's preview says
   first which versions go -- every version installed when it looked, the
   one the update replaces among them -- and, in the same line, that
   Homebrew also deletes the downloads in its cache it no longer uses,

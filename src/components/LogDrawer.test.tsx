@@ -246,19 +246,19 @@ describe("LogDrawer", () => {
     }
   });
 
-  it("says an update's brew cleanup did not run when the settings no longer allow it, in each language (F4)", async () => {
+  it("says an update's brew cleanup did not run when settings or versions no longer allow it, in each language", async () => {
     const expected: [string, string][] = [
       [
         "en",
-        "brew cleanup didn't run: Homebrew's settings changed after the confirmation opened, or couldn't be read. The update itself is done; any old versions left are still listed under Other versions.",
+        "brew cleanup didn't run: Homebrew's settings or installed versions changed after the confirmation opened, or couldn't be checked. The update itself is done; any old versions left are still listed under Other versions.",
       ],
       [
         "zh-CN",
-        "没有运行brew cleanup：确认窗口打开后，Homebrew的设置有了变化，或无法读取。更新本身已经完成，留下的旧版本仍列在“其他版本”中。",
+        "没有运行brew cleanup：确认窗口打开后，Homebrew的设置或已安装版本有了变化，或无法核对。更新本身已经完成，留下的旧版本仍列在“其他版本”中。",
       ],
       [
         "zh-Hant",
-        "沒有執行brew cleanup：確認視窗開啟後，Homebrew的設定有了變化，或無法讀取。更新本身已經完成，留下的舊版本仍列在「其他版本」中。",
+        "沒有執行brew cleanup：確認視窗開啟後，Homebrew的設定或已安裝版本有了變化，或無法核對。更新本身已經完成，留下的舊版本仍列在「其他版本」中。",
       ],
     ];
     try {

@@ -110,7 +110,8 @@ pub enum LogNote {
     /// `HOMEBREW_NO_INSTALL_CLEANUP` of their own, a
     /// `HOMEBREW_NO_CLEANUP_FORMULAE` that names it, a `brew.env` that
     /// takes Banager's `1` back or that cannot be read, a pin, or a Cellar
-    /// that cannot be read, set since the preview. The update stands; what
+    /// that cannot be read, set since the preview. An old keg absent from
+    /// the confirmed deletion list also skips cleanup. The update stands; what
     /// is left of its old versions is still listed as the tool's other
     /// versions. From `BrewAdapter::execute`; worded by `LogDrawer.tsx`.
     OldVersionsCleanupSkipped { name: String },
