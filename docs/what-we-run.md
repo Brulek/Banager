@@ -4340,6 +4340,45 @@ not read (`protected::look`; How Banager runs anything, above):
   plugin, registered in `run()` in `src-tauri/src/lib.rs`; a missing or
   unreadable file means the window opens at its default size, centred).
 
+How many names one check reads from a folder, where it needs every name
+there -- a keg's `bin` and `sbin` and a formula's folder in the Cellar, a
+cask's `Caskroom/<token>/.metadata` and the version folders in it, the top
+of `~/.cargo` and `~/.rustup`, `~/.rustup/toolchains` and `~/.cargo/bin`
+for rustup, and the folder of a standalone tool's backup copies
+(`~/.local/bin`): one name at a time, at most **4096 names and 2 seconds**
+per check (`look::ListingBudget`), hidden names and names then left out
+counted too. At most **one extra name** is read, to tell exactly 4096 from
+more; it is never looked at or used. The time is checked before and after
+each name; a read the file system is already stuck in cannot be cut short.
+A check that runs out never uses the names it did read:
+
+- Homebrew -- one budget for a keg's `bin` and `sbin` together, one for a
+  formula's folder in the Cellar, one for a cask's whole `.metadata`
+  search: the answer is "cannot tell", as for a folder that cannot be
+  read. An update is planned as for a formula whose link is not recorded,
+  and a link's preview names no commands and no conflicts (`brew link`,
+  never given `--overwrite`, still stops at a file in the way); an
+  uninstall gets no `--force`, an update no cleanup of old versions; a
+  cask's uninstall preview says the general sentence, never one built from
+  a caskfile chosen among part of the versions.
+- rustup -- one budget per folder: the uninstall is refused
+  (`NoSafeMethod`) at that folder, and no partial list of toolchains or
+  programs is shown. A `~/.rustup/toolchains` or `~/.cargo/bin` that cannot
+  be opened at all keeps the preview's wording from before: "every
+  toolchain", and the programs `~/.cargo/.crates2.json` records, beside the
+  line that the whole of `~/.cargo` goes.
+- A standalone tool's uninstall -- one budget for all of its backup
+  patterns, at each look: only a missing folder means no backups. One that
+  cannot be listed in full (unreadable, protected, or too many names)
+  refuses the preview at the pattern (`~/.local/bin/agy.*.old`, "isn't what
+  was expected"), stops a confirmed run before its next move
+  (`PathChanged`), and leaves the result after the last move unconfirmed;
+  it never counts as "no backups left".
+
+These are reads listed above; the limits add no command, network request
+or written file. The dependency check, disk use, Which copy a command runs
+and the Other Programs scan keep their own budgets, in their sections.
+
 ## Files Banager writes
 
 Three, all in Banager's application data directory

@@ -2058,3 +2058,29 @@ fn test_what_we_run_says_a_login_in_a_setting_is_masked_in_what_tools_print() {
         "the Passwords paragraph still says Banager never shows or records a proxy's login without saying it is masked in what tools print"
     );
 }
+
+#[test]
+fn test_adapter_directory_budgets_and_incomplete_outcomes_are_documented() {
+    // `look::ListingBudget` (4096 names, 2 seconds) and what each caller
+    // makes of a check that ran out: never the names it did read.
+    let doc = read_doc();
+    let reads = section_body(&doc, "Files Banager reads").expect("the Files Banager reads section");
+    let folded = reads.split_whitespace().collect::<Vec<_>>().join(" ");
+    for expected in [
+        "**4096 names and 2 seconds**",
+        "**one extra name**",
+        "never uses the names it did read",
+        "one budget for a keg's `bin` and `sbin` together",
+        "a caskfile chosen among part of the versions",
+        "refused (`NoSafeMethod`) at that folder",
+        "only a missing folder means no backups",
+        "`~/.local/bin/agy.*.old`",
+        "leaves the result after the last move unconfirmed",
+        "add no command, network request or written file",
+    ] {
+        assert!(
+            folded.contains(expected),
+            "the Files Banager reads section no longer says {expected:?}"
+        );
+    }
+}
