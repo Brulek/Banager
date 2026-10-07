@@ -59,8 +59,8 @@ describe("Settings' 诊断 group", () => {
       "Diagnostic info",
       "Include the list of tools",
       "Copy Diagnostic Info",
-      "Paste it to whoever is helping you. It holds no file contents, and lists your tools only when the checkbox is selected. ",
-      "selected. ",
+      "Paste it to whoever is helping you. It lists your tools only when the checkbox is selected, and includes the error details of any source that isn't responding. ",
+      "responding. ",
     ]);
     fireEvent.click(within(diagnostics).getByRole("button", { name: "Check Tool Setup…" }));
     expect(useToolSetupSheet.getState().open).toBe(true);

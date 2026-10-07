@@ -186,10 +186,15 @@ describe("Settings' Diagnostics group", () => {
     expect(controls[1]).toHaveTextContent("Copy Diagnostic Info");
     const footnote = group.nextElementSibling as HTMLElement;
     expect(footnote).toHaveTextContent(
-      "Paste it to whoever is helping you. It holds no file contents, and lists your tools only when the checkbox is selected.",
+      "Paste it to whoever is helping you. It lists your tools only when the checkbox is selected, and includes the error details of any source that isn't responding.",
     );
     // The details behind its ⓘ.
     fireEvent.click(within(footnote).getByRole("button", { name: "Details: Diagnostic info" }));
-    expect(screen.getByText(/apart from those folders it includes no environment variable values/)).toBeInTheDocument();
+    // What a source's error details may quote, and what is hidden in them.
+    expect(
+      screen.getByText(
+        /error details are the tool's own words and can quote its settings files: user names and passwords in web addresses and proxy settings are hidden/,
+      ),
+    ).toBeInTheDocument();
   });
 });

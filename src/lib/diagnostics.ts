@@ -2,7 +2,8 @@
  * 「拷贝诊断信息」, "Copy Diagnostic Info": a short plain text, in the
  * window's language, that the user can paste to whoever helps them --
  * which Banager, which macOS on which chip, each source with its version,
- * where its program is, how it is doing; the folders searched for commands
+ * where its program is, how it is doing, and the error details of one that
+ * did not answer (`NoAnswer.diagnostic`); the folders searched for commands
  * (Banager's own `PATH`, the login shell's when it could be read);
  * the last check and whether it finished; how many tools Terminal cannot
  * find and how many tools are installed twice; and the disk they take, once
@@ -10,11 +11,15 @@
  * and adds the list of tools when its checkbox is on (a private tap's or scope's name
  * can say where someone works).
  *
- * Never in it: an environment variable's value (a proxy setting can hold
- * a password) but the `PATH` folders, the home folder's path (written as
- * `~`, and any `/Users/<name>` left over is too), anything from a shell
- * file. Building it asks nothing of the network: the snapshot, the sizes
- * and `get_system_facts` are all on this Mac.
+ * Never put in it by Banager: an environment variable's value (a proxy
+ * setting can hold a password) but the `PATH` folders, the home folder's
+ * path (written as `~`, and any `/Users/<name>` left over is too), anything
+ * from a shell file. A source's error details are its tool's own stderr,
+ * masked by the runner (`runner::redact`): they can quote a setting, its
+ * login masked, or a line of the tool's own settings file, and a token
+ * there that is no URL login is copied as written -- Settings' footnote
+ * and its ⓘ say so. Building it asks nothing of the network: the snapshot,
+ * the sizes and `get_system_facts` are all on this Mac.
  */
 import { useCallback, useEffect, useRef } from "react";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";

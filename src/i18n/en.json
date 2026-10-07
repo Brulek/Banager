@@ -1331,7 +1331,7 @@
     "label": "Diagnostic info",
     "copy": "Copy Diagnostic Info",
     "includeTools": "Include the list of tools",
-    "footnote": "Paste it to whoever is helping you. It holds no file contents, and lists your tools only when the checkbox is selected.",
+    "footnote": "Paste it to whoever is helping you. It lists your tools only when the checkbox is selected, and includes the error details of any source that isn't responding.",
     "text": {
       "title": "Diagnostic info",
       "time": "Time: {{time}}",
@@ -1534,7 +1534,7 @@
     }
   },
   "clarity": {
-    "diagnosticsDetail": "It lists the macOS version, the location and status of each source, and the folders searched for commands. Your home folder is written as “~”, and apart from those folders it includes no environment variable values.",
+    "diagnosticsDetail": "It lists the macOS version, the location and status of each source, and the folders searched for commands, with your home folder written as “~”. A source's error details are the tool's own words and can quote its settings files: user names and passwords in web addresses and proxy settings are hidden, and everything else is copied as the tool wrote it.",
     "keptLeftOut": "Not counting {{path}}, which holds another copy installed on its own.",
     "keptLeftOutLabel": "About the size: {{path}}",
     "ownInstaller": "{{source}}'s own installer",

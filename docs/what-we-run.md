@@ -4394,7 +4394,11 @@ Copy Diagnostic Info… (「拷贝诊断信息…」) only opens Settings on tha
 focused, so the copy is always the button's click. It puts a short plain text on the clipboard, in the window's
 language, for the user to paste to whoever helps them: Banager's version,
 macOS's version and the chip, the window's language; each source's kind,
-version, program and status; the folders on `PATH` and whether they are the
+version, program and status, and, for a source that did not answer, its
+error details (「错误详情」): the diagnostic its failed command left, the last
+five lines it wrote to stderr, at most 4,096 bytes, masked as all of a
+command's output is (see "Why a source did not answer" and "What a tool
+prints about a login"); the folders on `PATH` and whether they are the
 login shell's; when the last check was and whether it covered every
 source, as the Updates page counts it, naming those it did not; how many
 tools Terminal cannot find and how many are installed more than once, or
@@ -4411,11 +4415,26 @@ takes nothing from it. That reads two strings the kernel keeps,
 environment variable; and the sources' last known state. No command runs,
 no file is opened, nothing is written to disk, and no connection is made.
 Every path in the text has the home folder written as `~`. The folders on
-`PATH` are the one environment variable's value the text holds, as its
-"Command search folders" (「查找命令的文件夹」) lines, and Settings' footnote says
-so; it never holds any other environment variable's value (a proxy setting
-can hold a password) -- not even those of the proxy and mirror settings
-read from the login shell -- anything from a shell file, or a token.
+`PATH` are the one environment variable's value Banager puts in the text,
+as its "Command search folders" (「查找命令的文件夹」) lines; apart from a
+source's error details, it never holds any other environment variable's
+value (a proxy setting can hold a password) -- not even those of the proxy
+and mirror settings read from the login shell -- or anything from a shell
+file.
+
+A source's error details are its tool's own words, copied as the mask left
+them, and can quote what the tool read: a proxy or mirror setting, with its
+login masked; or a line of its own settings file -- pip, whose
+`--version` exits 2 when a `pip.conf` lacks its `[global]` line, prints
+`Configuration file could not be loaded.` and Python's `configparser` error,
+which quotes that line. The logins Banager knows -- those of the proxy and
+mirror settings and `OLLAMA_HOST` -- and the login of any
+`scheme://user:password@` or `scheme://user@` are masked there; anything
+else such a line holds, a token in a query string (`?token=…`) or a bare
+one, is copied as the tool wrote it. Settings' footnote under the button
+says the text includes the error details of a source that isn't responding
+(`diagnostics.footnote`), and its ⓘ what they can quote and what is hidden
+(`clarity.diagnosticsDetail`).
 
 Check Tool Setup (「检查工具环境」), in the Help menu, on the Overview and beside Copy
 Diagnostic Info in Settings' Diagnostics group, opens a sheet that says the same facts

@@ -1764,8 +1764,17 @@ fn test_what_we_run_has_the_diagnostic_info_section_saying_what_it_reads_and_nev
         "the process's own `PATH` and `HOME`, and no other environment variable",
         "No command runs, no file is opened, nothing is written to disk, and no connection is made",
         "the home folder written as `~`",
-        "The folders on `PATH` are the one environment variable's value the text holds",
-        "never holds any other environment variable's value",
+        "The folders on `PATH` are the one environment variable's value Banager puts in the text",
+        "apart from a source's error details, it never holds any other environment variable's value",
+        // r26's D2: what f13b's diagnostic adds, what it can quote, and
+        // what is masked in it.
+        "for a source that did not answer, its error details (「错误详情」)",
+        "the last five lines it wrote to stderr, at most 4,096 bytes",
+        "can quote what the tool read",
+        "a line of its own settings file",
+        "is copied as the tool wrote it",
+        "`diagnostics.footnote`",
+        "`clarity.diagnosticsDetail`",
         "the Help menu's Copy Diagnostic Info… (「拷贝诊断信息…」) only opens Settings on that button, focused, so the copy is always the button's click",
     ] {
         assert!(
