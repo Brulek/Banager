@@ -1,6 +1,7 @@
 pub(crate) mod brew_env;
 pub(crate) mod cask_receipt;
 pub(crate) mod kegs;
+pub(crate) mod links;
 pub mod parse;
 pub(crate) mod trust;
 
