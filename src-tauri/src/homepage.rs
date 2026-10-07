@@ -75,8 +75,9 @@ pub(crate) fn open_homepage_impl(
 /// The default browser, on `url`: one call to AppKit, `NSWorkspace
 /// openURL:`, which hands an `http` or `https` URL to whichever browser
 /// the Mac has as its default (System Settings → Desktop & Dock → Default
-/// web browser). The URL as `listed_homepage` parsed it -- so the scheme
-/// macOS reads is the one checked -- and nothing runs. In a pool of its
+/// web browser), starting it when it is not running. The URL as
+/// `listed_homepage` parsed it -- so the scheme macOS reads is the one
+/// checked -- and no command runs. In a pool of its
 /// own (`autoreleasepool`), drained when the call returns, as
 /// `reveal::show_in_finder`'s is: the command runs on one of the async
 /// runtime's threads, which has none.
@@ -103,7 +104,7 @@ fn open_in_browser(_url: &Url) -> Result<(), String> {
 
 /// Has the default browser open `address` when it is, exactly, a homepage
 /// a tool in the current snapshot lists, and an `http` or `https` address
-/// (`listed_homepage`), through AppKit (`open_in_browser`); runs nothing.
+/// (`listed_homepage`), through AppKit (`open_in_browser`); runs no command.
 /// Any other address is refused, as `not_listed` or `not_web`; one macOS
 /// did not open comes back as `open_failed`.
 #[tauri::command]
