@@ -1458,7 +1458,9 @@ export function notActionableMessage(
  * (`refusalSentence`).
  */
 export function planErrorMessage(
-  t: Translate,
+  // A count among its values: what is in the way of a link
+  // (`linkBlockedPaths`) picks the plural.
+  t: (key: string, options?: Record<string, string | number>) => string,
   raw: string,
   sourceLabel: string,
   technical: boolean,
@@ -1513,7 +1515,7 @@ export type RefusalFrame = keyof typeof REFUSAL_PLAIN_KEYS;
  * technical details" is off, the frame's plain sentence alone.
  */
 export function refusalSentence(
-  t: Translate,
+  t: (key: string, options?: Record<string, string | number>) => string,
   frame: RefusalFrame,
   raw: string,
   sourceLabel: string,
