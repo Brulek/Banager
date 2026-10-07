@@ -65,7 +65,7 @@ describe("SnapshotStatus", () => {
     const details = screen.getByRole("button", { name: "Details: No tools to manage" });
     fireEvent.click(details);
     expect(document.getElementById(details.getAttribute("aria-controls") ?? "")).toHaveTextContent(
-      "Supports Homebrew, npm, pipx, uv, pip, Cargo and Ollama, and Claude Code, Antigravity CLI, Grok Build and rustup in their default locations.",
+      "Supports Homebrew, npm, pipx, uv, pip, Cargo and Ollama, and Claude Code, Antigravity CLI, Grok Build, Codex, opencode and rustup in their default locations.",
     );
     expect(screen.queryByText("installed list")).not.toBeInTheDocument();
   });
@@ -458,7 +458,7 @@ describe("SnapshotStatus", () => {
     const details = screen.getByRole("button", { name: "Details: No installed tools found" });
     fireEvent.click(details);
     expect(document.getElementById(details.getAttribute("aria-controls") ?? "")).toHaveTextContent(
-      "Supports Homebrew, npm, pipx, uv, pip, Cargo and Ollama, and Claude Code, Antigravity CLI, Grok Build and rustup in their default locations.",
+      "Supports Homebrew, npm, pipx, uv, pip, Cargo and Ollama, and Claude Code, Antigravity CLI, Grok Build, Codex, opencode and rustup in their default locations.",
     );
   });
 

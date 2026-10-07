@@ -1546,7 +1546,7 @@
       "title": "没有找到已安装的工具",
       "description": "用Homebrew、npm等安装的工具会显示在这里。"
     },
-    "supportedList": "支持Homebrew、npm、pipx、uv、pip、Cargo、Ollama，以及安装在默认位置的Claude Code、Antigravity CLI、Grok Build和rustup。"
+    "supportedList": "支持Homebrew、npm、pipx、uv、pip、Cargo、Ollama，以及安装在默认位置的Claude Code、Antigravity CLI、Grok Build、Codex、opencode和rustup。"
   },
   "failure": {
     "cause": {

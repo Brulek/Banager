@@ -1681,7 +1681,7 @@
       "title": "No installed tools found",
       "description": "Tools you install with Homebrew, npm and the like show up here."
     },
-    "supportedList": "Supports Homebrew, npm, pipx, uv, pip, Cargo and Ollama, and Claude Code, Antigravity CLI, Grok Build and rustup in their default locations."
+    "supportedList": "Supports Homebrew, npm, pipx, uv, pip, Cargo and Ollama, and Claude Code, Antigravity CLI, Grok Build, Codex, opencode and rustup in their default locations."
   },
   "failure": {
     "cause": {

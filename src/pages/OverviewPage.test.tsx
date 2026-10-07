@@ -262,7 +262,7 @@ describe("OverviewPage", () => {
     expect(details.className).toContain("text-accent-text");
     fireEvent.click(details);
     expect(document.getElementById(details.getAttribute("aria-controls") ?? "")).toHaveTextContent(
-      "Supports Homebrew, npm, pipx, uv, pip, Cargo and Ollama, and Claude Code, Antigravity CLI, Grok Build and rustup in their default locations.",
+      "Supports Homebrew, npm, pipx, uv, pip, Cargo and Ollama, and Claude Code, Antigravity CLI, Grok Build, Codex, opencode and rustup in their default locations.",
     );
     // On the right, the row's one button: a grey Check Again.
     const [button, ...more] = within(statusRowOf(container)).getAllByRole("button").filter(
