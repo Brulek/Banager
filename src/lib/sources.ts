@@ -15,8 +15,10 @@ import type {
   UninstallBlocked,
   Unavailable,
   UpdateBlocked,
+  Warning,
 } from "./types";
 import type { InstalledShow } from "./families";
+import { warningArgs, warningKey } from "./warnings";
 import { displayToken } from "./format";
 import { FAILURE_CAUSE_KEYS, failureCause } from "./failureCause";
 
@@ -768,6 +770,29 @@ function disabledNote(
   return replacement === null ? null : { key: "brewStatus.replacement", options: { name: replacement } };
 }
 
+/**
+ * Under a `LinkTaken` row's sentence: the first file in the way of its
+ * link back and how many there are, from the `LinkPlacesHeld` its check
+ * put on the candidate. Nothing without one.
+ */
+function linkHeldNote(
+  _key: ArtifactKey,
+  _instance: ManagerInstance | undefined,
+  _artifact: InstalledArtifact | undefined,
+  warnings: readonly Warning[] = [],
+): BlockedNote | null {
+  for (const warning of warnings) {
+    if (typeof warning === "string" || !("LinkPlacesHeld" in warning)) continue;
+    const key = warningKey(warning);
+    if (key === null) return null;
+    const options = Object.fromEntries(
+      Object.entries(warningArgs(warning)).map(([name, value]) => [name, String(value)]),
+    );
+    return { key, options };
+  }
+  return null;
+}
+
 /** A quieter line under a blocked row's sentence: an i18n key and what fills it. */
 export interface BlockedNote {
   key: string;
@@ -815,11 +840,15 @@ interface UpdateBlockedCopy {
     detail: string;
     name: (artifact: InstalledArtifact | undefined, instance: ManagerInstance | undefined) => string | null;
   } | null;
-  /** A quieter line under the sentence about this one row, or null. */
+  /** A quieter line under the sentence about this one row, or null:
+   *  from the row's key, its instance, its inventory entry, and what its
+   *  update candidate carries (`UpdateCandidate.warnings`; empty where the
+   *  caller has none). */
   note: (
     key: ArtifactKey,
     instance: ManagerInstance | undefined,
     artifact: InstalledArtifact | undefined,
+    warnings?: readonly Warning[],
   ) => BlockedNote | null;
   /** `planErrorMessage`'s sentence for the gate's `update_blocked`
    *  refusal, which only a stale Updates page can reach. It is given only
@@ -899,7 +928,8 @@ export const UPDATE_BLOCKED_KEYS: Record<UpdateBlocked, UpdateBlockedCopy> = {
     commandInDetail: false,
     command: () => "",
     typed: null,
-    note: () => null,
+    // The file in the way, as the check found it (y1-keg review).
+    note: linkHeldNote,
     refused: "kegLinks.blockedRefused",
   },
 };

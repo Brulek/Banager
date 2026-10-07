@@ -60,8 +60,14 @@ describe("the preview's keg-only formulae linked by hand (y1-keg)", () => {
     expect(mockRelinkLines(issued.plan)).toEqual([]);
   });
 
-  it("offers no update of openssl@3, whose bin/openssl another program holds", async () => {
+  it("offers no update of openssl@3, whose bin/openssl another program holds, and names that file", async () => {
     const { backend, request } = await backendWith("openssl@3");
+    const snapshot = await answer<Snapshot>(backend.invoke("refresh"));
+    const openssl = snapshot.updates.find((candidate) => candidate.key.name === "openssl@3");
+    expect(openssl?.blocked).toBe("LinkTaken");
+    expect(openssl?.warnings).toEqual([
+      { LinkPlacesHeld: { name: "openssl@3", paths: ["/opt/homebrew/bin/openssl"] } },
+    ]);
     // Its refusal awaited before the clock moves, so it is never unhandled.
     const refused = expect(backend.invoke("plan_operation", { request })).rejects.toMatch(/"reason":"LinkTaken"/);
     await vi.runOnlyPendingTimersAsync();

@@ -1744,14 +1744,21 @@ impl BrewAdapter {
         // y1-keg). Read from the keg-only names the inventory above kept;
         // a pinned or disabled one keeps that reason, which Homebrew
         // refuses before it unlinks anything.
+        // The paths go with it, for the row to name the file in the way.
         for candidate in &mut candidates {
-            if candidate.blocked.is_none()
-                && candidate.key.kind == ArtifactKind::Formula
-                && self
-                    .recorded_keg_only(&inst.id, &inst.prefix, &candidate.key.name)
-                    .is_some_and(|links| !links.held_paths().is_empty())
-            {
+            if candidate.blocked.is_some() || candidate.key.kind != ArtifactKind::Formula {
+                continue;
+            }
+            let paths = self
+                .recorded_keg_only(&inst.id, &inst.prefix, &candidate.key.name)
+                .map(|links| links.held_paths())
+                .unwrap_or_default();
+            if !paths.is_empty() {
                 candidate.blocked = Some(UpdateBlocked::LinkTaken);
+                candidate.warnings.push(Warning::LinkPlacesHeld {
+                    name: candidate.key.name.clone(),
+                    paths,
+                });
             }
         }
         Ok(CheckOutcome { candidates, notes })

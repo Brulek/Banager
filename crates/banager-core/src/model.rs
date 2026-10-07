@@ -1108,6 +1108,16 @@ pub enum Warning {
     /// such a formula's `Upgrade`, first; read by `warningKey`,
     /// `warningArgs` and `warningDetailKey` in src/lib/warnings.ts.
     HomebrewRelinksAfterUpdate { name: String, commands: Vec<String> },
+    /// What stops Homebrew linking the keg-only formula `name` back after
+    /// its update: `paths`, the places of its commands in the prefix where
+    /// something else is (`brew::links`, `KegLinks::held_paths`), in the
+    /// order read -- npm's own `bin/npm`, on 2026-10-07. Carried by an
+    /// update candidate blocked as `UpdateBlocked::LinkTaken`, so that its
+    /// row can name the file in the way (y1-keg review); never on a plan.
+    /// Produced by `BrewAdapter::check_updates`; read by
+    /// `UPDATE_BLOCKED_KEYS.LinkTaken`'s note in src/lib/sources.ts and by
+    /// `warningKey` and `warningArgs` in src/lib/warnings.ts.
+    LinkPlacesHeld { name: String, paths: Vec<String> },
     /// What this uninstall removes and what it leaves, in the one sentence
     /// the uninstall confirmation shows under the tool: which sentence is
     /// `what` (`UninstallScope`). At most one per plan, and only on an
@@ -3254,6 +3264,13 @@ mod tests {
                     commands: vec!["node".to_string(), "npm".to_string()],
                 },
                 r#"{"HomebrewRelinksAfterUpdate":{"name":"node@22","commands":["node","npm"]}}"#,
+            ),
+            (
+                Warning::LinkPlacesHeld {
+                    name: "node@22".to_string(),
+                    paths: vec!["/opt/homebrew/bin/npm".to_string()],
+                },
+                r#"{"LinkPlacesHeld":{"name":"node@22","paths":["/opt/homebrew/bin/npm"]}}"#,
             ),
             (
                 Warning::HomebrewCleansUpOldVersions {

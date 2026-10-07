@@ -1208,6 +1208,35 @@ describe("y1-keg: a keg-only formula linked by hand is linked back after its upd
   });
 });
 
+describe("y1-keg review: what is in the way of a keg-only formula's link back", () => {
+  const zh = i18n.getFixedT("zh-CN");
+  const enT = i18n.getFixedT("en");
+  const zhHant = i18n.getFixedT("zh-Hant");
+  const one: Warning = { LinkPlacesHeld: { name: "node@22", paths: ["/opt/homebrew/bin/npm"] } };
+  const two: Warning = {
+    LinkPlacesHeld: { name: "node@22", paths: ["/opt/homebrew/bin/npm", "/opt/homebrew/bin/npx"] },
+  };
+
+  it("names the first file, and how many there are", () => {
+    expect(warningText(zh, one)).toBe("挡住它的文件：/opt/homebrew/bin/npm");
+    expect(warningText(zh, two)).toBe("挡住它的文件：/opt/homebrew/bin/npm等2个");
+    expect(warningText(zhHant, two)).toBe("擋住它的檔案：/opt/homebrew/bin/npm等2個");
+    expect(warningText(enT, one)).toBe("In the way: /opt/homebrew/bin/npm");
+    expect(warningText(enT, two)).toBe("In the way: /opt/homebrew/bin/npm and 1 more");
+  });
+
+  it("is a note on a blocked row: no caution, nothing deleted, no detail", () => {
+    expect(warningKey(one)).toBe("kegLinks.held");
+    expect(warningKey(two)).toBe("kegLinks.heldMany");
+    expect(warningArgs(two)).toEqual({ name: "node@22", path: "/opt/homebrew/bin/npm", number: 2, others: 1 });
+    expect(warningGroup(two)).toBe("note");
+    expect(isCaution(two)).toBe(false);
+    expect(deletesForGood(two)).toBe(false);
+    expect(isRoutineNote(two)).toBe(false);
+    expect(warningDetailKey(two)).toBeNull();
+  });
+});
+
 describe("U9: the versions a Homebrew update or uninstall deletes", () => {
   const zh = i18n.getFixedT("zh-CN");
   const enT = i18n.getFixedT("en");

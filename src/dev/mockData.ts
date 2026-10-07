@@ -387,11 +387,15 @@ function brewUpdates(): UpdateCandidate[] {
     // Disabled by Homebrew (`withHomebrewState`), yet `brew outdated` still
     // lists a newer version: held back, no button.
     update(key(IDS.brew, "Cask", "quickjot"), "2.3.1", "2.4.0", "Native", { blocked: "Disabled" }),
-    // Keg-only, linked by hand (y1-keg, `mockKegLinks.ts`): node@22 is
-    // linked back after its update; openssl@3's `bin/openssl` another
-    // program holds, so its update would leave it out of Terminal.
+    // Keg-only, linked with `brew link` (y1-keg, `mockKegLinks.ts`):
+    // node@22 is linked back after its update; openssl@3's `bin/openssl`
+    // another program holds, so its update would leave it out of Terminal,
+    // and its row names that file.
     update(formula("node@22"), "22.23.2_2", "22.23.3", "Native"),
-    update(formula("openssl@3"), "3.6.4", "3.6.5", "Native", { blocked: "LinkTaken" }),
+    update(formula("openssl@3"), "3.6.4", "3.6.5", "Native", {
+      blocked: "LinkTaken",
+      warnings: [{ LinkPlacesHeld: { name: "openssl@3", paths: ["/opt/homebrew/bin/openssl"] } }],
+    }),
   ];
 }
 

@@ -552,6 +552,8 @@
     "logNoLongerLinked": "{{name}}沒有重新接到終端機裡，輸入{{commands}}不再執行它。要接回去，可以在終端機裡執行brew link --force {{name}}；如果有檔案擋住，它會說出是哪一個。",
     "blockedBadge": "無法重新接上",
     "blockedDetail": "它是你手動接到終端機裡的，現在另一個程式佔用了它的指令的位置。更新會中斷它的連結，之後接不回去，所以無法在這裡更新。",
+    "held": "擋住它的檔案：{{path}}",
+    "heldMany": "擋住它的檔案：{{path}}等{{number}}個",
     "blockedRefused": "無法更新：更新後它接不回終端機。"
   },
   "modelDownload": {

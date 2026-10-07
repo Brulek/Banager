@@ -303,6 +303,10 @@ export function warningKey(warning: Warning): string | null {
   if ("HomebrewRemovesEveryVersion" in warning) return "brewVersions.removesEvery";
   // y1-keg: a keg-only formula linked by hand is linked back after its update.
   if ("HomebrewRelinksAfterUpdate" in warning) return "kegLinks.relinks";
+  // The first file in the way, and how many there are.
+  if ("LinkPlacesHeld" in warning) {
+    return warning.LinkPlacesHeld.paths.length > 1 ? "kegLinks.heldMany" : "kegLinks.held";
+  }
   if ("HomebrewNoCleanupFormulae" in warning) {
     const { old_versions: oldVersions, autoremove } = warning.HomebrewNoCleanupFormulae;
     return NO_CLEANUP_FORMULAE_KEYS[oldVersions ? (autoremove ? "both" : "oldVersions") : "autoremove"];
@@ -365,6 +369,10 @@ export function warningArgs(warning: Warning, separator = ", "): Record<string, 
   if ("HomebrewRelinksAfterUpdate" in warning) {
     const { name, commands } = warning.HomebrewRelinksAfterUpdate;
     return { name, commands: commands.join(separator) };
+  }
+  if ("LinkPlacesHeld" in warning) {
+    const { name, paths } = warning.LinkPlacesHeld;
+    return { name, path: paths[0] ?? "", number: paths.length, others: paths.length - 1 };
   }
   if ("HomebrewNoCleanupFormulae" in warning) {
     const names = warning.HomebrewNoCleanupFormulae.names;
@@ -518,6 +526,7 @@ export function warningDetailKey(warning: Warning): string | null {
     "AlreadyGone" in warning ||
     "DeletesCargoHome" in warning ||
     "HomebrewNoCleanupFormulae" in warning ||
+    "LinkPlacesHeld" in warning ||
     "HomebrewRemovesEveryVersion" in warning ||
     "UninstallScope" in warning ||
     "KeepsData" in warning ||
@@ -570,6 +579,7 @@ export function warningGroup(warning: Warning): WarningGroup {
     "HomebrewCleansUpOldVersions" in warning ||
     "HomebrewRemovesEveryVersion" in warning ||
     "HomebrewRelinksAfterUpdate" in warning ||
+    "LinkPlacesHeld" in warning ||
     "CaskUninstallStep" in warning ||
     "Message" in warning
   ) {
@@ -651,6 +661,7 @@ export function deletesForGood(warning: Warning): boolean {
     "HomebrewRemovesEveryVersion" in warning ||
     // `brew link` deletes nothing (y1-keg: never `--overwrite`).
     "HomebrewRelinksAfterUpdate" in warning ||
+    "LinkPlacesHeld" in warning ||
     "UninstallScope" in warning ||
     "KeepsData" in warning ||
     "Message" in warning
@@ -805,6 +816,8 @@ export function isCaution(warning: Warning): boolean {
     "HomebrewRemovesEveryVersion" in warning ||
     // How Banager keeps what the person linked in Terminal (y1-keg).
     "HomebrewRelinksAfterUpdate" in warning ||
+    // Why a row has no Update button, said on that row.
+    "LinkPlacesHeld" in warning ||
     "UninstallScope" in warning ||
     "KeepsData" in warning
   ) {

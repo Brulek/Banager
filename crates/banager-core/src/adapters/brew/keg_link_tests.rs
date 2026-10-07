@@ -428,6 +428,18 @@ async fn a_check_marks_the_update_of_a_keg_only_formula_whose_place_is_taken() {
             ("git".to_string(), None)
         ]
     );
+    // What is in the way, for the row to name (y1-keg review).
+    assert_eq!(
+        outcome.candidates[0].warnings,
+        [Warning::LinkPlacesHeld {
+            name: "node@22".to_string(),
+            paths: vec![
+                prefix.join("bin/npm").display().to_string(),
+                prefix.join("bin/npx").display().to_string(),
+            ],
+        }]
+    );
+    assert_eq!(outcome.candidates[1].warnings, []);
     // With no record and `node` linked through `opt`, `bin/npm` is no
     // concern of the update's: it links nothing.
     for command in ["corepack", "node"] {

@@ -40,7 +40,7 @@ import {
   installedCountByInstance,
 } from "./sources";
 import type { DescribedTool } from "./sources";
-import type { ArtifactKey, InstalledArtifact, InstanceNote, ManagerInstance, SourceError } from "./types";
+import type { ArtifactKey, InstalledArtifact, InstanceNote, ManagerInstance, SourceError, Warning } from "./types";
 import { NO_FACTS } from "./types";
 import en from "../i18n/en.json";
 import zhCN from "../i18n/zh-CN.json";
@@ -1859,6 +1859,19 @@ describe("UPDATE_BLOCKED_KEYS.LinkTaken (y1-keg)", () => {
     expect(UPDATE_BLOCKED_KEYS.LinkTaken.commandInDetail).toBe(false);
     expect(UPDATE_BLOCKED_KEYS.LinkTaken.typed).toBeNull();
     expect(UPDATE_BLOCKED_KEYS.LinkTaken.note(key, instance(), undefined)).toBeNull();
+  });
+
+  it("names the file in the way under its sentence, from what the check found (y1-keg review)", () => {
+    const held: Warning = {
+      LinkPlacesHeld: { name: "node@22", paths: ["/opt/homebrew/bin/npm", "/opt/homebrew/bin/npx"] },
+    };
+    expect(UPDATE_BLOCKED_KEYS.LinkTaken.note(key, instance(), undefined, [held])).toEqual({
+      key: "kegLinks.heldMany",
+      options: { name: "node@22", path: "/opt/homebrew/bin/npm", number: "2", others: "1" },
+    });
+    expect(UPDATE_BLOCKED_KEYS.LinkTaken.note(key, instance(), undefined, ["NotLookedUpHere"])).toBeNull();
+    // No other reason's note reads them.
+    expect(UPDATE_BLOCKED_KEYS.Pinned.note(key, instance(), undefined, [held])).toBeNull();
   });
 
   it("says in one word, and then why, that an update could not link it back into Terminal", () => {

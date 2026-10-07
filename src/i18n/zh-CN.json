@@ -552,6 +552,8 @@
     "logNoLongerLinked": "{{name}}没有重新接到终端里，输入{{commands}}不再运行它。要接回去，可以在终端里运行brew link --force {{name}}；如果有文件挡住，它会说出是哪个。",
     "blockedBadge": "无法重新接上",
     "blockedDetail": "它是你手动接到终端里的，现在另一个程序占用了它的命令的位置。更新会断开它，之后接不回去，所以无法在这里更新。",
+    "held": "挡住它的文件：{{path}}",
+    "heldMany": "挡住它的文件：{{path}}等{{number}}个",
     "blockedRefused": "无法更新：更新后它接不回终端。"
   },
   "modelDownload": {

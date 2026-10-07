@@ -1401,6 +1401,23 @@ describe("UpdatesPage", () => {
     expect(within(openMenu(onyx)).queryByRole("menuitem", { name: "Copy Command" })).toBeNull();
   });
 
+  it("names the file in the way of a keg-only formula's link back under its blocked row (y1-keg review)", async () => {
+    updates = [
+      {
+        ...snapshot.updates[0],
+        blocked: "LinkTaken",
+        warnings: [
+          { LinkPlacesHeld: { name: "glib", paths: ["/opt/homebrew/bin/npm", "/opt/homebrew/bin/npx"] } },
+        ],
+      },
+      snapshot.updates[1],
+    ];
+    renderPage();
+    await showCantUpdate();
+    const detail = chipDetail(await findRow("glib"), "Can't link back");
+    expect(detail).toHaveTextContent("In the way: /opt/homebrew/bin/npm and 1 more");
+  });
+
   it("keeps a pinned candidate out of Update selected even when it was selected earlier", async () => {
     // Selected while it was not pinned; a refresh since says it is. The
     // selection outlives the row's checkbox, so `isActionable` has to be

@@ -114,7 +114,7 @@ export function blockedDetail(
 ): ReactNode {
   const copy = UPDATE_BLOCKED_KEYS[reason];
   const command = copy.command(candidate.key, instance);
-  const note = copy.note(candidate.key, instance, artifact);
+  const note = copy.note(candidate.key, instance, artifact, candidate.warnings);
   const noteLines = note === null ? [] : [t(note.key, note.options)];
   if (copy.commandInDetail) {
     return detailLines([

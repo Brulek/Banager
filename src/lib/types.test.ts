@@ -914,6 +914,9 @@ describe("types", () => {
       '{"HomebrewRelinksAfterUpdate":{"name":"node@22","commands":["node","npm"]}}',
     );
     expect(roundTrip(relinks)).toEqual(relinks);
+    const held: Warning = { LinkPlacesHeld: { name: "node@22", paths: ["/opt/homebrew/bin/npm"] } };
+    expect(JSON.stringify(held)).toBe('{"LinkPlacesHeld":{"name":"node@22","paths":["/opt/homebrew/bin/npm"]}}');
+    expect(roundTrip(held)).toEqual(held);
     const taken: Outcome = { BanagerFailed: { LinkTaken: { name: "node@22", paths: ["/opt/homebrew/bin/npm"] } } };
     expect(JSON.stringify(taken)).toBe(
       '{"BanagerFailed":{"LinkTaken":{"name":"node@22","paths":["/opt/homebrew/bin/npm"]}}}',

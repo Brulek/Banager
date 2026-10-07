@@ -3,15 +3,16 @@ import type { LogLine } from "./mockPlans";
 
 /**
  * The preview's stand-in for what `BrewAdapter::plan` builds for a keg-only
- * Homebrew formula the person linked into the prefix (y1-keg;
- * crates/banager-core/src/adapters/brew/mod.rs, `relink_after_upgrade`,
- * and `brew::links`): its update is followed by
- * `brew link --formula --force <name>`, before any `brew cleanup`, and its
- * preview says so first. The pretend prefix has node@22 linked with
- * `brew link --force`, so after the update Homebrew links it back itself
- * and the log says no link was needed. The other keg-only formula linked
- * by hand, openssl@3, has its `bin/openssl` held by another program: its
- * update is not offered (`UpdateBlocked::LinkTaken`, mockData.ts).
+ * Homebrew formula linked into the prefix with `brew link`, whose link
+ * Homebrew recorded (y1-keg; crates/banager-core/src/adapters/brew/mod.rs,
+ * `relink_after_upgrade`, and `brew::links`): its update is followed by
+ * `brew link --formula --force <name>`, run only if Homebrew did not link
+ * it back, before any `brew cleanup`, and its preview says so first. The
+ * pretend prefix has node@22 linked with `brew link --force`, so after the
+ * update Homebrew links it back itself and the log says no link was
+ * needed. The other such formula, openssl@3, has its `bin/openssl` held
+ * by another program: its update is not offered
+ * (`UpdateBlocked::LinkTaken`, mockData.ts), and its row names the file.
  */
 const LINKED_BY_HAND: Record<string, string[]> = {
   "node@22": ["corepack", "node", "npm", "npx"],

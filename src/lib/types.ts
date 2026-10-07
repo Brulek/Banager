@@ -417,6 +417,13 @@ export type Warning =
    * (`brew link --formula --force <name>`, a `CommandThen` follow-up).
    */
   | { HomebrewRelinksAfterUpdate: { name: string; commands: string[] } }
+  /**
+   * y1-keg review: what stops Homebrew linking the keg-only formula `name`
+   * back after its update -- `paths`, the places of its commands where
+   * something else is. Only on an update candidate blocked as `LinkTaken`,
+   * whose row names the first (`UPDATE_BLOCKED_KEYS.LinkTaken.note`).
+   */
+  | { LinkPlacesHeld: { name: string; paths: string[] } }
   | { UninstallScope: { what: UninstallScope } }
   | { CaskUninstallStep: { step: CaskStep; items: string[]; only_if?: RemoveCheck } }
   /**

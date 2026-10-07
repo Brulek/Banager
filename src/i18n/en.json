@@ -608,6 +608,8 @@
     "logNoLongerLinked": "{{name}} isn't linked back into Terminal, so typing {{commands}} no longer runs it. To link it back, run brew link --force {{name}} in Terminal; if a file is in the way, it says which.",
     "blockedBadge": "Can't link back",
     "blockedDetail": "You linked it into Terminal yourself, and another program now uses one of its commands' places. An update would unlink it with no way to link it back, so it can't be updated here.",
+    "held": "In the way: {{path}}",
+    "heldMany": "In the way: {{path}} and {{others}} more",
     "blockedRefused": "Couldn't update it: it couldn't be linked back into Terminal afterwards."
   },
   "modelDownload": {
