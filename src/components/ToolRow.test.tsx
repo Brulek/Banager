@@ -207,6 +207,45 @@ describe("ToolRow", () => {
     expect(note.childElementCount).toBe(0);
   });
 
+  it("hides a source's words too short to cut where they do not fit, rather than leave a fragment of them", () => {
+    // 「ansible Ho…」, 「ansible-lint u」: a one-word source -- Homebrew, uv,
+    // npm -- has no middle to cut and no end that says more than its
+    // start, so where it does not fit it is not shown at all, whole in its
+    // tooltip and to a screen reader. A line `line` wide, the name drawn
+    // 49 (`ansible`, 7 characters of 7).
+    for (const [where, line, shown] of [
+      ["Homebrew", 60, ""],
+      ["uv", 60, ""],
+      ["Homebrew", 200, null],
+      ["uv", 63, null],
+    ] as const) {
+      const box = vi
+        .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+        .mockImplementation(function (this: HTMLElement) {
+          const width = this.tagName === "DIV" ? line : this.tagName === "P" ? 49 : 0;
+          return new DOMRect(0, 0, width, 16);
+        });
+      try {
+        const { container, unmount } = renderWithProviders(
+          <ToolRow adapterId="brew" sourceLabel={where} name="ansible" showSource description="IT automation" />,
+        );
+        const note = container.querySelector("[data-row-note]") as HTMLElement;
+        expect(note).toHaveAttribute("title", where);
+        if (shown === null) {
+          // Room for it: whole, nothing hidden.
+          expect(note.textContent).toBe(where);
+          expect(note.childElementCount).toBe(0);
+        } else {
+          expect(note.querySelector("[aria-hidden]")?.textContent).toBe(shown);
+          expect(note.querySelector(".sr-only")?.textContent).toBe(where);
+        }
+        unmount();
+      } finally {
+        box.mockRestore();
+      }
+    }
+  });
+
   it("fits a very long name to its whole line, not to what the source's words leave it", () => {
     const long = "@modelcontextprotocol/server-filesystem-extended";
     expect(long.length).toBeGreaterThan(MIDDLE_CUT_FROM);

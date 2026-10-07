@@ -277,7 +277,8 @@ const NOTE_TAIL = 12;
  * in their middle, keeping their end (`NOTE_TAIL`), as Finder cuts a long
  * file name -- the start says the kind of source, which the avatar's mark
  * says too; the end is what tells two of a kind apart -- or, with no room
- * for a start, the end alone after a "…", or nothing (`endCut`). Whole in
+ * for a start, the end alone after a "…", or nothing (`endCut`); words too
+ * short to cut in their middle, nothing where they do not fit. Whole in
  * their tooltip and to a screen reader. The name takes its room first
  * (`NAME_CLASS`), so its width does not hang on what this shows, and
  * fitting this draws only these words again, not the row. Read to be
@@ -305,10 +306,18 @@ function RowNote({ note }: { note: string }) {
       }
       // Too little room for a start, "…" and the tail (a list beside the
       // inspector in the narrowest window): the end alone, after a "…", or
-      // nothing where not even that fits (`endCut`).
+      // nothing where not even that fits (`endCut`). Words too short to
+      // cut in their middle -- one word, 「Homebrew」, 「uv」 -- have no end
+      // that says more than their start: where they do not fit, nothing,
+      // never a fragment such as 「Ho…」 or 「…rew」 left for the box to cut.
       const cutRoom = Math.floor(room);
-      const middle = middleCut(note, cutRoom, measure, NOTE_TAIL);
-      const shown = middle === note || measure(middle) <= cutRoom ? middle : endCut(note, cutRoom, measure);
+      let shown: string;
+      if (measure(note) <= cutRoom) shown = note;
+      else if (note.length <= NOTE_TAIL + 1) shown = "";
+      else {
+        const middle = middleCut(note, cutRoom, measure, NOTE_TAIL);
+        shown = measure(middle) <= cutRoom ? middle : endCut(note, cutRoom, measure);
+      }
       fitted = shown === note ? null : shown;
     }
     // Set only when it changes: a state set to what it already is can
