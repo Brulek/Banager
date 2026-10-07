@@ -260,11 +260,14 @@ Paths are under a generic home folder, `/Users/you`.
 - The Updates page lists 「最近的更新记录」 under its rows, as the App Store
   lists Update History under Pending (scroll to the end of the list):
   records the pretend history holds from earlier
-  launches (`src/dev/mockHistory.ts`), including htop and ripgrep today, then
-  prettier, httpie with 「未能更新：网络连接失败」, typescript with
-  「没有更新成功：版本没有变」, wget, and, behind 「再显示1条」, gh. Every success says
-  「已更新」; where the version was read before and after, its tooltip says so,
-  and gh's has none. httpie and typescript are also rows above:
+  launches (`src/dev/mockHistory.ts`), including htop and ripgrep today,
+  tokei with 「未能更新」, Android SDK Platform-Tools with
+  「未能更新：App已不在原来的位置」, pcre2 with 「已由前面的更新一并完成」 and
+  prettier; behind 「再显示4条」, httpie with 「未能更新：网络连接失败」,
+  typescript with 「没有更新成功：版本没有变」, wget and gh. Every other success
+  says 「已更新」; where the version was read before and after, its tooltip
+  says so, and gh's has none. tokei, Android SDK Platform-Tools, httpie and
+  typescript are also rows above:
   after a restart a row does not know the last try did not work, unless
   it stopped for the Mac's password (the last section of this file). jq's
   failed update is not listed, as no update is offered for jq any more
