@@ -2822,12 +2822,18 @@ Verified against Ollama 0.34.1 (`adapters/meta/ollama.toml`).
 (30 s) — never `ollama list`, which on macOS launches Ollama.app as a side
 effect, and a background refresh must never launch an application. The
 daemon is asked over HTTP instead: `GET {host}/api/tags` (10 s), where
-`{host}` is `OLLAMA_HOST` from the environment, normalised to an absolute
-http(s) URL (a bare `host:port` gets `http://` in front; a bare host without
-a port gets port 11434, including `user:password@host`: the colon in
-userinfo is not a port. Explicit http/https schemes retain their
-80/443 defaults; a value that
-does not make an http(s) URL is ignored and the default used), or
+`{host}` is `OLLAMA_HOST` from the environment, read the way Ollama reads
+it (`envconfig.Host`, whose own test table Banager's tests repeat) and
+written as an absolute http(s) URL (`normalize_ollama_host`): spaces and
+quotes around it are dropped; a bare `host:port` gets `http://` in front;
+a bare host without a port gets port 11434, including `user:password@host`
+(the colon in a login is not a port); a port alone (`:11500`) means this
+Mac, `127.0.0.1`; an IPv6 address without brackets (`::1`) is one; a bare
+`ollama.com` is `https://ollama.com` (and so refused, below); explicit
+http/https schemes retain their 80/443 defaults; a port that is not a
+number from 0 to 65535 is replaced by the default, as Ollama does. A
+value that still does not make an http(s) URL is ignored and the default
+used. With no `OLLAMA_HOST`, it is
 Ollama's default `http://127.0.0.1:11434` (`DEFAULT_HOST`). Banager also
 checks whether `/Applications/Ollama.app` or `~/Applications/Ollama.app`
 is a directory: a daemon on this Mac that does not answer while the app

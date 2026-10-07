@@ -53,45 +53,103 @@ pub struct HostEnv {
 /// error"), so on a machine configured the documented way the daemon looks
 /// permanently down, every refresh, forever.
 ///
-/// The scheme is therefore supplied before parsing rather than after: a
-/// named bare host is the case a bare `Url::parse` gets wrong, since
-/// `localhost:11434` parses happily as scheme `localhost` with path
-/// `11434`. Anything that still does not parse, or that is not http(s),
-/// becomes `None` — a `file://` or `ftp://` value could only produce
-/// something stranger than the default.
+/// So the value is read the way Ollama itself reads it -- `envconfig.Var`
+/// and `envconfig.Host` in Ollama 0.40.0 (`envconfig/config.go:22-60,
+/// 378-380`), whose test table `test_ollama_host_is_read_as_ollamas_own_
+/// envconfig_reads_it` repeats -- and only then made a url: spaces and any
+/// `"` or `'` around it dropped; no scheme means `http`, and port 11434
+/// where none is given, while an explicit `http://` or `https://` keeps the
+/// scheme's own 80 or 443; a bare `ollama.com` is `https://ollama.com`;
+/// everything from the first `/` after the host is its path; a host that
+/// is an IP address without brackets (`::1`) is one; a port that is not a
+/// number from 0 to 65535 is the default one; and a port with no host
+/// (`:11500`) is this Mac -- Go's dialer reads an empty host so, and
+/// `127.0.0.1` is how a url says it. Without this, `:11500`, `::1` or a
+/// quoted value -- each one Ollama, and the `ollama` Banager runs, reads
+/// as a daemon -- became the default daemon instead (r40 R40-2).
+///
+/// Two things are Banager's own. A login in front of the host
+/// (`user:password@host`) is kept for its requests, though Ollama's own
+/// command refuses one. And a value that still makes no http(s) url -- a
+/// `file://` or `ftp://` one, a host a url cannot carry -- becomes `None`:
+/// it could only name something stranger than the default.
 fn normalize_ollama_host(raw: &str) -> Option<String> {
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
+    // `envconfig.Var`: spaces off, then every `"` and `'` at either end;
+    // `Host` takes spaces off once more.
+    let value = raw.trim().trim_matches(['"', '\'']).trim();
+    if value.is_empty() {
         return None;
     }
-    let candidate = if trimmed.contains("://") {
-        trimmed.to_string()
-    } else {
-        format!("http://{trimmed}")
+    let (scheme, rest, default_port) = match value.split_once("://") {
+        None if value == "ollama.com" => ("https", "ollama.com:443", 443),
+        None => ("http", value, 11434),
+        Some((scheme, rest)) if scheme.eq_ignore_ascii_case("http") => ("http", rest, 80),
+        Some((scheme, rest)) if scheme.eq_ignore_ascii_case("https") => ("https", rest, 443),
+        Some(_) => return None,
     };
-    let mut url = Url::parse(&candidate).ok()?;
-    // Ollama uses 11434 for a schemeless host, but the scheme's default
-    // (80/443) for an explicitly supplied http(s) URL. Preserve an explicit
-    // port 80 too: url::Url elides it, so inspect the original authority.
-    let authority = trimmed.split(['/', '?', '#']).next().unwrap_or(trimmed);
-    // A colon in userinfo is not a port; only inspect the host after it.
-    let authority = authority.rsplit('@').next().unwrap_or(authority);
-    let explicit_port = if authority.starts_with('[') {
-        authority
-            .split_once(']')
-            .is_some_and(|(_, tail)| tail.starts_with(':'))
-    } else {
-        authority.contains(':')
+    let (authority, path) = rest.split_once('/').unwrap_or((rest, ""));
+    let (login, hostport) = match authority.rsplit_once('@') {
+        Some((login, hostport)) => (Some(login), hostport),
+        None => (None, authority),
     };
-    if !trimmed.contains("://") && !explicit_port {
-        url.set_port(Some(11434)).ok()?;
-    }
-    if !matches!(url.scheme(), "http" | "https") {
-        return None;
-    }
-    // A url with no authority (`http://`) would compose to nonsense.
+    let (host, port) = match split_host_port(hostport) {
+        Some((host, port)) => (host.to_string(), port),
+        // No port to split off: the whole of it is the host -- an IP
+        // address, brackets or none, written as Go writes one -- or none.
+        None => {
+            let host = match hostport
+                .trim_matches(['[', ']'])
+                .parse::<std::net::IpAddr>()
+            {
+                Ok(ip) => ip.to_canonical().to_string(),
+                Err(_) if hostport.is_empty() => "127.0.0.1".to_string(),
+                Err(_) => hostport.to_string(),
+            };
+            (host, "")
+        }
+    };
+    // `strconv.ParseInt(port, 10, 32)`, then 0 to 65535.
+    let port = match port.parse::<i32>() {
+        Ok(port) if (0..=65535).contains(&port) => port,
+        _ => default_port,
+    };
+    let host = match host.as_str() {
+        "" => "127.0.0.1".to_string(),
+        // `net.JoinHostPort`.
+        _ if host.contains(':') => format!("[{host}]"),
+        _ => host,
+    };
+    let login = login.map(|login| format!("{login}@")).unwrap_or_default();
+    let url = Url::parse(&format!("{scheme}://{login}{host}:{port}/{path}")).ok()?;
     url.host_str().filter(|h| !h.is_empty())?;
     Some(url.as_str().trim_end_matches('/').to_string())
+}
+
+/// Go's `net.SplitHostPort` (`net/ipsock.go`), which `envconfig.Host`
+/// splits `OLLAMA_HOST` with: the host and the port after the last `:`,
+/// a host in `[...]` given without its brackets -- or `None` where Go
+/// answers with an error (no port, too many colons, a stray bracket),
+/// and Ollama then takes the whole of it as the host.
+fn split_host_port(hostport: &str) -> Option<(&str, &str)> {
+    let colon = hostport.rfind(':')?;
+    let (host, plain_from, bracket_from) = if hostport.starts_with('[') {
+        let end = hostport.find(']')?;
+        // The `]` must come right before the last `:`.
+        if end + 1 != colon {
+            return None;
+        }
+        (&hostport[1..end], 1, end + 1)
+    } else {
+        let host = &hostport[..colon];
+        if host.contains(':') {
+            return None;
+        }
+        (host, 0, 0)
+    };
+    if hostport[plain_from..].contains('[') || hostport[bracket_from..].contains(']') {
+        return None;
+    }
+    Some((host, &hostport[colon + 1..]))
 }
 
 impl HostEnv {
@@ -194,12 +252,156 @@ mod tests {
             ("http://localhost", "http://localhost"),
             ("https://localhost", "https://localhost"),
             ("localhost:1234", "http://localhost:1234"),
+            // r40 R40-2: shapes Ollama reads as a daemon that once became
+            // the default one. Port 11434 taken, Ollama's FAQ way:
+            // `launchctl setenv OLLAMA_HOST :11500`.
+            (":11500", "http://127.0.0.1:11500"),
+            ("::1", "http://[::1]:11434"),
+            ("\"127.0.0.1:11500\"", "http://127.0.0.1:11500"),
+            ("'localhost:11500'", "http://localhost:11500"),
+            // Ollama's own special case; then refused, as every https one
+            // is (`https_refused`, adapters/ollama).
+            ("ollama.com", "https://ollama.com"),
+            // A login stays, Banager's own; a bare one still gets 11434.
+            ("alice:pw@server", "http://alice:pw@server:11434"),
+            (
+                "http://alice:s%40cret@server:11434",
+                "http://alice:s%40cret@server:11434",
+            ),
+            ("http://[::1]:11500/", "http://[::1]:11500"),
         ] {
             assert_eq!(
                 normalize_ollama_host(raw).as_deref(),
                 Some(expected),
                 "{raw}"
             );
+        }
+        // Still nothing a url can say: Ollama's default.
+        for raw in [
+            "",
+            "  ",
+            "ftp://example.com",
+            "file:///tmp/x",
+            "exa mple.com",
+        ] {
+            assert_eq!(normalize_ollama_host(raw), None, "{raw:?}");
+        }
+    }
+
+    /// Ollama's own table for `envconfig.Host` -- `TestHost`,
+    /// `envconfig/config_test.go:20-42` at v0.40.0, read from Ollama's
+    /// source outside this repository -- value and expected url as it
+    /// writes them. Banager writes the same daemon its own way: the url
+    /// crate leaves out a scheme's own port (`:80`, `:443`) and a bare `/`,
+    /// a port with no host is `127.0.0.1` (Go's dialer reads an empty host
+    /// as this Mac), and Ollama's default is `None`.
+    const OLLAMA_TEST_HOST: &[(&str, &str, &str)] = &[
+        ("empty", "", "http://127.0.0.1:11434"),
+        ("only address", "1.2.3.4", "http://1.2.3.4:11434"),
+        ("only port", ":1234", "http://:1234"),
+        ("address and port", "1.2.3.4:1234", "http://1.2.3.4:1234"),
+        ("hostname", "example.com", "http://example.com:11434"),
+        (
+            "hostname and port",
+            "example.com:1234",
+            "http://example.com:1234",
+        ),
+        ("zero port", ":0", "http://:0"),
+        ("too large port", ":66000", "http://:11434"),
+        ("too small port", ":-1", "http://:11434"),
+        ("ipv6 localhost", "[::1]", "http://[::1]:11434"),
+        ("ipv6 world open", "[::]", "http://[::]:11434"),
+        ("ipv6 no brackets", "::1", "http://[::1]:11434"),
+        ("ipv6 + port", "[::1]:1337", "http://[::1]:1337"),
+        ("extra space", " 1.2.3.4 ", "http://1.2.3.4:11434"),
+        ("extra quotes", "\"1.2.3.4\"", "http://1.2.3.4:11434"),
+        (
+            "extra space+quotes",
+            " \" 1.2.3.4 \" ",
+            "http://1.2.3.4:11434",
+        ),
+        ("extra single quotes", "'1.2.3.4'", "http://1.2.3.4:11434"),
+        ("http", "http://1.2.3.4", "http://1.2.3.4:80"),
+        ("http port", "http://1.2.3.4:4321", "http://1.2.3.4:4321"),
+        ("https", "https://1.2.3.4", "https://1.2.3.4:443"),
+        ("https port", "https://1.2.3.4:4321", "https://1.2.3.4:4321"),
+        (
+            "proxy path",
+            "https://example.com/ollama",
+            "https://example.com:443/ollama",
+        ),
+        ("ollama.com", "ollama.com", "https://ollama.com:443"),
+    ];
+
+    #[test]
+    fn test_ollama_host_is_read_as_ollamas_own_envconfig_reads_it() {
+        for (case, raw, ollama) in OLLAMA_TEST_HOST {
+            let same_daemon = Url::parse(&ollama.replacen("://:", "://127.0.0.1:", 1))
+                .unwrap()
+                .as_str()
+                .trim_end_matches('/')
+                .to_string();
+            let banager = normalize_ollama_host(raw)
+                .unwrap_or_else(|| crate::adapters::ollama::DEFAULT_HOST.to_string());
+            assert_eq!(
+                banager, same_daemon,
+                "Ollama's {case:?}: {raw:?} is {ollama}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_split_host_port_answers_as_gos_does() {
+        // Go's own table, `TestSplitHostPort` in `src/net/ip_test.go:562-631`
+        // at go1.25.0, read outside this repository: what splits, and
+        // (`None`) what Go answers with an error.
+        for (hostport, host, port) in [
+            ("localhost:http", "localhost", "http"),
+            ("localhost:80", "localhost", "80"),
+            ("localhost%lo0:http", "localhost%lo0", "http"),
+            ("localhost%lo0:80", "localhost%lo0", "80"),
+            ("[localhost%lo0]:http", "localhost%lo0", "http"),
+            ("[localhost%lo0]:80", "localhost%lo0", "80"),
+            ("127.0.0.1:http", "127.0.0.1", "http"),
+            ("127.0.0.1:80", "127.0.0.1", "80"),
+            ("[::1]:http", "::1", "http"),
+            ("[::1]:80", "::1", "80"),
+            ("[::1%lo0]:http", "::1%lo0", "http"),
+            ("[::1%lo0]:80", "::1%lo0", "80"),
+            (":http", "", "http"),
+            (":80", "", "80"),
+            ("golang.org:", "golang.org", ""),
+            ("127.0.0.1:", "127.0.0.1", ""),
+            ("[::1]:", "::1", ""),
+            ("golang.org:https%foo", "golang.org", "https%foo"),
+        ] {
+            assert_eq!(
+                split_host_port(hostport),
+                Some((host, port)),
+                "{hostport:?}"
+            );
+        }
+        for hostport in [
+            "golang.org",
+            "127.0.0.1",
+            "[::1]",
+            "[fe80::1%lo0]",
+            "[localhost%lo0]",
+            "localhost%lo0",
+            "::1",
+            "fe80::1%lo0",
+            "fe80::1%lo0:80",
+            "[foo:bar]",
+            "[foo:bar]baz",
+            "[foo]bar:baz",
+            "[foo]:[bar]:baz",
+            "[foo]:[bar]baz",
+            "foo[bar]:baz",
+            "foo]bar:baz",
+            // Not in Go's table: an empty one, which has no colon either.
+            "",
+        ] {
+            assert_eq!(split_host_port(hostport), None, "{hostport:?}");
         }
     }
 
@@ -406,7 +608,13 @@ mod tests {
         assert_eq!(normalize_ollama_host(":::"), None);
         assert_eq!(normalize_ollama_host(""), None);
         assert_eq!(normalize_ollama_host("   "), None);
-        assert_eq!(normalize_ollama_host("http://"), None);
+        // Not this one any more (r40 R40-2): Ollama reads a scheme with no
+        // host as 127.0.0.1 on the scheme's port, and so does Banager, so
+        // that it asks the daemon Ollama's own commands would.
+        assert_eq!(
+            normalize_ollama_host("http://").as_deref(),
+            Some("http://127.0.0.1")
+        );
         // Not http(s): the adapter can only speak to an http endpoint, and
         // silently prefixing `file://` or `ftp://` onto `/api/tags` would
         // produce something stranger than the default.
