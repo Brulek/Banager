@@ -434,9 +434,14 @@ nothing more for it and does not retry it on its own.
 After a restart, a retained Homebrew `needsPassword` update offers View
 Steps in Update History and on the offered update (also in Installed).
 The offered row and Update All do not retry that recorded password stop.
-An operation the tool's row shows supersedes it -- an update or an
-uninstall under way, or an update that ended for the version the row
-offers -- and so does a later record the history kept. A stop of this
+An operation the tool's row shows supersedes it -- any operation of the
+tool under way (an update, an uninstall, a Fix… link), or an update that
+ended for the version the row offers (`useUpdateOperationFor` in
+`src/components/UpdateProgress.tsx`) -- and so does a later update the
+history kept, however it ended (one that stopped for the password too
+counts in its place), or a later uninstall it kept that worked;
+an uninstall that failed, was stopped or is unconfirmed leaves the stop
+as it was (`recordWeighs` in `src/lib/history.ts`). A stop of this
 launch that the row no longer shows, because the window reloaded (the
 error screen's Reload) and forgot which version each update was for,
 gives that row View Steps from its record as after a restart

@@ -111,6 +111,75 @@ describe("usePasswordRecoveryKeys", () => {
     }
   });
 
+  // o3 skeptic 1: what docs/what-we-run.md says supersedes a recorded
+  // stop -- a later update the history kept, or a later uninstall it kept
+  // that worked; not one that failed, was stopped or is unconfirmed
+  // (`recordWeighs`, r35 U4).
+  describe("a later record of the same tool", () => {
+    const uninstall = (result: HistoryRecord["result"]) =>
+      stop({ op_id: 5, finished_at: Date.now() - 1_000, kind: "Uninstall", to_version: null, result });
+
+    it.each([
+      ["failed", { Failed: { cause: "permission" } }],
+      ["was stopped", "Cancelled"],
+      ["is unconfirmed", "Unconfirmed"],
+    ] as const)("leaves the stop counted after an uninstall that %s", (_how, result) => {
+      const { result: hook } = render({ run: "later", cleared_before: null, records: [uninstall(result), stop()] });
+      expect([...hook.current.keys]).toEqual([artifactKeyId(onyx)]);
+    });
+
+    it("ends it with an uninstall that worked", () => {
+      const { result } = render({ run: "later", cleared_before: null, records: [uninstall("Succeeded"), stop()] });
+      expect(result.current.keys.size).toBe(0);
+    });
+
+    it.each([
+      ["worked", "Succeeded"],
+      ["was stopped", "Cancelled"],
+      ["failed otherwise", { Failed: { cause: "network" } }],
+    ] as const)("ends it with an update that %s", (_how, result) => {
+      const { result: hook } = render({
+        run: "later",
+        cleared_before: null,
+        records: [stop({ op_id: 5, finished_at: Date.now() - 1_000, result }), stop()],
+      });
+      expect(hook.current.keys.size).toBe(0);
+    });
+  });
+
+  // o3 skeptic 1: any operation of the tool under way holds its row
+  // (`useUpdateOperationFor`), a Fix… link of a formula too; once that
+  // link has finished, the row shows it no longer and the stop counts.
+  it("leaves the tool to its row while a Fix… link of it is under way, and counts the stop again once it has finished", () => {
+    const formula: ArtifactKey = { instance_id: BREW, kind: "Formula", name: "node@22" };
+    const offering: Snapshot = {
+      ...snapshot,
+      updates: [{ ...snapshot.updates[0], key: formula, current: "22.23.2", target: "22.23.3" }],
+    };
+    const history: HistoryView = {
+      run: "now",
+      cleared_before: null,
+      records: [stop({ key: formula, display_name: "node@22", from_version: "22.23.2" })],
+    };
+    const link = (fields: Partial<OpSummary>): OpSummary => ({
+      id: 9,
+      kind: "Link",
+      instance_id: BREW,
+      artifact_kind: "Formula",
+      name: "node@22",
+      status: "Running",
+      outcome: null,
+      argv_preview: ["/opt/homebrew/bin/brew", "link", "--formula", "--force", "node@22"],
+      cancel_policy: "KillThenReconcile",
+      ...fields,
+    });
+    const running = render(history, [link({})], offering);
+    expect(running.result.current.keys.size).toBe(0);
+    running.unmount();
+    const done = render(history, [link({ status: "Done", outcome: "Succeeded" })], offering);
+    expect([...done.result.current.keys]).toEqual([artifactKeyId(formula)]);
+  });
+
   describe("an operation of this launch (r35 U3)", () => {
     // Op 7, this launch's update of onyx, stopped where sudo wanted the
     // password; the history kept it before the operation said Done.
