@@ -1559,9 +1559,11 @@ leave out the trust list line wrongly. Nothing is run or changed because
 of it. The link preview (`OpKind::Link`) reads what stands in the way of
 `brew link --force {name}` (`link::link_conflicts` in
 `crates/banager-core/src/adapters/brew/link.rs`): where
-`<prefix>/Cellar/<name>` leads, the names in `<prefix>/opt/<name>/bin`,
+`<prefix>/opt/<name>` leads (the version being linked,
+`Cellar/<name>/<version>`), the names in `<prefix>/opt/<name>/bin`,
 and where `<prefix>/bin/<each of them>` leads, every link followed; one
-that leads anywhere but into the formula's own folder in the Cellar is in
+that leads anywhere but into that version's folder -- another installed
+version's included, which Homebrew does not replace either -- is in
 the way (`Warning::LinkConflicts`), and one that leads nowhere is not, as
 Homebrew replaces it. Only `bin` is read, only names and where links lead,
 never a file's contents.

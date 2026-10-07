@@ -4,8 +4,9 @@
 //!
 //! Homebrew links each of a keg's files to the same place under the prefix,
 //! and stops at the first one it finds there already, unless that is a link
-//! to this very file (`Keg#make_relative_symlink`, keg.rb:823-861 in
-//! Homebrew 7.0.7): it raises `ConflictError` and takes back the links it
+//! to this very file (`Keg#make_relative_symlink`, keg.rb:822-861 in
+//! Homebrew 7.0.8) -- a link into another installed version of the same
+//! formula is in the way too: it raises `ConflictError` and takes back the links it
 //! made (`Keg#link`'s `rescue LinkError`). A link that leads nowhere is not
 //! in the way -- Homebrew replaces it. So the link changes nothing while one
 //! of these is there, and the preview says so instead of offering it.
@@ -26,7 +27,8 @@ use std::path::{Path, PathBuf};
 /// The files in `<prefix>/bin` that would stop `brew link --force <name>`,
 /// in the order of the keg's command names: each of `<prefix>/opt/<name>/bin`'s
 /// names whose `<prefix>/bin/<name>` leads somewhere other than into the
-/// formula's own folder in the Cellar. Empty when nothing is in the way, and
+/// version being linked (`<prefix>/opt/<name>`'s real path,
+/// `Cellar/<name>/<version>`). Empty when nothing is in the way, and
 /// when the keg's `bin` cannot be listed (no such folder, or in a protected
 /// place): Homebrew's own refusal then says what it found.
 pub(crate) fn link_conflicts(prefix: &Path, name: &str) -> Vec<PathBuf> {
@@ -34,7 +36,10 @@ pub(crate) fn link_conflicts(prefix: &Path, name: &str) -> Vec<PathBuf> {
     let Some(short) = name.rsplit('/').next().filter(|short| plain(short)) else {
         return Vec::new();
     };
-    let Ok(cellar) = look::real_path(&prefix.join("Cellar").join(short), &protected) else {
+    // The version being linked: what `opt/<name>` leads to,
+    // `Cellar/<name>/<version>`. Not the whole `Cellar/<name>`: a link
+    // left over into another installed version is in the way too.
+    let Ok(keg) = look::real_path(&prefix.join("opt").join(short), &protected) else {
         return Vec::new();
     };
     let Ok(listing) = look::list(&prefix.join("opt").join(short).join("bin"), &protected) else {
@@ -48,7 +53,7 @@ pub(crate) fn link_conflicts(prefix: &Path, name: &str) -> Vec<PathBuf> {
         .into_iter()
         .map(|command| prefix.join("bin").join(command))
         .filter(|there| match look::target(there, &protected) {
-            Ok((real, _)) => !real.starts_with(&cellar),
+            Ok((real, _)) => !real.starts_with(&keg),
             // Nothing there, or a link that leads nowhere: Homebrew puts
             // its own in its place. Anything else (a protected place, a
             // folder that cannot be searched) is not known to be in the way.
@@ -118,6 +123,27 @@ mod tests {
         let found = link_conflicts(&root, "node@22");
         let _ = std::fs::remove_dir_all(&root);
         assert_eq!(found, Vec::<PathBuf>::new());
+    }
+
+    #[test]
+    fn test_a_link_into_another_installed_version_is_in_the_way() {
+        // Homebrew skips only a link to this very file (`src ==
+        // resolved_path(dst)`, keg.rb:824 in Homebrew 7.0.8): one left
+        // over from another version still installed raises
+        // `ConflictError`, although it leads into `Cellar/node@22`.
+        let root = prefix("old-version");
+        let old = root.join("Cellar/node@22/22.23.2_2/bin");
+        std::fs::create_dir_all(&old).unwrap();
+        std::fs::write(old.join("node"), b"").unwrap();
+        symlink(
+            "../Cellar/node@22/22.23.2_2/bin/node",
+            root.join("bin/node"),
+        )
+        .unwrap();
+        std::fs::remove_file(root.join("bin/npm")).unwrap();
+        let found = link_conflicts(&root, "node@22");
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(found, vec![root.join("bin/node")]);
     }
 
     #[test]
