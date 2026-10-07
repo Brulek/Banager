@@ -4586,8 +4586,12 @@ formula's name and the names of those commands), so that after a restart
 notes with their existing next step, saying the full log was not kept. A
 note this build does not know is skipped, never its record
 (`follow_up::known_warnings`); a record written before the field existed
-reads as having none, and a Banager from before it reads the file as
-before and leaves the field out of what it writes back. Also the time the page's Clear was last pressed. Never a line of
+reads as having none.
+Also whether Clear dismissed
+each record already present and the time Clear was last pressed. Clear never hides later completions by their wall-clock
+time, so moving the clock backwards cannot hide new updates or revive dismissed
+ones. Existing format-1 records without a dismissal field inherit their original
+Clear cutoff once on load. Never a line of
 a log, a command line or any other path, and of an error message one line
 at most: a failure's cause is read from the tool's last lines as the
 operation finishes, and the lines are dropped; only where they name no
@@ -4626,7 +4630,7 @@ same atomic writer as settings and renamed into place, on a thread of
 its own, after each operation finishes and after Clear. A missing,
 unreadable or malformed file is an empty history and is replaced at the
 next record. New writes use format 2, including the current outcome and failure
-variants. All existing format-1 shapes remain readable.
+variants and per-record dismissal. All existing format-1 shapes remain readable.
 Older format-1 builds leave format-2 files untouched; a file a newer Banager wrote is left exactly as it is. To
 remove the history, quit Banager and delete `history.json`; it starts
 empty at the next launch. Clear does not delete it.

@@ -30,9 +30,8 @@ export function useHistory(): UseQueryResult<HistoryView> {
 }
 
 /**
- * The Updates page's Clear, kept: the backend notes the time, and the page
- * lists nothing that finished before it, after a restart too. No record is
- * removed from the file.
+ * Clear marks existing records as dismissed, including after a restart.
+ * Later completions stay visible even if the wall clock moves backwards.
  */
 export function useClearHistory(): UseMutationResult<HistoryView, Error, void> {
   const queryClient = useQueryClient();
@@ -62,8 +61,8 @@ export function listedResult(result: HistoryResult): boolean {
  * The records 「最近的更新记录」 adds to what this window saw, newest first: per
  * tool, its newest kept operation, when that is an update that ended in a
  * way to know of (`listedResult`) -- the rule `justUpdatedOps` has for this
- * window's own -- finished in the last `RECENT_DAYS` and after the last
- * Clear. Newest per tool, so an update that failed and then worked is
+ * window's own -- finished in the last `RECENT_DAYS` and not dismissed by
+ * a Clear (`isDismissed`). Newest per tool, so an update that failed and then worked is
  * listed as the one that worked, and one uninstalled since not at all.
  * None for a tool this window has an operation of (`operations`): that
  * operation decides, whatever the history says, so an update this window
@@ -87,12 +86,12 @@ export function recentUpdates(
   );
   const newest = new Map<string, HistoryRecord>();
   for (const record of view.records) {
+    if (isDismissed(view, record)) continue;
     const id = artifactKeyId(record.key);
     const seen = newest.get(id);
     if (seen === undefined || record.finished_at > seen.finished_at) newest.set(id, record);
   }
   const since = now - RECENT_DAYS * DAY_MS;
-  const cleared = view.cleared_before ?? Number.NEGATIVE_INFINITY;
   return [...newest.entries()]
     .filter(
       ([id, record]) =>
@@ -100,25 +99,27 @@ export function recentUpdates(
         record.kind === "Update" &&
         listedResult(record.result) &&
         (record.result === "Succeeded" || offered.has(id)) &&
-        record.finished_at >= since &&
-        record.finished_at > cleared,
+        record.finished_at >= since,
     )
     .map(([, record]) => record)
     .sort((a, b) => b.finished_at - a.finished_at);
 }
 
+/** Legacy wire data uses its cutoff; current records always carry a boolean. */
+function isDismissed(view: HistoryView, record: HistoryRecord): boolean {
+  return record.dismissed ?? (view.cleared_before !== null && record.finished_at <= view.cleared_before);
+}
+
 /**
- * Whether the page's Clear, as the history keeps it (`cleared_before`),
- * came after an operation this window ran finished: its record of this
- * launch says when. The window's own note of what Clear took off
- * (`clearedJustUpdated`) lives only as long as the web view, which can
- * reload while Banager runs on; this does not. False until the history
+ * Whether the page's Clear, as the history keeps it (each record's
+ * `dismissed`, whatever its date), took off an operation this window ran:
+ * its record of this launch says so. The window's own note of what Clear
+ * took off (`clearedJustUpdated`) lives only as long as the web view, which
+ * can reload while Banager runs on; this does not. False until the history
  * has the record.
  */
 export function clearedHere(view: HistoryView, opId: number): boolean {
-  const cleared = view.cleared_before;
-  if (cleared === null) return false;
-  return view.records.some((record) => record.run === view.run && record.op_id === opId && record.finished_at <= cleared);
+  return view.records.some((record) => record.run === view.run && record.op_id === opId && isDismissed(view, record));
 }
 
 /**

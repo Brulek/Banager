@@ -55,7 +55,7 @@ function op(id: number, name: string): OpSummary {
 describe("the history's wire shape", () => {
   it("reads the record Rust writes (test_record_wire_shape_matches_the_hand_written_ts_mirror)", () => {
     const wire =
-      '{"run":"run1","op_id":4,"finished_at":1790000000000,"key":{"instance_id":"brew:/opt/homebrew","kind":"Formula","name":"cmake"},"display_name":"cmake","adapter_id":"brew","kind":"Update","from_version":"3.31.6","to_version":"4.0.0","result":"Succeeded","verified":true}';
+      '{"run":"run1","op_id":4,"finished_at":1790000000000,"key":{"instance_id":"brew:/opt/homebrew","kind":"Formula","name":"cmake"},"display_name":"cmake","adapter_id":"brew","kind":"Update","from_version":"3.31.6","to_version":"4.0.0","result":"Succeeded","verified":true,"dismissed":false}';
     const parsed: HistoryRecord = JSON.parse(wire);
     expect(parsed).toEqual(
       record("cmake", {
@@ -64,6 +64,7 @@ describe("the history's wire shape", () => {
         finished_at: 1_790_000_000_000,
         from_version: "3.31.6",
         to_version: "4.0.0",
+        dismissed: false,
       }),
     );
     const failed: HistoryRecord["result"] = JSON.parse('{"Failed":{"cause":"diskFull"}}');
@@ -77,7 +78,7 @@ describe("the history's wire shape", () => {
     const appMissing: HistoryRecord["result"] = JSON.parse('{"Failed":{"cause":"appMissing"}}');
     expect(appMissing).toEqual({ Failed: { cause: "appMissing" } });
     const already: HistoryRecord = JSON.parse(
-      wire.replace('"verified":true}', '"verified":false,"already_updated":"ByEarlierUpdate"}'),
+      wire.replace('"verified":true', '"verified":false,"already_updated":"ByEarlierUpdate"'),
     );
     expect(already.already_updated).toBe("ByEarlierUpdate");
     expect(JSON.parse(JSON.stringify(already))).toEqual(already);
@@ -257,4 +258,23 @@ describe("recentUpdates", () => {
     expect(clearedHere(cleared, 10)).toBe(false);
     expect(clearedHere(view(records), 7)).toBe(false);
   });
+});
+
+describe("persisted dismissal after a backward clock correction", () => {
+  it("reads explicit true and false from the Rust wire and ignores the legacy cutoff", () => {
+    const old = { ...record("old", { run: "now", op_id: 1, finished_at: NOW + DAY }), dismissed: true };
+    const fresh = { ...record("fresh", { run: "now", op_id: 2, finished_at: NOW }), dismissed: false };
+    const wire = JSON.stringify(view([old, fresh], { cleared_before: NOW + DAY }));
+    const parsed: HistoryView = JSON.parse(wire);
+    expect(JSON.stringify(parsed)).toBe(wire);
+    expect(recentUpdates(parsed, [], NOW, offered()).map((r) => r.key.name)).toEqual(["fresh"]);
+    expect(clearedHere(parsed, 1)).toBe(true);
+    expect(clearedHere(parsed, 2)).toBe(false);
+  });
+});
+
+it("a dismissed future-dated record cannot shadow the same tool updated after Clear", () => {
+  const old = { ...record("git", { finished_at: NOW + DAY }), dismissed: true };
+  const fresh = { ...record("git", { finished_at: NOW }), dismissed: false };
+  expect(recentUpdates(view([old, fresh], { cleared_before: NOW + DAY }), [], NOW, offered())).toEqual([fresh]);
 });

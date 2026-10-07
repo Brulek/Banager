@@ -556,7 +556,7 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       alreadyUpdated: op.summary.already_updated ?? null,
       followUpWarnings: op.summary.follow_up_warnings,
     });
-    if (record !== null) history = { ...history, records: [record, ...history.records] };
+    if (record !== null) history = { ...history, records: [{ ...record, dismissed: false }, ...history.records] };
     if (op.started) {
       for (const lock of op.plan.locks) held.delete(lock);
       running -= 1;
@@ -925,8 +925,8 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       return clone(history);
     },
     async clear_history() {
-      // `HistoryStore::clear`: the time, and every record kept.
-      history = { ...history, cleared_before: Date.now() };
+      // `HistoryStore::clear`: dismiss existing records, keep later completions.
+      history = { ...history, cleared_before: Date.now(), records: history.records.map((record) => ({ ...record, dismissed: true })) };
       return clone(history);
     },
     async report_update_set(args) {

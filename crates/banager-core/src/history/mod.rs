@@ -151,6 +151,9 @@ pub struct HistoryRecord {
         deserialize_with = "crate::follow_up::known_warnings"
     )]
     pub follow_up_warnings: Vec<FollowUpWarning>,
+    /// Clear dismisses existing records, never future completions by time.
+    #[serde(default)]
+    pub dismissed: bool,
 }
 
 /// What the window is given (`get_history`): this launch's `run`, when the
@@ -158,9 +161,8 @@ pub struct HistoryRecord {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HistoryView {
     pub run: String,
-    /// The Updates page's Clear, kept: the time it was pressed, in
-    /// milliseconds since 1970. The page lists nothing that finished
-    /// before it; the records stay in the file.
+    /// Last Clear time, retained for legacy file migration and diagnostics.
+    /// Current readers use each record's `dismissed`, never this cutoff.
     pub cleared_before: Option<i64>,
     pub records: Vec<HistoryRecord>,
 }
@@ -311,6 +313,7 @@ pub fn record_for(
             .filter(|_| result == HistoryResult::Succeeded),
         result,
         verified,
+        dismissed: false,
     })
 }
 
@@ -590,7 +593,16 @@ fn load(path: &Path, now: i64) -> Loaded {
         .map(|items| {
             items
                 .iter()
-                .filter_map(|item| serde_json::from_value(item.clone()).ok())
+                .filter_map(|item| {
+                    let mut record: HistoryRecord = serde_json::from_value(item.clone()).ok()?;
+                    // Format-1 releases did not write this field. Convert their
+                    // cutoff once, including when the clock has moved backwards.
+                    if item.get("dismissed").is_none() {
+                        record.dismissed =
+                            cleared_before.is_some_and(|time| record.finished_at <= time);
+                    }
+                    Some(record)
+                })
                 .collect()
         })
         .unwrap_or_default();
@@ -786,12 +798,15 @@ impl HistoryStore {
         self.wake();
     }
 
-    /// The Updates page's Clear: lists nothing that finished before now,
-    /// from now on. The records stay.
+    /// Clear dismisses records already present. Later records remain visible
+    /// regardless of clock corrections; the dismissed records stay on disk.
     pub fn clear(&self) -> HistoryView {
         {
             let mut state = self.state.lock().unwrap();
             state.cleared_before = Some((self.now_fn)());
+            for record in &mut state.records {
+                record.dismissed = true;
+            }
             state.changes += 1;
         }
         self.wake();
@@ -977,6 +992,246 @@ mod tests {
         .expect("an update is kept");
         r.op_id = finished_at as u64;
         r
+    }
+
+    /// `history.json` as the build before format 2 (e2e6abe6) wrote it:
+    /// `to_vec_pretty` of its `HistoryFile`, format 1, no `dismissed`, a
+    /// Clear pressed at `NOW - DAY`, its clock fields, and one record of
+    /// every result and of each optional field.
+    const FORMAT_ONE_FILE: &str = r#"{
+  "format": 1,
+  "cleared_before": 1789913600000,
+  "records": [
+    {
+      "run": "earlier",
+      "op_id": 1,
+      "finished_at": 1789740800000,
+      "key": {
+        "instance_id": "brew:/opt/homebrew",
+        "kind": "Formula",
+        "name": "cmake"
+      },
+      "display_name": "cmake",
+      "adapter_id": "brew",
+      "kind": "Update",
+      "from_version": "3.31.6",
+      "to_version": "4.0.0",
+      "result": "Succeeded",
+      "verified": true,
+      "already_updated": "ByEarlierUpdate"
+    },
+    {
+      "run": "earlier",
+      "op_id": 2,
+      "finished_at": 1789827200000,
+      "key": {
+        "instance_id": "npm:/opt/homebrew",
+        "kind": "Package",
+        "name": "typescript"
+      },
+      "display_name": "typescript",
+      "adapter_id": "npm",
+      "kind": "Update",
+      "from_version": "5.8.3",
+      "to_version": "5.9.2",
+      "result": {
+        "Failed": {
+          "cause": null,
+          "detail": "npm error code E403"
+        }
+      },
+      "verified": false
+    },
+    {
+      "run": "earlier",
+      "op_id": 3,
+      "finished_at": 1789913600000,
+      "key": {
+        "instance_id": "brew:/opt/homebrew",
+        "kind": "Cask",
+        "name": "visual-studio-code"
+      },
+      "display_name": "Visual Studio Code",
+      "adapter_id": "brew",
+      "kind": "Update",
+      "from_version": "1.104.0",
+      "to_version": null,
+      "result": {
+        "NeedsAttention": "GoneBeforeUpgrade"
+      },
+      "verified": false
+    },
+    {
+      "run": "later",
+      "op_id": 1,
+      "finished_at": 1789956800000,
+      "key": {
+        "instance_id": "ollama:http://127.0.0.1:11434",
+        "kind": "Model",
+        "name": "llama3:latest"
+      },
+      "display_name": "llama3:latest",
+      "adapter_id": "ollama",
+      "kind": "Uninstall",
+      "from_version": "365c0bd3c000",
+      "to_version": null,
+      "result": "Succeeded",
+      "verified": true
+    },
+    {
+      "run": "later",
+      "op_id": 2,
+      "finished_at": 1789960400000,
+      "key": {
+        "instance_id": "brew:/opt/homebrew",
+        "kind": "Formula",
+        "name": "git"
+      },
+      "display_name": "git",
+      "adapter_id": "brew",
+      "kind": "Update",
+      "from_version": "2.50.1",
+      "to_version": "2.51.0",
+      "result": {
+        "Failed": {
+          "cause": "network"
+        }
+      },
+      "verified": false
+    },
+    {
+      "run": "later",
+      "op_id": 3,
+      "finished_at": 1789964000000,
+      "key": {
+        "instance_id": "pipx:/Users/someone/.local/pipx",
+        "kind": "Package",
+        "name": "black"
+      },
+      "display_name": "black",
+      "adapter_id": "pipx",
+      "kind": "Update",
+      "from_version": "25.1.0",
+      "to_version": "25.9.0",
+      "result": "Cancelled",
+      "verified": false
+    },
+    {
+      "run": "later",
+      "op_id": 4,
+      "finished_at": 1789967600000,
+      "key": {
+        "instance_id": "brew:/opt/homebrew",
+        "kind": "Formula",
+        "name": "node"
+      },
+      "display_name": "node",
+      "adapter_id": "brew",
+      "kind": "Update",
+      "from_version": "24.8.0",
+      "to_version": "24.9.0",
+      "result": "Unconfirmed",
+      "verified": false
+    }
+  ],
+  "trusted_at": 1789827200000,
+  "pending_at": 1789967600000
+}"#;
+
+    #[test]
+    fn test_a_format_one_file_of_the_previous_build_reads_whole_and_is_never_read_back_by_it() {
+        let dir = TempDir::new("format-one-real");
+        std::fs::write(dir.file(), FORMAT_ONE_FILE).unwrap();
+        let written: serde_json::Value = serde_json::from_str(FORMAT_ONE_FILE).unwrap();
+        let cleared = written["cleared_before"].as_i64().unwrap();
+        // Each record as this build hands it on: every field the earlier
+        // one wrote, plus `dismissed` from the kept Clear (at or before it).
+        let expected = |item: &serde_json::Value| {
+            let mut item = item.clone();
+            let at = item["finished_at"].as_i64().unwrap();
+            item["dismissed"] = serde_json::json!(at <= cleared);
+            item
+        };
+        let wanted: Vec<serde_json::Value> = written["records"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .rev()
+            .map(expected)
+            .collect();
+        let store = HistoryStore::open_with_clock(dir.file(), now);
+        let view = serde_json::to_value(store.view()).unwrap();
+        assert_eq!(view["cleared_before"], cleared);
+        assert_eq!(view["records"].as_array().unwrap(), &wanted);
+        let dismissed: Vec<bool> = store.view().records.iter().map(|r| r.dismissed).collect();
+        assert_eq!(dismissed, [false, false, false, false, true, true, true]);
+
+        // The next write is format 2 with each dismissal spelled out, and
+        // reads back the same whatever the kept Clear time says.
+        let k = key("wget");
+        let mut e = ended(&k, &Outcome::Succeeded);
+        e.op_id = 9;
+        store.record(&e, &started("wget"));
+        assert!(store.flush(Duration::from_secs(5)));
+        let bytes = std::fs::read(dir.file()).unwrap();
+        let file: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(file["format"], 2);
+        assert_eq!(file["cleared_before"], cleared);
+        assert_eq!(file["trusted_at"], written["trusted_at"]);
+        assert!(file["records"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|r| r["dismissed"].is_boolean()));
+        let reopened = HistoryStore::open_with_clock(dir.file(), now);
+        let again = serde_json::to_value(reopened.view()).unwrap();
+        assert_eq!(again["records"].as_array().unwrap()[1..], wanted[..]);
+        assert_eq!(again["records"][0]["key"]["name"], "wget");
+        assert_eq!(again["records"][0]["dismissed"], false);
+
+        // A format-1 reader -- the earlier build's own guard -- leaves it
+        // as it is.
+        assert_eq!(format_one_reader::clear_and_rewrite(&dir.file(), NOW), 0);
+        assert_eq!(std::fs::read(dir.file()).unwrap(), bytes);
+    }
+
+    #[test]
+    fn test_f2_clear_survives_backward_clock_and_legacy_format_one() {
+        let dir = TempDir::new("f2-clock");
+        // Exactly the existing format: no dismissal field, optional clock fields absent.
+        let mut old = serde_json::to_value(record_at("old", NOW + DAY)).unwrap();
+        old.as_object_mut().unwrap().remove("dismissed");
+        std::fs::write(
+            dir.file(),
+            serde_json::to_vec(&serde_json::json!({
+                "format": 1, "cleared_before": NOW + DAY, "records": [old]
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let store = HistoryStore::open_with_clock(dir.file(), now);
+        let k = key("new");
+        store.record(&ended(&k, &Outcome::Succeeded), &started("new"));
+        let wire = serde_json::to_value(store.view()).unwrap();
+        assert_eq!(wire["records"][0]["dismissed"], true);
+        assert_eq!(wire["records"][1]["dismissed"], false);
+        store.clear(); // Corrected time must not resurrect the advanced-clock record.
+        assert!(store.flush(Duration::from_secs(5)));
+        let next = HistoryStore::open_with_clock(dir.file(), now);
+        for r in serde_json::to_value(next.view()).unwrap()["records"]
+            .as_array()
+            .unwrap()
+        {
+            assert_eq!(r["dismissed"], true);
+        }
+        let k = key("later");
+        let mut e = ended(&k, &Outcome::Succeeded);
+        e.op_id = 5;
+        next.record(&e, &started("later"));
+        assert!(next.flush(Duration::from_secs(5)));
+        let reopened = HistoryStore::open_with_clock(dir.file(), now);
+        let wire = serde_json::to_value(reopened.view()).unwrap();
+        assert_eq!(wire["records"][1]["dismissed"], false);
     }
 
     #[test]
@@ -1586,7 +1841,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             serde_json::to_string(&r).unwrap(),
-            r#"{"run":"run1","op_id":4,"finished_at":1790000000000,"key":{"instance_id":"brew:/opt/homebrew","kind":"Formula","name":"cmake"},"display_name":"cmake","adapter_id":"brew","kind":"Update","from_version":"3.31.6","to_version":"4.0.0","result":"Succeeded","verified":true}"#
+            r#"{"run":"run1","op_id":4,"finished_at":1790000000000,"key":{"instance_id":"brew:/opt/homebrew","kind":"Formula","name":"cmake"},"display_name":"cmake","adapter_id":"brew","kind":"Update","from_version":"3.31.6","to_version":"4.0.0","result":"Succeeded","verified":true,"dismissed":false}"#
         );
         let failed = HistoryResult::Failed {
             cause: Some(FailureCause::DiskFull),

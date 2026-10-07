@@ -52,9 +52,10 @@ pub(crate) fn clear_history_impl(state: &AppState) -> HistoryView {
     state.session.clear_history()
 }
 
-/// The Updates page's Clear: from now on the page lists nothing that
-/// finished before this moment. No record is removed; the file is written
-/// again with the time, by the history's own thread.
+/// The Updates page's Clear: every record already kept is marked dismissed,
+/// and the page lists none of them again; what finishes later is listed
+/// whatever the clock says. No record is removed; the file is written again
+/// with the marks and the time, by the history's own thread.
 #[tauri::command]
 pub async fn clear_history(state: State<'_, AppState>) -> Result<HistoryView, String> {
     Ok(clear_history_impl(&state))
@@ -118,9 +119,11 @@ mod tests {
         let state = AppState::new(dir.join("settings.json"), ChannelSink::new());
         attach(&state, &dir);
 
+        assert!(!get_history_impl(&state).records[0].dismissed);
         let cleared = clear_history_impl(&state);
         let at = cleared.cleared_before.expect("the time Clear was pressed");
         assert_eq!(cleared.records.len(), 1, "no record is removed");
+        assert!(cleared.records[0].dismissed);
 
         // The next launch reads the same time back.
         let deadline = std::time::Instant::now() + Duration::from_secs(5);
@@ -128,7 +131,9 @@ mod tests {
             let next = AppState::new(dir.join("settings.json"), ChannelSink::new());
             attach(&next, &dir);
             if get_history_impl(&next).cleared_before == Some(at) {
-                assert_eq!(get_history_impl(&next).records.len(), 1);
+                let records = get_history_impl(&next).records;
+                assert_eq!(records.len(), 1);
+                assert!(records[0].dismissed, "dismissed across launches");
                 break;
             }
             assert!(

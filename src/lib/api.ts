@@ -202,8 +202,9 @@ export function getHistory(): Promise<HistoryView> {
 }
 
 /**
- * The Updates page's Clear, kept across launches (`clear_history`): the
- * page lists nothing that finished before now. Removes no record.
+ * The Updates page's Clear, kept across launches (`clear_history`): every
+ * record already kept is marked dismissed; what finishes later is listed,
+ * whatever the clock says. Removes no record.
  */
 export function clearHistory(): Promise<HistoryView> {
   return call<HistoryView>("clear_history");

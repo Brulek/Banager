@@ -1071,6 +1071,8 @@ export type HistoryResult =
  * it gone).
  */
 export interface HistoryRecord {
+  /** Clear dismissed this existing record. Absent only in legacy wire data. */
+  dismissed?: boolean;
   run: string;
   op_id: number;
   finished_at: number;
@@ -1092,8 +1094,9 @@ export interface HistoryRecord {
 }
 /**
  * Rust `HistoryView`, from `get_history` and `clear_history`: this launch's
- * id, when the Updates page's Clear was last pressed (milliseconds), and
- * every record, newest first.
+ * id, when the Updates page's Clear was last pressed (milliseconds; what it
+ * hid is each record's `dismissed`, not this time), and every record,
+ * newest first.
  */
 export interface HistoryView {
   run: string;
