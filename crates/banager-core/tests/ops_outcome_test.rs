@@ -289,8 +289,97 @@ async fn test_succeeded_upgrade_present_is_succeeded() {
 }
 
 #[tokio::test]
+async fn test_queued_absent_upgrades_release_the_lock_and_finish_without_starting() {
+    let adapter = Arc::new(FakeAdapter::new(ReconcileBehavior::Present(false)));
+    let mut manager = OperationManager::new(Arc::new(VecSink::new()));
+    manager.register_adapter(adapter.clone());
+    let manager = Arc::new(manager);
+    let inst = make_instance("fake:/queued-absence");
+    manager.register_instance(inst.clone());
+    let plan = adapter
+        .plan(
+            &inst,
+            &OpRequest {
+                kind: OpKind::Upgrade,
+                instance_id: inst.id.clone(),
+                artifact_kind: ArtifactKind::Package,
+                name: "pkg".into(),
+            },
+        )
+        .await
+        .unwrap();
+    let lock = manager
+        .acquire_resource_lock(ResourceLock(inst.id.clone()))
+        .await;
+    let ended = Arc::new(Mutex::new(Vec::new()));
+    let mut ids = Vec::new();
+    for _ in 0..2 {
+        let ended = ended.clone();
+        ids.push(manager.submit_with(
+            plan.clone(),
+            Some(Box::new(move |end| {
+                ended
+                    .lock()
+                    .unwrap()
+                    .push((end.started, end.outcome.clone()));
+            })),
+        ));
+    }
+    tokio::task::yield_now().await;
+    assert!(
+        adapter.calls().is_empty(),
+        "before-reading waits for the lock"
+    );
+    drop(lock);
+    for id in ids {
+        let outcome = tokio::time::timeout(std::time::Duration::from_secs(2), manager.wait(id))
+            .await
+            .expect("both ops finish and release their locks")
+            .unwrap();
+        assert_eq!(
+            outcome,
+            Outcome::NeedsAttention(Attention::GoneBeforeUpgrade)
+        );
+    }
+    assert_eq!(adapter.calls(), vec!["reconcile", "reconcile"]);
+    assert_eq!(
+        *ended.lock().unwrap(),
+        vec![(false, Outcome::NeedsAttention(Attention::GoneBeforeUpgrade)); 2]
+    );
+}
+
+#[tokio::test]
+async fn test_upgrade_absent_before_execution_never_reinstalls() {
+    let (outcome, calls) = run_case_with_calls(
+        OpKind::Upgrade,
+        ReconcileBehavior::Readings(vec![
+            Some(Reconciled {
+                present: false,
+                version: None,
+            }),
+            at("2.0"),
+        ]),
+    )
+    .await;
+    assert_eq!(calls, vec!["reconcile"], "no execute or after-reading");
+    let wire = r#"{"NeedsAttention":"GoneBeforeUpgrade"}"#;
+    assert_eq!(serde_json::to_string(&outcome).unwrap(), wire);
+    assert_eq!(serde_json::from_str::<Outcome>(wire).unwrap(), outcome);
+}
+
+#[tokio::test]
 async fn test_succeeded_upgrade_absent_needs_attention() {
-    let outcome = run_case(OpKind::Upgrade, ReconcileBehavior::Present(false)).await;
+    let outcome = run_case(
+        OpKind::Upgrade,
+        ReconcileBehavior::Readings(vec![
+            at("1.0"),
+            Some(Reconciled {
+                present: false,
+                version: None,
+            }),
+        ]),
+    )
+    .await;
     assert_eq!(
         outcome,
         Outcome::NeedsAttention(Attention::GoneAfterUpgrade)

@@ -1051,6 +1051,18 @@ impl OperationManager {
             None
         };
 
+        // npm, Cargo and Ollama upgrades can install a missing name.
+        // A successful locked reading of absence must never reach execute.
+        // A failed reading remains None (including brew's IndexUpdating).
+        if before.as_ref().is_some_and(|reading| !reading.present) {
+            self.finish(
+                op_id,
+                Outcome::NeedsAttention(Attention::GoneBeforeUpgrade),
+                true,
+            );
+            return;
+        }
+
         // A NoCancel plan gets the same live token as any other. Once the
         // op is Running, `cancel` refuses to fire it, so its `execute` ends
         // when the command does or at `plan.timeout_secs`, which the runner

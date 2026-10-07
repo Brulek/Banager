@@ -3,6 +3,7 @@ import { displayToken, elapsedSince, formatBytes, outcomeArgs, outcomeDetailKey,
 import type { Fault, Outcome } from "./types";
 import en from "../i18n/en.json";
 import zhCN from "../i18n/zh-CN.json";
+import zhHant from "../i18n/zh-Hant.json";
 import { failureCause } from "./failureCause";
 
 describe("displayToken", () => {
@@ -423,4 +424,16 @@ describe("elapsedSince", () => {
     expect(elapsedSince(then, at(24 * 3600))).toEqual({ unit: "days", count: 1 });
     expect(elapsedSince(then, at(9 * 24 * 3600 + 5))).toEqual({ unit: "days", count: 9 });
   });
+});
+
+it("renders the pre-upgrade absence wire outcome in all three languages", () => {
+  const wire = '{"NeedsAttention":"GoneBeforeUpgrade"}';
+  const outcome: Outcome = { NeedsAttention: "GoneBeforeUpgrade" };
+  expect(JSON.stringify(outcome)).toBe(wire);
+  expect(JSON.parse(wire)).toEqual(outcome);
+  expect(outcomeKey(outcome)).toBe("NeedsAttention.GoneBeforeUpgrade");
+  expect(outcomeDetailKey(outcome)).toBeNull();
+  expect(en.operations.outcome.NeedsAttention.GoneBeforeUpgrade).toBe("No longer installed. Update didn't start.");
+  expect(zhCN.operations.outcome.NeedsAttention.GoneBeforeUpgrade).toBe("已不在已安装列表中，未开始更新。");
+  expect(zhHant.operations.outcome.NeedsAttention.GoneBeforeUpgrade).toBe("已不在已安裝清單中，未開始更新。");
 });

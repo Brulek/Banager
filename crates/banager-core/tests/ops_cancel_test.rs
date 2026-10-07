@@ -465,12 +465,21 @@ async fn test_cancelled_upgrade_without_versions_to_compare_stays_unconfirmed() 
     .await;
     assert_eq!(present_outcome, Outcome::Unconfirmed);
 
-    let (absent_outcome, _) = run_cancelled_mid_execute(
+    // Present before execution, absent only after it was cancelled. An
+    // already absent tool now stops before execute and cannot be cancelled
+    // midway through a command that never ran.
+    let (absent_outcome, _) = run_cancelled_mid_execute_with_readings(
         OpKind::Upgrade,
-        Reconciled {
-            present: false,
-            version: None,
-        },
+        vec![
+            Reconciled {
+                present: true,
+                version: None,
+            },
+            Reconciled {
+                present: false,
+                version: None,
+            },
+        ],
     )
     .await;
     assert_eq!(absent_outcome, Outcome::Unconfirmed);

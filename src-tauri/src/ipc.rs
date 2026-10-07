@@ -427,6 +427,9 @@ fn submit_operation_error(e: banager_core::session::SubmitError) -> String {
         banager_core::session::SubmitError::UninstallBlocked { reason } => {
             uninstall_blocked_json(reason)
         }
+        banager_core::session::SubmitError::NotListed => {
+            serde_json::json!({ "kind": "not_listed" }).to_string()
+        }
         banager_core::session::SubmitError::SourceGone => {
             serde_json::json!({ "kind": "source_gone" }).to_string()
         }
@@ -2476,6 +2479,9 @@ mod tests {
             serde_json::json!({ "kind": "uninstall_blocked", "reason": "Pinned" })
         );
 
+        let not_listed = submit_operation_error(SubmitError::NotListed);
+        assert_eq!(not_listed, r#"{"kind":"not_listed"}"#);
+        assert_eq!(not_listed, plan_operation_error(AdapterError::NotListed));
         let gone = submit_operation_error(SubmitError::SourceGone);
         let parsed: serde_json::Value = serde_json::from_str(&gone)
             .unwrap_or_else(|e| panic!("expected JSON, got {gone:?} ({e})"));

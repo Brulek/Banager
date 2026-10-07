@@ -290,6 +290,9 @@ pub enum SubmitError {
     /// reason to give because there is no instance left to ask.
     #[error("the source this was prepared for is no longer there")]
     SourceGone,
+    /// A listed upgrade's installed tool is absent from the current snapshot.
+    #[error("the tool is no longer listed as installed")]
+    NotListed,
     /// A link whose preview found files in the way
     /// (`Warning::LinkConflicts`): Homebrew would link nothing, so the
     /// window offers no Link, and this refuses one whatever it sent. The

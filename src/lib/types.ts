@@ -18,13 +18,15 @@ export type OpStatus =
   | "Done";
 export type DetectOutcome = "Found" | "Missing";
 // Rust `Attention`: which way reconcile contradicted a command that
-// reported success -- or, `BackAfterUninstall`, what a path-list
+// reported success, or `GoneBeforeUpgrade`, absence before anything ran;
+// or, `BackAfterUninstall`, what a path-list
 // uninstall's own last look found after it had moved everything;
 // `NotLinkedAfterLink`, a `brew link` that exited 0 and linked nothing.
 // Worded by the front end, per variant.
 export type Attention =
   | "NotInstalledAfterInstall"
   | "StillInstalledAfterUninstall"
+  | "GoneBeforeUpgrade"
   | "GoneAfterUpgrade"
   | "UnchangedAfterUpgrade"
   | "BackAfterUninstall"

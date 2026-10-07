@@ -49,6 +49,7 @@ function attentionKey(attention: Attention): string {
   switch (attention) {
     case "NotInstalledAfterInstall":
     case "StillInstalledAfterUninstall":
+    case "GoneBeforeUpgrade":
     case "GoneAfterUpgrade":
     case "UnchangedAfterUpgrade":
     case "BackAfterUninstall":
@@ -93,6 +94,7 @@ export function outcomeDetailKey(outcome: Outcome): string | null {
         return "operations.outcome.NeedsAttention.NotLinkedAfterLinkDetail";
       case "NotInstalledAfterInstall":
       case "StillInstalledAfterUninstall":
+      case "GoneBeforeUpgrade":
       case "GoneAfterUpgrade":
         return null;
       default: {

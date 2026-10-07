@@ -80,6 +80,8 @@ fn random_plan_id() -> PlanId {
 pub(crate) struct StoredPlan {
     pub(super) issued: IssuedPlan,
     pub(super) generation: u64,
+    /// Whether the preview was restricted to the window's listed tools.
+    listed_only: bool,
     /// When this plan was issued, read from a clock nothing can set.
     ///
     /// Expiry is a *lifetime* -- "ten minutes have gone by since you
@@ -366,6 +368,7 @@ impl Session {
             StoredPlan {
                 issued: issued.clone(),
                 generation,
+                listed_only,
                 issued_monotonic,
                 target_version: target,
             },
@@ -502,6 +505,29 @@ impl Session {
         }
         if let Some(reason) = blocked_uninstall(&snapshot.artifacts, &stored.issued.plan.request) {
             return Err(SubmitError::UninstallBlocked { reason });
+        }
+        let request = &stored.issued.plan.request;
+        // A missing update candidate can mean another operation already
+        // updated the tool. Only the installed row decides absence. Failed
+        // or deferred reads do not establish it; the locked before-reading
+        // in OperationManager is still the final check.
+        if stored.listed_only
+            && request.kind == OpKind::Upgrade
+            && !snapshot.artifacts.iter().any(|a| {
+                a.key.instance_id == request.instance_id
+                    && a.key.kind == request.artifact_kind
+                    && a.key.name == request.name
+            })
+            && !snapshot
+                .errors
+                .iter()
+                .any(|e| e.instance_id == request.instance_id)
+            && !instance
+                .status
+                .notes
+                .contains(&crate::model::InstanceNote::IndexUpdating)
+        {
+            return Err(SubmitError::NotListed);
         }
         Ok(())
     }
@@ -767,6 +793,45 @@ mod tests {
         }
         assert_eq!(session.issued_plans.lock().unwrap().len(), 2);
         assert_eq!(adapter.most_in_flight.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn test_listed_upgrade_submit_rechecks_installed_artifact_not_update_candidate() {
+        for still_installed in [false, true] {
+            let adapter = FakeAdapter::new(vec![test_support::make_instance("fake", "fake:1")]);
+            adapter.set_updates(vec![candidate("jq", None)]);
+            adapter.set_artifacts(vec![installed_on(
+                "fake:1",
+                ArtifactKind::Formula,
+                "jq",
+                None,
+            )]);
+            let session =
+                Session::with_adapters(Arc::new(VecSink::new()), vec![adapter.clone()], None);
+            session
+                .refresh(&test_support::non_root_env(), &CheckOptions::default())
+                .await;
+            let issued = session
+                .issue_listed_plan(&request(OpKind::Upgrade, "jq"))
+                .await
+                .unwrap();
+            adapter.set_updates(vec![]);
+            if !still_installed {
+                adapter.set_artifacts(vec![]);
+            }
+            session
+                .refresh(&test_support::non_root_env(), &CheckOptions::default())
+                .await;
+            let submitted = session.submit(issued.id.clone());
+            if still_installed {
+                let op_id = submitted.expect("an already updated installed tool remains allowed");
+                session.ops.wait(op_id).await;
+            } else {
+                assert_eq!(submitted, Err(SubmitError::NotListed));
+                assert!(session.operations().is_empty());
+                assert_eq!(session.submit(issued.id), Err(SubmitError::Unknown));
+            }
+        }
     }
 
     #[tokio::test]

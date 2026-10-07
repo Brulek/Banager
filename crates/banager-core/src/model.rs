@@ -1878,7 +1878,8 @@ pub enum Outcome {
     /// (`run_operation`). A cancel that lost the race to the command
     /// finishing is `Succeeded`, not this.
     Cancelled,
-    /// The command reported success but reconcile disagrees -- or a
+    /// The pre-upgrade reading found the tool gone, or the command
+    /// reported success but reconcile disagrees -- or a
     /// path-list uninstall moved everything on its list and then found part
     /// of what the list names there (`Attention::BackAfterUninstall`, from
     /// its own last look). Carries which disagreement, never a sentence: the
@@ -2047,11 +2048,13 @@ pub enum Fault {
     Internal,
 }
 
-/// What reconcile found that the command's own success did not account
+/// What reconcile found before an upgrade or that the command's success did not account
 /// for -- or, for `BackAfterUninstall`, what a path-list uninstall's own
 /// last look found. See [`Outcome::NeedsAttention`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Attention {
+    /// The locked before-reading found the tool absent. Nothing was started.
+    GoneBeforeUpgrade,
     /// An install exited 0 and the item is not installed.
     NotInstalledAfterInstall,
     /// An uninstall ended as if it had succeeded -- its command exited 0,
