@@ -106,6 +106,60 @@ pub enum Unavailable {
     NoPip,
 }
 
+/// Why a source that is `Unavailable::NotResponding` did not answer: what
+/// the command Banager asked it with did (`runner::no_answer::of`), read
+/// from what it wrote before any login was masked out of it, as an
+/// operation's `Outcome::Failed.cause` is. "Not responding" is only true of
+/// the first: the other two ran, or never could, and a person who reads
+/// "not responding" waits for something that will not come (finding (1) of
+/// the 2026-10-07 run: npm's launcher `#!/usr/bin/env node` found no `node`,
+/// and the window said only 「npm没有响应」). Mirrored by `NoAnswerKind` in
+/// src/lib/types.ts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum NoAnswerKind {
+    /// It started and had not answered when Banager stopped waiting
+    /// (`CommandOutput::timed_out`).
+    TimedOut,
+    /// It never ran: its program is not there or cannot be run
+    /// (`RunnerError::NotFound`, `RunnerError::Spawn`), or it exited 126 or
+    /// 127, a shell's and `env`'s "found but cannot run" and "not found" --
+    /// npm's `#!/usr/bin/env node` with no `node` on `PATH` is 127.
+    CouldNotStart,
+    /// It ran and ended with an error: any other non-zero exit, or a
+    /// signal it did not get from Banager.
+    ExitedWithError,
+}
+
+/// `InstanceStatus::no_answer`: why the source did not answer, and what
+/// Banager can offer about it. Mirrored by `NoAnswer` in src/lib/types.ts.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NoAnswer {
+    pub kind: NoAnswerKind,
+    /// The program the source's own launcher needed and `env` did not find
+    /// on `PATH`: `node` in "env: node: No such file or directory"
+    /// (`runner::no_answer::missing_program`). Only with `CouldNotStart`.
+    #[serde(default)]
+    pub missing_program: Option<String>,
+    /// Homebrew formulae that would put `missing_program` back: keg-only,
+    /// installed, not linked, and named for it (`node@22` for `node`),
+    /// newest first. Each is offered as `brew link --force <name>`, an
+    /// `OpKind::Link` the window plans and runs like any other operation.
+    /// Worked out over the whole snapshot once a round has read every
+    /// source (`link_fixes::fill`), never by an adapter's `detect`, which
+    /// leaves it empty.
+    #[serde(default)]
+    pub link_fixes: Vec<LinkFix>,
+}
+
+/// One formula `NoAnswer::link_fixes` offers to link: its row's key (the
+/// Homebrew source's instance, `Formula`, the name) and the version the
+/// row shows. Mirrored by `LinkFix` in src/lib/types.ts.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LinkFix {
+    pub key: ArtifactKey,
+    pub version: String,
+}
+
 /// Something a source answered *with*, that changes how its answer should
 /// be read. Deliberately payload-free: a data-carrying variant would turn
 /// a bare-string unit variant into an externally tagged object on the
@@ -199,6 +253,12 @@ pub struct InstanceStatus {
     /// `None` means the source answered.
     pub unavailable: Option<Unavailable>,
     pub notes: Vec<InstanceNote>,
+    /// Why a `NotResponding` source did not answer, where the command
+    /// Banager asked it with says (`NoAnswer`); `None` for every other
+    /// state, and for an answer Banager did not recognise. Absent in an
+    /// older payload: none.
+    #[serde(default)]
+    pub no_answer: Option<NoAnswer>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -3297,6 +3357,62 @@ mod tests {
     }
 
     #[test]
+    fn test_why_a_source_did_not_answer_is_on_the_wire_as_the_mirror_spells_it() {
+        // `NoAnswer` in src/lib/types.ts: the kind a bare string, the
+        // program and the fixes always sent, a fix's key as every key is.
+        let status = InstanceStatus {
+            unavailable: Some(Unavailable::NotResponding),
+            notes: Vec::new(),
+            no_answer: Some(NoAnswer {
+                kind: NoAnswerKind::CouldNotStart,
+                missing_program: Some("node".to_string()),
+                link_fixes: vec![LinkFix {
+                    key: ArtifactKey {
+                        instance_id: "brew:/opt/homebrew".to_string(),
+                        kind: ArtifactKind::Formula,
+                        name: "node@22".to_string(),
+                    },
+                    version: "22.23.3_1".to_string(),
+                }],
+            }),
+        };
+        let json = serde_json::to_string(&status).expect("serialize");
+        assert_eq!(
+            json,
+            r#"{"unavailable":"NotResponding","notes":[],"no_answer":{"kind":"CouldNotStart","missing_program":"node","link_fixes":[{"key":{"instance_id":"brew:/opt/homebrew","kind":"Formula","name":"node@22"},"version":"22.23.3_1"}]}}"#
+        );
+        assert_eq!(
+            serde_json::from_str::<InstanceStatus>(&json).expect("deserialize"),
+            status
+        );
+        for (kind, wire) in [
+            (NoAnswerKind::TimedOut, "TimedOut"),
+            (NoAnswerKind::CouldNotStart, "CouldNotStart"),
+            (NoAnswerKind::ExitedWithError, "ExitedWithError"),
+        ] {
+            assert_eq!(
+                serde_json::to_string(&kind).expect("serialize"),
+                format!("\"{wire}\"")
+            );
+        }
+        // A payload from before it existed reads as no reason; a reason
+        // with neither program nor fixes reads with none.
+        let older: InstanceStatus =
+            serde_json::from_str(r#"{"unavailable":"NotResponding","notes":[]}"#)
+                .expect("an older payload");
+        assert_eq!(older.no_answer, None);
+        let bare: NoAnswer = serde_json::from_str(r#"{"kind":"TimedOut"}"#).expect("bare");
+        assert_eq!(
+            bare,
+            NoAnswer {
+                kind: NoAnswerKind::TimedOut,
+                missing_program: None,
+                link_fixes: Vec::new(),
+            }
+        );
+    }
+
+    #[test]
     fn test_instance_status_is_default_empty_and_bare_strings_on_the_wire() {
         // The hand-written TypeScript mirror (`src/lib/types.ts`) spells
         // this as `{ unavailable: Unavailable | null; notes: InstanceNote[] }`
@@ -3307,7 +3423,7 @@ mod tests {
         assert_eq!(status.unavailable, None);
         assert!(status.notes.is_empty());
         let json = serde_json::to_string(&status).expect("serialize");
-        assert_eq!(json, r#"{"unavailable":null,"notes":[]}"#);
+        assert_eq!(json, r#"{"unavailable":null,"notes":[],"no_answer":null}"#);
 
         for unavailable in [
             Unavailable::NotRunning,
@@ -3319,11 +3435,14 @@ mod tests {
             let status = InstanceStatus {
                 unavailable: Some(unavailable),
                 notes: vec![InstanceNote::IndexMayBeStale],
+                no_answer: None,
             };
             let json = serde_json::to_string(&status).expect("serialize");
             assert_eq!(
                 json,
-                format!(r#"{{"unavailable":"{unavailable:?}","notes":["IndexMayBeStale"]}}"#)
+                format!(
+                    r#"{{"unavailable":"{unavailable:?}","notes":["IndexMayBeStale"],"no_answer":null}}"#
+                )
             );
             assert_eq!(
                 serde_json::from_str::<InstanceStatus>(&json).expect("deserialize"),
@@ -3335,9 +3454,13 @@ mod tests {
         let status = InstanceStatus {
             unavailable: None,
             notes: vec![InstanceNote::IndexUpdating],
+            no_answer: None,
         };
         let json = serde_json::to_string(&status).expect("serialize");
-        assert_eq!(json, r#"{"unavailable":null,"notes":["IndexUpdating"]}"#);
+        assert_eq!(
+            json,
+            r#"{"unavailable":null,"notes":["IndexUpdating"],"no_answer":null}"#
+        );
         assert_eq!(
             serde_json::from_str::<InstanceStatus>(&json).expect("deserialize"),
             status
@@ -3357,11 +3480,12 @@ mod tests {
             let status = InstanceStatus {
                 unavailable: None,
                 notes: vec![note],
+                no_answer: None,
             };
             let json = serde_json::to_string(&status).expect("serialize");
             assert_eq!(
                 json,
-                format!(r#"{{"unavailable":null,"notes":["{wire}"]}}"#)
+                format!(r#"{{"unavailable":null,"notes":["{wire}"],"no_answer":null}}"#)
             );
             assert_eq!(
                 serde_json::from_str::<InstanceStatus>(&json).expect("deserialize"),

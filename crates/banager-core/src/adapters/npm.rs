@@ -245,6 +245,10 @@ impl NpmAdapter {
                     status: InstanceStatus {
                         unavailable: Some(Unavailable::NotResponding),
                         notes: Vec::new(),
+                        // What `npm prefix -g` did: npm's launcher with no
+                        // `node` on PATH never starts (finding (1) of the
+                        // 2026-10-07 run).
+                        no_answer: crate::runner::no_answer::of(&prefix_output),
                     },
                     version: None,
                     answered_at: None,
@@ -265,7 +269,7 @@ impl NpmAdapter {
             .runner
             .run(version_spec, None, CancellationToken::new())
             .await;
-        let version = match version_output {
+        let version = match &version_output {
             Ok(o) if o.exit_code == Some(0) => Some(o.stdout.trim().to_string()),
             _ => None,
         };
@@ -290,6 +294,10 @@ impl NpmAdapter {
                 // answer.
                 unavailable: version.is_none().then_some(Unavailable::NotResponding),
                 notes: Vec::new(),
+                no_answer: version
+                    .is_none()
+                    .then(|| crate::runner::no_answer::of(&version_output))
+                    .flatten(),
             },
             version,
             answered_at: None,
@@ -1105,6 +1113,68 @@ mod tests {
         assert!(
             runner.calls().is_empty(),
             "no subprocess should run when npm isn't found"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_detect_says_why_npm_did_not_answer() {
+        // Finding (1) of the 2026-10-07 run: `brew upgrade node@22` left no
+        // `node` on PATH, npm's launcher (`#!/usr/bin/env node`) could not
+        // start, and the window said only 「npm没有响应」. What the command
+        // did is the reason: it never ran, for want of `node`. And when the
+        // prefix answers but `--version` does not, that command's reason.
+        use crate::model::{NoAnswer, NoAnswerKind};
+        let env_said = |exit_code| CommandOutput {
+            stderr_cause: Default::default(),
+            exit_code: Some(exit_code),
+            stdout: String::new(),
+            stderr: "env: node: No such file or directory\n".to_string(),
+            timed_out: false,
+            cancelled: false,
+        };
+        let (dir, npm_path, env) = detect_fixture("no-node");
+        let npm = npm_path.to_str().expect("utf8 path");
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(vec![npm, "prefix", "-g"], env_said(127));
+        let instances = NpmAdapter::new(runner).detect(&env).await;
+        assert_eq!(
+            instances[0].status.no_answer,
+            Some(NoAnswer {
+                kind: NoAnswerKind::CouldNotStart,
+                missing_program: Some("node".to_string()),
+                link_fixes: Vec::new(),
+            })
+        );
+
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec![npm, "prefix", "-g"],
+            CommandOutput {
+                stdout: "/opt/homebrew\n".to_string(),
+                stderr: String::new(),
+                ..env_said(0)
+            },
+        );
+        runner.respond(
+            vec![npm, "--version"],
+            CommandOutput {
+                timed_out: true,
+                exit_code: None,
+                ..env_said(0)
+            },
+        );
+        let instances = NpmAdapter::new(runner)
+            .with_prefix_read_only_fn(|_| None)
+            .detect(&env)
+            .await;
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(
+            instances[0].status.unavailable,
+            Some(Unavailable::NotResponding)
+        );
+        assert_eq!(
+            instances[0].status.no_answer.as_ref().map(|why| why.kind),
+            Some(NoAnswerKind::TimedOut)
         );
     }
 

@@ -691,6 +691,7 @@ mod tests {
                 status: InstanceStatus {
                     unavailable: None,
                     notes,
+                    no_answer: None,
                 },
                 ..crate::testing::manager_instance("brew", "brew:/opt/homebrew")
             }],

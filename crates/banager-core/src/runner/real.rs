@@ -388,11 +388,13 @@ impl StreamBuffer {
 
     /// Why the command failed, by the last lines of this stream as the
     /// command wrote them (`history::operation_failure_cause` over
-    /// `failure_summary`): the same lines `into_transcript` hands on
-    /// masked, read before the mask can take the words that say why --
-    /// sudo's "password", with a proxy password `pass` (re-check 2's N1).
-    /// Nothing of the text leaves here, only the cause.
-    fn cause_as_written(&self) -> Option<crate::history::FailureCause> {
+    /// `failure_summary`), and the program `env` said it could not find
+    /// there (`no_answer::missing_program`): the same lines
+    /// `into_transcript` hands on masked, read before the mask can take the
+    /// words that say why -- sudo's "password", with a proxy password
+    /// `pass` (re-check 2's N1), or `node`, with a proxy user name `node`.
+    /// Nothing of the text leaves here but those two.
+    fn read_as_written(&self) -> StderrCause {
         let text = if self.elided == 0 {
             String::from_utf8_lossy(&self.bytes).into_owned()
         } else {
@@ -401,7 +403,11 @@ impl StreamBuffer {
             text.push_str(&String::from_utf8_lossy(&self.bytes[self.head_len..]));
             text
         };
-        crate::history::operation_failure_cause(&failure_summary(&text))
+        let summary = failure_summary(&text);
+        StderrCause::Read {
+            cause: crate::history::operation_failure_cause(&summary),
+            missing_program: super::no_answer::missing_program(&summary),
+        }
     }
 
     /// Hands `on_line` the line from `line_start` to `end` (exclusive),
@@ -756,7 +762,10 @@ impl CommandRunner for RealRunner {
                 stderr: String::new(),
                 timed_out: false,
                 cancelled: true,
-                stderr_cause: StderrCause::Read(None),
+                stderr_cause: StderrCause::Read {
+                    cause: None,
+                    missing_program: None,
+                },
             });
         }
 
@@ -1040,7 +1049,7 @@ impl CommandRunner for RealRunner {
 
         // Why it failed, read off what it wrote before a login is masked
         // out of it: the mask may take the words that say why.
-        let stderr_cause = StderrCause::Read(err.cause_as_written());
+        let stderr_cause = err.read_as_written();
         Ok(CommandOutput {
             exit_code,
             stdout: out.into_transcript(),
@@ -2744,6 +2753,41 @@ mod tests {
         );
     }
 
+    /// Why the stream's command failed, as `read_as_written` reads it.
+    fn cause_as_written(buf: &StreamBuffer) -> Option<crate::history::FailureCause> {
+        match buf.read_as_written() {
+            StderrCause::Read { cause, .. } => cause,
+            StderrCause::InStderr => unreachable!("the runner always reads it"),
+        }
+    }
+
+    #[test]
+    fn test_the_missing_program_is_read_off_what_env_wrote_before_the_mask() {
+        // npm's launcher with no `node` on PATH, and a proxy whose user
+        // name is `node`: the mask takes the word, the reading does not.
+        let mut buf = StreamBuffer::new(CapPolicy::ElideMiddle).redacting(Arc::new(
+            crate::runner::redact::Redactor::for_settings([(
+                "https_proxy",
+                "http://node:secret@127.0.0.1:8080",
+            )]),
+        ));
+        let (_lines, on_line) = collected();
+        buf.push(
+            b"env: node: No such file or directory\n",
+            Stream::Stderr,
+            &on_line,
+        );
+        assert_eq!(
+            buf.read_as_written(),
+            StderrCause::Read {
+                cause: None,
+                missing_program: Some("node".to_string()),
+            }
+        );
+        let text = buf.into_transcript();
+        assert!(!text.contains("node"), "{text}");
+    }
+
     /// What sudo 1.9 prints when it cannot ask for the Mac's password.
     const SUDO_SAID: &str = "sudo: a terminal is required to read the password; \
         either use the -S option to read from standard input or configure an askpass helper\n\
@@ -2762,7 +2806,7 @@ mod tests {
         ));
         let (lines, on_line) = collected();
         buf.push(SUDO_SAID.as_bytes(), Stream::Stderr, &on_line);
-        assert_eq!(buf.cause_as_written(), Some(FailureCause::NeedsPassword));
+        assert_eq!(cause_as_written(&buf), Some(FailureCause::NeedsPassword));
         let text = buf.into_transcript();
         assert!(text.contains("sudo: a ****word is required"), "{text}");
         assert_eq!(failure_cause(&failure_summary(&text)), None);
@@ -2785,7 +2829,7 @@ mod tests {
             Stream::Stderr,
             &None,
         );
-        assert_eq!(buf.cause_as_written(), Some(FailureCause::AppMissing));
+        assert_eq!(cause_as_written(&buf), Some(FailureCause::AppMissing));
         // ... and the same off a runner that masks nothing.
         let output = CommandOutput {
             exit_code: Some(1),
@@ -2814,11 +2858,11 @@ mod tests {
             &None,
         );
         buf.push(SUDO_SAID.as_bytes(), Stream::Stderr, &None);
-        assert_eq!(buf.cause_as_written(), Some(FailureCause::NeedsPassword));
+        assert_eq!(cause_as_written(&buf), Some(FailureCause::NeedsPassword));
         // Five more lines after sudo's push them out of the summary, and
         // out of the cause with them, as before the mask was there.
         buf.push(b"a\nb\nc\nd\ne\n", Stream::Stderr, &None);
-        assert_eq!(buf.cause_as_written(), None);
+        assert_eq!(cause_as_written(&buf), None);
     }
 
     #[test]
@@ -2939,7 +2983,14 @@ mod tests {
                 )
                 .await
                 .expect("spawn /bin/sh");
-            assert_eq!(output.stderr_cause, StderrCause::Read(cause), "{script}");
+            assert_eq!(
+                output.stderr_cause,
+                StderrCause::Read {
+                    cause,
+                    missing_program: None
+                },
+                "{script}"
+            );
         }
         let cancel = CancellationToken::new();
         cancel.cancel();
@@ -2958,7 +3009,13 @@ mod tests {
             )
             .await
             .expect("a cancelled run");
-        assert_eq!(output.stderr_cause, StderrCause::Read(None));
+        assert_eq!(
+            output.stderr_cause,
+            StderrCause::Read {
+                cause: None,
+                missing_program: None
+            }
+        );
     }
 
     #[tokio::test]

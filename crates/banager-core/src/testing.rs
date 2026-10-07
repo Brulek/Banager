@@ -108,6 +108,7 @@ pub fn unavailable_instance(
         status: InstanceStatus {
             unavailable: Some(unavailable),
             notes: Vec::new(),
+            no_answer: None,
         },
         ..manager_instance(adapter_id, id)
     }

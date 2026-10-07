@@ -319,7 +319,13 @@ impl StandaloneAdapter {
             // (`scan::owned_roots`).
             prefix: root,
             scope: Scope::User,
-            status: InstanceStatus { unavailable, notes },
+            // A launcher that did not answer is `NotResponding` with no
+            // reason (`no_answer`): its own row's notice is worded as that.
+            status: InstanceStatus {
+                unavailable,
+                notes,
+                no_answer: None,
+            },
             version,
             answered_at: None,
             unverified_version,
@@ -2167,6 +2173,7 @@ mod tests {
             status: InstanceStatus {
                 unavailable: None,
                 notes: vec![InstanceNote::LauncherOnly],
+                no_answer: None,
             },
             ..instance_for(&layout, None)
         };

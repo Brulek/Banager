@@ -362,6 +362,7 @@ impl UvAdapter {
                 // answer.
                 unavailable: version.is_none().then_some(Unavailable::NotResponding),
                 notes: Vec::new(),
+                no_answer: None,
             },
             version,
             answered_at: None,

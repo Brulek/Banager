@@ -376,6 +376,7 @@ impl OllamaAdapter {
                     Some(Unavailable::NotResponding)
                 },
                 notes: Vec::new(),
+                no_answer: None,
             },
             version,
             answered_at: None,

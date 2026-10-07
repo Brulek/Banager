@@ -6,6 +6,7 @@ use std::time::Duration;
 
 pub mod login_path;
 pub mod mock;
+pub mod no_answer;
 pub mod path_env;
 pub mod real;
 pub mod redact;
@@ -102,16 +103,21 @@ pub fn failure_summary(stderr: &str) -> String {
 }
 
 /// Where a command's failure cause is: see [`CommandOutput::stderr_cause`].
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum StderrCause {
     /// `stderr` is as the command wrote it, so the cause is read off its
     /// summary (`failure_summary`). A runner that masks nothing says this.
     #[default]
     InStderr,
     /// Read by the runner off the summary's lines as the command wrote
-    /// them, before any login was masked out of `stderr`. `RealRunner`
-    /// always says this.
-    Read(Option<FailureCause>),
+    /// them, before any login was masked out of `stderr`: why it failed
+    /// (`history::operation_failure_cause`), and the program `env` said it could not
+    /// find (`no_answer::missing_program`) -- a proxy user name `node`
+    /// would mask the very word. `RealRunner` always says this.
+    Read {
+        cause: Option<FailureCause>,
+        missing_program: Option<String>,
+    },
 }
 
 impl CommandOutput {
@@ -122,9 +128,22 @@ impl CommandOutput {
     /// (`adapters::says_network_failed`, `lookupFailureCause` in
     /// src/lib/failureCause.ts).
     pub fn failure_cause(&self) -> Option<FailureCause> {
-        match self.stderr_cause {
+        match &self.stderr_cause {
             StderrCause::InStderr => operation_failure_cause(&failure_summary(&self.stderr)),
-            StderrCause::Read(cause) => cause,
+            StderrCause::Read { cause, .. } => *cause,
+        }
+    }
+
+    /// The program the command's launcher needed and `env` did not find on
+    /// `PATH`, by the last lines it wrote to stderr
+    /// (`no_answer::missing_program` over `failure_summary`), as it wrote
+    /// them: `node`, for npm's `#!/usr/bin/env node` with no `node` there.
+    pub fn missing_program(&self) -> Option<String> {
+        match &self.stderr_cause {
+            StderrCause::InStderr => no_answer::missing_program(&failure_summary(&self.stderr)),
+            StderrCause::Read {
+                missing_program, ..
+            } => missing_program.clone(),
         }
     }
 }

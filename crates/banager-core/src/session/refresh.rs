@@ -425,6 +425,9 @@ impl Session {
                                         .unavailable
                                         .or(Some(Unavailable::NotResponding)),
                                     notes: i.status.notes.clone(),
+                                    // Last round's reason, where it had one;
+                                    // a panic is none.
+                                    no_answer: i.status.no_answer.clone(),
                                 },
                                 ..i.clone()
                             }),
@@ -1400,6 +1403,7 @@ mod tests {
             status: InstanceStatus {
                 unavailable: Some(Unavailable::NotResponding),
                 notes: Vec::new(),
+                no_answer: None,
             },
             ..make_instance("npm", &crate::adapters::npm::unanswered_instance_id(&exe))
         };
@@ -1479,6 +1483,7 @@ mod tests {
             status: InstanceStatus {
                 unavailable: Some(Unavailable::NoPip),
                 notes: Vec::new(),
+                no_answer: None,
             },
             ..make_instance("pip", "pip:/usr/local/bin/npm")
         };
@@ -1492,6 +1497,7 @@ mod tests {
             status: InstanceStatus {
                 unavailable: Some(Unavailable::NotResponding),
                 notes: Vec::new(),
+                no_answer: None,
             },
             ..make_instance("npm", &crate::adapters::npm::unanswered_instance_id(&exe))
         };
