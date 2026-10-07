@@ -129,6 +129,32 @@ describe.each([
   });
 });
 
+it("has the README say how many lines each built-in table holds, in its English block and its Chinese one", () => {
+  // Nothing else counts them for the README: a Chinese line added
+  // without it following left it saying 3,390 where each Chinese table
+  // held 3,391 (review r36 V4, skeptic 1).
+  const count = (file: string): string =>
+    new Intl.NumberFormat("en-US").format(Object.keys(builtIn(file).lines).length);
+  const english = count("en.json");
+  const chinese = count("zh-CN.json");
+  // "In each Chinese language": the two Chinese tables hold as many.
+  expect(count("zh-Hant.json")).toBe(chinese);
+  const readme = readFileSync(path.resolve(SRC, "../README.md"), "utf-8");
+  const heading = "\n## 中文\n";
+  expect(readme.split(heading), "README.md has one `## 中文` heading").toHaveLength(2);
+  const [englishBlock, chineseBlock] = readme.split(heading).map((block) => block.replace(/\s+/g, " "));
+  // The number each sentence gives, or what the sentence no longer says.
+  const said = (block: string, sentence: RegExp): string => sentence.exec(block)?.[1] ?? `no ${String(sentence)}`;
+  expect(said(englishBlock, /says a line in English instead wherever Banager has one: ([\d,]+) of them,/)).toBe(
+    english,
+  );
+  expect(
+    said(englishBlock, /says a line in Chinese instead wherever Banager has one: ([\d,]+) in each Chinese language,/),
+  ).toBe(chinese);
+  expect(said(chineseBlock, /就改显示这一句：([\d,]+) 条，/)).toBe(english);
+  expect(said(chineseBlock, /简体中文和繁体中文各 ([\d,]+) 条，/)).toBe(chinese);
+});
+
 it("reads each built-in table by a dynamic import in one module, so a build puts each in a chunk of its own", () => {
   const modules = (dir: string): string[] =>
     readdirSync(dir).flatMap((entry) => {

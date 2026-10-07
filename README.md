@@ -430,7 +430,7 @@ thing that source lists ("npm package"); and for a tool with its own installer, 
 own, in all three languages. npm, pip, pipx, uv and Cargo give none, so in English a row for an npm, PyPI
 or crates.io package says a line in English instead wherever Banager has one: 640 of them,
 each rewritten, shorter, from the description the package's own registry gives it. In Chinese, a
-row says a line in Chinese instead wherever Banager has one: 3,390 in each Chinese language, for Homebrew's
+row says a line in Chinese instead wherever Banager has one: 3,391 in each Chinese language, for Homebrew's
 formulae and casks and for npm, PyPI and crates.io packages, each translated from the description
 the tool's own source gives it. The three tables are built into the app, in
 `src/assets/tool-descriptions/en.json`, `zh-CN.json` and `zh-Hant.json`. A table loads when needed
@@ -507,7 +507,7 @@ Rust 侧返回的拒绝理由也会翻译，不只是外面那层框。操作所
 来源没给的，写这个来源列出的是什么（“npm软件包”）；自带安装器的工具，是 Banager 自己写的一句，
 英文、简体中文和繁体中文都有。npm、pip、pipx、uv 和 Cargo 都不给说明，所以英文界面里，npm、PyPI、crates.io 上的包只要
 Banager 有它的英文说明，就改显示这一句：640 条，每条都由该包在 npm、PyPI 或 crates.io 上自己的说明改写而来，
-更简短。中文界面里，只要 Banager 有这个软件的中文说明，就改显示中文：简体中文和繁体中文各 3,390 条，涵盖 Homebrew 的
+更简短。中文界面里，只要 Banager 有这个软件的中文说明，就改显示中文：简体中文和繁体中文各 3,391 条，涵盖 Homebrew 的
 formula 与 cask，以及 npm、PyPI、crates.io 上的包，每条都译自该软件所在来源自己的说明。这些说明内置在应用里
 （`src/assets/tool-descriptions/en.json`、`zh-CN.json` 与 `zh-Hant.json`），列表或搜索需要时才读取，
 繁体中文还会读取简体中文和英文作为缺少条目时的备用。显示时不发任何网络请求。软件详情里也只显示这一行，不再附上来源的原文；当前语言下没有

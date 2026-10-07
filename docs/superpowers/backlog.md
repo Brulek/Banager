@@ -589,7 +589,7 @@ Opus max 全分支终审：3 项必修（已修），其余推迟。按主题分
   命令、只显示扫描找到的，`src-tauri/src/reveal.rs`，`docs/what-we-run.md:2211-2215`）；页名改为「其他程序」并排到侧栏「来源」末行
   （`3f51cbe`，i18n `nav.unknown`）；归属与所在 App 直接写在行上，不只在 ⓘ 里（`bdf192d`，`src/pages/UnknownPage.tsx:207`、`:327`）。
 - ~~**中文界面里的英文简介**（Astra 10）：Homebrew 的 formula 简介是上游英文（git、jq 等），需要一份常用工具的中文用途表。~~
-  —— **已于 2026-09-28 解决**（`d45a201`，之后又扩充）：`src/assets/tool-descriptions/zh-CN.json`（现有 3,390 条，从各来源自己的描述译来），
+  —— **已于 2026-09-28 解决**（`d45a201`，之后又扩充）：`src/assets/tool-descriptions/zh-CN.json`（现有 3,391 条，从各来源自己的描述译来），
   读取见 `src/lib/toolDescriptions.ts:1-16`。
 - ~~**失败行挤掉名字**：一行同时有「会自动更新」标签和「更新失败 / 查看日志」时，800px 窗口下名字只剩几个字母（Claude Code）。
   结果出现时可以收起次要标签。~~
