@@ -7,6 +7,7 @@ import { useCancelOperation, useOperations, useSettings } from "../lib/queries";
 import { copyStatusText, useCopyCommand } from "../lib/clipboard";
 import { FAILURE_CAUSE_KEYS, outcomeCause } from "../lib/failureCause";
 import { outcomeDetailKey } from "../lib/format";
+import { namesInSentence } from "../lib/sources";
 import {
   OP_CANCEL_KEYS,
   cancelState,
@@ -94,7 +95,8 @@ export function noteText(t: TFunction, note: LogNote): string {
   }
   if ("NoLongerLinked" in note) {
     const { name, commands } = note.NoLongerLinked;
-    return t("kegLinks.logNoLongerLinked", { name, commands: commands.join(t("common.listSeparator")) });
+    // Typing any one of them no longer runs it: "node or npm" (r21 C6).
+    return t("kegLinks.logNoLongerLinked", { name, commands: namesInSentence(t, commands, "or") });
   }
   const unhandled: never = note;
   return unhandled;

@@ -4,6 +4,7 @@ import type { FollowUpWarning } from "../lib/types";
 import { copyStatusText, useCopyCommand } from "../lib/clipboard";
 import { displayToken } from "../lib/format";
 import { useUiStore } from "../store/ui";
+import { namesInSentence } from "../lib/sources";
 import { noteText } from "./LogDrawer";
 import { CopyButton } from "./CopyButton";
 import { CommandCode } from "./PasswordCommand";
@@ -28,7 +29,7 @@ function SavedWarning({ note }: { note: FollowUpWarning }) {
     return (
       <div className="flex flex-col gap-2">
         <p className="break-words text-body text-foreground">
-          {t("kegLinks.logNoLongerLinkedLead", { name, commands: commands.join(t("common.listSeparator")) })}
+          {t("kegLinks.logNoLongerLinkedLead", { name, commands: namesInSentence(t, commands, "or") })}
         </p>
         <CommandCode label={t("noAnswer.sheet.commandLabel")} command={command} />
         <div className="flex items-center justify-start">

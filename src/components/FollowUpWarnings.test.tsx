@@ -45,7 +45,7 @@ describe("a saved follow-up warning's log (p1 polish)", () => {
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("brew link --formula --force node@22"));
     // The sentence before it and the one after it say no command.
     const before = within(dialog).getByText(
-      "node@22 isn't linked back into Terminal, so typing node, npm no longer runs it. To link it back, you can run this command in Terminal.",
+      "node@22 isn't linked back into Terminal, so typing node or npm no longer runs it. To link it back, you can run this command in Terminal.",
     );
     expect(before.tagName).toBe("P");
     expect(before.className).not.toContain("font-mono");
@@ -63,7 +63,7 @@ describe("a saved follow-up warning's log (p1 polish)", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Copy Log" }));
     await waitFor(() =>
       expect(writeText).toHaveBeenCalledWith(
-        `${i18n.t("brewVersions.logNotCleanedUp")}\n${i18n.t("kegLinks.logNoLongerLinked", { name: "node@22", commands: "node, npm" })}`,
+        `${i18n.t("brewVersions.logNotCleanedUp")}\nnode@22 isn't linked back into Terminal, so typing node or npm no longer runs it. To link it back, run brew link --formula --force node@22 in Terminal; if a file is in the way, it says which.`,
       ),
     );
   });
@@ -87,14 +87,14 @@ describe("a saved follow-up warning's log (p1 polish)", () => {
   it.each([
     [
       "zh-CN",
-      "node@22没有重新接到终端里，输入node、npm不再运行它。要接回去，可以在终端里运行下面的命令。",
+      "node@22没有重新接到终端里，输入node或npm不再运行它。要接回去，可以在终端里运行下面的命令。",
       "如果有文件挡住，命令会说出是哪个。",
       "要在终端里运行的命令",
       "拷贝命令",
     ],
     [
       "zh-Hant",
-      "node@22沒有重新接到終端機裡，輸入node、npm不再執行它。要接回去，可以在終端機裡執行下面的指令。",
+      "node@22沒有重新接到終端機裡，輸入node或npm不再執行它。要接回去，可以在終端機裡執行下面的指令。",
       "如果有檔案擋住，指令會說出是哪一個。",
       "要在終端機執行的指令",
       "拷貝指令",

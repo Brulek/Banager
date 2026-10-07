@@ -37,6 +37,7 @@
     "viewLog": "查看記錄",
     "listSeparator": "、",
     "listAnd": "{{list}}和{{last}}",
+    "listOr": "{{list}}或{{last}}",
     "checking": "正在檢查…",
     "firstCheckDetail": "首次檢查需要連上網路查詢每個工具的新版本，有時要一兩分鐘。",
     "details": "詳細資訊",

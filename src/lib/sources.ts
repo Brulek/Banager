@@ -1870,11 +1870,12 @@ export function failedSourceNames(
 
 /**
  * `names` as a sentence lists them, in the user's language: 「Homebrew、npm
- * 和 uv」, "Homebrew, npm and uv". One name alone; none, nothing.
+ * 和 uv」, "Homebrew, npm and uv" -- or, `"or"`, any one of them: "typing
+ * node or npm" (r21 C6). One name alone; none, nothing.
  */
-export function namesInSentence(t: Translate, names: string[]): string {
+export function namesInSentence(t: Translate, names: string[], joiner: "and" | "or" = "and"): string {
   if (names.length <= 1) return names[0] ?? "";
-  return t("common.listAnd", {
+  return t(joiner === "or" ? "common.listOr" : "common.listAnd", {
     list: names.slice(0, -1).join(t("common.listSeparator")),
     last: names[names.length - 1],
   });

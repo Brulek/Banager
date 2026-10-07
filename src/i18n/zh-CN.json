@@ -37,6 +37,7 @@
     "viewLog": "查看日志",
     "listSeparator": "、",
     "listAnd": "{{list}}和{{last}}",
+    "listOr": "{{list}}或{{last}}",
     "checking": "正在检查…",
     "firstCheckDetail": "首次检查需要联网查询每个工具的新版本，有时要一两分钟。",
     "details": "详情",

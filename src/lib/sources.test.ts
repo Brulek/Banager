@@ -1454,6 +1454,7 @@ describe("failedSourceNames and namesInSentence", () => {
       "common.listSeparator": ", ",
     };
     if (key === "common.listAnd") return `${options?.list} and ${options?.last}`;
+    if (key === "common.listOr") return `${options?.list} or ${options?.last}`;
     return english[key] ?? key;
   };
 
@@ -1478,6 +1479,10 @@ describe("failedSourceNames and namesInSentence", () => {
     expect(namesInSentence(t, ["Homebrew"])).toBe("Homebrew");
     expect(namesInSentence(t, ["Homebrew", "npm"])).toBe("Homebrew and npm");
     expect(namesInSentence(t, ["Homebrew", "npm", "uv"])).toBe("Homebrew, npm and uv");
+    // Any one of them, with "or": typing node or npm (r21 C6).
+    expect(namesInSentence(t, ["node"], "or")).toBe("node");
+    expect(namesInSentence(t, ["node", "npm"], "or")).toBe("node or npm");
+    expect(namesInSentence(t, ["node", "corepack", "npm", "npx"], "or")).toBe("node, corepack, npm or npx");
   });
 });
 
