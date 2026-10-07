@@ -406,6 +406,24 @@ shows the command it ran — the confirmation's command, without
 Command button, to be run in Terminal, where sudo can ask. Banager runs
 nothing more for it and does not retry it on its own.
 
+After a restart, a retained Homebrew `needsPassword` update offers View
+Steps in Update History and on the offered update (also in Installed).
+The offered row and Update All do not retry that recorded password stop.
+A newer operation supersedes it; once the update is no longer offered,
+the recovery action is no longer needed. Clearing the history display does
+not resolve the stop. The existing 30-day recent-history window applies.
+Each View Steps opening calls the existing `plan_operation` preview path
+for the same source, artifact kind and name (Homebrew's upgrade preview
+runs no command). It must pass the planner's current checks; a refused
+preview shows a next step, its reason in the window's words, and no
+command. The fresh Homebrew primary command and its environment go
+through the same Terminal instructions and `SUDO_ASKPASS` omission as the
+log view; plan warnings are shown too. No history argv is stored or
+reconstructed, the preview is never submitted (like any unsubmitted
+preview, it expires after ten minutes), and no Terminal process is
+launched. This adds no command, host, permission or file written by the
+app.
+
 When this window no longer has any line of a failed operation's log -- it
 keeps the newest 2,000 lines, and a reloaded window keeps none -- and the
 failure kept the tool's own words (its summary: the last stderr lines,

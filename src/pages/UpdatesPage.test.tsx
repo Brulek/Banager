@@ -4052,6 +4052,56 @@ describe("UpdatesPage", () => {
         }
       });
 
+      it.each(["en", "zh-CN", "zh-Hant"])("opens fresh Terminal steps from a persisted password stop (%s)", async (language) => {
+        await i18n.changeLanguage(language);
+        answerHistory({ run: "this-launch", cleared_before: null, records: [
+          kept("onyx", Date.now() - 1000, { key: onyxKey, from_version: "5.0.2", to_version: null,
+            verified: false, result: { Failed: { cause: "needsPassword" } } }),
+        ] });
+        const view = renderPage();
+        const label = i18n.t("needsPassword.viewStepsLabel", { name: "onyx" });
+        const buttons = await screen.findAllByRole("button", { name: label });
+        expect(buttons).toHaveLength(2);
+        expect(calls("plan_operation")).toHaveLength(0);
+        expect(screen.queryByRole("button", { name: i18n.t("updates.updateLabel", { name: "onyx" }) })).toBeNull();
+        fireEvent.click(buttons[0]);
+        const dialog = await screen.findByRole("dialog");
+        const copy = await within(dialog).findByRole("button", { name: i18n.t("common.copyCommand") });
+        expect(copy).toBeEnabled();
+        expect(dialog.querySelector("code")?.textContent).toBe("/opt/homebrew/bin/brew upgrade --cask onyx");
+        expect(calls("plan_operation")[0][1]).toEqual({ request: { kind: "Upgrade", instance_id: onyxKey.instance_id, artifact_kind: "Cask", name: "onyx" } });
+        expect(calls("submit_operation")).toHaveLength(0);
+        fireEvent.click(within(dialog).getByRole("button", { name: i18n.t("common.done") }));
+        fireEvent.click(screen.getAllByRole("button", { name: label })[1]);
+        await waitFor(() => expect(calls("plan_operation")).toHaveLength(2));
+        view.unmount();
+        await i18n.changeLanguage("en");
+      });
+
+      it("keeps the recorded password row out of selection and Update All, even after clearing history", async () => {
+        answerHistory({ run: "this-launch", cleared_before: Date.now(), records: [
+          kept("onyx", Date.now() - 1000, { key: onyxKey, to_version: null,
+            verified: false, result: { Failed: { cause: "needsPassword" } } }),
+        ] });
+        renderPage();
+        await screen.findByRole("button", { name: "View steps: onyx" });
+        expect(within(await findRow("onyx")).queryByRole("checkbox")).toBeNull();
+        fireEvent.click(screen.getByRole("button", { name: "Update All" }));
+        await screen.findByRole("alertdialog");
+        await waitFor(() => expect(calls("plan_operation").length).toBeGreaterThan(0));
+        expect(calls("plan_operation").map(([, args]) => (args as { request: OpRequest }).request.name)).not.toContain("onyx");
+      });
+
+      it.each(["Succeeded", "Cancelled"] as const)("a later recorded %s supersedes a password stop", async (result) => {
+        answerHistory({ run: "this-launch", cleared_before: null, records: [
+          kept("onyx", Date.now() - 2000, { key: onyxKey, result: { Failed: { cause: "needsPassword" } } }),
+          kept("onyx", Date.now() - 1000, { key: onyxKey, result }),
+        ] });
+        renderPage();
+        await screen.findByRole("button", { name: "Update onyx" });
+        expect(screen.queryByRole("button", { name: "View steps: onyx" })).toBeNull();
+      });
+
       it("keeps Clear: the history notes the time, and what was shown stays hidden", async () => {
         answerHistory({
           run: "this-launch",

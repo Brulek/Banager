@@ -1,4 +1,5 @@
 import { SourceDiagnostic } from "../components/SourceDiagnostic";
+import { usePasswordRecoveryKeys } from "../lib/passwordRecovery";
 import { Fragment, useId, useState } from "react";
 import { AUTO_CHECK_CHOICE_KEYS, autoCheckChoice } from "../lib/checkFrequency";
 import type { ReactNode } from "react";
@@ -471,6 +472,7 @@ export function OverviewPage() {
   const checkFailure = useUiStore((s) => s.startupRefreshError);
   const { checkAgain, checking } = useCheckAgain();
   const operationFor = useUpdateOperationFor();
+  const passwordRecoveryKeys = usePasswordRecoveryKeys();
   const refreshedAt = snapshot?.refreshed_at ?? null;
   const now = useMinuteClock(refreshedAt);
   // What the first check has found installed, while it still checks for
@@ -511,9 +513,9 @@ export function OverviewPage() {
   const summary = updatesSummary(
     snapshot,
     settings,
-    (candidate) => holdsRow(operationFor(candidate)),
+    (candidate) => holdsRow(operationFor(candidate)) || passwordRecoveryKeys.has(artifactKeyId(candidate.key)),
     (candidate) => isUnderway(operationFor(candidate)),
-    (candidate) => waitsForPassword(operationFor(candidate)),
+    (candidate) => waitsForPassword(operationFor(candidate)) || passwordRecoveryKeys.has(artifactKeyId(candidate.key)),
   );
 
   // First, the checks that did not finish this round, as the lists' first

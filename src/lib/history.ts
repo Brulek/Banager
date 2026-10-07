@@ -73,8 +73,8 @@ export function listedResult(result: HistoryResult): boolean {
  * still offers the tool an update (`offered`, by `artifactKeyId`): updated
  * in Terminal since, or uninstalled, it no longer is, and 「未能更新」
  * would say what Banager cannot know is still true. While it is offered,
- * its row lists it too, as an update like any other -- that row does not
- * know the last try did not work, so this line is where that is said.
+ * its row lists it too. A recorded Homebrew password stop also gives
+ * that row View Steps through `usePasswordRecoveryKeys`.
  */
 export function recentUpdates(
   view: HistoryView,

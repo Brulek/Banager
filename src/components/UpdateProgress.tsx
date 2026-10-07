@@ -1,3 +1,4 @@
+import { usePasswordRecoveryKeys } from "../lib/passwordRecovery";
 import { useCallback, useId, useMemo, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useOperations, useSettings, useSnapshot } from "../lib/queries";
@@ -190,6 +191,7 @@ export function useStartableUpdates(): UpdateCandidate[] | undefined {
   const { data: snapshot } = useSnapshot();
   const { data: settings } = useSettings();
   const operationFor = useUpdateOperationFor();
+  const passwordRecoveryKeys = usePasswordRecoveryKeys();
   // What the page offers to install moves with the snapshot and the
   // settings only; the operations, which move at every step of every
   // update, only take rows out of it.
@@ -198,8 +200,8 @@ export function useStartableUpdates(): UpdateCandidate[] | undefined {
     [snapshot, settings],
   );
   return useMemo(
-    () => actionable?.filter((candidate) => !holdsRow(operationFor(candidate))),
-    [actionable, operationFor],
+    () => actionable?.filter((candidate) => !holdsRow(operationFor(candidate)) && !passwordRecoveryKeys.has(artifactKeyId(candidate.key))),
+    [actionable, operationFor, passwordRecoveryKeys],
   );
 }
 
@@ -218,6 +220,7 @@ export function useCountedUpdates(): UpdateCandidate[] | undefined {
   const { data: snapshot } = useSnapshot();
   const { data: settings } = useSettings();
   const operationFor = useUpdateOperationFor();
+  const passwordRecoveryKeys = usePasswordRecoveryKeys();
   // As `useStartableUpdates`: the snapshot and the settings decide what
   // is counted, the operations only take rows out of it.
   const counted = useMemo(
@@ -225,8 +228,8 @@ export function useCountedUpdates(): UpdateCandidate[] | undefined {
     [snapshot, settings],
   );
   return useMemo(
-    () => counted?.filter((candidate) => !holdsRow(operationFor(candidate))),
-    [counted, operationFor],
+    () => counted?.filter((candidate) => !holdsRow(operationFor(candidate)) && !passwordRecoveryKeys.has(artifactKeyId(candidate.key))),
+    [counted, operationFor, passwordRecoveryKeys],
   );
 }
 

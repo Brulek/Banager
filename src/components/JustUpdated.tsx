@@ -13,6 +13,7 @@ import {
 import { ALREADY_UPDATED_KEYS, outcomeSentence, outcomeTone } from "../lib/operations";
 import { calendarDaysBetween, shortDateText, shortTimeText } from "../lib/shortDate";
 import type { AlreadyUpdated, ArtifactKey, FollowUpWarning, Attention, HistoryResult, OpSummary, Outcome } from "../lib/types";
+import { PasswordRecovery } from "./PasswordRecovery";
 import { InfoDetail } from "./InfoDetail";
 import { OutcomeIcon } from "./OutcomeIcon";
 import { ToolAvatar } from "./ToolAvatar";
@@ -155,7 +156,7 @@ export interface JustUpdatedFilter {
  * its log and Retry, for as long as that update is still offered; it is
  * listed here only once the row has gone. (A failure the history kept
  * from an earlier launch is listed beside its row on purpose: that row,
- * after a restart, is a plain update that does not know the last try --
+ * after a restart, shows View Steps for a recorded password stop --
  * `recentUpdates` in src/lib/history.ts.)
  * Nothing Clear took off; the order is by when each finished, and an
  * update this window did not see finish -- one from before it was opened
@@ -324,7 +325,8 @@ export interface JustUpdatedProps {
  * ended in 11 (`EndingWords`: 「已更新」 or 「已确认更新」, 「未能更新」 with
  * its cause, 「没有更新成功：版本没有变」, or what else did not add up), and
  * when it finished, 11 muted. Nothing to
- * select or press but an ending's ⓘ, Clear, which hides what it lists,
+ * select or press but an ending's ⓘ, View Steps for a recorded Homebrew
+ * password stop, Clear, which hides what it lists,
  * after a restart too, until the next update ends, and, past
  * `JUST_UPDATED_SHOWN` lines, the "N More" line that shows the rest; it
  * is no part of the page's count or of Select all.
@@ -383,6 +385,9 @@ export function JustUpdated({ entries, onClear }: JustUpdatedProps) {
               <EndingWords entry={entry} />
               {entry.ending.kind === "succeeded" && entry.ending.warnings?.length ? (
                 <FollowUpWarnings warnings={entry.ending.warnings} opId={entry.opId} name={entry.name} />
+              ) : null}
+              {entry.opId === null && entry.adapterId === "brew" && entry.ending.kind === "failed" && entry.ending.cause === "needsPassword" ? (
+                <PasswordRecovery artifactKey={entry.key} name={entry.name} />
               ) : null}
               <span className="w-24 shrink-0 whitespace-nowrap text-right text-small tabular-nums text-muted">
                 {entry.finishedAt !== null && finished !== null ? (

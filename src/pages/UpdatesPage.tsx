@@ -1,3 +1,5 @@
+import { PasswordRecovery } from "../components/PasswordRecovery";
+import { usePasswordRecoveryKeys } from "../lib/passwordRecovery";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useCheckAgain, useOperations, useSnapshot, useSettings, useSaveSettings } from "../lib/queries";
@@ -163,6 +165,7 @@ export function useUpdatesHeadline(): string | null {
   const { data: settings } = useSettings();
   const show = useUiStore((s) => s.updatesShow);
   const operationFor = useUpdateOperationFor();
+  const passwordRecoveryKeys = usePasswordRecoveryKeys();
   const startable = useStartableUpdates();
   const counted = useCountedUpdates();
   const inView = useMemo(() => {
@@ -185,7 +188,7 @@ export function useUpdatesHeadline(): string | null {
   // Rows with a checkbox that Update all leaves unticked: a copy Terminal does not run.
   const notUsed = startable.filter(inView).length - shown;
   const password = listed.actionable.filter(
-    (candidate) => inView(candidate) && waitsForPassword(operationFor(candidate)),
+    (candidate) => inView(candidate) && (waitsForPassword(operationFor(candidate)) || passwordRecoveryKeys.has(artifactKeyId(candidate.key))),
   ).length;
   // Of only some: how many of how many, 「5个可更新，共13个」, so the
   // sidebar's 13 beside it does not read as wrong.
@@ -350,6 +353,7 @@ export function UpdatesPage() {
   const setFocusedOpId = useUiStore((s) => s.setFocusedOpId);
   const setDrawerOpen = useUiStore((s) => s.setDrawerOpen);
   const operationFor = useUpdateOperationFor();
+  const passwordRecoveryKeys = usePasswordRecoveryKeys();
   const { data: operations } = useOperations();
   const opName = useOperationName(operations);
   const updateTargets = useUiStore((s) => s.updateTargets);
@@ -1096,6 +1100,7 @@ export function UpdatesPage() {
     // standing where Retry's word would (walk-2 W2-5): a red word alone
     // read as a dead end, and the steps as a log for programmers.
     const passwordSteps = passwordStepsOpId(progress);
+    const recordedPassword = passwordRecoveryKeys.has(artifactKeyId(candidate.key));
     const outcome =
       progress !== null ? <UpdateProgress progress={progress} name={name} onViewLog={viewLog} /> : null;
     // How it ended has the status word's column to itself: it comes back
@@ -1109,7 +1114,9 @@ export function UpdatesPage() {
     const artifact = artifactsById.get(artifactKeyId(candidate.key));
     const column = updateVersionColumn(t, candidate);
     const action =
-      passwordSteps !== null ? (
+      recordedPassword ? (
+        <PasswordRecovery artifactKey={candidate.key} name={name} />
+      ) : passwordSteps !== null ? (
         <RowAction onClick={() => viewLog(passwordSteps)} ariaLabel={t("needsPassword.viewStepsLabel", { name })}>
           {t("needsPassword.viewSteps")}
         </RowAction>
@@ -1151,7 +1158,7 @@ export function UpdatesPage() {
           source,
         )}
         selectable={
-          actionable && !holdsRow(op)
+          actionable && !holdsRow(op) && !recordedPassword
             ? {
                 checked: selectedUpdates.includes(artifactKeyId(candidate.key)),
                 onToggle: () => toggleUpdate(candidate.key),

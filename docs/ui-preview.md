@@ -259,13 +259,14 @@ Paths are under a generic home folder, `/Users/you`.
   hides the selected tool closes its details.
 - The Updates page lists 「最近的更新记录」 under its rows, as the App Store
   lists Update History under Pending (scroll to the end of the list):
-  seven of the ten records the pretend history holds from earlier
-  launches (`src/dev/mockHistory.ts`) -- htop and ripgrep today, then
+  records the pretend history holds from earlier
+  launches (`src/dev/mockHistory.ts`), including htop and ripgrep today, then
   prettier, httpie with 「未能更新：网络连接失败」, typescript with
   「没有更新成功：版本没有变」, wget, and, behind 「再显示1条」, gh. Every success says
   「已更新」; where the version was read before and after, its tooltip says so,
   and gh's has none. httpie and typescript are also rows above:
-  after a restart a row does not know the last try did not work. jq's
+  after a restart a row does not know the last try did not work, unless
+  it stopped for the Mac's password (the last section of this file). jq's
   failed update is not listed, as no update is offered for jq any more
   (as if updated in Terminal since); nor are an uninstall (yt-dlp) and
   an update older than 30 days (ffmpeg). An update the preview runs keeps its tick in its
@@ -585,3 +586,15 @@ is pinned by `src/lib/previewEnv.test.ts` and `src/components/CommandPreview.tes
 - `?state=startup-error`: npm fails at startup; open its notice details and copy the masked diagnostic.
 - `?page=updates&outcome=follow-up`: Recent Updates includes a saved relink warning with View Log; updating a Homebrew formula whose preview includes cleanup, such as git, succeeds with a cleanup warning, visible in its row and operation bar.
 - Add `&lang=zh-CN` or `&lang=zh-Hant` for the Chinese copies.
+
+### A password stop from an earlier launch
+
+Open `?page=updates&lang=zh-cn` (or `lang=en`, `lang=zh-hant`), turn on
+Show self-updating apps in Settings and click Check Again, so that the
+Visual Studio Code update is offered. The pretend history kept its last
+update, yesterday, as stopped where it needed the Mac's password
+(「未能更新：需要输入密码」), with no command. Its row has View Steps in
+Update's place and no checkbox, the headline counts it as needing a
+password, and its line in 「最近的更新记录」 has View Steps too. Either
+asks the mock for a new preview and shows the Terminal steps the log of
+such a stop shows; nothing is submitted.

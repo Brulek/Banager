@@ -1565,3 +1565,19 @@ describe("OverviewPage", () => {
     }
   });
 });
+
+it("counts a persisted password stop as needing steps after restart", async () => {
+  served = snapshotWith({ updates: [candidate(formula("glib"))] });
+  const key = served.updates[0].key;
+  const answer = mockInvoke.getMockImplementation()!;
+  mockInvoke.mockImplementation((cmd, args) => cmd === "get_history" ? Promise.resolve({
+    run: "current", cleared_before: null, records: [{
+      run: "previous", op_id: 1, finished_at: Date.now() - 1000, key, display_name: "glib", adapter_id: "brew",
+      kind: "Update", from_version: "1.0.0", to_version: null, result: { Failed: { cause: "needsPassword" } }, verified: false,
+    }],
+  }) : answer(cmd, args));
+  const view = renderOverview();
+  expect(await view.findByRole("heading", { name: "1 update needs your password" })).toBeInTheDocument();
+  fireEvent.click(view.getByRole("button", { name: "Review Updates" }));
+  expect(useUiStore.getState().selectedUpdates).toEqual([]);
+});

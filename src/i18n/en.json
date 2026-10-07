@@ -1741,6 +1741,10 @@
       "copyOnly": "The lines above are the error message from {{program}} itself. You can click Copy Log and send the log to someone who can help."
     }
   },
+  "passwordRecovery": {
+    "preparing": "Preparing the command…",
+    "unavailable": "Couldn't prepare the command. Click Check Again, then click View Steps."
+  },
   "needsPassword": {
     "intro": "You can run the command below in Terminal and type your password when asked. Nothing appears on screen as you type. That's normal.",
     "after": "When it's done, come back here and press ⌘R to check again.",

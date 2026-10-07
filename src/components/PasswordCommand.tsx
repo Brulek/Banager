@@ -8,6 +8,8 @@ import { previewEnvValue } from "../lib/previewEnv";
 import { adapterIdOf } from "../lib/sources";
 import { BUTTON } from "./ui/controls";
 
+type TerminalPreview = Pick<OpSummary, "argv_preview" | "env_preview">;
+
 /**
  * `SUDO_ASKPASS` is the one variable a plan can carry that is left out of
  * the command for Terminal: it names a program that asks for the password
@@ -25,7 +27,7 @@ const LEFT_OUT = new Set(["SUDO_ASKPASS"]);
  * as the confirmation showed it (`commandText`) -- or null for one that
  * ran no command.
  */
-export function terminalCommand(op: OpSummary): string | null {
+export function terminalCommand(op: TerminalPreview): string | null {
   const [program, ...args] = op.argv_preview;
   if (program === undefined) return null;
   const env = (op.env_preview ?? []).filter(([name]) => !LEFT_OUT.has(name));
@@ -39,7 +41,7 @@ export function terminalCommand(op: OpSummary): string | null {
  * break between and never inside -- 「upgrade --」 / 「cask …」 reads as
  * something else. Copy still copies `terminalCommand`, one line.
  */
-export function terminalCommandParts(op: OpSummary): { env: string[]; command: string[] } | null {
+export function terminalCommandParts(op: TerminalPreview): { env: string[]; command: string[] } | null {
   const [program, ...args] = op.argv_preview;
   if (program === undefined) return null;
   const env = (op.env_preview ?? []).filter(([name]) => !LEFT_OUT.has(name));
@@ -101,9 +103,14 @@ export function showsPasswordCommand(op: OpSummary): boolean {
  * command, or for one that did not run Homebrew (`fromHomebrew`).
  */
 export function PasswordCommand({ op }: { op: OpSummary }) {
+  if (!showsPasswordCommand(op)) return null;
+  return <PasswordInstructions preview={op} />;
+}
+
+/** Shared by a finished operation and a newly validated history preview. */
+export function PasswordInstructions({ preview: op }: { preview: TerminalPreview }) {
   const { t } = useTranslation();
   const { status, copy } = useCopyCommand();
-  if (!showsPasswordCommand(op)) return null;
   const command = terminalCommand(op);
   const parts = terminalCommandParts(op);
   if (command === null || parts === null) return null;

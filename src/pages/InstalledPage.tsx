@@ -1,3 +1,5 @@
+import { PasswordRecovery } from "../components/PasswordRecovery";
+import { usePasswordRecoveryKeys } from "../lib/passwordRecovery";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -494,6 +496,7 @@ export function InstalledPage() {
   const toggleUninstall = useUiStore((s) => s.toggleUninstall);
   const keepUninstalls = useUiStore((s) => s.keepUninstalls);
   const operationFor = useUpdateOperationFor();
+  const passwordRecoveryKeys = usePasswordRecoveryKeys();
   const { data: operations } = useOperations();
   // How much each tool takes on disk, measured after each check (`sizeFact`).
   const { data: sizes } = useSizes();
@@ -1782,7 +1785,9 @@ export function InstalledPage() {
               ) : null}
               {/* As on the Updates page's row: an update that ended without
                   updating keeps how it ended, with Retry in Update's place. */}
-              {updatable && listed !== undefined && (progress === null || isRetryable(progress)) ? (
+              {updatable && listed !== undefined && passwordRecoveryKeys.has(artifactKeyId(listed.key)) ? (
+                <PasswordRecovery artifactKey={listed.key} name={name} />
+              ) : updatable && listed !== undefined && (progress === null || isRetryable(progress)) ? (
                 <button
                   ref={inspectorUpdate}
                   type="button"

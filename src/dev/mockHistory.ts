@@ -117,6 +117,14 @@ const SEEDED = [
     },
     verified: false,
   }),
+  // Stopped where sudo wanted the Mac's password: listed, with View Steps
+  // here and on its row, once Show self-updating apps offers its update.
+  // The history keeps no command; View Steps asks for a new preview.
+  kept(24, DAY + MINUTE, key(IDS.brew, "Cask", "visual-studio-code"), "brew", "1.116.1", null, {
+    display_name: "Microsoft Visual Studio Code",
+    result: { Failed: { cause: "needsPassword" } },
+    verified: false,
+  }),
 ];
 
 /** The history the preview opens with, newest first, as `get_history` answers it. */

@@ -1273,7 +1273,7 @@ describe("the mock backend's first-round list (InventoryPreview)", () => {
     expect(start.records.some((r) => r.kind === "Uninstall")).toBe(true);
     // An update that failed and one to check, for 「最近的更新记录」 to list among the rest.
     expect(start.records.filter((r) => r.kind === "Update").map((r) => r.result)).toEqual(
-      expect.arrayContaining([{ Failed: { cause: "network" } }, { NeedsAttention: "UnchangedAfterUpgrade" }]),
+      expect.arrayContaining([{ Failed: { cause: "network" } }, { Failed: { cause: "needsPassword" } }, { NeedsAttention: "UnchangedAfterUpgrade" }]),
     );
     // Newest first, and none of this launch's.
     expect(start.records.map((r) => r.finished_at)).toEqual([...start.records.map((r) => r.finished_at)].sort((a, b) => b - a));

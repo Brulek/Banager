@@ -2950,6 +2950,45 @@ describe("InstalledPage", () => {
       });
     });
 
+    it("offers View Steps, not Update, for an update an earlier launch kept as stopped for the password", async () => {
+      // As `get_history` answers after a restart: the stop is the newest
+      // record of glib, from another run, and the check still offers glib.
+      const answer = mockInvoke.getMockImplementation()!;
+      mockInvoke.mockImplementation((cmd, args) =>
+        cmd === "get_history"
+          ? Promise.resolve({
+              run: "this-launch",
+              cleared_before: null,
+              records: [
+                {
+                  run: "earlier-launch", op_id: 4, finished_at: Date.now() - 60_000,
+                  key: { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "glib" }, display_name: "glib",
+                  adapter_id: "brew", kind: "Update", from_version: "2.88.3", to_version: null,
+                  result: { Failed: { cause: "needsPassword" } }, verified: false,
+                },
+              ],
+            })
+          : answer(cmd, args),
+      );
+      renderInstalled();
+
+      await findRow("jq");
+      fireEvent.click(screen.getByRole("button", { name: /^1 more package was installed for other software to use/ }));
+      const drawer = await openDetails("glib");
+      const steps = await within(drawer).findByRole("button", { name: "View steps: glib" });
+      expect(within(drawer).queryByRole("button", { name: "Update" })).toBeNull();
+      expect(within(drawer).queryByRole("button", { name: "Retry" })).toBeNull();
+
+      fireEvent.click(steps);
+      const dialog = await screen.findByRole("dialog", { name: "glib" });
+      await within(dialog).findByRole("button", { name: "Copy Command" });
+      expect(dialog.querySelector("[data-command-argv]")?.textContent).toBe("/opt/homebrew/bin/brew upgrade --formula glib");
+      expect(mockInvoke).toHaveBeenCalledWith("plan_operation", {
+        request: { kind: "Upgrade", instance_id: "brew:/opt/homebrew", artifact_kind: "Formula", name: "glib" },
+      });
+      expect(mockInvoke.mock.calls.some(([cmd]) => cmd === "submit_operation")).toBe(false);
+    });
+
     it("shows an update that could not start in its own tool's inspector, not in another's", async () => {
       const answer = mockInvoke.getMockImplementation()!;
       mockInvoke.mockImplementation((cmd, args) =>
