@@ -237,21 +237,30 @@ Besides, the complete login of any `scheme://user:password@` or
 `scheme://user@` in the output is masked, whatever setting or file it came
 from, including Git configuration and a tool's own settings file
 (`~/.npmrc`, `pip.conf`). Both user name and password are hidden:
-either may be a token. This generic rule ends at the authority, so an `@`
-in a public path, query or fragment stays as written; it reads each
-address in the output, to the next white space or quote, by the rules a
-mirror's address is read by above, so where the authority is no host and
-port its login is all before the last `@` there. A `/`, `?` or `#`
-written into a password in `~/.npmrc` is masked so: Node prints such an
-address back, as written, on every npm command (`[DEP0170]
-DeprecationWarning: The URL http://****:****@proxy.corp:8080 is invalid`,
-Node 22.23.3 with npm 10.9.9), and pip in `Looking in indexes:` and
-`Failed to parse:` (pip 26.2.1). The two kinds of address the rules read
-as having a path and no login (`https://user:1234/rest@…`,
-`https://tok/en@…`) are not masked by it either. It does
-not discover bare tokens supplied by files outside the imported settings,
-nor a user name a tool prints on its own (npm, reading such a proxy's
-user name as its host, says `getaddrinfo ENOTFOUND <name>`).
+either may be a token. This generic rule ends at the authority, and reads
+each address in the output, to the end of its word (the next white
+space, quote, backquote, `<` or `>`), by the rules a mirror's address is
+read by above. Where the authority is a host and port as those rules read
+one, an `@` after it, in a public path, query or fragment, stays as
+written; where it is not, its login is all before the last `@` of that
+word. A `/`, `?` or `#` written into a password in `~/.npmrc` is masked
+so: Node prints such an address back, as written, on every npm command
+(`[DEP0170] DeprecationWarning: The URL http://****:****@proxy.corp:8080
+is invalid`, Node 22.23.3 with npm 10.9.9), and pip in `Looking in
+indexes:` and `Failed to parse:` (pip 26.2.1). So is an address whose
+host those rules do not read as one -- a name with an `_` (a Docker
+service's `verdaccio_local`), letters other than A to Z, a `${…}`
+placeholder, an IPv6 address with a zone, a `:` with no port after it --
+when an `@` follows it in its word: `http://verdaccio_local/@myorg/pkg`
+is masked as `http://****@myorg/pkg`, more than needed rather than less,
+as a token alone can hold an `_` too (`https://ghp_tok/en@…`). The two
+kinds of address the rules read as having a path and no login
+(`https://user:1234/rest@…`, `https://tok/en@…`) are not masked by it
+either, nor is a password with a quote or white space in it, which ends
+the address's word before its `@`. It does not discover bare tokens
+supplied by files outside the imported settings, nor a user name a tool
+prints on its own (npm, reading such a proxy's user name as its host,
+says `getaddrinfo ENOTFOUND <name>`).
 
 Why an operation failed is not read off what the mask left. The runner
 reads it off the last five lines the tool wrote to stderr as the tool
@@ -4429,9 +4438,12 @@ login masked; or a line of its own settings file -- pip, whose
 `Configuration file could not be loaded.` and Python's `configparser` error,
 which quotes that line. The logins Banager knows -- those of the proxy and
 mirror settings and `OLLAMA_HOST` -- and the login of any
-`scheme://user:password@` or `scheme://user@` are masked there; anything
-else such a line holds, a token in a query string (`?token=…`) or a bare
-one, is copied as the tool wrote it. Settings' footnote under the button
+`scheme://user:password@` or `scheme://user@`, as "What a tool prints
+about a login" reads one, are masked there; anything else such a line
+holds -- a token in a query string (`?token=…`), a bare one, a login in a
+form those rules leave as written (`https://user:1234/rest@…`, a password
+with a quote in it, a proxy's login written with no scheme in a file
+Banager does not read) -- is copied as the tool wrote it. Settings' footnote under the button
 says the text includes the error details of a source that isn't responding
 (`diagnostics.footnote`), and its ⓘ what they can quote and what is hidden
 (`clarity.diagnosticsDetail`).

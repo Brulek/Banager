@@ -17,9 +17,11 @@
  * from a shell file. A source's error details are its tool's own stderr,
  * masked by the runner (`runner::redact`): they can quote a setting, its
  * login masked, or a line of the tool's own settings file, and a token
- * there that is no URL login is copied as written -- Settings' footnote
- * and its ⓘ say so. Building it asks nothing of the network: the snapshot,
- * the sizes and `get_system_facts` are all on this Mac.
+ * there that is no URL login, or a login in a form the runner does not
+ * read as one (docs/what-we-run.md, "What a tool prints about a login"),
+ * is copied as written -- Settings' footnote and its ⓘ say so. Building
+ * it asks nothing of the network: the snapshot, the sizes and
+ * `get_system_facts` are all on this Mac.
  */
 import { useCallback, useEffect, useRef } from "react";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";

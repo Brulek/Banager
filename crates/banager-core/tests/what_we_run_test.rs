@@ -1773,6 +1773,10 @@ fn test_what_we_run_has_the_diagnostic_info_section_saying_what_it_reads_and_nev
         "can quote what the tool read",
         "a line of its own settings file",
         "is copied as the tool wrote it",
+        // r9 k1's skeptic: masked as the masking section reads a login,
+        // which leaves some forms as written.
+        "as \"What a tool prints about a login\" reads one",
+        "a login in a form those rules leave as written",
         "`diagnostics.footnote`",
         "`clarity.diagnosticsDetail`",
         "the Help menu's Copy Diagnostic Info… (「拷贝诊断信息…」) only opens Settings on that button, focused, so the copy is always the button's click",
@@ -2052,6 +2056,15 @@ fn test_what_we_run_says_a_login_in_a_setting_is_masked_in_what_tools_print() {
         "a tool's own settings file (`~/.npmrc`, `pip.conf`)",
         "by the rules a mirror's address is read by above",
         "`[DEP0170] DeprecationWarning: The URL http://****:****@proxy.corp:8080 is invalid`",
+        // r9 k1's skeptic: where a word ends, that an `@` after the
+        // authority stays as written only after a host the rules read,
+        // and what they over-mask instead.
+        "to the end of its word (the next white space, quote, backquote, `<` or `>`)",
+        "Where the authority is a host and port as those rules read one, an `@` after it, in a public path, query or fragment, stays as written",
+        "a name with an `_` (a Docker service's `verdaccio_local`)",
+        "`http://verdaccio_local/@myorg/pkg` is masked as `http://****@myorg/pkg`, more than needed rather than less",
+        "a token alone can hold an `_` too (`https://ghp_tok/en@…`)",
+        "a password with a quote or white space in it",
     ] {
         assert!(
             folded.contains(phrase),
@@ -2067,6 +2080,10 @@ fn test_what_we_run_says_a_login_in_a_setting_is_masked_in_what_tools_print() {
         "16 characters or more",
         "only when it looks like a token",
         "a proxy's user name included",
+        // r9 k1's skeptic: an `@` in a path stays as written only after a
+        // host the rules read, and `<` and `>` end a word too.
+        "so an `@` in a public path, query or fragment stays as written;",
+        "to the next white space or quote",
         // Re-check 2's N1: the cause no longer depends on sudo's words
         // being left unmasked.
         "which Banager reads to say an operation needs Terminal (`needsPassword` in `src/lib/failureCause.ts`): `password`",

@@ -1534,7 +1534,7 @@
     }
   },
   "clarity": {
-    "diagnosticsDetail": "It lists the macOS version, the location and status of each source, and the folders searched for commands, with your home folder written as “~”. A source's error details are the tool's own words and can quote its settings files: user names and passwords in web addresses and proxy settings are hidden, and everything else is copied as the tool wrote it.",
+    "diagnosticsDetail": "It lists the macOS version, the location and status of each source, and the folders searched for commands, with your home folder written as “~”. A source's error details are the tool's own words and can quote its settings files: user names and passwords that Banager recognizes in web addresses and proxy settings are hidden, and everything else is copied as the tool wrote it.",
     "keptLeftOut": "Not counting {{path}}, which holds another copy installed on its own.",
     "keptLeftOutLabel": "About the size: {{path}}",
     "ownInstaller": "{{source}}'s own installer",

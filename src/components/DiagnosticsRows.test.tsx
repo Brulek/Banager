@@ -190,11 +190,27 @@ describe("Settings' Diagnostics group", () => {
     );
     // The details behind its ⓘ.
     fireEvent.click(within(footnote).getByRole("button", { name: "Details: Diagnostic info" }));
-    // What a source's error details may quote, and what is hidden in them.
+    // What a source's error details may quote, and what is hidden in them:
+    // the logins Banager recognizes, not every one a tool can print.
     expect(
       screen.getByText(
-        /error details are the tool's own words and can quote its settings files: user names and passwords in web addresses and proxy settings are hidden/,
+        /error details are the tool's own words and can quote its settings files: user names and passwords that Banager recognizes in web addresses and proxy settings are hidden, and everything else is copied as the tool wrote it\./,
       ),
     ).toBeInTheDocument();
+  });
+
+  it("says in each language that only the user names and passwords it recognizes are hidden", () => {
+    // r9 k1's skeptic: some forms of a login are left as written
+    // (docs/what-we-run.md, "What a tool prints about a login"), so no
+    // language says flatly that every one is hidden.
+    for (const [language, hedged, flat] of [
+      ["en", "user names and passwords that Banager recognizes in web addresses and proxy settings are hidden", "user names and passwords in web addresses and proxy settings are hidden"],
+      ["zh-CN", "地址和代理设置里能识别出的用户名和密码会隐藏", "地址和代理设置里的用户名和密码会隐藏"],
+      ["zh-Hant", "網址和代理設定裡能識別出的使用者名稱和密碼會隱藏", "網址和代理設定裡的使用者名稱和密碼會隱藏"],
+    ]) {
+      const detail = i18n.getFixedT(language)("clarity.diagnosticsDetail");
+      expect(detail).toContain(hedged);
+      expect(detail).not.toContain(flat);
+    }
   });
 });
