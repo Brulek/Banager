@@ -975,7 +975,13 @@ fn ollama_parsers_survive_any_input() {
         |s| parse::parse_tags(s, INSTANCE),
         |r| result_ok(r, |a| artifacts_ok(a)),
     ));
-    let manifests = inputs_for(62, &["ollama/0.34.1/local-manifest-qwen3.8-27b-mlx.json"]);
+    let manifests = inputs_for(
+        62,
+        &[
+            "ollama/0.34.1/local-manifest-qwen3.8-27b-mlx.json",
+            "ollama/registry-2026-10-07/registry-manifest-gpt-oss-120b-cloud.json",
+        ],
+    );
     problems.extend(run(
         "ollama layer_digests",
         &manifests,

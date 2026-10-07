@@ -3,7 +3,7 @@
 //! daemon and a mocked registry: nothing reads this Mac's models or asks a
 //! network. The shapes are recorded ones: the qwen3.8 manifests and the
 //! `/api/tags` row under `adapters/fixtures/ollama/0.34.1/`, and the cloud
-//! model's manifest below.
+//! model's manifest under `adapters/fixtures/ollama/registry-2026-10-07/`.
 
 use super::*;
 use crate::http::mock::MockHttpClient;
@@ -25,12 +25,15 @@ const QWEN_NAME: &str = "qwen3.8:27b-mlx";
 
 /// `gpt-oss:120b-cloud`, one of Ollama's cloud models, as
 /// `GET https://registry.ollama.ai/v2/library/gpt-oss/manifests/120b-cloud`
-/// (with Banager's `Accept` header) answered it read-only on 2026-10-07 for
-/// the r40 review, byte for byte: 264 bytes and no layers -- the whole model
-/// is its 307-byte config (`remote_host`, `remote_model`, capabilities...).
-/// `ollama pull` writes the manifest as the registry sent it, so this is
-/// also the local file, and its SHA-256 the `/api/tags` digest.
-const CLOUD: &str = r#"{"config":{"digest":"sha256:dad8bd034e571c7856a11969a6a9d59a0b8a10a13a39b9f5899b308165d6ddb7","mediaType":"application/vnd.docker.container.image.v1+json","size":307},"layers":[],"mediaType":"application/vnd.docker.distribution.manifest.v2+json","schemaVersion":2}"#;
+/// (with Banager's `Accept` header) answered it read-only on 2026-10-07
+/// (UTC) for the r40 review, byte for byte (its folder's README.md): 264
+/// bytes and no layers -- the whole model is its 307-byte config
+/// (`remote_host`, `remote_model`, capabilities...). `ollama pull` writes
+/// the manifest as the registry sent it, so this is also the local file,
+/// and its SHA-256 the `/api/tags` digest.
+const CLOUD: &str = include_str!(
+    "../../../../../adapters/fixtures/ollama/registry-2026-10-07/registry-manifest-gpt-oss-120b-cloud.json"
+);
 const CLOUD_NAME: &str = "gpt-oss:120b-cloud";
 
 fn sha256_hex(bytes: &str) -> String {
