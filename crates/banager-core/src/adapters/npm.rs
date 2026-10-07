@@ -154,6 +154,9 @@ pub struct NpmAdapter {
     /// formula's (`real_npm_comes_with_formula`), whose own update is then
     /// not offered (`UpdateBlocked::UpdatesWithFormula`).
     npm_comes_with_formula_fn: fn(&Path) -> bool,
+    /// How the queue key of the Homebrew prefix a plan's prefix may be
+    /// looks at folders (`brew::prefix_lock`): `brew::PREFIX_IDENTITY_FN`.
+    prefix_identity_fn: fn(&Path) -> Option<(u64, u64)>,
 }
 
 impl NpmAdapter {
@@ -171,7 +174,19 @@ impl NpmAdapter {
             meta,
             prefix_read_only_fn: real_prefix_read_only,
             npm_comes_with_formula_fn: DEFAULT_NPM_COMES_WITH_FORMULA_FN,
+            prefix_identity_fn: super::brew::PREFIX_IDENTITY_FN,
         }
+    }
+
+    /// Test support (the `test-support` feature, for the integration tests,
+    /// which are built without `cfg(test)`): a plan's Homebrew queue key
+    /// looks at no discovery prefix (`/opt/homebrew`, `/usr/local`,
+    /// `/home/linuxbrew/.linuxbrew`) of the Mac running the test, as in this
+    /// crate's unit tests.
+    #[cfg(feature = "test-support")]
+    pub fn looking_at_no_homebrew_prefix(mut self) -> NpmAdapter {
+        self.prefix_identity_fn = |_| None;
+        self
     }
 
     #[cfg(test)]
@@ -546,7 +561,7 @@ impl NpmAdapter {
         // prefix, no other plan takes the second lock.
         let locks = vec![
             ResourceLock(inst.id.clone()),
-            super::brew::prefix_lock(&inst.prefix),
+            super::brew::prefix_lock(&inst.prefix, self.prefix_identity_fn),
         ];
         let warnings = match req.kind {
             OpKind::Uninstall => uninstall_scope(inst.version.as_deref())

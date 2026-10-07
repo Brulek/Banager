@@ -2739,10 +2739,18 @@ mod tests {
         // planned from the recorded record. cargo-binstall is given
         // crates.io's sparse index, its own default, never the git URL
         // cargo is given: with that one it clones the index from github.com.
+        // A Cargo home of its own, its cargo-binstall in its `bin` as the
+        // official script puts it, and its records -- the recorded ones --
+        // naming no cargo-binstall, so its version is not known: never
+        // the records of the Mac running the test.
+        let home = temp_cargo_home("binstall-install");
+        std::fs::create_dir_all(&home).unwrap();
+        std::fs::write(home.join(".crates2.json"), recorded_crates2()).unwrap();
+        let binstall = home.join("bin/cargo-binstall");
         let adapter =
             CargoAdapter::new(Arc::new(MockRunner::new()), Arc::new(MockHttpClient::new()))
-                .with_binstall(Some(PathBuf::from(BINSTALL)));
-        let inst = test_instance(PathBuf::from("/Users/brulek/.cargo"));
+                .with_binstall(Some(binstall.clone()));
+        let inst = test_instance(home.clone());
         let req = OpRequest {
             kind: OpKind::Install,
             instance_id: inst.id.clone(),
@@ -2752,13 +2760,14 @@ mod tests {
         let plan = CargoAdapter::plan(&adapter, &inst, &req)
             .await
             .expect("plan");
-        assert_eq!(command_program(&plan), PathBuf::from(BINSTALL));
+        std::fs::remove_dir_all(&home).unwrap();
+        assert_eq!(command_program(&plan), binstall);
         assert_eq!(
             command_args(&plan),
             vec![
                 "-y",
                 "--root",
-                "/Users/brulek/.cargo",
+                home.to_str().unwrap(),
                 "--index",
                 CRATES_IO_SPARSE_INDEX,
                 "hexyl"

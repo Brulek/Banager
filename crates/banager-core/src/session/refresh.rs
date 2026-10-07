@@ -1422,15 +1422,19 @@ mod tests {
     async fn test_refresh_keeps_an_npm_whose_prefix_stopped_answering_under_its_id() {
         let (adapter, state) = FakeAdapter::new("npm");
         let exe = PathBuf::from("/opt/homebrew/bin/npm");
+        // Its prefix a folder of the test's own: a refresh reads the bin
+        // folder of every npm prefix (`commands::bin_folders`).
+        let root = crate::testing::TempTree::new("refresh-npm-prefix");
+        let prefix = root.dir("opt/homebrew");
         let answering = ManagerInstance {
             exe_path: exe.clone(),
-            prefix: PathBuf::from("/opt/homebrew"),
+            prefix: prefix.clone(),
             version: Some("12.0.2".to_string()),
             ..make_instance("npm", "npm:/opt/homebrew")
         };
         let stand_in = ManagerInstance {
             exe_path: exe.clone(),
-            prefix: PathBuf::from("/opt/homebrew/bin"),
+            prefix: prefix.join("bin"),
             version: None,
             status: InstanceStatus {
                 unavailable: Some(Unavailable::NotResponding),
@@ -1464,7 +1468,7 @@ mod tests {
             assert_eq!(snapshot.instances.len(), 1, "round {round}");
             let npm = &snapshot.instances[0];
             assert_eq!(npm.id, "npm:/opt/homebrew", "round {round}");
-            assert_eq!(npm.prefix, PathBuf::from("/opt/homebrew"));
+            assert_eq!(npm.prefix, prefix);
             assert_eq!(npm.version, Some("12.0.2".to_string()));
             assert_eq!(npm.status.unavailable, Some(Unavailable::NotResponding));
             // And when it last answered, under that id: what its rows are.
@@ -1560,9 +1564,15 @@ mod tests {
         let (npm, npm_state) = FakeAdapter::new("npm");
         let mut node_22 = make_artifact_at("brew:/opt/homebrew", "node@22", "22.23.3_1");
         node_22.facts.command_inputs.keg_only = true;
+        // Both under a prefix of the test's own: a refresh reads their bin
+        // folders (`commands::bin_folders`), and `/bin` is the Mac's.
+        let root = crate::testing::TempTree::new("refresh-link-fix");
         {
             let mut s = brew_state.lock().unwrap();
-            s.instances = vec![make_instance("brew", "brew:/opt/homebrew")];
+            s.instances = vec![ManagerInstance {
+                prefix: root.root.clone(),
+                ..make_instance("brew", "brew:/opt/homebrew")
+            }];
             s.artifacts
                 .insert("brew:/opt/homebrew".to_string(), vec![node_22.clone()]);
         }
@@ -1579,6 +1589,7 @@ mod tests {
                     link_fixes: Vec::new(),
                 }),
             },
+            prefix: root.root.clone(),
             ..make_instance("npm", "npm:/opt/homebrew")
         }];
         let session = Session::with_adapters(Arc::new(VecSink::new()), vec![brew, npm], None);
@@ -1608,9 +1619,14 @@ mod tests {
     #[tokio::test]
     async fn test_refresh_tags_each_artifact_with_its_ai_tool_family() {
         let (adapter, state) = FakeAdapter::new("brew");
+        // A prefix of the test's own, whose bin folders the refresh reads.
+        let root = crate::testing::TempTree::new("refresh-families");
         {
             let mut s = state.lock().unwrap();
-            s.instances = vec![make_instance("brew", "brew:/opt/homebrew")];
+            s.instances = vec![ManagerInstance {
+                prefix: root.root.clone(),
+                ..make_instance("brew", "brew:/opt/homebrew")
+            }];
             s.artifacts.insert(
                 "brew:/opt/homebrew".to_string(),
                 vec![
@@ -1644,11 +1660,15 @@ mod tests {
     async fn test_refresh_as_root_reports_brew_unavailable_and_leaves_the_others_alone() {
         let runner = Arc::new(MockRunner::new());
         // The Homebrew layout is pinned rather than read off whatever Mac
-        // is running the suite: an Apple Silicon install and nothing else.
-        // The canned `--version` would only be used if brew's root refusal
-        // failed to stop `detect` short of asking the runner at all.
+        // is running the suite: an Apple Silicon install and nothing else,
+        // under a folder of the test's own, whose `bin` and `sbin` the
+        // refresh reads. The canned `--version` would only be used if
+        // brew's root refusal failed to stop `detect` short of asking the
+        // runner at all.
+        let root = crate::testing::TempTree::new("refresh-root");
+        let exe = root.at("opt/homebrew/bin/brew");
         runner.respond(
-            vec!["/opt/homebrew/bin/brew", "--version"],
+            vec![exe.to_str().unwrap(), "--version"],
             CommandOutput {
                 stderr_cause: Default::default(),
                 exit_code: Some(0),
@@ -1658,7 +1678,11 @@ mod tests {
                 cancelled: false,
             },
         );
-        let brew = Arc::new(BrewAdapter::new(runner).with_path_exists_fn(apple_silicon_layout));
+        let brew = Arc::new(
+            BrewAdapter::new(runner)
+                .with_path_exists_fn(apple_silicon_layout)
+                .with_discovery_root(&root.root),
+        );
         let (fake, state) = FakeAdapter::new("fake");
         {
             let mut s = state.lock().unwrap();
@@ -1669,7 +1693,9 @@ mod tests {
         let sink = Arc::new(VecSink::new());
         let session = Session::with_adapters(sink, vec![brew, fake], None);
 
-        let snapshot = session.refresh(&root_env(), &CheckOptions::default()).await;
+        let snapshot = session
+            .refresh(&root_env(&root.at("var/root")), &CheckOptions::default())
+            .await;
 
         assert_eq!(
             snapshot.detect,
@@ -1703,11 +1729,18 @@ mod tests {
     #[tokio::test]
     async fn test_refresh_as_root_with_only_brew_registered_still_finds_it() {
         let runner = Arc::new(MockRunner::new());
-        let brew = Arc::new(BrewAdapter::new(runner).with_path_exists_fn(apple_silicon_layout));
+        let root = crate::testing::TempTree::new("refresh-root-alone");
+        let brew = Arc::new(
+            BrewAdapter::new(runner)
+                .with_path_exists_fn(apple_silicon_layout)
+                .with_discovery_root(&root.root),
+        );
         let sink = Arc::new(VecSink::new());
         let session = Session::with_adapters(sink, vec![brew], None);
 
-        let snapshot = session.refresh(&root_env(), &CheckOptions::default()).await;
+        let snapshot = session
+            .refresh(&root_env(&root.at("var/root")), &CheckOptions::default())
+            .await;
 
         assert_eq!(snapshot.detect, DetectOutcome::Found);
         assert_eq!(snapshot.instances.len(), 1, "got {:?}", snapshot.instances);
@@ -4436,8 +4469,6 @@ mod tests {
         );
     }
 
-    const BREW: &str = "/opt/homebrew/bin/brew";
-
     fn brew_answer(exit_code: i32, stdout: &str) -> CommandOutput {
         CommandOutput {
             stderr_cause: Default::default(),
@@ -4491,23 +4522,29 @@ mod tests {
         // refresh used to report "still downloading" and then read that
         // catalogue anyway, where a half-written file could fail the
         // refresh or, worse, parse.
+        // Homebrew found under a folder of the test's own, never the
+        // Mac's: the refresh reads its `bin` and `sbin`.
+        let root = crate::testing::TempTree::new("refresh-brew");
+        let exe = root.at("opt/homebrew/bin/brew");
+        let exe = exe.to_str().unwrap();
         let runner = Arc::new(MockRunner::new());
-        runner.respond(vec![BREW, "--version"], brew_answer(0, "Homebrew 7.0.3\n"));
+        runner.respond(vec![exe, "--version"], brew_answer(0, "Homebrew 7.0.3\n"));
         runner.respond(
-            vec![BREW, "info", "--installed", "--json=v2"],
+            vec![exe, "info", "--installed", "--json=v2"],
             brew_answer(0, &brew_info_jq("1.6")),
         );
         runner.respond(
-            vec![BREW, "outdated", "--json=v2"],
+            vec![exe, "outdated", "--json=v2"],
             brew_answer(0, BREW_OUTDATED_JQ),
         );
         // Round one's update fails at once, so it reads normally and
         // leaves no successful update behind: round two starts another.
-        runner.respond(vec![BREW, "update"], brew_answer(1, ""));
+        runner.respond(vec![exe, "update"], brew_answer(1, ""));
         let background_change = Arc::new(tokio::sync::Notify::new());
         let brew = Arc::new(
             BrewAdapter::new(runner.clone())
                 .with_path_exists_fn(apple_silicon_layout)
+                .with_discovery_root(&root.root)
                 .with_update_patience(Duration::from_millis(100))
                 .with_background_change(background_change.clone()),
         );
@@ -4522,8 +4559,8 @@ mod tests {
         // Round two starts a `brew update` that outlasts its patience. The
         // inventory was read before it started, so it is fresh; the update
         // check is not run, and last round's candidate stays.
-        runner.respond(vec![BREW, "update"], brew_answer(0, ""));
-        runner.delay(vec![BREW, "update"], Duration::from_millis(1500));
+        runner.respond(vec![exe, "update"], brew_answer(0, ""));
+        runner.delay(vec![exe, "update"], Duration::from_millis(1500));
         let reads_before = catalogue_reads(&runner);
         let second = session.refresh(&env, &opts).await;
         let reads_after = catalogue_reads(&runner);
@@ -4547,11 +4584,11 @@ mod tests {
         // catalogue would say now must not be read: if it were, jq would
         // move to 1.7.1 and its update would vanish.
         runner.respond(
-            vec![BREW, "info", "--installed", "--json=v2"],
+            vec![exe, "info", "--installed", "--json=v2"],
             brew_answer(0, &brew_info_jq("1.7.1")),
         );
         runner.respond(
-            vec![BREW, "outdated", "--json=v2"],
+            vec![exe, "outdated", "--json=v2"],
             brew_answer(0, BREW_NOTHING),
         );
         let reads_before = catalogue_reads(&runner);
@@ -4608,22 +4645,28 @@ mod tests {
         // loop's call into the refresh in flight and hand back its
         // snapshot -- still `IndexUpdating` -- and that wake-up was the
         // update's only one, so the notice stuck.
+        // Homebrew found under a folder of the test's own, never the
+        // Mac's: the refresh reads its `bin` and `sbin`.
+        let root = crate::testing::TempTree::new("refresh-brew");
+        let exe = root.at("opt/homebrew/bin/brew");
+        let exe = exe.to_str().unwrap();
         let runner = Arc::new(MockRunner::new());
-        runner.respond(vec![BREW, "--version"], brew_answer(0, "Homebrew 7.0.3\n"));
-        runner.respond(vec![BREW, "update"], brew_answer(0, ""));
-        runner.delay(vec![BREW, "update"], Duration::from_millis(400));
+        runner.respond(vec![exe, "--version"], brew_answer(0, "Homebrew 7.0.3\n"));
+        runner.respond(vec![exe, "update"], brew_answer(0, ""));
+        runner.delay(vec![exe, "update"], Duration::from_millis(400));
         runner.respond(
-            vec![BREW, "info", "--installed", "--json=v2"],
+            vec![exe, "info", "--installed", "--json=v2"],
             brew_answer(0, &brew_info_jq("1.7.1")),
         );
         runner.respond(
-            vec![BREW, "outdated", "--json=v2"],
+            vec![exe, "outdated", "--json=v2"],
             brew_answer(0, BREW_NOTHING),
         );
         let background_change = Arc::new(tokio::sync::Notify::new());
         let brew = Arc::new(
             BrewAdapter::new(runner.clone())
                 .with_path_exists_fn(apple_silicon_layout)
+                .with_discovery_root(&root.root)
                 .with_update_patience(Duration::from_millis(100))
                 .with_background_change(background_change.clone()),
         );
@@ -4707,22 +4750,28 @@ mod tests {
         // `unreported_failure`, so the refresh the failure's wake-up sets
         // off found no flag, an expired TTL, and started a second `brew
         // update` nobody asked for.
+        // Homebrew found under a folder of the test's own, never the
+        // Mac's: the refresh reads its `bin` and `sbin`.
+        let root = crate::testing::TempTree::new("refresh-brew");
+        let exe = root.at("opt/homebrew/bin/brew");
+        let exe = exe.to_str().unwrap();
         let runner = Arc::new(MockRunner::new());
-        runner.respond(vec![BREW, "--version"], brew_answer(0, "Homebrew 7.0.3\n"));
-        runner.respond(vec![BREW, "update"], brew_answer(1, ""));
-        runner.delay(vec![BREW, "update"], Duration::from_millis(400));
+        runner.respond(vec![exe, "--version"], brew_answer(0, "Homebrew 7.0.3\n"));
+        runner.respond(vec![exe, "update"], brew_answer(1, ""));
+        runner.delay(vec![exe, "update"], Duration::from_millis(400));
         runner.respond(
-            vec![BREW, "info", "--installed", "--json=v2"],
+            vec![exe, "info", "--installed", "--json=v2"],
             brew_answer(0, &brew_info_jq("1.6")),
         );
         runner.respond(
-            vec![BREW, "outdated", "--json=v2"],
+            vec![exe, "outdated", "--json=v2"],
             brew_answer(0, BREW_OUTDATED_JQ),
         );
         let background_change = Arc::new(tokio::sync::Notify::new());
         let brew = Arc::new(
             BrewAdapter::new(runner.clone())
                 .with_path_exists_fn(apple_silicon_layout)
+                .with_discovery_root(&root.root)
                 .with_update_patience(Duration::from_millis(100))
                 .with_background_change(background_change.clone()),
         );
@@ -4797,21 +4846,27 @@ mod tests {
         // locales) mentions no rows, so it promises none. Reachable only
         // through a refresh dropped after starting the update: any refresh
         // that runs to its commit puts this instance in the snapshot.
+        // Homebrew found under a folder of the test's own, never the
+        // Mac's: the refresh reads its `bin` and `sbin`.
+        let root = crate::testing::TempTree::new("refresh-brew");
+        let exe = root.at("opt/homebrew/bin/brew");
+        let exe = exe.to_str().unwrap();
         let runner = Arc::new(MockRunner::new());
-        runner.respond(vec![BREW, "--version"], brew_answer(0, "Homebrew 7.0.3\n"));
-        runner.respond(vec![BREW, "update"], brew_answer(0, ""));
-        runner.delay(vec![BREW, "update"], Duration::from_millis(1500));
+        runner.respond(vec![exe, "--version"], brew_answer(0, "Homebrew 7.0.3\n"));
+        runner.respond(vec![exe, "update"], brew_answer(0, ""));
+        runner.delay(vec![exe, "update"], Duration::from_millis(1500));
         runner.respond(
-            vec![BREW, "info", "--installed", "--json=v2"],
+            vec![exe, "info", "--installed", "--json=v2"],
             brew_answer(0, &brew_info_jq("1.6")),
         );
         runner.respond(
-            vec![BREW, "outdated", "--json=v2"],
+            vec![exe, "outdated", "--json=v2"],
             brew_answer(0, BREW_OUTDATED_JQ),
         );
         let brew = Arc::new(
             BrewAdapter::new(runner.clone())
                 .with_path_exists_fn(apple_silicon_layout)
+                .with_discovery_root(&root.root)
                 .with_update_patience(Duration::from_millis(100)),
         );
         // An update left running by a check whose refresh never committed.
@@ -4971,7 +5026,10 @@ mod tests {
     #[tokio::test]
     async fn test_the_first_rounds_preview_tags_each_ai_tool_with_its_family() {
         let gate = Arc::new(tokio::sync::Semaphore::new(0));
-        let (brew, _) = gated_source("brew", &["ollama", "jq"], &gate);
+        let (brew, state) = gated_source("brew", &["ollama", "jq"], &gate);
+        // A prefix of the test's own, whose bin folders the refresh reads.
+        let root = crate::testing::TempTree::new("refresh-preview-families");
+        state.lock().unwrap().instances[0].prefix = root.root.clone();
         let session = Session::with_adapters(Arc::new(VecSink::new()), vec![brew], None);
 
         let (refresh, mut previews) = spawn_previewing_refresh(&session);

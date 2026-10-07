@@ -36,17 +36,28 @@ use std::time::{Duration, Instant, SystemTime};
 use tokio_util::sync::CancellationToken;
 use trust::TrustList;
 
-/// The queue key shared with npm for a Homebrew prefix.
-pub(crate) fn prefix_lock(prefix: &Path) -> ResourceLock {
+/// The queue key shared with npm for a Homebrew prefix. `identity` tells
+/// whether the prefix is one of the discovery prefixes under another
+/// spelling (`PREFIX_IDENTITY_FN`, which the adapters hold as a seam).
+pub(crate) fn prefix_lock(
+    prefix: &Path,
+    identity: fn(&Path) -> Option<(u64, u64)>,
+) -> ResourceLock {
     let prefixes = BrewAdapter::CANDIDATE_PATHS.map(|exe| BrewAdapter::prefix_for(Path::new(exe)));
-    // Recorded fixtures name real prefixes. Unit tests explicitly supply
-    // a reader over their own trees, never inspect the host's Homebrew.
-    #[cfg(not(test))]
-    let identity = |path: &Path| directory_identity(path, &Protected::of_this_process());
-    #[cfg(test)]
-    let identity = |_: &Path| None;
     matching_prefix_lock(prefix, &prefixes, identity)
 }
+
+/// How `prefix_lock` looks at a folder, as `BrewAdapter::new` and
+/// `NpmAdapter::new` set it: the real directories in every build but this
+/// crate's unit tests, which never inspect the host's Homebrew -- recorded
+/// fixtures name real prefixes -- and supply a reader over their own trees
+/// where that is what they test. Integration tests, built without
+/// `cfg(test)`, turn it off with the adapters' `test-support` hooks.
+#[cfg(not(test))]
+pub(crate) const PREFIX_IDENTITY_FN: fn(&Path) -> Option<(u64, u64)> =
+    |path| directory_identity(path, &Protected::of_this_process());
+#[cfg(test)]
+pub(crate) const PREFIX_IDENTITY_FN: fn(&Path) -> Option<(u64, u64)> = |_| None;
 
 fn directory_identity(path: &Path, protected: &Protected) -> Option<(u64, u64)> {
     let (_, stat) = look::target(path, protected).ok()?;
@@ -173,6 +184,15 @@ pub struct BrewAdapter {
     /// one step at a time and never into a protected place); tests hand
     /// in a layout.
     path_exists_fn: fn(&Path) -> bool,
+    /// In this crate's unit tests, a folder of the test's own under which
+    /// `detect` puts the discovery prefixes it finds (`with_discovery_root`):
+    /// `path_exists_fn` still answers for `CANDIDATE_PATHS` as spelled, and
+    /// the instance found at `/opt/homebrew/bin/brew` is the one at
+    /// `<root>/opt/homebrew/bin/brew`, so that a refresh a test drives
+    /// reads that folder's `bin` and `sbin` (`commands::bin_folders`), and
+    /// never the Mac's own Homebrew.
+    #[cfg(test)]
+    discovery_root: Option<PathBuf>,
     /// How to look at Homebrew's own `brew update` lock under a prefix,
     /// for `catalogue_stamp`. The same fn-pointer seam as
     /// `path_exists_fn`: outside this crate's unit tests it is always
@@ -210,6 +230,15 @@ pub struct BrewAdapter {
     /// differently for the apps in the `/Applications` of the Mac running
     /// it.
     app_bundle_id_fn: fn(&Path) -> Option<String>,
+    /// How the queue key of a plan's prefix looks at folders
+    /// (`prefix_lock`): `PREFIX_IDENTITY_FN`.
+    prefix_identity_fn: fn(&Path) -> Option<(u64, u64)>,
+    /// Homebrew's default `appdir`, where a cask's app recorded by name
+    /// alone is looked for, beside `~/Applications`: `/Applications`
+    /// always but in the integration tests, which give one of their own
+    /// folders (`reading_only_its_prefix`) so that nothing looks at the
+    /// apps of the Mac running them.
+    applications: PathBuf,
     /// How to read Homebrew's trust list in the user's Homebrew config
     /// folder, for the uninstall preview (`trust::read_trust_list`):
     /// the real file outside this crate's unit tests; inside them an empty
@@ -424,6 +453,8 @@ impl BrewAdapter {
             euid_fn: || unsafe { libc::geteuid() },
             askpass_fn: || std::env::var("SUDO_ASKPASS").ok(),
             path_exists_fn: brew_is_there,
+            #[cfg(test)]
+            discovery_root: None,
             update_lock_fn: DEFAULT_UPDATE_LOCK_FN,
             env_var_fn: DEFAULT_ENV_VAR_FN,
             brew_env_fn: DEFAULT_BREW_ENV_FN,
@@ -431,6 +462,8 @@ impl BrewAdapter {
             #[cfg(test)]
             inspect_cask_links: false,
             app_bundle_id_fn: DEFAULT_APP_BUNDLE_ID_FN,
+            applications: PathBuf::from("/Applications"),
+            prefix_identity_fn: PREFIX_IDENTITY_FN,
             trust_list_fn: DEFAULT_TRUST_LIST_FN,
             kegs_fn: DEFAULT_KEGS_FN,
             links_fn: DEFAULT_LINKS_FN,
@@ -501,6 +534,15 @@ impl BrewAdapter {
     #[cfg(test)]
     pub(crate) fn with_path_exists_fn(mut self, path_exists_fn: fn(&Path) -> bool) -> BrewAdapter {
         self.path_exists_fn = path_exists_fn;
+        self
+    }
+
+    /// Test-only hook to find the discovery prefixes under `root` (see
+    /// `discovery_root`). `pub(crate)` for `session::refresh`'s tests,
+    /// which drive a whole refresh, bin folders and all.
+    #[cfg(test)]
+    pub(crate) fn with_discovery_root(mut self, root: &Path) -> BrewAdapter {
+        self.discovery_root = Some(root.to_path_buf());
         self
     }
 
@@ -589,6 +631,59 @@ impl BrewAdapter {
         self
     }
 
+    /// Test support (the `test-support` feature, for the integration tests
+    /// and the shell's, which are built without `cfg(test)` and so get every
+    /// real reader): an adapter that reads nothing of the Mac running the
+    /// test -- no variable of its environment, no `brew.env` file, no trust
+    /// list, no Caskroom, Cellar, links or update lock under any prefix, no
+    /// app, no discovery prefix -- as this crate's unit tests have it. For a
+    /// test whose instance names a real prefix such as `/opt/homebrew`.
+    #[cfg(feature = "test-support")]
+    pub fn reading_nothing_of_this_mac(mut self) -> BrewAdapter {
+        self.askpass_fn = || None;
+        self.update_lock_fn = |_| {
+            HomebrewUpdateLock::Free(LockStamp {
+                dir: None,
+                file: None,
+            })
+        };
+        self.env_var_fn = |_| None;
+        self.brew_env_fn = |_| brew_env::EnvFile::Skipped;
+        self.recorded_uninstall_fn = |_, _| None;
+        self.app_bundle_id_fn = |_| None;
+        self.trust_list_fn = |_| Some(TrustList::default());
+        self.kegs_fn = |_, _| None;
+        self.links_fn = |_, _| None;
+        self.prefix_identity_fn = |_| None;
+        self
+    }
+
+    /// Test support (`test-support`), for a test whose instance's prefix is
+    /// a folder of its own: what is under that prefix is read as Banager
+    /// reads it -- its Caskroom, Cellar, links, update lock and
+    /// `etc/homebrew/brew.env` -- and nothing of the Mac running the test.
+    /// Banager's environment is empty (no `HOME`, so no user `brew.env`,
+    /// trust list or `~/Applications`), the system's
+    /// `/etc/homebrew/brew.env` is not there, apps are looked for in
+    /// `applications` instead of `/Applications`, and no discovery prefix
+    /// is looked at.
+    #[cfg(feature = "test-support")]
+    pub fn reading_only_its_prefix(mut self, applications: &Path) -> BrewAdapter {
+        self.askpass_fn = || None;
+        self.env_var_fn = |_| None;
+        self.brew_env_fn = |path| {
+            if path == Path::new(brew_env::SYSTEM_FILE) {
+                brew_env::EnvFile::Skipped
+            } else {
+                brew_env::read_brew_env_file(path)
+            }
+        };
+        self.trust_list_fn = |_| Some(TrustList::default());
+        self.applications = applications.to_path_buf();
+        self.prefix_identity_fn = |_| None;
+        self
+    }
+
     /// A recorded link that cannot be confirmed as this cask's. Checked
     /// at preview and again immediately before running its uninstall.
     fn cask_link_conflict(&self, prefix: &Path, req: &OpRequest) -> Option<PathBuf> {
@@ -606,7 +701,7 @@ impl BrewAdapter {
         let home = (self.env_var_fn)("HOME")
             .map(PathBuf::from)
             .unwrap_or_default();
-        cask_links::conflict(prefix, &req.name, &recorded, &home)
+        cask_links::conflict(prefix, &req.name, &recorded, &home, &self.applications)
     }
 
     /// What an uninstall of `req` says under the tool
@@ -794,7 +889,7 @@ impl BrewAdapter {
             } else if Path::new(&target).is_absolute() {
                 vec![PathBuf::from(&target)]
             } else {
-                std::iter::once(Path::new("/Applications").join(&target))
+                std::iter::once(self.applications.join(&target))
                     .chain(home.map(|home| home.join("Applications").join(&target)))
                     .collect()
             };
@@ -1716,6 +1811,11 @@ impl BrewAdapter {
             if !(self.path_exists_fn)(&path) {
                 continue;
             }
+            #[cfg(test)]
+            let path = match &self.discovery_root {
+                Some(root) => root.join(candidate.trim_start_matches('/')),
+                None => path,
+            };
             let (version, no_answer) = if as_root {
                 (None, None)
             } else {
@@ -2381,7 +2481,7 @@ impl BrewAdapter {
         if matches!(req.kind, OpKind::Install | OpKind::Upgrade) {
             self.require_no_auto_update(&inst.prefix, &self.env_vec())?;
         }
-        let lock = prefix_lock(&inst.prefix);
+        let lock = prefix_lock(&inst.prefix, self.prefix_identity_fn);
         match req.kind {
             // `brew link --formula --force <formula>` (`link_argv`, the
             // same command that links a keg-only formula back after its
@@ -5437,6 +5537,7 @@ mod plan_execute_tests {
             .with_app_bundle_id_fn(|_| None);
         let inst = ManagerInstance {
             prefix: prefix.0.clone(),
+            exe_path: prefix.0.join("bin/brew"),
             ..test_instance()
         };
         for (name, expected_step) in [("zed", "QuitsApps"), ("dbeaver-community", "SignalsApps")] {
@@ -5549,7 +5650,13 @@ mod plan_execute_tests {
         let wrapper = bin.join("soffice");
         symlink(&foreign, &wrapper).unwrap();
         assert_eq!(
-            cask_links::conflict(&prefix.0, "libreoffice", &wrapper_record, &prefix.0),
+            cask_links::conflict(
+                &prefix.0,
+                "libreoffice",
+                &wrapper_record,
+                &prefix.0,
+                &prefix.0.join("Applications")
+            ),
             Some(wrapper)
         );
     }
@@ -5678,6 +5785,7 @@ mod plan_execute_tests {
         let runner = Arc::new(MockRunner::new());
         let inst = ManagerInstance {
             prefix: prefix.0.clone(),
+            exe_path: prefix.0.join("bin/brew"),
             ..test_instance()
         };
         let step = |step, items: &[&str]| Warning::CaskUninstallStep {
@@ -6084,6 +6192,7 @@ mod plan_execute_tests {
             .with_env_var_fn(someones_home);
         let inst = ManagerInstance {
             prefix: prefix.0.clone(),
+            exe_path: prefix.0.join("bin/brew"),
             ..test_instance()
         };
         let scope = |what| Warning::UninstallScope { what };
@@ -6198,6 +6307,7 @@ mod plan_execute_tests {
             .with_env_var_fn(someones_home);
         let inst = ManagerInstance {
             prefix: prefix.0.clone(),
+            exe_path: prefix.0.join("bin/brew"),
             ..test_instance()
         };
         let scope = |what| Warning::UninstallScope { what };
@@ -6279,6 +6389,7 @@ mod plan_execute_tests {
             .with_env_var_fn(someones_home);
         let inst = ManagerInstance {
             prefix: prefix.0.clone(),
+            exe_path: prefix.0.join("bin/brew"),
             ..test_instance()
         };
 
@@ -6350,6 +6461,7 @@ mod plan_execute_tests {
         let runner = Arc::new(MockRunner::new());
         let inst = ManagerInstance {
             prefix: prefix.0.clone(),
+            exe_path: prefix.0.join("bin/brew"),
             ..test_instance()
         };
         let scope = |what| Warning::UninstallScope { what };
@@ -6468,6 +6580,7 @@ mod plan_execute_tests {
             .with_env_var_fn(someones_home);
         let inst = ManagerInstance {
             prefix: prefix.0.clone(),
+            exe_path: prefix.0.join("bin/brew"),
             ..test_instance()
         };
         for token in [
@@ -6498,6 +6611,7 @@ mod plan_execute_tests {
             .with_recorded_uninstall_fn(cask_receipt::read_recorded);
         let inst = ManagerInstance {
             prefix: prefix.0.clone(),
+            exe_path: prefix.0.join("bin/brew"),
             ..test_instance()
         };
         for kind in [OpKind::Install, OpKind::Upgrade] {
@@ -6929,8 +7043,11 @@ mod plan_execute_tests {
                 .unwrap()
                 .as_nanos()
         ));
-        std::fs::create_dir_all(&dir).expect("create temp dir");
-        let exe = dir.join("brew");
+        // The `brew` sits in the prefix's own `bin`, as detection finds
+        // it, so that whatever is read from the program's prefix
+        // (`prefix_for`) is this folder too.
+        std::fs::create_dir_all(dir.join("bin")).expect("create temp dir");
+        let exe = dir.join("bin/brew");
         let script = format!(
             "#!/bin/sh\n\
              case \"$1\" in\n\
@@ -7354,6 +7471,11 @@ mod plan_execute_tests {
     /// An update that answers `exit 0` after `delay`, plus an `install jq`
     /// that answers at once.
     fn runner_with_slow_update(delay: Duration) -> Arc<MockRunner> {
+        runner_with_slow_update_at("/opt/homebrew/bin/brew", delay)
+    }
+
+    /// `runner_with_slow_update`, for the `brew` at `brew`.
+    fn runner_with_slow_update_at(brew: &str, delay: Duration) -> Arc<MockRunner> {
         let ok = CommandOutput {
             stderr_cause: Default::default(),
             exit_code: Some(0),
@@ -7363,19 +7485,16 @@ mod plan_execute_tests {
             cancelled: false,
         };
         let runner = Arc::new(MockRunner::new());
-        runner.respond(vec!["/opt/homebrew/bin/brew", "update"], ok.clone());
-        runner.delay(vec!["/opt/homebrew/bin/brew", "update"], delay);
+        runner.respond(vec![brew, "update"], ok.clone());
+        runner.delay(vec![brew, "update"], delay);
         runner.respond(
-            vec!["/opt/homebrew/bin/brew", "outdated", "--json=v2"],
+            vec![brew, "outdated", "--json=v2"],
             CommandOutput {
                 stdout: r#"{"formulae":[],"casks":[]}"#.to_string(),
                 ..ok.clone()
             },
         );
-        runner.respond(
-            vec!["/opt/homebrew/bin/brew", "install", "--formula", "jq"],
-            ok,
-        );
+        runner.respond(vec![brew, "install", "--formula", "jq"], ok);
         runner
     }
 
@@ -7549,8 +7668,17 @@ mod plan_execute_tests {
     /// `runner_with_slow_update`, plus a `brew uses` that names one
     /// dependent after `uses_delay`.
     fn runner_with_update_and_uses(update: Duration, uses_delay: Duration) -> Arc<MockRunner> {
-        let runner = runner_with_slow_update(update);
-        let uses = vec!["/opt/homebrew/bin/brew", "uses", "--installed", "jq"];
+        runner_with_update_and_uses_at("/opt/homebrew/bin/brew", update, uses_delay)
+    }
+
+    /// `runner_with_update_and_uses`, for the `brew` at `brew`.
+    fn runner_with_update_and_uses_at(
+        brew: &str,
+        update: Duration,
+        uses_delay: Duration,
+    ) -> Arc<MockRunner> {
+        let runner = runner_with_slow_update_at(brew, update);
+        let uses = vec![brew, "uses", "--installed", "jq"];
         runner.respond(
             uses.clone(),
             CommandOutput {
@@ -7888,13 +8016,24 @@ mod plan_execute_tests {
             .iter()
             .map(|(k, v)| (k.to_string(), v.to_string()))
             .collect();
+        // The real reader over this test's own tree only: the system file
+        // `/etc/homebrew/brew.env` is answered as absent, so that an
+        // administrator's file on the Mac running the test cannot change
+        // what it reads, and the prefix is one of its own folders.
+        let prefix = home.join("prefix");
         let read = |home_var: &std::path::Path| {
             let home_var = home_var.as_os_str().to_os_string();
             brew_env::after_brew_env(
                 &env,
-                Path::new("/nonexistent-homebrew-prefix"),
+                &prefix,
                 &|name| (name == "HOME").then(|| home_var.clone()),
-                &brew_env::read_brew_env_file,
+                &|path| {
+                    if path == Path::new(brew_env::SYSTEM_FILE) {
+                        brew_env::EnvFile::Skipped
+                    } else {
+                        brew_env::read_brew_env_file(path)
+                    }
+                },
             )
         };
         let readable = read(&home);
@@ -8030,11 +8169,14 @@ mod plan_execute_tests {
         // before a Terminal `brew install`, never shows up in
         // `UpdateRecord`; it does hold Homebrew's own lock.
         let prefix = scratch_prefix("held");
-        let runner = runner_with_update_and_uses(Duration::ZERO, Duration::ZERO);
+        let brew = prefix.join("bin/brew");
+        let runner =
+            runner_with_update_and_uses_at(brew.to_str().unwrap(), Duration::ZERO, Duration::ZERO);
         let adapter =
             BrewAdapter::new(runner.clone()).with_update_lock_fn(probe_homebrew_update_lock);
         let inst = ManagerInstance {
             prefix: prefix.clone(),
+            exe_path: prefix.join("bin/brew"),
             ..test_instance()
         };
 
@@ -8068,12 +8210,18 @@ mod plan_execute_tests {
         // go in between. Looking only at whether it is held would see
         // nothing; the file's mtime has moved.
         let prefix = scratch_prefix("between");
-        let runner = runner_with_update_and_uses(Duration::ZERO, Duration::from_millis(400));
+        let brew = prefix.join("bin/brew");
+        let runner = runner_with_update_and_uses_at(
+            brew.to_str().unwrap(),
+            Duration::ZERO,
+            Duration::from_millis(400),
+        );
         let adapter = Arc::new(
             BrewAdapter::new(runner.clone()).with_update_lock_fn(probe_homebrew_update_lock),
         );
         let inst = ManagerInstance {
             prefix: prefix.clone(),
+            exe_path: prefix.join("bin/brew"),
             ..test_instance()
         };
         assert!(quick_homebrew_update(&prefix), "setup: an earlier update");
@@ -8116,12 +8264,18 @@ mod plan_execute_tests {
         // it was made and deleted in has.
         let prefix = scratch_prefix("made-and-deleted");
         let lock_file = prefix.join("var/homebrew/locks/update");
-        let runner = runner_with_update_and_uses(Duration::ZERO, Duration::from_millis(400));
+        let brew = prefix.join("bin/brew");
+        let runner = runner_with_update_and_uses_at(
+            brew.to_str().unwrap(),
+            Duration::ZERO,
+            Duration::from_millis(400),
+        );
         let adapter = Arc::new(
             BrewAdapter::new(runner.clone()).with_update_lock_fn(probe_homebrew_update_lock),
         );
         let inst = ManagerInstance {
             prefix: prefix.clone(),
+            exe_path: prefix.join("bin/brew"),
             ..test_instance()
         };
         assert!(

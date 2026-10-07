@@ -260,7 +260,23 @@ mod tests {
             .collect()
     }
 
-    async fn session_over(adapter: Arc<Fake>, home: &Path, sizes: bool) -> Arc<Session> {
+    async fn session_over(mut adapter: Arc<Fake>, home: &Path, sizes: bool) -> Arc<Session> {
+        // A source left at the fixture's prefix, `/`, is given one under
+        // the test's own home: a refresh reads the bin folders of every
+        // Homebrew and npm prefix (`commands::bin_folders`) and the uninstall
+        // preview looks under the prefix, and `/bin` and `/sbin` are the
+        // Mac's own.
+        match Arc::get_mut(&mut adapter) {
+            Some(inner) if inner.instance.prefix == Path::new("/") => {
+                inner.instance.prefix = home.join("prefix");
+            }
+            Some(_) => {}
+            None => assert_ne!(
+                adapter.instance.prefix,
+                Path::new("/"),
+                "a fake the test still holds gives itself a prefix"
+            ),
+        }
         let sink = Arc::new(VecSink::new());
         let adapters: Vec<Arc<dyn Adapter>> = vec![adapter];
         let session = if sizes {

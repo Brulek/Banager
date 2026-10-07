@@ -17,11 +17,15 @@ use std::path::{Component, Path, PathBuf};
 /// place with no link (nothing there, or a file Homebrew does not touch),
 /// a link to nothing (removing it stops nothing that works), and a link
 /// into `<prefix>/Cellar`, which Homebrew skips (`conflicting_formula`).
+/// An app recorded by name alone is looked for in `applications`,
+/// Homebrew's default `appdir` (`/Applications`, which the adapter passes:
+/// `BrewAdapter::applications`), and in `~/Applications`.
 pub(super) fn conflict(
     prefix: &Path,
     token: &str,
     recorded: &Recorded,
     home: &Path,
+    applications: &Path,
 ) -> Option<PathBuf> {
     let protected = Protected::new(home);
     let root = prefix.join("Caskroom").join(token.rsplit('/').next()?);
@@ -31,7 +35,7 @@ pub(super) fn conflict(
         if app.is_absolute() {
             roots.push(app);
         } else {
-            roots.push(Path::new("/Applications").join(&app));
+            roots.push(applications.join(&app));
             roots.push(home.join("Applications").join(app));
         }
     }
@@ -178,9 +182,10 @@ mod tests {
     use std::os::unix::fs::symlink;
 
     /// A Homebrew prefix and a home folder of a test's own, removed when
-    /// dropped. The app folder is the home folder's `Applications`, where
-    /// `--appdir=~/Applications` puts apps, so nothing looks at this Mac's
-    /// own `/Applications`.
+    /// dropped. The apps are in the home folder's `Applications`, where
+    /// `--appdir=~/Applications` puts apps, and the folder that stands for
+    /// `/Applications` is one of its own too (`applications`), so nothing
+    /// looks at this Mac's own `/Applications`.
     struct Tmp(PathBuf);
 
     impl Tmp {
@@ -195,6 +200,7 @@ mod tests {
             ));
             std::fs::create_dir_all(dir.join("prefix/Caskroom")).unwrap();
             std::fs::create_dir_all(dir.join("home/Applications")).unwrap();
+            std::fs::create_dir_all(dir.join("Applications")).unwrap();
             Tmp(std::fs::canonicalize(&dir).unwrap())
         }
 
@@ -204,6 +210,11 @@ mod tests {
 
         fn home(&self) -> PathBuf {
             self.0.join("home")
+        }
+
+        /// What stands for `/Applications`: empty.
+        fn applications(&self) -> PathBuf {
+            self.0.join("Applications")
         }
 
         /// A file at `path`, its folders made.
@@ -241,7 +252,7 @@ mod tests {
     #[test]
     fn test_an_ordinary_casks_own_man_pages_and_completions_are_its_own() {
         let tmp = Tmp::new("own");
-        let (prefix, home) = (tmp.prefix(), tmp.home());
+        let (prefix, home, apps) = (tmp.prefix(), tmp.home(), tmp.applications());
         let app = home.join("Applications/Ghostty.app/Contents/Resources");
         let a = |rest: &str| app.join(rest).to_str().unwrap().to_string();
         let record = recorded(serde_json::json!([
@@ -291,7 +302,7 @@ mod tests {
             tmp.file(&app.join(source));
             tmp.link(&app.join(source), &prefix.join(link));
         }
-        assert_eq!(conflict(&prefix, "ghostty", &record, &home), None);
+        assert_eq!(conflict(&prefix, "ghostty", &record, &home, &apps), None);
 
         // Each kind's link, once it leads into another source's package,
         // is not the cask's: npm links man pages under the same prefix.
@@ -302,7 +313,7 @@ mod tests {
             let own = std::fs::read_link(&link).unwrap();
             tmp.link(&npm, &link);
             assert_eq!(
-                conflict(&prefix, "ghostty", &record, &home),
+                conflict(&prefix, "ghostty", &record, &home, &apps),
                 Some(link.clone())
             );
             tmp.link(&own, &link);
@@ -317,7 +328,7 @@ mod tests {
     #[test]
     fn test_dead_links_formula_links_and_home_targets_are_not_conflicts() {
         let tmp = Tmp::new("left");
-        let (prefix, home) = (tmp.prefix(), tmp.home());
+        let (prefix, home, apps) = (tmp.prefix(), tmp.home(), tmp.applications());
         let app = home.join("Applications/Alacritty.app/Contents");
         let source = app.join("MacOS/alacritty");
         let terminfo = app.join("Resources/61/alacritty");
@@ -329,22 +340,22 @@ mod tests {
         // The app is gone: both links lead nowhere.
         tmp.link(&source, &prefix.join("bin/alacritty"));
         tmp.link(&terminfo, &home.join(".terminfo/61/alacritty"));
-        assert_eq!(conflict(&prefix, "alacritty", &record, &home), None);
+        assert_eq!(conflict(&prefix, "alacritty", &record, &home, &apps), None);
         // The app is back: the home folder's link is the cask's.
         tmp.file(&source);
         tmp.file(&terminfo);
-        assert_eq!(conflict(&prefix, "alacritty", &record, &home), None);
+        assert_eq!(conflict(&prefix, "alacritty", &record, &home, &apps), None);
         // A formula's link: Homebrew leaves it where it is.
         let keg = prefix.join("Cellar/alacritty/0.16.1/bin/alacritty");
         tmp.file(&keg);
         tmp.link(&keg, &prefix.join("bin/alacritty"));
-        assert_eq!(conflict(&prefix, "alacritty", &record, &home), None);
+        assert_eq!(conflict(&prefix, "alacritty", &record, &home, &apps), None);
         // npm's, at the home folder's target: not the cask's.
         let npm = prefix.join("lib/node_modules/terminfo/alacritty");
         tmp.file(&npm);
         tmp.link(&npm, &home.join(".terminfo/61/alacritty"));
         assert_eq!(
-            conflict(&prefix, "alacritty", &record, &home),
+            conflict(&prefix, "alacritty", &record, &home, &apps),
             Some(home.join(".terminfo/61/alacritty"))
         );
     }

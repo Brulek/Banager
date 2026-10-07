@@ -14,7 +14,7 @@ use crate::model::{
     ResourceLock, Unavailable,
 };
 use crate::runner::HostEnv;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// `HostEnv` for a non-root, ordinary-user refresh -- the common case every
 /// test that isn't specifically exercising the root refusal uses.
@@ -32,10 +32,12 @@ pub(super) fn non_root_env() -> HostEnv {
 
 /// `HostEnv` for a root user, used by the tests covering
 /// `BrewAdapter::refuses_as_root`.
-pub(super) fn root_env() -> HostEnv {
+/// `home` stands for root's `/var/root`: a folder of the test's own, as
+/// a refresh looks at the home folder it is given (`Protected::new`).
+pub(super) fn root_env(home: &Path) -> HostEnv {
     HostEnv {
         path_dirs: vec![],
-        home: PathBuf::from("/var/root"),
+        home: home.to_path_buf(),
         euid: 0,
         cargo_home: None,
         rustup_home: None,
