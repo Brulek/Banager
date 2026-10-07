@@ -397,6 +397,20 @@ describe("the browser preview's mock backend", () => {
     });
   });
 
+  it("keeps the partial-link rollback scenario copy-only", async () => {
+    const { backend } = backendFor({ state: "nonode-partial" });
+    const snapshot = await answer<Snapshot>(backend.invoke("refresh"));
+    expect(snapshot.instances.find((i) => i.adapter_id === "npm")?.status.no_answer?.link_fixes[0]?.key.name).toBe("node@18");
+    const issued = await answer<IssuedPlan>(backend.invoke("plan_operation", { request: {
+      kind: "Link", instance_id: "brew:/opt/homebrew", artifact_kind: "Formula", name: "node@18",
+    } }));
+    const paths = ["/opt/homebrew/bin/npm", "/opt/homebrew/bin/npx"];
+    expect(issued.plan.warnings).toContainEqual({ LinkRollbackRisk: { paths } });
+    const result = backend.invoke("submit_operation", { planId: issued.id }).catch((error: unknown) => error);
+    expect(await answer(result)).toBe(JSON.stringify({ kind: "link_blocked", paths }));
+    expect(await answer(backend.invoke("list_operations"))).toEqual([]);
+  });
+
   it("has npm unable to start for want of node with ?state=nonode, and a link that puts it back", async () => {
     // The author's Mac on 2026-10-07 (finding 1): npm says why, and offers
     // node@22 and node@20, newest first; node@22's link has npm's own npm

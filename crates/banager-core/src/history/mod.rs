@@ -323,7 +323,8 @@ fn fault_result(fault: &Fault) -> HistoryResult {
         Fault::PathChanged { .. }
         | Fault::FormulaChanged { .. }
         | Fault::HomebrewSettingsChanged
-        | Fault::LinkTaken { .. } => cause(FailureCause::Changed),
+        | Fault::LinkTaken { .. }
+        | Fault::LinkRollbackRisk { .. } => cause(FailureCause::Changed),
         Fault::Panicked | Fault::Internal => cause(FailureCause::Internal),
     }
 }

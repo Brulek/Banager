@@ -5,6 +5,7 @@ import type {
   CommandState,
   Snapshot,
   Outcome,
+  Fault,
   OperationEvent,
   LogNote,
   UiEvent,
@@ -396,6 +397,12 @@ describe("types", () => {
     expect(JSON.stringify(link)).toBe(
       '{"kind":"Link","instance_id":"brew:/opt/homebrew","artifact_kind":"Formula","name":"node@22"}',
     );
+    const risk: Warning = { LinkRollbackRisk: { paths: ["/opt/homebrew/bin/npm"] } };
+    expect(JSON.stringify(risk)).toBe('{"LinkRollbackRisk":{"paths":["/opt/homebrew/bin/npm"]}}');
+    expect(roundTrip(risk)).toEqual(risk);
+    const fault: Fault = { LinkRollbackRisk: { name: "node@22" } };
+    expect(JSON.stringify(fault)).toBe('{"LinkRollbackRisk":{"name":"node@22"}}');
+    expect(roundTrip(fault)).toEqual(fault);
     const conflicts: Warning = { LinkConflicts: { paths: ["/opt/homebrew/bin/npm"] } };
     expect(JSON.stringify(conflicts)).toBe('{"LinkConflicts":{"paths":["/opt/homebrew/bin/npm"]}}');
     expect(roundTrip(conflicts)).toEqual(conflicts);

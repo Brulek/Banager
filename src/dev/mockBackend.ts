@@ -656,6 +656,17 @@ export function createMockBackend(scenario: Scenario): MockBackend {
     plans.delete(planId);
     if (Date.now() - stored.issuedAtMs > PLAN_LIFETIME_MS) throw refusal({ kind: "expired" });
     const { plan } = stored.issued;
+    // A link whose preview offered no Link, refused as `Session::submit`
+    // refuses it (`in_the_way_of_link`).
+    if (plan.request.kind === "Link") {
+      const paths = plan.warnings.flatMap((warning) => {
+        if (typeof warning === "string") return [];
+        if ("LinkConflicts" in warning) return warning.LinkConflicts.paths;
+        if ("LinkRollbackRisk" in warning) return warning.LinkRollbackRisk.paths;
+        return [];
+      });
+      if (paths.length > 0) throw refusal({ kind: "link_blocked", paths });
+    }
     // A preview that named a source running on its package is never run.
     if (namesASource(plan)) throw refusal({ kind: "uninstall_blocked", reason: "NeededBySource" });
     gate(plan.request);

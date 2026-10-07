@@ -72,6 +72,7 @@ export const SCENARIO_STATES = [
   "unchecked",
   "nonode",
   "nonode-intel",
+  "nonode-partial",
 ] as const;
 export type ScenarioState = (typeof SCENARIO_STATES)[number];
 

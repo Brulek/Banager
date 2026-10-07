@@ -2262,8 +2262,11 @@ impl BrewAdapter {
             // `node@20` changes which `node` Terminal runs -- and every
             // place `brew link` would stop at (`KegLinks::held_paths`, what
             // makes an update `UpdateBlocked::LinkTaken`) is said too
-            // (`Warning::LinkConflicts`), which `Session::submit` refuses
-            // to run. No password, no download, no update of Homebrew:
+            // (`Warning::LinkConflicts`), as is every link of Homebrew's
+            // already there that a stopped link would take back where its
+            // link is not recorded (`KegLinks::rollback_paths`,
+            // `Warning::LinkRollbackRisk`); `Session::submit` refuses to
+            // run either. No password, no download, no update of Homebrew:
             // `brew link` does none of those.
             OpKind::Link => {
                 if req.artifact_kind != ArtifactKind::Formula {
@@ -2285,6 +2288,10 @@ impl BrewAdapter {
                     let paths = links.held_paths();
                     if !paths.is_empty() {
                         warnings.push(Warning::LinkConflicts { paths });
+                    }
+                    let paths = links.rollback_paths();
+                    if !paths.is_empty() {
+                        warnings.push(Warning::LinkRollbackRisk { paths });
                     }
                 }
                 Ok(Plan {
@@ -2528,6 +2535,23 @@ impl BrewAdapter {
         }
         if let Err(fault) = self.require_kegs_as_previewed(plan) {
             return Ok(Outcome::BanagerFailed(fault));
+        }
+        // A link on its own: its links read again, after any wait for
+        // `brew update` and under the operation's lock. Homebrew's own
+        // links that appeared since the preview, its link still not
+        // recorded, would go with a link that stopped
+        // (`Warning::LinkRollbackRisk`): not started, they stay. A place
+        // taken since is left to Homebrew, which links nothing over it.
+        if plan.request.kind == OpKind::Link {
+            if let PlanAction::Command { program, .. } = &plan.action {
+                if (self.links_fn)(&Self::prefix_for(program), &plan.request.name)
+                    .is_some_and(|links| !links.rollback_paths().is_empty())
+                {
+                    return Ok(Outcome::BanagerFailed(Fault::LinkRollbackRisk {
+                        name: plan.request.name.clone(),
+                    }));
+                }
+            }
         }
         let relink = match self.require_link_places_free(plan) {
             Ok(relink) => relink,

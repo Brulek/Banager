@@ -377,3 +377,45 @@ describe("LinkFixSheet in Chinese", () => {
     await i18n.changeLanguage("en");
   });
 });
+
+describe("LinkFixSheet where Homebrew's own links are already there, its link not recorded (r11 F2)", () => {
+  const risk: Warning = { LinkRollbackRisk: { paths: ["/opt/homebrew/bin/npm", "/opt/homebrew/bin/npx"] } };
+  it.each([
+    [
+      "en",
+      "/opt/homebrew/bin/npm, /opt/homebrew/bin/npx are already linked to it. If linking stops partway, Homebrew removes those links too, so it can't be linked here.",
+    ],
+    ["zh-CN", "/opt/homebrew/bin/npm、/opt/homebrew/bin/npx已链接到它。如果链接中途停止，Homebrew也会删除已有的链接，因此无法在这里链接。"],
+    ["zh-Hant", "/opt/homebrew/bin/npm、/opt/homebrew/bin/npx已連結到它。若連結中途停止，Homebrew也會刪除已有的連結，因此無法在這裡連結。"],
+  ].flatMap(([language, line]) => [false, true].map((conflict) => ({ language, line, conflict }))))(
+    "offers no Link and names them, in $language (files also in the way: $conflict)",
+    async ({ language, line, conflict }) => {
+      await i18n.changeLanguage(language);
+      const npm = npmWithout([NODE_22]);
+      backend(npm, conflict ? [risk, { LinkConflicts: { paths: ["/opt/homebrew/bin/corepack"] } }] : [risk]);
+      renderWithProviders(<LinkFixSheet instanceId={npm.id} onClose={() => {}} />);
+      await screen.findByText(line);
+      expect(screen.queryByRole("button", { name: i18n.t("noAnswer.sheet.confirm") })).toBeNull();
+      expect(screen.getByRole("button", { name: i18n.t("common.copyCommand") })).toBeInTheDocument();
+      // `--overwrite` only where files are in the way: it would not keep
+      // the links already there.
+      expect(screen.getByRole("group", { name: i18n.t("noAnswer.sheet.commandLabel") })).toHaveTextContent(
+        `/opt/homebrew/bin/brew link --formula --force ${conflict ? "--overwrite " : ""}node@22`,
+      );
+      expect(screen.getByRole("alertdialog")).toHaveTextContent(
+        i18n.t(conflict ? "linkRollback.handoffConflicts" : "linkRollback.handoff", { formula: "node@22" }),
+      );
+      expect(calls("submit_operation")).toHaveLength(0);
+      await i18n.changeLanguage("en");
+    },
+  );
+
+  it("says one link already there in the singular", async () => {
+    const npm = npmWithout([NODE_22]);
+    backend(npm, [{ LinkRollbackRisk: { paths: ["/opt/homebrew/bin/npm"] } }]);
+    renderWithProviders(<LinkFixSheet instanceId={npm.id} onClose={() => {}} />);
+    await screen.findByText(
+      "/opt/homebrew/bin/npm is already linked to it. If linking stops partway, Homebrew removes that link too, so it can't be linked here.",
+    );
+  });
+});

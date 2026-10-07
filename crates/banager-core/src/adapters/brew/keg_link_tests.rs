@@ -570,7 +570,7 @@ impl FakeHomebrew {
     /// each command by `Keg#make_relative_symlink` (`keg.rb:823-861`):
     /// nothing to do where its own link is; a link made where nothing is,
     /// and where a link leads nowhere; anything else there a conflict,
-    /// after which what it linked is unlinked again and nothing recorded.
+    /// after which ALL matching keg links are unlinked, including pre-existing ones.
     /// Already recorded: nothing (`cmd/link.rb:73-84`). Whether it linked.
     fn link(&self) -> bool {
         if self.recorded() {
@@ -578,7 +578,6 @@ impl FakeHomebrew {
         }
         let keg = self.opt_keg();
         let version = keg.file_name().unwrap().to_str().unwrap().to_string();
-        let mut made = Vec::new();
         for name in Self::commands(&keg) {
             let src = keg.join("bin").join(&name);
             let dst = self.prefix.join("bin").join(&name);
@@ -587,15 +586,16 @@ impl FakeHomebrew {
             }
             if std::fs::symlink_metadata(&dst).is_ok() {
                 if dst.exists() {
-                    for dst in made {
-                        std::fs::remove_file(dst).unwrap();
-                    }
+                    self.unlink(&keg);
                     return false;
                 }
                 std::fs::remove_file(&dst).unwrap();
             }
             symlink(format!("../Cellar/node@22/{version}/bin/{name}"), &dst).unwrap();
-            made.push(dst);
+        }
+        if self.prefix.join("include/node").exists() {
+            self.unlink(&keg);
+            return false;
         }
         symlink(format!("../../../Cellar/node@22/{version}"), self.record()).unwrap();
         true
@@ -1103,4 +1103,106 @@ async fn a_link_is_planned_only_for_a_keg_only_formula_brew_link_links() {
         );
     }
     std::fs::remove_dir_all(&prefix).unwrap();
+}
+
+/// node@22 partly linked, its link not recorded (r11 F2): `bin/npm` and
+/// `bin/npx` are Homebrew's own links into its keg's `bin` (as
+/// `brew_link` makes them, left from a link that was interrupted, say),
+/// `bin/node` is not there, and `include/node` is a file -- outside `bin`
+/// and `sbin`, so no preview sees it, and `brew link` stops at it.
+fn partial_npm_links(prefix: &Path) {
+    for name in ["npm", "npx"] {
+        symlink(
+            format!("../Cellar/node@22/22.23.3/bin/{name}"),
+            prefix.join("bin").join(name),
+        )
+        .unwrap();
+    }
+    std::fs::create_dir_all(prefix.join("include")).unwrap();
+    std::fs::write(prefix.join("include/node"), b"existing header conflict").unwrap();
+}
+
+#[tokio::test]
+async fn partial_links_block_the_fix_preview_before_homebrew_can_roll_them_back() {
+    let prefix = node_22_prefix("keg-fix-partial");
+    partial_npm_links(&prefix);
+    let inst = instance(&prefix);
+    let runner = Arc::new(FakeHomebrew::new(&prefix, Upgrade::AsHomebrew));
+    let adapter = adapter(runner.clone(), &inst);
+    let plan = adapter
+        .plan(&inst, &link(&inst, "node@22"))
+        .await
+        .expect("planned, with what is at risk");
+    // Nothing in `bin` is in the way: npm and npx are Homebrew's own links,
+    // `node` and `corepack` free. Only the links already there are said.
+    assert_eq!(
+        plan.warnings,
+        [
+            Warning::LinkPutsCommands {
+                names: strings(&ALL),
+            },
+            Warning::LinkRollbackRisk {
+                paths: ["bin/npm", "bin/npx"]
+                    .map(|path| prefix.join(path).display().to_string())
+                    .to_vec(),
+            },
+        ]
+    );
+    assert!(runner.calls().is_empty());
+    // What the refusal spares them: Homebrew's link stops at
+    // `include/node` and takes back npm and npx with what it linked.
+    assert!(!runner.link());
+    assert!(runner.links().linked_names().is_empty());
+    std::fs::remove_dir_all(prefix).unwrap();
+}
+
+#[tokio::test]
+async fn partial_links_added_after_preview_block_the_fix_before_execution() {
+    let prefix = node_22_prefix("keg-fix-partial-later");
+    let inst = instance(&prefix);
+    let runner = Arc::new(FakeHomebrew::new(&prefix, Upgrade::AsHomebrew));
+    let adapter = adapter(runner.clone(), &inst);
+    let plan = adapter.plan(&inst, &link(&inst, "node@22")).await.unwrap();
+    partial_npm_links(&prefix);
+    let outcome = adapter
+        .execute(&plan, Arc::new(VecSink::new()), 7, CancellationToken::new())
+        .await
+        .unwrap();
+    assert_eq!(
+        outcome,
+        Outcome::BanagerFailed(Fault::LinkRollbackRisk {
+            name: "node@22".into()
+        })
+    );
+    assert!(runner.calls().is_empty(), "no `brew link` ran");
+    assert_eq!(runner.links().linked_names(), ["npm", "npx"]);
+    std::fs::remove_dir_all(prefix).unwrap();
+}
+
+#[tokio::test]
+async fn only_links_homebrew_has_not_recorded_are_at_risk_of_a_link_that_stops() {
+    // Linked by `brew link --force`, with its record: `brew link` again
+    // says "Already linked" and changes nothing, so nothing is at risk.
+    let prefix = node_22_prefix("keg-fix-recorded");
+    brew_link(&prefix, "22.23.3");
+    let links = links::read_links(&prefix, "node@22").expect("read");
+    assert!(links.fully_linked());
+    assert!(links.rollback_paths().is_empty());
+    // The same four links without the record: each would go with a link
+    // that stopped.
+    std::fs::remove_file(prefix.join("var/homebrew/linked/node@22")).unwrap();
+    let links = links::read_links(&prefix, "node@22").expect("read");
+    assert_eq!(
+        links.rollback_paths(),
+        ALL.map(|command| prefix.join("bin").join(command).display().to_string())
+    );
+    // npm's own copy is in the way, not Homebrew's link: it is said as a
+    // conflict, and Homebrew's unlink would leave it.
+    npm_updates_itself(&prefix);
+    let links = links::read_links(&prefix, "node@22").expect("read");
+    assert_eq!(
+        links.rollback_paths(),
+        ["corepack", "node"].map(|command| prefix.join("bin").join(command).display().to_string())
+    );
+    std::fs::remove_dir_all(prefix).unwrap();
 }

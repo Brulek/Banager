@@ -141,6 +141,23 @@ impl KegLinks {
             .collect()
     }
 
+    /// The places a `brew link` of the formula would take back with its
+    /// own if it stopped (`Warning::LinkRollbackRisk`), as paths: those
+    /// already holding Homebrew's link (`Place::Linked`), where its link is
+    /// not recorded. `Keg#link` skips such a link, but on any error, also
+    /// outside `bin` and `sbin`, its `rescue` calls `Keg#unlink`
+    /// (`keg.rb:590-598`), which removes every link to the keg's files,
+    /// whoever made it (`keg.rb:361-391`). None where the link is recorded:
+    /// `brew link` then says "Already linked" and changes nothing
+    /// (`cmd/link.rb`).
+    pub(crate) fn rollback_paths(&self) -> Vec<String> {
+        self.commands
+            .iter()
+            .filter(|c| !self.recorded && c.place == Place::Linked)
+            .map(|c| c.path.display().to_string())
+            .collect()
+    }
+
     fn names_where(&self, wanted: impl Fn(Place) -> bool) -> Vec<String> {
         self.commands
             .iter()

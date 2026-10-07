@@ -238,6 +238,8 @@ const INTERPOLATED_SUBTREES: Record<string, readonly string[]> = {
     // y1-keg: one path in the sentence, or the first of several.
     "BanagerFailed.LinkTaken",
     "BanagerFailed.LinkTakenMany",
+    // r11 F2: the formula whose links appeared since its link's preview.
+    "BanagerFailed.LinkRollbackRisk",
     "BanagerFailed.Internal",
   ],
 };

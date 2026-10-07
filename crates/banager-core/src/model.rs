@@ -821,6 +821,22 @@ pub struct OthersData {
 /// are not.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Warning {
+    /// `brew link --formula --force <formula>` (`OpKind::Link`) of a formula
+    /// whose link Homebrew has not recorded would put at risk these
+    /// places, which already hold Homebrew's own link to one of its
+    /// commands (`Place::Linked`, `KegLinks::rollback_paths` in
+    /// `adapters/brew/links.rs`) -- npm's `npm` and `npx` left from an
+    /// interrupted link, say. Homebrew skips a link already there, but
+    /// when the link then stops anywhere -- also outside `bin` and `sbin`,
+    /// where the preview does not look -- it takes back every link to the
+    /// formula's files, these among them (`Keg#link`'s `rescue` calls
+    /// `Keg#unlink`, `keg.rb:590-598`, `361-391`), and the commands that
+    /// worked before are gone from Terminal (r11 F2). So, as for
+    /// `LinkConflicts`, the preview offers no Link button and
+    /// `Session::submit` refuses it (`SubmitError::LinkBlocked`); the
+    /// sheet names them and shows the command to run in Terminal instead.
+    /// `paths` are absolute. Built only by `BrewAdapter::plan` for a link.
+    LinkRollbackRisk { paths: Vec<String> },
     /// `brew link --formula --force <formula>` (`OpKind::Link`) would stop
     /// at these places: each is already in the prefix's `bin` or `sbin`
     /// folder under the name of one of the formula's commands, and is not
@@ -828,10 +844,11 @@ pub enum Warning {
     /// a person's own link into the formula -- and Homebrew links nothing
     /// over any of them (`Keg::ConflictError`; `KegLinks::held_paths` in
     /// `adapters/brew/links.rs`, the places that make an update
-    /// `UpdateBlocked::LinkTaken` too). The link would change nothing, so
-    /// the preview says so and offers no Link button, and `Session::submit`
-    /// refuses it (`SubmitError::LinkBlocked`). `paths` are absolute, as
-    /// Homebrew names them. Built only by `BrewAdapter::plan` for a link.
+    /// `UpdateBlocked::LinkTaken` too). The link would put nothing where
+    /// Terminal looks, so the preview says so and offers no Link button,
+    /// and `Session::submit` refuses it (`SubmitError::LinkBlocked`).
+    /// `paths` are absolute, as Homebrew names them. Built only by
+    /// `BrewAdapter::plan` for a link.
     LinkConflicts { paths: Vec<String> },
     /// The commands `brew link --formula --force <formula>` (`OpKind::Link`)
     /// puts where Terminal looks: the names of what it links of the
@@ -2041,6 +2058,15 @@ pub enum Fault {
     /// (`BrewAdapter::require_link_places_free`); read by
     /// `faultKey`/`faultArgs` in src/lib/format.ts.
     LinkTaken { name: String, paths: Vec<String> },
+    /// The link of the formula `name` a source's notice offered
+    /// (`OpKind::Link`) was not started, because Homebrew's own links to
+    /// its commands appeared since the preview, its link still not
+    /// recorded (`Warning::LinkRollbackRisk`): read again right before the
+    /// command, after any wait for `brew update`. Had the link stopped,
+    /// Homebrew would have taken them back with its own. Nothing was
+    /// started; they are left as they are. Built by `BrewAdapter::execute`;
+    /// read by `faultKey`/`faultArgs` in src/lib/format.ts.
+    LinkRollbackRisk { name: String },
     /// Something on Banager's side did not add up (an unregistered
     /// adapter or instance, a queue that closed, an error `execute` has no
     /// business returning). A bug in Banager, not a state of the Mac.
@@ -2780,6 +2806,18 @@ mod tests {
             serde_json::from_str::<OpRequest>(&json).expect("deserialize"),
             request
         );
+        let risk = Warning::LinkRollbackRisk {
+            paths: vec!["/opt/homebrew/bin/npm".into()],
+        };
+        let wire = r#"{"LinkRollbackRisk":{"paths":["/opt/homebrew/bin/npm"]}}"#;
+        assert_eq!(serde_json::to_string(&risk).unwrap(), wire);
+        assert_eq!(serde_json::from_str::<Warning>(wire).unwrap(), risk);
+        let fault = Fault::LinkRollbackRisk {
+            name: "node@22".into(),
+        };
+        let wire = r#"{"LinkRollbackRisk":{"name":"node@22"}}"#;
+        assert_eq!(serde_json::to_string(&fault).unwrap(), wire);
+        assert_eq!(serde_json::from_str::<Fault>(wire).unwrap(), fault);
         let conflicts = Warning::LinkConflicts {
             paths: vec!["/opt/homebrew/bin/npm".to_string()],
         };

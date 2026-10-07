@@ -857,6 +857,12 @@
       "refused": "It can't be updated here: it updates along with the Node that Homebrew installed."
     }
   },
+  "linkRollback": {
+    "risk_one": "{{paths}} is already linked to it. If linking stops partway, Homebrew removes that link too, so it can't be linked here.",
+    "risk_other": "{{paths}} are already linked to it. If linking stops partway, Homebrew removes those links too, so it can't be linked here.",
+    "handoff": "To link it, you can run this command in Terminal. If it stops partway, Homebrew removes the links above too.",
+    "handoffConflicts": "To link it, you can run this command in Terminal. It deletes the files in the way and links the ones in “{{formula}}” in their place. If it still stops partway, Homebrew also removes the links that were already there."
+  },
   "loginPathNotice": {
     "title": "Couldn't read Terminal's settings",
     "description": "Tools that Terminal finds may be missing here, such as those installed with npm, pipx, uv or Cargo."
@@ -980,7 +986,9 @@
         "LinkTaken": "Couldn't start: another program is using {{path}}",
         "LinkTakenMany": "Couldn't start: another program is using {{path}} and {{others}} more",
         "LinkTakenDetail": "The update unlinks this tool first, and the files in use would stop it being linked back, leaving its commands missing from Terminal. Nothing was updated; it still works in Terminal.",
-        "Internal": "Couldn't finish because of an internal error. Nothing changed"
+        "Internal": "Couldn't finish because of an internal error. Nothing changed",
+        "LinkRollbackRisk": "Couldn't start: linking {{name}} could remove links already there",
+        "LinkRollbackRiskDetail": "Links to it appeared after the preview, and Homebrew removes them too if linking stops partway. Nothing was linked; they're as they were."
       }
     },
     "copyLog": "Copy Log"

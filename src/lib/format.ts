@@ -127,6 +127,7 @@ export function outcomeDetailKey(outcome: Outcome): string | null {
     if ("HomebrewStillUpdating" in fault) return "operations.outcome.BanagerFailed.HomebrewStillUpdatingDetail";
     if ("PathChanged" in fault) return "operations.outcome.BanagerFailed.PathChangedDetail";
     if ("FormulaChanged" in fault) return "operations.outcome.BanagerFailed.FormulaChangedDetail";
+    if ("LinkRollbackRisk" in fault) return "operations.outcome.BanagerFailed.LinkRollbackRiskDetail";
     if ("LinkTaken" in fault) return "operations.outcome.BanagerFailed.LinkTakenDetail";
     if ("ProgramMissing" in fault || "SpawnFailed" in fault) return null;
     const unhandled: never = fault;
@@ -170,6 +171,7 @@ function faultKey(fault: Fault): string {
   if ("HomebrewStillUpdating" in fault) return "HomebrewStillUpdating";
   if ("PathChanged" in fault) return "PathChanged";
   if ("FormulaChanged" in fault) return "FormulaChanged";
+  if ("LinkRollbackRisk" in fault) return "LinkRollbackRisk";
   // y1-keg: the first path the sentence names, and how many more.
   if ("LinkTaken" in fault) return fault.LinkTaken.paths.length > 1 ? "LinkTakenMany" : "LinkTaken";
   const unhandled: never = fault;
@@ -185,6 +187,7 @@ function faultArgs(fault: Fault): Record<string, unknown> {
   if ("HomebrewStillUpdating" in fault) return { minutes: fault.HomebrewStillUpdating.minutes };
   if ("PathChanged" in fault) return { path: fault.PathChanged.path };
   if ("FormulaChanged" in fault) return { name: fault.FormulaChanged.name };
+  if ("LinkRollbackRisk" in fault) return { name: fault.LinkRollbackRisk.name };
   if ("LinkTaken" in fault) {
     const { name, paths } = fault.LinkTaken;
     return { name, path: paths[0] ?? "", number: paths.length, others: paths.length - 1 };

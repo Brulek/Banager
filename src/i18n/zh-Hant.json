@@ -789,6 +789,11 @@
       "refused": "無法在這裡更新，它會隨Homebrew安裝的Node一起更新。"
     }
   },
+  "linkRollback": {
+    "risk_other": "{{paths}}已連結到它。若連結中途停止，Homebrew也會刪除已有的連結，因此無法在這裡連結。",
+    "handoff": "要連結它，可以在終端機執行下面的指令。若指令中途停止，Homebrew也會刪除上面這些連結。",
+    "handoffConflicts": "要連結它，可以在終端機執行下面的指令。它會刪除擋住連結的檔案，換成「{{formula}}」中的。若仍然中途停止，Homebrew也會刪除原本已有的連結。"
+  },
   "loginPathNotice": {
     "title": "無法讀取終端機的設定",
     "description": "終端機裡能找到的工具可能沒有列在這裡，例如用npm、pipx、uv或Cargo安裝的。"
@@ -909,7 +914,9 @@
         "LinkTaken": "未能開始：{{path}}已被另一個程式佔用",
         "LinkTakenMany": "未能開始：{{path}}等{{number}}個檔案已被另一個程式佔用",
         "LinkTakenDetail": "更新會先中斷這個工具的連結，被佔用的檔案會擋住它重新接上，終端機裡就會找不到它的指令。沒有更新，它仍可在終端機裡使用。",
-        "Internal": "未能完成：發生內部錯誤，沒有改動"
+        "Internal": "未能完成：發生內部錯誤，沒有改動",
+        "LinkRollbackRisk": "未能開始：連結{{name}}可能刪除已有的連結",
+        "LinkRollbackRiskDetail": "預覽之後出現了指向它的連結，若連結中途停止，Homebrew也會刪除它們。連結沒有開始，它們維持原樣。"
       }
     },
     "copyLog": "拷貝記錄"

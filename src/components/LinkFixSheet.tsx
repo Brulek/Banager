@@ -25,6 +25,14 @@ function isLinkConflicts(warning: Warning): warning is { LinkConflicts: { paths:
 }
 
 /**
+ * Whether a link's preview found Homebrew's own links already there, its
+ * link not recorded: a link that stopped would take them back (r11 F2).
+ */
+function isLinkRollbackRisk(warning: Warning): warning is { LinkRollbackRisk: { paths: string[] } } {
+  return typeof warning !== "string" && "LinkRollbackRisk" in warning;
+}
+
+/**
  * The commands a link's preview says it links into the Homebrew prefix
  * (`Warning.LinkPutsCommands`), the program the source needed first --
  * 「node、corepack、npm和npx」 -- or none when the preview did not list them.
@@ -39,10 +47,13 @@ export function linkedCommands(plan: Plan, program: string | null): string[] {
 }
 
 /**
- * What the person can run in Terminal where Homebrew would link nothing
- * (`Warning.LinkConflicts`): the same `brew link --formula --force` with
- * `--overwrite`, which deletes what is in the way. Text only: Banager
- * never runs it (docs/what-we-run.md, "Why a source did not answer").
+ * What the person can run in Terminal where the sheet offers no Link: the
+ * same `brew link --formula --force`, with `--overwrite`, which deletes
+ * what is in the way, where there are files in its way
+ * (`Warning.LinkConflicts`); without it where only links already there
+ * are at risk (`Warning.LinkRollbackRisk`), which `--overwrite` would not
+ * keep. Text only: Banager never runs it (docs/what-we-run.md, "Why a
+ * source did not answer").
  */
 export function overwriteCommand(plan: Plan, formula: string): string {
   return overwriteTokens(plan, formula).join(" ");
@@ -51,7 +62,8 @@ export function overwriteCommand(plan: Plan, formula: string): string {
 /** `overwriteCommand`'s tokens, each as `displayToken` spells it. */
 function overwriteTokens(plan: Plan, formula: string): string[] {
   const program = "Command" in plan.action ? plan.action.Command.program : "brew";
-  return [program, "link", "--formula", "--force", "--overwrite", formula].map(displayToken);
+  const overwrite = plan.warnings.some(isLinkConflicts) ? ["--overwrite"] : [];
+  return [program, "link", "--formula", "--force", ...overwrite, formula].map(displayToken);
 }
 
 export interface LinkFixSheetProps {
@@ -90,7 +102,11 @@ export interface LinkFixSheetProps {
  * “node@22”」, what is in the way with ⚠︎, the Terminal command that
  * deletes it and links (`overwriteCommand`) with Copy Command, and Close
  * and Check Again, for after it ran. No Link, and nothing Banager runs:
- * `--overwrite` deletes files, and is the person's to run.
+ * `--overwrite` deletes files, and is the person's to run. The same where
+ * Homebrew's own links are already there, its link not recorded
+ * (`Warning.LinkRollbackRisk`): a link that stopped would take them back
+ * too, so the sheet names them and the command is without `--overwrite`
+ * unless files are also in the way.
  */
 export function LinkFixSheet({ instanceId, onClose }: LinkFixSheetProps) {
   const { t } = useTranslation();
@@ -154,9 +170,15 @@ export function LinkFixSheet({ instanceId, onClose }: LinkFixSheetProps) {
       ? planned
       : undefined;
   const plan = issued?.plan;
-  const conflicts = plan?.warnings.filter(isLinkConflicts) ?? [];
-  // Homebrew would link nothing: the sheet says what would instead.
+  // Files in the way, or links already there that a link which stopped
+  // would take back: the sheet says what to do instead.
+  const conflicts = plan?.warnings.filter((w) => isLinkConflicts(w) || isLinkRollbackRisk(w)) ?? [];
   const blocked = conflicts.length > 0;
+  const handoff = !conflicts.some(isLinkRollbackRisk)
+    ? "noAnswer.sheet.blockedText"
+    : conflicts.some(isLinkConflicts)
+      ? "linkRollback.handoffConflicts"
+      : "linkRollback.handoff";
   const program = why?.missing_program ?? null;
   const commands = plan === undefined ? [] : linkedCommands(plan, program);
   // What linking changes, once the preview has read the formula's commands.
@@ -305,7 +327,7 @@ export function LinkFixSheet({ instanceId, onClose }: LinkFixSheetProps) {
               Command, and what to do after (as `PasswordCommand`). */}
           <div className="mt-3 flex flex-col gap-2">
             <p className="break-words text-body text-foreground">
-              {t("noAnswer.sheet.blockedText", { formula: fix.key.name })}
+              {t(handoff, { formula: fix.key.name })}
             </p>
             <div role="group" aria-label={t("noAnswer.sheet.commandLabel")}>
               {/* A line breaks between tokens, never inside one: 「--」 /

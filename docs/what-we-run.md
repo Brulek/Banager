@@ -1168,10 +1168,24 @@ button, `Session::submit` refuses the plan whatever the window sends
 (`SubmitError::LinkBlocked`), and the sheet shows instead, as text to
 copy, `<brew> link --formula --force --overwrite {name}`, which deletes
 what is in the way, for the person to run in Terminal if they choose,
-and Check Again for after; Banager never runs it. A place taken after the
-preview is left to Homebrew's own refusal, which links nothing and takes
-back what it linked: unlike an update, which unlinks first, a link on its
-own loses nothing, so its places are not read again before it runs.
+and Check Again for after; Banager never runs it. An unrecorded keg that
+already has direct command links (`Place::Linked`) is also blocked
+(`Warning::LinkRollbackRisk`, `KegLinks::rollback_paths`): if linking later
+fails, Homebrew rolls back by unlinking every matching link to that keg,
+including links that existed before the attempt (`Keg#link` rescue calls
+`Keg#unlink`). The sheet names those links and explains that risk in all
+three languages. When this is the only blocker, its copy-only command is
+`<brew> link --formula --force {name}`, without `--overwrite`; when conflicts
+also exist, the existing overwrite handoff and its deletion warning remain.
+`Session::submit` refuses either warning. Immediately before a standalone
+link executes, after waiting for Homebrew and under the operation's resource
+locks, the same links are read again. Newly present rollback-risk links stop
+the command (`Fault::LinkRollbackRisk`), leaving them untouched. Conflicts
+outside `bin` and `sbin` are still left to Homebrew; Banager does not preserve
+or restore links, and cannot prevent another process changing them after its
+last reading. Only command links are read: where a link stops, Homebrew
+also takes back the formula's own links already in the prefix's other
+folders (a manual page in `share/man`, say), which no preview names.
 After it its links are read again, and it counts as done only where
 Homebrew's record is there and every command's place holds Homebrew's
 link to it (`KegLinks::fully_linked`, the reading that tells whether the

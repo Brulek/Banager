@@ -251,6 +251,7 @@ describe("outcomeKey for Banager's own failures", () => {
   // Every `Fault` variant, as serde sends it (see model.rs's
   // `test_banager_failed_is_externally_tagged_on_the_wire`).
   const faults: Fault[] = [
+    { LinkRollbackRisk: { name: "node@22" } },
     "Panicked",
     { ProgramMissing: { program: "/opt/homebrew/bin/brew" } },
     { SpawnFailed: { detail: "Permission denied (os error 13)" } },

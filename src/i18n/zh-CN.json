@@ -789,6 +789,11 @@
       "refused": "无法在这里更新，它会随Homebrew安装的Node一起更新。"
     }
   },
+  "linkRollback": {
+    "risk_other": "{{paths}}已链接到它。如果链接中途停止，Homebrew也会删除已有的链接，因此无法在这里链接。",
+    "handoff": "要链接它，可以在终端里运行下面的命令。如果命令中途停止，Homebrew也会删除上面这些链接。",
+    "handoffConflicts": "要链接它，可以在终端里运行下面的命令。它会删除挡住链接的文件，换成“{{formula}}”中的。如果仍然中途停止，Homebrew也会删除原本已有的链接。"
+  },
   "loginPathNotice": {
     "title": "无法读取终端的设置",
     "description": "终端里能找到的工具可能没有列在这里，例如用npm、pipx、uv或Cargo安装的。"
@@ -909,7 +914,9 @@
         "LinkTaken": "未能开始：{{path}}已被另一个程序占用",
         "LinkTakenMany": "未能开始：{{path}}等{{number}}个文件已被另一个程序占用",
         "LinkTakenDetail": "更新会先断开这个工具，被占用的文件会挡住它重新接上，终端里就会找不到它的命令。没有更新，它仍可在终端里使用。",
-        "Internal": "未能完成：发生内部错误，没有改动"
+        "Internal": "未能完成：发生内部错误，没有改动",
+        "LinkRollbackRisk": "未能开始：链接{{name}}可能删除已有的链接",
+        "LinkRollbackRiskDetail": "预览之后出现了指向它的链接，如果链接中途停止，Homebrew也会删除它们。链接没有开始，它们保持原样。"
       }
     },
     "copyLog": "拷贝日志"

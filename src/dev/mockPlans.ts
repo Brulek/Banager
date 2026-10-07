@@ -255,12 +255,16 @@ function standalonePlan(plan: Plan, inst: ManagerInstance, world: World): Plan {
  * What linking `name` would do (`link::link_preview`): a `node@<version>`'s
  * commands, put where Terminal looks; and for `node@22`, npm's own `npm`
  * and `npx` in their way, as on the author's Mac, where npm had been
- * updated through itself.
+ * updated through itself; for `node@18` (`?state=nonode-partial`), its
+ * own links to them already there, its link not recorded (r11 F2).
  */
 function linkPreviewFor(name: string): Warning[] {
   const commands: Warning[] = name.startsWith("node@")
     ? [{ LinkPutsCommands: { names: ["corepack", "node", "npm", "npx"] } }]
     : [];
+  if (name === "node@18") {
+    return [...commands, { LinkRollbackRisk: { paths: ["/opt/homebrew/bin/npm", "/opt/homebrew/bin/npx"] } }];
+  }
   return name === "node@22"
     ? [...commands, { LinkConflicts: { paths: ["/opt/homebrew/bin/npm", "/opt/homebrew/bin/npx"] } }]
     : commands;

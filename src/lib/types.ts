@@ -57,6 +57,9 @@ export type Fault =
   // paths such as /opt/homebrew/bin/npm) right before it ran, and ran
   // nothing: the update would have taken its commands out of Terminal.
   | { LinkTaken: { name: string; paths: string[] } }
+  // r11 F2: Homebrew's own links appeared since a link's preview, its
+  // link not recorded; a link that stopped would take them back.
+  | { LinkRollbackRisk: { name: string } }
   | "Internal";
 // `Failed.summary` is another program's own words, never Banager's: the
 // last lines of a tool's stderr, or macOS's own reason for refusing to move
@@ -328,6 +331,13 @@ export type Warning =
    * too): the link preview says so and offers no Link button.
    */
   | { LinkConflicts: { paths: string[] } }
+  /**
+   * Homebrew's own links to the formula's commands already at these
+   * places, its link not recorded (Rust `KegLinks::rollback_paths`): a
+   * `brew link` that stopped would take them back with its own (r11 F2),
+   * so the link preview names them and offers no Link button.
+   */
+  | { LinkRollbackRisk: { paths: string[] } }
   /**
    * The commands `brew link --formula --force` (`OpKind.Link`) puts where Terminal
    * looks, sorted: the link preview names them in its sentence

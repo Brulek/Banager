@@ -297,8 +297,9 @@ pub enum SubmitError {
     #[error("the tool is no longer listed as installed")]
     NotListed,
     /// A link whose preview found files in the way
-    /// (`Warning::LinkConflicts`): Homebrew would link nothing, so the
-    /// window offers no Link, and this refuses one whatever it sent. The
+    /// (`Warning::LinkConflicts`), where Homebrew would link nothing, or
+    /// links a stopped link would take back (`Warning::LinkRollbackRisk`):
+    /// the window offers no Link, and this refuses one whatever it sent. The
     /// paths are the preview's, for the same sentence it said them in
     /// (`{"kind": "link_blocked", "paths": [...]}`, `submit_operation_error`
     /// in src-tauri/src/ipc.rs).

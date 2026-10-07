@@ -1016,8 +1016,8 @@ export function buildWorld(state: ScenarioState): World {
   markSourcePrograms(world);
   // Not linked, so none of its commands is where Terminal looks: the
   // command check finds none of them (`?state=nonode`, `nonode-intel`).
-  if (state === "nonode" || state === "nonode-intel") {
-    const formulae = [...NO_NODE_FORMULAE, ...NO_NODE_INTEL_FORMULAE];
+  if (state === "nonode" || state === "nonode-intel" || state === "nonode-partial") {
+    const formulae = [...NO_NODE_FORMULAE, ...NO_NODE_INTEL_FORMULAE, ...NO_NODE_PARTIAL_FORMULAE];
     for (const row of world.artifacts) {
       if (formulae.some((fix) => sameKey(fix.key, row.key))) row.facts = { ...row.facts, commands: [] };
     }
@@ -1131,6 +1131,9 @@ function scenarioWorld(state: ScenarioState): World {
       return world;
     case "nonode":
       withNoNode(world, NO_NODE_FORMULAE);
+      return world;
+    case "nonode-partial":
+      withNoNode(world, NO_NODE_PARTIAL_FORMULAE);
       return world;
     case "nonode-intel":
       // A second Homebrew, in /usr/local, as `withNotices` adds it, but
@@ -1571,3 +1574,8 @@ export function withNpmPrefixProtected(world: World): void {
   npm.prefix = `${HOME}/Documents/npm-global`;
   npm.read_only_reason = "PrefixProtected";
 }
+
+/** Unrecorded node keg with pre-existing npm/npx links at risk on rollback. */
+const NO_NODE_PARTIAL_FORMULAE: readonly LinkFix[] = [
+  { key: key(IDS.brew, "Formula", "node@18"), version: "18.20.8" },
+];

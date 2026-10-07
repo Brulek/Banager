@@ -186,9 +186,10 @@ fn blocked_uninstall(artifacts: &[InstalledArtifact], req: &OpRequest) -> Option
         .and_then(|a| a.uninstall_blocked)
 }
 
-/// The files a link's preview found in its way (`Warning::LinkConflicts`),
-/// or `None` for a plan that is not a link or found none: such a link is
-/// never run (`Session::submit`).
+/// The files a link's preview found in its way (`Warning::LinkConflicts`)
+/// and the links a stopped link would take back
+/// (`Warning::LinkRollbackRisk`), or `None` for a plan that is not a link
+/// or found none: such a link is never run (`Session::submit`).
 fn in_the_way_of_link(plan: &crate::model::Plan) -> Option<Vec<String>> {
     if plan.request.kind != OpKind::Link {
         return None;
@@ -197,7 +198,8 @@ fn in_the_way_of_link(plan: &crate::model::Plan) -> Option<Vec<String>> {
         .warnings
         .iter()
         .filter_map(|warning| match warning {
-            crate::model::Warning::LinkConflicts { paths } => Some(paths.clone()),
+            crate::model::Warning::LinkConflicts { paths }
+            | crate::model::Warning::LinkRollbackRisk { paths } => Some(paths.clone()),
             _ => None,
         })
         .flatten()
@@ -498,7 +500,9 @@ impl Session {
             });
         }
         // A link whose preview found files in the way offered no Link:
-        // Homebrew would link nothing (`Warning::LinkConflicts`).
+        // Homebrew would link nothing (`Warning::LinkConflicts`); nor one
+        // that could take back links already there
+        // (`Warning::LinkRollbackRisk`).
         if let Some(paths) = in_the_way_of_link(&stored.issued.plan) {
             return Err(SubmitError::LinkBlocked { paths });
         }
@@ -1664,6 +1668,17 @@ mod tests {
         let blocked = session.issue_plan(&link).await.expect("previewed");
         assert_eq!(
             session.submit(blocked.id),
+            Err(SubmitError::LinkBlocked {
+                paths: paths.clone()
+            })
+        );
+        assert!(session.operations().is_empty());
+        *adapter.plan_warnings.lock().unwrap() = vec![Warning::LinkRollbackRisk {
+            paths: paths.clone(),
+        }];
+        let risky = session.issue_plan(&link).await.expect("previewed");
+        assert_eq!(
+            session.submit(risky.id),
             Err(SubmitError::LinkBlocked { paths })
         );
         assert!(session.operations().is_empty());
