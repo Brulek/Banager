@@ -8,6 +8,7 @@ import {
   operationTone,
   outcomeTone,
   operationWords,
+  printedAnything,
   runsToItsEnd,
   trackRun,
   useOperationName,
@@ -16,7 +17,7 @@ import {
 } from "../lib/operations";
 import { failedRunWords } from "../lib/runResult";
 import { viewLogKey } from "./FailureNextStep";
-import { useUiStore, type LogLine } from "../store/ui";
+import { useUiStore } from "../store/ui";
 import type { TFunction } from "i18next";
 import type { OpSummary } from "../lib/types";
 import { OutcomeIcon } from "./OutcomeIcon";
@@ -35,17 +36,6 @@ const DISMISS_BUTTON = `-mr-1 ${SMALL_ICON_BUTTON}`;
 /** Whether an ending is one to look at: its log is offered beside it. */
 function needsALook(tone: OutcomeTone): boolean {
   return tone === "attention" || tone === "failure";
-}
-
-/**
- * Whether the log of `op` has anything in it, as the log shows it
- * (`LogDrawer`): a line it printed, or a note Banager kept. What a cancel
- * offers to look at -- what had already happened -- is that: one cancelled
- * while it waited its turn printed nothing, and its log would open on an
- * empty page (r24 W5).
- */
-function printedAnything(op: OpSummary, logs: readonly LogLine[]): boolean {
-  return logs.some((line) => line.opId === op.id) || (op.follow_up_warnings?.length ?? 0) > 0;
 }
 
 /**

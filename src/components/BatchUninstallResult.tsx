@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { useOperations, useSettings } from "../lib/queries";
-import { outcomeWords } from "../lib/operations";
+import { operationTone, outcomeWords, printedAnything } from "../lib/operations";
 import { FAILURE_CAUSE_KEYS, outcomeCause } from "../lib/failureCause";
 import { namesInSentence } from "../lib/sources";
 import { artifactKeyId, useUiStore } from "../store/ui";
@@ -15,7 +15,9 @@ import { SMALL_WRAPPING } from "./ui/group";
  * of the Installed list once every operation it started has finished: 「2
  * 个没有卸载」, then each of them with how it ended, in the operation bar's
  * words (`outcomeWords`: 「未能卸载」, 「已取消」, a failure's cause), and its
- * 查看日志 -- and, with technical details on, where that is the tool's own
+ * 查看日志 where its log has anything to show -- not for one cancelled
+ * before it printed anything, as the bar offers none for it either
+ * (`printedAnything`, r29 X2) -- and, with technical details on, where that is the tool's own
  * words, whose they are and what to do next (`ResultRowStep`). Under a
  * Homebrew formula whose dependent in the batch did not
  * uninstall, the two facts that explain it, and no cause claimed beyond
@@ -32,6 +34,7 @@ export function BatchUninstallResult() {
   const selectUninstalls = useUiStore((s) => s.selectUninstalls);
   const setFocusedOpId = useUiStore((s) => s.setFocusedOpId);
   const setDrawerOpen = useUiStore((s) => s.setDrawerOpen);
+  const logs = useUiStore((s) => s.logs);
   const { data: operations } = useOperations();
   const { data: settings } = useSettings();
   const technical = settings?.show_technical_details ?? false;
@@ -94,19 +97,24 @@ export function BatchUninstallResult() {
                     <span className={`text-muted ${SMALL_WRAPPING}`}>{causeLine(op.outcome) ?? outcomeWords(t, op.outcome, op.kind, technical)}</span>
                     {/* 「查看步骤」 where sudo wanted the Mac's password, as
                         the operation bar names it: the log has the command
-                        for Terminal (`viewLogKey`, r24 W6). */}
-                    <button
-                      type="button"
-                      aria-label={
-                        viewLogKey(op) === "needsPassword.viewSteps"
-                          ? t("needsPassword.viewStepsLabel", { name: item.name })
-                          : t("batchUninstall.viewLogOf", { name: item.name })
-                      }
-                      onClick={() => viewLog(op.id)}
-                      className={BUTTON.small.grey}
-                    >
-                      {t(viewLogKey(op))}
-                    </button>
+                        for Terminal (`viewLogKey`, r24 W6). None for one
+                        cancelled with nothing in its log -- Cancel All while
+                        it waited its turn -- whose log would open on an
+                        empty page: its 「已取消」 says it all (r29 X2). */}
+                    {operationTone(op) !== "cancelled" || printedAnything(op, logs) ? (
+                      <button
+                        type="button"
+                        aria-label={
+                          viewLogKey(op) === "needsPassword.viewSteps"
+                            ? t("needsPassword.viewStepsLabel", { name: item.name })
+                            : t("batchUninstall.viewLogOf", { name: item.name })
+                        }
+                        onClick={() => viewLog(op.id)}
+                        className={BUTTON.small.grey}
+                      >
+                        {t(viewLogKey(op))}
+                      </button>
+                    ) : null}
                   </div>
                   {/* With technical details on, the tool's own words are
                       the row's: whose they are, and what to do next. */}

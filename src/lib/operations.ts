@@ -330,6 +330,19 @@ export function operationTone(op: OpSummary): OutcomeTone {
 }
 
 /**
+ * Whether the log of `op` has anything in it, as the log shows it
+ * (`LogDrawer`): a line it printed, or a note Banager kept. What a cancel
+ * offers to look at -- what had already happened -- is that: one cancelled
+ * while it waited its turn printed nothing, and its log would open on an
+ * empty page (r24 W5). The operation bar's rule, and the batch uninstall
+ * result's under it (`BatchUninstallResult`, r29 X2): the same run, one
+ * answer.
+ */
+export function printedAnything(op: OpSummary, logs: readonly LogLine[]): boolean {
+  return logs.some((line) => line.opId === op.id) || (op.follow_up_warnings?.length ?? 0) > 0;
+}
+
+/**
  * Which operations the bar is about: its run. Operations started while
  * others were still under way join their run -- an Update all is one run
  * however many operations it submits -- and the first one started once

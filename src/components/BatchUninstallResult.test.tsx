@@ -83,6 +83,8 @@ describe("what a batch uninstall did not uninstall", () => {
     await waitFor(() => expect(queryClient.getQueryData(queryKeys.operations)).toEqual(operations));
     expect(container).toBeEmptyDOMElement();
 
+    // pipx had started, and printed a line, before it was cancelled.
+    act(() => useUiStore.getState().appendLog({ opId: 11, stream: "Stdout", line: "Uninstalling /opt/homebrew/Cellar/pipx/1.8.0..." }));
     await listNow(queryClient, [
       op(13, "wget", "Running"),
       op(12, "python@3.13", "Done", refused),
@@ -110,6 +112,52 @@ describe("what a batch uninstall did not uninstall", () => {
     fireEvent.click(within(block).getByRole("button", { name: "View the log of python@3.13" }));
     expect(useUiStore.getState().focusedOpId).toBe(12);
     expect(useUiStore.getState().drawerOpen).toBe(true);
+  });
+
+  // r29 X2: Cancel All at once, the three of one Homebrew still waiting
+  // their turn. The bar says 「3个已取消」 with no log, as none printed
+  // anything; the block over the list agrees: no View Log on an empty page.
+  it.each([
+    ["en", "3 weren't uninstalled", "Cancelled", "View the log of ffmpeg"],
+    ["zh-CN", "3个没有卸载", "已取消", "查看“ffmpeg”的日志"],
+  ])("offers no View Log for one cancelled before it printed anything, in %s", async (language, heading, cancelled, ffmpegLog) => {
+    await i18n.changeLanguage(language);
+    useUiStore.getState().setUninstallBatch({
+      id: 3,
+      items: [
+        { key: key("ffmpeg"), name: "ffmpeg", opId: 21, after: [] },
+        { key: key("gemini-cli"), name: "gemini-cli", opId: 22, after: [] },
+        { key: key("gh"), name: "gh", opId: 23, after: [] },
+      ],
+    });
+    operations = [op(23, "gh", "Done", "Cancelled"), op(22, "gemini-cli", "Done", "Cancelled"), op(21, "ffmpeg", "Done", "Cancelled")];
+    const { queryClient } = renderWithProviders(<BatchUninstallResult />);
+    const block = await screen.findByRole("region", { name: heading });
+    const items = () => [...block.querySelectorAll<HTMLElement>("[data-batch-result-item]")];
+    expect(items().map((item) => item.textContent)).toEqual([`ffmpeg${cancelled}`, `gemini-cli${cancelled}`, `gh${cancelled}`]);
+    // The only buttons are the block's own: Select Them Again and its ×.
+    expect(within(block).getAllByRole("button").map((button) => button.textContent || button.getAttribute("aria-label"))).toEqual([
+      i18n.t("reviewFixes.selectAgain", { count: 3 }),
+      i18n.t("batchUninstall.resultDismiss"),
+    ]);
+
+    // One that had begun and printed a line: what had already happened is
+    // its to show, as the bar offers it.
+    act(() => useUiStore.getState().appendLog({ opId: 21, stream: "Stdout", line: "Uninstalling /opt/homebrew/Cellar/ffmpeg/8.0..." }));
+    await listNow(queryClient, [...operations]);
+    const ffmpeg = await within(block).findByRole("button", { name: ffmpegLog });
+    expect(ffmpeg).toHaveTextContent(i18n.t("common.viewLog"));
+    expect(items().map((item) => item.querySelector("button") !== null)).toEqual([true, false, false]);
+    fireEvent.click(ffmpeg);
+    expect(useUiStore.getState().focusedOpId).toBe(21);
+  });
+
+  it("keeps View Log on one that failed before it printed anything: its log says the log is gone, and what to try", async () => {
+    useUiStore.getState().setUninstallBatch(record);
+    operations = [op(13, "wget", "Done", refused), op(12, "python@3.13", "Done", "Succeeded"), op(11, "pipx", "Done", "Succeeded")];
+    renderWithProviders(<BatchUninstallResult />);
+    const block = await screen.findByRole("region", { name: "Uninstalled 2; 1 wasn't uninstalled" });
+    expect(within(block).getByRole("button", { name: "View the log of wget" })).toBeInTheDocument();
   });
 
   it("says nothing until the list has every operation it started, even when those listed have all failed", async () => {
