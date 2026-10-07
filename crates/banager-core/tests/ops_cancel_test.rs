@@ -146,6 +146,7 @@ impl Adapter for FakeAdapter {
             cancel_policy: self.cancel_policy,
             warnings: vec![],
             affected: vec![],
+            basis: None,
             timeout_secs: 60,
         })
     }

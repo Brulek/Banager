@@ -74,6 +74,7 @@ async fn run_sudo() -> (Outcome, Vec<String>) {
         cancel_policy: CancelPolicy::KillThenReconcile,
         warnings: vec![],
         affected: vec![],
+        basis: None,
         timeout_secs: 30,
     };
     let sink = Arc::new(VecSink::new());

@@ -101,6 +101,7 @@ pub(super) fn fake_plan(inst: &ManagerInstance, req: &OpRequest) -> Plan {
         cancel_policy: CancelPolicy::KillThenReconcile,
         warnings: vec![],
         affected: vec![],
+        basis: None,
         timeout_secs: 60,
     }
 }

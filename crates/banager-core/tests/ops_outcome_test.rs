@@ -110,6 +110,7 @@ impl Adapter for FakeAdapter {
             cancel_policy: CancelPolicy::KillThenReconcile,
             warnings: vec![],
             affected: vec![],
+            basis: None,
             timeout_secs: 60,
         })
     }
@@ -580,6 +581,7 @@ impl Adapter for SplitReadingAdapter {
             cancel_policy: CancelPolicy::KillThenReconcile,
             warnings: vec![],
             affected: vec![],
+            basis: None,
             timeout_secs: 60,
         })
     }

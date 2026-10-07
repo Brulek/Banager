@@ -125,6 +125,7 @@ async fn test_a_failed_operation_logs_and_summarises_tool_output_with_the_logins
         cancel_policy: CancelPolicy::KillThenReconcile,
         warnings: vec![],
         affected: vec![],
+        basis: None,
         timeout_secs: 30,
     };
     let sink = Arc::new(VecSink::new());

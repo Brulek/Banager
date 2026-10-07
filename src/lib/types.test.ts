@@ -776,6 +776,10 @@ describe("types", () => {
       notify_updates: false,
     };
 
+    const based: Plan = { ...plan, basis: "a".repeat(64) };
+    expect(JSON.parse(JSON.stringify(based)).basis).toBe("a".repeat(64));
+    expect(roundTrip(based)).toEqual(based);
+    expect(roundTrip(plan).basis).toBeUndefined();
     expect(roundTrip(plan).cancel_policy).toBe("KillThenReconcile");
     expect(roundTrip(plan).locks).toEqual(["brew:/opt/homebrew"]);
     expect(roundTrip(opSummary).status).toBe("Running");

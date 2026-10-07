@@ -2699,6 +2699,7 @@ mod tests {
             cancel_policy: crate::model::CancelPolicy::KillThenReconcile,
             warnings: Vec::new(),
             affected: Vec::new(),
+            basis: None,
             timeout_secs: 60,
         };
         let result = PipAdapter::execute(

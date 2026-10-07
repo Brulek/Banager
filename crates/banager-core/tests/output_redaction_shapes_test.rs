@@ -147,6 +147,7 @@ async fn test_each_shape_is_masked_in_the_log_and_the_failure_summary() {
         cancel_policy: CancelPolicy::KillThenReconcile,
         warnings: vec![],
         affected: vec![],
+        basis: None,
         timeout_secs: 30,
     };
     let sink = Arc::new(VecSink::new());

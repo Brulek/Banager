@@ -636,8 +636,8 @@ impl CargoAdapter {
     /// a per-instance error and hold the whole snapshot permanently stale.
     /// Any other IO error (an unreadable or truncated file) is still an
     /// error.
-    fn read_crates2(&self, inst: &ManagerInstance) -> Result<String, AdapterError> {
-        let path = inst.prefix.join(".crates2.json");
+    fn read_crates2(&self, root: &Path) -> Result<String, AdapterError> {
+        let path = root.join(".crates2.json");
         // Bounded: a named pipe there is refused, not waited on, and so is
         // a file past `read_file::LIMIT`, or one in or through a protected
         // place -- an error, never "nothing installed".
@@ -661,8 +661,8 @@ impl CargoAdapter {
     /// a protected place), or `None` when there is none: nothing was ever
     /// installed in the root, or the file was removed, and `.crates2.json`
     /// is then read as it is.
-    fn read_crates_toml(&self, inst: &ManagerInstance) -> Result<Option<String>, AdapterError> {
-        let path = inst.prefix.join(".crates.toml");
+    fn read_crates_toml(&self, root: &Path) -> Result<Option<String>, AdapterError> {
+        let path = root.join(".crates.toml");
         match crate::adapters::read_file::read_text(
             &path,
             &crate::protected::Protected::of_this_process(),
@@ -682,11 +682,58 @@ impl CargoAdapter {
     /// at the version it installed. The one reader of the two files for
     /// `inventory` (and so `reconcile`), `check_updates` and `plan`.
     fn read_installs(&self, inst: &ManagerInstance) -> Result<String, AdapterError> {
-        let crates2 = self.read_crates2(inst)?;
-        match self.read_crates_toml(inst)? {
+        self.read_installs_at(&inst.prefix)
+    }
+
+    fn read_installs_at(&self, root: &Path) -> Result<String, AdapterError> {
+        let crates2 = self.read_crates2(root)?;
+        match self.read_crates_toml(root)? {
             Some(crates_toml) => merge_crates_v1(&crates2, &crates_toml),
             None => Ok(crates2),
         }
+    }
+
+    /// What an upgrade's preview was worked out from (`Plan::basis`): the
+    /// root, the crate's one record key (its version and source), and the
+    /// build choices saved with it, read the way `BuildChoices` reads them.
+    /// Only this crate's record participates: another installed crate
+    /// changing does not invalidate this confirmation.
+    ///
+    /// Read, not hashed as written: Cargo writes a record of its own for a
+    /// crate only `.crates.toml` listed (one cargo-binstall installed) the
+    /// next time it installs or uninstalls anything in the root, with its
+    /// defaults filled in (cargo `CrateListingV2::sync_v1`,
+    /// `InstallInfo::from_v1`: no features, `release`, no target, no rustc).
+    /// That record says what the bare one did, so it is the same basis.
+    fn upgrade_basis(json: &str, root: &Path, name: &str) -> Result<String, AdapterError> {
+        let records: Crates2Root =
+            serde_json::from_str(json).map_err(|error| AdapterError::Parse(error.to_string()))?;
+        let mut matching = records.installs.into_iter().filter(|(key, _)| {
+            parse_install_key(key).is_some_and(|(installed, _, _)| installed == name)
+        });
+        let (key, record) = matching
+            .next()
+            .ok_or_else(|| AdapterError::Refused("Cargo install record is missing".into()))?;
+        if matching.next().is_some() {
+            return Err(AdapterError::Refused(
+                "ambiguous Cargo install records".into(),
+            ));
+        }
+        let choices: BuildChoices =
+            serde_json::from_value(record).map_err(|e| AdapterError::Parse(e.to_string()))?;
+        let mut features = choices.features;
+        features.sort();
+        features.dedup();
+        Ok(super::plan_basis(serde_json::json!({
+            "root": root,
+            "key": key,
+            "features": features,
+            "all_features": choices.all_features,
+            "no_default_features": choices.no_default_features,
+            "profile": choices.profile.as_deref().unwrap_or(DEFAULT_INSTALL_PROFILE),
+            "target": choices.target,
+            "rustc": choices.rustc,
+        })))
     }
 
     pub async fn inventory(
@@ -833,6 +880,7 @@ impl CargoAdapter {
         let mut build_args = Vec::new();
         let mut from_source = false;
         let mut installs = None;
+        let mut basis = None;
         if req.kind == OpKind::Upgrade {
             let json = self.read_installs(inst)?;
             let entries = parse_crates2_entries(&json)?;
@@ -865,6 +913,7 @@ impl CargoAdapter {
                     .map_err(|e| AdapterError::Parse(e.to_string()))?;
             build_args = choices.args();
             from_source = choices.builds_from_source();
+            basis = Some(Self::upgrade_basis(&json, &inst.prefix, &req.name)?);
             installs = Some(json);
         }
         match req.kind {
@@ -935,6 +984,7 @@ impl CargoAdapter {
                     cancel_policy: CancelPolicy::KillThenReconcile,
                     warnings,
                     affected: Vec::new(),
+                    basis,
                     timeout_secs: 1800,
                 })
             }
@@ -962,6 +1012,7 @@ impl CargoAdapter {
                     what: UninstallScope::Cargo,
                 }],
                 affected: Vec::new(),
+                basis: None,
                 timeout_secs: 300,
             }),
         }
@@ -974,6 +1025,27 @@ impl CargoAdapter {
         op_id: OpId,
         cancel: CancellationToken,
     ) -> Result<Outcome, AdapterError> {
+        if plan.request.kind == OpKind::Upgrade {
+            let current = match &plan.action {
+                PlanAction::Command { args, .. } => args
+                    .windows(2)
+                    .find(|pair| pair[0] == "--root")
+                    .map(|pair| Path::new(&pair[1]))
+                    .filter(|root| root.is_absolute())
+                    .and_then(|root| {
+                        self.read_installs_at(root).ok().and_then(|json| {
+                            Self::upgrade_basis(&json, root, &plan.request.name).ok()
+                        })
+                    }),
+                _ => None,
+            };
+            if current.is_none() || current != plan.basis {
+                return Ok(Outcome::BanagerFailed(
+                    crate::model::Fault::ChangedSinceShown,
+                ));
+            }
+        }
+        // Never substitute a new plan's argv, even when revalidation succeeds.
         run_plan(&self.runner, plan, sink, op_id, cancel).await
     }
 
@@ -3049,8 +3121,11 @@ mod tests {
         )
         .await;
     }
-
     async fn f08_cargo_changed_record(change: &str) {
+        f30b_cargo_changed_record(change, false).await;
+    }
+
+    async fn f30b_cargo_changed_record(change: &str, binstall: bool) {
         let dir = tempfile::tempdir().unwrap();
         let record = dir.path().join(".crates2.json");
         // Inline input, independent of the immutable recorded fixtures.
@@ -3063,7 +3138,8 @@ mod tests {
         }});
         std::fs::write(&record, initial.to_string()).unwrap();
         let runner = Arc::new(MockRunner::new());
-        let adapter = CargoAdapter::new(runner.clone(), Arc::new(MockHttpClient::new()));
+        let adapter = CargoAdapter::new(runner.clone(), Arc::new(MockHttpClient::new()))
+            .with_binstall(binstall.then(|| dir.path().join("bin/cargo-binstall")));
         let inst = test_instance(dir.path().to_owned());
         let request = OpRequest {
             kind: OpKind::Upgrade,
@@ -3075,13 +3151,49 @@ mod tests {
         let mut altered = initial.clone();
         let installs = altered["installs"].as_object_mut().unwrap();
         let old_key = installs.keys().next().unwrap().clone();
-        if change == "features" {
-            installs.get_mut(&old_key).unwrap()["features"] = serde_json::json!(["custom"]);
-        } else if change != "unchanged" {
-            let value = installs.remove(&old_key).unwrap();
-            installs.insert(format!("hexyl 0.17.0 ({change})"), value);
+        match change {
+            "features" => {
+                installs.get_mut(&old_key).unwrap()["features"] = serde_json::json!(["custom"])
+            }
+            "all_features" | "no_default_features" => {
+                installs.get_mut(&old_key).unwrap()[change] = true.into()
+            }
+            "profile" => installs.get_mut(&old_key).unwrap()["profile"] = "dev".into(),
+            "target" => {
+                installs.get_mut(&old_key).unwrap()["target"] = "x86_64-unknown-linux-gnu".into()
+            }
+            "unrelated" => {
+                installs.insert(
+                    "other 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)".into(),
+                    installs[&old_key].clone(),
+                );
+            }
+            "unchanged" | "missing" | "unreadable" | "v1" | "no-basis" => {}
+            _ => {
+                let value = installs.remove(&old_key).unwrap();
+                installs.insert(format!("hexyl 0.17.0 ({change})"), value);
+            }
         }
         std::fs::write(&record, altered.to_string()).unwrap();
+        match change {
+            "missing" => std::fs::remove_file(&record).unwrap(),
+            "unreadable" => std::fs::write(&record, "not json").unwrap(),
+            "v1" => std::fs::write(
+                dir.path().join(".crates.toml"),
+                "[v1]\n'hexyl 0.17.0 (git+https://github.com/example/hexyl#abc)' = ['hexyl']\n",
+            )
+            .unwrap(),
+            "features" => {
+                // A second preview must not replace the first one's basis.
+                let again = adapter.plan(&inst, &request).await.unwrap();
+                assert_ne!(plan.basis, again.basis);
+            }
+            _ => {}
+        }
+        let mut plan = plan;
+        if change == "no-basis" {
+            plan.basis = None;
+        }
         let program = command_program(&plan);
         let args = command_args(&plan);
         let mut argv = vec![program.to_str().unwrap()];
@@ -3105,15 +3217,19 @@ mod tests {
                 CancellationToken::new(),
             )
             .await;
-        // Only `cargo install` counts: a fix may read before it refuses.
-        let installs = runner
-            .calls()
-            .into_iter()
-            .filter(|call| call.iter().any(|arg| arg == "install"))
-            .count();
-        if change == "unchanged" {
+        // No process at all is needed to re-read Cargo's install records.
+        let installs = runner.calls().len();
+        if matches!(change, "unchanged" | "unrelated") {
             assert_eq!(result.unwrap(), Outcome::Succeeded);
             assert_eq!(installs, 1);
+            let expected: Vec<_> = std::iter::once(program.to_string_lossy().into_owned())
+                .chain(args.iter().cloned())
+                .collect();
+            assert_eq!(
+                runner.calls(),
+                [expected],
+                "execute exactly the previewed argv"
+            );
         } else {
             assert_eq!(
                 installs,
@@ -3124,7 +3240,9 @@ mod tests {
             assert!(
                 matches!(
                     result,
-                    Err(AdapterError::Refused(_)) | Ok(Outcome::BanagerFailed(_))
+                    Ok(Outcome::BanagerFailed(
+                        crate::model::Fault::ChangedSinceShown
+                    ))
                 ),
                 "explicit stale-preview refusal: {result:?}"
             );
@@ -3132,17 +3250,14 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "bug: G07: a Cargo update still runs after the install's source or features changed since its preview"]
     async fn f08_g07_git_provenance_changed_after_preview() {
         f08_cargo_changed_record("git+https://github.com/example/hexyl#abc").await;
     }
     #[tokio::test]
-    #[ignore = "bug: G07: a Cargo update still runs after the install's source or features changed since its preview"]
     async fn f08_g07_path_provenance_changed_after_preview() {
         f08_cargo_changed_record("path+file:///tmp/custom-hexyl").await;
     }
     #[tokio::test]
-    #[ignore = "bug: G07: a Cargo update still runs after the install's source or features changed since its preview"]
     async fn f08_g07_features_changed_after_preview() {
         f08_cargo_changed_record("features").await;
     }
@@ -3186,5 +3301,138 @@ mod tests {
             .warnings
             .iter()
             .any(|w| matches!(w, Warning::Message(text) if text.contains("unexpected EOF"))));
+    }
+
+    #[tokio::test]
+    async fn f30b_cargo_other_choices_and_unreadable_records_refuse() {
+        for change in [
+            "all_features",
+            "no_default_features",
+            "profile",
+            "target",
+            "missing",
+            "unreadable",
+            "v1",
+            "no-basis",
+        ] {
+            f30b_cargo_changed_record(change, false).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn f30b_binstall_also_refuses_changed_basis_and_keeps_confirmed_argv() {
+        for change in [
+            "features",
+            "git+https://github.com/example/hexyl#abc",
+            "missing",
+            "unchanged",
+            "unrelated",
+        ] {
+            f30b_cargo_changed_record(change, true).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn f30b_cargo_unrelated_record_does_not_invalidate_preview() {
+        f30b_cargo_changed_record("unrelated", false).await;
+    }
+
+    /// A crate cargo-binstall installed is listed only in `.crates.toml`
+    /// (cargo-binstall writes no `.crates2.json`). The next time Cargo
+    /// installs or uninstalls anything in the root it writes that crate a
+    /// `.crates2.json` record of its own, with Cargo's defaults filled in
+    /// (cargo `InstallTracker::load` -> `CrateListingV2::sync_v1` ->
+    /// `InstallInfo::from_v1`, saved after the install). An Update all
+    /// that updates another crate with `cargo install` first changes
+    /// nothing about this one, and must not refuse it as changed.
+    #[tokio::test]
+    async fn f30b_cargo_record_cargo_fills_in_for_a_binstall_install_keeps_preview() {
+        const INDEX: &str = "registry+https://github.com/rust-lang/crates.io-index";
+        const RUSTC: &str = "rustc 1.98.1 (48a229cea 2026-09-01)\nbinary: rustc\ncommit-hash: 48a229ceaefd4985c50990b14116b6d856af0985\ncommit-date: 2026-09-01\nhost: aarch64-apple-darwin\nrelease: 1.98.1\nLLVM version: 22.1.8\n";
+        let hexyl = |version: &str| {
+            (
+                format!("hexyl {version} ({INDEX})"),
+                serde_json::json!({
+                    "version_req": null, "bins": ["hexyl"], "features": [],
+                    "all_features": false, "no_default_features": false,
+                    "profile": "release", "target": "aarch64-apple-darwin", "rustc": RUSTC
+                }),
+            )
+        };
+        let crates_toml = |hexyl_version: &str| {
+            format!(
+                "[v1]\n\"hexyl {hexyl_version} ({INDEX})\" = [\"hexyl\"]\n\"ripgrep 14.1.1 ({INDEX})\" = [\"rg\"]\n"
+            )
+        };
+        let dir = tempfile::tempdir().unwrap();
+        // Before: hexyl installed by `cargo install`, ripgrep by
+        // cargo-binstall -- in `.crates.toml` only.
+        let (key, record) = hexyl("0.17.0");
+        std::fs::write(
+            dir.path().join(".crates2.json"),
+            serde_json::json!({"installs": {key: record}}).to_string(),
+        )
+        .unwrap();
+        std::fs::write(dir.path().join(".crates.toml"), crates_toml("0.17.0")).unwrap();
+        let runner = Arc::new(MockRunner::new());
+        let adapter = CargoAdapter::new(runner.clone(), Arc::new(MockHttpClient::new()))
+            .with_binstall(Some(dir.path().join("bin/cargo-binstall")));
+        let inst = test_instance(dir.path().to_owned());
+        let request = OpRequest {
+            kind: OpKind::Upgrade,
+            instance_id: inst.id.clone(),
+            artifact_kind: ArtifactKind::Binary,
+            name: "ripgrep".into(),
+        };
+        let plan = adapter.plan(&inst, &request).await.unwrap();
+        assert!(plan.basis.is_some());
+
+        // `cargo install --force hexyl` of the same Update all finishes:
+        // hexyl moves on, and Cargo writes ripgrep the record `from_v1`
+        // makes. Nothing about ripgrep changed.
+        let (key, record) = hexyl("0.18.0");
+        std::fs::write(
+            dir.path().join(".crates2.json"),
+            serde_json::json!({"installs": {
+                key: record,
+                format!("ripgrep 14.1.1 ({INDEX})"): {
+                    "version_req": null, "bins": ["rg"], "features": [],
+                    "all_features": false, "no_default_features": false,
+                    "profile": "release", "target": null, "rustc": null
+                }
+            }})
+            .to_string(),
+        )
+        .unwrap();
+        std::fs::write(dir.path().join(".crates.toml"), crates_toml("0.18.0")).unwrap();
+        // A preview made now is the same preview.
+        let again = adapter.plan(&inst, &request).await.unwrap();
+        assert_eq!((&again.action, &again.basis), (&plan.action, &plan.basis));
+
+        let program = command_program(&plan).to_string_lossy().into_owned();
+        let argv: Vec<String> = std::iter::once(program)
+            .chain(command_args(&plan).iter().cloned())
+            .collect();
+        runner.respond(
+            argv.iter().map(String::as_str).collect(),
+            CommandOutput {
+                stderr_cause: Default::default(),
+                exit_code: Some(0),
+                stdout: String::new(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let result = adapter
+            .execute(
+                &plan,
+                Arc::new(crate::events::VecSink::new()),
+                1,
+                CancellationToken::new(),
+            )
+            .await;
+        assert_eq!(result.unwrap(), Outcome::Succeeded);
+        assert_eq!(runner.calls(), [argv], "exactly the previewed command");
     }
 }

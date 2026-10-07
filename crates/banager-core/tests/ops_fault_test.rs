@@ -96,6 +96,7 @@ impl Adapter for FailingAdapter {
             cancel_policy: CancelPolicy::KillThenReconcile,
             warnings: vec![],
             affected: vec![],
+            basis: None,
             timeout_secs: 60,
         })
     }

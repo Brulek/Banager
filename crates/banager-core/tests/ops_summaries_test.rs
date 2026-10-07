@@ -88,6 +88,7 @@ impl Adapter for FakeAdapter {
             cancel_policy: CancelPolicy::KillThenReconcile,
             warnings: vec![],
             affected: vec![],
+            basis: None,
             timeout_secs: 60,
         })
     }
@@ -361,6 +362,7 @@ async fn test_summaries_gives_a_plan_that_runs_no_command_an_empty_argv_preview(
         cancel_policy: CancelPolicy::KillThenReconcile,
         warnings: vec![],
         affected: vec![],
+        basis: None,
         timeout_secs: 120,
     };
     let op_id = manager.submit(plan);
@@ -409,6 +411,7 @@ async fn test_summaries_preview_the_first_command_of_a_plan_of_two() {
         cancel_policy: CancelPolicy::KillThenReconcile,
         warnings: vec![],
         affected: vec![],
+        basis: None,
         timeout_secs: 60,
     };
     let op_id = manager.submit(plan);

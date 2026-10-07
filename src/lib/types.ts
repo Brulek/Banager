@@ -676,6 +676,8 @@ export type PlanAction =
   | { CommandThen: { program: string; args: string[]; env: [string, string][]; then: string[][] } }
   | { TrashPaths: { paths: string[] } };
 export interface Plan {
+  /** Fingerprint of the installation basis; compared when a held plan is prepared again. */
+  basis?: string;
   request: OpRequest;
   action: PlanAction;
   needs_password: boolean;

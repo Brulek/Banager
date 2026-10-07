@@ -1782,6 +1782,7 @@ mod evicted_tests {
             cancel_policy: CancelPolicy::KillThenReconcile,
             warnings: vec![],
             affected: vec![],
+            basis: None,
             timeout_secs: 60,
         }
     }

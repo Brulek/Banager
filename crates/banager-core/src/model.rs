@@ -1906,6 +1906,12 @@ pub struct Plan {
     pub warnings: Vec<Warning>,
     pub affected: Vec<String>, // dependents that would break on uninstall
     pub timeout_secs: u64,
+    /// Fingerprint of the install record this preview relies on. It travels
+    /// on the wire so a batch re-planning an evicted plan compares the basis
+    /// as well as argv. Receipts and their potentially private settings never
+    /// cross IPC. Only the server-held plan is executable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub basis: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -3409,8 +3415,21 @@ mod tests {
             cancel_policy: CancelPolicy::KillThenReconcile,
             warnings: vec![],
             affected: vec![],
+            basis: None,
             timeout_secs: 1800,
         };
+        let based = Plan {
+            basis: Some("a".repeat(64)),
+            ..plan.clone()
+        };
+        let based_json = serde_json::to_value(&based).unwrap();
+        assert_eq!(based_json["basis"], "a".repeat(64));
+        assert_eq!(serde_json::from_value::<Plan>(based_json).unwrap(), based);
+        assert!(serde_json::to_value(&plan).unwrap().get("basis").is_none());
+        assert_eq!(
+            serde_json::to_string(&Outcome::BanagerFailed(Fault::ChangedSinceShown)).unwrap(),
+            r#"{"BanagerFailed":"ChangedSinceShown"}"#
+        );
         let json = serde_json::to_string(&plan).expect("serialize");
         let back: Plan = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(plan, back);
@@ -3434,6 +3453,7 @@ mod tests {
             cancel_policy: CancelPolicy::KillThenReconcile,
             warnings: vec![],
             affected: vec![],
+            basis: None,
             timeout_secs: 120,
         };
         let json = serde_json::to_string(&trash).expect("serialize");

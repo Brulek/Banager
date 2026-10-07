@@ -485,6 +485,7 @@ impl StandaloneAdapter {
             cancel_policy: cmd.cancel,
             warnings,
             affected: Vec::new(),
+            basis: None,
             timeout_secs: cmd.timeout_secs,
         })
     }
@@ -984,6 +985,7 @@ impl StandaloneAdapter {
                             // own files this way, and a non-empty list
                             // disables the confirm button.
                             affected: Vec::new(),
+                            basis: None,
                             timeout_secs: removal::TIMEOUT_SECS,
                         })
                     }
@@ -1026,6 +1028,7 @@ impl StandaloneAdapter {
                     cancel_policy: upgrade.cancel,
                     warnings: Vec::new(),
                     affected: Vec::new(),
+                    basis: None,
                     timeout_secs: upgrade.timeout_secs,
                 })
             }

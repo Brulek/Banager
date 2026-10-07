@@ -2393,8 +2393,23 @@ and cargo-binstall creates it blank before its first write) beside a
 the next refresh reads again; one without a `[v1]` table is an error, as
 it is to Cargo. A crate that only cargo-binstall installed is listed
 too, as `cargo install --list` lists it. `inventory`, the check after an
-operation, `check_updates` and upgrade planning all read this merged
-record.
+operation, `check_updates`, upgrade planning and the check immediately before
+executing a saved upgrade all read this merged record. The preview carries a
+fingerprint of the confirmed root, the target crate's record key (its version
+and source) and the build choices saved with it (features, `all_features`,
+`no_default_features`, profile, target, `rustc`), read the way the upgrade's own
+planning reads them (`CargoAdapter::upgrade_basis`). The record Cargo writes, with
+its defaults filled in, for a crate only `.crates.toml` listed (one
+cargo-binstall installed) the next time it installs or uninstalls anything in
+the root (cargo `CrateListingV2::sync_v1`, `InstallInfo::from_v1`) is therefore
+the same basis, so another crate's update in the same Update all does not
+invalidate it. If the target's source, version or recorded build choices change,
+or its record disappears, becomes ambiguous or cannot be read again, the saved
+plan is refused as changed since shown before `cargo install` or
+`cargo-binstall` runs. Another crate's record does not affect this fingerprint.
+It also participates when a batch prepares a plan again, without sending the
+record's contents to the window. Successful revalidation runs the original argv with its confirmed
+`--root` and `--index`; it never silently replaces the shown command.
 
 `check_updates` reads the
 merged record and, for each crate installed from crates.io, asks crates.io

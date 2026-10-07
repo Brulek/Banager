@@ -231,6 +231,17 @@ describe("startShown, for Update all of more tools than the backend holds", () =
     expect(backend.submitted.some((issued) => issued.plan.request.name === "tool-0003")).toBe(false);
   });
 
+  it("refuses a changed installation basis even when the command is identical", async () => {
+    const backend = heldBackend((req, nth) =>
+      brewPlan(req, { basis: (nth > 1 ? "b" : "a").repeat(64) }),
+    );
+    const shown = await preview(backend, names(1100));
+    expect(JSON.parse(JSON.stringify(shown[0].plan))).toEqual(shown[0].plan);
+    expect(shown[0].plan.basis).toBe("a".repeat(64));
+    expect((await startEach(backend, shown, "planAgain"))[0]).toBe(CHANGED_SINCE_SHOWN);
+    expect(backend.submitted.some((issued) => issued.plan.request.name === "tool-0000")).toBe(false);
+  });
+
   it("does not start one whose notes came out different either", async () => {
     const backend = heldBackend((req, nth) =>
       req.name === "tool-0000" && nth > 1 ? brewPlan(req, { needs_password: true }) : brewPlan(req),
@@ -334,8 +345,9 @@ describe("samePlan", () => {
 
   // One change to each field of a plan: a field added to `Plan` and left
   // out here fails `tsc` (the `Record`) and the test below (`Object.keys`).
-  const base = brewPlan(request("jq"));
+  const base = brewPlan(request("jq"), { basis: "a".repeat(64) });
   const CHANGED: Record<keyof Plan, Plan[keyof Plan]> = {
+    basis: "b".repeat(64),
     // The request alone, its command still jq's.
     request: { ...base.request, name: "yq" },
     action: { Command: { program: "/usr/local/bin/brew", args: ["upgrade", "--formula", "jq"], env: [["HOMEBREW_NO_AUTO_UPDATE", "1"]] } },

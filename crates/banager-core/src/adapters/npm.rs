@@ -581,6 +581,7 @@ impl NpmAdapter {
             cancel_policy: CancelPolicy::KillThenReconcile,
             warnings,
             affected: Vec::new(),
+            basis: None,
             timeout_secs: 600,
         })
     }

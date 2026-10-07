@@ -121,6 +121,25 @@ impl AdapterMeta {
     }
 }
 
+/// A stable fingerprint for a preview's per-tool record. Sort objects even
+/// when another workspace crate enables serde_json's preserve_order feature.
+/// Arrays retain their order; no receipt contents leave the backend.
+fn plan_basis(mut value: serde_json::Value) -> String {
+    use sha2::{Digest, Sha256};
+    fn sort(value: &mut serde_json::Value) {
+        match value {
+            serde_json::Value::Object(object) => {
+                object.sort_keys();
+                object.values_mut().for_each(sort);
+            }
+            serde_json::Value::Array(array) => array.iter_mut().for_each(sort),
+            _ => {}
+        }
+    }
+    sort(&mut value);
+    format!("{:x}", Sha256::digest(value.to_string().as_bytes()))
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum AdapterError {
     #[error("runner: {0}")]
@@ -1475,6 +1494,7 @@ mod tests {
             cancel_policy: CancelPolicy::KillThenReconcile,
             warnings: Vec::new(),
             affected: Vec::new(),
+            basis: None,
             timeout_secs: 60,
         }
     }
@@ -1666,6 +1686,7 @@ mod tests {
             cancel_policy: CancelPolicy::KillThenReconcile,
             warnings: Vec::new(),
             affected: Vec::new(),
+            basis: None,
             timeout_secs: 60,
         };
         let runner: Arc<dyn CommandRunner> = Arc::new(NotingRunner);
@@ -1721,6 +1742,7 @@ mod tests {
             cancel_policy: CancelPolicy::KillThenReconcile,
             warnings: Vec::new(),
             affected: Vec::new(),
+            basis: None,
             timeout_secs: 120,
         };
         let runner_raw = Arc::new(MockRunner::new());
