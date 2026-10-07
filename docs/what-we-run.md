@@ -4944,6 +4944,37 @@ configured, `index.crates.io`, and cargo still follows a
   was updating and the reading before was refused, presence afterwards is
   all there is to go on (Homebrew's section).
 
+## Known bugs not fixed yet
+
+Each of these is reproduced by a test that is kept out of the ordinary run
+(`#[ignore = "bug: …"]`, or `it.skip("bug: …")` for the window's) and fails
+until the bug is fixed; `cargo test -- --ignored` runs the Rust ones. Until
+then, what this document says above holds only as narrowed here.
+
+- When the login shell's output has two `PATH=` lines (a multi-line
+  variable can hold one), Banager uses the first instead of keeping the
+  `PATH` it inherited.
+- A Homebrew uninstall still runs when, since its confirmation was shown,
+  `brew.env` has turned autoremove on or now sits in a protected place
+  Banager does not look into; a cask uninstall still runs when the cask's
+  install receipt has gained removal steps the confirmation did not show.
+- An npm uninstall runs against whatever global prefix npm is set to when
+  it starts, which can be another installation than the one confirmed.
+- A Cargo update still runs `cargo install --force` from crates.io after
+  the installed copy was replaced from Git or a local path, or rebuilt with
+  other features, since its confirmation; a uv upgrade still runs after
+  the tool's receipt gained a version constraint or became unreadable.
+- Hiding an update on the Updates page, then changing a setting in
+  Settings before that first save has finished, can lose the hidden
+  update even when both saves succeed.
+
+Put Back itself is still untested (“Moving files to the Trash” above).
+Testing it needs a throwaway macOS account, Banager started from Finder
+without Full Disk Access, its paced removal of a throwaway file, folder and
+launcher link, and Put Back clicked in Finder, then a check of their
+paths, contents and link target, with the macOS version recorded. None of
+that has been set up.
+
 ## 简体中文：运行与隐私要点
 
 - 软件包管理操作直接传入参数，不经过 shell。启动时会另行运行登录 shell，读取环境设置；启动文件也会执行。读取失败后，后续刷新会重试。原生模拟窗口也有这一步，浏览器模拟没有。
