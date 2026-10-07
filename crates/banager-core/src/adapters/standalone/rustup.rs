@@ -113,7 +113,10 @@ fn no_link_at_the_top(root: &Path, protected: &Protected) -> Result<(), PathBuf>
     let unlistable = |_| root.to_path_buf();
     let listing = look::list(root, protected).map_err(unlistable)?;
     let mut links = Vec::new();
-    for name in listing.names().map_err(unlistable)? {
+    for name in listing
+        .names(&mut look::ListingBudget::default())
+        .map_err(unlistable)?
+    {
         let meta = listing.lstat(&name).map_err(unlistable)?;
         if meta.is_symlink() {
             links.push(root.join(name));
@@ -210,6 +213,17 @@ pub fn uninstall_blocked(d: &Detected) -> Option<GateRefusal> {
     standard_roots(d).err()
 }
 
+/// Preserve the preview's existing fallback for a folder that cannot be
+/// opened. Once names are read, any incomplete read refuses the preview.
+fn preview_names(path: &Path, protected: &Protected) -> Result<Vec<std::ffi::OsString>, PathBuf> {
+    let Ok(listing) = look::list(path, protected) else {
+        return Ok(Vec::new());
+    };
+    listing
+        .names(&mut look::ListingBudget::default())
+        .map_err(|_| path.to_path_buf())
+}
+
 /// Every installed toolchain, by name: the entries of
 /// `<rustup_home>/toolchains`, sorted, hidden names skipped. That
 /// directory is what `uninstall()` removes toolchain by toolchain
@@ -218,20 +232,16 @@ pub fn uninstall_blocked(d: &Detected) -> Option<GateRefusal> {
 /// toolchain (`rustup toolchain link`) is an entry like any other. No
 /// directory, or an unreadable one: no names, and the dialog says "every
 /// toolchain" (ruling 15). Nothing is run, and nothing is looked up into
-/// or through a protected place (`protected::look`).
-pub fn toolchain_names(rustup_home: &Path, protected: &Protected) -> Vec<String> {
-    let mut names: Vec<String> = look::list(&rustup_home.join("toolchains"), protected)
-        .and_then(|listing| listing.names())
-        .map(|entries| {
-            entries
-                .into_iter()
-                .filter_map(|name| name.to_str().map(str::to_string))
-                .filter(|name| !name.starts_with('.'))
-                .collect()
-        })
-        .unwrap_or_default();
+/// or through a protected place (`protected::look`). A listing that starts
+/// but cannot finish within its budget refuses the preview at that folder.
+pub fn toolchain_names(rustup_home: &Path, protected: &Protected) -> Result<Vec<String>, PathBuf> {
+    let mut names: Vec<String> = preview_names(&rustup_home.join("toolchains"), protected)?
+        .into_iter()
+        .filter_map(|name| name.to_str().map(str::to_string))
+        .filter(|name| !name.starts_with('.'))
+        .collect();
     names.sort();
-    names
+    Ok(names)
 }
 
 /// The programs in `<cargo_home>/bin` that rustup 1.29.1's `self
@@ -256,20 +266,19 @@ pub fn toolchain_names(rustup_home: &Path, protected: &Protected) -> Vec<String>
 /// everything), but not spellable in a sentence. No directory, an
 /// unreadable one, no record or a broken one each add nothing: a name is
 /// better missing than invented, and `DeletesCargoHome` always says the
-/// whole folder goes.
-pub fn bin_programs_rustup_removes(cargo_home: &Path, protected: &Protected) -> Vec<String> {
+/// whole folder goes. Once enumeration starts, an incomplete read refuses
+/// the preview rather than presenting a subset as the program list.
+pub fn bin_programs_rustup_removes(
+    cargo_home: &Path,
+    protected: &Protected,
+) -> Result<Vec<String>, PathBuf> {
     let removed =
         |name: &str| !name.starts_with('.') && name != "rustup" && !RUSTUP_PROXIES.contains(&name);
-    let listed: Vec<String> = look::list(&cargo_home.join("bin"), protected)
-        .and_then(|listing| listing.names())
-        .map(|entries| {
-            entries
-                .into_iter()
-                .filter_map(|name| name.to_str().map(str::to_string))
-                .filter(|name| removed(name))
-                .collect()
-        })
-        .unwrap_or_default();
+    let listed: Vec<String> = preview_names(&cargo_home.join("bin"), protected)?
+        .into_iter()
+        .filter_map(|name| name.to_str().map(str::to_string))
+        .filter(|name| removed(name))
+        .collect();
     let recorded: Vec<(String, Vec<String>)> =
         crate::adapters::read_file::read_text(&cargo_home.join(".crates2.json"), protected)
             .ok()
@@ -287,7 +296,7 @@ pub fn bin_programs_rustup_removes(cargo_home: &Path, protected: &Protected) -> 
     );
     names.sort();
     names.dedup();
-    names
+    Ok(names)
 }
 
 /// Whether Homebrew's `rustup` formula is installed: `<prefix>/Cellar/rustup`
@@ -850,13 +859,20 @@ pub fn preview_with(
     let mut warnings = vec![
         Warning::RemovesToolchains {
             path: tilde(&roots.rustup_home),
-            names: toolchain_names(&roots.rustup_home, &protected),
+            names: toolchain_names(&roots.rustup_home, &protected).map_err(|path| GateRefusal {
+                reason: UninstallBlocked::NoSafeMethod,
+                path,
+            })?,
         },
         Warning::DeletesCargoHome {
             path: tilde(&roots.cargo_home),
         },
     ];
-    let bins = bin_programs_rustup_removes(&roots.cargo_home, &protected);
+    let bins =
+        bin_programs_rustup_removes(&roots.cargo_home, &protected).map_err(|path| GateRefusal {
+            reason: UninstallBlocked::NoSafeMethod,
+            path,
+        })?;
     if !bins.is_empty() {
         warnings.push(Warning::RemovesCargoInstalled { names: bins });
     }
@@ -904,14 +920,41 @@ mod tests {
     use std::path::PathBuf;
 
     #[test]
+    fn bounded_rustup_roots_refuse_an_unchecked_tail() {
+        let home = TempHome::new("bounded-rustup-root");
+        home.dir(".cargo");
+        for n in 0..4097 {
+            home.file(&format!(".cargo/file-{n}"));
+        }
+        assert!(standard_roots(&detected(home.path(), &home.path().join(".cargo"))).is_err());
+    }
+
+    #[test]
+    fn bounded_rustup_preview_refuses_incomplete_toolchains_or_programs() {
+        for folder in [".rustup/toolchains", ".cargo/bin"] {
+            let home = TempHome::new("bounded-rustup-preview");
+            home.dir(".cargo");
+            home.dir(folder);
+            for n in 0..4097 {
+                home.file(&format!("{folder}/file-{n}"));
+            }
+            assert!(
+                preview_with(&detected(home.path(), &home.path().join(".cargo")), &[]).is_err(),
+                "{folder}"
+            );
+        }
+    }
+
+    #[test]
     fn regression_a_named_pipe_for_a_cargo_record_is_not_waited_on() {
         use crate::adapters::read_file::tests::{finishes, make_fifo, temp_dir};
         let cargo_home = temp_dir("rustup-crates2-fifo");
         std::fs::create_dir_all(cargo_home.join("bin")).unwrap();
         make_fifo(&cargo_home.join(".crates2.json"));
         let home = cargo_home.clone();
-        let names =
-            finishes(move || bin_programs_rustup_removes(&home, &Protected::of_this_process()));
+        let names = finishes(move || {
+            bin_programs_rustup_removes(&home, &Protected::of_this_process()).unwrap()
+        });
         assert!(names.is_empty(), "{names:?}");
         let _ = std::fs::remove_dir_all(&cargo_home);
     }
@@ -1153,12 +1196,12 @@ mod tests {
         // (ruling 15).
         let home = TempHome::new("toolchains-none");
         assert_eq!(
-            toolchain_names(&home.path().join(".rustup"), &Protected::of_this_process()),
+            toolchain_names(&home.path().join(".rustup"), &Protected::of_this_process()).unwrap(),
             Vec::<String>::new()
         );
         home.dir(".rustup");
         assert_eq!(
-            toolchain_names(&home.path().join(".rustup"), &Protected::of_this_process()),
+            toolchain_names(&home.path().join(".rustup"), &Protected::of_this_process()).unwrap(),
             Vec::<String>::new()
         );
 
@@ -1171,7 +1214,7 @@ mod tests {
         let linked = home.dir("src/my-toolchain");
         home.link(".rustup/toolchains/custom", &linked);
         assert_eq!(
-            toolchain_names(&rustup_home, &Protected::of_this_process()),
+            toolchain_names(&rustup_home, &Protected::of_this_process()).unwrap(),
             vec![
                 "1.90.0-aarch64-apple-darwin".to_string(),
                 "custom".to_string(),
@@ -1220,7 +1263,7 @@ mod tests {
         )
         .expect("copy the recorded record");
         assert_eq!(
-            bin_programs_rustup_removes(&cargo_home, &Protected::of_this_process()),
+            bin_programs_rustup_removes(&cargo_home, &Protected::of_this_process()).unwrap(),
             vec!["hexyl".to_string()]
         );
     }
@@ -1248,7 +1291,7 @@ mod tests {
         )
         .expect("write the record");
         assert_eq!(
-            bin_programs_rustup_removes(&cargo_home, &Protected::of_this_process()),
+            bin_programs_rustup_removes(&cargo_home, &Protected::of_this_process()).unwrap(),
             vec![
                 "cargo-binstall".to_string(),
                 "jj-cli".to_string(),
@@ -1271,12 +1314,12 @@ mod tests {
         std::fs::write(cargo_home.join("bin/mytool"), b"x").expect("write mytool");
         std::fs::write(cargo_home.join("bin/.DS_Store"), b"x").expect("write .DS_Store");
         assert_eq!(
-            bin_programs_rustup_removes(&cargo_home, &Protected::of_this_process()),
+            bin_programs_rustup_removes(&cargo_home, &Protected::of_this_process()).unwrap(),
             vec!["mytool".to_string()]
         );
         std::fs::write(cargo_home.join(".crates2.json"), "{ not json").expect("write");
         assert_eq!(
-            bin_programs_rustup_removes(&cargo_home, &Protected::of_this_process()),
+            bin_programs_rustup_removes(&cargo_home, &Protected::of_this_process()).unwrap(),
             vec!["mytool".to_string()]
         );
     }
@@ -1301,7 +1344,7 @@ mod tests {
         )
         .expect("write record");
         assert_eq!(
-            bin_programs_rustup_removes(&cargo_home, &Protected::of_this_process()),
+            bin_programs_rustup_removes(&cargo_home, &Protected::of_this_process()).unwrap(),
             vec![
                 "cargo-binstall".to_string(),
                 "hexyl".to_string(),
@@ -1318,18 +1361,18 @@ mod tests {
         let home = TempHome::new("rustup-bins-none");
         let cargo_home = home.dir(".cargo");
         assert_eq!(
-            bin_programs_rustup_removes(&cargo_home, &Protected::of_this_process()),
+            bin_programs_rustup_removes(&cargo_home, &Protected::of_this_process()).unwrap(),
             Vec::<String>::new()
         );
         std::fs::write(cargo_home.join(".crates2.json"), "{ not json").expect("write");
         assert_eq!(
-            bin_programs_rustup_removes(&cargo_home, &Protected::of_this_process()),
+            bin_programs_rustup_removes(&cargo_home, &Protected::of_this_process()).unwrap(),
             Vec::<String>::new()
         );
         // rustup and its proxies alone: nothing else to name.
         rustup_layout(&cargo_home);
         assert_eq!(
-            bin_programs_rustup_removes(&cargo_home, &Protected::of_this_process()),
+            bin_programs_rustup_removes(&cargo_home, &Protected::of_this_process()).unwrap(),
             Vec::<String>::new()
         );
     }

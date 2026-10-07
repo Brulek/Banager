@@ -156,11 +156,12 @@ fn caskroom_token(name: &str) -> Option<&str> {
 /// `Casks/<token>.json`, `.internal.json` and `.rb` that exists.
 fn saved_caskfile(metadata: &Path, token: &str, protected: &Protected) -> Option<PathBuf> {
     let mut newest: Option<(Vec<u8>, PathBuf)> = None;
-    for version in sorted_entries(metadata, protected) {
+    let mut budget = look::ListingBudget::default();
+    for version in sorted_entries(metadata, protected, &mut budget)? {
         if !look::target(&version, protected).is_ok_and(|(_, meta)| meta.is_dir()) {
             continue;
         }
-        for entry in sorted_entries(&version, protected) {
+        for entry in sorted_entries(&version, protected, &mut budget)? {
             let name = entry.file_name()?.as_encoded_bytes().to_vec();
             if newest.as_ref().is_none_or(|(best, _)| name > *best) {
                 newest = Some((name, entry));
@@ -175,18 +176,21 @@ fn saved_caskfile(metadata: &Path, token: &str, protected: &Protected) -> Option
 }
 
 /// The entries of `dir` whose names do not start with `.`, sorted by name;
-/// none when it cannot be listed (`look::list`).
-fn sorted_entries(dir: &Path, protected: &Protected) -> Vec<PathBuf> {
-    let Ok(names) = look::list(dir, protected).and_then(|listing| listing.names()) else {
-        return Vec::new();
-    };
+/// `None` when it cannot be completely listed, including budget exhaustion.
+/// The caller must abandon the whole search, not choose from other versions.
+fn sorted_entries(
+    dir: &Path,
+    protected: &Protected,
+    budget: &mut look::ListingBudget,
+) -> Option<Vec<PathBuf>> {
+    let names = look::list(dir, protected).ok()?.names(budget).ok()?;
     let mut entries: Vec<PathBuf> = names
         .into_iter()
         .filter(|name| !name.as_encoded_bytes().starts_with(b"."))
         .map(|name| dir.join(name))
         .collect();
     entries.sort();
-    entries
+    Some(entries)
 }
 
 /// A file's bytes, or `None` unless `path` leads, links followed, to a
@@ -933,6 +937,25 @@ mod tests {
     /// With nothing Homebrew put down or linked: a `pkg` or installer cask.
     fn only_steps(kinds: &[(CaskStep, &[&str])]) -> Classified {
         Classified::OnlySteps(listed(kinds))
+    }
+
+    #[test]
+    fn bounded_receipts_never_choose_from_an_incomplete_search() {
+        let root = crate::adapters::read_file::tests::temp_dir("bounded-receipts");
+        let protected = Protected::of_this_process();
+        // Neither individual folder is over the limit; their combined search is.
+        for version in ["1", "2"] {
+            for n in 0..2050 {
+                let casks = root.join(version).join(format!("{n:04}")).join("Casks");
+                std::fs::create_dir_all(&casks).unwrap();
+                std::fs::write(casks.join("app.json"), "{}").unwrap();
+            }
+        }
+        let (answer, calls) =
+            crate::dirfd::calls::measure(|| saved_caskfile(&root, "app", &protected));
+        assert!(answer.is_none());
+        assert_eq!(calls.entries, 4097);
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

@@ -137,6 +137,43 @@ pub fn link_text(path: &Path, protected: &Protected) -> io::Result<PathBuf> {
     folder.read_link_at(&name)
 }
 
+/// One adapter check's shared directory budget. The limit counts all names,
+/// including hidden and rejected ones, across all folders in the check.
+/// Two seconds bounds elapsed work between reads; a blocked system call itself
+/// cannot be interrupted. Overflow discards the whole listing, never a prefix.
+pub struct ListingBudget {
+    remaining: usize,
+    started: std::time::Instant,
+}
+
+impl ListingBudget {
+    pub fn new(max_names: usize) -> Self {
+        Self {
+            remaining: max_names,
+            started: std::time::Instant::now(),
+        }
+    }
+
+    fn check_time(&self) -> io::Result<()> {
+        if self.started.elapsed() >= std::time::Duration::from_secs(2) {
+            Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "could not check the whole folder within the directory read budget",
+            ))
+        } else {
+            Ok(())
+        }
+    }
+}
+
+/// Adapter previews normally list a few versions or commands. Leave room for
+/// large tool installations, while bounding both allocation and directory reads.
+impl Default for ListingBudget {
+    fn default() -> Self {
+        Self::new(4096)
+    }
+}
+
 /// A folder open to list (`list`): its names, and what each one is.
 pub struct Listing<'p> {
     dir: Dir,
@@ -156,9 +193,29 @@ impl Listing<'_> {
         self.dir.entries()
     }
 
-    /// Every name in the folder, `.` and `..` left out, unsorted.
-    pub fn names(&self) -> io::Result<Vec<OsString>> {
-        self.dir.entries()?.collect()
+    /// Collect a complete folder within a shared budget. At most one extra
+    /// name is read to distinguish an exactly full allowance from overflow;
+    /// that name is never inspected or returned. Errors discard all names.
+    pub fn names(&self, budget: &mut ListingBudget) -> io::Result<Vec<OsString>> {
+        budget.check_time()?;
+        let mut entries = self.entries()?;
+        let mut names = Vec::new();
+        loop {
+            budget.check_time()?;
+            let entry = entries.next();
+            budget.check_time()?;
+            let Some(name) = entry else {
+                return Ok(names);
+            };
+            let name = name?;
+            if budget.remaining == 0 {
+                return Err(io::Error::other(
+                    "could not check the whole folder within the directory name budget",
+                ));
+            }
+            budget.remaining -= 1;
+            names.push(name);
+        }
     }
 
     /// What `name` in the folder is, a link itself rather than what it
@@ -314,6 +371,58 @@ mod tests {
     }
 
     #[test]
+    fn bounded_names_never_return_a_partial_folder() {
+        let home = Home::new("bounded");
+        for name in ["a", "b", "c", "d"] {
+            std::fs::write(home.at(name), "").unwrap();
+        }
+        let protected = home.protected();
+        let listing = list(&home.0, &protected).unwrap();
+        let (result, calls) = calls::measure(|| listing.names(&mut ListingBudget::new(2)));
+        assert!(result.is_err());
+        assert_eq!(calls.entries, 3, "only one overflow probe");
+        assert_eq!(calls.stat_at, 0, "no overflow entry is inspected");
+        // A new stream: Home also contains Documents, so exactly five names.
+        let listing = list(&home.0, &protected).unwrap();
+        assert_eq!(listing.names(&mut ListingBudget::new(5)).unwrap().len(), 5);
+    }
+
+    #[test]
+    fn bounded_names_share_the_budget_and_check_time_before_reading() {
+        let home = Home::new("bounded-shared");
+        std::fs::create_dir(home.at("one")).unwrap();
+        std::fs::create_dir(home.at("two")).unwrap();
+        for dir in ["one", "two"] {
+            for name in ["a", "b"] {
+                std::fs::write(home.at(&format!("{dir}/{name}")), "").unwrap();
+            }
+        }
+        let protected = home.protected();
+        let mut budget = ListingBudget::new(3);
+        assert_eq!(
+            list(&home.at("one"), &protected)
+                .unwrap()
+                .names(&mut budget)
+                .unwrap()
+                .len(),
+            2
+        );
+        assert!(list(&home.at("two"), &protected)
+            .unwrap()
+            .names(&mut budget)
+            .is_err());
+        let mut expired = ListingBudget::new(10);
+        expired.started = std::time::Instant::now() - std::time::Duration::from_secs(3);
+        let (result, calls) = calls::measure(|| {
+            list(&home.at("one"), &protected)
+                .unwrap()
+                .names(&mut expired)
+        });
+        assert_eq!(result.unwrap_err().kind(), io::ErrorKind::TimedOut);
+        assert_eq!(calls.entries, 0);
+    }
+
+    #[test]
     fn test_each_look_answers_as_std_fs_outside_the_places() {
         let home = Home::new("outside");
         layout(&home);
@@ -340,7 +449,7 @@ mod tests {
         assert_eq!(bytes, b"1.0");
         assert_eq!(meta.size(), 3);
         let listing = list(&home.at(".tool"), &protected).unwrap();
-        let mut names = listing.names().unwrap();
+        let mut names = listing.names(&mut ListingBudget::default()).unwrap();
         names.sort();
         assert_eq!(names, ["current", "marker", "releases"]);
         assert!(listing.lstat("current".as_ref()).unwrap().is_symlink());
@@ -447,7 +556,7 @@ mod tests {
         // at it.
         let listing = list(&home.0, &protected).unwrap();
         assert!(listing
-            .names()
+            .names(&mut ListingBudget::default())
             .unwrap()
             .contains(&OsString::from("Documents")));
         assert!(is_protected(

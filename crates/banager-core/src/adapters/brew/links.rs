@@ -205,6 +205,7 @@ pub(crate) fn read_links(prefix: &Path, name: &str) -> Option<KegLinks> {
         Err(_) => return None,
     };
     let mut commands = Vec::new();
+    let mut budget = look::ListingBudget::default();
     for folder in ["bin", "sbin"] {
         let listing = match look::list(&keg.join(folder), &protected) {
             Ok(listing) => listing,
@@ -215,7 +216,7 @@ pub(crate) fn read_links(prefix: &Path, name: &str) -> Option<KegLinks> {
             }
             Err(_) => return None,
         };
-        for entry in listing.names().ok()? {
+        for entry in listing.names(&mut budget).ok()? {
             let Some(command) = entry.to_str().filter(|n| plain(n) && *n != ".DS_Store") else {
                 continue;
             };
@@ -399,6 +400,22 @@ pub(crate) mod tests {
             .iter()
             .map(|c| (c.name.as_str(), c.place))
             .collect()
+    }
+
+    #[test]
+    fn bounded_links_share_the_limit_across_bin_and_sbin() {
+        let prefix = node_22_prefix("bounded-links");
+        let keg = prefix.join("Cellar/node@22/22.23.3");
+        std::fs::create_dir_all(keg.join("sbin")).unwrap();
+        for folder in ["bin", "sbin"] {
+            for n in 0..2050 {
+                std::fs::write(keg.join(folder).join(format!(".ignored-{n}")), "").unwrap();
+            }
+        }
+        let (answer, calls) = crate::dirfd::calls::measure(|| read_links(&prefix, "node@22"));
+        assert!(answer.is_none());
+        assert_eq!(calls.entries, 4097);
+        std::fs::remove_dir_all(prefix).unwrap();
     }
 
     #[test]

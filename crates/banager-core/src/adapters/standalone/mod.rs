@@ -5081,7 +5081,7 @@ mod tests {
         let mut expected = recorded.clone();
         expected.sort();
         assert_eq!(
-            rustup::toolchain_names(&home.path().join(".rustup"), &home.protected()),
+            rustup::toolchain_names(&home.path().join(".rustup"), &home.protected()).unwrap(),
             expected
         );
     }

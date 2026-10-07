@@ -34,7 +34,7 @@ pub(crate) fn read_kegs(prefix: &Path, name: &str) -> Option<Kegs> {
     let short = name.rsplit('/').next().filter(|short| plain(short))?;
     let listing = look::list(&prefix.join("Cellar").join(short), &protected).ok()?;
     let mut versions: Vec<String> = listing
-        .names()
+        .names(&mut look::ListingBudget::default())
         .ok()?
         .into_iter()
         .filter_map(|entry| {
@@ -104,6 +104,20 @@ fn runs(text: &str) -> impl Iterator<Item = &str> {
 mod tests {
     use super::*;
     use crate::adapters::read_file::tests::temp_dir;
+
+    #[test]
+    fn bounded_kegs_are_unknown_instead_of_incomplete() {
+        let prefix = temp_dir("bounded-kegs");
+        let rack = prefix.join("Cellar/wget");
+        std::fs::create_dir_all(&rack).unwrap();
+        for n in 0..4097 {
+            std::fs::create_dir(rack.join(n.to_string())).unwrap();
+        }
+        let (answer, calls) = crate::dirfd::calls::measure(|| read_kegs(&prefix, "wget"));
+        assert_eq!(answer, None);
+        assert_eq!(calls.entries, 4097);
+        std::fs::remove_dir_all(prefix).unwrap();
+    }
 
     #[test]
     fn lists_a_formulas_versions_oldest_first_and_only_its_folders() {

@@ -227,14 +227,13 @@ struct Item {
 /// -- so it still goes last (spec §6.2). A
 /// match is a regular file (never a link) directly in the pattern's folder
 /// whose name is prefix + something + suffix (`Glob::matches_name`), in
-/// name order so the preview is stable; a folder that cannot be read --
-/// or is, or leads into, a protected place, which is never listed
-/// (`protected::look`) -- matches nothing (the launcher's own check
-/// speaks for that folder).
+/// name order so the preview is stable. A missing folder matches nothing;
+/// an unreadable, protected or over-budget folder refuses the whole list.
+/// All patterns share one directory budget, including nonmatching names.
 /// Every match is optional: it may be gone by its turn, and one Banager
 /// cannot confirm is the tool's is kept and said, like an optional listed
 /// path.
-fn listed_items(job: &Job) -> Vec<Item> {
+fn listed_items(job: &Job) -> Result<Vec<Item>, PathBuf> {
     let home = job.detected.home.as_path();
     let listed = |spec: &RemoveSpec| Item {
         rel: spelled(spec.path).to_path_buf(),
@@ -244,18 +243,19 @@ fn listed_items(job: &Job) -> Vec<Item> {
         optional: spec.optional,
     };
     let Some((last, before)) = job.remove.split_last() else {
-        return Vec::new();
+        return Ok(Vec::new());
     };
     let mut items: Vec<Item> = before.iter().map(listed).collect();
     let protected = job.detected.protected();
+    let mut budget = look::ListingBudget::default();
     for glob in job.globs {
         let dir = glob.dir_under(home);
-        let Ok(listing) = look::list(&dir, &protected) else {
-            continue;
+        let listing = match look::list(&dir, &protected) {
+            Ok(listing) => listing,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(_) => return Err(dir),
         };
-        let Ok(found) = listing.names() else {
-            continue;
-        };
+        let found = listing.names(&mut budget).map_err(|_| dir.clone())?;
         let mut names: Vec<String> = found
             .into_iter()
             .filter_map(|name| name.into_string().ok())
@@ -276,7 +276,7 @@ fn listed_items(job: &Job) -> Vec<Item> {
         }));
     }
     items.push(listed(last));
-    items
+    Ok(items)
 }
 
 /// Which of a check's refusals mean, for an *optional* path, "not this
@@ -807,7 +807,12 @@ pub fn plan_removal(job: &Job) -> Result<Removal, AdapterError> {
     let mut moved = Vec::new();
     let mut warnings = Vec::new();
     let mut not_ours = Vec::new();
-    for item in listed_items(job) {
+    for item in listed_items(job).map_err(|path| {
+        AdapterError::Refused(format!(
+            "could not check backup files in {}",
+            path.display()
+        ))
+    })? {
         // Check 2: is it there? `lstat`, so a dangling launcher counts.
         match look::lstat(&item.path, &look.protected) {
             Ok(_) => {}
@@ -1044,8 +1049,8 @@ fn kept_as_not_ours(look: &Look<'_>, rel: &Path, expect: Expect, path: &Path) ->
 /// What a path-list uninstall left behind, read from the disk now: every
 /// path the recipe lists other than the launcher, and every backup file
 /// its patterns match now (`listed_items`, the preview's own way of
-/// finding them -- a pattern's folder that cannot be read matches
-/// nothing), each `lstat`ed, in the list's order. "No such file" is gone.
+/// finding them -- an incomplete pattern search returns unknown), each
+/// `lstat`ed, in the list's order. "No such file" is gone.
 /// One that is there is left behind -- moved by this run (`moved`) and
 /// there again, or never moved and there now -- and is returned with the
 /// others. One whose `lstat` fails any other way cannot be told, and is
@@ -1074,7 +1079,7 @@ pub fn left_behind(job: &Job, moved: &[PathBuf]) -> Result<Vec<PathBuf>, PathBuf
     let launcher = route::expand(&job.detected.home, job.recipe.route.launcher);
     let protected = job.detected.protected();
     let mut left = Vec::new();
-    for item in listed_items(job) {
+    for item in listed_items(job)? {
         if item.path == launcher {
             continue;
         }
@@ -1121,7 +1126,11 @@ fn take_turn(
     // The item as the list stands now (`listed_items`: a listed path, or a
     // backup a pattern matches); one that is no longer listed -- a backup
     // that vanished by its turn -- is not what the preview saw.
-    let Some(item) = listed_items(job).into_iter().find(|item| item.path == path) else {
+    let items = match listed_items(job) {
+        Ok(items) => items,
+        Err(folder) => return Turn::Changed(folder),
+    };
+    let Some(item) = items.into_iter().find(|item| item.path == path) else {
         return Turn::Changed(path.to_path_buf());
     };
     let Ok(look) = Look::new(job) else {
@@ -1437,6 +1446,35 @@ mod tests {
 
     fn identity(path: &Path) -> ItemIdentity {
         identity_of(&look::lstat(path, &Protected::default()).expect("lstat"))
+    }
+
+    #[test]
+    fn bounded_backup_search_refuses_preview_turn_and_reconciliation() {
+        let home = TempHome::new("bounded-removal");
+        claude_layout(&home, "2.1.281");
+        let mut job = claude_job(&detected(home.path()));
+        job.globs = only_glob(Glob {
+            dir: "~/.local/bin",
+            prefix: "claude.",
+            suffix: ".old",
+            what: RemovedWhat::Backups,
+        });
+        let preview = plan_removal(&job).unwrap();
+        for n in 0..4097 {
+            home.file(&format!(".local/bin/unrelated-{n}"));
+        }
+        assert!(plan_removal(&job).is_err());
+        assert!(left_behind(&job, &preview.paths).is_err());
+        assert!(matches!(
+            take_turn(
+                &job,
+                &preview.paths[0],
+                preview.identities[0],
+                &[],
+                &MockTrasher::new()
+            ),
+            Turn::Changed(_)
+        ));
     }
 
     #[test]
