@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   FAILURE_CAUSE_KEYS,
+  causeKeepsItsLine,
   failureCause,
   failureDetail,
   lookupFailureCause,
@@ -438,6 +439,26 @@ describe("lookupFailureCause", () => {
     for (const { name, text, transient, network, why } of cases) {
       expect(lookupFailureCause(text) === "network", name).toBe(network);
       expect(why !== undefined, name).toBe(transient !== network);
+    }
+  });
+});
+
+describe("causeKeepsItsLine", () => {
+  it("is true where the cause's words point at the tool's, as Rust's keeps_its_line (review of r6 y3-batch, finding 4)", () => {
+    const all = Object.keys(FAILURE_CAUSE_KEYS) as FailureCause[];
+    expect(all.filter(causeKeepsItsLine)).toEqual(["conflict", "notFound", "unsupported"]);
+  });
+
+  it("words those causes without a log, which is gone once the window closes", () => {
+    const lookup = (locale: unknown, key: string): unknown =>
+      key.split(".").reduce<unknown>((node, part) => (node as Record<string, unknown> | undefined)?.[part], locale);
+    for (const cause of Object.keys(FAILURE_CAUSE_KEYS) as FailureCause[]) {
+      const keys = FAILURE_CAUSE_KEYS[cause];
+      for (const key of [keys.next, keys.line]) {
+        expect(lookup(en, key) as string, key).not.toMatch(/\blog\b/i);
+        expect(lookup(zhCN, key) as string, key).not.toContain("日志");
+        expect(lookup(zhHant, key) as string, key).not.toContain("記錄");
+      }
     }
   });
 });

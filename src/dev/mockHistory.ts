@@ -22,7 +22,7 @@ import type {
   OpRequest,
   Outcome,
 } from "../lib/types";
-import { failureDetail, operationFailureCause } from "../lib/failureCause";
+import { causeKeepsItsLine, failureDetail, operationFailureCause, type FailureCause } from "../lib/failureCause";
 import { IDS, key } from "./mockData";
 
 const MINUTE = 60 * 1000;
@@ -128,6 +128,16 @@ export function mockHistory(now: number): HistoryView {
   };
 }
 
+/**
+ * A failure as `history::record_for` keeps it: its cause, and the tool's
+ * first error line where there is none or the cause's words point at it
+ * (`causeKeepsItsLine`).
+ */
+function keptFailure(cause: FailureCause | null, words: string): HistoryResult {
+  const detail = cause === null || causeKeepsItsLine(cause) ? failureDetail(words) : null;
+  return { Failed: detail === null ? { cause } : { cause, detail } };
+}
+
 /** `history::fault_result`: a cause for each of Banager's own failures. */
 function faultResult(fault: Fault): HistoryResult {
   if (typeof fault === "string") {
@@ -135,12 +145,7 @@ function faultResult(fault: Fault): HistoryResult {
   }
   if ("HomebrewStillUpdating" in fault) return { Failed: { cause: "homebrewUpdating" } };
   if ("ProgramMissing" in fault) return { Failed: { cause: "notFound" } };
-  if ("SpawnFailed" in fault) {
-    const cause = operationFailureCause(fault.SpawnFailed.detail);
-    if (cause !== null) return { Failed: { cause } };
-    const detail = failureDetail(fault.SpawnFailed.detail);
-    return { Failed: detail === null ? { cause: null } : { cause: null, detail } };
-  }
+  if ("SpawnFailed" in fault) return keptFailure(operationFailureCause(fault.SpawnFailed.detail), fault.SpawnFailed.detail);
   return { Failed: { cause: "changed" } };
 }
 
@@ -148,12 +153,7 @@ function faultResult(fault: Fault): HistoryResult {
 function resultOf(outcome: Outcome): HistoryResult {
   if (outcome === "Succeeded" || outcome === "Unconfirmed" || outcome === "Cancelled") return outcome;
   if ("NeedsAttention" in outcome) return { NeedsAttention: outcome.NeedsAttention };
-  if ("Failed" in outcome) {
-    const { cause, summary } = outcome.Failed;
-    if (cause !== null) return { Failed: { cause } };
-    const detail = failureDetail(summary);
-    return { Failed: detail === null ? { cause: null } : { cause: null, detail } };
-  }
+  if ("Failed" in outcome) return keptFailure(outcome.Failed.cause, outcome.Failed.summary);
   return faultResult(outcome.BanagerFailed);
 }
 

@@ -331,6 +331,18 @@ export function operationFailureCause(text: string): FailureCause | null {
   return failureCause(text) ?? lastNamed(text.split(/\r?\n/).filter((line) => line.trim() !== ""), OPERATION_PATTERNS);
 }
 
+/**
+ * Whether the words for `cause` send a person to the tool's own words for
+ * what it was -- which file was in the way, what was missing, what the
+ * version needs -- so that the failure keeps the tool's first error line
+ * beside the cause (`failureDetail`), as the history keeps it once the log
+ * that had it is gone (Rust `FailureCause::keeps_its_line`; review of r6
+ * y3-batch, finding 4).
+ */
+export function causeKeepsItsLine(cause: FailureCause): boolean {
+  return cause === "conflict" || cause === "notFound" || cause === "unsupported";
+}
+
 /** How long a kept error line may be, the `…` of a cut one included: Rust's `DETAIL_CHARS`. */
 const DETAIL_CHARS = 160;
 

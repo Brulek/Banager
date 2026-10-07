@@ -77,6 +77,21 @@ pub enum FailureCause {
     Internal,
 }
 
+impl FailureCause {
+    /// Whether the words for this cause send a person to the tool's own
+    /// words for what it was -- which file was in the way, what was
+    /// missing, what the version needs -- so that a failure kept with it
+    /// keeps the tool's first error line too (`record_for` in `super`),
+    /// once the log that had them is gone (review of r6 y3-batch,
+    /// finding 4). `causeKeepsItsLine` in src/lib/failureCause.ts.
+    pub fn keeps_its_line(self) -> bool {
+        matches!(
+            self,
+            FailureCause::Conflict | FailureCause::NotFound | FailureCause::Unsupported
+        )
+    }
+}
+
 struct Patterns {
     no_way_to_ask: Vec<Regex>,
     asked_in_a_window: Vec<Regex>,

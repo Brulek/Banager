@@ -3870,8 +3870,10 @@ changed something had ended in between. Also the time the page's Clear was last 
 a log, a command line or any other path, and of an error message one line
 at most: a failure's cause is read from the tool's last lines as the
 operation finishes, and the lines are dropped; only where they name no
-cause is the first line that says what went wrong kept, so that the page
-can say why after the window that watched it has closed -- at most 160
+cause, or name one whose words point at the tool's own (a file in the
+way, something missing, a Mac the version does not support), is the
+first line that says what went wrong kept, so that the page can say why,
+and which file or what, after the window that watched it has closed -- at most 160
 characters, its label (`Error:`) taken off, with any home folder written
 as `~` and any login, query or fragment in an address masked
 (`failure_detail`). An operation cancelled before Banager began carrying it out

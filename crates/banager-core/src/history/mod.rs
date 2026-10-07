@@ -218,12 +218,20 @@ pub fn record_for(
         Outcome::NeedsAttention(a) => HistoryResult::NeedsAttention(*a),
         // Read as the tool wrote it, before a login was masked out of the
         // summary (`Outcome::Failed`'s `cause`), never off the summary.
-        // Where it names none, the summary's first error line, masked.
+        // Where it names none, the summary's first error line, masked --
+        // and beside a cause whose words send a person to the tool's
+        // (`FailureCause::keeps_its_line`).
         Outcome::Failed {
-            cause: Some(cause), ..
+            cause: Some(cause),
+            summary,
+            ..
         } => HistoryResult::Failed {
             cause: Some(*cause),
-            detail: None,
+            detail: if cause.keeps_its_line() {
+                failure_detail(summary)
+            } else {
+                None
+            },
         },
         Outcome::Failed {
             cause: None,
@@ -297,6 +305,10 @@ fn fault_result(fault: &Fault) -> HistoryResult {
         Fault::HomebrewStillUpdating { .. } => cause(FailureCause::HomebrewUpdating),
         Fault::ProgramMissing { .. } => cause(FailureCause::NotFound),
         Fault::SpawnFailed { detail } => match operation_failure_cause(detail) {
+            Some(known) if known.keeps_its_line() => HistoryResult::Failed {
+                cause: Some(known),
+                detail: failure_detail(detail),
+            },
             Some(known) => cause(known),
             None => HistoryResult::Failed {
                 cause: None,
@@ -1077,6 +1089,62 @@ mod tests {
             kept_result(&failed_with("  \n")),
             HistoryResult::Failed {
                 cause: None,
+                detail: None
+            }
+        );
+    }
+
+    #[test]
+    fn test_a_cause_that_says_the_line_names_what_keeps_the_line_too() {
+        // Review of r6 y3-batch, finding 4. A conflict, something missing
+        // and a Mac it does not support each say the tool's words name what
+        // -- which file, what is missing, what it needs -- and once the
+        // window closes the log that had them is gone: the first error line
+        // is kept beside the cause.
+        assert_eq!(
+            kept_result(&failed_with(
+                "Error: It seems there is already an App at '/Applications/Foo.app'."
+            )),
+            HistoryResult::Failed {
+                cause: Some(FailureCause::Conflict),
+                detail: Some(
+                    "It seems there is already an App at '/Applications/Foo.app'.".to_string()
+                )
+            }
+        );
+        assert_eq!(
+            kept_result(&failed_with("env: node: No such file or directory")),
+            HistoryResult::Failed {
+                cause: Some(FailureCause::NotFound),
+                detail: Some("env: node: No such file or directory".to_string())
+            }
+        );
+        assert_eq!(
+            kept_result(&failed_with(
+                "Error: onyx: This cask does not run on macOS versions older than Tahoe."
+            )),
+            HistoryResult::Failed {
+                cause: Some(FailureCause::Unsupported),
+                detail: Some(
+                    "onyx: This cask does not run on macOS versions older than Tahoe.".to_string()
+                )
+            }
+        );
+        // Masked as any kept line is.
+        let HistoryResult::Failed { detail, .. } = kept_result(&failed_with(
+            "npm error code E404\nnpm error 404 Not Found - GET https://me:pw@registry.example/foo?x=1",
+        )) else {
+            panic!("a failure");
+        };
+        assert_eq!(
+            detail.as_deref(),
+            Some("404 Not Found - GET https://****@registry.example/foo")
+        );
+        // A cause whose words say it all keeps no line.
+        assert_eq!(
+            kept_result(&failed_with("Error: Failed to download resource \"jq\"")),
+            HistoryResult::Failed {
+                cause: Some(FailureCause::Network),
                 detail: None
             }
         );

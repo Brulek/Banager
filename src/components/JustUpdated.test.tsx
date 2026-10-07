@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, screen, within } from "@testing-library/react";
 import { renderWithProviders } from "../test/setup";
 import { BUTTON } from "./ui/controls";
 import i18n from "../i18n";
@@ -133,6 +133,23 @@ describe("endingOfOutcome and endingOfRecord", () => {
       cause: null,
       detail: "SHA256 mismatch",
     });
+  });
+});
+
+describe("a cause whose words point at the tool's (review of r6 y3-batch, finding 4)", () => {
+  it("keeps the tool's first error line beside a conflict, something missing and an unsupported Mac", () => {
+    expect(endingOfRecord({ Failed: { cause: "conflict", detail: "Could not symlink bin/npm" } })).toEqual({
+      kind: "failed",
+      cause: "conflict",
+      detail: "Could not symlink bin/npm",
+    });
+    expect(
+      endingOfOutcome({ Failed: { exit_code: 127, summary: "env: node: No such file or directory", cause: "notFound" } }),
+    ).toEqual({ kind: "failed", cause: "notFound", detail: "env: node: No such file or directory" });
+    // A cause whose words say it all keeps none, as the history keeps none.
+    expect(
+      endingOfOutcome({ Failed: { exit_code: 1, summary: 'Error: Failed to download resource "jq"', cause: "network" } }),
+    ).toEqual({ kind: "failed", cause: "network" });
   });
 });
 
@@ -369,6 +386,23 @@ describe("JustUpdated", () => {
     expect(why(within(other).getByText("Couldn't update"))).toBe("Reason: SHA256 mismatch");
   });
 
+  it("says the tool's line behind the ⓘ of a cause that points at it, and never sends a person to a log that is gone", () => {
+    const failed: JustUpdatedEntry[] = [
+      {
+        ...entry,
+        id: "a",
+        name: "node",
+        version: null,
+        ending: { kind: "failed", cause: "notFound", detail: "env: node: No such file or directory" },
+      },
+    ];
+    renderWithProviders(<JustUpdated entries={failed} onClear={() => {}} />);
+    const [missing] = screen.getAllByRole("listitem");
+    const text = why(within(missing).getByText("Couldn't update: Something it needs is missing"));
+    expect(text).toBe("Something it needs is missing. The error says what. The error: env: node: No such file or directory");
+    expect(text).not.toMatch(/log/i);
+  });
+
   it("says what did not add up, in plain words beside an orange sign, not the row's short 「结果不符」", () => {
     const toCheck: JustUpdatedEntry[] = [
       {
@@ -443,6 +477,16 @@ describe("JustUpdated", () => {
         "App已不在原来的位置，可能已被移到废纸篓或删除；还要用，就把它放回“应用程序”后重试，不再需要可以卸载它。",
       );
       expect(why(within(other).getByText("未能更新"))).toBe("原因：SHA256 mismatch");
+      cleanup();
+      renderWithProviders(
+        <JustUpdated
+          entries={[{ ...entry, id: "d", version: null, ending: { kind: "failed", cause: "conflict", detail: "Could not symlink bin/npm" } }]}
+          onClear={() => {}}
+        />,
+      );
+      expect(why(screen.getByText("未能更新：与已有的文件冲突"))).toBe(
+        "与已有的文件冲突，报错里写着是哪个文件，处理后重试。报错：Could not symlink bin/npm",
+      );
     } finally {
       await i18n.changeLanguage("en");
     }

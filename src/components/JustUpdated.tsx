@@ -1,7 +1,7 @@
 import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { artifactKeyId } from "../store/ui";
-import { FAILURE_CAUSE_KEYS, failureDetail, outcomeCause, type FailureCause } from "../lib/failureCause";
+import { FAILURE_CAUSE_KEYS, causeKeepsItsLine, failureDetail, outcomeCause, type FailureCause } from "../lib/failureCause";
 import { ALREADY_UPDATED_KEYS, outcomeSentence, outcomeTone } from "../lib/operations";
 import { calendarDaysBetween, shortDateText, shortTimeText } from "../lib/shortDate";
 import type { AlreadyUpdated, ArtifactKey, Attention, HistoryResult, OpSummary, Outcome } from "../lib/types";
@@ -15,8 +15,9 @@ import { GROUP } from "./ui/group";
  * How an update 「最近的更新记录」 lists ended: it worked -- `already`
  * saying how, for one already at its new version when its turn came
  * (`AlreadyUpdated`, r6 y3-batch); it did not, with the cause in a word
- * where the tool's own words gave one (`failureCause`), or, kept by the
- * history where they gave none, the tool's first error line (`detail`); or
+ * where the tool's own words gave one (`failureCause`), and, kept by the
+ * history where they gave none or where the cause's words point at them
+ * (`causeKeepsItsLine`), the tool's first error line (`detail`); or
  * the tool said it worked and Banager found nothing changed, or could not
  * confirm it -- the row's 「结果不符」.
  */
@@ -44,11 +45,14 @@ export function endingOfOutcome(
     case "success":
       return succeeded(alreadyUpdated);
     case "failure": {
-      // A tool's words no cause names: its first error line, as the
-      // history keeps it (`failureDetail`).
+      // A tool's words no cause names, or a cause whose words point at
+      // them (`causeKeepsItsLine`): its first error line, as the history
+      // keeps it (`failureDetail`).
       const cause = outcomeCause(outcome);
       const detail =
-        cause === null && typeof outcome !== "string" && "Failed" in outcome ? failureDetail(outcome.Failed.summary) : null;
+        (cause === null || causeKeepsItsLine(cause)) && typeof outcome !== "string" && "Failed" in outcome
+          ? failureDetail(outcome.Failed.summary)
+          : null;
       return detail === null ? { kind: "failed", cause } : { kind: "failed", cause, detail };
     }
     case "attention":
@@ -75,7 +79,7 @@ export function endingOfRecord(
   if (result === "Unconfirmed") return { kind: "attention", outcome: "Unconfirmed" };
   if ("NeedsAttention" in result) return { kind: "attention", outcome: result };
   const { cause, detail } = result.Failed;
-  return cause === null && detail ? { kind: "failed", cause, detail } : { kind: "failed", cause };
+  return detail ? { kind: "failed", cause, detail } : { kind: "failed", cause };
 }
 
 /** One update the Updates page's "Just updated" lists, as it shows it. */
@@ -231,9 +235,16 @@ function EndingWords({ entry }: { entry: JustUpdatedEntry }) {
         ending.cause === null
           ? t("updates.progress.failed")
           : t("history.failedBecause", { cause: t(FAILURE_CAUSE_KEYS[ending.cause].word) });
+      // The cause's line, and the tool's own where the line points at it
+      // (「报错里写着是哪个文件」): the log that had it is gone.
       why =
         ending.cause !== null
-          ? t(FAILURE_CAUSE_KEYS[ending.cause].line)
+          ? ending.detail
+            ? t("runtimeGuard.then", {
+                first: t(FAILURE_CAUSE_KEYS[ending.cause].line),
+                then: t("batchResult.errorLine", { detail: ending.detail }),
+              })
+            : t(FAILURE_CAUSE_KEYS[ending.cause].line)
           : ending.detail
             ? t("batchResult.reason", { detail: ending.detail })
             : undefined;
