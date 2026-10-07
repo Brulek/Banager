@@ -181,9 +181,9 @@ impl Default for Settings {
     }
 }
 
-/// Missing file, unreadable file or malformed JSON all yield
-/// `Settings::default()` — settings are a convenience, never a reason to
-/// fail startup.
+/// Missing or unreadable JSON uses defaults without preventing startup.
+/// Valid objects recover each field and each collection entry independently.
+/// `save` refuses to replace unreadable JSON, including automatic welcome saves.
 ///
 /// Snoozed updates whose `until` has come are dropped (`load_at`, at the
 /// wall clock's now): they hide nothing any more.
@@ -198,10 +198,7 @@ pub fn load(path: &Path) -> Settings {
 /// `load`, with the snoozed updates whose `until` is at or before `now`
 /// (Unix seconds) dropped.
 pub fn load_at(path: &Path, now: i64) -> Settings {
-    let mut settings: Settings = match std::fs::read(path) {
-        Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or_default(),
-        Err(_) => Settings::default(),
-    };
+    let mut settings = read_saved(path).unwrap_or_default();
     // Check even keys about to expire, so a legacy login left on disk
     // still triggers the rewrite after those keys have been dropped.
     let redacted = redact_ollama_logins(&mut settings);
@@ -214,6 +211,53 @@ pub fn load_at(path: &Path, now: i64) -> Settings {
         let _ = save(path, &settings);
     }
     settings
+}
+
+/// Shared by startup and the save guard: a load failure stays distinguishable.
+fn read_saved(path: &Path) -> std::io::Result<Settings> {
+    match std::fs::read(path) {
+        Ok(bytes) => recover(&bytes).ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "saved settings could not be read; original file preserved",
+            )
+        }),
+        Err(error) => Err(error),
+    }
+}
+
+/// Validate with the actual Settings serde types, isolating a bad scalar or
+/// collection entry. Starting from defaults also keeps older field sets readable.
+/// Each field and each entry is tried alone in the defaults, never beside the
+/// lists already read, so one check costs the same however long they are.
+fn recover(bytes: &[u8]) -> Option<Settings> {
+    let value: serde_json::Value = serde_json::from_slice(bytes).ok()?;
+    let object = value.as_object()?;
+    let defaults = serde_json::to_value(Settings::default()).ok()?;
+    let accepts = |name: &str, value: serde_json::Value| {
+        let mut candidate = defaults.clone();
+        candidate[name] = value;
+        serde_json::from_value::<Settings>(candidate).is_ok()
+    };
+    let mut recovered = defaults.clone();
+    for (name, value) in object {
+        let Some(default) = defaults.get(name) else {
+            continue;
+        };
+        if default.is_array() {
+            if let Some(items) = value.as_array() {
+                let valid = items
+                    .iter()
+                    .filter(|item| accepts(name, serde_json::json!([item])))
+                    .cloned()
+                    .collect();
+                recovered[name] = serde_json::Value::Array(valid);
+            }
+        } else if accepts(name, value.clone()) {
+            recovered[name] = value.clone();
+        }
+    }
+    serde_json::from_value(recovered).ok()
 }
 
 /// Strip logins from every stored key, without touching the live adapter.
@@ -248,6 +292,13 @@ fn redact_ollama_logins(settings: &mut Settings) -> bool {
 /// Writes through an exclusively created staging file beside `path`, then
 /// atomically replaces it. Concurrent processes cannot share a staging file.
 pub fn save(path: &Path, settings: &Settings) -> std::io::Result<()> {
+    // Do not turn a failed load into silent destruction through an automatic save.
+    // Check at save time too: the file may have become unreadable since startup.
+    if let Err(error) = read_saved(path) {
+        if error.kind() != std::io::ErrorKind::NotFound {
+            return Err(error);
+        }
+    }
     let mut settings = settings.clone();
     redact_ollama_logins(&mut settings);
     let json = serde_json::to_vec_pretty(&settings)
@@ -279,6 +330,184 @@ mod tests {
             kind: ArtifactKind::Formula,
             name: name.to_string(),
         }
+    }
+
+    #[test]
+    fn test_f3_invalid_fields_and_items_preserve_all_valid_choices() {
+        let path = temp_settings_path("f3-partial");
+        let mut wire = serde_json::to_value(Settings {
+            language: Language::ZhHant,
+            welcome_seen: true,
+            auto_check: true,
+            notify_updates: true,
+            notify_operations: true,
+            show_technical_details: true,
+            ignored_updates: vec![key("git")],
+            skipped_versions: vec![SkippedVersion {
+                key: key("cmake"),
+                version: "4.0".into(),
+            }],
+            ..Settings::default()
+        })
+        .unwrap();
+        wire["auto_check_every"] = serde_json::json!("week");
+        wire["skipped_versions"]
+            .as_array_mut()
+            .unwrap()
+            .push(serde_json::json!({"key": false}));
+        std::fs::write(&path, serde_json::to_vec(&wire).unwrap()).unwrap();
+        let loaded = load_at(&path, 0);
+        assert_eq!(loaded.language, Language::ZhHant);
+        assert!(
+            loaded.welcome_seen
+                && loaded.auto_check
+                && loaded.notify_updates
+                && loaded.notify_operations
+        );
+        assert!(loaded.show_technical_details);
+        assert_eq!(loaded.ignored_updates, vec![key("git")]);
+        assert_eq!(loaded.skipped_versions.len(), 1);
+        assert_eq!(loaded.auto_check_every, CheckEvery::Day);
+        save(&path, &loaded).unwrap();
+        assert_eq!(load_at(&path, 0), loaded);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    /// `settings.json` as the build before field recovery (e2e6abe6) saved
+    /// it: `to_vec_pretty` of `Settings`, every field set.
+    const SAVED_BY_THE_PREVIOUS_BUILD: &str = r#"{
+  "language": "ZhHant",
+  "show_technical_details": true,
+  "ignored_updates": [
+    {
+      "instance_id": "brew:/opt/homebrew",
+      "kind": "Formula",
+      "name": "git"
+    }
+  ],
+  "skipped_versions": [
+    {
+      "key": {
+        "instance_id": "brew:/opt/homebrew",
+        "kind": "Cask",
+        "name": "visual-studio-code"
+      },
+      "version": "1.105.0"
+    },
+    {
+      "key": {
+        "instance_id": "ollama:http://127.0.0.1:11434",
+        "kind": "Model",
+        "name": "llama3:latest"
+      },
+      "version": "sha256:365c0bd3c000a25d28ddbf732fe1c6add414de7275464c4e4d1c3b5fcb5d8ad1"
+    }
+  ],
+  "include_self_updating": true,
+  "auto_check": true,
+  "notify_updates": true,
+  "auto_check_every": "Week",
+  "notify_operations": true,
+  "snoozed_updates": [
+    {
+      "key": {
+        "instance_id": "npm:/opt/homebrew",
+        "kind": "Package",
+        "name": "typescript"
+      },
+      "until": 1792592000
+    }
+  ],
+  "welcome_seen": true
+}"#;
+
+    #[test]
+    fn test_a_file_the_previous_build_saved_reads_whole_and_saves_back_unchanged() {
+        let path = temp_settings_path("previous-build");
+        std::fs::write(&path, SAVED_BY_THE_PREVIOUS_BUILD).unwrap();
+        let loaded = load_at(&path, 1_790_000_000);
+        // Read field by field, it is what one typed read of it gives.
+        let typed: Settings = serde_json::from_str(SAVED_BY_THE_PREVIOUS_BUILD).unwrap();
+        assert_eq!(loaded, typed);
+        assert_eq!(loaded.language, Language::ZhHant);
+        assert_eq!(loaded.auto_check_schedule(), Some(CheckEvery::Week));
+        assert_eq!(loaded.skipped_versions.len(), 2);
+        assert_eq!(loaded.snoozed_updates.len(), 1);
+        // Saved again, the bytes are the ones the previous build wrote: the
+        // shape has not changed, so that build still reads every choice.
+        save(&path, &loaded).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            SAVED_BY_THE_PREVIOUS_BUILD
+        );
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn test_f3_recovery_cost_does_not_grow_with_the_other_lists() {
+        // Each entry is checked on its own: one long list must not make
+        // every entry of the next one cost a copy of it. Checked by
+        // `load` as Banager starts and by every `save`. 2,000 entries a
+        // list took about ten seconds each way when every check copied
+        // the lists already read; checked alone, well under a second.
+        let path = temp_settings_path("f3-cost");
+        let n = 2_000;
+        let settings = Settings {
+            language: Language::ZhCn,
+            ignored_updates: (0..n).map(|i| key(&format!("ignored-{i}"))).collect(),
+            skipped_versions: (0..n)
+                .map(|i| SkippedVersion {
+                    key: key(&format!("skipped-{i}")),
+                    version: "1.0".into(),
+                })
+                .collect(),
+            snoozed_updates: (0..n)
+                .map(|i| SnoozedUpdate {
+                    key: key(&format!("snoozed-{i}")),
+                    until: 4_000_000_000,
+                })
+                .collect(),
+            ..Settings::default()
+        };
+        std::fs::write(&path, serde_json::to_vec_pretty(&settings).unwrap()).unwrap();
+        let started = std::time::Instant::now();
+        let loaded = load_at(&path, 0);
+        save(&path, &loaded).unwrap();
+        let took = started.elapsed();
+        assert_eq!(loaded, settings);
+        assert!(took < std::time::Duration::from_secs(3), "{took:?}");
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn test_f3_unreadable_json_is_not_overwritten_by_a_welcome_save() {
+        let path = temp_settings_path("f3-corrupt");
+        let bytes = b"{truncated";
+        std::fs::write(&path, bytes).unwrap();
+        let settings = load_at(&path, 0);
+        assert!(save(
+            &path,
+            &Settings {
+                welcome_seen: true,
+                ..settings.clone()
+            }
+        )
+        .is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        // What the message says to do: with the file moved away (to the
+        // Trash), the next save writes the settings again.
+        let moved = path.with_extension("trashed");
+        std::fs::rename(&path, &moved).unwrap();
+        let chosen = Settings {
+            welcome_seen: true,
+            language: Language::ZhCn,
+            ..settings
+        };
+        save(&path, &chosen).unwrap();
+        assert_eq!(load_at(&path, 0), chosen);
+        assert_eq!(std::fs::read(&moved).unwrap(), bytes);
+        std::fs::remove_file(path).unwrap();
+        std::fs::remove_file(moved).unwrap();
     }
 
     #[test]

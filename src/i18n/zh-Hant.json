@@ -1192,6 +1192,9 @@
     "readOnly": "設定所在的磁碟是唯讀的",
     "other": "{{detail}}"
   },
+  "persistence": {
+    "unreadableSettings": "設定檔無法讀取，已原樣保留。要重新儲存設定，請將~/Library/Application Support/com.brulek.banager中的settings.json移到垃圾桶"
+  },
   "settingsDiagnostics": {
     "title": "診斷"
   },

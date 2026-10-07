@@ -4468,7 +4468,12 @@ not read (`protected::look`; How Banager runs anything, above):
   path; never into a protected place) — never a file's contents (Which
   copy a command runs, above).
 - Banager's own `settings.json` in its application data directory
-  (`settings::load`; a missing or unreadable file means default settings).
+  (`settings::load`; a missing file means defaults. Known fields and collection
+  entries in valid JSON are recovered independently: only invalid fields or
+  entries fall back or are dropped. Unreadable/non-object JSON uses defaults
+  for this launch, but saving refuses to overwrite the original bytes; the
+  Settings page says so and that moving `settings.json` to the Trash, or
+  restoring a readable one, lets settings save again).
 - Banager's own `history.json` beside it, once, as Banager starts
   (`HistoryStore::open` in `crates/banager-core/src/history/mod.rs`; a
   missing, unreadable or malformed file means an empty history, and a file

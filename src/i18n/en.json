@@ -1304,6 +1304,9 @@
     "readOnly": "the settings disk is read-only",
     "other": "{{detail}}"
   },
+  "persistence": {
+    "unreadableSettings": "the settings file couldn't be read and was left as it is. To save settings again, move settings.json in ~/Library/Application Support/com.brulek.banager to the Trash"
+  },
   "settingsDiagnostics": {
     "title": "Diagnostics"
   },

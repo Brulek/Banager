@@ -582,6 +582,7 @@ fn settings_save_error(e: std::io::Error) -> String {
         ErrorKind::PermissionDenied => "permission_denied",
         ErrorKind::StorageFull => "disk_full",
         ErrorKind::ReadOnlyFilesystem => "read_only",
+        ErrorKind::InvalidData => "invalid_data",
         _ => "other",
     };
     let mut payload = serde_json::json!({ "kind": "settings_save_failed", "reason": reason });
@@ -2309,6 +2310,10 @@ mod tests {
         assert_eq!(
             parse(Error::from(ErrorKind::ReadOnlyFilesystem)),
             serde_json::json!({ "kind": "settings_save_failed", "reason": "read_only" })
+        );
+        assert_eq!(
+            parse(Error::from(ErrorKind::InvalidData)),
+            serde_json::json!({ "kind": "settings_save_failed", "reason": "invalid_data" })
         );
         assert_eq!(
             parse(Error::other("Input/output error (os error 5)")),

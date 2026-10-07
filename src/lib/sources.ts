@@ -1774,6 +1774,7 @@ const SETTINGS_SAVE_FAILURE_KEYS: Record<string, string> = {
   permission_denied: "settingsSaveFailed.permissionDenied",
   disk_full: "settingsSaveFailed.diskFull",
   read_only: "settingsSaveFailed.readOnly",
+  invalid_data: "persistence.unreadableSettings",
 };
 
 /**

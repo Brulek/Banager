@@ -1319,6 +1319,7 @@ describe("settingsSaveErrorMessage", () => {
       ["permission_denied", "settingsSaveFailed.permissionDenied"],
       ["disk_full", "settingsSaveFailed.diskFull"],
       ["read_only", "settingsSaveFailed.readOnly"],
+      ["invalid_data", "persistence.unreadableSettings"],
     ]) {
       for (const technical of [false, true]) {
         expect(
