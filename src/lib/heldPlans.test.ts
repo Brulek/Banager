@@ -354,6 +354,14 @@ describe("samePlan", () => {
     }
   });
 
+  it("tells apart a plan with a field the other has not, whichever was shown", () => {
+    // A field this window's `Plan` does not know yet, on the wire all the
+    // same: the confirmation drew nothing from it, and it is still compared.
+    const more = { ...base, added_later: true } as Plan;
+    expect(samePlan(base, more)).toBe(false);
+    expect(samePlan(more, base)).toBe(false);
+  });
+
   it("goes by the order of a command's arguments and environment, and counts each", () => {
     const command = (args: string[], env: [string, string][]): Plan => ({
       ...base,

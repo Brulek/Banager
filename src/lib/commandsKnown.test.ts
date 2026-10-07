@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { commandsKnown, toolsNotJudged } from "./commandsKnown";
+import { commandsKnown, toolsNotJudged, toolsNamesIncomplete } from "./commandsKnown";
 import { NO_FACTS, type CommandFact, type InstallReason } from "./types";
 
 const row = (commands: CommandFact[]) => ({ facts: { ...NO_FACTS, commands } });
@@ -77,5 +77,26 @@ describe("toolsNotJudged", () => {
         tool([{ name: "pip", state: null }], "Unknown"),
       ]),
     ).toBe(1);
+  });
+});
+
+describe("toolsNamesIncomplete", () => {
+  const listed = (commands: CommandFact[], commands_unavailable: boolean, reason: InstallReason = "Requested") => ({
+    reason,
+    facts: { ...NO_FACTS, commands, commands_unavailable },
+  });
+
+  it("counts each tool some of whose commands could not be listed, a dependency too, named or not", () => {
+    expect(
+      toolsNamesIncomplete([
+        listed([{ name: "rg", state: "Runs" }], false),
+        // One of its links in npm's `bin` leads into a protected place:
+        // the names listed may not be all of them.
+        listed([{ name: "claude", state: "Runs" }], true),
+        listed([], true, "Dependency"),
+        listed([], false),
+      ]),
+    ).toBe(2);
+    expect(toolsNamesIncomplete([])).toBe(0);
   });
 });

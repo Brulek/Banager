@@ -209,6 +209,18 @@ describe("failedLookupsNotice", () => {
     expect(en("warnings.transientLookupFailure")).toBe("You can click “Check Again” later.");
   });
 
+  it("claims no cause where one row's words give none, whichever row comes first", () => {
+    const unknown = row("b", { warnings: [{ Message: "registry returned status 503" }, "TransientLookupFailure"] });
+    for (const rows of [
+      [row("a"), unknown],
+      [unknown, row("a")],
+    ]) {
+      const notice = failedLookupsNotice(zh, rows);
+      expect(zh(notice!.titleKey, notice!.values)).toBe("2个工具没有检查成功");
+      expect(zh(notice!.descriptionKey, notice!.values)).toBe("可能还有更新没有列出。可以稍后点按“重新检查”再试。");
+    }
+  });
+
   it("claims only the network as a lookup's cause: an update's words for the others would be wrong of a read", () => {
     // 「没有权限修改它的文件」 of a manifest it could not read, 「请等另一个操作
     // 完成」 of a lookup: no cause is claimed instead (walk-2 review 1.3).
