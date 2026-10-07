@@ -2253,3 +2253,34 @@ fn test_what_we_run_lists_the_cask_link_reads_of_an_uninstall_with_the_rest_of_h
         );
     }
 }
+
+/// r26 D5: `Session::issue_listed_plan` plans an upgrade the last check
+/// no longer offers when the window previewed it less than ten minutes
+/// before and the tool is still listed installed (`ListedUpgrade`), so
+/// the never-list's promise that the window cannot install by another
+/// name says that exception, as When commands run does, and no longer
+/// that only an update the last check listed can be upgraded.
+#[test]
+fn test_what_we_run_never_list_says_a_previewed_update_no_longer_offered_may_still_be_planned() {
+    let doc = read_doc();
+    let bullets = never_list_bullets(&doc);
+    let bullet = bullets
+        .iter()
+        .find(|bullet| bullet.starts_with("Never lets the window ask for an install"))
+        .expect("the never-list's bullet that the window never asks for an install");
+    for words in [
+        "Nor by another name: the window may ask for an upgrade only of an update the last check listed, or of one it previewed less than ten minutes before whose tool the last check still lists installed under the same source, kind and name, aimed at the version it was offered then (When commands run)",
+        "(`Session::issue_listed_plan`)",
+    ] {
+        assert!(
+            bullet.contains(words),
+            "the never-list's bullet on asking for an install does not say {words:?}: {bullet}"
+        );
+    }
+    let when = section_body(&doc, "When commands run").expect("a `## When commands run` section");
+    let when = when.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(
+        when.contains("is still planned again while it is installed under the same source, kind and name and its update was previewed less than ten minutes before"),
+        "`## When commands run` no longer states the exception the never-list points to"
+    );
+}

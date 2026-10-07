@@ -5274,7 +5274,10 @@ configured, `index.crates.io`, and cargo still follows a
   of an upgrade, an uninstall or a link only, and `plan_operation_impl`
   (`src-tauri/src/ipc.rs`) refuses an install before any source is
   asked, whatever it names. Nor by another name: the window may ask for
-  an upgrade only of an update the last check listed, an uninstall
+  an upgrade only of an update the last check listed, or of one it
+  previewed less than ten minutes before whose tool the last check still
+  lists installed under the same source, kind and name, aimed at the
+  version it was offered then (When commands run), an uninstall
   only of a tool it listed installed, and a link only of a formula a
   source's reason offers (`Session::issue_listed_plan`),
   since npm, Cargo and Ollama would install a name they were asked to
