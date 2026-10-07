@@ -304,13 +304,16 @@ impl LoginPath {
 /// `DISABLE_AUTO_UPDATE=true` for oh-my-zsh, within `timeout`. The `PATH`
 /// it printed, and those of `IMPORTED` it set, only from a complete,
 /// successful, framed run; `None` for a timeout, a failed spawn or exit,
-/// output that is not whole, or no `PATH`.
+/// output that is not whole, or no single `PATH`.
 ///
 /// `env` prints a value with a line break in it over several lines, so a
 /// line can look like a setting when it is the rest of another one's
 /// value. A setting of `IMPORTED` whose name starts more than one line is
 /// therefore not taken: which one is real cannot be told. Nor is one with
-/// no value, or with a control character in its value.
+/// no value, or with a control character in its value. Nor is `PATH`, for
+/// the same reasons -- and then the read has not worked, so commands keep
+/// the `PATH` Banager started with rather than a line that may be the rest
+/// of another setting's value (G04 of the r7 test review).
 pub async fn read(
     runner: &dyn CommandRunner,
     shell: PathBuf,
@@ -337,10 +340,13 @@ pub async fn read(
     }
     let (_, rest) = output.stdout.split_once(DELIMITER)?;
     let (environment, _) = rest.split_once(DELIMITER)?;
-    let path = environment
+    let mut paths = environment
         .lines()
-        .find_map(|line| line.strip_prefix("PATH="))
-        .filter(|path| !path.is_empty() && !path.chars().any(char::is_control))?;
+        .filter_map(|line| line.strip_prefix("PATH="));
+    let path = paths.next()?;
+    if paths.next().is_some() || path.is_empty() || path.chars().any(char::is_control) {
+        return None;
+    }
     let imported = IMPORTED
         .iter()
         .filter_map(|name| {
@@ -821,7 +827,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "bug: G04: two PATH lines pick the first one instead of keeping the inherited PATH"]
     async fn f08_g04_duplicate_path_lines_are_ambiguous_in_both_orders() {
         for (first, second) in [("/embedded", "/terminal"), ("/terminal", "/embedded")] {
             let found = read_of(&format!("MULTILINE=value\nPATH={first}\nPATH={second}\n")).await;
@@ -868,6 +873,35 @@ mod tests {
                 .unwrap()
                 .path,
             "/terminal:/usr/bin"
+        );
+    }
+
+    /// What a Mac's `env` commonly holds beside `PATH`: Homebrew's
+    /// `shellenv` sets `INFOPATH` (and `MANPATH` on older versions), Go,
+    /// Python and pkg-config set theirs, and a value can hold `PATH=`
+    /// itself. None of these starts a line with `PATH=`, so none makes the
+    /// one `PATH` ambiguous, and the proxy beside it is still taken.
+    #[tokio::test]
+    async fn f31_g04_names_ending_in_path_and_values_holding_it_are_not_a_second_path() {
+        let found = read_of(
+            "INFOPATH=/opt/homebrew/share/info:\n\
+             MANPATH=/opt/homebrew/share/man::\n\
+             PATH=/opt/homebrew/bin:/opt/homebrew/sbin:/usr/bin:/bin\n\
+             GOPATH=/Users/someone/go\n\
+             PYTHONPATH=/Users/someone/lib\n\
+             PKG_CONFIG_PATH=/opt/homebrew/lib/pkgconfig\n\
+             NOTE=set PATH=/elsewhere first\n\
+             https_proxy=http://127.0.0.1:7890\n",
+        )
+        .await
+        .expect("one PATH: a complete read");
+        assert_eq!(
+            found.path,
+            "/opt/homebrew/bin:/opt/homebrew/sbin:/usr/bin:/bin"
+        );
+        assert_eq!(
+            found.imported,
+            pairs(&[("https_proxy", "http://127.0.0.1:7890")])
         );
     }
 }

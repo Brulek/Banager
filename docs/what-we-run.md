@@ -75,10 +75,13 @@ bounded process-group termination and pipe-drain handling described below
 (including up to 5 seconds of termination grace). The window opens
 meanwhile; every refresh waits for that read before it looks for sources,
 and the window says it is checking. Only a complete, successful, framed
-result is used. A timeout, failed spawn/exit or malformed output leaves
-the inherited `PATH` in place, the session records that login PATH
-discovery failed, and the Overview says so ("Couldn't read Terminal's
-settings", with Check Again): sources found only through Terminal's
+result is used. A timeout, failed spawn/exit, malformed output, or
+output in which more than one line starts with `PATH=` (a variable whose
+value has a line break in it can hold such a line, and which one is real
+cannot be told) leaves the inherited `PATH` in place, and none of the
+proxy and mirror settings below is taken either; the session records
+that login PATH discovery failed, and the Overview says so ("Couldn't
+read Terminal's settings", with Check Again): sources found only through Terminal's
 `PATH` — npm, pipx, uv, Cargo and the rest — may then be missing. The
 next refresh — Check Again, or any later one — reads the shell once more;
 after a read that worked, none runs again. Each refresh takes the `PATH`
@@ -5099,9 +5102,6 @@ Each of these is reproduced by a test that is kept out of the ordinary run
 until the bug is fixed; `cargo test -- --ignored` runs the Rust ones. Until
 then, what this document says above holds only as narrowed here.
 
-- When the login shell's output has two `PATH=` lines (a multi-line
-  variable can hold one), Banager uses the first instead of keeping the
-  `PATH` it inherited.
 - A Homebrew uninstall still runs when, since its confirmation was shown,
   `brew.env` has turned autoremove on or now sits in a protected place
   Banager does not look into; a cask uninstall still runs when the cask's
