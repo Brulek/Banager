@@ -12,6 +12,7 @@ use crate::model::{
 use crate::runner::HostEnv;
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use tokio_util::task::AbortOnDropHandle;
 
 /// One adapter's part in a round's detection: spawned, or skipped with
@@ -44,6 +45,10 @@ impl Drop for UnderWay<'_> {
 }
 
 impl Session {
+    fn previous_for_refresh(&self) -> Arc<Snapshot> {
+        Arc::new(self.snapshot.lock().unwrap().clone())
+    }
+
     /// Detect every registered adapter's instances concurrently (Task 11: a
     /// slow or failing adapter's `detect()` must not delay any other
     /// adapter's), then inventory + check updates for each resulting
@@ -232,7 +237,7 @@ impl Session {
         // read `rounds_started` below this number arrived before this round
         // read a thing, and may share it (`refresh`'s check).
         let round = self.rounds_started.fetch_add(1, Ordering::SeqCst) + 1;
-        let previous = self.snapshot.lock().unwrap().clone();
+        let previous = self.previous_for_refresh();
         // Owned copy (CheckOptions is Copy): each per-instance spawned task
         // below needs its own 'static value, and the caller's `&opts`
         // reference cannot outlive this function. Stamped with this
@@ -913,7 +918,7 @@ impl Session {
             // The shell's to fill in (`Snapshot::next_auto_check_at`).
             next_auto_check_at: None,
         };
-        (round, self.commit(round, previous, candidate, record))
+        (round, self.commit(round, &previous, candidate, record))
     }
 
     /// Assigns the real generation number (bumping only on a content
@@ -924,7 +929,7 @@ impl Session {
     fn commit(
         &self,
         round: u64,
-        previous: Snapshot,
+        previous: &Snapshot,
         mut candidate: Snapshot,
         record: impl FnOnce(u64, &Snapshot),
     ) -> Snapshot {
@@ -1361,6 +1366,29 @@ mod tests {
             version: version.to_string(),
             ..crate::testing::installed_artifact(instance_id, ArtifactKind::Formula, name)
         }
+    }
+
+    #[test]
+    fn test_workers_share_one_copy_of_the_previous_snapshot() {
+        let session = Session::with_adapters(Arc::new(VecSink::new()), vec![], None);
+        session.snapshot.lock().unwrap().artifacts = (0..5000)
+            .map(|i| make_artifact("brew:1", &format!("tool-{i}")))
+            .collect();
+        let previous = session.previous_for_refresh();
+        let workers: Vec<_> = (0..13).map(|_| previous.clone()).collect();
+        for worker in &workers {
+            assert_eq!(
+                worker.artifacts.as_ptr(),
+                previous.artifacts.as_ptr(),
+                "each worker must borrow the same immutable artifact allocation"
+            );
+        }
+        session.snapshot.lock().unwrap().artifacts.clear();
+        assert_eq!(
+            previous.artifacts.len(),
+            5000,
+            "a later snapshot must not change the round's fallback"
+        );
     }
 
     #[tokio::test]
