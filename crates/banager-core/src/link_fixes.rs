@@ -324,4 +324,35 @@ mod tests {
         fill(&mut instances, &artifacts);
         assert_eq!(fixes_of(&instances[0]), Vec::new());
     }
+
+    #[test]
+    fn test_a_formula_named_for_the_program_and_an_empty_version_is_not_offered() {
+        // `node@` is neither `node` nor `node@<version>`.
+        let mut instances = vec![
+            brew(),
+            npm_without(Some("node"), NoAnswerKind::CouldNotStart),
+        ];
+        fill(
+            &mut instances,
+            &[
+                formula("node@", "22.23.3_1", true, false),
+                formula("node@22", "22.23.3_1", true, false),
+            ],
+        );
+        assert_eq!(fixes_of(&instances[1]), vec![fix("node@22", "22.23.3_1")]);
+    }
+
+    #[test]
+    fn test_a_homebrew_revision_is_newer_than_the_version_it_revises() {
+        // `22.23.3_1` is the formula's revision 1 of `22.23.3`: every part
+        // the same, and one more. A version that runs out first is the older,
+        // in a name (`node@22.1` after `node@22`) as in a row.
+        assert_eq!(compare_versions("22.23.3_1", "22.23.3"), Ordering::Greater);
+        assert_eq!(compare_versions("22.23.3", "22.23.3_1"), Ordering::Less);
+        assert_eq!(compare_versions("22.23.3", "22.23.3"), Ordering::Equal);
+        assert_eq!(
+            by_named_version(Some("22.1"), Some("22")),
+            Ordering::Greater
+        );
+    }
 }
