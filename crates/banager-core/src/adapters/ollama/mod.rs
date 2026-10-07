@@ -1,5 +1,8 @@
 pub mod parse;
 
+#[cfg(test)]
+mod manifest_layout_tests;
+
 use crate::adapters::{
     ensure_instance_match, get_ok, reconcile_from, run_plan, uncheckable_candidate,
     url_path_segment, Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome,
@@ -424,7 +427,7 @@ impl OllamaAdapter {
     /// or a 404 for a model removed upstream must not crash the whole
     /// `check_updates` call, so the caller turns that into a single
     /// `checkable: false` candidate for just this model. A reference whose
-    /// parts would escape `manifests_root` is refused the same way, by
+    /// parts would escape `models_root` is refused the same way, by
     /// `contained_manifest_path`, before anything is read. Only a request
     /// with no answer, or a 408, 429 or 5xx, is one checking again can get
     /// past (`LookupFailure`): a 404 -- a model made with `ollama create`,
@@ -436,28 +439,51 @@ impl OllamaAdapter {
     /// at this check or the next (`LookupFailure::not_looked_up`).
     async fn compare_digests(
         &self,
-        manifests_root: &Path,
+        models_root: &Path,
         namespace: &str,
         name: &str,
         tag: &str,
         live_digest: &str,
     ) -> Result<Option<RegistryChange>, LookupFailure> {
-        let local_path = contained_manifest_path(manifests_root, namespace, name, tag)?;
-        // Never in or through a protected place (`read_file`): a
-        // `~/.ollama` kept in one is a manifest that cannot be read.
-        let protected = crate::protected::Protected::of_this_process();
-        let local_json =
-            crate::adapters::read_file::read_text(&local_path, &protected).map_err(|e| {
-                let reason = format!(
-                    "could not read local manifest {}: {e}",
-                    local_path.display()
-                );
-                if e.kind() == std::io::ErrorKind::NotFound || look::is_protected(&e) {
-                    LookupFailure::not_looked_up(reason)
-                } else {
-                    LookupFailure::from(reason)
-                }
-            })?;
+        // Ollama 0.40 canonicalizes the public registry's on-disk host to
+        // ollama.com in manifests-v2 (manifest/paths.go, canonicalV2Name).
+        // The network request below still goes only to registry.ollama.ai.
+        let v2_path = contained_manifest_path(
+            &models_root.join("manifests-v2/ollama.com"),
+            namespace,
+            name,
+            tag,
+        )?;
+        let legacy_path = contained_manifest_path(
+            &models_root.join("manifests/registry.ollama.ai"),
+            namespace,
+            name,
+            tag,
+        )?;
+        let protected = Protected::of_this_process();
+        let read = |path: &Path| crate::adapters::read_file::read_text(path, &protected);
+        // Per-model fallback, only for a missing entry/target (as Ollama's
+        // resolveManifestPath does). A malformed, unreadable, oversized or
+        // protected v2 manifest must not be hidden by the old downgrade anchor.
+        // Both reads follow links through the same protected-place checks and
+        // regular-file/16 MiB bound; no blob is opened via a separate reader.
+        let (local_path, local_json) = match read(&v2_path) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                (&legacy_path, read(&legacy_path))
+            }
+            result => (&v2_path, result),
+        };
+        let local_json = local_json.map_err(|e| {
+            let reason = format!(
+                "could not read local manifest {}: {e}",
+                local_path.display()
+            );
+            if e.kind() == std::io::ErrorKind::NotFound || look::is_protected(&e) {
+                LookupFailure::not_looked_up(reason)
+            } else {
+                LookupFailure::from(reason)
+            }
+        })?;
         let local_digests = layer_digests(&local_json)
             .map_err(|e| format!("could not parse local manifest: {e}"))?;
 
@@ -510,13 +536,13 @@ impl OllamaAdapter {
 
     async fn check_one_model(
         &self,
-        manifests_root: &Path,
+        models_root: &Path,
         artifact: &InstalledArtifact,
     ) -> Option<UpdateCandidate> {
         // A model from another registry -- `hf.co/user/repo:tag`, the one
         // mirror Ollama documents, or any other host -- is not looked up:
-        // Ollama keeps its manifest under `manifests/<host>/…`, not under
-        // `manifests_root`, and registry.ollama.ai is the one registry
+        // Ollama keeps its manifest under a different host directory in
+        // `manifests-v2` or `manifests`, and registry.ollama.ai is the one registry
         // this check asks. Nothing is read and nothing asked, at this
         // check or the next (`LookupFailure::not_looked_up`).
         if let Some(host) =
@@ -533,7 +559,7 @@ impl OllamaAdapter {
         }
         let (namespace, name, tag) = split_model_reference(&artifact.key.name);
         match self
-            .compare_digests(manifests_root, &namespace, &name, &tag, &artifact.version)
+            .compare_digests(models_root, &namespace, &name, &tag, &artifact.version)
             .await
         {
             Ok(None) => None,
@@ -596,10 +622,10 @@ impl OllamaAdapter {
                 .collect::<Vec<_>>()
                 .into());
         }
-        let manifests_root = inst.prefix.join("models/manifests/registry.ollama.ai");
+        let models_root = inst.prefix.join("models");
         let mut out = Vec::new();
         for artifact in &installed {
-            if let Some(candidate) = self.check_one_model(&manifests_root, artifact).await {
+            if let Some(candidate) = self.check_one_model(&models_root, artifact).await {
                 out.push(candidate);
             }
         }
@@ -1005,7 +1031,7 @@ mod tests {
         .expect("read registry manifest fixture");
 
         let tmp_root = crate::testing::unique_temp_path("ollama-manifests");
-        let model_dir = tmp_root.join("library").join("qwen3.8");
+        let model_dir = tmp_root.join("manifests/registry.ollama.ai/library/qwen3.8");
         std::fs::create_dir_all(&model_dir).expect("create fixture manifest dir");
         std::fs::write(model_dir.join("27b-mlx"), &local_json).expect("write local manifest");
 
@@ -1335,7 +1361,7 @@ mod tests {
         std::fs::create_dir_all(&model_dir).unwrap();
         std::fs::write(model_dir.join("27b-mlx"), &local_json).unwrap();
         std::os::unix::fs::symlink(&kept, home.join(".ollama")).unwrap();
-        let manifests_root = home.join(".ollama/models/manifests/registry.ollama.ai");
+        let models_root = home.join(".ollama/models");
         let http = Arc::new(MockHttpClient::new());
         http.respond(
             "https://registry.ollama.ai/v2/library/qwen3.8/manifests/27b-mlx",
@@ -1347,7 +1373,7 @@ mod tests {
         let adapter = OllamaAdapter::new(Arc::new(MockRunner::new()), http);
         let read = adapter
             .compare_digests(
-                &manifests_root,
+                &models_root,
                 "library",
                 "qwen3.8",
                 "27b-mlx",
@@ -1358,7 +1384,7 @@ mod tests {
         let as_if = crate::protected::as_if_home(&home);
         let refused = adapter
             .compare_digests(
-                &manifests_root,
+                &models_root,
                 "library",
                 "qwen3.8",
                 "27b-mlx",
@@ -2344,7 +2370,7 @@ mod tests {
 
         let outcome = adapter
             .compare_digests(
-                &fx.manifests_root,
+                &fx.root_home.join("models"),
                 "library",
                 "qwen3.8",
                 "27b-mlx?x=1#f",
@@ -2499,7 +2525,7 @@ mod tests {
         )
         .expect("read local manifest fixture");
         let root = crate::testing::unique_temp_path("ollama-table");
-        let model_dir = root.join("library").join("qwen3.8");
+        let model_dir = root.join("manifests/registry.ollama.ai/library/qwen3.8");
         std::fs::create_dir_all(&model_dir).expect("create fixture manifest dir");
         std::fs::write(model_dir.join("27b-mlx"), &local_json).expect("write local manifest");
         let at = &root;

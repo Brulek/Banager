@@ -2337,11 +2337,26 @@ still does not connect to such an address; recorded in
 For a remote daemon, every model is "could not check": this Mac's local
 manifests do not establish the selected daemon's model state. No local
 manifest is read or registry request made for that comparison. For a
-daemon identified as on this Mac, `check_updates` reads the local manifest file
-`~/.ollama/models/manifests/registry.ollama.ai/{namespace}/{name}/{tag}`
+daemon identified as on this Mac, `check_updates` first reads
+`~/.ollama/models/manifests-v2/ollama.com/{namespace}/{name}/{tag}`.
+Ollama 0.40 uses `ollama.com` as the official registry's on-disk name;
+this is a local path, not another network host Banager contacts. This entry
+normally links to `~/.ollama/models/blobs/sha256-<digest>`; Ollama can also
+store a regular copy there. Only if this model's entry or link target is
+missing does Banager fall back to
+`~/.ollama/models/manifests/registry.ollama.ai/{namespace}/{name}/{tag}`.
+The existence of the v2 directory alone does not prevent that per-model
+fallback. Other read errors, a protected target, invalid JSON, oversized
+files or a live-digest mismatch do not cause a legacy fallback.
+Both paths and any link target use the existing protected-place reader
 (opened without waiting, and read only when `fstat` says it is a regular
-file of at most 16 MiB; otherwise the model is "could not check") and
-first checks that the SHA-256 of its original bytes matches the live
+file of at most 16 MiB; otherwise the model is "could not check"). No model
+file, link or directory is created or changed by this check.
+Ollama 0.40 leaves a downgrade anchor at the old path with extra manifest-blob
+layers. Such a stand-in is rejected, even if it is the only file left and
+its digest matches an older daemon's answer; it is never compared as a real
+model manifest. For a real manifest, Banager first checks that the SHA-256
+of its original bytes matches the live
 `/api/tags` manifest digest. A mismatch, including a leftover default-store
 copy when the local daemon uses another model folder or port, is "could
 not check" with no registry request or download estimate. Only a matching
@@ -2360,8 +2375,8 @@ absolute, no `..`), and in the URL each is percent-encoded. The registry
 manifest is always fetched from `registry.ollama.ai`. A model whose name
 begins with another registry -- `hf.co/…`, the one mirror Ollama
 documents, or any other host -- is not looked up at all: Ollama keeps its
-manifest under `manifests/<host>/…`, not where Banager reads, so no file
-is read and no request made for it. Nor is a request made for a model
+manifest under its own host in `manifests-v2/` or `manifests/`, not where
+Banager reads, so no file is read and no request made for it. Nor is a request made for a model
 whose local manifest is not there (the models kept elsewhere through
 `OLLAMA_MODELS`, which Banager's environment does not carry) or is in a
 place Banager never looks into. Each such model is listed as "could not
@@ -2375,10 +2390,11 @@ manifest does not name (`changed_blob_bytes`, the candidate's
 `download_bytes`), each entry counted — a digest listed twice counts
 twice, as Ollama's pull for a model with tensor layers can download it
 twice. No other request is made and no other file is read for this
-number: it does not use `~/.ollama/models/blobs` (only the size
-measurement, under "Disk use" below, looks in that folder, for the models'
-total). So a file another model shares, which `ollama pull` skips, still
-counts, and the number is an upper bound, which the window words as one
+number: it does not look at the layer files in `~/.ollama/models/blobs`
+(the one file read there is the manifest itself, through its v2 entry,
+above; only the size measurement, under "Disk use" below, looks through
+that folder, for the models' total). So a file another model shares,
+which `ollama pull` skips, still counts, and the number is an upper bound, which the window words as one
 ("up to about 4.7 GB", rounded up). It assumes that the files the local
 manifest names are on this Mac with their sizes: one missing, or of
 another size, can be fetched again, and only reading `blobs` could tell. The number
@@ -4095,8 +4111,13 @@ not read (`protected::look`; How Banager runs anything, above):
   (Cargo's two install manifests, merged as the Cargo section says);
   whether `cargo-binstall` is on `PATH`.
 - Ollama: whether `/Applications/Ollama.app` or `~/Applications/Ollama.app`
-  is a directory; `~/.ollama/models/manifests/registry.ollama.ai/{namespace}/{name}/{tag}`
-  for each pulled model of a daemon identified as on this Mac.
+  is a directory; for each pulled model of a daemon identified as on this Mac,
+  `~/.ollama/models/manifests-v2/ollama.com/{namespace}/{name}/{tag}` first,
+  including its link target in `~/.ollama/models/blobs/sha256-<digest>`;
+  `~/.ollama/models/manifests/registry.ollama.ai/{namespace}/{name}/{tag}` only
+  when that model's v2 entry or target is missing. Both reads use the same
+  protected-place, regular-file and 16 MiB limits; downgrade anchors are
+  refused, and nothing in the model store is written (Ollama's section).
 - Claude Code: whether `~/.local/bin/claude` exists and where it links to
   (`lstat`, `readlink`, `realpath`, also for the folder the link is in
   and for `~/.local/share/claude`); for the notice under the source, each

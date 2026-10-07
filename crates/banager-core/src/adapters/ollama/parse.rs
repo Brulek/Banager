@@ -76,6 +76,8 @@ pub fn split_model_reference(reference: &str) -> (String, String, String) {
 #[derive(Debug, Deserialize)]
 struct ManifestLayer {
     digest: String,
+    #[serde(default, rename = "mediaType")]
+    media_type: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -92,7 +94,8 @@ struct Manifest {
 }
 
 /// Parses a v2 Docker-distribution manifest (the shape both the local
-/// `~/.ollama/models/manifests/...` file and the registry's `GET
+/// `~/.ollama/models/manifests-v2/...` or legacy `manifests/...` file
+/// and the registry's `GET
 /// /v2/{ns}/{name}/manifests/{tag}` response use) into the set of its
 /// layer digests. Comparing this set — not the serialized manifest bytes —
 /// is what makes the up-to-date check correct: Ollama rewrites the local
@@ -101,6 +104,23 @@ struct Manifest {
 pub fn layer_digests(json: &str) -> Result<HashSet<String>, AdapterError> {
     let manifest: Manifest =
         serde_json::from_str(json).map_err(|e| AdapterError::Parse(e.to_string()))?;
+    // Ollama 0.40's WriteLegacyAnchor adds manifest-blob descriptors as
+    // layers solely to protect them from older daemons' garbage collectors.
+    // These bytes are not the pulled manifest, even if a downgraded daemon
+    // reports their digest. Never compare that stand-in with the registry.
+    if manifest.layers.iter().any(|layer| {
+        matches!(
+            layer.media_type.as_deref(),
+            Some(
+                "application/vnd.docker.distribution.manifest.v2+json"
+                    | "application/vnd.ollama.manifest.list.v2+json"
+            )
+        )
+    }) {
+        return Err(AdapterError::Parse(
+            "legacy downgrade anchor is not a model manifest".to_string(),
+        ));
+    }
     Ok(manifest.layers.into_iter().map(|l| l.digest).collect())
 }
 
