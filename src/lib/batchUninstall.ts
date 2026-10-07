@@ -332,7 +332,13 @@ export interface Hosting {
  * is in this Homebrew's own folder (`/opt/homebrew/bin/pipx` of
  * `/opt/homebrew`), and the command is the one Terminal finds or no other
  * formula of the same Homebrew has it: a keg-only `node@22` beside a
- * linked `node` is not the `node` npm runs on.
+ * linked `node` is not the `node` npm runs on. A formula Homebrew has not
+ * linked (`unlinked`) provides a program only where typing it runs its
+ * keg (`Runs`): its other commands, named from its keg with no verdict,
+ * are not where Terminal looks, so not the program a source found first
+ * on `PATH` -- the `ollama` of Ollama.app's own link that kept `brew
+ * install ollama` from linking (q1b skeptic 1), as Rust's `needed_by`
+ * finds by where that program leads.
  */
 export function hosting(
   artifact: InstalledArtifact,
@@ -347,6 +353,7 @@ export function hosting(
   const provides = (name: string): boolean => {
     const fact = artifact.facts.commands.find((command) => command.name === name);
     if (fact === undefined) return false;
+    if (instance.adapter_id === "brew" && artifact.facts.unlinked) return fact.state === "Runs";
     if (instance.adapter_id !== "brew" || fact.state !== null) return true;
     return !artifacts.some(
       (another) =>
@@ -648,7 +655,11 @@ export interface TakenOver {
  * about (`state: null`) -- every command while its `PATH` is not the login
  * shell's, and a dependency's -- is in `unjudged`: its copy goes, but
  * whether Terminal finds another of that name is not known, so it is not
- * said to be lost. Commands Banager could not name at all are in neither.
+ * said to be lost. Commands Banager could not name at all are in neither,
+ * and nor is one with no verdict of a formula Homebrew has not linked
+ * (`unlinked`): named from its keg, it is not where Terminal looks, so
+ * its going changes nothing typed (q1b skeptic 3). Where a `PATH` folder
+ * does reach its keg, it has a verdict, said as any other's.
  */
 export function terminalCommands(
   included: readonly InstalledArtifact[],
@@ -661,7 +672,7 @@ export function terminalCommands(
   for (const artifact of included) {
     const id = artifactKeyId(artifact.key);
     for (const fact of artifact.facts.commands) {
-      if (fact.state === null) unjudged.push(fact.name);
+      if (fact.state === null && !artifact.facts.unlinked) unjudged.push(fact.name);
       if (fact.state !== "Runs") continue;
       const by = artifacts.filter(
         (other) =>

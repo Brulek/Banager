@@ -532,6 +532,27 @@ describe("what the included tools' commands run once they are gone", () => {
     const bare = { ...git, facts: { ...NO_FACTS, commands: [] } };
     expect(terminalCommands([bare], [bare])).toEqual({ lost: [], takenOver: new Map(), unjudged: [] });
   });
+
+  it("says nothing of a formula Homebrew didn't link, whose commands Terminal does not find now (q1b skeptic 3)", () => {
+    // npm's `gemini` runs; `brew install gemini-cli` could not link over
+    // it, so the formula's `gemini`, named from its keg, has no verdict.
+    // Uninstalling the formula changes nothing typed: no 「这条命令会随它
+    // 那一份一起删除」 about it.
+    const npmGemini = artifact(npm, "Package", "@google/gemini-cli", {
+      facts: { ...NO_FACTS, family: "gemini-cli", commands: runs("gemini") },
+    });
+    const unlinked = formula("gemini-cli", {
+      facts: { ...NO_FACTS, family: "gemini-cli", commands: [{ name: "gemini", state: null }], unlinked: true },
+    });
+    expect(terminalCommands([unlinked], [npmGemini, unlinked])).toEqual({
+      lost: [],
+      takenOver: new Map(),
+      unjudged: [],
+    });
+    // Its keg first on PATH after all (a verdict): said as of any copy.
+    const reached = { ...unlinked, facts: { ...unlinked.facts, commands: runs("gemini") } };
+    expect(terminalCommands([reached], [reached]).lost).toEqual(["gemini"]);
+  });
 });
 
 describe("what the included tools leave behind", () => {
@@ -659,6 +680,32 @@ describe("hosting (X5's match, by command name)", () => {
     expect(hosting(node22, brew, npm, [node22, nodeLinked, codex])).toBeNull();
     // Alone, it is the only `node` this Homebrew has.
     expect(hosting(node22, brew, npm, [node22, codex])).toEqual({ manages: false, runs: true });
+  });
+
+  it("takes no program from a formula Homebrew didn't link, unless typing it runs its keg (q1b skeptic 1)", () => {
+    // An Intel Mac: Ollama.app's own link at /usr/local/bin/ollama stopped
+    // `brew install ollama` linking, so the formula's `ollama`, named from
+    // its keg (an AI tool's), has no verdict. The program Ollama's models
+    // run on is the app's, the first `ollama` on PATH.
+    const intel: ManagerInstance = {
+      ...brew,
+      id: "brew:/usr/local",
+      prefix: "/usr/local",
+      exe_path: "/usr/local/bin/brew",
+    };
+    const appOllama: ManagerInstance = { ...ollama, exe_path: "/usr/local/bin/ollama" };
+    const unlinked = artifact(intel, "Formula", "ollama", {
+      facts: { ...NO_FACTS, family: "ollama", commands: [{ name: "ollama", state: null }], unlinked: true },
+    });
+    expect(hosting(unlinked, intel, appOllama, [unlinked])).toBeNull();
+    // Its keg is what Terminal runs after all (a PATH folder reaches it).
+    const reached = { ...unlinked, facts: { ...unlinked.facts, commands: runs("ollama") } };
+    expect(hosting(reached, intel, appOllama, [reached])).toEqual({ manages: true, runs: false });
+    // So a batch with an Ollama model keeps the formula in.
+    const unlinkedHere = formula("ollama", { facts: unlinked.facts });
+    const result = classify([candidate(unlinkedHere), candidate(llama)], [unlinkedHere, llama]);
+    expect(result.excluded).toEqual([]);
+    expect(ids(result.included).sort()).toEqual(["llama3.2:3b", "ollama"]);
   });
 
   it("leaves a Homebrew node out of a batch with an npm package, as it does pipx with a pipx tool (X5)", () => {
