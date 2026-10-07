@@ -2189,8 +2189,9 @@ fn test_what_we_run_says_an_npm_or_uv_read_before_running_that_does_not_answer_e
                 "程序已不在或无法启动，显示为未能开始、没有改动",
                 "非零退出，是该程序的失败，带有退出码和它最后写到 stderr 的几行",
                 "超过时限（npm 30 秒；uv 与更新命令相同，600 秒）没有回答，是运行超时，没有退出码",
-                "uv 的这次读取和 `uv tool upgrade` 一样要等 uv 的工具文件夹锁",
-                "读取期间点“取消”会立即停下（npm 的读取也是这样），这个更新显示为已取消，不运行更新命令。",
+                "uv 的这次读取和 `uv tool upgrade` 一样要等 uv 的工具文件夹锁：另一个 uv 命令占着这把锁时（例如终端里正在运行的 `uv tool upgrade --all`），它会像更新命令一样等锁放开",
+                "uv 默认最多等 5 分钟，之后报它自己的错误",
+                "读取期间点“取消”会立即停下（npm 的读取也是这样），这个更新随即显示为已取消：不运行更新命令，也不再核对结果。",
             ],
         ),
         (
@@ -2203,8 +2204,9 @@ fn test_what_we_run_says_an_npm_or_uv_read_before_running_that_does_not_answer_e
                 "程式已不在或無法啟動，顯示為未能開始、沒有改動",
                 "非零結束，是該程式的失敗，帶有結束代碼和它最後寫到 stderr 的幾行",
                 "超過時限（npm 30 秒；uv 與更新命令相同，600 秒）沒有回答，是執行逾時，沒有結束代碼",
-                "uv 的這次讀取和 `uv tool upgrade` 一樣要等 uv 的工具檔案夾鎖",
-                "讀取期間點「取消」會立即停下（npm 的讀取也是這樣），這個更新顯示為已取消，不執行更新命令。",
+                "uv 的這次讀取和 `uv tool upgrade` 一樣要等 uv 的工具檔案夾鎖：另一個 uv 命令佔著這把鎖時（例如終端機裡正在執行的 `uv tool upgrade --all`），它會像更新命令一樣等鎖放開",
+                "uv 預設最多等 5 分鐘，之後回報它自己的錯誤",
+                "讀取期間點「取消」會立即停下（npm 的讀取也是這樣），這個更新隨即顯示為已取消：不執行更新命令，也不再核對結果。",
             ],
         ),
     ] {
@@ -2226,9 +2228,16 @@ fn test_what_we_run_says_an_npm_or_uv_read_before_running_that_does_not_answer_e
         // command stopped at its 600 s limit, or by a signal it did not
         // send, ends `Unconfirmed` (`run_plan`), 「结果未确认」. So the read
         // does not end "as its write command would, failing the same way".
+        // Only a uv command holding the tools-folder lock makes the read
+        // wait, not any uv command running, and uv's 5 minutes are its
+        // default (`UV_LOCK_TIMEOUT`): the English says both (r28 skeptic).
         for unlike in [
             "和它的写入命令这样失败时一样",
             "和它的寫入命令這樣失敗時相同",
+            "它会等那个命令结束",
+            "它會等那個命令結束",
+            "uv 自己最多等 5 分钟",
+            "uv 自己最多等 5 分鐘",
         ] {
             assert!(
                 !bullet.contains(unlike),
@@ -2248,7 +2257,10 @@ fn test_what_we_run_says_an_npm_or_uv_read_before_running_that_does_not_answer_e
 /// r28 R28-1: uv's list right before a saved upgrade waits for uv's own
 /// tools-folder lock as the upgrade itself would, within the upgrade's
 /// 600 s, and a Cancel stops it (`UvAdapter::execute`). The uv section
-/// says both, and its table lists that list with its own deadline.
+/// says both, and its table lists that list with its own deadline. The
+/// update then ends with no reading after it (`run_operation`, r28
+/// skeptic), which `## When commands run` says of every operation a
+/// Cancel stopped before its command.
 #[test]
 fn test_what_we_run_says_uvs_list_before_an_upgrade_waits_for_uvs_lock_and_stops_on_cancel() {
     let doc = read_doc();
@@ -2258,7 +2270,7 @@ fn test_what_we_run_says_uvs_list_before_an_upgrade_waits_for_uvs_lock_and_stops
         "| List installed tools right before a saved upgrade runs (`execute`) | `<uv> tool list --show-paths` | 600 s, the upgrade's own |",
         "so this list is given the upgrade's own 600 s, not the inventory's 60",
         "it waits, as the upgrade itself would",
-        "A Cancel stops the list at once, as it stops npm's prefix read, and the update ends cancelled with no upgrade command run.",
+        "A Cancel stops the list at once, as it stops npm's prefix read, and the update ends cancelled there, with no upgrade command run and no reading after it, which would wait for the same lock (When commands run).",
         "exiting non-zero or not answering within those 600 s",
     ] {
         assert!(
@@ -2266,6 +2278,15 @@ fn test_what_we_run_says_uvs_list_before_an_upgrade_waits_for_uvs_lock_and_stops
             "the `## uv` section of docs/what-we-run.md does not say {phrase:?}"
         );
     }
+    let when = section_body(&doc, "When commands run").expect("a `## When commands run` section");
+    let when = when.split_whitespace().collect::<Vec<_>>().join(" ");
+    let phrase = "Either cancelled operation ends there, with no re-reading of the inventory after it: \
+                  there is nothing to check, and that reading would not hear the Cancel -- uv's waits \
+                  for the same tools-folder lock as the list a Cancel stops (uv's section).";
+    assert!(
+        when.contains(phrase),
+        "`## When commands run` does not say {phrase:?}"
+    );
     assert!(
         !folded.contains("not answering within 60 s"),
         "the `## uv` section still gives the list before an upgrade the inventory's 60 s"

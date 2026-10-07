@@ -450,6 +450,65 @@ async fn test_uninstall_cancelled_before_its_command_started_is_cancelled() {
     assert!(runner.calls().is_empty(), "the command never started");
 }
 
+/// r28 skeptic of R28-1: an `execute` that answers `Cancelled` started
+/// nothing (`run_plan`, brew's wait for `brew update`, npm's and uv's read
+/// before the command, a path-list uninstall before its first move), and
+/// that outcome stands whatever a reading after would say. So none is
+/// taken: the operation ends at once, never "Checking the result…"
+/// (`Verifying`) -- a reading that may wait on the tool's own lock, as
+/// uv's does, with a deadline of its own and no ear for the Cancel. An
+/// update's reading before its turn is still the one reading it took.
+#[tokio::test]
+async fn test_an_operation_cancelled_before_its_command_started_takes_no_reading_after() {
+    for (kind, readings_before) in [
+        (OpKind::Install, 0),
+        (OpKind::Upgrade, 1),
+        (OpKind::Uninstall, 0),
+    ] {
+        let runner = Arc::new(MockRunner::new());
+        let sink = Arc::new(VecSink::new());
+        let mut manager = OperationManager::new(sink.clone());
+        let adapter = Arc::new(FakeAdapter::new(
+            ExecuteBehavior::CancelBeforeCommand(runner.clone()),
+            Reconciled {
+                present: true,
+                version: Some("1.0.0".to_string()),
+            },
+        ));
+        manager.register_adapter(adapter.clone());
+        let manager = Arc::new(manager);
+        let inst = make_instance("fake:/no-reading-after");
+        manager.register_instance(inst.clone());
+        let plan = adapter
+            .plan(&inst, &make_request(kind, &inst.id, "pkg"))
+            .await
+            .expect("plan");
+        let op_id = manager.submit(plan);
+        let start = Instant::now();
+        while adapter.execute_calls() == 0 {
+            assert!(
+                start.elapsed() < Duration::from_millis(1000),
+                "{kind:?}: execute never started"
+            );
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        manager
+            .cancel(op_id)
+            .expect("a Running op accepts a cancel");
+        let outcome = manager.wait(op_id).await.expect("an outcome");
+        assert_eq!(outcome, Outcome::Cancelled, "{kind:?}");
+        assert!(runner.calls().is_empty(), "{kind:?}: nothing started");
+        assert_eq!(
+            adapter.reconcile_calls.load(Ordering::SeqCst),
+            readings_before,
+            "{kind:?}: no reading after a Cancel before the command"
+        );
+        let trace = status_trace(&sink.snapshot(), op_id);
+        assert!(!trace.contains(&OpStatus::Verifying), "{kind:?}: {trace:?}");
+        assert_eq!(trace.last(), Some(&OpStatus::Done), "{kind:?}: {trace:?}");
+    }
+}
+
 #[tokio::test]
 async fn test_cancelled_upgrade_without_versions_to_compare_stays_unconfirmed() {
     // Upgrade means the artifact was already present before the op ran, so

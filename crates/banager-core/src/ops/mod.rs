@@ -1103,6 +1103,24 @@ impl OperationManager {
         if cancel.is_cancelled() {
             self.set_status(op_id, OpStatus::Cancelling);
         }
+        // An `execute` that answered `Cancelled` started nothing -- the
+        // Cancel landed before the command (`run_plan`), during brew's wait
+        // for a `brew update` (`BrewAdapter::execute`), during npm's or uv's
+        // read right before the command (`read_before_run`'s doc), or before
+        // a path-list uninstall's first move -- and that outcome stands
+        // whatever a reading after says (the `Ok(other)` arm below). So it
+        // ends here, as a Cancel during the reading before does, with no
+        // reading after: that reading hears no Cancel, and uv's
+        // `tool list` waits for the same tools-folder lock as the list just
+        // stopped, which would have left the row "Checking the result…"
+        // for the reading's whole 60 s after the Cancel (r28 skeptic of
+        // R28-1). Nothing that reading finds is kept for a `Cancelled`
+        // update: the history keeps an after-version only for an update
+        // that exited 0 (`history::record_for`).
+        if matches!(exec_result, Ok(Outcome::Cancelled)) {
+            self.finish(op_id, Outcome::Cancelled, true);
+            return;
+        }
         self.set_status(op_id, OpStatus::Verifying);
 
         // After an uninstall only presence decides anything below, and an
@@ -1341,11 +1359,11 @@ impl OperationManager {
             }
             // Anything else `execute` answered stands as it is, whatever
             // the reading after says -- a tool's own `Failed`, Banager's
-            // `BanagerFailed`, brew's `Cancelled` before its command starts,
-            // `run_plan`'s `Cancelled` for a Cancel before its command
-            // started, a path-list uninstall's `Cancelled` before its first
-            // move, and its `NeedsAttention(BackAfterUninstall)`, which its
-            // own last look found (adapters/standalone/removal.rs).
+            // `BanagerFailed`, and a path-list uninstall's
+            // `NeedsAttention(BackAfterUninstall)`, which its own last look
+            // found (adapters/standalone/removal.rs). (`Cancelled` stands
+            // too, and never gets here: it ended before the reading after,
+            // above.)
             Ok(other) => other,
             Err(e) => execute_error_outcome(e),
         };

@@ -890,7 +890,6 @@ async fn test_uv_cancel_while_its_list_before_the_command_waits_stops_it_and_wri
             ruff_listed(env, "0.15.0"), // the preview
             ruff_listed(env, "0.15.0"), // the reading before the turn
             Answer::UntilCancelled,     // right before the command
-            ruff_listed(env, "0.15.0"), // the reading after
         ]
     });
     let (outcome, after_cancel) = cancel_while_a_read_waits(
@@ -909,6 +908,54 @@ async fn test_uv_cancel_while_its_list_before_the_command_waits_stops_it_and_wri
     );
     assert!(after_cancel < NOBODY_CANCELS, "{after_cancel:?}");
     assert!(!wrote(&runner.calls()), "{:?}", runner.calls());
+}
+
+/// R28-1's own case (r28 skeptic): another uv takes uv's tools-folder lock
+/// after the reading before the turn, and the Cancel lands while the list
+/// right before the command waits for it. That stops the list, and the
+/// update ends cancelled at once: no reading after is taken, which would
+/// wait for the same lock with a deadline of its own and hear no Cancel
+/// (here it would wait out `NOBODY_CANCELS`), the row saying "Checking the
+/// result…" all that time. Nothing having run, there is nothing to read.
+#[tokio::test]
+async fn test_uv_cancel_while_another_uv_holds_its_lock_ends_the_update_at_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let (inst, runner, adapter) = uv_scripted(dir.path(), |env| {
+        vec![
+            ruff_listed(env, "0.15.0"), // the preview
+            ruff_listed(env, "0.15.0"), // the reading before the turn
+            Answer::UntilCancelled,     // right before the command: the lock
+            Answer::UntilCancelled,     // a reading after would wait as long
+        ]
+    });
+    let uv = inst.exe_path.to_str().unwrap().to_string();
+    let (outcome, after_cancel) = cancel_while_a_read_waits(
+        adapter,
+        &runner,
+        &inst,
+        request(&inst, OpKind::Upgrade, ArtifactKind::Tool, "ruff"),
+        Some("0.16.8"),
+    )
+    .await;
+    assert_eq!(outcome, Outcome::Cancelled);
+    assert!(
+        after_cancel < Duration::from_secs(5),
+        "the update ended {after_cancel:?} after the Cancel"
+    );
+    assert_eq!(
+        runner.stopped_by_cancel(),
+        1,
+        "the Cancel stopped the list itself"
+    );
+    let list: Vec<String> = [uv.as_str(), "tool", "list", "--show-paths"]
+        .map(String::from)
+        .into();
+    assert_eq!(
+        runner.calls(),
+        [list.clone(), list.clone(), list],
+        "the preview, the reading before the turn and the list right before the command; \
+         no upgrade and no reading after"
+    );
 }
 
 /// R28-1: another uv holds uv's tools-folder lock for 150 s from the

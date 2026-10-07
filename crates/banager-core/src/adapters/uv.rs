@@ -664,15 +664,17 @@ impl UvAdapter {
                     // tools folder that `uv tool upgrade` holds from its
                     // start (uv 0.12.17 `commands/tool/list.rs:45`,
                     // `commands/tool/upgrade.rs:63`, `InstalledTools::lock`),
-                    // and uv waits up to 5 minutes for it
+                    // and uv waits up to 5 minutes for it, its default
                     // (`uv-fs/src/locked_file.rs:17-19`). So while another
                     // uv holds it -- a `uv tool upgrade --all` in Terminal --
                     // this read is given the upgrade's own deadline, to wait
                     // for uv as the upgrade itself would, rather than the
                     // inventory's 60 s; and it is handed the operation's own
                     // token, as npm's prefix read is, so a Cancel while it
-                    // waits stops it, and the update ends cancelled with
-                    // nothing run (r28 R28-1).
+                    // waits stops it, and the update ends cancelled at once
+                    // with nothing run: `run_operation` takes no reading
+                    // after a `Cancelled`, which would wait for the same
+                    // lock (r28 R28-1 and its skeptic).
                     let read = self
                         .list_tools(
                             program,
