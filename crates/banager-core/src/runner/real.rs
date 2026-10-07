@@ -2700,10 +2700,9 @@ mod tests {
     const CURL_MASKED: &str = "curl: (5) Unsupported proxy syntax in \
         'http://****:****@127.0.0.1:invalid': \
         Port number was not a decimal number between 0 and 65535";
-    /// With no setting known, the pattern alone masks the password; the
-    /// name it cannot tell from a person's, and leaves.
+    /// With no setting known, the pattern still masks the whole login.
     const CURL_MASKED_BY_PATTERN: &str = "curl: (5) Unsupported proxy syntax in \
-        'http://review-user:****@127.0.0.1:invalid': \
+        'http://****:****@127.0.0.1:invalid': \
         Port number was not a decimal number between 0 and 65535";
 
     fn knowing_the_login(policy: CapPolicy) -> StreamBuffer {
@@ -3062,11 +3061,70 @@ mod tests {
         );
         for (_, line) in &seen {
             assert!(!line.contains("review-secret"), "{line}");
-            assert!(line.contains("review-user:****@127.0.0.1"), "{line}");
+            assert!(!line.contains("review-user"), "{line}");
+            assert!(line.contains("****:****@127.0.0.1"), "{line}");
         }
         for said in [&output.stdout, &output.stderr] {
             assert!(!said.contains("review-secret"), "{said}");
+            assert!(!said.contains("review-user"), "{said}");
         }
         assert_eq!(output.stderr.lines().next(), Some(CURL_MASKED_BY_PATTERN));
+    }
+
+    #[tokio::test]
+    async fn test_a_token_git_configuration_put_in_a_url_reaches_neither_the_lines_nor_the_summary()
+    {
+        // A token in a URL's user name slot, supplied by Git's own
+        // configuration (an `insteadOf` rewrite), not by any setting
+        // Banager imported: nothing tells the runner it is a secret. On
+        // stderr, first what `git` prints when the server asks for a
+        // password and prompting is off (r7 r03-safety F3, reproduced
+        // offline with a synthetic name), then a command echoed back with
+        // the token and a placeholder password; on stdout, the address a
+        // clone starts from.
+        const TOKEN: &str = "ReviewTapTokenAbCdEfGhIjKlMn";
+        let (lines, on_line) = collected();
+        let script = format!(
+            "printf '%s\\n' \"Cloning https://{TOKEN}@github.com/review/homebrew-tap\"; \
+             printf '%s\\n' \"fatal: could not read Password for 'https://{TOKEN}@github.com': terminal prompts disabled\" >&2; \
+             printf '%s\\n' \"Error: git clone https://{TOKEN}:x-oauth-basic@github.com/review/homebrew-tap exited with 128\" >&2; \
+             exit 128"
+        );
+        let output = RealRunner::new()
+            .run(
+                CommandSpec {
+                    program: sh(),
+                    args: vec!["-c".to_string(), script],
+                    env: vec![],
+                    cwd: None,
+                    timeout: std::time::Duration::from_secs(10),
+                    output_use: OutputUse::Transcript,
+                },
+                on_line,
+                CancellationToken::new(),
+            )
+            .await
+            .expect("spawn /bin/sh");
+        assert_eq!(output.exit_code, Some(128));
+        let seen = lines.lock().unwrap().clone();
+        assert_eq!(seen.len(), 3, "{seen:?}");
+        let summary = crate::runner::failure_summary(&output.stderr);
+        for said in
+            seen.iter()
+                .map(|(_, line)| line)
+                .chain([&output.stdout, &output.stderr, &summary])
+        {
+            assert!(!said.contains(TOKEN), "{said}");
+            assert!(!said.contains("x-oauth-basic"), "{said}");
+        }
+        assert_eq!(
+            summary,
+            "fatal: could not read Password for 'https://****@github.com': terminal prompts disabled\n\
+             Error: git clone https://****:****@github.com/review/homebrew-tap exited with 128"
+        );
+        assert_eq!(
+            output.stdout.trim_end(),
+            "Cloning https://****@github.com/review/homebrew-tap"
+        );
     }
 }

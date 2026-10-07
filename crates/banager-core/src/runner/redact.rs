@@ -36,7 +36,7 @@
 //! (`CommandOutput::failure_cause`): the mask can take the words that say
 //! it.
 //! - Any `scheme://user:password@` in the text (`mask_url_logins`),
-//!   whatever setting or file it came from: its password.
+//!   or `scheme://user@` in the text, whatever its source: the whole login.
 //!
 //! Both put [`MASK`] where a secret was, and leave the rest of the line as
 //! the tool wrote it. Where a rule cannot tell, it masks too much rather
@@ -115,7 +115,7 @@ const NOT_UNRESERVED: &AsciiSet = &NON_ALPHANUMERIC
     .remove(b'~');
 
 /// The logins to mask in a command's output. `Default` knows no setting's
-/// login and still masks any `scheme://user:password@`'s password.
+/// login and still masks any URL's complete userinfo.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Redactor {
     /// `(what, replacement)`: every `what` in the text is replaced, the
@@ -238,7 +238,7 @@ impl Redactor {
     }
 
     /// `text` with every login this knows, in any case, and every
-    /// `scheme://user:password@`'s password, replaced by [`MASK`].
+    /// URL's complete userinfo, replaced by [`MASK`].
     /// Borrowed when there was nothing to mask.
     pub fn redact<'t>(&self, text: &'t str) -> Cow<'t, str> {
         let mut out = Cow::Borrowed(text);
@@ -452,20 +452,19 @@ fn basic(pair: &str) -> String {
     base64::engine::general_purpose::STANDARD.encode(pair)
 }
 
-/// `scheme://`, a user name (no `@` or `:`), `:`, and then -- greedy, so
-/// up to the last `@` before the authority ends -- the password. The
-/// authority ends at `/`, `?`, `#`, white space, a quote or `<`/`>`, as
-/// it does where tools print an address inside a sentence.
+/// The complete userinfo before the last `@` of a URL authority.
+/// A path, query, fragment or surrounding punctuation ends the authority.
 static URL_LOGIN: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"([A-Za-z][A-Za-z0-9+.\-]*://[^\s/?#@:'"`<>]*:)[^\s/?#'"`<>]+@"#)
-        .expect("a valid pattern")
+    Regex::new(r#"([A-Za-z][A-Za-z0-9+.\-]*://)([^\s/?#'"`<>]*)@"#).expect("a valid pattern")
 });
 
-/// Masks the password of every `scheme://user:password@` in `text`. The
-/// name it leaves: not knowing the setting, it cannot tell a token from a
-/// person's name.
+/// Masks both parts of any URL login, including a username alone: Git
+/// configuration can supply a token there without an imported setting.
 pub fn mask_url_logins(text: &str) -> Cow<'_, str> {
-    URL_LOGIN.replace_all(text, format!("${{1}}{MASK}@").as_str())
+    URL_LOGIN.replace_all(text, |captures: &regex::Captures<'_>| {
+        let pair = captures[2].contains(':');
+        format!("{}{}@", &captures[1], if pair { "****:****" } else { MASK })
+    })
 }
 
 /// Not part of a word for [`before_cut`] and [`after_cut`]: white space and
@@ -643,11 +642,11 @@ mod tests {
         // The user name too, since the re-check's R1: a name can be a
         // token, and nothing in it says whether it is.
         assert_eq!(said, curl_refuses("http://****:****@127.0.0.1:invalid"));
-        // With no setting known at all, the pattern alone masks the
-        // password, and cannot tell a token from a person's name.
+        // With no setting known, the pattern masks both parts too:
+        // either part may be a token supplied by Git configuration.
         assert_eq!(
             Redactor::default().redact(CURL_SAID),
-            curl_refuses("http://review-user:****@127.0.0.1:invalid")
+            curl_refuses("http://****:****@127.0.0.1:invalid")
         );
     }
 
@@ -1117,7 +1116,7 @@ mod tests {
                 "git@github.com:Homebrew/brew.git"
             )])
             .redact(said),
-            said
+            "==> git fetch ssh://****@github.com/Homebrew/brew"
         );
     }
 
@@ -1176,7 +1175,7 @@ mod tests {
             );
             assert_eq!(
                 r.redact(&format!("socks5://x:{password}@other.lan:1080")),
-                "socks5://x:****@other.lan:1080",
+                "socks5://****:****@other.lan:1080",
                 "{setting}"
             );
         }
@@ -1203,20 +1202,47 @@ mod tests {
     }
 
     #[test]
+    fn test_git_configuration_tokens_are_masked_without_setting_discovery() {
+        for r in [
+            Redactor::default(),
+            redactor(&[("https_proxy", "http://proxy.example:3128")]),
+        ] {
+            for login in [
+                "ReviewTapTokenAbCdEfGhIjKlMn",
+                "ReviewTapTokenAbCdEfGhIjKlMn:dummy",
+            ] {
+                let input = format!("fatal: could not read Password for 'https://{login}@github.com': terminal prompts disabled");
+                let output = r.redact(&input);
+                assert!(!output.contains("ReviewTapToken"), "{output}");
+                assert!(!output.contains("dummy"), "{output}");
+                assert!(output.contains("@github.com"));
+            }
+            for public in [
+                "https://github.com/team/user@example.com",
+                "https://nexus:8081/npm/@scope/pkg",
+                "https://example.com?email=a@b",
+                "https://example.com#a@b",
+            ] {
+                assert_eq!(r.redact(public), public);
+            }
+        }
+    }
+
+    #[test]
     fn test_the_pattern_masks_any_url_login_and_nothing_else() {
         let r = Redactor::default();
         for (said, expected) in [
             (
                 "Collecting x @ git+https://bot:hunter22@git.example/x.git",
-                "Collecting x @ git+https://bot:****@git.example/x.git",
+                "Collecting x @ git+https://****:****@git.example/x.git",
             ),
             (
                 "proxy socks5h://a:b@c@127.0.0.1:7891 failed",
-                "proxy socks5h://a:****@127.0.0.1:7891 failed",
+                "proxy socks5h://****:****@127.0.0.1:7891 failed",
             ),
             (
                 "ProxyError('http://u:pw@host:1')",
-                "ProxyError('http://u:****@host:1')",
+                "ProxyError('http://****:****@host:1')",
             ),
             (
                 "https://example.com:8080/a@b",
@@ -1226,9 +1252,9 @@ mod tests {
                 "https://mirror.example:8443/x/user@example.com/simple",
                 "https://mirror.example:8443/x/user@example.com/simple",
             ),
-            ("ssh://git@github.com/x", "ssh://git@github.com/x"),
+            ("ssh://git@github.com/x", "ssh://****@github.com/x"),
             ("mailto:someone@example.com", "mailto:someone@example.com"),
-            ("http://u:****@host", "http://u:****@host"),
+            ("http://u:****@host", "http://****:****@host"),
             ("no address here", "no address here"),
         ] {
             assert_eq!(r.redact(said), expected, "{said}");
