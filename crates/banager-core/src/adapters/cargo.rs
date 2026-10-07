@@ -3018,11 +3018,14 @@ mod tests {
             "cargo 1.98.1 (797e8a9bc 2026-08-05)\n",
         );
         let adapter = CargoAdapter::new(runner, Arc::new(MockHttpClient::new()));
+        // A `CARGO_HOME` of the test's own, which detect looks at: never a
+        // folder of this Mac's such as `/opt/cargo`.
+        let cargo_home = dir.join("opt/cargo");
         let env = HostEnv {
             path_dirs: vec![dir.clone()],
             home: PathBuf::from("/tmp"),
             euid: 501,
-            cargo_home: Some(PathBuf::from("/opt/cargo")),
+            cargo_home: Some(cargo_home.clone()),
             rustup_home: None,
             zdotdir: None,
             ollama_host: None,
@@ -3030,8 +3033,8 @@ mod tests {
         let instances = CargoAdapter::detect(&adapter, &env).await;
 
         assert_eq!(instances.len(), 1);
-        assert_eq!(instances[0].id, "cargo:/opt/cargo");
-        assert_eq!(instances[0].prefix, PathBuf::from("/opt/cargo"));
+        assert_eq!(instances[0].id, format!("cargo:{}", cargo_home.display()));
+        assert_eq!(instances[0].prefix, cargo_home);
         assert_eq!(instances[0].exe_path, cargo_path);
         assert_eq!(instances[0].version, Some("1.98.1".to_string()));
         assert!(instances[0].available());
