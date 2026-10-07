@@ -1421,8 +1421,9 @@ read), the uninstall confirmation says Homebrew also removes the package
 from its trust list (`Warning::HomebrewForgetsTrust`); when it cannot read
 the list, it says nothing of it.
 
-Before offering a cask uninstall, and again immediately before the
-uninstall command starts, Banager looks at each link the cask's record
+**A cask's links.** Before offering a cask uninstall, and again
+immediately before the uninstall command starts, Banager looks at each
+link the cask's record
 says Homebrew will remove (`crates/banager-core/src/adapters/brew/cask_links.rs`):
 `binary` and `command_wrapper` links in `<prefix>/bin` (or the target the
 stanza names, a `~/` one under the home folder), `manpage` links in
@@ -1848,10 +1849,24 @@ takes the account's home from the user database instead
 (`Trust.trust_file`, `trust.rb:27-43`), so where `$HOME` points elsewhere
 the two read different files, and the uninstall confirmation may say or
 leave out the trust list line wrongly. Nothing is run or changed because
-of it. A keg-only formula's links -- for its update, and for the link a
-source's notice offers -- are read as Keg-only formulae linked into
-Terminal, above, says (`brew::links`): names and links only, never a
-file's contents.
+of it. A cask's uninstall preview, and its check just before the uninstall
+runs, also look at where the links its record names lead, as A cask's
+links, above, says (`cask_links::conflict` in
+`crates/banager-core/src/adapters/brew/cask_links.rs`): the place of each
+`binary`, `command_wrapper`, `manpage` and completion link -- in
+`<prefix>/bin`, `<prefix>/share/man/man<section>`, Homebrew's four
+completion folders, or the target its stanza names (a `~/` one under the
+home folder) -- and, to tell whose a link there is, where the cask's
+`<prefix>/Caskroom/<token>` folder, each app it recorded (one recorded
+by name alone, in `/Applications` and in `~/Applications`) and
+`<prefix>/Cellar` lead, and, for a link that is there, where the
+absolute source its stanza names leads. Each path is looked up one
+name at a time (`protected::resolve`: `lstat` and `readlink`, folders
+opened only to look up the next name, never into a protected place):
+names and links only, never a file's contents. A keg-only formula's
+links -- for its update, and for the link a source's notice offers --
+are read as Keg-only formulae linked into Terminal, above, says
+(`brew::links`): names and links only, never a file's contents.
 
 ## Why a source did not answer, and the link that fixes it: nothing runs until a link is confirmed
 
@@ -4435,7 +4450,16 @@ not read (`protected::look`; How Banager runs anything, above):
   during a cask's uninstall preview and again before it runs, the
   names in its `<prefix>/Caskroom/<token>/.metadata` folder and in the
   folders there, the caskfile Homebrew saved when it is JSON, and
-  `INSTALL_RECEIPT.json`; during every uninstall preview and again before
+  `INSTALL_RECEIPT.json`, and where each link that record names leads --
+  its `binary`, `command_wrapper`, `manpage` and completion links in
+  `<prefix>/bin`, `<prefix>/share/man/man<section>`, the completion
+  folders or the target its stanza names (a `~/` one under the home
+  folder) -- and where its Caskroom folder, its
+  recorded apps (one recorded by name alone, in `/Applications` and
+  `~/Applications`), `<prefix>/Cellar` and, for a link that is there, the
+  absolute source its stanza names lead (`lstat` and `readlink`, names
+  and links only; Homebrew's section, "A cask's links");
+  during every uninstall preview and again before
   a cask uninstall runs, its trust list,
   `trust.json` in the user's Homebrew config folder; during a formula's
   upgrade and uninstall preview, the names in `<prefix>/Cellar/<name>` and

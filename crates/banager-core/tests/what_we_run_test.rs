@@ -2195,3 +2195,61 @@ fn test_what_we_run_says_an_npm_or_uv_read_before_running_that_does_not_answer_e
         }
     }
 }
+
+/// r26 D3: a cask's uninstall preview, and its check just before the
+/// uninstall runs, look at where each link the cask's record names leads
+/// (`cask_link_conflict` in `adapters/brew/mod.rs`, `cask_links::conflict`).
+/// Both lists of what Homebrew's adapter reads name those reads, and
+/// point at the paragraph that says why.
+#[test]
+fn test_what_we_run_lists_the_cask_link_reads_of_an_uninstall_with_the_rest_of_homebrews() {
+    let doc = read_doc();
+    let homebrew = section_body(&doc, "Homebrew").expect("a `## Homebrew` section");
+    assert!(
+        homebrew.contains("\n**A cask's links.** Before offering a cask uninstall"),
+        "the `## Homebrew` section has no `A cask's links` paragraph for the read lists to point at"
+    );
+    let own = homebrew
+        .split("\n\n")
+        .find(|paragraph| paragraph.starts_with("**Files this adapter reads.**"))
+        .expect("Homebrew's `Files this adapter reads` paragraph");
+    let own = own.split_whitespace().collect::<Vec<_>>().join(" ");
+    for words in [
+        "A cask's uninstall preview, and its check just before the uninstall runs, also look at where the links its record names lead",
+        "(`cask_links::conflict` in `crates/banager-core/src/adapters/brew/cask_links.rs`)",
+        "`binary`, `command_wrapper`, `manpage` and completion link",
+        "`<prefix>/bin`, `<prefix>/share/man/man<section>`, Homebrew's four completion folders",
+        "`<prefix>/Caskroom/<token>` folder, each app it recorded",
+        "`/Applications` and in `~/Applications`",
+        "`<prefix>/Cellar` lead",
+        "`lstat` and `readlink`",
+        "never a file's contents",
+    ] {
+        assert!(
+            own.contains(words),
+            "Homebrew's `Files this adapter reads` does not say {words:?} of a cask's links"
+        );
+    }
+    let reads =
+        section_body(&doc, "Files Banager reads").expect("a `## Files Banager reads` section");
+    let homebrew_reads = reads
+        .split("\n- ")
+        .find(|bullet| bullet.starts_with("Homebrew:"))
+        .expect("the Homebrew bullet of `## Files Banager reads`");
+    let homebrew_reads = homebrew_reads
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    for words in [
+        "`INSTALL_RECEIPT.json`, and where each link that record names leads",
+        "`binary`, `command_wrapper`, `manpage` and completion links in `<prefix>/bin`, `<prefix>/share/man/man<section>`",
+        "where its Caskroom folder, its recorded apps",
+        "`<prefix>/Cellar`",
+        "Homebrew's section, \"A cask's links\"",
+    ] {
+        assert!(
+            homebrew_reads.contains(words),
+            "the Homebrew bullet of `## Files Banager reads` does not say {words:?} of a cask's links"
+        );
+    }
+}
