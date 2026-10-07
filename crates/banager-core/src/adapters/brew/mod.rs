@@ -35,6 +35,48 @@ use std::time::{Duration, Instant, SystemTime};
 use tokio_util::sync::CancellationToken;
 use trust::TrustList;
 
+/// The queue key shared with npm for a Homebrew prefix.
+pub(crate) fn prefix_lock(prefix: &Path) -> ResourceLock {
+    let prefixes = BrewAdapter::CANDIDATE_PATHS.map(|exe| BrewAdapter::prefix_for(Path::new(exe)));
+    // Recorded fixtures name real prefixes. Unit tests explicitly supply
+    // a reader over their own trees, never inspect the host's Homebrew.
+    #[cfg(not(test))]
+    let identity = |path: &Path| directory_identity(path, &Protected::of_this_process());
+    #[cfg(test)]
+    let identity = |_: &Path| None;
+    matching_prefix_lock(prefix, &prefixes, identity)
+}
+
+fn directory_identity(path: &Path, protected: &Protected) -> Option<(u64, u64)> {
+    let (_, stat) = look::target(path, protected).ok()?;
+    stat.is_dir().then_some((stat.dev(), stat.ino()))
+}
+
+fn matching_prefix_lock(
+    prefix: &Path,
+    prefixes: &[PathBuf],
+    identity: impl Fn(&Path) -> Option<(u64, u64)>,
+) -> ResourceLock {
+    let key = |path: &Path| {
+        ResourceLock(crate::model::instance_id(
+            "brew",
+            Some(&path.display().to_string()),
+        ))
+    };
+    // Discovery uses these fixed spellings. The first matching directory
+    // supplies the one key, even if two discovery prefixes are aliases.
+    // Display paths and command arguments keep the user's own spelling.
+    let directory = identity(prefix);
+    for known in prefixes {
+        if crate::protected::same_path(prefix, known)
+            || directory.is_some_and(|found| identity(known) == Some(found))
+        {
+            return key(known);
+        }
+    }
+    key(prefix)
+}
+
 pub struct BrewAdapter {
     runner: Arc<dyn CommandRunner>,
     meta: AdapterMeta,
@@ -2242,7 +2284,7 @@ impl BrewAdapter {
         if matches!(req.kind, OpKind::Install | OpKind::Upgrade) {
             self.require_no_auto_update(&inst.prefix, &self.env_vec())?;
         }
-        let lock = ResourceLock(inst.id.clone());
+        let lock = prefix_lock(&inst.prefix);
         match req.kind {
             // `brew link --formula --force <formula>` (`link_argv`, the
             // same command that links a keg-only formula back after its
@@ -3011,6 +3053,83 @@ mod tests {
                 format!("team/tap/tool-{i}")
             );
         }
+    }
+
+    #[test]
+    fn test_f12_prefix_aliases_share_one_lock() {
+        let root = crate::testing::unique_temp_path("f12-prefix");
+        let prefix = root.join("homebrew");
+        std::fs::create_dir_all(&prefix).unwrap();
+        let alias = root.join("npm-prefix");
+        std::os::unix::fs::symlink(&prefix, &alias).unwrap();
+        let protected = Protected::new(&root.join("home"));
+        let expected = ResourceLock(format!("brew:{}", prefix.display()));
+        let identity = |path: &Path| directory_identity(path, &protected);
+        let linked = matching_prefix_lock(&alias, std::slice::from_ref(&prefix), identity);
+        assert_eq!(
+            matching_prefix_lock(&alias, &[prefix.clone(), alias.clone()], identity),
+            expected
+        );
+        let upper = matching_prefix_lock(
+            &root.join("Homebrew"),
+            std::slice::from_ref(&prefix),
+            identity,
+        );
+        let separate = root.join("other");
+        std::fs::create_dir_all(&separate).unwrap();
+        let other = matching_prefix_lock(&separate, std::slice::from_ref(&prefix), identity);
+        std::fs::remove_dir_all(root).unwrap();
+        assert_eq!(linked, expected, "symlink alias");
+        assert_eq!(upper, expected, "case variant");
+        assert_ne!(other, expected, "separate directory");
+    }
+
+    /// A prefix that cannot be looked at -- not there, a dangling link, a
+    /// file rather than a folder, or in a place Banager never reads --
+    /// keeps the lock its own spelling names: never merged with a
+    /// discovery prefix that cannot be looked at either (two unknowns are
+    /// not one folder), and never a panic.
+    #[test]
+    fn test_f12_review_unresolvable_prefix_keeps_its_own_lock() {
+        let root = crate::testing::unique_temp_path("f12-unresolvable");
+        let prefix = root.join("homebrew");
+        std::fs::create_dir_all(&prefix).unwrap();
+        // The home folder is there before its places are known, as a
+        // real one is: `Protected::new` learns where it leads.
+        let documents = root.join("home/Documents/npm-global");
+        std::fs::create_dir_all(&documents).unwrap();
+        let protected = Protected::new(&root.join("home"));
+        let identity = |path: &Path| directory_identity(path, &protected);
+        let own = |path: &Path| ResourceLock(format!("brew:{}", path.display()));
+        let missing = root.join("gone");
+        let also_missing = root.join("also-gone");
+        let file = root.join("file");
+        std::fs::write(&file, b"").unwrap();
+        let file_alias = root.join("file-alias");
+        std::os::unix::fs::symlink(&file, &file_alias).unwrap();
+        let documents_alias = root.join("documents-alias");
+        std::os::unix::fs::symlink(&documents, &documents_alias).unwrap();
+        let dangling = root.join("dangling");
+        std::os::unix::fs::symlink(root.join("nowhere"), &dangling).unwrap();
+
+        let cases = [
+            (&missing, vec![also_missing.clone(), prefix.clone()]),
+            (&dangling, vec![missing.clone(), prefix.clone()]),
+            (&file_alias, vec![file.clone(), prefix.clone()]),
+            (&documents_alias, vec![documents.clone(), prefix.clone()]),
+        ];
+        let found: Vec<ResourceLock> = cases
+            .iter()
+            .map(|(path, known)| matching_prefix_lock(path, known, identity))
+            .collect();
+        // A discovery prefix that is not there is passed over, not matched.
+        let passed_over =
+            matching_prefix_lock(&prefix, &[missing.clone(), prefix.clone()], identity);
+        std::fs::remove_dir_all(&root).unwrap();
+        for ((path, _), lock) in cases.iter().zip(found) {
+            assert_eq!(lock, own(path), "{}", path.display());
+        }
+        assert_eq!(passed_over, own(&prefix));
     }
 
     fn test_instance() -> ManagerInstance {

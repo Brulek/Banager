@@ -1880,7 +1880,13 @@ Homebrew upgrade of that Node unlinks and links again, and stops at any
 file in the way (Homebrew's section, "Keg-only formulae linked into
 Terminal"). With both locks no npm operation runs while a brew one on the
 same prefix does, in Update All too. Where no Homebrew lives at that
-prefix, no other plan takes the second lock.
+prefix, no other plan takes the second lock. Both adapters use the same lock
+helper. It matches case variants with `protected::same_path` and symbolic-link
+aliases by directory device and inode, using protected, read-only path lookups,
+then reuses the fixed Homebrew discovery prefix in the lock string. A prefix
+that cannot be looked at (not there, not a folder, or in a protected place)
+keeps the lock its own spelling names and is never matched to another that
+cannot be looked at. Display paths and npm argv retain the user's spelling.
 
 npm's own package, `npm`, is never uninstalled: `<npm> uninstall -g npm`
 would remove the npm every other package is updated and uninstalled with.
@@ -4167,6 +4173,8 @@ not read (`protected::look`; How Banager runs anything, above):
   in a protected place is taken as not writable); where `{prefix}/Cellar`
   and `{prefix}/bin/npm` lead, when a check lists npm's own update or its
   update is planned, to tell a Homebrew formula's npm (npm's section).
+  Planning also compares the prefix directory's device/inode with Homebrew's
+  fixed discovery prefixes to share one lock across symbolic-link aliases.
 - pip: the canonical path of each interpreter found, to count it once;
   for one in `/usr/bin`, where `usr/bin/<its name>` in the developer
   directory `xcode-select -p` names leads, and whether that is an

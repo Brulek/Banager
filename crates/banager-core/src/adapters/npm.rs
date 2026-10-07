@@ -546,10 +546,7 @@ impl NpmAdapter {
         // prefix, no other plan takes the second lock.
         let locks = vec![
             ResourceLock(inst.id.clone()),
-            ResourceLock(crate::model::instance_id(
-                "brew",
-                Some(&inst.prefix.display().to_string()),
-            )),
+            super::brew::prefix_lock(&inst.prefix),
         ];
         let warnings = match req.kind {
             OpKind::Uninstall => uninstall_scope(inst.version.as_deref())
@@ -2039,6 +2036,32 @@ mod tests {
                 "{kind:?}"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn test_f12_npm_keeps_prefix_spelling_in_argv_with_shared_lock() {
+        let adapter =
+            NpmAdapter::new(Arc::new(MockRunner::new())).with_prefix_read_only_fn(|_| None);
+        let inst = ManagerInstance {
+            prefix: PathBuf::from("/opt/Homebrew"),
+            ..test_instance()
+        };
+        let req = OpRequest {
+            kind: OpKind::Install,
+            instance_id: inst.id.clone(),
+            artifact_kind: ArtifactKind::Package,
+            name: "typescript".to_string(),
+        };
+        let plan = adapter.plan(&inst, &req).await.unwrap();
+        assert_eq!(
+            plan.locks[1],
+            ResourceLock("brew:/opt/homebrew".to_string())
+        );
+        assert_eq!(
+            command_args(&plan),
+            vec!["install", "-g", "typescript", "--prefix", "/opt/Homebrew"]
+        );
+        assert_eq!(inst.prefix, PathBuf::from("/opt/Homebrew"));
     }
 
     #[tokio::test]
