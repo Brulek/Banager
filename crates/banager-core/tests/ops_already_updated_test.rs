@@ -137,7 +137,10 @@ fn brew_info(versions: &[(&str, &str)]) -> String {
 }
 
 fn manager(runner: &Arc<ScriptedRunner>) -> (Arc<OperationManager>, Arc<dyn Adapter>) {
-    let adapter: Arc<dyn Adapter> = Arc::new(BrewAdapter::new(runner.clone()));
+    // The commands' output is scripted, and nothing of the Mac running
+    // the test is read: not its Cellar, pins or `brew.env` files.
+    let adapter: Arc<dyn Adapter> =
+        Arc::new(BrewAdapter::new(runner.clone()).reading_nothing_of_this_mac());
     let mut manager = OperationManager::new(Arc::new(VecSink::new()));
     manager.register_adapter(adapter.clone());
     let manager = Arc::new(manager);
@@ -651,7 +654,8 @@ async fn test_a_numeric_prerelease_an_update_left_as_it_was_is_below_its_release
         ],
         vec![exited(0, "", "")],
     );
-    let adapter = Arc::new(NpmAdapter::new(runner));
+    // Its Homebrew queue key looks at no Homebrew prefix of the Mac's.
+    let adapter = Arc::new(NpmAdapter::new(runner).looking_at_no_homebrew_prefix());
     let mut manager = OperationManager::new(Arc::new(VecSink::new()));
     manager.register_adapter(adapter.clone());
     manager.register_instance(inst.clone());

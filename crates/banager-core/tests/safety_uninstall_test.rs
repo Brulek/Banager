@@ -27,7 +27,7 @@ use banager_core::http::MockHttpClient;
 use banager_core::model::{ArtifactKind, ManagerInstance, OpKind, OpRequest, PlanAction};
 use banager_core::runner::{CommandOutput, MockRunner};
 use banager_core::testing::manager_instance;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 
@@ -71,50 +71,56 @@ fn instance(adapter_id: &str, exe: &str, prefix: &str) -> ManagerInstance {
     }
 }
 
-fn cases(npm_prefix: &str, brew_prefix: &str) -> Vec<Case> {
+/// The adapters read nothing of the Mac running the test: npm's queue key
+/// looks at no Homebrew prefix of its own, uv reads no `UV_TOOL_DIR` from
+/// its environment, and Homebrew reads only what is under `brew_prefix`,
+/// with `applications` standing for `/Applications` (the adapters'
+/// `test-support` hooks; this crate is built here without `cfg(test)`).
+fn cases(npm_prefix: &str, brew_prefix: &str, applications: &Path) -> Vec<Case> {
     let mut cases = Vec::new();
-    let mut add = |what, adapter: fn(Arc<MockRunner>) -> Arc<dyn Adapter>, inst, kind, name| {
-        let runner = Arc::new(MockRunner::new());
-        cases.push(Case {
-            what,
-            adapter: adapter(runner.clone()),
-            runner,
-            instance: inst,
-            kind,
-            name,
-        });
-    };
+    let mut add =
+        |what, adapter: &dyn Fn(Arc<MockRunner>) -> Arc<dyn Adapter>, inst, kind, name| {
+            let runner = Arc::new(MockRunner::new());
+            cases.push(Case {
+                what,
+                adapter: adapter(runner.clone()),
+                runner,
+                instance: inst,
+                kind,
+                name,
+            });
+        };
     add(
         "npm",
-        |r| Arc::new(NpmAdapter::new(r)),
+        &|r| Arc::new(NpmAdapter::new(r).looking_at_no_homebrew_prefix()),
         instance("npm", "/opt/homebrew/bin/npm", npm_prefix),
         ArtifactKind::Package,
         "prettier",
     );
     add(
         "pipx",
-        |r| Arc::new(PipxAdapter::new(r, Arc::new(MockHttpClient::new()))),
+        &|r| Arc::new(PipxAdapter::new(r, Arc::new(MockHttpClient::new()))),
         instance("pipx", "/opt/homebrew/bin/pipx", "/opt/homebrew"),
         ArtifactKind::Tool,
         "black",
     );
     add(
         "uv",
-        |r| Arc::new(UvAdapter::new(r)),
+        &|r| Arc::new(UvAdapter::new(r).with_tool_dir_fn(|| None)),
         instance("uv", "/opt/homebrew/bin/uv", "/opt/homebrew"),
         ArtifactKind::Tool,
         "ruff",
     );
     add(
         "cargo",
-        |r| Arc::new(CargoAdapter::new(r, Arc::new(MockHttpClient::new()))),
+        &|r| Arc::new(CargoAdapter::new(r, Arc::new(MockHttpClient::new()))),
         instance("cargo", "/Users/you/.cargo/bin/cargo", "/Users/you/.cargo"),
         ArtifactKind::Binary,
         "ripgrep",
     );
     add(
         "ollama",
-        |r| Arc::new(OllamaAdapter::new(r, Arc::new(MockHttpClient::new()))),
+        &|r| Arc::new(OllamaAdapter::new(r, Arc::new(MockHttpClient::new()))),
         instance(
             "ollama",
             "/opt/homebrew/bin/ollama",
@@ -123,16 +129,19 @@ fn cases(npm_prefix: &str, brew_prefix: &str) -> Vec<Case> {
         ArtifactKind::Model,
         "llama3.2:3b",
     );
+    let brew = |r: Arc<MockRunner>| -> Arc<dyn Adapter> {
+        Arc::new(BrewAdapter::new(r).reading_only_its_prefix(applications))
+    };
     add(
         "Homebrew formula",
-        |r| Arc::new(BrewAdapter::new(r)),
+        &brew,
         instance("brew", &format!("{brew_prefix}/bin/brew"), brew_prefix),
         ArtifactKind::Formula,
         "jq",
     );
     add(
         "Homebrew cask",
-        |r| Arc::new(BrewAdapter::new(r)),
+        &brew,
         instance("brew", &format!("{brew_prefix}/bin/brew"), brew_prefix),
         ArtifactKind::Cask,
         "docker",
@@ -218,6 +227,7 @@ async fn test_an_uninstall_runs_exactly_the_command_its_preview_showed_and_nothi
     for case in cases(
         npm_root.path().to_str().unwrap(),
         brew_root.path().to_str().unwrap(),
+        &brew_root.path().join("Applications"),
     ) {
         let Case {
             what,
@@ -367,7 +377,11 @@ async fn test_a_homebrew_formula_with_two_versions_is_uninstalled_whole_and_only
         std::fs::create_dir_all(prefix.join("Cellar/wget").join(version)).unwrap();
     }
     let runner = Arc::new(MockRunner::new());
-    let adapter = BrewAdapter::new(runner.clone());
+    // What is under its prefix is read, as Banager reads it; nothing of
+    // the Mac running the test (no `brew.env` or trust list of its own,
+    // no discovery prefix).
+    let adapter =
+        BrewAdapter::new(runner.clone()).reading_only_its_prefix(&prefix.join("Applications"));
     // Its `brew` under the same prefix, as detection finds it
     // (`<prefix>/bin/brew`): the uninstall looks at the pin again there,
     // right before it runs.

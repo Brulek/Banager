@@ -42,7 +42,10 @@ async fn upgrade_cask_failing_with(token: &str, stderr: &str) -> Outcome {
         vec![BREW, "info", "--installed", "--json=v2"],
         output(0, &info, ""),
     );
-    let adapter: Arc<dyn Adapter> = Arc::new(BrewAdapter::new(runner.clone()));
+    // Nothing of the Mac running the test is read: not its Cellar, pins
+    // or `brew.env` files.
+    let adapter: Arc<dyn Adapter> =
+        Arc::new(BrewAdapter::new(runner.clone()).reading_nothing_of_this_mac());
     let inst = ManagerInstance {
         exe_path: PathBuf::from(BREW),
         prefix: PathBuf::from("/opt/homebrew"),
@@ -129,7 +132,10 @@ async fn test_a_formula_whose_link_step_failed_says_it_is_not_linked() {
         vec![BREW, "info", "--installed", "--json=v2"],
         output(0, &info, ""),
     );
-    let adapter: Arc<dyn Adapter> = Arc::new(BrewAdapter::new(runner.clone()));
+    // Nothing of the Mac running the test is read: not its Cellar, pins
+    // or `brew.env` files.
+    let adapter: Arc<dyn Adapter> =
+        Arc::new(BrewAdapter::new(runner.clone()).reading_nothing_of_this_mac());
     let inst = ManagerInstance {
         exe_path: PathBuf::from(BREW),
         prefix: PathBuf::from("/opt/homebrew"),

@@ -255,7 +255,9 @@ async fn brew_upgrade_cask(
     runner.script(&BREW_INFO, infos.iter().map(|i| exited_0(i, "")).collect());
     upgrade(
         &runner,
-        Arc::new(BrewAdapter::new(runner.clone())),
+        // Nothing of the Mac running the test is read: not its Cellar,
+        // pins or `brew.env` files.
+        Arc::new(BrewAdapter::new(runner.clone()).reading_nothing_of_this_mac()),
         brew_instance(),
         ArtifactKind::Cask,
         token,
@@ -273,7 +275,9 @@ async fn brew_upgrade_formula(
     runner.script(&BREW_INFO, infos.iter().map(|i| exited_0(i, "")).collect());
     upgrade(
         &runner,
-        Arc::new(BrewAdapter::new(runner.clone())),
+        // Nothing of the Mac running the test is read: not its Cellar,
+        // pins or `brew.env` files.
+        Arc::new(BrewAdapter::new(runner.clone()).reading_nothing_of_this_mac()),
         brew_instance(),
         ArtifactKind::Formula,
         name,
@@ -611,7 +615,8 @@ async fn uv_upgrade(upgrade_output: CommandOutput, lists: Vec<String>) -> Outcom
     };
     upgrade(
         &runner,
-        Arc::new(UvAdapter::new(runner.clone())),
+        // Not the `UV_TOOL_DIR` of the Mac running the test.
+        Arc::new(UvAdapter::new(runner.clone()).with_tool_dir_fn(|| None)),
         inst,
         ArtifactKind::Tool,
         "ruff",

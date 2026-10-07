@@ -356,9 +356,12 @@ impl UvAdapter {
     }
 
     /// Test-only hook to set what `UV_TOOL_DIR` reads as (see
-    /// `tool_dir_fn`).
-    #[cfg(test)]
-    fn with_tool_dir_fn(mut self, tool_dir_fn: fn() -> Option<OsString>) -> UvAdapter {
+    /// `tool_dir_fn`). Public with the `test-support` feature, for the
+    /// integration tests, which are built without `cfg(test)` and so would
+    /// otherwise read the variable from the environment of the Mac running
+    /// them.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn with_tool_dir_fn(mut self, tool_dir_fn: fn() -> Option<OsString>) -> UvAdapter {
         self.tool_dir_fn = tool_dir_fn;
         self
     }
