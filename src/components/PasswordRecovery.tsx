@@ -30,9 +30,19 @@ function primaryCommand(action: PlanAction) {
  * record, and nothing submitted. Titled and worded as that log was: the
  * tool, 「更新 · 需要输入密码」 and the cause's step. A refused preview
  * says to check again, its reason behind the ⓘ in the window's words
- * (`planErrorMessage`), and shows no command.
+ * (`planErrorMessage`), and shows no command. The button is a row's
+ * (`regular`), or `small` on a 「最近的更新记录」 line, as that list's View
+ * Log is (r21 C7).
  */
-export function PasswordRecovery({ artifactKey, name }: { artifactKey: ArtifactKey; name: string }) {
+export function PasswordRecovery({
+  artifactKey,
+  name,
+  size = "regular",
+}: {
+  artifactKey: ArtifactKey;
+  name: string;
+  size?: "small" | "regular";
+}) {
   const { t } = useTranslation();
   const planner = usePlanOperation();
   const { data: settings } = useSettings();
@@ -96,7 +106,7 @@ export function PasswordRecovery({ artifactKey, name }: { artifactKey: ArtifactK
     <>
       <button
         type="button"
-        className={BUTTON.regular.grey}
+        className={size === "small" ? BUTTON.small.grey : BUTTON.regular.grey}
         onClick={() => void show()}
         aria-label={t("needsPassword.viewStepsLabel", { name })}
       >

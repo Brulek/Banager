@@ -639,6 +639,9 @@ describe("the columns of 「最近的更新记录」 (p1 polish)", () => {
     // A line's button after its words, in the words' column: not a cell of its own that moves the version.
     for (const name of ["View log: node@22", "View steps: example"]) {
       expect(screen.getByRole("button", { name }).closest("[data-just-updated-cell]")).toHaveAttribute("data-just-updated-cell", "ending");
+      // One size for the list's buttons, the small one beside its 11 words:
+      // a row's 24-high View Steps here wrapped its line (r21 C7).
+      expect(screen.getByRole("button", { name }).className).toBe(BUTTON.small.grey);
     }
     // An empty version keeps its cell too.
     expect(items[3].querySelector('[data-just-updated-cell="version"]')?.textContent).toBe("");

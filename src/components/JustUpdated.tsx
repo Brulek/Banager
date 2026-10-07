@@ -316,7 +316,7 @@ function lineAction(entry: JustUpdatedEntry) {
     return <FollowUpWarnings warnings={entry.ending.warnings} opId={entry.opId} name={entry.name} />;
   }
   if (entry.opId === null && entry.adapterId === "brew" && entry.ending.kind === "failed" && entry.ending.cause === "needsPassword") {
-    return <PasswordRecovery artifactKey={entry.key} name={entry.name} />;
+    return <PasswordRecovery artifactKey={entry.key} name={entry.name} size="small" />;
   }
   return null;
 }

@@ -3,6 +3,7 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { PasswordRecovery } from "./PasswordRecovery";
+import { BUTTON } from "./ui/controls";
 import type { ArtifactKey, IssuedPlan } from "../lib/types";
 
 const key: ArtifactKey = { instance_id: "brew:/opt/homebrew", kind: "Cask", name: "example" };
@@ -25,6 +26,15 @@ function open() {
   renderWithProviders(<PasswordRecovery artifactKey={key} name="Example" />);
   fireEvent.click(screen.getByRole("button", { name: "View steps: Example" }));
 }
+
+describe("View Steps' size", () => {
+  it("is a row's button unless asked for the small one, as a 「最近的更新记录」 line asks (r21 C7)", () => {
+    renderWithProviders(<PasswordRecovery artifactKey={key} name="Row" />);
+    renderWithProviders(<PasswordRecovery artifactKey={key} name="Line" size="small" />);
+    expect(screen.getByRole("button", { name: "View steps: Row" }).className).toBe(BUTTON.regular.grey);
+    expect(screen.getByRole("button", { name: "View steps: Line" }).className).toBe(BUTTON.small.grey);
+  });
+});
 
 describe("fresh password recovery preview", () => {
   it("copies only the freshly planned primary command, keeping its environment except askpass", async () => {
