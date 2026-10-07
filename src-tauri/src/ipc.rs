@@ -2092,9 +2092,12 @@ mod tests {
         );
         assert!(
             folded.contains(
-                "the window may ask for an upgrade only of an update the last check listed, an \
-                 uninstall only of a tool it listed installed, and a link only of a formula a \
-                 source's reason offers (`Session::issue_listed_plan`)"
+                "the window may ask for an upgrade only of an update the last check listed, or \
+                 of one it previewed less than ten minutes before whose tool the last check \
+                 still lists installed under the same source, kind and name, aimed at the \
+                 version it was offered then (When commands run), an uninstall only of a tool \
+                 it listed installed, and a link only of a formula a source's reason offers \
+                 (`Session::issue_listed_plan`)"
             ),
             "the never-list of docs/what-we-run.md does not say the window plans only what was listed"
         );
