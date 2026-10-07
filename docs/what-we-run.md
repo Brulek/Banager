@@ -4465,8 +4465,10 @@ holds -- a token in a query string (`?token=…`), a bare one, a login in a
 form those rules leave as written (`https://user:1234/rest@…`, a password
 with a quote in it, a proxy's login written with no scheme in a file
 Banager does not read) -- is copied as the tool wrote it. Settings' footnote under the button
-says the text includes the error details of a source that isn't responding
-(`diagnostics.footnote`), and its ⓘ what they can quote and what is hidden
+says the text includes the error details of a source that can't run, ran
+into an error or isn't responding (「无法运行、运行时出错或没有响应」, the
+window's three names for a source that did not answer;
+`diagnostics.footnote`), and its ⓘ what they can quote and what is hidden
 (`clarity.diagnosticsDetail`).
 
 Check Tool Setup (「检查工具环境」), in the Help menu, on the Overview and beside Copy

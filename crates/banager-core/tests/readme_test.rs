@@ -218,3 +218,20 @@ fn test_readme_traditional_chinese_summary_uses_the_windows_words() {
         );
     }
 }
+
+/// r31 E4: Copy Diagnostic Info adds a source's error details whatever way
+/// it gave no answer (`runner::no_answer::of` keeps them for all three), so
+/// the README names all three states as the window does -- not only
+/// "isn't responding", the one the window keeps for a source that ran out
+/// of time.
+#[test]
+fn test_readme_names_every_state_whose_error_details_diagnostic_info_includes() {
+    let readme = read_readme();
+    let (english, chinese) = blocks(&readme);
+    let english = english.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(english.contains(
+        "For a source that can't run, ran into an error or isn't responding, it includes the error details"
+    ));
+    assert!(squeeze(chinese)
+        .contains("无法运行、运行时出错或没有响应的来源会附上它的工具输出的错误详情"));
+}

@@ -1777,6 +1777,8 @@ fn test_what_we_run_has_the_diagnostic_info_section_saying_what_it_reads_and_nev
         // which leaves some forms as written.
         "as \"What a tool prints about a login\" reads one",
         "a login in a form those rules leave as written",
+        // r31 E4: every state whose error details the text includes.
+        "a source that can't run, ran into an error or isn't responding (「无法运行、运行时出错或没有响应」",
         "`diagnostics.footnote`",
         "`clarity.diagnosticsDetail`",
         "the Help menu's Copy Diagnostic Info… (「拷贝诊断信息…」) only opens Settings on that button, focused, so the copy is always the button's click",

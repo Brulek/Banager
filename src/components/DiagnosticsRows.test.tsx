@@ -186,7 +186,7 @@ describe("Settings' Diagnostics group", () => {
     expect(controls[1]).toHaveTextContent("Copy Diagnostic Info");
     const footnote = group.nextElementSibling as HTMLElement;
     expect(footnote).toHaveTextContent(
-      "Paste it to whoever is helping you. It lists your tools only when the checkbox is selected, and includes the error details of any source that isn't responding.",
+      "Paste it to whoever is helping you. It lists your tools only when the checkbox is selected, and includes the error details of any source that can't run, ran into an error or isn't responding.",
     );
     // The details behind its ⓘ.
     fireEvent.click(within(footnote).getByRole("button", { name: "Details: Diagnostic info" }));
@@ -211,6 +211,25 @@ describe("Settings' Diagnostics group", () => {
       const detail = i18n.getFixedT(language)("clarity.diagnosticsDetail");
       expect(detail).toContain(hedged);
       expect(detail).not.toContain(flat);
+    }
+  });
+
+  it("names, in each language, every state of a source whose error details the text includes (r31 E4)", () => {
+    // `NoAnswer.diagnostic` is kept for all three ways a source gives no
+    // answer (crates/banager-core/src/runner/no_answer.rs), and
+    // `diagnosticsText` adds it whatever the kind. The window names two of
+    // them in words of their own (`saidNoAnswer`, src/lib/noAnswer.ts) and
+    // keeps "isn't responding" for the one that ran out of time: the
+    // footnote names all three as the notices' titles do, so a source that
+    // "ran into an error" does not read as left out.
+    for (const language of ["en", "zh-CN", "zh-Hant"]) {
+      const t = i18n.getFixedT(language);
+      const footnote = t("diagnostics.footnote");
+      for (const key of ["noAnswer.title.CouldNotStart", "noAnswer.title.ExitedWithError", "sourceNotice.unreachable.title"]) {
+        const state = t(key, { source: "" }).trim();
+        expect(state.length, `${language} ${key}`).toBeGreaterThan(0);
+        expect(footnote, `${language} ${key}`).toContain(state);
+      }
     }
   });
 });

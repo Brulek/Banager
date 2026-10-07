@@ -1334,7 +1334,7 @@
     "label": "Diagnostic info",
     "copy": "Copy Diagnostic Info",
     "includeTools": "Include the list of tools",
-    "footnote": "Paste it to whoever is helping you. It lists your tools only when the checkbox is selected, and includes the error details of any source that isn't responding.",
+    "footnote": "Paste it to whoever is helping you. It lists your tools only when the checkbox is selected, and includes the error details of any source that can't run, ran into an error or isn't responding.",
     "text": {
       "title": "Diagnostic info",
       "time": "Time: {{time}}",
