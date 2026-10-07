@@ -475,6 +475,11 @@ fn walk_folder(
             tally.partial = true;
             continue;
         }
+        // A folder outside every place holds one only as an entry of its
+        // own (`Documents` in the home folder a kept-data link leads to),
+        // and only when a place is inside it (`Protected::under`): asked
+        // once a folder, not once an entry of a tool's folder holding none.
+        let holds_a_place = protected.under(&folder);
         // The time before a folder is listed, as listing one takes time.
         // Entries that have run out stop the walk at the first entry the
         // folder lists (`take`): one that lists nothing -- or only what
@@ -519,6 +524,11 @@ fn walk_folder(
                 tally.partial = true;
                 continue;
             };
+            // Even a protected place itself must not be statted.
+            if holds_a_place && protected.contains(&folder.join(&name)) {
+                tally.partial = true;
+                continue;
+            }
             // `fstatat` without following: a link is the link.
             let meta = match dir.stat_at(&name) {
                 Ok(meta) => meta,
@@ -685,6 +695,12 @@ enum JobResult {
 }
 
 impl Job {
+    fn not_reached() -> Job {
+        let mut job = Job::new((Vec::new(), String::new()), Vec::new(), false);
+        job.result = Some(JobResult::NotReached);
+        job
+    }
+
     fn new(key: CacheKey, roots: Vec<PathBuf>, partial: bool) -> Job {
         Job {
             key,
@@ -921,7 +937,16 @@ fn resolve_roots(roots: &[PathBuf], protected: &Protected) -> Option<(Vec<PathBu
 
 /// A Homebrew formula's other kegs: every real folder in
 /// `<prefix>/Cellar/<name>` but `current`'s, as one job.
-fn old_versions_job(cellar_name: &Path, current: &str, protected: &Protected) -> Option<Job> {
+fn old_versions_job(
+    cellar_name: &Path,
+    current: &str,
+    protected: &Protected,
+    budget: &mut Budget,
+    wanted: &mut impl FnMut() -> bool,
+) -> Option<Job> {
+    if !wanted() || budget.entries_left == 0 || budget.out_of_time() {
+        return Some(Job::not_reached());
+    }
     let Resolution::Found(folder, meta) = resolve(cellar_name, protected, false) else {
         return None;
     };
@@ -933,16 +958,33 @@ fn old_versions_job(cellar_name: &Path, current: &str, protected: &Protected) ->
     if !opened.same_as(&meta) {
         return None;
     }
-    let mut versions: Vec<String> = dir
-        .entries()
-        .ok()?
-        .filter_map(|entry| {
-            let entry = entry.ok()?;
-            let name = entry.to_str()?.to_string();
-            let meta = dir.stat_at(&entry).ok()?;
-            (plain(&name) && name != current && meta.is_dir()).then_some(name)
-        })
-        .collect();
+    let mut entries = dir.entries().ok()?;
+    let mut versions = Vec::new();
+    loop {
+        // Planning shares the walk's entry/time budget and supersession
+        // check. No unbounded collection before either can take effect.
+        if !wanted() || !budget.take() {
+            return Some(Job::not_reached());
+        }
+        let Some(entry) = entries.next() else {
+            break;
+        };
+        if !wanted() || budget.out_of_time() {
+            return Some(Job::not_reached());
+        }
+        let Ok(entry) = entry else {
+            continue;
+        };
+        let Some(name) = entry.to_str() else {
+            continue;
+        };
+        if !plain(name) || name == current {
+            continue;
+        }
+        if dir.stat_at(&entry).is_ok_and(|meta| meta.is_dir()) {
+            versions.push(name.to_string());
+        }
+    }
     if versions.is_empty() {
         return None;
     }
@@ -964,6 +1006,8 @@ fn plan_round(
     instances: &[ManagerInstance],
     artifacts: &[InstalledArtifact],
     protected: &Protected,
+    budget: &mut Budget,
+    wanted: &mut impl FnMut() -> bool,
 ) -> Vec<Unit> {
     let by_id: HashMap<&str, &ManagerInstance> = instances
         .iter()
@@ -975,17 +1019,41 @@ fn plan_round(
         let Some(inst) = by_id.get(artifact.key.instance_id.as_str()) else {
             continue;
         };
+        if !wanted() {
+            return units;
+        }
+        let exhausted = budget.entries_left == 0 || budget.out_of_time();
+        // A Cargo tool may have no path in the snapshot. Its record is
+        // needed to find its programs, but may not be read after the limit.
+        if exhausted && inst.adapter_id == "cargo" {
+            units.push(Unit {
+                target: Target::Artifact { index },
+                order: (1, index),
+                main: Job::not_reached(),
+                old: None,
+            });
+            continue;
+        }
         let Some((roots, order)) = roots_of(inst, artifact, protected, &mut crates) else {
             continue;
         };
+        if exhausted {
+            units.push(Unit {
+                target: Target::Artifact { index },
+                order: (order, index),
+                main: Job::not_reached(),
+                old: None,
+            });
+            continue;
+        }
         let Some((roots, partial)) = resolve_roots(&roots, protected) else {
             continue;
         };
         let key = (roots.clone(), artifact.version.clone());
         let old = if inst.adapter_id == "brew" && artifact.key.kind == ArtifactKind::Formula {
-            roots[0]
-                .parent()
-                .and_then(|cellar_name| old_versions_job(cellar_name, &artifact.version, protected))
+            roots[0].parent().and_then(|cellar_name| {
+                old_versions_job(cellar_name, &artifact.version, protected, budget, wanted)
+            })
         } else {
             None
         };
@@ -1005,6 +1073,21 @@ fn plan_round(
             .filter(|a| a.key.instance_id == inst.id && a.key.kind == ArtifactKind::Model)
             .collect();
         if models.is_empty() {
+            continue;
+        }
+        if !wanted() {
+            return units;
+        }
+        if budget.entries_left == 0 || budget.out_of_time() {
+            units.push(Unit {
+                target: Target::Models {
+                    instance_id: inst.id.clone(),
+                    floor: 0,
+                },
+                order: (0, units.len()),
+                main: Job::not_reached(),
+                old: None,
+            });
             continue;
         }
         let blobs = inst.prefix.join("models").join("blobs");
@@ -1158,7 +1241,10 @@ impl SizeMeter {
         home: &Path,
     ) {
         let protected = Protected::new(home);
-        let mut units = plan_round(instances, artifacts, &protected);
+        let mut budget = Budget::new(self.budget);
+        let mut units = plan_round(instances, artifacts, &protected, &mut budget, &mut || {
+            self.wanted(round)
+        });
         if !self.wanted(round) {
             return;
         }
@@ -1172,6 +1258,9 @@ impl SizeMeter {
             cache.retain(|key, _| planned.contains(key));
             for unit in &mut units {
                 for job in std::iter::once(&mut unit.main).chain(unit.old.as_mut()) {
+                    if job.result.is_some() {
+                        continue;
+                    }
                     if let Some(walked) = cache.get(&job.key) {
                         if walked.complete() {
                             job.result = Some(JobResult::Walked(walked.clone()));
@@ -1185,7 +1274,6 @@ impl SizeMeter {
         if !self.publish(round, sizes_of(round, artifacts, &units, false)) {
             return;
         }
-        let mut budget = Budget::new(self.budget);
         let mut shown = Instant::now();
         // First what no round has measured yet, then again what an earlier
         // round could only measure in part: a folder bigger than the whole
@@ -1435,6 +1523,41 @@ mod tests {
             parent: Rc::new(parent),
             name,
             meta,
+        }
+    }
+
+    #[test]
+    fn test_kept_data_links_to_ancestors_never_stat_protected_children() {
+        let scratch = Scratch::new("kept-ancestors");
+        let home = scratch.dir("home");
+        for place in [
+            "Documents",
+            "Desktop",
+            "Downloads",
+            "Pictures",
+            "Movies",
+            "Music",
+            "Library/Containers",
+            "Library/Group Containers",
+            "Library/CloudStorage",
+            "Library/Mobile Documents",
+        ] {
+            scratch.file(&format!("home/{place}/private"), 16);
+        }
+        let protected = Protected::new(&home);
+        for (name, target) in [(".claude", home.join("Library")), (".codex", home.clone())] {
+            let link = home.join(name);
+            symlink(target, &link).unwrap();
+            let mut budget = LookBudget::new(SizeBudget::default());
+            let ((answer, _), made) =
+                crate::dirfd::calls::measure(|| look_at(&link, &protected, &mut budget, &[]));
+            for (call, path) in made.paths {
+                assert!(!protected.contains(&path), "{call:?} looked at {path:?}");
+            }
+            assert!(matches!(
+                answer,
+                Looked::There(Some(Measured { partial: true, .. }))
+            ));
         }
     }
 
@@ -2050,6 +2173,154 @@ mod tests {
             &home,
         );
         assert!(sizes.models.is_empty());
+    }
+
+    #[test]
+    fn test_size_planning_checks_time_and_supersession_before_reads() {
+        let scratch = Scratch::new("planning-stop");
+        let prefix = scratch.dir("brew");
+        scratch.file("brew/Cellar/tool/1/bin/tool", 8);
+        let instances = [instance("brew", "brew:test", &prefix)];
+        let artifacts = [artifact(
+            "brew:test",
+            ArtifactKind::Formula,
+            "tool",
+            "1",
+            None,
+        )];
+        for (duration, wanted) in [(Duration::ZERO, true), (Duration::from_secs(30), false)] {
+            let mut budget = Budget::new(SizeBudget {
+                max_entries: 10,
+                max_duration: duration,
+            });
+            let (units, made) = crate::dirfd::calls::measure(|| {
+                plan_round(
+                    &instances,
+                    &artifacts,
+                    &Protected::default(),
+                    &mut budget,
+                    &mut || wanted,
+                )
+            });
+            assert_eq!(made.total(), 0);
+            assert_eq!(made.entries, 0);
+            if wanted {
+                assert!(units[0].not_reached());
+            } else {
+                assert!(units.is_empty());
+            }
+        }
+        // Superseded part way through the names: the name just read is not
+        // statted, nor any after it. Two other versions, neither of them
+        // the current one, so that a folder read to its end stats both.
+        scratch.file("brew/Cellar/tool/2/bin/tool", 8);
+        let versions_statted = |made: &crate::dirfd::calls::Calls| {
+            made.paths
+                .iter()
+                .filter(|(call, path)| {
+                    *call == crate::dirfd::calls::Call::StatAt
+                        && path
+                            .parent()
+                            .is_some_and(|in_| in_.ends_with("Cellar/tool"))
+                })
+                .count()
+        };
+        let mut budget = Budget::new(SizeBudget::default());
+        let (job, made) = crate::dirfd::calls::measure(|| {
+            old_versions_job(
+                &prefix.join("Cellar/tool"),
+                "0",
+                &Protected::default(),
+                &mut budget,
+                &mut || true,
+            )
+        });
+        assert_eq!(job.unwrap().roots.len(), 2);
+        assert_eq!(versions_statted(&made), 2);
+        let mut budget = Budget::new(SizeBudget::default());
+        let mut checks = 0;
+        let (job, made) = crate::dirfd::calls::measure(|| {
+            old_versions_job(
+                &prefix.join("Cellar/tool"),
+                "0",
+                &Protected::default(),
+                &mut budget,
+                // Yes on entry and before the first name is read; no once
+                // it has been.
+                &mut || {
+                    checks += 1;
+                    checks < 3
+                },
+            )
+        });
+        assert!(matches!(job.unwrap().result, Some(JobResult::NotReached)));
+        assert_eq!(made.entries, 1);
+        assert_eq!(versions_statted(&made), 0);
+    }
+
+    #[test]
+    fn test_unfinished_old_version_planning_keeps_cached_total_incomplete() {
+        let scratch = Scratch::new("planning-cached");
+        let home = scratch.dir("home");
+        let prefix = scratch.dir("brew");
+        scratch.file("brew/Cellar/tool/0/bin/tool", 64);
+        let instances = [instance("brew", "brew:test", &prefix)];
+        let artifacts = [artifact(
+            "brew:test",
+            ArtifactKind::Formula,
+            "tool",
+            "0",
+            None,
+        )];
+        let (meter, _) = recording_meter(SizeBudget {
+            max_entries: 12,
+            max_duration: Duration::from_secs(30),
+        });
+        let first = run(&meter, 1, &instances, &artifacts, &home);
+        assert!(!first.total.unwrap().at_least);
+        for index in 1..32 {
+            scratch.file(&format!("brew/Cellar/tool/{index}/bin/tool"), 8);
+        }
+        let second = run(&meter, 2, &instances, &artifacts, &home);
+        assert!(second.total.unwrap().at_least);
+        assert!(second.sources[0].measured.at_least);
+        assert_eq!(second.artifacts[0].measured, first.artifacts[0].measured);
+        assert!(second.artifacts[0].old_versions.is_none());
+    }
+
+    #[test]
+    fn test_old_version_planning_spends_the_round_budget() {
+        let scratch = Scratch::new("planning-budget");
+        let home = scratch.dir("home");
+        let prefix = scratch.dir("brew");
+        for index in 0..32 {
+            scratch.file(&format!("brew/Cellar/tool/{index}/bin/tool"), 8);
+        }
+        let (meter, _) = recording_meter(SizeBudget {
+            max_entries: 4,
+            max_duration: Duration::from_secs(30),
+        });
+        let (sizes, made) = crate::dirfd::calls::measure(|| {
+            run(
+                &meter,
+                1,
+                &[instance("brew", "brew:test", &prefix)],
+                &[artifact(
+                    "brew:test",
+                    ArtifactKind::Formula,
+                    "tool",
+                    "0",
+                    None,
+                )],
+                &home,
+            )
+        });
+        assert!(made.entries <= 4, "planning read {} names", made.entries);
+        assert!(sizes.done);
+        assert!(sizes
+            .artifacts
+            .iter()
+            .all(|a| a.measured.is_none() || a.measured.is_some_and(|m| m.at_least || m.partial)));
     }
 
     #[test]

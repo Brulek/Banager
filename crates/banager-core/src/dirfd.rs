@@ -587,6 +587,8 @@ impl Iterator for Entries {
             if name == b"." || name == b".." {
                 continue;
             }
+            #[cfg(test)]
+            calls::note_entry();
             return Some(Ok(OsString::from_vec(name.to_vec())));
         }
         None
@@ -631,6 +633,7 @@ pub(crate) mod calls {
 
     #[derive(Clone, Debug, Default)]
     pub(crate) struct Calls {
+        pub entries: usize,
         pub root: usize,
         pub stat_at: usize,
         pub stat_beneath: usize,
@@ -658,6 +661,14 @@ pub(crate) mod calls {
 
     thread_local! {
         static ACTIVE: RefCell<Option<Calls>> = const { RefCell::new(None) };
+    }
+
+    pub(super) fn note_entry() {
+        ACTIVE.with(|active| {
+            if let Some(calls) = active.borrow_mut().as_mut() {
+                calls.entries += 1;
+            }
+        });
     }
 
     pub(super) fn note(call: Call, dir: Option<&Dir>, names: &[&OsStr]) {

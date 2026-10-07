@@ -45,7 +45,7 @@ use crate::model::{ArtifactKind, InstalledArtifact, InstanceId, ManagerInstance,
 use crate::protected::{self, Protected, Resolution};
 use crate::runner::HostEnv;
 use serde::{Deserialize, Serialize};
-use std::ffi::{OsStr, OsString};
+use std::ffi::OsStr;
 use std::path::{Component, Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -978,9 +978,9 @@ fn examine(
 /// that do not exist, or that cannot be reached or listed, are skipped
 /// without a trace; each distinct directory (by where it leads) is read
 /// once, listed from `/` with no link followed and only while it is still
-/// the folder `resolve` found (`dirfd`); entries are taken in name order
-/// so a stop at the budget is reproducible. The time budget is checked
-/// before every listing, and both limits before every entry
+/// the folder `resolve` found (`dirfd`). Names are read incrementally;
+/// only retained results are sorted. Time is checked before each read;
+/// one lookahead name distinguishes a full entry budget from an overrun
 /// (`ScanBudget`); when one trips, what was examined so far is returned
 /// as it is, with `stopped` saying which limit -- a directory whose first
 /// entry tripped it is not reported as read. `globs` are the installed
@@ -1011,7 +1011,7 @@ pub fn scan_dirs(
     let mut stopped = None;
     let mut examined = 0usize;
     let mut seen: Vec<PathBuf> = Vec::new();
-    'dirs: for dir in dirs {
+    for dir in dirs {
         let (canonical, stat) = match protected::resolve(dir, &protected, true) {
             Resolution::Found(canonical, stat) if stat.is_dir() => (canonical, stat),
             Resolution::Found(..) | Resolution::Missing | Resolution::Refused => continue,
@@ -1042,31 +1042,33 @@ pub fn scan_dirs(
                 let names = folder.entries().ok()?;
                 Some((folder, names))
             });
-        let Some((folder, read)) = listed else {
+        let Some((folder, mut read)) = listed else {
             continue;
         };
-        let mut names: Vec<OsString> = read.filter_map(Result::ok).collect();
-        names.sort();
+        let first = entries.len();
         let mut count = 0u32;
-        for name in names {
-            let over_budget = if examined >= budget.max_entries {
-                Some(file_stop.clone())
-            } else if started.elapsed() >= budget.max_duration {
-                Some(time_stop.clone())
-            } else {
-                None
+        loop {
+            if started.elapsed() >= budget.max_duration {
+                stopped = Some(time_stop.clone());
+                break;
+            }
+            // One lookahead distinguishes exactly-full from cut short.
+            // It is never statted or retained past the entry cap.
+            let Some(name) = read.next() else {
+                break;
             };
-            if let Some(stop) = over_budget {
-                stopped = Some(stop);
-                if count > 0 {
-                    scanned.push(ScannedDir {
-                        path: display_path(dir, &env.home),
-                        entries: count,
-                    });
-                }
-                break 'dirs;
+            if started.elapsed() >= budget.max_duration {
+                stopped = Some(time_stop.clone());
+                break;
+            }
+            if examined >= budget.max_entries {
+                stopped = Some(file_stop.clone());
+                break;
             }
             examined += 1;
+            let Ok(name) = name else {
+                continue;
+            };
             count += 1;
             // An entry that is itself one of the protected places --
             // `Documents` in a home folder that is on `PATH`, `Containers`
@@ -1091,10 +1093,16 @@ pub fn scan_dirs(
                 None => entries.push(found.entry),
             }
         }
-        scanned.push(ScannedDir {
-            path: display_path(dir, &env.home),
-            entries: count,
-        });
+        entries[first..].sort_by(|a, b| a.path.cmp(&b.path));
+        if count > 0 || stopped.is_none() {
+            scanned.push(ScannedDir {
+                path: display_path(dir, &env.home),
+                entries: count,
+            });
+        }
+        if stopped.is_some() {
+            break;
+        }
     }
     UnknownScan {
         scanned,
@@ -1133,6 +1141,46 @@ mod tests {
     use super::*;
     use crate::runner::HostEnv;
     use std::path::Path;
+
+    #[test]
+    fn test_directory_enumeration_stops_at_the_scan_budget() {
+        let raw =
+            std::env::temp_dir().join(format!("banager-scan-enumeration-{}", std::process::id()));
+        std::fs::create_dir_all(&raw).unwrap();
+        let dir = std::fs::canonicalize(&raw).unwrap();
+        for index in 0..32 {
+            std::fs::write(dir.join(format!("tool-{index}")), b"x").unwrap();
+        }
+        let env = HostEnv {
+            home: dir.clone(),
+            path_dirs: vec![dir.clone()],
+            euid: 501,
+            cargo_home: None,
+            rustup_home: None,
+            zdotdir: None,
+            ollama_host: None,
+        };
+        let (scan, made) = crate::dirfd::calls::measure(|| {
+            scan_dirs(
+                std::slice::from_ref(&dir),
+                &env,
+                &[],
+                &[],
+                &[],
+                ScanBudget {
+                    max_entries: 4,
+                    max_duration: Duration::from_secs(10),
+                },
+            )
+        });
+        std::fs::remove_dir_all(&raw).unwrap();
+        assert_eq!(scan.stopped, Some(ScanStop::FileLimit { max_entries: 4 }));
+        assert!(made.entries <= 5, "scan read {} names", made.entries);
+        // Four examined and reported as read; the fifth name, read only to
+        // tell a full budget from a cut-short one, is not.
+        assert_eq!(scan.scanned.len(), 1);
+        assert_eq!(scan.scanned[0].entries, 4);
+    }
 
     #[test]
     fn test_scan_budget_default_is_the_spec_numbers() {

@@ -150,6 +150,12 @@ impl Listing<'_> {
         &self.path
     }
 
+    /// Names one at a time, so callers can check their budget before
+    /// each read and stop without collecting the rest of the folder.
+    pub fn entries(&self) -> io::Result<crate::dirfd::Entries> {
+        self.dir.entries()
+    }
+
     /// Every name in the folder, `.` and `..` left out, unsorted.
     pub fn names(&self) -> io::Result<Vec<OsString>> {
         self.dir.entries()?.collect()

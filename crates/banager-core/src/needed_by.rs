@@ -137,8 +137,10 @@ fn counts(adapter_id: &str, tool: &InstalledArtifact) -> bool {
 
 /// How much one preview may look at, and for how long, before it gives up
 /// on what it has not reached: links followed one path at a time, each
-/// path one look. A Mac's sources take a few dozen; a pipx or uv with
-/// hundreds of tools, a few hundred.
+/// path one look, and each name read from a folder one look more
+/// (`Look::any_name_in`). A Mac's sources take a few dozen; a pipx or uv
+/// with hundreds of tools, a few hundred; an app's `Contents/Resources`,
+/// read only for a cask in doubt, up to about a thousand.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Budget {
     pub max_looks: usize,
@@ -576,42 +578,41 @@ impl Look {
         let Some(caskroom) = roots.first() else {
             return false;
         };
-        let folders = match self.names_in(caskroom, roots) {
-            Ok(folders) => folders,
-            Err(known) => return known,
-        };
-        folders
-            .iter()
-            .filter(|name| !name.as_encoded_bytes().starts_with(b"."))
-            .any(|name| self.holds(&caskroom.join(name).join("bin"), roots, programs, python))
+        self.any_name_in(caskroom, roots, |look, name| {
+            !name.as_encoded_bytes().starts_with(b".")
+                && look.holds(&caskroom.join(name).join("bin"), roots, programs, python)
+        })
     }
 
     /// Whether the folder `path` leads to, inside `roots`, has an entry
     /// named one of `programs`, or, for `python`, a Python interpreter
-    /// (`is_python`): its names, read once (`names_in`).
+    /// (`is_python`): its names read until the first such one
+    /// (`any_name_in`), and a yes too where that is not known.
     fn holds(&mut self, path: &Path, roots: &[PathBuf], programs: &[String], python: bool) -> bool {
-        match self.names_in(path, roots) {
-            Ok(names) => names.iter().filter_map(|name| name.to_str()).any(|name| {
+        self.any_name_in(path, roots, |_, name| {
+            name.to_str().is_some_and(|name| {
                 (python && is_python(name)) || programs.iter().any(|program| program == name)
-            }),
-            Err(known) => known,
-        }
+            })
+        })
     }
 
-    /// The names in the folder `path` leads to, when it is inside `roots`
-    /// (`protected::look::list`: one step at a time, never into a
-    /// protected place, `.` and `..` left out), one look; or what to make
-    /// of not having them: `Err(false)` for a folder that is not there,
-    /// not a folder, or outside `roots`; `Err(true)` -- it could hold
-    /// anything -- for one not known: protected, not searchable, replaced
-    /// while it was looked at, or the budget spent.
-    fn names_in(
+    /// Whether `found` says yes to a name in the folder `path` leads to,
+    /// when it is inside `roots` (`protected::look::list`: one step at a
+    /// time, never into a protected place, `.` and `..` left out): one look
+    /// to reach it, then one before each name read, one name held at a
+    /// time and none read after the first yes. `true` too -- it could hold
+    /// anything -- where that is not known: the folder is protected, not
+    /// searchable or replaced while it was looked at, a name could not be
+    /// read, or the budget ran out first; `false` for a folder that is not
+    /// there, not a folder or outside `roots`, and for one read to its end.
+    fn any_name_in(
         &mut self,
         path: &Path,
         roots: &[PathBuf],
-    ) -> Result<Vec<std::ffi::OsString>, bool> {
+        mut found: impl FnMut(&mut Self, &std::ffi::OsStr) -> bool,
+    ) -> bool {
         if !self.one_more() {
-            return Err(true);
+            return true;
         }
         let listing = match look::list(path, &self.protected) {
             Ok(listing) => listing,
@@ -621,18 +622,39 @@ impl Look {
                     std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
                 ) =>
             {
-                return Err(false)
+                return false
             }
-            Err(_) => return Err(true),
+            Err(_) => return true,
         };
         let real = protected::without_data_volume(listing.path());
         if !roots
             .iter()
             .any(|root| protected::starts_with_folded(&real, &protected::without_data_volume(root)))
         {
-            return Err(false);
+            return false;
         }
-        listing.names().map_err(|_| true)
+        let Ok(mut entries) = listing.entries() else {
+            return true;
+        };
+        drop(listing);
+        loop {
+            if !self.one_more() {
+                return true;
+            }
+            match entries.next() {
+                None => return false,
+                Some(Err(_)) => return true,
+                Some(Ok(name)) => {
+                    if self.started.elapsed() >= self.budget.max_duration {
+                        self.over = true;
+                        return true;
+                    }
+                    if found(self, &name) {
+                        return true;
+                    }
+                }
+            }
+        }
     }
 
     /// The first `name` on `env`'s `PATH`, as `env` would find it: what
@@ -1451,6 +1473,50 @@ mod tests {
                 complete: false
             }
         );
+    }
+
+    #[test]
+    fn test_directory_search_stops_at_a_match_or_deadline() {
+        let root = Root::new("names-match");
+        let bin = root.dir("package/bin");
+        for index in 0..32 {
+            root.program(&format!("package/bin/python3.{index}"));
+        }
+        let mut look = Look::new(&root.home(), BUDGET);
+        let (found, made) = crate::dirfd::calls::measure(|| {
+            look.holds(&bin, std::slice::from_ref(&bin), &[], true)
+        });
+        assert!(found && !look.over);
+        assert_eq!(made.entries, 1);
+        look.started = Instant::now() - BUDGET.max_duration;
+        let (unknown, made) = crate::dirfd::calls::measure(|| {
+            look.holds(&bin, std::slice::from_ref(&bin), &[], true)
+        });
+        assert!(unknown && look.over);
+        assert_eq!(made.total(), 0);
+        assert_eq!(made.entries, 0);
+    }
+
+    #[test]
+    fn test_directory_names_spend_the_dependency_budget() {
+        let root = Root::new("names-budget");
+        let bin = root.dir("package/bin");
+        for index in 0..32 {
+            root.program(&format!("package/bin/unrelated-{index}"));
+        }
+        let mut look = Look::new(
+            &root.home(),
+            Budget {
+                max_looks: 4,
+                max_duration: Duration::from_secs(1),
+            },
+        );
+        let (unknown, made) = crate::dirfd::calls::measure(|| {
+            look.holds(&bin, std::slice::from_ref(&bin), &[], true)
+        });
+        assert!(unknown, "exhaustion must leave the dependency unknown");
+        assert!(look.over);
+        assert!(made.entries <= 4, "read {} names", made.entries);
     }
 
     #[test]
