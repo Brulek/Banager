@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { screen, waitFor, fireEvent, within } from "@testing-library/react";
+import { act, screen, waitFor, fireEvent, within } from "@testing-library/react";
+import type { QueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { command } from "../test/command";
@@ -8,6 +9,7 @@ import { LinkFixSheet, linkRequest } from "./LinkFixSheet";
 import { SourceNotices } from "./SourceNotices";
 import { artifactKeyId } from "../store/ui";
 import { sourceNoticesFor } from "../lib/sources";
+import { queryKeys } from "../lib/queries";
 import type { IssuedPlan, LinkFix, ManagerInstance, OpRequest, Plan, Snapshot, Warning } from "../lib/types";
 
 const NODE_22: LinkFix = {
@@ -623,4 +625,74 @@ describe("LinkFixSheet to a screen reader (r27 A3)", () => {
     );
     expect(dialog).toHaveAccessibleDescription(expect.stringContaining("/opt/homebrew/bin/npm is already linked to it."));
   });
+
+  /** A fresh snapshot while the sheet is open, as an operation that finishes behind it brings. */
+  function refreshWith(queryClient: QueryClient, npm: ManagerInstance) {
+    act(() => {
+      queryClient.setQueryData(queryKeys.snapshot, { ...snapshotWith(npm), generation: 2 });
+    });
+  }
+
+  it.each(["en", "zh-CN"])(
+    "says the question a fresh snapshot turns the refusal back into, with no choice in the popup, in %s",
+    async (language) => {
+      await i18n.changeLanguage(language);
+      try {
+        const warningsOf = (name: string) => (name === "node@22" ? inTheWay : linkable);
+        const npm = npmWithout([NODE_22]);
+        backendBy(npm, warningsOf);
+        const { queryClient } = renderWithProviders(<LinkFixSheet instanceId={npm.id} onClose={() => {}} />);
+        const blockedTitle = i18n.t("noAnswer.sheet.blockedTitle", { formula: "node@22" });
+        const dialog = await screen.findByRole("alertdialog", { name: blockedTitle });
+        const status = saidStatus(dialog);
+        await waitFor(() => expect(status).toHaveTextContent(new RegExp(`^${blockedTitle}`)));
+        const close = within(dialog).getByRole("button", { name: i18n.t("common.close") });
+        expect(close).toHaveFocus();
+
+        // node@20 is put first: the sheet is its question, the focused
+        // Close renamed Cancel where it stands, Link the default again.
+        const later = npmWithout([NODE_20, NODE_22]);
+        backendBy(later, warningsOf);
+        refreshWith(queryClient, later);
+        const question = i18n.t("noAnswer.sheet.title", { formula: "node@20" });
+        await screen.findByRole("alertdialog", { name: question });
+        await waitFor(() => expect(status.textContent).toBe(question));
+        expect(saidStatus(dialog)).toBe(status);
+        expect(close).toHaveFocus();
+        expect(close).toHaveAccessibleName(i18n.t("common.cancel"));
+        expect(within(dialog).getByRole("button", { name: i18n.t("noAnswer.sheet.confirm") })).toBeEnabled();
+      } finally {
+        await i18n.changeLanguage("en");
+      }
+    },
+  );
+
+  it.each(["en", "zh-CN"])(
+    "says the other question a fresh snapshot puts first where the sheet opened on one, in %s",
+    async (language) => {
+      await i18n.changeLanguage(language);
+      try {
+        const npm = npmWithout([NODE_20]);
+        backendBy(npm, () => linkable);
+        const { queryClient } = renderWithProviders(<LinkFixSheet instanceId={npm.id} onClose={() => {}} />);
+        const dialog = await screen.findByRole("alertdialog", {
+          name: i18n.t("noAnswer.sheet.title", { formula: "node@20" }),
+        });
+        const link = within(dialog).getByRole("button", { name: i18n.t("noAnswer.sheet.confirm") });
+        await waitFor(() => expect(link).toBeEnabled());
+        const status = saidStatus(dialog);
+        expect(status).toHaveTextContent(/^$/);
+
+        const later = npmWithout([NODE_22, NODE_20]);
+        backendBy(later, () => linkable);
+        refreshWith(queryClient, later);
+        const question = i18n.t("noAnswer.sheet.title", { formula: "node@22" });
+        await screen.findByRole("alertdialog", { name: question });
+        await waitFor(() => expect(status.textContent).toBe(question));
+        expect(saidStatus(dialog)).toBe(status);
+      } finally {
+        await i18n.changeLanguage("en");
+      }
+    },
+  );
 });

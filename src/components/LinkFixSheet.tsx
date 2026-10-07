@@ -244,13 +244,32 @@ export function LinkFixSheet({ instanceId, onClose }: LinkFixSheetProps) {
   // the two buttons the focus is among are renamed where they stand --
   // Cancel to Close, Link to Check Again. So the refusal is said, its
   // title and what is in the way, 「无法链接“node@22”：…因此无法链接。」.
-  // And where a choice in the version popup turns it back into a question
-  // -- node@20, after node@22 could not be linked -- that question, whose
-  // default button is Link again. Nothing while it checks, which
+  // And any question it turns into after its first answer, whichever
+  // turned it -- a choice in the version popup (node@20, after node@22
+  // could not be linked), or a fresh snapshot that puts another formula
+  // first while it is open -- that question, whose default button may be
+  // Link again where the focus is. Nothing while it checks, which
   // `SheetPending` says, and nothing as it opens on a question, which the
   // alert's own name says.
+  const shown = open && fix !== undefined;
+  const answer =
+    plan === undefined || fix === undefined ? null : `${blocked ? "refusal" : "question"} ${artifactKeyId(fix.key)}`;
+  // The first answer while it is shown, and whether another has come since.
+  const [answers, setAnswers] = useState<{ first: string; turned: boolean } | null>(null);
+  useEffect(() => {
+    if (!shown) setAnswers(null);
+    else if (answer !== null)
+      setAnswers((was) =>
+        was === null
+          ? { first: answer, turned: false }
+          : was.turned || answer === was.first
+            ? was
+            : { first: was.first, turned: true },
+      );
+  }, [shown, answer]);
+  const turned = answers !== null && answer !== null && (answers.turned || answer !== answers.first);
   const said =
-    plan === undefined || fix === undefined
+    answer === null
       ? ""
       : blocked
         ? t("noAnswer.sheet.blockedSaid", {
@@ -259,12 +278,12 @@ export function LinkFixSheet({ instanceId, onClose }: LinkFixSheetProps) {
               .map((line) => line.text)
               .reduce((first, then) => t("noAnswer.sheet.then", { first, then })),
           })
-        : chosen !== null
+        : turned
           ? title
           : "";
   return (
     <Dialog
-      open={open && fix !== undefined}
+      open={shown}
       onOpenChange={(next) => {
         if (!next) onClose();
       }}
