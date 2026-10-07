@@ -437,10 +437,10 @@ all of more updates than that has lost its first plans by the time it is
 confirmed. Each of those is then planned again at its turn, through the
 same `plan_operation` and every refusal below, and started only if the
 new plan is field for field the one that was shown, and only while the
-batch is no more than ten minutes old. The original monotonic batch
-deadline is checked again after re-planning, immediately before the new
-ID is submitted; a delayed reply or continuation does not renew it.
-Otherwise it is refused and
+batch is no more than ten minutes old, counted from when the
+confirmation asked for its first plan. That age is checked again once the
+new plan is back, just before it is submitted, so a slow re-planning
+cannot stretch the ten minutes. Otherwise it is refused and
 nothing runs (`startShown` in `src/lib/heldPlans.ts`). Only an upgrade's
 command is planned again this way. The window can ask for the
 preview of an upgrade or an uninstall, never of an install: no page

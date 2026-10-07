@@ -61,6 +61,8 @@ let changesWhenPlannedAgain: string | null;
 let clock: number;
 /** Where the clock is once the plans are worked out: how long preparing took. */
 let preparedAt: number;
+/** How far the clock moves while a plan is worked out (`plan_operation`). */
+let planCost: number;
 let clockSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
@@ -70,13 +72,14 @@ beforeEach(() => {
   changesWhenPlannedAgain = null;
   clock = 0;
   preparedAt = 0;
+  planCost = 0;
   clockSpy = vi.spyOn(performance, "now").mockImplementation(() => clock);
   let next = 0;
   mockInvoke.mockImplementation((cmd: string, args?: InvokeArgs) => {
     if (cmd === "get_settings") return Promise.resolve(SETTINGS);
     if (cmd === "plan_operation") {
       const { request } = args as { request: OpRequest };
-      clock = Math.max(clock, preparedAt);
+      clock = Math.max(clock, preparedAt) + planCost;
       const again = planned.includes(request.name);
       planned.push(request.name);
       while (held.size >= PLANS_HELD) held.delete(held.keys().next().value!);
@@ -210,6 +213,25 @@ describe("Update all of more tools than the backend holds plans for", () => {
     await act(() => result.current.confirmAndSubmit());
     expect(result.current.batch).toBeNull();
     expect(submitted).toHaveLength(1100);
+  });
+
+  it("refuses a let-go update whose planning again ends past the ten minutes, though it began within them", async () => {
+    const { result } = renderConfirm();
+    await act(() => result.current.openConfirm(tools(1100).map(candidate)));
+    // Update is pressed half a second before the ten minutes since the
+    // plans were asked for are up, and working the first let-go plan out
+    // again takes a second: the new plan is fresh, the batch is not.
+    clock = PLAN_LIFETIME_MS - 500;
+    planCost = 1000;
+    await act(() => result.current.confirmAndSubmit());
+    const batch = result.current.batch!;
+    const first = batch.items.find((item) => item.name === "tool-0000")!;
+    expect(planned.filter((name) => name === "tool-0000")).toHaveLength(2);
+    expect(first.submittedOpId).toBeNull();
+    expect(submitted).toEqual([]);
+    expect(result.current.refusalOf(first)?.text).toBe(
+      "Couldn't start the update: This confirmation is more than 10 minutes old, so nothing ran. Open it again and confirm.",
+    );
   });
 
   it("says the same sentence of every update once the sheet is older than a plan's lifetime, let go or held", async () => {
