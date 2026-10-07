@@ -526,6 +526,12 @@ export function createMockBackend(scenario: Scenario): MockBackend {
     if (scenario.outcome === "follow-up" && outcome === "Succeeded" && mockCleanupLines(op.plan, world).length > 0) {
       op.summary.follow_up_warnings = [{ OldVersionsNotCleanedUp: { name: op.summary.name, exit_code: 1 } }];
     }
+    // Installed though a step after it failed, its confirmation having
+    // said the old versions go: the cleanup never ran, as the core says
+    // (`say_promised_cleanup_did_not_run` in ops/mod.rs).
+    if (isUpdatedButStepFailed(outcome) && mockCleanupLines(op.plan, world).length > 0) {
+      op.summary.follow_up_warnings = [{ OldVersionsNotCleanedUp: { name: op.summary.name, exit_code: null } }];
+    }
     // `?outcome=already`: done because it was already at its new version
     // -- by an earlier update on Homebrew, where one update brings others
     // along, when one of its source that may have changed something ended
@@ -613,7 +619,10 @@ export function createMockBackend(scenario: Scenario): MockBackend {
     const refused = scripted === "banager" ? null : homebrewRefusal(world, inst, op.plan);
     const played =
       refused === null
-        ? playOutcome(op.plan, subject, scripted)
+        ? // `?outcome=step-failed`: a Homebrew formula's update that is the
+          // session's 2nd, 4th, … operation fails its link step, the
+          // others their post-install step.
+          playOutcome(op.plan, subject, scripted, op.summary.id % 2 === 0)
         : {
             lines: refused.map((line): LogLine => ({ stream: "Stderr", line })),
             outcome: { Failed: { exit_code: 1, summary: refused.join("\n"), cause: operationFailureCause(refused.join("\n")) } } satisfies Outcome,
@@ -626,10 +635,14 @@ export function createMockBackend(scenario: Scenario): MockBackend {
     const cleanupLines: LogLine[] = scenario.outcome === "follow-up" && cleanup.length > 0
       ? [{ note: { OldVersionsNotCleanedUp: { name: op.summary.name, exit_code: 1 } } }]
       : cleanup;
+    // Installed though a step after it failed: the cleanup its
+    // confirmation promised did not run, said as the core says it.
     const lines =
       outcome === "Succeeded"
         ? [...played.lines, ...mockRelinkLines(op.plan), ...cleanupLines]
-        : played.lines;
+        : isUpdatedButStepFailed(outcome) && cleanup.length > 0
+          ? [...played.lines, { note: { OldVersionsNotCleanedUp: { name: op.summary.name, exit_code: null } } }]
+          : played.lines;
     let at = TIMING.start;
     schedule(op, at, () => setStatus(op, "Running"));
     // A `brew update` a refresh left running: Homebrew operations wait

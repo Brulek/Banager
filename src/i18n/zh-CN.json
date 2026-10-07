@@ -393,6 +393,7 @@
     "failedBecause": "未能更新：{{cause}}",
     "unchanged": "没有更新成功：版本没有变",
     "unchangedTitle": "命令显示已完成，但更新前后读到的版本相同。",
+    "stepFailedNotLinkedTitle": "新版本已经装好，但没有链接到终端，在终端里输入它的命令可能找不到它；通常是有同名的文件挡住了。",
     "stepFailedTitle": "新版本已经装好，但命令显示更新之后有一步失败了。"
   },
   "batchResult": {
@@ -924,6 +925,8 @@
         "NotLinkedAfterLinkDetail": "可以再点按“修复…”；还是没有链接，就点按“拷贝日志”，发给懂的人看。",
         "UpdatedButStepFailed": "已更新到{{version}}，但之后有一步失败了，请查看日志",
         "UpdatedButStepFailedNoVersion": "已更新，但之后有一步失败了，请查看日志",
+        "UpdatedButNotLinked": "已更新到{{version}}，但新版本没有链接到终端，请查看日志",
+        "UpdatedButNotLinkedDetail": "在终端里输入它的命令可能找不到它；通常是有同名的文件挡住了，日志里写着是哪个文件。不知道怎么办，就点按“拷贝日志”，发给懂的人看。",
         "UpdatedButStepFailedDetail": "新版本已经装好，日志里写着哪一步失败了。不知道怎么办，就点按“拷贝日志”，发给懂的人看。"
       },
       "Failed": "未能完成：{{summary}}",

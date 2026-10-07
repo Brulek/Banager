@@ -97,8 +97,11 @@ export type ScenarioState = (typeof SCENARIO_STATES)[number];
  * history has an earlier launch's node@22 update with a saved
  * `NoLongerLinked` warning.
  * `step-failed`: every update is installed and its tool then fails a step
- * after it -- a Homebrew formula's post-install step, say -- and exits 1
- * (`Attention::UpdatedButStepFailed`, r35 U2); anything else fails.
+ * after it -- a Homebrew formula's post-install step, or its link step
+ * where the update is the session's 2nd, 4th, … operation -- and exits 1
+ * (`Attention::UpdatedButStepFailed`, r35 U2), and a cleanup its
+ * confirmation promised does not run; anything else, a cask's update
+ * included, fails.
  * Anything else ends as `succeeded`.
  */
 export const SCENARIO_OUTCOMES = [

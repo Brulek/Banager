@@ -11,7 +11,7 @@ import {
   type FailureCause,
 } from "../lib/failureCause";
 import { ALREADY_UPDATED_KEYS, outcomeSentence, outcomeTone } from "../lib/operations";
-import { isUpdatedButStepFailed } from "../lib/format";
+import { stepFailedOf } from "../lib/format";
 import { calendarDaysBetween, shortDateText, shortTimeText } from "../lib/shortDate";
 import type { AlreadyUpdated, ArtifactKey, FollowUpWarning, Attention, HistoryResult, OpSummary, Outcome } from "../lib/types";
 import { PasswordRecovery } from "./PasswordRecovery";
@@ -31,22 +31,32 @@ import { GROUP } from "./ui/group";
  * the tool said it worked and Banager found nothing changed, or could not
  * confirm it -- the row's 「需要查看」 or 「结果未确认」; or it is installed and
  * the tool failed after it (`updatedButStepFailed`, r35 U2), with what its
- * follow-up left (`warnings`), as one that worked keeps it.
+ * follow-up left (`warnings`), as one that worked keeps it, and what says
+ * which step: that it is not linked (`notLinked`, Homebrew's link step),
+ * or else the tool's first error line (`detail`), as the core keeps it.
  */
 export type JustUpdatedEnding =
   | { kind: "succeeded"; already?: AlreadyUpdated; warnings?: FollowUpWarning[] }
   | { kind: "failed"; cause: FailureCause | null; detail?: string }
   | { kind: "attention"; outcome: "Unconfirmed" | { NeedsAttention: Attention } }
-  | { kind: "updatedButStepFailed"; warnings?: FollowUpWarning[] };
+  | { kind: "updatedButStepFailed"; notLinked?: true; detail?: string; warnings?: FollowUpWarning[] };
 
 /** `{ kind: "succeeded" }`, with how it was done where it was already done. */
 function succeeded(already: AlreadyUpdated | null | undefined, warnings: FollowUpWarning[]): JustUpdatedEnding {
   return { kind: "succeeded", ...(already ? { already } : {}), ...(warnings.length ? { warnings } : {}) };
 }
 
-/** `{ kind: "updatedButStepFailed" }`, with what its follow-up left where it left anything. */
-function stepFailed(warnings: FollowUpWarning[]): JustUpdatedEnding {
-  return { kind: "updatedButStepFailed", ...(warnings.length ? { warnings } : {}) };
+/**
+ * `{ kind: "updatedButStepFailed" }`, with what says which step -- not
+ * linked, or the tool's line -- and what its follow-up left, each where
+ * there is any.
+ */
+function stepFailed(step: { cause: FailureCause | null; detail: string | null }, warnings: FollowUpWarning[]): JustUpdatedEnding {
+  return {
+    kind: "updatedButStepFailed",
+    ...(step.cause === "notLinked" ? { notLinked: true as const } : step.detail ? { detail: step.detail } : {}),
+    ...(warnings.length ? { warnings } : {}),
+  };
 }
 
 /**
@@ -60,7 +70,8 @@ export function endingOfOutcome(
   warnings: FollowUpWarning[] = [],
 ): JustUpdatedEnding | null {
   if (outcome === null) return null;
-  if (isUpdatedButStepFailed(outcome)) return stepFailed(warnings);
+  const step = stepFailedOf(outcome);
+  if (step !== null) return stepFailed(step, warnings);
   switch (outcomeTone(outcome)) {
     case "success":
       return succeeded(alreadyUpdated, warnings);
@@ -103,7 +114,8 @@ export function endingOfRecord(
   if (result === "Succeeded") return succeeded(alreadyUpdated, warnings);
   if (result === "Cancelled") return null;
   if (result === "Unconfirmed") return { kind: "attention", outcome: "Unconfirmed" };
-  if (isUpdatedButStepFailed(result)) return stepFailed(warnings);
+  const step = stepFailedOf(result);
+  if (step !== null) return stepFailed(step, warnings);
   if ("NeedsAttention" in result) return { kind: "attention", outcome: result };
   const { cause, detail } = result.Failed;
   return detail ? { kind: "failed", cause, detail } : { kind: "failed", cause };
@@ -286,10 +298,19 @@ function EndingWords({ entry }: { entry: JustUpdatedEntry }) {
     case "updatedButStepFailed":
       // Installed, and a step after it failed: the row's own words, the
       // orange sign, and what that means behind the ⓘ -- not the log's
-      // sentence, which sends a person to a log that may be gone.
+      // sentence, which sends a person to a log that may be gone. Which
+      // step, as the core kept it: Homebrew's link, in words of what that
+      // means in Terminal; or else the tool's own first error line.
       tone = "attention";
       words = t("updates.progress.stepFailed");
-      why = t("history.stepFailedTitle");
+      why = ending.notLinked
+        ? t("history.stepFailedNotLinkedTitle")
+        : ending.detail
+          ? t("runtimeGuard.then", {
+              first: t("history.stepFailedTitle"),
+              then: t("batchResult.errorLine", { detail: ending.detail }),
+            })
+          : t("history.stepFailedTitle");
       break;
     case "attention":
       tone = "attention";

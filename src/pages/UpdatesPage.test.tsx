@@ -3879,7 +3879,7 @@ describe("UpdatesPage", () => {
       operations = [
         operation(glibKey, {
           status: "Done",
-          outcome: { NeedsAttention: { UpdatedButStepFailed: { version: "2.90.0" } } },
+          outcome: { NeedsAttention: { UpdatedButStepFailed: { version: "2.90.0", cause: null, detail: null } } },
         }),
       ];
       started(7, "2.90.0");
@@ -4522,12 +4522,12 @@ describe("UpdatesPage", () => {
             kept("python@3.13", Date.now() - 60_000, {
               from_version: "3.13.7",
               to_version: "3.13.8",
-              result: { NeedsAttention: { UpdatedButStepFailed: { version: "3.13.8" } } },
+              result: { NeedsAttention: { UpdatedButStepFailed: { version: "3.13.8", cause: null, detail: null } } },
               follow_up_warnings: [{ NoLongerLinked: { name: "python@3.13", commands: ["python3"] } }],
             }),
             kept("fontconfig", Date.now() - 120_000, {
               to_version: "2.18.4",
-              result: { NeedsAttention: { UpdatedButStepFailed: { version: "2.18.4" } } },
+              result: { NeedsAttention: { UpdatedButStepFailed: { version: "2.18.4", cause: null, detail: null } } },
             }),
           ],
         });

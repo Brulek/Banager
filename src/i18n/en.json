@@ -430,6 +430,7 @@
     "failedBecause": "Couldn't update: {{cause}}",
     "unchanged": "Didn't update: same version",
     "unchangedTitle": "The command said it finished, but the version read before and after the update is the same.",
+    "stepFailedNotLinkedTitle": "The new version was installed but isn't linked, so its commands may not be found in Terminal, usually because a file of the same name is in the way.",
     "stepFailedTitle": "The new version was installed, but the command said a step after the update failed."
   },
   "batchResult": {
@@ -1003,6 +1004,8 @@
         "NotLinkedAfterLinkDetail": "You can click Fix… again. If it still isn't linked, click Copy Log and send the log to someone who can help.",
         "UpdatedButStepFailed": "Updated to {{version}}, but a step after it failed; see the log",
         "UpdatedButStepFailedNoVersion": "Updated, but a step after it failed; see the log",
+        "UpdatedButNotLinked": "Updated to {{version}}, but the new version isn't linked; see the log",
+        "UpdatedButNotLinkedDetail": "Its commands may not be found in Terminal, usually because a file of the same name is in the way; the log says which file. If you're not sure what to do, click Copy Log and send the log to someone who can help.",
         "UpdatedButStepFailedDetail": "The new version is installed, and the log says which step failed. If you're not sure what to do, click Copy Log and send the log to someone who can help."
       },
       "Failed": "Couldn't finish: {{summary}}",

@@ -429,7 +429,7 @@ describe("OperationBar", () => {
   });
 
   it("says an update installed though a step after it failed, with its version, and offers its log (r35 U2)", async () => {
-    operations = [op(9, "python@3.13", "Done", { NeedsAttention: { UpdatedButStepFailed: { version: "3.13.8" } } })];
+    operations = [op(9, "python@3.13", "Done", { NeedsAttention: { UpdatedButStepFailed: { version: "3.13.8", cause: null, detail: null } } })];
 
     const { findByText, getByRole, queryByText } = renderWithProviders(<OperationBar />);
 
@@ -446,13 +446,32 @@ describe("OperationBar", () => {
     });
   });
 
+  it("says an update whose link step failed is installed but not linked, not only that a step failed (skeptic of r35 U2, 1)", async () => {
+    operations = [
+      op(9, "node@22", "Done", { NeedsAttention: { UpdatedButStepFailed: { version: "22.23.3_1", cause: "notLinked", detail: null } } }),
+    ];
+
+    const { findByText, getByRole, queryByText } = renderWithProviders(<OperationBar />);
+
+    await findByText("node@22: Updated to 22.23.3_1, but the new version isn't linked; see the log");
+    expect(getByRole("img", { name: "Needs attention" })).toBeInTheDocument();
+    expect(queryByText(/a step after it failed/)).toBeNull();
+    await act(async () => {
+      await i18n.changeLanguage("zh-CN");
+    });
+    await findByText("node@22：已更新到22.23.3_1，但新版本没有链接到终端，请查看日志");
+    await act(async () => {
+      await i18n.changeLanguage("en");
+    });
+  });
+
   it("counts an update installed though a step after it failed as one to look at, not as a failure (r35 U2)", async () => {
     const { findByText, queryClient, queryByText } = renderWithProviders(<OperationBar />);
     await waitFor(() => expect(queryClient.getQueryData(queryKeys.operations)).toEqual([]));
     await listNow(queryClient, [op(3, "wget", "Queued"), op(2, "fontconfig", "Queued"), op(1, "git", "Running")]);
     await listNow(queryClient, [
       op(3, "wget", "Done", "Succeeded"),
-      op(2, "fontconfig", "Done", { NeedsAttention: { UpdatedButStepFailed: { version: "2.18.4" } } }),
+      op(2, "fontconfig", "Done", { NeedsAttention: { UpdatedButStepFailed: { version: "2.18.4", cause: null, detail: null } } }),
       op(1, "git", "Done", "Succeeded"),
     ]);
     await findByText("1 of 3 needs attention");

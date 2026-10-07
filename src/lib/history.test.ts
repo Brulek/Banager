@@ -240,7 +240,7 @@ describe("recentUpdates", () => {
     const history = view([
       record("python@3.13", {
         to_version: "3.13.8",
-        result: { NeedsAttention: { UpdatedButStepFailed: { version: "3.13.8" } } },
+        result: { NeedsAttention: { UpdatedButStepFailed: { version: "3.13.8", cause: null, detail: null } } },
       }),
       record("unchanged", { finished_at: NOW - 2 * DAY, result: { NeedsAttention: "UnchangedAfterUpgrade" } }),
     ]);

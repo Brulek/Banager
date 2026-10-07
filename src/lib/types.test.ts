@@ -432,11 +432,28 @@ describe("types", () => {
     // An update installed though a step after it failed: the one attention
     // with data, as `test_an_update_with_a_failed_step_carries_its_version_on_the_wire`
     // asserts serde emits it (r35 U2).
-    const stepped: Outcome = { NeedsAttention: { UpdatedButStepFailed: { version: "3.13.8" } } };
-    expect(JSON.stringify(stepped)).toBe('{"NeedsAttention":{"UpdatedButStepFailed":{"version":"3.13.8"}}}');
+    const stepped: Outcome = {
+      NeedsAttention: {
+        UpdatedButStepFailed: {
+          version: "3.13.8",
+          cause: null,
+          detail: "Warning: The post-install step did not complete successfully",
+        },
+      },
+    };
+    expect(JSON.stringify(stepped)).toBe(
+      '{"NeedsAttention":{"UpdatedButStepFailed":{"version":"3.13.8","cause":null,"detail":"Warning: The post-install step did not complete successfully"}}}',
+    );
     expect(roundTrip(stepped)).toEqual(stepped);
-    const model: Outcome = { NeedsAttention: { UpdatedButStepFailed: { version: null } } };
-    expect(JSON.stringify(model)).toBe('{"NeedsAttention":{"UpdatedButStepFailed":{"version":null}}}');
+    // With Homebrew's link the step that failed: its cause, camelCase.
+    const unlinked: Outcome = {
+      NeedsAttention: { UpdatedButStepFailed: { version: "22.23.3_1", cause: "notLinked", detail: null } },
+    };
+    expect(JSON.stringify(unlinked)).toBe(
+      '{"NeedsAttention":{"UpdatedButStepFailed":{"version":"22.23.3_1","cause":"notLinked","detail":null}}}',
+    );
+    const model: Outcome = { NeedsAttention: { UpdatedButStepFailed: { version: null, cause: null, detail: null } } };
+    expect(JSON.stringify(model)).toBe('{"NeedsAttention":{"UpdatedButStepFailed":{"version":null,"cause":null,"detail":null}}}');
     expect(roundTrip(failed)).toEqual({ Failed: { exit_code: 1, summary: "boom", cause: null } });
     expect(JSON.stringify(failed)).toBe('{"Failed":{"exit_code":1,"summary":"boom","cause":null}}');
     // What `model.rs`'s `test_outcome_failed_carries_its_cause_on_the_wire`

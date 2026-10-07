@@ -393,6 +393,7 @@
     "failedBecause": "未能更新：{{cause}}",
     "unchanged": "沒有更新成功：版本沒有變",
     "unchangedTitle": "指令顯示已完成，但更新前後讀到的版本相同。",
+    "stepFailedNotLinkedTitle": "新版本已經裝好，但沒有連結到終端機，在終端機裡輸入它的指令可能找不到它；通常是有同名的檔案擋住了。",
     "stepFailedTitle": "新版本已經裝好，但指令顯示更新之後有一步失敗了。"
   },
   "batchResult": {
@@ -924,6 +925,8 @@
         "NotLinkedAfterLinkDetail": "可以再點按「修復…」；還是沒有連結，就點按「拷貝記錄」，傳給懂的人看。",
         "UpdatedButStepFailed": "已更新到{{version}}，但之後有一步失敗了，請查看記錄",
         "UpdatedButStepFailedNoVersion": "已更新，但之後有一步失敗了，請查看記錄",
+        "UpdatedButNotLinked": "已更新到{{version}}，但新版本沒有連結到終端機，請查看記錄",
+        "UpdatedButNotLinkedDetail": "在終端機裡輸入它的指令可能找不到它；通常是有同名的檔案擋住了，記錄裡寫著是哪個檔案。不知道怎麼辦，就點按「拷貝記錄」，傳給懂的人看。",
         "UpdatedButStepFailedDetail": "新版本已經裝好，記錄裡寫著哪一步失敗了。不知道怎麼辦，就點按「拷貝記錄」，傳給懂的人看。"
       },
       "Failed": "未能完成：{{summary}}",

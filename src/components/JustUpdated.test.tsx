@@ -12,7 +12,7 @@ import {
   justUpdatedOps,
   type JustUpdatedEntry,
 } from "./JustUpdated";
-import type { OpSummary } from "../lib/types";
+import type { HistoryResult, OpSummary } from "../lib/types";
 import { failureCause } from "../lib/failureCause";
 import { useUiStore } from "../store/ui";
 
@@ -668,7 +668,7 @@ describe("the columns of 「最近的更新记录」 (p1 polish)", () => {
 });
 
 describe("an update installed though a step after it failed (r35 U2)", () => {
-  const stepped = { NeedsAttention: { UpdatedButStepFailed: { version: "3.13.8" } } } as const;
+  const stepped = { NeedsAttention: { UpdatedButStepFailed: { version: "3.13.8", cause: null, detail: null } } } as const;
   const warnings = [{ NoLongerLinked: { name: "python@3.13", commands: ["python3"] } }];
 
   it("is an ending of its own, from this window's operation and from the history alike, with what its follow-up left", () => {
@@ -677,7 +677,7 @@ describe("an update installed though a step after it failed (r35 U2)", () => {
     expect(endingOfRecord(stepped)).toEqual({ kind: "updatedButStepFailed" });
     expect(endingOfRecord(stepped, null, warnings)).toEqual({ kind: "updatedButStepFailed", warnings });
     // A model's: no version anywhere, the same ending.
-    expect(endingOfRecord({ NeedsAttention: { UpdatedButStepFailed: { version: null } } })).toEqual({
+    expect(endingOfRecord({ NeedsAttention: { UpdatedButStepFailed: { version: null, cause: null, detail: null } } })).toEqual({
       kind: "updatedButStepFailed",
     });
     // Listed by this window as any finished update is.
@@ -736,6 +736,80 @@ describe("an update installed though a step after it failed (r35 U2)", () => {
       expect(log).toHaveTextContent("brew link --formula --force python@3.13");
       // With nothing kept and no log left, nothing to open.
       expect(within(bare).queryByRole("button", { name: t("updates.progress.viewLogLabel", { name: "python@3.13" }) })).toBeNull();
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+
+  // Skeptic of r35 U2, 1: which step failed, as the core kept it, says the
+  // same before a restart and after it -- Homebrew's link, in words of
+  // what that means in Terminal; or else the tool's own first error line.
+  const unlinked = {
+    NeedsAttention: { UpdatedButStepFailed: { version: "22.23.3_1", cause: "notLinked", detail: null } },
+  } as const;
+  const postInstall = {
+    NeedsAttention: {
+      UpdatedButStepFailed: {
+        version: "2.18.4",
+        cause: null,
+        detail: "Warning: The post-install step did not complete successfully",
+      },
+    },
+  } as const;
+
+  it("keeps which step failed, from this window's operation and from the history alike", () => {
+    expect(endingOfOutcome(unlinked)).toEqual({ kind: "updatedButStepFailed", notLinked: true });
+    expect(endingOfRecord(unlinked, null, warnings)).toEqual({ kind: "updatedButStepFailed", notLinked: true, warnings });
+    const line = { kind: "updatedButStepFailed", detail: "Warning: The post-install step did not complete successfully" };
+    expect(endingOfOutcome(postInstall)).toEqual(line);
+    expect(endingOfRecord(postInstall)).toEqual(line);
+    // A record kept before the cause and the line were: neither.
+    const older = { NeedsAttention: { UpdatedButStepFailed: { version: "3.13.8" } } } as unknown as HistoryResult;
+    expect(endingOfRecord(older)).toEqual({ kind: "updatedButStepFailed" });
+  });
+
+  it.each([
+    [
+      "en",
+      "The new version was installed but isn't linked, so its commands may not be found in Terminal, usually because a file of the same name is in the way.",
+      "The new version was installed, but the command said a step after the update failed. The error: Warning: The post-install step did not complete successfully",
+    ],
+    [
+      "zh-CN",
+      "新版本已经装好，但没有链接到终端，在终端里输入它的命令可能找不到它；通常是有同名的文件挡住了。",
+      "新版本已经装好，但命令显示更新之后有一步失败了。报错：Warning: The post-install step did not complete successfully",
+    ],
+    [
+      "zh-Hant",
+      "新版本已經裝好，但沒有連結到終端機，在終端機裡輸入它的指令可能找不到它；通常是有同名的檔案擋住了。",
+      "新版本已經裝好，但指令顯示更新之後有一步失敗了。錯誤訊息：Warning: The post-install step did not complete successfully",
+    ],
+  ])("says in %s which step behind its ⓘ: not linked, or the tool's own line", async (language, notLinkedWhy, lineWhy) => {
+    await i18n.changeLanguage(language);
+    try {
+      const t = i18n.getFixedT(language);
+      const line = (id: string, name: string, ending: JustUpdatedEntry["ending"]): JustUpdatedEntry => ({
+        id,
+        opId: null,
+        key: { instance_id: "brew:/opt/homebrew", kind: "Formula", name },
+        adapterId: "brew",
+        sourceLabel: "Homebrew",
+        name,
+        version: "1.0",
+        finishedAt: Date.now(),
+        verified: true,
+        ending,
+      });
+      renderWithProviders(
+        <JustUpdated
+          entries={[line("history:a", "node@22", endingOfRecord(unlinked)!), line("history:b", "fontconfig", endingOfRecord(postInstall)!)]}
+          onClear={() => {}}
+        />,
+      );
+      const [notLinked, postInstallItem] = screen.getAllByRole("listitem");
+      const word = t("updates.progress.stepFailed");
+      expect(why(within(notLinked).getByText(word))).toBe(notLinkedWhy);
+      expect(why(within(postInstallItem).getByText(word))).toBe(lineWhy);
     } finally {
       await i18n.changeLanguage("en");
     }

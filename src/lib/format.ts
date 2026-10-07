@@ -1,4 +1,5 @@
 import type { Attention, Fault, HistoryResult, Outcome } from "./types";
+import type { FailureCause } from "./failureCause";
 
 /**
  * `names` as a sentence lists them, in the user's language: 「Homebrew、npm
@@ -62,14 +63,18 @@ export function outcomeKey(outcome: Outcome): string {
  *  -- or, `BackAfterUninstall`, what a path-list uninstall's own last look
  *  found; `UpdatedButStepFailed`, an update installed though its tool
  *  failed after it, with the version it moved to, or, for a model, none
- *  (`UpdatedButStepFailedNoVersion`) -- listed for the same reason as
+ *  (`UpdatedButStepFailedNoVersion`), and, where the step was Homebrew's
+ *  link (cause `notLinked`), `UpdatedButNotLinked`, the new version not
+ *  linked (skeptic of r35 U2, 1) -- listed for the same reason as
  *  `faultKey`'s: each needs a sentence in both locales under
  *  `operations.outcome.NeedsAttention`, and a template string would take a
  *  new one without a word. */
 function attentionKey(attention: Attention): string {
   if (typeof attention !== "string") {
     if ("UpdatedButStepFailed" in attention) {
-      return attention.UpdatedButStepFailed.version === null ? "UpdatedButStepFailedNoVersion" : "UpdatedButStepFailed";
+      const { version, cause } = attention.UpdatedButStepFailed;
+      if (version === null) return "UpdatedButStepFailedNoVersion";
+      return cause === "notLinked" ? "UpdatedButNotLinked" : "UpdatedButStepFailed";
     }
     const unhandled: never = attention;
     return unhandled;
@@ -110,10 +115,21 @@ export function stepFailedVersion(outcome: Outcome | HistoryResult | null): stri
   return stepFailedOf(outcome)?.version ?? null;
 }
 
-function stepFailedOf(outcome: Outcome | HistoryResult | null): { version: string | null } | null {
+/**
+ * What an update installed though a step after it failed carries
+ * (`Attention::UpdatedButStepFailed`): the version it moved to, the
+ * tool's failure's cause, and its first error line -- an outcome of this
+ * window's or a result the history kept, the same; null for any other.
+ * A cause or a line a record written before they were kept lacks is null.
+ */
+export function stepFailedOf(
+  outcome: Outcome | HistoryResult | null,
+): { version: string | null; cause: FailureCause | null; detail: string | null } | null {
   if (outcome === null || typeof outcome === "string" || !("NeedsAttention" in outcome)) return null;
   const attention = outcome.NeedsAttention;
-  return typeof attention !== "string" && "UpdatedButStepFailed" in attention ? attention.UpdatedButStepFailed : null;
+  if (typeof attention === "string" || !("UpdatedButStepFailed" in attention)) return null;
+  const { version, cause, detail } = attention.UpdatedButStepFailed;
+  return { version, cause: cause ?? null, detail: detail ?? null };
 }
 
 /**
@@ -140,10 +156,14 @@ export function outcomeDetailKey(outcome: Outcome): string | null {
   }
   if ("NeedsAttention" in outcome) {
     // The new version is in, the log says which step failed: never Retry,
-    // which would install nothing and run no step.
+    // which would install nothing and run no step. Its link, where that
+    // was the step: what that means in Terminal, and that the log says
+    // which file is in the way.
     if (typeof outcome.NeedsAttention !== "string") {
       if ("UpdatedButStepFailed" in outcome.NeedsAttention) {
-        return "operations.outcome.NeedsAttention.UpdatedButStepFailedDetail";
+        return outcome.NeedsAttention.UpdatedButStepFailed.cause === "notLinked"
+          ? "operations.outcome.NeedsAttention.UpdatedButNotLinkedDetail"
+          : "operations.outcome.NeedsAttention.UpdatedButStepFailedDetail";
       }
       const unhandled: never = outcome.NeedsAttention;
       return unhandled;
@@ -227,7 +247,13 @@ export function outcomeStepKey(outcome: Outcome, logHasLines: boolean): string |
   if (key !== null && !logHasLines && ENDS_AT_COPY_LOG.has(key)) return "operations.outcome.emptyLogDetail";
   // An update installed though a step after it failed has nothing to try
   // again, and over a log with no line it has no lines to point at either.
-  if (key === "operations.outcome.NeedsAttention.UpdatedButStepFailedDetail" && !logHasLines) return null;
+  if (
+    (key === "operations.outcome.NeedsAttention.UpdatedButStepFailedDetail" ||
+      key === "operations.outcome.NeedsAttention.UpdatedButNotLinkedDetail") &&
+    !logHasLines
+  ) {
+    return null;
+  }
   return key;
 }
 

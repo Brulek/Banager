@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { displayToken, elapsedSince, formatBytes, outcomeArgs, outcomeDetailKey, outcomeKey, outcomeStepKey } from "./format";
-import type { Fault, Outcome } from "./types";
+import {
+  displayToken,
+  elapsedSince,
+  formatBytes,
+  outcomeArgs,
+  outcomeDetailKey,
+  outcomeKey,
+  outcomeStepKey,
+  stepFailedOf,
+} from "./format";
+import type { Fault, HistoryResult, Outcome } from "./types";
 import en from "../i18n/en.json";
 import zhCN from "../i18n/zh-CN.json";
 import zhHant from "../i18n/zh-Hant.json";
@@ -180,7 +189,7 @@ describe("outcomeKey", () => {
     // version it read after the update had moved from the one before
     // (`run_operation`): Homebrew's post-install step failing after the
     // new keg was linked. Not "Couldn't update": the update is installed.
-    const stepped: Outcome = { NeedsAttention: { UpdatedButStepFailed: { version: "3.13.8" } } };
+    const stepped: Outcome = { NeedsAttention: { UpdatedButStepFailed: { version: "3.13.8", cause: null, detail: null } } };
     expect(outcomeKey(stepped)).toBe("NeedsAttention.UpdatedButStepFailed");
     expect(outcomeArgs(stepped)).toEqual({ version: "3.13.8" });
     expect(en.operations.outcome.NeedsAttention.UpdatedButStepFailed).toBe(
@@ -193,7 +202,7 @@ describe("outcomeKey", () => {
       "已更新到{{version}}，但之後有一步失敗了，請查看記錄",
     );
     // A model's "version" is a digest, never shown: the same, without it.
-    const model: Outcome = { NeedsAttention: { UpdatedButStepFailed: { version: null } } };
+    const model: Outcome = { NeedsAttention: { UpdatedButStepFailed: { version: null, cause: null, detail: null } } };
     expect(outcomeKey(model)).toBe("NeedsAttention.UpdatedButStepFailedNoVersion");
     expect(outcomeArgs(model)).toEqual({});
     expect(en.operations.outcome.NeedsAttention.UpdatedButStepFailedNoVersion).toBe(
@@ -227,6 +236,59 @@ describe("outcomeKey", () => {
     expect(zhHant.operations.outcome.NeedsAttention.UpdatedButStepFailedDetail).toBe(
       "新版本已經裝好，記錄裡寫著哪一步失敗了。不知道怎麼辦，就點按「拷貝記錄」，傳給懂的人看。",
     );
+  });
+
+  it("says an update whose link step failed is installed but not linked, and that the log says which file (skeptic of r35 U2, 1)", () => {
+    // Homebrew's link step fails only after the new keg is poured, so the
+    // core says it as installed with that step failed, keeping the cause
+    // it read: the words of what not linked means stay with it.
+    const unlinked: Outcome = {
+      NeedsAttention: { UpdatedButStepFailed: { version: "22.23.3_1", cause: "notLinked", detail: null } },
+    };
+    expect(outcomeKey(unlinked)).toBe("NeedsAttention.UpdatedButNotLinked");
+    expect(outcomeArgs(unlinked)).toEqual({ version: "22.23.3_1" });
+    expect(en.operations.outcome.NeedsAttention.UpdatedButNotLinked).toBe(
+      "Updated to {{version}}, but the new version isn't linked; see the log",
+    );
+    expect(zhCN.operations.outcome.NeedsAttention.UpdatedButNotLinked).toBe(
+      "已更新到{{version}}，但新版本没有链接到终端，请查看日志",
+    );
+    expect(zhHant.operations.outcome.NeedsAttention.UpdatedButNotLinked).toBe(
+      "已更新到{{version}}，但新版本沒有連結到終端機，請查看記錄",
+    );
+    // Under the log: what that means in Terminal, where the log says which
+    // file -- and, as for any step after the update, never Retry.
+    expect(outcomeDetailKey(unlinked)).toBe("operations.outcome.NeedsAttention.UpdatedButNotLinkedDetail");
+    expect(outcomeStepKey(unlinked, true)).toBe("operations.outcome.NeedsAttention.UpdatedButNotLinkedDetail");
+    expect(outcomeStepKey(unlinked, false)).toBeNull();
+    for (const locale of [en, zhCN, zhHant]) {
+      const detail = locale.operations.outcome.NeedsAttention.UpdatedButNotLinkedDetail;
+      expect(detail).toContain(locale.operations.copyLog);
+      expect(detail).not.toContain(locale.updates.retry);
+    }
+    expect(en.operations.outcome.NeedsAttention.UpdatedButNotLinkedDetail).toBe(
+      "Its commands may not be found in Terminal, usually because a file of the same name is in the way; the log says which file. If you're not sure what to do, click Copy Log and send the log to someone who can help.",
+    );
+    expect(zhCN.operations.outcome.NeedsAttention.UpdatedButNotLinkedDetail).toBe(
+      "在终端里输入它的命令可能找不到它；通常是有同名的文件挡住了，日志里写着是哪个文件。不知道怎么办，就点按“拷贝日志”，发给懂的人看。",
+    );
+    expect(zhHant.operations.outcome.NeedsAttention.UpdatedButNotLinkedDetail).toBe(
+      "在終端機裡輸入它的指令可能找不到它；通常是有同名的檔案擋住了，記錄裡寫著是哪個檔案。不知道怎麼辦，就點按「拷貝記錄」，傳給懂的人看。",
+    );
+    // Any other cause keeps the general words: the words of the failure
+    // causes say "then try again", and its line says which step.
+    const permission: Outcome = {
+      NeedsAttention: {
+        UpdatedButStepFailed: { version: "2.18.4", cause: "permission", detail: "Permission denied @ rb_sysopen" },
+      },
+    };
+    expect(outcomeKey(permission)).toBe("NeedsAttention.UpdatedButStepFailed");
+    expect(outcomeDetailKey(permission)).toBe("operations.outcome.NeedsAttention.UpdatedButStepFailedDetail");
+    // As the history hands it back, and from a record kept before the cause was.
+    expect(stepFailedOf(unlinked)).toEqual({ version: "22.23.3_1", cause: "notLinked", detail: null });
+    const older = { NeedsAttention: { UpdatedButStepFailed: { version: "3.13.8" } } } as unknown as HistoryResult;
+    expect(stepFailedOf(older)).toEqual({ version: "3.13.8", cause: null, detail: null });
+    expect(stepFailedOf({ NeedsAttention: "UnchangedAfterUpgrade" })).toBeNull();
   });
 
   it("ends the three steps that point at the log at Copy Log, by its own name, and never over an empty log (r24 W4)", () => {
@@ -308,7 +370,8 @@ describe("outcomeKey", () => {
       { NeedsAttention: "UnchangedAfterUpgrade" },
       { NeedsAttention: "BackAfterUninstall" },
       { NeedsAttention: "NotLinkedAfterLink" },
-      { NeedsAttention: { UpdatedButStepFailed: { version: "3.13.8" } } },
+      { NeedsAttention: { UpdatedButStepFailed: { version: "3.13.8", cause: null, detail: null } } },
+      { NeedsAttention: { UpdatedButStepFailed: { version: "22.23.3_1", cause: "notLinked", detail: null } } },
       { Failed: { exit_code: 1, summary: "Error: No such keg", cause: failureCause("Error: No such keg") } },
       { Failed: { exit_code: 1, summary: " ", cause: failureCause(" ") } },
       { BanagerFailed: "Panicked" },
@@ -335,6 +398,7 @@ describe("outcomeKey", () => {
       ["NeedsAttention.BackAfterUninstall", "operations.outcome.NeedsAttention.BackAfterUninstallDetail"],
       ["NeedsAttention.NotLinkedAfterLink", "operations.outcome.NeedsAttention.NotLinkedAfterLinkDetail"],
       ["NeedsAttention.UpdatedButStepFailed", "operations.outcome.NeedsAttention.UpdatedButStepFailedDetail"],
+      ["NeedsAttention.UpdatedButNotLinked", "operations.outcome.NeedsAttention.UpdatedButNotLinkedDetail"],
       ["FailedSilent", "operations.outcome.FailedSilentDetail"],
       ["BanagerFailed.Panicked", "operations.outcome.BanagerFailed.PanickedDetail"],
       ["BanagerFailed.HomebrewStillUpdating", "operations.outcome.BanagerFailed.HomebrewStillUpdatingDetail"],

@@ -20,7 +20,7 @@ import type {
 } from "../lib/types";
 import { IDS, inHome, mockHomeAsTilde, type World } from "./mockData";
 import type { ScenarioOutcome } from "./scenario";
-import { operationFailureCause } from "../lib/failureCause";
+import { failureDetail, operationFailureCause } from "../lib/failureCause";
 
 /**
  * A refusal, as the string the real IPC rejects with: always a small
@@ -608,13 +608,17 @@ function trashRefusal(path: string): string {
  * The run as it plays out under `?outcome=`: the lines the log shows and
  * how the operation ends. Only an operation that ends `Succeeded` --
  * under `succeeded`, `follow-up` and `already` -- changes anything on the
- * machine (the backend applies it); `banager` means nothing started, so
- * nothing was written.
+ * machine (the backend applies it), and, under `step-failed`, an update
+ * installed though a step after it failed; `banager` means nothing
+ * started, so nothing was written. `linkStep`: under `step-failed`, a
+ * Homebrew formula's link step is the one that fails, not its
+ * post-install step.
  */
 export function playOutcome(
   plan: Plan,
   subject: Subject,
   outcome: Exclude<ScenarioOutcome, "mixed">,
+  linkStep = false,
 ): { lines: LogLine[]; outcome: Outcome } {
   const lines = successLog(plan, subject);
   const firstHalf = lines.slice(0, Math.ceil(lines.length / 2));
@@ -641,23 +645,49 @@ export function playOutcome(
     case "step-failed": {
       // Installed, then a step after it failed: Homebrew pours and links a
       // formula's new version, then its post-install step fails, and it
-      // says so and exits 1 (formula_installer.rb:1478-1486 in 7.0.8). The
-      // backend moves the version as for a success. Not an update: failed.
+      // says so and exits 1 (formula_installer.rb:1478-1486 in 7.0.8) --
+      // or, `linkStep`, it pours it and its link meets a file in the way
+      // (:1313). The backend moves the version as for a success. Not an
+      // update, or a cask's, which Homebrew rolls back and the core never
+      // says so of (`run_operation`): failed.
       const target = subject.candidate?.target;
-      if (plan.request.kind !== "Upgrade" || target === undefined) return playOutcome(plan, subject, "failed");
+      if (plan.request.kind !== "Upgrade" || target === undefined || plan.request.artifact_kind === "Cask") {
+        return playOutcome(plan, subject, "failed");
+      }
+      const name = plan.request.name;
+      // Its command, as a versioned formula's is named: `node` for node@22.
+      const command = name.replace(/@.*$/, "");
       const homebrew = subject.inst.adapter_id === "brew" && plan.request.artifact_kind === "Formula";
-      const said: LogLine[] = homebrew
-        ? [
-            err("Warning: The post-install step did not complete successfully"),
-            out("You can try again using:"),
-            out(`  brew postinstall ${plan.request.name}`),
-          ]
-        : [err("Error: a step after the update failed")];
+      const said: LogLine[] = !homebrew
+        ? [err("Error: a step after the update failed")]
+        : linkStep
+          ? [
+              // Homebrew's `ofail` line is on stderr; which file, on stdout.
+              err("Error: The `brew link` step did not complete successfully"),
+              out("The formula built, but is not symlinked into /opt/homebrew"),
+              out(`Could not symlink bin/${command}`),
+              out(`Target /opt/homebrew/bin/${command}`),
+              out("already exists. You may want to remove it:"),
+              out(`  rm '/opt/homebrew/bin/${command}'`),
+            ]
+          : [
+              err("Warning: The post-install step did not complete successfully"),
+              out("You can try again using:"),
+              out(`  brew postinstall ${name}`),
+            ];
+      // The cause and the first error line, read off stderr as the core
+      // reads them (`run_operation`): the line for any cause but not linked.
+      const stderr = said.flatMap((line) => ("stream" in line && line.stream === "Stderr" ? [line.line] : [])).join("\n");
+      const cause = operationFailureCause(stderr);
       return {
         lines: [...lines, ...said],
         outcome: {
           NeedsAttention: {
-            UpdatedButStepFailed: { version: plan.request.artifact_kind === "Model" ? null : target },
+            UpdatedButStepFailed: {
+              version: plan.request.artifact_kind === "Model" ? null : target,
+              cause,
+              detail: cause === "notLinked" ? null : failureDetail(stderr),
+            },
           },
         },
       };

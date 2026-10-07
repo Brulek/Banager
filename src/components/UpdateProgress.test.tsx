@@ -248,7 +248,7 @@ describe("an update installed though a step after it failed (r35 U2)", () => {
   const stepped = (version: string | null): OpSummary => ({
     ...upgradeOf("python@3.13", "Done"),
     id: 12,
-    outcome: { NeedsAttention: { UpdatedButStepFailed: { version } } },
+    outcome: { NeedsAttention: { UpdatedButStepFailed: { version, cause: null, detail: null } } },
   });
 
   it.each([

@@ -226,9 +226,11 @@ const INTERPOLATED_SUBTREES: Record<string, readonly string[]> = {
     "NeedsAttention.UnchangedAfterUpgrade",
     "NeedsAttention.BackAfterUninstall",
     "NeedsAttention.NotLinkedAfterLink",
-    // r35 U2: with the version the update moved to, or none for a model.
+    // r35 U2: with the version the update moved to, or none for a model;
+    // and with Homebrew's link the step that failed (skeptic of r35 U2, 1).
     "NeedsAttention.UpdatedButStepFailed",
     "NeedsAttention.UpdatedButStepFailedNoVersion",
+    "NeedsAttention.UpdatedButNotLinked",
     "Failed",
     "FailedSilent",
     "BanagerFailed.Panicked",

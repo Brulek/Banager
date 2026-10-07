@@ -747,33 +747,74 @@ describe("the browser preview's mock backend", () => {
   });
 
   it("under ?outcome=step-failed, installs each update and ends it as one whose step after it failed, as the core does (r35 U2)", async () => {
-    // Homebrew's post-install step failing after the new keg was linked:
-    // exit 1, the version moved (`run_operation`'s `UpdatedButStepFailed`).
+    // Homebrew's post-install step failing after the new keg was linked --
+    // or, for the session's 2nd, 4th, … operation, its link step meeting
+    // a file in the way: exit 1, the version moved (`run_operation`'s
+    // `UpdatedButStepFailed`), with the cause and the first error line it
+    // keeps (skeptic of r35 U2, 1).
     const { backend, events } = backendFor({ outcome: "step-failed" });
     await answer(backend.invoke("refresh"));
-    const [git] = await submitUpgrades(backend, "git");
+    const [git, wget] = await submitUpgrades(backend, "git", "wget");
     await vi.runAllTimersAsync();
+    const postInstall = {
+      NeedsAttention: {
+        UpdatedButStepFailed: {
+          version: "2.55.1",
+          cause: null,
+          detail: "Warning: The post-install step did not complete successfully",
+        },
+      },
+    };
+    const notLinked = { NeedsAttention: { UpdatedButStepFailed: { version: "1.26.0", cause: "notLinked", detail: null } } };
     const own = operationEvents(events, git);
-    expect(own[own.length - 1]).toEqual({
-      Finished: { op_id: git, outcome: { NeedsAttention: { UpdatedButStepFailed: { version: "2.55.1" } } } },
-    });
-    const logged = events.flatMap((event) =>
-      "Operation" in event && "Log" in event.Operation && event.Operation.Log.op_id === git ? [event.Operation.Log.line] : [],
+    expect(own[own.length - 1]).toEqual({ Finished: { op_id: git, outcome: postInstall } });
+    const ownWget = operationEvents(events, wget);
+    expect(ownWget[ownWget.length - 1]).toEqual({ Finished: { op_id: wget, outcome: notLinked } });
+    const logged = (opId: number) =>
+      events.flatMap((event) =>
+        "Operation" in event && "Log" in event.Operation && event.Operation.Log.op_id === opId ? [event.Operation.Log.line] : [],
+      );
+    expect(logged(git)).toContain("Warning: The post-install step did not complete successfully");
+    expect(logged(git)).toContain("  brew postinstall git");
+    expect(logged(wget)).toContain("Error: The `brew link` step did not complete successfully");
+    expect(logged(wget)).toContain("Could not symlink bin/wget");
+    // git's confirmation said its old versions go, and the cleanup that
+    // would delete them did not run: said in its log and kept (skeptic of
+    // r35 U2, 3).
+    const notCleanedUp = { OldVersionsNotCleanedUp: { name: "git", exit_code: null } };
+    const notes = events.flatMap((event) =>
+      "Operation" in event && "Note" in event.Operation && event.Operation.Note.op_id === git ? [event.Operation.Note.note] : [],
     );
-    expect(logged).toContain("Warning: The post-install step did not complete successfully");
-    expect(logged).toContain("  brew postinstall git");
+    expect(notes).toContainEqual(notCleanedUp);
+    expect(notes).not.toContainEqual(expect.objectContaining({ CleaningUpOldVersions: expect.anything() }));
+    const ops = (await backend.invoke("list_operations")) as OpSummary[];
+    expect(ops.find((op) => op.id === git)?.follow_up_warnings).toEqual([notCleanedUp]);
     // Installed: the next check no longer offers it, and its version moved.
     const after = await answer<Snapshot>(backend.invoke("refresh"));
     expect(after.updates.some((u) => u.key.name === "git")).toBe(false);
     expect(after.artifacts.find((a) => a.key.name === "git")?.version).toBe("2.55.1");
-    // Kept as Rust keeps it: the version it moved to, and Banager's own reading.
+    // Kept as Rust keeps it: the version it moved to, Banager's own
+    // reading, which step, and the cleanup that did not run.
     const history = await answer<HistoryView>(backend.invoke("get_history"));
     expect(history.records.find((record) => record.op_id === git)).toMatchObject({
       from_version: "2.55.0",
       to_version: "2.55.1",
       verified: true,
-      result: { NeedsAttention: { UpdatedButStepFailed: { version: "2.55.1" } } },
+      result: postInstall,
+      follow_up_warnings: [notCleanedUp],
     });
+    expect(history.records.find((record) => record.op_id === wget)).toMatchObject({ result: notLinked });
+  });
+
+  it("under ?outcome=step-failed, fails a cask's update, which Homebrew rolls back and the core never calls installed", async () => {
+    const { backend, events } = backendFor({ outcome: "step-failed" });
+    await answer(backend.invoke("refresh"));
+    const [opId] = await submitUpgrades(backend, "android-platform-tools");
+    await vi.runAllTimersAsync();
+    const own = operationEvents(events, opId);
+    expect(own[own.length - 1]).toMatchObject({ Finished: { op_id: opId, outcome: { Failed: { exit_code: 1 } } } });
+    const after = await answer<Snapshot>(backend.invoke("refresh"));
+    expect(after.updates.some((u) => u.key.name === "android-platform-tools")).toBe(true);
   });
 
   it("under ?outcome=failed, keeps a failure no cause names with its first error line (r6 y3-batch)", async () => {

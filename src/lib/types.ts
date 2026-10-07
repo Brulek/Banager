@@ -24,9 +24,12 @@ export type DetectOutcome = "Found" | "Missing";
 // `NotLinkedAfterLink`, a `brew link` that exited 0 and linked nothing;
 // `UpdatedButStepFailed`, an update whose tool failed after the version it
 // reads had moved (r35 U2): installed, with the version it moved to, or
-// null for a model's digest. Unit variants are bare strings, the one with
-// data a single-key object (serde's external tagging). Worded by the front
-// end, per variant.
+// null for a model's digest; the tool's failure's cause as the core read
+// it -- `notLinked` where Homebrew's link step failed, which has words of
+// its own (`attentionKey` in format.ts) -- and, for any other cause or
+// none, the tool's first error line, masked (Rust `failure_detail`), or
+// null. Unit variants are bare strings, the one with data a single-key
+// object (serde's external tagging). Worded by the front end, per variant.
 export type Attention =
   | "NotInstalledAfterInstall"
   | "StillInstalledAfterUninstall"
@@ -35,7 +38,7 @@ export type Attention =
   | "UnchangedAfterUpgrade"
   | "BackAfterUninstall"
   | "NotLinkedAfterLink"
-  | { UpdatedButStepFailed: { version: string | null } };
+  | { UpdatedButStepFailed: { version: string | null; cause: FailureCause | null; detail: string | null } };
 // Rust `Fault`: why Banager itself could not carry an operation out.
 // Unit variants are bare strings, data variants single-key objects (serde's
 // external tagging). Worded by the front end, per variant; the fields are
