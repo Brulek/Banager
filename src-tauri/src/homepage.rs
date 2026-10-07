@@ -10,10 +10,11 @@
 //! that ran someone else's script could have the browser open only a page
 //! Banager itself listed -- never an address of the script's own, carrying
 //! what the page has read -- and never a `file:`, an app's own scheme, or
-//! anything else macOS would hand to another application.
+//! another application selected by a source-controlled universal link.
 //!
-//! The browser is asked through AppKit (`NSWorkspace openURL:`, as
-//! `reveal.rs` asks Finder): no command runs, and the opener plugin, which
+//! AppKit resolves the default HTTPS browser from the scheme alone, then
+//! `NSWorkspace openURLs:withApplicationAtURL:configuration:completionHandler:`
+//! explicitly targets that browser. No command runs, and the opener plugin, which
 //! opens any URL or path it is given, stays out of the app (decision S4).
 //! Banager itself connects to nothing: the browser loads the page. The
 //! window never leaves Banager's page either (`navigation.rs`).
@@ -62,44 +63,91 @@ pub(crate) fn listed_homepage(snapshot: &Snapshot, address: &str) -> Result<Url,
 /// `open_homepage`'s whole effect: `open` asked of `address` when it is a
 /// homepage the current snapshot lists (`listed_homepage`), and nothing at
 /// all otherwise. `open` is a parameter so a test never opens a browser.
-pub(crate) fn open_homepage_impl(
+pub(crate) fn open_homepage_impl<T>(
     snapshot: &Snapshot,
     address: &str,
-    open: impl FnOnce(&Url) -> Result<(), String>,
-) -> Result<(), String> {
+    open: impl FnOnce(&Url) -> Result<T, String>,
+) -> Result<T, String> {
     let url = listed_homepage(snapshot, address)?;
-    open(&url).map_err(|detail| {
-        serde_json::json!({ "kind": "open_failed", "detail": detail }).to_string()
-    })
+    open(&url).map_err(open_failed_json)
 }
 
-/// The default browser, on `url`: one call to AppKit, `NSWorkspace
-/// openURL:`, which hands an `https` URL to whichever browser
-/// the Mac has as its default (System Settings → Desktop & Dock → Default
-/// web browser), starting it when it is not running. The URL as
-/// `listed_homepage` parsed it -- so the scheme macOS reads is the one
-/// checked -- and no command runs. In a pool of its
-/// own (`autoreleasepool`), drained when the call returns, as
-/// `reveal::show_in_finder`'s is: the command runs on one of the async
-/// runtime's threads, which has none.
+fn open_failed_json(detail: String) -> String {
+    serde_json::json!({ "kind": "open_failed", "detail": detail }).to_string()
+}
+
+/// Resolve the browser from the scheme alone: giving LaunchServices the
+/// source's domain here could select its universal-link application.
+/// No browser means refusal, never an unrestricted URL-handler fallback.
+fn dispatch_to_browser<B, T>(
+    url: &Url,
+    resolve: impl FnOnce(&str) -> Option<B>,
+    open: impl FnOnce(&Url, B) -> Result<T, String>,
+) -> Result<T, String> {
+    let browser =
+        resolve("https:").ok_or_else(|| "macOS could not find the default browser".to_string())?;
+    open(url, browser)
+}
+
+type BrowserReply = tokio::sync::oneshot::Receiver<Result<(), String>>;
+
+async fn browser_completion(reply: BrowserReply) -> Result<(), String> {
+    reply
+        .await
+        .map_err(|_| open_failed_json("macOS did not report whether the browser opened".into()))?
+        .map_err(open_failed_json)
+}
+
+/// Explicitly target the default browser's application URL. AppKit's
+/// asynchronous completion is awaited by the command, including failures.
+/// An autorelease pool covers this runtime thread's native objects; AppKit
+/// copies the completion block and retains what its pending request needs.
 #[cfg(target_os = "macos")]
-fn open_in_browser(url: &Url) -> Result<(), String> {
+fn open_in_browser(url: &Url) -> Result<BrowserReply, String> {
     use objc2::rc::autoreleasepool;
-    use objc2_app_kit::NSWorkspace;
-    use objc2_foundation::{NSString, NSURL};
+    use objc2_app_kit::{NSRunningApplication, NSWorkspace, NSWorkspaceOpenConfiguration};
+    use objc2_foundation::{NSArray, NSError, NSString, NSURL};
     autoreleasepool(|_| {
-        let url = NSURL::URLWithString(&NSString::from_str(url.as_str()))
-            .ok_or_else(|| "macOS could not read the address".to_string())?;
-        if NSWorkspace::sharedWorkspace().openURL(&url) {
-            Ok(())
-        } else {
-            Err("macOS did not open the address".to_string())
-        }
+        let workspace = NSWorkspace::sharedWorkspace();
+        dispatch_to_browser(
+            url,
+            |scheme| {
+                let scheme = NSURL::URLWithString(&NSString::from_str(scheme))?;
+                workspace.URLForApplicationToOpenURL(&scheme)
+            },
+            |url, browser| {
+                let url = NSURL::URLWithString(&NSString::from_str(url.as_str()))
+                    .ok_or_else(|| "macOS could not read the address".to_string())?;
+                let configuration = NSWorkspaceOpenConfiguration::configuration();
+                configuration.setAllowsRunningApplicationSubstitution(false);
+                let (send, receive) = tokio::sync::oneshot::channel();
+                let send = std::sync::Mutex::new(Some(send));
+                let completion = block2::RcBlock::new(
+                    move |app: *mut NSRunningApplication, error: *mut NSError| {
+                        let result = if error.is_null() && !app.is_null() {
+                            Ok(())
+                        } else {
+                            Err("macOS did not open the address".to_string())
+                        };
+                        if let Some(send) = send.lock().unwrap().take() {
+                            let _ = send.send(result);
+                        }
+                    },
+                );
+                workspace.openURLs_withApplicationAtURL_configuration_completionHandler(
+                    &NSArray::from_retained_slice(&[url]),
+                    &browser,
+                    &configuration,
+                    Some(&completion),
+                );
+                Ok(receive)
+            },
+        )
     })
 }
 
 #[cfg(not(target_os = "macos"))]
-fn open_in_browser(_url: &Url) -> Result<(), String> {
+fn open_in_browser(_url: &Url) -> Result<BrowserReply, String> {
     Err("opening a homepage is only on a Mac".to_string())
 }
 
@@ -113,7 +161,8 @@ pub async fn open_homepage(
     state: State<'_, crate::state::AppState>,
     address: String,
 ) -> Result<(), String> {
-    open_homepage_impl(&state.session.snapshot(), &address, open_in_browser)
+    let reply = open_homepage_impl(&state.session.snapshot(), &address, open_in_browser)?;
+    browser_completion(reply).await
 }
 
 #[cfg(test)]
@@ -171,6 +220,88 @@ mod tests {
             })
             .collect();
         (results, asked.into_inner())
+    }
+
+    #[test]
+    fn test_homepage_never_uses_unrestricted_native_url_dispatch() {
+        let production = include_str!("homepage.rs")
+            .split("#[cfg(test)]")
+            .next()
+            .unwrap();
+        assert!(
+            !production.contains(".openURL(&url)"),
+            "a listed HTTPS universal link must not be dispatched to its native handler"
+        );
+        assert!(
+            production.contains("openURLs_withApplicationAtURL_configuration_completionHandler")
+        );
+    }
+
+    #[test]
+    fn test_universal_link_uses_the_scheme_browser_not_the_domain_handler() {
+        let address = "https://service.example/native-action?item=42";
+        let listed = snapshot(&[Some(address)]);
+        let asked = RefCell::new(Vec::new());
+        open_homepage_impl(&listed, address, |url| {
+            dispatch_to_browser(
+                url,
+                |lookup| {
+                    // Fake LaunchServices: the real address would select a
+                    // native universal-link app. Only the scheme finds a browser.
+                    Some(if lookup == "https:" {
+                        "DefaultBrowser.app"
+                    } else {
+                        "NativeService.app"
+                    })
+                },
+                |target, application| {
+                    asked
+                        .borrow_mut()
+                        .push((target.as_str().to_string(), application));
+                    Ok(())
+                },
+            )
+        })
+        .unwrap();
+        assert_eq!(
+            asked.into_inner(),
+            [(address.to_string(), "DefaultBrowser.app")]
+        );
+    }
+
+    #[test]
+    fn test_missing_browser_refuses_without_fallback_dispatch() {
+        let address = "https://service.example/native-action";
+        let result = open_homepage_impl(&snapshot(&[Some(address)]), address, |url| {
+            dispatch_to_browser(
+                url,
+                |_| None::<()>,
+                |_, _| -> Result<(), String> { panic!("no browser means no dispatch") },
+            )
+        })
+        .unwrap_err();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&result).unwrap()["kind"],
+            "open_failed"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_browser_completion_failure_reaches_the_caller() {
+        let (send, receive) = tokio::sync::oneshot::channel();
+        send.send(Err("macOS did not open the address".into()))
+            .unwrap();
+        let result = browser_completion(receive).await.unwrap_err();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&result).unwrap()["kind"],
+            "open_failed"
+        );
+        let (send, receive) = tokio::sync::oneshot::channel();
+        drop(send);
+        assert!(browser_completion(receive).await.is_err());
+        let (send, receive) = tokio::sync::oneshot::channel();
+        send.send(Ok(())).unwrap();
+        assert_eq!(browser_completion(receive).await, Ok(()));
     }
 
     #[test]
@@ -293,7 +424,7 @@ mod tests {
     #[test]
     fn test_a_browser_failure_comes_back_in_the_envelope() {
         let listed = snapshot(&[Some("https://jqlang.org")]);
-        let err = open_homepage_impl(&listed, "https://jqlang.org", |_| {
+        let err = open_homepage_impl::<()>(&listed, "https://jqlang.org", |_| {
             Err("macOS did not open the address".to_string())
         })
         .unwrap_err();

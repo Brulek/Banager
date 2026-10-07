@@ -1301,7 +1301,11 @@ fn test_what_we_run_says_what_the_homepage_link_opens_and_that_it_adds_no_permis
         return;
     }
     for said in [
-        "NSWorkspace openURL:",
+        "NSWorkspace URLForApplicationToOpenURL:",
+        "scheme-only `https:`",
+        "openURLs:withApplicationAtURL:configuration:completionHandler:",
+        "allowsRunningApplicationSubstitution = false",
+        "no fallback to",
         "only when it is, exactly, the homepage of a tool in the current snapshot",
         "an `https` address with a host",
         "a plain `http` homepage is shown to copy",

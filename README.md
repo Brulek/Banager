@@ -210,6 +210,11 @@ This app runs package managers on your behalf, so the boundary matters more than
 - **The window cannot ask for a command.** The UI sends an operation kind and a single-use,
   expiring identifier for a plan the Rust side built itself. There is no general "run this" path,
   so a compromised web view cannot invent one.
+- **A homepage opens only in your default browser.** A tool's `https` homepage in the Installed
+  page's details opens only when it is exactly the one the tool's source lists, and Banager names
+  the browser — the one macOS has as the default for `https:` — rather than letting the address
+  pick an app that claims its domain; when macOS names no default browser, nothing opens. A plain
+  `http` homepage is shown to copy.
 - **You can preview the operations you choose.** For updates and uninstalls you choose in Banager,
   you can see the exact command before it runs, with the variables Banager sets for it (all but
   the `PATH` and the proxy and mirror settings it takes from your login shell, which
@@ -612,6 +617,7 @@ Banager 开着时还会每天做一次同样的检查，查到的更新都不安
 Homebrew 公式更新通常会先预览、再于成功后清理该公式的旧版本及相关缓存，清理也包括缓存中所有未引用的下载。用户关闭清理、固定版本或无法确认清理条件时，不安排这一步；`brew.env` 启用的自动清理会另行说明。
 普通测试跳过 11 项，包括真实 Homebrew、废纸篓、AppKit、磁盘探测和性能测试。安装卸载及废纸篓测试需要显式启用。
 `OLLAMA_HOST` 中的登录信息可能通过普通 HTTP 发送，会在窗口中遮蔽，并在历史和设置保存前去除。完整的执行范围、例外与旧记录处理见[运行与隐私要点](docs/what-we-run.md#简体中文运行与隐私要点)。
+已安装页里的 HTTPS 首页链接只交给默认浏览器打开，不会被声明了该域名的 App 直接接走；查不到默认浏览器时不打开。普通 HTTP 首页只供拷贝。
 
 ### 執行與隱私
 
@@ -619,3 +625,4 @@ Homebrew 公式更新通常会先预览、再于成功后清理该公式的旧�
 Homebrew 公式更新通常會先預覽、再於成功後清理該公式的舊版本及相關快取，清理也包括快取中所有未參照的下載。使用者關閉清理、固定版本或無法確認清理條件時，不安排這一步；`brew.env` 啟用的自動清理會另外說明。
 一般測試略過 11 項，包括實際 Homebrew、垃圾桶、AppKit、磁碟探測及效能測試。安裝移除及垃圾桶測試需要明確啟用。
 `OLLAMA_HOST` 中的登入資訊可能透過一般 HTTP 傳送，會在視窗中遮蔽，並在歷程和設定儲存前移除。完整的執行範圍、例外與舊記錄處理請見[執行與隱私要點](docs/what-we-run.md#繁體中文執行與隱私要點)。
+已安裝頁裡的 HTTPS 首頁連結只交給預設瀏覽器開啟，不會被宣告了該網域的 App 直接接走；查不到預設瀏覽器時不開啟。一般 HTTP 首頁只供拷貝。

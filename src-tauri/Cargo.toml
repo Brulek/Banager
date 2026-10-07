@@ -50,11 +50,15 @@ tokio = { version = "1", features = ["time", "sync"] }
 # (`NSURL fileURLWithPath:isDirectory:`) in an `NSArray`: `NSURL` is
 # already on in this build -- banager-core switches it on (the Trash call,
 # `trash::real`), and so do tao and wry -- so no new feature enters the
-# build.
+# build. `homepage::open_in_browser` hears from AppKit, in the completion
+# of `openURLs:withApplicationAtURL:configuration:completionHandler:`,
+# whether the browser opened (`NSError`): already on in this build --
+# banager-core switches it on -- so no new feature enters the build.
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2-foundation = { version = "0.3", default-features = false, features = [
     "std",
     "NSArray",
+    "NSError",
     "NSLocale",
     "NSNotification",
     "NSOperation",

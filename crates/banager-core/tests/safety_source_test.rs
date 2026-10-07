@@ -15,7 +15,8 @@
 //! - Promise 3: nothing starts a process but `RealRunner`, which runs a
 //!   confirmed plan or a read-only refresh command, the Open Ollama
 //!   button's `open -a Ollama`, and the homepage link's `NSWorkspace
-//!   openURL:` (src-tauri/src/homepage.rs), which has macOS open, in the
+//!   openURLs:withApplicationAtURL:configuration:completionHandler:`
+//!   (src-tauri/src/homepage.rs), which explicitly targets the
 //!   default browser -- started if it is not running -- only a homepage a
 //!   tool in the current snapshot lists (the author's request of
 //!   2026-10-07; docs/what-we-run.md, Network).
@@ -409,7 +410,7 @@ fn test_only_the_runner_the_open_ollama_button_and_the_homepage_link_start_a_pro
             // The one URL the homepage link opens, which
             // `homepage::listed_homepage` has checked first.
             || (entry.starts_with("src-tauri/src/homepage.rs:")
-                && entry.contains("NSWorkspace::sharedWorkspace().openURL(&url)"))
+                && entry.contains("workspace.openURLs_withApplicationAtURL_configuration_completionHandler("))
     };
     let others: Vec<&String> = found.iter().filter(|entry| !allowed(entry)).collect();
     assert!(

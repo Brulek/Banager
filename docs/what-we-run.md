@@ -4894,9 +4894,9 @@ have Banager open just any URL. A tool's homepage in the Installed page's
 details is a link (the author's request of 2026-10-07, in place of
 decision S9's copy-only): a click sends the address shown to Banager's own
 `open_homepage` (`src-tauri/src/homepage.rs`), which has the default
-browser open it, through AppKit (`NSWorkspace openURL:`, which starts the
-browser when it is not running: with the Open Ollama button, the one
-application Banager launches outside the runner), only when it is,
+browser open it, through AppKit (which starts the browser when it is not
+running: with the Open Ollama button, the one application Banager
+launches outside the runner), only when it is,
 exactly, the homepage of a tool in the current snapshot, trimmed, as that
 tool's source reported it (Homebrew's `homepage`, a standalone
 installer's recipe) -- and an `https` address with a host: decision S9
@@ -4906,8 +4906,23 @@ other address is refused before anything is parsed (`not_listed`), and a
 homepage a tool lists that is any other kind of address -- plain `http`,
 `file:`, `ftp:`, an app's own scheme -- is refused too (`not_web`). No command
 runs and Banager connects to nothing: the browser loads the page, under
-the browser's own settings. The window is given no new permission for
-it: Banager's own commands are behind no permission of their own
+the browser's own settings. The browser is named, not left to the
+address: an `https` address is also how a universal link reaches an app
+that claims its domain, and asking macOS to open the address itself
+(`NSWorkspace openURL:`, which Banager used until 2026-10-07) can hand it
+to that app instead of the browser. So `homepage.rs` asks
+`NSWorkspace URLForApplicationToOpenURL:` for the scheme-only `https:`
+URL -- never the homepage's own domain -- which names the default
+browser, then calls
+`openURLs:withApplicationAtURL:configuration:completionHandler:` with that
+browser's application URL and `allowsRunningApplicationSubstitution = false`.
+When macOS names no default browser, the click is refused as
+`open_failed`, with no fallback to `openURL:`. The command waits for
+AppKit's completion and reports a failure to open as `open_failed` too.
+What the browser does with the page after that -- a redirect, or its own
+offer to open an app -- is the browser's, under its settings. The
+window is given no new permission for it: Banager's own commands are
+behind no permission of their own
 (`src-tauri/build.rs` declares no app manifest), and
 the homepage link adds nothing to `src-tauri/capabilities/default.json`;
 the opener plugin stays out. The window itself still never leaves Banager's page
@@ -5157,6 +5172,7 @@ that has been set up.
 - Claude Code、Antigravity CLI 和 Grok Build 卸载后，除了检查启动器，还会检查卸载清单中的其他路径；Antigravity 也会重新列出备份。可选路径还会检查归属及应保留的路径，不运行版本命令。
 - 预览必须在生成后 10 分钟内确认并提交。已接受的操作可以排队超过 10 分钟再执行。
 - 更新后版本未变通常需要检查；若已达到或超过确认的目标版本，则报告已更新。这也适用于 Grok Build 和 rustup。没有可比较的目标版本时，不适用此例外。
+- 已安装页详情里的 HTTPS 首页链接只交给默认浏览器打开：先按 `https:` 查出系统设置的默认浏览器，再指定由它打开，不会被声明了该域名的 App 直接接走；查不到默认浏览器时不打开。只打开当前列表里某个工具的来源报告的首页，普通 HTTP 首页只供拷贝。
 
 ## 繁體中文：執行與隱私要點
 
@@ -5169,3 +5185,4 @@ that has been set up.
 - Claude Code、Antigravity CLI 和 Grok Build 移除後，除了檢查啟動器，還會檢查移除清單中的其他路徑；Antigravity 也會重新列出備份。選用路徑還會檢查歸屬及應保留的路徑，不執行版本命令。
 - 預覽必須在產生後 10 分鐘內確認並送出。已接受的操作可以排隊超過 10 分鐘再執行。
 - 更新後版本未變通常需要檢查；若已達到或超過確認的目標版本，則回報已更新。這也適用於 Grok Build 和 rustup。沒有可比較的目標版本時，不適用此例外。
+- 已安裝頁詳細資訊裡的 HTTPS 首頁連結只交給預設瀏覽器開啟：先依 `https:` 查出系統設定的預設瀏覽器，再指定由它開啟，不會被宣告了該網域的 App 直接接走；查不到預設瀏覽器時不開啟。只開啟目前清單裡某個工具的來源回報的首頁，一般 HTTP 首頁只供拷貝。
