@@ -198,3 +198,23 @@ fn test_readme_chinese_block_names_the_tools_each_installed_version_reason_can_c
         around(&squeezed, "读不到已安装版本", 100, 60)
     );
 }
+
+/// r30 Z1: the README's Traditional Chinese summary (`### 執行與隱私`, the
+/// end of the file) says 解除安裝 and 記錄 as the zh-Hant window does, not
+/// 移除 for an uninstall or 歷程 for the history. 移除 stays where the
+/// login is taken out of a web address before saving.
+#[test]
+fn test_readme_traditional_chinese_summary_uses_the_windows_words() {
+    let readme = read_readme();
+    let (_, summary) = readme
+        .split_once("\n### 執行與隱私\n")
+        .expect("README.md has a `### 執行與隱私` heading");
+    assert!(summary.contains("安裝、解除安裝及垃圾桶測試"));
+    assert!(summary.contains("並在記錄和設定儲存前移除"));
+    for unlike in ["安裝移除", "歷程", "紀錄", "命令"] {
+        assert!(
+            !summary.contains(unlike),
+            "README.md's `### 執行與隱私` says {unlike:?} where the zh-Hant window does not"
+        );
+    }
+}

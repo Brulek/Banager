@@ -2200,13 +2200,13 @@ fn test_what_we_run_says_an_npm_or_uv_read_before_running_that_does_not_answer_e
             [
                 "讀到的與預覽時不一致，或讀到了卻無法使用",
                 "結果顯示為未能開始，請重新開啟確認視窗。",
-                "npm 或 uv 的讀取命令本身沒有回答時，同樣不執行寫入命令，但按該程式自己的失敗結束",
+                "npm 或 uv 的讀取指令本身沒有回答時，同樣不執行寫入指令，但按該程式自己的失敗結束",
                 "程式已不在或無法啟動，顯示為未能開始、沒有改動",
                 "非零結束，是該程式的失敗，帶有結束代碼和它最後寫到 stderr 的幾行",
-                "超過時限（npm 30 秒；uv 與更新命令相同，600 秒）沒有回答，是執行逾時，沒有結束代碼",
-                "uv 的這次讀取和 `uv tool upgrade` 一樣要等 uv 的工具檔案夾鎖：另一個 uv 命令佔著這把鎖時（例如終端機裡正在執行的 `uv tool upgrade --all`），它會像更新命令一樣等鎖放開",
+                "超過時限（npm 30 秒；uv 與更新指令相同，600 秒）沒有回答，是執行逾時，沒有結束代碼",
+                "uv 的這次讀取和 `uv tool upgrade` 一樣要等 uv 的工具檔案夾鎖：另一個 uv 指令佔著這把鎖時（例如終端機裡正在執行的 `uv tool upgrade --all`），它會像更新指令一樣等鎖放開",
                 "uv 預設最多等 5 分鐘，之後回報它自己的錯誤",
-                "讀取期間點「取消」會立即停下（npm 的讀取也是這樣），這個更新隨即顯示為已取消：不執行更新命令，也不再核對結果。",
+                "讀取期間點「取消」會立即停下（npm 的讀取也是這樣），這個更新隨即顯示為已取消：不執行更新指令，也不再核對結果。",
             ],
         ),
     ] {
@@ -2233,9 +2233,9 @@ fn test_what_we_run_says_an_npm_or_uv_read_before_running_that_does_not_answer_e
         // default (`UV_LOCK_TIMEOUT`): the English says both (r28 skeptic).
         for unlike in [
             "和它的写入命令这样失败时一样",
-            "和它的寫入命令這樣失敗時相同",
+            "和它的寫入指令這樣失敗時相同",
             "它会等那个命令结束",
-            "它會等那個命令結束",
+            "它會等那個指令結束",
             "uv 自己最多等 5 分钟",
             "uv 自己最多等 5 分鐘",
         ] {
@@ -2249,6 +2249,57 @@ fn test_what_we_run_says_an_npm_or_uv_read_before_running_that_does_not_answer_e
             assert!(
                 bullet.contains(phrase),
                 "`## {section}`'s bullet on the read before running does not say {phrase:?}"
+            );
+        }
+    }
+}
+
+/// r30 Z1: the Traditional Chinese summary calls things what the zh-Hant
+/// window calls them -- 解除安裝 for an uninstall (the button
+/// `installed.uninstall`), 指令 for a command (`commandPreview.show_other`),
+/// 記錄 for the history (`updates.justUpdated.clear`) -- and not 移除,
+/// 命令, 歷程 or 紀錄, which a Taiwan reader takes for other features.
+/// 移除 stays where it means taking something away (「移除所有已安裝版本」,
+/// 「自動移除相依套件」), not uninstalling.
+#[test]
+fn test_what_we_run_traditional_chinese_summary_uses_the_windows_words() {
+    let locale: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string("../../src/i18n/zh-Hant.json").expect("read zh-Hant.json"),
+    )
+    .expect("zh-Hant.json is JSON");
+    let doc = read_doc();
+    let section = "繁體中文：執行與隱私要點";
+    let body = section_body(&doc, section).unwrap_or_else(|| panic!("a `## {section}` section"));
+    for (key, word, unlike) in [
+        (
+            &locale["installed"]["uninstall"],
+            "解除安裝",
+            &["安裝移除", "移除時", "移除開始前", "移除後", "移除清單"][..],
+        ),
+        (
+            &locale["commandPreview"]["show_other"],
+            "指令",
+            &["命令"][..],
+        ),
+        (
+            &locale["updates"]["justUpdated"]["clear"],
+            "記錄",
+            &["歷程", "紀錄"][..],
+        ),
+    ] {
+        let label = key.as_str().expect("a zh-Hant label");
+        assert!(
+            label.contains(word),
+            "the zh-Hant window no longer says {word:?} ({label:?}); say what it says in `## {section}`"
+        );
+        assert!(
+            body.contains(word),
+            "`## {section}` does not say {word:?}, the window's word"
+        );
+        for other in unlike {
+            assert!(
+                !body.contains(other),
+                "`## {section}` says {other:?} where the window says {word:?}"
             );
         }
     }
