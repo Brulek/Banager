@@ -823,8 +823,8 @@
     "sheet": {
       "title": "Link “{{formula}}”?",
       "text": "“{{formula}}” has the {{program}} that {{source}} needs, but it isn't linked where Terminal looks.",
-      "puts": "Linking puts its {{commands}} there, so typing any of them in Terminal runs the one in “{{formula}}”, version {{version}}.",
-      "putsUnlisted": "Linking puts its commands there, so typing {{program}} in Terminal runs the one in “{{formula}}”, version {{version}}.",
+      "puts": "Linking adds links for its {{commands}} under {{prefix}}. Terminal uses these commands only if their folder is among those Terminal searches and no command with the same name comes before them.",
+      "putsUnlisted": "Linking adds links for its commands under {{prefix}}. Terminal uses these commands only if their folder is among those Terminal searches and no command with the same name comes before them.",
       "then": "{{first}} {{then}}",
       "version": "Version to link:",
       "checking": "Checking whether it can be linked…",

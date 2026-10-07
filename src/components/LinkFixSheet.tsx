@@ -1,9 +1,10 @@
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useCheckAgain, usePlanOperation, useSettings, useSnapshot, useSubmitOperation } from "../lib/queries";
-import { adapterLabel, instanceLabels, namesInSentence, planErrorDetail, planErrorMessage } from "../lib/sources";
+import { adapterLabel, instanceLabels, instanceNames, namesInSentence, planErrorDetail, planErrorMessage } from "../lib/sources";
 import { linkFixesOf, saidNoAnswer } from "../lib/noAnswer";
 import { warningText } from "../lib/warnings";
+import { artifactKeyId } from "../store/ui";
 import { displayToken } from "../lib/format";
 import type { LinkFix, OpRequest, Plan, Warning } from "../lib/types";
 import { CommandPreview } from "./CommandPreview";
@@ -24,7 +25,7 @@ function isLinkConflicts(warning: Warning): warning is { LinkConflicts: { paths:
 }
 
 /**
- * The commands a link's preview says it puts where Terminal looks
+ * The commands a link's preview says it links into the Homebrew prefix
  * (`Warning.LinkPutsCommands`), the program the source needed first --
  * 「node、corepack、npm和npx」 -- or none when the preview did not list them.
  */
@@ -65,12 +66,16 @@ export interface LinkFixSheetProps {
  * --force <formula>`, as an alert -- 「要链接“node@22”吗？」, the formula's
  * icon, Homebrew and its version under that; why, in a sentence, and once
  * the preview has read them, what linking changes: the formula's commands
- * (`Warning.LinkPutsCommands`) go where Terminal looks, so typing `node`
- * runs that version -- no promise that the source will then run, which the
- * check after the link says; with more than one formula that has the
- * program, a popup to choose, newest first and chosen to begin with; the
- * command, one click away (`CommandPreview`); and Cancel and Link, the
- * default button.
+ * (`Warning.LinkPutsCommands`) are linked into the selected Homebrew's
+ * prefix, and Terminal uses them only where that folder is on its `PATH`
+ * with no command of the same name ahead of it -- which Banager does not
+ * check, so it is said as a condition, never as a promise; the check after
+ * the link says whether the source can run. With more than one formula
+ * that has the program, a popup to choose, newest first and chosen to
+ * begin with, each choice naming its Homebrew once they come from more
+ * than one, and chosen by the whole key (`artifactKeyId`); the command,
+ * one click away (`CommandPreview`); and Cancel and Link, the default
+ * button.
  *
  * It plans the operation itself (`OpKind.Link`, through
  * `Session::issue_listed_plan`, which plans only a formula a source's
@@ -102,11 +107,20 @@ export function LinkFixSheet({ instanceId, onClose }: LinkFixSheetProps) {
   const why = instance === undefined ? null : saidNoAnswer(instance);
   const fixes = linkFixesOf(instance);
   const [chosen, setChosen] = useState<string | null>(null);
-  const fix = fixes.find((candidate) => candidate.key.name === chosen) ?? fixes[0];
+  const fix = fixes.find((candidate) => artifactKeyId(candidate.key) === chosen) ?? fixes[0];
   const labels = useMemo(() => instanceLabels(t, snapshot?.instances ?? []), [t, snapshot]);
   const sourceOf = (id: string, adapterId: string) => labels.get(id) ?? adapterLabel(t, adapterId);
   const source = instance === undefined ? "" : sourceOf(instance.id, instance.adapter_id);
   const homebrew = fix === undefined ? "" : sourceOf(fix.key.instance_id, "brew");
+  const prefix = snapshot?.instances.find((candidate) => candidate.id === fix?.key.instance_id)?.prefix ?? homebrew;
+  // Offered by more than one Homebrew: each choice says whose it is, as
+  // choosing one also chooses the folder its links go in -- by where it is,
+  // as the sidebar says it under "Homebrew" (「Apple silicon」, 「Intel」):
+  // the whole 「Homebrew (Apple silicon)」 does not fit beside the label in
+  // an alert's width, and is under the title for the one chosen.
+  const manyHomebrews = new Set(fixes.map((candidate) => candidate.key.instance_id)).size > 1;
+  const names = useMemo(() => instanceNames(t, snapshot?.instances ?? []), [t, snapshot]);
+  const placeOf = (id: string) => names.get(id)?.place ?? sourceOf(id, "brew");
   const request = fix === undefined ? null : linkRequest(fix);
   // As the uninstall's: "the sheet as it is open now, for this formula".
   const sessionRef = useRef(0);
@@ -130,7 +144,15 @@ export function LinkFixSheet({ instanceId, onClose }: LinkFixSheetProps) {
     if (!open) setChosen(null);
   }, [open]);
 
-  const issued = planMutation.data;
+  // A previous preview cannot describe or submit a newly selected source.
+  const planned = planMutation.data;
+  const issued =
+    planned?.plan.request.instance_id === request?.instance_id &&
+    planned?.plan.request.artifact_kind === request?.artifact_kind &&
+    planned?.plan.request.name === request?.name &&
+    planned?.plan.request.kind === request?.kind
+      ? planned
+      : undefined;
   const plan = issued?.plan;
   const conflicts = plan?.warnings.filter(isLinkConflicts) ?? [];
   // Homebrew would link nothing: the sheet says what would instead.
@@ -144,10 +166,9 @@ export function LinkFixSheet({ instanceId, onClose }: LinkFixSheetProps) {
       : commands.length > 0
         ? t("noAnswer.sheet.puts", {
             commands: namesInSentence(t, commands),
-            formula: fix.key.name,
-            version: fix.version,
+            prefix,
           })
-        : t("noAnswer.sheet.putsUnlisted", { program: program ?? "", formula: fix.key.name, version: fix.version });
+        : t("noAnswer.sheet.putsUnlisted", { prefix });
   // In the confirmations' words for a caution: ⚠︎, then what is in the way.
   const conflictLines = conflicts.map((warning) => ({
     text: warningText(t, warning) ?? "",
@@ -244,16 +265,24 @@ export function LinkFixSheet({ instanceId, onClose }: LinkFixSheetProps) {
       ) : null}
 
       {fixes.length > 1 && fix !== undefined ? (
-        <div className="mt-3 flex items-center justify-between gap-3">
+        // With each choice's Homebrew, the label goes above the popup: beside
+        // it, in an alert's width, it would break in the middle of a word.
+        <div
+          className={
+            manyHomebrews ? "mt-3 flex flex-col items-start gap-1.5" : "mt-3 flex items-center justify-between gap-3"
+          }
+        >
           <label htmlFor={popupId} className="text-body text-foreground">
             {t("noAnswer.sheet.version")}
           </label>
           <PopupButton
             id={popupId}
-            value={fix.key.name}
+            value={artifactKeyId(fix.key)}
             options={fixes.map((candidate) => ({
-              value: candidate.key.name,
-              label: `${candidate.key.name} · ${candidate.version}`,
+              value: artifactKeyId(candidate.key),
+              label: manyHomebrews
+                ? `${candidate.key.name} · ${candidate.version} · ${placeOf(candidate.key.instance_id)}`
+                : `${candidate.key.name} · ${candidate.version}`,
             }))}
             onChange={setChosen}
           />

@@ -1116,11 +1116,18 @@ keg-only because of macOS, which `brew link` refuses at Homebrew's
 default prefix while exiting 0, nor one that is not keg-only -- and
 refused otherwise (`AdapterError::Unsupported`). Its preview reads the
 formula's links as an update's does (`brew::links`) and says the
-commands it puts where Terminal looks (`Warning::LinkPutsCommands`,
+commands it links into that Homebrew's prefix (`Warning::LinkPutsCommands`,
 `KegLinks::command_names`: what it links of the keg's `bin` and `sbin`;
-linking `node@20` changes which `node`, `npm`, `npx` and `corepack`
-Terminal runs for everything, not only for the source that needed it),
-and every place it would stop at -- the same places that make an update
+where Terminal does use them, linking `node@20` changes which `node`,
+`npm`, `npx` and `corepack` it runs for everything, not only for the
+source that needed it). That list says what the link creates, not which
+command Terminal will run: Terminal uses a linked command only when its
+folder is on Terminal's `PATH` and no command of the same name comes
+earlier, and this preview checks neither. So the sheet names the prefix
+the links go under and states that condition, with the list or without
+it, and never promises which copy or version Terminal will run; Banager
+never edits `PATH` or a shell startup file to make it so. The preview
+also names every place it would stop at -- the same places that make an update
 `UpdateBlocked::LinkTaken`: a file, a link that leads anywhere else, a
 person's own link into the formula (`Warning::LinkConflicts`,
 `KegLinks::held_paths`). Where there is one, the preview offers no Link
@@ -1691,7 +1698,13 @@ formulae linked into Terminal", which says what its preview reads and
 names, when it is refused, and when it counts as done) -- and runs only
 once confirmed, as every operation does. The window may ask for the
 preview of a link only of a formula a source's reason offers
-(`Session::issue_listed_plan`).
+(`Session::issue_listed_plan`). Where the formulae offered come from
+more than one Homebrew -- the same `node@20` in `/opt/homebrew` and
+`/usr/local`, say -- each choice names which Homebrew it is in, by where
+that Homebrew is (as the sidebar does), and the choice is the whole key
+(Homebrew, kind and name), so each is planned with its own
+`brew`; Link submits only the preview of the formula chosen now, never
+one planned before another was chosen.
 
 ## npm
 

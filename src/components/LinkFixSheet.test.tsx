@@ -5,6 +5,7 @@ import { renderWithProviders } from "../test/setup";
 import i18n from "../i18n";
 import { LinkFixSheet, linkRequest } from "./LinkFixSheet";
 import { SourceNotices } from "./SourceNotices";
+import { artifactKeyId } from "../store/ui";
 import { sourceNoticesFor } from "../lib/sources";
 import type { IssuedPlan, LinkFix, ManagerInstance, OpRequest, Plan, Snapshot, Warning } from "../lib/types";
 
@@ -130,9 +131,7 @@ describe("LinkFixSheet", () => {
     await waitFor(() => expect(onClose).toHaveBeenCalled());
   });
 
-  it("says what linking changes in Terminal: the formula's commands, and which node runs", async () => {
-    // Linking node@20 -- or a node@N only ever a dependency -- changes
-    // which node, npm, npx and corepack Terminal runs for everything.
+  it("names the linked commands without promising which copy Terminal runs", async () => {
     const npm = npmWithout([NODE_22]);
     backend(npm, [{ LinkPutsCommands: { names: ["corepack", "node", "npm", "npx"] } }]);
     renderWithProviders(<LinkFixSheet instanceId={npm.id} onClose={() => {}} />);
@@ -140,7 +139,7 @@ describe("LinkFixSheet", () => {
     const dialog = await screen.findByRole("alertdialog", { name: "Link “node@22”?" });
     await waitFor(() =>
       expect(dialog).toHaveTextContent(
-        "Linking puts its node, corepack, npm and npx there, so typing any of them in Terminal runs the one in “node@22”, version 22.23.3_1.",
+        "Linking adds links for its node, corepack, npm and npx under /opt/homebrew. Terminal uses these commands only if their folder is among those Terminal searches and no command with the same name comes before them.",
       ),
     );
     await waitFor(() => expect(screen.getByRole("button", { name: "Link" })).toBeEnabled());
@@ -154,8 +153,8 @@ describe("LinkFixSheet", () => {
     const popup = await screen.findByLabelText("Version to link:");
     const options = [...(popup as HTMLSelectElement).options].map((option) => option.textContent);
     expect(options).toEqual(["node@22 · 22.23.3_1", "node@20 · 20.19.5"]);
-    expect((popup as HTMLSelectElement).value).toBe("node@22");
-    fireEvent.change(popup, { target: { value: "node@20" } });
+    expect((popup as HTMLSelectElement).value).toBe(artifactKeyId(NODE_22.key));
+    fireEvent.change(popup, { target: { value: artifactKeyId(NODE_20.key) } });
     expect(await screen.findByRole("alertdialog", { name: "Link “node@20”?" })).toBeInTheDocument();
     await waitFor(() =>
       expect(calls("plan_operation").map(([, args]) => (args as { request: OpRequest }).request.name)).toEqual([
@@ -163,6 +162,108 @@ describe("LinkFixSheet", () => {
         "node@20",
       ]),
     );
+  });
+
+  it("selects the same formula in a second Homebrew and submits only its newly issued plan", async () => {
+    const intel = instance({ id: "brew:/usr/local", exe_path: "/usr/local/bin/brew", prefix: "/usr/local" });
+    const intelNode = { ...NODE_22, key: { ...NODE_22.key, instance_id: intel.id } };
+    const npm = npmWithout([NODE_22, intelNode]);
+    const snapshot = snapshotWith(npm);
+    snapshot.instances.push(intel);
+    let resolveIntel!: (plan: IssuedPlan) => void;
+    vi.mocked(invoke).mockImplementation(async (cmd: string, args?: unknown) => {
+      if (cmd === "get_snapshot") return snapshot;
+      if (cmd === "plan_operation") {
+        const request = (args as { request: OpRequest }).request;
+        return request.instance_id === intel.id
+          ? new Promise<IssuedPlan>((resolve) => { resolveIntel = resolve; })
+          : issued(request);
+      }
+      if (cmd === "submit_operation") return 7;
+      return undefined;
+    });
+    renderWithProviders(<LinkFixSheet instanceId={npm.id} onClose={() => {}} />);
+    const popup = await screen.findByLabelText("Version to link:");
+    const options = [...(popup as HTMLSelectElement).options];
+    expect(options.map((option) => option.value)).toEqual([artifactKeyId(NODE_22.key), artifactKeyId(intelNode.key)]);
+    expect(options.map((option) => option.textContent)).toEqual([
+      "node@22 · 22.23.3_1 · Apple silicon",
+      "node@22 · 22.23.3_1 · Intel",
+    ]);
+    // In full under the title, as the sidebar names it.
+    expect(screen.getByRole("alertdialog")).toHaveTextContent("Homebrew (Apple silicon)");
+    const link = screen.getByRole("button", { name: "Link" });
+    await waitFor(() => expect(link).toBeEnabled());
+    fireEvent.change(popup, { target: { value: artifactKeyId(intelNode.key) } });
+    expect(link).toBeDisabled();
+    fireEvent.click(link);
+    expect(calls("submit_operation")).toHaveLength(0);
+    await waitFor(() => expect(calls("plan_operation").map(([, args]) => args)).toEqual([
+      { request: linkRequest(NODE_22) },
+      { request: linkRequest(intelNode) },
+    ]));
+    const intelPlan = issued(linkRequest(intelNode));
+    intelPlan.id = "plan-intel-node@22";
+    intelPlan.plan.action = { Command: {
+      program: intel.exe_path, args: ["link", "--formula", "--force", "node@22"], env: [],
+    } };
+    intelPlan.plan.locks = [intel.id];
+    resolveIntel(intelPlan);
+    await waitFor(() => expect(link).toBeEnabled());
+    expect(screen.getByRole("alertdialog")).toHaveTextContent("Linking adds links for its commands under /usr/local.");
+    fireEvent.click(screen.getByRole("button", { name: "Show Command" }));
+    expect(await screen.findByText("/usr/local/bin/brew link --formula --force node@22")).toBeInTheDocument();
+    fireEvent.click(link);
+    await waitFor(() => expect(calls("submit_operation")).toEqual([
+      ["submit_operation", { planId: intelPlan.id }],
+    ]));
+  });
+
+  it("names every choice's Homebrew once the formulae come from more than one, not only those that share a name", async () => {
+    // node@22 in Apple silicon Homebrew and node@20 only in Intel's: the
+    // choice is also which Homebrew, and so which folder gets the links.
+    // Where it is, as the sidebar says it under "Homebrew": the whole
+    // 「Homebrew (Apple silicon)」 would not fit beside the label.
+    const intel = instance({ id: "brew:/usr/local", exe_path: "/usr/local/bin/brew", prefix: "/usr/local" });
+    const intelNode20 = { ...NODE_20, key: { ...NODE_20.key, instance_id: intel.id } };
+    const npm = npmWithout([NODE_22, intelNode20]);
+    const snapshot = snapshotWith(npm);
+    snapshot.instances.push(intel);
+    vi.mocked(invoke).mockImplementation(async (cmd: string, args?: unknown) => {
+      if (cmd === "get_snapshot") return snapshot;
+      if (cmd === "plan_operation") return issued((args as { request: OpRequest }).request);
+      return undefined;
+    });
+    renderWithProviders(<LinkFixSheet instanceId={npm.id} onClose={() => {}} />);
+    const popup = await screen.findByLabelText("Version to link:");
+    expect([...(popup as HTMLSelectElement).options].map((option) => option.textContent)).toEqual([
+      "node@22 · 22.23.3_1 · Apple silicon",
+      "node@20 · 20.19.5 · Intel",
+    ]);
+    fireEvent.change(popup, { target: { value: artifactKeyId(intelNode20.key) } });
+    expect(await screen.findByRole("alertdialog", { name: "Link “node@20”?" })).toHaveTextContent(
+      "Homebrew (Intel) · 20.19.5",
+    );
+  });
+
+  it("names no Homebrew in the choices while there is one", async () => {
+    const npm = npmWithout([NODE_22, NODE_20]);
+    const snapshot = snapshotWith(npm);
+    // A second Homebrew that offers nothing: the choices are all the first's.
+    snapshot.instances.push(instance({ id: "brew:/usr/local", exe_path: "/usr/local/bin/brew", prefix: "/usr/local" }));
+    vi.mocked(invoke).mockImplementation(async (cmd: string, args?: unknown) => {
+      if (cmd === "get_snapshot") return snapshot;
+      if (cmd === "plan_operation") return issued((args as { request: OpRequest }).request);
+      return undefined;
+    });
+    renderWithProviders(<LinkFixSheet instanceId={npm.id} onClose={() => {}} />);
+    const popup = await screen.findByLabelText("Version to link:");
+    expect([...(popup as HTMLSelectElement).options].map((option) => option.textContent)).toEqual([
+      "node@22 · 22.23.3_1",
+      "node@20 · 20.19.5",
+    ]);
+    // Which one it is stays under the title.
+    expect(screen.getByRole("alertdialog")).toHaveTextContent("Homebrew (Apple silicon)");
   });
 
   it("where Homebrew would link nothing, says what is in the way and the command that would, then Check Again", async () => {
@@ -212,6 +313,39 @@ describe("LinkFixSheet", () => {
   });
 });
 
+describe("link effects depend on PATH", () => {
+  it.each([
+    ["en", true], ["en", false],
+    ["zh-CN", true], ["zh-CN", false],
+    ["zh-Hant", true], ["zh-Hant", false],
+  ] as const)("qualifies both the folder and command priority in %s, listed=%s", async (language, listed) => {
+    await i18n.changeLanguage(language);
+    const npm = npmWithout([NODE_22]);
+    backend(npm, listed ? [{ LinkPutsCommands: { names: ["node"] } }] : []);
+    renderWithProviders(<LinkFixSheet instanceId={npm.id} onClose={() => {}} />);
+    const dialog = await screen.findByRole("alertdialog");
+    const effect = {
+      en: listed
+        ? "Linking adds links for its node under /opt/homebrew."
+        : "Linking adds links for its commands under /opt/homebrew.",
+      "zh-CN": listed
+        ? "链接会在/opt/homebrew下创建它的node的链接。"
+        : "链接会在/opt/homebrew下创建它的命令的链接。",
+      "zh-Hant": listed
+        ? "連結會在/opt/homebrew底下建立它的node的連結。"
+        : "連結會在/opt/homebrew底下建立它的指令的連結。",
+    }[language];
+    const condition = {
+      en: "Terminal uses these commands only if their folder is among those Terminal searches and no command with the same name comes before them.",
+      "zh-CN": "只有命令所在的文件夹在终端的查找范围内，且没有其他同名命令排在前面，终端才会使用这些命令。",
+      "zh-Hant": "只有指令所在的檔案夾在終端機的搜尋範圍內，且沒有其他同名指令排在前面，終端機才會使用這些指令。",
+    }[language];
+    await waitFor(() => expect(dialog).toHaveTextContent(effect));
+    expect(dialog).toHaveTextContent(condition);
+    expect(dialog).not.toHaveTextContent(/so typing|运行的是|執行的是|執行的都是/);
+  });
+});
+
 describe("LinkFixSheet in Chinese", () => {
   it("asks in the window's language", async () => {
     await i18n.changeLanguage("zh-CN");
@@ -237,7 +371,7 @@ describe("LinkFixSheet in Chinese", () => {
     const dialog = await screen.findByRole("alertdialog", { name: "要連結「node@22」嗎？" });
     await waitFor(() =>
       expect(dialog).toHaveTextContent(
-        "連結會把它的node、corepack、npm和npx放到那裡，之後在終端機輸入這些指令，執行的都是「node@22」中的這一份，版本是22.23.3_1。",
+        "連結會在/opt/homebrew底下建立它的node、corepack、npm和npx的連結。只有指令所在的檔案夾在終端機的搜尋範圍內，且沒有其他同名指令排在前面，終端機才會使用這些指令。",
       ),
     );
     await i18n.changeLanguage("en");
