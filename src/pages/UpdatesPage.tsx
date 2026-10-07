@@ -73,7 +73,7 @@ import { useTwins } from "../components/CommandFacts";
 import { notUsedWord } from "../components/TwinAdvice";
 import { DisclosureIcon } from "../components/icons";
 import { BUTTON } from "../components/ui/controls";
-import { focusOrFallback } from "../components/ui/focus";
+import { focusLost, focusOrFallback } from "../components/ui/focus";
 import type {
   InstanceNote,
   InstalledArtifact,
@@ -464,6 +464,11 @@ export function UpdatesPage() {
   // gone (the next row, or the one before it at the list's end), and the
   // settings the save was made from.
   const refocusAfterHide = useRef<{ gone: string; next: string | null; base: Settings } | null>(null);
+  // The row the focus is on, by its key (`rowKeyOf`), kept as the focus
+  // moves; null once it is on anything else. With the list as last drawn,
+  // where that row stood once it has gone.
+  const focusedRow = useRef<string | null>(null);
+  const drawnItems = useRef<ListItem[] | null>(null);
   const focusRow = (candidate: UpdateCandidate) => () => listHandle.current?.focusKey(artifactKeyId(candidate.key));
   const focusList = () => listHandle.current?.focusFirst();
 
@@ -764,6 +769,32 @@ export function UpdatesPage() {
     const focus = document.activeElement;
     if (focus !== null && focus !== document.body && focus.isConnected) return;
     if (visibleUpdates.length > 0 && items.some(keyboardRow)) listHandle.current?.focusFirst();
+    else focusOrFallback(null);
+  });
+
+  // Once the row the focus is on has gone from the list -- its update
+  // done, and the check after it has moved it down to Update History; a
+  // row's own Update leaves the focus on its row (`focusRow`), Update all
+  // on the list's first -- the focus goes to the row after it, or the one
+  // before it at the list's end, as a Mac list's selection does, and with
+  // no row left to the page's title (`focusOrFallback`): not the window's
+  // body, where ↑ and ↓ move nothing and VoiceOver's cursor is lost (r24
+  // W2). Only while the focus is still lost: not once the user has moved
+  // it. ⋯'s hiding items have their own rule (below), which this leaves
+  // the row they hid to.
+  useEffect(() => {
+    const before = drawnItems.current ?? items;
+    drawnItems.current = items;
+    const gone = focusedRow.current;
+    if (gone === null || before === items || items.some((item) => listItemKey(item) === gone)) return;
+    focusedRow.current = null;
+    if (refocusAfterHide.current?.gone === gone || !focusLost()) return;
+    const listed = new Set(items.filter(keyboardRow).map(listItemKey));
+    const stays = (item: ListItem) => listed.has(listItemKey(item));
+    const at = before.findIndex((item) => listItemKey(item) === gone);
+    const next = before.slice(at + 1).find(stays) ?? before.slice(0, Math.max(at, 0)).reverse().find(stays);
+    if (next !== undefined) listHandle.current?.focusKey(listItemKey(next));
+    else if (listed.size > 0) listHandle.current?.focusFirst();
     else focusOrFallback(null);
   });
 
@@ -1236,8 +1267,27 @@ export function UpdatesPage() {
     else selectUpdates(keys);
   };
 
+  // The row `target` is in, by its key -- a row ↑ and ↓ move between
+  // (`keyboardRow`) -- or null for anything else, the confirmation's
+  // sheet included: what the focus follows once that row has gone.
+  const rowKeyOf = (target: EventTarget | null): string | null => {
+    const key = target instanceof Element ? target.closest<HTMLElement>("[data-list-slot]")?.dataset.key : undefined;
+    return key !== undefined && items.some((item) => keyboardRow(item) && listItemKey(item) === key) ? key : null;
+  };
+
   return (
-    <div className="flex h-full flex-col">
+    <div
+      className="flex h-full flex-col"
+      onFocus={(event) => {
+        focusedRow.current = rowKeyOf(event.target);
+      }}
+      // Out of the page altogether -- to the sidebar -- where no focus
+      // event of the page's says so. Into nothing (the window put away, a
+      // row gone), the row is kept.
+      onBlur={(event) => {
+        if (event.relatedTarget !== null) focusedRow.current = rowKeyOf(event.relatedTarget);
+      }}
+    >
       {/* The page's one action, in the toolbar (spec §3.2, §3.5): the
           rows that are ticked, or else every row it can update -- one
           confirmation for either, the one a row's own Update opens, and

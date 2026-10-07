@@ -1,13 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { invoke, type InvokeArgs } from "@tauri-apps/api/core";
 import { renderWithProviders, type RenderOptions } from "../test/setup";
 import { OverviewPage } from "./OverviewPage";
 import { UpdatesPage } from "./UpdatesPage";
 import { UpdatesToolbar } from "../test/updatesToolbar";
 import { SnapshotStatus } from "../components/SnapshotStatus";
+import { PageHeader } from "../components/PageHeader";
 import { BUTTON } from "../components/ui/controls";
 import { refreshIntoCache } from "../lib/events";
+import { queryKeys } from "../lib/queries";
 import i18n from "../i18n";
 import { artifactKeyId, useUiStore } from "../store/ui";
 import { useToolSetupSheet } from "../lib/toolSetupCheck";
@@ -1665,5 +1668,126 @@ describe("a problem row's sign and button (p1 polish)", () => {
     fireEvent.click(disclosure);
     expect(disclosure).toHaveAttribute("aria-expanded", "true");
     check(disclosure.closest("li")!);
+  });
+
+  // r24 W2: a problem row goes once what its button did has fixed it, and
+  // with it the button the focus was on; the focus went to the window's
+  // body, from where the next Tab starts over at the sidebar.
+  describe("once a problem its own button fixed has gone", () => {
+    /** As App.tsx draws it, under the page's title (`PageHeader`). */
+    function renderUnderTitle() {
+      return renderWithProviders(
+        <>
+          <PageHeader title="Overview" actions={null} />
+          <SnapshotStatus showsFirstCheck showsNothingFound>
+            <OverviewPage />
+          </SnapshotStatus>
+        </>,
+      );
+    }
+
+    const runningOllama = { ...stoppedOllama, status: { unavailable: null, notes: [] } };
+
+    it("puts the focus on the page's title after Open Ollama, not on the window's body", async () => {
+      served = snapshotWith({ instances: [brew, pip, stoppedOllama] });
+      const { findByRole, getByRole, queryClient } = renderUnderTitle();
+      const list = await findByRole("list", { name: "Needs attention" });
+      const open = within(list).getByRole("button", { name: "Open Ollama" });
+      act(() => open.focus());
+      fireEvent.click(open);
+      await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("open_ollama_app"));
+      expect(document.activeElement).toBe(open);
+
+      // The check after it: Ollama answers.
+      act(() => {
+        queryClient.setQueryData(queryKeys.snapshot, snapshotWith({ generation: 8, instances: [brew, pip, runningOllama] }));
+      });
+
+      await waitFor(() => expect(open.isConnected).toBe(false));
+      await waitFor(() => expect(document.activeElement).toBe(getByRole("heading", { name: "Overview" })));
+      expect(document.activeElement).not.toBe(document.body);
+    });
+
+    it("puts the focus on the page's title once Fix…'s link has put npm back, keyboard all the way", async () => {
+      const node20 = { key: formula("node@20"), version: "20.19.5" };
+      const npmWithout: ManagerInstance = instance("npm:/opt/homebrew", "npm", {
+        exe_path: "/opt/homebrew/bin/npm",
+        version: null,
+        status: {
+          unavailable: "NotResponding",
+          notes: [],
+          no_answer: { kind: "CouldNotStart", missing_program: "node", link_fixes: [node20] },
+        },
+      });
+      served = snapshotWith({ instances: [brew, pip, npmWithout] });
+      mockInvoke.mockImplementation((cmd: string, args?: InvokeArgs) => {
+        if (cmd === "get_snapshot") return Promise.resolve(served);
+        if (cmd === "get_settings") return Promise.resolve(settings);
+        if (cmd === "list_operations") return Promise.resolve(operations);
+        if (cmd === "plan_operation") {
+          const request = (args as { request: { name: string } }).request;
+          return Promise.resolve({
+            id: `plan-${request.name}`,
+            plan: {
+              request,
+              action: {
+                Command: { program: "/opt/homebrew/bin/brew", args: ["link", "--formula", "--force", request.name], env: [] },
+              },
+              needs_password: false,
+              locks: [brew.id],
+              cancel_policy: "KillThenReconcile",
+              warnings: [],
+              affected: [],
+              timeout_secs: 300,
+            },
+            issued_at: 1791338400,
+          });
+        }
+        if (cmd === "submit_operation") return Promise.resolve(7);
+        return Promise.resolve(undefined);
+      });
+      const user = userEvent.setup();
+      const { findByRole, getByRole, queryClient } = renderUnderTitle();
+      const list = await findByRole("list", { name: "Needs attention" });
+      const fix = within(list).getByRole("button", { name: "Fix…" });
+      act(() => fix.focus());
+
+      await user.keyboard("{Enter}");
+      const sheet = await findByRole("alertdialog", { name: "Link “node@20”?" });
+      const link = within(sheet).getByRole("button", { name: "Link" });
+      await waitFor(() => expect(link).toBeEnabled());
+      act(() => link.focus());
+      await user.keyboard("{Enter}");
+      await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("submit_operation", { planId: "plan-node@20" }));
+      // The sheet gives the focus back to Fix… while the link runs.
+      await waitFor(() => expect(document.activeElement).toBe(fix));
+
+      // The check after it: npm answers, and its notice goes.
+      act(() => {
+        queryClient.setQueryData(
+          queryKeys.snapshot,
+          snapshotWith({ generation: 8, instances: [brew, pip, { ...npmWithout, version: "11.6.2", status: { unavailable: null, notes: [] } }] }),
+        );
+      });
+
+      await waitFor(() => expect(fix.isConnected).toBe(false));
+      await waitFor(() => expect(document.activeElement).toBe(getByRole("heading", { name: "Overview" })));
+    });
+
+    it("leaves the focus where the user has moved it meanwhile", async () => {
+      served = snapshotWith({ instances: [brew, pip, stoppedOllama] });
+      const { findByRole, getByRole, queryClient } = renderUnderTitle();
+      const list = await findByRole("list", { name: "Needs attention" });
+      act(() => within(list).getByRole("button", { name: "Open Ollama" }).focus());
+      const often = getByRole("button", { name: /^Check for updates: / });
+      act(() => often.focus());
+
+      act(() => {
+        queryClient.setQueryData(queryKeys.snapshot, snapshotWith({ generation: 8, instances: [brew, pip, runningOllama] }));
+      });
+
+      await waitFor(() => expect(within(document.body).queryByRole("button", { name: "Open Ollama" })).toBeNull());
+      expect(document.activeElement).toBe(often);
+    });
   });
 });

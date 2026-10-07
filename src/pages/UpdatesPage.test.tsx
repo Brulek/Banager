@@ -1,9 +1,12 @@
 import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import type { QueryClient } from "@tanstack/react-query";
 import { invoke, type InvokeArgs } from "@tauri-apps/api/core";
 import { renderWithProviders, type RenderOptions } from "../test/setup";
 import { UpdatesToolbar } from "../test/updatesToolbar";
 import { UpdatesPage } from "./UpdatesPage";
+import { PageHeader } from "../components/PageHeader";
 import { BUTTON } from "../components/ui/controls";
 import { artifactKeyId, useUiStore } from "../store/ui";
 import { queryKeys } from "../lib/queries";
@@ -3923,6 +3926,119 @@ describe("UpdatesPage", () => {
       await waitFor(() => expect(justUpdated()).toBeNull());
       await waitFor(() => expect(document.activeElement?.closest("[data-tool-row]")).not.toBeNull());
       expect(document.activeElement?.closest("[data-tool-row]")).toHaveTextContent("OnyX");
+    });
+
+    // r24 W2: the row a finished update leaves the focus on goes once the
+    // check after it lands, and the focus with it to the window's body,
+    // where ↑ and ↓ move nothing and VoiceOver's cursor is lost.
+    describe("once the row the focus is on has gone", () => {
+      const zstd = brewCandidate("zstd");
+
+      /** The check after onyx's update: onyx at 5.1.0, its row gone; `rest` still to install. */
+      function checkAfterOnyx(queryClient: QueryClient, rest: Snapshot["updates"]) {
+        act(() => {
+          queryClient.setQueryData(queryKeys.snapshot, {
+            ...snapshot,
+            generation: snapshot.generation + 1,
+            instances,
+            artifacts: [installed(glibKey, "2.88.3"), installed(onyxKey, "5.1.0"), installed(zstd.key, "1.0.0")],
+            updates: rest,
+          });
+        });
+      }
+
+      beforeEach(() => {
+        operations = [operation(onyxKey, { status: "Done", outcome: "Succeeded" })];
+        started(7, "5.1.0");
+        artifacts = [installed(glibKey, "2.88.3"), installed(onyxKey, "5.0.2"), installed(zstd.key, "1.0.0")];
+      });
+
+      it("puts it on the row after it, as a Mac list's selection does", async () => {
+        updates = [...snapshot.updates, zstd];
+        const { queryClient } = renderPage();
+        const onyx = await findRow("OnyX");
+        expect(rowNames()).toEqual(["glib", "OnyX", "zstd"]);
+        act(() => onyx.focus());
+        expect(document.activeElement).toBe(onyx);
+
+        checkAfterOnyx(queryClient, [snapshot.updates[0], zstd]);
+
+        await screen.findByRole("region", { name: "Update History" });
+        await waitFor(() => expect(rowNames()).toEqual(["glib", "zstd"]));
+        await waitFor(() => expect(document.activeElement).toBe(rowOf("zstd")));
+      });
+
+      it("puts it on the row before it when it was the list's last", async () => {
+        const { queryClient } = renderPage();
+        const onyx = await findRow("OnyX");
+        expect(rowNames()).toEqual(["glib", "OnyX"]);
+        act(() => onyx.focus());
+
+        checkAfterOnyx(queryClient, [snapshot.updates[0]]);
+
+        await waitFor(() => expect(rowNames()).toEqual(["glib"]));
+        await waitFor(() => expect(document.activeElement).toBe(rowOf("glib")));
+      });
+
+      it("puts it on the page's title when no row is left", async () => {
+        updates = [snapshot.updates[1]];
+        const { queryClient } = renderWithProviders(
+          <>
+            <PageHeader title="Updates" actions={null} />
+            <UpdatesToolbar>
+              <UpdatesPage />
+            </UpdatesToolbar>
+          </>,
+        );
+        const onyx = await findRow("OnyX");
+        act(() => onyx.focus());
+
+        checkAfterOnyx(queryClient, []);
+
+        await waitFor(() => expect(rowNames()).toEqual([]));
+        await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Updates" })));
+        expect(document.activeElement).not.toBe(document.body);
+      });
+
+      it("puts it on the next row after a row's own Update, keyboard all the way", async () => {
+        operations = [];
+        updates = [...snapshot.updates, zstd];
+        const user = userEvent.setup();
+        const { queryClient } = renderPage();
+        const onyx = await findRow("OnyX");
+        act(() => within(onyx).getByRole("button", { name: "Update OnyX" }).focus());
+
+        await user.keyboard("{Enter}");
+        const dialog = await screen.findByRole("alertdialog");
+        await waitFor(() => expect(within(dialog).getByRole("button", { name: "Update" })).toBeEnabled());
+        await user.keyboard("{Enter}");
+        await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+        // The row's own Update gave way to its progress: the focus is on its row.
+        await waitFor(() => expect(document.activeElement).toBe(rowOf("OnyX")));
+
+        operations = [operation(onyxKey, { status: "Done", outcome: "Succeeded" })];
+        checkAfterOnyx(queryClient, [snapshot.updates[0], zstd]);
+
+        await waitFor(() => expect(rowNames()).toEqual(["glib", "zstd"]));
+        await waitFor(() => expect(document.activeElement).toBe(rowOf("zstd")));
+        // ↓ and ↑ go on from there, as before the row went.
+        await user.keyboard("{ArrowUp}");
+        await waitFor(() => expect(document.activeElement).toBe(rowOf("glib")));
+      });
+
+      it("leaves the focus where the user has moved it meanwhile", async () => {
+        updates = [...snapshot.updates, zstd];
+        const { queryClient } = renderPage();
+        const onyx = await findRow("OnyX");
+        act(() => onyx.focus());
+        const selectAll = screen.getByRole("checkbox", { name: "Select all items that can be updated here" });
+        act(() => selectAll.focus());
+
+        checkAfterOnyx(queryClient, [snapshot.updates[0], zstd]);
+
+        await waitFor(() => expect(rowNames()).toEqual(["glib", "zstd"]));
+        expect(document.activeElement).toBe(selectAll);
+      });
     });
 
     it("hides itself on Clear, until the next update ends", async () => {

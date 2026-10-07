@@ -38,6 +38,7 @@ import { ChevronIcon, DisclosureIcon, InfoIcon } from "../components/icons";
 import { ToolSetupRow } from "../components/ToolSetupRow";
 import { useLinkFixSheet } from "../components/LinkFixSheet";
 import { Popover } from "../components/ui/Popover";
+import { refocusWhenGone } from "../components/ui/focus";
 import { BUTTON, LINK } from "../components/ui/controls";
 import { FORM_COLUMN, GROUP, GROUP_ROW, GROUP_WITH_ICONS, SMALL_WRAPPING } from "../components/ui/group";
 
@@ -255,7 +256,10 @@ function ProblemRow({ notice }: { notice: SourceNoticeSpec }) {
     // list puts them: centred on the whole row, they would sit beside the
     // description, or, with the startup diagnostic unfolded, beside its
     // middle -- nowhere near what they are about.
-    <li className="flex min-h-11.5 items-start gap-4 px-2.5 py-2">
+    // Gone once its problem is fixed -- by its own Fix… or Open Ollama,
+    // the focus perhaps still on it: then to the page's title, not the
+    // window's body (`refocusWhenGone`).
+    <li ref={refocusWhenGone} className="flex min-h-11.5 items-start gap-4 px-2.5 py-2">
       <div className="flex min-w-0 flex-1 items-start gap-2">
         {notice.variant === "warning" ? (
           <FilledWarningIcon size={16} className="text-warning" />
