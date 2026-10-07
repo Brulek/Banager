@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import { createRoot, type Root } from "react-dom/client";
+import { useLayoutEffect } from "react";
 import { renderWithProviders } from "../test/setup";
 import {
   Refusal,
@@ -122,9 +123,8 @@ describe("useToolsInTurn", () => {
     expect(seen[0]).toEqual({ drawn: TOOLS_DRAWN_FIRST, held: 0 });
   });
 
-  // React as the window runs it: not under `act`, which draws every
-  // transition at once, so that a turn takes time and a drawing can come
-  // between two turns.
+  // Keep real concurrent React rendering, outside act. Interleave updates
+  // at commit boundaries, not after a guessed number of milliseconds.
   describe("outside act", () => {
     let root: Root;
     let element: HTMLDivElement;
@@ -141,42 +141,62 @@ describe("useToolsInTurn", () => {
       flag.IS_REACT_ACT_ENVIRONMENT = true;
     });
 
-    /** A list whose every drawing takes 12 ms, as 754 tools do on a slow Mac. */
-    function Slow({ stage, urgent = false, seen }: { stage: string; urgent?: boolean; tick?: number; seen: ToolsInTurn[] }) {
+    function CommittedList({ stage, urgent = false, onCommit }: {
+      stage: string;
+      urgent?: boolean;
+      onCommit: (turn: ToolsInTurn) => void;
+    }) {
       const turn = useToolsInTurn(754, 1, stage, urgent);
-      seen.push(turn);
-      const started = performance.now();
-      while (performance.now() - started < 12) {
-        // a drawing that takes time
-      }
+      useLayoutEffect(() => {
+        onCommit(turn);
+      });
       return <p>{`${turn.drawn} ${turn.held}`}</p>;
     }
 
     it("draws every tool when the plans come back while the first stage is still drawing", async () => {
-      const seen: ToolsInTurn[] = [];
-      root.render(<Slow stage="planning" seen={seen} />);
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      root.render(<Slow stage="planned" seen={seen} />);
-      await waitFor(() => expect(element.textContent).toBe("754 0"), { timeout: 5000 });
-      // It did come mid-way: tools held as the first stage drew them, not all 754.
-      expect(seen.some((turn) => turn.held > 0 && turn.held < 754 && turn.drawn < 754)).toBe(true);
-    });
+      const planning: ToolsInTurn[] = [];
+      const planned: ToolsInTurn[] = [];
+      let switched = false;
+      const onPlanning = (turn: ToolsInTurn) => {
+        planning.push(turn);
+        // The second committed batch is partial regardless of CPU load.
+        if (!switched && turn.drawn > TOOLS_DRAWN_FIRST) {
+          switched = true;
+          root.render(<CommittedList stage="planned" onCommit={(next) => planned.push(next)} />);
+        }
+      };
+      root.render(<CommittedList stage="planning" onCommit={onPlanning} />);
+      // Only a hang guard: no assertion measures how quickly React draws.
+      await waitFor(() => expect(element.textContent).toBe("754 0"), { timeout: 30_000 });
+      expect(switched).toBe(true);
+      expect(planning[planning.length - 1]?.drawn).toBe(69);
+      expect(planned[0]).toEqual({ drawn: TOOLS_DRAWN_FIRST, held: 69 });
+      expect(planned[planned.length - 1]).toEqual({ drawn: 754, held: 0 });
+    }, 35_000);
 
-    it("goes on drawing, `urgent`, while the dialog is drawn again every few milliseconds", async () => {
+    it("goes on drawing, `urgent`, while the dialog is drawn again at every partial commit", async () => {
       const seen: ToolsInTurn[] = [];
-      root.render(<Slow stage="planned" urgent seen={seen} />);
-      // Update all starting an update every 5 ms, each drawing the dialog again.
-      let tick = 0;
-      const starts = setInterval(() => {
-        tick += 1;
-        root.render(<Slow stage="planned" urgent tick={tick} seen={seen} />);
-      }, 5);
-      try {
-        await waitFor(() => expect(element.textContent).toBe("754 0"), { timeout: 2000 });
-      } finally {
-        clearInterval(starts);
-      }
-    });
+      let redraws = 0;
+      const onCommit = (turn: ToolsInTurn) => {
+        seen.push(turn);
+        // The dialog drawn again after every drawing short of the whole
+        // list, as Update All starting its updates draws it. Bounded by
+        // drawings, not milliseconds: a list those drawings starve stops
+        // at the bound, and the test fails then rather than at its timeout.
+        if (turn.drawn < 754 && redraws < 50) {
+          redraws += 1;
+          root.render(<CommittedList stage="planned" urgent onCommit={onCommit} />);
+        }
+      };
+      root.render(<CommittedList stage="planned" urgent onCommit={onCommit} />);
+      // Only a hang guard: no assertion measures how quickly React draws.
+      await waitFor(() => expect(element.textContent === "754 0" || redraws === 50).toBe(true), { timeout: 30_000 });
+      expect(element.textContent).toBe("754 0");
+      expect(redraws).toBeLessThan(50);
+      expect(drawnCounts(seen)).toEqual([9, 69, 129, 189, 249, 309, 369, 429, 489, 549, 609, 669, 729, 754]);
+      expect(redraws).toBeGreaterThanOrEqual(13);
+      expect(seen.every((turn) => turn.held === 0)).toBe(true);
+    }, 35_000);
   });
 });
 
