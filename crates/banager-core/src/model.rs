@@ -2701,6 +2701,36 @@ mod tests {
     }
 
     #[test]
+    fn test_a_link_and_what_is_in_its_way_are_on_the_wire_as_the_mirror_spells_them() {
+        // `OpKind` and `Warning.LinkConflicts` in src/lib/types.ts, and the
+        // request `linkRequest` (src/components/LinkFixSheet.tsx) sends.
+        let request = OpRequest {
+            kind: OpKind::Link,
+            instance_id: "brew:/opt/homebrew".to_string(),
+            artifact_kind: ArtifactKind::Formula,
+            name: "node@22".to_string(),
+        };
+        let json = serde_json::to_string(&request).expect("serialize");
+        assert_eq!(
+            json,
+            r#"{"kind":"Link","instance_id":"brew:/opt/homebrew","artifact_kind":"Formula","name":"node@22"}"#
+        );
+        assert_eq!(
+            serde_json::from_str::<OpRequest>(&json).expect("deserialize"),
+            request
+        );
+        let conflicts = Warning::LinkConflicts {
+            paths: vec!["/opt/homebrew/bin/npm".to_string()],
+        };
+        let json = serde_json::to_string(&conflicts).expect("serialize");
+        assert_eq!(json, r#"{"LinkConflicts":{"paths":["/opt/homebrew/bin/npm"]}}"#);
+        assert_eq!(
+            serde_json::from_str::<Warning>(&json).expect("deserialize"),
+            conflicts
+        );
+    }
+
+    #[test]
     fn test_warning_wire_shapes_match_the_hand_written_ts_mirror() {
         // Unit variants are bare strings and the one data variant is
         // externally tagged, matching every other enum in this module and
