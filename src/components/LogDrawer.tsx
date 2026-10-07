@@ -20,6 +20,7 @@ import { Dialog } from "./ui/Dialog";
 import { BUTTON } from "./ui/controls";
 import { ScrollArea } from "./ui/ScrollArea";
 import { OutcomeIcon } from "./OutcomeIcon";
+import { MissingFailureLog, missingLogSummary } from "./MissingFailureLog";
 import { PasswordCommand } from "./PasswordCommand";
 import { FailureNextStep, SubtitleStep, failureLogStep, subtitleStep } from "./FailureNextStep";
 import { SpinnerIcon } from "./icons";
@@ -119,7 +120,10 @@ export function noteText(t: TFunction, note: LogNote): string {
  * for a failure, whose words they are and what to do next, Copy Log among
  * it (`FailureNextStep`) -- or, with technical details on and none of the
  * tool's lines left in this window's log, under the subtitle that still
- * has its words (`SubtitleStep`). That text selects, as nothing else in the
+ * has its words (`SubtitleStep`). Where none of a failure's lines are
+ * left, it says the log is no longer available and, with details off,
+ * what to do next and the words it kept behind Show Error Details
+ * (`MissingFailureLog`). That text selects, as nothing else in the
  * dialog does (`select-text`), and Copy Log puts all of it on the clipboard,
  * to be pasted into a search or a report of what went wrong. While the
  * operation can still be stopped, a button beside Close stops it: the page
@@ -234,8 +238,11 @@ export function LogDrawer() {
   const stepId = useId();
   // The sentence under the log, where a tool's own words are in it.
   const step = operation === undefined ? null : failureLogStep(operation, logs);
+  // The words a failure kept, where this window's log has none of its lines.
+  const missingLog = operation === undefined ? null : missingLogSummary(operation, logs);
   // The same, under the subtitle, where only the subtitle still has them.
   const overStep = operation === undefined ? null : subtitleStep(operation, logs, technical);
+  const missingLogId = useId();
   const overStepId = useId();
   const copyWords = copyStatusText(t, copyStatus);
   // Done once the operation has ended; until then Close, which is all the
@@ -257,7 +264,7 @@ export function LogDrawer() {
       subtitle={parts?.subtitle}
       // What to do next, where the log says: said after its subtitle as it
       // opens -- the cause's step over the log, else the one under it.
-      describedBy={parts?.next ? nextId : step !== null ? stepId : overStep !== null ? overStepId : undefined}
+      describedBy={parts?.next ? nextId : step !== null ? stepId : overStep !== null ? overStepId : missingLog !== null ? missingLogId : undefined}
       focusSelf
       fillBody
       footerStart={
@@ -291,6 +298,11 @@ export function LogDrawer() {
         <p id={nextId} className="mb-3 break-words text-body text-foreground">
           {parts.next}
         </p>
+      ) : null}
+      {/* Where the log no longer has a failure's lines: that it is gone,
+          and, with technical details off, its words behind a disclosure. */}
+      {missingLog !== null && operation !== undefined ? (
+        <MissingFailureLog key={operation.id} op={operation} summary={missingLog} id={missingLogId} technical={technical} />
       ) : null}
       {/* With technical details on, where the log no longer has the
           tool's own words, but the subtitle does: whose they are. */}

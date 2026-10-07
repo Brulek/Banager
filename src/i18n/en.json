@@ -1702,6 +1702,11 @@
       "internal": "An internal error occurred. Try again later."
     }
   },
+  "failureRecovery": {
+    "logGone": "The log for this operation is no longer available.",
+    "details": "Show Error Details",
+    "next": "You can {{again}} later. If it still fails, show the error details to someone who can help."
+  },
   "failureSteps": {
     "viewLogs_one": "View {{count}} Log",
     "viewLogs_other": "View {{count}} Logs",

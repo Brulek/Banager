@@ -406,6 +406,16 @@ shows the command it ran — the confirmation's command, without
 Command button, to be run in Terminal, where sudo can ask. Banager runs
 nothing more for it and does not retry it on its own.
 
+When this window no longer has any line of a failed operation's log -- it
+keeps the newest 2,000 lines, and a reloaded window keeps none -- and the
+failure kept the tool's own words (its summary: the last stderr lines,
+with a login masked out), the log view says the log is no longer
+available. With technical details off, Show Error Details reveals that
+summary, and a failure whose cause is not recognised also says how to
+try again. A failure that kept no words gets no such line, as its log may
+never have had one. This fetches no old output and writes no log file.
+Copy Log stays disabled for an empty log.
+
 ## When commands run
 
 **A refresh** happens when the window opens (`refreshIntoCache(…,

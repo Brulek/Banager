@@ -712,6 +712,7 @@ describe("LogDrawer", () => {
       const unknown = renderWithProviders(<LogDrawer />);
       expect(await unknown.findByText("未能更新")).toBeInTheDocument();
       expect(unknown.queryByText(/something went wrong/)).toBeNull();
+      expect(unknown.getByRole("button", { name: "查看错误详情" })).toHaveAttribute("aria-expanded", "false");
     } finally {
       await i18n.changeLanguage("en");
     }
@@ -1067,4 +1068,70 @@ it("marks a success with follow-up warnings as needing attention, as the operati
   const dialog = await view.findByRole("dialog");
   await waitFor(() => expect(dialog).toHaveTextContent("Updated · Warning"));
   expect(within(dialog).getByRole("img", { name: "Needs attention" })).toBeInTheDocument();
+});
+
+describe("evicted failure log", () => {
+  // What each locale says under "the log is gone" for an Upgrade whose
+  // cause the tool's words do not name: a whole sentence around
+  // `failureSteps.again.Upgrade`, never the fragment glued to the next one.
+  const nextStep = {
+    en: "You can click Retry later. If it still fails, show the error details to someone who can help.",
+    "zh-CN": "可以稍后点按“重试”；还是失败，就把错误详情告诉懂的人。",
+    "zh-Hant": "可以稍後點按「再試一次」；還是失敗，就把錯誤詳細資訊告訴懂的人。",
+  } as const;
+
+  it.each(["en", "zh-CN", "zh-Hant"] as const)("keeps the summary reachable in default mode (%s)", async (language) => {
+    await i18n.changeLanguage(language);
+    try {
+      const summary = "Error: invalid configuration file";
+      operations = [{ ...runningOp, kind: "Upgrade", status: "Done", outcome: { Failed: { exit_code: 1, summary, cause: null } } }];
+      useUiStore.getState().appendLog({ opId: 1, stream: "Stderr", line: summary });
+      for (let n = 0; n < 2001; n++) {
+        useUiStore.getState().appendLog({ opId: 2, stream: "Stdout", line: `Later output ${n}` });
+      }
+      expect(useUiStore.getState().logs.some((line) => line.opId === 1)).toBe(false);
+      const view = renderWithProviders(<LogDrawer />);
+      expect(await view.findByText(i18n.t("failureRecovery.logGone"))).toBeInTheDocument();
+      expect(view.getByText(nextStep[language])).toBeInTheDocument();
+      // The app's own disclosure row, closed: the summary is not on screen yet.
+      const disclosure = view.getByRole("button", { name: i18n.t("failureRecovery.details") });
+      expect(disclosure).toHaveAttribute("aria-expanded", "false");
+      expect(view.queryByText(summary)).toBeNull();
+      await userEvent.click(disclosure);
+      expect(disclosure).toHaveAttribute("aria-expanded", "true");
+      const shown = view.getByText(summary);
+      expect(shown).toBeVisible();
+      expect(disclosure).toHaveAttribute("aria-controls", shown.id);
+      expect(view.getByRole("button", { name: i18n.t("operations.copyLog") })).toBeDisabled();
+      view.unmount();
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+
+  it("claims no lost log for a failure the tool said nothing about", async () => {
+    // An empty summary: stderr was empty, so the log may never have had a
+    // line -- "no longer available" would be a guess.
+    operations = [{ ...runningOp, kind: "Upgrade", status: "Done", outcome: { Failed: { exit_code: 1, summary: "", cause: null } } }];
+    const view = renderWithProviders(<LogDrawer />);
+    await view.findByText(i18n.t("operations.outcome.FailedSilentDetail"));
+    expect(view.queryByText(i18n.t("failureRecovery.logGone"))).toBeNull();
+    expect(view.queryByRole("button", { name: i18n.t("failureRecovery.details") })).toBeNull();
+  });
+
+  it("closes the details again for the next log of a run", async () => {
+    const failedWith = (id: number, summary: string): OpSummary => ({
+      ...runningOp, id, kind: "Upgrade", name: `tool${id}`, status: "Done",
+      outcome: { Failed: { exit_code: 1, summary, cause: null } },
+    });
+    operations = [failedWith(2, "Error: second"), failedWith(1, "Error: first")];
+    act(() => useUiStore.getState().openLogRun([1, 2], 1));
+    const view = renderWithProviders(<LogDrawer />);
+    await userEvent.click(await view.findByRole("button", { name: "Show Error Details" }));
+    expect(view.getByText("Error: first")).toBeVisible();
+    await userEvent.click(view.getByRole("button", { name: "Next Log" }));
+    await view.findByRole("dialog", { name: "tool2" });
+    expect(view.getByRole("button", { name: "Show Error Details" })).toHaveAttribute("aria-expanded", "false");
+    expect(view.queryByText("Error: second")).toBeNull();
+  });
 });

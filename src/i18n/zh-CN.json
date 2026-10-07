@@ -1574,6 +1574,11 @@
       "internal": "发生内部错误，请稍后再试。"
     }
   },
+  "failureRecovery": {
+    "logGone": "这次操作的日志已不再保留。",
+    "details": "查看错误详情",
+    "next": "可以稍后{{again}}；还是失败，就把错误详情告诉懂的人。"
+  },
   "failureSteps": {
     "viewLogs_other": "查看{{count}}个日志",
     "position": "第{{current}}个，共{{total}}个",
