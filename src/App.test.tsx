@@ -446,6 +446,48 @@ describe("App", () => {
     expect(alert.className).toContain("text-danger-text");
   });
 
+  it("keeps 「正在更新…」 in the Updates page's subtitle while a check runs during an update (r24 W7)", async () => {
+    // Every update that ends starts a check: 「正在检查…」 took the subtitle,
+    // a live region, and gave it back, again and again through Update All.
+    const key = snapshot.artifacts[0].key;
+    mockBackend({
+      ...snapshot,
+      updates: [{ key, current: "1.8.2", target: "1.8.3", channel: "Native", checkable: true, warnings: [], blocked: null }],
+    });
+    const running: OpSummary = {
+      id: 1,
+      kind: "Upgrade",
+      instance_id: key.instance_id,
+      artifact_kind: key.kind,
+      name: key.name,
+      status: "Running",
+      outcome: null,
+      argv_preview: [],
+      cancel_policy: "KillThenReconcile",
+    };
+    const answer = mockInvoke.getMockImplementation() as (cmd: string, args?: InvokeArgs) => Promise<unknown>;
+    let checks = 0;
+    mockInvoke.mockImplementation((cmd: string, args?: InvokeArgs) => {
+      if (cmd === "list_operations") return Promise.resolve([running]);
+      // The first check answers; the next one runs on.
+      if (cmd === "refresh" && ++checks > 1) return new Promise(() => {});
+      return answer(cmd, args);
+    });
+    const { getByRole, findByRole } = renderWithProviders(<App />);
+    fireEvent.click(await findByRole("button", { name: /^Updates/ }));
+    await findByRole("heading", { level: 1, name: "Updates" });
+    const status = getByRole("heading", { level: 1 }).nextElementSibling as HTMLElement;
+    expect(status).toHaveAttribute("role", "status");
+    await waitFor(() => expect(status).toHaveTextContent(/^Updating…$/));
+    const checkAgain = within(getByRole("banner")).getByRole("button", { name: "Check Again" });
+    await waitFor(() => expect(checkAgain).not.toHaveAttribute("aria-disabled"));
+
+    fireEvent.click(checkAgain);
+
+    await waitFor(() => expect(checkAgain).toHaveAttribute("title", "Check Again (⌘R) · Checking…"));
+    expect(status).toHaveTextContent(/^Updating…$/);
+  });
+
   it("opens the Updates page from Review updates with every row it can update ticked", async () => {
     // Two updates the Updates page offers, and one it lists without a
     // checkbox (pinned). Rows need a height to be drawn in jsdom.

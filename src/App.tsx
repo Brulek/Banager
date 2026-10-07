@@ -62,7 +62,8 @@ function headerActions(page: Page): ReactNode {
  * (`useUpdatesHeadline`); 「51个工具」, everything installed, as the
  * sidebar counts it; 「5个程序」, what the last scan found; nothing for
  * nothing, which the page says in a sentence of its own -- or, on the
- * pages about the sources, 「正在检查…」 while a check runs -- on the
+ * pages about the sources, 「正在检查…」 while a check runs, except on the
+ * Updates page while some are updating, whose 「正在更新…」 stays -- on the
  * Installed page, while the first check lists what it found before its
  * update checks are done (`useInventoryPreview`), 「已找到51个工具 · 正在
  * 检查更新…」 -- and, as an
@@ -119,6 +120,15 @@ function usePageSubtitle(page: Page): PageSubtitle | null {
       // 「已找到51个工具 · 正在检查更新…」 over the first check's list.
       if (checking && page === "installed" && preview !== null) {
         return said(t("inventoryPreview.subtitle", { count: preview.artifacts.length }));
+      }
+      // On the Updates page, while some are updating, its headline --
+      // 「正在更新…」 -- before all else: every update that ends starts a
+      // check, so 「正在检查…」 would take its place and give it back again
+      // and again through the run, in a live region (r24 W7) -- one thing
+      // heard at a time (decision I21d). How a check went is said once
+      // the run is over.
+      if (page === "updates" && updatesHeadline !== null && updatesHeadline === t("updatesMore.updating")) {
+        return said(updatesHeadline);
       }
       if (checking) return said(t("common.checking"));
       if (lastCheckFailed) return { text: t("header.checkFailed"), failed: true };
