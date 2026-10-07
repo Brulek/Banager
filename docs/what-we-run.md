@@ -4520,6 +4520,15 @@ and the Other Programs scan keep their own budgets, in their sections.
 
 ## Files Banager writes
 
+Before settings, history or window state loads, Banager takes an exclusive
+OS lock on its application data directory itself, held through exit writes.
+No lock file is created. A second instance that cannot acquire the lock
+requests macOS to activate the existing app and exits before reading or writing
+these files. If the lock cannot be taken for another reason (a file system
+without locks, or a directory that cannot be made), Banager starts without it,
+as it did before the lock existed. This coordinates builds that implement the
+lock; older builds do not participate in this protocol.
+
 Three, all in Banager's application data directory
 (`~/Library/Application Support/com.brulek.banager`). `settings.json`
 (`settings::save`, written to an exclusively created random

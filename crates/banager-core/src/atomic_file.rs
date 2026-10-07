@@ -3,6 +3,20 @@
 use std::io::{self, Write};
 use std::path::Path;
 
+/// Lock the existing app-data directory itself before any persistence loads.
+/// O_DIRECTORY prevents a substituted regular file or pipe from being opened.
+/// The held descriptor is the lock; no additional file is written.
+pub fn lock_directory(parent: &Path) -> io::Result<std::fs::File> {
+    use std::os::unix::fs::OpenOptionsExt;
+    std::fs::create_dir_all(parent)?;
+    let directory = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_DIRECTORY | libc::O_CLOEXEC)
+        .open(parent)?;
+    directory.try_lock().map_err(io::Error::from)?;
+    Ok(directory)
+}
+
 pub(crate) fn write(path: &Path, bytes: &[u8]) -> io::Result<()> {
     let parent = path
         .parent()

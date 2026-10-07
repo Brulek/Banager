@@ -1,3 +1,4 @@
+pub use crate::atomic_file::lock_directory;
 use crate::model::ArtifactKey;
 use serde::{Deserialize, Serialize};
 use std::path::Path;

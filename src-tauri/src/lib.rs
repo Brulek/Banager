@@ -2,6 +2,7 @@ mod auto_check;
 pub mod events;
 mod history;
 mod homepage;
+mod instance;
 mod ipc;
 mod menu;
 mod navigation;
@@ -45,6 +46,7 @@ pub(crate) use session_handlers;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(instance::guard())
         // The window never leaves Banager's own page (navigation.rs).
         .plugin(navigation::stay_on_the_page())
         .plugin(tauri_plugin_updater::Builder::new().build())

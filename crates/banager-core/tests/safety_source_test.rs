@@ -670,7 +670,22 @@ fn test_an_opens_flags_are_read_from_its_own_statement() {
 /// round 5 review found the Codex version read and the standalone launcher
 /// check following `~/.codex` and `~/.local/bin/claude` with plain
 /// `read_link`/`realpath`, which this list now rules out.
-const PATH_LOOKUPS_ALLOWED: [(&str, &str, &str); 14] = [
+const PATH_LOOKUPS_ALLOWED: [(&str, &str, &str); 17] = [
+    (
+        "crates/banager-core/src/atomic_file.rs:",
+        "use std::os::unix::fs::OpenOptionsExt;",
+        "a trait import for the O_DIRECTORY flag, not a path lookup",
+    ),
+    (
+        "crates/banager-core/src/atomic_file.rs:",
+        "pub fn lock_directory(parent: &Path) -> io::Result<std::fs::File> {",
+        "a return type for the held app-data directory lock",
+    ),
+    (
+        "crates/banager-core/src/atomic_file.rs:",
+        "let directory = std::fs::OpenOptions::new()",
+        "Banager's own app-data directory, opened read-only with O_DIRECTORY before any persistence loads; no lock file",
+    ),
     (
         "crates/banager-core/src/dirfd.rs:",
         "let fd = unsafe { libc::open(c\"/\".as_ptr(), SEARCH | libc::O_CLOEXEC) };",
