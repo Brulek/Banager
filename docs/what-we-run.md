@@ -4500,8 +4500,8 @@ runs and Banager connects to nothing: the browser loads the page, under
 the browser's own settings. The window is given no new permission for
 it: Banager's own commands are behind no permission of their own
 (`src-tauri/build.rs` declares no app manifest), and
-`src-tauri/capabilities/default.json` is as it was; the opener plugin
-stays out. The window itself still never leaves Banager's page
+the homepage link adds nothing to `src-tauri/capabilities/default.json`;
+the opener plugin stays out. The window itself still never leaves Banager's page
 (`src-tauri/src/navigation.rs`). And the Tauri updater
 plugin is compiled in and configured with the endpoint
 `https://github.com/Brulek/Banager/releases/latest/download/latest.json`
@@ -4510,6 +4510,32 @@ calls it yet, and the window is given none of its commands
 (`src-tauri/capabilities/default.json` has no `updater:` permission), so
 no request to it is made; when app self-update ships, this paragraph
 changes.
+
+**Window permissions.**
+
+The window is given only these of Tauri's permissions
+(`src-tauri/capabilities/default.json`): `core:event:allow-listen` and
+`core:event:allow-unlisten`, to hear the events Rust sends the page;
+`core:window:allow-start-dragging` and
+`core:window:allow-internal-toggle-maximize`, which Tauri's own script
+for the title bar's drag regions calls to move the window and to zoom it
+on a double-click; `core:window:allow-set-badge-count`, for the Dock
+badge; and `notification:allow-is-permission-granted`, which the
+notification plugin's own script calls as the page loads.
+`core:image:deny-from-path` still refuses the one command that reads an
+image file by the path it is given. Each of the six was among what the
+window had before -- Tauri's `core:default`, which this list replaced on
+2026-10-07, or a permission given beside it -- so the change only took
+permissions away, the native menu's among them. Rust builds the menu
+(`menu::show` in `src-tauri/src/menu.rs`) and the page names its language
+through Banager's own `set_menu_language`, so the page needs none of the
+menu's commands; a `plugin:menu|new` asking for a `Predefined` item with
+no `options`, which makes Tauri 2.11.5's handler panic, is refused before
+the handler reads it. No command, host or written file is added.
+`window_rights` in `src-tauri/src/lib.rs` checks, against the ACL `run()`
+builds, that of every plugin command in the build the window reaches
+these six and no other, and none of them from another window or another
+address.
 
 Showing a logo makes no network request either. The logos Banager shows
 for tools and sources are built into the app: `pnpm icons:build`

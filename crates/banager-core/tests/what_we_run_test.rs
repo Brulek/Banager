@@ -30,7 +30,7 @@
 //! `xcode-select -p` it asks before running an interpreter in `/usr/bin`
 //! and says one with no developer tools behind it is skipped, that the
 //! document says whether the opener plugin is built in
-//! (`src-tauri/Cargo.toml`) and names each permission of it the window is
+//! (`src-tauri/Cargo.toml`) and names each permission the window is
 //! given (`src-tauri/capabilities/default.json`) and the one call Show in Finder
 //! makes, saying it runs nothing else, that the daily check's section
 //! says it is off by default, states its tick, how long after a check it
@@ -1240,6 +1240,43 @@ fn test_what_we_run_names_the_opener_permission_the_window_has_and_what_show_in_
         body.contains("runs nothing else"),
         "the `## Unknown-source scan` section of docs/what-we-run.md does not say that Show in Finder runs nothing else"
     );
+}
+
+#[test]
+fn test_what_we_run_names_every_permission_the_window_is_given() {
+    // The window's permissions are what a page that ran someone else's
+    // script could ask of Tauri. The `## Network` section names each one,
+    // so a permission added to `src-tauri/capabilities/default.json`
+    // without a word there fails here.
+    let path = Path::new("../../src-tauri/capabilities/default.json");
+    let text =
+        std::fs::read_to_string(path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    let capability: serde_json::Value = serde_json::from_str(&text).expect("default.json is JSON");
+    let permissions: Vec<&str> = capability["permissions"]
+        .as_array()
+        .expect("default.json lists its permissions")
+        .iter()
+        .map(|p| {
+            p.as_str()
+                .or_else(|| p["identifier"].as_str())
+                .expect("a permission is a string or has an identifier")
+        })
+        .collect();
+    assert!(
+        !permissions.is_empty(),
+        "default.json gives the window no permission"
+    );
+    let doc = read_doc();
+    let network = section_body(&doc, "Network").unwrap_or_else(|| {
+        panic!("docs/what-we-run.md has no `## Network` section for the hosts Banager connects to")
+    });
+    let network = network.split_whitespace().collect::<Vec<_>>().join(" ");
+    for permission in &permissions {
+        assert!(
+            network.contains(&format!("`{permission}`")),
+            "the `## Network` section of docs/what-we-run.md does not name {permission:?}, which src-tauri/capabilities/default.json gives the window"
+        );
+    }
 }
 
 #[test]
