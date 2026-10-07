@@ -11,6 +11,7 @@ import { useMutation, useQuery, useQueryClient, type UseMutationResult, type Use
 import { clearHistory, getHistory } from "./api";
 import { queryKeys } from "./queryKeys";
 import { artifactKeyId } from "../store/ui";
+import { isUpdatedButStepFailed } from "./format";
 import { NO_HISTORY, type HistoryRecord, type HistoryResult, type HistoryView, type OpSummary } from "./types";
 
 /** How far back 「最近的更新记录」 lists: 30 days. */
@@ -71,7 +72,11 @@ export function listedResult(result: HistoryResult): boolean {
  * One that did not work or asks to be checked only while the last check
  * still offers the tool an update (`offered`, by `artifactKeyId`): updated
  * in Terminal since, or uninstalled, it no longer is, and 「未能更新」
- * would say what Banager cannot know is still true. While it is offered,
+ * would say what Banager cannot know is still true. Not one installed
+ * though a step after it failed (`Attention::UpdatedButStepFailed`, r35
+ * U2): it is listed as one that worked is, since no check offers what is
+ * installed, and after a restart this line is all that says a step of it
+ * failed. While it is offered,
  * its row lists it too. A recorded Homebrew password stop also gives
  * that row View Steps through `usePasswordRecoveryKeys`, which reads
  * the records Clear dismissed too (`includeDismissed`): Clear tidies the
@@ -104,7 +109,7 @@ export function recentUpdates(
         !seenHere.has(id) &&
         record.kind === "Update" &&
         listedResult(record.result) &&
-        (record.result === "Succeeded" || offered.has(id)) &&
+        (record.result === "Succeeded" || isUpdatedButStepFailed(record.result) || offered.has(id)) &&
         record.finished_at >= since,
     )
     .map(([, record]) => record)

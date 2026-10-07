@@ -373,6 +373,7 @@
       "cancelled": "Cancelled",
       "check": "Needs attention",
       "unconfirmed": "Result unconfirmed",
+      "stepFailed": "Updated with an error",
       "viewLogLabel": "View log: {{name}}"
     },
     "justUpdated": {
@@ -428,7 +429,8 @@
     "showFewer": "Show Fewer",
     "failedBecause": "Couldn't update: {{cause}}",
     "unchanged": "Didn't update: same version",
-    "unchangedTitle": "The command said it finished, but the version read before and after the update is the same."
+    "unchangedTitle": "The command said it finished, but the version read before and after the update is the same.",
+    "stepFailedTitle": "The new version was installed, but the command said a step after the update failed."
   },
   "batchResult": {
     "reason": "Reason: {{detail}}",
@@ -998,7 +1000,10 @@
         "BackAfterUninstall": "Files showed up again after the uninstall",
         "BackAfterUninstallDetail": "Quit the tool first. If it's still listed, uninstall it again; otherwise move the files named in the log to the Trash yourself.",
         "NotLinkedAfterLink": "Reported done, but it isn't linked",
-        "NotLinkedAfterLinkDetail": "You can click Fix… again. If it still isn't linked, click Copy Log and send the log to someone who can help."
+        "NotLinkedAfterLinkDetail": "You can click Fix… again. If it still isn't linked, click Copy Log and send the log to someone who can help.",
+        "UpdatedButStepFailed": "Updated to {{version}}, but a step after it failed; see the log",
+        "UpdatedButStepFailedNoVersion": "Updated, but a step after it failed; see the log",
+        "UpdatedButStepFailedDetail": "The new version is installed, and the log says which step failed. If you're not sure what to do, click Copy Log and send the log to someone who can help."
       },
       "Failed": "Couldn't finish: {{summary}}",
       "FailedSilent": "Couldn't finish, and the program didn't say why",

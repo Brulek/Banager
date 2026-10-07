@@ -233,6 +233,20 @@ describe("recentUpdates", () => {
     expect(recentUpdates(history, [], NOW, elsewhere).map((r) => r.key.name)).toEqual(["worked"]);
   });
 
+  it("lists an update installed though a step after it failed whether or not it is still offered, as one that worked (r35 U2)", () => {
+    // Homebrew's post-install step failed after the new keg was linked:
+    // installed, so the next check offers it no more, and after a restart
+    // this is the one place that says so.
+    const history = view([
+      record("python@3.13", {
+        to_version: "3.13.8",
+        result: { NeedsAttention: { UpdatedButStepFailed: { version: "3.13.8" } } },
+      }),
+      record("unchanged", { finished_at: NOW - 2 * DAY, result: { NeedsAttention: "UnchangedAfterUpgrade" } }),
+    ]);
+    expect(recentUpdates(history, [], NOW, offered()).map((r) => r.key.name)).toEqual(["python@3.13"]);
+  });
+
   it("finds whether this launch's operation was verified, by its run and id", () => {
     const history = view([
       record("cmake", { run: "now", op_id: 7 }),

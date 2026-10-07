@@ -3873,6 +3873,50 @@ describe("UpdatesPage", () => {
       expect(within(section).queryByText("wget")).toBeNull();
     });
 
+    it("says an update installed though a step after it failed as updated with an error: in its row, the count and the list (r35 U2)", async () => {
+      // Homebrew linked glib 2.90.0, then its post-install step failed and
+      // brew exited 1 (`UpdatedButStepFailed`).
+      operations = [
+        operation(glibKey, {
+          status: "Done",
+          outcome: { NeedsAttention: { UpdatedButStepFailed: { version: "2.90.0" } } },
+        }),
+      ];
+      started(7, "2.90.0");
+      useUiStore.setState({ opFinishedAt: { 7: Date.now() } });
+      artifacts = [installed(glibKey, "2.88.3"), installed(onyxKey, "5.0.2")];
+      const { queryClient } = renderPage();
+
+      // The row says it is updated, opens its log, and holds the row as one
+      // that worked does: no checkbox, no Retry, out of the count.
+      const row = await findRow("glib");
+      expect(await within(row).findByText("Updated with an error")).toBeInTheDocument();
+      expect(within(row).queryByText("Couldn't update")).toBeNull();
+      expect(within(row).queryByRole("checkbox")).toBeNull();
+      expect(within(row).queryByRole("button", { name: /^Retry/ })).toBeNull();
+      expect(within(row).getByRole("button", { name: "View log: glib" })).toBeInTheDocument();
+      expect(await screen.findByText("1 update available")).toBeInTheDocument();
+
+      // The check after it no longer offers glib: the line takes over, with
+      // the version it has now, and its log.
+      act(() => {
+        queryClient.setQueryData(queryKeys.snapshot, {
+          ...snapshot,
+          generation: snapshot.generation + 1,
+          instances,
+          artifacts: [installed(glibKey, "2.90.0"), installed(onyxKey, "5.0.2")],
+          updates: [snapshot.updates[1]],
+        });
+      });
+      const section = await screen.findByRole("region", { name: "Update History" });
+      const [line] = within(section).getAllByRole("listitem");
+      expect(within(line).getByText("glib")).toBeInTheDocument();
+      expect(within(line).getByText("2.90.0")).toBeInTheDocument();
+      expect(within(line).getByText("Updated with an error")).toBeInTheDocument();
+      fireEvent.click(within(line).getByRole("button", { name: "View log: glib" }));
+      expect(useUiStore.getState().focusedOpId).toBe(7);
+    });
+
     it("lists no tool uninstalled since its update, and no update still under way", async () => {
       operations = [
         operation(glibKey, { id: 9, kind: "Uninstall", status: "Done", outcome: "Succeeded" }),
@@ -4468,6 +4512,46 @@ describe("UpdatesPage", () => {
         const lines = within(section).getAllByRole("listitem");
         expect(lines.map((line) => line.querySelector("span[title]")?.textContent)).toEqual(["cmake"]);
         expect(section.textContent).not.toMatch(/Couldn't update|Needs attention|Result unconfirmed/);
+      });
+
+      it("lists an update installed though a step after it failed though nothing offers it any more, with its version and what it kept (r35 U2)", async () => {
+        answerHistory({
+          run: "this-launch",
+          cleared_before: null,
+          records: [
+            kept("python@3.13", Date.now() - 60_000, {
+              from_version: "3.13.7",
+              to_version: "3.13.8",
+              result: { NeedsAttention: { UpdatedButStepFailed: { version: "3.13.8" } } },
+              follow_up_warnings: [{ NoLongerLinked: { name: "python@3.13", commands: ["python3"] } }],
+            }),
+            kept("fontconfig", Date.now() - 120_000, {
+              to_version: "2.18.4",
+              result: { NeedsAttention: { UpdatedButStepFailed: { version: "2.18.4" } } },
+            }),
+          ],
+        });
+        // Installed: the check offers neither any more.
+        updates = [snapshot.updates[1]];
+        renderPage();
+
+        const section = await screen.findByRole("region", { name: "Update History" });
+        const [python, fontconfig] = within(section).getAllByRole("listitem");
+        for (const [line, version] of [[python, "3.13.8"], [fontconfig, "2.18.4"]] as const) {
+          expect(within(line).getByText("Updated with an error")).toBeInTheDocument();
+          expect(within(line).getByText(version)).toBeInTheDocument();
+        }
+        expect(endingWhy(within(fontconfig).getByText("Updated with an error"))).toBe(
+          "The new version was installed, but the command said a step after the update failed.",
+        );
+        // The log is gone; what it kept of the steps after it is not.
+        expect(within(fontconfig).queryByRole("button", { name: "View log: fontconfig" })).toBeNull();
+        fireEvent.click(within(python).getByRole("button", { name: "View log: python@3.13" }));
+        const dialog = await screen.findByRole("dialog");
+        expect(dialog).toHaveTextContent("Updated with an error");
+        expect(dialog).toHaveTextContent("brew link --formula --force python@3.13");
+        // In no count: nothing to update.
+        expect(await screen.findByText("1 update available")).toBeInTheDocument();
       });
 
       it("lists a kept failure beside the tool's row on purpose: the row is a plain update, the line says the last try did not work", async () => {

@@ -23,6 +23,7 @@ import type {
   Outcome,
 } from "../lib/types";
 import { causeKeepsItsLine, failureDetail, faultFailure, type FailureCause } from "../lib/failureCause";
+import { isUpdatedButStepFailed } from "../lib/format";
 import { IDS, key } from "./mockData";
 
 const MINUTE = 60 * 1000;
@@ -182,6 +183,9 @@ export function mockRecord(args: {
   const result = resultOf(outcome);
   const model = request.artifact_kind === "Model";
   const exitedZero = result === "Succeeded" || (typeof result !== "string" && "NeedsAttention" in result);
+  // Done: it worked, or it is installed though a step after it failed
+  // (`UpdatedButStepFailed`), which Rust keeps as one that worked is.
+  const done = result === "Succeeded" || isUpdatedButStepFailed(result);
   return {
     run: args.run,
     op_id: args.opId,
@@ -193,12 +197,12 @@ export function mockRecord(args: {
     from_version: model ? null : args.before,
     to_version: model || !update || !exitedZero ? null : args.after,
     result,
-    ...(args.followUpWarnings?.length ? { follow_up_warnings: args.followUpWarnings } : {}),
+    ...(done && args.followUpWarnings?.length ? { follow_up_warnings: args.followUpWarnings } : {}),
     // An update already at its new version did not move it itself: the
     // real readings before and after are the same (the preview moves its
     // row only to show it done).
     verified: update
-      ? result === "Succeeded" &&
+      ? done &&
         !args.alreadyUpdated &&
         args.before !== null &&
         args.after !== null &&

@@ -1,4 +1,4 @@
-import type { Attention, Fault, Outcome } from "./types";
+import type { Attention, Fault, HistoryResult, Outcome } from "./types";
 
 /**
  * `names` as a sentence lists them, in the user's language: 「Homebrew、npm
@@ -60,10 +60,20 @@ export function outcomeKey(outcome: Outcome): string {
 
 /** The variant name of one way reconcile contradicted a command's success
  *  -- or, `BackAfterUninstall`, what a path-list uninstall's own last look
- *  found -- listed for the same reason as `faultKey`'s: each needs a
- *  sentence in both locales under `operations.outcome.NeedsAttention`, and a
- *  template string would take a new one without a word. */
+ *  found; `UpdatedButStepFailed`, an update installed though its tool
+ *  failed after it, with the version it moved to, or, for a model, none
+ *  (`UpdatedButStepFailedNoVersion`) -- listed for the same reason as
+ *  `faultKey`'s: each needs a sentence in both locales under
+ *  `operations.outcome.NeedsAttention`, and a template string would take a
+ *  new one without a word. */
 function attentionKey(attention: Attention): string {
+  if (typeof attention !== "string") {
+    if ("UpdatedButStepFailed" in attention) {
+      return attention.UpdatedButStepFailed.version === null ? "UpdatedButStepFailedNoVersion" : "UpdatedButStepFailed";
+    }
+    const unhandled: never = attention;
+    return unhandled;
+  }
   switch (attention) {
     case "NotInstalledAfterInstall":
     case "StillInstalledAfterUninstall":
@@ -78,6 +88,32 @@ function attentionKey(attention: Attention): string {
       return unhandled;
     }
   }
+}
+
+/**
+ * Whether an update ended installed though its tool failed after the
+ * version it reads had moved (`Attention::UpdatedButStepFailed`, r35 U2):
+ * its row is held as one that worked, it is out of every count, and
+ * 「最近的更新记录」 lists it whatever the last check offers -- an outcome of
+ * this window's or a result the history kept, the same.
+ */
+export function isUpdatedButStepFailed(outcome: Outcome | HistoryResult | null): boolean {
+  return stepFailedOf(outcome) !== null;
+}
+
+/**
+ * The version an update installed though a step after it failed moved to,
+ * as Banager read it after the update (`Attention::UpdatedButStepFailed`);
+ * null for any other outcome, and for a model, whose digest is never shown.
+ */
+export function stepFailedVersion(outcome: Outcome | HistoryResult | null): string | null {
+  return stepFailedOf(outcome)?.version ?? null;
+}
+
+function stepFailedOf(outcome: Outcome | HistoryResult | null): { version: string | null } | null {
+  if (outcome === null || typeof outcome === "string" || !("NeedsAttention" in outcome)) return null;
+  const attention = outcome.NeedsAttention;
+  return typeof attention !== "string" && "UpdatedButStepFailed" in attention ? attention.UpdatedButStepFailed : null;
 }
 
 /**
@@ -103,6 +139,15 @@ export function outcomeDetailKey(outcome: Outcome): string | null {
     }
   }
   if ("NeedsAttention" in outcome) {
+    // The new version is in, the log says which step failed: never Retry,
+    // which would install nothing and run no step.
+    if (typeof outcome.NeedsAttention !== "string") {
+      if ("UpdatedButStepFailed" in outcome.NeedsAttention) {
+        return "operations.outcome.NeedsAttention.UpdatedButStepFailedDetail";
+      }
+      const unhandled: never = outcome.NeedsAttention;
+      return unhandled;
+    }
     switch (outcome.NeedsAttention) {
       case "UnchangedAfterUpgrade":
         return "operations.outcome.NeedsAttention.UnchangedAfterUpgradeDetail";
@@ -180,13 +225,23 @@ const ENDS_AT_COPY_LOG: ReadonlySet<string> = new Set([
 export function outcomeStepKey(outcome: Outcome, logHasLines: boolean): string | null {
   const key = outcomeDetailKey(outcome);
   if (key !== null && !logHasLines && ENDS_AT_COPY_LOG.has(key)) return "operations.outcome.emptyLogDetail";
+  // An update installed though a step after it failed has nothing to try
+  // again, and over a log with no line it has no lines to point at either.
+  if (key === "operations.outcome.NeedsAttention.UpdatedButStepFailedDetail" && !logHasLines) return null;
   return key;
 }
 
 /** Interpolation values for `operations.outcome.<outcomeKey(outcome)>`. */
 export function outcomeArgs(outcome: Outcome): Record<string, unknown> {
   if (typeof outcome === "string") return {};
-  if ("NeedsAttention" in outcome) return {};
+  if ("NeedsAttention" in outcome) {
+    const attention = outcome.NeedsAttention;
+    // The version the update moved to; none for a model's digest.
+    if (typeof attention !== "string" && attention.UpdatedButStepFailed.version !== null) {
+      return { version: attention.UpdatedButStepFailed.version };
+    }
+    return {};
+  }
   if ("Failed" in outcome) return { summary: outcome.Failed.summary.trim() };
   if ("BanagerFailed" in outcome) return faultArgs(outcome.BanagerFailed);
   const unhandled: never = outcome;

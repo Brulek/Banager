@@ -3,7 +3,7 @@ import { usePasswordRecoveryKeys } from "../lib/passwordRecovery";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useCheckAgain, useOperations, useSnapshot, useSettings, useSaveSettings, type SettingsEdit } from "../lib/queries";
-import { elapsedSince } from "../lib/format";
+import { elapsedSince, stepFailedVersion } from "../lib/format";
 import { useUiStore, artifactKeyId } from "../store/ui";
 import {
   adapterIdOf,
@@ -586,9 +586,10 @@ export function UpdatesPage() {
   //
   // The version is the one the snapshot now lists for the tool -- what is
   // installed, read back after the update -- or, where it lists none, the
-  // one the update was for. A model's is a digest, and is not shown; nor
-  // is one beside 「未能更新」 or what did not add up, where it would read
-  // as the version the tool was updated to.
+  // one the update was for: of one installed though a step after it
+  // failed, the one Banager read after it (its outcome's). A model's is a
+  // digest, and is not shown; nor is one beside 「未能更新」 or what did not
+  // add up, where it would read as the version the tool was updated to.
   //
   // Then what the history kept from before this window, of the last 30
   // days (`recentUpdates`): never a tool this window has an operation of,
@@ -625,9 +626,13 @@ export function UpdatesPage() {
           sourceLabel: labels.get(op.instance_id) ?? adapterLabel(t, adapterId),
           name: opName(op),
           version:
-            op.artifact_kind === "Model" || ending.kind !== "succeeded"
+            op.artifact_kind === "Model"
               ? null
-              : installed || updateTargets[op.id] || null,
+              : ending.kind === "succeeded"
+                ? installed || updateTargets[op.id] || null
+                : ending.kind === "updatedButStepFailed"
+                  ? installed || stepFailedVersion(op.outcome)
+                  : null,
           finishedAt: opFinishedAt[op.id] ?? null,
           verified: verifiedHere(history, op.id),
           ending,
@@ -647,7 +652,10 @@ export function UpdatesPage() {
           adapterId: record.adapter_id,
           sourceLabel: labels.get(record.key.instance_id) ?? adapterLabel(t, record.adapter_id),
           name: record.display_name,
-          version: record.key.kind === "Model" || ending.kind !== "succeeded" ? null : record.to_version,
+          version:
+            record.key.kind === "Model" || (ending.kind !== "succeeded" && ending.kind !== "updatedButStepFailed")
+              ? null
+              : record.to_version,
           finishedAt: record.finished_at,
           verified: record.verified,
           ending,

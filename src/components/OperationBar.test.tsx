@@ -428,6 +428,37 @@ describe("OperationBar", () => {
     expect(getByRole("button", { name: "View Log" })).toBeInTheDocument();
   });
 
+  it("says an update installed though a step after it failed, with its version, and offers its log (r35 U2)", async () => {
+    operations = [op(9, "python@3.13", "Done", { NeedsAttention: { UpdatedButStepFailed: { version: "3.13.8" } } })];
+
+    const { findByText, getByRole, queryByText } = renderWithProviders(<OperationBar />);
+
+    await findByText("python@3.13: Updated to 3.13.8, but a step after it failed; see the log");
+    expect(getByRole("img", { name: "Needs attention" })).toBeInTheDocument();
+    expect(getByRole("button", { name: "View Log" })).toBeInTheDocument();
+    expect(queryByText(/Couldn't update/)).toBeNull();
+    await act(async () => {
+      await i18n.changeLanguage("zh-Hant");
+    });
+    await findByText("python@3.13：已更新到3.13.8，但之後有一步失敗了，請查看記錄");
+    await act(async () => {
+      await i18n.changeLanguage("en");
+    });
+  });
+
+  it("counts an update installed though a step after it failed as one to look at, not as a failure (r35 U2)", async () => {
+    const { findByText, queryClient, queryByText } = renderWithProviders(<OperationBar />);
+    await waitFor(() => expect(queryClient.getQueryData(queryKeys.operations)).toEqual([]));
+    await listNow(queryClient, [op(3, "wget", "Queued"), op(2, "fontconfig", "Queued"), op(1, "git", "Running")]);
+    await listNow(queryClient, [
+      op(3, "wget", "Done", "Succeeded"),
+      op(2, "fontconfig", "Done", { NeedsAttention: { UpdatedButStepFailed: { version: "2.18.4" } } }),
+      op(1, "git", "Done", "Succeeded"),
+    ]);
+    await findByText("1 of 3 needs attention");
+    expect(queryByText(/failed/)).toBeNull();
+  });
+
   it("closes with × once everything is done, and comes back for the next operation", async () => {
     operations = [op(7, "git", "Done", "Succeeded")];
     const { container, findByText, getByRole, queryClient } = renderWithProviders(<OperationBar />);

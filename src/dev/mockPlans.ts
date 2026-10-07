@@ -638,6 +638,30 @@ export function playOutcome(
         lines: [...firstHalf, err(failureLine(plan, subject))],
         outcome: { Failed: { exit_code: 1, summary: failureLine(plan, subject), cause: operationFailureCause(failureLine(plan, subject)) } },
       };
+    case "step-failed": {
+      // Installed, then a step after it failed: Homebrew pours and links a
+      // formula's new version, then its post-install step fails, and it
+      // says so and exits 1 (formula_installer.rb:1478-1486 in 7.0.8). The
+      // backend moves the version as for a success. Not an update: failed.
+      const target = subject.candidate?.target;
+      if (plan.request.kind !== "Upgrade" || target === undefined) return playOutcome(plan, subject, "failed");
+      const homebrew = subject.inst.adapter_id === "brew" && plan.request.artifact_kind === "Formula";
+      const said: LogLine[] = homebrew
+        ? [
+            err("Warning: The post-install step did not complete successfully"),
+            out("You can try again using:"),
+            out(`  brew postinstall ${plan.request.name}`),
+          ]
+        : [err("Error: a step after the update failed")];
+      return {
+        lines: [...lines, ...said],
+        outcome: {
+          NeedsAttention: {
+            UpdatedButStepFailed: { version: plan.request.artifact_kind === "Model" ? null : target },
+          },
+        },
+      };
+    }
     case "cancelled":
       return { lines: firstHalf, outcome: "Cancelled" };
     case "unconfirmed":

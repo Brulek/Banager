@@ -86,8 +86,12 @@ a protected place**, and the link is not followed.
   app isn't where it was installed**, and the tool's own first error line behind the ⓘ where no cause is known or the
   cause points at it, as for a file in the way, kept across restarts too) or whose result didn't add up, each saying what happened in its own
   words (for example, **Didn't update: same version** where the version read after the update was the one before, below
-  its new version). A failed one or one whose
-  result didn't add up is listed only while the last check still offers that tool an update. Cancelled updates
+  its new version). An update installed though a step after it failed — Homebrew's post-install step, say — reads
+  **Updated with an error**, with the version it moved to, what that means behind the ⓘ, and View Log where there is
+  something to show (this launch's log, or what was kept of the steps after it); its row says the same, with no Retry, and it counts as no update to
+  install. A failed one or one whose
+  result didn't add up is listed only while the last check still offers that tool an update; one updated with an
+  error is listed either way, as a success is. Cancelled updates
   and uninstalls are not listed. The list is kept across restarts in `history.json`, until you press Clear History.
 - An uninstall's preview lists what stays after it — an AI tool's settings and data folders where the
   table names them, Ollama's models — with how much each takes where it could be measured, and Copy Path; nothing in it
@@ -527,7 +531,9 @@ formula 与 cask，以及 npm、PyPI、crates.io 上的包，每条都译自该�
 - 在“更新”页，跨大版本的更新会标“大版本更新”，除非这一行已经写着它会自行更新，或者终端运行的是另一份
   （“终端用另一份”）。“全部更新”不会勾选这种终端用不到的那一份，侧栏、程序坞角标和概览里的更新数也不算它。待更新的工具下面的“最近的更新记录”（没有待更新时在最上面）列出 30 天内的更新：成功的（轮到它时已是新版本、且之前同一个Homebrew里同一类（公式或cask）有改动了东西的更新已结束时——Homebrew会先更新一个工具需要的其他工具——写“已由前面的更新一并完成”，其他情况写“轮到它时已是新版本”），以及未能更新的
   （知道原因时写出原因，例如“未能更新：网络连接失败”“未能更新：App已不在原来的位置”，不知道原因、或原因要看报错（例如与已有的文件冲突）时ⓘ里写出工具自己报错的第一行，重启后也在）和结果对不上的（写明是怎么回事，例如更新后读到的版本没有变、也还没到新版本时写“没有更新成功：版本没有变”）；
-  后两种只在上次检查仍为这个工具提供更新时列出。
+  新版本已装好、但之后有一步失败的（例如Homebrew的post-install步骤）写“已更新，有错误”，带上更新到的版本，ⓘ里说明是怎么回事，
+  有内容可看时还有“查看日志”（本次打开时看日志，重启后看保留下来的后续说明）；它那一行也这样写，没有“重试”，也不算作待更新。
+  未能更新的和结果对不上的只在上次检查仍为这个工具提供更新时列出；已更新但有错误的和成功的一样，都会列出。
   取消的更新和卸载不列。这个列表重启后仍在（存在 `history.json` 里），直到你按“清除记录”。
 - 卸载前的预览会列出卸载后会保留的东西——AI 工具的设置和数据文件夹（内置表格里写了的）、Ollama 的模型——能算出大小的
   写出大小，并可以拷贝路径；预览里没有任何删除它们的按钮，只在列表下面用一句话说明不需要的设置和数据可以在访达中移到

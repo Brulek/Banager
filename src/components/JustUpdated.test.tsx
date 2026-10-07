@@ -14,6 +14,7 @@ import {
 } from "./JustUpdated";
 import type { OpSummary } from "../lib/types";
 import { failureCause } from "../lib/failureCause";
+import { useUiStore } from "../store/ui";
 
 function upgrade(id: number, name: string, fields: Partial<OpSummary> = {}): OpSummary {
   return {
@@ -663,5 +664,80 @@ describe("the columns of 「最近的更新记录」 (p1 polish)", () => {
     expect(words.className.split(" ")).toContain("min-w-0");
     expect(words.className.split(" ")).not.toContain("whitespace-nowrap");
     expect(words.closest('[data-just-updated-cell="ending"]')?.className.split(" ")).toContain("min-w-0");
+  });
+});
+
+describe("an update installed though a step after it failed (r35 U2)", () => {
+  const stepped = { NeedsAttention: { UpdatedButStepFailed: { version: "3.13.8" } } } as const;
+  const warnings = [{ NoLongerLinked: { name: "python@3.13", commands: ["python3"] } }];
+
+  it("is an ending of its own, from this window's operation and from the history alike, with what its follow-up left", () => {
+    expect(endingOfOutcome(stepped)).toEqual({ kind: "updatedButStepFailed" });
+    expect(endingOfOutcome(stepped, null, warnings)).toEqual({ kind: "updatedButStepFailed", warnings });
+    expect(endingOfRecord(stepped)).toEqual({ kind: "updatedButStepFailed" });
+    expect(endingOfRecord(stepped, null, warnings)).toEqual({ kind: "updatedButStepFailed", warnings });
+    // A model's: no version anywhere, the same ending.
+    expect(endingOfRecord({ NeedsAttention: { UpdatedButStepFailed: { version: null } } })).toEqual({
+      kind: "updatedButStepFailed",
+    });
+    // Listed by this window as any finished update is.
+    const op = upgrade(7, "python@3.13", { outcome: stepped });
+    expect(justUpdatedOps([op], none)).toEqual([op]);
+  });
+
+  it.each([
+    ["en", "Updated with an error", "The new version was installed, but the command said a step after the update failed."],
+    ["zh-CN", "已更新，有错误", "新版本已经装好，但命令显示更新之后有一步失败了。"],
+    ["zh-Hant", "已更新，有錯誤", "新版本已經裝好，但指令顯示更新之後有一步失敗了。"],
+  ])("says in %s it is updated, with the version it moved to, why behind its ⓘ, and its log", async (language, word, title) => {
+    await i18n.changeLanguage(language);
+    try {
+      const t = i18n.getFixedT(language);
+      const line = (id: string, opId: number | null, ending: JustUpdatedEntry["ending"]): JustUpdatedEntry => ({
+        id,
+        opId,
+        key: { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "python@3.13" },
+        adapterId: "brew",
+        sourceLabel: "Homebrew",
+        name: "python@3.13",
+        version: "3.13.8",
+        finishedAt: Date.now(),
+        verified: true,
+        ending,
+      });
+      renderWithProviders(
+        <JustUpdated
+          entries={[
+            line("op:7", 7, endingOfOutcome(stepped)!),
+            line("history:a", null, endingOfRecord(stepped, null, warnings)!),
+            line("history:b", null, endingOfRecord(stepped)!),
+          ]}
+          onClear={() => {}}
+        />,
+      );
+      const [here, saved, bare] = screen.getAllByRole("listitem");
+      for (const item of [here, saved, bare]) {
+        const words = within(item).getByText(word);
+        expect(words.querySelector("svg")).toHaveClass("text-warning");
+        expect(within(item).getByText("3.13.8")).toBeInTheDocument();
+        // Not "Couldn't update": it is installed.
+        expect(within(item).queryByText(t("updates.progress.failed"))).toBeNull();
+      }
+      expect(why(within(here).getByText(word))).toBe(title);
+      // This window's opens its operation's log.
+      fireEvent.click(within(here).getByRole("button", { name: t("updates.progress.viewLogLabel", { name: "python@3.13" }) }));
+      expect(useUiStore.getState().logRun).toEqual([7]);
+      expect(useUiStore.getState().focusedOpId).toBe(7);
+      // The history's shows what it kept of the steps after it, headed with its words.
+      fireEvent.click(within(saved).getByRole("button", { name: t("updates.progress.viewLogLabel", { name: "python@3.13" }) }));
+      const log = screen.getByRole("dialog");
+      expect(log).toHaveTextContent(word);
+      expect(log).toHaveTextContent(t("followUpWarning.saved", { count: 1 }));
+      expect(log).toHaveTextContent("brew link --formula --force python@3.13");
+      // With nothing kept and no log left, nothing to open.
+      expect(within(bare).queryByRole("button", { name: t("updates.progress.viewLogLabel", { name: "python@3.13" }) })).toBeNull();
+    } finally {
+      await i18n.changeLanguage("en");
+    }
   });
 });

@@ -243,3 +243,45 @@ it("keeps a successful update with a follow-up warning non-retryable and gives i
   expect(progress).toEqual({ kind: "succeeded", warningOpId: op.id, warnings: 1 });
   expect(isRetryable(progress)).toBe(false);
 });
+
+describe("an update installed though a step after it failed (r35 U2)", () => {
+  const stepped = (version: string | null): OpSummary => ({
+    ...upgradeOf("python@3.13", "Done"),
+    id: 12,
+    outcome: { NeedsAttention: { UpdatedButStepFailed: { version } } },
+  });
+
+  it.each([
+    ["en", "Updated with an error"],
+    ["zh-CN", "已更新，有错误"],
+    ["zh-Hant", "已更新，有錯誤"],
+  ])("says %s it is updated, keeps its log, and offers no Retry", (language, word) => {
+    const t = i18n.getFixedT(language);
+    for (const version of ["3.13.8", null]) {
+      const progress = progressOf(JSON.parse(JSON.stringify(stepped(version))));
+      expect(progress).toEqual({ kind: "updatedButStepFailed", opId: 12 });
+      expect(progressWord(t, progress)).toBe(word);
+      // Retry would run the update again, which installs nothing and runs
+      // no step that failed: the row is held as one that worked is.
+      expect(isRetryable(progress)).toBe(false);
+      expect(passwordStepsOpId(progress)).toBeNull();
+    }
+  });
+
+  it("is out of what Update all takes and of every count, as an update that worked is", () => {
+    const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity } } });
+    const op: OpSummary = { ...stepped("1.1.0"), name: "glib" };
+    useUiStore.getState().rememberUpdateTarget(op.id, "1.1.0");
+    client.setQueryData(queryKeys.snapshot, snapshot);
+    client.setQueryData(queryKeys.settings, settings);
+    client.setQueryData(queryKeys.operations, [op]);
+    const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+    const { result } = renderHook(
+      () => ({ startable: useStartableUpdates(), counted: useCountedUpdates(), operationFor: useUpdateOperationFor() }),
+      { wrapper },
+    );
+    expect(result.current.operationFor(update("glib"))).toEqual(op);
+    expect(result.current.startable).toEqual([update("wget")]);
+    expect(result.current.counted).toEqual([update("wget")]);
+  });
+});

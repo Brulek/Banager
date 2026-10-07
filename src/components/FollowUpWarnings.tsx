@@ -44,16 +44,18 @@ function SavedWarning({ note }: { note: FollowUpWarning }) {
 
 /**
  * View Log on a 「最近的更新记录」 line whose update worked but whose
- * cleanup or relink after it did not end as planned: this launch's
+ * cleanup or relink after it did not end as planned -- or, `heading` given,
+ * one installed though a step after it failed (r35 U2): this launch's
  * operation log (`LogDrawer`), or, for an update the history kept from
  * before, the warnings it saved, in a dialog headed as the log is -- the
- * tool as its title, 「已更新，有警告」 with the attention sign under it
- * (as `PasswordRecovery` heads a recorded password stop) -- that the full
- * log is gone, then each warning (`SavedWarning`). Copy Log copies them
- * as the log says them, a sentence each.
+ * tool as its title, 「已更新，有警告」 (or `heading`, 「已更新，有错误」) with
+ * the attention sign under it (as `PasswordRecovery` heads a recorded
+ * password stop) -- that the full log is gone, then each warning
+ * (`SavedWarning`). Copy Log copies them as the log says them, a sentence
+ * each.
  */
-export function FollowUpWarnings({ warnings, opId, name }: {
-  warnings: FollowUpWarning[]; opId: number | null; name: string;
+export function FollowUpWarnings({ warnings, opId, name, heading }: {
+  warnings: FollowUpWarning[]; opId: number | null; name: string; heading?: string;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -74,7 +76,7 @@ export function FollowUpWarnings({ warnings, opId, name }: {
       subtitle={
         <span className="inline-flex items-start gap-1">
           <OutcomeIcon tone="attention" size={12} className="mt-px" />
-          <span className="min-w-0 break-words">{t("followUpWarning.succeeded", { count: warnings.length })}</span>
+          <span className="min-w-0 break-words">{heading ?? t("followUpWarning.succeeded", { count: warnings.length })}</span>
         </span>
       }
       describedBy={savedId}

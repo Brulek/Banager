@@ -175,6 +175,60 @@ describe("outcomeKey", () => {
     );
   });
 
+  it("says an update installed though a step after it failed, with the version it moved to, and where to look (r35 U2)", () => {
+    // Rust sends this when the tool exited non-zero and the installed
+    // version it read after the update had moved from the one before
+    // (`run_operation`): Homebrew's post-install step failing after the
+    // new keg was linked. Not "Couldn't update": the update is installed.
+    const stepped: Outcome = { NeedsAttention: { UpdatedButStepFailed: { version: "3.13.8" } } };
+    expect(outcomeKey(stepped)).toBe("NeedsAttention.UpdatedButStepFailed");
+    expect(outcomeArgs(stepped)).toEqual({ version: "3.13.8" });
+    expect(en.operations.outcome.NeedsAttention.UpdatedButStepFailed).toBe(
+      "Updated to {{version}}, but a step after it failed; see the log",
+    );
+    expect(zhCN.operations.outcome.NeedsAttention.UpdatedButStepFailed).toBe(
+      "已更新到{{version}}，但之后有一步失败了，请查看日志",
+    );
+    expect(zhHant.operations.outcome.NeedsAttention.UpdatedButStepFailed).toBe(
+      "已更新到{{version}}，但之後有一步失敗了，請查看記錄",
+    );
+    // A model's "version" is a digest, never shown: the same, without it.
+    const model: Outcome = { NeedsAttention: { UpdatedButStepFailed: { version: null } } };
+    expect(outcomeKey(model)).toBe("NeedsAttention.UpdatedButStepFailedNoVersion");
+    expect(outcomeArgs(model)).toEqual({});
+    expect(en.operations.outcome.NeedsAttention.UpdatedButStepFailedNoVersion).toBe(
+      "Updated, but a step after it failed; see the log",
+    );
+    expect(zhCN.operations.outcome.NeedsAttention.UpdatedButStepFailedNoVersion).toBe(
+      "已更新，但之后有一步失败了，请查看日志",
+    );
+    expect(zhHant.operations.outcome.NeedsAttention.UpdatedButStepFailedNoVersion).toBe(
+      "已更新，但之後有一步失敗了，請查看記錄",
+    );
+    // Under the log: the new version is in, the log says which step, and
+    // Copy Log for help -- never "Retry", which would not run that step.
+    for (const each of [stepped, model]) {
+      expect(outcomeDetailKey(each)).toBe("operations.outcome.NeedsAttention.UpdatedButStepFailedDetail");
+      expect(outcomeStepKey(each, true)).toBe("operations.outcome.NeedsAttention.UpdatedButStepFailedDetail");
+      // Over a log with no line, Copy Log is off, and nothing is to be tried again.
+      expect(outcomeStepKey(each, false)).toBeNull();
+    }
+    for (const locale of [en, zhCN, zhHant]) {
+      const detail = locale.operations.outcome.NeedsAttention.UpdatedButStepFailedDetail;
+      expect(detail).toContain(locale.operations.copyLog);
+      expect(detail).not.toContain(locale.updates.retry);
+    }
+    expect(en.operations.outcome.NeedsAttention.UpdatedButStepFailedDetail).toBe(
+      "The new version is installed, and the log says which step failed. If you're not sure what to do, click Copy Log and send the log to someone who can help.",
+    );
+    expect(zhCN.operations.outcome.NeedsAttention.UpdatedButStepFailedDetail).toBe(
+      "新版本已经装好，日志里写着哪一步失败了。不知道怎么办，就点按“拷贝日志”，发给懂的人看。",
+    );
+    expect(zhHant.operations.outcome.NeedsAttention.UpdatedButStepFailedDetail).toBe(
+      "新版本已經裝好，記錄裡寫著哪一步失敗了。不知道怎麼辦，就點按「拷貝記錄」，傳給懂的人看。",
+    );
+  });
+
   it("ends the three steps that point at the log at Copy Log, by its own name, and never over an empty log (r24 W4)", () => {
     const pointing: Outcome[] = [
       { NeedsAttention: "UnchangedAfterUpgrade" },
@@ -254,6 +308,7 @@ describe("outcomeKey", () => {
       { NeedsAttention: "UnchangedAfterUpgrade" },
       { NeedsAttention: "BackAfterUninstall" },
       { NeedsAttention: "NotLinkedAfterLink" },
+      { NeedsAttention: { UpdatedButStepFailed: { version: "3.13.8" } } },
       { Failed: { exit_code: 1, summary: "Error: No such keg", cause: failureCause("Error: No such keg") } },
       { Failed: { exit_code: 1, summary: " ", cause: failureCause(" ") } },
       { BanagerFailed: "Panicked" },
@@ -279,6 +334,7 @@ describe("outcomeKey", () => {
       ["NeedsAttention.UnchangedAfterUpgrade", "operations.outcome.NeedsAttention.UnchangedAfterUpgradeDetail"],
       ["NeedsAttention.BackAfterUninstall", "operations.outcome.NeedsAttention.BackAfterUninstallDetail"],
       ["NeedsAttention.NotLinkedAfterLink", "operations.outcome.NeedsAttention.NotLinkedAfterLinkDetail"],
+      ["NeedsAttention.UpdatedButStepFailed", "operations.outcome.NeedsAttention.UpdatedButStepFailedDetail"],
       ["FailedSilent", "operations.outcome.FailedSilentDetail"],
       ["BanagerFailed.Panicked", "operations.outcome.BanagerFailed.PanickedDetail"],
       ["BanagerFailed.HomebrewStillUpdating", "operations.outcome.BanagerFailed.HomebrewStillUpdatingDetail"],

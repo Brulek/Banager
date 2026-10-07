@@ -429,6 +429,14 @@ describe("types", () => {
     const notLinked: Outcome = { NeedsAttention: "NotLinkedAfterLink" };
     expect(JSON.stringify(notLinked)).toBe('{"NeedsAttention":"NotLinkedAfterLink"}');
     expect(roundTrip(notLinked)).toEqual(notLinked);
+    // An update installed though a step after it failed: the one attention
+    // with data, as `test_an_update_with_a_failed_step_carries_its_version_on_the_wire`
+    // asserts serde emits it (r35 U2).
+    const stepped: Outcome = { NeedsAttention: { UpdatedButStepFailed: { version: "3.13.8" } } };
+    expect(JSON.stringify(stepped)).toBe('{"NeedsAttention":{"UpdatedButStepFailed":{"version":"3.13.8"}}}');
+    expect(roundTrip(stepped)).toEqual(stepped);
+    const model: Outcome = { NeedsAttention: { UpdatedButStepFailed: { version: null } } };
+    expect(JSON.stringify(model)).toBe('{"NeedsAttention":{"UpdatedButStepFailed":{"version":null}}}');
     expect(roundTrip(failed)).toEqual({ Failed: { exit_code: 1, summary: "boom", cause: null } });
     expect(JSON.stringify(failed)).toBe('{"Failed":{"exit_code":1,"summary":"boom","cause":null}}');
     // What `model.rs`'s `test_outcome_failed_carries_its_cause_on_the_wire`

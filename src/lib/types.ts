@@ -21,8 +21,12 @@ export type DetectOutcome = "Found" | "Missing";
 // reported success, or `GoneBeforeUpgrade`, absence before anything ran;
 // or, `BackAfterUninstall`, what a path-list
 // uninstall's own last look found after it had moved everything;
-// `NotLinkedAfterLink`, a `brew link` that exited 0 and linked nothing.
-// Worded by the front end, per variant.
+// `NotLinkedAfterLink`, a `brew link` that exited 0 and linked nothing;
+// `UpdatedButStepFailed`, an update whose tool failed after the version it
+// reads had moved (r35 U2): installed, with the version it moved to, or
+// null for a model's digest. Unit variants are bare strings, the one with
+// data a single-key object (serde's external tagging). Worded by the front
+// end, per variant.
 export type Attention =
   | "NotInstalledAfterInstall"
   | "StillInstalledAfterUninstall"
@@ -30,7 +34,8 @@ export type Attention =
   | "GoneAfterUpgrade"
   | "UnchangedAfterUpgrade"
   | "BackAfterUninstall"
-  | "NotLinkedAfterLink";
+  | "NotLinkedAfterLink"
+  | { UpdatedButStepFailed: { version: string | null } };
 // Rust `Fault`: why Banager itself could not carry an operation out.
 // Unit variants are bare strings, data variants single-key objects (serde's
 // external tagging). Worded by the front end, per variant; the fields are

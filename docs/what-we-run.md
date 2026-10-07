@@ -581,14 +581,20 @@ needs attention. An upgrade whose command exited non-zero after its version
 moved -- the version read before it and the one read after both name a
 version, and they differ -- is reported as updated with a step that failed,
 needing attention, not as one that could not be updated: "Updated to
-3.13.8, but a step after it failed — see the log"
+3.13.8, but a step after it failed; see the log"
 (「已更新到3.13.8，但之后有一步失败了，请查看日志」;
 「已更新到3.13.8，但之後有一步失敗了，請查看記錄」), with no version named for
 a model (`Attention::UpdatedButStepFailed` in `run_operation`). Homebrew
 fails that way when a formula's post-install or link step fails after its
 new version was poured (Homebrew's section). Every source's update is
 judged this way: each one's non-zero exit reaches `run_operation` as the
-tool's own failure (`run_plan`). One whose version did not move, whose
+tool's own failure (`run_plan`). Its row says "Updated with an error"
+(「已更新，有错误」; 「已更新，有錯誤」), opens its log, and is held as one that
+worked is -- no checkbox and no Retry, out of the update count and Update
+All -- since the update is installed and running it again would not run
+the step that failed; 「最近的更新记录」 lists it with the version it moved
+to whatever the next check offers (`isUpdatedButStepFailed` in
+`src/lib/format.ts`). One whose version did not move, whose
 readings have nothing to compare, or whose command never started (npm's
 or uv's read before it did not finish) keeps the tool's failure; npm's or
 uv's read that finished and failed started no command either, and a

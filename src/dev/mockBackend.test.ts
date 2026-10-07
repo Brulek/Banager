@@ -746,6 +746,36 @@ describe("the browser preview's mock backend", () => {
     expect(ops.find((op) => op.id === wget)).toMatchObject({ outcome: "Succeeded", already_updated: "BeforeItsTurn" });
   });
 
+  it("under ?outcome=step-failed, installs each update and ends it as one whose step after it failed, as the core does (r35 U2)", async () => {
+    // Homebrew's post-install step failing after the new keg was linked:
+    // exit 1, the version moved (`run_operation`'s `UpdatedButStepFailed`).
+    const { backend, events } = backendFor({ outcome: "step-failed" });
+    await answer(backend.invoke("refresh"));
+    const [git] = await submitUpgrades(backend, "git");
+    await vi.runAllTimersAsync();
+    const own = operationEvents(events, git);
+    expect(own[own.length - 1]).toEqual({
+      Finished: { op_id: git, outcome: { NeedsAttention: { UpdatedButStepFailed: { version: "2.55.1" } } } },
+    });
+    const logged = events.flatMap((event) =>
+      "Operation" in event && "Log" in event.Operation && event.Operation.Log.op_id === git ? [event.Operation.Log.line] : [],
+    );
+    expect(logged).toContain("Warning: The post-install step did not complete successfully");
+    expect(logged).toContain("  brew postinstall git");
+    // Installed: the next check no longer offers it, and its version moved.
+    const after = await answer<Snapshot>(backend.invoke("refresh"));
+    expect(after.updates.some((u) => u.key.name === "git")).toBe(false);
+    expect(after.artifacts.find((a) => a.key.name === "git")?.version).toBe("2.55.1");
+    // Kept as Rust keeps it: the version it moved to, and Banager's own reading.
+    const history = await answer<HistoryView>(backend.invoke("get_history"));
+    expect(history.records.find((record) => record.op_id === git)).toMatchObject({
+      from_version: "2.55.0",
+      to_version: "2.55.1",
+      verified: true,
+      result: { NeedsAttention: { UpdatedButStepFailed: { version: "2.55.1" } } },
+    });
+  });
+
   it("under ?outcome=failed, keeps a failure no cause names with its first error line (r6 y3-batch)", async () => {
     const { backend } = backendFor({ outcome: "failed" });
     await answer(backend.invoke("refresh"));

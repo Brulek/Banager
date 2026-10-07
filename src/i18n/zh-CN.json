@@ -339,6 +339,7 @@
       "cancelled": "已取消",
       "check": "需要查看",
       "unconfirmed": "结果未确认",
+      "stepFailed": "已更新，有错误",
       "viewLogLabel": "查看日志：{{name}}"
     },
     "justUpdated": {
@@ -391,7 +392,8 @@
     "showFewer": "收起",
     "failedBecause": "未能更新：{{cause}}",
     "unchanged": "没有更新成功：版本没有变",
-    "unchangedTitle": "命令显示已完成，但更新前后读到的版本相同。"
+    "unchangedTitle": "命令显示已完成，但更新前后读到的版本相同。",
+    "stepFailedTitle": "新版本已经装好，但命令显示更新之后有一步失败了。"
   },
   "batchResult": {
     "reason": "原因：{{detail}}",
@@ -919,7 +921,10 @@
         "BackAfterUninstall": "移走后，原处又出现了文件",
         "BackAfterUninstallDetail": "请先退出此工具。如果列表中仍有它，请再卸载一次；否则请将日志中列出的文件手动移到废纸篓。",
         "NotLinkedAfterLink": "显示已完成，但没有链接",
-        "NotLinkedAfterLinkDetail": "可以再点按“修复…”；还是没有链接，就点按“拷贝日志”，发给懂的人看。"
+        "NotLinkedAfterLinkDetail": "可以再点按“修复…”；还是没有链接，就点按“拷贝日志”，发给懂的人看。",
+        "UpdatedButStepFailed": "已更新到{{version}}，但之后有一步失败了，请查看日志",
+        "UpdatedButStepFailedNoVersion": "已更新，但之后有一步失败了，请查看日志",
+        "UpdatedButStepFailedDetail": "新版本已经装好，日志里写着哪一步失败了。不知道怎么办，就点按“拷贝日志”，发给懂的人看。"
       },
       "Failed": "未能完成：{{summary}}",
       "FailedSilent": "未能完成，程序没有给出原因",

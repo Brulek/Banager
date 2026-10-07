@@ -339,6 +339,7 @@
       "cancelled": "已取消",
       "check": "需要查看",
       "unconfirmed": "結果未確認",
+      "stepFailed": "已更新，有錯誤",
       "viewLogLabel": "查看記錄：{{name}}"
     },
     "justUpdated": {
@@ -391,7 +392,8 @@
     "showFewer": "收起",
     "failedBecause": "未能更新：{{cause}}",
     "unchanged": "沒有更新成功：版本沒有變",
-    "unchangedTitle": "指令顯示已完成，但更新前後讀到的版本相同。"
+    "unchangedTitle": "指令顯示已完成，但更新前後讀到的版本相同。",
+    "stepFailedTitle": "新版本已經裝好，但指令顯示更新之後有一步失敗了。"
   },
   "batchResult": {
     "reason": "原因：{{detail}}",
@@ -919,7 +921,10 @@
         "BackAfterUninstall": "移走後，原處又出現了檔案",
         "BackAfterUninstallDetail": "請先結束此工具。如果清單中仍有它，請再解除安裝一次；否則請將記錄中列出的檔案手動移到垃圾桶。",
         "NotLinkedAfterLink": "顯示已完成，但沒有連結",
-        "NotLinkedAfterLinkDetail": "可以再點按「修復…」；還是沒有連結，就點按「拷貝記錄」，傳給懂的人看。"
+        "NotLinkedAfterLinkDetail": "可以再點按「修復…」；還是沒有連結，就點按「拷貝記錄」，傳給懂的人看。",
+        "UpdatedButStepFailed": "已更新到{{version}}，但之後有一步失敗了，請查看記錄",
+        "UpdatedButStepFailedNoVersion": "已更新，但之後有一步失敗了，請查看記錄",
+        "UpdatedButStepFailedDetail": "新版本已經裝好，記錄裡寫著哪一步失敗了。不知道怎麼辦，就點按「拷貝記錄」，傳給懂的人看。"
       },
       "Failed": "未能完成：{{summary}}",
       "FailedSilent": "未能完成，程式沒有給出原因",

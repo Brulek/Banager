@@ -436,6 +436,35 @@ mod tests {
     }
 
     #[test]
+    fn test_an_update_installed_though_a_step_after_it_failed_is_told_of_as_needing_attention() {
+        // r35 U2: "1 needs attention", as the operation bar counts it --
+        // never "couldn't be updated", held or evicted alike.
+        let stepped = Some(Outcome::NeedsAttention(
+            crate::model::Attention::UpdatedButStepFailed {
+                version: Some("3.13.8".into()),
+            },
+        ));
+        let mut known = records(&[
+            summary(3, OpKind::Upgrade, stepped.clone()),
+            summary(2, OpKind::Upgrade, Some(Outcome::Succeeded)),
+            summary(1, OpKind::Upgrade, failed("Error: Download failed")),
+        ]);
+        assert_eq!(
+            ReportedRuns::default().completed(3, &known),
+            Some(run(3, RunKind::Upgrade, 1, 1, 1))
+        );
+        assert_eq!(Ended::of(&stepped.unwrap()), Ended::Attention);
+        known.operations.remove(0);
+        known
+            .evicted
+            .insert(3, evicted(OpKind::Upgrade, Ended::Attention));
+        assert_eq!(
+            ReportedRuns::default().completed(3, &known),
+            Some(run(3, RunKind::Upgrade, 1, 1, 1))
+        );
+    }
+
+    #[test]
     fn regression_password_stops_are_counted_from_the_same_records_evicted_or_held() {
         // Astra's final review, F1: an update that stopped for the password
         // whose record was evicted before the run was reported was counted

@@ -7,6 +7,7 @@ import { actionableUpdatesOf, countedUpdatesOf } from "../lib/updateState";
 import { artifactKeyId, useUiStore } from "../store/ui";
 import type { OpSummary, Outcome, UpdateCandidate } from "../lib/types";
 import { FAILURE_CAUSE_KEYS, outcomeCause, type FailureCause } from "../lib/failureCause";
+import { isUpdatedButStepFailed } from "../lib/format";
 import { CheckIcon, InfoIcon, SpinnerIcon, WarningFilledIcon } from "./icons";
 
 /**
@@ -16,7 +17,9 @@ import { CheckIcon, InfoIcon, SpinnerIcon, WarningFilledIcon } from "./icons";
  * the tool's own words say (`outcomeCause`), or null; `check`, whether
  * Banager found the opposite of what the tool said (`attention`) or could
  * not tell (`unconfirmed`); `succeeded` with a follow-up warning, the id
- * and how many warnings, which its words count ("Updated with a warning").
+ * and how many warnings, which its words count ("Updated with a warning");
+ * `updatedButStepFailed`, installed though the tool failed after it
+ * (`Attention::UpdatedButStepFailed`, r35 U2), the id, for its log.
  */
 export type RowProgress =
   | { kind: "pendingAction"; operation: OpSummary }
@@ -26,7 +29,8 @@ export type RowProgress =
   | { kind: "succeeded"; warningOpId?: number; warnings?: number }
   | { kind: "cancelled" }
   | { kind: "failed"; opId: number; cause: FailureCause | null }
-  | { kind: "check"; opId: number; why: "attention" | "unconfirmed" };
+  | { kind: "check"; opId: number; why: "attention" | "unconfirmed" }
+  | { kind: "updatedButStepFailed"; opId: number };
 
 /**
  * How a finished update ended, for its row. "Check" -- look at the log --
@@ -53,6 +57,9 @@ function outcomeProgress(outcome: Outcome | null, opId: number): RowProgress {
       }
     }
   }
+  // Installed though a step after it failed: said apart from the rest that
+  // need a look, which Retry may settle; this one it would not.
+  if (isUpdatedButStepFailed(outcome)) return { kind: "updatedButStepFailed", opId };
   if ("NeedsAttention" in outcome) return { kind: "check", opId, why: "attention" };
   if ("Failed" in outcome || "BanagerFailed" in outcome) return { kind: "failed", opId, cause: outcomeCause(outcome) };
   const unhandled: never = outcome;
@@ -74,6 +81,12 @@ function outcomeProgress(outcome: Outcome | null, opId: number): RowProgress {
  * out of Select all and Update all, until a check finds it updated or
  * offers a newer version. One whose password window got no password
  * (`passwordNotAccepted`) can ask again, and keeps Retry.
+ *
+ * Nor one installed though a step after it failed (`updatedButStepFailed`):
+ * the update is done, and run again it would install nothing and leave the
+ * step that failed as it is -- it would even read as done before its
+ * turn. Its row is held as one that worked is, its word opening the log
+ * that says which step, until the check after it drops the row.
  */
 export function isRetryable(progress: RowProgress): boolean {
   if (progress.kind === "failed") return passwordStepsOpId(progress) === null;
@@ -103,8 +116,9 @@ export function waitsForPassword(op: OpSummary | null): boolean {
 
 /**
  * Whether an update takes its row: one still under way, one that worked
- * and stands in the row as "Updated" until the next refresh drops it, or
- * one that needs a password Banager cannot ask for (`isRetryable`). Such
+ * and stands in the row as "Updated" until the next refresh drops it --
+ * or as "Updated with an error", installed though a step after it failed
+ * -- or one that needs a password Banager cannot ask for (`isRetryable`). Such
  * a row has no checkbox, and Select all, Invert selection, Update all and
  * the Overview's Review updates leave it out: a second update could only
  * queue the same one behind it. One that ended without updating
@@ -280,6 +294,8 @@ export function progressWord(t: Translate, progress: RowProgress): string {
       return progress.cause === null ? t("updates.progress.failed") : t(FAILURE_CAUSE_KEYS[progress.cause].word);
     case "check":
       return progress.why === "unconfirmed" ? t("updates.progress.unconfirmed") : t("updates.progress.check");
+    case "updatedButStepFailed":
+      return t("updates.progress.stepFailed");
   }
 }
 
@@ -298,7 +314,9 @@ export interface UpdateProgressProps {
  * that opens its log: 「未能更新」 in the red for text -- or why, where the
  * tool's own words say, 「网络连接失败」 (`failureCause`) -- and a 12
  * orange ⚠︎ and 「需要查看」 where the result is not what the tool said, or
- * 「结果未确认」 where Banager could not tell.
+ * 「结果未确认」 where Banager could not tell -- and the same ⚠︎ and
+ * 「已更新，有错误」 where the update is installed and a step after it failed,
+ * in the button's place, as 「已更新」 is.
  * An ending the row can retry (`isRetryable`) stands in the status column,
  * beside the row's Retry, which takes the button's place. Such a word has
  * an ⓘ after it, as every status word with a why has (`StatusChip`): red
@@ -355,6 +373,7 @@ export function UpdateProgress({ progress, name, onViewLog }: UpdateProgressProp
     case "failed":
       return toLog(progress.opId, word, "text-danger-text");
     case "check":
+    case "updatedButStepFailed":
       return toLog(
         progress.opId,
         word,

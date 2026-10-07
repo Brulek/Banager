@@ -51,6 +51,7 @@ import { mockSystemFacts } from "./mockDiagnostics";
 import { mockHistory, mockRecord } from "./mockHistory";
 import type { Scenario, ScenarioPath } from "./scenario";
 import { operationFailureCause } from "../lib/failureCause";
+import { isUpdatedButStepFailed } from "../lib/format";
 
 /** Every command the backend registers (`generate_handler!` in src-tauri/src/lib.rs). */
 export const MOCK_COMMANDS = [
@@ -491,7 +492,9 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       }
       world.updates = world.updates.filter((u) => !sameKey(u.key, target));
       world.greedyUpdates = world.greedyUpdates.filter((u) => !sameKey(u.key, target));
-      if (scenario.outcome !== "follow-up") applyMockCleanup(plan, world);
+      // Homebrew's cleanup follows only an update that exited 0: not one
+      // whose step after it failed (`?outcome=step-failed`).
+      if (scenario.outcome !== "follow-up" && scenario.outcome !== "step-failed") applyMockCleanup(plan, world);
       return;
     }
     if (plan.request.kind === "Link") {
@@ -540,7 +543,9 @@ export function createMockBackend(scenario: Scenario): MockBackend {
     // Read before `apply`, which changes the row in place.
     const row = world.artifacts.find((a) => sameKey(a.key, target));
     const before = row === undefined ? null : { name: row.display_name, version: row.version };
-    if (outcome === "Succeeded") apply(op.plan);
+    // Installed though a step after it failed (`?outcome=step-failed`):
+    // the version moved as for a success.
+    if (outcome === "Succeeded" || isUpdatedButStepFailed(outcome)) apply(op.plan);
     // Kept before `Finished` is sent, as `OnFinish` keeps it.
     const record = mockRecord({
       run: history.run,

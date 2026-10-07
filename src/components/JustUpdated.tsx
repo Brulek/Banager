@@ -11,6 +11,7 @@ import {
   type FailureCause,
 } from "../lib/failureCause";
 import { ALREADY_UPDATED_KEYS, outcomeSentence, outcomeTone } from "../lib/operations";
+import { isUpdatedButStepFailed } from "../lib/format";
 import { calendarDaysBetween, shortDateText, shortTimeText } from "../lib/shortDate";
 import type { AlreadyUpdated, ArtifactKey, FollowUpWarning, Attention, HistoryResult, OpSummary, Outcome } from "../lib/types";
 import { PasswordRecovery } from "./PasswordRecovery";
@@ -28,16 +29,24 @@ import { GROUP } from "./ui/group";
  * history where they gave none or where the cause's words point at them
  * (`causeKeepsItsLine`), the tool's first error line (`detail`); or
  * the tool said it worked and Banager found nothing changed, or could not
- * confirm it -- the row's 「需要查看」 or 「结果未确认」.
+ * confirm it -- the row's 「需要查看」 or 「结果未确认」; or it is installed and
+ * the tool failed after it (`updatedButStepFailed`, r35 U2), with what its
+ * follow-up left (`warnings`), as one that worked keeps it.
  */
 export type JustUpdatedEnding =
   | { kind: "succeeded"; already?: AlreadyUpdated; warnings?: FollowUpWarning[] }
   | { kind: "failed"; cause: FailureCause | null; detail?: string }
-  | { kind: "attention"; outcome: "Unconfirmed" | { NeedsAttention: Attention } };
+  | { kind: "attention"; outcome: "Unconfirmed" | { NeedsAttention: Attention } }
+  | { kind: "updatedButStepFailed"; warnings?: FollowUpWarning[] };
 
 /** `{ kind: "succeeded" }`, with how it was done where it was already done. */
 function succeeded(already: AlreadyUpdated | null | undefined, warnings: FollowUpWarning[]): JustUpdatedEnding {
   return { kind: "succeeded", ...(already ? { already } : {}), ...(warnings.length ? { warnings } : {}) };
+}
+
+/** `{ kind: "updatedButStepFailed" }`, with what its follow-up left where it left anything. */
+function stepFailed(warnings: FollowUpWarning[]): JustUpdatedEnding {
+  return { kind: "updatedButStepFailed", ...(warnings.length ? { warnings } : {}) };
 }
 
 /**
@@ -51,6 +60,7 @@ export function endingOfOutcome(
   warnings: FollowUpWarning[] = [],
 ): JustUpdatedEnding | null {
   if (outcome === null) return null;
+  if (isUpdatedButStepFailed(outcome)) return stepFailed(warnings);
   switch (outcomeTone(outcome)) {
     case "success":
       return succeeded(alreadyUpdated, warnings);
@@ -93,6 +103,7 @@ export function endingOfRecord(
   if (result === "Succeeded") return succeeded(alreadyUpdated, warnings);
   if (result === "Cancelled") return null;
   if (result === "Unconfirmed") return { kind: "attention", outcome: "Unconfirmed" };
+  if (isUpdatedButStepFailed(result)) return stepFailed(warnings);
   if ("NeedsAttention" in result) return { kind: "attention", outcome: result };
   const { cause, detail } = result.Failed;
   return detail ? { kind: "failed", cause, detail } : { kind: "failed", cause };
@@ -222,7 +233,9 @@ export function finishedText(
  * (「结果未确认」) -- but an update whose version Banager read unchanged
  * after it says what that means, 「没有更新成功：版本没有变」, and what it
  * read behind an ⓘ: 「显示已更新」 left a person asking whether it had
- * (walk-2 W2-12). Words, not colour, tell them apart.
+ * (walk-2 W2-12); and the same orange ⚠︎ and 「已更新，有错误」, the row's
+ * own word, for one installed though a step after it failed, what that
+ * means behind its ⓘ (r35 U2). Words, not colour, tell them apart.
  */
 function EndingWords({ entry }: { entry: JustUpdatedEntry }) {
   const { t } = useTranslation();
@@ -270,6 +283,14 @@ function EndingWords({ entry }: { entry: JustUpdatedEntry }) {
             ? t("batchResult.reason", { detail: ending.detail })
             : undefined;
       break;
+    case "updatedButStepFailed":
+      // Installed, and a step after it failed: the row's own words, the
+      // orange sign, and what that means behind the ⓘ -- not the log's
+      // sentence, which sends a person to a log that may be gone.
+      tone = "attention";
+      words = t("updates.progress.stepFailed");
+      why = t("history.stepFailedTitle");
+      break;
     case "attention":
       tone = "attention";
       // What did not add up, in its own plain words, rather than the row's
@@ -307,13 +328,25 @@ function EndingWords({ entry }: { entry: JustUpdatedEntry }) {
 
 /**
  * A line's one button, or null: View Log for an update that worked with a
- * warning about what came after it (`FollowUpWarnings`), and View Steps for
- * a Homebrew update the history kept as stopped for the Mac's password
- * (`PasswordRecovery`).
+ * warning about what came after it (`FollowUpWarnings`), and for one
+ * installed though a step after it failed -- this window's log, or what
+ * the history kept of its follow-up, and nothing where it kept nothing and
+ * the log is gone -- and View Steps for a Homebrew update the history kept
+ * as stopped for the Mac's password (`PasswordRecovery`).
  */
-function lineAction(entry: JustUpdatedEntry) {
+function lineAction(entry: JustUpdatedEntry, t: (key: string) => string) {
   if (entry.ending.kind === "succeeded" && entry.ending.warnings?.length) {
     return <FollowUpWarnings warnings={entry.ending.warnings} opId={entry.opId} name={entry.name} />;
+  }
+  if (entry.ending.kind === "updatedButStepFailed" && (entry.opId !== null || entry.ending.warnings?.length)) {
+    return (
+      <FollowUpWarnings
+        warnings={entry.ending.warnings ?? []}
+        opId={entry.opId}
+        name={entry.name}
+        heading={t("updates.progress.stepFailed")}
+      />
+    );
   }
   if (entry.opId === null && entry.adapterId === "brew" && entry.ending.kind === "failed" && entry.ending.cause === "needsPassword") {
     return <PasswordRecovery artifactKey={entry.key} name={entry.name} size="small" />;
@@ -343,14 +376,16 @@ export interface JustUpdatedProps {
  * a small grey Clear beside it -- of quiet lines, not rows: 28 high, the
  * 20 icon, the name in 13, the version it has now in 11 muted, how it
  * ended in 11 (`EndingWords`: 「已更新」 or 「已确认更新」, 「未能更新」 with
- * its cause, 「没有更新成功：版本没有变」, or what else did not add up) with
+ * its cause, 「没有更新成功：版本没有变」, 「已更新，有错误」, or what else did
+ * not add up) with
  * the line's button after it (`lineAction`), and when it finished, 11
  * muted -- each in a column the whole list shares, so a version is where
  * every other line's is, however wide the words or the button after it.
  * Where the window is too narrow for the widest words, they wrap, and
  * the line grows, rather than push the time out of the list. Nothing to
  * select or press but an ending's ⓘ, View Log for a warning after an
- * update, View Steps for a recorded Homebrew
+ * update or for one installed though a step after it failed, View Steps
+ * for a recorded Homebrew
  * password stop, Clear, which hides what it lists,
  * after a restart too, until the next update ends, and, past
  * `JUST_UPDATED_SHOWN` lines, the "N More" line that shows the rest; it
@@ -422,7 +457,7 @@ export function JustUpdated({ entries, onClear }: JustUpdatedProps) {
               </span>
               <span data-just-updated-cell="ending" className="flex min-w-0 items-center gap-2">
                 <EndingWords entry={entry} />
-                {lineAction(entry)}
+                {lineAction(entry, t)}
               </span>
               <span
                 data-just-updated-cell="time"

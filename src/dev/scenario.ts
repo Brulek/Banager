@@ -96,6 +96,9 @@ export type ScenarioState = (typeof SCENARIO_STATES)[number];
  * ends with that cleanup not finished (`OldVersionsNotCleanedUp`), and the
  * history has an earlier launch's node@22 update with a saved
  * `NoLongerLinked` warning.
+ * `step-failed`: every update is installed and its tool then fails a step
+ * after it -- a Homebrew formula's post-install step, say -- and exits 1
+ * (`Attention::UpdatedButStepFailed`, r35 U2); anything else fails.
  * Anything else ends as `succeeded`.
  */
 export const SCENARIO_OUTCOMES = [
@@ -109,6 +112,7 @@ export const SCENARIO_OUTCOMES = [
   "mixed",
   "already",
   "follow-up",
+  "step-failed",
 ] as const;
 export type ScenarioOutcome = (typeof SCENARIO_OUTCOMES)[number];
 

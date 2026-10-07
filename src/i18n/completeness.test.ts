@@ -226,6 +226,9 @@ const INTERPOLATED_SUBTREES: Record<string, readonly string[]> = {
     "NeedsAttention.UnchangedAfterUpgrade",
     "NeedsAttention.BackAfterUninstall",
     "NeedsAttention.NotLinkedAfterLink",
+    // r35 U2: with the version the update moved to, or none for a model.
+    "NeedsAttention.UpdatedButStepFailed",
+    "NeedsAttention.UpdatedButStepFailedNoVersion",
     "Failed",
     "FailedSilent",
     "BanagerFailed.Panicked",
