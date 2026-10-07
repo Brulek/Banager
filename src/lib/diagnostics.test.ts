@@ -538,7 +538,7 @@ it("includes the retained startup diagnostic without opting into the tool list",
   const text = diagnosticsText(i18n.getFixedT("en"), input({
     snapshot: { ...SNAPSHOT, instances: [broken] }, includeTools: false,
   }));
-  expect(text).toContain(`  Startup diagnostic:\n    ${diagnostic}\n`);
+  expect(text).toContain(`  Error details:\n    ${diagnostic}\n`);
 });
 
 it("indents a multi-line startup diagnostic under its source, home folder as ~ (f13b review)", () => {
@@ -552,7 +552,7 @@ it("indents a multi-line startup diagnostic under its source, home folder as ~ (
     snapshot: { ...SNAPSHOT, instances: [broken] }, includeTools: false,
   }));
   const lines = text.split("\n");
-  const at = lines.indexOf("  Startup diagnostic:");
+  const at = lines.indexOf("  Error details:");
   expect(at).toBeGreaterThan(0);
   expect(lines.slice(at + 1, at + 3)).toEqual([
     "    npm error config Invalid npmrc",

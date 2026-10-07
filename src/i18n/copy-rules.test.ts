@@ -235,6 +235,9 @@ describe("the polish-3 copy rules, in English", () => {
       "noAnswer.fix",
       "noAnswer.sheet.confirm",
       "noAnswer.op.cancel",
+      "sourceDiagnostic.label",
+      "sourceDiagnostic.copy",
+      "failureRecovery.details",
     ];
     // Words that stay lower case inside a title (Cancel the Rest, Show in
     // Finder), never as its first or last word.
@@ -275,6 +278,22 @@ describe("the polish-3 copy rules, in English", () => {
     expect(strings.get("sourceNotice.more_one")).toBe("{{count}} more note");
     expect(strings.get("sourceNotice.more_other")).toBe("{{count}} more notes");
     expect(strings.get("updates.cantUpdateHere")).toBe("{{number}} more can't be updated here");
+  });
+});
+
+/**
+ * A tool's own error words, kept where its log is not -- a source's that
+ * did not answer (`SourceDiagnostic`), an operation's whose log is gone
+ * (`MissingFailureLog`) -- fold out under one name in every language: not
+ * 「启动诊断」, which reads as a button that starts a diagnosis and was
+ * kept for any failed check, not only at startup (r21 C4).
+ */
+describe("the kept error words' one name", () => {
+  it.each([["en", en], ["zh-CN", zhCN], ["zh-Hant", zhHant]])("in %s", (_name, locale) => {
+    const strings = new Map(entries(locale));
+    expect(strings.get("sourceDiagnostic.label")).toBe(strings.get("failureRecovery.details"));
+    expect(strings.get("sourceDiagnostic.next")).toContain(strings.get("sourceDiagnostic.copy"));
+    expect(strings.get("sourceDiagnostic.text")).not.toMatch(/Startup|启动|啟動/);
   });
 });
 

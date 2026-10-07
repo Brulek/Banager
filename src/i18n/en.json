@@ -866,10 +866,10 @@
     "handoffConflicts": "To link it, you can run this command in Terminal. It deletes the files in the way and links the ones in “{{formula}}” in their place. If it still stops partway, Homebrew also removes the links that were already there."
   },
   "sourceDiagnostic": {
-    "label": "Startup Diagnostic",
-    "next": "Review the details or copy them for someone who can help. Check again after addressing the error.",
-    "copy": "Copy Diagnostic",
-    "text": "Startup diagnostic:"
+    "label": "Show Error Details",
+    "next": "You can click Copy Error Details and send them to someone who can help.",
+    "copy": "Copy Error Details",
+    "text": "Error details:"
   },
   "followUpWarning": {
     "batch_one": "Updated {{total}} tools · {{count}} follow-up needs attention",

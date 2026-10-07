@@ -14,9 +14,9 @@ it("opens and copies the startup diagnostic through the shared notice without te
   const view = renderWithProviders(<SourceNoticeLine variant="warning" title="npm" description="Failed"
     detailsAriaLabel="Details: npm" details={<SourceDiagnostic notice={notice} />} />);
   fireEvent.click(view.getByRole("button", { name: "Details: npm" }));
-  fireEvent.click(view.getByText("启动诊断"));
+  fireEvent.click(view.getByText("查看错误详情"));
   expect(view.getByText(diagnostic)).toBeVisible();
-  fireEvent.click(view.getByRole("button", { name: "拷贝诊断" }));
+  fireEvent.click(view.getByRole("button", { name: "拷贝错误详情" }));
   await waitFor(() => expect(writeText).toHaveBeenCalledWith(diagnostic));
 });
 
@@ -25,12 +25,13 @@ it("opens with the house disclosure button, closed until asked (f13b review)", a
   const diagnostic = "npm error config Invalid npmrc";
   const notice = { id: "npm", variant: "warning" as const, titleKey: "", descriptionKey: "", diagnostic, diagnosticCause: "notFound" as const };
   const view = renderWithProviders(<SourceDiagnostic notice={notice} />);
-  const toggle = view.getByRole("button", { name: "Startup Diagnostic" });
+  const toggle = view.getByRole("button", { name: "Show Error Details" });
   expect(toggle).toHaveAttribute("aria-expanded", "false");
   expect(view.queryByText(diagnostic)).toBeNull();
   fireEvent.click(toggle);
   expect(toggle).toHaveAttribute("aria-expanded", "true");
   expect(view.getByText(diagnostic)).toBeVisible();
   expect(view.getByText("Something it needs is missing. The error says what.")).toBeVisible();
-  expect(view.getByRole("button", { name: "Copy Diagnostic" })).toBeInTheDocument();
+  expect(view.getByText("You can click Copy Error Details and send them to someone who can help.")).toBeVisible();
+  expect(view.getByRole("button", { name: "Copy Error Details" })).toBeInTheDocument();
 });

@@ -797,10 +797,10 @@
     "handoffConflicts": "要链接它，可以在终端里运行下面的命令。它会删除挡住链接的文件，换成“{{formula}}”中的。如果仍然中途停止，Homebrew也会删除原本已有的链接。"
   },
   "sourceDiagnostic": {
-    "label": "启动诊断",
-    "next": "查看详情，或拷贝给能帮忙的人。处理报错后，再重新检查。",
-    "copy": "拷贝诊断",
-    "text": "启动诊断："
+    "label": "查看错误详情",
+    "next": "可以点按“拷贝错误详情”，发给懂的人看。",
+    "copy": "拷贝错误详情",
+    "text": "错误详情："
   },
   "followUpWarning": {
     "batch_other": "已更新{{total}}个工具，{{count}}个工具的后续步骤需要查看",

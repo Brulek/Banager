@@ -1630,7 +1630,7 @@ describe("a problem row's sign and button (p1 polish)", () => {
     };
     rows.forEach(check);
     // Unfolded, the diagnostic makes the row taller; the sign and the button stay by the title.
-    const disclosure = getByRole("button", { name: "Startup Diagnostic" });
+    const disclosure = getByRole("button", { name: "Show Error Details" });
     fireEvent.click(disclosure);
     expect(disclosure).toHaveAttribute("aria-expanded", "true");
     check(disclosure.closest("li")!);
