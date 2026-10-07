@@ -441,7 +441,9 @@ async fn test_a_cask_upgrade_cancelled_before_it_wrote_the_new_version_is_unconf
 
 const PIPX: &str = "/opt/homebrew/bin/pipx";
 
-async fn pipx_upgrade(upgrade_output: CommandOutput, lists: Vec<String>) -> Outcome {
+async fn pipx_upgrade(upgrade_output: CommandOutput, mut lists: Vec<String>) -> Outcome {
+    // Planning rereads pin metadata before the before/after inventories.
+    lists.insert(0, lists[0].clone());
     let runner = Arc::new(ScriptedRunner::default());
     runner.script(&[PIPX, "upgrade", "cowsay"], vec![upgrade_output]);
     runner.script(

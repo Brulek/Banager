@@ -1852,6 +1852,11 @@ an error for the whole source. pipx has no search command Banager uses.
 | Uninstall | `<pipx> uninstall {name}` | 600 s | No |
 | Upgrade | `<pipx> upgrade {name}` | 600 s | No |
 
+Before planning any upgrade, Banager repeats the existing `<pipx> list --json`
+read and refuses a tool whose `main_package.pinned` is true. On older pipx,
+the same metadata marks PyPI fallback candidates as pinned; pins do not
+prevent uninstalling. No extra network request is needed for that check.
+
 A tool pinned in pipx (`pipx pin`) is listed by `pipx list --outdated` as
 `name [pinned]: old -> new`; its row has no Update button and gives the
 command that releases the pin, `<pipx> unpin {name}`, for the user to run

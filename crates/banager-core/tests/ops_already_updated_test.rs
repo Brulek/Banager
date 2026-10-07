@@ -507,6 +507,8 @@ async fn test_on_a_source_where_one_update_never_updates_another_none_is_done_by
     runner.script(
         &[PIPX, "list", "--json"],
         vec![
+            exited(0, &pipx_list("5.0", "3.3"), ""), // cowsay plan: pin check
+            exited(0, &pipx_list("5.0", "3.3"), ""), // httpie plan: pin check
             exited(0, &pipx_list("5.0", "3.3"), ""), // cowsay, before
             exited(0, &pipx_list("6.1", "3.3"), ""), // cowsay, after; httpie's two
         ],

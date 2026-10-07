@@ -14,7 +14,7 @@ use crate::model::{
 use crate::runner::{resolve_exe, CommandOutput, CommandRunner, CommandSpec, HostEnv, OutputUse};
 use async_trait::async_trait;
 use serde::Deserialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -68,6 +68,8 @@ struct PipxAppPath {
 
 #[derive(Debug, Deserialize)]
 struct PipxMainPackage {
+    #[serde(default)]
+    pinned: bool,
     package: String,
     package_version: String,
     /// Every executable pipx exposed for this package, absolute. Empty for
@@ -149,12 +151,17 @@ fn venv_dir(package: &PipxMainPackage) -> Option<PathBuf> {
 /// `venvs.<name>.metadata.main_package.package_version` (this phase's other
 /// documented trap for pipx). `venvs` is a `HashMap`, so entries are sorted
 /// by name before returning to keep output deterministic.
+#[cfg(test)]
 pub(crate) fn parse_list(
     json: &str,
     instance_id: &str,
 ) -> Result<Vec<InstalledArtifact>, AdapterError> {
     let root: PipxListRoot =
         serde_json::from_str(json).map_err(|e| AdapterError::Parse(e.to_string()))?;
+    Ok(artifacts_from_list(root, instance_id))
+}
+
+fn artifacts_from_list(root: PipxListRoot, instance_id: &str) -> Vec<InstalledArtifact> {
     let mut out: Vec<InstalledArtifact> = root
         .venvs
         .into_iter()
@@ -190,7 +197,7 @@ pub(crate) fn parse_list(
         })
         .collect();
     out.sort_by(|a, b| a.key.name.cmp(&b.key.name));
-    Ok(crate::adapters::sanity::artifacts(out))
+    crate::adapters::sanity::artifacts(out)
 }
 
 /// What `pipx list --outdated` puts between a pinned tool's name and the
@@ -374,6 +381,13 @@ impl PipxAdapter {
         &self,
         inst: &ManagerInstance,
     ) -> Result<Vec<InstalledArtifact>, AdapterError> {
+        Ok(self.inventory_with_pins(inst).await?.0)
+    }
+
+    async fn inventory_with_pins(
+        &self,
+        inst: &ManagerInstance,
+    ) -> Result<(Vec<InstalledArtifact>, HashSet<String>), AdapterError> {
         let output = self
             .run_pipx(
                 inst,
@@ -387,7 +401,15 @@ impl PipxAdapter {
                 stderr: output.stderr,
             });
         }
-        parse_list(&output.stdout, &inst.id)
+        let root: PipxListRoot =
+            serde_json::from_str(&output.stdout).map_err(|e| AdapterError::Parse(e.to_string()))?;
+        let pinned = root
+            .venvs
+            .iter()
+            .filter(|(_, venv)| venv.metadata.main_package.pinned)
+            .map(|(name, _)| name.clone())
+            .collect();
+        Ok((artifacts_from_list(root, &inst.id), pinned))
     }
 
     async fn latest_pypi_version(&self, name: &str) -> Result<String, LookupFailure> {
@@ -413,6 +435,7 @@ impl PipxAdapter {
     async fn check_outdated_via_pypi(
         &self,
         installed: &[InstalledArtifact],
+        pinned: &HashSet<String>,
     ) -> Vec<UpdateCandidate> {
         let mut out = Vec::new();
         for artifact in installed {
@@ -435,7 +458,9 @@ impl PipxAdapter {
                     channel: UpdateChannel::Registry,
                     checkable: true,
                     warnings: Vec::new(),
-                    blocked: None,
+                    blocked: pinned
+                        .contains(&artifact.key.name)
+                        .then_some(UpdateBlocked::Pinned),
                     download_bytes: None,
                 }),
                 Ok(_) => {}
@@ -484,8 +509,11 @@ impl PipxAdapter {
             }
             Ok(parse_outdated(&output.stdout, &inst.id).into())
         } else {
-            let installed = self.inventory(inst).await?;
-            Ok(self.check_outdated_via_pypi(&installed).await.into())
+            let (installed, pinned) = self.inventory_with_pins(inst).await?;
+            Ok(self
+                .check_outdated_via_pypi(&installed, &pinned)
+                .await
+                .into())
         }
     }
 
@@ -506,6 +534,14 @@ impl PipxAdapter {
     ) -> Result<Plan, AdapterError> {
         ensure_instance_match(req, inst)?;
         validate_package_name(&req.name)?;
+        if req.kind == OpKind::Upgrade {
+            let (_, pinned) = self.inventory_with_pins(inst).await?;
+            if pinned.contains(&req.name) {
+                return Err(AdapterError::UpdateBlocked {
+                    reason: UpdateBlocked::Pinned,
+                });
+            }
+        }
         let lock = ResourceLock(inst.id.clone());
         let args = match req.kind {
             OpKind::Install => vec!["install".to_string(), req.name.clone()],
@@ -619,6 +655,95 @@ impl Adapter for PipxAdapter {
 mod tests {
     use super::*;
 
+    /// The recorded `pipx list --json` (`list.json`) with its one tool,
+    /// cowsay, installed a second time as `cowsay_alt` (`pipx install
+    /// cowsay --suffix=_alt`: the venv is named with the suffix, the
+    /// package keeps its own name), that copy's pin set to `pinned`. The
+    /// field is the one pipx 1.6+ writes (`main_package.pinned`).
+    fn recorded_list_with_suffixed_copy(pinned: bool) -> String {
+        let json = std::fs::read_to_string("../../adapters/fixtures/pipx/1.17.3/list.json")
+            .expect("read pipx list.json fixture");
+        let mut root: serde_json::Value = serde_json::from_str(&json).expect("fixture parses");
+        let mut copy = root["venvs"]["cowsay"].clone();
+        copy["metadata"]["main_package"]["suffix"] = "_alt".into();
+        copy["metadata"]["main_package"]["pinned"] = pinned.into();
+        root["venvs"]["cowsay_alt"] = copy;
+        root.to_string()
+    }
+
+    #[tokio::test]
+    async fn regression_f01_legacy_pipx_pins_block_candidates_and_late_plans() {
+        let list = |stdout: String| CommandOutput {
+            exit_code: Some(0),
+            stdout,
+            stderr: String::new(),
+            stderr_cause: Default::default(),
+            timed_out: false,
+            cancelled: false,
+        };
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec!["/opt/homebrew/bin/pipx", "list", "--json"],
+            list(recorded_list_with_suffixed_copy(true)),
+        );
+        let http = Arc::new(MockHttpClient::new());
+        http.respond(
+            "https://pypi.org/pypi/cowsay/json",
+            HttpResponse {
+                status: 200,
+                body: r#"{"info":{"name":"cowsay","version":"6.1"},"releases":{}}"#.into(),
+            },
+        );
+        let adapter = PipxAdapter::new(runner.clone(), http);
+        let mut inst = test_instance();
+        // pipx 1.7.1 has pins but no `list --outdated`: the PyPI fallback.
+        inst.version = Some("1.7.1".into());
+        let rows = adapter
+            .check_updates(&inst, &CheckOptions::default())
+            .await
+            .unwrap()
+            .candidates;
+        let blocked: Vec<_> = rows
+            .iter()
+            .map(|row| (row.key.name.as_str(), row.blocked))
+            .collect();
+        assert_eq!(
+            blocked,
+            [
+                ("cowsay", None),
+                ("cowsay_alt", Some(UpdateBlocked::Pinned))
+            ],
+            "only the pinned copy is held back"
+        );
+        let req = OpRequest {
+            kind: OpKind::Upgrade,
+            instance_id: inst.id.clone(),
+            artifact_kind: ArtifactKind::Tool,
+            name: "cowsay_alt".into(),
+        };
+        assert!(matches!(
+            adapter.plan(&inst, &req).await,
+            Err(AdapterError::UpdateBlocked {
+                reason: UpdateBlocked::Pinned
+            })
+        ));
+        // A later unpin is observed by planning; a pin introduced after
+        // that plan is observed by the next plan, on native pipx too.
+        inst.version = Some("1.17.3".into());
+        for pinned in [false, true] {
+            runner.respond(
+                vec!["/opt/homebrew/bin/pipx", "list", "--json"],
+                list(recorded_list_with_suffixed_copy(pinned)),
+            );
+            assert_eq!(adapter.plan(&inst, &req).await.is_ok(), !pinned);
+        }
+        let uninstall = OpRequest {
+            kind: OpKind::Uninstall,
+            ..req
+        };
+        assert!(adapter.plan(&inst, &uninstall).await.is_ok());
+    }
+
     #[tokio::test]
     async fn regression_legacy_pipx_queries_project_but_keeps_alias_for_operations() {
         let http = Arc::new(MockHttpClient::new());
@@ -629,7 +754,12 @@ mod tests {
                 body: r#"{"info":{"version":"1.9"}}"#.into(),
             },
         );
-        let adapter = PipxAdapter::new(Arc::new(MockRunner::new()), http.clone());
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(vec!["/opt/homebrew/bin/pipx", "list", "--json"], CommandOutput {
+            exit_code: Some(0), stdout: r#"{"venvs":{"ruff-alt":{"metadata":{"main_package":{"package":"ruff","package_version":"1.0"}}}}}"#.into(),
+            stderr: String::new(), stderr_cause: Default::default(), timed_out: false, cancelled: false,
+        });
+        let adapter = PipxAdapter::new(runner, http.clone());
         let inst = test_instance();
         for (current, actionable) in [
             ("1.0", true),
@@ -642,7 +772,9 @@ mod tests {
                 r#"{{"venvs":{{"ruff-alt":{{"metadata":{{"main_package":{{"package":"ruff","package_version":"{current}"}}}}}}}}}}"#
             );
             let installed = parse_list(&json, &inst.id).unwrap();
-            let rows = adapter.check_outdated_via_pypi(&installed).await;
+            let rows = adapter
+                .check_outdated_via_pypi(&installed, &HashSet::new())
+                .await;
             assert_eq!(!rows.is_empty(), actionable, "{current}");
             if actionable {
                 assert_eq!(rows[0].key.name, "ruff-alt");
@@ -1325,8 +1457,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_plan_install_uninstall_upgrade_build_the_expected_argv() {
-        let adapter =
-            PipxAdapter::new(Arc::new(MockRunner::new()), Arc::new(MockHttpClient::new()));
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(vec!["/opt/homebrew/bin/pipx", "list", "--json"], CommandOutput {
+            exit_code: Some(0), stdout: r#"{"venvs":{"cowsay":{"metadata":{"main_package":{"package":"cowsay","package_version":"5.0","pinned":false}}}}}"#.into(),
+            stderr: String::new(), stderr_cause: Default::default(), timed_out: false, cancelled: false,
+        });
+        let adapter = PipxAdapter::new(runner, Arc::new(MockHttpClient::new()));
         let inst = test_instance();
         for (kind, expected) in [
             (OpKind::Install, vec!["install", "cowsay"]),
