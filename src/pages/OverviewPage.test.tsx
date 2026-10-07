@@ -742,7 +742,8 @@ describe("OverviewPage", () => {
     expect(headline.nextElementSibling?.textContent).toMatch(/^Checked /);
     // Its button checks again, as the toolbar's does.
     const again = within(rows[0]).getByRole("button", { name: "Check Again" });
-    expect(again.className).toBe(BUTTON.regular.grey);
+    // A regular grey one, centred on the title's line (p1 polish).
+    expect(again.className).toBe(`-mt-1 ${BUTTON.regular.grey}`);
     fireEvent.click(again);
     await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("refresh"));
   });
@@ -1580,4 +1581,52 @@ it("counts a persisted password stop as needing steps after restart", async () =
   expect(await view.findByRole("heading", { name: "1 update needs your password" })).toBeInTheDocument();
   fireEvent.click(view.getByRole("button", { name: "Review Updates" }));
   expect(useUiStore.getState().selectedUpdates).toEqual([]);
+});
+
+describe("a problem row's sign and button (p1 polish)", () => {
+  it("sit beside the title, at the top, as a Mac's list puts them, however tall the startup diagnostic makes the row", async () => {
+    await i18n.changeLanguage("en");
+    const npm = instance("npm:/opt/homebrew", "npm", {
+      version: null,
+      status: {
+        unavailable: "NotResponding",
+        notes: [],
+        no_answer: {
+          kind: "ExitedWithError",
+          missing_program: null,
+          link_fixes: [],
+          cause: null,
+          diagnostic: "npm error config Invalid npmrc\nnpm error Invalid proxy URL https://****@proxy.example.test",
+        },
+      },
+    });
+    served = snapshotWith({ instances: [brew, pip, npm, stoppedOllama] });
+    const { findByRole, getByRole } = renderOverview();
+    const list = await findByRole("list", { name: "Needs attention" });
+    // Each source's row: the notice with the diagnostic folded and the one without.
+    const rows = within(list)
+      .getAllByRole("listitem")
+      .filter((row) => row.querySelector("p[id]") !== null);
+    expect(rows.length).toBeGreaterThanOrEqual(2);
+    const check = (row: HTMLElement) => {
+      // Neither the sign nor the button is centred on the whole row.
+      expect(row.className.split(" ")).toContain("items-start");
+      expect(row.className.split(" ")).not.toContain("items-center");
+      const title = row.querySelector("p")!;
+      const sign = row.querySelector("svg")!;
+      const signRow = sign.parentElement!;
+      expect(signRow.contains(title)).toBe(true);
+      expect(signRow.className.split(" ")).toContain("items-start");
+      expect(signRow.className.split(" ")).not.toContain("items-center");
+      // The 24 button centred on the title's 16 line: 4 above its top.
+      const button = [...row.querySelectorAll("button")].find((b) => b.getAttribute("aria-describedby") === title.id)!;
+      expect(button.className.split(" ")).toContain("-mt-1");
+    };
+    rows.forEach(check);
+    // Unfolded, the diagnostic makes the row taller; the sign and the button stay by the title.
+    const disclosure = getByRole("button", { name: "Startup Diagnostic" });
+    fireEvent.click(disclosure);
+    expect(disclosure).toHaveAttribute("aria-expanded", "true");
+    check(disclosure.closest("li")!);
+  });
 });

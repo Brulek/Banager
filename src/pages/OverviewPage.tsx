@@ -171,7 +171,9 @@ function nothingToUpdateLine(
  * title, its description under it, and on the right its own button where
  * it has one: Open Ollama, Check again, Show (a tool, or the tools that
  * answer to one command), wired as the lists wire
- * theirs (`SourceNotices`), Check again off while a check runs. A press of
+ * theirs (`SourceNotices`), Check again off while a check runs -- the sign
+ * and the button by the title, at the row's top, however tall what is under
+ * the title makes it (the startup diagnostic, unfolded). A press of
  * Open Ollama that failed says so under the description, with its Details.
  */
 function ProblemRow({ notice }: { notice: SourceNoticeSpec }) {
@@ -248,8 +250,12 @@ function ProblemRow({ notice }: { notice: SourceNoticeSpec }) {
   }
 
   return (
-    <li className="flex min-h-11.5 items-center gap-4 px-2.5 py-2">
-      <div className="flex min-w-0 flex-1 items-center gap-2">
+    // The sign and the button by the title, at the row's top, as a Mac's
+    // list puts them: centred on the whole row, they would sit beside the
+    // description, or, with the startup diagnostic unfolded, beside its
+    // middle -- nowhere near what they are about.
+    <li className="flex min-h-11.5 items-start gap-4 px-2.5 py-2">
+      <div className="flex min-w-0 flex-1 items-start gap-2">
         {notice.variant === "warning" ? (
           <FilledWarningIcon size={16} className="text-warning" />
         ) : (
@@ -275,7 +281,8 @@ function ProblemRow({ notice }: { notice: SourceNoticeSpec }) {
           onClick={press(action)}
           disabled={action.id === "checkAgain" && checking}
           aria-describedby={titleId}
-          className={BUTTON.regular.grey}
+          // 24 high, centred on the title's 16 line.
+          className={`-mt-1 ${BUTTON.regular.grey}`}
         >
           {/* Named for what it shows, from the notice's values: Show
               “codex” (walk-3 W3-5). */}
