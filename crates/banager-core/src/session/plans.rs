@@ -101,9 +101,13 @@ pub(crate) struct StoredPlan {
     pub(crate) target_version: Option<String>,
 }
 
-/// Only the target and original lifetime, not an executable plan. One per
-/// listed tool, pruned to the current inventory/offers and ten minutes on
-/// each planning request. Re-planning a vanished offer cannot renew it.
+/// What `issue_listed_plan` keeps of an update it previewed, apart from
+/// the plan itself, which `MAX_ISSUED_PLANS` may let go: the target it was
+/// offered and when it was previewed -- never a plan anything can submit.
+/// One per source, kind and name, dropped on each planning request once
+/// older than `PLAN_LIFETIME` or neither installed nor offered. Planning
+/// again from it keeps that preview's time, so it never renews the
+/// lifetime.
 #[derive(Clone)]
 pub(super) struct ListedUpgrade {
     target: Option<String>,
@@ -233,15 +237,20 @@ impl Session {
     /// src-tauri/src/ipc.rs): the same, but only for what the snapshot it
     /// reads lists (`lists_request`) -- an update the page was offered, a
     /// tool it was shown installed -- refused as `AdapterError::NotListed`
-    /// otherwise, except for a recently previewed update still installed:
-    /// its offer may have disappeared because an earlier update did it.
-    /// The original target and lifetime survive full-plan eviction. All
-    /// other refusals apply before any adapter
+    /// otherwise, after the gates `issue_plan` keeps and before any adapter
     /// is asked. Without it an `Upgrade` of a name no source lists is
     /// planned as any upgrade is -- `npm install -g <name>@latest`, `cargo
     /// install --force <name>`, `ollama pull <name>` -- which installs
     /// whatever that name is: the install the window may not ask for, by
     /// another name.
+    ///
+    /// One update no longer offered is still planned: one this window
+    /// previewed less than `PLAN_LIFETIME` ago that is still installed
+    /// under the same source, kind and name (`ListedUpgrade`). An earlier
+    /// update of the batch may have updated it as a dependency, and Update
+    /// all of more than `MAX_ISSUED_PLANS` plans such an update again at
+    /// its turn (`startShown` in src/lib/heldPlans.ts). It is aimed at the
+    /// target it was offered, and lives no longer than that preview.
     pub async fn issue_listed_plan(&self, req: &OpRequest) -> Result<IssuedPlan, AdapterError> {
         self.issue(req, true).await
     }
@@ -2019,7 +2028,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_f20_evicted_listed_update_keeps_its_target_after_a_dependency_update() {
+    async fn test_an_update_let_go_whose_offer_an_earlier_update_ended_is_planned_again_and_done() {
         let adapter = FakeAdapter::new(vec![test_support::make_instance("fake", "fake:1")]);
         let offers: Vec<_> = (0..super::MAX_ISSUED_PLANS + 1)
             .map(|n| candidate(&format!("tool-{n}"), None))
@@ -2032,7 +2041,7 @@ mod tests {
             None,
         )]);
         let session = Session::with_adapters(Arc::new(VecSink::new()), vec![adapter.clone()], None);
-        let dir = crate::testing::unique_temp_path("f20-history");
+        let dir = crate::testing::unique_temp_path("let-go-update-history");
         let store = crate::history::HistoryStore::open(dir.join("history.json"));
         session.attach_history(store.clone());
         session
@@ -2074,7 +2083,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_f20_remembered_offer_requires_the_same_installed_tool_and_expires() {
+    async fn test_planning_a_gone_offer_again_needs_its_recent_preview_and_the_same_installed_tool()
+    {
         let adapter = FakeAdapter::new(vec![test_support::make_instance("fake", "fake:1")]);
         adapter.set_updates(vec![candidate("jq", None)]);
         let installed = installed_on("fake:1", ArtifactKind::Formula, "jq", None);
@@ -2115,7 +2125,9 @@ mod tests {
             .unwrap()
             .get_mut(&installed.key)
             .unwrap()
-            .issued_monotonic = std::time::Instant::now() - PLAN_LIFETIME - Duration::from_secs(1);
+            .issued_monotonic = std::time::Instant::now()
+            .checked_sub(PLAN_LIFETIME + Duration::from_secs(1))
+            .expect("the monotonic clock is at least a plan lifetime past its origin");
         assert!(matches!(
             session.issue_listed_plan(&req).await,
             Err(AdapterError::NotListed)
@@ -2140,7 +2152,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_f20_replanned_update_below_its_original_target_is_not_done() {
+    async fn test_an_update_planned_again_below_its_offered_target_is_not_done() {
         let adapter = FakeAdapter::new(vec![test_support::make_instance("fake", "fake:1")]);
         adapter.set_updates(vec![candidate("jq", None)]);
         adapter.set_artifacts(vec![installed_on(
