@@ -1605,7 +1605,7 @@ fn test_what_we_run_names_the_history_file_what_it_keeps_its_bounds_and_how_to_r
         "`history.json`, Banager's record of the updates and uninstalls it ran".to_string(),
         "Never a line of a log, a command line or any other path, and of an error message one line at most".to_string(),
         format!(
-            "at most {} characters, its label (`Error:`) taken off, with any home folder written as `~` and any login, query or fragment in an address masked",
+            "at most {} characters, its label (`Error:`) taken off (with the line after it where it ends with a colon), with any home folder but `/Users/Shared` written as `~` and any login, query, fragment or token-like part of the path in an address masked",
             banager_core::history::DETAIL_CHARS
         ),
         "An operation cancelled before Banager began carrying it out (while it waited for its turn, or while Banager read the installed version) is not recorded.".to_string(),

@@ -343,6 +343,16 @@ export function causeKeepsItsLine(cause: FailureCause): boolean {
   return cause === "conflict" || cause === "notFound" || cause === "unsupported";
 }
 
+/**
+ * Whether one part of an address's path looks like a token a mirror or a
+ * registry put there in place of a login (`https://host/<token>/simple/`):
+ * 20 characters or more, only letters, digits, `-` and `_`, with both a
+ * letter and a digit (Rust `looks_like_a_token`).
+ */
+function looksLikeAToken(part: string): boolean {
+  return part.length >= 20 && /^[A-Za-z0-9_-]+$/.test(part) && /\d/.test(part) && /[A-Za-z]/.test(part);
+}
+
 /** How long a kept error line may be, the `…` of a cut one included: Rust's `DETAIL_CHARS`. */
 const DETAIL_CHARS = 160;
 
@@ -353,9 +363,10 @@ const DETAIL_CHARS = 160;
  * error -- `Error:`, `error:`, `fatal:`, npm's `npm error` but for its
  * bookkeeping (`code`, `errno`, `path`, the log file) -- or, with none, the
  * last line, its label taken off; where it ends with a colon, with the line
- * after it. Masked as the history masks it: the
- * escape codes that colour it, any home folder (`/Users/<name>` as `~`),
- * a login in an address, an address's query and fragment; cut to 160
+ * after it. Masked as the history masks it: the escape codes that colour
+ * it, any home folder (`/Users/<name>` as `~`, not `/Users/Shared`), a
+ * login in an address, an address's query and fragment, a part of its
+ * path that looks like a token (`looksLikeAToken`); cut to 160
  * characters. Null for words that are all blank. 「最近的更新记录」 says it
  * behind 「原因：」 for an update this window ran as for one the history
  * kept, so the two read the same.
@@ -378,9 +389,19 @@ export function failureDetail(summary: string): string | null {
   const next = lines[index + 1];
   if (text.endsWith(":") && next !== undefined) text = `${text} ${next}`;
   const masked = text
-    .replace(/\/Users\/[^/\s'"`]+/g, "~")
+    // `/Users/Shared` is no one's home (review of r6 y3-batch, finding 8).
+    .replace(/\/Users\/([^/\s'"`]+)/g, (whole: string, name: string) => (name === "Shared" ? whole : "~"))
     .replace(/([A-Za-z][A-Za-z0-9+.-]*:\/\/)[^/\s@'"`]+@/g, "$1****@")
     .replace(/([A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s?#'"`]*)[?#][^\s'"`]*/g, "$1")
+    .replace(
+      /([A-Za-z][A-Za-z0-9+.-]*:\/\/[^/\s'"`]+)(\/[^\s'"`]*)/g,
+      (_whole: string, origin: string, rest: string) =>
+        origin +
+        rest
+          .split("/")
+          .map((part) => (looksLikeAToken(part) ? "****" : part))
+          .join("/"),
+    )
     .trim();
   const characters = [...masked];
   return characters.length <= DETAIL_CHARS ? masked : `${characters.slice(0, DETAIL_CHARS - 1).join("")}…`;

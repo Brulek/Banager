@@ -331,6 +331,7 @@ struct DetailPatterns {
     home: regex::Regex,
     login: regex::Regex,
     query: regex::Regex,
+    address_path: regex::Regex,
 }
 
 fn detail_patterns() -> &'static DetailPatterns {
@@ -346,11 +347,27 @@ fn detail_patterns() -> &'static DetailPatterns {
             label: re(
                 r"(?i)^(?:(?:error|fatal)\b\s*(?:\[[^\]]*\])?\s*:?|npm (?:err!|error)\b|E:)\s*",
             ),
-            home: re(r"/Users/[^/\s'\x22`]+"),
+            home: re(r"/Users/([^/\s'\x22`]+)"),
             login: re(r"([A-Za-z][A-Za-z0-9+.-]*://)[^/\s@'\x22`]+@"),
             query: re(r"([A-Za-z][A-Za-z0-9+.-]*://[^\s?#'\x22`]*)[?#][^\s'\x22`]*"),
+            address_path: re(r"([A-Za-z][A-Za-z0-9+.-]*://[^/\s'\x22`]+)(/[^\s'\x22`]*)"),
         }
     })
+}
+
+/// Whether one part of an address's path looks like a token a mirror or a
+/// registry put there in place of a login (`https://host/<token>/simple/`):
+/// 20 characters or more, only letters, digits, `-` and `_`, with both a
+/// letter and a digit. A package's name, a version or a file has a dot or
+/// no digit; a commit's hash masked too costs nothing (review of r6
+/// y3-batch, finding 8). `looksLikeAToken` in src/lib/failureCause.ts.
+fn looks_like_a_token(part: &str) -> bool {
+    part.len() >= 20
+        && part
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        && part.chars().any(|c| c.is_ascii_digit())
+        && part.chars().any(|c| c.is_ascii_alphabetic())
 }
 
 /// The one line of a failed tool's words the history keeps where no cause
@@ -358,11 +375,12 @@ fn detail_patterns() -> &'static DetailPatterns {
 /// `error:`, `fatal:`, npm's `npm error` but for its bookkeeping (`code`,
 /// `errno`, `path`, the log file) -- or, with none, the last line, with
 /// its label taken off; and where it ends with a colon, the line after it
-/// too, which says what the colon announces. Masked: the escape codes that colour it, any home
-/// folder (`/Users/<name>` becomes `~`), any login in an address (one the
-/// runner did not already mask, `runner::redact`), and an address's query
-/// and fragment; then cut to `DETAIL_CHARS`. `None` for words that are
-/// all blank.
+/// too, which says what the colon announces. Masked: the escape codes
+/// that colour it, any home folder (`/Users/<name>` becomes `~`; not
+/// `/Users/Shared`), any login in an address (one the runner did not
+/// already mask, `runner::redact`), an address's query and fragment, and a
+/// part of its path that looks like a token (`looks_like_a_token`); then
+/// cut to `DETAIL_CHARS`. `None` for words that are all blank.
 fn failure_detail(summary: &str) -> Option<String> {
     let p = detail_patterns();
     let lines: Vec<String> = summary
@@ -388,9 +406,31 @@ fn failure_detail(summary: &str) -> Option<String> {
             text = format!("{text} {next}");
         }
     }
-    let text = p.home.replace_all(&text, "~");
+    // `/Users/Shared` is no one's home (review of r6 y3-batch, finding 8).
+    let text = p.home.replace_all(&text, |c: &regex::Captures<'_>| {
+        if &c[1] == "Shared" {
+            c[0].to_string()
+        } else {
+            "~".to_string()
+        }
+    });
     let text = p.login.replace_all(&text, "${1}****@");
     let text = p.query.replace_all(&text, "${1}");
+    let text = p
+        .address_path
+        .replace_all(&text, |c: &regex::Captures<'_>| {
+            let path: Vec<&str> = c[2]
+                .split('/')
+                .map(|part| {
+                    if looks_like_a_token(part) {
+                        "****"
+                    } else {
+                        part
+                    }
+                })
+                .collect();
+            format!("{}{}", &c[1], path.join("/"))
+        });
     let text = text.trim();
     if text.chars().count() <= DETAIL_CHARS {
         return Some(text.to_string());

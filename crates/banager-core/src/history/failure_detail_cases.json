@@ -43,5 +43,20 @@
     "name": "the home folder, a login, a query and a fragment masked",
     "summary": "Error: \u001b[31mcannot read\u001b[0m /Users/brulek/Library/Caches/x and /Users/other/y via https://me:secret@mirror.example/simple/?token=abc#frag",
     "detail": "cannot read ~/Library/Caches/x and ~/y via https://****@mirror.example/simple/"
+  },
+  {
+    "name": "the shared folder is no one's home: /Users/Shared stays as it is (review of r6 y3-batch, finding 8)",
+    "summary": "Error: cannot open /Users/Shared/Banager/x.log and /Users/me/y",
+    "detail": "cannot open /Users/Shared/Banager/x.log and ~/y"
+  },
+  {
+    "name": "a token in an address's path is masked, as a login is",
+    "summary": "Error: 403 Forbidden - GET https://pkgs.example.com/AbCdEf0123456789XyZ0123456/simple/foo/",
+    "detail": "403 Forbidden - GET https://pkgs.example.com/****/simple/foo/"
+  },
+  {
+    "name": "an address's ordinary path stays as it is",
+    "summary": "npm error 404 Not Found - GET https://registry.npmjs.org/@scope%2fsome-long-package-name-here - Not found",
+    "detail": "404 Not Found - GET https://registry.npmjs.org/@scope%2fsome-long-package-name-here - Not found"
   }
 ]

@@ -3874,9 +3874,10 @@ cause, or name one whose words point at the tool's own (a file in the
 way, something missing, a Mac the version does not support), is the
 first line that says what went wrong kept, so that the page can say why,
 and which file or what, after the window that watched it has closed -- at most 160
-characters, its label (`Error:`) taken off, with any home folder written
-as `~` and any login, query or fragment in an address masked
-(`failure_detail`). An operation cancelled before Banager began carrying it out
+characters, its label (`Error:`) taken off (with the line after it where
+it ends with a colon), with any home folder but `/Users/Shared` written
+as `~` and any login, query, fragment or token-like part of the path in
+an address masked (`failure_detail`). An operation cancelled before Banager began carrying it out
 (while it waited for its turn, or while Banager read the installed
 version) is not recorded. Each record also carries a random id of the
 launch of Banager that ran it and the operation's number in that launch,
