@@ -11,7 +11,7 @@ import {
   OP_CANCEL_KEYS,
   cancelState,
   isActive,
-  outcomeTone,
+  operationTone,
   operationWords,
   statusKey,
   useOperationName,
@@ -208,7 +208,7 @@ export function LogDrawer() {
           </span>
         ) : (
           <span className="inline-flex items-start gap-1">
-            <OutcomeIcon tone={outcomeTone(op.outcome)} size={12} className="mt-px" />
+            <OutcomeIcon tone={operationTone(op)} size={12} className="mt-px" />
             <span className="min-w-0 break-words">{words}</span>
           </span>
         ),

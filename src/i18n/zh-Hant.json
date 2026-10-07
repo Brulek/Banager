@@ -801,7 +801,7 @@
     "text": "啟動診斷："
   },
   "followUpWarning": {
-    "batch": "已更新{{total}}個工具，{{count}}個工具的後續步驟需要查看",
+    "batch_other": "已更新{{total}}個工具，{{count}}個工具的後續步驟需要查看",
     "succeeded": "已更新，有警告",
     "saved": "這裡只保留了後續步驟的警告，完整記錄已不再保留。"
   },

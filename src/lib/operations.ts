@@ -318,6 +318,16 @@ export function outcomeTone(outcome: Outcome | null): OutcomeTone {
 }
 
 /**
+ * `outcomeTone` of one operation as its own line shows it: a success
+ * whose cleanup or relink after it did not end as planned
+ * (`follow_up_warnings`) needs a look, as its words say 「已更新，有警告」.
+ */
+export function operationTone(op: OpSummary): OutcomeTone {
+  const tone = outcomeTone(op.outcome);
+  return tone === "success" && (op.follow_up_warnings?.length ?? 0) > 0 ? "attention" : tone;
+}
+
+/**
  * Which operations the bar is about: its run. Operations started while
  * others were still under way join their run -- an Update all is one run
  * however many operations it submits -- and the first one started once

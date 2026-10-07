@@ -5,6 +5,7 @@ import {
   cancelState,
   currentOf,
   isActive,
+  operationTone,
   outcomeTone,
   operationWords,
   runsToItsEnd,
@@ -234,7 +235,7 @@ export function OperationBar() {
     let logsOf: OpSummary[] = [];
     if (total === 1) {
       const [op] = inRun;
-      tone = tones[0] === "success" && op.follow_up_warnings?.length ? "attention" : tones[0];
+      tone = operationTone(op);
       words = t("operations.current", { name: nameOf(op), status: operationWords(t, op, logs, technical) });
       // The log of anything but a plain success: to see what went wrong,
       // or -- after a cancel -- what had already happened.

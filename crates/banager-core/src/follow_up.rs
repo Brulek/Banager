@@ -16,6 +16,24 @@ pub enum FollowUpWarning {
     },
 }
 
+/// `HistoryRecord::follow_up_warnings` as `history.json` holds it: each
+/// note this build knows, skipping any other -- one a later build added --
+/// so that a record is never lost for a note it cannot name (`load` drops
+/// a record that does not read, and the next write leaves it out).
+pub(crate) fn known_warnings<'de, D>(deserializer: D) -> Result<Vec<FollowUpWarning>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    Ok(match value {
+        serde_json::Value::Array(items) => items
+            .into_iter()
+            .filter_map(|item| serde_json::from_value(item).ok())
+            .collect(),
+        _ => Vec::new(),
+    })
+}
+
 pub(crate) struct WarningSink {
     inner: Arc<dyn EventSink>,
     op_id: OpId,

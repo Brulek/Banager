@@ -801,7 +801,7 @@
     "text": "启动诊断："
   },
   "followUpWarning": {
-    "batch": "已更新{{total}}个工具，{{count}}个工具的后续步骤需要查看",
+    "batch_other": "已更新{{total}}个工具，{{count}}个工具的后续步骤需要查看",
     "succeeded": "已更新，有警告",
     "saved": "这里只保留了后续步骤的警告，完整日志已不再保留。"
   },

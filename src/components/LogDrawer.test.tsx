@@ -1057,3 +1057,14 @@ it("still shows and copies retained follow-up notes after the transcript was evi
   await waitFor(() => expect(view.getByRole("dialog")).toHaveTextContent("brew link --formula --force node@22"));
   expect(view.getByRole("button", { name: "Copy Log" })).toBeEnabled();
 });
+
+it("marks a success with follow-up warnings as needing attention, as the operation bar does (f13b review)", async () => {
+  await i18n.changeLanguage("en");
+  operations = [{ ...runningOp, kind: "Upgrade", status: "Done", outcome: "Succeeded",
+    follow_up_warnings: [{ OldVersionsNotCleanedUp: { name: "node@22", exit_code: 1 } }],
+  }];
+  const view = renderWithProviders(<LogDrawer />);
+  const dialog = await view.findByRole("dialog");
+  await waitFor(() => expect(dialog).toHaveTextContent("Updated · Warning"));
+  expect(within(dialog).getByRole("img", { name: "Needs attention" })).toBeInTheDocument();
+});

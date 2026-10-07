@@ -137,7 +137,17 @@ pub struct HistoryRecord {
     /// existed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub already_updated: Option<AlreadyUpdated>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    /// For an update that succeeded, what of its follow-up did not end as
+    /// planned (`FollowUpWarning`: a `brew cleanup` that did not finish,
+    /// commands left unlinked), so that 「最近的更新记录」 can still say so
+    /// after a restart. Absent for every other record, and in one written
+    /// before it existed; a note this build does not know is skipped, not
+    /// the record (`follow_up::known_warnings`).
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        deserialize_with = "crate::follow_up::known_warnings"
+    )]
     pub follow_up_warnings: Vec<FollowUpWarning>,
 }
 
@@ -289,7 +299,11 @@ pub fn record_for(
         kind,
         from_version,
         to_version,
-        follow_up_warnings: ended.follow_up_warnings.clone(),
+        follow_up_warnings: if result == HistoryResult::Succeeded {
+            ended.follow_up_warnings.clone()
+        } else {
+            Vec::new()
+        },
         already_updated: ended
             .already_updated
             .filter(|_| result == HistoryResult::Succeeded),
@@ -981,33 +995,135 @@ mod tests {
         assert_eq!((r.run.as_str(), r.op_id, r.finished_at), ("run1", 4, NOW));
     }
 
+    /// What f13b keeps of a successful update's follow-ups (F4 of
+    /// r13-failures), as the store writes it and reads it back after a
+    /// restart, beside a record as 7d904368 (before the field) wrote it.
     #[test]
-    fn test_follow_up_warning_survives_history_file_and_old_file_is_readable() {
+    fn test_follow_up_warnings_are_written_and_read_back_beside_an_older_record() {
         use crate::follow_up::FollowUpWarning;
         let dir = TempDir::new("follow-up");
-        let warning = FollowUpWarning::NoLongerLinked {
-            name: "node@22".into(),
-            commands: vec!["node".into(), "npm".into()],
-        };
-        let k = key("node@22");
-        let mut e = ended(&k, &Outcome::Succeeded);
-        e.follow_up_warnings = vec![warning.clone()];
-        let record = record_for(&e, &started("node@22"), "r", NOW).unwrap();
-        assert_eq!(record.result, HistoryResult::Succeeded);
-        let file = serde_json::json!({"format":1,"cleared_before":null,"records":[record]});
-        std::fs::write(dir.file(), serde_json::to_vec(&file).unwrap()).unwrap();
-        let stored: HistoryFile =
+        // A record exactly as the build before this field wrote it.
+        let earlier = r#"{"run":"t1","op_id":2,"finished_at":1789000000000,"key":{"instance_id":"brew:/opt/homebrew","kind":"Formula","name":"jq"},"display_name":"jq","adapter_id":"brew","kind":"Update","from_version":"1.7","to_version":"1.7.1","result":"Succeeded","verified":true}"#;
+        std::fs::write(
+            dir.file(),
+            format!(r#"{{"format":1,"trusted_at":{NOW},"records":[{earlier}]}}"#),
+        )
+        .unwrap();
+        let warnings = vec![
+            FollowUpWarning::OldVersionsNotCleanedUp {
+                name: "node@22".into(),
+                exit_code: Some(1),
+            },
+            FollowUpWarning::NoLongerLinked {
+                name: "node@22".into(),
+                commands: vec!["node".into(), "npm".into()],
+            },
+        ];
+        {
+            let store = HistoryStore::open_with_clock(dir.file(), || NOW);
+            assert_eq!(store.view().records.len(), 1);
+            assert!(store.view().records[0].follow_up_warnings.is_empty());
+            let k = key("node@22");
+            let mut e = ended(&k, &Outcome::Succeeded);
+            e.follow_up_warnings = warnings.clone();
+            store.record(&e, &started("node@22"));
+            assert!(store.flush(Duration::from_secs(5)));
+        }
+        let written: serde_json::Value =
             serde_json::from_slice(&std::fs::read(dir.file()).unwrap()).unwrap();
-        assert_eq!(stored.records[0].follow_up_warnings, vec![warning]);
-        let mut old = file;
-        old["records"][0]
-            .as_object_mut()
-            .unwrap()
-            .remove("follow_up_warnings");
-        std::fs::write(dir.file(), serde_json::to_vec(&old).unwrap()).unwrap();
+        assert_eq!(written["format"], 1, "the format stays the same");
+        let records = written["records"].as_array().unwrap();
+        let by_name = |name: &str| {
+            records
+                .iter()
+                .find(|r| r["key"]["name"] == name)
+                .unwrap()
+                .clone()
+        };
+        assert_eq!(
+            by_name("node@22")["follow_up_warnings"],
+            serde_json::json!([
+                {"OldVersionsNotCleanedUp": {"name": "node@22", "exit_code": 1}},
+                {"NoLongerLinked": {"name": "node@22", "commands": ["node", "npm"]}}
+            ])
+        );
+        // The older record is written back as it was: no new key.
+        assert_eq!(
+            by_name("jq"),
+            serde_json::from_str::<serde_json::Value>(earlier).unwrap()
+        );
+        let reopened = HistoryStore::open_with_clock(dir.file(), || NOW);
+        let view = reopened.view();
+        let node = view
+            .records
+            .iter()
+            .find(|r| r.key.name == "node@22")
+            .unwrap();
+        assert_eq!(node.result, HistoryResult::Succeeded);
+        assert_eq!(node.follow_up_warnings, warnings);
+    }
+
+    /// A build older than f13b reads `follow_up_warnings` as a field it
+    /// does not know, and a record keeps reading wherever a newer build
+    /// adds another: `HistoryRecord` must never deny unknown fields.
+    #[test]
+    fn test_a_record_with_a_field_this_build_does_not_know_still_reads() {
+        let dir = TempDir::new("unknown-field");
+        let record = r#"{"run":"t1","op_id":2,"finished_at":1789000000000,"key":{"instance_id":"brew:/opt/homebrew","kind":"Formula","name":"jq"},"display_name":"jq","adapter_id":"brew","kind":"Update","from_version":"1.7","to_version":"1.7.1","result":"Succeeded","verified":true,"a_later_field":{"x":[1]}}"#;
+        std::fs::write(
+            dir.file(),
+            format!(r#"{{"format":1,"trusted_at":{NOW},"records":[{record}]}}"#),
+        )
+        .unwrap();
         let store = HistoryStore::open_with_clock(dir.file(), || NOW);
         assert_eq!(store.view().records.len(), 1);
-        assert!(store.view().records[0].follow_up_warnings.is_empty());
+    }
+
+    /// A follow-up a later build knows and this one does not costs that
+    /// note, never the record (`load` drops a record that does not read).
+    #[test]
+    fn test_a_follow_up_warning_this_build_does_not_know_drops_only_that_warning() {
+        use crate::follow_up::FollowUpWarning;
+        let dir = TempDir::new("unknown-warning");
+        let record = r#"{"run":"t1","op_id":2,"finished_at":1789000000000,"key":{"instance_id":"brew:/opt/homebrew","kind":"Formula","name":"cmake"},"display_name":"cmake","adapter_id":"brew","kind":"Update","from_version":"3.31.6","to_version":"4.0.0","result":"Succeeded","verified":true,"follow_up_warnings":[{"SomethingLater":{"name":"cmake"}},{"OldVersionsNotCleanedUp":{"name":"cmake","exit_code":null}},"AnotherShape"]}"#;
+        std::fs::write(
+            dir.file(),
+            format!(r#"{{"format":1,"trusted_at":{NOW},"records":[{record}]}}"#),
+        )
+        .unwrap();
+        let store = HistoryStore::open_with_clock(dir.file(), || NOW);
+        let view = store.view();
+        assert_eq!(view.records.len(), 1);
+        assert_eq!(
+            view.records[0].follow_up_warnings,
+            vec![FollowUpWarning::OldVersionsNotCleanedUp {
+                name: "cmake".into(),
+                exit_code: None,
+            }]
+        );
+    }
+
+    /// As `already_updated`: the page shows follow-ups for a success
+    /// only, so only a success keeps them.
+    #[test]
+    fn test_follow_up_warnings_are_kept_only_with_a_success() {
+        use crate::follow_up::FollowUpWarning;
+        let k = key("node@22");
+        let failed = Outcome::Failed {
+            exit_code: Some(1),
+            summary: "Error: node@22: an unexpected error".to_string(),
+            cause: None,
+        };
+        let mut e = ended(&k, &failed);
+        e.follow_up_warnings = vec![FollowUpWarning::NoLongerLinked {
+            name: "node@22".into(),
+            commands: vec!["node".into()],
+        }];
+        let r = record_for(&e, &started("node@22"), "r", NOW).unwrap();
+        assert!(matches!(r.result, HistoryResult::Failed { .. }));
+        assert!(r.follow_up_warnings.is_empty());
+        let json = serde_json::to_value(&r).unwrap();
+        assert!(json.get("follow_up_warnings").is_none());
     }
 
     #[test]

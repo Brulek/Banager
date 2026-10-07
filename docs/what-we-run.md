@@ -1148,8 +1148,15 @@ planned as any other's):
   commands the preview named that no longer lead into it are named in the
   log with how to link it back (`LogNote::NoLongerLinked`,
   「node@22没有重新接到终端里，输入node、npm不再运行它。……」). How the link
-  ends never changes the update's outcome. A formula whose record is gone
-  since the preview is not linked again.
+  ends never changes the update's outcome. After an update that
+  succeeded, this note and the cleanup's `OldVersionsNotCleanedUp`
+  (above) are also kept on the operation apart from its log
+  (`OpSummary::follow_up_warnings`, `follow_up::WarningSink`): the
+  operation bar, a batch's result and the update's row then say
+  「已更新，有警告」 with View Log instead of a plain 「已更新」, and the log
+  shows both notes even once its lines were dropped to keep it within its
+  bound. The outcome stays `Succeeded`; nothing more runs. A formula
+  whose record is gone since the preview is not linked again.
 - Where something else is at one of those places -- a file, a link that
   leads anywhere else (npm's own copy of itself in `<prefix>/bin/npm`
   among them), or a person's own link into the formula, which the
@@ -4511,17 +4518,6 @@ before being returned to the window and rewritten through their existing
 atomic writer. A failed rewrite can leave the old bytes on disk; a newer
 history format is still left untouched. No additional file is introduced.
 
-Successful updates with an unfinished cleanup or missing links keep a
-visible follow-up warning and View Log in the operation bar, batch result,
-update row and Recent Updates. `follow_up_warnings` carries only the two
-structured notes: `OldVersionsNotCleanedUp` (formula name and exit code)
-and `NoLongerLinked` (formula name and affected command names). It does not
-change `Succeeded`. These notes remain available when the bounded log is
-evicted. They are optional in the existing history file; files without
-them still read normally. After restart, View Log shows the saved warning
-notes and existing recovery instructions, explicitly saying the full log
-was not kept. This adds no command, host, permission or written file.
-
 `history.json`, Banager's record of the updates and uninstalls it ran,
 which the Updates page's 「最近的更新记录」 lists after a restart
 (`crates/banager-core/src/history/mod.rs`, attached in
@@ -4539,7 +4535,19 @@ update that succeeded because its package was already at the version its
 confirmed plan aimed for when its turn came -- an earlier update of the
 same Update all had upgraded it as a dependency, say -- also keeps that it
 was so, and whether an earlier update of the same Homebrew and kind that
-may have changed something had ended in between. Also the time the page's Clear was last pressed. Never a line of
+may have changed something had ended in between. An update that
+succeeded though a step after it did not end as planned also keeps a
+note of each such step (`follow_up_warnings`, at most two, read off the
+log's own notes, never its lines): a `brew cleanup` that did not finish
+(`OldVersionsNotCleanedUp`: the formula's name and the cleanup's exit
+code, when it had one) and commands left unlinked (`NoLongerLinked`: the
+formula's name and the names of those commands), so that after a restart
+「最近的更新记录」 still says 「已更新，有警告」 and its View Log shows those
+notes with their existing next step, saying the full log was not kept. A
+note this build does not know is skipped, never its record
+(`follow_up::known_warnings`); a record written before the field existed
+reads as having none, and a Banager from before it reads the file as
+before and leaves the field out of what it writes back. Also the time the page's Clear was last pressed. Never a line of
 a log, a command line or any other path, and of an error message one line
 at most: a failure's cause is read from the tool's last lines as the
 operation finishes, and the lines are dropped; only where they name no

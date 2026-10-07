@@ -991,3 +991,22 @@ it("keeps warning and log access for a successful single update and successful b
   fireEvent.click(view.getByRole("button", { name: "查看日志" }));
   expect(useUiStore.getState().focusedOpId).toBe(3);
 });
+
+it("counts a batch's follow-up warnings in English as one or many (f13b review)", async () => {
+  await i18n.changeLanguage("en");
+  const warned = { follow_up_warnings: [{ OldVersionsNotCleanedUp: { name: "git", exit_code: 1 } }] };
+  operations = [op(2, "git", "Running"), op(1, "jq", "Queued")];
+  const view = renderWithProviders(<OperationBar />);
+  await view.findByText(/Working on/);
+  await listNow(view.queryClient, [op(2, "git", "Done", "Succeeded", warned), op(1, "jq", "Done", "Succeeded")]);
+  expect(await view.findByText("Updated 2 tools · 1 follow-up needs attention")).toBeInTheDocument();
+  await listNow(view.queryClient, [op(4, "git", "Running"), op(3, "wget", "Queued"), ...operations]);
+  await view.findByText(/Working on/);
+  await listNow(view.queryClient, [
+    op(4, "git", "Done", "Succeeded", warned),
+    op(3, "wget", "Done", "Succeeded", { follow_up_warnings: [{ OldVersionsNotCleanedUp: { name: "wget", exit_code: 1 } }] }),
+    op(2, "git", "Done", "Succeeded", warned),
+    op(1, "jq", "Done", "Succeeded"),
+  ]);
+  expect(await view.findByText("Updated 2 tools · 2 follow-ups need attention")).toBeInTheDocument();
+});

@@ -557,11 +557,24 @@ it("keeps both success warnings and their recovery log after a restart", async (
     adapterId: "brew", sourceLabel: "Homebrew", name: "node@22", version: "22.23.3", finishedAt: Date.now(), verified: true, ending,
   }]} onClear={() => {}} />);
   expect(screen.getByText("Updated · Warning")).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "View Log" }));
+  fireEvent.click(screen.getByRole("button", { name: "View log: node@22" }));
   const log = screen.getByRole("dialog");
   expect(log).toHaveTextContent("Only follow-up warnings were saved");
   expect(log).toHaveTextContent("brew link --formula --force node@22");
   expect(log).toHaveTextContent("npm");
   expect(log).toHaveTextContent(i18n.getFixedT("en")("brewVersions.logNotCleanedUp"));
   expect(within(log).getByRole("button", { name: "Copy Log" })).toBeInTheDocument();
+});
+
+it("names each saved warning log by its tool, as the update rows' View Log does (f13b review)", async () => {
+  await i18n.changeLanguage("en");
+  const warnings = [{ NoLongerLinked: { name: "node@22", commands: ["node"] } }];
+  const entry = (name: string) => ({
+    id: `old:${name}`, opId: null, key: { instance_id: "brew:/opt/homebrew", kind: "Formula" as const, name },
+    adapterId: "brew", sourceLabel: "Homebrew", name, version: "1.0", finishedAt: Date.now(), verified: true,
+    ending: endingOfRecord("Succeeded", null, warnings)!,
+  });
+  renderWithProviders(<JustUpdated entries={[entry("node@22"), entry("python@3.13")]} onClear={() => {}} />);
+  expect(screen.getByRole("button", { name: "View log: node@22" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "View log: python@3.13" })).toBeInTheDocument();
 });

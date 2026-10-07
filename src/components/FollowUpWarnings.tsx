@@ -16,7 +16,8 @@ export function FollowUpWarnings({ warnings, opId, name }: {
   const openLogRun = useUiStore((s) => s.openLogRun);
   const text = warnings.map((note) => noteText(t, note)).join("\n");
   return <>
-    <button type="button" className={BUTTON.small.grey} onClick={() => {
+    {/* Named by its tool, as an update row's View Log is: the list can hold several. */}
+    <button type="button" className={BUTTON.small.grey} aria-label={t("updates.progress.viewLogLabel", { name })} onClick={() => {
       if (opId === null) setOpen(true);
       else openLogRun([opId], opId);
     }}>{t("common.viewLog")}</button>
