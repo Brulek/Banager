@@ -1474,6 +1474,18 @@ mod tests {
         assert!(before_cut(&wide).ends_with(MASK));
         assert!(after_cut(&wide).starts_with(MASK));
     }
+
+    #[test]
+    fn test_a_basic_credential_of_a_percent_encoded_login_is_masked_as_sent() {
+        // The name is `me@corp.example`, written `me%40corp.example`; what
+        // `curl -v` sends the proxy is the pair decoded:
+        // base64("me@corp.example:pw").
+        let r = redactor(&[("https_proxy", "http://me%40corp.example:pw@proxy.corp:3128")]);
+        assert_eq!(
+            r.redact("> Proxy-Authorization: Basic bWVAY29ycC5leGFtcGxlOnB3"),
+            "> Proxy-Authorization: Basic ****"
+        );
+    }
 }
 
 #[cfg(test)]
