@@ -7,6 +7,7 @@ use crate::adapters::AdapterError;
 use crate::events::OpId;
 use crate::model::{
     InstalledArtifact, OpKind, OpRequest, UninstallBlocked, UpdateBlocked, UpdateCandidate,
+    UpdateChannel,
 };
 use std::time::{Duration, Instant};
 
@@ -99,7 +100,16 @@ pub(crate) struct StoredPlan {
 }
 
 /// The version the check offered `req`, when it is an `Upgrade` that one
-/// of `updates` -- one snapshot's -- lists: that candidate's `target`.
+/// of `updates` -- one snapshot's -- lists with a newer version to go to:
+/// that candidate's `target`. `None` where the target is no such version
+/// (review of r6 y3-batch, finding 3): a candidate the check could not
+/// check carries its current version as its target
+/// (`uncheckable_candidate`, adapters/mod.rs); Homebrew lists a formula
+/// whose current keg is neither linked nor opt-linked with the same
+/// version on both sides (`Formula#outdated_kegs`), and `brew upgrade`
+/// then links it; and a model's target is a registry digest, which is
+/// never compared with the local one (`UpdateChannel::Digest`,
+/// adapters/ollama). Each such update is judged as one with no target.
 fn offered_version(updates: &[UpdateCandidate], req: &OpRequest) -> Option<String> {
     if req.kind != OpKind::Upgrade {
         return None;
@@ -111,6 +121,7 @@ fn offered_version(updates: &[UpdateCandidate], req: &OpRequest) -> Option<Strin
                 && u.key.kind == req.artifact_kind
                 && u.key.name == req.name
         })
+        .filter(|u| u.checkable && u.channel != UpdateChannel::Digest && u.current != u.target)
         .map(|u| u.target.clone())
         .filter(|target| !target.is_empty())
 }
@@ -1976,8 +1987,18 @@ mod tests {
     async fn update_jq_reading(
         version: &str,
     ) -> (Option<Outcome>, Option<crate::model::AlreadyUpdated>) {
+        update_reading(candidate("jq", None), version).await
+    }
+
+    /// Submits the update `offered` lists, with the fake reading `version`
+    /// before and after it (`update_jq_reading`).
+    async fn update_reading(
+        offered: UpdateCandidate,
+        version: &str,
+    ) -> (Option<Outcome>, Option<crate::model::AlreadyUpdated>) {
+        let name = offered.key.name.clone();
         let adapter = FakeAdapter::new(vec![test_support::make_instance("fake", "fake:1")]);
-        adapter.set_updates(vec![candidate("jq", None)]);
+        adapter.set_updates(vec![offered]);
         *adapter.version_read.lock().unwrap() = Some(version.to_string());
         let sink = Arc::new(VecSink::new());
         let session = Session::with_adapters(sink, vec![adapter], None);
@@ -1985,7 +2006,7 @@ mod tests {
             .refresh(&test_support::non_root_env(), &CheckOptions::default())
             .await;
         let issued = session
-            .issue_listed_plan(&request(OpKind::Upgrade, "jq"))
+            .issue_listed_plan(&request(OpKind::Upgrade, &name))
             .await
             .expect("issue_listed_plan");
         let op_id = session.submit(issued.id).expect("submit");
@@ -2007,6 +2028,53 @@ mod tests {
         assert_eq!(outcome, Some(Outcome::Succeeded));
         assert_eq!(how, Some(crate::model::AlreadyUpdated::BeforeItsTurn));
         let (outcome, how) = update_jq_reading("1.0").await;
+        assert_eq!(
+            outcome,
+            Some(Outcome::NeedsAttention(
+                crate::model::Attention::UnchangedAfterUpgrade
+            ))
+        );
+        assert_eq!(how, None);
+    }
+
+    #[test]
+    fn test_only_a_newer_version_the_check_offered_is_a_target() {
+        // Review of r6 y3-batch, finding 3. A candidate the check could not
+        // check carries its current version as its target
+        // (`uncheckable_candidate`); Homebrew lists a formula whose current
+        // keg is not linked with the same version on both sides
+        // (`Formula#outdated_kegs`); a model's target is a digest of
+        // another kind than the one its reading has. None of those is a
+        // version the update aims for.
+        let req = request(OpKind::Upgrade, "jq");
+        assert_eq!(
+            super::offered_version(&[candidate("jq", None)], &req).as_deref(),
+            Some("1.1")
+        );
+        let mut uncheckable = candidate("jq", None);
+        uncheckable.checkable = false;
+        assert_eq!(super::offered_version(&[uncheckable], &req), None);
+        let mut unlinked = candidate("jq", None);
+        unlinked.target = unlinked.current.clone();
+        assert_eq!(super::offered_version(&[unlinked], &req), None);
+        let mut model = candidate("jq", None);
+        model.channel = UpdateChannel::Digest;
+        assert_eq!(super::offered_version(&[model], &req), None);
+        assert_eq!(
+            super::offered_version(&[candidate("jq", None)], &request(OpKind::Uninstall, "jq")),
+            None
+        );
+    }
+
+    #[tokio::test]
+    async fn test_an_unlinked_formula_listed_at_its_own_version_is_not_already_updated() {
+        // Homebrew lists jq 1.0 -> 1.0 when the 1.0 keg is neither linked
+        // nor opt-linked; `brew upgrade` relinks it, and the readings are
+        // 1.0 both times. That is not "already up to date when its turn
+        // came": it is judged as an update with no target, as before.
+        let mut unlinked = candidate("jq", None);
+        unlinked.target = unlinked.current.clone();
+        let (outcome, how) = update_reading(unlinked, "1.0").await;
         assert_eq!(
             outcome,
             Some(Outcome::NeedsAttention(
