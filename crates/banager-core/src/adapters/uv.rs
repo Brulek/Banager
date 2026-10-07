@@ -683,12 +683,27 @@ impl UvAdapter {
             // A command uv recorded that another tool has since taken over
             // would go with this one (`taken_command`): no preview, as a
             // cask's link another source took (`brew/cask_links.rs`).
-            let installed = self.inventory(inst).await?;
-            if let Some(path) = taken_of(&installed, &req.name) {
-                return Err(AdapterError::UninstallUnsafe {
-                    path: shown(&path),
-                    reason: crate::model::UninstallUnsafeReason::CaskLinkNotOwned,
-                });
+            //
+            // `uv tool list` waits for the lock of the tools folder that
+            // `uv tool upgrade` holds (uv 0.12.17 `commands/tool/list.rs:45`,
+            // `InstalledTools::lock`). A list that does not answer -- not
+            // within the inventory's 60 s while another uv command holds
+            // it, or uv exiting non-zero -- says nothing of the commands:
+            // the preview opens without the look, as it did before it
+            // looked, rather than end as an internal error it is not. The
+            // look is made again right before the run (`execute`), where
+            // such a list ends the uninstall as uv's own failure would.
+            let read = self
+                .list_tools(&inst.exe_path, Self::LIST_TIMEOUT, CancellationToken::new())
+                .await?;
+            if !read.timed_out && !read.cancelled && read.exit_code == Some(0) {
+                let installed = self.tools_in(&read.stdout, &inst.id)?;
+                if let Some(path) = taken_of(&installed, &req.name) {
+                    return Err(AdapterError::UninstallUnsafe {
+                        path: shown(&path),
+                        reason: crate::model::UninstallUnsafeReason::CaskLinkNotOwned,
+                    });
+                }
             }
         }
         let mut basis = None;
@@ -2085,6 +2100,7 @@ ruff v0.15.0 (/Users/someone/.local/share/uv/tools/ruff)
     /// paths, and `uv tool uninstall ruff`.
     struct Ruffs {
         _dir: tempfile::TempDir,
+        home: PathBuf,
         env: PathBuf,
         link: PathBuf,
         pipx: PathBuf,
@@ -2132,6 +2148,7 @@ ruff v0.15.0 (/Users/someone/.local/share/uv/tools/ruff)
             );
             let ruffs = Ruffs {
                 _dir: dir,
+                home,
                 env,
                 link,
                 pipx,
@@ -2162,6 +2179,25 @@ ruff v0.15.0 (/Users/someone/.local/share/uv/tools/ruff)
         /// The link as a refusal names it.
         fn shown_link(&self) -> String {
             shown(&self.link)
+        }
+
+        /// The uninstall's preview.
+        async fn preview(&self) -> Result<Plan, AdapterError> {
+            self.adapter()
+                .plan(&test_instance(), &request(OpKind::Uninstall))
+                .await
+        }
+
+        /// Whether `result` is the refusal of a command another tool may
+        /// have taken, naming the link.
+        fn refused(&self, result: Result<Plan, AdapterError>) -> bool {
+            matches!(
+                result,
+                Err(AdapterError::UninstallUnsafe {
+                    path,
+                    reason: crate::model::UninstallUnsafeReason::CaskLinkNotOwned,
+                }) if path == self.shown_link()
+            )
         }
     }
 
@@ -2284,5 +2320,130 @@ ruff v0.15.0 (/Users/someone/.local/share/uv/tools/ruff)
             std::fs::canonicalize(&ruffs.pipx).unwrap()
         );
         assert!(refused(plan(&ruffs).await));
+    }
+
+    /// r34 U2 skeptic 2. `uv tool list` waits for the lock of uv's tools
+    /// folder that `uv tool upgrade` holds (uv 0.12.17
+    /// `commands/tool/list.rs:45`): while another uv command holds it past
+    /// the preview's 60 s, or when uv exits non-zero, the list says
+    /// nothing of the tool's commands. The preview opens, as it did before
+    /// it looked, rather than end in an internal error that is not one;
+    /// the look is made right before the run, where a command pipx took
+    /// still stops the uninstall before uv starts.
+    #[tokio::test]
+    async fn test_a_list_that_does_not_answer_leaves_the_look_to_the_run() {
+        let ruffs = Ruffs::new();
+        let list = vec!["/opt/homebrew/bin/uv", "tool", "list", "--show-paths"];
+        for (timed_out, exit_code) in [(true, None), (false, Some(2))] {
+            let before = ruffs.runner.calls().len();
+            let held = CommandOutput {
+                stderr_cause: Default::default(),
+                exit_code,
+                stdout: String::new(),
+                stderr: String::new(),
+                timed_out,
+                cancelled: false,
+            };
+            ruffs.runner.respond(list.clone(), held);
+            let adapter = ruffs.adapter();
+            let plan = adapter
+                .plan(&test_instance(), &request(OpKind::Uninstall))
+                .await
+                .unwrap_or_else(|e| {
+                    panic!("a list that did not answer: the preview is offered, got {e}")
+                });
+            assert_eq!(
+                plan.action,
+                PlanAction::Command {
+                    program: PathBuf::from("/opt/homebrew/bin/uv"),
+                    args: vec!["tool".into(), "uninstall".into(), "ruff".into()],
+                    env: Vec::new(),
+                }
+            );
+            assert_eq!(
+                plan.warnings,
+                vec![Warning::UninstallScope {
+                    what: UninstallScope::Uv
+                }]
+            );
+            let spec = &ruffs.runner.specs()[before];
+            assert_eq!(spec.timeout, UvAdapter::LIST_TIMEOUT);
+            // pipx takes the command over; the list answers again by then.
+            ruffs.link_to(&ruffs.pipx);
+            ruffs.runner.respond(
+                list.clone(),
+                CommandOutput {
+                    stderr_cause: Default::default(),
+                    exit_code: Some(0),
+                    stdout: format!(
+                        "ruff v0.15.0 ({})\n- ruff ({})\n",
+                        ruffs.env.display(),
+                        ruffs.link.display()
+                    ),
+                    stderr: String::new(),
+                    timed_out: false,
+                    cancelled: false,
+                },
+            );
+            let outcome = adapter
+                .execute(&plan, Arc::new(VecSink::new()), 1, CancellationToken::new())
+                .await
+                .unwrap();
+            assert_eq!(
+                outcome,
+                Outcome::BanagerFailed(crate::model::Fault::PathChanged {
+                    path: ruffs.shown_link()
+                })
+            );
+            assert_eq!(ruffs.uninstalls(), 0);
+            ruffs.link_to(&ruffs.env.join("bin/ruff"));
+        }
+    }
+
+    /// r34 U2 skeptic 4. What Banager cannot look at refuses, as a cask's
+    /// link it cannot follow does: a link whose text names a protected
+    /// place, one that leads round to itself, uv's own link in a folder
+    /// Banager may not search, and uv's own link where `~/.local/bin`
+    /// itself leads into iCloud Drive. A link to nothing whose text names
+    /// another tool's environment that is gone goes ahead: removing it
+    /// stops nothing that works.
+    #[tokio::test]
+    async fn test_a_command_banager_cannot_look_at_refuses_and_a_link_to_a_gone_environment_goes_ahead(
+    ) {
+        use std::os::unix::fs::PermissionsExt;
+        let ruffs = Ruffs::new();
+        // The test's home folder is the one whose protected places are
+        // kept out (`Protected::of_this_process`).
+        let _home = crate::protected::as_if_home(&ruffs.home);
+        // `pipx uninstall ruff` left its link behind, to nothing.
+        ruffs.link_to(&ruffs.home.join(".local/pipx/venvs/gone/bin/ruff"));
+        assert!(ruffs.preview().await.is_ok());
+        // Its text names a place in `~/Documents`: not looked into.
+        ruffs.link_to(&ruffs.home.join("Documents/ruff"));
+        assert!(ruffs.refused(ruffs.preview().await));
+        // A link to itself: followed round until too many links.
+        ruffs.link_to(&ruffs.link);
+        assert!(ruffs.refused(ruffs.preview().await));
+        // uv's own link, in a folder Banager may not search.
+        ruffs.link_to(&ruffs.env.join("bin/ruff"));
+        assert!(ruffs.preview().await.is_ok());
+        let bin = ruffs.link.parent().unwrap().to_path_buf();
+        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let locked = ruffs.preview().await;
+        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(ruffs.refused(locked));
+        // uv's own link, with `~/.local/bin` a link into iCloud Drive.
+        let cloud = ruffs
+            .home
+            .join("Library/Mobile Documents/com~apple~CloudDocs/bin");
+        std::fs::create_dir_all(cloud.parent().unwrap()).unwrap();
+        std::fs::rename(&bin, &cloud).unwrap();
+        std::os::unix::fs::symlink(&cloud, &bin).unwrap();
+        assert_eq!(
+            std::fs::canonicalize(&ruffs.link).unwrap(),
+            std::fs::canonicalize(ruffs.env.join("bin/ruff")).unwrap()
+        );
+        assert!(ruffs.refused(ruffs.preview().await));
+        assert_eq!(ruffs.uninstalls(), 0);
     }
 }

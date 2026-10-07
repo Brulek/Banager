@@ -2327,7 +2327,21 @@ follow -- refuses the uninstall with the sentence a cask's link another
 source took refuses with (`UninstallUnsafeReason::CaskLinkNotOwned`;
 Homebrew's section, "A cask's links"): that path may now belong to another
 tool, nothing was removed, and uninstalling the other tool first lets this
-one go. Nothing at the path, or a link to nothing, is no reason to refuse.
+one go. So does a command in a protected place, or one Banager reaches
+only through one, which it does not look into: where `~/.local/bin`
+itself leads into iCloud Drive or `~/Documents`, as some setups make it,
+every uv uninstall is refused with that sentence, though all Banager found
+is that it cannot look. Nothing at the path, or a link to nothing -- one
+naming another tool's environment that is gone, too -- is no reason to
+refuse. The list waits for the same lock of uv's tools folder that
+`uv tool upgrade` holds (above), so while another uv command holds it --
+Banager's own update of another uv tool, or `uv tool upgrade --all` in
+Terminal -- the preview can take the whole 60 s, and holds one of the
+four previews Banager works out at once meanwhile (`PLANS_AT_ONCE` in
+`crates/banager-core/src/session/plans.rs`). A list that does not
+answer -- not in time, or uv exiting non-zero -- says nothing of the
+commands, and the preview opens without this look rather than end in an
+error.
 Right before the uninstall runs, Banager runs the list again, with the
 uninstall's own 600 s and its Cancel, as before a saved upgrade, and looks
 again: a command another tool took since the preview stops the uninstall
