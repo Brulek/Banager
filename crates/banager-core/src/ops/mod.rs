@@ -294,8 +294,8 @@ pub struct OperationManager {
     /// leaves when it takes its locks, or in `finish` if it never does
     /// (cancelled while waiting, or ended by the panic watcher).
     ///
-    /// Taken before `held` wherever both are held. A refresh's
-    /// `acquire_resource_lock` does not queue: it is not an operation.
+    /// Taken before `held` wherever both are held. A refresh does not
+    /// queue (`try_round_locks`): it is not an operation.
     queue: Mutex<BTreeMap<OpId, Vec<ResourceLock>>>,
     records: Arc<Mutex<HashMap<OpId, OpInternal>>>,
     next_id: AtomicU64,
@@ -1636,9 +1636,10 @@ impl OperationManager {
     }
 }
 
-/// Held while `refresh` is fetching one instance's inventory/updates, over
-/// the *same* `held` set `run_operation`'s locks use. Releases on drop, the
-/// same idempotent-by-construction shape as the internal `LockGuard`.
+/// Held while `refresh` is fetching one instance's inventory/updates
+/// (shared, `try_round_locks`), over the *same* `held` set
+/// `run_operation`'s locks use. Releases on drop, the same
+/// idempotent-by-construction shape as the internal `LockGuard`.
 pub struct ResourceLockGuard {
     held: Arc<Mutex<HashSet<ResourceLock>>>,
     lock: ResourceLock,
@@ -1667,6 +1668,65 @@ impl Drop for DetectionGuard {
 }
 
 impl OperationManager {
+    /// A refresh round's locks for the reads it is about to start, all
+    /// decided at once and none waited for (`Session::refresh_round`): for
+    /// each entry of `wanted` -- the locks one read needs -- the guards of
+    /// all of them, or `None` when an operation holds any of them or is
+    /// queued for one (`queue`), so that the round carries what that read
+    /// would have replaced instead of waiting out the operation. Decided
+    /// against the locks held as this is called, under the same two
+    /// mutexes `run_operation` takes its locks under, so no operation can
+    /// take one between the decision and the taking; a lock two of the
+    /// round's own reads both need (each its own and a shared one) is
+    /// taken once and shared, released when the last read holding it drops
+    /// its guard -- however it ends, aborted included.
+    pub(crate) fn try_round_locks(
+        &self,
+        wanted: &[Vec<ResourceLock>],
+    ) -> Vec<Option<Vec<Arc<ResourceLockGuard>>>> {
+        let queue = self.queue.lock().unwrap();
+        let mut held = self.held.lock().unwrap();
+        let free: Vec<bool> = wanted
+            .iter()
+            .map(|locks| {
+                !locks
+                    .iter()
+                    .any(|lock| held.contains(lock) || queue.values().any(|q| q.contains(lock)))
+            })
+            .collect();
+        let mut taken: HashMap<ResourceLock, Arc<ResourceLockGuard>> = HashMap::new();
+        let guards = wanted
+            .iter()
+            .zip(free)
+            .map(|(locks, free)| {
+                free.then(|| {
+                    locks
+                        .iter()
+                        .map(|lock| {
+                            taken
+                                .entry(lock.clone())
+                                .or_insert_with(|| {
+                                    held.insert(lock.clone());
+                                    Arc::new(ResourceLockGuard {
+                                        held: self.held.clone(),
+                                        lock: lock.clone(),
+                                    })
+                                })
+                                .clone()
+                        })
+                        .collect()
+                })
+            })
+            .collect();
+        // Every guard taken is in `guards` too, so dropping this map
+        // releases nothing; the set's mutex is let go of first all the
+        // same, since a guard's `drop` takes it.
+        drop(held);
+        drop(queue);
+        drop(taken);
+        guards
+    }
+
     pub(crate) fn try_detection_locks(&self, locks: Vec<ResourceLock>) -> Option<DetectionGuard> {
         let queue = self.queue.lock().unwrap();
         let mut held = self.held.lock().unwrap();
@@ -1685,10 +1745,10 @@ impl OperationManager {
 
     /// The resource locks held this instant: by operations from the
     /// moment `run_operation` acquires theirs until `finish` releases
-    /// them, and by a refresh's per-instance fetches
-    /// (`acquire_resource_lock`). A snapshot of the same `held` set both
-    /// of those use, read by `Session::refresh_round` before its
-    /// detection fan-out so that an adapter whose instance an operation is
+    /// them, and by a refresh's detections (`try_detection_locks`) and
+    /// per-instance fetches (`try_round_locks`). A snapshot of the same
+    /// `held` set all of those use, read by `Session::refresh_round` before
+    /// its detection fan-out so that an adapter whose instance an operation is
     /// working on is neither detected nor inventoried that round (phase 4
     /// step E: `rustup self update` replaces the binary that both
     /// `rustup --version` and, through the `cargo` proxy, `cargo
@@ -1700,11 +1760,13 @@ impl OperationManager {
 
     /// Waits (polling every 50ms, the same cadence `run_operation` already
     /// uses for its own lock-wait loop) until `lock` is free, then holds it
-    /// until the returned guard drops. `refresh` uses this to take the same
+    /// until the returned guard drops: a reader that takes the same
     /// per-instance lock a submitted install/upgrade/uninstall holds, so the
     /// two can never read/write that instance's filesystem state at once —
-    /// while a *different* instance's lock is untouched, so refreshing one
-    /// instance never waits on an operation running against another.
+    /// while a *different* instance's lock is untouched. `refresh` used to
+    /// take its per-instance locks this way, and waited out an operation
+    /// that started before it asked; it now takes them without waiting
+    /// (`try_round_locks`). Tests stand in for such a reader with it.
     pub async fn acquire_resource_lock(self: &Arc<Self>, lock: ResourceLock) -> ResourceLockGuard {
         loop {
             {
@@ -1981,5 +2043,56 @@ mod evicted_tests {
             .completed(first, &manager.completions_after(reported.through()))
             .expect("told of once it has finished");
         assert_eq!(told.succeeded, 1);
+    }
+}
+
+#[cfg(test)]
+mod round_lock_tests {
+    use super::*;
+
+    fn lock(name: &str) -> ResourceLock {
+        ResourceLock(name.to_string())
+    }
+
+    #[test]
+    fn test_a_round_takes_what_is_free_shares_what_two_reads_need_and_waits_for_nothing() {
+        let manager = OperationManager::new(Arc::new(crate::events::VecSink::new()));
+        // An operation holds one lock, and another is queued for a second.
+        manager.held.lock().unwrap().insert(lock("held"));
+        manager
+            .queue
+            .lock()
+            .unwrap()
+            .insert(7, vec![lock("queued")]);
+        let wanted = vec![
+            vec![lock("brew:/p")],
+            vec![lock("npm:/p"), lock("brew:/p")],
+            vec![lock("held")],
+            vec![lock("mine"), lock("queued")],
+        ];
+        let guards = manager.try_round_locks(&wanted);
+        assert!(guards[0].is_some());
+        assert!(guards[1].is_some(), "a lock the round's own reads share");
+        assert!(guards[2].is_none(), "held by an operation");
+        assert!(
+            guards[3].is_none(),
+            "an operation is queued for one of them"
+        );
+        let held = manager.locks_held();
+        assert!(held.contains(&lock("brew:/p")) && held.contains(&lock("npm:/p")));
+        assert!(
+            !held.contains(&lock("mine")),
+            "nothing of a read that was refused is taken"
+        );
+
+        // The shared lock is let go of only when its last read ends.
+        let mut guards = guards.into_iter();
+        let (brew, npm) = (guards.next().unwrap(), guards.next().unwrap());
+        drop(brew);
+        assert!(manager.locks_held().contains(&lock("brew:/p")));
+        drop(npm);
+        let held = manager.locks_held();
+        assert!(!held.contains(&lock("brew:/p")) && !held.contains(&lock("npm:/p")));
+        assert!(held.contains(&lock("held")), "the operation's is untouched");
     }
 }

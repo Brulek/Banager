@@ -327,7 +327,11 @@ impl Session {
         // the front end runs when it finishes replace these rows. Read
         // once for each detection, and hold the acquired resources until
         // its subprocess finishes. The same atomic acquisition as operations
-        // closes both orderings of the detection/self-update race.
+        // closes both orderings of the detection/self-update race. An
+        // operation that starts after its source was detected, before the
+        // per-instance fan-out, is found there, again without waiting
+        // (`OperationManager::try_round_locks`), and that instance is
+        // carried in the same way.
         let mut under_operation: HashSet<InstanceId> = HashSet::new();
         let mut adapters: Vec<_> = self.adapters.values().collect();
         adapters.sort_by(|a, b| a.meta().id.cmp(&b.meta().id));
@@ -523,7 +527,34 @@ impl Session {
         let previewing = previous.round == 0;
         let (preview_tx, mut preview_rx) =
             tokio::sync::mpsc::unbounded_channel::<(usize, Vec<InstalledArtifact>)>();
+        // The locks each instance this round asks will be read under, taken
+        // for all of them at once, here, and waited for by none
+        // (`OperationManager::try_round_locks`). An operation that started
+        // after its source was detected -- the user confirmed the next
+        // update while a slower source was still being detected -- holds
+        // one already, or is queued for it: that instance is carried as
+        // one held at detection is (`held_now`, below). Waiting on its lock
+        // here, as each task once did, kept the round -- and every refresh
+        // queued behind it -- open for as long as the operation ran.
+        let asked: Vec<&ManagerInstance> = instances
+            .iter()
+            .filter(|inst| inst.status.unavailable.is_none() && !under_operation.contains(&inst.id))
+            .collect();
+        let wanted: Vec<Vec<ResourceLock>> = asked
+            .iter()
+            .map(|inst| vec![ResourceLock(inst.id.clone())])
+            .collect();
+        let mut round_locks: HashMap<InstanceId, Option<_>> = asked
+            .iter()
+            .map(|inst| inst.id.clone())
+            .zip(self.ops.try_round_locks(&wanted))
+            .collect();
+        // Last round's check notes of the instances carried for `held_now`,
+        // merged onto this round's detect notes after the loop.
+        let mut carried_notes: Vec<(InstanceId, Vec<InstanceNote>)> = Vec::new();
         for inst in instances.clone() {
+            let locks = round_locks.remove(&inst.id);
+            let held_now = matches!(locks, Some(None));
             // Task 11: a source that already told us it is not answering is
             // a reported state, not a failed refresh, so it is never fanned
             // out to. It stays in `snapshot.instances` so the UI can render
@@ -545,8 +576,11 @@ impl Session {
             // of its own: nothing failed. An unavailable instance that no
             // operation holds carries none: its state is on screen in its
             // own notice, which `Snapshot::stale` deliberately does not
-            // duplicate.
-            if inst.status.unavailable.is_some() || under_operation.contains(&inst.id) {
+            // duplicate. An instance an operation took after its detection
+            // (`held_now`) is carried the same way: last round's rows and
+            // errors, and last round's check notes beside this round's
+            // detect notes, as a held instance keeps them whole.
+            if inst.status.unavailable.is_some() || under_operation.contains(&inst.id) || held_now {
                 artifacts.extend(
                     previous
                         .artifacts
@@ -561,7 +595,7 @@ impl Session {
                         .filter(|u| u.key.instance_id == inst.id)
                         .cloned(),
                 );
-                if under_operation.contains(&inst.id) {
+                if under_operation.contains(&inst.id) || held_now {
                     errors.extend(
                         previous
                             .errors
@@ -570,12 +604,31 @@ impl Session {
                             .cloned(),
                     );
                 }
+                if held_now {
+                    let notes = previous
+                        .instances
+                        .iter()
+                        .find(|last| last.id == inst.id)
+                        .map(|last| {
+                            last.status
+                                .notes
+                                .iter()
+                                .copied()
+                                .filter(|note| note.is_from_update_check())
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    carried_notes.push((inst.id.clone(), notes));
+                }
                 continue;
             }
+            // Every instance asked has its locks by now (`asked`).
+            let Some(Some(locks)) = locks else {
+                continue;
+            };
             let Some(adapter) = self.adapters.get(&inst.adapter_id).cloned() else {
                 continue;
             };
-            let ops = self.ops.clone();
             let now_fn = self.now_fn;
             let previous = previous.clone();
             // This task's place in the fan-out, which the preview lists by.
@@ -586,12 +639,10 @@ impl Session {
             handles.push((
                 inst.id.clone(),
                 AbortOnDropHandle::new(tokio::spawn(async move {
-                    let _lock = ops
-                        .acquire_resource_lock(ResourceLock(inst.id.clone()))
-                        .await;
+                    // Held until this task ends, however it ends.
+                    let _locks = locks;
                     // When this source was asked: its `answered_at` if both
-                    // halves below answer (`refresh`'s doc). After the lock,
-                    // so not the time an operation kept it waiting.
+                    // halves below answer (`refresh`'s doc).
                     let asked_at = Session::clock(now_fn);
                     let mut artifacts = Vec::new();
                     let mut updates = Vec::new();
@@ -789,6 +840,9 @@ impl Session {
                     (artifacts, updates, errors, stale, notes, answered_at)
                 })),
             ));
+        }
+        for (instance_id, notes) in carried_notes {
+            merge_instance_notes(&mut instances, &instance_id, notes);
         }
 
         // The preview, before the join below: every task has listed its
@@ -2937,6 +2991,146 @@ mod tests {
             .await;
         assert!(notes_of(&after, "fake:1").is_empty());
         assert_eq!(notes_of(&after, "fake:2"), vec![InstanceNote::NotOnPath]);
+    }
+
+    #[tokio::test]
+    async fn test_an_operation_started_while_another_source_is_detected_does_not_hold_the_round() {
+        // r37 F4: `aaa` is detected at once, `zzz` slowly. An operation on
+        // `aaa:1` confirmed in between -- after `aaa`'s detection, before
+        // the fan-out -- holds `aaa:1`'s lock when the fan-out reaches it.
+        // The round carries `aaa:1` as one held at detection is (its rows,
+        // its error, last round's check note beside this round's detect)
+        // and returns while the operation still runs; it used to wait on
+        // that lock for as long as the operation ran.
+        let (aaa, aaa_state) = FakeAdapter::new("aaa");
+        let (zzz, zzz_state) = FakeAdapter::new("zzz");
+        {
+            let mut s = aaa_state.lock().unwrap();
+            s.instances = vec![make_instance("aaa", "aaa:1")];
+            s.artifacts
+                .insert("aaa:1".to_string(), vec![make_artifact("aaa:1", "jq")]);
+            s.updates
+                .insert("aaa:1".to_string(), vec![make_update("aaa:1", "jq")]);
+            s.notes
+                .insert("aaa:1".to_string(), vec![InstanceNote::IndexMayBeStale]);
+            s.block_execute = true;
+        }
+        {
+            let mut s = zzz_state.lock().unwrap();
+            s.instances = vec![make_instance("zzz", "zzz:1")];
+            s.artifacts
+                .insert("zzz:1".to_string(), vec![make_artifact("zzz:1", "wget")]);
+        }
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![aaa, zzz], None);
+        session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        // Last round: aaa:1's inventory failed, its check answered.
+        aaa_state.lock().unwrap().failing.push("aaa:1".to_string());
+        let last = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        assert_eq!(last.errors.len(), 1, "{:?}", last.errors);
+        aaa_state.lock().unwrap().inventory_calls.clear();
+        // From here, aaa:1 read again would list something new.
+        aaa_state
+            .lock()
+            .unwrap()
+            .artifacts
+            .insert("aaa:1".to_string(), vec![make_artifact("aaa:1", "yq")]);
+
+        let gate = Arc::new(tokio::sync::Semaphore::new(0));
+        zzz_state.lock().unwrap().detect_gate = Some(gate.clone());
+        let round = tokio::spawn({
+            let session = session.clone();
+            async move {
+                session
+                    .refresh(&non_root_env(), &CheckOptions::default())
+                    .await
+            }
+        });
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while aaa_state.lock().unwrap().detect_calls < 2
+            || zzz_state.lock().unwrap().detect_calls < 2
+        {
+            assert!(Instant::now() < deadline, "the round never began detecting");
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        let req = OpRequest {
+            kind: OpKind::Install,
+            instance_id: "aaa:1".to_string(),
+            artifact_kind: ArtifactKind::Formula,
+            name: "jq".to_string(),
+        };
+        let issued = session.issue_plan(&req).await.expect("issue_plan");
+        let op_id = session.submit(issued.id).expect("submit");
+        while !session
+            .operations()
+            .iter()
+            .any(|o| o.id == op_id && o.status == OpStatus::Running)
+        {
+            assert!(Instant::now() < deadline, "operation never reached Running");
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        assert!(!round.is_finished(), "zzz is still being detected");
+
+        gate.add_permits(1);
+        let snapshot = tokio::time::timeout(Duration::from_secs(3), round)
+            .await
+            .expect("the round returns while the operation still runs")
+            .expect("the round did not panic");
+        assert!(session
+            .operations()
+            .iter()
+            .any(|o| o.id == op_id && o.status == OpStatus::Running));
+        assert!(
+            !aaa_state
+                .lock()
+                .unwrap()
+                .inventory_calls
+                .contains(&"aaa:1".to_string()),
+            "aaa:1 is not read while its operation holds it"
+        );
+        assert_eq!(artifact_names(&snapshot), vec!["jq", "wget"]);
+        assert_eq!(update_names(&snapshot), vec!["jq"]);
+        assert_eq!(
+            snapshot.errors, last.errors,
+            "nothing about aaa:1 was retried"
+        );
+        assert!(snapshot.stale);
+        let aaa_1 = snapshot.instances.iter().find(|i| i.id == "aaa:1").unwrap();
+        assert_eq!(aaa_1.status.notes, vec![InstanceNote::IndexMayBeStale]);
+        assert_eq!(
+            aaa_1.answered_at,
+            last.instances
+                .iter()
+                .find(|i| i.id == "aaa:1")
+                .unwrap()
+                .answered_at
+        );
+
+        // Once the operation is over, the next round reads aaa:1 again.
+        session.cancel(op_id).expect("cancel a Running op");
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !session
+            .operations()
+            .iter()
+            .any(|o| o.id == op_id && o.status == OpStatus::Done)
+        {
+            assert!(
+                Instant::now() < deadline,
+                "the cancelled operation never finished"
+            );
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        gate.add_permits(1);
+        let after = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        assert_eq!(artifact_names(&after), vec!["wget", "yq"]);
+        assert!(after.errors.is_empty(), "{:?}", after.errors);
+        assert!(session.ops.locks_held().is_empty());
     }
 
     #[tokio::test]

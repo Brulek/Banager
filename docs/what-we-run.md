@@ -3522,7 +3522,14 @@ queue before scheduling the adapter, and holds them until detection
 finishes or is aborted. Cargo and rustup reserve their known lock names
 even before the first snapshot exists. An operation submitted after
 detection starts waits for those same locks; a pending operation also
-prevents a later detection from taking its resources.
+prevents a later detection from taking its resources. The same holds for
+every source a refresh then reads its list and updates from: it takes
+their locks all at once, without waiting
+(`OperationManager::try_round_locks`), so an operation that started after
+its source was detected -- while a slower source was still being looked
+for -- is found there, and that source keeps the rows, the errors and the
+catalogue notes it had, rather than the refresh waiting for the
+operation to end.
 
 **Write commands** (only run after the user reviews and confirms a plan
 preview):
