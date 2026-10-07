@@ -1194,6 +1194,26 @@ it("names the Intel Homebrew's brew in the note of an update of brew:/usr/local,
   }
 });
 
+// o3 skeptic 3: what docs/what-we-run.md says of the one bare `brew` left.
+// The dialog opens for a listed operation; while it does not know the one
+// it shows -- before the list of operations has come, or once the backend
+// has let that operation go -- it cannot know its Homebrew, and the note
+// says `brew`. Once it knows it, its Homebrew's own brew.
+it("names a bare brew in the note only while it does not know the operation, its Homebrew's once it does (o3 skeptic 3)", async () => {
+  await i18n.changeLanguage("en");
+  const bare =
+    "node@22 isn't linked back into Terminal, so typing node or npm no longer runs it. To link it back, run brew link --formula --force node@22 in Terminal; if a file is in the way, it says which.";
+  operations = [];
+  act(() => useUiStore.getState().appendLog({ opId: 1, note: { NoLongerLinked: { name: "node@22", commands: ["node", "npm"] } } }));
+  const view = renderWithProviders(<LogDrawer />);
+  expect(await view.findByText(bare)).toBeInTheDocument();
+  view.unmount();
+
+  operations = [{ ...runningOp, kind: "Upgrade", instance_id: "brew:/usr/local", name: "node@22" }];
+  const known = renderWithProviders(<LogDrawer />);
+  expect(await known.findByText(bare.replace("run brew", "run /usr/local/bin/brew"))).toBeInTheDocument();
+});
+
 it("marks a success with follow-up warnings as needing attention, as the operation bar does (f13b review)", async () => {
   await i18n.changeLanguage("en");
   operations = [{ ...runningOp, kind: "Upgrade", status: "Done", outcome: "Succeeded",

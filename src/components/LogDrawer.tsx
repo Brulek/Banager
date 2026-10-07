@@ -169,7 +169,9 @@ export function LogDrawer() {
 
   const operation = (operations ?? []).find((op) => op.id === focusedOpId);
   // Every note shown is this operation's: its Homebrew's program, for a
-  // command a note hands over.
+  // command a note hands over. A bare `brew` only while the operation is
+  // not known -- the list not come yet, or the backend has let it go --
+  // as docs/what-we-run.md says (o3 skeptic 3).
   const brew = operation === undefined
     ? "brew"
     : brewProgram(operation.instance_id, snapshot?.instances.find((instance) => instance.id === operation.instance_id));

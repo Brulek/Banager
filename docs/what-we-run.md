@@ -1278,8 +1278,13 @@ planned as any other's):
   restart, set apart with Copy Command -- is `<brew> link --formula
   --force {name}` with the brew of the Homebrew that ran the update, as
   the link above ran (`brewProgram` and `linkBackCommand` in
-  `src/lib/sources.ts`), never a bare `brew`, which in Terminal is
-  whichever Homebrew PATH finds first. Banager never runs it. How the link
+  `src/lib/sources.ts`), not a bare `brew`, which in Terminal is
+  whichever Homebrew PATH finds first -- except in the log dialog while
+  it does not know the operation it shows: before its list of
+  operations has arrived, or once the backend has let that operation go
+  (past 200 operations it lets the oldest finished ones go), it cannot
+  tell that Homebrew, and its sentence says `brew` (`LogDrawer` in
+  `src/components/LogDrawer.tsx`). Banager never runs the command. How the link
   ends never changes the update's outcome. After an update that
   succeeded, this note and the cleanup's `OldVersionsNotCleanedUp`
   (above) are also kept on the operation apart from its log
