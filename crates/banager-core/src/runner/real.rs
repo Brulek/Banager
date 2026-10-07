@@ -2777,10 +2777,12 @@ mod tests {
             Stream::Stderr,
             &on_line,
         );
+        // The cause is an operation's (y3-batch's `NotFound`, "a program
+        // it runs"), read off the same words.
         assert_eq!(
             buf.read_as_written(),
             StderrCause::Read {
-                cause: None,
+                cause: Some(crate::history::FailureCause::NotFound),
                 missing_program: Some("node".to_string()),
             }
         );
