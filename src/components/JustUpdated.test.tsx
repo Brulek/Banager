@@ -562,10 +562,10 @@ it("keeps both success warnings and their recovery log after a restart", async (
     id: "old:1", opId: null, key: { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "node@22" },
     adapterId: "brew", sourceLabel: "Homebrew", name: "node@22", version: "22.23.3", finishedAt: Date.now(), verified: true, ending,
   }]} onClear={() => {}} />);
-  expect(screen.getByText("Updated · Warning")).toBeInTheDocument();
+  expect(screen.getByText("Updated with warnings")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "View log: node@22" }));
   const log = screen.getByRole("dialog");
-  expect(log).toHaveTextContent("Only follow-up warnings were saved");
+  expect(log).toHaveTextContent("Only its warnings were saved; the full log is no longer available.");
   expect(log).toHaveTextContent("brew link --formula --force node@22");
   expect(log).toHaveTextContent("npm");
   expect(log).toHaveTextContent(i18n.getFixedT("en")("brewVersions.logNotCleanedUp"));

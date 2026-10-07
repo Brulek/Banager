@@ -1066,7 +1066,7 @@ it("marks a success with follow-up warnings as needing attention, as the operati
   }];
   const view = renderWithProviders(<LogDrawer />);
   const dialog = await view.findByRole("dialog");
-  await waitFor(() => expect(dialog).toHaveTextContent("Updated · Warning"));
+  await waitFor(() => expect(dialog).toHaveTextContent("Updated with a warning"));
   expect(within(dialog).getByRole("img", { name: "Needs attention" })).toBeInTheDocument();
 });
 

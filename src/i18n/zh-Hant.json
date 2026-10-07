@@ -803,9 +803,9 @@
     "text": "錯誤詳細資訊："
   },
   "followUpWarning": {
-    "batch_other": "已更新{{total}}個工具，{{count}}個工具的後續步驟需要查看",
-    "succeeded": "已更新，有警告",
-    "saved": "這裡只保留了後續步驟的警告，完整記錄已不再保留。"
+    "batch_other": "已更新{{total}}個工具，{{count}}個有警告",
+    "succeeded_other": "已更新，有警告",
+    "saved_other": "這裡只保留了警告，完整記錄已不再保留。"
   },
   "loginPathNotice": {
     "title": "無法讀取終端機的設定",

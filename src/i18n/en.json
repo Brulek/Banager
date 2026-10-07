@@ -872,10 +872,12 @@
     "text": "Error details:"
   },
   "followUpWarning": {
-    "batch_one": "Updated {{total}} tools · {{count}} follow-up needs attention",
-    "batch_other": "Updated {{total}} tools · {{count}} follow-ups need attention",
-    "succeeded": "Updated · Warning",
-    "saved": "Only follow-up warnings were saved. The full log is no longer available."
+    "batch_one": "Updated {{total}} tools · {{count}} with a warning",
+    "batch_other": "Updated {{total}} tools · {{count}} with warnings",
+    "succeeded_one": "Updated with a warning",
+    "succeeded_other": "Updated with warnings",
+    "saved_one": "Only its warning was saved; the full log is no longer available.",
+    "saved_other": "Only its warnings were saved; the full log is no longer available."
   },
   "loginPathNotice": {
     "title": "Couldn't read Terminal's settings",

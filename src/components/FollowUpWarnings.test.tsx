@@ -71,14 +71,17 @@ describe("a saved follow-up warning's log (p1 polish)", () => {
   it("is headed as the recorded password stop's dialog is: the tool, and how its update ended with the warning sign", async () => {
     await i18n.changeLanguage("en");
     const dialog = open();
-    const subtitle = within(dialog).getByText("Updated · Warning");
+    // Two warnings saved here, and the words count them (r21 C5).
+    const subtitle = within(dialog).getByText("Updated with warnings");
     // The attention sign beside the words, as the log of this launch's update shows it.
     const sign = subtitle.parentElement?.querySelector("svg");
     expect(sign).not.toBeNull();
     expect(sign?.getAttribute("class")).toContain("text-warning");
     // Said to a screen reader as the dialog opens, after its name.
     const describedBy = dialog.getAttribute("aria-describedby")?.split(" ") ?? [];
-    expect(describedBy.some((id) => document.getElementById(id)?.textContent?.includes("Updated · Warning"))).toBe(true);
+    expect(describedBy.some((id) => document.getElementById(id)?.textContent?.includes("Updated with warnings"))).toBe(true);
+    // The sentence over them calls them what the subtitle does: warnings.
+    expect(within(dialog).getByText("Only its warnings were saved; the full log is no longer available.")).toBeInTheDocument();
   });
 
   it.each([
@@ -102,6 +105,7 @@ describe("a saved follow-up warning's log (p1 polish)", () => {
     expect(within(dialog).getByText(before)).toBeInTheDocument();
     expect(within(dialog).getByText(after)).toBeInTheDocument();
     expect(within(dialog).getByText("已更新，有警告")).toBeInTheDocument();
+    expect(within(dialog).getByText(language === "zh-CN" ? "这里只保留了警告，完整日志已不再保留。" : "這裡只保留了警告，完整記錄已不再保留。")).toBeInTheDocument();
     const group = within(dialog).getByRole("group", { name: groupName });
     expect(group.querySelector("code")?.textContent).toBe("brew link --formula --force node@22");
     expect(within(dialog).getByRole("button", { name: copyName })).toBeInTheDocument();

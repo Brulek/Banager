@@ -213,6 +213,6 @@ it("keeps a successful update with a follow-up warning non-retryable and gives i
     follow_up_warnings: [{ NoLongerLinked: { name: "node@22", commands: ["node"] } }],
   };
   const progress = progressOf(JSON.parse(JSON.stringify(op)));
-  expect(progress).toEqual({ kind: "succeeded", warningOpId: op.id });
+  expect(progress).toEqual({ kind: "succeeded", warningOpId: op.id, warnings: 1 });
   expect(isRetryable(progress)).toBe(false);
 });

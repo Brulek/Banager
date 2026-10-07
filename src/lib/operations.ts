@@ -283,7 +283,9 @@ function outcomeChoice(t: Translate, outcome: Outcome | null, kind: OpKind, tech
  * anything but its plain words (review 1.1).
  */
 export function operationWords(t: Translate, op: OpSummary, logs: LogLine[], technical: boolean): string {
-  if (op.outcome === "Succeeded" && op.follow_up_warnings?.length) return t("followUpWarning.succeeded");
+  if (op.outcome === "Succeeded" && op.follow_up_warnings?.length) {
+    return t("followUpWarning.succeeded", { count: op.follow_up_warnings.length });
+  }
   // An update already at its new version when its turn came: done, and
   // said how, as 「最近的更新记录」 says it. Its words name what it did.
   if (op.status === "Done" && op.outcome === "Succeeded" && op.already_updated) {

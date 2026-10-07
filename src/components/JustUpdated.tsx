@@ -234,7 +234,7 @@ function EndingWords({ entry }: { entry: JustUpdatedEntry }) {
     case "succeeded":
       tone = ending.warnings?.length ? "attention" : "success";
       if (ending.warnings?.length) {
-        words = t("followUpWarning.succeeded");
+        words = t("followUpWarning.succeeded", { count: ending.warnings.length });
         break;
       }
       if (ending.already) {

@@ -73,7 +73,7 @@ export function FollowUpWarnings({ warnings, opId, name }: {
       subtitle={
         <span className="inline-flex items-start gap-1">
           <OutcomeIcon tone="attention" size={12} className="mt-px" />
-          <span className="min-w-0 break-words">{t("followUpWarning.succeeded")}</span>
+          <span className="min-w-0 break-words">{t("followUpWarning.succeeded", { count: warnings.length })}</span>
         </span>
       }
       describedBy={savedId}
@@ -96,7 +96,7 @@ export function FollowUpWarnings({ warnings, opId, name }: {
       }
     >
       <p id={savedId} className="mb-3 break-words text-body text-foreground">
-        {t("followUpWarning.saved")}
+        {t("followUpWarning.saved", { count: warnings.length })}
       </p>
       <div className="flex flex-col gap-3">
         {warnings.map((note, index) => (

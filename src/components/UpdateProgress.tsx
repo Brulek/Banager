@@ -13,14 +13,16 @@ import { CheckIcon, InfoIcon, SpinnerIcon, WarningFilledIcon } from "./icons";
  * What a row shows in place of its Update button while an update of it is
  * under way or has just finished (`UpdateProgress`). `failed` and `check`
  * keep the operation's id, for the log they offer; `failed`, why, where
- * the tool's own words say (`outcomeCause`), or null.
+ * the tool's own words say (`outcomeCause`), or null; `succeeded` with a
+ * follow-up warning, the id and how many warnings, which its words count
+ * ("Updated with a warning").
  */
 export type RowProgress =
   | { kind: "pendingAction"; operation: OpSummary }
   | { kind: "queued" }
   | { kind: "running" }
   | { kind: "cancelling" }
-  | { kind: "succeeded"; warningOpId?: number }
+  | { kind: "succeeded"; warningOpId?: number; warnings?: number }
   | { kind: "cancelled" }
   | { kind: "failed"; opId: number; cause: FailureCause | null }
   | { kind: "check"; opId: number };
@@ -129,7 +131,7 @@ export function progressOf(op: OpSummary): RowProgress {
       return { kind: "cancelling" };
     case "Done":
       if (op.outcome === "Succeeded" && op.follow_up_warnings?.length) {
-        return { kind: "succeeded", warningOpId: op.id };
+        return { kind: "succeeded", warningOpId: op.id, warnings: op.follow_up_warnings.length };
       }
       return outcomeProgress(op.outcome, op.id);
   }
@@ -333,7 +335,7 @@ export function UpdateProgress({ progress, name, onViewLog }: UpdateProgressProp
     case "succeeded":
       if (progress.warningOpId !== undefined) {
         return toLog(
-          progress.warningOpId, t("followUpWarning.succeeded"), "text-foreground",
+          progress.warningOpId, t("followUpWarning.succeeded", { count: progress.warnings ?? 1 }), "text-foreground",
           <WarningFilledIcon size={12} className="shrink-0 text-warning" />,
         );
       }

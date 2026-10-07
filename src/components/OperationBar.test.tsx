@@ -987,19 +987,19 @@ it("keeps warning and log access for a successful single update and successful b
   await listNow(view.queryClient, [op(3, "node@22", "Done", "Succeeded", {
     follow_up_warnings: [{ NoLongerLinked: { name: "node@22", commands: ["node", "npm"] } }],
   }), op(2, "jq", "Done", "Succeeded"), op(1, "old", "Done", "Succeeded")]);
-  await view.findByText("已更新2个工具，1个工具的后续步骤需要查看");
+  await view.findByText("已更新2个工具，1个有警告");
   fireEvent.click(view.getByRole("button", { name: "查看日志" }));
   expect(useUiStore.getState().focusedOpId).toBe(3);
 });
 
-it("counts a batch's follow-up warnings in English as one or many (f13b review)", async () => {
+it("counts a batch's follow-up warnings in English as one or many, and calls them warnings (f13b review, r21 C5)", async () => {
   await i18n.changeLanguage("en");
   const warned = { follow_up_warnings: [{ OldVersionsNotCleanedUp: { name: "git", exit_code: 1 } }] };
   operations = [op(2, "git", "Running"), op(1, "jq", "Queued")];
   const view = renderWithProviders(<OperationBar />);
   await view.findByText(/Working on/);
   await listNow(view.queryClient, [op(2, "git", "Done", "Succeeded", warned), op(1, "jq", "Done", "Succeeded")]);
-  expect(await view.findByText("Updated 2 tools · 1 follow-up needs attention")).toBeInTheDocument();
+  expect(await view.findByText("Updated 2 tools · 1 with a warning")).toBeInTheDocument();
   await listNow(view.queryClient, [op(4, "git", "Running"), op(3, "wget", "Queued"), ...operations]);
   await view.findByText(/Working on/);
   await listNow(view.queryClient, [
@@ -1008,5 +1008,5 @@ it("counts a batch's follow-up warnings in English as one or many (f13b review)"
     op(2, "git", "Done", "Succeeded", warned),
     op(1, "jq", "Done", "Succeeded"),
   ]);
-  expect(await view.findByText("Updated 2 tools · 2 follow-ups need attention")).toBeInTheDocument();
+  expect(await view.findByText("Updated 2 tools · 2 with warnings")).toBeInTheDocument();
 });

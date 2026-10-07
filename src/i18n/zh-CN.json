@@ -803,9 +803,9 @@
     "text": "错误详情："
   },
   "followUpWarning": {
-    "batch_other": "已更新{{total}}个工具，{{count}}个工具的后续步骤需要查看",
-    "succeeded": "已更新，有警告",
-    "saved": "这里只保留了后续步骤的警告，完整日志已不再保留。"
+    "batch_other": "已更新{{total}}个工具，{{count}}个有警告",
+    "succeeded_other": "已更新，有警告",
+    "saved_other": "这里只保留了警告，完整日志已不再保留。"
   },
   "loginPathNotice": {
     "title": "无法读取终端的设置",
