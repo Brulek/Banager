@@ -527,7 +527,8 @@ is still running (`IndexUpdating`), is not taken as absence: the update
 runs, and the reading after it decides as before. Submitting an update
 also refuses it (`not_listed`) when a refresh since its preview read its
 source without failing or deferring and found the tool neither installed
-nor offered an update under the same source, kind and name; an update no
+nor offered an update under the same source, kind and name, and nothing
+starts; a change to any other tool does not refuse it, and an update no
 longer offered because an earlier one already did it still starts while
 the tool is installed. Operations
 that need the same lock start in the order they were confirmed: one waits
@@ -5260,6 +5261,7 @@ that has been set up.
 - `brew.env` 读取清单包括 `HOMEBREW_NO_AUTO_UPDATE`。它被设为空时，会阻止可能触发未跟踪自动更新的命令。
 - `OLLAMA_HOST` 地址中的登录信息会用于该服务的 HTTP 基本认证。普通 HTTP 不加密这些信息。发给窗口的实例标识不含登录信息；命令预览、操作摘要和库存错误会遮蔽登录信息，实际请求和命令仍使用原值。拷贝的预览命令也保留遮蔽，需要自行补入登录信息。历史和忽略、跳过、稍后提醒设置保存前会去除地址中的用户名与密码；旧文件读取时也会脱敏并尝试重写。写入失败可能使旧内容仍留在磁盘，较新格式的历史文件不会被覆盖。
 - Claude Code、Antigravity CLI 和 Grok Build 卸载后，除了检查启动器，还会检查卸载清单中的其他路径；Antigravity 也会重新列出备份。可选路径还会检查归属及应保留的路径，不运行版本命令。
+- 刷新确认工具已不在清单中时，旧更新计划无法提交，也不会建立操作。请重新检查列表。其他工具的变化不会让预览失效；更新候选消失但工具仍已安装时，保留既有版本检查。
 - 预览必须在生成后 10 分钟内确认并提交。已接受的操作可以排队超过 10 分钟再执行。
 - 更新后版本未变通常需要检查；若已达到或超过确认的目标版本，则报告已更新。这也适用于 Grok Build 和 rustup。没有可比较的目标版本时，不适用此例外。
 - 已安装页详情里的 HTTPS 首页链接只交给默认浏览器打开：先按 `https:` 查出系统设置的默认浏览器，再指定由它打开，不会被声明了该域名的 App 直接接走；查不到默认浏览器时不打开。只打开当前列表里某个工具的来源报告的首页，普通 HTTP 首页只供拷贝。
@@ -5275,6 +5277,7 @@ that has been set up.
 - `brew.env` 讀取清單包括 `HOMEBREW_NO_AUTO_UPDATE`。它被設為空值時，會阻止可能觸發未追蹤自動更新的命令。
 - `OLLAMA_HOST` 網址中的登入資訊會用於該服務的 HTTP 基本驗證。一般 HTTP 不會加密這些資訊。傳給視窗的實例識別碼不含登入資訊；命令預覽、操作摘要和庫存錯誤會遮蔽登入資訊，實際要求和命令仍使用原值。拷貝的預覽命令也保留遮蔽，需要自行補入登入資訊。歷程和忽略、略過、稍後提醒設定儲存前會去除網址中的使用者名稱與密碼；舊檔案讀取時也會遮蔽登入資訊並嘗試重新寫入。寫入失敗可能使舊內容仍留在磁碟，較新格式的歷程檔案不會被覆寫。
 - Claude Code、Antigravity CLI 和 Grok Build 移除後，除了檢查啟動器，還會檢查移除清單中的其他路徑；Antigravity 也會重新列出備份。選用路徑還會檢查歸屬及應保留的路徑，不執行版本命令。
+- 重新整理確認工具已不在清單中時，舊更新計畫無法送出，也不會建立操作。請重新檢查清單。其他工具的變化不會讓預覽失效；更新候選消失但工具仍已安裝時，保留既有版本檢查。
 - 預覽必須在產生後 10 分鐘內確認並送出。已接受的操作可以排隊超過 10 分鐘再執行。
 - 更新後版本未變通常需要檢查；若已達到或超過確認的目標版本，則回報已更新。這也適用於 Grok Build 和 rustup。沒有可比較的目標版本時，不適用此例外。
 - 已安裝頁詳細資訊裡的 HTTPS 首頁連結只交給預設瀏覽器開啟：先依 `https:` 查出系統設定的預設瀏覽器，再指定由它開啟，不會被宣告了該網域的 App 直接接走；查不到預設瀏覽器時不開啟。只開啟目前清單裡某個工具的來源回報的首頁，一般 HTTP 首頁只供拷貝。

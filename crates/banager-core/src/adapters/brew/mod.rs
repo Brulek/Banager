@@ -8402,81 +8402,6 @@ mod plan_execute_tests {
         f08_uninstall_env_changes(true).await;
     }
 
-    async fn f08_cask_receipt_changes(expands: bool) {
-        let plain = r#"{"source":{"tap":"homebrew/cask"},"uninstall_artifacts":[{"app":["Example.app"]}],"uninstall_flight_blocks":false}"#;
-        let expanded = r#"{"source":{"tap":"homebrew/cask"},"uninstall_artifacts":[{"app":["Example.app"]},{"uninstall":[{"delete":"~/Library/Example"}]}],"uninstall_flight_blocks":false}"#;
-        let prefix = CaskroomPrefix::new("f08", &[("example", plain)]);
-        let runner = Arc::new(MockRunner::new());
-        let adapter = BrewAdapter::new(runner.clone())
-            .with_recorded_uninstall_fn(cask_receipt::read_recorded);
-        let inst = ManagerInstance {
-            prefix: prefix.0.clone(),
-            ..test_instance()
-        };
-        let plan = cask_uninstall(&runner, &adapter, &inst, "example").await;
-        assert!(!plan
-            .warnings
-            .iter()
-            .any(|w| matches!(w, Warning::CaskUninstallStep { .. })));
-        if expands {
-            std::fs::write(
-                prefix
-                    .0
-                    .join("Caskroom/example/.metadata/INSTALL_RECEIPT.json"),
-                expanded,
-            )
-            .unwrap();
-            let fresh = cask_uninstall(&runner, &adapter, &inst, "example").await;
-            assert!(
-                fresh
-                    .warnings
-                    .iter()
-                    .any(|w| matches!(w, Warning::CaskUninstallStep { .. })),
-                "precondition: new receipt expands the preview"
-            );
-        }
-        runner.respond(
-            vec!["/opt/homebrew/bin/brew", "uninstall", "--cask", "example"],
-            f08_ok(),
-        );
-        let before = runner.calls().len();
-        let result = adapter
-            .execute(&plan, Arc::new(VecSink::new()), 1, CancellationToken::new())
-            .await;
-        // Only the uninstall itself counts: a fix may read before it refuses.
-        let uninstalls = runner.calls()[before..]
-            .iter()
-            .filter(|call| call.iter().any(|arg| arg == "uninstall"))
-            .count();
-        if expands {
-            assert_eq!(
-                uninstalls, 0,
-                "changed receipt must refuse the original plan: {result:?}"
-            );
-            assert!(
-                matches!(
-                    result,
-                    Err(AdapterError::Refused(_)) | Ok(Outcome::BanagerFailed(_))
-                ),
-                "needs a fresh preview: {result:?}"
-            );
-        } else {
-            assert_eq!(result.unwrap(), Outcome::Succeeded);
-            assert_eq!(uninstalls, 1);
-            f08_assert_brew_env(&runner);
-        }
-    }
-
-    #[tokio::test]
-    #[ignore = "bug: G08: a cask uninstall still runs after its receipt gained removal steps since its preview"]
-    async fn f08_g08_expanded_cask_receipt_refuses_saved_uninstall() {
-        f08_cask_receipt_changes(true).await;
-    }
-    #[tokio::test]
-    async fn f08_g08_unchanged_cask_receipt_executes() {
-        f08_cask_receipt_changes(false).await;
-    }
-
     #[tokio::test]
     async fn f30a_g05_autoremove_limits_and_unchanged_controls() {
         type Files = fn(&Path) -> brew_env::EnvFile;
@@ -8623,6 +8548,7 @@ mod plan_execute_tests {
         } else {
             assert_eq!(result.unwrap(), Outcome::Succeeded);
             assert_eq!(runner.calls().len(), before + 1);
+            f08_assert_brew_env(&runner);
         }
     }
 

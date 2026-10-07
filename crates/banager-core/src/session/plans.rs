@@ -670,12 +670,12 @@ mod tests {
         updates: std::sync::Mutex<Vec<UpdateCandidate>>,
         artifacts: std::sync::Mutex<Vec<InstalledArtifact>>,
         plan_gate: std::sync::Mutex<Option<PlanGate>>,
+        execute_calls: std::sync::atomic::AtomicUsize,
         /// How long each `plan()` takes, and how many were under way at
         /// once at most: for the test of `PLANS_AT_ONCE` alone.
         plan_delay: std::sync::Mutex<Duration>,
         in_flight: std::sync::atomic::AtomicUsize,
         most_in_flight: std::sync::atomic::AtomicUsize,
-        execute_calls: std::sync::atomic::AtomicUsize,
         /// The version `reconcile` reads, before and after an operation
         /// alike; `None` reads no version (`test_support::fake_reconciled`).
         version_read: std::sync::Mutex<Option<String>>,
@@ -691,10 +691,10 @@ mod tests {
                 updates: std::sync::Mutex::new(Vec::new()),
                 artifacts: std::sync::Mutex::new(Vec::new()),
                 plan_gate: std::sync::Mutex::new(None),
+                execute_calls: std::sync::atomic::AtomicUsize::new(0),
                 plan_delay: std::sync::Mutex::new(Duration::ZERO),
                 in_flight: std::sync::atomic::AtomicUsize::new(0),
                 most_in_flight: std::sync::atomic::AtomicUsize::new(0),
-                execute_calls: std::sync::atomic::AtomicUsize::new(0),
                 version_read: std::sync::Mutex::new(None),
                 plan_warnings: std::sync::Mutex::new(Vec::new()),
             })
@@ -2614,7 +2614,6 @@ mod tests {
         );
         assert_eq!(how, None);
     }
-
     // R08 G01: use the same listed-plan entry point as the window.
     async fn f08_listed_refresh(removes_target: bool) {
         let adapter = FakeAdapter::new(vec![test_support::make_instance("fake", "fake:1")]);
@@ -2644,12 +2643,10 @@ mod tests {
             ]);
         }
         refresh_and_expect_a_new_generation(&session, generation).await;
-        let result = session.submit(issued.id);
+        let result = session.submit(issued.id.clone());
         if removes_target {
-            assert!(
-                result.is_err(),
-                "a removed listed tool must not be reinstalled: {result:?}"
-            );
+            assert_eq!(result, Err(SubmitError::NotListed));
+            assert_eq!(session.submit(issued.id), Err(SubmitError::Unknown));
             assert!(
                 session.operations().is_empty(),
                 "nothing may reach the executor"
@@ -2662,6 +2659,8 @@ mod tests {
                 "unrelated changes must keep the preview valid: {result:?}"
             );
             assert_eq!(session.operations().len(), 1);
+            session.ops.wait(result.unwrap()).await;
+            assert_eq!(adapter.execute_calls.load(Ordering::SeqCst), 1);
         }
     }
 
