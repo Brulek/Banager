@@ -3119,7 +3119,7 @@ describe("UpdatesPage", () => {
     chooseFromMenu(await findRow("glib"), "Skip This Version");
 
     expect(await findByRole("alert")).toHaveTextContent(
-      "Couldn't save that choice: settings.json is read-only",
+      "Couldn't save that choice: settings.json is read-only.",
     );
     // Nothing was saved, so nothing disappears.
     expect(rowOf("glib")).toBeInTheDocument();

@@ -1491,7 +1491,7 @@ describe("InstalledPage", () => {
       fireEvent.click(within(drawer).getByRole("button", { name: "Stop skipping 2.90.0 of skipped" }));
 
       expect(await within(drawer).findByRole("alert")).toHaveTextContent(
-        "Couldn't save that choice: settings.json is read-only",
+        "Couldn't save that choice: settings.json is read-only.",
       );
       const status = drawer.querySelector("[data-status-list]") as HTMLElement;
       expect([...status.children].map((item) => item.firstElementChild?.textContent)).toEqual(["Skipped 2.90.0"]);

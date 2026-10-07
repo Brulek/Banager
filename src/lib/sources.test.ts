@@ -1367,6 +1367,21 @@ describe("settingsSaveSentence", () => {
       expect(settingsSaveSentence(fakeT, frame, "boom", false)).toBe(plain);
     }
   });
+
+  it("ends Updates' sentence with a full stop, now that an unreadable settings file's reason is two sentences (r21 C2)", () => {
+    const unreadable = JSON.stringify({ kind: "settings_save_failed", reason: "invalid_data" });
+    const said = (language: string) =>
+      settingsSaveSentence(i18n.getFixedT(language), "updates.saveChoiceFailed", unreadable, false);
+    expect(said("en")).toBe(
+      "Couldn't save that choice: the settings file couldn't be read and was left as it is. To save settings again, move settings.json in ~/Library/Application Support/com.brulek.banager to the Trash.",
+    );
+    expect(said("zh-CN")).toBe(
+      "无法保存此选择：设置文件无法读取，已原样保留。要重新保存设置，请将~/Library/Application Support/com.brulek.banager中的settings.json移到废纸篓。",
+    );
+    expect(said("zh-Hant")).toBe(
+      "無法儲存此選擇：設定檔無法讀取，已原樣保留。要重新儲存設定，請將~/Library/Application Support/com.brulek.banager中的settings.json移到垃圾桶。",
+    );
+  });
 });
 
 describe("parseOpenOllamaFailure", () => {

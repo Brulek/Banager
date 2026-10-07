@@ -305,7 +305,7 @@
     "skipVersionHint": "下個版本發佈時再提醒你。",
     "neverRemind": "不再提醒此工具",
     "neverRemindHint": "以後不再提醒此工具的任何更新。可以在「設定」中還原。",
-    "saveChoiceFailed": "無法儲存此選擇：{{message}}",
+    "saveChoiceFailed": "無法儲存此選擇：{{message}}。",
     "saveChoiceFailedPlain": "無法儲存此選擇。請稍後再試。",
     "versionChange": "{{current}} → {{target}}",
     "versionTo": "→ {{target}}",

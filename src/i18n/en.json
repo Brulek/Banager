@@ -336,7 +336,7 @@
     "skipVersionHint": "You'll be reminded when the next version comes out.",
     "neverRemind": "Don't Remind Me About This Tool",
     "neverRemindHint": "You won't be reminded about any update to this tool. Undo it in Settings.",
-    "saveChoiceFailed": "Couldn't save that choice: {{message}}",
+    "saveChoiceFailed": "Couldn't save that choice: {{message}}.",
     "saveChoiceFailedPlain": "Couldn't save that choice. Try again later.",
     "versionChange": "{{current}} → {{target}}",
     "versionTo": "→ {{target}}",
