@@ -66,6 +66,17 @@ function overwriteTokens(plan: Plan, formula: string): string[] {
   return [program, "link", "--formula", "--force", ...overwrite, formula].map(displayToken);
 }
 
+/**
+ * How long the sheet's out-of-sight status keeps what it said (r27 A3,
+ * the skeptic's note): a polite status waits for what the screen reader
+ * is already saying -- as the alert opens, its title and its text -- so
+ * longer than the 2.5 s a word in sight such as 「已拷贝」 stays
+ * (`SHOWN_FOR_MS`). Then the words are taken back: left there, the
+ * VoiceOver cursor would read them again, out of place, beside Close and
+ * Check Again or after Show Command.
+ */
+export const SAID_FOR_MS = 7_000;
+
 export interface LinkFixSheetProps {
   /** The source whose notice's Fix… opened it, or null while it is closed. */
   instanceId: string | null;
@@ -281,6 +292,15 @@ export function LinkFixSheet({ instanceId, onClose }: LinkFixSheetProps) {
         : turned
           ? title
           : "";
+  // What was said, taken back after `SAID_FOR_MS`; anything said next is
+  // said whole, the same words again included.
+  const [heard, setHeard] = useState(false);
+  useEffect(() => {
+    setHeard(false);
+    if (said === "") return;
+    const timer = window.setTimeout(() => setHeard(true), SAID_FOR_MS);
+    return () => window.clearTimeout(timer);
+  }, [said]);
   return (
     <Dialog
       open={shown}
@@ -398,9 +418,10 @@ export function LinkFixSheet({ instanceId, onClose }: LinkFixSheetProps) {
       {/* `said`, out of sight: what it says is on the sheet already. There
           from the time the sheet opens, empty: a status put in the page
           with its words is one a screen reader may never read (as
-          `UninstallDialog`'s). */}
+          `UninstallDialog`'s). And empty again once it has had time to be
+          heard (`SAID_FOR_MS`), so it is not read twice. */}
       <p role="status" className="sr-only">
-        {said}
+        {heard ? "" : said}
       </p>
     </Dialog>
   );

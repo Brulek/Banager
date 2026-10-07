@@ -5,7 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { command } from "../test/command";
 import i18n from "../i18n";
-import { LinkFixSheet, linkRequest } from "./LinkFixSheet";
+import { LinkFixSheet, SAID_FOR_MS, linkRequest } from "./LinkFixSheet";
 import { SourceNotices } from "./SourceNotices";
 import { artifactKeyId } from "../store/ui";
 import { sourceNoticesFor } from "../lib/sources";
@@ -691,6 +691,62 @@ describe("LinkFixSheet to a screen reader (r27 A3)", () => {
         await waitFor(() => expect(status.textContent).toBe(question));
         expect(saidStatus(dialog)).toBe(status);
       } finally {
+        await i18n.changeLanguage("en");
+      }
+    },
+  );
+
+  it.each(["en", "zh-CN"])(
+    "takes back what it said once it has had time to be heard, and says the next turn all the same, in %s",
+    async (language) => {
+      // A clock that moves on its own, for the previews and `waitFor`, and
+      // that the test jumps forward past `SAID_FOR_MS`.
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      await i18n.changeLanguage(language);
+      try {
+        const npm = npmWithout([NODE_22, NODE_20]);
+        backendBy(npm, (name) => (name === "node@22" ? inTheWay : linkable));
+        renderWithProviders(<LinkFixSheet instanceId={npm.id} onClose={() => {}} />);
+        const blockedTitle = i18n.t("noAnswer.sheet.blockedTitle", { formula: "node@22" });
+        const dialog = await screen.findByRole("alertdialog", { name: blockedTitle });
+        const status = saidStatus(dialog);
+        await waitFor(() => expect(status).toHaveTextContent(new RegExp(`^${blockedTitle}`)));
+        const refusal = status.textContent;
+
+        // Still there halfway, and gone after: nothing for the VoiceOver
+        // cursor to read a second time beside Close and Check Again. The
+        // sheet itself still says it, described by what is in the way.
+        await act(async () => {
+          vi.advanceTimersByTime(SAID_FOR_MS / 2);
+        });
+        expect(status).toHaveTextContent(new RegExp(`^${blockedTitle}`));
+        await act(async () => {
+          vi.advanceTimersByTime(SAID_FOR_MS);
+        });
+        expect(status).toHaveTextContent(/^$/);
+        expect(status.isConnected).toBe(true);
+        expect(dialog).toHaveAccessibleName(blockedTitle);
+        expect(dialog).toHaveAccessibleDescription(expect.stringContaining("/opt/homebrew/bin/npx"));
+
+        // node@20: its question said, then taken back -- no stray question
+        // left after Show Command.
+        const popup = within(dialog).getByLabelText(i18n.t("noAnswer.sheet.version"));
+        fireEvent.change(popup, { target: { value: artifactKeyId(NODE_20.key) } });
+        const question = i18n.t("noAnswer.sheet.title", { formula: "node@20" });
+        await screen.findByRole("alertdialog", { name: question });
+        await waitFor(() => expect(status.textContent).toBe(question));
+        await act(async () => {
+          vi.advanceTimersByTime(SAID_FOR_MS);
+        });
+        expect(status).toHaveTextContent(/^$/);
+
+        // node@22 again: the same refusal, said again though it was taken back.
+        fireEvent.change(popup, { target: { value: artifactKeyId(NODE_22.key) } });
+        await screen.findByRole("alertdialog", { name: blockedTitle });
+        await waitFor(() => expect(status.textContent).toBe(refusal));
+        expect(saidStatus(dialog)).toBe(status);
+      } finally {
+        vi.useRealTimers();
         await i18n.changeLanguage("en");
       }
     },
