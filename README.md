@@ -221,12 +221,12 @@ This app runs package managers on your behalf, so the boundary matters more than
   pick an app that claims its domain; when macOS names no default browser, nothing opens. A plain
   `http` homepage is shown to copy.
 - **You can preview the operations you choose.** For updates and uninstalls you choose in Banager,
-  you can see the exact command before it runs, with the variables Banager sets for it (all but
-  the `PATH` and the proxy and mirror settings it takes from your login shell, which
+  the confirmation lets you see the exact command before it runs, with the variables Banager sets
+  for it (all but the `PATH` and the proxy and mirror settings it takes from your login shell, which
   `docs/what-we-run.md` lists under "How
   Banager runs anything" and which are never shown, since a proxy setting can hold a password) —
-  one press on "Show Command" in its confirmation, or open from the start with Settings' "Show
-  technical details" on — and
+  one press on "Show Command", or open from the start with Settings' "Show technical details"
+  on — and
   says whether it may ask for your password; an uninstall that runs no command lists instead the
   exact paths it will move to the Trash. `OLLAMA_HOST` logins are masked in the preview and
   copied text; execution retains the original value. An uninstall also says what it will affect. A Homebrew

@@ -42,6 +42,11 @@ fn test_readme_scopes_confirmation_to_chosen_operations_and_discloses_refresh_mi
     let (english, chinese) = blocks(&readme);
     let english = english.split_whitespace().collect::<Vec<_>>().join(" ");
     assert!(english.contains("For updates and uninstalls you choose in Banager"));
+    // r31 E5: the confirmation is what shows the command and says whether
+    // it may ask for the password -- "you" can't be the subject of both.
+    assert!(english.contains(
+        "For updates and uninstalls you choose in Banager, the confirmation lets you see the exact command before it runs"
+    ));
     assert!(english.contains("without a preview or confirmation"));
     let chinese = squeeze(chinese);
     assert!(chinese.contains("在Banager里选择更新或卸载时"));
