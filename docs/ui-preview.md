@@ -573,3 +573,9 @@ falling back to Simplified Chinese and then English if a line is missing.
 
 In a Traditional Chinese window, searching also matches the English descriptions.
 Search loads no description table until a query is entered; rows load the tables they need.
+
+The mock Ollama's pull and rm previews carry `OLLAMA_HOST=http://127.0.0.1:11434`,
+as the real adapter sets it on a Mac whose `OLLAMA_HOST` has no login
+(`?state=full&page=updates&tech=1`, then preview a model update). The
+preview has no Ollama with a login: how one shows (`http://****:****@host`)
+is pinned by `src/lib/previewEnv.test.ts` and `src/components/CommandPreview.test.tsx`.

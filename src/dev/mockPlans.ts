@@ -391,7 +391,11 @@ export function buildPlan(world: World, inst: ManagerInstance, request: OpReques
       const thirdParty = host.includes(".") && !OLLAMA_REGISTRIES.includes(host);
       return {
         ...plan,
-        action: command(inst.exe_path, [upgrade ? "pull" : "rm", name]),
+        // `OLLAMA_HOST` set to the daemon the instance was detected at, as
+        // `OllamaAdapter::plan` sets it: this Mac's, with no login to mask.
+        action: command(inst.exe_path, [upgrade ? "pull" : "rm", name], [
+          ["OLLAMA_HOST", inst.id.slice("ollama:".length)],
+        ]),
         // The registry is said on the download only, never on an uninstall;
         // then that the upgrade downloads what changed.
         warnings: upgrade

@@ -411,6 +411,34 @@ describe("the browser preview's mock backend", () => {
     expect(await answer(backend.invoke("list_operations"))).toEqual([]);
   });
 
+  it("plans an Ollama model as the adapter does on a Mac whose OLLAMA_HOST has no login", async () => {
+    // `OllamaAdapter::plan` sets `OLLAMA_HOST` to the instance's daemon
+    // URL on every pull and rm; with no login in it there is nothing to
+    // mask, so the default preview shows the address itself, never `****`.
+    const { backend } = backendFor();
+    const snapshot = await answer<Snapshot>(backend.invoke("refresh"));
+    const [upgrade] = await planUpgrades(backend, MODELS.coder);
+    const ollama = snapshot.instances.find((i) => i.id === upgrade?.plan.request.instance_id);
+    expect(ollama?.id).toBe("ollama:http://127.0.0.1:11434");
+    const remove = await answer<IssuedPlan>(
+      backend.invoke("plan_operation", {
+        request: { kind: "Uninstall", instance_id: ollama?.id, artifact_kind: "Model", name: MODELS.llama },
+      }),
+    );
+    for (const [issued, verb, name] of [
+      [upgrade, "pull", MODELS.coder],
+      [remove, "rm", MODELS.llama],
+    ] as const) {
+      expect(issued?.plan.action).toEqual({
+        Command: {
+          program: ollama?.exe_path,
+          args: [verb, name],
+          env: [["OLLAMA_HOST", "http://127.0.0.1:11434"]],
+        },
+      });
+    }
+  });
+
   it("has npm unable to start for want of node with ?state=nonode, and a link that puts it back", async () => {
     // The author's Mac on 2026-10-07 (finding 1): npm says why, and offers
     // node@22 and node@20, newest first; node@22's link has npm's own npm
