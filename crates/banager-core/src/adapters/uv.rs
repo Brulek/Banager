@@ -184,9 +184,13 @@ fn upgrade_basis(artifact: &InstalledArtifact) -> Result<String, String> {
     unconstrained_requirement(&text, &artifact.key.name)?;
     let receipt: toml::Value =
         toml::from_str(&text).map_err(|_| "could not parse uv tool requirements".to_string())?;
+    // Not the installed version: a tool updated another way before its
+    // turn (`uv tool upgrade` in Terminal) was installed the same way, and
+    // the readings around the command judge its version -- at the
+    // confirmed target it is already updated (`AlreadyUpdated::
+    // BeforeItsTurn`), not changed since shown (r20 R20-1).
     Ok(super::plan_basis(serde_json::json!([
         artifact.key.name,
-        artifact.version,
         path,
         receipt
     ])))
@@ -1672,6 +1676,60 @@ ruff v0.15.0 (/Users/someone/.local/share/uv/tools/ruff)
             runner.calls()[before..],
             [list, argv],
             "one documented read, then exactly the previewed upgrade"
+        );
+    }
+
+    /// ruff updated another way before its turn (`uv tool upgrade` in
+    /// Terminal): the list's version moved, the receipt did not. The saved
+    /// upgrade runs as previewed, and the readings around it say it was
+    /// already updated (r20 R20-1).
+    #[tokio::test]
+    async fn r20_uv_version_moved_keeps_the_saved_plan() {
+        let (dir, runner) = receipt_runner();
+        let adapter = UvAdapter::new(runner.clone());
+        let plan = adapter
+            .plan(&test_instance(), &request(OpKind::Upgrade))
+            .await
+            .unwrap();
+        runner.respond(
+            vec!["/opt/homebrew/bin/uv", "tool", "list", "--show-paths"],
+            CommandOutput {
+                stderr_cause: Default::default(),
+                exit_code: Some(0),
+                stdout: format!("ruff v0.16.8 ({})\n", dir.path().display()),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let again = adapter
+            .plan(&test_instance(), &request(OpKind::Upgrade))
+            .await
+            .unwrap();
+        assert_eq!((&again.action, &again.basis), (&plan.action, &plan.basis));
+        runner.respond(
+            vec!["/opt/homebrew/bin/uv", "tool", "upgrade", "ruff"],
+            CommandOutput {
+                stderr_cause: Default::default(),
+                exit_code: Some(0),
+                stdout: String::new(),
+                stderr: "Nothing to upgrade\n".into(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let result = adapter
+            .execute(
+                &plan,
+                Arc::new(crate::events::VecSink::new()),
+                1,
+                CancellationToken::new(),
+            )
+            .await;
+        assert_eq!(result.unwrap(), Outcome::Succeeded);
+        assert_eq!(
+            runner.calls().last().unwrap(),
+            &["/opt/homebrew/bin/uv", "tool", "upgrade", "ruff"]
         );
     }
 

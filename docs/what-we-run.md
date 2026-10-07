@@ -2173,12 +2173,17 @@ requirements `--with` added, are not resolved: should uv keep the version
 it has because of one of them, that upgrade ends as needing attention,
 with the version unchanged. Planning an upgrade repeats the
 inventory and receipt check and refuses a constraint or unknown receipt.
-The preview carries a fingerprint of that tool's environment path, version and
+The preview carries a fingerprint of that tool's name, environment path and
 parsed receipt, including its saved requirements, constraints, overrides and
-options. Immediately before a saved upgrade runs, Banager repeats the existing
-`tool list --show-paths` read and bounded receipt read. A changed environment,
-record, missing tool or unreadable receipt refuses the plan as changed since
-shown, before any upgrade command. An unchanged record runs the original argv.
+options. Its installed version is not in it: a tool updated another way before
+its turn (`uv tool upgrade` in Terminal, say) was installed the same way, and
+the readings around the command judge its version, so at the confirmed target
+it is reported as already updated (How Banager runs anything). Immediately
+before a saved upgrade runs, Banager repeats the existing
+`tool list --show-paths` read and bounded receipt read. A changed environment
+path or receipt, a missing tool or an unreadable receipt refuses the plan as
+changed since shown, before any upgrade command. An unchanged record runs the
+original argv.
 The fingerprint also participates when a batch prepares an evicted plan again;
 identical commands cannot hide a changed installation basis. No receipt contents
 are sent to the window. It neither edits a receipt nor removes a version pin. uv has no
@@ -2416,15 +2421,20 @@ it is to Cargo. A crate that only cargo-binstall installed is listed
 too, as `cargo install --list` lists it. `inventory`, the check after an
 operation, `check_updates`, upgrade planning and the check immediately before
 executing a saved upgrade all read this merged record. The preview carries a
-fingerprint of the confirmed root, the target crate's record key (its version
-and source) and the build choices saved with it (features, `all_features`,
-`no_default_features`, profile, target, `rustc`), read the way the upgrade's own
-planning reads them (`CargoAdapter::upgrade_basis`). The record Cargo writes, with
+fingerprint of the confirmed root, the target crate's name and source from its
+record key, and the build choices saved with it (features, `all_features`,
+`no_default_features`, profile, target, and the `host:` line of its `rustc`),
+read the way the upgrade's own planning reads them (`CargoAdapter::upgrade_basis`).
+The crate's installed version and the compiler's version are not in it: a crate
+updated another way before its turn (`cargo install` in Terminal, by whichever
+Rust is current) was installed the same way, and the readings around the
+command judge its version, so at the confirmed target it is reported as
+already updated (How Banager runs anything). The record Cargo writes, with
 its defaults filled in, for a crate only `.crates.toml` listed (one
 cargo-binstall installed) the next time it installs or uninstalls anything in
 the root (cargo `CrateListingV2::sync_v1`, `InstallInfo::from_v1`) is therefore
 the same basis, so another crate's update in the same Update all does not
-invalidate it. If the target's source, version or recorded build choices change,
+invalidate it. If the target's source or recorded build choices change,
 or its record disappears, becomes ambiguous or cannot be read again, the saved
 plan is refused as changed since shown before `cargo install` or
 `cargo-binstall` runs. Another crate's record does not affect this fingerprint.

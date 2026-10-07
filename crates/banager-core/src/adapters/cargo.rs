@@ -332,13 +332,19 @@ impl BuildChoices {
     /// `build.target` if there is one and otherwise builds for this Mac.
     fn foreign_target(&self) -> Option<&str> {
         let target = self.target.as_deref()?;
-        let host = self
-            .rustc
+        let host = self.host()?;
+        (!host.is_empty() && target != host).then_some(target)
+    }
+
+    /// The `host:` line of the saved `rustc -vV`: the machine the compiler
+    /// that built the crate ran on, and so the target it built for unless
+    /// told otherwise.
+    fn host(&self) -> Option<&str> {
+        self.rustc
             .as_deref()?
             .lines()
-            .find_map(|line| line.strip_prefix("host:"))?
-            .trim();
-        (!host.is_empty() && target != host).then_some(target)
+            .find_map(|line| line.strip_prefix("host:"))
+            .map(str::trim)
     }
 }
 
@@ -694,10 +700,19 @@ impl CargoAdapter {
     }
 
     /// What an upgrade's preview was worked out from (`Plan::basis`): the
-    /// root, the crate's one record key (its version and source), and the
-    /// build choices saved with it, read the way `BuildChoices` reads them.
-    /// Only this crate's record participates: another installed crate
-    /// changing does not invalidate this confirmation.
+    /// root, the crate's one record's name and source, and the build
+    /// choices saved with it, read the way `BuildChoices` reads them -- of
+    /// the compiler's `rustc -vV`, only the `host:` line `foreign_target`
+    /// compares the target with. Only this crate's record participates:
+    /// another installed crate changing does not invalidate this
+    /// confirmation.
+    ///
+    /// Not the installed version, nor the compiler's: a crate updated
+    /// another way before its turn (`cargo install` in Terminal, by
+    /// whichever Rust is current) was installed the same way, and the
+    /// readings around the command judge its version -- at the confirmed
+    /// target it is already updated (`AlreadyUpdated::BeforeItsTurn`), not
+    /// changed since shown (r20 R20-1).
     ///
     /// Read, not hashed as written: Cargo writes a record of its own for a
     /// crate only `.crates.toml` listed (one cargo-binstall installed) the
@@ -708,10 +723,11 @@ impl CargoAdapter {
     fn upgrade_basis(json: &str, root: &Path, name: &str) -> Result<String, AdapterError> {
         let records: Crates2Root =
             serde_json::from_str(json).map_err(|error| AdapterError::Parse(error.to_string()))?;
-        let mut matching = records.installs.into_iter().filter(|(key, _)| {
-            parse_install_key(key).is_some_and(|(installed, _, _)| installed == name)
+        let mut matching = records.installs.into_iter().filter_map(|(key, record)| {
+            let (installed, _version, source) = parse_install_key(&key)?;
+            (installed == name).then_some((source, record))
         });
-        let (key, record) = matching
+        let (source, record) = matching
             .next()
             .ok_or_else(|| AdapterError::Refused("Cargo install record is missing".into()))?;
         if matching.next().is_some() {
@@ -721,18 +737,20 @@ impl CargoAdapter {
         }
         let choices: BuildChoices =
             serde_json::from_value(record).map_err(|e| AdapterError::Parse(e.to_string()))?;
+        let host = choices.host().map(str::to_string);
         let mut features = choices.features;
         features.sort();
         features.dedup();
         Ok(super::plan_basis(serde_json::json!({
             "root": root,
-            "key": key,
+            "name": name,
+            "source": source,
             "features": features,
             "all_features": choices.all_features,
             "no_default_features": choices.no_default_features,
             "profile": choices.profile.as_deref().unwrap_or(DEFAULT_INSTALL_PROFILE),
             "target": choices.target,
-            "rustc": choices.rustc,
+            "host": host,
         })))
     }
 
@@ -3168,6 +3186,27 @@ mod tests {
                     installs[&old_key].clone(),
                 );
             }
+            // Updated another way since the preview (r20 R20-1): only the
+            // key's version moved, which the readings around the command
+            // judge, not the basis.
+            "version" => {
+                let value = installs.remove(&old_key).unwrap();
+                installs.insert(
+                    "hexyl 0.18.0 (registry+https://github.com/rust-lang/crates.io-index)".into(),
+                    value,
+                );
+            }
+            // ... by a newer compiler for the same host: no build choice.
+            "rustc" => {
+                installs.get_mut(&old_key).unwrap()["rustc"] =
+                    "rustc 1.99.0\nhost: aarch64-apple-darwin\n".into()
+            }
+            // A compiler for another host makes the saved target a foreign
+            // one, which the upgrade builds from source (`foreign_target`).
+            "host" => {
+                installs.get_mut(&old_key).unwrap()["rustc"] =
+                    "rustc 1.98.1\nhost: x86_64-apple-darwin\n".into()
+            }
             "unchanged" | "missing" | "unreadable" | "v1" | "no-basis" => {}
             _ => {
                 let value = installs.remove(&old_key).unwrap();
@@ -3219,7 +3258,7 @@ mod tests {
             .await;
         // No process at all is needed to re-read Cargo's install records.
         let installs = runner.calls().len();
-        if matches!(change, "unchanged" | "unrelated") {
+        if matches!(change, "unchanged" | "unrelated" | "version" | "rustc") {
             assert_eq!(result.unwrap(), Outcome::Succeeded);
             assert_eq!(installs, 1);
             let expected: Vec<_> = std::iter::once(program.to_string_lossy().into_owned())
@@ -3330,6 +3369,24 @@ mod tests {
         ] {
             f30b_cargo_changed_record(change, true).await;
         }
+    }
+
+    /// A crate updated another way before its turn (`cargo install` in
+    /// Terminal, perhaps by a newer Rust) keeps its confirmed plan: the
+    /// readings around the command say it is already updated
+    /// (`AlreadyUpdated::BeforeItsTurn`), not "changed since shown".
+    #[tokio::test]
+    async fn r20_cargo_version_or_compiler_moved_keeps_the_saved_plan() {
+        for binstall in [false, true] {
+            for change in ["version", "rustc"] {
+                f30b_cargo_changed_record(change, binstall).await;
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn r20_cargo_compiler_for_another_host_refuses_the_saved_plan() {
+        f30b_cargo_changed_record("host", false).await;
     }
 
     #[tokio::test]
