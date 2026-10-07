@@ -402,6 +402,11 @@
         "badge": "Updates when run",
         "detail": "It updates itself and can't be updated here. Open it once and it checks for a new version.",
         "refused": "{{source}} updates itself and can't be updated here."
+      },
+      "UpdatesTurnedOff": {
+        "badge": "Updates turned off",
+        "detail": "{{source}}'s own settings turn off its updates, so it can't be updated here.",
+        "refused": "Couldn't update it because {{source}}'s own settings turn off its updates."
       }
     },
     "allHiddenTitle": "No updates to install",

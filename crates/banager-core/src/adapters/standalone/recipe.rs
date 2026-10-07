@@ -261,13 +261,17 @@ pub enum SelfUpdates {
     Yes,
     /// Claude Code: it does, unless `~/.claude/settings.json` turns its
     /// updater off (`latest::claude_updater_off`, the switches Claude Code
-    /// itself checks before it updates in the background). Then the row is
-    /// a plain one, and the Updates page does not say it updates itself
-    /// (r39 S2). A file that is not there or cannot be read is Claude
-    /// Code's default, the updater on; one in or through a protected place
-    /// is not read, and the row keeps saying what a fresh install does --
-    /// the update check, which reads the same file, then lists it as one it
-    /// could not check, a row that carries no such word.
+    /// itself checks before it updates in the background). Then the row
+    /// does not say it updates itself (r39 S2): a plain one with its
+    /// button, or, when `DISABLE_UPDATES` turns every update off, which
+    /// its `claude update` obeys too, one held back with no button
+    /// (`StandaloneAdapter::claude_updates_refused`,
+    /// `UpdateBlocked::UpdatesTurnedOff`). A file that is not there or
+    /// cannot be read is Claude Code's default, the updater on; one in or
+    /// through a protected place is not read, and the row keeps saying what
+    /// a fresh install does -- the update check, which reads the same
+    /// file, then lists it as one it could not check, a row that carries
+    /// no such word and is not held back either.
     UnlessOffInClaudeSettings,
 }
 

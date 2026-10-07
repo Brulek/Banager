@@ -366,6 +366,11 @@
         "badge": "開啟它來更新",
         "detail": "它會自行更新，無法在這裡更新。開啟它一次就會檢查新版本。",
         "refused": "{{source}}會自行更新，無法在這裡更新。"
+      },
+      "UpdatesTurnedOff": {
+        "badge": "已關閉更新",
+        "detail": "{{source}}自己的設定關閉了更新，無法在這裡更新。",
+        "refused": "無法更新，因為{{source}}自己的設定關閉了更新。"
       }
     },
     "allHiddenTitle": "沒有要安裝的更新",

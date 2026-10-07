@@ -1098,6 +1098,14 @@ fn standalone_parsers_survive_any_input() {
         latest::claude_updater_off_from_json,
         |_| Ok(()),
     ));
+    // The one of those switches `claude update` obeys too (skeptic 2):
+    // the same text, the same parser of its `env`.
+    problems.extend(run(
+        "standalone claude_updates_refused_from_json",
+        &claude_settings,
+        latest::claude_updates_refused_from_json,
+        |_| Ok(()),
+    ));
     let startup = inputs_for(76, &["standalone-rustup/1.29.1/toolchains.txt"]);
     let patterns = crate::adapters::standalone::rustup::leftover_patterns(
         std::path::Path::new("/Users/someone"),

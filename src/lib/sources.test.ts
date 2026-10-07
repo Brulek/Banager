@@ -1828,6 +1828,48 @@ describe("UPDATE_BLOCKED_KEYS", () => {
   });
 });
 
+describe("UPDATE_BLOCKED_KEYS.UpdatesTurnedOff", () => {
+  // r39 S2, skeptic 2: Claude Code whose own ~/.claude/settings.json sets
+  // `DISABLE_UPDATES`. Its `claude update` then refuses and installs
+  // nothing, so the row has no button, and nothing to run either: the
+  // switch is the person's (or their administrator's), not Banager's.
+  const key = { instance_id: "standalone-claude", kind: "Binary", name: "claude" } satisfies ArtifactKey;
+
+  it("has nothing to run and no name to type", () => {
+    expect(UPDATE_BLOCKED_KEYS.UpdatesTurnedOff.command(key, instance())).toBe("");
+    expect(UPDATE_BLOCKED_KEYS.UpdatesTurnedOff.commandInDetail).toBe(false);
+    expect(UPDATE_BLOCKED_KEYS.UpdatesTurnedOff.typed).toBeNull();
+    expect(UPDATE_BLOCKED_KEYS.UpdatesTurnedOff.note(key, instance(), undefined, [])).toBeNull();
+  });
+
+  it("says whose settings turned its updates off, in all three locales, and promises nothing", () => {
+    expect(en.updates.blocked.UpdatesTurnedOff).toEqual({
+      badge: "Updates turned off",
+      detail: "{{source}}'s own settings turn off its updates, so it can't be updated here.",
+      refused: "Couldn't update it because {{source}}'s own settings turn off its updates.",
+    });
+    expect(zhCN.updates.blocked.UpdatesTurnedOff).toEqual({
+      badge: "已关闭更新",
+      detail: "{{source}}自己的设置关闭了更新，无法在这里更新。",
+      refused: "无法更新，因为{{source}}自己的设置关闭了更新。",
+    });
+    expect(zhHant.updates.blocked.UpdatesTurnedOff).toEqual({
+      badge: "已關閉更新",
+      detail: "{{source}}自己的設定關閉了更新，無法在這裡更新。",
+      refused: "無法更新，因為{{source}}自己的設定關閉了更新。",
+    });
+    // Not the word of a tool that does update itself.
+    expect(en.updates.blocked.UpdatesTurnedOff.badge).not.toMatch(/itself/i);
+    expect(zhCN.updates.blocked.UpdatesTurnedOff.badge).not.toContain("自行更新");
+  });
+
+  it("is the refusal a stale Updates page gets from the gate", () => {
+    expect(
+      planErrorMessage(fakeT, '{"kind":"update_blocked","reason":"UpdatesTurnedOff"}', "Claude Code", false),
+    ).toBe('updates.blocked.UpdatesTurnedOff.refused({"source":"Claude Code"})');
+  });
+});
+
 describe("UPDATE_BLOCKED_KEYS.Disabled", () => {
   const key = { instance_id: "brew:/opt/homebrew", kind: "Cask", name: "quickjot" } satisfies ArtifactKey;
   const artifact = (replacement: string | null): InstalledArtifact => ({
@@ -2022,7 +2064,11 @@ describe("the Updates page's chip details", () => {
   // locales: the redesign's rule is at most two short sentences.
   interface ChipCopy {
     updates: {
-      blocked: { Pinned: { detail: string }; SelfUpdatesOnly: { detail: string } };
+      blocked: {
+        Pinned: { detail: string };
+        SelfUpdatesOnly: { detail: string };
+        UpdatesTurnedOff: { detail: string };
+      };
       selfUpdatesTyped: string;
       disabledBlocked: { detail: string };
       cannotCheckShort: string;
@@ -2037,6 +2083,7 @@ describe("the Updates page's chip details", () => {
   const details = (locale: ChipCopy) => [
     locale.updates.blocked.Pinned.detail,
     locale.updates.blocked.SelfUpdatesOnly.detail,
+    locale.updates.blocked.UpdatesTurnedOff.detail,
     locale.updates.selfUpdatesTyped,
     locale.updates.disabledBlocked.detail,
     locale.updates.cannotCheckShort,

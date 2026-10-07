@@ -997,6 +997,21 @@ export const UPDATE_BLOCKED_KEYS: Record<UpdateBlocked, UpdateBlockedCopy> = {
     note: () => null,
     refused: "noAnswer.withFormula.refused",
   },
+  UpdatesTurnedOff: {
+    // Claude Code whose own ~/.claude/settings.json sets `DISABLE_UPDATES`
+    // (r39 S2, skeptic 2): its `claude update` then refuses and installs
+    // nothing, so there is no button. The sentence says whose settings,
+    // and nothing about turning them back on: the switch may be an
+    // administrator's, and Claude Code itself says to ask one. Nothing to
+    // run.
+    badge: "updates.blocked.UpdatesTurnedOff.badge",
+    detail: "updates.blocked.UpdatesTurnedOff.detail",
+    commandInDetail: false,
+    command: () => "",
+    typed: null,
+    note: () => null,
+    refused: "updates.blocked.UpdatesTurnedOff.refused",
+  },
 };
 
 /**

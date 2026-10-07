@@ -6175,6 +6175,32 @@ describe("UpdatesPage", () => {
     expect(within(claude).getByRole("button", { name: ROW_UPDATE })).toBeInTheDocument();
   });
 
+  it("holds Claude Code's update back, with no button, when its settings turn every update off (r39 S2, skeptic 2)", async () => {
+    // `DISABLE_UPDATES` in ~/.claude/settings.json: `claude update` refuses
+    // too, so the backend lists the update blocked (`UpdatesTurnedOff`).
+    // No button, no checkbox, not counted; the chip's detail says whose
+    // settings did it, and there is no command to show or copy.
+    settings.show_technical_details = true;
+    instances = [...snapshot.instances, claudeInstance];
+    updates = [{ ...claudeUpdate, blocked: "UpdatesTurnedOff" }, snapshot.updates[1]];
+    artifacts = [...snapshot.artifacts, { ...claudeArtifact, auto_updates: false }];
+    const { findByText, getAllByRole } = renderPage();
+
+    await findRow("onyx");
+    expect(getAllByRole("button", { name: ROW_UPDATE })).toHaveLength(1);
+    expect(getAllByRole("checkbox", { name: ROW_CHECKBOX })).toHaveLength(1);
+    await findByText("1 update available");
+    await findByText("1 more can't be updated here");
+    await showCantUpdate();
+    const claude = await findRow("Claude Code");
+    expect(within(claude).queryByText("Updates itself")).toBeNull();
+    const detail = chipDetail(claude, "Updates turned off");
+    expect(detail.textContent).toBe("Claude Code's own settings turn off its updates, so it can't be updated here.");
+    expect(within(detail).queryByText(/In Terminal/)).toBeNull();
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+    expect(within(openMenu(claude)).queryByRole("menuitem", { name: "Copy Command" })).toBeNull();
+  });
+
   it("keeps a status column on every row while any row shown has a word, and gives its room to the names where none has", async () => {
     // glib pinned, under the folded "can't be updated here": the rows
     // shown -- onyx alone -- have no word, and no column for one.

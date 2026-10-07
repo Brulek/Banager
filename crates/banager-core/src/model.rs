@@ -1723,6 +1723,20 @@ pub enum UpdateBlocked {
     /// no checkbox) and by `UPDATE_BLOCKED_KEYS.UpdatesWithFormula` in
     /// src/lib/sources.ts.
     UpdatesWithFormula,
+    /// Claude Code, whose own `~/.claude/settings.json` turns every update
+    /// of it off: its `env` sets `DISABLE_UPDATES`. `claude update`, the
+    /// command Banager's Update runs, then prints that updates are disabled
+    /// by an administrator and exits 0 having installed nothing (Claude
+    /// Code 2.1.292, read from its binary as bytes: r39 S2, skeptic 2), so
+    /// the button could only end in "same version". Produced by
+    /// `StandaloneAdapter::check_updates` (`adapters/standalone/mod.rs`)
+    /// from `latest::claude_updates_refused`, the same file the check reads
+    /// for the channel; Banager reads no other place the switch can be set.
+    /// No late twin in `plan`: a switch turned on after the check makes
+    /// the update end unchanged (`UnchangedAfterUpgrade`). Read by the gate
+    /// (`blocked_upgrade`), by `updateStateOf` (no button, no checkbox) and
+    /// by `UPDATE_BLOCKED_KEYS.UpdatesTurnedOff` in src/lib/sources.ts.
+    UpdatesTurnedOff,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -2551,6 +2565,17 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<UpdateBlocked>(r#""UpdatesWithFormula""#).unwrap(),
             UpdateBlocked::UpdatesWithFormula
+        );
+        // Claude Code whose own settings turn every update off
+        // (`StandaloneAdapter::check_updates`), read by
+        // `UPDATE_BLOCKED_KEYS.UpdatesTurnedOff`.
+        assert_eq!(
+            serde_json::to_string(&UpdateBlocked::UpdatesTurnedOff).unwrap(),
+            r#""UpdatesTurnedOff""#
+        );
+        assert_eq!(
+            serde_json::from_str::<UpdateBlocked>(r#""UpdatesTurnedOff""#).unwrap(),
+            UpdateBlocked::UpdatesTurnedOff
         );
     }
 

@@ -751,9 +751,12 @@ impl StandaloneAdapter {
     ///
     /// A recipe with no `upgrade` (agy) gets its candidate with
     /// `UpdateBlocked::SelfUpdatesOnly`: no button, a badge, and a sentence
-    /// saying to open the tool. A `Latest::Command` recipe (grok) is asked
-    /// itself and believed: `updateAvailable` decides, and `latestVersion`
-    /// is shown as printed (`Published::ToolSays`).
+    /// saying to open the tool. Claude Code's, when its own settings turn
+    /// every update off (`DISABLE_UPDATES`, which its `claude update`
+    /// obeys too), gets `UpdateBlocked::UpdatesTurnedOff`: no button
+    /// either (`claude_updates_refused`). A `Latest::Command` recipe
+    /// (grok) is asked itself and believed: `updateAvailable` decides, and
+    /// `latestVersion` is shown as printed (`Published::ToolSays`).
     pub async fn check_updates(
         &self,
         inst: &ManagerInstance,
@@ -821,11 +824,15 @@ impl StandaloneAdapter {
                 warnings: Vec::new(),
                 // A tool with no update command Banager may run: the newer
                 // version is real and has no button (spec §4.4, D5 item 4).
-                blocked: self
-                    .recipe
-                    .upgrade
-                    .is_none()
-                    .then_some(UpdateBlocked::SelfUpdatesOnly),
+                // Nor has Claude Code's when its own settings turn every
+                // update off: its `claude update` would refuse too.
+                blocked: if self.recipe.upgrade.is_none() {
+                    Some(UpdateBlocked::SelfUpdatesOnly)
+                } else if self.claude_updates_refused() {
+                    Some(UpdateBlocked::UpdatesTurnedOff)
+                } else {
+                    None
+                },
                 download_bytes: None,
             }],
         }
@@ -1136,6 +1143,30 @@ impl StandaloneAdapter {
             .as_ref()
             .map(|seat| seat.home.clone());
         home.and_then(|home| latest::claude_updater_off(&home))
+            .unwrap_or(false)
+    }
+
+    /// Whether `~/.claude/settings.json`, under the home the last `detect`
+    /// was given, turns every update of Claude Code off, `claude update`
+    /// included (`latest::claude_updates_refused`), for `check_updates`
+    /// (`UpdateBlocked::UpdatesTurnedOff`). Only for the recipe whose
+    /// updates those settings govern
+    /// (`SelfUpdates::UnlessOffInClaudeSettings`, Claude Code's): `false`,
+    /// with nothing read, for every other. `false`, Claude Code's default,
+    /// when the file is in or through a protected place -- where the
+    /// check never gets this far: which channel it names is not known
+    /// either -- and before any detect.
+    fn claude_updates_refused(&self) -> bool {
+        if self.recipe.self_updates != SelfUpdates::UnlessOffInClaudeSettings {
+            return false;
+        }
+        let home = self
+            .detected
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|seat| seat.home.clone());
+        home.and_then(|home| latest::claude_updates_refused(&home))
             .unwrap_or(false)
     }
 
@@ -2738,19 +2769,30 @@ mod tests {
         // r39 S2: with Claude Code's own updater turned off in
         // `~/.claude/settings.json`, it never installs a new version by
         // itself, so its row must not say it does (`auto_updates`, the
-        // Updates page's 「会自行更新」). The update is listed all the same,
-        // a plain row with its button. No file, or one that leaves the
-        // updater on, is Claude Code's default.
-        for (settings, updates_itself) in [
-            (None, true),
-            (Some(r#"{"autoUpdatesChannel":"latest"}"#), true),
-            (Some(r#"{"env":{"DISABLE_AUTOUPDATER":"0"}}"#), true),
-            (Some("{ not json"), true),
-            (Some(r#"{"env":{"DISABLE_AUTOUPDATER":"1"}}"#), false),
-            (Some(r#"{"env":{"DISABLE_UPDATES":"true"}}"#), false),
+        // Updates page's 「会自行更新」). The update is listed all the same:
+        // a plain row with its button when only the background updater is
+        // off, since `claude update` still installs; with no button when
+        // `DISABLE_UPDATES` turns every update off, since `claude update`
+        // then refuses and installs nothing (skeptic 2). No file, or one
+        // that leaves the updater on, is Claude Code's default.
+        let off = Some(UpdateBlocked::UpdatesTurnedOff);
+        for (settings, updates_itself, blocked) in [
+            (None, true, None),
+            (Some(r#"{"autoUpdatesChannel":"latest"}"#), true, None),
+            (Some(r#"{"env":{"DISABLE_AUTOUPDATER":"0"}}"#), true, None),
+            (Some(r#"{"env":{"DISABLE_UPDATES":"0"}}"#), true, None),
+            (Some("{ not json"), true, None),
+            (Some(r#"{"env":{"DISABLE_AUTOUPDATER":"1"}}"#), false, None),
+            (Some(r#"{"env":{"DISABLE_UPDATES":"true"}}"#), false, off),
+            (
+                Some(r#"{"env":{"DISABLE_AUTOUPDATER":"1","DISABLE_UPDATES":"1"}}"#),
+                false,
+                off,
+            ),
             (
                 Some(r#"{"env":{"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC":"1"}}"#),
                 false,
+                None,
             ),
         ] {
             let home = TempHome::new("inventory-updater-off");
@@ -2786,7 +2828,7 @@ mod tests {
             let c = &out.candidates[0];
             assert!(c.checkable, "{settings:?}");
             assert_eq!(c.target, "2.1.290", "{settings:?}");
-            assert_eq!(c.blocked, None, "{settings:?}");
+            assert_eq!(c.blocked, blocked, "{settings:?}");
             assert_eq!(http.calls(), vec![LATEST_URL.to_string()], "{settings:?}");
         }
     }
@@ -2797,47 +2839,58 @@ mod tests {
         // settings turning the updater off: not read there, so the row
         // keeps what a fresh install does -- and the check, which reads
         // the same file, lists it as one it could not check, a row that
-        // never says it updates itself. Kept anywhere else, it is read.
-        for keep in [
-            "claude-settings",
-            "Documents/claude-settings",
-            "Library/Mobile Documents/com~apple~CloudDocs/claude-settings",
+        // never says it updates itself and is not held back either. Kept
+        // anywhere else, it is read.
+        for (json, blocked_when_read) in [
+            (r#"{"env":{"DISABLE_AUTOUPDATER":"1"}}"#, None),
+            (
+                r#"{"env":{"DISABLE_UPDATES":"1"}}"#,
+                Some(UpdateBlocked::UpdatesTurnedOff),
+            ),
         ] {
-            let home = TempHome::new("inventory-updater-off-protected");
-            let layout = claude_layout(&home, "2.1.281");
-            let settings = home.dir(keep);
-            std::fs::write(
-                settings.join("settings.json"),
-                r#"{"env":{"DISABLE_AUTOUPDATER":"1"}}"#,
-            )
-            .expect("write settings");
-            home.link(".claude", &settings);
-            let http = Arc::new(MockHttpClient::new());
-            http.respond(LATEST_URL, answer("2.1.290"));
-            let runner = Arc::new(MockRunner::new());
-            runner.respond(
-                vec![layout.launcher.to_str().unwrap(), "--version"],
-                exited_0("2.1.281 (Claude Code)\n"),
-            );
-            let adapter =
-                StandaloneAdapter::new(&CLAUDE, runner, http.clone(), Arc::new(MockTrasher::new()));
-            let inst = adapter
-                .detect(&home.env(vec![home.path().join(".local/bin")]))
-                .await
-                .remove(0);
+            for keep in [
+                "claude-settings",
+                "Documents/claude-settings",
+                "Library/Mobile Documents/com~apple~CloudDocs/claude-settings",
+            ] {
+                let home = TempHome::new("inventory-updater-off-protected");
+                let layout = claude_layout(&home, "2.1.281");
+                let settings = home.dir(keep);
+                std::fs::write(settings.join("settings.json"), json).expect("write settings");
+                home.link(".claude", &settings);
+                let http = Arc::new(MockHttpClient::new());
+                http.respond(LATEST_URL, answer("2.1.290"));
+                let runner = Arc::new(MockRunner::new());
+                runner.respond(
+                    vec![layout.launcher.to_str().unwrap(), "--version"],
+                    exited_0("2.1.281 (Claude Code)\n"),
+                );
+                let adapter = StandaloneAdapter::new(
+                    &CLAUDE,
+                    runner,
+                    http.clone(),
+                    Arc::new(MockTrasher::new()),
+                );
+                let inst = adapter
+                    .detect(&home.env(vec![home.path().join(".local/bin")]))
+                    .await
+                    .remove(0);
 
-            let artifacts = adapter.inventory(&inst).await.expect("inventory");
-            let out = adapter
-                .check_updates(&inst, &CheckOptions::default())
-                .await
-                .expect("check_updates");
-            if keep == "claude-settings" {
-                assert!(!artifacts[0].auto_updates, "{keep}");
-                assert!(out.candidates[0].checkable, "{keep}");
-            } else {
-                assert!(artifacts[0].auto_updates, "{keep}");
-                assert!(!out.candidates[0].checkable, "{keep}");
-                assert!(http.calls().is_empty(), "{keep}: {:?}", http.calls());
+                let artifacts = adapter.inventory(&inst).await.expect("inventory");
+                let out = adapter
+                    .check_updates(&inst, &CheckOptions::default())
+                    .await
+                    .expect("check_updates");
+                if keep == "claude-settings" {
+                    assert!(!artifacts[0].auto_updates, "{keep}");
+                    assert!(out.candidates[0].checkable, "{keep}");
+                    assert_eq!(out.candidates[0].blocked, blocked_when_read, "{keep}");
+                } else {
+                    assert!(artifacts[0].auto_updates, "{keep}");
+                    assert!(!out.candidates[0].checkable, "{keep}");
+                    assert_eq!(out.candidates[0].blocked, None, "{keep}");
+                    assert!(http.calls().is_empty(), "{keep}: {:?}", http.calls());
+                }
             }
         }
     }

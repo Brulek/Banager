@@ -538,9 +538,17 @@ export type Warning =
  * by npm's `check_updates` for npm's own package where the `npm` in its
  * prefix is a Homebrew formula's link (`node@22` linked by hand): updating
  * it through npm would take that link away, and the formula's next update
- * could not link.
+ * could not link. `UpdatesTurnedOff` by the standalone adapter's
+ * `check_updates` for Claude Code whose own `~/.claude/settings.json` sets
+ * `DISABLE_UPDATES`, under which its `claude update` refuses too.
  */
-export type UpdateBlocked = "Pinned" | "SelfUpdatesOnly" | "Disabled" | "LinkTaken" | "UpdatesWithFormula";
+export type UpdateBlocked =
+  | "Pinned"
+  | "SelfUpdatesOnly"
+  | "Disabled"
+  | "LinkTaken"
+  | "UpdatesWithFormula"
+  | "UpdatesTurnedOff";
 export interface UpdateCandidate {
   key: ArtifactKey;
   current: string;

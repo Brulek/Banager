@@ -90,30 +90,29 @@ pub fn claude_channel_from_json(json: &str) -> &'static str {
 /// these; Claude Code 2.1.292, read from its binary as bytes, never run).
 const CLAUDE_YES: &[&str] = &["1", "true", "yes", "on"];
 
-/// Whether `~/.claude/settings.json`'s text turns Claude Code's own
-/// background updater off, by the switches Claude Code itself checks
-/// before it updates (2.1.292, read from its binary as bytes: r39 S2):
-/// its `env` -- which Claude Code copies into its environment when it
-/// starts, each value as text, so `1` and `true` are `"1"` and `"true"` --
-/// sets `DISABLE_UPDATES` or `DISABLE_AUTOUPDATER` to one of `CLAUDE_YES`,
-/// or sets `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` to anything but
-/// empty text, which Claude Code also takes as off. `false` for anything
-/// else -- no `env`, another value, an array or object as a value, JSON
-/// that does not parse: the updater is on by default. Claude Code's one
-/// other such check, the older `autoUpdates: false` in `~/.claude.json`,
-/// is in a file Banager does not open; Claude Code moves it into this
-/// file's `env` as `DISABLE_AUTOUPDATER: "1"`.
-pub fn claude_updater_off_from_json(json: &str) -> bool {
-    use serde_json::Value;
-    let Ok(Value::Object(settings)) = serde_json::from_str::<Value>(json) else {
-        return false;
-    };
-    let Some(Value::Object(env)) = settings.get("env") else {
-        return false;
-    };
-    // A value as Claude Code's environment holds it: JSON's `String()`.
-    let text = |key: &str| -> Option<String> {
-        match env.get(key)? {
+/// The `env` object of `~/.claude/settings.json`'s text, which Claude Code
+/// copies into its environment when it starts, each value as text.
+/// `None` when there is no `env` object or the JSON does not parse.
+struct ClaudeEnv(serde_json::Map<String, serde_json::Value>);
+
+impl ClaudeEnv {
+    fn from_json(json: &str) -> Option<Self> {
+        use serde_json::Value;
+        let Ok(Value::Object(mut settings)) = serde_json::from_str::<Value>(json) else {
+            return None;
+        };
+        match settings.remove("env")? {
+            Value::Object(env) => Some(Self(env)),
+            _ => None,
+        }
+    }
+
+    /// A value as Claude Code's environment holds it: JSON's `String()`,
+    /// so `1` and `true` are `"1"` and `"true"`; an array or object is
+    /// none.
+    fn text(&self, key: &str) -> Option<String> {
+        use serde_json::Value;
+        match self.0.get(key)? {
             Value::String(text) => Some(text.clone()),
             Value::Bool(yes) => Some(yes.to_string()),
             Value::Number(n) if n.as_f64() == Some(1.0) => Some("1".to_string()),
@@ -121,13 +120,49 @@ pub fn claude_updater_off_from_json(json: &str) -> bool {
             Value::Null => Some("null".to_string()),
             Value::Array(_) | Value::Object(_) => None,
         }
+    }
+
+    /// Whether `key` is one of `CLAUDE_YES`.
+    fn says_yes(&self, key: &str) -> bool {
+        self.text(key)
+            .is_some_and(|text| CLAUDE_YES.contains(&text.trim().to_lowercase().as_str()))
+    }
+}
+
+/// Whether `~/.claude/settings.json`'s text turns Claude Code's own
+/// background updater off, by the switches Claude Code itself checks
+/// before it updates (2.1.292, read from its binary as bytes: r39 S2):
+/// its `env` (`ClaudeEnv`) sets `DISABLE_UPDATES` or `DISABLE_AUTOUPDATER`
+/// to one of `CLAUDE_YES`, or sets
+/// `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` to anything but empty text,
+/// which Claude Code also takes as off. `false` for anything else -- no
+/// `env`, another value, an array or object as a value, JSON that does
+/// not parse: the updater is on by default. Claude Code's one other such
+/// check, the older `autoUpdates: false` in `~/.claude.json`, is in a
+/// file Banager does not open; Claude Code moves it into this file's
+/// `env` as `DISABLE_AUTOUPDATER: "1"`.
+pub fn claude_updater_off_from_json(json: &str) -> bool {
+    let Some(env) = ClaudeEnv::from_json(json) else {
+        return false;
     };
-    let says_yes = |key: &str| {
-        text(key).is_some_and(|text| CLAUDE_YES.contains(&text.trim().to_lowercase().as_str()))
-    };
-    says_yes("DISABLE_UPDATES")
-        || says_yes("DISABLE_AUTOUPDATER")
-        || text("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC").is_some_and(|text| !text.is_empty())
+    env.says_yes("DISABLE_UPDATES")
+        || env.says_yes("DISABLE_AUTOUPDATER")
+        || env
+            .text("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC")
+            .is_some_and(|text| !text.is_empty())
+}
+
+/// Whether `~/.claude/settings.json`'s text turns off every update of
+/// Claude Code, not only the background one: its `env` sets
+/// `DISABLE_UPDATES` to one of `CLAUDE_YES`. `claude update`, the command
+/// Banager's Update runs, checks that before anything else, and then
+/// prints that updates are disabled by an administrator and exits 0
+/// having installed nothing (2.1.292, read from its binary as bytes: r39
+/// S2, skeptic 2). The other two switches `claude_updater_off_from_json`
+/// reads stop only the background updater, and `claude update` still
+/// installs. `false` for anything else, as there.
+pub fn claude_updates_refused_from_json(json: &str) -> bool {
+    ClaudeEnv::from_json(json).is_some_and(|env| env.says_yes("DISABLE_UPDATES"))
 }
 
 /// `<home>/.claude/settings.json`'s text, the one file Banager reads for
@@ -166,6 +201,16 @@ pub fn claude_channel(home: &Path) -> Option<&'static str> {
 /// (`StandaloneAdapter::rows`, `SelfUpdates::UnlessOffInClaudeSettings`).
 pub fn claude_updater_off(home: &Path) -> Option<bool> {
     claude_settings(home).map(|json| json.is_some_and(|json| claude_updater_off_from_json(&json)))
+}
+
+/// `claude_updates_refused_from_json` over `claude_settings`: `false` when
+/// the file cannot be read -- Claude Code's own default, updates on;
+/// `None` when it is in a protected place, where whether it turns them off
+/// is not known. Read by the update check (`StandaloneAdapter::check_updates`,
+/// `UpdateBlocked::UpdatesTurnedOff`).
+pub fn claude_updates_refused(home: &Path) -> Option<bool> {
+    claude_settings(home)
+        .map(|json| json.is_some_and(|json| claude_updates_refused_from_json(&json)))
 }
 
 /// The version a channel pointer answered with, trimmed; `Err` with a
@@ -640,6 +685,94 @@ mod tests {
             r#"{"env":{"FORCE_AUTOUPDATE_PLUGINS":"1"}}"#,
         ] {
             assert!(!claude_updater_off_from_json(json), "{json}");
+        }
+    }
+
+    #[test]
+    fn test_claude_updates_refused_from_json_reads_disable_updates_alone() {
+        // r39 S2, skeptic 2: `DISABLE_UPDATES` is the one switch that
+        // `claude update` obeys too (it prints that updates are disabled
+        // and exits 0 having installed nothing; Claude Code 2.1.292, read
+        // from its binary as bytes). The other two stop only the
+        // background updater, and `claude update` still installs.
+        for (json, refused) in [
+            (r#"{"env":{"DISABLE_UPDATES":"1"}}"#, true),
+            (r#"{"env":{"DISABLE_UPDATES":"true"}}"#, true),
+            (r#"{"env":{"DISABLE_UPDATES":" Yes "}}"#, true),
+            (r#"{"env":{"DISABLE_UPDATES":"ON"}}"#, true),
+            (r#"{"env":{"DISABLE_UPDATES":1}}"#, true),
+            (r#"{"env":{"DISABLE_UPDATES":true}}"#, true),
+            (
+                r#"{"autoUpdatesChannel":"stable","env":{"FOO":"bar","DISABLE_UPDATES":"1"}}"#,
+                true,
+            ),
+            (r#"{"env":{"DISABLE_UPDATES":"0"}}"#, false),
+            (r#"{"env":{"DISABLE_UPDATES":"off"}}"#, false),
+            (r#"{"env":{"DISABLE_UPDATES":""}}"#, false),
+            (r#"{"env":{"DISABLE_UPDATES":false}}"#, false),
+            (r#"{"env":{"DISABLE_UPDATES":null}}"#, false),
+            (r#"{"env":{"DISABLE_UPDATES":["1"]}}"#, false),
+            (r#"{"env":{"disable_updates":"1"}}"#, false),
+            (r#"{"DISABLE_UPDATES":"1"}"#, false),
+            (r#"{"env":{"DISABLE_AUTOUPDATER":"1"}}"#, false),
+            (
+                r#"{"env":{"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC":"1"}}"#,
+                false,
+            ),
+            (r#"{}"#, false),
+            ("{ not json", false),
+            ("", false),
+        ] {
+            assert_eq!(claude_updates_refused_from_json(json), refused, "{json}");
+            if refused {
+                // Every update off is the background updater off too.
+                assert!(claude_updater_off_from_json(json), "{json}");
+            }
+        }
+    }
+
+    #[test]
+    fn test_claude_updates_refused_reads_the_same_file_and_never_a_protected_one() {
+        let home = crate::testing::unique_temp_path("standalone-updates-refused");
+        std::fs::create_dir_all(home.join(".claude")).expect("create .claude");
+        assert_eq!(
+            claude_updates_refused(&home),
+            Some(false),
+            "no settings.json yet: Claude Code's default, updates on"
+        );
+        std::fs::write(
+            home.join(".claude/settings.json"),
+            r#"{"env":{"DISABLE_UPDATES":"1"}}"#,
+        )
+        .expect("write settings.json");
+        assert_eq!(claude_updates_refused(&home), Some(true));
+        std::fs::write(
+            home.join(".claude/settings.json"),
+            r#"{"env":{"DISABLE_AUTOUPDATER":"1"}}"#,
+        )
+        .expect("write settings.json");
+        assert_eq!(claude_updates_refused(&home), Some(false));
+        let _ = std::fs::remove_dir_all(&home);
+
+        for (keep, expected) in [
+            ("claude-settings", Some(true)),
+            ("Documents/claude-settings", None),
+            (
+                "Library/Mobile Documents/com~apple~CloudDocs/claude-settings",
+                None,
+            ),
+        ] {
+            let raw = crate::testing::unique_temp_path("standalone-updates-refused-kept");
+            std::fs::create_dir_all(raw.join(keep)).expect("create the kept folder");
+            let home = std::fs::canonicalize(&raw).unwrap();
+            std::fs::write(
+                home.join(keep).join("settings.json"),
+                r#"{"env":{"DISABLE_UPDATES":"1"}}"#,
+            )
+            .expect("write settings.json");
+            std::os::unix::fs::symlink(home.join(keep), home.join(".claude")).unwrap();
+            assert_eq!(claude_updates_refused(&home), expected, "{keep}");
+            let _ = std::fs::remove_dir_all(&home);
         }
     }
 
