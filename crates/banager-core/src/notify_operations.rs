@@ -822,4 +822,16 @@ mod tests {
         );
         assert!(reported.has(&three_updated()));
     }
+
+    #[test]
+    fn test_one_id_found_twice_does_not_stand_for_another_missing() {
+        // Operation 1 both kept and evicted, operation 2 in neither: two
+        // records, two IDs asked about, and still nothing proves 2 ended.
+        let reported = ReportedRuns::default();
+        let mut known = records(&[summary(1, OpKind::Upgrade, Some(Outcome::Succeeded))]);
+        known
+            .evicted
+            .insert(1, evicted(OpKind::Upgrade, Ended::Succeeded));
+        assert!(reported.accepted(2, &known).is_none());
+    }
 }
