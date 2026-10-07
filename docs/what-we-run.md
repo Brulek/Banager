@@ -1375,7 +1375,7 @@ cleans up, or may, and the preview had no line saying it would or might;
 that clean-up autoremoves, or may, and the preview had no line for that;
 or a formula the preview said `HOMEBREW_NO_CLEANUP_FORMULAE` leaves out
 is no longer left out -- nothing runs, and the operation ends as
-「未能开始：确认窗口打开后，Homebrew的设置或卸载内容有了变化，或无法读取」, asking
+「未能开始：确认窗口打开后，Homebrew要删除的内容有了变化，或无法读取」, asking
 for the confirmation to be opened again (`Fault::HomebrewSettingsChanged`).
 Less than the preview said, or "will" where it said "may", or the
 reverse, runs.

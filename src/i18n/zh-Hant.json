@@ -934,7 +934,7 @@
         "PathChangedDetail": "如有已移到垃圾桶的項目，記錄中都已列出。請重新開啟確認視窗。",
         "FormulaChanged": "未能開始：確認視窗開啟後，Homebrew裡的{{name}}有了變化",
         "FormulaChangedDetail": "沒有改動。請重新開啟確認視窗，查看會刪除哪些版本。",
-        "HomebrewSettingsChanged": "未能開始：確認視窗開啟後，Homebrew的設定或解除安裝內容有了變化，或無法讀取",
+        "HomebrewSettingsChanged": "未能開始：確認視窗開啟後，Homebrew要刪除的內容有了變化，或無法讀取",
         "HomebrewSettingsChangedDetail": "沒有執行Homebrew。請重新開啟確認視窗，查看它現在會刪除什麼。",
         "LinkTaken": "未能開始：{{path}}已被另一個程式佔用",
         "LinkTakenMany": "未能開始：{{path}}等{{number}}個檔案已被另一個程式佔用",

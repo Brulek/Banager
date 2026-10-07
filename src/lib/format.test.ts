@@ -341,8 +341,11 @@ describe("outcomeKey for Banager's own failures", () => {
     );
     // Review of v1-brew's fixes (r6): an install or update found Homebrew
     // would now delete more after it than its preview said, and ran
-    // nothing. A bare string; it says what did not run, and asks for a new
-    // look.
+    // nothing; a cask's uninstall (f30a) ends the same way when what it
+    // would remove changed. A bare string naming what the two have in
+    // common, what Homebrew would delete -- never an uninstall, which an
+    // update refused this way is not (r21 C1) -- then what did not run,
+    // and a new look.
     expect(outcomeKey({ BanagerFailed: "HomebrewSettingsChanged" })).toBe(
       "BanagerFailed.HomebrewSettingsChanged",
     );
@@ -351,19 +354,19 @@ describe("outcomeKey for Banager's own failures", () => {
       "operations.outcome.BanagerFailed.HomebrewSettingsChangedDetail",
     );
     expect(en.operations.outcome.BanagerFailed.HomebrewSettingsChanged).toBe(
-      "Couldn't start: Homebrew's settings or uninstall details changed after the confirmation opened, or couldn't be read",
+      "Couldn't start: what Homebrew would delete changed after the confirmation opened, or couldn't be read",
     );
     expect(en.operations.outcome.BanagerFailed.HomebrewSettingsChangedDetail).toBe(
       "Homebrew wasn't run. Open the confirmation again to see what it deletes now.",
     );
     expect(zhCN.operations.outcome.BanagerFailed.HomebrewSettingsChanged).toBe(
-      "未能开始：确认窗口打开后，Homebrew的设置或卸载内容有了变化，或无法读取",
+      "未能开始：确认窗口打开后，Homebrew要删除的内容有了变化，或无法读取",
     );
     expect(zhCN.operations.outcome.BanagerFailed.HomebrewSettingsChangedDetail).toBe(
       "没有运行Homebrew。请重新打开确认窗口，查看它现在会删除什么。",
     );
     expect(zhHant.operations.outcome.BanagerFailed.HomebrewSettingsChanged).toBe(
-      "未能開始：確認視窗開啟後，Homebrew的設定或解除安裝內容有了變化，或無法讀取",
+      "未能開始：確認視窗開啟後，Homebrew要刪除的內容有了變化，或無法讀取",
     );
     expect(zhHant.operations.outcome.BanagerFailed.HomebrewSettingsChangedDetail).toBe(
       "沒有執行Homebrew。請重新開啟確認視窗，查看它現在會刪除什麼。",
