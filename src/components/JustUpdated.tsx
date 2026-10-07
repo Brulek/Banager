@@ -1,7 +1,14 @@
 import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { artifactKeyId } from "../store/ui";
-import { FAILURE_CAUSE_KEYS, causeKeepsItsLine, failureDetail, outcomeCause, type FailureCause } from "../lib/failureCause";
+import {
+  FAILURE_CAUSE_KEYS,
+  causeKeepsItsLine,
+  failureDetail,
+  faultFailure,
+  outcomeCause,
+  type FailureCause,
+} from "../lib/failureCause";
 import { ALREADY_UPDATED_KEYS, outcomeSentence, outcomeTone } from "../lib/operations";
 import { calendarDaysBetween, shortDateText, shortTimeText } from "../lib/shortDate";
 import type { AlreadyUpdated, ArtifactKey, Attention, HistoryResult, OpSummary, Outcome } from "../lib/types";
@@ -45,6 +52,11 @@ export function endingOfOutcome(
     case "success":
       return succeeded(alreadyUpdated);
     case "failure": {
+      // Banager's own failure, as the history keeps it (`faultFailure`).
+      if (typeof outcome !== "string" && "BanagerFailed" in outcome) {
+        const { cause, detail } = faultFailure(outcome.BanagerFailed);
+        return detail === null ? { kind: "failed", cause } : { kind: "failed", cause, detail };
+      }
       // A tool's words no cause names, or a cause whose words point at
       // them (`causeKeepsItsLine`): its first error line, as the history
       // keeps it (`failureDetail`).

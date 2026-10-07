@@ -92,7 +92,6 @@ describe("endingOfOutcome and endingOfRecord", () => {
     });
     expect(endingOfOutcome({ Failed: { exit_code: 1, summary: "Error: no bottle", cause: failureCause("Error: no bottle") } })).toEqual({ kind: "failed", cause: null, detail: "no bottle" });
     expect(endingOfOutcome({ Failed: { exit_code: 1, summary: " ", cause: null } })).toEqual({ kind: "failed", cause: null });
-    expect(endingOfOutcome({ BanagerFailed: "Panicked" })).toEqual({ kind: "failed", cause: null });
     expect(endingOfOutcome("Unconfirmed")).toEqual({ kind: "attention", outcome: "Unconfirmed" });
     expect(endingOfOutcome({ NeedsAttention: "UnchangedAfterUpgrade" })).toEqual({
       kind: "attention",
@@ -150,6 +149,39 @@ describe("a cause whose words point at the tool's (review of r6 y3-batch, findin
     expect(
       endingOfOutcome({ Failed: { exit_code: 1, summary: 'Error: Failed to download resource "jq"', cause: "network" } }),
     ).toEqual({ kind: "failed", cause: "network" });
+  });
+});
+
+describe("Banager's own failures (review of r6 y3-batch, finding 6)", () => {
+  it("end as the history keeps them, so a line reads the same before a restart and after it", () => {
+    expect(endingOfOutcome({ BanagerFailed: "Panicked" })).toEqual({ kind: "failed", cause: "internal" });
+    expect(endingOfOutcome({ BanagerFailed: "Internal" })).toEqual({ kind: "failed", cause: "internal" });
+    expect(endingOfOutcome({ BanagerFailed: "HomebrewSettingsChanged" })).toEqual({ kind: "failed", cause: "changed" });
+    expect(endingOfOutcome({ BanagerFailed: { PathChanged: { path: "~/.local/bin/claude" } } })).toEqual({
+      kind: "failed",
+      cause: "changed",
+    });
+    expect(endingOfOutcome({ BanagerFailed: { FormulaChanged: { name: "node" } } })).toEqual({
+      kind: "failed",
+      cause: "changed",
+    });
+    expect(endingOfOutcome({ BanagerFailed: { ProgramMissing: { program: "/opt/homebrew/bin/npm" } } })).toEqual({
+      kind: "failed",
+      cause: "notFound",
+    });
+    expect(endingOfOutcome({ BanagerFailed: { HomebrewStillUpdating: { minutes: 10 } } })).toEqual({
+      kind: "failed",
+      cause: "homebrewUpdating",
+    });
+    expect(endingOfOutcome({ BanagerFailed: { SpawnFailed: { detail: "Permission denied (os error 13)" } } })).toEqual({
+      kind: "failed",
+      cause: "permission",
+    });
+    expect(endingOfOutcome({ BanagerFailed: { SpawnFailed: { detail: "Exec format error (os error 8)" } } })).toEqual({
+      kind: "failed",
+      cause: null,
+      detail: "Exec format error (os error 8)",
+    });
   });
 });
 
@@ -401,6 +433,21 @@ describe("JustUpdated", () => {
     const text = why(within(missing).getByText("Couldn't update: Something it needs is missing"));
     expect(text).toBe("Something it needs is missing. The error says what. The error: env: node: No such file or directory");
     expect(text).not.toMatch(/log/i);
+  });
+
+  it("says Banager's own failure as the history will after a restart: 未能更新：确认后有了变化", async () => {
+    await i18n.changeLanguage("zh-CN");
+    try {
+      const ending = endingOfOutcome({ BanagerFailed: { PathChanged: { path: "~/.local/bin/claude" } } });
+      expect(ending).not.toBeNull();
+      renderWithProviders(
+        <JustUpdated entries={[{ ...entry, id: "a", version: null, ending: ending! }]} onClear={() => {}} />,
+      );
+      const words = screen.getByText("未能更新：确认后有了变化");
+      expect(why(words)).toBe("确认后有了变化，请重新打开确认窗口后重试。");
+    } finally {
+      await i18n.changeLanguage("en");
+    }
   });
 
   it("says what did not add up, in plain words beside an orange sign, not the row's short 「结果不符」", () => {

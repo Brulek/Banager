@@ -15,14 +15,13 @@
 import type {
   AlreadyUpdated,
   ArtifactKey,
-  Fault,
   HistoryRecord,
   HistoryResult,
   HistoryView,
   OpRequest,
   Outcome,
 } from "../lib/types";
-import { causeKeepsItsLine, failureDetail, operationFailureCause, type FailureCause } from "../lib/failureCause";
+import { causeKeepsItsLine, failureDetail, faultFailure, type FailureCause } from "../lib/failureCause";
 import { IDS, key } from "./mockData";
 
 const MINUTE = 60 * 1000;
@@ -138,23 +137,13 @@ function keptFailure(cause: FailureCause | null, words: string): HistoryResult {
   return { Failed: detail === null ? { cause } : { cause, detail } };
 }
 
-/** `history::fault_result`: a cause for each of Banager's own failures. */
-function faultResult(fault: Fault): HistoryResult {
-  if (typeof fault === "string") {
-    return { Failed: { cause: fault === "HomebrewSettingsChanged" ? "changed" : "internal" } };
-  }
-  if ("HomebrewStillUpdating" in fault) return { Failed: { cause: "homebrewUpdating" } };
-  if ("ProgramMissing" in fault) return { Failed: { cause: "notFound" } };
-  if ("SpawnFailed" in fault) return keptFailure(operationFailureCause(fault.SpawnFailed.detail), fault.SpawnFailed.detail);
-  return { Failed: { cause: "changed" } };
-}
-
 /** `history::record_for`'s category for an outcome. */
 function resultOf(outcome: Outcome): HistoryResult {
   if (outcome === "Succeeded" || outcome === "Unconfirmed" || outcome === "Cancelled") return outcome;
   if ("NeedsAttention" in outcome) return { NeedsAttention: outcome.NeedsAttention };
   if ("Failed" in outcome) return keptFailure(outcome.Failed.cause, outcome.Failed.summary);
-  return faultResult(outcome.BanagerFailed);
+  const { cause, detail } = faultFailure(outcome.BanagerFailed);
+  return { Failed: detail === null ? { cause } : { cause, detail } };
 }
 
 /**

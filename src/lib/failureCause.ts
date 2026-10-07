@@ -21,7 +21,7 @@
  *
  * Pure, and free of `t`: `FAILURE_CAUSE_KEYS` gives the words.
  */
-import type { Outcome } from "./types";
+import type { Fault, Outcome } from "./types";
 
 /**
  * - `network`: the tool could not reach what it downloads from.
@@ -436,6 +436,29 @@ export function outcomeCause(outcome: Outcome | null): FailureCause | null {
     return typeof fault !== "string" && "HomebrewStillUpdating" in fault ? "homebrewUpdating" : null;
   }
   return null;
+}
+
+/**
+ * A failure of Banager's own as the history keeps it (Rust
+ * `history::fault_result`): a cause for each, and none of the paths or
+ * names a `Fault` carries. macOS's words for a program it would not start
+ * are read like a tool's (`operationFailureCause`), with the line kept
+ * where they name no cause or one that points at them. 「最近的更新记录」
+ * says an update this window ran with it, so a line reads the same before
+ * a restart and after it (review of r6 y3-batch, finding 6); a row and
+ * the operation bar keep Banager's own words for a fault (`outcomeCause`).
+ */
+export function faultFailure(fault: Fault): { cause: FailureCause | null; detail: string | null } {
+  if (fault === "Panicked" || fault === "Internal") return { cause: "internal", detail: null };
+  if (fault === "HomebrewSettingsChanged") return { cause: "changed", detail: null };
+  if ("HomebrewStillUpdating" in fault) return { cause: "homebrewUpdating", detail: null };
+  if ("ProgramMissing" in fault) return { cause: "notFound", detail: null };
+  if ("SpawnFailed" in fault) {
+    const cause = operationFailureCause(fault.SpawnFailed.detail);
+    const detail = cause === null || causeKeepsItsLine(cause) ? failureDetail(fault.SpawnFailed.detail) : null;
+    return { cause, detail };
+  }
+  return { cause: "changed", detail: null };
 }
 
 /**
