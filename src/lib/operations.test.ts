@@ -253,6 +253,7 @@ describe("operationWords", () => {
     "Unconfirmed",
     { NeedsAttention: "NotInstalledAfterInstall" },
     { NeedsAttention: "StillInstalledAfterUninstall" },
+    { NeedsAttention: "GoneBeforeUpgrade" },
     { NeedsAttention: "GoneAfterUpgrade" },
     { NeedsAttention: "UnchangedAfterUpgrade" },
     { NeedsAttention: "BackAfterUninstall" },

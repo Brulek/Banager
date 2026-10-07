@@ -508,16 +508,23 @@ impl Session {
         }
         let request = &stored.issued.plan.request;
         // A missing update candidate can mean another operation already
-        // updated the tool. Only the installed row decides absence. Failed
-        // or deferred reads do not establish it; the locked before-reading
-        // in OperationManager is still the final check.
+        // updated the tool, so a missing candidate alone refuses nothing.
+        // Absence is an installed row gone *and* no update still offered
+        // under the plan's key: the offer is what `issue_listed_plan`
+        // listed, and brew's candidate can keep the short name while its
+        // row has the tap's full one (`qualified_key` in
+        // adapters/brew/mod.rs, when its own `brew info` fails). Failed or
+        // deferred reads do not establish absence either; the locked
+        // before-reading in OperationManager is still the final check.
+        let names = |key: &crate::model::ArtifactKey| {
+            key.instance_id == request.instance_id
+                && key.kind == request.artifact_kind
+                && key.name == request.name
+        };
         if stored.listed_only
             && request.kind == OpKind::Upgrade
-            && !snapshot.artifacts.iter().any(|a| {
-                a.key.instance_id == request.instance_id
-                    && a.key.kind == request.artifact_kind
-                    && a.key.name == request.name
-            })
+            && !snapshot.artifacts.iter().any(|a| names(&a.key))
+            && !snapshot.updates.iter().any(|u| names(&u.key))
             && !snapshot
                 .errors
                 .iter()
@@ -832,6 +839,46 @@ mod tests {
                 assert_eq!(session.submit(issued.id), Err(SubmitError::Unknown));
             }
         }
+    }
+
+    /// An update the snapshot still offers is still installed, whatever
+    /// the installed row's spelling. Homebrew's check renames a tapped
+    /// candidate to its inventory's `full_name` only when its own `brew
+    /// info` answers (`qualified_key` in adapters/brew/mod.rs); when that
+    /// read fails, the candidate keeps the short name and the row keeps
+    /// the full one. Submitting such an update after an unrelated change
+    /// must not be refused as no longer listed.
+    #[tokio::test]
+    async fn test_listed_upgrade_submit_keeps_an_update_still_offered_under_another_spelling() {
+        let adapter = FakeAdapter::new(vec![test_support::make_instance("fake", "fake:1")]);
+        adapter.set_updates(vec![candidate("claudebar", None)]);
+        let tapped = installed_on(
+            "fake:1",
+            ArtifactKind::Formula,
+            "gautham-v/tap/claudebar",
+            None,
+        );
+        adapter.set_artifacts(vec![tapped.clone()]);
+        let session = Session::with_adapters(Arc::new(VecSink::new()), vec![adapter.clone()], None);
+        session
+            .refresh(&test_support::non_root_env(), &CheckOptions::default())
+            .await;
+        let issued = session
+            .issue_listed_plan(&request(OpKind::Upgrade, "claudebar"))
+            .await
+            .expect("the update is offered");
+        // Something unrelated changes, so the submit re-asks the gate.
+        adapter.set_artifacts(vec![
+            tapped,
+            installed_on("fake:1", ArtifactKind::Formula, "wget", None),
+        ]);
+        session
+            .refresh(&test_support::non_root_env(), &CheckOptions::default())
+            .await;
+        let op_id = session
+            .submit(issued.id)
+            .expect("an update still offered is still installed");
+        session.ops.wait(op_id).await;
     }
 
     #[tokio::test]

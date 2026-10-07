@@ -951,7 +951,7 @@
       "NeedsAttention": {
         "NotInstalledAfterInstall": "Reported installed, but it isn't there",
         "StillInstalledAfterUninstall": "Reported removed, but it's still there",
-        "GoneBeforeUpgrade": "No longer installed. Update didn't start.",
+        "GoneBeforeUpgrade": "Update didn't start: it's no longer installed",
         "GoneAfterUpgrade": "Update reported success, but it's gone",
         "UnchangedAfterUpgrade": "Update reported success, but the version didn't change",
         "UnchangedAfterUpgradeDetail": "The operation log shows what it printed.",

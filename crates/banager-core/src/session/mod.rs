@@ -290,7 +290,10 @@ pub enum SubmitError {
     /// reason to give because there is no instance left to ask.
     #[error("the source this was prepared for is no longer there")]
     SourceGone,
-    /// A listed upgrade's installed tool is absent from the current snapshot.
+    /// A listed upgrade whose tool a refresh since its preview read without
+    /// failing found neither installed nor offered an update
+    /// (`recheck_actionable` in session/plans.rs). Sent as `not_listed`,
+    /// as `AdapterError::NotListed` is.
     #[error("the tool is no longer listed as installed")]
     NotListed,
     /// A link whose preview found files in the way

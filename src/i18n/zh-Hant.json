@@ -880,7 +880,7 @@
       "NeedsAttention": {
         "NotInstalledAfterInstall": "顯示已安裝，但找不到它",
         "StillInstalledAfterUninstall": "顯示已解除安裝，但它仍然存在",
-        "GoneBeforeUpgrade": "已不在已安裝清單中，未開始更新。",
+        "GoneBeforeUpgrade": "未開始更新：已找不到它",
         "GoneAfterUpgrade": "顯示已更新，但它不見了",
         "UnchangedAfterUpgrade": "顯示已更新，但版本沒有變化",
         "UnchangedAfterUpgradeDetail": "可以在操作記錄中查看它輸出了什麼。",

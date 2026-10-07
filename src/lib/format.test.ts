@@ -433,7 +433,7 @@ it("renders the pre-upgrade absence wire outcome in all three languages", () => 
   expect(JSON.parse(wire)).toEqual(outcome);
   expect(outcomeKey(outcome)).toBe("NeedsAttention.GoneBeforeUpgrade");
   expect(outcomeDetailKey(outcome)).toBeNull();
-  expect(en.operations.outcome.NeedsAttention.GoneBeforeUpgrade).toBe("No longer installed. Update didn't start.");
-  expect(zhCN.operations.outcome.NeedsAttention.GoneBeforeUpgrade).toBe("已不在已安装列表中，未开始更新。");
-  expect(zhHant.operations.outcome.NeedsAttention.GoneBeforeUpgrade).toBe("已不在已安裝清單中，未開始更新。");
+  expect(en.operations.outcome.NeedsAttention.GoneBeforeUpgrade).toBe("Update didn't start: it's no longer installed");
+  expect(zhCN.operations.outcome.NeedsAttention.GoneBeforeUpgrade).toBe("未开始更新：已找不到它");
+  expect(zhHant.operations.outcome.NeedsAttention.GoneBeforeUpgrade).toBe("未開始更新：已找不到它");
 });

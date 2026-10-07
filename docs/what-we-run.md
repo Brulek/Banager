@@ -458,15 +458,18 @@ not only by the page. On confirmation
 locks, runs the command (or moves the listed paths to the
 Trash), and then re-reads the inventory to check what actually happened;
 an upgrade is also preceded by a reading,
-so the version before can be compared with the version after. If that
-locked reading confirms the tool is no longer installed, the update
-stops before executing anything (`GoneBeforeUpgrade`); a failed reading,
-including Homebrew's `IndexUpdating`, is not evidence of absence and keeps
-the existing after-reading behavior. Submitting a listed upgrade also
-refuses it as `not_listed` when a changed snapshot has no installed row
-for that source, kind and name and no failed or deferred source reading.
-An update candidate disappearing alone does not refuse an already updated
-tool that remains installed. Operations
+so the version before can be compared with the version after. That
+reading is taken holding the locks, and when it finds the tool no longer
+installed the update stops there and nothing runs (`GoneBeforeUpgrade`):
+an npm, Cargo or Ollama update of a name that is not installed would
+install it. A reading that fails, as Homebrew's does while `brew update`
+is still running (`IndexUpdating`), is not taken as absence: the update
+runs, and the reading after it decides as before. Submitting an update
+also refuses it (`not_listed`) when a refresh since its preview read its
+source without failing or deferring and found the tool neither installed
+nor offered an update under the same source, kind and name; an update no
+longer offered because an earlier one already did it still starts while
+the tool is installed. Operations
 that need the same lock start in the order they were confirmed: one waits
 while an earlier one that needs any of its locks is still waiting
 (`run_operation`'s queue in `crates/banager-core/src/ops/mod.rs`). An install
