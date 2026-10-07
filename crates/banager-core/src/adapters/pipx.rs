@@ -438,19 +438,21 @@ impl PipxAdapter {
         pinned: &HashSet<String>,
     ) -> Vec<UpdateCandidate> {
         let mut out = Vec::new();
-        for artifact in installed {
-            match self
-                .latest_pypi_version(&artifact.display_name)
-                .await
-                .and_then(|latest| {
-                    super::python_version::strictly_newer(&latest, &artifact.version)
-                        .map(|newer| (latest, newer))
-                        .ok_or_else(|| {
-                            LookupFailure::from(
-                                "could not compare Python package versions".to_string(),
-                            )
-                        })
-                }) {
+        let answers = super::registry_checks(
+            installed
+                .iter()
+                .map(|artifact| self.latest_pypi_version(&artifact.display_name))
+                .collect(),
+        )
+        .await;
+        for (artifact, answer) in installed.iter().zip(answers) {
+            match answer.and_then(|latest| {
+                super::python_version::strictly_newer(&latest, &artifact.version)
+                    .map(|newer| (latest, newer))
+                    .ok_or_else(|| {
+                        LookupFailure::from("could not compare Python package versions".to_string())
+                    })
+            }) {
                 Ok((latest, true)) => out.push(UpdateCandidate {
                     key: artifact.key.clone(),
                     current: artifact.version.clone(),
@@ -654,6 +656,74 @@ impl Adapter for PipxAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn test_pypi_lookups_overlap_four_at_a_time_and_share_the_host_limit() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        struct DelayedRegistry {
+            active: AtomicUsize,
+            peak: AtomicUsize,
+        }
+        #[async_trait]
+        impl crate::http::HttpClient for DelayedRegistry {
+            async fn send(
+                &self,
+                req: crate::http::HttpRequest,
+            ) -> Result<HttpResponse, crate::http::HttpError> {
+                assert_eq!(req.timeout, Duration::from_secs(30));
+                let active = self.active.fetch_add(1, Ordering::SeqCst) + 1;
+                self.peak.fetch_max(active, Ordering::SeqCst);
+                tokio::time::sleep(Duration::from_millis(5)).await;
+                self.active.fetch_sub(1, Ordering::SeqCst);
+                Ok(HttpResponse {
+                    status: 200,
+                    body: r#"{"info":{"version":"99.0"},"releases":{}}"#.into(),
+                })
+            }
+        }
+        let root: PipxListRoot =
+            serde_json::from_str(&recorded_list_with_suffixed_copy(false)).unwrap();
+        let template = artifacts_from_list(root, &test_instance().id).remove(0);
+        let installed: Vec<_> = (0..200)
+            .map(|i| {
+                let mut artifact = template.clone();
+                artifact.key.name = format!("cowsay_{i}");
+                artifact
+            })
+            .collect();
+        let http = Arc::new(DelayedRegistry {
+            active: AtomicUsize::new(0),
+            peak: AtomicUsize::new(0),
+        });
+        let adapter = PipxAdapter::new(Arc::new(MockRunner::new()), http.clone());
+        let start = std::time::Instant::now();
+        let rows = adapter
+            .check_outdated_via_pypi(&installed, &HashSet::new())
+            .await;
+        eprintln!(
+            "pypi lookups: packages=200 latency=5ms elapsed={:?} peak={}",
+            start.elapsed(),
+            http.peak.load(Ordering::SeqCst)
+        );
+        assert_eq!(rows.len(), 200);
+        assert_eq!(
+            rows.iter().map(|r| &r.key).collect::<Vec<_>>(),
+            installed.iter().map(|r| &r.key).collect::<Vec<_>>()
+        );
+        assert_eq!(http.peak.load(Ordering::SeqCst), 4);
+        http.peak.store(0, Ordering::SeqCst);
+        let pins = HashSet::new();
+        let (first, second) = tokio::join!(
+            adapter.check_outdated_via_pypi(&installed[..8], &pins),
+            adapter.check_outdated_via_pypi(&installed[8..16], &pins),
+        );
+        assert_eq!((first.len(), second.len()), (8, 8));
+        assert_eq!(
+            http.peak.load(Ordering::SeqCst),
+            4,
+            "concurrent instances share the host limit"
+        );
+    }
 
     /// The recorded `pipx list --json` (`list.json`) with its one tool,
     /// cowsay, installed a second time as `cowsay_alt` (`pipx install

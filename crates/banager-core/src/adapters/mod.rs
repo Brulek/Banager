@@ -442,6 +442,72 @@ impl LookupFailure {
     }
 }
 
+/// Four lookups at a time per source, with a two-minute budget for this
+/// registry phase. Completed answers survive a deadline; unfinished and
+/// unstarted lookups are transient failures, never up-to-date answers.
+/// Batches preserve inventory order without spawning detached tasks.
+pub(crate) async fn registry_checks<F, T>(lookups: Vec<F>) -> Vec<Result<T, LookupFailure>>
+where
+    F: std::future::Future<Output = Result<T, LookupFailure>>,
+{
+    registry_checks_until(
+        lookups,
+        tokio::time::Instant::now() + Duration::from_secs(120),
+    )
+    .await
+}
+
+async fn registry_checks_until<F, T>(
+    lookups: Vec<F>,
+    deadline: tokio::time::Instant,
+) -> Vec<Result<T, LookupFailure>>
+where
+    F: std::future::Future<Output = Result<T, LookupFailure>>,
+{
+    async fn one<F, T>(
+        future: Option<F>,
+        deadline: tokio::time::Instant,
+    ) -> Option<Result<T, LookupFailure>>
+    where
+        F: std::future::Future<Output = Result<T, LookupFailure>>,
+    {
+        let future = future?;
+        let timed_out = || {
+            LookupFailure::request(
+                "registry request failed",
+                &crate::http::HttpError::Timeout(Duration::from_secs(120)),
+            )
+        };
+        if tokio::time::Instant::now() >= deadline {
+            return Some(Err(timed_out()));
+        }
+        Some(
+            tokio::time::timeout_at(deadline, future)
+                .await
+                .unwrap_or_else(|_| Err(timed_out())),
+        )
+    }
+    let mut iter = lookups.into_iter();
+    let mut answers = Vec::new();
+    loop {
+        let Some(first) = iter.next() else { break };
+        let (a, b, c, d) = tokio::join!(
+            one(Some(first), deadline),
+            one(iter.next(), deadline),
+            one(iter.next(), deadline),
+            one(iter.next(), deadline)
+        );
+        answers.extend([a, b, c, d].into_iter().flatten());
+    }
+    answers
+}
+
+// Shared across instances: even two installations of a source respect
+// the same host limit. The registry phase deadline includes permit waits.
+static PYPI_LOOKUPS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(4);
+static CARGO_LOOKUPS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(4);
+static OLLAMA_LOOKUPS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(4);
+
 /// The one GET of a lookup that asks a server, whose only good answer is a
 /// 200: a request with no answer fails as `LookupFailure::request(failed,
 /// ..)`, any other status as `"{answerer} returned status {status}"`
@@ -456,6 +522,25 @@ pub(crate) async fn get_ok(
     failed: &str,
     answerer: &str,
 ) -> Result<crate::http::HttpResponse, LookupFailure> {
+    let limiter = match url::Url::parse(&url)
+        .ok()
+        .and_then(|u| u.host_str().map(str::to_owned))
+        .as_deref()
+    {
+        Some("pypi.org") => Some(&PYPI_LOOKUPS),
+        Some("crates.io") => Some(&CARGO_LOOKUPS),
+        Some("registry.ollama.ai") => Some(&OLLAMA_LOOKUPS),
+        _ => None,
+    };
+    let _permit = match limiter {
+        Some(limiter) => Some(
+            limiter
+                .acquire()
+                .await
+                .expect("registry semaphore stays open"),
+        ),
+        None => None,
+    };
     let resp = http
         .send(crate::http::HttpRequest {
             method: "GET",
@@ -861,6 +946,48 @@ pub fn second_token(text: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn test_registry_deadline_keeps_completed_answers_and_cancels_the_rest() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let started = AtomicUsize::new(0);
+        let dropped = AtomicUsize::new(0);
+        struct Guard<'a>(&'a AtomicUsize);
+        impl Drop for Guard<'_> {
+            fn drop(&mut self) {
+                self.0.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+        let answers = registry_checks_until(
+            (0..12)
+                .map(|i| {
+                    let started = &started;
+                    let dropped = &dropped;
+                    async move {
+                        let _guard = Guard(dropped);
+                        started.fetch_add(1, Ordering::SeqCst);
+                        if i == 1 {
+                            std::future::pending::<()>().await;
+                        }
+                        Ok(i)
+                    }
+                })
+                .collect(),
+            // Long enough that a loaded machine cannot pass it before the
+            // first four have even been polled; item 1 never answers.
+            tokio::time::Instant::now() + Duration::from_millis(250),
+        )
+        .await;
+        assert_eq!(answers.len(), 12);
+        assert_eq!(started.load(Ordering::SeqCst), 4);
+        assert_eq!(dropped.load(Ordering::SeqCst), 4);
+        assert_eq!(*answers[0].as_ref().unwrap(), 0);
+        assert_eq!(*answers[2].as_ref().unwrap(), 2);
+        assert_eq!(*answers[3].as_ref().unwrap(), 3);
+        for i in [1, 4, 5, 6, 7, 8, 9, 10, 11] {
+            assert!(answers[i].as_ref().unwrap_err().transient);
+        }
+    }
 
     #[test]
     fn test_uncheckable_candidate_marks_only_a_transient_failure_so() {

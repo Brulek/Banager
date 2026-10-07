@@ -716,7 +716,7 @@ impl CargoAdapter {
         Ok(parse_crates_io_body(&resp.body)?)
     }
 
-    /// Registry-sourced crates are checked one at a time against crates.io.
+    /// Registry-sourced crates are checked with bounded concurrency against crates.io.
     /// Git and path sources are `checkable: false` with a reason
     /// unconditionally — Banager has no way to check those for updates at
     /// all, so every such crate always gets a row explaining why, not just
@@ -729,10 +729,23 @@ impl CargoAdapter {
     ) -> Result<CheckOutcome, AdapterError> {
         let json = self.read_installs(inst)?;
         let entries = parse_crates2_entries(&json)?;
+        let answers = super::registry_checks(
+            entries
+                .iter()
+                .map(|(name, _, source)| async move {
+                    if crate::adapters::sanity::is_name(name) && is_crates_io(source) {
+                        self.latest_stable_version(name).await.map(Some)
+                    } else {
+                        Ok(None)
+                    }
+                })
+                .collect(),
+        )
+        .await;
         let mut out = Vec::new();
         // The same rows `parse_crates2` lists: a crate without a usable
         // name is not one, and a version that is not text is unknown.
-        for (name, mut version, source_kind) in entries {
+        for ((name, mut version, source_kind), answer) in entries.into_iter().zip(answers) {
             if !crate::adapters::sanity::is_name(&name) {
                 continue;
             }
@@ -757,11 +770,14 @@ impl CargoAdapter {
                 });
                 continue;
             }
-            match self
-                .latest_stable_version(&name)
-                .await
-                .and_then(|latest| newer_stable(&latest, &version).map(|newer| (latest, newer)))
-            {
+            // `None` only for the rows above that are never looked up; a
+            // row, never a panic, should the two conditions ever drift.
+            match answer.and_then(|latest| {
+                let latest = latest.ok_or_else(|| {
+                    LookupFailure::from("crates.io was not asked about this crate".to_string())
+                })?;
+                newer_stable(&latest, &version).map(|newer| (latest, newer))
+            }) {
                 Ok((latest, true)) => out.push(UpdateCandidate {
                     key,
                     current: version,
@@ -2400,6 +2416,111 @@ mod tests {
             "a git-sourced crate must never reach crates.io"
         );
         let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[tokio::test]
+    async fn test_concurrent_lookups_answer_each_crate_with_its_own_reply() {
+        // Lookups now overlap, so the replies arrive in another order than
+        // the record lists the crates: the first crate's answer comes last.
+        // Each row must still carry its own crate's answer, the git crate
+        // must still never be asked, and one failed lookup stays its row's.
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        struct OutOfOrderRegistry {
+            replies: HashMap<String, (u64, Result<HttpResponse, crate::http::HttpError>)>,
+            active: AtomicUsize,
+            peak: AtomicUsize,
+        }
+        #[async_trait]
+        impl HttpClient for OutOfOrderRegistry {
+            async fn send(
+                &self,
+                req: crate::http::HttpRequest,
+            ) -> Result<HttpResponse, crate::http::HttpError> {
+                let (delay_ms, reply) = self.replies.get(&req.url).expect("an expected url");
+                let active = self.active.fetch_add(1, Ordering::SeqCst) + 1;
+                self.peak.fetch_max(active, Ordering::SeqCst);
+                tokio::time::sleep(Duration::from_millis(*delay_ms)).await;
+                self.active.fetch_sub(1, Ordering::SeqCst);
+                reply.clone()
+            }
+        }
+        let root: serde_json::Value = serde_json::from_str(&recorded_crates2()).unwrap();
+        let record = root["installs"]
+            .as_object()
+            .unwrap()
+            .values()
+            .next()
+            .unwrap();
+        let mut installs = serde_json::Map::new();
+        for key in [
+            "a-fork 0.1.0 (git+https://github.com/example/a-fork#abc123)",
+            "bat 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
+            "fd-find 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
+            "hexyl 0.17.0 (registry+https://github.com/rust-lang/crates.io-index)",
+            "ripgrep 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
+            "tokei 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
+        ] {
+            installs.insert(key.to_string(), record.clone());
+        }
+        let json = serde_json::json!({ "installs": installs }).to_string();
+        let home = temp_cargo_home("out-of-order");
+        std::fs::create_dir_all(&home).expect("create cargo home");
+        std::fs::write(home.join(".crates2.json"), json).expect("write crates2.json");
+        let reply = |version: &str| {
+            Ok(HttpResponse {
+                status: 200,
+                body: format!(r#"{{"crate":{{"max_stable_version":"{version}"}}}}"#),
+            })
+        };
+        let url = |name: &str| format!("https://crates.io/api/v1/crates/{name}");
+        let http = Arc::new(OutOfOrderRegistry {
+            replies: HashMap::from([
+                (url("bat"), (60, reply("2.0.0"))),
+                (url("fd-find"), (40, reply("3.0.0"))),
+                (
+                    url("hexyl"),
+                    (
+                        20,
+                        Err(crate::http::HttpError::Network("reset".to_string())),
+                    ),
+                ),
+                (url("ripgrep"), (0, reply("1.0.0"))),
+                (url("tokei"), (0, reply("6.0.0"))),
+            ]),
+            active: AtomicUsize::new(0),
+            peak: AtomicUsize::new(0),
+        });
+        let adapter = CargoAdapter::new(Arc::new(MockRunner::new()), http.clone());
+        let inst = test_instance(home.clone());
+        let candidates = adapter
+            .check_updates(&inst, &CheckOptions::default())
+            .await
+            .expect("check_updates")
+            .candidates;
+        let _ = std::fs::remove_dir_all(&home);
+        let rows: Vec<_> = candidates
+            .iter()
+            .map(|c| (c.key.name.as_str(), c.target.as_str(), c.checkable))
+            .collect();
+        assert_eq!(
+            rows,
+            vec![
+                ("a-fork", "0.1.0", false),
+                ("bat", "2.0.0", true),
+                ("fd-find", "3.0.0", true),
+                ("hexyl", "0.17.0", false),
+                ("tokei", "6.0.0", true),
+            ],
+            "ripgrep is current, so it has no row"
+        );
+        assert_eq!(candidates[0].warnings, vec![Warning::NonRegistrySource]);
+        assert!(candidates[3]
+            .warnings
+            .contains(&Warning::TransientLookupFailure));
+        assert!(
+            http.peak.load(Ordering::SeqCst) > 1,
+            "the lookups overlapped"
+        );
     }
 
     #[tokio::test]

@@ -632,12 +632,27 @@ impl OllamaAdapter {
                 .into());
         }
         let models_root = inst.prefix.join("models");
-        let mut out = Vec::new();
-        for artifact in &installed {
-            if let Some(candidate) = self.check_one_model(&models_root, artifact).await {
-                out.push(candidate);
-            }
-        }
+        let answers = super::registry_checks(
+            installed
+                .iter()
+                .map(|artifact| async { Ok(self.check_one_model(&models_root, artifact).await) })
+                .collect(),
+        )
+        .await;
+        let out: Vec<_> = installed
+            .iter()
+            .zip(answers)
+            .filter_map(|(artifact, answer)| {
+                answer.unwrap_or_else(|reason| {
+                    Some(uncheckable_candidate(
+                        artifact.key.clone(),
+                        artifact.version.clone(),
+                        UpdateChannel::Digest,
+                        reason,
+                    ))
+                })
+            })
+            .collect();
         Ok(out.into())
     }
 
