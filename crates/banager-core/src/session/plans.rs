@@ -89,6 +89,30 @@ pub(crate) struct StoredPlan {
     /// had just been handed. `issued.issued_at`'s Unix seconds stay for
     /// display; nothing decides anything with them.
     pub(crate) issued_monotonic: Instant,
+    /// For an `Upgrade`, the version the check offered it -- the update
+    /// candidate's `target` in the snapshot `generation` names, which the
+    /// confirmation showed -- handed to the operation on `submit`
+    /// (`OperationManager::submit_toward`): an update already at least
+    /// there when its turn comes is done. `None` for anything else, and
+    /// for an update no candidate of that snapshot lists.
+    pub(crate) target_version: Option<String>,
+}
+
+/// The version the check offered `req`, when it is an `Upgrade` that one
+/// of `updates` -- one snapshot's -- lists: that candidate's `target`.
+fn offered_version(updates: &[UpdateCandidate], req: &OpRequest) -> Option<String> {
+    if req.kind != OpKind::Upgrade {
+        return None;
+    }
+    updates
+        .iter()
+        .find(|u| {
+            u.key.instance_id == req.instance_id
+                && u.key.kind == req.artifact_kind
+                && u.key.name == req.name
+        })
+        .map(|u| u.target.clone())
+        .filter(|target| !target.is_empty())
 }
 
 /// The per-package half of the actionability gate (spec §8): why the tool
@@ -194,7 +218,7 @@ impl Session {
         // read under that same lock, so all of them come from the one
         // snapshot `generation` names -- as are the sources a Homebrew
         // uninstall's preview looks at for what runs on it (`needed_by`).
-        let (generation, instance, blocked, uninstall_blocked, family, listed, needed_by) = {
+        let (generation, instance, blocked, uninstall_blocked, family, listed, needed_by, target) = {
             let snapshot = self.snapshot.lock().unwrap();
             (
                 snapshot.generation,
@@ -208,6 +232,7 @@ impl Session {
                 super::kept::family_of_uninstall(&snapshot.artifacts, req),
                 lists_request(&snapshot.updates, &snapshot.artifacts, req),
                 super::needed_by::subject(&snapshot.instances, &snapshot.artifacts, req),
+                offered_version(&snapshot.updates, req),
             )
         };
         let instance = instance.ok_or_else(|| AdapterError::SourceGone {
@@ -299,6 +324,7 @@ impl Session {
                 issued: issued.clone(),
                 generation,
                 issued_monotonic,
+                target_version: target,
             },
         );
         Ok(issued)
@@ -364,7 +390,9 @@ impl Session {
             Box::new(move |ended: &crate::history::Ended<'_>| store.record(ended, &started))
                 as crate::ops::OnFinish
         });
-        Ok(self.ops.submit_with(stored.issued.plan, on_finish))
+        Ok(self
+            .ops
+            .submit_toward(stored.issued.plan, stored.target_version, on_finish))
     }
 
     /// What the history keeps of an operation from when it starts: the
@@ -473,6 +501,9 @@ mod tests {
         plan_delay: std::sync::Mutex<Duration>,
         in_flight: std::sync::atomic::AtomicUsize,
         most_in_flight: std::sync::atomic::AtomicUsize,
+        /// The version `reconcile` reads, before and after an operation
+        /// alike; `None` reads no version (`test_support::fake_reconciled`).
+        version_read: std::sync::Mutex<Option<String>>,
     }
 
     impl FakeAdapter {
@@ -486,6 +517,7 @@ mod tests {
                 plan_delay: std::sync::Mutex::new(Duration::ZERO),
                 in_flight: std::sync::atomic::AtomicUsize::new(0),
                 most_in_flight: std::sync::atomic::AtomicUsize::new(0),
+                version_read: std::sync::Mutex::new(None),
             })
         }
 
@@ -617,7 +649,10 @@ mod tests {
             _inst: &ManagerInstance,
             _key: &ArtifactKey,
         ) -> Result<Reconciled, AdapterError> {
-            Ok(test_support::fake_reconciled())
+            Ok(Reconciled {
+                version: self.version_read.lock().unwrap().clone(),
+                ..test_support::fake_reconciled()
+            })
         }
     }
 
@@ -1933,5 +1968,51 @@ mod tests {
         assert!(dir.join("history.json").exists());
         assert!(session.clear_history().cleared_before.is_some());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Submits the update of `jq` (offered from 1.0 to 1.1) with the fake
+    /// reading `version` before and after it, and returns how it ended and
+    /// what its summary says of it.
+    async fn update_jq_reading(
+        version: &str,
+    ) -> (Option<Outcome>, Option<crate::model::AlreadyUpdated>) {
+        let adapter = FakeAdapter::new(vec![test_support::make_instance("fake", "fake:1")]);
+        adapter.set_updates(vec![candidate("jq", None)]);
+        *adapter.version_read.lock().unwrap() = Some(version.to_string());
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], None);
+        session
+            .refresh(&test_support::non_root_env(), &CheckOptions::default())
+            .await;
+        let issued = session
+            .issue_listed_plan(&request(OpKind::Upgrade, "jq"))
+            .await
+            .expect("issue_listed_plan");
+        let op_id = session.submit(issued.id).expect("submit");
+        let outcome = session.ops.wait(op_id).await;
+        let summary = session
+            .operations()
+            .into_iter()
+            .find(|op| op.id == op_id)
+            .expect("listed");
+        (outcome, summary.already_updated)
+    }
+
+    #[tokio::test]
+    async fn test_submit_aims_an_update_at_the_version_its_check_offered() {
+        // r6 y3-batch, finding 2: the confirmed plan's target is the
+        // candidate's, read from the snapshot the plan was issued against,
+        // and handed to the operation (`submit_toward`).
+        let (outcome, how) = update_jq_reading("1.1").await;
+        assert_eq!(outcome, Some(Outcome::Succeeded));
+        assert_eq!(how, Some(crate::model::AlreadyUpdated::BeforeItsTurn));
+        let (outcome, how) = update_jq_reading("1.0").await;
+        assert_eq!(
+            outcome,
+            Some(Outcome::NeedsAttention(
+                crate::model::Attention::UnchangedAfterUpgrade
+            ))
+        );
+        assert_eq!(how, None);
     }
 }
