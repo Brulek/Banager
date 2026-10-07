@@ -4328,8 +4328,9 @@ every one. A path the preview already names is not named twice: Claude
 Code's own installer's uninstall lists `~/.claude` and `~/.claude.json`
 among what it keeps (Claude Code, above), Antigravity CLI's lists
 `~/.gemini/antigravity-cli` (Antigravity CLI, above), and Grok Build's
-lists `~/.grok` (Grok Build, above); for Grok Build, the line is in the
-preview of an uninstall of Homebrew's cask `grok-build`.
+lists `~/.grok` (Grok Build, above); for those two, the line is in the
+preview of an uninstall of Homebrew's cask, `antigravity-cli` or
+`grok-build`.
 
 Each is the default place. A tool may let a shell move its folder with a
 variable (`KIMI_CODE_HOME`, `KIMI_SHARE_DIR`, `IFLOW_HOME`,

@@ -15,7 +15,9 @@
 //! line, and only one the plan does not already name: Claude Code's own
 //! installer's uninstall lists `~/.claude` and `~/.claude.json` among what
 //! it keeps (`Warning::WillKeep`), which is said once, there, as Grok
-//! Build's own lists `~/.grok`. A folder two
+//! Build's own lists `~/.grok` and Antigravity CLI's own
+//! `~/.gemini/antigravity-cli` (so for those two the line is in the
+//! preview of Homebrew's cask, `grok-build` or `antigravity-cli`). A folder two
 //! tools share is measured without the part the table gives the other one
 //! (`others_inside`): `~/.gemini` is Gemini CLI's, but Antigravity CLI
 //! keeps everything of its own in `~/.gemini/antigravity-cli`, which on

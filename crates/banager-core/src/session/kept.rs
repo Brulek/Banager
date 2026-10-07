@@ -592,6 +592,73 @@ mod tests {
         }
     }
 
+    /// Review r36 V4: the eight Homebrew packages that joined their AI
+    /// tools' families then each say, in their uninstall preview, what of
+    /// the tool's stays. For the cask `antigravity-cli` that is the first
+    /// preview to name `~/.gemini/antigravity-cli`: the standalone agy's
+    /// own uninstall keeps it and says so itself (`Warning::WillKeep`).
+    #[tokio::test]
+    async fn test_uninstalling_the_homebrew_copies_added_in_r36_v4_names_their_tools_folders() {
+        let home = Home::new("r36-v4");
+        for file in [
+            ".gemini/antigravity-cli/settings.json",
+            ".claude/settings.json",
+            ".claude.json",
+            ".copilot/settings.json",
+            ".factory/settings.json",
+            ".ollama/models/blobs/sha256-a",
+            ".kimi-code/config.toml",
+            ".kimi/config.toml",
+            ".vibe/config.toml",
+            ".openclaw/openclaw.json",
+            ".clawdbot/clawdbot.json",
+        ] {
+            home.file(file, 2_000);
+        }
+        let tool = |path: &str| (path.to_string(), KeptData::ToolData, true);
+        for (kind, name, expected) in [
+            (
+                ArtifactKind::Cask,
+                "antigravity-cli",
+                vec![tool("~/.gemini/antigravity-cli")],
+            ),
+            (
+                ArtifactKind::Cask,
+                "claude-code@latest",
+                vec![tool("~/.claude"), tool("~/.claude.json")],
+            ),
+            (
+                ArtifactKind::Cask,
+                "copilot-cli@prerelease",
+                vec![tool("~/.copilot")],
+            ),
+            (ArtifactKind::Cask, "droid", vec![tool("~/.factory")]),
+            (
+                ArtifactKind::Cask,
+                "ollama-binary",
+                vec![("~/.ollama/models".to_string(), KeptData::Models, true)],
+            ),
+            (
+                ArtifactKind::Formula,
+                "kimi-code",
+                vec![tool("~/.kimi-code"), tool("~/.kimi")],
+            ),
+            (ArtifactKind::Formula, "mistral-vibe", vec![tool("~/.vibe")]),
+            (
+                ArtifactKind::Formula,
+                "openclaw-cli",
+                vec![tool("~/.openclaw"), tool("~/.clawdbot")],
+            ),
+        ] {
+            let session = session_over(fake("brew", kind, name, vec![]), &home.0, true).await;
+            let issued = session
+                .issue_plan(&request("brew", OpKind::Uninstall, kind, name))
+                .await
+                .unwrap();
+            assert_eq!(kept(&issued.plan), expected, "{name}");
+        }
+    }
+
     #[tokio::test]
     async fn test_a_tool_with_no_family_or_no_folder_gets_no_line() {
         let home = Home::new("none");
