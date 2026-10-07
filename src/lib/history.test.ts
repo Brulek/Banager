@@ -272,7 +272,7 @@ describe("recentUpdates", () => {
       }),
       record("unchanged", { finished_at: NOW - 2 * DAY, result: { NeedsAttention: "UnchangedAfterUpgrade" } }),
     ]);
-    expect(recentUpdates(history, [], NOW, offered()).map((r) => r.key.name)).toEqual(["python@3.13"]);
+    expect(recentUpdates(history, new Set(), NOW, offered()).map((r) => r.key.name)).toEqual(["python@3.13"]);
   });
 
   it("finds whether this launch's operation was verified, by its run and id", () => {
