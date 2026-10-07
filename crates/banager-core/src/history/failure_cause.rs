@@ -71,7 +71,9 @@ pub enum FailureCause {
     NotLinked,
     /// Banager stopped because what it was about to change was no longer
     /// what the confirmation showed (`Fault::PathChanged`,
-    /// `FormulaChanged`, `HomebrewSettingsChanged`).
+    /// `FormulaChanged`, `HomebrewSettingsChanged`, and `LinkTaken`: a
+    /// command's place a keg-only formula's update relinks was taken
+    /// since).
     Changed,
     /// Banager itself failed (`Fault::Panicked`, `Fault::Internal`).
     Internal,

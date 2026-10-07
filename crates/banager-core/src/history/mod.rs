@@ -317,7 +317,8 @@ fn fault_result(fault: &Fault) -> HistoryResult {
         },
         Fault::PathChanged { .. }
         | Fault::FormulaChanged { .. }
-        | Fault::HomebrewSettingsChanged => cause(FailureCause::Changed),
+        | Fault::HomebrewSettingsChanged
+        | Fault::LinkTaken { .. } => cause(FailureCause::Changed),
         Fault::Panicked | Fault::Internal => cause(FailureCause::Internal),
     }
 }
@@ -1275,6 +1276,14 @@ mod tests {
             ),
             (
                 Outcome::BanagerFailed(Fault::HomebrewSettingsChanged),
+                Some(FailureCause::Changed),
+                None,
+            ),
+            (
+                Outcome::BanagerFailed(Fault::LinkTaken {
+                    name: "node@22".to_string(),
+                    paths: vec!["/opt/homebrew/bin/npm".to_string()],
+                }),
                 Some(FailureCause::Changed),
                 None,
             ),
