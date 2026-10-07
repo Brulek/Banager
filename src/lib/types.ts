@@ -41,6 +41,11 @@ export type Fault =
   // after it than the preview said (a brew.env changed or unreadable since
   // then), and ran nothing.
   | "HomebrewSettingsChanged"
+  // y1-keg (r6): the update of a keg-only formula linked into its prefix
+  // found another program in one of its commands' places (`paths`, full
+  // paths such as /opt/homebrew/bin/npm) right before it ran, and ran
+  // nothing: the update would have taken its commands out of Terminal.
+  | { LinkTaken: { name: string; paths: string[] } }
   | "Internal";
 // `Failed.summary` is another program's own words, never Banager's: the
 // last lines of a tool's stderr, or macOS's own reason for refusing to move
@@ -405,6 +410,13 @@ export type Warning =
    * formula (`brew uninstall --force`), oldest first, so none comes back.
    */
   | { HomebrewRemovesEveryVersion: { versions: string[] } }
+  /**
+   * y1-keg (r6): `name` is a keg-only formula linked into the prefix, so
+   * `commands` are in Terminal; its update unlinks it, and once the update
+   * exits 0 Banager links it back where Homebrew did not
+   * (`brew link --force <name>`, a `CommandThen` follow-up).
+   */
+  | { HomebrewRelinksAfterUpdate: { name: string; commands: string[] } }
   | { UninstallScope: { what: UninstallScope } }
   | { CaskUninstallStep: { step: CaskStep; items: string[]; only_if?: RemoveCheck } }
   /**
@@ -435,11 +447,14 @@ export type Warning =
  * `Disabled` by brew's `check_updates` for a formula or cask whose `brew
  * info --installed --json=v2` entry carries Homebrew's `disabled` mark
  * (`facts.homebrew.disabled`), which `brew outdated` still lists but
- * `brew upgrade` will not update. Read through `UPDATE_BLOCKED_KEYS` in
+ * `brew upgrade` will not update; `LinkTaken` by brew's `check_updates`
+ * for a keg-only formula linked into its prefix where another program holds
+ * one of its commands' places (y1-keg), whose update would take its
+ * commands out of Terminal. Read through `UPDATE_BLOCKED_KEYS` in
  * src/lib/sources.ts, a `Record` over this union, so a variant added here
  * without copy fails `tsc` rather than rendering nothing.
  */
-export type UpdateBlocked = "Pinned" | "SelfUpdatesOnly" | "Disabled";
+export type UpdateBlocked = "Pinned" | "SelfUpdatesOnly" | "Disabled" | "LinkTaken";
 export interface UpdateCandidate {
   key: ArtifactKey;
   current: string;
@@ -558,12 +573,13 @@ export type CancelPolicy = "KillThenReconcile" | "NoCancel";
 export type PlanAction =
   | { Command: { program: string; args: string[]; env: [string, string][] } }
   /**
-   * U9 (r6): `program args`, then -- only once that exits 0 -- `program
-   * then`, under the same `env`: a Homebrew formula's upgrade and the
-   * `brew cleanup <name>` that follows it. The follow-up's end decides
-   * nothing about the operation; the log says it. The preview shows both.
+   * `program args`, then -- only once that exits 0 -- `program` with each
+   * argv of `then` in turn, under the same `env`: a Homebrew formula's
+   * upgrade and its follow-ups, `brew link --force <name>` (y1-keg) and
+   * `brew cleanup <name>` (U9). A follow-up's end decides nothing about the
+   * operation; the log says it. The preview shows every command.
    */
-  | { CommandThen: { program: string; args: string[]; env: [string, string][]; then: string[] } }
+  | { CommandThen: { program: string; args: string[]; env: [string, string][]; then: string[][] } }
   | { TrashPaths: { paths: string[] } };
 export interface Plan {
   request: OpRequest;
@@ -863,7 +879,14 @@ export type LogNote =
   | { OldVersionsKept: { name: string; versions: string[] } }
   // Review F4 (r6): asked again at its turn, the person's settings no longer
   // let that cleanup run, or could not be read, so it did not.
-  | { OldVersionsCleanupSkipped: { name: string } };
+  | { OldVersionsCleanupSkipped: { name: string } }
+  // y1-keg (r6): after the update of a keg-only formula linked into its
+  // prefix -- `brew link --force <name>` starts; Homebrew had linked it back
+  // itself, so it did not; and which of the commands its preview named are
+  // no longer in Terminal.
+  | { RelinkingAfterUpdate: { name: string } }
+  | { StillLinkedAfterUpdate: { name: string } }
+  | { NoLongerLinked: { name: string; commands: string[] } };
 export type OperationEvent =
   | { Status: { op_id: number; status: OpStatus } }
   | { Log: { op_id: number; stream: Stream; line: string } }

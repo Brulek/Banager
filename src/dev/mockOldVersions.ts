@@ -36,7 +36,7 @@ export function withMockOldVersions(plan: Plan, world: World, request: OpRequest
     const cleans: Warning = { HomebrewCleansUpOldVersions: { versions } };
     return {
       ...plan,
-      action: { CommandThen: { program, args, env, then: ["cleanup", request.name] } },
+      action: { CommandThen: { program, args, env, then: [["cleanup", request.name]] } },
       warnings: [cleans, ...plan.warnings],
     };
   }
@@ -54,9 +54,14 @@ export function withMockOldVersions(plan: Plan, world: World, request: OpRequest
   return plan;
 }
 
+/** Whether `plan` is an update a `brew cleanup` follows. */
+function cleansUp(plan: Plan): boolean {
+  return "CommandThen" in plan.action && plan.action.CommandThen.then.some((argv) => argv[0] === "cleanup");
+}
+
 /** What `brew cleanup <name>` prints after an update a cleanup follows, Banager's line first. */
 export function mockCleanupLines(plan: Plan, world: World): LogLine[] {
-  if (!("CommandThen" in plan.action)) return [];
+  if (!cleansUp(plan)) return [];
   const artifact = formulaOf(world, plan.request);
   const old = artifact === undefined ? [] : versionsOf(artifact);
   return [
@@ -72,7 +77,7 @@ export function mockCleanupLines(plan: Plan, world: World): LogLine[] {
 
 /** After an update a cleanup followed: the row keeps no other version. */
 export function applyMockCleanup(plan: Plan, world: World): void {
-  if (!("CommandThen" in plan.action)) return;
+  if (!cleansUp(plan)) return;
   const artifact = formulaOf(world, plan.request);
   const homebrew = artifact?.facts.homebrew;
   if (artifact === undefined || homebrew === null || homebrew === undefined) return;

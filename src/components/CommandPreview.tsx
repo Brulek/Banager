@@ -37,15 +37,16 @@ export function commandText(action: Extract<PlanAction, { Command: unknown }>): 
 
 /**
  * Every command a plan runs, each as `commandText` gives it, in the order
- * they run: one for a `Command`; two for a `CommandThen` -- a Homebrew
- * update and the `brew cleanup` that follows it once it has succeeded
- * (U9), under the same variables; none for a `TrashPaths`.
+ * they run: one for a `Command`; for a `CommandThen`, a Homebrew update and
+ * each follow-up that runs once it has succeeded -- `brew link --force`
+ * (y1-keg), `brew cleanup` (U9) -- under the same variables; none for a
+ * `TrashPaths`.
  */
 export function commandTexts(action: PlanAction): string[] {
   if ("Command" in action) return [commandText(action)];
   if ("CommandThen" in action) {
     const { program, args, env, then } = action.CommandThen;
-    return [commandText({ Command: { program, args, env } }), commandText({ Command: { program, args: then, env } })];
+    return [args, ...then].map((argv) => commandText({ Command: { program, args: argv, env } }));
   }
   return [];
 }

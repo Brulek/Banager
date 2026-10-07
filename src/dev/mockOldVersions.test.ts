@@ -34,7 +34,7 @@ describe("the preview's old versions of a Homebrew formula (U9)", () => {
         program: "/opt/homebrew/bin/brew",
         args: ["upgrade", "--formula", "git"],
         env: expect.any(Array),
-        then: ["cleanup", "git"],
+        then: [["cleanup", "git"]],
       },
     });
     expect(issued.plan.warnings[0]).toEqual({ HomebrewCleansUpOldVersions: { versions: ["2.54.0", "2.55.0"] } });

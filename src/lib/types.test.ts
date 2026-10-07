@@ -6,6 +6,7 @@ import type {
   Snapshot,
   Outcome,
   OperationEvent,
+  LogNote,
   UiEvent,
   InventoryPreview,
   Plan,
@@ -846,11 +847,11 @@ describe("types", () => {
         program: "/opt/homebrew/bin/brew",
         args: ["upgrade", "--formula", "wget"],
         env: [["HOMEBREW_NO_AUTOREMOVE", "1"]],
-        then: ["cleanup", "wget"],
+        then: [["cleanup", "wget"]],
       },
     };
     expect(JSON.stringify(then)).toBe(
-      '{"CommandThen":{"program":"/opt/homebrew/bin/brew","args":["upgrade","--formula","wget"],"env":[["HOMEBREW_NO_AUTOREMOVE","1"]],"then":["cleanup","wget"]}}',
+      '{"CommandThen":{"program":"/opt/homebrew/bin/brew","args":["upgrade","--formula","wget"],"env":[["HOMEBREW_NO_AUTOREMOVE","1"]],"then":[["cleanup","wget"]]}}',
     );
     expect(roundTrip(then)).toEqual(then);
     const cleans: Warning = { HomebrewCleansUpOldVersions: { versions: ["1.24.0", "1.25.0"] } };
@@ -886,6 +887,53 @@ describe("types", () => {
     const skipped: OperationEvent = { Note: { op_id: 7, note: { OldVersionsCleanupSkipped: { name: "wget" } } } };
     expect(JSON.stringify(skipped)).toBe('{"Note":{"op_id":7,"note":{"OldVersionsCleanupSkipped":{"name":"wget"}}}}');
     expect(roundTrip(skipped)).toEqual(skipped);
+  });
+
+  it("spells y1-keg's relink after an update as model.rs and events.rs do", () => {
+    // model.rs's `test_the_homebrew_version_cleanup_is_on_the_wire_as_the_mirror_spells_it`
+    // and `test_banager_failed_is_externally_tagged_on_the_wire`, events.rs's
+    // `test_the_keg_only_relink_notes_are_on_the_wire_as_the_mirror_spells_them`
+    // assert these exact strings from the Rust side.
+    const both: PlanAction = {
+      CommandThen: {
+        program: "/opt/homebrew/bin/brew",
+        args: ["upgrade", "--formula", "node@22"],
+        env: [],
+        then: [
+          ["link", "--force", "node@22"],
+          ["cleanup", "node@22"],
+        ],
+      },
+    };
+    expect(JSON.stringify(both)).toBe(
+      '{"CommandThen":{"program":"/opt/homebrew/bin/brew","args":["upgrade","--formula","node@22"],"env":[],"then":[["link","--force","node@22"],["cleanup","node@22"]]}}',
+    );
+    expect(roundTrip(both)).toEqual(both);
+    const relinks: Warning = { HomebrewRelinksAfterUpdate: { name: "node@22", commands: ["node", "npm"] } };
+    expect(JSON.stringify(relinks)).toBe(
+      '{"HomebrewRelinksAfterUpdate":{"name":"node@22","commands":["node","npm"]}}',
+    );
+    expect(roundTrip(relinks)).toEqual(relinks);
+    const taken: Outcome = { BanagerFailed: { LinkTaken: { name: "node@22", paths: ["/opt/homebrew/bin/npm"] } } };
+    expect(JSON.stringify(taken)).toBe(
+      '{"BanagerFailed":{"LinkTaken":{"name":"node@22","paths":["/opt/homebrew/bin/npm"]}}}',
+    );
+    expect(roundTrip(taken)).toEqual(taken);
+    const notes: [LogNote, string][] = [
+      [{ RelinkingAfterUpdate: { name: "node@22" } }, '{"RelinkingAfterUpdate":{"name":"node@22"}}'],
+      [{ StillLinkedAfterUpdate: { name: "node@22" } }, '{"StillLinkedAfterUpdate":{"name":"node@22"}}'],
+      [
+        { NoLongerLinked: { name: "node@22", commands: ["node", "npm"] } },
+        '{"NoLongerLinked":{"name":"node@22","commands":["node","npm"]}}',
+      ],
+    ];
+    for (const [note, json] of notes) {
+      const event: OperationEvent = { Note: { op_id: 7, note } };
+      expect(JSON.stringify(event)).toBe(`{"Note":{"op_id":7,"note":${json}}}`);
+      expect(roundTrip(event)).toEqual(event);
+    }
+    const blocked: UpdateBlocked = "LinkTaken";
+    expect(JSON.stringify(blocked)).toBe('"LinkTaken"');
   });
 
   it("spells the unknown-source scan's shapes as Rust sends them", () => {

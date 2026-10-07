@@ -200,7 +200,7 @@ describe("CommandPreview", () => {
                 program: "/opt/homebrew/bin/brew",
                 args: ["upgrade", "--formula", "wget"],
                 env: [["HOMEBREW_NO_AUTOREMOVE", "1"]],
-                then: ["cleanup", "wget"],
+                then: [["cleanup", "wget"]],
               },
             },
           },
@@ -217,6 +217,38 @@ describe("CommandPreview", () => {
     expect(upgrade.compareDocumentPosition(cleanup) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getAllByRole("button")).toHaveLength(1);
     expect(screen.getByRole("button", { name: "Show Commands" })).toBeInTheDocument();
+  });
+
+  it("shows a keg-only formula's update, its brew link and its brew cleanup, in the order they run (y1-keg)", async () => {
+    settings.show_technical_details = true;
+    renderWithProviders(
+      <CommandPreview
+        plans={[
+          {
+            id: "1",
+            action: {
+              CommandThen: {
+                program: "/opt/homebrew/bin/brew",
+                args: ["upgrade", "--formula", "node@22"],
+                env: [],
+                then: [
+                  ["link", "--force", "node@22"],
+                  ["cleanup", "node@22"],
+                ],
+              },
+            },
+          },
+        ]}
+      />,
+    );
+
+    const upgrade = await screen.findByText("/opt/homebrew/bin/brew upgrade --formula node@22");
+    const link = screen.getByText("/opt/homebrew/bin/brew link --force node@22");
+    const cleanup = screen.getByText("/opt/homebrew/bin/brew cleanup node@22");
+    expect(link.tagName).toBe("CODE");
+    expect(upgrade.compareDocumentPosition(link) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(link.compareDocumentPosition(cleanup) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getAllByRole("button")).toHaveLength(1);
   });
 
   it("says only what is sure of a path-list uninstall, in the open, with no command to show", () => {
