@@ -2723,7 +2723,10 @@ mod tests {
             paths: vec!["/opt/homebrew/bin/npm".to_string()],
         };
         let json = serde_json::to_string(&conflicts).expect("serialize");
-        assert_eq!(json, r#"{"LinkConflicts":{"paths":["/opt/homebrew/bin/npm"]}}"#);
+        assert_eq!(
+            json,
+            r#"{"LinkConflicts":{"paths":["/opt/homebrew/bin/npm"]}}"#
+        );
         assert_eq!(
             serde_json::from_str::<Warning>(&json).expect("deserialize"),
             conflicts
