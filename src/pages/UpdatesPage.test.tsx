@@ -4995,10 +4995,11 @@ describe("UpdatesPage", () => {
       const shown = (row: HTMLElement) =>
         [...row.querySelectorAll("[data-sheet-name] ~ span")].map((span) => [span.textContent, span.className]);
       const byName = (name: string) => rows.filter((row) => row.querySelector("[data-sheet-name]")?.textContent === name);
-      // Both httpies say which they are, in 11 muted beside the name.
+      // Both httpies say which they are, in 11 muted beside the name --
+      // the first words to give way, cut short, never the name.
       expect(byName("httpie").map(shown)).toEqual([
-        [["Homebrew", "shrink-0 text-small text-muted"]],
-        [["pipx", "shrink-0 text-small text-muted"]],
+        [["Homebrew", "min-w-0 truncate text-small text-muted"]],
+        [["pipx", "min-w-0 truncate text-small text-muted"]],
       ]);
       // jq says it to a screen reader only.
       expect(shown(byName("jq")[0])).toEqual([["Homebrew", "sr-only"]]);

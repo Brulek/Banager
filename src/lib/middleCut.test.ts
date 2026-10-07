@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ELLIPSIS, middleCut } from "./middleCut";
+import { ELLIPSIS, endCut, middleCut } from "./middleCut";
 
 /** Every character 7 wide, "…" too: a monospaced font, so the sums are easy to check. */
 const mono = (text: string) => text.length * 7;
@@ -40,5 +40,31 @@ describe("middleCut", () => {
 
   it("keeps a character of the start, …, and the end where even that is too wide, for its box to cut", () => {
     expect(middleCut(name, 20, mono, 12)).toBe(`m${ELLIPSIS}-GGUF:Q4_K_M`);
+  });
+});
+
+describe("endCut", () => {
+  const where = "pip（/opt/homebrew/bin/python3.11）";
+
+  it("leaves words that fit whole", () => {
+    expect(endCut(where, mono(where), mono)).toBe(where);
+  });
+
+  it("keeps the longest end that fits after a …, for a room too small for any start", () => {
+    for (const room of [14, 40, 85, 120]) {
+      const cut = endCut(where, room, mono);
+      expect(cut.startsWith(ELLIPSIS)).toBe(true);
+      expect(where.endsWith(cut.slice(1))).toBe(true);
+      expect(mono(cut)).toBeLessThanOrEqual(room);
+      // One more character of the end would not fit.
+      expect(mono(`${ELLIPSIS}${where.slice(-(cut.length))}`)).toBeGreaterThan(room);
+    }
+    expect(endCut(where, 85, mono)).toBe(`${ELLIPSIS}python3.11）`);
+  });
+
+  it("is nothing where not even … and one character fit: no lone … to say nothing", () => {
+    expect(endCut(where, 13, mono)).toBe("");
+    expect(endCut(where, 0, mono)).toBe("");
+    expect(endCut(where, -20, mono)).toBe("");
   });
 });

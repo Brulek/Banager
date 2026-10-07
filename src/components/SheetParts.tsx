@@ -147,7 +147,10 @@ export function SheetTool({
       <div className="flex min-h-6 items-center gap-2">
         <ToolAvatar size="sm" adapterId={adapterId} sourceLabel={sourceLabel} iconKey={iconKey} />
         <p className="flex min-w-0 flex-1 items-baseline gap-1.5">
-          <span data-sheet-name="" title={name} className="min-w-0 truncate text-body text-foreground">
+          {/* The name takes its room first, cut only where it alone is wider
+              than the line; the source's words after it give way, cut
+              short, whole in their tooltip (as a list row's, `ToolRow`). */}
+          <span data-sheet-name="" title={name} className="max-w-full shrink-0 truncate text-body text-foreground">
             {shownName === undefined ? (
               name
             ) : (
@@ -158,7 +161,9 @@ export function SheetTool({
             )}
           </span>
           {sourceLabel === name ? null : showSource ? (
-            <span className="shrink-0 text-small text-muted">{sourceLabel}</span>
+            <span title={sourceLabel} className="min-w-0 truncate text-small text-muted">
+              {sourceLabel}
+            </span>
           ) : (
             <span className="sr-only">{sourceLabel}</span>
           )}

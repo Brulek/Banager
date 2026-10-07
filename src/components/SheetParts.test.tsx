@@ -289,4 +289,21 @@ describe("SheetTool", () => {
     expect(spoken.textContent).toBe(whole);
     expect(spoken.className).toBe("sr-only");
   });
+
+  it("keeps the name whole before its source's words, which give way first, whole in their tooltip", () => {
+    const where = "pip（/opt/homebrew/bin/python3.11）";
+    const { container, getByText } = renderWithProviders(
+      <ul>
+        <SheetTool adapterId="pip" sourceLabel={where} showSource name="wheel" aside="0.45.1" />
+      </ul>,
+    );
+    const name = container.querySelector("[data-sheet-name]") as HTMLElement;
+    const classes = (element: HTMLElement) => element.className.split(/\s+/);
+    expect(classes(name)).toEqual(expect.arrayContaining(["shrink-0", "max-w-full", "truncate"]));
+    expect(classes(name)).not.toContain("min-w-0");
+    const source = getByText(where);
+    expect(classes(source)).toEqual(expect.arrayContaining(["min-w-0", "truncate"]));
+    expect(classes(source)).not.toContain("shrink-0");
+    expect(source).toHaveAttribute("title", where);
+  });
 });

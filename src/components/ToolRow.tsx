@@ -2,7 +2,7 @@ import { Fragment, useId, useLayoutEffect, useRef, useState, type KeyboardEvent,
 import { useTranslation } from "react-i18next";
 import type { ArtifactKey } from "../lib/types";
 import { keepsOwnMenu } from "../lib/contextMenu";
-import { middleCut, textMeasurer } from "../lib/middleCut";
+import { endCut, middleCut, textMeasurer } from "../lib/middleCut";
 import { ToolAvatar } from "./ToolAvatar";
 import { BUTTON } from "./ui/controls";
 import { RowMenuContext, type OpenMenuAt } from "./ui/Menu";
@@ -91,6 +91,8 @@ export interface ToolRowContentProps {
    * (spec R3), as Mail names the account beside a mailbox two accounts
    * have. Elsewhere the avatar's mark says the source, with its name in
    * the avatar's tooltip and, for a screen reader, after the tool's name.
+   * In sight, they give way to the tool's name, cut short first, and are
+   * whole in their tooltip (`RowNote`).
    */
   showSource?: boolean;
   /**
@@ -244,7 +246,88 @@ function RowName({ name, shown }: { name: string; shown?: string }) {
   );
 }
 
-const NAME_CLASS = "min-w-0 truncate text-name font-semibold text-foreground";
+/**
+ * The name takes the room it needs on its line and gives none of it to the
+ * source's words after it (`showSource`): they give way first, cut short
+ * (`NOTE_CLASS`), and the name is cut only where it alone is wider than the
+ * whole line (`max-w-full`) -- 「w…」 beside a whole
+ * 「pip（/opt/homebrew/bin/python3.11）」 said nothing of which package it was.
+ */
+const NAME_CLASS = "max-w-full shrink-0 truncate text-name font-semibold text-foreground";
+
+/**
+ * The source's words after the name, in sight (`showSource`): small and
+ * muted, and the first thing on the name's line to give way (`RowNote`) --
+ * their whole text their tooltip, and what a screen reader reads. Marked
+ * `data-row-note`, so that nothing measuring the name's room counts what is
+ * left of them as taken.
+ */
+const NOTE_CLASS = "ml-1.5 min-w-0 truncate text-small text-muted";
+
+/**
+ * How many of the source's words' last characters a cut keeps (`RowNote`):
+ * where two sources of one kind differ -- 「…/python3.11）」 beside
+ * 「…/python3）」, 「…（Intel）」 beside 「…（Apple芯片）」.
+ */
+const NOTE_TAIL = 12;
+
+/**
+ * The source's words after the name (`showSource`), fitted to what the name
+ * leaves of its line after every draw: whole where they fit, and else cut
+ * in their middle, keeping their end (`NOTE_TAIL`), as Finder cuts a long
+ * file name -- the start says the kind of source, which the avatar's mark
+ * says too; the end is what tells two of a kind apart -- or, with no room
+ * for a start, the end alone after a "…", or nothing (`endCut`). Whole in
+ * their tooltip and to a screen reader. The name takes its room first
+ * (`NAME_CLASS`), so its width does not hang on what this shows, and
+ * fitting this draws only these words again, not the row. Read to be
+ * drawn again with every new width of the list, as `MiddleCutName` is.
+ * Where nothing can be measured (a test's jsdom), whole, for its box to
+ * cut at its end.
+ */
+function RowNote({ note }: { note: string }) {
+  useListWidth();
+  const ref = useRef<HTMLSpanElement>(null);
+  const [cut, setCut] = useState<string | null>(null);
+  useLayoutEffect(() => {
+    const span = ref.current;
+    const line = span?.parentElement;
+    const lineWidth = line?.getBoundingClientRect().width ?? 0;
+    const measure = span == null || line == null || lineWidth === 0 ? null : textMeasurer(span);
+    let fitted: string | null = null;
+    if (measure !== null && span != null && line != null) {
+      // The line less the space before the words and what else stands on
+      // it in sight: the name. A screen reader's copy takes no room.
+      let room = lineWidth - (parseFloat(getComputedStyle(span).marginLeft) || 0);
+      for (const other of Array.from(line.children)) {
+        if (other === span || getComputedStyle(other).position === "absolute") continue;
+        room -= other.getBoundingClientRect().width + (parseFloat(getComputedStyle(other).marginLeft) || 0);
+      }
+      // Too little room for a start, "…" and the tail (a list beside the
+      // inspector in the narrowest window): the end alone, after a "…", or
+      // nothing where not even that fits (`endCut`).
+      const cutRoom = Math.floor(room);
+      const middle = middleCut(note, cutRoom, measure, NOTE_TAIL);
+      const shown = middle === note || measure(middle) <= cutRoom ? middle : endCut(note, cutRoom, measure);
+      fitted = shown === note ? null : shown;
+    }
+    // Set only when it changes: a state set to what it already is can
+    // still draw the words once more.
+    if (fitted !== cut) setCut(fitted);
+  });
+  return (
+    <span ref={ref} title={note} data-row-note="" className={NOTE_CLASS}>
+      {cut === null ? (
+        note
+      ) : (
+        <>
+          <span aria-hidden="true">{cut}</span>
+          <span className="sr-only">{note}</span>
+        </>
+      )}
+    </span>
+  );
+}
 
 /**
  * A name long enough to be cut in its middle (`RowName`), fitted to its
@@ -268,11 +351,16 @@ function MiddleCutName({ name, lang }: { name: string; lang: string | undefined 
     const measure = paragraph == null || line == null || lineWidth === 0 ? null : textMeasurer(paragraph);
     let fitted: string | null = null;
     if (measure !== null && line != null) {
-      // The line's width less what else stands on it in sight: the source's
-      // name, where it follows (R3). Its screen reader's copy takes no room.
+      // The line's width less what else stands on it in sight and does not
+      // give way to the name. The source's words after it (R3) do
+      // (`NOTE_CLASS`): the name is fitted to the whole line and they take
+      // what is left, so what is left of them is not counted -- counted,
+      // each fitting would leave them more and the next cut the name
+      // shorter. A screen reader's copy takes no room.
       let room = lineWidth;
       for (const other of Array.from(line.children)) {
-        if (other === paragraph || getComputedStyle(other).position === "absolute") continue;
+        if (other === paragraph || other.hasAttribute("data-row-note")) continue;
+        if (getComputedStyle(other).position === "absolute") continue;
         room -= other.getBoundingClientRect().width + parseFloat(getComputedStyle(other).marginLeft || "0");
       }
       const shown = middleCut(name, Math.floor(room), measure, NAME_TAIL);
@@ -499,10 +587,18 @@ export function ToolRow({
     if (measureCell !== null && measureName !== null && cell != null && nameLine != null) {
       const column = Math.max(Math.ceil(measureCell(version)), parseFloat(getComputedStyle(cell).minWidth) || 0);
       let nameNeeds = Math.ceil(measureName(namePath?.name ?? name)) + 1;
-      // What else stands on the name's line in sight: the source's name (R3).
+      // What else stands on the name's line in sight: the source's words
+      // (R3), whole -- measured by their text, as their box is whatever
+      // the name has left them (`NOTE_CLASS`), and the choice would turn on
+      // itself.
       for (const other of Array.from(nameLine.children)) {
         if (other === nameText || getComputedStyle(other).position === "absolute") continue;
-        nameNeeds += other.getBoundingClientRect().width + parseFloat(getComputedStyle(other).marginLeft || "0");
+        const measureNote = other.hasAttribute("data-row-note") && other instanceof HTMLElement ? textMeasurer(other) : null;
+        const width =
+          measureNote !== null
+            ? Math.ceil(measureNote(other.getAttribute("title") ?? other.textContent ?? ""))
+            : other.getBoundingClientRect().width;
+        nameNeeds += width + parseFloat(getComputedStyle(other).marginLeft || "0");
       }
       fits = blockWidth + cellWidth - column >= nameNeeds;
     }
@@ -682,7 +778,11 @@ export function ToolRow({
           <div className="flex min-w-0 items-baseline">
             <RowName name={name} shown={namePath?.name} />
             {source !== undefined ? (
-              <span className={showSource ? "ml-1.5 shrink-0 text-small text-muted" : "sr-only"}>{source}</span>
+              showSource ? (
+                <RowNote note={source} />
+              ) : (
+                <span className="sr-only">{source}</span>
+              )
             ) : null}
           </div>
           <div ref={descriptionLine} className="mt-0.5 flex min-w-0 items-center text-small text-muted">

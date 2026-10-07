@@ -33,6 +33,29 @@ export function middleCut(text: string, room: number, measure: MeasureText, tail
   return withHead(fits);
 }
 
+/**
+ * `text`'s end alone, after "…", the longest that fits `room` px: for words
+ * whose end is what tells them apart -- a source's place,
+ * 「…python3.11）」 -- in a room too small for `middleCut`'s first
+ * character, "…" and tail. The whole text where it fits; nothing at all
+ * where not even "…" and one character do, rather than a lone "…".
+ */
+export function endCut(text: string, room: number, measure: MeasureText): string {
+  if (measure(text) <= room) return text;
+  const withTail = (length: number) => `${ELLIPSIS}${text.slice(text.length - length)}`;
+  if (text.length === 0 || measure(withTail(1)) > room) return "";
+  // The longest end that fits, found by halving: widths only grow as the
+  // end does.
+  let fits = 1;
+  let tooLong = text.length;
+  while (tooLong - fits > 1) {
+    const middle = Math.floor((fits + tooLong) / 2);
+    if (measure(withTail(middle)) <= room) fits = middle;
+    else tooLong = middle;
+  }
+  return withTail(fits);
+}
+
 /** One canvas for every measurement: drawing into it is never shown. */
 let canvas: HTMLCanvasElement | null = null;
 

@@ -117,11 +117,119 @@ describe("ToolRow", () => {
       <ToolRow adapterId="pipx" sourceLabel="pipx" name="black" showSource description="Python code formatter" />,
     );
     const source = getByText("pipx", { selector: "span" });
-    expect(atRest(source.className)).toEqual(expect.arrayContaining(["text-small", "text-muted", "shrink-0"]));
+    expect(atRest(source.className)).toEqual(expect.arrayContaining(["text-small", "text-muted"]));
     expect(source.className).not.toContain("sr-only");
     expect(source.className).not.toMatch(/rounded|border|bg-/);
     // Right after the name, on its line.
     expect(source.previousElementSibling).toBe(getByText("black"));
+  });
+
+  it("keeps the name whole before its source's words: they give way first, cut short, whole in their tooltip and to a screen reader", () => {
+    // 「w…」 beside 「pip（/opt/homebrew/bin/python3.11）」 whole, as a pip
+    // package two Pythons list was drawn: the name is what the row is.
+    const where = "pip（/opt/homebrew/bin/python3.11）";
+    const { getByText } = renderWithProviders(
+      <ToolRow adapterId="pip" sourceLabel={where} name="wheel" showSource description="Python package" />,
+    );
+    const name = getByText("wheel");
+    // The name takes the room it needs and gives none of it up -- up to
+    // the whole line, where it is cut at its end only when it alone is
+    // wider than that.
+    expect(atRest(name.className)).toEqual(expect.arrayContaining(["shrink-0", "max-w-full", "truncate"]));
+    expect(atRest(name.className)).not.toContain("min-w-0");
+    // The source's words take what is left, cut short at their end.
+    const source = getByText(where, { selector: "span" });
+    expect(atRest(source.className)).toEqual(expect.arrayContaining(["min-w-0", "truncate"]));
+    expect(atRest(source.className)).not.toContain("shrink-0");
+    expect(source).toHaveAttribute("title", where);
+    // Their whole text is there for a screen reader to read.
+    expect(source.textContent).toBe(where);
+  });
+
+  it("cuts the source's words in their middle, keeping their end, where two copies of one source differ", () => {
+    // 「pip（/opt/homebrew/bin/python3.…」 and 「pip（/opt/homebrew/bin/python3）」
+    // look alike; the end is what tells the two Pythons apart. A line 200
+    // wide, the name 35 (`wheel`, 5 characters of 7), so 165 for the words:
+    // 23 of their characters, the last 12 of them kept.
+    const where = "pip（/opt/homebrew/bin/python3.11）";
+    const box = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(function (this: HTMLElement) {
+        const width = this.tagName === "DIV" ? 200 : this.tagName === "P" ? 35 : 0;
+        return new DOMRect(0, 0, width, 16);
+      });
+    try {
+      const { container } = renderWithProviders(
+        <ToolRow adapterId="pip" sourceLabel={where} name="wheel" showSource description="Python package" />,
+      );
+      const note = container.querySelector("[data-row-note]") as HTMLElement;
+      expect(note).toHaveAttribute("title", where);
+      const [shown, spoken] = [...note.children] as HTMLElement[];
+      expect(shown.textContent).toBe("pip（/opt/h…/python3.11）");
+      expect(shown).toHaveAttribute("aria-hidden", "true");
+      expect(spoken.textContent).toBe(where);
+      expect(spoken.className).toBe("sr-only");
+    } finally {
+      box.mockRestore();
+    }
+    // Less room than a start, … and those 12 take (a list beside the
+    // inspector in the narrowest window): the end alone, after a … -- and
+    // nothing at all where not even that fits, rather than a lone 「p…」.
+    for (const [line, shown] of [
+      [120, "…python3.11）"],
+      [77, "…3.11）"],
+      [48, ""],
+    ] as const) {
+      const narrow = vi
+        .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+        .mockImplementation(function (this: HTMLElement) {
+          const width = this.tagName === "DIV" ? line : this.tagName === "P" ? 35 : 0;
+          return new DOMRect(0, 0, width, 16);
+        });
+      try {
+        const { container, unmount } = renderWithProviders(
+          <ToolRow adapterId="pip" sourceLabel={where} name="wheel" showSource description="Python package" />,
+        );
+        const note = container.querySelector("[data-row-note]") as HTMLElement;
+        expect(note.querySelector("[aria-hidden]")?.textContent).toBe(shown);
+        expect(note.querySelector(".sr-only")?.textContent).toBe(where);
+        unmount();
+      } finally {
+        narrow.mockRestore();
+      }
+    }
+    // Nothing measured (a line not laid out): whole, for its box to cut.
+    const { container } = renderWithProviders(
+      <ToolRow adapterId="pip" sourceLabel={where} name="wheel" showSource description="Python package" />,
+    );
+    const note = container.querySelector("[data-row-note]") as HTMLElement;
+    expect(note.textContent).toBe(where);
+    expect(note.childElementCount).toBe(0);
+  });
+
+  it("fits a very long name to its whole line, not to what the source's words leave it", () => {
+    const long = "@modelcontextprotocol/server-filesystem-extended";
+    expect(long.length).toBeGreaterThan(MIDDLE_CUT_FROM);
+    // A line 300 wide, the source's words drawn 100 wide on it, and a font
+    // 7 wide a character (`textMeasurer`, mocked): the name is cut to the
+    // line's 300, and the words beside it get what is left.
+    const box = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(function (this: HTMLElement) {
+        const width = this.tagName === "DIV" ? 300 : this.textContent === "npm（~/.npm-global）" ? 100 : 0;
+        return new DOMRect(0, 0, width, 16);
+      });
+    try {
+      const { container } = renderWithProviders(
+        <ToolRow adapterId="npm" sourceLabel="npm（~/.npm-global）" name={long} showSource description="npm package" />,
+      );
+      const shown = container.querySelector("p[title] [aria-hidden]") as HTMLElement;
+      expect(shown.textContent).toMatch(/…/);
+      expect(shown.textContent!.length * 7).toBeLessThanOrEqual(300);
+      expect(shown.textContent!.length * 7).toBeGreaterThan(300 - 7 * 2);
+    } finally {
+      box.mockRestore();
+    }
   });
 
   it("says nothing more for a tool that is its own source", () => {
@@ -217,7 +325,7 @@ describe("ToolRow", () => {
     const uncut = unmeasured.container.querySelector("p[title]") as HTMLElement;
     expect(uncut.textContent).toBe(long);
     expect(uncut.childElementCount).toBe(0);
-    expect(atRest(uncut.className)).toEqual(expect.arrayContaining(["min-w-0", "truncate"]));
+    expect(atRest(uncut.className)).toEqual(expect.arrayContaining(["max-w-full", "truncate"]));
     unmeasured.unmount();
 
     // A shorter name is one piece, cut at its end.
@@ -258,7 +366,7 @@ describe("ToolRow", () => {
       expect(spoken.textContent).toBe(long);
       expect(spoken.className).toBe("sr-only");
       // Cut at its end if it still does not fit.
-      expect(atRest(name.className)).toEqual(expect.arrayContaining(["min-w-0", "truncate"]));
+      expect(atRest(name.className)).toEqual(expect.arrayContaining(["max-w-full", "truncate"]));
       expect(name).toHaveAttribute("lang", "en");
       // Where it is from, first on the description's line, in sight only.
       const line = getByText("Ollama model", { exact: false }) as HTMLElement;
@@ -563,6 +671,52 @@ describe("ToolRow", () => {
         } finally {
           box.mockRestore();
         }
+      }
+    });
+
+    it("counts the source's words whole beside the name, by their text, though their box gives way", () => {
+      // As above, with 「Homebrew」 after the name (8 characters, 56): the
+      // name and the words need 134, so the block 190 -- whatever width the
+      // words' box has been left, here none, as a row that cut them leaves.
+      const layout = (block: number) =>
+        vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+          const width = this.hasAttribute("data-version")
+            ? (this.querySelector("[aria-hidden]")?.textContent ?? this.textContent ?? "").length * 7
+            : this.className.includes("ml-3 min-w-0 flex-1")
+              ? block
+              : 0;
+          return new DOMRect(0, 0, width, 16);
+        });
+      const twice = (
+        <ListWidthProvider value={ROW_FIT_WIDTHS.compact}>
+          <ToolRow
+            adapterId="brew"
+            sourceLabel="Homebrew"
+            name="claude-code"
+            showSource
+            description="Anthropic's coding assistant"
+            status={<StatusChip label="Updates itself" />}
+            version="2.1.282 → 2.1.290"
+            newVersion="2.1.290"
+            action={<button type="button">Update</button>}
+          />
+        </ListWidthProvider>
+      );
+      let box = layout(190);
+      try {
+        const { container, unmount } = renderWithProviders(twice);
+        expect(container.querySelector("[data-version]")?.textContent).toBe("2.1.282 → 2.1.290");
+        unmount();
+      } finally {
+        box.mockRestore();
+      }
+      box = layout(189);
+      try {
+        const { container, unmount } = renderWithProviders(twice);
+        expect(container.querySelector("[data-version] [aria-hidden]")?.textContent).toBe("→ 2.1.290");
+        unmount();
+      } finally {
+        box.mockRestore();
       }
     });
 
