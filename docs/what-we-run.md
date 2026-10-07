@@ -444,8 +444,22 @@ Rust holds at most 1,024 plans
 (`MAX_ISSUED_PLANS` there), letting the oldest go past that, so Update
 all of more updates than that has lost its first plans by the time it is
 confirmed. Each of those is then planned again at its turn, through the
-same `plan_operation` and every refusal below, and started only if the
-new plan is field for field the one that was shown, and only while the
+same `plan_operation` and every refusal below. One no longer offered an
+update by then -- an earlier update of the batch updated it as a
+dependency, say -- is still planned again while it is installed under the
+same source, kind and name and its update was previewed less than ten
+minutes before: apart from the plans, Rust keeps for each update it
+previewed the version it was offered and when it was previewed
+(`ListedUpgrade` in `crates/banager-core/src/session/plans.rs`), and each
+planning request drops what is older than ten minutes or neither
+installed nor offered. The plan made again from it keeps that preview's
+time, so it lives no longer than the plan shown, and is aimed at
+that offered version: if the tool is already there when its turn comes,
+the update is reported as done, as any update an earlier one got to
+first is (Homebrew's section). A
+tool installed but not previewed with an update in those ten minutes is
+refused as before. The new plan starts only if it is field for field the
+one that was shown, and only while the
 batch is no more than ten minutes old, counted from when the
 confirmation asked for its first plan. That age is checked again once the
 new plan is back, just before it is submitted, so a slow re-planning
@@ -1763,13 +1777,21 @@ prefix is unknown. No other command runs.
 | List outdated global packages (`check_updates`) | `<npm> outdated -g --json --prefix {prefix}` | 60 s |
 | Search | `<npm> search --json --searchlimit 20 {query}` | 30 s |
 
-`npm ls` exits 1 for non-fatal reasons (a peer dependency mismatch), so
-exit 0 and 1 are both read. `npm outdated` exits 1 whenever it finds
-a version difference, including one that is no update (a package
-installed ahead of `latest`), so exit 1 with rows npm printed is a
-result even when none of them is kept as an update. Any other non-zero
-exit, or exit 1 with no rows (empty or error output), is reported as
-"could not check" for every package rather than as "everything is up to
+`npm ls` exits 1 for problems it found in the packages it read (a peer
+dependency mismatch): it then writes the packages, with the problems and
+an `error` beside them. So exit 1 is read when stdout has a `dependencies`
+object, even an empty one. Any other non-zero exit, or exit 1 with no such
+object, is a failed reading, not an empty list; its reason is what npm
+wrote to stderr, never stdout, which Banager reads as npm wrote it,
+without masking a proxy login out of it. An answer with an `error` and no
+`dependencies` is a failed reading on exit 0 too, named by npm's error
+code alone (`ENOTDIR`); one with neither -- `{"name": "lib"}`, npm's own
+for a prefix with nothing installed -- is no global packages. `npm outdated`
+exits 1 whenever it finds a version difference, including one that is no
+update (a package installed ahead of `latest`), so exit 1 with rows npm
+printed is a result even when none of them is kept as an update. Any other
+non-zero exit, or exit 1 with no rows (empty or error output), is reported
+as "could not check" for every package rather than as "everything is up to
 date" — listing every package that way takes one more run of
 `<npm> ls -g --depth=0 --json --prefix {prefix}`, so
 a refresh whose `outdated` failed runs the inventory command twice. The
