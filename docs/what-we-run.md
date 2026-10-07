@@ -731,7 +731,7 @@ nor once the page has stopped listening, as it does when an error in
 drawing it takes it down; and once asked, the window has 2 seconds to
 say that the question is on screen, or Banager quits — a window that
 was reloaded or stopped working is not there to answer, and a quit
-called off with nobody to ask would never happen. *Cancel* (or
+called off with nobody to ask would never happen. *Keep Waiting* (or
 Escape, or the question going away once everything has finished) tells
 Banager too, and that 2-second wait then does not quit, even when the
 word that the question was on screen did not get through; the window
@@ -2973,7 +2973,11 @@ Ollama.app was found; it waits up to 20 seconds for `open` to report
 whether LaunchServices accepted the request. It and the homepage link in
 the Installed page's details, which can start the default browser
 (Network), are the only launches in the app that are not package-manager
-commands, and neither happens during a refresh.
+commands, and neither happens during a refresh. Apart from them, a second
+launch of Banager that finds one already running asks macOS to open that
+running copy again (Files Banager writes), which sends it the event a
+click on its Dock icon sends and starts nothing — unless that copy quits
+at that very moment, when macOS opens Banager anew.
 
 ## Claude Code
 

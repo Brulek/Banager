@@ -387,7 +387,7 @@ fn test_no_protected_walk_looks_a_path_up_by_its_name() {
 }
 
 #[test]
-fn test_only_the_runner_the_open_ollama_button_and_the_homepage_link_start_a_process() {
+fn test_only_the_runner_open_ollama_the_homepage_link_and_reopening_banager_start_a_process() {
     let found = holding(
         production_lines().iter(),
         &[
@@ -411,6 +411,13 @@ fn test_only_the_runner_the_open_ollama_button_and_the_homepage_link_start_a_pro
             // `homepage::listed_homepage` has checked first.
             || (entry.starts_with("src-tauri/src/homepage.rs:")
                 && entry.contains("workspace.openURLs_withApplicationAtURL_configuration_completionHandler("))
+            // A second launch reopening the Banager already running: the
+            // app bundle LaunchServices lists as running under Banager's
+            // own bundle identifier (`instance::reopen_existing`), which
+            // macOS answers with the reopen event; it starts Banager anew
+            // only should that copy have quit in between (r38 S5).
+            || (entry.starts_with("src-tauri/src/instance.rs:")
+                && entry.contains("workspace.openURL(&bundle)"))
     };
     let others: Vec<&String> = found.iter().filter(|entry| !allowed(entry)).collect();
     assert!(
