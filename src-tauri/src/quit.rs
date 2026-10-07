@@ -5,9 +5,11 @@
 //! bar's 「全部取消」 does (`Session::cancel`): one still queued never
 //! starts, and a running command is stopped partway, which can leave the
 //! tool it was updating or uninstalling half done. Banager waits for those
-//! commands to stop, and for its reading back of what each did, which
-//! keeps the operation's history record, `STOP_WITHIN` at the most, then
-//! quits (`quit_now`).
+//! commands to stop, and for its reading back of what each did, after
+//! which an update's or uninstall's history record is kept,
+//! `STOP_WITHIN` at the most, then quits (`quit_now`). One already
+//! reading back what its command did is not cancelled, and is waited for
+//! the same way (`waits_for`).
 //! A running operation that cannot be cancelled -- rustup's self update or
 //! self uninstall (`operations.noCancelHint`) -- is not stopped: its command
 //! runs on without Banager (`quit_now` says what becomes of it).
@@ -182,7 +184,7 @@ pub fn cancels(op: &OpSummary) -> bool {
 /// (`OperationManager::finish`), and the exit writes only the records
 /// kept by then (`history::flush_on_exit`), so a quit that left before
 /// would leave the update or uninstall it stopped, or that had just
-/// finished, out of Update History. That reading is Banager's own and
+/// finished, out of `history.json`. That reading is Banager's own and
 /// read-only -- for Homebrew one `brew info --json=v2 --installed`, a
 /// second or so -- and `STOP_WITHIN` bounds the whole wait. `Done` is
 /// over; a running `NoCancel` one does not end on Banager's account, and
@@ -1222,11 +1224,12 @@ mod history_at_quit_tests {
     /// does not wait for it takes to leave.
     const READ_BACK: Duration = Duration::from_millis(400);
 
-    /// One source offering jq 1.0 → 1.1. Its update's command exits 0 at
-    /// once, or, when `runs_until_cancelled`, runs until the quit cancels
-    /// it, answering as `run_plan` answers a command stopped partway
-    /// (`Unconfirmed`). Its reading before the command answers at once;
-    /// the one after takes `READ_BACK`.
+    /// One source offering jq 1.0 → 1.1. Its update's or uninstall's
+    /// command exits 0 at once, or, when `runs_until_cancelled`, runs until
+    /// the quit cancels it, answering as `run_plan` answers a command
+    /// stopped partway (`Unconfirmed`). Its reading before the command
+    /// answers at once; the one after takes `READ_BACK`, and after an
+    /// uninstall finds jq gone.
     struct ReadsBack {
         meta: AdapterMeta,
         runs_until_cancelled: bool,
@@ -1340,6 +1343,19 @@ mod history_at_quit_tests {
                 version: Some(if updated { "1.1" } else { "1.0" }.to_string()),
             })
         }
+
+        async fn reconcile_after_uninstall(
+            &self,
+            _inst: &ManagerInstance,
+            _key: &ArtifactKey,
+            _plan: &Plan,
+        ) -> Result<Reconciled, AdapterError> {
+            tokio::time::sleep(READ_BACK).await;
+            Ok(Reconciled {
+                present: false,
+                version: None,
+            })
+        }
     }
 
     fn app_data_dir(tag: &str) -> PathBuf {
@@ -1376,12 +1392,14 @@ mod history_at_quit_tests {
         )
     }
 
-    /// Starts jq's update on a session with the history attached in `dir`,
-    /// waits until it is `at` -- where it is when the person answers
-    /// 「退出」 -- then quits as `quit_now` does and exits as
-    /// `RunEvent::Exit` does; hands back what the history file holds then.
-    async fn quit_with_the_update(
+    /// Starts jq's update (or, `kind`, its uninstall) on a session with
+    /// the history attached in `dir`, waits until it is `at` -- where it is
+    /// when the person answers 「退出」 -- then quits as `quit_now` does
+    /// and exits as `RunEvent::Exit` does; hands back what the history file
+    /// holds then.
+    async fn quit_with_the_operation(
         dir: &Path,
+        kind: OpKind,
         runs_until_cancelled: bool,
         at: OpStatus,
     ) -> Vec<String> {
@@ -1416,7 +1434,7 @@ mod history_at_quit_tests {
             .await;
         let issued = session
             .issue_plan(&OpRequest {
-                kind: OpKind::Upgrade,
+                kind,
                 instance_id: "readsback:1".to_string(),
                 artifact_kind: ArtifactKind::Formula,
                 name: "jq".to_string(),
@@ -1434,7 +1452,7 @@ mod history_at_quit_tests {
         assert_eq!(
             unfinished(&session.operations()),
             0,
-            "the quit left once the update was done"
+            "the quit left once the operation was done"
         );
         crate::history::flush_on_exit(&state);
         records_in(dir).unwrap_or_default()
@@ -1443,11 +1461,27 @@ mod history_at_quit_tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_a_quit_while_an_update_checks_its_result_keeps_its_record() {
         let dir = app_data_dir("verifying");
-        let records = quit_with_the_update(&dir, false, OpStatus::Verifying).await;
+        let records =
+            quit_with_the_operation(&dir, OpKind::Upgrade, false, OpStatus::Verifying).await;
         assert_eq!(
             records,
             ["jq Succeeded"],
-            "the update whose command had exited 0 is in Update History after the restart"
+            "the update whose command had exited 0 is kept in history.json"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_a_quit_while_an_uninstall_checks_its_result_keeps_its_record() {
+        // r38 skeptic 2: what-we-run says an update or uninstall checking
+        // its result keeps its record; this is the uninstall.
+        let dir = app_data_dir("uninstall-verifying");
+        let records =
+            quit_with_the_operation(&dir, OpKind::Uninstall, false, OpStatus::Verifying).await;
+        assert_eq!(
+            records,
+            ["jq Succeeded"],
+            "the uninstall whose command had exited 0 is kept in history.json"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -1455,11 +1489,11 @@ mod history_at_quit_tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_a_quit_that_stops_a_running_update_keeps_its_record() {
         let dir = app_data_dir("running");
-        let records = quit_with_the_update(&dir, true, OpStatus::Running).await;
+        let records = quit_with_the_operation(&dir, OpKind::Upgrade, true, OpStatus::Running).await;
         assert_eq!(
             records,
             ["jq Unconfirmed"],
-            "the update the quit stopped partway is in Update History, its result not confirmed"
+            "the update the quit stopped partway is kept in history.json, its result not confirmed"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
