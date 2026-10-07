@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { screen, waitFor, fireEvent } from "@testing-library/react";
+import { screen, waitFor, fireEvent, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { command } from "../test/command";
@@ -468,5 +468,159 @@ describe("LinkFixSheet where Homebrew's own links are already there, its link no
         "To link it, you can run this command in Terminal. It deletes the files in the way and links the ones in “node@22” in their place. If it still stops partway, Homebrew also removes the link that was already there.",
       ),
     ).toBeInTheDocument();
+  });
+});
+
+describe("LinkFixSheet to a screen reader (r27 A3)", () => {
+  const inTheWay: Warning[] = [
+    { LinkPutsCommands: { names: ["corepack", "node", "npm", "npx"] } },
+    { LinkConflicts: { paths: ["/opt/homebrew/bin/npm", "/opt/homebrew/bin/npx"] } },
+  ];
+  const linkable: Warning[] = [{ LinkPutsCommands: { names: ["corepack", "node", "npm", "npx"] } }];
+
+  /**
+   * Answers each formula's preview with its own warnings, as the mock's
+   * `?state=nonode` does (node@22 in the way, node@20 not); `held`'s
+   * preview waits until it is let go.
+   */
+  function backendBy(npm: ManagerInstance, warningsOf: (name: string) => Warning[], held?: string) {
+    let release: () => void = () => {};
+    vi.mocked(invoke).mockImplementation(async (cmd: string, args?: unknown) => {
+      if (cmd === "get_snapshot") return snapshotWith(npm);
+      if (cmd === "plan_operation") {
+        const request = (args as { request: OpRequest }).request;
+        const plan = issued(request, warningsOf(request.name));
+        if (request.name !== held) return plan;
+        return new Promise<IssuedPlan>((resolve) => {
+          release = () => resolve(plan);
+        });
+      }
+      if (cmd === "refresh") return snapshotWith(npm);
+      return undefined;
+    });
+    return { release: () => release() };
+  }
+
+  /** The sheet's own status: the one that says what it turned into (not the one that says it is checking). */
+  function saidStatus(dialog: HTMLElement): HTMLElement {
+    const statuses = within(dialog).getAllByRole("status");
+    const said = statuses.find((status) => status.className.split(" ").includes("sr-only"));
+    expect(said).toBeDefined();
+    return said as HTMLElement;
+  }
+
+  it.each([
+    [
+      "en",
+      "Link “node@22”?",
+      "Can't link “node@22”: /opt/homebrew/bin/npm, /opt/homebrew/bin/npx are already there, and Homebrew won't replace them on its own, so it can't be linked.",
+      "/opt/homebrew/bin/npm, /opt/homebrew/bin/npx are already there, and Homebrew won't replace them on its own, so it can't be linked.",
+    ],
+    [
+      "zh-CN",
+      "要链接“node@22”吗？",
+      "无法链接“node@22”：/opt/homebrew/bin/npm、/opt/homebrew/bin/npx已存在，Homebrew不会自行替换，因此无法链接。",
+      "/opt/homebrew/bin/npm、/opt/homebrew/bin/npx已存在，Homebrew不会自行替换，因此无法链接。",
+    ],
+  ])("says the refusal in %s, from a status there since the sheet opened, as the focused Cancel turns into Close", async (language, question, said, line) => {
+    await i18n.changeLanguage(language);
+    try {
+      const npm = npmWithout([NODE_22]);
+      const { release } = backendBy(npm, () => inTheWay, "node@22");
+      renderWithProviders(<LinkFixSheet instanceId={npm.id} onClose={() => {}} />);
+      const dialog = await screen.findByRole("alertdialog", { name: question });
+      await waitFor(() => expect(calls("plan_operation")).toHaveLength(1));
+      // Open, on the question, checking: the status is there and says nothing.
+      const status = saidStatus(dialog);
+      expect(status).toHaveTextContent(/^$/);
+      // What says it is checking is `SheetPending`'s own.
+      expect(within(dialog).getByText(i18n.t("noAnswer.sheet.checking"))).toHaveAttribute("role", "status");
+      const cancel = within(dialog).getByRole("button", { name: i18n.t("common.cancel") });
+      await waitFor(() => expect(cancel).toHaveFocus());
+
+      release();
+      await screen.findByRole("alertdialog", { name: i18n.t("noAnswer.sheet.blockedTitle", { formula: "node@22" }) });
+      // The same status, now with the refusal: its title and what is in the way.
+      await waitFor(() => expect(status).toHaveTextContent(said));
+      expect(status.isConnected).toBe(true);
+      expect(saidStatus(dialog)).toBe(status);
+      // The focus stayed on the button it was on, renamed where it stood;
+      // the dialog is now described by what is in the way too.
+      expect(cancel).toHaveFocus();
+      expect(cancel).toHaveAccessibleName(i18n.t("common.close"));
+      expect(dialog).toHaveAccessibleDescription(expect.stringContaining(line));
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+
+  it("says nothing more as it opens on a question the preview finds nothing in the way of", async () => {
+    const npm = npmWithout([NODE_22]);
+    backendBy(npm, () => linkable);
+    renderWithProviders(<LinkFixSheet instanceId={npm.id} onClose={() => {}} />);
+    const dialog = await screen.findByRole("alertdialog", { name: "Link “node@22”?" });
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: "Link" })).toBeEnabled());
+    expect(saidStatus(dialog)).toHaveTextContent(/^$/);
+    // Described by the reason alone: there is no line of what is in the way.
+    expect(dialog).toHaveAccessibleDescription(expect.not.stringContaining("already there"));
+  });
+
+  it.each(["en", "zh-CN"])(
+    "says what a choice in the version popup turned the sheet into, either way, in %s",
+    async (language) => {
+      await i18n.changeLanguage(language);
+      try {
+        // The mock's `?state=nonode`: node@22 has npm's own files in its
+        // way, node@20 none.
+        const npm = npmWithout([NODE_22, NODE_20]);
+        backendBy(npm, (name) => (name === "node@22" ? inTheWay : linkable));
+        renderWithProviders(<LinkFixSheet instanceId={npm.id} onClose={() => {}} />);
+        const blockedTitle = i18n.t("noAnswer.sheet.blockedTitle", { formula: "node@22" });
+        const dialog = await screen.findByRole("alertdialog", { name: blockedTitle });
+        const status = saidStatus(dialog);
+        await waitFor(() => expect(status).toHaveTextContent(new RegExp(`^${blockedTitle}`)));
+
+        // node@20: back to the question, Link the default button again.
+        const popup = within(dialog).getByLabelText(i18n.t("noAnswer.sheet.version"));
+        popup.focus();
+        fireEvent.change(popup, { target: { value: artifactKeyId(NODE_20.key) } });
+        const question = i18n.t("noAnswer.sheet.title", { formula: "node@20" });
+        await screen.findByRole("alertdialog", { name: question });
+        await waitFor(() => expect(status).toHaveTextContent(question));
+        expect(saidStatus(dialog)).toBe(status);
+        expect(within(dialog).getByRole("button", { name: i18n.t("noAnswer.sheet.confirm") })).toBeEnabled();
+        expect(dialog).toHaveAccessibleDescription(expect.not.stringContaining("/opt/homebrew/bin/npx"));
+        expect(popup).toHaveFocus();
+
+        // And node@22 again: the refusal, said once more.
+        fireEvent.change(popup, { target: { value: artifactKeyId(NODE_22.key) } });
+        await screen.findByRole("alertdialog", { name: blockedTitle });
+        await waitFor(() => expect(status).toHaveTextContent(new RegExp(`^${blockedTitle}`)));
+        expect(status).toHaveTextContent("/opt/homebrew/bin/npx");
+        expect(within(dialog).getByRole("button", { name: i18n.t("header.checkAgain") })).toBeInTheDocument();
+      } finally {
+        await i18n.changeLanguage("en");
+      }
+    },
+  );
+
+  it("says the refusal where the version chosen in the popup turns a question into one", async () => {
+    const npm = npmWithout([NODE_22, NODE_20]);
+    backendBy(npm, (name) =>
+      name === "node@20" ? [...linkable, { LinkRollbackRisk: { paths: ["/opt/homebrew/bin/npm"] } }] : linkable,
+    );
+    renderWithProviders(<LinkFixSheet instanceId={npm.id} onClose={() => {}} />);
+    const dialog = await screen.findByRole("alertdialog", { name: "Link “node@22”?" });
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: "Link" })).toBeEnabled());
+    const status = saidStatus(dialog);
+    expect(status).toHaveTextContent(/^$/);
+    fireEvent.change(within(dialog).getByLabelText("Version to link:"), { target: { value: artifactKeyId(NODE_20.key) } });
+    await screen.findByRole("alertdialog", { name: "Can't link “node@20”" });
+    await waitFor(() =>
+      expect(status).toHaveTextContent(
+        "Can't link “node@20”: /opt/homebrew/bin/npm is already linked to it. If linking stops partway, Homebrew removes that link too, so it can't be linked here.",
+      ),
+    );
+    expect(dialog).toHaveAccessibleDescription(expect.stringContaining("/opt/homebrew/bin/npm is already linked to it."));
   });
 });

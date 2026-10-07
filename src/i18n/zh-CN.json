@@ -773,6 +773,7 @@
       "submitErrorPlain": "无法开始链接。",
       "confirm": "链接",
       "blockedTitle": "无法链接“{{formula}}”",
+      "blockedSaid": "{{title}}：{{lines}}",
       "blockedText": "要链接它，可以在终端里运行下面的命令。它会删除挡住链接的文件，包括上面这些，换成“{{formula}}”中的。",
       "commandLabel": "要在终端里运行的命令",
       "after": "完成后，点按“重新检查”。"

@@ -773,6 +773,7 @@
       "submitErrorPlain": "無法開始連結。",
       "confirm": "連結",
       "blockedTitle": "無法連結「{{formula}}」",
+      "blockedSaid": "{{title}}：{{lines}}",
       "blockedText": "要連結它，可以在終端機執行下面的指令。它會刪除擋住連結的檔案，包括上面這些，換成「{{formula}}」中的。",
       "commandLabel": "要在終端機執行的指令",
       "after": "完成後，點按「重新檢查」。"

@@ -381,13 +381,14 @@ export function SheetSection({ title, titleHidden = false, children }: SheetSect
  * filled ⚠︎ before its words, in systemOrange; its longer why is behind
  * an ⓘ at the end where it has one, held on one line with the last word
  * (`TextWithInfo`). Nothing between a line's words and its ⓘ but
- * `<span>`s, so a line is found by its words from the item alone.
+ * `<span>`s, so a line is found by its words from the item alone. `id`
+ * where a dialog is described by them: the link-fix sheet's refusal.
  */
-export function SheetLines({ lines }: { lines: WarningLine[] }) {
+export function SheetLines({ lines, id }: { lines: WarningLine[]; id?: string }) {
   const { t } = useTranslation();
   if (lines.length === 0) return null;
   return (
-    <ul className="flex flex-col gap-1">
+    <ul id={id} className="flex flex-col gap-1">
       {lines.map((line, index) => (
         <SheetLine key={`${index}:${line.text}`} caution={line.caution}>
           {line.detail !== null ? (

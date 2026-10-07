@@ -840,6 +840,7 @@
       "submitErrorPlain": "Couldn't start the link.",
       "confirm": "Link",
       "blockedTitle": "Can't link “{{formula}}”",
+      "blockedSaid": "{{title}}: {{lines}}",
       "blockedText": "To link it, you can run this command in Terminal. It deletes the files in the way, the ones above among them, and links the ones in “{{formula}}” in their place.",
       "commandLabel": "Command to run in Terminal",
       "after": "When it's done, click Check Again."

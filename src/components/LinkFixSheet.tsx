@@ -118,6 +118,7 @@ export function LinkFixSheet({ instanceId, onClose }: LinkFixSheetProps) {
   const cancelRef = useRef<HTMLButtonElement>(null);
   const popupId = useId();
   const textId = useId();
+  const linesId = useId();
   const open = instanceId !== null;
   const instance = snapshot?.instances.find((candidate) => candidate.id === instanceId);
   const why = instance === undefined ? null : saidNoAnswer(instance);
@@ -237,6 +238,30 @@ export function LinkFixSheet({ instanceId, onClose }: LinkFixSheetProps) {
   const terminal = plan === undefined || fix === undefined ? null : overwriteCommand(plan, fix.key.name);
   const reason =
     fix === undefined ? "" : t("noAnswer.sheet.text", { formula: fix.key.name, program: program ?? "", source });
+  // What the sheet says to a screen reader as it changes under the focus
+  // (r27 A3): the preview arrives a moment after the alert opens, and
+  // where it finds something in the way the title becomes the refusal and
+  // the two buttons the focus is among are renamed where they stand --
+  // Cancel to Close, Link to Check Again. So the refusal is said, its
+  // title and what is in the way, 「无法链接“node@22”：…因此无法链接。」.
+  // And where a choice in the version popup turns it back into a question
+  // -- node@20, after node@22 could not be linked -- that question, whose
+  // default button is Link again. Nothing while it checks, which
+  // `SheetPending` says, and nothing as it opens on a question, which the
+  // alert's own name says.
+  const said =
+    plan === undefined || fix === undefined
+      ? ""
+      : blocked
+        ? t("noAnswer.sheet.blockedSaid", {
+            title,
+            lines: conflictLines
+              .map((line) => line.text)
+              .reduce((first, then) => t("noAnswer.sheet.then", { first, then })),
+          })
+        : chosen !== null
+          ? title
+          : "";
   return (
     <Dialog
       open={open && fix !== undefined}
@@ -247,7 +272,9 @@ export function LinkFixSheet({ instanceId, onClose }: LinkFixSheetProps) {
       alert
       icon={fix === undefined ? undefined : <SheetIcon adapterId="brew" sourceLabel={homebrew} iconKey={fix.key} />}
       subtitle={fix === undefined ? undefined : sheetMeta(fix.key.name, homebrew, fix.version)}
-      describedBy={textId}
+      // While it is a refusal, what is in the way too: the reason alone
+      // still reads as the question it was.
+      describedBy={blocked ? `${textId} ${linesId}` : textId}
       initialFocus={cancelRef}
       footer={
         blocked ? (
@@ -324,7 +351,7 @@ export function LinkFixSheet({ instanceId, onClose }: LinkFixSheetProps) {
       {plan && issued && blocked && terminal !== null && fix !== undefined ? (
         <>
           <SheetSection title={t("uninstall.warningsTitle")} titleHidden>
-            <SheetLines lines={conflictLines} />
+            <SheetLines id={linesId} lines={conflictLines} />
           </SheetSection>
           {/* What would link it instead, for the person to run: the
               Terminal command, set as code that selects whole, Copy
@@ -348,6 +375,14 @@ export function LinkFixSheet({ instanceId, onClose }: LinkFixSheetProps) {
         </>
       ) : null}
       {plan && issued && !blocked ? <CommandPreview plans={[{ id: issued.id, action: plan.action }]} /> : null}
+
+      {/* `said`, out of sight: what it says is on the sheet already. There
+          from the time the sheet opens, empty: a status put in the page
+          with its words is one a screen reader may never read (as
+          `UninstallDialog`'s). */}
+      <p role="status" className="sr-only">
+        {said}
+      </p>
     </Dialog>
   );
 }
