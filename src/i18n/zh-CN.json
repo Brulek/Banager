@@ -1592,7 +1592,8 @@
   "failureRecovery": {
     "logGone": "这次操作的日志已不再保留。",
     "details": "查看错误详情",
-    "next": "可以稍后{{again}}；还是失败，就把错误详情告诉懂的人。"
+    "copy": "拷贝错误详情",
+    "next": "可以稍后{{again}}；还是失败，就点按“查看错误详情”，再点按“拷贝错误详情”，发给懂的人看。"
   },
   "failureSteps": {
     "viewLogs_other": "查看{{count}}个日志",

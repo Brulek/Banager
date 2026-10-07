@@ -1075,9 +1075,9 @@ describe("evicted failure log", () => {
   // cause the tool's words do not name: a whole sentence around
   // `failureSteps.again.Upgrade`, never the fragment glued to the next one.
   const nextStep = {
-    en: "You can click Retry later. If it still fails, show the error details to someone who can help.",
-    "zh-CN": "可以稍后点按“重试”；还是失败，就把错误详情告诉懂的人。",
-    "zh-Hant": "可以稍後點按「再試一次」；還是失敗，就把錯誤詳細資訊告訴懂的人。",
+    en: "You can click Retry later. If it still fails, click Show Error Details, then Copy Error Details, and send them to someone who can help.",
+    "zh-CN": "可以稍后点按“重试”；还是失败，就点按“查看错误详情”，再点按“拷贝错误详情”，发给懂的人看。",
+    "zh-Hant": "可以稍後點按「再試一次」；還是失敗，就點按「查看錯誤詳細資訊」，再點按「拷貝錯誤詳細資訊」，傳給懂的人看。",
   } as const;
 
   it.each(["en", "zh-CN", "zh-Hant"] as const)("keeps the summary reachable in default mode (%s)", async (language) => {
@@ -1103,8 +1103,15 @@ describe("evicted failure log", () => {
       expect(shown).toBeVisible();
       expect(disclosure).toHaveAttribute("aria-controls", shown.id);
       expect(view.getByRole("button", { name: i18n.t("operations.copyLog") })).toBeDisabled();
+      // Copy Log has no line to copy; the step's Copy Error Details, under
+      // the words, copies them (r21 C9).
+      const writeText = vi.fn().mockResolvedValue(undefined);
+      Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+      fireEvent.click(view.getByRole("button", { name: i18n.t("failureRecovery.copy") }));
+      await waitFor(() => expect(writeText).toHaveBeenCalledWith(summary));
       view.unmount();
     } finally {
+      Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
       await i18n.changeLanguage("en");
     }
   });

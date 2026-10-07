@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { OpSummary } from "../lib/types";
 import { outcomeCause } from "../lib/failureCause";
 import type { LogEntry } from "../store/ui";
+import { CopyButton } from "./CopyButton";
 import { DisclosureButton } from "./DisclosureButton";
 import { TRY_AGAIN_KEYS } from "./FailureNextStep";
 
@@ -29,9 +30,12 @@ export function missingLogSummary(op: OpSummary, logs: readonly LogEntry[]): str
  * technical details off, how to try again where no cause's step is over
  * the log already, and the words themselves behind Show Error Details, the
  * app's own disclosure row -- reachable without the technical-details
- * setting, which nothing here would point to. With it on, the subtitle
- * has the words and `SubtitleStep` the step. Keyed by the operation where
- * it is used, so each log of a run opens with its details closed.
+ * setting, which nothing here would point to -- with Copy Error Details
+ * under them, as a source's kept words have (`SourceDiagnostic`): Copy Log
+ * has no line left to copy, and the step says to send them (r21 C9). With
+ * it on, the subtitle has the words and `SubtitleStep` the step. Keyed by
+ * the operation where it is used, so each log of a run opens with its
+ * details closed.
  */
 export function MissingFailureLog({
   op,
@@ -62,12 +66,18 @@ export function MissingFailureLog({
             {t("failureRecovery.details")}
           </DisclosureButton>
           {open ? (
-            <p
-              id={panelId}
-              className="mt-1 max-h-48 select-text overflow-y-auto whitespace-pre-wrap break-words rounded-control bg-group px-2.5 py-2 font-mono text-small text-foreground"
-            >
-              {summary}
-            </p>
+            <>
+              <p
+                id={panelId}
+                className="mt-1 max-h-48 select-text overflow-y-auto whitespace-pre-wrap break-words rounded-control bg-group px-2.5 py-2 font-mono text-small text-foreground"
+              >
+                {summary}
+              </p>
+              {/* At the left under the words, as the saved warnings' Copy Command. */}
+              <div className="mt-2 flex items-center justify-start">
+                <CopyButton text={summary} label={t("failureRecovery.copy")} size="regular" />
+              </div>
+            </>
           ) : null}
         </div>
       ) : null}

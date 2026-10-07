@@ -438,10 +438,12 @@ keeps the newest 2,000 lines, and a reloaded window keeps none -- and the
 failure kept the tool's own words (its summary: the last stderr lines,
 with a login masked out), the log view says the log is no longer
 available. With technical details off, Show Error Details reveals that
-summary, and a failure whose cause is not recognised also says how to
-try again. A failure that kept no words gets no such line, as its log may
-never have had one. This fetches no old output and writes no log file.
-Copy Log stays disabled for an empty log.
+summary, with Copy Error Details under it, which copies that summary
+alone, and a failure whose cause is not recognised also says how to try
+again and to send those details to someone who can help. A failure that
+kept no words gets no such line, as its log may never have had one. This
+fetches no old output and writes no log file. Copy Log stays disabled
+for an empty log.
 
 ## When commands run
 

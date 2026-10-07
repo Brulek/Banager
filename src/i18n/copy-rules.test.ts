@@ -238,6 +238,7 @@ describe("the polish-3 copy rules, in English", () => {
       "sourceDiagnostic.label",
       "sourceDiagnostic.copy",
       "failureRecovery.details",
+      "failureRecovery.copy",
     ];
     // Words that stay lower case inside a title (Cancel the Rest, Show in
     // Finder), never as its first or last word.
@@ -292,6 +293,10 @@ describe("the kept error words' one name", () => {
   it.each([["en", en], ["zh-CN", zhCN], ["zh-Hant", zhHant]])("in %s", (_name, locale) => {
     const strings = new Map(entries(locale));
     expect(strings.get("sourceDiagnostic.label")).toBe(strings.get("failureRecovery.details"));
+    expect(strings.get("sourceDiagnostic.copy")).toBe(strings.get("failureRecovery.copy"));
+    // The step names both buttons it sends the person to (r21 C9).
+    expect(strings.get("failureRecovery.next")).toContain(strings.get("failureRecovery.details"));
+    expect(strings.get("failureRecovery.next")).toContain(strings.get("failureRecovery.copy"));
     expect(strings.get("sourceDiagnostic.next")).toContain(strings.get("sourceDiagnostic.copy"));
     expect(strings.get("sourceDiagnostic.text")).not.toMatch(/Startup|启动|啟動/);
   });

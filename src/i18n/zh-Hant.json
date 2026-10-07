@@ -1592,7 +1592,8 @@
   "failureRecovery": {
     "logGone": "這次操作的記錄已不再保留。",
     "details": "查看錯誤詳細資訊",
-    "next": "可以稍後{{again}}；還是失敗，就把錯誤詳細資訊告訴懂的人。"
+    "copy": "拷貝錯誤詳細資訊",
+    "next": "可以稍後{{again}}；還是失敗，就點按「查看錯誤詳細資訊」，再點按「拷貝錯誤詳細資訊」，傳給懂的人看。"
   },
   "failureSteps": {
     "viewLogs_other": "查看{{count}}個記錄",
