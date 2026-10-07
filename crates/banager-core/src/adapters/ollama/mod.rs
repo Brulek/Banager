@@ -174,6 +174,19 @@ fn named_registry(reference: &str) -> Option<&str> {
     first.contains('.').then_some(first)
 }
 
+/// How long `ollama pull` (Install, Upgrade) may run: the runner's
+/// longest, a day (`runner::real::MAX_TIMEOUT`). A model is often tens of
+/// gigabytes -- more than an hour's download on many lines -- and the pull
+/// shows its progress and has Cancel; a fixed deadline only stops one that
+/// is still downloading, which the window then calls "Result unconfirmed",
+/// and the update has to be started again (r40 R40-3).
+const PULL_TIMEOUT_SECS: u64 = crate::runner::real::MAX_TIMEOUT.as_secs();
+
+/// How long `ollama rm` (Uninstall) may run: it deletes a manifest and the
+/// files no other model uses, which takes moments, so ten minutes, as an
+/// npm, pipx or uv uninstall gets.
+const RM_TIMEOUT_SECS: u64 = 600;
+
 /// Ollama's own default daemon URL, used whenever the host environment did
 /// not set `OLLAMA_HOST`.
 pub const DEFAULT_HOST: &str = "http://127.0.0.1:11434";
@@ -763,7 +776,7 @@ impl OllamaAdapter {
         // Named, never blocked: pulling from a third-party registry is a
         // legitimate thing to want, it just has to be said out loud.
         // `Plan::warnings` is already rendered in the preview.
-        let (args, warnings) = match req.kind {
+        let (args, warnings, timeout_secs) = match req.kind {
             OpKind::Link => return Err(super::links_nothing(&self.meta.id)),
             OpKind::Install | OpKind::Upgrade => {
                 let mut warnings: Vec<Warning> = third_party_registry(&req.name)
@@ -777,7 +790,11 @@ impl OllamaAdapter {
                 if req.kind == OpKind::Upgrade {
                     warnings.push(Warning::DownloadsModelChanges);
                 }
-                (vec!["pull".to_string(), req.name.clone()], warnings)
+                (
+                    vec!["pull".to_string(), req.name.clone()],
+                    warnings,
+                    PULL_TIMEOUT_SECS,
+                )
             }
             // What `ollama rm` removes and leaves (Ollama 0.34.1
             // `server/routes.go:1249-1299`: the model's manifest and the
@@ -788,6 +805,7 @@ impl OllamaAdapter {
                 vec![Warning::UninstallScope {
                     what: UninstallScope::Ollama,
                 }],
+                RM_TIMEOUT_SECS,
             ),
         };
         Ok(Plan {
@@ -803,7 +821,7 @@ impl OllamaAdapter {
             warnings,
             affected: Vec::new(),
             basis: None,
-            timeout_secs: 3600,
+            timeout_secs,
         })
     }
 
@@ -1825,10 +1843,21 @@ mod tests {
             "http://127.0.0.1:11434",
             PathBuf::from("/Users/brulek/.ollama"),
         );
-        for (kind, expected) in [
-            (OpKind::Install, vec!["pull", "qwen3.8:27b-mlx"]),
-            (OpKind::Upgrade, vec!["pull", "qwen3.8:27b-mlx"]),
-            (OpKind::Uninstall, vec!["rm", "qwen3.8:27b-mlx"]),
+        // A pull gets the runner's longest, a day, so a model still
+        // downloading after an hour is not stopped (r40 R40-3); rm, which
+        // only deletes, ten minutes.
+        for (kind, expected, timeout_secs) in [
+            (
+                OpKind::Install,
+                vec!["pull", "qwen3.8:27b-mlx"],
+                24 * 60 * 60,
+            ),
+            (
+                OpKind::Upgrade,
+                vec!["pull", "qwen3.8:27b-mlx"],
+                24 * 60 * 60,
+            ),
+            (OpKind::Uninstall, vec!["rm", "qwen3.8:27b-mlx"], 600),
         ] {
             let req = OpRequest {
                 kind,
@@ -1845,6 +1874,14 @@ mod tests {
                 vec![("OLLAMA_HOST".to_string(), host_of(&inst).to_string())]
             );
             assert!(!plan.needs_password);
+            assert_eq!(plan.timeout_secs, timeout_secs, "{kind:?}");
+            assert_eq!(
+                Duration::from_secs(plan.timeout_secs)
+                    .min(crate::runner::real::MAX_TIMEOUT)
+                    .as_secs(),
+                timeout_secs,
+                "the runner honours it as given"
+            );
         }
     }
 
@@ -1915,6 +1952,47 @@ mod tests {
                 .expect("execute");
         assert_eq!(outcome, Outcome::Succeeded);
         assert_eq!(sink.snapshot().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_a_pull_runs_with_a_days_deadline_and_rm_with_ten_minutes() {
+        // What the runner is handed (r40 R40-3): a pull of a large model
+        // still downloading after an hour -- 18 GB at 5 MB/s -- is not
+        // stopped and called "Result unconfirmed"; rm, which only deletes,
+        // is not given a day.
+        for (kind, deadline) in [
+            (OpKind::Upgrade, Duration::from_secs(24 * 60 * 60)),
+            (OpKind::Install, Duration::from_secs(24 * 60 * 60)),
+            (OpKind::Uninstall, Duration::from_secs(600)),
+        ] {
+            let runner = Arc::new(EnvRecorder::default());
+            let adapter = OllamaAdapter::new(runner.clone(), Arc::new(MockHttpClient::new()));
+            let inst = test_instance(
+                "http://127.0.0.1:11434",
+                PathBuf::from("/Users/brulek/.ollama"),
+            );
+            let req = OpRequest {
+                kind,
+                instance_id: inst.id.clone(),
+                artifact_kind: ArtifactKind::Model,
+                name: "qwen3.8:27b-mlx".to_string(),
+            };
+            let plan = OllamaAdapter::plan(&adapter, &inst, &req)
+                .await
+                .expect("plan");
+            OllamaAdapter::execute(
+                &adapter,
+                &plan,
+                Arc::new(VecSink::new()),
+                1,
+                CancellationToken::new(),
+            )
+            .await
+            .expect("execute");
+            let specs = runner.0.lock().unwrap();
+            assert_eq!(specs.len(), 1, "{kind:?}");
+            assert_eq!(specs[0].timeout, deadline, "{kind:?}");
+        }
     }
 
     #[tokio::test]

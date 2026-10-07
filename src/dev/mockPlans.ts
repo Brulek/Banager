@@ -416,7 +416,9 @@ export function buildPlan(world: World, inst: ManagerInstance, request: OpReques
         warnings: upgrade
           ? [...(thirdParty ? [{ ThirdPartyRegistry: { host } }] : []), "DownloadsModelChanges"]
           : [scope("Ollama")],
-        timeout_secs: 3600,
+        // A pull gets the runner's longest, a day; rm ten minutes
+        // (`PULL_TIMEOUT_SECS`, `RM_TIMEOUT_SECS`).
+        timeout_secs: upgrade ? 24 * 60 * 60 : 600,
       };
     }
     default:

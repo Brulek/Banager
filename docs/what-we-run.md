@@ -2973,9 +2973,17 @@ with no config is no model: "could not check".
 
 | Purpose | Argv | Timeout | Needs a password |
 |---|---|---|---|
-| Install (pull) | `<ollama> pull {model}` | 3600 s | No |
-| Upgrade (pull again) | `<ollama> pull {model}` | 3600 s | No |
-| Uninstall | `<ollama> rm {model}` | 3600 s | No |
+| Install (pull) | `<ollama> pull {model}` | 86400 s (a day, the runner's longest) | No |
+| Upgrade (pull again) | `<ollama> pull {model}` | 86400 s (a day, the runner's longest) | No |
+| Uninstall | `<ollama> rm {model}` | 600 s | No |
+
+A pull is given the longest time the runner allows (`PULL_TIMEOUT_SECS`,
+`runner::real::MAX_TIMEOUT`): a model is often tens of gigabytes, more
+than an hour's download on many lines, and a pull still downloading
+when a shorter deadline passed would be stopped and called "Result
+unconfirmed", to be started again. It shows its progress in the log and
+can be cancelled at any time. `ollama rm` only deletes, and gets ten
+minutes (`RM_TIMEOUT_SECS`).
 
 Writes go through the CLI, not the daemon's HTTP API, so every guarantee
 an operation has — the preview, the log, cancel, the check afterwards — is

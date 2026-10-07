@@ -535,9 +535,10 @@ const GROUP_POLL: std::time::Duration = std::time::Duration::from_millis(20);
 /// timeout" — which would panic inside the operation task, taking the
 /// whole operation down at spawn with no output and no error the UI can
 /// explain. Clamping instead: a day is far longer than any package
-/// operation can plausibly run (the longest in the tree is an hour, for
-/// `ollama pull`) and cannot overflow.
-const MAX_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
+/// operation can plausibly run, and cannot overflow. `ollama pull` is
+/// given this much (`PULL_TIMEOUT_SECS`, adapters/ollama): a model's
+/// download can outlast any shorter deadline while still making progress.
+pub const MAX_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
 
 /// Sends `sig` to the whole process group, so a `brew` invocation's
 /// grandchildren (a `curl` download, a `git` clone) are stopped with it
