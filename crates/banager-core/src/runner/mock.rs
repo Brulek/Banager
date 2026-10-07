@@ -9,7 +9,7 @@ use tokio_util::sync::CancellationToken;
 pub struct MockRunner {
     responses: Mutex<HashMap<Vec<String>, CommandOutput>>,
     delays: Mutex<HashMap<Vec<String>, Duration>>,
-    calls: Mutex<Vec<Vec<String>>>,
+    calls: Mutex<Vec<CommandSpec>>,
 }
 
 impl MockRunner {
@@ -44,8 +44,13 @@ impl MockRunner {
         self.delays.lock().unwrap().insert(key, delay);
     }
 
-    pub fn calls(&self) -> Vec<Vec<String>> {
+    /// Full dispatched commands, including the environment the real runner receives.
+    pub fn specs(&self) -> Vec<CommandSpec> {
         self.calls.lock().unwrap().clone()
+    }
+
+    pub fn calls(&self) -> Vec<Vec<String>> {
+        self.calls.lock().unwrap().iter().map(Self::argv).collect()
     }
 }
 
@@ -64,7 +69,7 @@ impl CommandRunner for MockRunner {
         _cancel: CancellationToken,
     ) -> Result<CommandOutput, RunnerError> {
         let key = Self::argv(&spec);
-        self.calls.lock().unwrap().push(key.clone());
+        self.calls.lock().unwrap().push(spec);
         let delay = self.delays.lock().unwrap().get(&key).copied();
         if let Some(delay) = delay {
             tokio::time::sleep(delay).await;
@@ -115,16 +120,24 @@ mod tests {
         let spec = CommandSpec {
             program: std::path::PathBuf::from("/opt/homebrew/bin/brew"),
             args: vec!["--version".to_string()],
-            env: vec![],
-            cwd: None,
+            env: vec![("HOMEBREW_NO_AUTOREMOVE".into(), "1".into())],
+            cwd: Some("/tmp/test-owned".into()),
             timeout: std::time::Duration::from_secs(5),
             output_use: OutputUse::Parsed,
         };
         let output = runner
-            .run(spec, None, CancellationToken::new())
+            .run(spec.clone(), None, CancellationToken::new())
             .await
             .expect("mocked call");
 
+        let recorded = runner.specs();
+        assert_eq!(recorded.len(), 1);
+        assert_eq!(recorded[0].program, spec.program);
+        assert_eq!(recorded[0].args, spec.args);
+        assert_eq!(recorded[0].env, spec.env);
+        assert_eq!(recorded[0].cwd, spec.cwd);
+        assert_eq!(recorded[0].timeout, spec.timeout);
+        assert_eq!(recorded[0].output_use, spec.output_use);
         assert_eq!(output.exit_code, Some(0));
         assert_eq!(output.stdout, "Homebrew 7.0.3\n");
         assert_eq!(

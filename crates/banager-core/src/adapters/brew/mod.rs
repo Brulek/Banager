@@ -7788,6 +7788,7 @@ mod plan_execute_tests {
                 })
         };
 
+        f08_assert_brew_env(&runner);
         let calls = runner.calls();
         let mut updates = 0;
         for call in &calls {
@@ -7823,6 +7824,177 @@ mod plan_execute_tests {
                 "{wanted:?} ran: {calls:?}"
             );
         }
+    }
+
+    fn f08_assert_brew_env(runner: &MockRunner) {
+        let specs = runner.specs();
+        assert!(!specs.is_empty(), "must inspect actual dispatches");
+        for spec in specs {
+            for switch in ["HOMEBREW_NO_AUTOREMOVE", "HOMEBREW_NO_INSTALL_CLEANUP"] {
+                assert!(
+                    spec.env.iter().any(|(k, v)| k == switch && v == "1"),
+                    "missing {switch} on {spec:?}"
+                );
+            }
+        }
+    }
+
+    fn f08_ok() -> CommandOutput {
+        CommandOutput {
+            stderr_cause: Default::default(),
+            exit_code: Some(0),
+            stdout: String::new(),
+            stderr: String::new(),
+            timed_out: false,
+            cancelled: false,
+        }
+    }
+
+    async fn f08_uninstall_env_changes(unknown: bool) {
+        let runner = Arc::new(MockRunner::new());
+        let mut adapter =
+            BrewAdapter::new(runner.clone()).with_brew_env_fn(|_| brew_env::EnvFile::Skipped);
+        let inst = test_instance();
+        runner.respond(
+            vec!["/opt/homebrew/bin/brew", "uses", "--installed", "wget"],
+            f08_ok(),
+        );
+        let plan = adapter
+            .plan(
+                &inst,
+                &OpRequest {
+                    kind: OpKind::Uninstall,
+                    instance_id: inst.id.clone(),
+                    artifact_kind: ArtifactKind::Formula,
+                    name: "wget".into(),
+                },
+            )
+            .await
+            .unwrap();
+        assert!(!plan
+            .warnings
+            .iter()
+            .any(|warning| matches!(warning, Warning::HomebrewAutoremoves)));
+        // Unknown: brew.env now sits in a protected place Banager never
+        // looks into, so what it says is not known (brew_env::EnvFile).
+        adapter.brew_env_fn = if unknown {
+            |_| brew_env::EnvFile::Unknown
+        } else {
+            |_| brew_env::EnvFile::Read(b"HOMEBREW_NO_AUTOREMOVE=0\n".to_vec())
+        };
+        let PlanAction::Command { program, args, .. } = &plan.action else {
+            panic!("command");
+        };
+        let mut argv = vec![program.to_str().unwrap()];
+        argv.extend(args.iter().map(String::as_str));
+        runner.respond(argv, f08_ok());
+        let before = runner.calls().len();
+        let result = adapter
+            .execute(&plan, Arc::new(VecSink::new()), 1, CancellationToken::new())
+            .await;
+        let writes: Vec<_> = runner.calls()[before..]
+            .iter()
+            .filter(|call| call.iter().any(|arg| arg == "uninstall"))
+            .cloned()
+            .collect();
+        assert!(
+            writes.is_empty(),
+            "changed brew.env must not expand removal: {writes:?}; {result:?}"
+        );
+        assert!(
+            matches!(
+                result,
+                Ok(Outcome::BanagerFailed(Fault::HomebrewSettingsChanged))
+                    | Err(AdapterError::Refused(_))
+            ),
+            "needs a fresh preview: {result:?}"
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "bug: G05: an uninstall still runs after brew.env turned autoremove on since its preview"]
+    async fn f08_g05_autoremove_enabled_after_uninstall_preview() {
+        f08_uninstall_env_changes(false).await;
+    }
+    #[tokio::test]
+    #[ignore = "bug: G05: an uninstall still runs after what brew.env says became unknown since its preview"]
+    async fn f08_g05_brew_env_unknown_after_uninstall_preview() {
+        f08_uninstall_env_changes(true).await;
+    }
+
+    async fn f08_cask_receipt_changes(expands: bool) {
+        let plain = r#"{"source":{"tap":"homebrew/cask"},"uninstall_artifacts":[{"app":["Example.app"]}],"uninstall_flight_blocks":false}"#;
+        let expanded = r#"{"source":{"tap":"homebrew/cask"},"uninstall_artifacts":[{"app":["Example.app"]},{"uninstall":[{"delete":"~/Library/Example"}]}],"uninstall_flight_blocks":false}"#;
+        let prefix = CaskroomPrefix::new("f08", &[("example", plain)]);
+        let runner = Arc::new(MockRunner::new());
+        let adapter = BrewAdapter::new(runner.clone())
+            .with_recorded_uninstall_fn(cask_receipt::read_recorded);
+        let inst = ManagerInstance {
+            prefix: prefix.0.clone(),
+            ..test_instance()
+        };
+        let plan = cask_uninstall(&runner, &adapter, &inst, "example").await;
+        assert!(!plan
+            .warnings
+            .iter()
+            .any(|w| matches!(w, Warning::CaskUninstallStep { .. })));
+        if expands {
+            std::fs::write(
+                prefix
+                    .0
+                    .join("Caskroom/example/.metadata/INSTALL_RECEIPT.json"),
+                expanded,
+            )
+            .unwrap();
+            let fresh = cask_uninstall(&runner, &adapter, &inst, "example").await;
+            assert!(
+                fresh
+                    .warnings
+                    .iter()
+                    .any(|w| matches!(w, Warning::CaskUninstallStep { .. })),
+                "precondition: new receipt expands the preview"
+            );
+        }
+        runner.respond(
+            vec!["/opt/homebrew/bin/brew", "uninstall", "--cask", "example"],
+            f08_ok(),
+        );
+        let before = runner.calls().len();
+        let result = adapter
+            .execute(&plan, Arc::new(VecSink::new()), 1, CancellationToken::new())
+            .await;
+        // Only the uninstall itself counts: a fix may read before it refuses.
+        let uninstalls = runner.calls()[before..]
+            .iter()
+            .filter(|call| call.iter().any(|arg| arg == "uninstall"))
+            .count();
+        if expands {
+            assert_eq!(
+                uninstalls, 0,
+                "changed receipt must refuse the original plan: {result:?}"
+            );
+            assert!(
+                matches!(
+                    result,
+                    Err(AdapterError::Refused(_)) | Ok(Outcome::BanagerFailed(_))
+                ),
+                "needs a fresh preview: {result:?}"
+            );
+        } else {
+            assert_eq!(result.unwrap(), Outcome::Succeeded);
+            assert_eq!(uninstalls, 1);
+            f08_assert_brew_env(&runner);
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "bug: G08: a cask uninstall still runs after its receipt gained removal steps since its preview"]
+    async fn f08_g08_expanded_cask_receipt_refuses_saved_uninstall() {
+        f08_cask_receipt_changes(true).await;
+    }
+    #[tokio::test]
+    async fn f08_g08_unchanged_cask_receipt_executes() {
+        f08_cask_receipt_changes(false).await;
     }
 
     /// U9 (r6): an update deletes the old versions of the formula it
@@ -8200,6 +8372,15 @@ mod plan_execute_tests {
                     .expect("execute");
                 assert_eq!(outcome, Outcome::Succeeded, "cleanup exited {cleanup_exit}");
                 assert_eq!(runner.calls(), vec![upgrade.clone(), cleanup.clone()]);
+                f08_assert_brew_env(&runner);
+                let PlanAction::CommandThen { env, .. } = &plan.action else {
+                    panic!("upgrade and follow-up commands");
+                };
+                assert_eq!(
+                    runner.specs()[0].env,
+                    *env,
+                    "upgrade keeps the confirmed environment"
+                );
                 // The log: the update's lines, where the cleanup starts, its
                 // own lines, and how it ended when it did not finish.
                 let lines: Vec<String> = sink
@@ -8382,6 +8563,15 @@ mod plan_execute_tests {
                     .expect("execute");
                 assert_eq!(outcome, Outcome::Succeeded, "{ending:?}");
                 assert_eq!(runner.calls(), vec![upgrade.clone(), cleanup.clone()]);
+                f08_assert_brew_env(&runner);
+                let PlanAction::CommandThen { env, .. } = &plan.action else {
+                    panic!("upgrade and follow-up commands");
+                };
+                assert_eq!(
+                    runner.specs()[0].env,
+                    *env,
+                    "upgrade keeps the confirmed environment"
+                );
                 assert_eq!(
                     log_lines(&sink),
                     vec![

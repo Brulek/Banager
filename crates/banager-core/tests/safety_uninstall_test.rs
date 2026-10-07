@@ -289,6 +289,21 @@ async fn test_an_uninstall_runs_exactly_the_command_its_preview_showed_and_nothi
             .execute(&plan, Arc::new(VecSink::new()), 1, CancellationToken::new())
             .await
             .unwrap_or_else(|e| panic!("{what}: execute: {e}"));
+        let dispatched = runner.specs();
+        assert_eq!(
+            dispatched[planned].env, *env,
+            "{what}: dispatch keeps the confirmed environment"
+        );
+        for call in &dispatched {
+            if call.program.ends_with("brew") {
+                for switch in ["HOMEBREW_NO_AUTOREMOVE", "HOMEBREW_NO_INSTALL_CLEANUP"] {
+                    assert!(
+                        call.env.iter().any(|(k, v)| k == switch && v == "1"),
+                        "{what}: missing {switch} on {call:?}"
+                    );
+                }
+            }
+        }
         assert_eq!(
             runner.calls()[planned..].to_vec(),
             vec![argv.clone()],

@@ -484,7 +484,7 @@ struct FakeHomebrew {
     /// `brew link` exits 1 having linked nothing, as a conflict in a
     /// folder Banager does not read makes it.
     link_fails: bool,
-    calls: Mutex<Vec<Vec<String>>>,
+    calls: Mutex<Vec<CommandSpec>>,
     /// Cancelled once the command named here has run: a Cancel landing
     /// between two commands of one operation.
     cancel_after: Option<(&'static str, CancellationToken)>,
@@ -521,7 +521,12 @@ impl FakeHomebrew {
     }
 
     fn calls(&self) -> Vec<Vec<String>> {
-        self.calls.lock().unwrap().clone()
+        self.calls
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|spec| spec.args.clone())
+            .collect()
     }
 
     fn links(&self) -> links::KegLinks {
@@ -647,7 +652,7 @@ impl CommandRunner for FakeHomebrew {
         _on_line: Option<LineCallback>,
         _cancel: CancellationToken,
     ) -> Result<CommandOutput, RunnerError> {
-        self.calls.lock().unwrap().push(spec.args.clone());
+        self.calls.lock().unwrap().push(spec.clone());
         let exit_code = match spec.args.first().map(String::as_str) {
             Some("upgrade") => self.upgrade(),
             Some("link") if self.link_fails => 1,
@@ -764,6 +769,21 @@ async fn a_formula_its_update_did_not_link_back_is_linked_after_it() {
             name: "node@22".to_string()
         }]
     );
+    // R08 G02: both the update and actual relink keep the confirmed env.
+    let PlanAction::CommandThen { env, .. } = &plan.action else {
+        panic!("follow-up plan");
+    };
+    let specs = runner.calls.lock().unwrap().clone();
+    assert_eq!(specs.len(), 2);
+    for spec in specs {
+        assert_eq!(spec.env, *env, "follow-up keeps the confirmed environment");
+        for switch in ["HOMEBREW_NO_AUTOREMOVE", "HOMEBREW_NO_INSTALL_CLEANUP"] {
+            assert!(
+                spec.env.iter().any(|(k, v)| k == switch && v == "1"),
+                "missing {switch}: {spec:?}"
+            );
+        }
+    }
     // Back in Terminal, leading into the new version.
     assert!(runner.links().fully_linked());
     assert_eq!(
