@@ -319,6 +319,7 @@ describe("the browser preview's mock backend", () => {
     expect([...states].sort()).toEqual([
       "actionable",
       "blocked:Disabled",
+      "blocked:LinkTaken",
       "blocked:Pinned",
       "blocked:SelfUpdatesOnly",
       "cannotCheck",

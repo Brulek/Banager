@@ -44,6 +44,7 @@ import { buildPlan, homebrewRefusal, playOutcome, refusal, type LogLine, type Su
 import { withMockKeptData } from "./mockKeptData";
 import { namesASource, withMockNeededBy } from "./mockNeededBy";
 import { applyMockCleanup, mockCleanupLines, withMockOldVersions } from "./mockOldVersions";
+import { mockRelinkLines, withMockKegLinks } from "./mockKegLinks";
 import { mockSizes } from "./mockSizes";
 import { mockSystemFacts } from "./mockDiagnostics";
 import { mockHistory, mockRecord } from "./mockHistory";
@@ -587,8 +588,13 @@ export function createMockBackend(scenario: Scenario): MockBackend {
             outcome: { Failed: { exit_code: 1, summary: refused.join("\n"), cause: operationFailureCause(refused.join("\n")) } } satisfies Outcome,
           };
     const { outcome } = played;
-    // An update a `brew cleanup` follows (U9) goes on to it once it succeeded.
-    const lines = outcome === "Succeeded" ? [...played.lines, ...mockCleanupLines(op.plan, world)] : played.lines;
+    // An update a `brew cleanup` follows (U9) goes on to it once it
+    // succeeded -- after the link of a keg-only formula linked by hand
+    // (y1-keg), which Homebrew did itself here.
+    const lines =
+      outcome === "Succeeded"
+        ? [...played.lines, ...mockRelinkLines(op.plan), ...mockCleanupLines(op.plan, world)]
+        : played.lines;
     let at = TIMING.start;
     schedule(op, at, () => setStatus(op, "Running"));
     // A `brew update` a refresh left running: Homebrew operations wait
@@ -758,19 +764,23 @@ export function createMockBackend(scenario: Scenario): MockBackend {
         id: planCount.toString(16).padStart(32, "0"),
         // What the uninstall leaves behind, named (`mockKeptData.ts`), then
         // the sources that run on a Homebrew package (`mockNeededBy.ts`).
-        // And U9's old versions of a Homebrew formula (`mockOldVersions.ts`).
-        plan: withMockOldVersions(
-          withMockNeededBy(
-            withMockKeptData(
-              buildPlan(world, inst, request),
-              inst.adapter_id,
+        // And U9's old versions of a Homebrew formula (`mockOldVersions.ts`),
+        // and the link back of a keg-only one linked by hand (`mockKegLinks.ts`).
+        plan: withMockKegLinks(
+          withMockOldVersions(
+            withMockNeededBy(
+              withMockKeptData(
+                buildPlan(world, inst, request),
+                inst.adapter_id,
+                request,
+                world.instances.some((instance) => instance.adapter_id === "standalone-codex"),
+              ),
+              world,
               request,
-              world.instances.some((instance) => instance.adapter_id === "standalone-codex"),
             ),
             world,
             request,
           ),
-          world,
           request,
         ),
         issued_at: nowSeconds(),
