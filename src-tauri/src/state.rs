@@ -37,7 +37,8 @@ pub struct AppState {
     /// memory only.
     pub rounds: Mutex<RoundLog>,
     /// The (row, version) pairs this run has told the user about in the
-    /// update notification, or that the user saw in the window: what
+    /// update notification, or that the user saw in the window, for the rows
+    /// the snapshot still offers (`notify::report_offered`): what
     /// `notify::report` goes by. In memory only.
     pub notified: Mutex<Notified>,
     /// The login shell's `PATH`, read in the background (`LoginPath`):

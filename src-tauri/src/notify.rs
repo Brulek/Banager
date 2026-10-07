@@ -34,13 +34,12 @@ pub const OPEN_UPDATES_EVENT: &str = "notification://open-updates";
 
 /// The page's report, after each snapshot, of the updates it offers to
 /// start -- the rows Update all would take, as (row, version) pairs -- and
-/// of `round`, the snapshot's `Snapshot::round` -- of those pairs, the ones
-/// the snapshot offers (`notify_updates::offered`). What it does is `report`'s,
-/// with the focus as it is now (`focus`) and the notification in the
-/// window's language. A notification handed off waits on the window
-/// (`window::NotificationPending`) until the window is next in front. One
-/// that could not be handed off is logged here; the page is told nothing,
-/// having nothing to do about it.
+/// of `round`, the snapshot's `Snapshot::round`. What it does is
+/// `report_offered`'s, with the focus as it is now (`focus`) and the
+/// notification in the window's language. A notification handed off waits
+/// on the window (`window::NotificationPending`) until the window is next
+/// in front. One that could not be handed off is logged here; the page is
+/// told nothing, having nothing to do about it.
 #[tauri::command]
 pub async fn report_update_set(
     app: AppHandle,
@@ -48,14 +47,10 @@ pub async fn report_update_set(
     round: u64,
     updates: Vec<UpdatePair>,
 ) -> Result<(), String> {
-    // Only what the snapshot offers (`notify_updates::offered`): the page
-    // cannot post news of an update Banager did not find, nor make what
-    // has been told grow past the snapshot's own candidates.
-    let updates = notify_updates::offered(&updates, &state.session.snapshot().updates);
     let focus = focus(&app);
     let language = language(&app, &state);
     let title = app.package_info().name.clone();
-    let reported = report(&state, round, &updates, focus, |count| {
+    let reported = report_offered(&state, round, &updates, focus, |count| {
         post(&app, &title, &body(language, count), Answer::OpenUpdates)
     });
     match reported {
@@ -64,6 +59,32 @@ pub async fn report_update_set(
         Err(e) => eprintln!("[banager] could not post the update notification: {e}"),
     }
     Ok(())
+}
+
+/// `report`, of the page's `updates`, against the session's snapshot as it
+/// is now. Only the pairs its update candidates offer are reported
+/// (`notify_updates::offered`): the page cannot post news of an update
+/// Banager did not find, nor make what has been told grow past the
+/// snapshot's own candidates. And first, what was told or seen of a row the
+/// snapshot no longer offers -- updated, uninstalled, its source gone -- is
+/// forgotten (`Notified::forget_unoffered`), so that the row's next update
+/// is news, whatever version it names; the rows a source that did not
+/// answer had stay in the snapshot, and stay marked.
+pub(crate) fn report_offered(
+    state: &AppState,
+    round: u64,
+    updates: &[UpdatePair],
+    focus: Focus,
+    post: impl FnOnce(usize) -> Result<(), String>,
+) -> Result<Notice, String> {
+    let snapshot = state.session.snapshot();
+    let updates = notify_updates::offered(updates, &snapshot.updates);
+    state
+        .notified
+        .lock()
+        .unwrap()
+        .forget_unoffered(&snapshot.updates);
+    report(state, round, &updates, focus, post)
 }
 
 /// A report's whole effect: `notify_updates::report` over what the log
@@ -694,5 +715,220 @@ mod tests {
         // `OPEN_UPDATES_EVENT` in src/lib/api.ts, which api.test.ts pins
         // to the same string.
         assert_eq!(OPEN_UPDATES_EVENT, "notification://open-updates");
+    }
+}
+
+/// The update notification over a real `Session`, refreshed from a fake
+/// source, through `report_offered` -- what `report_update_set` runs: what
+/// was told of a row is kept while the snapshot offers the row, and
+/// forgotten once it does not (r38 S4). Nothing runs, nothing is read of
+/// this Mac, and no notification is posted.
+#[cfg(test)]
+mod forget_unoffered_tests {
+    use super::*;
+    use crate::events::ChannelSink;
+    use async_trait::async_trait;
+    use banager_core::adapters::{Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome};
+    use banager_core::auto_check::RoundTrigger;
+    use banager_core::events::{EventSink, OpId};
+    use banager_core::model::{
+        ArtifactKey, ArtifactKind, InstalledArtifact, ManagerInstance, OpRequest, Outcome, Plan,
+        Reconciled, SearchHit, UpdateCandidate, UpdateChannel,
+    };
+    use banager_core::notify_updates::pair_of;
+    use banager_core::runner::HostEnv;
+    use banager_core::session::Session;
+    use banager_core::settings::Settings;
+    use std::cell::RefCell;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Mutex};
+    use tokio_util::sync::CancellationToken;
+
+    /// A Homebrew with one app installed, declared `version :latest`:
+    /// `brew outdated --greedy` offers it as "latest" while `offers` is
+    /// set, whatever the release. Its update check fails while `fails` is.
+    struct LatestCask {
+        meta: AdapterMeta,
+        offers: AtomicBool,
+        fails: AtomicBool,
+    }
+
+    const INSTANCE: &str = "brew:/test-homebrew";
+
+    #[async_trait]
+    impl Adapter for LatestCask {
+        fn meta(&self) -> &AdapterMeta {
+            &self.meta
+        }
+
+        async fn detect(&self, _env: &HostEnv) -> Vec<ManagerInstance> {
+            vec![banager_core::testing::manager_instance("brew", INSTANCE)]
+        }
+
+        async fn inventory(
+            &self,
+            inst: &ManagerInstance,
+        ) -> Result<Vec<InstalledArtifact>, AdapterError> {
+            Ok(vec![banager_core::testing::installed_artifact(
+                &inst.id,
+                ArtifactKind::Cask,
+                "google-chrome",
+            )])
+        }
+
+        async fn check_updates(
+            &self,
+            inst: &ManagerInstance,
+            _opts: &CheckOptions,
+        ) -> Result<CheckOutcome, AdapterError> {
+            if self.fails.load(Ordering::SeqCst) {
+                return Err(AdapterError::Parse("no network".to_string()));
+            }
+            let mut outcome = CheckOutcome::default();
+            if self.offers.load(Ordering::SeqCst) {
+                outcome.candidates.push(UpdateCandidate {
+                    key: ArtifactKey {
+                        instance_id: inst.id.clone(),
+                        kind: ArtifactKind::Cask,
+                        name: "google-chrome".to_string(),
+                    },
+                    current: "1.0".to_string(),
+                    target: "latest".to_string(),
+                    channel: UpdateChannel::Native,
+                    checkable: true,
+                    warnings: Vec::new(),
+                    blocked: None,
+                    download_bytes: None,
+                });
+            }
+            Ok(outcome)
+        }
+
+        async fn search(
+            &self,
+            _inst: &ManagerInstance,
+            _query: &str,
+        ) -> Result<Vec<SearchHit>, AdapterError> {
+            Ok(Vec::new())
+        }
+
+        async fn plan(
+            &self,
+            _inst: &ManagerInstance,
+            _req: &OpRequest,
+        ) -> Result<Plan, AdapterError> {
+            Err(AdapterError::Refused("not in this test".to_string()))
+        }
+
+        async fn execute(
+            &self,
+            _plan: &Plan,
+            _sink: Arc<dyn EventSink>,
+            _op_id: OpId,
+            _cancel: CancellationToken,
+        ) -> Result<Outcome, AdapterError> {
+            Err(AdapterError::Refused("not in this test".to_string()))
+        }
+
+        async fn reconcile(
+            &self,
+            _inst: &ManagerInstance,
+            _key: &ArtifactKey,
+        ) -> Result<Reconciled, AdapterError> {
+            Err(AdapterError::Refused("not in this test".to_string()))
+        }
+    }
+
+    /// One round of the daily check, recorded as `ipc::refresh_for` records
+    /// it, then the page's report of what Update All would take then -- every
+    /// update of the snapshot -- with another app in front.
+    async fn daily_check(state: &AppState, posted: &RefCell<Vec<usize>>) -> Notice {
+        let (round, snapshot) = state
+            .session
+            .refresh_recording(
+                &crate::state::test_round_env(),
+                &CheckOptions::default(),
+                |round, snapshot| {
+                    state
+                        .rounds
+                        .lock()
+                        .unwrap()
+                        .record(round, RoundTrigger::Automatic, snapshot)
+                },
+                |_| {},
+            )
+            .await;
+        let page: Vec<UpdatePair> = snapshot.updates.iter().map(pair_of).collect();
+        report_offered(state, round, &page, Focus::Away, |count| {
+            posted.borrow_mut().push(count);
+            Ok(())
+        })
+        .expect("posted")
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_a_latest_cask_updated_then_offered_again_is_posted_again() {
+        let source = Arc::new(LatestCask {
+            meta: AdapterMeta {
+                id: "brew".to_string(),
+                name: "Homebrew".to_string(),
+                kind: "fake".to_string(),
+                platforms: vec!["macos".to_string()],
+                homepage: "https://example.invalid".to_string(),
+                schema_version: 1,
+                verified_versions: vec![],
+            },
+            offers: AtomicBool::new(true),
+            fails: AtomicBool::new(false),
+        });
+        let sink = ChannelSink::new();
+        let state = AppState {
+            session: Session::with_adapters(
+                sink.clone(),
+                vec![source.clone() as Arc<dyn Adapter>],
+                None,
+            ),
+            settings_path: std::env::temp_dir().join("banager-notify-forget-never-written"),
+            settings: Mutex::new(Settings {
+                auto_check: true,
+                notify_updates: true,
+                ..Settings::default()
+            }),
+            channel_sink: sink,
+            last_broadcast_generation: std::sync::atomic::AtomicU64::new(0),
+            rounds: Mutex::new(Default::default()),
+            notified: Mutex::new(Default::default()),
+            login_path: std::sync::OnceLock::new(),
+        };
+        let chrome = UpdatePair {
+            key_id: format!("{INSTANCE}|Cask|google-chrome"),
+            target: "latest".to_string(),
+        };
+        let posted = RefCell::new(Vec::new());
+
+        // Monday: a new download.
+        assert_eq!(
+            daily_check(&state, &posted).await,
+            Notice::Post { count: 1 }
+        );
+        // The next day, not updated yet: told already.
+        assert_eq!(daily_check(&state, &posted).await, Notice::Nothing);
+        // A day Homebrew does not answer: the snapshot keeps the row, and
+        // it stays told.
+        source.fails.store(true, Ordering::SeqCst);
+        assert_eq!(daily_check(&state, &posted).await, Notice::Nothing);
+        assert!(state.notified.lock().unwrap().contains(&chrome));
+        source.fails.store(false, Ordering::SeqCst);
+        // Updated: no update offered, and the row is forgotten.
+        source.offers.store(false, Ordering::SeqCst);
+        assert_eq!(daily_check(&state, &posted).await, Notice::Nothing);
+        assert!(!state.notified.lock().unwrap().contains(&chrome));
+        // Next week's release, offered as "latest" again: news.
+        source.offers.store(true, Ordering::SeqCst);
+        assert_eq!(
+            daily_check(&state, &posted).await,
+            Notice::Post { count: 1 }
+        );
+        assert_eq!(*posted.borrow(), [1, 1]);
     }
 }

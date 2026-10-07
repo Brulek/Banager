@@ -20,7 +20,10 @@ use std::collections::BTreeSet;
 /// `instance_id|kind|name`), and the version the row offers. Compared and
 /// counted here, never read: two pairs for one package differ when the
 /// version does, so a newer version of a package the user was told about
-/// is news again.
+/// is news again -- and so is any update offered for a row after a round
+/// that offered that row none (`Notified::forget_unoffered`), which a
+/// version string alone cannot always tell apart: a Homebrew cask declared
+/// `version :latest` offers "latest" for every release.
 ///
 /// `UpdatePair` in src/lib/types.ts mirrors it; a shape test on each side
 /// pins the JSON.
@@ -31,8 +34,9 @@ pub struct UpdatePair {
 }
 
 /// The pairs this run of Banager has told the user about in a
-/// notification, or that the user saw in the window. In memory only: after
-/// Banager is quit and opened again, none has been.
+/// notification, or that the user saw in the window, for the rows still
+/// offered (`forget_unoffered`). In memory only: after Banager is quit and
+/// opened again, none has been.
 #[derive(Debug, Default)]
 pub struct Notified {
     pairs: BTreeSet<UpdatePair>,
@@ -42,6 +46,27 @@ impl Notified {
     /// Whether `pair` has been told or seen in this run.
     pub fn contains(&self, pair: &UpdatePair) -> bool {
         self.pairs.contains(pair)
+    }
+
+    /// Forgets every pair whose row none of `candidates` -- the snapshot's
+    /// update candidates -- has (`pair_of`'s key): a row no longer offered,
+    /// because it was updated, uninstalled, or its source has gone. An
+    /// update offered for that row later is news again, whatever version
+    /// it names: `brew outdated --greedy` lists a cask declared
+    /// `version :latest` again whenever its download has changed, offering
+    /// "latest" each time, so that pair alone could not tell one release
+    /// from the next. A row still offered keeps its pairs, whatever version
+    /// it offers now, so what was told stays told while it waits; so does
+    /// the row of a source that did not answer the round, which the
+    /// snapshot keeps (`Session::refresh`: a failed read, an unavailable
+    /// source, one an operation holds). `report_offered`
+    /// (src-tauri/src/notify.rs) calls this before each report.
+    pub fn forget_unoffered(&mut self, candidates: &[UpdateCandidate]) {
+        let rows: BTreeSet<String> = candidates
+            .iter()
+            .map(|candidate| pair_of(candidate).key_id)
+            .collect();
+        self.pairs.retain(|pair| rows.contains(&pair.key_id));
     }
 
     /// Marks every pair of `updates` as told or seen.
@@ -531,6 +556,114 @@ mod tests {
             Ok(Notice::Post { count: 1 })
         );
         assert_eq!(*posted.borrow(), [1, 1]);
+    }
+
+    /// The snapshot's candidate for `pair` -- a Homebrew formula or cask of
+    /// `brew:/opt/homebrew`, as `pair_of` names it.
+    fn candidate_for(pair: &UpdatePair) -> UpdateCandidate {
+        use crate::model::{ArtifactKey, ArtifactKind, UpdateChannel};
+        let (instance_id, rest) = pair.key_id.split_once('|').unwrap();
+        let (kind, name) = rest.split_once('|').unwrap();
+        let candidate = UpdateCandidate {
+            key: ArtifactKey {
+                instance_id: instance_id.to_string(),
+                kind: match kind {
+                    "Cask" => ArtifactKind::Cask,
+                    _ => ArtifactKind::Formula,
+                },
+                name: name.to_string(),
+            },
+            current: "1.0".to_string(),
+            target: pair.target.clone(),
+            channel: UpdateChannel::Native,
+            checkable: true,
+            warnings: Vec::new(),
+            blocked: None,
+            download_bytes: None,
+        };
+        assert_eq!(&pair_of(&candidate), pair, "the page's spelling");
+        candidate
+    }
+
+    #[test]
+    fn test_a_latest_cask_updated_and_offered_again_is_news_again() {
+        // r38 S4: a Homebrew app declared `version :latest`, listed with
+        // `brew outdated --greedy`, offers "latest" for every release.
+        let chrome = pair("brew:/opt/homebrew|Cask|google-chrome", "latest");
+        let mut notified = Notified::default();
+        let posted = RefCell::new(Vec::new());
+        // Monday's daily check: news.
+        notified.forget_unoffered(&[candidate_for(&chrome)]);
+        assert_eq!(
+            report(
+                &mut notified,
+                AUTOMATIC,
+                true,
+                Focus::Away,
+                std::slice::from_ref(&chrome),
+                recording(&posted)
+            ),
+            Ok(Notice::Post { count: 1 })
+        );
+        // The next day's check, not updated yet: still told.
+        notified.forget_unoffered(&[candidate_for(&chrome)]);
+        assert_eq!(
+            report(
+                &mut notified,
+                AUTOMATIC,
+                true,
+                Focus::Away,
+                std::slice::from_ref(&chrome),
+                recording(&posted)
+            ),
+            Ok(Notice::Nothing)
+        );
+        // Updated: the next round offers it no update.
+        notified.forget_unoffered(&[]);
+        assert_eq!(
+            report(
+                &mut notified,
+                AUTOMATIC,
+                true,
+                Focus::Away,
+                &[],
+                recording(&posted)
+            ),
+            Ok(Notice::Nothing)
+        );
+        assert!(!notified.contains(&chrome), "forgotten with its row");
+        // Next week's release: the same pair, and news.
+        notified.forget_unoffered(&[candidate_for(&chrome)]);
+        assert_eq!(
+            report(
+                &mut notified,
+                AUTOMATIC,
+                true,
+                Focus::Away,
+                std::slice::from_ref(&chrome),
+                recording(&posted)
+            ),
+            Ok(Notice::Post { count: 1 })
+        );
+        assert_eq!(*posted.borrow(), [1, 1]);
+    }
+
+    #[test]
+    fn test_only_the_pairs_of_rows_no_longer_offered_are_forgotten() {
+        let mut notified = Notified::default();
+        let newer_jq = pair("brew:/opt/homebrew|Formula|jq", "1.8.2");
+        notified.mark(&[jq(), gh()]);
+        // jq is offered at a newer version, gh no longer at all.
+        notified.forget_unoffered(&[candidate_for(&newer_jq)]);
+        assert!(
+            notified.contains(&jq()),
+            "its row is still offered: what was told of it stays told"
+        );
+        assert!(!notified.contains(&gh()), "its row is gone");
+        // Seen pairs are forgotten the same way.
+        notified.mark(&[gh()]);
+        notified.forget_unoffered(&[]);
+        assert!(!notified.contains(&jq()) && !notified.contains(&gh()));
     }
 
     #[test]

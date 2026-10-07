@@ -30,7 +30,8 @@ export function updatePairOf(candidate: UpdateCandidate): UpdatePair {
  *   which no round committed. Rust posts nothing unless the round was the
  *   daily check's, notifications are on and another app is in front, not
  *   Banager, and posts only news: a (row, version) pair neither told nor
- *   seen before.
+ *   seen before -- since Banager opened, or since a round last offered
+ *   that row no update (`Notified::forget_unoffered`).
  * - When Rust has brought the window back for the notification
  *   (`OPEN_UPDATES_EVENT`), it opens the Updates page, as the sidebar's
  *   Updates does. On a Mac, Rust hears no click on the notification itself

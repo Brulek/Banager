@@ -858,7 +858,8 @@ switches are on; another app is in front, not Banager — macOS shows no
 banner for a notification of the app in front, and Rust asks macOS
 whether Banager is (`app_active` in `src-tauri/src/notify.rs`); and one of
 the pairs has been neither in a notification nor before the user in the
-focused window since Banager was opened (`notify_updates::decide` in
+focused window since Banager was opened, or since a check last found no
+update for that tool (`notify_updates::decide` in
 `crates/banager-core/src/notify_updates.rs`). A daily check that stopped
 waiting for its `brew update` (Homebrew's section) posts nothing itself:
 the refresh that update's end sets off is the daily check's too, and its
@@ -892,7 +893,15 @@ can turn Banager's off — is not posted again for the same updates. Only
 when that thread cannot be started is nothing handed over: that is
 logged, and the next daily check that finds those updates tries again.
 What has been told is kept in memory only, so after Banager is quit and
-opened again, nothing has been.
+opened again, nothing has been. Nor is it kept for a tool once a check
+finds no update for it — it was updated or uninstalled, or its source
+has gone — so that tool's next update is news, even one naming the same
+version, as a Homebrew app declared `version :latest` does for every
+release (listed with *Show Homebrew apps that have their own updater*
+on). A source that did not answer a check keeps its updates in the list,
+and they stay told (`Notified::forget_unoffered` in
+`crates/banager-core/src/notify_updates.rs`, before each report:
+`report_offered` in `src-tauri/src/notify.rs`).
 
 **A click on the notification** brings Banager to the front. Banager is
 told only that it has come to the front, not what brought it there: it
