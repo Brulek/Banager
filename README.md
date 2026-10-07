@@ -215,7 +215,8 @@ This app runs package managers on your behalf, so the boundary matters more than
   one press on "Show Command" in its confirmation, or open from the start with Settings' "Show
   technical details" on — and
   says whether it may ask for your password; an uninstall that runs no command lists instead the
-  exact paths it will move to the Trash. An uninstall also says what it will affect. A Homebrew
+  exact paths it will move to the Trash. `OLLAMA_HOST` logins are masked in the preview and
+  copied text; execution retains the original value. An uninstall also says what it will affect. A Homebrew
   formula update normally previews a follow-up `brew cleanup <name>` after success: it removes
   that formula's old installed versions, its outdated cached downloads and every unreferenced
   download in Homebrew's cache, including other packages' downloads. It is omitted for pinned
@@ -438,7 +439,7 @@ Banager（原名 Canager）：bao-manager，bao 是“包”的拼音；读起�
 Banager 把它们放进同一个窗口：装了什么、哪个有更新、每个都配一个按钮。
 
 每次更新和卸载，都能在它运行之前看到确切的命令，连同 Banager 为它设的环境变量（从登录 shell 拿来的 `PATH` 和代理、镜像设置除外：这些在 `docs/what-we-run.md` 的“How Banager runs anything”一节列出，代理设置里可能有密码，所以从不显示）：在确认框里点「查看命令」，或者在设置里打开「显示技术细节」，
-让它一开始就展开；可能要输入 Mac 密码的，确认框也会先说。不运行命令的卸载，改为列出它要移到废纸篓的每一条路径。
+让它一开始就展开；可能要输入 Mac 密码的，确认框也会先说。不运行命令的卸载，改为列出它要移到废纸篓的每一条路径。`OLLAMA_HOST` 中的登录信息在预览和拷贝的命令里会被遮蔽，实际执行仍使用原值。
 
 **目前处于发布前阶段**，核心与界面已经可用、有 1961 个 Rust 测试（另有 11 个平时跳过、要加
 `--ignored` 才跑：它们连着真实的 Homebrew、真实的废纸篓、AppKit 或本机磁盘，或给大批量计时）和 2775 个前端测试，但还没有可下载的版本，v0.1 正在
@@ -607,11 +608,11 @@ Banager 开着时还会每天做一次同样的检查，查到的更新都不安
 软件包管理操作不经过 shell。启动时读取环境设置会运行登录 shell 及其启动文件，失败后会在后续刷新重试；原生模拟窗口也会执行这一步，浏览器模拟不会。
 Homebrew 公式更新通常会先预览、再于成功后清理该公式的旧版本及相关缓存，清理也包括缓存中所有未引用的下载。用户关闭清理、固定版本或无法确认清理条件时，不安排这一步；`brew.env` 启用的自动清理会另行说明。
 普通测试跳过 11 项，包括真实 Homebrew、废纸篓、AppKit、磁盘探测和性能测试。安装卸载及废纸篓测试需要显式启用。
-`OLLAMA_HOST` 中的登录信息可能通过普通 HTTP 发送，但会在历史和设置保存前去除。完整的执行范围、例外与旧记录处理见[运行与隐私要点](docs/what-we-run.md#简体中文运行与隐私要点)。
+`OLLAMA_HOST` 中的登录信息可能通过普通 HTTP 发送，会在窗口中遮蔽，并在历史和设置保存前去除。完整的执行范围、例外与旧记录处理见[运行与隐私要点](docs/what-we-run.md#简体中文运行与隐私要点)。
 
 ### 執行與隱私
 
 套件管理操作不透過 shell。啟動時讀取環境設定會執行登入 shell 及其啟動檔，失敗後會在後續重新整理重試；原生模擬視窗也會執行這一步，瀏覽器模擬不會。
 Homebrew 公式更新通常會先預覽、再於成功後清理該公式的舊版本及相關快取，清理也包括快取中所有未參照的下載。使用者關閉清理、固定版本或無法確認清理條件時，不安排這一步；`brew.env` 啟用的自動清理會另外說明。
 一般測試略過 11 項，包括實際 Homebrew、垃圾桶、AppKit、磁碟探測及效能測試。安裝移除及垃圾桶測試需要明確啟用。
-`OLLAMA_HOST` 中的登入資訊可能透過一般 HTTP 傳送，但會在歷程和設定儲存前移除。完整的執行範圍、例外與舊記錄處理請見[執行與隱私要點](docs/what-we-run.md#繁體中文執行與隱私要點)。
+`OLLAMA_HOST` 中的登入資訊可能透過一般 HTTP 傳送，會在視窗中遮蔽，並在歷程和設定儲存前移除。完整的執行範圍、例外與舊記錄處理請見[執行與隱私要點](docs/what-we-run.md#繁體中文執行與隱私要點)。

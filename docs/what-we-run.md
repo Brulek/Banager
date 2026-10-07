@@ -154,7 +154,9 @@ the tool wrote it.
 
 It knows the logins of the settings the command was handed -- those read
 from the login shell, and the same names in Banager's own environment,
-which a command inherits when the shell did not set them. Each value is
+which a command inherits when the shell did not set them -- and of
+`OLLAMA_HOST`: Banager's own, which every command inherits, and the one an
+Ollama command is given (Ollama). Each value is
 read by fixed rules, never by what its parts look like:
 
 - a scheme counts only where the value starts with one (a letter, then
@@ -220,7 +222,9 @@ login (`:ab@`, the whole login before its `@`, the whole value):
 
 A user name alone that is that short or one of those words
 (`git@github.com:…`) adds no literal rule. Inside a URL authority it is
-still masked by the generic rule below.
+still masked by the generic rule below. `OLLAMA_HOST`'s is the exception:
+its login is always one, so even such a name is masked where it stands in
+it (`ab@`), in the whole value and as HTTP Basic.
 Anything else is masked wherever it appears, more than needed rather than
 less: a password of digits masks a date's year that matches it, and a
 user name that is the Mac account's masks it in every path a tool prints
@@ -383,7 +387,9 @@ to Homebrew cask installs and upgrades when the variable is already set
 in Banager's environment (Homebrew's section); it never sets it on its
 own behalf. An `OLLAMA_HOST` URL may already contain a login, which is
 sent to that daemon as HTTP Basic authentication (Network). Its userinfo
-is removed from keys before history or settings are stored; older records
+is omitted from public instance ids and masked in command previews,
+operation summaries and inventory errors. It is also removed from keys
+before history or settings are stored; older records
 are scrubbed on load and a rewrite is attempted (Files Banager writes).
 A proxy setting read from the login shell may hold a login;
 Banager hands it on unchanged to the commands it runs and gives it to that
@@ -2336,7 +2342,8 @@ effect, and a background refresh must never launch an application. The
 daemon is asked over HTTP instead: `GET {host}/api/tags` (10 s), where
 `{host}` is `OLLAMA_HOST` from the environment, normalised to an absolute
 http(s) URL (a bare `host:port` gets `http://` in front; a bare host without
-a port gets port 11434, while explicit http/https schemes retain their
+a port gets port 11434, including `user:password@host`: the colon in
+userinfo is not a port. Explicit http/https schemes retain their
 80/443 defaults; a value that
 does not make an http(s) URL is ignored and the default used), or
 Ollama's default `http://127.0.0.1:11434` (`DEFAULT_HOST`). Banager also
@@ -2347,12 +2354,26 @@ else that does not answer is reported as not responding, with no button.
 Every pull and rm plan explicitly sets `OLLAMA_HOST` to that normalized
 instance endpoint, matching inventory and reconciliation. URL userinfo
 is retained for requests and commands, including HTTP Basic authentication
-to the daemon; plain HTTP does not encrypt it (Network). Nothing masks
-it in the window: a pull or rm preview shows `OLLAMA_HOST=` with the
-login as written (`commandText` in `src/components/CommandPreview.tsx`).
-History and settings remove that login before storing instance ids
-(Files Banager writes). The version
-command has no added environment variables.
+to the daemon; plain HTTP does not encrypt it (Network). The authenticated
+endpoint stays privately in the adapter, while detected instance ids omit
+userinfo before snapshots, model keys, plans or operation events reach the
+window. Plan serialization and operation `env_preview` put `****` in
+place of the user name and of the password, whichever the login has
+(`runner::redact`); an `OLLAMA_HOST` with no login is shown as it is. The
+command preview and command text copied from the window keep those masks. Such copied text requires the
+person to supply their own login. The backend retains the real plan and
+passes the original normalized value to the command; the window submits
+only the held plan id. This does not add CLI support for URL userinfo:
+Ollama itself may still reject that value.
+
+Inventory errors mask the requested URL and any login echoed in transport
+errors, non-200 response bodies or parse errors, using the same redactor.
+Command output masking also includes the inherited or explicitly supplied
+`OLLAMA_HOST`, including decoded, encoded and HTTP Basic forms under the
+redactor's existing short-secret rules (How Banager runs anything).
+History and settings still remove logins from legacy keys before storing
+instance ids (Files Banager writes). The version command has no added
+environment variables.
 
 One `OLLAMA_HOST` survives that normalisation and is then never asked:
 an `https://` `OLLAMA_HOST` is refused by the https allowlist in the
@@ -4339,7 +4360,8 @@ and whether the welcome sheet of the first launch has been shown
 that field existed reads it as not shown, so the sheet also shows once
 after an upgrade.
 
-Ollama URL logins are removed from instance ids before a history record
+Ollama URL logins are removed when public instance ids are created, and
+legacy ids are scrubbed before a history record
 is kept and before ignored, skipped or snoozed keys are saved in settings
 (`runner::redact::without_ollama_login`). The host, port and path remain;
 the live adapter keeps its original URL for authentication. UI key
@@ -4890,7 +4912,7 @@ configured, `index.crates.io`, and cargo still follows a
 - Homebrew 公式更新通常会预览并在成功后运行指定名称的清理，删除该公式的旧版本、过期缓存下载及缓存中所有未引用的下载。固定版本、无法读取版本或固定记录、用户关闭清理、`brew.env` 启用自动清理或无法确定其影响时，不安排这一步。`brew.env` 启用的自动清理范围更广，预览会另行说明。
 - 未固定且装有多个版本的公式，卸载会移除所有已安装版本及链接，确认框会列出版本。保存在其他位置的设置和数据保留；启用自动移除依赖时，会另行说明。
 - `brew.env` 读取清单包括 `HOMEBREW_NO_AUTO_UPDATE`。它被设为空时，会阻止可能触发未跟踪自动更新的命令。
-- `OLLAMA_HOST` 地址中的登录信息会用于该服务的 HTTP 基本认证。普通 HTTP 不加密这些信息。拉取或删除模型的命令预览会原样显示含登录信息的 `OLLAMA_HOST`。历史和忽略、跳过、稍后提醒设置保存前会去除地址中的用户名与密码；旧文件读取时也会脱敏并尝试重写。写入失败可能使旧内容仍留在磁盘，较新格式的历史文件不会被覆盖。
+- `OLLAMA_HOST` 地址中的登录信息会用于该服务的 HTTP 基本认证。普通 HTTP 不加密这些信息。发给窗口的实例标识不含登录信息；命令预览、操作摘要和库存错误会遮蔽登录信息，实际请求和命令仍使用原值。拷贝的预览命令也保留遮蔽，需要自行补入登录信息。历史和忽略、跳过、稍后提醒设置保存前会去除地址中的用户名与密码；旧文件读取时也会脱敏并尝试重写。写入失败可能使旧内容仍留在磁盘，较新格式的历史文件不会被覆盖。
 - Claude Code、Antigravity CLI 和 Grok Build 卸载后，除了检查启动器，还会检查卸载清单中的其他路径；Antigravity 也会重新列出备份。可选路径还会检查归属及应保留的路径，不运行版本命令。
 - 预览必须在生成后 10 分钟内确认并提交。已接受的操作可以排队超过 10 分钟再执行。
 - 更新后版本未变通常需要检查；若已达到或超过确认的目标版本，则报告已更新。这也适用于 Grok Build 和 rustup。没有可比较的目标版本时，不适用此例外。
@@ -4902,7 +4924,7 @@ configured, `index.crates.io`, and cargo still follows a
 - Homebrew 公式更新通常會預覽並在成功後執行指定名稱的清理，刪除該公式的舊版本、過期快取下載及快取中所有未參照的下載。固定版本、無法讀取版本或固定記錄、使用者關閉清理、`brew.env` 啟用自動清理或無法確定其影響時，不安排這一步。`brew.env` 啟用的自動清理範圍更廣，預覽會另外說明。
 - 未固定且裝有多個版本的公式，移除時會移除所有已安裝版本及連結，確認視窗會列出版本。儲存在其他位置的設定和資料保留；啟用自動移除相依套件時，會另外說明。
 - `brew.env` 讀取清單包括 `HOMEBREW_NO_AUTO_UPDATE`。它被設為空值時，會阻止可能觸發未追蹤自動更新的命令。
-- `OLLAMA_HOST` 網址中的登入資訊會用於該服務的 HTTP 基本驗證。一般 HTTP 不會加密這些資訊。下載或移除模型的命令預覽會照原樣顯示含登入資訊的 `OLLAMA_HOST`。歷程和忽略、略過、稍後提醒設定儲存前會去除網址中的使用者名稱與密碼；舊檔案讀取時也會遮蔽登入資訊並嘗試重新寫入。寫入失敗可能使舊內容仍留在磁碟，較新格式的歷程檔案不會被覆寫。
+- `OLLAMA_HOST` 網址中的登入資訊會用於該服務的 HTTP 基本驗證。一般 HTTP 不會加密這些資訊。傳給視窗的實例識別碼不含登入資訊；命令預覽、操作摘要和庫存錯誤會遮蔽登入資訊，實際要求和命令仍使用原值。拷貝的預覽命令也保留遮蔽，需要自行補入登入資訊。歷程和忽略、略過、稍後提醒設定儲存前會去除網址中的使用者名稱與密碼；舊檔案讀取時也會遮蔽登入資訊並嘗試重新寫入。寫入失敗可能使舊內容仍留在磁碟，較新格式的歷程檔案不會被覆寫。
 - Claude Code、Antigravity CLI 和 Grok Build 移除後，除了檢查啟動器，還會檢查移除清單中的其他路徑；Antigravity 也會重新列出備份。選用路徑還會檢查歸屬及應保留的路徑，不執行版本命令。
 - 預覽必須在產生後 10 分鐘內確認並送出。已接受的操作可以排隊超過 10 分鐘再執行。
 - 更新後版本未變通常需要檢查；若已達到或超過確認的目標版本，則回報已更新。這也適用於 Grok Build 和 rustup。沒有可比較的目標版本時，不適用此例外。
