@@ -2,6 +2,7 @@ import { Fragment, useId, useMemo, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { CopyButton } from "./CopyButton";
 import { commandGroups, stateId, twinsByArtifact, type CommandGroup, type Twin } from "../lib/commands";
+import { commandsKnown } from "../lib/commandsKnown";
 import { namesInSentence } from "../lib/sources";
 import type { CommandState, InstalledArtifact } from "../lib/types";
 import { artifactKeyId } from "../store/ui";
@@ -131,8 +132,11 @@ function verdictOf(
  * a terminal opened later or an editor's. For a formula Homebrew has not
  * linked (`ArtifactFacts.unlinked`), its commands with no verdict on a
  * last line of their own, 「Homebrew没有把它链接到终端能找到的地方」, its
- * ⓘ the usual why (r36 V5). Nothing when Banager said nothing about any
- * of the tool's commands.
+ * ⓘ the usual why (r36 V5) and that typing it doesn't run this copy --
+ * only the why where no command of any tool has a verdict, the login
+ * shell's `PATH` not read (`commandsKnown`): then which copy runs is not
+ * said (q1b skeptic 5). Nothing when Banager said nothing about any of
+ * the tool's commands.
  */
 export function CommandsGroup({
   artifact,
@@ -209,7 +213,11 @@ export function CommandsGroup({
                   text={t("commands.notLinked")}
                   label={t("common.detailsLabel", { title: namesText(t, unlinked) })}
                 >
-                  {t("commands.notLinkedDetail")}
+                  {t(
+                    commandsKnown(artifacts, false, "verdicts") === "known"
+                      ? "commands.notLinkedDetail"
+                      : "commands.notLinkedWhy",
+                  )}
                 </TextWithInfo>
               </p>
             </div>

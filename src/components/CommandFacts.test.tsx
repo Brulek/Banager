@@ -66,7 +66,13 @@ describe("CommandsGroup", () => {
       ...artifact(geminiKey, "gemini-cli", [{ name: "gemini", state: null }]),
       facts: { ...NO_FACTS, family: "gemini-cli", commands: [{ name: "gemini", state: null }], unlinked: true },
     };
-    const { container, getByRole, getByText, unmount } = group(unlinked);
+    // npm's `gemini`, judged: the login shell's PATH was read.
+    const npmGemini = artifact(
+      { instance_id: "npm:/opt/homebrew", kind: "Package", name: "@google/gemini-cli" },
+      "gemini-cli",
+      [{ name: "gemini", state: "Runs" }],
+    );
+    const { container, getByRole, getByText, unmount } = group(unlinked, [npmGemini]);
     expect(lines(container)).toEqual([["gemini", "Homebrew didn't link it where Terminal looks"]]);
     fireEvent.click(getByRole("button", { name: "Details: gemini" }));
     expect(
@@ -75,6 +81,17 @@ describe("CommandsGroup", () => {
       ),
     ).toBeInTheDocument();
     unmount();
+    // The login shell's PATH was not read (no verdict anywhere): which copy
+    // typing it runs is not said, only why it isn't linked (q1b skeptic 5).
+    const npmUnjudged = { ...npmGemini, facts: { ...npmGemini.facts, commands: [{ name: "gemini", state: null }] } };
+    const unread = group(unlinked, [npmUnjudged]);
+    expect(lines(unread.container)).toEqual([["gemini", "Homebrew didn't link it where Terminal looks"]]);
+    fireEvent.click(unread.getByRole("button", { name: "Details: gemini" }));
+    expect(
+      unread.getByText("Usually a file of the same name was in the way when Homebrew installed it."),
+    ).toBeInTheDocument();
+    expect(unread.queryByText(/doesn't run this copy/)).toBeNull();
+    unread.unmount();
     // The same commands with no verdict, linked: nothing to say, as before.
     const { container: linked } = group({ ...unlinked, facts: { ...unlinked.facts, unlinked: false } });
     expect(linked).toBeEmptyDOMElement();

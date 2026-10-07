@@ -590,6 +590,7 @@
     "twinNotFound": "在終端機裡輸入「{{command}}」，找不到這一份。",
     "notLinked": "Homebrew沒有把它連結到終端機找得到的地方",
     "notLinkedDetail": "通常是Homebrew安裝它時有同名的檔案擋住了。在終端機裡輸入時不會執行這一份。",
+    "notLinkedWhy": "通常是Homebrew安裝它時有同名的檔案擋住了。",
     "twinNotLinked": "Homebrew沒有把這一份連結到終端機找得到的地方。"
   },
   "pathLine": {
