@@ -1090,7 +1090,7 @@
   },
   "reviewFixes": {
     "cannotUninstallOne": "無法在這裡解除安裝「{{name}}」",
-    "passwordNamed_other": "{{names}}可能會要求輸入Mac的密碼。",
+    "passwordNamed_other": "{{names}}可能會要求輸入Mac密碼，這裡無法輸入；需要時會告訴你在終端機裡怎麼完成。",
     "selectAgain_other": "重新選擇這些工具",
     "setupAttention_other": "{{count}}項需要查看",
     "protectedFoldersIn_other": "有{{count}}個檔案夾在受保護的位置，沒有讀取：{{places}}。",
@@ -1555,7 +1555,7 @@
     "toolWords": {
       "generic": "上面是{{program}}自己顯示的錯誤訊息。可以稍後{{again}}；還是失敗，就點按「查看記錄」，再點按「拷貝記錄」，傳給懂的人看。",
       "withCause": "上面是{{program}}自己顯示的錯誤訊息。{{line}}",
-      "inTerminal": "上面是{{program}}自己顯示的錯誤訊息。{{line}}可以點按「查看記錄」，在終端機裡執行那裡給出的指令。",
+      "inTerminal": "上面是{{program}}自己顯示的錯誤訊息。{{line}}可以點按「{{button}}」，在終端機裡執行那裡給出的指令。",
       "noLog": "上面是{{program}}自己顯示的錯誤訊息。可以稍後{{again}}；還是失敗，就點按「拷貝錯誤詳細資訊」，傳給懂的人看。"
     }
   },

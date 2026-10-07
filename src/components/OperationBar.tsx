@@ -15,7 +15,7 @@ import {
   type OutcomeTone,
 } from "../lib/operations";
 import { failedRunWords } from "../lib/runResult";
-import { outcomeCause } from "../lib/failureCause";
+import { viewLogKey } from "./FailureNextStep";
 import { useUiStore } from "../store/ui";
 import type { TFunction } from "i18next";
 import type { OpSummary } from "../lib/types";
@@ -110,7 +110,7 @@ export function OperationBar() {
   // password, whose log has the command for Terminal (walk-2 W2-5).
   const viewLog = (op: OpSummary) => (
     <button key="viewLog" type="button" onClick={() => openLog(op)} className={VIEW_LOG_BUTTON}>
-      {outcomeCause(op.outcome) === "needsPassword" ? t("needsPassword.viewSteps") : t("common.viewLog")}
+      {t(viewLogKey(op))}
     </button>
   );
   // Several to look at, once a run is done: 「查看N个日志」, which opens

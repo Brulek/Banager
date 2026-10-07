@@ -5,7 +5,7 @@ import { FAILURE_CAUSE_KEYS, outcomeCause } from "../lib/failureCause";
 import { namesInSentence } from "../lib/sources";
 import { artifactKeyId, useUiStore } from "../store/ui";
 import { CloseIcon, WarningFilledIcon } from "./icons";
-import { ResultRowStep } from "./FailureNextStep";
+import { ResultRowStep, viewLogKey } from "./FailureNextStep";
 import { BUTTON, SMALL_ICON_BUTTON } from "./ui/controls";
 import { focusOrFallback } from "./ui/focus";
 import { SMALL_WRAPPING } from "./ui/group";
@@ -92,13 +92,20 @@ export function BatchUninstallResult() {
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                     <span className={`text-foreground ${SMALL_WRAPPING}`}>{item.name}</span>
                     <span className={`text-muted ${SMALL_WRAPPING}`}>{causeLine(op.outcome) ?? outcomeWords(t, op.outcome, op.kind, technical)}</span>
+                    {/* 「查看步骤」 where sudo wanted the Mac's password, as
+                        the operation bar names it: the log has the command
+                        for Terminal (`viewLogKey`, r24 W6). */}
                     <button
                       type="button"
-                      aria-label={t("batchUninstall.viewLogOf", { name: item.name })}
+                      aria-label={
+                        viewLogKey(op) === "needsPassword.viewSteps"
+                          ? t("needsPassword.viewStepsLabel", { name: item.name })
+                          : t("batchUninstall.viewLogOf", { name: item.name })
+                      }
                       onClick={() => viewLog(op.id)}
                       className={BUTTON.small.grey}
                     >
-                      {t("common.viewLog")}
+                      {t(viewLogKey(op))}
                     </button>
                   </div>
                   {/* With technical details on, the tool's own words are

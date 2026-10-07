@@ -1203,8 +1203,8 @@
   },
   "reviewFixes": {
     "cannotUninstallOne": "“{{name}}” can't be uninstalled here",
-    "passwordNamed_one": "{{names}} may ask for your Mac password.",
-    "passwordNamed_other": "{{names}} may ask for your Mac password.",
+    "passwordNamed_one": "{{names}} may ask for your Mac password, which can't be entered here. If it does, you'll see how to finish in Terminal.",
+    "passwordNamed_other": "{{names}} may ask for your Mac password, which can't be entered here. If one does, you'll see how to finish in Terminal.",
     "selectAgain_one": "Select It Again",
     "selectAgain_other": "Select Them Again",
     "setupAttention_one": "{{count}} item needs attention",
@@ -1688,7 +1688,7 @@
     "toolWords": {
       "generic": "The words above are the error message from {{program}} itself. You can {{again}} later. If it still fails, click View Log, then Copy Log, and send the log to someone who can help.",
       "withCause": "The words above are the error message from {{program}} itself. {{line}}",
-      "inTerminal": "The words above are the error message from {{program}} itself. {{line}} You can click View Log and run the command it gives in Terminal.",
+      "inTerminal": "The words above are the error message from {{program}} itself. {{line}} You can click {{button}} and run the command it gives in Terminal.",
       "noLog": "The words above are the error message from {{program}} itself. You can {{again}} later. If it still fails, click Copy Error Details and send them to someone who can help."
     }
   },

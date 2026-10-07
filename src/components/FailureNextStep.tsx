@@ -39,6 +39,18 @@ export const TRY_AGAIN_KEYS: Record<OpKind, string> = {
   Link: "noAnswer.op.again",
 };
 
+/**
+ * The name of the button that opens `op`'s log: 「查看步骤」 where sudo
+ * wanted the Mac's password with no way to ask (`needsPassword`), whose log
+ * has the command for Terminal (walk-2 W2-5), else 「查看日志」. One rule for
+ * every such button -- the operation bar's, a batch uninstall's result
+ * row's (r24 W6) -- and for a sentence that names it
+ * (`failure.toolWords.inTerminal`).
+ */
+export function viewLogKey(op: OpSummary): "needsPassword.viewSteps" | "common.viewLog" {
+  return outcomeCause(op.outcome) === "needsPassword" ? "needsPassword.viewSteps" : "common.viewLog";
+}
+
 /** Which sentence goes under the log of a failure with `cause`. */
 function stepKey(op: OpSummary, cause: FailureCause | null): string {
   if (cause === null) return FAILURE_LOG_STEP_KEYS.generic;
@@ -106,7 +118,8 @@ export function FailureNextStep({ op, logs, id }: { op: OpSummary; logs: readonl
  *   says with technical details off -- the words take its place, so the
  *   sentence says it.
  * - `inTerminal`: a cause the Terminal command answers (`PasswordCommand`,
- *   which is in the log): the cause's line, then where the command is.
+ *   which is in the log): the cause's line, then where the command is --
+ *   the row's button, by its name (`viewLogKey`).
  * - `noLog`: the log's subtitle, where this window's log has none of the
  *   tool's lines any more (it keeps the newest 2,000): how to try again,
  *   then Copy Error Details, under it (`SubtitleWordsCopy`) -- not Copy
@@ -177,6 +190,7 @@ function toolWordsText(
     program: adapterLabel(t, adapterIdOf(op.instance_id)),
     again: t(TRY_AGAIN_KEYS[op.kind]),
     line: cause === null ? "" : t(FAILURE_CAUSE_KEYS[cause].line),
+    button: t(viewLogKey(op)),
   });
 }
 

@@ -240,12 +240,12 @@ describe("what a batch uninstall did not uninstall", () => {
         withCause:
           "The words above are the error message from Homebrew itself. There's no permission to change its files. Check the permissions, then try again.",
         inTerminal:
-          "The words above are the error message from Homebrew itself. This needs your Mac login password, which can't be entered here. You can click View Log and run the command it gives in Terminal.",
+          "The words above are the error message from Homebrew itself. This needs your Mac login password, which can't be entered here. You can click View Steps and run the command it gives in Terminal.",
       },
       "zh-CN": {
         generic: "上面是Homebrew自己的报错。可以稍后重新卸载；还是失败，就点按“查看日志”，再点按“拷贝日志”，发给懂的人看。",
         withCause: "上面是Homebrew自己的报错。没有权限修改它的文件，请确认权限后重试。",
-        inTerminal: "上面是Homebrew自己的报错。需要输入Mac的登录密码，无法在这里输入。可以点按“查看日志”，在终端里运行那里给出的命令。",
+        inTerminal: "上面是Homebrew自己的报错。需要输入Mac的登录密码，无法在这里输入。可以点按“查看步骤”，在终端里运行那里给出的命令。",
       },
     };
     try {
@@ -266,6 +266,16 @@ describe("what a batch uninstall did not uninstall", () => {
         expect(byName("wget")).toHaveTextContent("Error: wget: something went wrong");
         expect(stepOf("python@3.13")).toHaveTextContent(sentences[lang].withCause);
         expect(stepOf("pipx")).toHaveTextContent(sentences[lang].inTerminal);
+        // The button the sentence names is the row's, by that name -- the
+        // operation bar's for a password stop (r24 W6) -- and the others'
+        // stay View Log.
+        const buttonOf = (name: string) => byName(name).querySelector("button")?.textContent;
+        expect(buttonOf("pipx")).toBe(i18n.t("needsPassword.viewSteps"));
+        expect(buttonOf("wget")).toBe(i18n.t("common.viewLog"));
+        expect(buttonOf("python@3.13")).toBe(i18n.t("common.viewLog"));
+        expect(byName("pipx").querySelector("button")).toHaveAccessibleName(
+          i18n.t("needsPassword.viewStepsLabel", { name: "pipx" }),
+        );
         view.unmount();
 
         operations = [op(13, "wget", "Done", trash), op(12, "python@3.13", "Done", "Cancelled"), op(11, "pipx", "Done", "Succeeded")];

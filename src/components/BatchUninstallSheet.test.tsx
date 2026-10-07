@@ -619,7 +619,11 @@ describe("the batch uninstall's sheet", () => {
     // what its installer's uninstall keeps (Claude Code's ~/.claude): 3.
     expect(within(dialog).getByText("3 of them leave some files behind, listed below.")).toBeInTheDocument();
     // The app that may ask, by name: not 「some of these」.
-    expect(within(dialog).getByText("Microsoft Visual Studio Code may ask for your Mac password.")).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(
+        "Microsoft Visual Studio Code may ask for your Mac password, which can't be entered here. If it does, you'll see how to finish in Terminal.",
+      ),
+    ).toBeInTheDocument();
     const kept = within(dialog).getByRole("region", { name: "Stays after uninstalling" });
     expect([...kept.querySelectorAll("[data-kept-path]")].map((path) => path.textContent)).toEqual(["~/.claude", "~/.codex"]);
     expect(within(kept).getByText("From Claude Code and @anthropic-ai/claude-code")).toBeInTheDocument();
@@ -627,6 +631,27 @@ describe("the batch uninstall's sheet", () => {
     expect(within(kept).getByRole("button", { name: "Copy path: ~/.claude" })).toBeInTheDocument();
     for (const button of within(dialog).getAllByRole("button")) {
       expect(button.textContent ?? "").not.toMatch(/delete|remove|trash/i);
+    }
+  });
+
+  it("says by name what every other confirmation says: the password can't be entered here, and Terminal finishes it (r24 W6)", async () => {
+    // 「可能会要求输入Mac的密码」 alone had a person wait for a prompt that
+    // cannot come; the single uninstall, an update and Update All say the
+    // whole of it (`commandPreview.needsPassword`).
+    await openSheet([wget, vscode]);
+    await i18n.changeLanguage("zh-CN");
+    expect(
+      await screen.findByText("“Microsoft Visual Studio Code”可能会要求输入Mac密码，这里无法输入；需要时会告诉你在终端里怎么完成。"),
+    ).toBeInTheDocument();
+    await i18n.changeLanguage("zh-Hant");
+    expect(
+      await screen.findByText("「Microsoft Visual Studio Code」可能會要求輸入Mac密碼，這裡無法輸入；需要時會告訴你在終端機裡怎麼完成。"),
+    ).toBeInTheDocument();
+    // The same tail as the sentence of a confirmation of one, word for word.
+    for (const language of ["zh-CN", "zh-Hant"]) {
+      const t = i18n.getFixedT(language);
+      const tail = t("commandPreview.needsPassword").split("Mac")[1];
+      expect(t("reviewFixes.passwordNamed", { names: "x", count: 2 }).endsWith(`Mac${tail}`)).toBe(true);
     }
   });
 
