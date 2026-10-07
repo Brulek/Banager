@@ -377,11 +377,15 @@ command when its effective user ID is 0 (`refuse_if_root`); a Homebrew
 found under root is listed as refusing, not as missing. No other source
 checks.
 
-**Passwords.** Banager never asks for a password and never handles one.
-The only thing it does with one is pass `SUDO_ASKPASS` through, unchanged,
+**Passwords.** Banager never asks for or types a password. It passes
+`SUDO_ASKPASS` through, unchanged,
 to Homebrew cask installs and upgrades when the variable is already set
 in Banager's environment (Homebrew's section); it never sets it on its
-own behalf. A proxy setting read from the login shell may hold a login;
+own behalf. An `OLLAMA_HOST` URL may already contain a login, which is
+sent to that daemon as HTTP Basic authentication (Network). Its userinfo
+is removed from keys before history or settings are stored; older records
+are scrubbed on load and a rewrite is attempted (Files Banager writes).
+A proxy setting read from the login shell may hold a login;
 Banager hands it on unchanged to the commands it runs and gives it to that
 proxy alone (Network), never writes it to a log or the diagnostic info,
 and masks it in what those commands print before anything shows or keeps
@@ -434,7 +438,9 @@ the start with Settings' "Show technical details" on (`plan_operation` in
 `src-tauri/src/ipc.rs`; the front end never builds an argv and sends back
 only the id of a plan Rust issued). The plan can be confirmed for ten
 minutes (`PLAN_LIFETIME` in `crates/banager-core/src/session/plans.rs`),
-after which it has to be previewed again. Rust holds at most 1,024 plans
+after which it has to be previewed again. This checks the time from issue
+to submission; accepted work may wait longer in the queue before running.
+Rust holds at most 1,024 plans
 (`MAX_ISSUED_PLANS` there), letting the oldest go past that, so Update
 all of more updates than that has lost its first plans by the time it is
 confirmed. Each of those is then planned again at its turn, through the
@@ -477,8 +483,12 @@ that need the same lock start in the order they were confirmed: one waits
 while an earlier one that needs any of its locks is still waiting
 (`run_operation`'s queue in `crates/banager-core/src/ops/mod.rs`). An install
 after which the package is not present, an uninstall after which it still
-is, and an upgrade that exits 0 with the version unchanged are all
-reported as needing attention, never as success. The one case with less
+is, and an upgrade that exits 0 with the version unchanged are reported
+as needing attention, with one exception for that unchanged upgrade: if
+its version is already at or beyond the confirmed target, it succeeds
+and says it was already updated (`already_at_target`), for every source.
+Without a target it can compare against, or below that target, it still
+needs attention. The one case with less
 to go on: when the reading before an upgrade was refused — on Homebrew,
 while a `brew update` a refresh left running is still going (Homebrew's
 section) — there is nothing to compare, and an upgrade that exits 0 is
@@ -1193,7 +1203,9 @@ To find them it reads `HOME`, `XDG_CONFIG_HOME`,
 `HOMEBREW_XDG_CONFIG_HOME` and `HOMEBREW_SYSTEM_ENV_TAKES_PRIORITY` from
 Banager's environment (`env_var_fn`, per preview), and it follows
 `HOMEBREW_NO_CLEANUP_FORMULAE` and `HOMEBREW_NO_REQUIRE_TAP_TRUST` there
-and in the files too. A file's lines count as
+and in the files too. It also reads `HOMEBREW_NO_AUTO_UPDATE` from the
+files to refuse commands that would start an untracked automatic update
+(Environment applied to every invocation, above). A file's lines count as
 bash reads them: the last line to set a variable wins, and a last line
 with no newline after it is not read. Homebrew counts
 `HOMEBREW_NO_AUTOREMOVE` as unset when it is empty, only whitespace, or
@@ -1269,10 +1281,16 @@ the list, it says nothing of it.
 **What an uninstall says it removes.** Under the tool, the uninstall
 confirmation says in one sentence what the command removes and what it
 leaves (`Warning::UninstallScope`, built with the plan by
-`BrewAdapter::uninstall_scope`). A formula's says that only this installed
-version and the links to it go, and that config and data kept elsewhere
-are not deleted — without "only" when the `brew.env` files bring
-autoremove back, beside the line above. A cask's comes from what Homebrew
+`BrewAdapter::uninstall_scope`). For a formula with one installed
+version — or a pinned one, or one whose versions or pin record could not
+be read — it says that this installed version and the links to it go.
+For an unpinned formula with more than one installed version
+(`removes_every_version`), the plan adds `--force` and
+`HomebrewRemovesEveryVersion`: the confirmation instead says that what
+Homebrew installed of that formula and its links go, and lists every
+version to be removed (`warningLines` in `src/lib/warnings.ts`). Config
+and data kept elsewhere are not deleted. The scope omits "only" when
+`brew.env` brings autoremove back, beside the line above. A cask's comes from what Homebrew
 recorded when it installed the cask, which is what `brew uninstall --cask`
 runs, never from `brew info`, which reads the cask's current definition
 (`crates/banager-core/src/adapters/brew/cask_receipt.rs`; Homebrew
@@ -1602,7 +1620,7 @@ once open, and read only when that says it is a regular file of at most
 16 MiB (`read_file::LIMIT`) — otherwise it is skipped as unreadable,
 as `bin/brew` skips it, but for one in a protected place, which is not
 looked at and counts as unknown (`brew.env`, above);
-only the lines that set `HOMEBREW_NO_AUTOREMOVE`,
+only the lines that set `HOMEBREW_NO_AUTO_UPDATE`, `HOMEBREW_NO_AUTOREMOVE`,
 `HOMEBREW_NO_INSTALL_CLEANUP`, `HOMEBREW_XDG_CONFIG_HOME`,
 `HOMEBREW_SYSTEM_ENV_TAKES_PRIORITY`, `HOMEBREW_NO_CLEANUP_FORMULAE` or
 `HOMEBREW_NO_REQUIRE_TAP_TRUST` are used. A cask's uninstall preview
@@ -2263,7 +2281,13 @@ is a directory: a daemon on this Mac that does not answer while the app
 is there is reported as not running, with an Open Ollama button; anything
 else that does not answer is reported as not responding, with no button.
 Every pull and rm plan explicitly sets `OLLAMA_HOST` to that normalized
-instance endpoint, matching inventory and reconciliation. The version
+instance endpoint, matching inventory and reconciliation. URL userinfo
+is retained for requests and commands, including HTTP Basic authentication
+to the daemon; plain HTTP does not encrypt it (Network). Nothing masks
+it in the window: a pull or rm preview shows `OLLAMA_HOST=` with the
+login as written (`commandText` in `src/components/CommandPreview.tsx`).
+History and settings remove that login before storing instance ids
+(Files Banager writes). The version
 command has no added environment variables.
 
 One `OLLAMA_HOST` survives that normalisation and is then never asked:
@@ -2808,7 +2832,9 @@ the launcher as changed since the preview. Cancel: allowed
 (`KillThenReconcile`) — the runner stops the process group, Banager reads
 `<grok> --version` again, and the operation is reported as unconfirmed
 regardless of that reading. An update that exits 0 with the version
-unchanged is reported as needing attention, as for every source. **How
+unchanged needs attention unless it is already at or beyond the confirmed
+target; then it succeeds as already updated, as for every source (How
+Banager runs anything). **How
 `grok update` behaves when nothing can answer a prompt** (Banager gives it
 no terminal and a closed stdin) was recorded on 2026-10-07 on a GitHub
 Actions `macos-latest` runner (image 20260907), in a throwaway HOME, by
@@ -2953,8 +2979,9 @@ nothing. So the plan is **not cancellable once it is running** (the preview
 says so; the operation bar offers no Stop; while it is still queued it
 can be cancelled, since nothing has started), and it holds the Cargo
 source's lock as well as its own. If it exits 0 and the version did not
-move, the operation is reported as needing attention, as for every source.
-A run stopped by the timeout is reported as unconfirmed, whatever the
+move, the operation needs attention unless it is already at or beyond the
+confirmed target; then it succeeds as already updated, as for every source
+(How Banager runs anything). A run stopped by the timeout is reported as unconfirmed, whatever the
 version reads before and after say: an upgrade stopped partway is never
 called done on the strength of a version number.
 
@@ -4068,8 +4095,12 @@ not read (`protected::look`; How Banager runs anything, above):
   the shared folders in it, the launcher's link text, and whether
   `~/.claude` and `~/.claude.json` exist and where they lead (Claude
   Code's section). After an uninstall: the same look at the launcher
-  that detection makes (`lstat`, `readlink`, `realpath`, the same paths),
-  and nothing else — no version is read.
+  that detection makes (`lstat`, `readlink`, `realpath`, the same paths).
+  When the launcher is gone, `removal::left_behind` also enumerates the
+  recipe's remaining paths and checks each with `lstat`, with ownership
+  and kept-path checks for optional items. The execution path makes this
+  leftover check after the last move too (Claude Code's section). No
+  version command runs.
 - Antigravity CLI: whether `~/.local/bin/agy` exists and what it is
   (`lstat`, `realpath`); for the notice under the source, each `PATH`
   directory's `agy`, as for Claude Code. For an uninstall preview, when
@@ -4080,7 +4111,9 @@ not read (`protected::look`; How Banager runs anything, above):
   whether `~/.gemini/antigravity-cli`, `~/.cache/antigravity`, `~/.zshrc`
   and `~/.zprofile` exist and where they lead (`lstat`, `realpath`;
   nothing in them is read). After an uninstall: the same look at the
-  launcher that detection makes, and nothing else — no version is read.
+  launcher that detection makes, then the same `removal::left_behind`
+  check described for Claude Code, including another listing of
+  `~/.local/bin` for `agy.<time>.old` backups. No version command runs.
 - Grok Build: whether `~/.grok/bin/grok` exists and where it links to
   (`lstat`, `readlink`, `realpath`, also for the folder the link is in and
   for `~/.grok`); for the notice under the source, each `PATH` directory's
@@ -4095,8 +4128,10 @@ not read (`protected::look`; How Banager runs anything, above):
   `~/.grok` and, for one that is and still leads somewhere, every folder,
   link and file on its way there (`lstat`, `readlink`, `realpath`).
   Nothing in `~/.grok/config.toml` or `~/.grok/auth.json` is read. After
-  an uninstall: the same look at the launcher that detection makes, and
-  nothing else — no version is read. The preview of uninstalling
+  an uninstall: the same look at the launcher that detection makes, then
+  the same `removal::left_behind` check described for Claude Code, including
+  ownership and kept-path checks for optional paths. No version command
+  runs. The preview of uninstalling
   Homebrew's cask `grok-build` walks `~/.grok` for its size, names and
   sizes only (Data an uninstall leaves behind, above).
 - rustup: whether `$CARGO_HOME/bin/rustup` exists and is a regular file
@@ -4212,6 +4247,16 @@ and whether the welcome sheet of the first launch has been shown
 (`welcome_seen`), so that it shows once. A `settings.json` written before
 that field existed reads it as not shown, so the sheet also shows once
 after an upgrade.
+
+Ollama URL logins are removed from instance ids before a history record
+is kept and before ignored, skipped or snoozed keys are saved in settings
+(`runner::redact::without_ollama_login`). The host, port and path remain;
+the live adapter keeps its original URL for authentication. UI key
+comparison applies the same removal, so history and reminders still
+match live models. Older readable history and settings files are scrubbed
+before being returned to the window and rewritten through their existing
+atomic writer. A failed rewrite can leave the old bytes on disk; a newer
+history format is still left untouched. No additional file is introduced.
 
 `history.json`, Banager's record of the updates and uninstalls it ran,
 which the Updates page's 「最近的更新记录」 lists after a restart
@@ -4452,15 +4497,21 @@ one never reaches the proxy. A proxy setting that holds a login
 The mirror settings change nothing here: Banager's own checks still ask
 the hosts in the table.
 
-Every request: TLS through rustls; the header `User-Agent:
+Every HTTPS request uses TLS through rustls; plain HTTP Ollama requests
+are not encrypted. Every request has the header `User-Agent:
 banager/<version>`; no other header of Banager's own, except `Accept` on
-the Ollama registry request — the HTTP library adds what the protocol
-needs, `Host` and `Accept: */*`, and nothing else; no cookies, no
-credentials, nothing about this Mac in the request (a proxy's login, above, goes to the proxy only); a timeout per request
-(listed in each source's table: 30 s unless stated, and the daemon check
-in Ollama's detect is 10 s); a response body limit of 8 MiB
-(`MAX_RESPONSE_BYTES`); and no redirect is ever followed — a 3xx is an
-error. Nothing is ever sent by any method but `GET`.
+the Ollama registry request. The HTTP library supplies protocol headers,
+including `Host` and `Accept: */*`. When `OLLAMA_HOST` contains URL userinfo
+such as `http://name:password@server:11434`, reqwest also sends HTTP Basic
+`Authorization` to that daemon. Over plain HTTP, those credentials are
+base64-encoded, not encrypted. The HTTPS host allowlist still applies;
+this does not enable an HTTPS daemon host outside it. A proxy's login,
+above, goes to the proxy only. No cookies or other credentials are added,
+and no information about this Mac is added to the request. Each request
+has a timeout (listed in each source's table: 30 s unless stated, and the
+daemon check in Ollama's detect is 10 s) and a response body limit of
+8 MiB (`MAX_RESPONSE_BYTES`), and no redirect is ever followed — a 3xx is
+an error. Nothing is ever sent by any method but `GET`.
 
 A lookup that ends in one of those refusals — a redirect, a host off the
 list (`HttpError::Refused`) — or in a secure connection rustls will not
@@ -4652,8 +4703,10 @@ configured, `index.crates.io`, and cargo still follows a
   environment: removing the last tool, uv would then also delete the
   folder above that one, with every file in it, when that folder holds no
   other folder (uv's section).
-- Never runs a write command from a refresh, and never runs one without a
-  preview the user confirmed within the last ten minutes. The `brew
+- Never runs a write command from a refresh, and accepts a confirmed
+  preview only within ten minutes of its issue (`Session::submit`). An
+  accepted operation can wait longer than ten minutes in the queue before
+  it runs; expiry is checked at submission, not again at execution. The `brew
   update` a refresh runs is Homebrew's exception: it can install, move or
   uninstall Homebrew packages by itself when Homebrew has moved a package
   between a formula and a cask, or renamed one (Homebrew's section).
@@ -4722,3 +4775,27 @@ configured, `index.crates.io`, and cargo still follows a
   says so (`run_operation`'s `already_at_target`); when Homebrew's index
   was updating and the reading before was refused, presence afterwards is
   all there is to go on (Homebrew's section).
+
+## 简体中文：运行与隐私要点
+
+- 软件包管理操作直接传入参数，不经过 shell。启动时会另行运行登录 shell，读取环境设置；启动文件也会执行。读取失败后，后续刷新会重试。原生模拟窗口也有这一步，浏览器模拟没有。
+- 普通测试跳过 11 项：2 项真实 Homebrew 测试、1 项废纸篓测试、1 项 AppKit 测试、1 项磁盘探测和 6 项性能测试。安装卸载与废纸篓测试需要显式启用，详见 README。
+- Homebrew 公式更新通常会预览并在成功后运行指定名称的清理，删除该公式的旧版本、过期缓存下载及缓存中所有未引用的下载。固定版本、无法读取版本或固定记录、用户关闭清理、`brew.env` 启用自动清理或无法确定其影响时，不安排这一步。`brew.env` 启用的自动清理范围更广，预览会另行说明。
+- 未固定且装有多个版本的公式，卸载会移除所有已安装版本及链接，确认框会列出版本。保存在其他位置的设置和数据保留；启用自动移除依赖时，会另行说明。
+- `brew.env` 读取清单包括 `HOMEBREW_NO_AUTO_UPDATE`。它被设为空时，会阻止可能触发未跟踪自动更新的命令。
+- `OLLAMA_HOST` 地址中的登录信息会用于该服务的 HTTP 基本认证。普通 HTTP 不加密这些信息。拉取或删除模型的命令预览会原样显示含登录信息的 `OLLAMA_HOST`。历史和忽略、跳过、稍后提醒设置保存前会去除地址中的用户名与密码；旧文件读取时也会脱敏并尝试重写。写入失败可能使旧内容仍留在磁盘，较新格式的历史文件不会被覆盖。
+- Claude Code、Antigravity CLI 和 Grok Build 卸载后，除了检查启动器，还会检查卸载清单中的其他路径；Antigravity 也会重新列出备份。可选路径还会检查归属及应保留的路径，不运行版本命令。
+- 预览必须在生成后 10 分钟内确认并提交。已接受的操作可以排队超过 10 分钟再执行。
+- 更新后版本未变通常需要检查；若已达到或超过确认的目标版本，则报告已更新。这也适用于 Grok Build 和 rustup。没有可比较的目标版本时，不适用此例外。
+
+## 繁體中文：執行與隱私要點
+
+- 套件管理操作直接傳入參數，不透過 shell。啟動時會另外執行登入 shell，讀取環境設定；啟動檔也會執行。讀取失敗後，後續重新整理會重試。原生模擬視窗也有這一步，瀏覽器模擬沒有。
+- 一般測試略過 11 項：2 項實際 Homebrew 測試、1 項垃圾桶測試、1 項 AppKit 測試、1 項磁碟探測及 6 項效能測試。安裝移除與垃圾桶測試需要明確啟用，詳見 README。
+- Homebrew 公式更新通常會預覽並在成功後執行指定名稱的清理，刪除該公式的舊版本、過期快取下載及快取中所有未參照的下載。固定版本、無法讀取版本或固定記錄、使用者關閉清理、`brew.env` 啟用自動清理或無法確定其影響時，不安排這一步。`brew.env` 啟用的自動清理範圍更廣，預覽會另外說明。
+- 未固定且裝有多個版本的公式，移除時會移除所有已安裝版本及連結，確認視窗會列出版本。儲存在其他位置的設定和資料保留；啟用自動移除相依套件時，會另外說明。
+- `brew.env` 讀取清單包括 `HOMEBREW_NO_AUTO_UPDATE`。它被設為空值時，會阻止可能觸發未追蹤自動更新的命令。
+- `OLLAMA_HOST` 網址中的登入資訊會用於該服務的 HTTP 基本驗證。一般 HTTP 不會加密這些資訊。下載或移除模型的命令預覽會照原樣顯示含登入資訊的 `OLLAMA_HOST`。歷程和忽略、略過、稍後提醒設定儲存前會去除網址中的使用者名稱與密碼；舊檔案讀取時也會遮蔽登入資訊並嘗試重新寫入。寫入失敗可能使舊內容仍留在磁碟，較新格式的歷程檔案不會被覆寫。
+- Claude Code、Antigravity CLI 和 Grok Build 移除後，除了檢查啟動器，還會檢查移除清單中的其他路徑；Antigravity 也會重新列出備份。選用路徑還會檢查歸屬及應保留的路徑，不執行版本命令。
+- 預覽必須在產生後 10 分鐘內確認並送出。已接受的操作可以排隊超過 10 分鐘再執行。
+- 更新後版本未變通常需要檢查；若已達到或超過確認的目標版本，則回報已更新。這也適用於 Grok Build 和 rustup。沒有可比較的目標版本時，不適用此例外。

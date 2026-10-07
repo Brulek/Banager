@@ -200,8 +200,11 @@ Adding a source is one Rust file implementing one trait, plus a TOML metadata fi
 
 This app runs package managers on your behalf, so the boundary matters more than the features:
 
-- **There is no shell.** Every command is built as an argument vector and handed to the OS
-  directly. Nothing is ever concatenated into a string a shell would interpret.
+- **Package-manager operations run directly.** Each uses an argument vector, without a shell.
+  At launch, Banager separately runs a bounded interactive login shell to read `PATH` and proxy
+  and mirror settings; its startup files may run commands. A failed read is retried on a later
+  refresh. [How Banager runs anything](docs/what-we-run.md#how-banager-runs-anything) lists the
+  exact shell command, its limits and the settings it takes.
 - **The window cannot ask for a command.** The UI sends an operation kind and a single-use,
   expiring identifier for a plan the Rust side built itself. There is no general "run this" path,
   so a compromised web view cannot invent one.
@@ -212,13 +215,16 @@ This app runs package managers on your behalf, so the boundary matters more than
   one press on "Show Command" in its confirmation, or open from the start with Settings' "Show
   technical details" on — and
   says whether it may ask for your password; an uninstall that runs no command lists instead the
-  exact paths it will move to the Trash. An uninstall also says what it will affect. An update says
-  so only when a Homebrew `brew.env` file turns Homebrew's clean-up back on, since Homebrew then
-  deletes, after every update, the older versions of that software and of any it updates along
-  with it, and stray old downloads, and, whenever
-  its periodic clean-up is due, those of all Homebrew software — and, when the file turns its
-  autoremove back on too, that periodic clean-up also uninstalls the packages that were installed
-  only as dependencies and that nothing needs anymore.
+  exact paths it will move to the Trash. An uninstall also says what it will affect. A Homebrew
+  formula update normally previews a follow-up `brew cleanup <name>` after success: it removes
+  that formula's old installed versions, its outdated cached downloads and every unreferenced
+  download in Homebrew's cache, including other packages' downloads. It is omitted for pinned
+  formulae, unreadable versions or pin records, user settings that disable cleanup, and when
+  `brew.env` enables automatic cleanup or its effect cannot be read; the conditions are checked
+  again before cleanup. Separately, when `brew.env` turns automatic cleanup back on, the preview
+  explains its broader scope: old versions of the updated software and its updated dependencies,
+  stray old downloads and, when periodic cleanup is due, those of all Homebrew software. If
+  autoremove is also on, periodic cleanup can remove unneeded dependencies.
 - **Nothing is deleted quietly.** An uninstall that would break other packages says which ones,
   in your language. Banager runs Homebrew with its autoremove off, so a Homebrew uninstall does
   not also uninstall the other packages that were installed only as dependencies and that nothing
@@ -266,8 +272,10 @@ pnpm tauri dev
 To look at the UI in an ordinary browser instead, with a mock backend in place of Tauri (for
 screenshots; development only, never in a build), run `pnpm dev:mock` and open
 <http://localhost:1430/> — [docs/ui-preview.md](docs/ui-preview.md) has the rest. `pnpm tauri:mock`
-puts the same mock front end in the app's real window, title bar and all, and Banager runs no
-command for it; the same page says why.
+puts the same mock front end in the app's real window, title bar and all. Its Rust startup still
+runs the bounded login-shell environment read described above, including shell startup files;
+the mock front end does not run package-manager operations. The browser-only mock does not
+start that Rust backend.
 
 Tests — all five must pass before anything is committed:
 
@@ -286,14 +294,21 @@ WebView is a type error; `tsconfig.test.json` checks the vitest files with `@typ
 through `node:fs`; `tsconfig.node.json` checks `vite.config.ts` (`--composite false`, so it leaves no
 `.tsbuildinfo` behind). `pnpm build` runs the same three programs before `vite build`.
 
-`cargo test --workspace` has four `#[ignore]`d tests, all skipped by a plain `cargo test`. Two are
-in `crates/banager-core/tests/brew_live.rs`: one only reads the real Homebrew on the machine
-running it, the other installs and removes the `hello` formula. The third, in
-`crates/banager-core/tests/standalone_uninstall_test.rs`, moves five throwaway items it creates
-(named `banager-trash-smoke-…`) into the real Trash of the Mac running it and leaves them there.
-The fourth, in `crates/banager-core/src/icon/real.rs`, has AppKit draw Calculator's icon and
-only reads. The two that change the machine refuse to touch anything without `BANAGER_LIVE=1`. CI
-runs the first three; run them yourself with:
+`cargo test --workspace` has eleven `#[ignore]`d tests, all skipped by a plain `cargo test`:
+
+- Two in `crates/banager-core/tests/brew_live.rs`: one reads the real Homebrew; the other installs
+  and removes the `hello` formula.
+- One in `crates/banager-core/tests/standalone_uninstall_test.rs` moves five throwaway items it
+  creates (`banager-trash-smoke-…`) into this Mac's real Trash and leaves them there.
+- One in `crates/banager-core/src/icon/real.rs` has AppKit draw Calculator's icon and only reads.
+- One in `crates/banager-core/src/protected.rs` probes this Mac's filesystem using temporary
+  files and about a million lookups.
+- Six benchmarks: one in `crates/banager-core/src/commands/round_tests.rs` and five in
+  `crates/banager-core/tests/scale_test.rs`, for command matching, family assignment, sizes and
+  refreshes with large inventories.
+
+The Homebrew install/remove and Trash tests refuse to touch anything without `BANAGER_LIVE=1`.
+CI runs the two Homebrew tests and the Trash test; run those or the AppKit test yourself with:
 
 ```bash
 BANAGER_LIVE=1 cargo test -p banager-core --test brew_live -- --ignored
@@ -586,3 +601,17 @@ Banager 开着时还会每天做一次同样的检查，查到的更新都不安
 选「退出」才退出。Banager 当场回答 macOS，所以退出登录、重新启动或关机会被取消，而不是一直等着，选了
 「退出」之后要再操作一次（`src-tauri/src/quit.rs`）。窗口要是问不了——出错停了，或者 2 秒内没把这句问话
 显示出来——Banager 就直接退出，不会在没人能回答时拦着不退。强制退出仍会立刻退出。
+
+### 运行与隐私
+
+软件包管理操作不经过 shell。启动时读取环境设置会运行登录 shell 及其启动文件，失败后会在后续刷新重试；原生模拟窗口也会执行这一步，浏览器模拟不会。
+Homebrew 公式更新通常会先预览、再于成功后清理该公式的旧版本及相关缓存，清理也包括缓存中所有未引用的下载。用户关闭清理、固定版本或无法确认清理条件时，不安排这一步；`brew.env` 启用的自动清理会另行说明。
+普通测试跳过 11 项，包括真实 Homebrew、废纸篓、AppKit、磁盘探测和性能测试。安装卸载及废纸篓测试需要显式启用。
+`OLLAMA_HOST` 中的登录信息可能通过普通 HTTP 发送，但会在历史和设置保存前去除。完整的执行范围、例外与旧记录处理见[运行与隐私要点](docs/what-we-run.md#简体中文运行与隐私要点)。
+
+### 執行與隱私
+
+套件管理操作不透過 shell。啟動時讀取環境設定會執行登入 shell 及其啟動檔，失敗後會在後續重新整理重試；原生模擬視窗也會執行這一步，瀏覽器模擬不會。
+Homebrew 公式更新通常會先預覽、再於成功後清理該公式的舊版本及相關快取，清理也包括快取中所有未參照的下載。使用者關閉清理、固定版本或無法確認清理條件時，不安排這一步；`brew.env` 啟用的自動清理會另外說明。
+一般測試略過 11 項，包括實際 Homebrew、垃圾桶、AppKit、磁碟探測及效能測試。安裝移除及垃圾桶測試需要明確啟用。
+`OLLAMA_HOST` 中的登入資訊可能透過一般 HTTP 傳送，但會在歷程和設定儲存前移除。完整的執行範圍、例外與舊記錄處理請見[執行與隱私要點](docs/what-we-run.md#繁體中文執行與隱私要點)。
