@@ -774,8 +774,9 @@ impl Known {
             }
             // The launcher's very file under another name: a hard link to
             // it (rustup's proxies, where an older rustup made them so).
-            if let Some(seen) = found.entry.seen.as_ref().filter(|seen| seen.is_file()) {
-                if let Some((_, id)) = self.exe_files.iter().find(|(file, _)| file.same_as(seen)) {
+            // `seen` is what the walk's `fstatat` said: no path is looked up.
+            if let Some(stat) = found.entry.seen.as_ref().filter(|stat| stat.is_file()) {
+                if let Some((_, id)) = self.exe_files.iter().find(|(file, _)| file.same_as(stat)) {
                     return Some(id);
                 }
             }
