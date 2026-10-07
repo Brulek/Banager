@@ -1056,7 +1056,7 @@ mod tests {
     /// program's own failure would, its stderr in the operation's log,
     /// nothing written.
     #[test]
-    fn test_a_read_before_the_command_that_did_not_answer_ends_as_the_command_would_have() {
+    fn test_a_read_before_the_command_that_did_not_answer_ends_as_its_programs_failure_would() {
         use crate::events::{OperationEvent, Stream, VecSink};
         use crate::history::FailureCause;
         use crate::runner::{CommandOutput, RunnerError};
