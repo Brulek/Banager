@@ -54,10 +54,11 @@ describe("FaqSheet", () => {
   it.each([
     // r31 E6: what Homebrew does when it renames or moves something, in
     // plain words -- "during migrations or renames" (「迁移或重命名时」)
-    // left the reader to guess whose migration it was.
-    ["en", en, ["For an update or uninstall you choose here, the confirmation", "when Homebrew renames something you installed with it, or moves it to another kind of package", "install, move or uninstall that software by itself, without a preview or confirmation"]],
-    ["zh-CN", zhCN, ["在这里选择更新或卸载时", "把你用它装的软件改名或换成另一种软件包时", "未经预览或确认就自行安装、移动或卸载这个软件"]],
-    ["zh-Hant", zhHant, ["在這裡選擇更新或解除安裝時", "把你用它安裝的軟體重新命名或換成另一種套件時", "未經預覽或確認就自行安裝、移動或解除安裝這個軟體"]],
+    // left the reader to guess whose migration it was. It can change other
+    // software too, so not "that software" (n1 skeptic).
+    ["en", en, ["For an update or uninstall you choose here, the confirmation", "when Homebrew renames something you installed with it, or moves it to another kind of package", "it can install, move or uninstall software by itself, without a preview or confirmation"]],
+    ["zh-CN", zhCN, ["在这里选择更新或卸载时", "把你用它装的软件改名或换成另一种软件包时", "未经预览或确认就自行安装、移动或卸载软件；"]],
+    ["zh-Hant", zhHant, ["在這裡選擇更新或解除安裝時", "把你用它安裝的軟體重新命名或換成另一種套件時", "未經預覽或確認就自行安裝、移動或解除安裝軟體；"]],
   ] as const)("discloses Homebrew's unconfirmed refresh changes in %s", async (language, locale, disclosures) => {
     await i18n.changeLanguage(language);
     try {
@@ -68,6 +69,11 @@ describe("FaqSheet", () => {
       expect(answer).toBe(locale.faq.questions.changesMac.answer);
       for (const disclosure of disclosures) expect(answer).toContain(disclosure);
       expect(answer).not.toMatch(/migrat|迁移|移轉/i);
+      // n1 skeptic: moving a formula to a cask runs a bare `brew cleanup`,
+      // which removes old versions of every formula, and `install
+      // --overwrite` can install dependencies (reporter.rb:261, :288-295),
+      // so what Homebrew changes is not only "that software".
+      expect(answer).not.toMatch(/that software|这个软件|這個軟體/);
     } finally {
       await i18n.changeLanguage("en");
     }
