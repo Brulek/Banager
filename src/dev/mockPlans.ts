@@ -91,6 +91,14 @@ const CASK_STEPS: Record<string, Warning[]> = {
  * (`HomebrewCaskStepsIfTrusted`).
  */
 const CASK_SCOPES: Record<string, { what: UninstallScope; steps: Warning[] }> = {
+  zed: {
+    what: "HomebrewCaskPlain",
+    steps: [{ CaskUninstallStep: { step: "QuitsNamedApps", items: ["Zed"] } }],
+  },
+  "dbeaver-community": {
+    what: "HomebrewCaskPlain",
+    steps: [{ CaskUninstallStep: { step: "SignalsApps", items: ["org.jkiss.dbeaver.core.product"] } }],
+  },
   quickjot: {
     what: "HomebrewCaskStepsIfTrusted",
     steps: [{ CaskUninstallStep: { step: "RunsOwnSteps", items: [] } }],

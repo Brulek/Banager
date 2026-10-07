@@ -811,6 +811,10 @@
     "title": "无法读取终端的设置",
     "description": "终端里能找到的工具可能没有列在这里，例如用npm、pipx、uv或Cargo安装的。"
   },
+  "uninstallRunningApps": {
+    "SignalsApps_other": "还会强制退出{{count}}个正在运行的App，未保存的内容可能丢失。",
+    "SignalsAppsMatching": "还会强制退出正在运行的相关App，包括名称符合某个规则的全部App，未保存的内容可能丢失。"
+  },
   "planRefused": {
     "sourceGone": "无法开始，因为找不到管理它的工具。请点按“重新检查”。",
     "expired": "确认窗口已打开超过10分钟，因此未执行。请重新打开并确认。",

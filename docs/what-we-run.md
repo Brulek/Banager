@@ -1421,7 +1421,14 @@ an app to quit, a folder removed only once nothing but empty folders is
 left in it, a step that changes a path's owner or permissions or ends a
 process, a link an install step made, or the `zap` stanza, which runs
 only with `--zap`, and the receipt says there is no such Ruby, the
-sentence says the cask's settings and data stay. When more is listed, it
+sentence says the cask's settings and data stay. Its recorded `quit` and
+`signal` steps are still said beside it, as for any cask: `quit` asks a
+running app to quit (「还会退出正在运行的…」); `signal` sends it the
+recorded signals (`dbeaver-community` records `TERM`;
+`cask/artifact/abstract_uninstall.rb:472-515`), said as a
+force quit that may lose unsaved work (`CaskStep::SignalsApps`,
+「还会强制退出…，未保存的内容可能丢失」). What is running is not looked
+at: the lines say what the record does if it is. When more is listed, it
 says Homebrew deletes the files it placed for the cask — what it moved into
 place, linked or generated, and its own copy and records in the Caskroom
 (`cask/installer.rb:622-640`, `:642-659`, `:814-835`, `:1049-1061`), not

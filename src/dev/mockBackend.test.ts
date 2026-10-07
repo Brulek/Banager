@@ -550,7 +550,7 @@ describe("the browser preview's mock backend", () => {
     // Two of them the rows `withHomebrewState` adds, four the AI tools `aiTools` adds, one Codex's own install
     // (`codexStandalone`), one npm's Claude Code (`addMany`), whose uninstall preview names what stays
     // (./mockKeptData.ts), and five pip packages of two Pythons (`secondPython`).
-    expect(artifacts.length).toBe(805);
+    expect(artifacts.length).toBe(807);
     const ids = artifacts.map((a) => artifactKeyId(a.key));
     expect(new Set(ids).size).toBe(ids.length);
     const count = (instanceId: string) => artifacts.filter((a) => a.key.instance_id === instanceId).length;
@@ -595,9 +595,9 @@ describe("the browser preview's mock backend", () => {
     const byId = new Map(artifacts.map((a) => [artifactKeyId(a.key), a]));
     for (const row of many.artifacts) expect(byId.get(artifactKeyId(row.key))).toEqual(row);
     const count = (instanceId: string) => artifacts.filter((a) => a.key.instance_id === instanceId).length;
-    expect(artifacts.length).toBe(4897);
-    expect(count("brew:/opt/homebrew")).toBe(3893);
-    expect(artifacts.filter((a) => a.key.kind === "Cask")).toHaveLength(335);
+    expect(artifacts.length).toBe(4899);
+    expect(count("brew:/opt/homebrew")).toBe(3895);
+    expect(artifacts.filter((a) => a.key.kind === "Cask")).toHaveLength(337);
     for (const id of ["npm:/opt/homebrew", "pipx", "uv", "cargo:/Users/you/.cargo"]) expect(count(id)).toBeGreaterThan(100);
     // About one in seven has an update, as with ?state=many.
     expect(updates.length / artifacts.length).toBeGreaterThan(0.12);
@@ -1013,7 +1013,7 @@ describe("the browser preview's mock backend", () => {
       if (icon !== null) drawn.push(`${row.key.kind} ${row.key.name}`);
     }
     // The two casks with an app; not the font, not the one with no app.
-    expect(drawn.sort()).toEqual(["Cask iterm2", "Cask visual-studio-code"]);
+    expect(drawn.sort()).toEqual(["Cask dbeaver-community", "Cask iterm2", "Cask visual-studio-code", "Cask zed"]);
 
     const icon = await answer<string>(backend.invoke("artifact_icon", { key: iterm }));
     expect(icon.startsWith("data:image/svg+xml;charset=utf-8,")).toBe(true);

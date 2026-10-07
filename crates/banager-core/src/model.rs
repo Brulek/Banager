@@ -1521,11 +1521,10 @@ pub enum CaskStep {
     /// `login_item:`: those login items are deleted, and so are the
     /// cask's own apps' (`uninstall_login_item`).
     RemovesLoginItems,
-    /// `quit:` and `signal:`: running apps with those bundle ids (`*` a
-    /// wildcard) are quit or signalled. Plain on its own; said only beside
-    /// another kind. The items are the bundle ids of the apps Banager
-    /// could not find on this Mac; the line counts them, the ids behind
-    /// its ⓘ.
+    /// `quit:`: running apps with those bundle ids (`*` a wildcard) are
+    /// asked to quit -- said beside a plain removal's sentence too. The
+    /// items are the bundle ids of the apps Banager could not find on this
+    /// Mac; the line counts them, the ids behind its ⓘ.
     QuitsApps,
     /// `QuitsApps`, for the apps it quits that Banager found: an app the
     /// cask's record puts down whose `CFBundleIdentifier` is one the step
@@ -1536,6 +1535,12 @@ pub enum CaskStep {
     /// record alone: the preview turns a `QuitsApps` line into this one,
     /// and a `QuitsApps` for the rest, once it has looked.
     QuitsNamedApps,
+    /// `signal:`: the recorded signal (`TERM`, `KILL`...) is sent to
+    /// running apps with those bundle ids (`abstract_uninstall.rb:472-515`).
+    /// Unlike a quit, the app is not asked to save: said as a force quit
+    /// that may lose unsaved work. Counted as `QuitsApps` is, the ids
+    /// behind its ⓘ.
+    SignalsApps,
 }
 
 /// The check an uninstall step of type `remove` makes of each path it
@@ -3188,10 +3193,20 @@ mod tests {
             CaskStep::RemovesLoginItems,
             CaskStep::QuitsApps,
             CaskStep::QuitsNamedApps,
+            CaskStep::SignalsApps,
         ] {
             assert_eq!(
                 serde_json::to_string(&step).unwrap(),
                 format!("\"{step:?}\"")
+            );
+            let warning = Warning::CaskUninstallStep {
+                step,
+                items: vec!["org.example.app".into()],
+                only_if: None,
+            };
+            assert_eq!(
+                serde_json::from_str::<Warning>(&serde_json::to_string(&warning).unwrap()).unwrap(),
+                warning
             );
         }
     }

@@ -293,6 +293,14 @@ function casks(): InstalledArtifact[] {
       path: "/Applications/Visual Studio Code.app",
       auto_updates: true,
     }),
+    artifact(IDS.brew, "Cask", "zed", "0.218.2", {
+      display_name: "Zed",
+      path: "/Applications/Zed.app",
+    }),
+    artifact(IDS.brew, "Cask", "dbeaver-community", "25.3.4", {
+      display_name: "DBeaver Community",
+      path: "/Applications/DBeaver.app",
+    }),
   ];
 }
 

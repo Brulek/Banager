@@ -16,6 +16,7 @@ import {
 import type { CaskStep, KeptWhat, RemoveCheck, UninstallScope, Warning } from "./types";
 import en from "../i18n/en.json";
 import zhCN from "../i18n/zh-CN.json";
+import zhHant from "../i18n/zh-Hant.json";
 import i18n from "../i18n";
 
 /** A stub `t`: returns the key with its interpolations inlined, which is
@@ -611,7 +612,18 @@ const CHECKS: [RemoveCheck, string][] = [
 ];
 
 /** The cask steps whose line counts what it would name, the ids behind its ⓘ. */
-const COUNTED_STEPS: CaskStep[] = ["RemovesServices", "QuitsApps"];
+const COUNTED_STEPS: CaskStep[] = ["RemovesServices", "QuitsApps", "SignalsApps"];
+
+it("round-trips a signal warning and distinguishes it from a graceful quit", () => {
+  const wire = '{"CaskUninstallStep":{"step":"SignalsApps","items":["org.jkiss.dbeaver.core.product"]}}';
+  const warning: Warning = JSON.parse(wire);
+  expect(JSON.stringify(warning)).toBe(wire);
+  expect(warningKey(warning)).toBe("uninstallRunningApps.SignalsApps");
+  expect(lookUp(en, "uninstallRunningApps.SignalsApps_one")).toMatch(/force-quits.*unsaved/i);
+  expect(lookUp(en, "warnings.caskStep.QuitsApps_one")).not.toMatch(/force|unsaved/i);
+  expect(lookUp(zhCN, "uninstallRunningApps.SignalsApps_other")).toMatch(/强制退出.*未保存/);
+  expect(lookUp(zhHant, "uninstallRunningApps.SignalsApps_other")).toMatch(/強制結束.*未儲存/);
+});
 
 /**
  * adobe-creative-cloud's `launchctl:`, as `cask_receipt::classify` reads
@@ -642,6 +654,7 @@ const EVERY_STEP: CaskStep[] = [
   "RemovesLoginItems",
   "QuitsApps",
   "QuitsNamedApps",
+  "SignalsApps",
 ];
 
 /** A key's text in one locale, or undefined when it has none. */
@@ -831,7 +844,7 @@ describe("warningDetailKey", () => {
     // No number and no ids on the line: it says a pattern matches some.
     for (const step of COUNTED_STEPS) {
       const key = warningKey({ CaskUninstallStep: { step, items: ["com.example.*"] } }) ?? "";
-      expect(key).toBe(`warnings.caskStep.${step}Matching`);
+      expect(key).toBe(`${step === "SignalsApps" ? "uninstallRunningApps" : "warnings.caskStep"}.${step}Matching`);
       for (const [locale, pattern] of [
         [en, /pattern/],
         [zhCN, /规则/],

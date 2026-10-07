@@ -124,6 +124,7 @@ const CASK_STEP_KEYS: Record<CaskStep, string> = {
   RemovesLoginItems: "warnings.caskStep.RemovesLoginItems",
   QuitsApps: "warnings.caskStep.QuitsApps",
   QuitsNamedApps: "warnings.caskStep.QuitsNamedApps",
+  SignalsApps: "uninstallRunningApps.SignalsApps",
 };
 
 /**
@@ -139,9 +140,10 @@ const CASK_STEP_KEYS: Record<CaskStep, string> = {
  * number; the ids, the pattern with them, stay behind its ⓘ
  * (`warningDetailKey`).
  */
-const MATCHING_STEP_KEYS: Record<"RemovesServices" | "QuitsApps", string> = {
+const MATCHING_STEP_KEYS: Record<"RemovesServices" | "QuitsApps" | "SignalsApps", string> = {
   RemovesServices: "warnings.caskStep.RemovesServicesMatching",
   QuitsApps: "warnings.caskStep.QuitsAppsMatching",
+  SignalsApps: "uninstallRunningApps.SignalsAppsMatching",
 };
 
 /** Whether a counted step's id is a pattern Homebrew matches against what is running. */
@@ -211,7 +213,7 @@ function caskStepKey(step: CaskStep, items: string[], onlyIf: RemoveCheck | unde
   if (kind !== null && (step === "Deletes" || step === "DeletesUnnamed")) {
     return CHECKED_DELETE_KEYS[kind][step];
   }
-  if ((step === "RemovesServices" || step === "QuitsApps") && items.some(isPattern)) {
+  if ((step === "RemovesServices" || step === "QuitsApps" || step === "SignalsApps") && items.some(isPattern)) {
     return MATCHING_STEP_KEYS[step];
   }
   return CASK_STEP_KEYS[step];
@@ -518,7 +520,7 @@ export function warningDetailKey(warning: Warning): string | null {
   // What a counted line did not name: the ids, as macOS names them.
   if ("CaskUninstallStep" in warning) {
     const { step, items } = warning.CaskUninstallStep;
-    return (step === "RemovesServices" || step === "QuitsApps") && items.length > 0
+    return (step === "RemovesServices" || step === "QuitsApps" || step === "SignalsApps") && items.length > 0
       ? "warnings.caskStep.systemNames"
       : null;
   }

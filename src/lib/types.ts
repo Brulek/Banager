@@ -276,7 +276,8 @@ export type CaskStep =
   | "DeletesCertificates"
   | "RemovesLoginItems"
   | "QuitsApps"
-  | "QuitsNamedApps";
+  | "QuitsNamedApps"
+  | "SignalsApps";
 /**
  * The check an uninstall step of type `remove` makes of each path before it
  * deletes it, the `only_if` of a `Deletes` or `DeletesUnnamed`

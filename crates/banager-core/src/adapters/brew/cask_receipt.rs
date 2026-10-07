@@ -218,8 +218,8 @@ pub(crate) enum Classified {
     /// lists at least one of `PLACED_STANZAS` -- and takes no step but
     /// quitting apps, removing folders left empty, and changing paths'
     /// owners or permissions or ending processes: its settings and data
-    /// stay.
-    Plain,
+    /// stay. The retained lines still disclose quits and signals.
+    Plain(Vec<StepLine>),
     /// Deletes what Homebrew put down or linked for the cask and takes
     /// extra steps, one entry per kind and check in `CaskStep`'s order --
     /// a kind with no check before the same kind with one -- each with
@@ -323,9 +323,9 @@ const PLAIN_STEP_TYPES: [&str; 3] = ["set_ownership", "set_permissions", "termin
 /// folder removed only when nothing but empty folders and `.DS_Store`
 /// files is left in it, `abstract_uninstall.rb:695-750`), or uninstall
 /// steps of the types in `PLAIN_STEP_TYPES`; and there are no Ruby flight
-/// blocks. Anything else is a kind of extra step, and then the apps quit
-/// are said too: `Steps` beside one of `PLACED_STANZAS`, `OnlySteps`
-/// without. A record with neither is `Unknown`, and so is an empty list
+/// blocks. Running-app notes are retained even for a plain removal.
+/// Anything else is a kind of extra step: `Steps` beside one of
+/// `PLACED_STANZAS`, `OnlySteps` without. A record with neither is `Unknown`, and so is an empty list
 /// even when the receipt says the cask has Ruby flight blocks: an empty
 /// list comes only from a saved `.json` caskfile, which carries no Ruby --
 /// Homebrew saves a cask with such blocks as `.rb` (`save_caskfile`,
@@ -433,14 +433,14 @@ impl Steps {
         let only_quits = self
             .kinds
             .keys()
-            .all(|(step, _)| *step == CaskStep::QuitsApps);
+            .all(|(step, _)| matches!(step, CaskStep::QuitsApps | CaskStep::SignalsApps));
         let kinds: Vec<StepLine> = self
             .kinds
             .into_iter()
             .map(|((step, check), items)| (step, check, items))
             .collect();
         match (placed, only_quits, kinds.is_empty()) {
-            (true, true, _) => Classified::Plain,
+            (true, true, _) => Classified::Plain(kinds),
             (true, false, _) => Classified::Steps(kinds),
             (false, _, true) => Classified::Unknown,
             (false, _, false) => Classified::OnlySteps(kinds),
@@ -536,7 +536,7 @@ fn uninstall_directives(args: &Value, steps: &mut Steps, home: Option<&Path>) ->
                 "launchctl" => add_strings(steps, CaskStep::RemovesServices, value, home),
                 "quit" => add_strings(steps, CaskStep::QuitsApps, value, home),
                 "signal" => signalled(value)
-                    .map(|ids| steps.add(CaskStep::QuitsApps, ids, home))
+                    .map(|ids| steps.add(CaskStep::SignalsApps, ids, home))
                     .is_some(),
                 "login_item" => login_items(value)
                     .map(|items| steps.add(CaskStep::RemovesLoginItems, items, home))
@@ -1015,7 +1015,7 @@ mod tests {
         // `command_wrapper` and `zap`: nothing but what Homebrew put down,
         // an app quit, and a stanza that runs only with `--zap`.
         for (name, json) in RECORDED {
-            assert_eq!(classified(json), Classified::Plain, "{name}");
+            assert!(matches!(classified(json), Classified::Plain(_)), "{name}");
         }
     }
 
@@ -1032,7 +1032,7 @@ mod tests {
             // Seven `font` stanzas, and no app at all.
             receipt!("font-fira-code"),
         ] {
-            assert_eq!(classified(json), Classified::Plain, "{name}");
+            assert!(matches!(classified(json), Classified::Plain(_)), "{name}");
         }
     }
 
@@ -1076,7 +1076,7 @@ mod tests {
             };
             assert_eq!(
                 recorded_as(serde_json::json!([{ placed: args }])),
-                Classified::Plain,
+                Classified::Plain(Vec::new()),
                 "{placed}"
             );
         }
@@ -1197,11 +1197,8 @@ mod tests {
                             "com.adobe.CCXProcess.*",
                         ],
                     ),
-                    // `quit`'s, then `signal`'s: the bundle id of its pair.
-                    (
-                        QuitsApps,
-                        &["com.adobe.acc.AdobeCreativeCloud", "com.adobe.accmac"],
-                    ),
+                    (QuitsApps, &["com.adobe.acc.AdobeCreativeCloud"]),
+                    (SignalsApps, &["com.adobe.accmac"]),
                 ]),
             ),
             (
@@ -1340,7 +1337,7 @@ mod tests {
         // Someone else's home folder is not this one's.
         assert_eq!(
             classify(&recorded(touchosc), Some(Path::new("/Users/other"))),
-            Classified::Plain
+            Classified::Plain(Vec::new())
         );
         // With the home folder unknown, any absolute target may be in it.
         assert_eq!(
@@ -1468,7 +1465,7 @@ mod tests {
                 { "app": ["A.app"] },
                 { "uninstall": [{ "delete": [], "quit": "a.b" }] }
             ])),
-            Classified::Plain
+            Classified::Plain(listed(&[(QuitsApps, &["a.b"])]))
         );
     }
 
@@ -1494,7 +1491,7 @@ mod tests {
                 { "type": "set_permissions", "paths": [{ "path": "/Library/X" }], "permissions": "0755" },
                 { "type": "terminate_process", "name": "coreaudiod" }
             ])),
-            Classified::Plain
+            Classified::Plain(Vec::new())
         );
         // A program under the home folder is named with `~`; one Homebrew
         // resolves against a base it fills in at run time, or with a
@@ -1597,7 +1594,10 @@ mod tests {
             steps(&[(Deletes, &["/usr/local/bin/x"]), (DeletesUnnamed, &[])])
         );
         // No path at all deletes nothing.
-        assert_eq!(classify_remove(serde_json::json!([])), Classified::Plain);
+        assert_eq!(
+            classify_remove(serde_json::json!([])),
+            Classified::Plain(Vec::new())
+        );
         // A spec Homebrew would not take.
         for bad in [
             serde_json::json!({ "path": "/x" }),
@@ -1912,7 +1912,10 @@ mod tests {
             read.artifacts,
             vec![serde_json::json!({"app": ["Word.app"]})]
         );
-        assert_eq!(classify(&read, Some(Path::new(HOME))), Classified::Plain);
+        assert_eq!(
+            classify(&read, Some(Path::new(HOME))),
+            Classified::Plain(Vec::new())
+        );
         // An empty list is a list: Homebrew runs nothing (`save_caskfile`
         // writes one for a cask with no uninstall artifacts). Nor does it
         // say what the install left -- a `pkg`'s files stay -- so it is not

@@ -644,13 +644,18 @@ impl BrewAdapter {
             Classified::Unknown => (UninstallScope::HomebrewCask, Vec::new()),
             // Loaded as Ruby, which Homebrew may not manage, and then runs
             // the cask's current definition; the record itself has no step.
-            Classified::Plain if ruby && !maybe_untrusted => {
-                (UninstallScope::HomebrewCaskPlainRuby, Vec::new())
+            Classified::Plain(steps) if ruby && !maybe_untrusted => {
+                (UninstallScope::HomebrewCaskPlainRuby, steps)
             }
-            Classified::Plain if third_party => {
+            // Untrusted, Homebrew skips the `uninstall` stanza, its quits
+            // and signals with it, and removes only what it placed.
+            Classified::Plain(_) if maybe_untrusted => {
                 (UninstallScope::HomebrewCaskPlainThirdParty, Vec::new())
             }
-            Classified::Plain => (UninstallScope::HomebrewCaskPlain, Vec::new()),
+            Classified::Plain(steps) if third_party => {
+                (UninstallScope::HomebrewCaskPlainThirdParty, steps)
+            }
+            Classified::Plain(steps) => (UninstallScope::HomebrewCaskPlain, steps),
             Classified::Steps(steps) if maybe_untrusted => {
                 (UninstallScope::HomebrewCaskStepsIfTrusted, steps)
             }
@@ -5306,6 +5311,38 @@ mod plan_execute_tests {
         adapter.plan(inst, &req).await.expect("plan")
     }
 
+    #[tokio::test]
+    async fn test_plain_cask_preserves_quit_and_signal_warnings() {
+        let receipts = [
+            ("zed", r#"{"uninstall_artifacts":[{"app":["Zed.app"]},{"binary":["Zed.app/Contents/MacOS/cli",{"target":"zed"}]},{"uninstall":[{"quit":"dev.zed.Zed"}]}]}"#),
+            ("dbeaver-community", include_str!("../../../../../adapters/fixtures-derived/brew/7.0.6/receipts/dbeaver-community.json")),
+        ];
+        let prefix = CaskroomPrefix::new("plain-running-apps", &receipts);
+        let runner = Arc::new(MockRunner::new());
+        let adapter = BrewAdapter::new(runner.clone())
+            .with_recorded_uninstall_fn(cask_receipt::read_recorded)
+            .with_env_var_fn(someones_home)
+            .with_app_bundle_id_fn(|_| None);
+        let inst = ManagerInstance {
+            prefix: prefix.0.clone(),
+            ..test_instance()
+        };
+        for (name, expected_step) in [("zed", "QuitsApps"), ("dbeaver-community", "SignalsApps")] {
+            let plan = cask_uninstall(&runner, &adapter, &inst, name).await;
+            assert!(plan.warnings.contains(&Warning::UninstallScope {
+                what: UninstallScope::HomebrewCaskPlain
+            }));
+            assert!(
+                plan.warnings.iter().any(|warning| {
+                    let json = serde_json::to_value(warning).unwrap();
+                    json["CaskUninstallStep"]["step"] == expected_step
+                }),
+                "{name}: {:?}",
+                plan.warnings
+            );
+        }
+    }
+
     /// The home folder the constructed receipts were built for
     /// (`adapters/fixtures-derived/brew/7.0.6/README.md`).
     fn someones_home(name: &str) -> Option<OsString> {
@@ -5689,6 +5726,59 @@ mod plan_execute_tests {
         }
     }
 
+    /// A plain Ruby record from a tap Homebrew may not trust, with a
+    /// `quit`: untrusted, Homebrew skips the `uninstall` stanza and removes
+    /// only what it placed (`load_installed_caskfile!`, `cask/installer.rb`
+    /// 7.0.7-9: `Artifact::Uninstall` is left out), so no app is said to
+    /// quit; trusted, the record runs and the quit is said.
+    #[tokio::test]
+    async fn test_an_untrusted_plain_casks_quit_is_not_said() {
+        fn quits_from_a_tap(_: &Path, _: &str) -> Option<Recorded> {
+            Some(record(
+                serde_json::json!([{ "app": ["Thing.app"] }, { "uninstall": [{ "quit": "com.someone.thing" }] }]),
+                false,
+                true,
+                "someone/tap",
+            ))
+        }
+        let runner = Arc::new(MockRunner::new());
+        let inst = test_instance();
+        let quits = |plan: &Plan| {
+            plan.warnings.iter().any(|warning| {
+                matches!(
+                    warning,
+                    Warning::CaskUninstallStep {
+                        step: CaskStep::QuitsApps,
+                        ..
+                    }
+                )
+            })
+        };
+        for (trust, said) in [
+            (
+                (|_| Some(TrustList::default())) as fn(&Path) -> Option<TrustList>,
+                false,
+            ),
+            (
+                |_| {
+                    Some(TrustList {
+                        taps: vec!["someone/tap".to_string()],
+                        ..TrustList::default()
+                    })
+                },
+                true,
+            ),
+        ] {
+            let adapter = BrewAdapter::new(runner.clone())
+                .with_recorded_uninstall_fn(quits_from_a_tap)
+                .with_trust_list_fn(trust)
+                .with_brew_env_fn(|_| brew_env::EnvFile::Skipped)
+                .with_env_var_fn(someones_home);
+            let plan = cask_uninstall(&runner, &adapter, &inst, "someone/tap/thing").await;
+            assert_eq!(quits(&plan), said, "{:?}", plan.warnings);
+        }
+    }
+
     #[tokio::test]
     async fn test_a_cask_uninstall_says_what_its_install_receipt_records() {
         // What `brew uninstall --cask` runs is what Homebrew recorded at
@@ -5723,7 +5813,10 @@ mod plan_execute_tests {
         let plan = cask_uninstall(&runner, &adapter, &inst, "gautham-v/tap/claudebar").await;
         assert_eq!(
             plan.warnings,
-            vec![scope(UninstallScope::HomebrewCaskPlainThirdParty)]
+            vec![
+                scope(UninstallScope::HomebrewCaskPlainThirdParty),
+                step(CaskStep::QuitsApps, &["com.gauthamv.claudebar"])
+            ]
         );
 
         // One line per kind of extra step, in `CaskStep`'s order. Word
@@ -5792,6 +5885,7 @@ mod plan_execute_tests {
             plan.warnings,
             vec![
                 scope(UninstallScope::HomebrewCaskPlainThirdParty),
+                step(CaskStep::QuitsApps, &["com.gauthamv.claudebar"]),
                 Warning::HomebrewAutoremoves,
             ]
         );

@@ -881,6 +881,11 @@
     "title": "Couldn't read Terminal's settings",
     "description": "Tools that Terminal finds may be missing here, such as those installed with npm, pipx, uv or Cargo."
   },
+  "uninstallRunningApps": {
+    "SignalsApps_one": "Also force-quits an app if it is running. Unsaved work may be lost.",
+    "SignalsApps_other": "Also force-quits {{count}} apps if they are running. Unsaved work may be lost.",
+    "SignalsAppsMatching": "Also force-quits apps if they are running, including every app whose name matches a pattern. Unsaved work may be lost."
+  },
   "planRefused": {
     "sourceGone": "Couldn't start because the tool that manages this can't be found. Click Check Again.",
     "expired": "This confirmation is more than 10 minutes old, so nothing ran. Open it again and confirm.",

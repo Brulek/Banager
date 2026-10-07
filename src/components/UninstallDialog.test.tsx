@@ -710,6 +710,19 @@ describe("UninstallDialog", () => {
     expect(screen.getByRole("button", { name: "Uninstall" })).toBeEnabled();
   });
 
+  it("shows running-app notes beside a plain cask's retained-settings scope", async () => {
+    vi.mocked(invoke).mockResolvedValue(issuedPlanFor({ warnings: [
+      { UninstallScope: { what: "HomebrewCaskPlain" } },
+      { CaskUninstallStep: { step: "QuitsNamedApps", items: ["Zed"] } },
+      { CaskUninstallStep: { step: "SignalsApps", items: ["org.jkiss.dbeaver.core.product"] } },
+    ] }));
+    renderWithProviders(<UninstallDialog open onOpenChange={() => {}} request={{ ...request, artifact_kind: "Cask", name: "zed" }} displayName="Zed" />);
+    expect(await screen.findByText(/Deletes what Homebrew installed for Zed; its settings and data stay/)).toBeVisible();
+    expect(screen.getByText("Also quits Zed if it is running.")).toBeVisible();
+    expect(screen.getByRole("alertdialog")).toHaveTextContent("Also force-quits an app if it is running. Unsaved work may be lost.");
+    expect(screen.getByText(/Also force-quits an app if it is running/)).toBeVisible();
+  });
+
   it("says each source's sentence with the name the row has, in either language, and where it holds, that nothing goes to the Trash", async () => {
     // Each of these runs the source's own uninstall command, which deletes
     // in place (`skipsTrash` in src/lib/warnings.ts): the paragraph ends
