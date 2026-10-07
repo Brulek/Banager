@@ -588,6 +588,9 @@ async fn test_the_other_programs_page_stops_listing_codexs_launcher_and_helper()
     };
 
     // Before any refresh nobody claims them.
+    // `/usr/local/bin`, the one folder the scan reads outside the home
+    // folder, stood in for by the test's own: never this Mac's.
+    session.set_unknown_scan_system_bin(&env.home.join("usr/local/bin"));
     let before = session.scan_unknown(&env);
     assert!(listed(&before, "codex"), "{before:?}");
     assert!(listed(&before, "codex-code-mode-host"), "{before:?}");

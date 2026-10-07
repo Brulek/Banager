@@ -86,9 +86,23 @@ pub struct Detected {
     pub cargo_home: Option<PathBuf>,
     pub rustup_home: Option<PathBuf>,
     pub zdotdir: Option<PathBuf>,
+    /// The folder a recipe's absolute paths are under (`on_this_mac`):
+    /// Homebrew's prefixes rustup's preview looks in
+    /// (`rustup::HOMEBREW_PREFIXES`), the fallback links grok's
+    /// installer may leave in `/usr/local/bin` (`KeptWhat::OutsideHome`).
+    /// `/`, but in tests a folder of their own
+    /// (`StandaloneAdapter::with_machine_root`), so that no test answers
+    /// differently for what the Mac running it has there.
+    pub machine_root: PathBuf,
 }
 
 impl Detected {
+    /// `path`, absolute as a recipe spells it, under `machine_root`: the
+    /// path itself where that is `/`.
+    pub fn on_this_mac(&self, path: &str) -> PathBuf {
+        self.machine_root.join(path.trim_start_matches('/'))
+    }
+
     /// The places no look under this seat goes into: for its home folder
     /// and the account's own (`Protected::new`).
     pub fn protected(&self) -> Protected {
@@ -181,6 +195,24 @@ pub struct StandaloneAdapter {
     arch: &'static str,
     /// Written by `inventory`, taken by `check_updates` (`Reading`).
     inventoried: Mutex<Option<Reading>>,
+    /// What `detect` seats as `Detected::machine_root`: `/` outside this
+    /// crate's unit tests (`DEFAULT_MACHINE_ROOT`); inside them a folder
+    /// that is never made, unless a test gives one (`with_machine_root`).
+    machine_root: PathBuf,
+}
+
+/// `StandaloneAdapter::machine_root` as `new` sets it: `/` in every build
+/// but this crate's unit tests.
+#[cfg(not(test))]
+fn default_machine_root() -> PathBuf {
+    PathBuf::from("/")
+}
+/// In this crate's unit tests, a folder under the temp folder that no
+/// test makes: nothing is found at a recipe's absolute paths unless a test
+/// puts it under a root of its own (`with_machine_root`).
+#[cfg(test)]
+fn default_machine_root() -> PathBuf {
+    crate::testing::unique_temp_path("standalone-machine-root")
 }
 
 /// What the world knows about this tool's newest version, per the recipe's
@@ -227,7 +259,17 @@ impl StandaloneAdapter {
             detected: Mutex::new(None),
             arch: std::env::consts::ARCH,
             inventoried: Mutex::new(None),
+            machine_root: default_machine_root(),
         }
+    }
+
+    /// Test seam, like `with_arch`: the folder that stands for `/` where a
+    /// recipe names an absolute path (`Detected::machine_root`), so that a
+    /// test reads its own folder instead of this Mac's `/opt/homebrew`,
+    /// `/usr/local` or `/usr/local/bin`. Public so `tests/` can use it too.
+    pub fn with_machine_root(mut self, root: &Path) -> StandaloneAdapter {
+        self.machine_root = root.to_path_buf();
+        self
     }
 
     /// Test seam, like `BrewAdapter::with_background_change`: the gap a
@@ -302,6 +344,7 @@ impl StandaloneAdapter {
                 ".rustup",
             ),
             zdotdir: env.zdotdir.clone(),
+            machine_root: self.machine_root.clone(),
         });
         let unverified_version = self.meta.unverified_version(&version);
         vec![ManagerInstance {
@@ -1644,6 +1687,7 @@ pub(super) mod testing {
             cargo_home: Some(cargo_home.to_path_buf()),
             rustup_home: Some(home.join(".rustup")),
             zdotdir: None,
+            machine_root: home.join("machine-root"),
         }
     }
 
@@ -4044,17 +4088,6 @@ mod tests {
         (adapter, inst, runner)
     }
 
-    /// The preview's Homebrew line depends on the Mac running the tests
-    /// (`rustup::HOMEBREW_PREFIXES` are real paths): filtered out where a
-    /// test asserts the whole list. `rustup::tests` proves the line
-    /// itself over a temp prefix.
-    fn without_homebrew_line(warnings: Vec<Warning>) -> Vec<Warning> {
-        warnings
-            .into_iter()
-            .filter(|w| !matches!(w, Warning::HomebrewRustupLosesToolchains))
-            .collect()
-    }
-
     /// B's `request` is fixed to `standalone-claude`; rustup's requests
     /// name its own instance.
     fn request_for(instance_id: &str, kind: OpKind, name: &str) -> OpRequest {
@@ -4418,7 +4451,7 @@ mod tests {
             ]
         );
         assert_eq!(
-            without_homebrew_line(plan.warnings),
+            plan.warnings,
             vec![
                 Warning::RemovesToolchains {
                     path: "~/.rustup".to_string(),
@@ -4465,7 +4498,7 @@ mod tests {
             .await
             .expect("plan");
         assert_eq!(
-            without_homebrew_line(plan.warnings),
+            plan.warnings,
             vec![
                 Warning::RemovesToolchains {
                     path: "~/.rustup".to_string(),

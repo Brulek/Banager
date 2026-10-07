@@ -265,6 +265,16 @@ async fn test_a_refresh_runs_only_the_read_only_commands_each_sources_section_sh
         answers: Vec::new(),
         calls: Mutex::new(Vec::new()),
     };
+    // The recordings name the author's Mac's folders (`/Users/brulek/...`,
+    // `/opt/homebrew/...`), which a refresh looks at: the same paths under
+    // a folder beside the home that is never made, so that what this Mac
+    // has there changes nothing, and the home stays as it was.
+    let recorded_root = home.0.with_extension("recorded-root");
+    let away = |text: String| {
+        let root = recorded_root.display();
+        text.replace("/Users/brulek/", &format!("{root}/Users/brulek/"))
+            .replace("/opt/homebrew/", &format!("{root}/opt/homebrew/"))
+    };
     let prefix = home.0.join("npm-prefix").to_string_lossy().into_owned();
     recorder.answer("npm", "--version", 0, fixture("npm/12.0.2/version.txt"));
     recorder.answer("npm", "prefix -g", 0, format!("{prefix}\n"));
@@ -278,10 +288,15 @@ async fn test_a_refresh_runs_only_the_read_only_commands_each_sources_section_sh
         "npm",
         &format!("outdated -g --json --prefix {prefix}"),
         1,
-        fixture("npm/12.0.2/outdated-global.json"),
+        away(fixture("npm/12.0.2/outdated-global.json")),
     );
     recorder.answer("pipx", "--version", 0, fixture("pipx/1.17.3/version.txt"));
-    recorder.answer("pipx", "list --json", 0, fixture("pipx/1.17.3/list.json"));
+    recorder.answer(
+        "pipx",
+        "list --json",
+        0,
+        away(fixture("pipx/1.17.3/list.json")),
+    );
     recorder.answer(
         "pipx",
         "list --outdated",
@@ -293,7 +308,7 @@ async fn test_a_refresh_runs_only_the_read_only_commands_each_sources_section_sh
         "uv",
         "tool list --show-paths",
         0,
-        fixture("uv/0.12.17/tool-list-show-paths.txt"),
+        away(fixture("uv/0.12.17/tool-list-show-paths.txt")),
     );
     recorder.answer(
         "uv",
@@ -306,7 +321,7 @@ async fn test_a_refresh_runs_only_the_read_only_commands_each_sources_section_sh
         "python3",
         "-m pip --version",
         0,
-        fixture("pip/26.2.1/version.txt"),
+        away(fixture("pip/26.2.1/version.txt")),
     );
     recorder.answer(
         "python3",
@@ -371,20 +386,26 @@ async fn test_a_refresh_runs_only_the_read_only_commands_each_sources_section_sh
     let runner = Arc::new(recorder);
     let http = Arc::new(MockHttpClient::new());
     let mut adapters: Vec<Arc<dyn Adapter>> = vec![
-        Arc::new(NpmAdapter::new(runner.clone())),
+        Arc::new(NpmAdapter::new(runner.clone()).looking_at_no_homebrew_prefix()),
         Arc::new(PipxAdapter::new(runner.clone(), http.clone())),
-        Arc::new(UvAdapter::new(runner.clone())),
+        // Not the `UV_TOOL_DIR` of the Mac running the test.
+        Arc::new(UvAdapter::new(runner.clone()).with_tool_dir_fn(|| None)),
         Arc::new(CargoAdapter::new(runner.clone(), http.clone())),
         Arc::new(PipAdapter::new(runner.clone())),
-        Arc::new(OllamaAdapter::new(runner.clone(), http.clone())),
+        // Its daemon does not answer, and the app that would start it is
+        // looked for nowhere: not in this Mac's `/Applications`.
+        Arc::new(OllamaAdapter::new(runner.clone(), http.clone()).with_app_present_fn(|_| false)),
     ];
     for recipe in RECIPES {
-        adapters.push(Arc::new(StandaloneAdapter::new(
-            recipe,
-            runner.clone(),
-            http.clone(),
-            Arc::new(MockTrasher::new()),
-        )));
+        adapters.push(Arc::new(
+            StandaloneAdapter::new(
+                recipe,
+                runner.clone(),
+                http.clone(),
+                Arc::new(MockTrasher::new()),
+            )
+            .with_machine_root(&recorded_root),
+        ));
     }
     let session = Session::with_adapters(Arc::new(VecSink::new()), adapters.clone(), None);
     let env = HostEnv {
@@ -396,6 +417,9 @@ async fn test_a_refresh_runs_only_the_read_only_commands_each_sources_section_sh
         zdotdir: None,
         ollama_host: None,
     };
+    // `/usr/local/bin`, the one folder the scan reads outside the home
+    // folder, stood in for by one that is never made: never this Mac's.
+    session.set_unknown_scan_system_bin(&recorded_root.join("usr/local/bin"));
     let before = tree(&home.0);
     let snapshot = session.refresh(&env, &CheckOptions::default()).await;
     // Promise 4 too: the refresh, and the Other Programs scan after it,

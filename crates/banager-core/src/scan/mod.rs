@@ -251,6 +251,10 @@ pub struct UnknownScan {
     pub stopped: Option<ScanStop>,
 }
 
+/// The one candidate directory outside the home folder
+/// (`candidate_dirs`).
+pub const SYSTEM_BIN: &str = "/usr/local/bin";
+
 /// The directories one scan looks at: the design spec's §4.2 seven,
 /// `$CARGO_HOME/bin` when the host sets `CARGO_HOME` -- resolved the way
 /// `CargoAdapter` resolves it (cargo.rs:133-136) but *added alongside*
@@ -270,12 +274,16 @@ pub struct UnknownScan {
 /// directories and all); the research machine's `PATH` held 23 entries
 /// that did not exist a session later, which is why missing directories
 /// are silently skipped rather than reported.
-fn candidate_dirs(env: &HostEnv) -> Vec<PathBuf> {
+///
+/// `system_bin` is `SYSTEM_BIN`, `/usr/local/bin`, but in tests, which give
+/// a folder of their own (`Session::set_unknown_scan_system_bin`) so that
+/// no test reads this Mac's.
+fn candidate_dirs(env: &HostEnv, system_bin: &Path) -> Vec<PathBuf> {
     let home = &env.home;
     let mut dirs = vec![
         home.join(".local/bin"),
         home.join("bin"),
-        PathBuf::from("/usr/local/bin"),
+        system_bin.to_path_buf(),
         home.join(".cargo/bin"),
         home.join("go/bin"),
         home.join(".bun/bin"),
@@ -1113,21 +1121,22 @@ pub fn scan_dirs(
     }
 }
 
-/// The unknown-source scan: `scan_dirs` over `candidate_dirs(env)`. Pure
-/// over its arguments and the file system; synchronous, and blocking for
-/// up to `budget.max_duration` -- the Tauri shell runs it on the blocking
-/// pool (`ipc::scan_unknown`). `instances` and `artifacts` are the
-/// snapshot's, cloned by `Session::scan_unknown`. `globs` are the
+/// The unknown-source scan: `scan_dirs` over `candidate_dirs(env,
+/// system_bin)`. Pure over its arguments and the file system; synchronous,
+/// and blocking for up to `budget.max_duration` -- the Tauri shell runs it
+/// on the blocking pool (`ipc::scan_unknown`). `instances` and `artifacts`
+/// are the snapshot's, cloned by `Session::scan_unknown`. `globs` are the
 /// installed tools' backup-file patterns by adapter id (rule 4).
 pub fn scan_unknown(
     env: &HostEnv,
+    system_bin: &Path,
     instances: &[ManagerInstance],
     artifacts: &[InstalledArtifact],
     globs: &[(String, &'static [Glob])],
     budget: ScanBudget,
 ) -> UnknownScan {
     scan_dirs(
-        &candidate_dirs(env),
+        &candidate_dirs(env, system_bin),
         env,
         instances,
         artifacts,
@@ -1299,16 +1308,19 @@ mod tests {
 
     #[test]
     fn test_candidate_dirs_are_the_seven_fixed_ones_plus_path_entries_under_home() {
-        let dirs = candidate_dirs(&env(
-            "/Users/someone",
-            &[
-                "/Users/someone/.opencode/bin",
-                "/opt/homebrew/bin",
-                "/usr/bin",
-                "/Users/someone/.local/bin",
-            ],
-            None,
-        ));
+        let dirs = candidate_dirs(
+            &env(
+                "/Users/someone",
+                &[
+                    "/Users/someone/.opencode/bin",
+                    "/opt/homebrew/bin",
+                    "/usr/bin",
+                    "/Users/someone/.local/bin",
+                ],
+                None,
+            ),
+            Path::new(SYSTEM_BIN),
+        );
         let expected: Vec<PathBuf> = [
             "/Users/someone/.local/bin",
             "/Users/someone/bin",
@@ -1329,7 +1341,10 @@ mod tests {
 
     #[test]
     fn test_candidate_dirs_add_cargo_home_bin_when_the_host_sets_it() {
-        let dirs = candidate_dirs(&env("/Users/someone", &[], Some("/Volumes/Data/cargo")));
+        let dirs = candidate_dirs(
+            &env("/Users/someone", &[], Some("/Volumes/Data/cargo")),
+            Path::new(SYSTEM_BIN),
+        );
         assert!(
             dirs.contains(&PathBuf::from("/Volumes/Data/cargo/bin")),
             "{dirs:?}"

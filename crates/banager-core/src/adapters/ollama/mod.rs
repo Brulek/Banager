@@ -187,7 +187,13 @@ fn host_of(inst: &ManagerInstance) -> &str {
 /// look, which is what makes [`ollama_app_in`] testable without an
 /// Ollama.app on the machine running the tests.
 pub fn ollama_app_roots(home: &Path) -> Vec<PathBuf> {
-    vec![PathBuf::from("/Applications"), home.join("Applications")]
+    ollama_app_roots_under(Path::new("/Applications"), home)
+}
+
+/// [`ollama_app_roots`] with `applications` standing for `/Applications`:
+/// a test's own folder in tests, so that none looks at this Mac's.
+fn ollama_app_roots_under(applications: &Path, home: &Path) -> Vec<PathBuf> {
+    vec![applications.to_path_buf(), home.join("Applications")]
 }
 
 /// The Ollama.app bundle under any of `roots`, or `None` when there is
@@ -210,7 +216,16 @@ pub fn ollama_app_in(roots: &[PathBuf], protected: &Protected) -> Option<PathBuf
 /// the Open Ollama button to open, and by the Tauri command behind that
 /// button to say why it cannot.
 pub fn ollama_app_path(home: &Path) -> Option<PathBuf> {
-    ollama_app_in(&ollama_app_roots(home), &Protected::new(home))
+    ollama_app_path_under(Path::new("/Applications"), home)
+}
+
+/// [`ollama_app_path`] with `applications` standing for `/Applications`
+/// (`ollama_app_roots_under`).
+fn ollama_app_path_under(applications: &Path, home: &Path) -> Option<PathBuf> {
+    ollama_app_in(
+        &ollama_app_roots_under(applications, home),
+        &Protected::new(home),
+    )
 }
 
 /// Whether `host` -- a daemon URL as [`host_for`] builds it -- names this
@@ -295,8 +310,12 @@ impl OllamaAdapter {
             .unwrap_or_else(|| host_of(inst).to_string())
     }
 
-    #[cfg(test)]
-    fn with_app_present_fn(mut self, f: fn(&HostEnv) -> bool) -> OllamaAdapter {
+    /// Test-only hook (see `app_present_fn`). Public with the
+    /// `test-support` feature, for the integration tests, which are built
+    /// without `cfg(test)` and so would otherwise look for this Mac's
+    /// Ollama.app.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn with_app_present_fn(mut self, f: fn(&HostEnv) -> bool) -> OllamaAdapter {
         self.app_present_fn = f;
         self
     }
@@ -2318,7 +2337,12 @@ mod tests {
             "found where nothing is protected"
         );
         assert_eq!(ollama_app_in(&roots, &Protected::new(&home)), None);
-        assert_eq!(ollama_app_path(&home), None);
+        // And as `detect` asks it (`ollama_app_path`), with the test's own
+        // folder standing for `/Applications`, never this Mac's.
+        assert_eq!(
+            ollama_app_path_under(&base.join("no-system-apps"), &home),
+            None
+        );
         let _ = std::fs::remove_dir_all(&base);
     }
 

@@ -144,8 +144,11 @@ fn session_with(home: &Home, trasher: Arc<MockTrasher>) -> (Arc<Session>, PathBu
     let agy_adapter = StandaloneAdapter::new(&AGY, runner.clone(), http.clone(), trasher.clone())
         .with_trash_gap(Duration::ZERO)
         .with_arch("aarch64");
-    let grok_adapter =
-        StandaloneAdapter::new(&GROK, runner, http, trasher).with_trash_gap(Duration::ZERO);
+    // grok's fallback links in `/usr/local/bin`, which its uninstall
+    // preview looks at, under the test's own folder: never this Mac's.
+    let grok_adapter = StandaloneAdapter::new(&GROK, runner, http, trasher)
+        .with_trash_gap(Duration::ZERO)
+        .with_machine_root(&home.0.join("machine-root"));
     let session = Session::with_adapters(
         Arc::new(VecSink::new()),
         vec![
@@ -339,6 +342,9 @@ async fn test_a_backup_agys_updater_left_is_agys_on_the_unknown_page_once_the_re
     let backup = Path::new("~/.local/bin/agy.20260926T100000.old");
     let stray = Path::new("~/.local/bin/stray");
 
+    // `/usr/local/bin`, the one folder the scan reads outside the home
+    // folder, stood in for by the test's own: never this Mac's.
+    session.set_unknown_scan_system_bin(&env.home.join("usr/local/bin"));
     let before = session.scan_unknown(&env);
     assert!(
         before.entries.iter().any(|e| e.path == backup),

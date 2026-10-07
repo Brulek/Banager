@@ -150,7 +150,12 @@ fn test_lists_an_executable_nobody_claims_with_kind_size_date_and_home_abbreviat
 fn test_a_broken_symlink_is_listed_with_its_link_text_no_size_and_the_app_it_named() {
     let home = Home::new("broken");
     let bin = home.dir(".local/bin");
-    let target = Path::new("/Applications/Removed.app/Contents/Resources/scripts/index.js");
+    // An app removed from the home folder's own `Applications`: a link
+    // into `/Applications` would be looked up on this Mac's disk.
+    let target = home
+        .path()
+        .join("Applications/Removed.app/Contents/Resources/scripts/index.js");
+    let target = target.as_path();
     link(&bin, "old-script", target);
 
     let scan = scan_dirs(

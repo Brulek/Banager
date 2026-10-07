@@ -395,6 +395,10 @@ pub struct Session {
     /// Banager's application data directory as it starts; tests attach
     /// their own or none.
     history: std::sync::OnceLock<Arc<crate::history::HistoryStore>>,
+    /// The folder the unknown-source scan reads in place of
+    /// `/usr/local/bin` (`scan::SYSTEM_BIN`): that folder, but in tests
+    /// (`set_unknown_scan_system_bin`).
+    unknown_scan_system_bin: Mutex<std::path::PathBuf>,
 }
 
 impl Session {
@@ -536,6 +540,7 @@ impl Session {
             kept_data_home: Mutex::new(None),
             needed_by_env: Mutex::new(None),
             history: std::sync::OnceLock::new(),
+            unknown_scan_system_bin: Mutex::new(std::path::PathBuf::from(crate::scan::SYSTEM_BIN)),
         })
     }
 

@@ -230,14 +230,20 @@ async fn rustup_adapter(
         manager: OnceLock::new(),
         held_during_uninstall: Mutex::new(None),
     });
-    let adapter = Arc::new(StandaloneAdapter::new(
-        &RUSTUP,
-        runner.clone(),
-        Arc::new(MockHttpClient::new()),
-        // The recipe's uninstall is a command: nothing here goes to the
-        // Trash.
-        Arc::new(MockTrasher::new()),
-    ));
+    let adapter = Arc::new(
+        StandaloneAdapter::new(
+            &RUSTUP,
+            runner.clone(),
+            Arc::new(MockHttpClient::new()),
+            // The recipe's uninstall is a command: nothing here goes to the
+            // Trash.
+            Arc::new(MockTrasher::new()),
+        )
+        // Homebrew's prefixes (`/opt/homebrew`, `/usr/local`), where the
+        // preview looks for its `rustup` formula, under the test's own
+        // folder: never this Mac's.
+        .with_machine_root(&home.home.join("machine-root")),
+    );
     let inst = adapter.detect(&home.env).await.remove(0);
     (adapter, inst, runner)
 }
@@ -401,7 +407,9 @@ async fn test_a_plan_for_an_instance_from_another_home_is_refused_and_a_redetect
         mock.clone(),
         Arc::new(MockHttpClient::new()),
         Arc::new(MockTrasher::new()),
-    );
+    )
+    // Homebrew's prefixes under the test's own folder, never this Mac's.
+    .with_machine_root(&home_a.home.join("machine-root"));
     let inst_a = adapter.detect(&home_a.env).await.remove(0);
     let _inst_b = adapter.detect(&home_b.env).await.remove(0);
     assert!(matches!(

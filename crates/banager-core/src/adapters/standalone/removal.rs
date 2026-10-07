@@ -324,7 +324,10 @@ fn outside_home_keeps(look: &Look<'_>, moved: &[PathBuf]) -> Vec<Warning> {
         .keep
         .iter()
         .filter(|spec| spec.what == KeptWhat::OutsideHome)
-        .filter(|spec| dead_after(&look.protected, Path::new(spec.path), &look.root, moved))
+        .filter(|spec| {
+            let at = look.job.detected.on_this_mac(spec.path);
+            dead_after(&look.protected, &at, &look.root, moved)
+        })
         .map(|spec| Warning::WillKeep {
             path: spec.path.to_string(),
             what: KeptWhat::OutsideHome,
@@ -1399,6 +1402,9 @@ mod tests {
             cargo_home: Some(home.join(".cargo")),
             rustup_home: Some(home.join(".rustup")),
             zdotdir: None,
+            // A recipe's absolute paths (grok's `/usr/local/bin` links) are
+            // looked for under the test's own folder, never this Mac's.
+            machine_root: home.join("machine-root"),
         }
     }
 
@@ -2519,7 +2525,12 @@ mod tests {
         let (remove, _) = claude_lists();
         let job_for = |kept: &Path| Job {
             recipe: &CLAUDE,
-            detected: detected(home.path()),
+            // The kept paths stand in for `/usr/local/bin`'s spelled whole,
+            // a temp folder's, so `/` is their root.
+            detected: Detected {
+                machine_root: PathBuf::from("/"),
+                ..detected(home.path())
+            },
             remove,
             keep: only_keep(kept.display().to_string(), KeptWhat::OutsideHome),
             globs: &[],
@@ -2575,7 +2586,12 @@ mod tests {
         let said_dead = |kept: &Path| {
             let job = Job {
                 recipe: &GROK,
-                detected: detected(home.path()),
+                // The kept paths stand in for `/usr/local/bin`'s spelled
+                // whole, a temp folder's, so `/` is their root.
+                detected: Detected {
+                    machine_root: PathBuf::from("/"),
+                    ..detected(home.path())
+                },
                 remove,
                 keep: only_keep(kept.display().to_string(), KeptWhat::OutsideHome),
                 globs: &[],

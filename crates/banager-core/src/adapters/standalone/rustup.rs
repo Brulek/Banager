@@ -889,9 +889,13 @@ pub fn preview_with(
 }
 
 /// `CommandUninstall.preview` of the `RUSTUP` recipe: `preview_with`
-/// over Homebrew's real prefixes.
+/// over Homebrew's real prefixes, under the seat's `machine_root` (`/`
+/// but in tests).
 pub fn uninstall_preview(d: &Detected) -> Result<Vec<Warning>, GateRefusal> {
-    let prefixes: Vec<PathBuf> = HOMEBREW_PREFIXES.iter().map(PathBuf::from).collect();
+    let prefixes: Vec<PathBuf> = HOMEBREW_PREFIXES
+        .iter()
+        .map(|prefix| d.on_this_mac(prefix))
+        .collect();
     preview_with(d, &prefixes)
 }
 
@@ -2310,11 +2314,22 @@ mod tests {
             ])
         );
         // `uninstall_preview` is the same function over the real
-        // prefixes -- whatever this Mac's Cellar holds, the two answers
-        // agree; it is exercised through `plan` in Task 6 (with the
-        // Homebrew line filtered, since that depends on the test Mac).
-        let real: Vec<PathBuf> = HOMEBREW_PREFIXES.iter().map(PathBuf::from).collect();
-        assert_eq!(uninstall_preview(&d), preview_with(&d, &real));
+        // prefixes, each under the seat's `machine_root` -- `/` in the
+        // app, the test's own folder here, so this Mac's Cellar is never
+        // read: with no `Cellar/rustup` under either, no Homebrew line;
+        // with one under the second (an Intel Mac's `/usr/local`), the
+        // line. It is exercised through `plan` in Task 6.
+        assert_eq!(uninstall_preview(&d), preview_with(&d, &[]));
+        home.dir("machine-root/usr/local/Cellar/rustup/1.29.1");
+        let both = [
+            home.path().join("machine-root/opt/homebrew"),
+            home.path().join("machine-root/usr/local"),
+        ];
+        let with_brew = preview_with(&d, &both);
+        assert_eq!(uninstall_preview(&d), with_brew);
+        assert!(with_brew
+            .unwrap()
+            .contains(&Warning::HomebrewRustupLosesToolchains));
     }
 
     #[test]

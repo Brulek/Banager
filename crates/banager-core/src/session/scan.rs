@@ -30,13 +30,25 @@ impl Session {
             let snapshot = self.snapshot.lock().unwrap();
             (snapshot.instances.clone(), snapshot.artifacts.clone())
         };
+        let system_bin = self.unknown_scan_system_bin.lock().unwrap().clone();
         scan::scan_unknown(
             env,
+            &system_bin,
             &instances,
             &artifacts,
             &crate::adapters::standalone::recipes::backup_globs(),
             ScanBudget::default(),
         )
+    }
+
+    /// Test support: the folder the scan reads in place of
+    /// `/usr/local/bin` (`scan::SYSTEM_BIN`), its one folder outside the
+    /// home folder, so that a test reads a folder of its own instead of
+    /// this Mac's. In this crate's unit tests, and with the `test-support`
+    /// feature for the integration tests and the shell's.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn set_unknown_scan_system_bin(&self, dir: &std::path::Path) {
+        *self.unknown_scan_system_bin.lock().unwrap() = dir.to_path_buf();
     }
 }
 
@@ -166,6 +178,9 @@ mod tests {
             instance,
         });
         let session = Session::with_adapters(Arc::new(VecSink::new()), vec![adapter], None);
+        // `/usr/local/bin`, the one folder the scan reads outside the home
+        // folder, stood in for by the test's own: never this Mac's.
+        session.set_unknown_scan_system_bin(&home.join("usr/local/bin"));
         let env = HostEnv {
             path_dirs: vec![bin],
             home: home.clone(),

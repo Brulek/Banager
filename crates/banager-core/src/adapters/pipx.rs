@@ -1696,16 +1696,21 @@ mod tests {
         };
         let runner = Arc::new(MockRunner::new());
         runner.respond(vec![exe, "--version"], ok("1.17.3\n".to_string()));
+        // The recording's paths are under the author's home folder, which a
+        // refresh looks at (the tools' commands): moved under the test's
+        // own home, where nothing is.
+        let home = tmp_dir.join("home");
         runner.respond(
             vec![exe, "list", "--json"],
-            ok(read_fixture(
-                "../../adapters/fixtures/pipx/1.17.3/list.json",
-            )),
+            ok(
+                read_fixture("../../adapters/fixtures/pipx/1.17.3/list.json")
+                    .replace("/Users/brulek/", &format!("{}/", home.display())),
+            ),
         );
         runner.respond(vec![exe, "list", "--outdated"], ok(outdated));
         let env = HostEnv {
             path_dirs: vec![tmp_dir.clone()],
-            home: PathBuf::from("/tmp"),
+            home,
             euid: 501,
             cargo_home: None,
             rustup_home: None,
