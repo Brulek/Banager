@@ -299,11 +299,26 @@ describe("outcomeKey for Banager's own failures", () => {
       "Links to it appeared after the confirmation opened, and Homebrew removes them too if linking stops partway. Nothing was linked; they're as they were.",
     );
     expect(zhCN.operations.outcome.BanagerFailed.LinkRollbackRiskDetail).toBe(
-      "确认窗口打开后出现了指向它的链接，如果链接中途停止，Homebrew也会删除它们。没有链接，它们保持原样。",
+      "确认窗口打开后出现了指向它的链接，如果链接中途停止，Homebrew也会删除它们。没有开始链接，它们保持原样。",
     );
     expect(zhHant.operations.outcome.BanagerFailed.LinkRollbackRiskDetail).toBe(
-      "確認視窗開啟後出現了指向它的連結，若連結中途停止，Homebrew也會刪除它們。沒有連結，它們維持原樣。",
+      "確認視窗開啟後出現了指向它的連結，若連結中途停止，Homebrew也會刪除它們。沒有開始連結，它們維持原樣。",
     );
+  });
+
+  it("never says 「没有链接」 for nothing was linked, which reads as there being no links (r21 C3, skeptic)", () => {
+    // 链接 / 連結 is a noun as well as a verb, and the sentence before it
+    // says links to the tool appeared: 「没有链接」 there reads as "there
+    // are no links". 「没有开始链接」 can only be the linking that did not
+    // start, and still opens with 没有 as 「没有更新」 and 「没有改动」 do.
+    for (const [locale, words] of [
+      [zhCN, /(^|。)没有链接/],
+      [zhHant, /(^|。)沒有連結/],
+    ] as const) {
+      for (const text of Object.values(locale.operations.outcome.BanagerFailed)) {
+        expect(text).not.toMatch(words);
+      }
+    }
   });
 
   it("passes a fault's data, never a sentence, to its translation", () => {
