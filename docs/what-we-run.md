@@ -2195,8 +2195,18 @@ Homebrew upgrade of that Node unlinks and links again, and stops at any
 file in the way (Homebrew's section, "Keg-only formulae linked into
 Terminal"). With both locks no npm operation runs while a brew one on the
 same prefix does, in Update All too. Where no Homebrew lives at that
-prefix, no other plan takes the second lock. Both adapters use the same lock
-helper. It matches case variants with `protected::same_path` and symbolic-link
+prefix, no other plan takes the second lock. A refresh reads npm under the
+same two locks (`Adapter::refresh_locks`, `NpmAdapter::instance_locks`):
+while a Homebrew operation on that prefix runs -- `brew upgrade node`
+unlinking `bin/node`, `bin/npm` and `lib/node_modules/npm` and linking
+them again, when npm may not be found or not start -- it runs no command
+of an npm the last refresh listed there, neither `<npm> prefix -g` nor
+the reads above, and keeps the rows that npm had, as for any source an
+operation holds (`Session::refresh_round`). An npm no refresh has listed
+yet is looked for as ever, and if it is found there, nothing more is
+asked of it until the operation ends. A refresh in which Homebrew and
+npm are both read holds the shared lock once, for both. Both adapters use
+the same lock helper. It matches case variants with `protected::same_path` and symbolic-link
 aliases by directory device and inode, using protected, read-only path lookups,
 then reuses the fixed Homebrew discovery prefix in the lock string. A prefix
 that cannot be looked at (not there, not a folder, or in a protected place)

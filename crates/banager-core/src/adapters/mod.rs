@@ -2,7 +2,7 @@ mod python_version;
 use crate::events::{EventSink, OpId};
 use crate::model::{
     ArtifactKey, InstalledArtifact, InstanceNote, ManagerInstance, OpRequest, Outcome, Plan,
-    PlanAction, ReadOnlyReason, Reconciled, SearchHit, Unavailable, UninstallBlocked,
+    PlanAction, ReadOnlyReason, Reconciled, ResourceLock, SearchHit, Unavailable, UninstallBlocked,
     UninstallUnsafeReason, UpdateBlocked, UpdateCandidate, UpdateChannel, Warning,
 };
 use crate::runner::{CommandRunner, CommandSpec, HostEnv, LineCallback, OutputUse, RunLine};
@@ -840,6 +840,18 @@ pub trait Adapter: Send + Sync {
     /// said to be (`AlreadyUpdated::BeforeItsTurn`).
     fn one_update_can_update_others(&self) -> bool {
         false
+    }
+
+    /// The locks a refresh reads `inst` under (`Session::refresh_round`):
+    /// its detection, when last round found `inst`, and its inventory and
+    /// update check. The ones this source's plans take for it, so that no
+    /// operation another plan runs on the same files is under way while
+    /// the refresh reads them -- a refresh that finds one held carries
+    /// last round's rows instead. The instance's own lock, by default;
+    /// npm's adds the Homebrew prefix its plans take
+    /// (`NpmAdapter::instance_locks`).
+    fn refresh_locks(&self, inst: &ManagerInstance) -> Vec<ResourceLock> {
+        vec![ResourceLock(inst.id.clone())]
     }
 
     /// The reading after a link (`OpKind::Link`): `None` when `key` is not

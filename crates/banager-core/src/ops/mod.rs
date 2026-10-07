@@ -1651,28 +1651,13 @@ impl Drop for ResourceLockGuard {
     }
 }
 
-/// A detection owns every resource it may execute, atomically acquired
-/// against operations and released even when the detection is aborted.
-pub(crate) struct DetectionGuard {
-    held: Arc<Mutex<HashSet<ResourceLock>>>,
-    locks: Vec<ResourceLock>,
-}
-
-impl Drop for DetectionGuard {
-    fn drop(&mut self) {
-        let mut held = self.held.lock().unwrap();
-        for lock in &self.locks {
-            held.remove(lock);
-        }
-    }
-}
-
 impl OperationManager {
-    /// A refresh round's locks for the reads it is about to start, all
-    /// decided at once and none waited for (`Session::refresh_round`): for
-    /// each entry of `wanted` -- the locks one read needs -- the guards of
-    /// all of them, or `None` when an operation holds any of them or is
-    /// queued for one (`queue`), so that the round carries what that read
+    /// A refresh round's locks for the reads it is about to start -- its
+    /// detections, then its per-instance fetches -- all decided at once and
+    /// none waited for (`Session::refresh_round`): for each entry of
+    /// `wanted` -- the locks one read needs -- the guards of all of them,
+    /// or `None` when an operation holds any of them or is queued for one
+    /// (`queue`), so that the round carries what that read
     /// would have replaced instead of waiting out the operation. Decided
     /// against the locks held as this is called, under the same two
     /// mutexes `run_operation` takes its locks under, so no operation can
@@ -1727,26 +1712,10 @@ impl OperationManager {
         guards
     }
 
-    pub(crate) fn try_detection_locks(&self, locks: Vec<ResourceLock>) -> Option<DetectionGuard> {
-        let queue = self.queue.lock().unwrap();
-        let mut held = self.held.lock().unwrap();
-        if locks
-            .iter()
-            .any(|lock| held.contains(lock) || queue.values().any(|q| q.contains(lock)))
-        {
-            return None;
-        }
-        held.extend(locks.iter().cloned());
-        Some(DetectionGuard {
-            held: self.held.clone(),
-            locks,
-        })
-    }
-
     /// The resource locks held this instant: by operations from the
     /// moment `run_operation` acquires theirs until `finish` releases
-    /// them, and by a refresh's detections (`try_detection_locks`) and
-    /// per-instance fetches (`try_round_locks`). A snapshot of the same
+    /// them, and by a refresh's detections and per-instance fetches
+    /// (`try_round_locks`). A snapshot of the same
     /// `held` set all of those use, read by `Session::refresh_round` before
     /// its detection fan-out so that an adapter whose instance an operation is
     /// working on is neither detected nor inventoried that round (phase 4

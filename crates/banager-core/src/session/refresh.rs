@@ -305,7 +305,9 @@ impl Session {
         // `cargo` the cargo adapter would run is the same binary in proxy
         // mode, which begins by deleting the updater the operation is
         // about to run. So: the held set is read once here; every adapter
-        // with a previous-round instance whose id is a held lock keeps
+        // with a previous-round instance one of whose locks
+        // (`Adapter::refresh_locks`: its id, and for an npm the Homebrew
+        // prefix its plans take) an operation holds or waits for keeps
         // last round's instances (no notice, and the skip itself adds
         // nothing to `stale`: nothing failed) -- the held ones unchanged,
         // and the per-instance loop below carries the held instances' rows
@@ -335,44 +337,85 @@ impl Session {
         let mut under_operation: HashSet<InstanceId> = HashSet::new();
         let mut adapters: Vec<_> = self.adapters.values().collect();
         adapters.sort_by(|a, b| a.meta().id.cmp(&b.meta().id));
-        let mut detections = Vec::with_capacity(adapters.len());
-        for adapter in adapters {
-            let adapter_id = adapter.meta().id.clone();
-            let carried: Vec<ManagerInstance> = previous
-                .instances
-                .iter()
-                .filter(|i| i.adapter_id == adapter_id)
-                .cloned()
-                .collect();
-            let mut locks: Vec<_> = carried.iter().map(|i| ResourceLock(i.id.clone())).collect();
-            // Detection must be excluded even on the first refresh, before
-            // there is an instance to carry. rustup operations lock both.
-            if adapter_id == "cargo" {
-                if let Some(home) = crate::adapters::cargo::cargo_home_of(env) {
-                    locks.push(ResourceLock(crate::adapters::cargo::instance_id_for(&home)));
+        let carried: Vec<Vec<ManagerInstance>> = adapters
+            .iter()
+            .map(|adapter| {
+                previous
+                    .instances
+                    .iter()
+                    .filter(|i| i.adapter_id == adapter.meta().id)
+                    .cloned()
+                    .collect()
+            })
+            .collect();
+        // What each adapter's detection takes: the locks its instances are
+        // read under (`Adapter::refresh_locks` -- an npm's include the
+        // Homebrew prefix its plans take, so that a Homebrew operation
+        // there keeps this round from running that npm while `brew`
+        // unlinks and links the `node` and `npm` it runs: r37 F2).
+        let wanted: Vec<Vec<ResourceLock>> = adapters
+            .iter()
+            .zip(&carried)
+            .map(|(adapter, carried)| {
+                let adapter_id = &adapter.meta().id;
+                let mut locks: Vec<_> = carried
+                    .iter()
+                    .flat_map(|i| adapter.refresh_locks(i))
+                    .collect();
+                // Detection must be excluded even on the first refresh,
+                // before there is an instance to carry. rustup operations
+                // lock both.
+                if adapter_id == "cargo" {
+                    if let Some(home) = crate::adapters::cargo::cargo_home_of(env) {
+                        locks.push(ResourceLock(crate::adapters::cargo::instance_id_for(&home)));
+                    }
+                } else if adapter_id == "standalone-rustup" {
+                    locks.push(ResourceLock("standalone-rustup".into()));
                 }
-            } else if adapter_id == "standalone-rustup" {
-                locks.push(ResourceLock("standalone-rustup".into()));
-            }
-            locks.sort_by(|a, b| a.0.cmp(&b.0));
-            locks.dedup();
-            let Some(detection_guard) = self.ops.try_detection_locks(locks) else {
-                let held = self.ops.locks_held();
+                locks.sort_by(|a, b| a.0.cmp(&b.0));
+                locks.dedup();
+                locks
+            })
+            .collect();
+        // Taken for every adapter at once, waiting for none: two adapters'
+        // detections can need one lock (Homebrew's and that npm's, at one
+        // prefix), which they then share rather than refuse each other.
+        let detection_guards = self.ops.try_round_locks(&wanted);
+        // Held by an operation, as against by this round's own detections.
+        let held: HashSet<ResourceLock> = {
+            let taken: HashSet<&ResourceLock> = wanted
+                .iter()
+                .zip(&detection_guards)
+                .filter(|(_, guards)| guards.is_some())
+                .flat_map(|(locks, _)| locks)
+                .collect();
+            self.ops
+                .locks_held()
+                .into_iter()
+                .filter(|lock| !taken.contains(lock))
+                .collect()
+        };
+        let mut detections = Vec::with_capacity(adapters.len());
+        for ((adapter, carried), guards) in adapters.into_iter().zip(carried).zip(detection_guards)
+        {
+            let adapter_id = adapter.meta().id.clone();
+            let Some(guards) = guards else {
+                let is_held = |inst: &ManagerInstance| {
+                    adapter
+                        .refresh_locks(inst)
+                        .iter()
+                        .any(|lock| held.contains(lock))
+                };
                 let carried = carried
                     .into_iter()
                     .map(|mut inst| {
-                        if !held.contains(&ResourceLock(inst.id.clone())) {
+                        if !is_held(&inst) {
                             inst.status.notes.retain(|n| !n.is_from_update_check());
                         }
                         inst
                     })
                     .collect::<Vec<_>>();
-                under_operation.extend(
-                    carried
-                        .iter()
-                        .filter(|i| held.contains(&ResourceLock(i.id.clone())))
-                        .map(|i| i.id.clone()),
-                );
+                under_operation.extend(carried.iter().filter(|i| is_held(i)).map(|i| i.id.clone()));
                 detections.push((adapter_id, Detection::Skipped(carried)));
                 continue;
             };
@@ -386,7 +429,7 @@ impl Session {
             detections.push((
                 adapter_id,
                 Detection::Spawned(AbortOnDropHandle::new(tokio::spawn(async move {
-                    let _guard = detection_guard;
+                    let _guards = guards;
                     adapter.detect(&env).await
                 }))),
             ));
@@ -542,7 +585,10 @@ impl Session {
             .collect();
         let wanted: Vec<Vec<ResourceLock>> = asked
             .iter()
-            .map(|inst| vec![ResourceLock(inst.id.clone())])
+            .map(|inst| match self.adapters.get(&inst.adapter_id) {
+                Some(adapter) => adapter.refresh_locks(inst),
+                None => vec![ResourceLock(inst.id.clone())],
+            })
             .collect();
         let mut round_locks: HashMap<InstanceId, Option<_>> = asked
             .iter()
@@ -3130,6 +3176,128 @@ mod tests {
             .await;
         assert_eq!(artifact_names(&after), vec!["wget", "yq"]);
         assert!(after.errors.is_empty(), "{:?}", after.errors);
+        assert!(session.ops.locks_held().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_a_homebrew_operation_keeps_the_round_from_asking_the_npm_in_its_prefix() {
+        // r37 F2, with the real npm adapter: an npm whose global prefix is
+        // a Homebrew's. Every npm plan already takes that Homebrew's lock;
+        // a refresh now reads the npm under it too. While a Homebrew
+        // operation there runs -- `brew upgrade node` unlinking and linking
+        // `bin/node` and `bin/npm` -- the round runs no npm command at
+        // all and keeps npm's rows; Homebrew and npm
+        // reading together in one round share that lock.
+        use crate::adapters::npm::NpmAdapter;
+        let tree = crate::testing::TempTree::new("refresh-npm-in-homebrew");
+        let prefix = tree.dir("homebrew");
+        let npm = tree.file("homebrew/bin/npm", 0o755);
+        let (p, n) = (prefix.to_str().unwrap(), npm.to_str().unwrap());
+        let brew_id = crate::model::instance_id("brew", Some(p));
+        let npm_id = crate::model::instance_id("npm", Some(p));
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(vec![n, "prefix", "-g"], exited_0(&format!("{p}\n")));
+        runner.respond(vec![n, "--version"], exited_0("10.9.9\n"));
+        runner.respond(
+            vec![n, "ls", "-g", "--depth=0", "--json", "--prefix", p],
+            exited_0(r#"{"dependencies":{"prettier":{"version":"3.6.2"}}}"#),
+        );
+        runner.respond(
+            vec![n, "outdated", "-g", "--json", "--prefix", p],
+            exited_0("{}"),
+        );
+        let (brew, brew_state) = FakeAdapter::new("brew");
+        {
+            let mut s = brew_state.lock().unwrap();
+            s.instances = vec![ManagerInstance {
+                prefix: prefix.clone(),
+                ..make_instance("brew", &brew_id)
+            }];
+            s.artifacts
+                .insert(brew_id.clone(), vec![make_artifact(&brew_id, "node")]);
+            s.block_execute = true;
+        }
+        let env = HostEnv {
+            path_dirs: vec![prefix.join("bin")],
+            home: tree.dir("home"),
+            euid: 501,
+            cargo_home: None,
+            rustup_home: None,
+            zdotdir: None,
+            ollama_host: None,
+        };
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(
+            sink,
+            vec![brew, Arc::new(NpmAdapter::new(runner.clone()))],
+            None,
+        );
+        let npm_calls =
+            |runner: &MockRunner| runner.calls().iter().filter(|argv| argv[0] == n).count();
+
+        let first = session.refresh(&env, &CheckOptions::default()).await;
+        assert!(first.errors.is_empty(), "{:?}", first.errors);
+        assert_eq!(artifact_names(&first), vec!["node", "prettier"]);
+        assert_eq!(
+            npm_calls(&runner),
+            4,
+            "npm read in the same round as Homebrew"
+        );
+        assert!(session.ops.locks_held().is_empty());
+
+        let req = OpRequest {
+            kind: OpKind::Install,
+            instance_id: brew_id.clone(),
+            artifact_kind: ArtifactKind::Formula,
+            name: "node".to_string(),
+        };
+        let issued = session.issue_plan(&req).await.expect("issue_plan");
+        let op_id = session.submit(issued.id).expect("submit");
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !session
+            .operations()
+            .iter()
+            .any(|o| o.id == op_id && o.status == OpStatus::Running)
+        {
+            assert!(Instant::now() < deadline, "operation never reached Running");
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+
+        let during = tokio::time::timeout(
+            Duration::from_secs(2),
+            session.refresh(&env, &CheckOptions::default()),
+        )
+        .await
+        .expect("a refresh must not wait for an operation");
+        assert_eq!(
+            npm_calls(&runner),
+            4,
+            "no npm command runs while Homebrew's operation holds its prefix"
+        );
+        assert_eq!(
+            during.instances, first.instances,
+            "both carried as they were"
+        );
+        assert_eq!(artifact_names(&during), vec!["node", "prettier"]);
+        assert!(during.errors.is_empty(), "{:?}", during.errors);
+        assert_eq!(during.generation, first.generation);
+
+        session.cancel(op_id).expect("cancel a Running op");
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !session
+            .operations()
+            .iter()
+            .any(|o| o.id == op_id && o.status == OpStatus::Done)
+        {
+            assert!(
+                Instant::now() < deadline,
+                "the cancelled operation never finished"
+            );
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        let after = session.refresh(&env, &CheckOptions::default()).await;
+        assert_eq!(npm_calls(&runner), 8, "npm is read again once it is over");
+        assert!(after.instances.iter().any(|i| i.id == npm_id));
         assert!(session.ops.locks_held().is_empty());
     }
 

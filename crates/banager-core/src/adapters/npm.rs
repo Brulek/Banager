@@ -235,6 +235,25 @@ impl NpmAdapter {
         candidates
     }
 
+    /// npm's own lock, and that of a Homebrew at npm's global prefix
+    /// (y1-keg review), which every plan takes and a refresh reads under
+    /// (`Adapter::refresh_locks`). npm that came with a Node from Homebrew
+    /// writes into Homebrew's prefix -- `npm install -g npm@latest` puts
+    /// its own `bin/npm` there -- and a `brew upgrade` of that Node unlinks
+    /// the places it linked and links them again, stopping at any file in
+    /// the way (`Keg::ConflictError`). With both locks no npm operation
+    /// runs while a brew one on the same prefix does, so none can land
+    /// between that unlink and that link; nor does a refresh ask this npm
+    /// anything then (r37 F2), when it may not be found or not start.
+    /// Where no Homebrew lives at the prefix, no other plan takes the
+    /// second lock.
+    fn instance_locks(&self, inst: &ManagerInstance) -> Vec<ResourceLock> {
+        vec![
+            ResourceLock(inst.id.clone()),
+            super::brew::prefix_lock(&inst.prefix, self.prefix_identity_fn),
+        ]
+    }
+
     fn env_vec(&self) -> Vec<(String, String)> {
         Self::ENV
             .iter()
@@ -559,19 +578,7 @@ impl NpmAdapter {
                 reason: UpdateBlocked::UpdatesWithFormula,
             });
         }
-        // npm's own lock, and that of a Homebrew at npm's global prefix
-        // (y1-keg review): npm that came with a Node from Homebrew writes
-        // into Homebrew's prefix -- `npm install -g npm@latest` puts its own
-        // `bin/npm` there -- and a `brew upgrade` of that Node unlinks the
-        // places it linked and links them again, stopping at any file in
-        // the way (`Keg::ConflictError`). With both locks no npm operation
-        // runs while a brew one on the same prefix does, so none can land
-        // between that unlink and that link. Where no Homebrew lives at the
-        // prefix, no other plan takes the second lock.
-        let locks = vec![
-            ResourceLock(inst.id.clone()),
-            super::brew::prefix_lock(&inst.prefix, self.prefix_identity_fn),
-        ];
+        let locks = self.instance_locks(inst);
         let warnings = match req.kind {
             OpKind::Uninstall => uninstall_scope(inst.version.as_deref())
                 .into_iter()
@@ -685,6 +692,10 @@ impl Adapter for NpmAdapter {
 
     async fn detect(&self, env: &HostEnv) -> Vec<ManagerInstance> {
         NpmAdapter::detect(self, env).await
+    }
+
+    fn refresh_locks(&self, inst: &ManagerInstance) -> Vec<ResourceLock> {
+        self.instance_locks(inst)
     }
 
     async fn inventory(
@@ -2121,6 +2132,13 @@ mod tests {
                     ResourceLock(inst.id.clone()),
                     ResourceLock("brew:/opt/homebrew".to_string()),
                 ],
+                "{kind:?}"
+            );
+            // And a refresh reads this npm under the same two (r37 F2), so
+            // it asks it nothing while `brew` relinks the prefix.
+            assert_eq!(
+                crate::adapters::Adapter::refresh_locks(&adapter, &inst),
+                plan.locks,
                 "{kind:?}"
             );
         }
