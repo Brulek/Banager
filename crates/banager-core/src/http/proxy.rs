@@ -103,7 +103,9 @@ impl Settings {
 /// which is read here too when selecting a proxy for a new connection.
 /// That reads the process environment first, which `proxy_for` has
 /// already found nothing in when it asks. Existing pooled connections can
-/// keep their previous route after settings change. Neither the SOCKS
+/// keep their previous route after these network settings change (a change
+/// to the login shell's or the environment's gets a new client:
+/// `RealHttpClient::client`). Neither the SOCKS
 /// proxy nor the list of hosts the settings bypass is read, as reqwest
 /// did not read them either.
 pub fn system_proxy(url: &Url) -> Option<String> {

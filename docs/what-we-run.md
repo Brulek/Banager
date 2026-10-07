@@ -4921,8 +4921,10 @@ proxy" mode, with nothing exported in a shell. Those are the settings
 Banager's requests went by before it read the login shell's, read the same
 way (`http::proxy::system_proxy`) when opening a new connection.
 Existing pooled connections can keep their previous route after a proxy
-is enabled, disabled or changed, so a change is not guaranteed to apply
-to the next check. The SOCKS proxy and the list of hosts to bypass in
+is enabled, disabled or changed in these network settings, so such a
+change is not guaranteed to apply to the next check; a change to the login
+shell's or the environment's proxy settings, which can hold a login, gets
+new connections instead (below). The SOCKS proxy and the list of hosts to bypass in
 those settings are not read, so a machine on the local network is reached
 through that proxy unless `no_proxy` names it. The commands Banager runs
 are handed no setting from there: they
