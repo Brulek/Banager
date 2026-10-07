@@ -538,6 +538,25 @@ it("includes the retained startup diagnostic without opting into the tool list",
   const text = diagnosticsText(i18n.getFixedT("en"), input({
     snapshot: { ...SNAPSHOT, instances: [broken] }, includeTools: false,
   }));
-  expect(text).toContain(diagnostic);
-  expect(text).toContain("Startup Diagnostic");
+  expect(text).toContain(`  Startup diagnostic:\n    ${diagnostic}\n`);
+});
+
+it("indents a multi-line startup diagnostic under its source, home folder as ~ (f13b review)", () => {
+  const diagnostic = "npm error config Invalid npmrc\nnpm error at /Users/someone/.npmrc:3";
+  const broken = instance(NPM, "/opt/homebrew/bin/npm", { status: {
+    unavailable: "NotResponding", notes: [], no_answer: {
+      kind: "ExitedWithError", missing_program: null, link_fixes: [], diagnostic, cause: null,
+    },
+  } });
+  const text = diagnosticsText(i18n.getFixedT("en"), input({
+    snapshot: { ...SNAPSHOT, instances: [broken] }, includeTools: false,
+  }));
+  const lines = text.split("\n");
+  const at = lines.indexOf("  Startup diagnostic:");
+  expect(at).toBeGreaterThan(0);
+  expect(lines.slice(at + 1, at + 3)).toEqual([
+    "    npm error config Invalid npmrc",
+    "    npm error at ~/.npmrc:3",
+  ]);
+  expect(text).not.toContain("/Users/someone");
 });

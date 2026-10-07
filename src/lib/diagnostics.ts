@@ -213,7 +213,12 @@ export function diagnosticsText(t: Translate, input: DiagnosticsInput): string {
     lines.push(INDENT + t("diagnostics.text.path", { path: paths.get(instance.id) ?? instance.exe_path }));
     lines.push(INDENT + t("diagnostics.text.status", { status: statusOf(t, instance) }));
     const diagnostic = instance.status.no_answer?.diagnostic;
-    if (diagnostic) lines.push(INDENT + t("sourceDiagnostic.label") + "\n" + diagnostic);
+    // The source's own words, a step further in: at the line start they
+    // would read as the next source's name.
+    if (diagnostic) {
+      lines.push(INDENT + t("sourceDiagnostic.text"));
+      for (const line of diagnostic.split("\n")) lines.push(INDENT + INDENT + line);
+    }
     if (instance.status.notes.length > 0) {
       lines.push(INDENT + t("diagnostics.text.notes", { number: instance.status.notes.length }));
     }

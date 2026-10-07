@@ -1782,9 +1782,11 @@ else (`InstanceStatus::no_answer`, `NoAnswer`):
 A failed startup also keeps a diagnostic: the last five lines of the
 runner's already-redacted stderr, capped at 4,096 UTF-8 bytes. Its recovery
 category is read before masking, just as `Outcome::Failed.cause` is. The
-shared source notice and Overview offer details and Copy Diagnostic;
-Copy Diagnostic Info includes the same diagnostic even without the tool
-list. No raw stderr or spawn-error text is added. Review or share these
+shared source notice and Overview offer it behind a closed disclosure,
+with Copy Diagnostic; Copy Diagnostic Info includes the same diagnostic,
+indented under its source, even without the tool list, and writes the
+home folder in it as `~`, as it does every path. No raw stderr or
+spawn-error text is added, and it is kept in no file. Review or share these
 details, address the error, then use Check Again.
 
 The program's name is read off stderr as the command wrote it, before a

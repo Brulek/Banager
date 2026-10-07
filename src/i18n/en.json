@@ -866,7 +866,8 @@
   "sourceDiagnostic": {
     "label": "Startup Diagnostic",
     "next": "Review the details or copy them for someone who can help. Check again after addressing the error.",
-    "copy": "Copy Diagnostic"
+    "copy": "Copy Diagnostic",
+    "text": "Startup diagnostic:"
   },
   "followUpWarning": {
     "batch": "Updated {{total}} tools · {{count}} follow-ups need attention",

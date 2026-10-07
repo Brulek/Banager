@@ -797,7 +797,8 @@
   "sourceDiagnostic": {
     "label": "啟動診斷",
     "next": "查看詳細資訊，或拷貝給能協助的人。處理錯誤後，再重新檢查。",
-    "copy": "拷貝診斷"
+    "copy": "拷貝診斷",
+    "text": "啟動診斷："
   },
   "followUpWarning": {
     "batch": "已更新{{total}}個工具，{{count}}個工具的後續步驟需要查看",

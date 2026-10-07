@@ -19,3 +19,18 @@ it("opens and copies the startup diagnostic through the shared notice without te
   fireEvent.click(view.getByRole("button", { name: "拷贝诊断" }));
   await waitFor(() => expect(writeText).toHaveBeenCalledWith(diagnostic));
 });
+
+it("opens with the house disclosure button, closed until asked (f13b review)", async () => {
+  await i18n.changeLanguage("en");
+  const diagnostic = "npm error config Invalid npmrc";
+  const notice = { id: "npm", variant: "warning" as const, titleKey: "", descriptionKey: "", diagnostic, diagnosticCause: "notFound" as const };
+  const view = renderWithProviders(<SourceDiagnostic notice={notice} />);
+  const toggle = view.getByRole("button", { name: "Startup Diagnostic" });
+  expect(toggle).toHaveAttribute("aria-expanded", "false");
+  expect(view.queryByText(diagnostic)).toBeNull();
+  fireEvent.click(toggle);
+  expect(toggle).toHaveAttribute("aria-expanded", "true");
+  expect(view.getByText(diagnostic)).toBeVisible();
+  expect(view.getByText("Something it needs is missing. The error says what.")).toBeVisible();
+  expect(view.getByRole("button", { name: "Copy Diagnostic" })).toBeInTheDocument();
+});

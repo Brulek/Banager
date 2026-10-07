@@ -123,10 +123,11 @@ pub enum StderrCause {
 impl CommandOutput {
     /// Why the command failed, by the last lines it wrote to stderr
     /// (`history::operation_failure_cause` over `failure_summary`), as it
-    /// wrote them. Only an operation's failure is read with it (`run_plan`):
-    /// a lookup's words are read for the network alone
-    /// (`adapters::says_network_failed`, `lookupFailureCause` in
-    /// src/lib/failureCause.ts).
+    /// wrote them. An operation's failure is read with it (`run_plan`), and
+    /// so is the command a source did not answer at startup
+    /// (`no_answer::of`, `NoAnswer::cause`); a lookup's words are read for
+    /// the network alone (`adapters::says_network_failed`,
+    /// `lookupFailureCause` in src/lib/failureCause.ts).
     pub fn failure_cause(&self) -> Option<FailureCause> {
         match &self.stderr_cause {
             StderrCause::InStderr => operation_failure_cause(&failure_summary(&self.stderr)),
