@@ -1206,3 +1206,43 @@ async fn only_links_homebrew_has_not_recorded_are_at_risk_of_a_link_that_stops()
     );
     std::fs::remove_dir_all(prefix).unwrap();
 }
+
+#[tokio::test]
+async fn an_update_links_nothing_back_of_a_formula_unlinked_since_the_preview() {
+    // The preview said Homebrew links node@22 back; then `brew unlink
+    // node@22` in Terminal before the update's turn. No record now, so the
+    // update unlinks and links nothing, and Banager's own link does not run:
+    // it stays out of Terminal, as it was left. Nor is the update refused
+    // for a file at one of its places since (npm's own copy of itself):
+    // nothing of node@22 is unlinked, so nothing of it leaves Terminal.
+    for npm_took_its_places in [false, true] {
+        let prefix = node_22_prefix("keg-run-unlinked-since");
+        brew_link(&prefix, "22.23.3");
+        let inst = instance(&prefix);
+        let runner = Arc::new(FakeHomebrew::new(&prefix, Upgrade::AsHomebrew));
+        let (adapter, plan) = planned(&inst, runner.clone()).await;
+        assert_eq!(
+            follow_ups(&plan),
+            [strings(&["link", "--formula", "--force", "node@22"])]
+        );
+        runner.unlink(&runner.opt_keg());
+        if npm_took_its_places {
+            npm_updates_itself(&prefix);
+        }
+        let sink = Arc::new(VecSink::new());
+        let outcome = adapter
+            .execute(&plan, sink.clone(), 7, CancellationToken::new())
+            .await
+            .expect("execute");
+        assert_eq!(outcome, Outcome::Succeeded, "{npm_took_its_places}");
+        assert_eq!(
+            runner.calls(),
+            [strings(&["upgrade", "--formula", "node@22"])],
+            "{npm_took_its_places}"
+        );
+        assert_eq!(notes(&sink), [], "{npm_took_its_places}");
+        assert!(!runner.recorded());
+        assert!(runner.links().linked_names().is_empty());
+        std::fs::remove_dir_all(&prefix).unwrap();
+    }
+}

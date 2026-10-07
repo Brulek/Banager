@@ -660,4 +660,40 @@ pub(crate) mod tests {
         drop(as_if);
         std::fs::remove_dir_all(&home).unwrap();
     }
+
+    #[test]
+    fn every_command_linked_into_the_keg_without_the_record_is_not_fully_linked() {
+        // Each of the four linked straight into the keg by hand, as `brew
+        // link` links them, but no `brew link` ran: no record, so Homebrew's
+        // update unlinks and links nothing (`upgrade.rb:268-272`,
+        // `640-643`). Linked, not linked as `brew link` leaves it.
+        let prefix = node_22_prefix("links-by-hand-all");
+        brew_link(&prefix, "22.23.3");
+        std::fs::remove_file(prefix.join("var/homebrew/linked/node@22")).unwrap();
+        let links = read_links(&prefix, "node@22").expect("read");
+        assert!(!links.recorded);
+        assert_eq!(links.linked_names(), ["corepack", "node", "npm", "npx"]);
+        assert!(!links.fully_linked());
+        std::fs::remove_dir_all(&prefix).unwrap();
+    }
+
+    #[test]
+    fn a_command_in_both_bin_and_sbin_is_named_once() {
+        // Two places, `bin/node` and `sbin/node`, one name typed in
+        // Terminal: the link a source's notice offers names it once.
+        let prefix = node_22_prefix("links-bin-and-sbin");
+        let sbin = prefix.join("Cellar/node@22/22.23.3/sbin");
+        std::fs::create_dir_all(&sbin).unwrap();
+        std::fs::write(sbin.join("node"), b"").unwrap();
+        let links = read_links(&prefix, "node@22").expect("read");
+        let node: Vec<PathBuf> = links
+            .commands
+            .iter()
+            .filter(|c| c.name == "node")
+            .map(|c| c.path.clone())
+            .collect();
+        assert_eq!(node, [prefix.join("bin/node"), prefix.join("sbin/node")]);
+        assert_eq!(links.command_names(), ["corepack", "node", "npm", "npx"]);
+        std::fs::remove_dir_all(&prefix).unwrap();
+    }
 }
