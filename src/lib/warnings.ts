@@ -7,6 +7,7 @@
  */
 import type { CaskStep, KeptData, KeptWhat, RemoveCheck, RemovedWhat, UninstallScope, Warning } from "./types";
 import { modelDownloadNote } from "./modelDownload";
+import { namesInSentence } from "./format";
 
 /** The sentence for each kind of path a path-list uninstall moves; a
  *  `Record` over `RemovedWhat`, so a kind without copy fails `tsc`. */
@@ -464,7 +465,16 @@ export function warningText(
     const sized = modelDownloadNote(t, downloadBytes);
     if (sized !== null) return sized;
   }
-  return key ? t(key, warningArgs(warning, t("common.listSeparator"))) : warningMessage(warning);
+  if (!key) return warningMessage(warning);
+  const args = warningArgs(warning, t("common.listSeparator"));
+  // Links in the way, the subject of their sentence: said as a sentence
+  // lists them, "/opt/homebrew/bin/npm and /opt/homebrew/bin/npx are
+  // already linked to it", not with a bare comma between them (r31 E2).
+  if (typeof warning !== "string" && ("LinkConflicts" in warning || "LinkRollbackRisk" in warning)) {
+    const paths = "LinkConflicts" in warning ? warning.LinkConflicts.paths : warning.LinkRollbackRisk.paths;
+    args.paths = namesInSentence(t, paths);
+  }
+  return t(key, args);
 }
 
 /**

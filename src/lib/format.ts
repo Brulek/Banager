@@ -1,5 +1,23 @@
 import type { Attention, Fault, Outcome } from "./types";
 
+/**
+ * `names` as a sentence lists them, in the user's language: 「Homebrew、npm
+ * 和 uv」, "Homebrew, npm and uv" -- or, `"or"`, any one of them: "typing
+ * node or npm" (r21 C6). One name alone; none, nothing. `t` is whatever
+ * `useTranslation()` gives.
+ */
+export function namesInSentence(
+  t: (key: string, options?: Record<string, string>) => string,
+  names: readonly string[],
+  joiner: "and" | "or" = "and",
+): string {
+  if (names.length <= 1) return names[0] ?? "";
+  return t(joiner === "or" ? "common.listOr" : "common.listAnd", {
+    list: names.slice(0, -1).join(t("common.listSeparator")),
+    last: names[names.length - 1],
+  });
+}
+
 /** Display-only: renders one argv token so the preview cannot blur where one
  *  argument ends and the next begins. Uses an allow-list (the `shlex.quote`
  *  rule) rather than a deny-list, so a token carrying a shell metacharacter

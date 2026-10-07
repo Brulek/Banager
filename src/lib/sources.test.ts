@@ -1110,9 +1110,14 @@ describe("planErrorMessage", () => {
   it("says what is in the way of a link the submit refused, as its preview said it", () => {
     // `SubmitError::LinkBlocked`: a link whose preview found files in the
     // way, refused in Rust whatever the page sent.
-    // The paths joined with the window's language's separator.
+    // The paths listed as a sentence lists them in the window's language
+    // (r31 E2): 「…npm和…npx」, not with a bare separator between them.
     const t = (key: string, options?: Record<string, unknown>) =>
-      key === "common.listSeparator" ? "、" : fakeT(key, options);
+      key === "common.listSeparator"
+        ? "、"
+        : key === "common.listAnd"
+          ? `${String(options?.list)}和${String(options?.last)}`
+          : fakeT(key, options);
     expect(
       planErrorMessage(
         t,
@@ -1120,7 +1125,7 @@ describe("planErrorMessage", () => {
         "Homebrew",
         false,
       ),
-    ).toBe('noAnswer.sheet.conflicts({"count":2,"paths":"/opt/homebrew/bin/npm、/opt/homebrew/bin/npx"})');
+    ).toBe('noAnswer.sheet.conflicts({"count":2,"paths":"/opt/homebrew/bin/npm和/opt/homebrew/bin/npx"})');
     // A payload with no paths says nothing it cannot back.
     expect(planErrorMessage(t, '{"kind":"link_blocked","paths":[]}', "Homebrew", false)).toBeNull();
   });

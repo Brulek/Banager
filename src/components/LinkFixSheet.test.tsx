@@ -285,7 +285,7 @@ describe("LinkFixSheet", () => {
     const dialog = await screen.findByRole("alertdialog", { name: "Can't link “node@22”" });
     expect(
       screen.getByText(
-        "/opt/homebrew/bin/npm, /opt/homebrew/bin/npx are already there, and Homebrew won't replace them on its own, so it can't be linked.",
+        "/opt/homebrew/bin/npm and /opt/homebrew/bin/npx are already there, and Homebrew won't replace them on its own, so it can't be linked.",
       ),
     ).toBeInTheDocument();
     expect(dialog).toHaveTextContent(
@@ -403,10 +403,10 @@ describe("LinkFixSheet where Homebrew's own links are already there, its link no
   it.each([
     [
       "en",
-      "/opt/homebrew/bin/npm, /opt/homebrew/bin/npx are already linked to it. If linking stops partway, Homebrew removes those links too, so it can't be linked here.",
+      "/opt/homebrew/bin/npm and /opt/homebrew/bin/npx are already linked to it. If linking stops partway, Homebrew removes those links too, so it can't be linked here.",
     ],
-    ["zh-CN", "/opt/homebrew/bin/npm、/opt/homebrew/bin/npx已链接到它。如果链接中途停止，Homebrew也会删除已有的链接，因此无法在这里链接。"],
-    ["zh-Hant", "/opt/homebrew/bin/npm、/opt/homebrew/bin/npx已連結到它。若連結中途停止，Homebrew也會刪除已有的連結，因此無法在這裡連結。"],
+    ["zh-CN", "/opt/homebrew/bin/npm和/opt/homebrew/bin/npx已链接到它。如果链接中途停止，Homebrew也会删除已有的链接，因此无法在这里链接。"],
+    ["zh-Hant", "/opt/homebrew/bin/npm和/opt/homebrew/bin/npx已連結到它。若連結中途停止，Homebrew也會刪除已有的連結，因此無法在這裡連結。"],
   ].flatMap(([language, line]) => [false, true].map((conflict) => ({ language, line, conflict }))))(
     "offers no Link and names them, in $language (files also in the way: $conflict)",
     async ({ language, line, conflict }) => {
@@ -441,6 +441,21 @@ describe("LinkFixSheet where Homebrew's own links are already there, its link no
     expect(
       screen.getByText("To link it, you can run this command in Terminal. If it stops partway, Homebrew removes the link above too."),
     ).toBeInTheDocument();
+  });
+
+  it.each([
+    ["en", "/opt/homebrew/bin/corepack, /opt/homebrew/bin/npm and /opt/homebrew/bin/npx are already there, and Homebrew won't replace them on its own, so it can't be linked."],
+    ["zh-CN", "/opt/homebrew/bin/corepack、/opt/homebrew/bin/npm和/opt/homebrew/bin/npx已存在，Homebrew不会自行替换，因此无法链接。"],
+    ["zh-Hant", "/opt/homebrew/bin/corepack、/opt/homebrew/bin/npm和/opt/homebrew/bin/npx已存在，Homebrew不會自行取代，因此無法連結。"],
+  ])("lists three files in the way as a sentence lists them in %s, the last after “and” (r31 E2)", async (language, line) => {
+    await i18n.changeLanguage(language);
+    const npm = npmWithout([NODE_22]);
+    backend(npm, [
+      { LinkConflicts: { paths: ["/opt/homebrew/bin/corepack", "/opt/homebrew/bin/npm", "/opt/homebrew/bin/npx"] } },
+    ]);
+    renderWithProviders(<LinkFixSheet instanceId={npm.id} onClose={() => {}} />);
+    expect(await screen.findByText(line)).toBeInTheDocument();
+    await i18n.changeLanguage("en");
   });
 
   it.each([
@@ -515,14 +530,14 @@ describe("LinkFixSheet to a screen reader (r27 A3)", () => {
     [
       "en",
       "Link “node@22”?",
-      "Can't link “node@22”: /opt/homebrew/bin/npm, /opt/homebrew/bin/npx are already there, and Homebrew won't replace them on its own, so it can't be linked.",
-      "/opt/homebrew/bin/npm, /opt/homebrew/bin/npx are already there, and Homebrew won't replace them on its own, so it can't be linked.",
+      "Can't link “node@22”: /opt/homebrew/bin/npm and /opt/homebrew/bin/npx are already there, and Homebrew won't replace them on its own, so it can't be linked.",
+      "/opt/homebrew/bin/npm and /opt/homebrew/bin/npx are already there, and Homebrew won't replace them on its own, so it can't be linked.",
     ],
     [
       "zh-CN",
       "要链接“node@22”吗？",
-      "无法链接“node@22”：/opt/homebrew/bin/npm、/opt/homebrew/bin/npx已存在，Homebrew不会自行替换，因此无法链接。",
-      "/opt/homebrew/bin/npm、/opt/homebrew/bin/npx已存在，Homebrew不会自行替换，因此无法链接。",
+      "无法链接“node@22”：/opt/homebrew/bin/npm和/opt/homebrew/bin/npx已存在，Homebrew不会自行替换，因此无法链接。",
+      "/opt/homebrew/bin/npm和/opt/homebrew/bin/npx已存在，Homebrew不会自行替换，因此无法链接。",
     ],
   ])("says the refusal in %s, from a status there since the sheet opened, as the focused Cancel turns into Close", async (language, question, said, line) => {
     await i18n.changeLanguage(language);

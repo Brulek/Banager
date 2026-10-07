@@ -20,7 +20,7 @@ import type {
 } from "./types";
 import type { InstalledShow } from "./families";
 import { warningArgs, warningKey } from "./warnings";
-import { displayToken } from "./format";
+import { displayToken, namesInSentence } from "./format";
 import { FAILURE_CAUSE_KEYS, failureCause } from "./failureCause";
 import { noAnswerNotice } from "./noAnswer";
 
@@ -1495,10 +1495,11 @@ export function planErrorMessage(
   if (isUnknownPlan(raw)) return t("planRefused.unknown");
   const inTheWay = linkBlockedPaths(raw);
   if (inTheWay !== null) {
-    // The preview's own sentence for what is in the way of the link.
+    // The preview's own sentence for what is in the way of the link, its
+    // files listed as it lists them (`warningText`, r31 E2).
     return t("noAnswer.sheet.conflicts", {
       count: inTheWay.length,
-      paths: inTheWay.join(t("common.listSeparator")),
+      paths: namesInSentence(t, inTheWay),
     });
   }
   const failure = planFailureMessage(t, raw, sourceLabel, technical);
@@ -1868,18 +1869,10 @@ export function failedSourceNames(
   return failedSourceAdapters(errors, instances).map((adapterId) => adapterLabel(t, adapterId));
 }
 
-/**
- * `names` as a sentence lists them, in the user's language: 「Homebrew、npm
- * 和 uv」, "Homebrew, npm and uv" -- or, `"or"`, any one of them: "typing
- * node or npm" (r21 C6). One name alone; none, nothing.
- */
-export function namesInSentence(t: Translate, names: string[], joiner: "and" | "or" = "and"): string {
-  if (names.length <= 1) return names[0] ?? "";
-  return t(joiner === "or" ? "common.listOr" : "common.listAnd", {
-    list: names.slice(0, -1).join(t("common.listSeparator")),
-    last: names[names.length - 1],
-  });
-}
+// `namesInSentence` lives in ./format, where a warning's sentence
+// (`warningText`) can use it too without importing this module; it is
+// exported from here as well, where the pages have always found it.
+export { namesInSentence };
 
 /**
  * At most three names, then how many in all: 「git、gh、jq等7个」
