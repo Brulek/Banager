@@ -6,11 +6,13 @@ import {
   FAILURE_CAUSE_KEYS,
   failureCause,
   lookupFailureCause,
+  operationFailureCause,
   outcomeCause,
   type FailureCause,
 } from "./failureCause";
 import en from "../i18n/en.json";
 import zhCN from "../i18n/zh-CN.json";
+import zhHant from "../i18n/zh-Hant.json";
 
 /**
  * What tools really print when they fail, as the last lines of their
@@ -339,6 +341,41 @@ describe("FAILURE_CAUSE_KEYS", () => {
       // No command names: a person's words.
       expect(lookup(zhCN, keys.line) as string, keys.line).not.toMatch(/brew update|curl|npm|pip/);
     }
+  });
+});
+
+describe("operationFailureCause", () => {
+  it("reads an operation's words as Rust does: the cases operation_failure_cause is tested on", () => {
+    // r6 y3-batch, finding 3. The first causes on all the words, then the
+    // ones only a change meets, from the last line up.
+    const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+    const cases: Array<{ name: string; text: string; cause: FailureCause | null }> = JSON.parse(
+      readFileSync(path.join(root, "crates/banager-core/src/history/operation_cause_cases.json"), "utf-8"),
+    );
+    expect(cases.length).toBeGreaterThanOrEqual(30);
+    for (const { name, text, cause } of cases) {
+      expect(operationFailureCause(text), name).toBe(cause);
+    }
+  });
+
+  it("leaves a lookup's reading as it was", () => {
+    expect(failureCause("Error: It seems the App source '/Applications/Foo.app' is not there.")).toBeNull();
+    expect(failureCause("env: node: No such file or directory")).toBeNull();
+    expect(lookupFailureCause("npm error code E404\nnpm error 404 Not Found")).toBeNull();
+  });
+
+  it("words the causes only a change meets in every language, each next step one sentence", () => {
+    const lookup = (locale: unknown, key: string): unknown =>
+      key.split(".").reduce<unknown>((node, part) => (node as Record<string, unknown> | undefined)?.[part], locale);
+    const added: FailureCause[] = ["conflict", "notFound", "appMissing", "unsupported", "timedOut", "changed", "internal"];
+    for (const cause of added) {
+      for (const key of Object.values(FAILURE_CAUSE_KEYS[cause])) {
+        for (const locale of [en, zhCN, zhHant]) expect(typeof lookup(locale, key), key).toBe("string");
+      }
+    }
+    expect(lookup(zhCN, FAILURE_CAUSE_KEYS.appMissing.word)).toBe("App已不在原来的位置");
+    expect(lookup(zhCN, FAILURE_CAUSE_KEYS.appMissing.next)).toContain("废纸篓");
+    expect(lookup(zhHant, FAILURE_CAUSE_KEYS.appMissing.next)).toContain("垃圾桶");
   });
 });
 

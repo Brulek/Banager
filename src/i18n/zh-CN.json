@@ -391,6 +391,17 @@
     "unchanged": "没有更新成功：版本没有变",
     "unchangedTitle": "命令显示已完成，但更新前后读到的版本相同。"
   },
+  "batchResult": {
+    "reason": "原因：{{detail}}",
+    "already": {
+      "ByEarlierUpdate": "已由前面的更新一并完成",
+      "BeforeItsTurn": "轮到它时已是新版本"
+    },
+    "alreadyWhy": {
+      "ByEarlierUpdate": "轮到这一项时，它已是新版本：前面的一项更新已把它一并更新了。",
+      "BeforeItsTurn": "轮到这一项时，它已是新版本，这次的命令没有再改动它。"
+    }
+  },
   "commandPreview": {
     "show_other": "查看命令",
     "trashLabel": "移到废纸篓",
@@ -1428,6 +1439,35 @@
       "withCause": "上面是{{program}}自己的报错。{{line}}",
       "inTerminal": "上面是{{program}}自己的报错。{{line}}可以点按“查看日志”，在终端里运行那里给出的命令。",
       "noLog": "上面是{{program}}自己的报错。可以稍后{{again}}；还是失败，就把这段报错告诉懂的人。"
+    }
+  },
+  "failureMore": {
+    "cause": {
+      "conflict": "与已有的文件冲突",
+      "notFound": "找不到需要的内容",
+      "appMissing": "App已不在原来的位置",
+      "unsupported": "不支持这台Mac",
+      "timedOut": "运行超时",
+      "changed": "确认后有了变化",
+      "internal": "发生内部错误"
+    },
+    "next": {
+      "conflict": "请在操作日志中查看是哪个文件，处理后重试。",
+      "notFound": "可以在操作日志中查看缺少什么。",
+      "appMissing": "它可能已被移到废纸篓或删除；还要用，就把它放回“应用程序”后重试，不再需要可以卸载它。",
+      "unsupported": "这个版本不能在这台Mac上运行，可以在操作日志中查看它的要求。",
+      "timedOut": "请稍后再试。",
+      "changed": "请重新打开确认窗口后重试。",
+      "internal": "请稍后再试。"
+    },
+    "line": {
+      "conflict": "与已有的文件冲突，请在操作日志中查看是哪个文件，处理后重试。",
+      "notFound": "找不到需要的内容，可以在操作日志中查看缺少什么。",
+      "appMissing": "App已不在原来的位置，可能已被移到废纸篓或删除；还要用，就把它放回“应用程序”后重试，不再需要可以卸载它。",
+      "unsupported": "这个版本不能在这台Mac上运行，可以在操作日志中查看它的要求。",
+      "timedOut": "运行超时，请稍后再试。",
+      "changed": "确认窗口打开后有了变化，请重新打开确认窗口后重试。",
+      "internal": "发生内部错误，请稍后再试。"
     }
   },
   "failureSteps": {

@@ -614,7 +614,25 @@ export interface OpSummary {
    */
   env_preview?: [string, string][];
   cancel_policy: CancelPolicy;
+  /**
+   * For an update that `Succeeded` though its own command changed nothing,
+   * because it was already at the version its confirmed plan aimed for
+   * when its turn came: how it got there (Rust `OpSummary::already_updated`,
+   * crates/banager-core/src/ops/mod.rs). Always sent; optional here only
+   * so the operation fixtures that predate it need not spell it out -- a
+   * reader takes a missing one as none.
+   */
+  already_updated?: AlreadyUpdated | null;
 }
+/**
+ * Rust `AlreadyUpdated` (crates/banager-core/src/model.rs): an update
+ * another update of the same source -- one earlier in the same Update all,
+ * that upgraded it as a dependency -- had already done when its turn came
+ * (`ByEarlierUpdate`), or one already at its new version for no reason
+ * Banager saw (`BeforeItsTurn`). Worded by `ALREADY_UPDATED_KEYS`
+ * (src/lib/operations.ts).
+ */
+export type AlreadyUpdated = "ByEarlierUpdate" | "BeforeItsTurn";
 export interface SourceError {
   instance_id: string;
   message: string;
@@ -926,15 +944,18 @@ export type HistoryKind = "Update" | "Uninstall";
 /**
  * Rust `HistoryResult`: how a kept operation ended, as a category --
  * `Outcome` without the programs' words or Banager's paths. A failure's
- * cause is the word `failureCause` would have read off the tool's lines
- * (src/lib/failureCause.ts), or null.
+ * cause is the word `operationFailureCause` would have read off the
+ * tool's lines (src/lib/failureCause.ts), or one of Banager's own faults
+ * (`changed`, `internal`, ...); where none is named, `detail` is the first
+ * line of the tool's error, masked (Rust `failure_detail`). Both are absent
+ * in a record from before they were kept, whatever made it fail.
  */
 export type HistoryResult =
   | "Succeeded"
   | "Unconfirmed"
   | "Cancelled"
   | { NeedsAttention: Attention }
-  | { Failed: { cause: FailureCause | null } };
+  | { Failed: { cause: FailureCause | null; detail?: string | null } };
 /**
  * Rust `HistoryRecord`: one finished update or uninstall, kept in
  * `history.json` across launches. `finished_at` is in milliseconds.
@@ -954,6 +975,12 @@ export interface HistoryRecord {
   to_version: string | null;
   result: HistoryResult;
   verified: boolean;
+  /**
+   * For an update that succeeded because it was already at its target
+   * when its turn came: how (`AlreadyUpdated`). Absent otherwise, and in a
+   * record from before it was kept.
+   */
+  already_updated?: AlreadyUpdated | null;
 }
 /**
  * Rust `HistoryView`, from `get_history` and `clear_history`: this launch's

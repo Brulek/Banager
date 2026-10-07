@@ -2,9 +2,9 @@ import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { artifactKeyId } from "../store/ui";
 import { FAILURE_CAUSE_KEYS, outcomeCause, type FailureCause } from "../lib/failureCause";
-import { outcomeSentence, outcomeTone } from "../lib/operations";
+import { ALREADY_UPDATED_KEYS, outcomeSentence, outcomeTone } from "../lib/operations";
 import { calendarDaysBetween, shortDateText, shortTimeText } from "../lib/shortDate";
-import type { ArtifactKey, Attention, HistoryResult, OpSummary, Outcome } from "../lib/types";
+import type { AlreadyUpdated, ArtifactKey, Attention, HistoryResult, OpSummary, Outcome } from "../lib/types";
 import { InfoDetail } from "./InfoDetail";
 import { OutcomeIcon } from "./OutcomeIcon";
 import { ToolAvatar } from "./ToolAvatar";
@@ -12,25 +12,37 @@ import { BUTTON } from "./ui/controls";
 import { GROUP } from "./ui/group";
 
 /**
- * How an update 「最近的更新记录」 lists ended: it worked; it did not, with the
- * cause in a word where the tool's own words gave one (`failureCause`); or
+ * How an update 「最近的更新记录」 lists ended: it worked -- `already`
+ * saying how, for one already at its new version when its turn came
+ * (`AlreadyUpdated`, r6 y3-batch); it did not, with the cause in a word
+ * where the tool's own words gave one (`failureCause`), or, kept by the
+ * history where they gave none, the tool's first error line (`detail`); or
  * the tool said it worked and Banager found nothing changed, or could not
  * confirm it -- the row's 「结果不符」.
  */
 export type JustUpdatedEnding =
-  | { kind: "succeeded" }
-  | { kind: "failed"; cause: FailureCause | null }
+  | { kind: "succeeded"; already?: AlreadyUpdated }
+  | { kind: "failed"; cause: FailureCause | null; detail?: string }
   | { kind: "attention"; outcome: "Unconfirmed" | { NeedsAttention: Attention } };
+
+/** `{ kind: "succeeded" }`, with how it was done where it was already done. */
+function succeeded(already: AlreadyUpdated | null | undefined): JustUpdatedEnding {
+  return already ? { kind: "succeeded", already } : { kind: "succeeded" };
+}
 
 /**
  * The ending of an update this window ran, or null for one 「最近的更新记录」
- * does not list: one cancelled, or not finished.
+ * does not list: one cancelled, or not finished. `alreadyUpdated` is its
+ * summary's (`OpSummary.already_updated`).
  */
-export function endingOfOutcome(outcome: Outcome | null): JustUpdatedEnding | null {
+export function endingOfOutcome(
+  outcome: Outcome | null,
+  alreadyUpdated: AlreadyUpdated | null = null,
+): JustUpdatedEnding | null {
   if (outcome === null) return null;
   switch (outcomeTone(outcome)) {
     case "success":
-      return { kind: "succeeded" };
+      return succeeded(alreadyUpdated);
     case "failure":
       return { kind: "failed", cause: outcomeCause(outcome) };
     case "attention":
@@ -43,13 +55,21 @@ export function endingOfOutcome(outcome: Outcome | null): JustUpdatedEnding | nu
   }
 }
 
-/** The ending of an update the history kept, or null for one cancelled (`listedResult`). */
-export function endingOfRecord(result: HistoryResult): JustUpdatedEnding | null {
-  if (result === "Succeeded") return { kind: "succeeded" };
+/**
+ * The ending of an update the history kept, or null for one cancelled
+ * (`listedResult`). `alreadyUpdated` is the record's
+ * (`HistoryRecord.already_updated`).
+ */
+export function endingOfRecord(
+  result: HistoryResult,
+  alreadyUpdated: AlreadyUpdated | null = null,
+): JustUpdatedEnding | null {
+  if (result === "Succeeded") return succeeded(alreadyUpdated);
   if (result === "Cancelled") return null;
   if (result === "Unconfirmed") return { kind: "attention", outcome: "Unconfirmed" };
   if ("NeedsAttention" in result) return { kind: "attention", outcome: result };
-  return { kind: "failed", cause: result.Failed.cause };
+  const { cause, detail } = result.Failed;
+  return cause === null && detail ? { kind: "failed", cause, detail } : { kind: "failed", cause };
 }
 
 /** One update the Updates page's "Just updated" lists, as it shows it. */
@@ -164,9 +184,13 @@ export function finishedText(
 /**
  * How a line says its update ended, in 11 after the outcome's 12 sign
  * (`OutcomeIcon`): the ✓ and 「已更新」 the row showed, or 「已确认更新」 where
- * Banager read the version change for itself; the red ⚠︎ and 「未能更新」,
+ * Banager read the version change for itself -- or, for one already at its
+ * new version when its turn came, how: 「已由前面的更新一并完成」, why behind
+ * an ⓘ; the red ⚠︎ and 「未能更新」,
  * with the cause where the tool's words gave one --
- * 「未能更新：网络连接失败」 -- and what to do about it behind an ⓘ; the
+ * 「未能更新：网络连接失败」 -- and what to do about it behind an ⓘ, or, where
+ * they gave none, 「原因：」 and the first line of the tool's error the
+ * history kept, behind the ⓘ (r6 y3-batch); the
  * orange ⚠︎ and what did not add up, in the outcome's own words
  * (「结果未确认」) -- but an update whose version Banager read unchanged
  * after it says what that means, 「没有更新成功：版本没有变」, and what it
@@ -182,6 +206,12 @@ function EndingWords({ entry }: { entry: JustUpdatedEntry }) {
   switch (ending.kind) {
     case "succeeded":
       tone = "success";
+      if (ending.already) {
+        // Already at its new version when its turn came: done, and how.
+        words = t(ALREADY_UPDATED_KEYS[ending.already].word);
+        why = t(ALREADY_UPDATED_KEYS[ending.already].why);
+        break;
+      }
       // 「已更新」, as the row and the operation bar say it (walk-3 W3-19);
       // that the version was read before and after is behind its ⓘ.
       words = t("updates.progress.succeeded");
@@ -195,7 +225,12 @@ function EndingWords({ entry }: { entry: JustUpdatedEntry }) {
         ending.cause === null
           ? t("updates.progress.failed")
           : t("history.failedBecause", { cause: t(FAILURE_CAUSE_KEYS[ending.cause].word) });
-      why = ending.cause === null ? undefined : t(FAILURE_CAUSE_KEYS[ending.cause].line);
+      why =
+        ending.cause !== null
+          ? t(FAILURE_CAUSE_KEYS[ending.cause].line)
+          : ending.detail
+            ? t("batchResult.reason", { detail: ending.detail })
+            : undefined;
       break;
     case "attention":
       tone = "attention";

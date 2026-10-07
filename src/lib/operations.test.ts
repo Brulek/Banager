@@ -210,6 +210,29 @@ describe("outcomeTone", () => {
   });
 });
 
+describe("operationWords, for an update already at its target (r6 y3-batch)", () => {
+  const en = i18n.getFixedT("en");
+
+  it("says how an update another one already did was done, in place of 「已更新」", () => {
+    expect(operationWords(en, op(1, "Done", { already_updated: "ByEarlierUpdate" }), [], false)).toBe(
+      "Done by an earlier update",
+    );
+    expect(operationWords(en, op(1, "Done", { already_updated: "BeforeItsTurn" }), [], false)).toBe(
+      "Already up to date",
+    );
+    // Only of one that is done and worked.
+    expect(operationWords(en, op(1, "Done", { already_updated: null }), [], false)).toBe("Updated");
+    expect(
+      operationWords(
+        en,
+        op(1, "Done", { already_updated: "BeforeItsTurn", outcome: { NeedsAttention: "UnchangedAfterUpgrade" } }),
+        [],
+        false,
+      ),
+    ).toBe("Update reported success, but the version didn't change");
+  });
+});
+
 describe("operationWords", () => {
   // The words that say what the operation does themselves: running, a
   // plain success, a plain failure, and what did not add up after it.

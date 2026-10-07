@@ -717,6 +717,14 @@ describe("types", () => {
     expect(roundTrip(plan).locks).toEqual(["brew:/opt/homebrew"]);
     expect(roundTrip(opSummary).status).toBe("Running");
     expect(roundTrip(opSummary).outcome).toBeNull();
+    // r6 y3-batch: how an update already at its target was done, as Rust's
+    // test_op_summary_wire_shape_carries_already_updated_and_reads_without_it
+    // writes it; a summary without it reads as none.
+    const already: OpSummary = JSON.parse(
+      '{"id":10,"kind":"Upgrade","instance_id":"brew:/opt/homebrew","artifact_kind":"Formula","name":"libpng","status":"Done","outcome":"Succeeded","argv_preview":[],"env_preview":[],"cancel_policy":"KillThenReconcile","already_updated":"ByEarlierUpdate"}',
+    );
+    expect(roundTrip(already).already_updated).toBe("ByEarlierUpdate");
+    expect(roundTrip(opSummary).already_updated ?? null).toBeNull();
     // A pair each, as Rust's `(String, String)` serializes.
     expect(roundTrip(opSummary).env_preview).toEqual([["HOMEBREW_NO_AUTOREMOVE", "1"]]);
     expect(roundTrip(settings).language).toBe("ZhCn");

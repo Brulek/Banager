@@ -68,6 +68,19 @@ describe("the history's wire shape", () => {
     );
     const failed: HistoryRecord["result"] = JSON.parse('{"Failed":{"cause":"diskFull"}}');
     expect(failed).toEqual({ Failed: { cause: "diskFull" } });
+    // r6 y3-batch: a line where no cause is named, and how an update
+    // already at its target was done (Rust's
+    // test_every_failure_keeps_a_cause_and_one_no_cause_names_keeps_its_first_error_line,
+    // test_an_update_already_at_its_target_is_kept_as_succeeded_and_says_how).
+    const other: HistoryRecord["result"] = JSON.parse('{"Failed":{"cause":null,"detail":"SHA256 mismatch"}}');
+    expect(other).toEqual({ Failed: { cause: null, detail: "SHA256 mismatch" } });
+    const appMissing: HistoryRecord["result"] = JSON.parse('{"Failed":{"cause":"appMissing"}}');
+    expect(appMissing).toEqual({ Failed: { cause: "appMissing" } });
+    const already: HistoryRecord = JSON.parse(
+      wire.replace('"verified":true}', '"verified":false,"already_updated":"ByEarlierUpdate"}'),
+    );
+    expect(already.already_updated).toBe("ByEarlierUpdate");
+    expect(JSON.parse(JSON.stringify(already))).toEqual(already);
   });
 
   it("names a failure's cause as the window does: the cases Rust's reading is tested on", () => {

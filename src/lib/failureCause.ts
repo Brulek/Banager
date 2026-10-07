@@ -13,6 +13,12 @@
  * something about. Anything else is null: the row keeps 「未能更新」, and
  * the log has the tool's own words.
  *
+ * An operation's words are read further (`operationFailureCause`, r6
+ * y3-batch): where none of those causes is named, for the ones only a
+ * change meets -- a conflict, something missing, an app moved out of
+ * Applications, a Mac the version does not support, a step that ran too
+ * long. A lookup's are not: it changes nothing.
+ *
  * Pure, and free of `t`: `FAILURE_CAUSE_KEYS` gives the words.
  */
 import type { Outcome } from "./types";
@@ -40,6 +46,22 @@ import type { Outcome } from "./types";
  *   was closed, or answered wrongly three times. A window was there, so
  *   this is not "can't be entered here"; trying again asks again, and
  *   Terminal is a way on too.
+ *
+ * Read only off an operation's words (`operationFailureCause`):
+ *
+ * - `conflict`: something already where it installs -- an app or a file of
+ *   the same name, a link Homebrew would make, a package it conflicts with.
+ * - `notFound`: something it needs is not there -- a package its source no
+ *   longer has, a program it runs (`env: node: No such file or directory`).
+ * - `appMissing`: a Homebrew cask's app is not where it was installed --
+ *   moved to the Trash or deleted -- so Homebrew cannot back it up to
+ *   update it ("It seems the App source '/Applications/…' is not there").
+ * - `unsupported`: the version does not run on this Mac's macOS or chip.
+ * - `timedOut`: a step of the tool's ran past the tool's own time limit.
+ *
+ * Never read off words, only kept by the history for a failure of
+ * Banager's own (Rust `record_for`): `changed` -- what it was about to
+ * change was no longer what the confirmation showed -- and `internal`.
  */
 export type FailureCause =
   | "network"
@@ -48,7 +70,14 @@ export type FailureCause =
   | "busy"
   | "homebrewUpdating"
   | "needsPassword"
-  | "passwordNotAccepted";
+  | "passwordNotAccepted"
+  | "conflict"
+  | "notFound"
+  | "appMissing"
+  | "unsupported"
+  | "timedOut"
+  | "changed"
+  | "internal";
 
 /**
  * sudo's own fixed words for "I needed a password and got none" -- the
@@ -181,6 +210,77 @@ const PATTERNS: Array<[FailureCause, RegExp[]]> = [
 ];
 
 /**
+ * The phrases only an operation's words are read for, after `PATTERNS`
+ * found none (`operationFailureCause`), first match wins, in this order:
+ * an app gone from Applications before anything else that says a source
+ * is missing; a Mac the version does not support before the conflict or
+ * the missing file that follows from it. Rust's `by_operation_cause`
+ * (crates/banager-core/src/history/failure_cause.rs) is the same list.
+ */
+const OPERATION_PATTERNS: Array<[FailureCause, RegExp[]]> = [
+  ["appMissing", [/\bIt seems the App source '[^']*\/Applications\/[^']*' is not there\b/i]],
+  [
+    "unsupported",
+    [
+      /\bdoes not run on macOS versions\b/i,
+      /\bis not available on macOS\b/i,
+      /\bdepends on hardware architecture being one of\b/i,
+      /\beither does not compile or function as expected on macOS\b/i,
+      /\bEBADPLATFORM\b/,
+      /\bis not a supported wheel on this platform\b/i,
+    ],
+  ],
+  [
+    "conflict",
+    [
+      /\bIt seems there is already an? [A-Za-z ]+ at\b/i,
+      /\bconflicts with '/i,
+      /\bconflicting formulae\b/i,
+      /\bCould not symlink\b/i,
+      /\balready exists\. You may want to remove it\b/i,
+      /\bEEXIST\b/,
+      /\bbinary `[^`]+` already exists in destination\b/i,
+      /\bExecutable already exists\b/i,
+    ],
+  ],
+  [
+    "notFound",
+    [
+      /\bIt seems the [A-Za-z ]+ source '[^']*' is not there\b/i,
+      /\bNo available (?:formula|cask)\b/i,
+      /\bNo (?:cask|formula|formulae) with (?:this|the) name\b/i,
+      /\b(?:Cask|Formula) '[^']+' is not installed\b/i,
+      /\bNo such keg\b/i,
+      /\bE404\b/,
+      /\b404 Not Found\b/i,
+      /\bis not in this registry\b/i,
+      /\bcommand not found\b/i,
+      /\bNo such file or directory\b/i,
+      /\bENOENT\b/,
+      /\bNo matching distribution found\b/i,
+      /\bcould not find `[^`]+` in registry\b/i,
+      /\bwas not found in the package registry\b/i,
+      /\bfile does not exist\b/i,
+    ],
+  ],
+  [
+    "permission",
+    [/\bFailed to quarantine\b/i, /\bFailed to release .* from quarantine\b/i, /\bCannot remove undeletable\b/i],
+  ],
+  ["timedOut", [/\bTimeout::Error\b/, /\bexecution expired\b/i, /\bdid not finish within\b/i]],
+];
+
+/** The first of `patterns`' causes a line of `lines` names, from the last line up. */
+function lastNamed(lines: string[], patterns: Array<[FailureCause, RegExp[]]>): FailureCause | null {
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    for (const [cause, phrases] of patterns) {
+      if (phrases.some((pattern) => pattern.test(lines[index]))) return cause;
+    }
+  }
+  return null;
+}
+
+/**
  * The cause `text` names, or null. Read from its last line up, so that
  * where a tool retried and then failed for another reason -- "Read timed
  * out. Retrying…" and then "Permission denied" -- the reason it stopped on
@@ -200,12 +300,22 @@ export function failureCause(text: string): FailureCause | null {
   const lines = text.split(/\r?\n/).filter((line) => line.trim() !== "");
   const password = sudoPasswordCause(lines);
   if (password !== null) return password;
-  for (let index = lines.length - 1; index >= 0; index -= 1) {
-    for (const [cause, patterns] of PATTERNS) {
-      if (patterns.some((pattern) => pattern.test(lines[index]))) return cause;
-    }
-  }
-  return null;
+  return lastNamed(lines, PATTERNS);
+}
+
+/**
+ * Why an operation failed, by its tool's words: `failureCause` on all of
+ * them first; only where that names none, the causes only a change meets
+ * (`OPERATION_PATTERNS`), from the last line up. Two passes, so a network
+ * failure a tool retried and then gave up on in other words -- pip's "No
+ * matching distribution found" after its retries -- stays the network.
+ * The core reads an operation's failure with the same rule (Rust
+ * `operation_failure_cause`) and hands the window only the cause
+ * (`Outcome.Failed.cause`); this is the mock backend's, and the shared
+ * cases' check that the two agree.
+ */
+export function operationFailureCause(text: string): FailureCause | null {
+  return failureCause(text) ?? lastNamed(text.split(/\r?\n/).filter((line) => line.trim() !== ""), OPERATION_PATTERNS);
 }
 
 /**
@@ -281,5 +391,40 @@ export const FAILURE_CAUSE_KEYS: Record<FailureCause, { word: string; next: stri
     word: "failure.cause.passwordNotAccepted",
     next: "failure.next.passwordNotAccepted",
     line: "failure.line.passwordNotAccepted",
+  },
+  conflict: {
+    word: "failureMore.cause.conflict",
+    next: "failureMore.next.conflict",
+    line: "failureMore.line.conflict",
+  },
+  notFound: {
+    word: "failureMore.cause.notFound",
+    next: "failureMore.next.notFound",
+    line: "failureMore.line.notFound",
+  },
+  appMissing: {
+    word: "failureMore.cause.appMissing",
+    next: "failureMore.next.appMissing",
+    line: "failureMore.line.appMissing",
+  },
+  unsupported: {
+    word: "failureMore.cause.unsupported",
+    next: "failureMore.next.unsupported",
+    line: "failureMore.line.unsupported",
+  },
+  timedOut: {
+    word: "failureMore.cause.timedOut",
+    next: "failureMore.next.timedOut",
+    line: "failureMore.line.timedOut",
+  },
+  changed: {
+    word: "failureMore.cause.changed",
+    next: "failureMore.next.changed",
+    line: "failureMore.line.changed",
+  },
+  internal: {
+    word: "failureMore.cause.internal",
+    next: "failureMore.next.internal",
+    line: "failureMore.line.internal",
   },
 };

@@ -110,6 +110,23 @@ describe("endingOfOutcome and endingOfRecord", () => {
     });
     expect(endingOfRecord("Cancelled")).toBeNull();
   });
+
+  it("say how an update already at its target was done, and keep a failure's line where no cause is named (r6 y3-batch)", () => {
+    expect(endingOfOutcome("Succeeded", "ByEarlierUpdate")).toEqual({ kind: "succeeded", already: "ByEarlierUpdate" });
+    expect(endingOfOutcome("Succeeded", null)).toEqual({ kind: "succeeded" });
+    expect(endingOfRecord("Succeeded", "BeforeItsTurn")).toEqual({ kind: "succeeded", already: "BeforeItsTurn" });
+    // Only a success says it.
+    expect(endingOfRecord({ NeedsAttention: "UnchangedAfterUpgrade" }, "BeforeItsTurn")).toEqual({
+      kind: "attention",
+      outcome: { NeedsAttention: "UnchangedAfterUpgrade" },
+    });
+    expect(endingOfRecord({ Failed: { cause: "appMissing" } })).toEqual({ kind: "failed", cause: "appMissing" });
+    expect(endingOfRecord({ Failed: { cause: null, detail: "SHA256 mismatch" } })).toEqual({
+      kind: "failed",
+      cause: null,
+      detail: "SHA256 mismatch",
+    });
+  });
 });
 
 describe("finishedText", () => {
@@ -308,6 +325,43 @@ describe("JustUpdated", () => {
     }
   });
 
+  it("says an update an earlier one already did as done, and why behind its ⓘ (r6 y3-batch)", () => {
+    const lines: JustUpdatedEntry[] = [
+      { ...entry, id: "a", name: "libpng", ending: { kind: "succeeded", already: "ByEarlierUpdate" } },
+      { ...entry, id: "b", name: "pcre2", verified: true, ending: { kind: "succeeded", already: "BeforeItsTurn" } },
+    ];
+    renderWithProviders(<JustUpdated entries={lines} onClear={() => {}} />);
+    const [byEarlier, before] = screen.getAllByRole("listitem");
+    const words = within(byEarlier).getByText("Done by an earlier update");
+    expect(why(words)).toBe(
+      "When its turn came it was already up to date: an earlier update had updated it as well.",
+    );
+    expect(words.querySelector("svg")).toHaveClass("text-success");
+    expect(within(byEarlier).getByText("2.55.1")).toBeInTheDocument();
+    expect(why(within(before).getByText("Already up to date"))).toBe(
+      "When its turn came it was already up to date, so its own command changed nothing.",
+    );
+  });
+
+  it("says why an update failed after the window that watched it closed: its cause, or the tool's line (r6 y3-batch)", () => {
+    const failed: JustUpdatedEntry[] = [
+      { ...entry, id: "a", name: "Claudebar", version: null, ending: { kind: "failed", cause: "appMissing" } },
+      {
+        ...entry,
+        id: "b",
+        name: "OnyX",
+        version: null,
+        ending: { kind: "failed", cause: null, detail: "SHA256 mismatch" },
+      },
+    ];
+    renderWithProviders(<JustUpdated entries={failed} onClear={() => {}} />);
+    const [missing, other] = screen.getAllByRole("listitem");
+    expect(why(within(missing).getByText("Couldn't update: The app isn't where it was installed"))).toBe(
+      "The app isn't where it was installed; it may have been moved to the Trash or deleted. To keep using it, put it back in Applications and try again, or uninstall it if you no longer need it.",
+    );
+    expect(why(within(other).getByText("Couldn't update"))).toBe("Reason: SHA256 mismatch");
+  });
+
   it("says what did not add up, in plain words beside an orange sign, not the row's short 「结果不符」", () => {
     const toCheck: JustUpdatedEntry[] = [
       {
@@ -360,6 +414,28 @@ describe("JustUpdated", () => {
       expect(within(plain).getByText("未能更新")).toBeInTheDocument();
       expect(within(unconfirmed).getByText("结果未确认")).toBeInTheDocument();
       expect(within(unconfirmed).getByRole("img", { name: "需要查看" })).toBeInTheDocument();
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+
+  it("says in Chinese: 已由前面的更新一并完成, 未能更新：App已不在原来的位置, 原因：…", async () => {
+    await i18n.changeLanguage("zh-CN");
+    try {
+      const lines: JustUpdatedEntry[] = [
+        { ...entry, id: "a", ending: { kind: "succeeded", already: "ByEarlierUpdate" } },
+        { ...entry, id: "b", version: null, ending: { kind: "failed", cause: "appMissing" } },
+        { ...entry, id: "c", version: null, ending: { kind: "failed", cause: null, detail: "SHA256 mismatch" } },
+      ];
+      renderWithProviders(<JustUpdated entries={lines} onClear={() => {}} />);
+      const [already, missing, other] = screen.getAllByRole("listitem");
+      expect(why(within(already).getByText("已由前面的更新一并完成"))).toBe(
+        "轮到这一项时，它已是新版本：前面的一项更新已把它一并更新了。",
+      );
+      expect(why(within(missing).getByText("未能更新：App已不在原来的位置"))).toBe(
+        "App已不在原来的位置，可能已被移到废纸篓或删除；还要用，就把它放回“应用程序”后重试，不再需要可以卸载它。",
+      );
+      expect(why(within(other).getByText("未能更新"))).toBe("原因：SHA256 mismatch");
     } finally {
       await i18n.changeLanguage("en");
     }

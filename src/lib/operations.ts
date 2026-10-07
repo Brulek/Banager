@@ -3,7 +3,7 @@ import { useSnapshot } from "./queries";
 import { FAILURE_CAUSE_KEYS, outcomeCause } from "./failureCause";
 import { outcomeArgs, outcomeKey } from "./format";
 import { artifactKeyId, useUiStore, type LogLine } from "../store/ui";
-import type { OpKind, OpStatus, OpSummary, Outcome } from "./types";
+import type { AlreadyUpdated, OpKind, OpStatus, OpSummary, Outcome } from "./types";
 
 type Translate = (key: string, options?: Record<string, unknown>) => string;
 
@@ -12,6 +12,25 @@ type Translate = (key: string, options?: Record<string, unknown>) => string;
  * words, whether it can still be cancelled, how it ended, and which
  * operations the bar is about right now.
  */
+
+/**
+ * How an update already at its new version when its turn came is said, in
+ * place of 「已更新」 (r6 y3-batch): `word` where the row's ending stands --
+ * 「已由前面的更新一并完成」, "Done by an earlier update" -- and `why` behind
+ * the ⓘ of 「最近的更新记录」. A `Record` over `AlreadyUpdated`, so a variant
+ * added to the mirror without words fails `tsc`; spelled out, so the
+ * reachability test finds every key.
+ */
+export const ALREADY_UPDATED_KEYS: Record<AlreadyUpdated, { word: string; why: string }> = {
+  ByEarlierUpdate: {
+    word: "batchResult.already.ByEarlierUpdate",
+    why: "batchResult.alreadyWhy.ByEarlierUpdate",
+  },
+  BeforeItsTurn: {
+    word: "batchResult.already.BeforeItsTurn",
+    why: "batchResult.alreadyWhy.BeforeItsTurn",
+  },
+};
 
 /** Whether an operation is still under way: anything but Done. */
 export function isActive(op: OpSummary): boolean {
@@ -258,6 +277,11 @@ function outcomeChoice(t: Translate, outcome: Outcome | null, kind: OpKind, tech
  * anything but its plain words (review 1.1).
  */
 export function operationWords(t: Translate, op: OpSummary, logs: LogLine[], technical: boolean): string {
+  // An update already at its new version when its turn came: done, and
+  // said how, as 「最近的更新记录」 says it. Its words name what it did.
+  if (op.status === "Done" && op.outcome === "Succeeded" && op.already_updated) {
+    return t(ALREADY_UPDATED_KEYS[op.already_updated].word);
+  }
   const status = statusChoice(op, logs);
   const { words, namesKind } =
     status !== null ? { ...status, words: t(status.words) } : outcomeChoice(t, op.outcome, op.kind, technical);

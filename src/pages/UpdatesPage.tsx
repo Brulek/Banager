@@ -576,7 +576,7 @@ export function UpdatesPage() {
     // And nothing a kept Clear came after, should the web view have
     // reloaded since and forgotten `clearedJustUpdated`.
     const here = ops.filter((op) => !clearedHere(history, op.id)).flatMap((op): JustUpdatedEntry[] => {
-      const ending = endingOfOutcome(op.outcome);
+      const ending = endingOfOutcome(op.outcome, op.already_updated ?? null);
       if (ending === null) return [];
       const key = { instance_id: op.instance_id, kind: op.artifact_kind, name: op.name };
       const adapterId = instancesById.get(op.instance_id)?.adapter_id ?? adapterIdOf(op.instance_id);
@@ -602,7 +602,7 @@ export function UpdatesPage() {
     // A failure or one to check, only while its update is still offered.
     const offered = new Set((snapshot?.updates ?? []).map((candidate) => artifactKeyId(candidate.key)));
     const kept = recentUpdates(history, operations ?? [], Date.now(), offered).flatMap((record): JustUpdatedEntry[] => {
-      const ending = endingOfRecord(record.result);
+      const ending = endingOfRecord(record.result, record.already_updated ?? null);
       if (ending === null) return [];
       return [
         {

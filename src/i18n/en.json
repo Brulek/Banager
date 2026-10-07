@@ -428,6 +428,17 @@
     "unchanged": "Didn't update: same version",
     "unchangedTitle": "The command said it finished, but the version read before and after the update is the same."
   },
+  "batchResult": {
+    "reason": "Reason: {{detail}}",
+    "already": {
+      "ByEarlierUpdate": "Done by an earlier update",
+      "BeforeItsTurn": "Already up to date"
+    },
+    "alreadyWhy": {
+      "ByEarlierUpdate": "When its turn came it was already up to date: an earlier update had updated it as well.",
+      "BeforeItsTurn": "When its turn came it was already up to date, so its own command changed nothing."
+    }
+  },
   "commandPreview": {
     "show_one": "Show Command",
     "show_other": "Show Commands",
@@ -1548,6 +1559,35 @@
       "withCause": "The words above are the error message from {{program}} itself. {{line}}",
       "inTerminal": "The words above are the error message from {{program}} itself. {{line}} You can click View Log and run the command it gives in Terminal.",
       "noLog": "The words above are the error message from {{program}} itself. You can {{again}} later. If it still fails, show these words to someone who can help."
+    }
+  },
+  "failureMore": {
+    "cause": {
+      "conflict": "Conflicts with existing files",
+      "notFound": "Something it needs is missing",
+      "appMissing": "The app isn't where it was installed",
+      "unsupported": "Doesn't support this Mac",
+      "timedOut": "Took too long",
+      "changed": "Changed after you confirmed",
+      "internal": "An internal error occurred"
+    },
+    "next": {
+      "conflict": "Check the operation log for which file, deal with it, then try again.",
+      "notFound": "The operation log shows what's missing.",
+      "appMissing": "It may have been moved to the Trash or deleted; to keep using it, put it back in Applications and try again, or uninstall it if you no longer need it.",
+      "unsupported": "This version can't run on this Mac; the operation log shows what it needs.",
+      "timedOut": "Try again later.",
+      "changed": "Open the confirmation again, then try again.",
+      "internal": "Try again later."
+    },
+    "line": {
+      "conflict": "It conflicts with files already there. Check the operation log for which one, deal with it, then try again.",
+      "notFound": "Something it needs is missing. The operation log shows what.",
+      "appMissing": "The app isn't where it was installed; it may have been moved to the Trash or deleted. To keep using it, put it back in Applications and try again, or uninstall it if you no longer need it.",
+      "unsupported": "This version can't run on this Mac. The operation log shows what it needs.",
+      "timedOut": "It took too long. Try again later.",
+      "changed": "Something changed after you confirmed. Open the confirmation again, then try again.",
+      "internal": "An internal error occurred. Try again later."
     }
   },
   "failureSteps": {

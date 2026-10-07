@@ -391,6 +391,17 @@
     "unchanged": "沒有更新成功：版本沒有變",
     "unchangedTitle": "指令顯示已完成，但更新前後讀到的版本相同。"
   },
+  "batchResult": {
+    "reason": "原因：{{detail}}",
+    "already": {
+      "ByEarlierUpdate": "已由前面的更新一併完成",
+      "BeforeItsTurn": "輪到它時已是新版本"
+    },
+    "alreadyWhy": {
+      "ByEarlierUpdate": "輪到這一項時，它已是新版本：前面的一項更新已把它一併更新了。",
+      "BeforeItsTurn": "輪到這一項時，它已是新版本，這次的指令沒有再改動它。"
+    }
+  },
   "commandPreview": {
     "show_other": "查看指令",
     "trashLabel": "移到垃圾桶",
@@ -1428,6 +1439,35 @@
       "withCause": "上面是{{program}}自己顯示的錯誤訊息。{{line}}",
       "inTerminal": "上面是{{program}}自己顯示的錯誤訊息。{{line}}可以點按「查看記錄」，在終端機裡執行那裡給出的指令。",
       "noLog": "上面是{{program}}自己顯示的錯誤訊息。可以稍後{{again}}；還是失敗，就把這段錯誤訊息告訴懂的人。"
+    }
+  },
+  "failureMore": {
+    "cause": {
+      "conflict": "與既有的檔案衝突",
+      "notFound": "找不到需要的內容",
+      "appMissing": "App已不在原本的位置",
+      "unsupported": "不支援這台Mac",
+      "timedOut": "執行逾時",
+      "changed": "確認後有了變化",
+      "internal": "發生內部錯誤"
+    },
+    "next": {
+      "conflict": "請在操作記錄中查看是哪個檔案，處理後再試一次。",
+      "notFound": "可以在操作記錄中查看缺少什麼。",
+      "appMissing": "它可能已被移到垃圾桶或刪除；還要使用，就把它放回「應用程式」後再試一次，不再需要可以解除安裝它。",
+      "unsupported": "這個版本無法在這台Mac上執行，可以在操作記錄中查看它的要求。",
+      "timedOut": "請稍後再試。",
+      "changed": "請重新開啟確認視窗後再試一次。",
+      "internal": "請稍後再試。"
+    },
+    "line": {
+      "conflict": "與既有的檔案衝突，請在操作記錄中查看是哪個檔案，處理後再試一次。",
+      "notFound": "找不到需要的內容，可以在操作記錄中查看缺少什麼。",
+      "appMissing": "App已不在原本的位置，可能已被移到垃圾桶或刪除；還要使用，就把它放回「應用程式」後再試一次，不再需要可以解除安裝它。",
+      "unsupported": "這個版本無法在這台Mac上執行，可以在操作記錄中查看它的要求。",
+      "timedOut": "執行逾時，請稍後再試。",
+      "changed": "確認視窗開啟後有了變化，請重新開啟確認視窗後再試一次。",
+      "internal": "發生內部錯誤，請稍後再試。"
     }
   },
   "failureSteps": {
