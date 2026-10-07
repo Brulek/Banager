@@ -426,19 +426,24 @@ impl NpmAdapter {
             let found = parse_outdated_global(&output.stdout, &inst.id)?;
             return Ok(self.with_formulas_npm_marked(inst, found).into());
         }
-        // npm exits 1 whenever it *finds* anything outdated — a result, not
-        // a failure (per-adapter contract table). So a non-zero exit that
-        // came with findings is that result...
-        if let Ok(found) = parse_outdated_global(&output.stdout, &inst.id) {
-            if !found.is_empty() {
-                return Ok(self.with_formulas_npm_marked(inst, found).into());
+        // npm exits 1 whenever it *finds* a version difference -- a result,
+        // not a failure (per-adapter contract table) -- including one that
+        // is no upgrade: a global installed ahead of `latest` is listed too
+        // (`current !== wanted`, npm's `commands/outdated.js`). So exit 1
+        // with rows npm printed is that result even when the SemVer filter
+        // keeps none of them as an update (review r7 F1)...
+        if output.exit_code == Some(1) {
+            if let Ok((found, has_rows)) = parse_outdated_result(&output.stdout, &inst.id) {
+                if has_rows {
+                    return Ok(self.with_formulas_npm_marked(inst, found).into());
+                }
             }
         }
-        // ...and a non-zero exit with nothing to show for it is a lookup
-        // that did not happen: npm exits 1 *because* it found something, so
-        // "exit 1 and found nothing" is a contradiction, not good news.
-        // Returning the empty list here is what used to tell a user whose
-        // registry was unreachable that everything was up to date.
+        // ...and any other non-zero exit, or exit 1 with no rows to show
+        // for it, is a lookup that did not happen: "exit 1 and printed
+        // nothing" is a contradiction, not good news. Returning the empty
+        // list here is what used to tell a user whose registry was
+        // unreachable that everything was up to date.
         let failure = LookupFailure::words(
             lookup_failure_reason("npm outdated -g", output.exit_code, &output.stderr),
             &output.stderr,
@@ -710,11 +715,23 @@ pub(crate) fn parse_outdated_global(
     json: &str,
     instance_id: &str,
 ) -> Result<Vec<UpdateCandidate>, crate::adapters::AdapterError> {
+    Ok(parse_outdated_result(json, instance_id)?.0)
+}
+
+fn parse_outdated_result(
+    json: &str,
+    instance_id: &str,
+) -> Result<(Vec<UpdateCandidate>, bool), AdapterError> {
     if json.trim().is_empty() {
-        return Ok(Vec::new());
+        return Ok((Vec::new(), false));
     }
     let root: HashMap<String, OutdatedEntry> = serde_json::from_str(json)
         .map_err(|e| crate::adapters::AdapterError::Parse(e.to_string()))?;
+    let has_rows = root.iter().any(|(name, entry)| {
+        crate::adapters::sanity::is_name(name)
+            && crate::adapters::sanity::is_name(&entry.current)
+            && crate::adapters::sanity::is_name(&entry.latest)
+    });
     let mut out = Vec::new();
     for (name, entry) in root {
         if !crate::adapters::sanity::is_name(&entry.latest) {
@@ -751,7 +768,7 @@ pub(crate) fn parse_outdated_global(
         }
     }
     out.sort_by(|a, b| a.key.name.cmp(&b.key.name));
-    Ok(crate::adapters::sanity::candidates(out))
+    Ok((crate::adapters::sanity::candidates(out), has_rows))
 }
 
 #[derive(Debug, Deserialize)]
@@ -802,6 +819,104 @@ mod tests {
     }
 
     use super::*;
+
+    #[tokio::test]
+    async fn regression_f01_npm_filtered_rows_are_still_a_successful_check() {
+        // Rows as npm prints them (`outdated-global.json`'s shape), for the
+        // two ways an installed global can be ahead of the registry: a
+        // prerelease past `latest`, and a newer release installed from a
+        // tarball. npm lists both (`current !== wanted`) and exits 1.
+        for (name, current, latest) in [
+            ("demo", "2.0.0-beta.1", "1.9.0"),
+            ("@scope/tool", "3.1.0", "3.0.2"),
+        ] {
+            let row = serde_json::json!({ name: {
+                "current": current,
+                "wanted": latest,
+                "latest": latest,
+                "dependent": "global",
+                "location": format!("/opt/homebrew/lib/node_modules/{name}"),
+            }});
+            let runner = Arc::new(MockRunner::new());
+            runner.respond(
+                vec![
+                    "/opt/homebrew/bin/npm",
+                    "outdated",
+                    "-g",
+                    "--json",
+                    "--prefix",
+                    "/opt/homebrew",
+                ],
+                CommandOutput {
+                    exit_code: Some(1),
+                    stdout: row.to_string(),
+                    stderr_cause: Default::default(),
+                    stderr: String::new(),
+                    timed_out: false,
+                    cancelled: false,
+                },
+            );
+            let result = NpmAdapter::new(runner.clone())
+                .check_updates(&test_instance(), &CheckOptions::default())
+                .await
+                .expect("valid npm rows answer the check even without upgrades");
+            assert!(result.candidates.is_empty());
+            assert_eq!(runner.calls().len(), 1);
+        }
+        // Empty/error-shaped exit 1 and a genuine nonzero failure still
+        // fall back to inventory, even if the latter printed valid rows.
+        for (code, stdout) in [
+            (1, "{}"),
+            (
+                1,
+                r#"{"error":{"code":"ENOTFOUND","summary":"request to https://registry.npmjs.org/demo failed, reason: getaddrinfo ENOTFOUND registry.npmjs.org","detail":"This is a problem related to network connectivity."}}"#,
+            ),
+            (
+                2,
+                r#"{"demo":{"current":"1.0.0","wanted":"2.0.0","latest":"2.0.0","dependent":"global","location":"/opt/homebrew/lib/node_modules/demo"}}"#,
+            ),
+        ] {
+            let runner = Arc::new(MockRunner::new());
+            let output = |text: &str, exit_code| CommandOutput {
+                exit_code: Some(exit_code),
+                stdout: text.into(),
+                stderr: String::new(),
+                stderr_cause: Default::default(),
+                timed_out: false,
+                cancelled: false,
+            };
+            runner.respond(
+                vec![
+                    "/opt/homebrew/bin/npm",
+                    "outdated",
+                    "-g",
+                    "--json",
+                    "--prefix",
+                    "/opt/homebrew",
+                ],
+                output(stdout, code),
+            );
+            runner.respond(
+                vec![
+                    "/opt/homebrew/bin/npm",
+                    "ls",
+                    "-g",
+                    "--depth=0",
+                    "--json",
+                    "--prefix",
+                    "/opt/homebrew",
+                ],
+                output(r#"{"dependencies":{"demo":{"version":"1.0.0"}}}"#, 0),
+            );
+            let rows = NpmAdapter::new(runner)
+                .check_updates(&test_instance(), &CheckOptions::default())
+                .await
+                .unwrap()
+                .candidates;
+            assert_eq!(rows.len(), 1);
+            assert!(!rows[0].checkable);
+        }
+    }
 
     #[tokio::test]
     async fn regression_f01_npm_global_commands_pin_the_confirmed_prefix() {

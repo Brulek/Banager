@@ -1728,10 +1728,12 @@ prefix is unknown. No other command runs.
 
 `npm ls` exits 1 for non-fatal reasons (a peer dependency mismatch), so
 exit 0 and 1 are both read. `npm outdated` exits 1 whenever it finds
-something outdated, so a non-zero exit with findings is a result, and a
-non-zero exit with nothing to show is reported as "could not check" for
-every package rather than as "everything is up to date" — listing every
-package that way takes one more run of
+a version difference, including one that is no update (a package
+installed ahead of `latest`), so exit 1 with rows npm printed is a
+result even when none of them is kept as an update. Any other non-zero
+exit, or exit 1 with no rows (empty or error output), is reported as
+"could not check" for every package rather than as "everything is up to
+date" — listing every package that way takes one more run of
 `<npm> ls -g --depth=0 --json --prefix {prefix}`, so
 a refresh whose `outdated` failed runs the inventory command twice. The
 search query passes `validate_search_query`.
