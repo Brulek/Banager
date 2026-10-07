@@ -1,17 +1,19 @@
 //! A keg-only formula linked into its prefix, through its update (y1-keg,
-//! r6): the preview, the check right before it runs, and the
-//! `brew link --force` after it. Each test lays a real prefix out on disk
-//! as Homebrew 7.0.8 lays out `node@22` (`links::tests`), reads it with the
-//! real `links::read_links`, and runs the plan's commands through
-//! `FakeHomebrew`, which changes that disk as Homebrew's `upgrade` and
-//! `link` would.
+//! r6): the preview, the check right before it runs, and the check and
+//! `brew link --formula --force` after it. Each test lays a real prefix out
+//! on disk as Homebrew 7.0.8 lays out `node@22` (`links::tests`), reads it
+//! with the real `links::read_links`, and runs the plan's commands through
+//! `FakeHomebrew`, which changes that disk by Homebrew's own rules for
+//! `upgrade`, `link` and `cleanup` (`keg.rb:361-391`, `823-861`), written
+//! here apart from the code under test.
 
+use super::links;
 use super::links::tests::{brew_link, make_keg, node_22_prefix, npm_updates_itself};
-use super::links::{self, Place};
 use super::*;
 use crate::events::VecSink;
 use crate::runner::{LineCallback, MockRunner, RunnerError};
 use std::os::unix::fs::symlink;
+use std::path::Component;
 
 /// A Homebrew instance whose prefix is `prefix`.
 fn instance(prefix: &Path) -> ManagerInstance {
@@ -80,7 +82,7 @@ fn one_old_version(_prefix: &Path, name: &str) -> Option<Kegs> {
 // -- The preview ----------------------------------------------------------
 
 #[tokio::test]
-async fn an_update_of_a_keg_only_formula_linked_with_brew_link_links_it_back_after() {
+async fn an_update_of_a_keg_only_formula_linked_with_brew_link_is_checked_after() {
     let prefix = node_22_prefix("keg-plan-brew-link");
     brew_link(&prefix, "22.23.3");
     let inst = instance(&prefix);
@@ -128,21 +130,94 @@ async fn an_update_of_a_keg_only_formula_linked_with_brew_link_links_it_back_aft
 }
 
 #[tokio::test]
-async fn an_update_of_a_keg_only_formula_linked_by_hand_links_it_back_after() {
-    // `ln -s ../opt/node@22/bin/node bin/node`: no record, so Homebrew's
-    // update takes the link away and puts nothing back.
+async fn an_update_of_a_keg_only_formula_linked_without_a_record_is_planned_as_before() {
+    // No record: Homebrew's update unlinks and links nothing
+    // (`upgrade.rb:268-272`, `640-643`). A link through `opt` follows it to
+    // the new version; one straight into the keg keeps leading to the
+    // version it replaces.
     let prefix = node_22_prefix("keg-plan-by-hand");
+    for by_hand in [
+        "../opt/node@22/bin/node",
+        "../Cellar/node@22/22.23.3/bin/node",
+    ] {
+        let _ = std::fs::remove_file(prefix.join("bin/node"));
+        symlink(by_hand, prefix.join("bin/node")).unwrap();
+        let inst = instance(&prefix);
+        let plan = adapter(Arc::new(MockRunner::new()), &inst)
+            .plan(&inst, &upgrade(&inst, "node@22"))
+            .await
+            .expect("plan");
+        assert!(
+            matches!(plan.action, PlanAction::Command { .. }),
+            "{by_hand}"
+        );
+        assert_eq!(plan.warnings, [], "{by_hand}");
+    }
+    std::fs::remove_dir_all(&prefix).unwrap();
+}
+
+#[tokio::test]
+async fn a_link_through_opt_with_npms_own_npm_is_neither_refused_nor_linked_after() {
+    // The author's Mac once `node` is put back by hand through `opt`,
+    // with `bin/npm` and `bin/npx` still npm 12.2.0's own: no record, so
+    // the update touches none of them, and `node` runs the new version.
+    let prefix = node_22_prefix("keg-run-through-opt");
+    symlink("../opt/node@22/bin/node", prefix.join("bin/node")).unwrap();
+    npm_updates_itself(&prefix);
+    let inst = instance(&prefix);
+    let runner = Arc::new(FakeHomebrew::new(&prefix, Upgrade::AsHomebrew));
+    let (adapter, plan) = planned(&inst, runner.clone()).await;
+    assert!(matches!(plan.action, PlanAction::Command { .. }));
+    assert_eq!(plan.warnings, []);
+    let sink = Arc::new(VecSink::new());
+    let outcome = adapter
+        .execute(&plan, sink.clone(), 7, CancellationToken::new())
+        .await
+        .expect("execute");
+    assert_eq!(outcome, Outcome::Succeeded);
+    assert_eq!(
+        runner.calls(),
+        [strings(&["upgrade", "--formula", "node@22"])]
+    );
+    assert_eq!(notes(&sink), []);
+    assert_eq!(
+        std::fs::canonicalize(prefix.join("bin/node")).unwrap(),
+        std::fs::canonicalize(prefix.join("Cellar/node@22/22.23.3_1/bin/node")).unwrap()
+    );
+    assert_eq!(
+        std::fs::read_link(prefix.join("bin/npm")).unwrap(),
+        Path::new("../lib/node_modules/npm/bin/npm-cli.js")
+    );
+    std::fs::remove_dir_all(&prefix).unwrap();
+}
+
+#[tokio::test]
+async fn a_recorded_formula_with_a_link_through_opt_at_one_place_is_refused() {
+    // Recorded, so the update links it again -- and stops at `bin/node`,
+    // which its unlink left (`keg.rb:376-377`) and which is there
+    // (`keg.rb:850-851`).
+    let prefix = node_22_prefix("keg-plan-recorded-through-opt");
+    brew_link(&prefix, "22.23.3");
+    std::fs::remove_file(prefix.join("bin/node")).unwrap();
     symlink("../opt/node@22/bin/node", prefix.join("bin/node")).unwrap();
     let inst = instance(&prefix);
-    let plan = adapter(Arc::new(MockRunner::new()), &inst)
+    let runner = Arc::new(FakeHomebrew::new(&prefix, Upgrade::AsHomebrew));
+    let result = adapter(runner.clone(), &inst)
         .plan(&inst, &upgrade(&inst, "node@22"))
-        .await
-        .expect("plan");
-    assert_eq!(
-        follow_ups(&plan),
-        [strings(&["link", "--formula", "--force", "node@22"])]
+        .await;
+    assert!(
+        matches!(
+            result,
+            Err(AdapterError::UpdateBlocked {
+                reason: UpdateBlocked::LinkTaken
+            })
+        ),
+        "{result:?}"
     );
-    assert_eq!(plan.warnings, [relinks("node@22", &["node"])]);
+    // What Homebrew would do: unlink corepack, npm and npx, stop at
+    // `bin/node`, and fail with them out of Terminal.
+    assert_eq!(runner.upgrade(), 1);
+    assert_eq!(runner.links().in_terminal_names(), ["node"]);
     std::fs::remove_dir_all(&prefix).unwrap();
 }
 
@@ -353,22 +428,40 @@ async fn a_check_marks_the_update_of_a_keg_only_formula_whose_place_is_taken() {
             ("git".to_string(), None)
         ]
     );
+    // With no record and `node` linked through `opt`, `bin/npm` is no
+    // concern of the update's: it links nothing.
+    for command in ["corepack", "node"] {
+        std::fs::remove_file(prefix.join("bin").join(command)).unwrap();
+    }
+    std::fs::remove_file(prefix.join("var/homebrew/linked/node@22")).unwrap();
+    symlink("../opt/node@22/bin/node", prefix.join("bin/node")).unwrap();
+    let outcome = adapter.check_updates(&inst, &options).await.expect("check");
+    assert_eq!(
+        blocked(&outcome),
+        [("node@22".to_string(), None), ("git".to_string(), None)]
+    );
     std::fs::remove_dir_all(&prefix).unwrap();
 }
 
 // -- The update ------------------------------------------------------------
 
-/// What Homebrew 7.0.8's `upgrade` does with node@22's links.
+/// How the `upgrade` of node@22 ends.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Upgrade {
-    /// Installs 22.23.3_1, unlinks every link into the old version
-    /// (`install.rb:633-641`), points `opt` at the new one, and links it
-    /// back where it recorded a `brew link` -- unless a place is taken,
-    /// when it links nothing and exits 1 (`FormulaInstaller#link`).
+    /// As Homebrew 7.0.8's: installs 22.23.3_1 and points `opt` at it;
+    /// where the link is recorded (`Keg#linked?`), first unlinks the
+    /// version it replaces (`install.rb:631-640`) and then links the new
+    /// one (`upgrade.rb:640-643`), exiting 1 where that link stops at a
+    /// place (`FormulaInstaller#link`, `formula_installer.rb:1302-1314`).
+    /// Without the record it unlinks and links nothing.
     AsHomebrew,
     /// The same, but fails after unlinking, linking nothing: a conflict
     /// in a folder Banager does not read (`lib`, `share`).
     FailsAfterUnlinking,
+    /// The same, but exits 0 without linking the new version back. No
+    /// Homebrew 7.0.8 ends so -- its 0 says its link step succeeded -- and
+    /// one that did is what Banager's check after the update is for.
+    EndsUnlinked,
 }
 
 /// A `CommandRunner` that is Homebrew for node@22 under `prefix`: each
@@ -376,12 +469,32 @@ enum Upgrade {
 struct FakeHomebrew {
     prefix: PathBuf,
     upgrade: Upgrade,
-    /// `brew link` exits 1 having linked nothing, as a conflict makes it.
+    /// `brew link` exits 1 having linked nothing, as a conflict in a
+    /// folder Banager does not read makes it.
     link_fails: bool,
     calls: Mutex<Vec<Vec<String>>>,
     /// Cancelled once the command named here has run: a Cancel landing
     /// between two commands of one operation.
     cancel_after: Option<(&'static str, CancellationToken)>,
+}
+
+/// `dst`'s one-level target: its link's text joined to its folder, with
+/// `..` taking off the name before it and nothing followed
+/// (`Utils::Path.resolved_path`, `utils/path.rb:84-85`). `None` for
+/// anything but a link.
+fn resolved_path(dst: &Path) -> Option<PathBuf> {
+    let text = std::fs::read_link(dst).ok()?;
+    let mut out = PathBuf::new();
+    for component in dst.parent()?.join(text).components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                out.pop();
+            }
+            other => out.push(other),
+        }
+    }
+    Some(out)
 }
 
 impl FakeHomebrew {
@@ -403,37 +516,86 @@ impl FakeHomebrew {
         links::read_links(&self.prefix, "node@22").expect("read")
     }
 
-    /// Removes every link in the prefix's `bin` that leads into node@22,
-    /// and its record (`Keg#unlink`).
-    fn unlink(&self) {
-        for command in self.links().commands {
-            if command.place == Place::Linked {
-                std::fs::remove_file(&command.path).unwrap();
-            }
-        }
-        let _ = std::fs::remove_file(self.prefix.join("var/homebrew/linked/node@22"));
+    fn record(&self) -> PathBuf {
+        self.prefix.join("var/homebrew/linked/node@22")
     }
 
-    /// Links the version `opt` leads to, with a record, or nothing at all
-    /// when a place is taken (`Keg#link`): whether it linked.
+    /// The keg `opt` leads to, as Homebrew names it.
+    fn opt_keg(&self) -> PathBuf {
+        resolved_path(&self.prefix.join("opt/node@22")).unwrap()
+    }
+
+    /// `Keg#linked?` for that keg (`keg.rb:274-278`).
+    fn recorded(&self) -> bool {
+        let record = self.record();
+        record.is_dir() && resolved_path(&record) == Some(self.opt_keg())
+    }
+
+    /// The names in `keg`'s `bin`, in order.
+    fn commands(keg: &Path) -> Vec<String> {
+        let mut names: Vec<String> = std::fs::read_dir(keg.join("bin"))
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+            .collect();
+        names.sort();
+        names
+    }
+
+    /// `Keg#unlink` of `keg` (`keg.rb:361-391`, its `bin`): each link
+    /// whose one-level target is that keg's file of the same name, and
+    /// nothing else; then the record.
+    fn unlink(&self, keg: &Path) {
+        for name in Self::commands(keg) {
+            let dst = self.prefix.join("bin").join(&name);
+            if resolved_path(&dst) == Some(keg.join("bin").join(&name)) {
+                std::fs::remove_file(&dst).unwrap();
+            }
+        }
+        let _ = std::fs::remove_file(self.record());
+    }
+
+    /// `Keg#link` of the keg `opt` leads to (`keg.rb:498-590`, its `bin`),
+    /// each command by `Keg#make_relative_symlink` (`keg.rb:823-861`):
+    /// nothing to do where its own link is; a link made where nothing is,
+    /// and where a link leads nowhere; anything else there a conflict,
+    /// after which what it linked is unlinked again and nothing recorded.
+    /// Already recorded: nothing (`cmd/link.rb:73-84`). Whether it linked.
     fn link(&self) -> bool {
-        let links = self.links();
-        if links.commands.iter().any(|c| c.place == Place::Taken) {
-            return false;
+        if self.recorded() {
+            return true;
         }
-        let version = std::fs::read_link(self.prefix.join("opt/node@22")).unwrap();
-        let version = version.file_name().unwrap().to_str().unwrap().to_string();
-        for command in links.commands {
-            let _ = std::fs::remove_file(&command.path);
+        let keg = self.opt_keg();
+        let version = keg.file_name().unwrap().to_str().unwrap().to_string();
+        let mut made = Vec::new();
+        for name in Self::commands(&keg) {
+            let src = keg.join("bin").join(&name);
+            let dst = self.prefix.join("bin").join(&name);
+            if resolved_path(&dst) == Some(src) {
+                continue;
+            }
+            if std::fs::symlink_metadata(&dst).is_ok() {
+                if dst.exists() {
+                    for dst in made {
+                        std::fs::remove_file(dst).unwrap();
+                    }
+                    return false;
+                }
+                std::fs::remove_file(&dst).unwrap();
+            }
+            symlink(format!("../Cellar/node@22/{version}/bin/{name}"), &dst).unwrap();
+            made.push(dst);
         }
-        brew_link(&self.prefix, &version);
+        symlink(format!("../../../Cellar/node@22/{version}"), self.record()).unwrap();
         true
     }
 
     fn upgrade(&self) -> i32 {
-        let recorded = self.links().recorded;
+        let recorded = self.recorded();
+        let old = self.opt_keg();
         make_keg(&self.prefix, "22.23.3_1");
-        self.unlink();
+        if recorded {
+            self.unlink(&old);
+        }
         std::fs::remove_file(self.prefix.join("opt/node@22")).unwrap();
         symlink(
             "../Cellar/node@22/22.23.3_1",
@@ -442,8 +604,25 @@ impl FakeHomebrew {
         .unwrap();
         match self.upgrade {
             Upgrade::FailsAfterUnlinking => 1,
+            Upgrade::EndsUnlinked => 0,
             Upgrade::AsHomebrew if recorded && !self.link() => 1,
             Upgrade::AsHomebrew => 0,
+        }
+    }
+
+    /// `brew cleanup node@22`: every version but the one `opt` leads to,
+    /// and but a recorded one (`Formula#eligible_kegs_for_cleanup`,
+    /// `formula.rb:3767-3793`).
+    fn cleanup(&self) {
+        let keep = std::fs::canonicalize(self.opt_keg()).unwrap();
+        let recorded = resolved_path(&self.record())
+            .filter(|keg| keg.is_dir())
+            .map(|keg| std::fs::canonicalize(keg).unwrap());
+        for entry in std::fs::read_dir(self.prefix.join("Cellar/node@22")).unwrap() {
+            let keg = std::fs::canonicalize(entry.unwrap().path()).unwrap();
+            if keg != keep && Some(&keg) != recorded.as_ref() {
+                std::fs::remove_dir_all(keg).unwrap();
+            }
         }
     }
 }
@@ -467,7 +646,10 @@ impl CommandRunner for FakeHomebrew {
                     1
                 }
             }
-            Some("cleanup") => 0,
+            Some("cleanup") => {
+                self.cleanup();
+                0
+            }
             _ => 1,
         };
         if let Some((after, token)) = &self.cancel_after {
@@ -511,6 +693,8 @@ async fn planned(inst: &ManagerInstance, runner: Arc<FakeHomebrew>) -> (BrewAdap
     (adapter, plan)
 }
 
+const ALL: [&str; 4] = ["corepack", "node", "npm", "npx"];
+
 #[tokio::test]
 async fn homebrew_links_back_what_brew_link_linked_so_no_link_runs_after() {
     let prefix = node_22_prefix("keg-run-brew-link");
@@ -535,15 +719,19 @@ async fn homebrew_links_back_what_brew_link_linked_so_no_link_runs_after() {
         }]
     );
     assert!(runner.links().fully_linked());
+    assert_eq!(
+        std::fs::canonicalize(prefix.join("bin/node")).unwrap(),
+        std::fs::canonicalize(prefix.join("Cellar/node@22/22.23.3_1/bin/node")).unwrap()
+    );
     std::fs::remove_dir_all(&prefix).unwrap();
 }
 
 #[tokio::test]
-async fn a_keg_only_formula_linked_by_hand_is_linked_back_after_its_update() {
-    let prefix = node_22_prefix("keg-run-by-hand");
-    symlink("../opt/node@22/bin/node", prefix.join("bin/node")).unwrap();
+async fn a_formula_its_update_did_not_link_back_is_linked_after_it() {
+    let prefix = node_22_prefix("keg-run-not-back");
+    brew_link(&prefix, "22.23.3");
     let inst = instance(&prefix);
-    let runner = Arc::new(FakeHomebrew::new(&prefix, Upgrade::AsHomebrew));
+    let runner = Arc::new(FakeHomebrew::new(&prefix, Upgrade::EndsUnlinked));
     let (adapter, plan) = planned(&inst, runner.clone()).await;
     let sink = Arc::new(VecSink::new());
     let outcome = adapter
@@ -564,9 +752,8 @@ async fn a_keg_only_formula_linked_by_hand_is_linked_back_after_its_update() {
             name: "node@22".to_string()
         }]
     );
-    // `node` is back in Terminal, and leads into the new version.
-    let links = runner.links();
-    assert!(links.fully_linked());
+    // Back in Terminal, leading into the new version.
+    assert!(runner.links().fully_linked());
     assert_eq!(
         std::fs::canonicalize(prefix.join("bin/node")).unwrap(),
         std::fs::canonicalize(prefix.join("Cellar/node@22/22.23.3_1/bin/node")).unwrap()
@@ -577,11 +764,11 @@ async fn a_keg_only_formula_linked_by_hand_is_linked_back_after_its_update() {
 #[tokio::test]
 async fn a_link_that_fails_after_the_update_leaves_it_done_and_says_what_is_gone() {
     let prefix = node_22_prefix("keg-run-link-fails");
-    symlink("../opt/node@22/bin/node", prefix.join("bin/node")).unwrap();
+    brew_link(&prefix, "22.23.3");
     let inst = instance(&prefix);
     let runner = Arc::new(FakeHomebrew {
         link_fails: true,
-        ..FakeHomebrew::new(&prefix, Upgrade::AsHomebrew)
+        ..FakeHomebrew::new(&prefix, Upgrade::EndsUnlinked)
     });
     let (adapter, plan) = planned(&inst, runner.clone()).await;
     let sink = Arc::new(VecSink::new());
@@ -599,7 +786,7 @@ async fn a_link_that_fails_after_the_update_leaves_it_done_and_says_what_is_gone
             },
             LogNote::NoLongerLinked {
                 name: "node@22".to_string(),
-                commands: strings(&["node"]),
+                commands: strings(&ALL),
             },
         ]
     );
@@ -633,31 +820,24 @@ async fn an_update_runs_nothing_once_another_program_took_a_commands_place_since
     );
     assert!(runner.calls().is_empty(), "nothing ran");
     // `node` is where it was: in Terminal.
-    let links = runner.links();
-    assert_eq!(
-        links
-            .commands
-            .iter()
-            .find(|c| c.name == "node")
-            .map(|c| c.place),
-        Some(Place::Linked)
-    );
-    // What would have happened without the check: Homebrew unlinks, links
-    // nothing back, and fails.
+    assert_eq!(runner.links().linked_names(), ["corepack", "node"]);
+    // What would have happened without the check: Homebrew unlinks
+    // corepack and node, stops at `bin/npm` to link the new version,
+    // unlinks what it linked, and fails -- `node` gone from Terminal.
     assert_eq!(runner.upgrade(), 1);
-    assert_eq!(runner.links().linked_names(), Vec::<String>::new());
+    assert_eq!(runner.links().in_terminal_names(), Vec::<String>::new());
     std::fs::remove_dir_all(&prefix).unwrap();
 }
 
 #[tokio::test]
 async fn a_cancel_after_the_update_runs_no_link_and_says_what_is_gone() {
     let prefix = node_22_prefix("keg-run-cancel");
-    symlink("../opt/node@22/bin/node", prefix.join("bin/node")).unwrap();
+    brew_link(&prefix, "22.23.3");
     let inst = instance(&prefix);
     let token = CancellationToken::new();
     let runner = Arc::new(FakeHomebrew {
         cancel_after: Some(("upgrade", token.clone())),
-        ..FakeHomebrew::new(&prefix, Upgrade::AsHomebrew)
+        ..FakeHomebrew::new(&prefix, Upgrade::EndsUnlinked)
     });
     let (adapter, plan) = planned(&inst, runner.clone()).await;
     let sink = Arc::new(VecSink::new());
@@ -674,7 +854,7 @@ async fn a_cancel_after_the_update_runs_no_link_and_says_what_is_gone() {
         notes(&sink),
         [LogNote::NoLongerLinked {
             name: "node@22".to_string(),
-            commands: strings(&["node"]),
+            commands: strings(&ALL),
         }]
     );
     std::fs::remove_dir_all(&prefix).unwrap();
@@ -701,7 +881,7 @@ async fn an_update_that_fails_after_unlinking_says_what_is_gone() {
         notes(&sink),
         [LogNote::NoLongerLinked {
             name: "node@22".to_string(),
-            commands: strings(&["corepack", "node", "npm", "npx"]),
+            commands: strings(&ALL),
         }]
     );
     std::fs::remove_dir_all(&prefix).unwrap();
@@ -710,9 +890,9 @@ async fn an_update_that_fails_after_unlinking_says_what_is_gone() {
 #[tokio::test]
 async fn the_link_runs_before_the_cleanup() {
     let prefix = node_22_prefix("keg-run-cleanup");
-    symlink("../opt/node@22/bin/node", prefix.join("bin/node")).unwrap();
+    brew_link(&prefix, "22.23.3");
     let inst = instance(&prefix);
-    let runner = Arc::new(FakeHomebrew::new(&prefix, Upgrade::AsHomebrew));
+    let runner = Arc::new(FakeHomebrew::new(&prefix, Upgrade::EndsUnlinked));
     let adapter = adapter(runner.clone(), &inst).with_kegs_fn(one_old_version);
     let plan = adapter
         .plan(&inst, &upgrade(&inst, "node@22"))
@@ -743,5 +923,8 @@ async fn the_link_runs_before_the_cleanup() {
             },
         ]
     );
+    // The old version is gone, and every command leads into the new one.
+    assert!(!prefix.join("Cellar/node@22/22.23.3").exists());
+    assert!(runner.links().fully_linked());
     std::fs::remove_dir_all(&prefix).unwrap();
 }

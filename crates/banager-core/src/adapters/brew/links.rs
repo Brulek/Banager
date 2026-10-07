@@ -4,41 +4,63 @@
 //! after it (y1-keg, r6).
 //!
 //! Homebrew leaves a keg-only formula -- `node@22`, `openssl@3` -- out of
-//! `<prefix>/bin` on purpose; a person who wants its commands in Terminal
-//! links it by hand, with `brew link --force <name>` (which records the
-//! link as `<prefix>/var/homebrew/linked/<name>`) or with links of their
-//! own. An update unlinks the version it replaces first
-//! (`Homebrew::Install.install_formula`, `install.rb:633-641` in Homebrew
-//! 7.0.8: every link that leads into the old keg goes, whoever made it),
-//! and links the new one again only where Homebrew recorded the link
-//! (`Upgrade.create_formula_installer`, `upgrade.rb:635-643`) -- and then
-//! only where nothing else is in the way (`Keg#link`, `keg.rb:498-560`):
-//! one file there that is not Homebrew's link for it, and Homebrew links
-//! nothing, unlinks what it linked so far, and the update fails with "The
-//! `brew link` step did not complete successfully"
-//! (`FormulaInstaller#link`, `formula_installer.rb:1281-1347`). Either way
-//! the commands are gone from Terminal: on 2026-10-07 `npm` had updated
-//! itself into `<prefix>/bin/npm` first, and `node` vanished with node@22's
-//! update.
+//! `<prefix>/bin` on purpose, except a versioned one installed on request
+//! with no other version of it there, which it links itself
+//! (`FormulaInstaller#auto_link_versioned_keg_only?`,
+//! `formula_installer.rb:1923-1934`). Otherwise a person who wants its
+//! commands in Terminal links it: with `brew link --force <name>`, or with
+//! links of their own. What Homebrew 7.0.8's update does then depends on
+//! one thing, `<prefix>/var/homebrew/linked/<name>`, the record a `brew
+//! link` leaves (`Keg#linked?`, `keg.rb:274-278`):
+//!
+//! - With the record, the update first unlinks the version it replaces
+//!   (`Upgrade.outdated_kegs`, `upgrade.rb:268-272`; `install.rb:631-640`):
+//!   every link whose one-level target -- the link's text joined to its
+//!   folder, nothing followed (`Utils::Path.resolved_path`,
+//!   `utils/path.rb:84-85`) -- is that version's own file goes
+//!   (`Keg#unlink`, `keg.rb:361-391`), and nothing else does. Then it links
+//!   the new version (`upgrade.rb:640-643`), and stops at any place that is
+//!   there and is not its own link to the new version or a cask's link
+//!   (`Keg#make_relative_symlink`, `keg.rb:823-861`): it links nothing,
+//!   and the update fails with "The `brew link` step did not complete
+//!   successfully" (`FormulaInstaller#link`, `formula_installer.rb:1281-1347`)
+//!   -- on 2026-10-07 `npm` had updated itself into `<prefix>/bin/npm`
+//!   first, and `node` vanished with node@22's update.
+//! - Without it, the update unlinks nothing and links nothing; only
+//!   `opt/<name>` moves to the new version. A link of a person's own
+//!   through `opt/<name>` follows it there; one straight into the version
+//!   replaced keeps leading to it until that version is cleaned up
+//!   (`brew cleanup` keeps only a recorded one, `formula.rb:3767-3793`),
+//!   and then to nothing.
 //!
 //! What is read, all of it through `protected::look` -- names and links,
 //! never a file's contents, and nothing in or through a protected place:
 //! where `<prefix>/opt/<name>` leads (the keg Homebrew counts as the
 //! formula's), the names in that keg's `bin` and `sbin`, what is at the
-//! same name in `<prefix>/bin` and `<prefix>/sbin` and where it leads, and
-//! whether `<prefix>/var/homebrew/linked/<name>` is there.
+//! same name in `<prefix>/bin` and `<prefix>/sbin`, its link's text and
+//! where it leads, and `<prefix>/var/homebrew/linked/<name>`, its text and
+//! whether it leads to a folder.
 
 use crate::protected::{self, look, Protected};
 use std::io::ErrorKind;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 /// What is at one command's place in the prefix (`<prefix>/bin/node`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Place {
-    /// A link that leads into this formula's folder in the Cellar -- any
-    /// of its versions, straight there or through `opt/<name>`: `brew link`
-    /// put it there, or a person did.
+    /// A link whose one-level target is this command's file in the keg
+    /// `opt/<name>` leads to: the link `brew link` makes, whoever made it.
+    /// Homebrew's update removes it where the formula's link is recorded
+    /// (`keg.rb:376-377`), and leaves it, leading to the version replaced,
+    /// where it is not.
     Linked,
+    /// A link that leads into the formula some other way -- through
+    /// `opt/<name>` or another linked folder, or into another of its
+    /// versions. Homebrew's update leaves it as it is, so it keeps working
+    /// (through `opt/<name>`, with the new version); but `brew link` of the
+    /// formula, Homebrew's own after a recorded formula's update among
+    /// them, stops at it (`keg.rb:850-851`).
+    SurvivesUpdate,
     /// Nothing, or a link that leads nowhere, which `brew link` replaces
     /// (`Keg#make_relative_symlink`, `keg.rb:850-856`): free for the
     /// formula's own link.
@@ -64,45 +86,52 @@ pub(crate) struct CommandLink {
 /// How one formula stands in its prefix, as `read_links` found it.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct KegLinks {
-    /// `<prefix>/var/homebrew/linked/<name>` is there: Homebrew's own
-    /// record of a `brew link`, which its update links again
-    /// (`Keg#linked?`, `keg.rb:274-278`).
+    /// `<prefix>/var/homebrew/linked/<name>` is a link to a folder whose
+    /// one-level target is the keg `opt/<name>` leads to: Homebrew's own
+    /// record of a `brew link` (`Keg#linked?`, `keg.rb:274-278`), the one
+    /// thing that makes its update unlink the formula and link it again
+    /// (`upgrade.rb:268-272`, `640-643`).
     pub(crate) recorded: bool,
     /// Each command in the keg's `bin` and `sbin`, by name.
     pub(crate) commands: Vec<CommandLink>,
 }
 
 impl KegLinks {
-    /// Linked into the prefix: by `brew link` (its record), or by hand (a
-    /// command's place leads into the formula).
-    pub(crate) fn linked(&self) -> bool {
-        self.recorded || self.commands.iter().any(|c| c.place == Place::Linked)
-    }
-
     /// Linked as `brew link` leaves it: recorded, and every command's
-    /// place leading into the formula.
+    /// place holding Homebrew's link to it.
     pub(crate) fn fully_linked(&self) -> bool {
         self.recorded && self.commands.iter().all(|c| c.place == Place::Linked)
     }
 
-    /// The names of the commands whose place leads into the formula.
+    /// The names of the commands whose place holds Homebrew's link
+    /// (`Place::Linked`): what a recorded formula's update unlinks and
+    /// links again.
     pub(crate) fn linked_names(&self) -> Vec<String> {
-        self.names_where(Place::Linked)
+        self.names_where(|place| place == Place::Linked)
     }
 
-    /// The places another file holds (`Place::Taken`), as paths.
-    pub(crate) fn taken_paths(&self) -> Vec<String> {
+    /// The names of the commands typing which runs the formula: whose
+    /// place leads into it, Homebrew's link or not.
+    pub(crate) fn in_terminal_names(&self) -> Vec<String> {
+        self.names_where(|place| matches!(place, Place::Linked | Place::SurvivesUpdate))
+    }
+
+    /// The places a `brew link` of the formula stops at, as paths: another
+    /// file there (`Place::Taken`), or a link into the formula that is not
+    /// Homebrew's (`Place::SurvivesUpdate`) -- both are there, and neither
+    /// is its own link nor goes with the update's unlink (`keg.rb:850-851`).
+    pub(crate) fn held_paths(&self) -> Vec<String> {
         self.commands
             .iter()
-            .filter(|c| c.place == Place::Taken)
+            .filter(|c| matches!(c.place, Place::Taken | Place::SurvivesUpdate))
             .map(|c| c.path.display().to_string())
             .collect()
     }
 
-    fn names_where(&self, place: Place) -> Vec<String> {
+    fn names_where(&self, wanted: impl Fn(Place) -> bool) -> Vec<String> {
         self.commands
             .iter()
-            .filter(|c| c.place == place)
+            .filter(|c| wanted(c.place))
             .map(|c| c.name.clone())
             .collect()
     }
@@ -118,19 +147,30 @@ pub(crate) fn read_links(prefix: &Path, name: &str) -> Option<KegLinks> {
     let short = name.rsplit('/').next().filter(|short| plain(short))?;
     // The formula's folder in the Cellar, and the keg `opt/<name>` leads
     // to inside it: both folders, every link followed.
-    let folder = |path: PathBuf| {
-        look::target(&path, &protected)
+    let folder = |path: &Path| {
+        look::target(path, &protected)
             .ok()
             .filter(|(_, stat)| stat.is_dir())
             .map(|(path, _)| path)
     };
-    let rack = folder(prefix.join("Cellar").join(short))?;
-    let keg = folder(prefix.join("opt").join(short))?;
+    let rack = folder(&prefix.join("Cellar").join(short))?;
+    let opt = prefix.join("opt").join(short);
+    let keg = folder(&opt)?;
     if !protected::starts_with_folded(&keg, &rack) {
         return None;
     }
-    let recorded = match look::lstat(&prefix.join("var/homebrew/linked").join(short), &protected) {
-        Ok(stat) => stat.is_symlink(),
+    // The keg as Homebrew names it: `opt/<name>`'s one-level target
+    // (`Keg.new(Utils::Path.resolved_path(formula.opt_prefix))`,
+    // `upgrade.rb:635-636`), against which a link and the record are
+    // compared, as Homebrew compares them.
+    let homebrews_keg = one_level_target(&opt, &protected).ok()?;
+    let record = prefix.join("var/homebrew/linked").join(short);
+    let recorded = match look::lstat(&record, &protected) {
+        Ok(stat) if stat.is_symlink() => {
+            folder(&record).is_some()
+                && one_level_target(&record, &protected).ok()? == homebrews_keg
+        }
+        Ok(_) => false,
         Err(error) if error.kind() == ErrorKind::NotFound => false,
         Err(_) => return None,
     };
@@ -169,7 +209,8 @@ pub(crate) fn read_links(prefix: &Path, name: &str) -> Option<KegLinks> {
                 continue;
             }
             let path = prefix.join(folder).join(command);
-            let place = place_of(&path, &rack, &protected);
+            let homebrews = homebrews_keg.join(folder).join(command);
+            let place = place_of(&path, &homebrews, &rack, &protected);
             commands.push(CommandLink {
                 name: command.to_string(),
                 path,
@@ -182,19 +223,52 @@ pub(crate) fn read_links(prefix: &Path, name: &str) -> Option<KegLinks> {
 }
 
 /// What is at `path`, a command's place in the prefix, for the formula
-/// whose folder in the Cellar is `rack` (every link followed).
-fn place_of(path: &Path, rack: &Path, protected: &Protected) -> Place {
+/// whose folder in the Cellar is `rack` (every link followed) and whose
+/// file for that command, as Homebrew names it, is `homebrews`.
+fn place_of(path: &Path, homebrews: &Path, rack: &Path, protected: &Protected) -> Place {
     match look::lstat(path, protected) {
         Err(error) if error.kind() == ErrorKind::NotFound => Place::Free,
         Err(_) => Place::Taken,
         Ok(stat) if !stat.is_symlink() => Place::Taken,
-        Ok(_) => match look::target(path, protected) {
-            Ok((to, _)) if protected::starts_with_folded(&to, rack) => Place::Linked,
-            Ok(_) => Place::Taken,
-            Err(error) if error.kind() == ErrorKind::NotFound => Place::Free,
-            Err(_) => Place::Taken,
-        },
+        Ok(_) => {
+            if one_level_target(path, protected).is_ok_and(|to| to == homebrews) {
+                return Place::Linked;
+            }
+            match look::target(path, protected) {
+                Ok((to, _)) if protected::starts_with_folded(&to, rack) => Place::SurvivesUpdate,
+                Ok(_) => Place::Taken,
+                Err(error) if error.kind() == ErrorKind::NotFound => Place::Free,
+                Err(_) => Place::Taken,
+            }
+        }
     }
+}
+
+/// The link `path`'s one-level target: its text joined to its folder,
+/// nothing followed (`Utils::Path.resolved_path`, `utils/path.rb:84-85`).
+fn one_level_target(path: &Path, protected: &Protected) -> std::io::Result<PathBuf> {
+    let text = look::link_text(path, protected)?;
+    Ok(lexical_join(path.parent().unwrap_or(Path::new("/")), &text))
+}
+
+/// `folder` joined with a link's text `link` as Ruby's `Pathname#join`
+/// does it: an absolute `link` starts over, and `..` takes off the name
+/// before it, without following any link.
+fn lexical_join(folder: &Path, link: &Path) -> PathBuf {
+    let mut joined = PathBuf::new();
+    for component in folder.join(link).components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                // At the root `..` is the root, as it is for `Pathname`.
+                if joined.parent().is_some() {
+                    joined.pop();
+                }
+            }
+            other => joined.push(other),
+        }
+    }
+    joined
 }
 
 /// Whether `name` is one plain path component: not empty, no `/`, not `.`
@@ -303,7 +377,6 @@ pub(crate) mod tests {
         brew_link(&prefix, "22.23.3");
         let links = read_links(&prefix, "node@22").expect("read");
         assert!(links.recorded);
-        assert!(links.linked());
         assert!(links.fully_linked());
         assert_eq!(
             places(&links),
@@ -315,7 +388,7 @@ pub(crate) mod tests {
             ]
         );
         assert_eq!(links.linked_names(), ["corepack", "node", "npm", "npx"]);
-        assert!(links.taken_paths().is_empty());
+        assert!(links.held_paths().is_empty());
         assert_eq!(links.commands[1].path, prefix.join("bin/node"));
         std::fs::remove_dir_all(&prefix).unwrap();
     }
@@ -325,7 +398,7 @@ pub(crate) mod tests {
         let prefix = node_22_prefix("links-not-linked");
         let links = read_links(&prefix, "node@22").expect("read");
         assert!(!links.recorded);
-        assert!(!links.linked());
+        assert!(links.in_terminal_names().is_empty());
         assert!(!links.fully_linked());
         assert!(links.commands.iter().all(|c| c.place == Place::Free));
         assert!(links.linked_names().is_empty());
@@ -333,26 +406,53 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn links_a_person_made_through_opt_count_as_linked_without_a_record() {
-        // `ln -s /opt/homebrew/opt/node@22/bin/node /opt/homebrew/bin/node`:
-        // no record, so Homebrew's update unlinks it and links nothing back.
+    fn a_link_through_opt_survives_the_update_and_only_a_link_into_the_keg_is_homebrews() {
+        // `ln -s ../opt/node@22/bin/node bin/node`: its one-level target is
+        // `<prefix>/opt/node@22/bin/node`, not the keg's file, so Homebrew's
+        // unlink leaves it (`keg.rb:376-377`) and it follows `opt` to the
+        // new version -- but `brew link` stops at it (`keg.rb:850-851`).
         let prefix = node_22_prefix("links-by-hand");
-        symlink(prefix.join("opt/node@22/bin/node"), prefix.join("bin/node")).unwrap();
-        let links = read_links(&prefix, "node@22").expect("read");
-        assert!(!links.recorded);
-        assert!(links.linked());
-        assert!(!links.fully_linked());
-        assert_eq!(links.linked_names(), ["node"]);
-        assert_eq!(
-            places(&links),
-            [
-                ("corepack", Place::Free),
-                ("node", Place::Linked),
-                ("npm", Place::Free),
-                ("npx", Place::Free),
-            ]
-        );
-        // A link into an older version still leads into the formula.
+        for through_opt in [
+            PathBuf::from("../opt/node@22/bin/node"),
+            prefix.join("opt/node@22/bin/node"),
+        ] {
+            let _ = std::fs::remove_file(prefix.join("bin/node"));
+            symlink(&through_opt, prefix.join("bin/node")).unwrap();
+            let links = read_links(&prefix, "node@22").expect("read");
+            assert!(!links.recorded);
+            assert!(!links.fully_linked());
+            assert_eq!(
+                places(&links),
+                [
+                    ("corepack", Place::Free),
+                    ("node", Place::SurvivesUpdate),
+                    ("npm", Place::Free),
+                    ("npx", Place::Free),
+                ],
+                "{through_opt:?}"
+            );
+            assert!(links.linked_names().is_empty());
+            assert_eq!(links.in_terminal_names(), ["node"]);
+            assert_eq!(
+                links.held_paths(),
+                [prefix.join("bin/node").display().to_string()]
+            );
+        }
+        // Straight into the keg `opt` leads to, relative or not: the link
+        // `brew link` makes, which Homebrew's unlink removes.
+        for into_keg in [
+            PathBuf::from("../Cellar/node@22/22.23.3/bin/node"),
+            prefix.join("Cellar/node@22/22.23.3/bin/node"),
+        ] {
+            let _ = std::fs::remove_file(prefix.join("bin/node"));
+            symlink(&into_keg, prefix.join("bin/node")).unwrap();
+            let links = read_links(&prefix, "node@22").expect("read");
+            assert_eq!(links.linked_names(), ["node"], "{into_keg:?}");
+            assert_eq!(links.in_terminal_names(), ["node"]);
+            assert!(links.held_paths().is_empty());
+        }
+        // Into an older version: not the keg the update replaces, so it
+        // stays as it is, leading to that older version.
         let _ = std::fs::remove_file(prefix.join("bin/node"));
         std::fs::create_dir_all(prefix.join("Cellar/node@22/22.23.2_2/bin")).unwrap();
         std::fs::write(prefix.join("Cellar/node@22/22.23.2_2/bin/node"), b"").unwrap();
@@ -361,11 +461,52 @@ pub(crate) mod tests {
             prefix.join("bin/node"),
         )
         .unwrap();
-        assert_eq!(
-            read_links(&prefix, "node@22").unwrap().linked_names(),
-            ["node"]
+        let links = read_links(&prefix, "node@22").unwrap();
+        assert!(links.linked_names().is_empty());
+        assert_eq!(links.in_terminal_names(), ["node"]);
+        std::fs::remove_dir_all(&prefix).unwrap();
+    }
+
+    #[test]
+    fn a_record_counts_only_where_it_leads_to_the_keg_opt_leads_to() {
+        // `Keg#linked?` (`keg.rb:274-278`): a link, to a folder, whose
+        // one-level target is the keg -- what the update relinks
+        // (`upgrade.rb:640-643`).
+        let prefix = node_22_prefix("links-record");
+        brew_link(&prefix, "22.23.3");
+        assert!(read_links(&prefix, "node@22").unwrap().recorded);
+        let record = prefix.join("var/homebrew/linked/node@22");
+        std::fs::remove_file(&record).unwrap();
+        symlink("../../../Cellar/node@22/22.1.0", &record).unwrap();
+        assert!(
+            !read_links(&prefix, "node@22").unwrap().recorded,
+            "to nothing"
+        );
+        std::fs::remove_file(&record).unwrap();
+        std::fs::create_dir_all(prefix.join("Cellar/node@22/22.23.2_2")).unwrap();
+        symlink("../../../Cellar/node@22/22.23.2_2", &record).unwrap();
+        assert!(
+            !read_links(&prefix, "node@22").unwrap().recorded,
+            "to another version"
         );
         std::fs::remove_dir_all(&prefix).unwrap();
+    }
+
+    #[test]
+    fn joins_a_link_to_its_folder_as_homebrew_does_without_following_anything() {
+        let at = Path::new("/opt/homebrew/bin");
+        assert_eq!(
+            lexical_join(at, Path::new("../opt/node@22/bin/node")),
+            Path::new("/opt/homebrew/opt/node@22/bin/node")
+        );
+        assert_eq!(
+            lexical_join(at, Path::new("/opt/homebrew/Cellar/./x/../y")),
+            Path::new("/opt/homebrew/Cellar/y")
+        );
+        assert_eq!(
+            lexical_join(at, Path::new("../../../../../z")),
+            Path::new("/z")
+        );
     }
 
     #[test]
@@ -375,7 +516,7 @@ pub(crate) mod tests {
         brew_link(&prefix, "22.23.3");
         npm_updates_itself(&prefix);
         let links = read_links(&prefix, "node@22").expect("read");
-        assert!(links.linked());
+        assert!(links.recorded);
         assert!(!links.fully_linked());
         assert_eq!(
             places(&links),
@@ -387,7 +528,7 @@ pub(crate) mod tests {
             ]
         );
         assert_eq!(
-            links.taken_paths(),
+            links.held_paths(),
             [
                 prefix.join("bin/npm").display().to_string(),
                 prefix.join("bin/npx").display().to_string(),
@@ -417,7 +558,7 @@ pub(crate) mod tests {
                 ("npx", Place::Free),
             ]
         );
-        assert!(!links.linked());
+        assert!(links.in_terminal_names().is_empty());
         std::fs::remove_dir_all(&prefix).unwrap();
     }
 

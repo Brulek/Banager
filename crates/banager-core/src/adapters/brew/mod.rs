@@ -867,26 +867,32 @@ impl BrewAdapter {
     }
 
     /// How the keg-only formula `name` under `prefix` stands in it, when
-    /// it is linked there (`brew::links`): `None` for a formula the last
-    /// inventory did not list as keg-only and linkable, one nobody linked,
-    /// or one whose links cannot be read -- whose update is planned as
-    /// before.
-    fn linked_keg_only(&self, instance_id: &str, prefix: &Path, name: &str) -> Option<KegLinks> {
+    /// its link there is recorded (`brew::links`, `KegLinks::recorded`):
+    /// the one case in which Homebrew's update unlinks it and links it
+    /// again (`upgrade.rb:268-272`, `640-643`). `None` for a formula the
+    /// last inventory did not list as keg-only and linkable, one whose
+    /// links cannot be read, and one with no record -- whose update
+    /// unlinks and links nothing, so a link of a person's own through
+    /// `opt/<name>` follows it to the new version -- whose update is
+    /// planned as before.
+    fn recorded_keg_only(&self, instance_id: &str, prefix: &Path, name: &str) -> Option<KegLinks> {
         if !self.is_keg_only(instance_id, name) {
             return None;
         }
-        (self.links_fn)(prefix, name).filter(KegLinks::linked)
+        (self.links_fn)(prefix, name).filter(|links| links.recorded)
     }
 
     /// The commands of the keg-only formula `req` names that its update
-    /// unlinks and Banager links back after it (`brew link --formula --force`,
+    /// unlinks and Homebrew links back after it, which Banager checks once
+    /// it is done (`brew link --formula --force` if it is not linked back,
     /// `Warning::HomebrewRelinksAfterUpdate`, y1-keg): those whose places
-    /// in the prefix lead into it now, by name. `Ok(None)` for anything but
-    /// such a formula's update (`linked_keg_only`). Refused as
-    /// `UpdateBlocked::LinkTaken` when another program holds one of its
-    /// commands' places: Homebrew's update would unlink it and nothing
-    /// would get past that file to link it back -- neither Homebrew's own
-    /// link nor `brew link --force` (`Keg::ConflictError`).
+    /// hold Homebrew's link to it now, by name. `Ok(None)` for anything but
+    /// such a formula's update (`recorded_keg_only`). Refused as
+    /// `UpdateBlocked::LinkTaken` when something else is at one of its
+    /// commands' places (`KegLinks::held_paths`): Homebrew's update would
+    /// unlink it, stop at that place to link it back (`Keg::ConflictError`)
+    /// and fail, leaving its commands out of Terminal -- and `brew link
+    /// --force` would stop there too.
     fn relink_after_upgrade(
         &self,
         inst: &ManagerInstance,
@@ -895,10 +901,10 @@ impl BrewAdapter {
         if req.kind != OpKind::Upgrade || req.artifact_kind != ArtifactKind::Formula {
             return Ok(None);
         }
-        let Some(links) = self.linked_keg_only(&inst.id, &inst.prefix, &req.name) else {
+        let Some(links) = self.recorded_keg_only(&inst.id, &inst.prefix, &req.name) else {
             return Ok(None);
         };
-        if !links.taken_paths().is_empty() {
+        if !links.held_paths().is_empty() {
             return Err(AdapterError::UpdateBlocked {
                 reason: UpdateBlocked::LinkTaken,
             });
@@ -1732,18 +1738,18 @@ impl BrewAdapter {
                 }
             }
         }
-        // A keg-only formula linked into the prefix whose command's place
-        // another program holds: its update would take its commands out of
-        // Terminal for good (`relink_after_upgrade`, y1-keg). Read from the
-        // keg-only names the inventory above kept; a pinned or disabled
-        // one keeps that reason, which Homebrew refuses before it unlinks
-        // anything.
+        // A keg-only formula Homebrew links back after its update, with
+        // something else at one of its commands' places: its update would
+        // fail with its commands out of Terminal (`relink_after_upgrade`,
+        // y1-keg). Read from the keg-only names the inventory above kept;
+        // a pinned or disabled one keeps that reason, which Homebrew
+        // refuses before it unlinks anything.
         for candidate in &mut candidates {
             if candidate.blocked.is_none()
                 && candidate.key.kind == ArtifactKind::Formula
                 && self
-                    .linked_keg_only(&inst.id, &inst.prefix, &candidate.key.name)
-                    .is_some_and(|links| !links.taken_paths().is_empty())
+                    .recorded_keg_only(&inst.id, &inst.prefix, &candidate.key.name)
+                    .is_some_and(|links| !links.held_paths().is_empty())
             {
                 candidate.blocked = Some(UpdateBlocked::LinkTaken);
             }
@@ -2486,18 +2492,19 @@ impl BrewAdapter {
         Ok(outcome)
     }
 
-    /// For the update of a keg-only formula its preview said Banager links
-    /// back (a `brew link --formula --force` follow-up, y1-keg), its links read again
-    /// right before it runs. Another program holding one of its commands'
-    /// places now -- npm's own copy of itself in `bin/npm`, put there by an
-    /// update of npm since the preview -- is `Fault::LinkTaken`, and
-    /// nothing runs: the update would unlink the formula, and neither
+    /// For the update of a keg-only formula its preview said Homebrew links
+    /// back (a `brew link --formula --force` follow-up, y1-keg), its links
+    /// read again right before it runs. Something else at one of its
+    /// commands' places now -- npm's own copy of itself in `bin/npm`, put
+    /// there by an update of npm since the preview -- is `Fault::LinkTaken`,
+    /// and nothing runs: the update would unlink the formula, and neither
     /// Homebrew's link afterwards nor `brew link --force` gets past that
     /// file (`Keg::ConflictError`), so its commands would leave Terminal,
-    /// as `node` did on 2026-10-07. Otherwise whether to link it back after
-    /// the update: not when it is no longer linked at all (unlinked since
-    /// the preview, by the person); yes when it is, or when its links
-    /// cannot be read now (as the preview said). Any other plan: `false`.
+    /// as `node` did on 2026-10-07. Otherwise whether to check it after the
+    /// update: not when its link is no longer recorded (unlinked since the
+    /// preview: the update then unlinks and links nothing); yes when it
+    /// is, or when its links cannot be read now (as the preview said). Any
+    /// other plan: `false`.
     fn require_link_places_free(&self, plan: &Plan) -> Result<bool, Fault> {
         let PlanAction::CommandThen { program, then, .. } = &plan.action else {
             return Ok(false);
@@ -2511,10 +2518,10 @@ impl BrewAdapter {
         let Some(links) = (self.links_fn)(&Self::prefix_for(program), &plan.request.name) else {
             return Ok(true);
         };
-        if !links.linked() {
+        if !links.recorded {
             return Ok(false);
         }
-        let paths = links.taken_paths();
+        let paths = links.held_paths();
         if paths.is_empty() {
             Ok(true)
         } else {
@@ -2576,7 +2583,7 @@ impl BrewAdapter {
         let Some(links) = (self.links_fn)(prefix, &plan.request.name) else {
             return;
         };
-        let linked = links.linked_names();
+        let linked = links.in_terminal_names();
         let commands: Vec<String> = previewed
             .iter()
             .filter(|command| !linked.contains(command))
