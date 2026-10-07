@@ -16,7 +16,6 @@ import {
 } from "../lib/operations";
 import { failedRunWords } from "../lib/runResult";
 import { viewLogKey } from "./FailureNextStep";
-import { outcomeCause } from "../lib/failureCause";
 import { useUiStore, type LogLine } from "../store/ui";
 import type { TFunction } from "i18next";
 import type { OpSummary } from "../lib/types";
