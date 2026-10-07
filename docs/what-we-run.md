@@ -1556,9 +1556,11 @@ takes the account's home from the user database instead
 (`Trust.trust_file`, `trust.rb:27-43`), so where `$HOME` points elsewhere
 the two read different files, and the uninstall confirmation may say or
 leave out the trust list line wrongly. Nothing is run or changed because
-of it. The link preview (`OpKind::Link`) reads what stands in the way of
-`brew link --force {name}` (`link::link_conflicts` in
-`crates/banager-core/src/adapters/brew/link.rs`): where
+of it. The link preview (`OpKind::Link`) reads what `brew link --force
+{name}` would do in `bin` (`link::link_preview` in
+`crates/banager-core/src/adapters/brew/link.rs`): the formula's commands,
+which the preview names as what the link puts where Terminal looks
+(`Warning::LinkPutsCommands`), and what stands in their way: where
 `<prefix>/opt/<name>` leads (the version being linked,
 `Cellar/<name>/<version>`), the names in `<prefix>/opt/<name>/bin`,
 and where `<prefix>/bin/<each of them>` leads, every link followed; one

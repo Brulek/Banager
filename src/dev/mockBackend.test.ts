@@ -403,6 +403,7 @@ describe("the browser preview's mock backend", () => {
     });
     const blocked = await answer<IssuedPlan>(backend.invoke("plan_operation", { request: link("node@22") }));
     expect(blocked.plan.warnings).toEqual([
+      { LinkPutsCommands: { names: ["corepack", "node", "npm", "npx"] } },
       { LinkConflicts: { paths: ["/opt/homebrew/bin/npm", "/opt/homebrew/bin/npx"] } },
     ]);
     // Only a formula a source's reason offers.
@@ -417,7 +418,7 @@ describe("the browser preview's mock backend", () => {
         env: expect.any(Array) as unknown as [string, string][],
       },
     });
-    expect(issued.plan.warnings).toEqual([]);
+    expect(issued.plan.warnings).toEqual([{ LinkPutsCommands: { names: ["corepack", "node", "npm", "npx"] } }]);
     const opId = await answer<number>(backend.invoke("submit_operation", { planId: issued.id }));
     await vi.runAllTimersAsync();
     const own = operationEvents(events, opId);

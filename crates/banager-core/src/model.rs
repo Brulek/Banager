@@ -823,6 +823,14 @@ pub enum Warning {
     /// preview says so and offers no Link button. `paths` are absolute, as
     /// Homebrew names them. Built only by `BrewAdapter::plan` for a link.
     LinkConflicts { paths: Vec<String> },
+    /// The commands `brew link --force <formula>` (`OpKind::Link`) puts
+    /// where Terminal looks: the names in the formula's own `bin` folder,
+    /// sorted (`adapters/brew/link.rs`). Once linked, typing any of them in
+    /// Terminal runs the formula's copy -- linking `node@20` changes which
+    /// `node`, `npm` and `npx` run everywhere -- so the preview names them
+    /// in its sentence, not as a line of its own. Built only by
+    /// `BrewAdapter::plan` for a link.
+    LinkPutsCommands { names: Vec<String> },
     /// brew's `uses --installed` check itself failed or timed out -- or the
     /// look for the other sources that run on the package
     /// (`NeededBySource`) did not finish. Not the same thing as "confirmed
@@ -2738,6 +2746,16 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<Warning>(&json).expect("deserialize"),
             conflicts
+        );
+        // What the link puts where Terminal looks.
+        let puts = Warning::LinkPutsCommands {
+            names: vec!["node".to_string(), "npm".to_string()],
+        };
+        let json = serde_json::to_string(&puts).expect("serialize");
+        assert_eq!(json, r#"{"LinkPutsCommands":{"names":["node","npm"]}}"#);
+        assert_eq!(
+            serde_json::from_str::<Warning>(&json).expect("deserialize"),
+            puts
         );
     }
 

@@ -319,8 +319,16 @@ export function warningKey(warning: Warning): string | null {
     return caskStepKey(step, items, onlyIf);
   }
   // Its own group renders it (`KeptDataGroup`, the list of what still needs
-  // the package), never a line.
-  if ("KeepsData" in warning || "NeededBySource" in warning || "Message" in warning) return null;
+  // the package), never a line; the link's commands are in its sentence
+  // (`LinkFixSheet`).
+  if (
+    "KeepsData" in warning ||
+    "NeededBySource" in warning ||
+    "Message" in warning ||
+    "LinkPutsCommands" in warning
+  ) {
+    return null;
+  }
   const unhandled: never = warning;
   return unhandled;
 }
@@ -393,7 +401,14 @@ export function warningArgs(warning: Warning, separator = ", "): Record<string, 
       ...(onlyIf === undefined ? {} : removeCheckArgs(onlyIf)),
     };
   }
-  if ("KeepsData" in warning || "NeededBySource" in warning || "Message" in warning) return {};
+  if (
+    "KeepsData" in warning ||
+    "NeededBySource" in warning ||
+    "Message" in warning ||
+    "LinkPutsCommands" in warning
+  ) {
+    return {};
+  }
   const unhandled: never = warning;
   return unhandled;
 }
@@ -526,6 +541,7 @@ export function warningDetailKey(warning: Warning): string | null {
   if (
     "WouldBreak" in warning ||
     "LinkConflicts" in warning ||
+    "LinkPutsCommands" in warning ||
     "NeededBySource" in warning ||
     "SecureConnectionFailed" in warning ||
     "ThirdPartyRegistry" in warning ||
@@ -572,6 +588,8 @@ export function warningGroup(warning: Warning): WarningGroup {
   if (
     "WouldBreak" in warning ||
     "LinkConflicts" in warning ||
+    // No line (`warningKey`): the link's sentence names them.
+    "LinkPutsCommands" in warning ||
     // No line (`warningKey`): the confirmation lists it with Homebrew's
     // dependents instead.
     "NeededBySource" in warning ||
@@ -655,6 +673,8 @@ export function deletesForGood(warning: Warning): boolean {
     "WouldBreak" in warning ||
     // A link that would stop deletes nothing: Homebrew refuses first.
     "LinkConflicts" in warning ||
+    // A link deletes nothing: it adds links.
+    "LinkPutsCommands" in warning ||
     "NeededBySource" in warning ||
     "SecureConnectionFailed" in warning ||
     "ThirdPartyRegistry" in warning ||
@@ -829,7 +849,9 @@ export function isCaution(warning: Warning): boolean {
     // Why a row has no Update button, said on that row.
     "LinkPlacesHeld" in warning ||
     "UninstallScope" in warning ||
-    "KeepsData" in warning
+    "KeepsData" in warning ||
+    // What the link does, in its sentence.
+    "LinkPutsCommands" in warning
   ) {
     return false;
   }

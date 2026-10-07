@@ -399,6 +399,10 @@ describe("types", () => {
     const conflicts: Warning = { LinkConflicts: { paths: ["/opt/homebrew/bin/npm"] } };
     expect(JSON.stringify(conflicts)).toBe('{"LinkConflicts":{"paths":["/opt/homebrew/bin/npm"]}}');
     expect(roundTrip(conflicts)).toEqual(conflicts);
+    // What the link puts where Terminal looks.
+    const puts: Warning = { LinkPutsCommands: { names: ["node", "npm"] } };
+    expect(JSON.stringify(puts)).toBe('{"LinkPutsCommands":{"names":["node","npm"]}}');
+    expect(roundTrip(puts)).toEqual(puts);
   });
 
   it("keeps Outcome's externally tagged variants intact on the wire", () => {

@@ -1,6 +1,8 @@
-//! What stands in the way of `brew link --force <formula>`, read for its
-//! preview (`OpKind::Link`, `Warning::LinkConflicts`): the files already in
-//! the prefix's `bin` folder under the names of the formula's own commands.
+//! What `brew link --force <formula>` would do in the prefix's `bin`
+//! folder, read for its preview (`OpKind::Link`): the formula's own
+//! commands, which it puts where Terminal looks
+//! (`Warning::LinkPutsCommands`), and the files already there under their
+//! names, which stand in its way (`Warning::LinkConflicts`).
 //!
 //! Homebrew links each of a keg's files to the same place under the prefix,
 //! and stops at the first one it finds there already, unless that is a link
@@ -24,33 +26,49 @@
 use crate::protected::{look, Protected};
 use std::path::{Path, PathBuf};
 
-/// The files in `<prefix>/bin` that would stop `brew link --force <name>`,
-/// in the order of the keg's command names: each of `<prefix>/opt/<name>/bin`'s
-/// names whose `<prefix>/bin/<name>` leads somewhere other than into the
-/// version being linked (`<prefix>/opt/<name>`'s real path,
-/// `Cellar/<name>/<version>`). Empty when nothing is in the way, and
-/// when the keg's `bin` cannot be listed (no such folder, or in a protected
+/// What `brew link --force <name>` would do in `<prefix>/bin`, read for its
+/// preview: the formula's commands, and the files there that would stop it.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct LinkPreview {
+    /// The names in `<prefix>/opt/<name>/bin`, sorted, but for a hidden one
+    /// (`.DS_Store`, which Homebrew skips): the commands the link puts where
+    /// Terminal looks (`Warning::LinkPutsCommands`).
+    pub commands: Vec<String>,
+    /// The files in `<prefix>/bin` under those names that would stop the
+    /// link, in the same order: each one that leads somewhere other than
+    /// into the version being linked (`<prefix>/opt/<name>`'s real path,
+    /// `Cellar/<name>/<version>`) (`Warning::LinkConflicts`).
+    pub in_the_way: Vec<PathBuf>,
+}
+
+/// The preview of `brew link --force <name>` (`LinkPreview`). Empty when
+/// the keg's `bin` cannot be listed (no such folder, or in a protected
 /// place): Homebrew's own refusal then says what it found.
-pub(crate) fn link_conflicts(prefix: &Path, name: &str) -> Vec<PathBuf> {
+pub(crate) fn link_preview(prefix: &Path, name: &str) -> LinkPreview {
     let protected = Protected::of_this_process();
     let Some(short) = name.rsplit('/').next().filter(|short| plain(short)) else {
-        return Vec::new();
+        return LinkPreview::default();
     };
     // The version being linked: what `opt/<name>` leads to,
     // `Cellar/<name>/<version>`. Not the whole `Cellar/<name>`: a link
     // left over into another installed version is in the way too.
     let Ok(keg) = look::real_path(&prefix.join("opt").join(short), &protected) else {
-        return Vec::new();
+        return LinkPreview::default();
     };
     let Ok(listing) = look::list(&prefix.join("opt").join(short).join("bin"), &protected) else {
-        return Vec::new();
+        return LinkPreview::default();
     };
-    let Ok(mut names) = listing.names() else {
-        return Vec::new();
+    let Ok(names) = listing.names() else {
+        return LinkPreview::default();
     };
-    names.sort();
-    names
+    let mut commands: Vec<String> = names
         .into_iter()
+        .filter_map(|command| command.to_str().map(str::to_string))
+        .filter(|command| !command.starts_with('.'))
+        .collect();
+    commands.sort();
+    let in_the_way = commands
+        .iter()
         .map(|command| prefix.join("bin").join(command))
         .filter(|there| match look::target(there, &protected) {
             Ok((real, _)) => !real.starts_with(&keg),
@@ -59,7 +77,11 @@ pub(crate) fn link_conflicts(prefix: &Path, name: &str) -> Vec<PathBuf> {
             // folder that cannot be searched) is not known to be in the way.
             Err(_) => false,
         })
-        .collect()
+        .collect();
+    LinkPreview {
+        commands,
+        in_the_way,
+    }
 }
 
 /// Whether `name` is one plain path component: not empty, no `/`, not `.`
@@ -99,8 +121,15 @@ mod tests {
     #[test]
     fn test_npms_own_copy_is_in_the_way_of_linking_node() {
         let root = prefix("npm-in-the-way");
-        let found = link_conflicts(&root, "node@22");
-        let expected = vec![root.join("bin/npm")];
+        let found = link_preview(&root, "node@22");
+        let expected = LinkPreview {
+            commands: vec![
+                "corepack".to_string(),
+                "node".to_string(),
+                "npm".to_string(),
+            ],
+            in_the_way: vec![root.join("bin/npm")],
+        };
         let _ = std::fs::remove_dir_all(&root);
         assert_eq!(found, expected);
     }
@@ -120,7 +149,7 @@ mod tests {
             root.join("bin/corepack"),
         )
         .unwrap();
-        let found = link_conflicts(&root, "node@22");
+        let found = link_preview(&root, "node@22").in_the_way;
         let _ = std::fs::remove_dir_all(&root);
         assert_eq!(found, Vec::<PathBuf>::new());
     }
@@ -141,7 +170,7 @@ mod tests {
         )
         .unwrap();
         std::fs::remove_file(root.join("bin/npm")).unwrap();
-        let found = link_conflicts(&root, "node@22");
+        let found = link_preview(&root, "node@22").in_the_way;
         let _ = std::fs::remove_dir_all(&root);
         assert_eq!(found, vec![root.join("bin/node")]);
     }
@@ -150,10 +179,16 @@ mod tests {
     fn test_a_plain_file_is_in_the_way_and_a_formula_with_no_keg_says_nothing() {
         let root = prefix("plain-file");
         std::fs::write(root.join("bin/corepack"), b"#!/bin/sh\n").unwrap();
-        let found = link_conflicts(&root, "node@22");
-        let none = link_conflicts(&root, "node@20");
+        // A `.DS_Store` in the keg's `bin` is no command: Homebrew skips it.
+        std::fs::write(root.join("Cellar/node@22/22.23.3_1/bin/.DS_Store"), b"").unwrap();
+        let found = link_preview(&root, "node@22");
+        let none = link_preview(&root, "node@20");
         let _ = std::fs::remove_dir_all(&root);
-        assert_eq!(found, vec![root.join("bin/corepack"), root.join("bin/npm")]);
-        assert!(none.is_empty());
+        assert_eq!(
+            found.in_the_way,
+            vec![root.join("bin/corepack"), root.join("bin/npm")]
+        );
+        assert_eq!(found.commands, ["corepack", "node", "npm"]);
+        assert_eq!(none, LinkPreview::default());
     }
 }

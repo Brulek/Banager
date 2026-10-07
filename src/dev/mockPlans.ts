@@ -252,14 +252,18 @@ function standalonePlan(plan: Plan, inst: ManagerInstance, world: World): Plan {
 }
 
 /**
- * What stands in the way of linking `name` (`link::link_conflicts`): for
- * `node@22`, npm's own `npm` and `npx`, as on the author's Mac, where npm
- * had been updated through itself; nothing for any other.
+ * What linking `name` would do (`link::link_preview`): a `node@<version>`'s
+ * commands, put where Terminal looks; and for `node@22`, npm's own `npm`
+ * and `npx` in their way, as on the author's Mac, where npm had been
+ * updated through itself.
  */
-function linkConflictsFor(name: string): Warning[] {
-  return name === "node@22"
-    ? [{ LinkConflicts: { paths: ["/opt/homebrew/bin/npm", "/opt/homebrew/bin/npx"] } }]
+function linkPreviewFor(name: string): Warning[] {
+  const commands: Warning[] = name.startsWith("node@")
+    ? [{ LinkPutsCommands: { names: ["corepack", "node", "npm", "npx"] } }]
     : [];
+  return name === "node@22"
+    ? [...commands, { LinkConflicts: { paths: ["/opt/homebrew/bin/npm", "/opt/homebrew/bin/npx"] } }]
+    : commands;
 }
 
 /**
@@ -290,7 +294,7 @@ export function buildPlan(world: World, inst: ManagerInstance, request: OpReques
         return {
           ...plan,
           action: command(inst.exe_path, ["link", "--force", name], BREW_ENV),
-          warnings: linkConflictsFor(name),
+          warnings: linkPreviewFor(name),
           timeout_secs: 300,
         };
       }

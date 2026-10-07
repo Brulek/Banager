@@ -197,19 +197,21 @@ pub struct BrewAdapter {
     /// has run, which every refresh does before a row can be updated; an
     /// update of a formula not here is planned as before.
     keg_only: Mutex<HashMap<InstanceId, HashSet<String>>>,
-    /// How to read what stands in the way of `brew link --force` for a
-    /// formula, for the link preview (`link::link_conflicts`): the real
-    /// prefix outside this crate's unit tests; inside them nothing is read
-    /// unless a test installs a reader (`with_link_conflicts_fn`).
-    link_conflicts_fn: fn(&Path, &str) -> Vec<PathBuf>,
+    /// How to read what `brew link --force` would do for a formula -- its
+    /// commands, and what stands in their way -- for the link preview
+    /// (`link::link_preview`): the real prefix outside this crate's unit
+    /// tests; inside them nothing is read unless a test installs a reader
+    /// (`with_link_preview_fn`).
+    link_preview_fn: fn(&Path, &str) -> link::LinkPreview,
 }
 
-/// `BrewAdapter::link_conflicts_fn` as `BrewAdapter::new` sets it: the real
+/// `BrewAdapter::link_preview_fn` as `BrewAdapter::new` sets it: the real
 /// prefix in every build but this crate's unit tests, where nothing is read.
 #[cfg(not(test))]
-const DEFAULT_LINK_CONFLICTS_FN: fn(&Path, &str) -> Vec<PathBuf> = link::link_conflicts;
+const DEFAULT_LINK_PREVIEW_FN: fn(&Path, &str) -> link::LinkPreview = link::link_preview;
 #[cfg(test)]
-const DEFAULT_LINK_CONFLICTS_FN: fn(&Path, &str) -> Vec<PathBuf> = |_, _| Vec::new();
+const DEFAULT_LINK_PREVIEW_FN: fn(&Path, &str) -> link::LinkPreview =
+    |_, _| link::LinkPreview::default();
 
 /// `BrewAdapter::update_lock_fn` as `BrewAdapter::new` sets it: the real
 /// probe in every build but this crate's unit tests.
@@ -396,7 +398,7 @@ impl BrewAdapter {
             kegs_fn: DEFAULT_KEGS_FN,
             links_fn: DEFAULT_LINKS_FN,
             keg_only: Mutex::new(HashMap::new()),
-            link_conflicts_fn: DEFAULT_LINK_CONFLICTS_FN,
+            link_preview_fn: DEFAULT_LINK_PREVIEW_FN,
         }
     }
 
@@ -540,14 +542,14 @@ impl BrewAdapter {
         self
     }
 
-    /// Test-only hook to put files in the way of a link (see
-    /// `link_conflicts_fn`).
+    /// Test-only hook to give a formula commands and put files in the
+    /// way of its link (see `link_preview_fn`).
     #[cfg(test)]
-    fn with_link_conflicts_fn(
+    fn with_link_preview_fn(
         mut self,
-        link_conflicts_fn: fn(&Path, &str) -> Vec<PathBuf>,
+        link_preview_fn: fn(&Path, &str) -> link::LinkPreview,
     ) -> BrewAdapter {
-        self.link_conflicts_fn = link_conflicts_fn;
+        self.link_preview_fn = link_preview_fn;
         self
     }
 
@@ -2238,25 +2240,33 @@ impl BrewAdapter {
             // passed, so a file already there is never replaced -- what is
             // in the way is read first and said (`Warning::LinkConflicts`),
             // and Homebrew itself refuses and takes back what it linked if
-            // it meets one. No password, no download, no update of
-            // Homebrew: `brew link` does none of those.
+            // it meets one. The commands it puts where Terminal looks are
+            // read too, and said (`Warning::LinkPutsCommands`): linking
+            // `node@20` changes which `node` Terminal runs. No password, no
+            // download, no update of Homebrew: `brew link` does none of
+            // those.
             OpKind::Link => {
                 if req.artifact_kind != ArtifactKind::Formula {
                     return Err(AdapterError::Unsupported(
                         "only a Homebrew formula is linked".to_string(),
                     ));
                 }
-                let conflicts = (self.link_conflicts_fn)(&inst.prefix, &req.name);
-                let warnings = if conflicts.is_empty() {
-                    Vec::new()
-                } else {
-                    vec![Warning::LinkConflicts {
-                        paths: conflicts
+                let preview = (self.link_preview_fn)(&inst.prefix, &req.name);
+                let mut warnings = Vec::new();
+                if !preview.commands.is_empty() {
+                    warnings.push(Warning::LinkPutsCommands {
+                        names: preview.commands,
+                    });
+                }
+                if !preview.in_the_way.is_empty() {
+                    warnings.push(Warning::LinkConflicts {
+                        paths: preview
+                            .in_the_way
                             .iter()
                             .map(|path| path.display().to_string())
                             .collect(),
-                    }]
-                };
+                    });
+                }
                 Ok(Plan {
                     request: req.clone(),
                     action: PlanAction::Command {
@@ -4122,20 +4132,29 @@ mod plan_execute_tests {
         assert!(plan.affected.is_empty());
         assert!(runner.calls().is_empty(), "planning runs nothing");
 
-        // npm's own `npm` in `bin`: Homebrew would link nothing.
+        // The formula's commands, which the link puts where Terminal
+        // looks; npm's own `npm` in `bin`: Homebrew would link nothing.
         let plan = BrewAdapter::new(runner.clone())
-            .with_link_conflicts_fn(|prefix, name| {
+            .with_link_preview_fn(|prefix, name| {
                 assert_eq!((prefix, name), (Path::new("/opt/homebrew"), "node@22"));
-                vec![PathBuf::from("/opt/homebrew/bin/npm")]
+                link::LinkPreview {
+                    commands: vec!["node".to_string(), "npm".to_string()],
+                    in_the_way: vec![PathBuf::from("/opt/homebrew/bin/npm")],
+                }
             })
             .plan(&inst, &req)
             .await
             .expect("still planned, with what is in the way");
         assert_eq!(
             plan.warnings,
-            vec![Warning::LinkConflicts {
-                paths: vec!["/opt/homebrew/bin/npm".to_string()],
-            }]
+            vec![
+                Warning::LinkPutsCommands {
+                    names: vec!["node".to_string(), "npm".to_string()],
+                },
+                Warning::LinkConflicts {
+                    paths: vec!["/opt/homebrew/bin/npm".to_string()],
+                },
+            ]
         );
 
         // Only a formula is linked.

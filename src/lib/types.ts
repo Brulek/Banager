@@ -324,6 +324,12 @@ export type Warning =
    * the link preview says so and offers no Link button.
    */
   | { LinkConflicts: { paths: string[] } }
+  /**
+   * The commands `brew link --force` (`OpKind.Link`) puts where Terminal
+   * looks, sorted: the link preview names them in its sentence
+   * (`LinkFixSheet`), never as a line.
+   */
+  | { LinkPutsCommands: { names: string[] } }
   | "DependentsUnknown"
   | { WouldBreak: { names: string[] } }
   /**
