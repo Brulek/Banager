@@ -1219,6 +1219,22 @@ describe("the preview's URL switches", () => {
       expect(doc).toContain(name);
     }
     expect(doc).not.toMatch(/Show self-updating apps|notice details|masked diagnostic/i);
+    // n1 skeptic: "Show the command" is no button either; the
+    // confirmation's is "Show Command", or "Show Commands" for more than
+    // one line (`commandPreview.show` in CommandPreview.tsx). Every
+    // "Show …" the recipes put in quotes is a label the window has.
+    const labels = new Set<string>();
+    const collect = (value: unknown): void => {
+      if (typeof value === "string") labels.add(value);
+      else if (value !== null && typeof value === "object") Object.values(value).forEach(collect);
+    };
+    collect(en);
+    const quoted = [...doc.matchAll(/"(Show [^"]+)"/g)].map((match) => match[1]);
+    expect(quoted.length).toBeGreaterThan(0);
+    for (const name of quoted) expect(labels, `"${name}" in docs/ui-preview.md`).toContain(name);
+    expect(doc).toContain(
+      `"${en.commandPreview.show_one}", or "${en.commandPreview.show_other}" when there is more than one`,
+    );
   });
 });
 

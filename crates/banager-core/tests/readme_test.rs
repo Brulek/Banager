@@ -28,6 +28,13 @@ fn read_readme() -> String {
     std::fs::read_to_string(path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
 }
 
+/// A language file of the window, `src/i18n/{name}.json`.
+fn read_locale(name: &str) -> serde_json::Value {
+    let path = format!("../../src/i18n/{name}.json");
+    let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {path}: {e}"));
+    serde_json::from_str(&text).unwrap_or_else(|e| panic!("{path} is not JSON: {e}"))
+}
+
 /// The README's English block (before its `## 中文` heading) and its
 /// Chinese one (after it).
 fn blocks(readme: &str) -> (&str, &str) {
@@ -47,6 +54,21 @@ fn test_readme_scopes_confirmation_to_chosen_operations_and_discloses_refresh_mi
     assert!(english.contains(
         "For updates and uninstalls you choose in Banager, the confirmation lets you see the exact command before it runs"
     ));
+    // n1 skeptic: the button counts command lines (`commandPreview.show`
+    // in CommandPreview.tsx), so an update with its cleanup, or any
+    // batch, says "Show Commands"; the README names both, as en.json does.
+    let en = read_locale("en");
+    let press = format!(
+        "one press on \"{}\" (\"{}\" when there is more than one)",
+        en["commandPreview"]["show_one"].as_str().expect("show_one"),
+        en["commandPreview"]["show_other"]
+            .as_str()
+            .expect("show_other"),
+    );
+    assert!(
+        english.contains(&press),
+        "README.md's preview bullet does not say {press:?}"
+    );
     assert!(english.contains("without a preview or confirmation"));
     let chinese = squeeze(chinese);
     assert!(chinese.contains("在Banager里选择更新或卸载时"));

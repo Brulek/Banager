@@ -2307,6 +2307,47 @@ fn test_what_we_run_traditional_chinese_summary_uses_the_windows_words() {
     }
 }
 
+/// n1 skeptic: the Settings switch that adds `--greedy` is "Show Homebrew
+/// apps that have their own updater" (`settings.includeSelfUpdating.label`),
+/// and the button that shows a preview's command lines is "Show Command",
+/// or "Show Commands" when there is more than one (`commandPreview.show`,
+/// counted in CommandPreview.tsx). The doc calls both what the window does.
+#[test]
+fn test_what_we_run_names_the_setting_and_the_command_button_as_the_window_does() {
+    let en: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string("../../src/i18n/en.json").expect("read en.json"),
+    )
+    .expect("en.json is JSON");
+    let doc = read_doc();
+    let folded = doc.split_whitespace().collect::<Vec<_>>().join(" ");
+    let setting = format!(
+        "the \"{}\" setting",
+        en["settings"]["includeSelfUpdating"]["label"]
+            .as_str()
+            .expect("the setting's label")
+    );
+    assert_eq!(
+        folded.matches(&setting).count(),
+        2,
+        "docs/what-we-run.md should say {setting:?} where a refresh is started and where `--greedy` is added"
+    );
+    assert!(
+        !folded.contains("include self-updating apps"),
+        "docs/what-we-run.md names a setting the window does not have"
+    );
+    let press = format!(
+        "the command one press away there (\"{}\", or \"{}\" when there is more than one)",
+        en["commandPreview"]["show_one"].as_str().expect("show_one"),
+        en["commandPreview"]["show_other"]
+            .as_str()
+            .expect("show_other"),
+    );
+    assert!(
+        folded.contains(&press),
+        "docs/what-we-run.md does not say {press:?}"
+    );
+}
+
 /// r28 R28-1: uv's list right before a saved upgrade waits for uv's own
 /// tools-folder lock as the upgrade itself would, within the upgrade's
 /// 600 s, and a Cancel stops it (`UvAdapter::execute`). The uv section

@@ -480,7 +480,8 @@ Refresh control (the status bar after a failed refresh, a source notice)
 or asks to check again — the page header's Check Again, or Check Again
 (⌘R) in the menu bar's View menu, neither of which starts one while one
 runs (`useCheckAgain` in `src/lib/queries.ts`) — after every operation
-finishes, when the "include self-updating apps" setting changes, after
+finishes, when the "Show Homebrew apps that have their own updater"
+setting changes, after
 Ollama is opened from its notice, whenever a `brew update` a refresh
 left running in the background ends
 (`refresh_on_background_change` in `src-tauri/src/ipc.rs`), and, with
@@ -503,7 +504,8 @@ moves a file, launches an application or asks for a password.
 for an uninstall that runs no command, the exact list of paths it will
 move to the Trash (the Claude Code, Antigravity CLI and Grok Build
 sections) — and the front end shows it: the paths in the confirmation,
-the command one press away there ("Show Command") — the variables
+the command one press away there ("Show Command", or "Show Commands"
+when there is more than one) — the variables
 the plan sets on top of Banager's environment, as `NAME=value`, then the
 argv (`commandTokens` in `src/components/CommandPreview.tsx`) — open from
 the start with Settings' "Show technical details" on (`plan_operation` in
@@ -1657,7 +1659,7 @@ list anything.
 |---|---|---|
 | Detect a Homebrew install | `<brew> --version` | 30 s |
 | List installed formulae + casks (`inventory`) | `<brew> info --installed --json=v2` | 120 s |
-| List outdated formulae + casks (`check_updates`) | `<brew> outdated --json=v2`, plus `--greedy` when the "include self-updating apps" setting is on | 120 s |
+| List outdated formulae + casks (`check_updates`) | `<brew> outdated --json=v2`, plus `--greedy` when the "Show Homebrew apps that have their own updater" setting is on | 120 s |
 | Qualify the names `outdated` reported, and read which of them Homebrew disabled (once per `check_updates`) | `<brew> info --installed --json=v2` | 120 s |
 | Search by name | `<brew> search {query}` | 30 s |
 | Search by name + description | `<brew> search --desc {query}` | 30 s |

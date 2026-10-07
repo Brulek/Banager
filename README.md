@@ -225,8 +225,8 @@ This app runs package managers on your behalf, so the boundary matters more than
   for it (all but the `PATH` and the proxy and mirror settings it takes from your login shell, which
   `docs/what-we-run.md` lists under "How
   Banager runs anything" and which are never shown, since a proxy setting can hold a password) —
-  one press on "Show Command", or open from the start with Settings' "Show technical details"
-  on — and
+  one press on "Show Command" ("Show Commands" when there is more than one), or open from the
+  start with Settings' "Show technical details" on — and
   says whether it may ask for your password; an uninstall that runs no command lists instead the
   exact paths it will move to the Trash. `OLLAMA_HOST` logins are masked in the preview and
   copied text; execution retains the original value. An uninstall also says what it will affect. A Homebrew
