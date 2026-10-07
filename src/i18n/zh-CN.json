@@ -794,8 +794,8 @@
   },
   "linkRollback": {
     "risk_other": "{{paths}}已链接到它。如果链接中途停止，Homebrew也会删除已有的链接，因此无法在这里链接。",
-    "handoff": "要链接它，可以在终端里运行下面的命令。如果命令中途停止，Homebrew也会删除上面这些链接。",
-    "handoffConflicts": "要链接它，可以在终端里运行下面的命令。它会删除挡住链接的文件，换成“{{formula}}”中的。如果仍然中途停止，Homebrew也会删除原本已有的链接。"
+    "handoff_other": "要链接它，可以在终端里运行下面的命令。如果命令中途停止，Homebrew也会删除上面的链接。",
+    "handoffConflicts_other": "要链接它，可以在终端里运行下面的命令。它会删除挡住链接的文件，换成“{{formula}}”中的。如果仍然中途停止，Homebrew也会删除原本已有的链接。"
   },
   "sourceDiagnostic": {
     "label": "查看错误详情",

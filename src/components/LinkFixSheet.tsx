@@ -179,6 +179,10 @@ export function LinkFixSheet({ instanceId, onClose }: LinkFixSheetProps) {
     : conflicts.some(isLinkConflicts)
       ? "linkRollback.handoffConflicts"
       : "linkRollback.handoff";
+  // How many links already there a link that stopped would take back: the
+  // sentence under them says "the link" for one, as the ⚠ line above it
+  // does (r21 C10).
+  const atRisk = conflicts.reduce((n, w) => n + (isLinkRollbackRisk(w) ? w.LinkRollbackRisk.paths.length : 0), 0);
   const program = why?.missing_program ?? null;
   const commands = plan === undefined ? [] : linkedCommands(plan, program);
   // What linking changes, once the preview has read the formula's commands.
@@ -327,7 +331,7 @@ export function LinkFixSheet({ instanceId, onClose }: LinkFixSheetProps) {
               Command, and what to do after (as `PasswordCommand`). */}
           <div className="mt-3 flex flex-col gap-2">
             <p className="break-words text-body text-foreground">
-              {t(handoff, { formula: fix.key.name })}
+              {t(handoff, { formula: fix.key.name, count: atRisk })}
             </p>
             <div role="group" aria-label={t("noAnswer.sheet.commandLabel")}>
               {/* A line breaks between tokens, never inside one: 「--」 /

@@ -863,8 +863,10 @@
   "linkRollback": {
     "risk_one": "{{paths}} is already linked to it. If linking stops partway, Homebrew removes that link too, so it can't be linked here.",
     "risk_other": "{{paths}} are already linked to it. If linking stops partway, Homebrew removes those links too, so it can't be linked here.",
-    "handoff": "To link it, you can run this command in Terminal. If it stops partway, Homebrew removes the links above too.",
-    "handoffConflicts": "To link it, you can run this command in Terminal. It deletes the files in the way and links the ones in “{{formula}}” in their place. If it still stops partway, Homebrew also removes the links that were already there."
+    "handoff_one": "To link it, you can run this command in Terminal. If it stops partway, Homebrew removes the link above too.",
+    "handoff_other": "To link it, you can run this command in Terminal. If it stops partway, Homebrew removes the links above too.",
+    "handoffConflicts_one": "To link it, you can run this command in Terminal. It deletes the files in the way and links the ones in “{{formula}}” in their place. If it still stops partway, Homebrew also removes the link that was already there.",
+    "handoffConflicts_other": "To link it, you can run this command in Terminal. It deletes the files in the way and links the ones in “{{formula}}” in their place. If it still stops partway, Homebrew also removes the links that were already there."
   },
   "sourceDiagnostic": {
     "label": "Show Error Details",

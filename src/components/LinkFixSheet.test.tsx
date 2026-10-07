@@ -403,7 +403,7 @@ describe("LinkFixSheet where Homebrew's own links are already there, its link no
         `/opt/homebrew/bin/brew link --formula --force ${conflict ? "--overwrite " : ""}node@22`,
       );
       expect(screen.getByRole("alertdialog")).toHaveTextContent(
-        i18n.t(conflict ? "linkRollback.handoffConflicts" : "linkRollback.handoff", { formula: "node@22" }),
+        i18n.t(conflict ? "linkRollback.handoffConflicts" : "linkRollback.handoff", { formula: "node@22", count: 2 }),
       );
       expect(calls("submit_operation")).toHaveLength(0);
       await i18n.changeLanguage("en");
@@ -417,5 +417,38 @@ describe("LinkFixSheet where Homebrew's own links are already there, its link no
     await screen.findByText(
       "/opt/homebrew/bin/npm is already linked to it. If linking stops partway, Homebrew removes that link too, so it can't be linked here.",
     );
+    // And so does the sentence under it, not "the links above" (r21 C10).
+    expect(
+      screen.getByText("To link it, you can run this command in Terminal. If it stops partway, Homebrew removes the link above too."),
+    ).toBeInTheDocument();
+  });
+
+  it.each([
+    ["zh-CN", "要链接它，可以在终端里运行下面的命令。如果命令中途停止，Homebrew也会删除上面的链接。"],
+    ["zh-Hant", "要連結它，可以在終端機執行下面的指令。若指令中途停止，Homebrew也會刪除上面的連結。"],
+  ])("says the links above without a number in %s, one or more (r21 C10)", async (language, handoff) => {
+    await i18n.changeLanguage(language);
+    try {
+      const npm = npmWithout([NODE_22]);
+      backend(npm, [{ LinkRollbackRisk: { paths: ["/opt/homebrew/bin/npm"] } }]);
+      renderWithProviders(<LinkFixSheet instanceId={npm.id} onClose={() => {}} />);
+      expect(await screen.findByText(handoff)).toBeInTheDocument();
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+
+  it("says the one link already there in the singular when files are in the way too", async () => {
+    const npm = npmWithout([NODE_22]);
+    backend(npm, [
+      { LinkRollbackRisk: { paths: ["/opt/homebrew/bin/npm"] } },
+      { LinkConflicts: { paths: ["/opt/homebrew/bin/corepack"] } },
+    ]);
+    renderWithProviders(<LinkFixSheet instanceId={npm.id} onClose={() => {}} />);
+    expect(
+      await screen.findByText(
+        "To link it, you can run this command in Terminal. It deletes the files in the way and links the ones in “node@22” in their place. If it still stops partway, Homebrew also removes the link that was already there.",
+      ),
+    ).toBeInTheDocument();
   });
 });

@@ -794,8 +794,8 @@
   },
   "linkRollback": {
     "risk_other": "{{paths}}已連結到它。若連結中途停止，Homebrew也會刪除已有的連結，因此無法在這裡連結。",
-    "handoff": "要連結它，可以在終端機執行下面的指令。若指令中途停止，Homebrew也會刪除上面這些連結。",
-    "handoffConflicts": "要連結它，可以在終端機執行下面的指令。它會刪除擋住連結的檔案，換成「{{formula}}」中的。若仍然中途停止，Homebrew也會刪除原本已有的連結。"
+    "handoff_other": "要連結它，可以在終端機執行下面的指令。若指令中途停止，Homebrew也會刪除上面的連結。",
+    "handoffConflicts_other": "要連結它，可以在終端機執行下面的指令。它會刪除擋住連結的檔案，換成「{{formula}}」中的。若仍然中途停止，Homebrew也會刪除原本已有的連結。"
   },
   "sourceDiagnostic": {
     "label": "查看錯誤詳細資訊",
