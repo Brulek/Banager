@@ -5043,9 +5043,15 @@ and the Other Programs scan keep their own budgets, in their sections.
 
 Before settings, history or window state loads, Banager takes an exclusive
 OS lock on its application data directory itself, held through exit writes.
-No lock file is created. A second instance that cannot acquire the lock
-requests macOS to activate the existing app and exits before reading or writing
-these files. If the lock cannot be taken for another reason (a file system
+No lock file is created. A second instance that cannot acquire the lock — a
+copy opened from another place, such as the disk image and then
+Applications, or `open -n` — asks macOS to open the running copy's own app
+bundle, as Finder does when an app that is running is opened again
+(`NSWorkspace openURL:`, `reopen_existing` in `src-tauri/src/instance.rs`):
+macOS sends that copy the event a click on its Dock icon sends, and its
+window comes back even if it was closed. The second instance then exits
+before reading or writing these files; it runs no command and asks for no
+permission. If the lock cannot be taken for another reason (a file system
 without locks, or a directory that cannot be made), Banager starts without it,
 as it did before the lock existed. This coordinates builds that implement the
 lock; older builds do not participate in this protocol.

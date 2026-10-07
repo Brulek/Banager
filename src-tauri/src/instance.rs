@@ -13,7 +13,8 @@ enum Launch<T> {
     /// This instance owns the app-data directory until it quits: `T` is
     /// the open directory `acquire` locked.
     Own(T),
-    /// Another instance owns it: bring that one forward and quit.
+    /// Another instance owns it: have macOS open that one again, which
+    /// brings its window back (`reopen_existing`), and quit.
     Defer,
     /// Not taken for another reason -- a file system without locks, a
     /// directory that cannot be made. Banager started then before the lock
@@ -41,7 +42,7 @@ pub fn guard<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
                     app.manage(DirectoryOwner { _held: lock });
                 }
                 Launch::Defer => {
-                    activate_existing(&app.config().identifier);
+                    reopen_existing(&app.config().identifier);
                     // No state/plugin writer has started in this process.
                     std::process::exit(0);
                 }
@@ -56,23 +57,44 @@ pub fn guard<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
         .build()
 }
 
+/// Brings the Banager already running forward the way Finder does when
+/// Banager is opened while it runs: has macOS open that copy's own bundle
+/// (`NSWorkspace openURL:` with its `bundleURL`, the app LaunchServices
+/// lists as running under Banager's bundle identifier -- no address from
+/// anywhere else), which LaunchServices answers by sending the running
+/// copy the reopen event a click on its Dock icon sends: tauri's
+/// `RunEvent::Reopen`, on which that copy brings its window back, closed
+/// or not (`window::on_run_event`, `on_reopen`). This launch may be a copy
+/// at another path -- the disk image's, then the one in Applications -- or
+/// at the same one (`open -n`). Asking macOS only to activate the running
+/// copy (`activateWithOptions:`) sent no reopen event, so a closed window
+/// stayed closed, and macOS may refuse that request from an app not yet in
+/// front. A running copy without a bundle -- a bare binary -- is asked to
+/// activate as before. No command runs and nothing is written; nothing
+/// asks for a permission.
 #[cfg(target_os = "macos")]
-fn activate_existing(identifier: &str) {
-    use objc2_app_kit::{NSApplicationActivationOptions, NSRunningApplication};
+fn reopen_existing(identifier: &str) {
+    use objc2_app_kit::{NSApplicationActivationOptions, NSRunningApplication, NSWorkspace};
     use objc2_foundation::NSString;
     let current = NSRunningApplication::currentApplication();
     let applications = NSRunningApplication::runningApplicationsWithBundleIdentifier(
         &NSString::from_str(identifier),
     );
-    for application in applications.iter() {
-        if !std::ptr::eq(&*application, &*current) {
+    let workspace = NSWorkspace::sharedWorkspace();
+    // `==` is `isEqual:`, which Apple names for telling two running
+    // applications apart.
+    for application in applications.iter().filter(|app| **app != *current) {
+        let reopened = application
+            .bundleURL()
+            .is_some_and(|bundle| workspace.openURL(&bundle));
+        if !reopened {
             application.activateWithOptions(NSApplicationActivationOptions::ActivateAllWindows);
         }
     }
 }
 
 #[cfg(not(target_os = "macos"))]
-fn activate_existing(_identifier: &str) {}
+fn reopen_existing(_identifier: &str) {}
 
 #[cfg(test)]
 mod tests {
@@ -86,6 +108,21 @@ mod tests {
         };
         // Held by the parent process: this launch defers to it.
         assert!(matches!(launch(acquire(Path::new(&path))), Launch::Defer));
+    }
+
+    #[test]
+    fn a_deferring_launch_reopens_the_running_copy_rather_than_only_activating_it() {
+        // r38 S5: with the running copy's window closed, activating that
+        // copy showed nothing; opening its bundle has macOS send it the
+        // reopen event, which brings the window back. What AppKit does is
+        // not run here (no app is launched in a test): this pins the call.
+        let production = include_str!("instance.rs")
+            .split("#[cfg(test)]")
+            .next()
+            .unwrap();
+        assert!(production.contains("reopen_existing(&app.config().identifier)"));
+        assert!(production.contains(".bundleURL()"));
+        assert!(production.contains("workspace.openURL(&bundle)"));
     }
 
     #[test]
