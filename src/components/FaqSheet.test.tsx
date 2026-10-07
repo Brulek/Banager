@@ -206,6 +206,20 @@ describe("FaqSheet", () => {
     },
   );
 
+  it.each([
+    ["en", en, "After Banager is quit and reopened, an update's View Steps"],
+    ["zh-CN", zhCN, "退出此App再重新打开后，更新的“查看步骤”"],
+    ["zh-Hant", zhHant, "結束此App再重新開啟後，更新的「查看步驟」"],
+  ] as const)(
+    "says it is this app that is quit and reopened, not the Homebrew app the answer is about, in %s (r30 Z3)",
+    (_language, locale, restart) => {
+      // 「結束後再開啟」 with no object, in a paragraph about an app
+      // installed with Homebrew, read as quitting that app; 結束 alone is
+      // also "finish", right after 「完成後回到這裡」.
+      expect(locale.faq.questions.password.answer).toContain(restart);
+    },
+  );
+
   it("has the README say the same as the FAQ of a password stop after a restart, in English and Chinese (r26 D4 skeptic)", () => {
     const readme = readFileSync(path.join(ROOT, "README.md"), "utf-8");
     // The one list item each block has on it, from its dash to the next.
