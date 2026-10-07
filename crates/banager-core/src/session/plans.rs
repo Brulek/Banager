@@ -171,6 +171,25 @@ fn blocked_uninstall(artifacts: &[InstalledArtifact], req: &OpRequest) -> Option
         .and_then(|a| a.uninstall_blocked)
 }
 
+/// The files a link's preview found in its way (`Warning::LinkConflicts`),
+/// or `None` for a plan that is not a link or found none: such a link is
+/// never run (`Session::submit`).
+fn in_the_way_of_link(plan: &crate::model::Plan) -> Option<Vec<String>> {
+    if plan.request.kind != OpKind::Link {
+        return None;
+    }
+    let paths: Vec<String> = plan
+        .warnings
+        .iter()
+        .filter_map(|warning| match warning {
+            crate::model::Warning::LinkConflicts { paths } => Some(paths.clone()),
+            _ => None,
+        })
+        .flatten()
+        .collect();
+    (!paths.is_empty()).then_some(paths)
+}
+
 /// Whether `updates` and `artifacts` -- one snapshot's -- list what `req`
 /// names: for an `Upgrade`, an update candidate of exactly that instance,
 /// kind and name; for an `Uninstall`, an installed row of it; for a `Link`,
@@ -407,6 +426,11 @@ impl Session {
                 reason: UninstallBlocked::NeededBySource,
             });
         }
+        // A link whose preview found files in the way offered no Link:
+        // Homebrew would link nothing (`Warning::LinkConflicts`).
+        if let Some(paths) = in_the_way_of_link(&stored.issued.plan) {
+            return Err(SubmitError::LinkBlocked { paths });
+        }
         self.recheck_actionable(&stored)?;
         let on_finish = self.history.get().map(|store| {
             let started = self.history_start(&stored.issued.plan.request);
@@ -528,6 +552,8 @@ mod tests {
         /// The version `reconcile` reads, before and after an operation
         /// alike; `None` reads no version (`test_support::fake_reconciled`).
         version_read: std::sync::Mutex<Option<String>>,
+        /// The warnings every `plan()` carries: what a real preview says.
+        plan_warnings: std::sync::Mutex<Vec<crate::model::Warning>>,
     }
 
     impl FakeAdapter {
@@ -542,6 +568,7 @@ mod tests {
                 in_flight: std::sync::atomic::AtomicUsize::new(0),
                 most_in_flight: std::sync::atomic::AtomicUsize::new(0),
                 version_read: std::sync::Mutex::new(None),
+                plan_warnings: std::sync::Mutex::new(Vec::new()),
             })
         }
 
@@ -655,7 +682,10 @@ mod tests {
                 tokio::time::sleep(delay).await;
             }
             self.in_flight.fetch_sub(1, Ordering::SeqCst);
-            Ok(test_support::fake_plan(inst, req))
+            Ok(Plan {
+                warnings: self.plan_warnings.lock().unwrap().clone(),
+                ..test_support::fake_plan(inst, req)
+            })
         }
 
         async fn execute(
@@ -1426,6 +1456,45 @@ mod tests {
             }),
         );
         assert!(session.operations().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_submit_refuses_a_link_whose_preview_found_files_in_the_way() {
+        // Where the preview found files in the way of `brew link --force`
+        // (`Warning::LinkConflicts`), Homebrew would link nothing: the
+        // window offers no Link, and this refuses one whatever it sent.
+        use crate::model::Warning;
+        let adapter = FakeAdapter::new(vec![test_support::make_instance("fake", "fake:1")]);
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter.clone()], None);
+        session
+            .refresh(&test_support::non_root_env(), &CheckOptions::default())
+            .await;
+        let link = OpRequest {
+            kind: OpKind::Link,
+            ..upgrade_on("fake:1", ArtifactKind::Formula, "node@22")
+        };
+        let paths = vec![
+            "/opt/homebrew/bin/npm".to_string(),
+            "/opt/homebrew/bin/npx".to_string(),
+        ];
+        *adapter.plan_warnings.lock().unwrap() = vec![Warning::LinkConflicts {
+            paths: paths.clone(),
+        }];
+        let blocked = session.issue_plan(&link).await.expect("previewed");
+        assert_eq!(
+            session.submit(blocked.id),
+            Err(SubmitError::LinkBlocked { paths })
+        );
+        assert!(session.operations().is_empty());
+
+        // Nothing in the way: it runs.
+        adapter.plan_warnings.lock().unwrap().clear();
+        let free = session.issue_plan(&link).await.expect("previewed");
+        session
+            .submit(free.id)
+            .expect("a link nothing is in the way of");
+        assert_eq!(session.operations().len(), 1);
     }
 
     #[tokio::test]

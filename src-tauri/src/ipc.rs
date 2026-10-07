@@ -436,6 +436,9 @@ fn submit_operation_error(e: banager_core::session::SubmitError) -> String {
         banager_core::session::SubmitError::Unknown => {
             serde_json::json!({ "kind": "unknown" }).to_string()
         }
+        banager_core::session::SubmitError::LinkBlocked { paths } => {
+            serde_json::json!({ "kind": "link_blocked", "paths": paths }).to_string()
+        }
     }
 }
 
@@ -2504,6 +2507,17 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(&unknown)
             .unwrap_or_else(|e| panic!("expected JSON, got {unknown:?} ({e})"));
         assert_eq!(parsed["kind"], "unknown");
+
+        // A link with files in its way: the preview's paths, for the
+        // sentence it said them in.
+        let blocked = submit_operation_error(SubmitError::LinkBlocked {
+            paths: vec!["/opt/homebrew/bin/npm".to_string()],
+        });
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&blocked)
+                .unwrap_or_else(|e| panic!("expected JSON, got {blocked:?} ({e})")),
+            serde_json::json!({ "kind": "link_blocked", "paths": ["/opt/homebrew/bin/npm"] })
+        );
     }
 
     #[tokio::test]

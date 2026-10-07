@@ -1615,8 +1615,9 @@ preview of a link only of a formula a source's reason offers
 updates and uninstalls nothing. Where `bin` holds a file of one of the
 formula's command names already -- npm's own `npm`, after npm was updated
 through itself -- Homebrew would link nothing and say so; the preview says
-it first and offers no Link button, and `--overwrite`, which would replace
-that file, is never passed.
+it first and offers no Link button, `Session::submit` refuses such a plan
+whatever the window sends (`SubmitError::LinkBlocked`), and `--overwrite`,
+which would replace that file, is never passed.
 
 ## npm
 

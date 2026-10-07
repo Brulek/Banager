@@ -242,7 +242,7 @@ pub struct IssuedPlan {
     pub issued_at: i64,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
+#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum SubmitError {
     /// `plan_id` was never issued, or was already consumed by an earlier
     /// `submit` of the same preview. This `Display` is for developer-facing
@@ -290,6 +290,14 @@ pub enum SubmitError {
     /// reason to give because there is no instance left to ask.
     #[error("the source this was prepared for is no longer there")]
     SourceGone,
+    /// A link whose preview found files in the way
+    /// (`Warning::LinkConflicts`): Homebrew would link nothing, so the
+    /// window offers no Link, and this refuses one whatever it sent. The
+    /// paths are the preview's, for the same sentence it said them in
+    /// (`{"kind": "link_blocked", "paths": [...]}`, `submit_operation_error`
+    /// in src-tauri/src/ipc.rs).
+    #[error("files are in the way of this link: {paths:?}")]
+    LinkBlocked { paths: Vec<String> },
 }
 
 pub struct Session {

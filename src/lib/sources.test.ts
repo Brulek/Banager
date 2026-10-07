@@ -1105,6 +1105,24 @@ describe("planErrorMessage", () => {
   it("localises an unknown/already-submitted plan instead of showing SubmitError::Unknown's own English", () => {
     expect(planErrorMessage(fakeT, '{"kind":"unknown"}', "Homebrew", false)).toBe("planRefused.unknown");
   });
+
+  it("says what is in the way of a link the submit refused, as its preview said it", () => {
+    // `SubmitError::LinkBlocked`: a link whose preview found files in the
+    // way, refused in Rust whatever the page sent.
+    // The paths joined with the window's language's separator.
+    const t = (key: string, options?: Record<string, unknown>) =>
+      key === "common.listSeparator" ? "、" : fakeT(key, options);
+    expect(
+      planErrorMessage(
+        t,
+        '{"kind":"link_blocked","paths":["/opt/homebrew/bin/npm","/opt/homebrew/bin/npx"]}',
+        "Homebrew",
+        false,
+      ),
+    ).toBe('noAnswer.sheet.conflicts({"count":2,"paths":"/opt/homebrew/bin/npm、/opt/homebrew/bin/npx"})');
+    // A payload with no paths says nothing it cannot back.
+    expect(planErrorMessage(t, '{"kind":"link_blocked","paths":[]}', "Homebrew", false)).toBeNull();
+  });
 });
 
 describe("refusalSentence", () => {

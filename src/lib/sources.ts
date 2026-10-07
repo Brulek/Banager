@@ -1474,6 +1474,14 @@ export function planErrorMessage(
   if (isSourceGone(raw)) return t("planRefused.sourceGone");
   if (isExpired(raw)) return t("planRefused.expired");
   if (isUnknownPlan(raw)) return t("planRefused.unknown");
+  const inTheWay = linkBlockedPaths(raw);
+  if (inTheWay !== null) {
+    // The preview's own sentence for what is in the way of the link.
+    return t("noAnswer.sheet.conflicts", {
+      count: inTheWay.length,
+      paths: inTheWay.join(t("common.listSeparator")),
+    });
+  }
   const failure = planFailureMessage(t, raw, sourceLabel, technical);
   if (failure !== null) return failure;
   if (technical) return raw;
@@ -1605,6 +1613,20 @@ function parseErrorPayload(message: string): Record<string, unknown> | null {
   if (typeof parsed !== "object" || parsed === null) return null;
   const p = parsed as Record<string, unknown>;
   return typeof p.kind === "string" ? p : null;
+}
+
+/**
+ * The files `SubmitError::LinkBlocked` says are in the way of a link
+ * (`{"kind": "link_blocked", "paths": [...]}`, `submit_operation_error` in
+ * src-tauri/src/ipc.rs): a link whose preview found them, refused in Rust
+ * whatever the page sent. `null` for anything else, and for a payload that
+ * names none.
+ */
+function linkBlockedPaths(message: string): string[] | null {
+  const p = parseErrorPayload(message);
+  if (p === null || p.kind !== "link_blocked" || !Array.isArray(p.paths)) return null;
+  const paths = p.paths.filter((path): path is string => typeof path === "string");
+  return paths.length > 0 ? paths : null;
 }
 
 /**
