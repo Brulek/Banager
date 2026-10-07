@@ -702,9 +702,8 @@ impl Adapter for NpmAdapter {
     /// asks the registry, which can take up to its minute
     /// (`check_updates`), and a Homebrew operation confirmed meanwhile
     /// waited for it. The listing before it is read under both (r37 F2).
-    /// An operation that unlinks `node` or `npm` just as the check starts
-    /// can make it fail, which that refresh says, keeping npm's last
-    /// updates; one already running has loaded what it runs.
+    /// An operation that changes `node` or `npm` while the check runs can
+    /// make it fail, which that refresh says, keeping npm's last updates.
     fn check_locks(&self, inst: &ManagerInstance) -> Vec<ResourceLock> {
         vec![ResourceLock(inst.id.clone())]
     }
