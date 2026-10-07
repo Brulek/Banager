@@ -514,6 +514,25 @@ describe("the browser preview's mock backend", () => {
     expect(ownUpdate?.blocked).toBe("UpdatesWithFormula");
   });
 
+  it("ends a link that linked nothing as NotLinkedAfterLink with ?outcome=attention, and still offers Fix… (r24 W4)", async () => {
+    // What its log's step says to click again: the notice's Fix…, which
+    // stays while the formula stays unlinked.
+    const { backend, events } = backendFor({ state: "nonode", outcome: "attention" });
+    await answer<Snapshot>(backend.invoke("refresh"));
+    const issued = await answer<IssuedPlan>(
+      backend.invoke("plan_operation", {
+        request: { kind: "Link", instance_id: "brew:/opt/homebrew", artifact_kind: "Formula", name: "node@20" },
+      }),
+    );
+    const opId = await answer<number>(backend.invoke("submit_operation", { planId: issued.id }));
+    await vi.runAllTimersAsync();
+    const own = operationEvents(events, opId);
+    expect(own[own.length - 1]).toEqual({ Finished: { op_id: opId, outcome: { NeedsAttention: "NotLinkedAfterLink" } } });
+    const after = await answer<Snapshot>(backend.invoke("refresh"));
+    const npm = after.instances.find((i) => i.adapter_id === "npm");
+    expect(npm?.status.no_answer?.link_fixes.map((fix) => fix.key.name)).toEqual(["node@22", "node@20"]);
+  });
+
   it("offers the same node@20 from a second, Intel Homebrew with ?state=nonode-intel, linked by that Homebrew's brew", async () => {
     // r7 F1: one formula name at one version in two Homebrews. The Intel
     // one is listed right after the first, as the backend sorts sources.

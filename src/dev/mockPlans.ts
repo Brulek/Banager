@@ -643,6 +643,10 @@ export function playOutcome(
       const kind = plan.request.kind;
       if (kind === "Upgrade") return { lines, outcome: { NeedsAttention: "UnchangedAfterUpgrade" } };
       if (kind === "Install") return { lines, outcome: { NeedsAttention: "NotInstalledAfterInstall" } };
+      // `brew link` exited 0 and Homebrew still records the keg unlinked,
+      // as the core reads it (`Attention::NotLinkedAfterLink`), not an
+      // uninstall's ending.
+      if (kind === "Link") return { lines, outcome: { NeedsAttention: "NotLinkedAfterLink" } };
       if (trashPaths === null) {
         return { lines, outcome: { NeedsAttention: "StillInstalledAfterUninstall" } };
       }
