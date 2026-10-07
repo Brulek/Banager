@@ -1373,6 +1373,15 @@ for the confirmation to be opened again (`Fault::HomebrewSettingsChanged`).
 Less than the preview said, or "will" where it said "may", or the
 reverse, runs.
 
+An uninstall also re-reads these settings after any wait for Homebrew's
+update and before dispatch (`require_uninstall_as_previewed`). If
+autoremove is now enabled or unknown but was not disclosed, or a formula
+excluded from autoremove in the preview is no longer excluded, it returns
+`Fault::HomebrewSettingsChanged` without running any command. Open the
+confirmation again to see the current removal scope. Already disclosed
+"may" and "will" cover the same scope; this autoremove check also allows
+disabling autoremove or adding exclusions.
+
 **The trust list.** After `brew uninstall`, Homebrew deletes the entry its
 trust list holds for each package it uninstalled — a cask by its full
 name, which has its tap in it unless the cask is Homebrew's own; a formula
@@ -4335,9 +4344,9 @@ not read (`protected::look`; How Banager runs anything, above):
 - Homebrew: whether the three candidate `brew` paths exist;
   `<prefix>/var/homebrew/locks` and the `update` lock file in it, during
   the uninstall preview; its `brew.env` files, during every install,
-  uninstall and upgrade preview, again right before an install or upgrade
-  runs, and right before the cleanup that follows an update; during a
-  cask's uninstall preview, the
+  uninstall and upgrade preview, again right before an install, upgrade
+  or uninstall runs, and right before the cleanup that follows an update;
+  during a cask's uninstall preview, the
   names in its `<prefix>/Caskroom/<token>/.metadata` folder and in the
   folders there, the caskfile Homebrew saved when it is JSON, and
   `INSTALL_RECEIPT.json`; during every uninstall preview, its trust list,
@@ -5229,6 +5238,7 @@ that has been set up.
 - 普通测试跳过 11 项：2 项真实 Homebrew 测试、1 项废纸篓测试、1 项 AppKit 测试、1 项磁盘探测和 6 项性能测试。安装卸载与废纸篓测试需要显式启用，详见 README。
 - Homebrew 公式更新通常会预览并在成功后运行指定名称的清理，删除该公式的旧版本、过期缓存下载及缓存中所有未引用的下载。固定版本、无法读取版本或固定记录、用户关闭清理、`brew.env` 启用自动清理或无法确定其影响时，不安排这一步。`brew.env` 启用的自动清理范围更广，预览会另行说明。
 - 未固定且装有多个版本的公式，卸载会移除所有已安装版本及链接，确认框会列出版本。保存在其他位置的设置和数据保留；启用自动移除依赖时，会另行说明。
+- Homebrew 卸载开始前会重新读取 `brew.env`。若现在会或可能自动移除依赖，而预览没有说明，或预览承诺保留的公式不再排除，则不运行命令，并提示重新打开确认窗口。
 - `brew.env` 读取清单包括 `HOMEBREW_NO_AUTO_UPDATE`。它被设为空时，会阻止可能触发未跟踪自动更新的命令。
 - `OLLAMA_HOST` 地址中的登录信息会用于该服务的 HTTP 基本认证。普通 HTTP 不加密这些信息。发给窗口的实例标识不含登录信息；命令预览、操作摘要和库存错误会遮蔽登录信息，实际请求和命令仍使用原值。拷贝的预览命令也保留遮蔽，需要自行补入登录信息。历史和忽略、跳过、稍后提醒设置保存前会去除地址中的用户名与密码；旧文件读取时也会脱敏并尝试重写。写入失败可能使旧内容仍留在磁盘，较新格式的历史文件不会被覆盖。
 - Claude Code、Antigravity CLI 和 Grok Build 卸载后，除了检查启动器，还会检查卸载清单中的其他路径；Antigravity 也会重新列出备份。可选路径还会检查归属及应保留的路径，不运行版本命令。
@@ -5242,6 +5252,7 @@ that has been set up.
 - 一般測試略過 11 項：2 項實際 Homebrew 測試、1 項垃圾桶測試、1 項 AppKit 測試、1 項磁碟探測及 6 項效能測試。安裝移除與垃圾桶測試需要明確啟用，詳見 README。
 - Homebrew 公式更新通常會預覽並在成功後執行指定名稱的清理，刪除該公式的舊版本、過期快取下載及快取中所有未參照的下載。固定版本、無法讀取版本或固定記錄、使用者關閉清理、`brew.env` 啟用自動清理或無法確定其影響時，不安排這一步。`brew.env` 啟用的自動清理範圍更廣，預覽會另外說明。
 - 未固定且裝有多個版本的公式，移除時會移除所有已安裝版本及連結，確認視窗會列出版本。儲存在其他位置的設定和資料保留；啟用自動移除相依套件時，會另外說明。
+- Homebrew 移除開始前會重新讀取 `brew.env`。若現在會或可能自動移除相依套件，而預覽沒有說明，或預覽承諾保留的公式不再排除，則不執行指令，並提示重新開啟確認視窗。
 - `brew.env` 讀取清單包括 `HOMEBREW_NO_AUTO_UPDATE`。它被設為空值時，會阻止可能觸發未追蹤自動更新的命令。
 - `OLLAMA_HOST` 網址中的登入資訊會用於該服務的 HTTP 基本驗證。一般 HTTP 不會加密這些資訊。傳給視窗的實例識別碼不含登入資訊；命令預覽、操作摘要和庫存錯誤會遮蔽登入資訊，實際要求和命令仍使用原值。拷貝的預覽命令也保留遮蔽，需要自行補入登入資訊。歷程和忽略、略過、稍後提醒設定儲存前會去除網址中的使用者名稱與密碼；舊檔案讀取時也會遮蔽登入資訊並嘗試重新寫入。寫入失敗可能使舊內容仍留在磁碟，較新格式的歷程檔案不會被覆寫。
 - Claude Code、Antigravity CLI 和 Grok Build 移除後，除了檢查啟動器，還會檢查移除清單中的其他路徑；Antigravity 也會重新列出備份。選用路徑還會檢查歸屬及應保留的路徑，不執行版本命令。

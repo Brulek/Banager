@@ -1232,6 +1232,45 @@ impl BrewAdapter {
         }
     }
 
+    /// Re-read the uninstall's settings after the update wait, before any
+    /// command can run. Autoremove must have been disclosed, and every
+    /// formula the preview excluded must still be excluded. An already
+    /// disclosed "may" and "will" cover the same removal scope.
+    fn require_uninstall_as_previewed(&self, plan: &Plan) -> Result<(), Fault> {
+        if plan.request.kind != OpKind::Uninstall {
+            return Ok(());
+        }
+        let PlanAction::Command { program, env, .. } = &plan.action else {
+            return Ok(());
+        };
+        let prefix = Self::prefix_for(program);
+        let now = self.switches_at(&prefix, env);
+        // `switch_warnings` says one of these exactly when the preview read
+        // the autoremove as on, or maybe on.
+        let disclosed = plan.warnings.iter().any(|warning| {
+            matches!(
+                warning,
+                Warning::HomebrewAutoremoves | Warning::HomebrewMayAutoremove
+            )
+        });
+        if !now.no_autoremove {
+            let exclusions_remain = plan.warnings.iter().all(|warning| match warning {
+                Warning::HomebrewNoCleanupFormulae {
+                    names,
+                    autoremove: true,
+                    ..
+                } => names
+                    .iter()
+                    .all(|name| now.no_cleanup_formulae.contains(name)),
+                _ => true,
+            });
+            if !disclosed || !exclusions_remain {
+                return Err(Fault::HomebrewSettingsChanged);
+            }
+        }
+        Ok(())
+    }
+
     /// Whether an uninstall of a formula whose Cellar reads `kegs` passes
     /// `--force` (U9): more than one version installed, and no pin.
     fn removes_every_version(kegs: &Kegs) -> bool {
@@ -2617,6 +2656,9 @@ impl BrewAdapter {
                     path: path.to_string_lossy().into_owned(),
                 }));
             }
+        }
+        if let Err(fault) = self.require_uninstall_as_previewed(plan) {
+            return Ok(Outcome::BanagerFailed(fault));
         }
         if let Err(fault) = self.require_kegs_as_previewed(plan) {
             return Ok(Outcome::BanagerFailed(fault));
@@ -8312,32 +8354,22 @@ mod plan_execute_tests {
         let result = adapter
             .execute(&plan, Arc::new(VecSink::new()), 1, CancellationToken::new())
             .await;
-        let writes: Vec<_> = runner.calls()[before..]
-            .iter()
-            .filter(|call| call.iter().any(|arg| arg == "uninstall"))
-            .cloned()
-            .collect();
-        assert!(
-            writes.is_empty(),
-            "changed brew.env must not expand removal: {writes:?}; {result:?}"
+        assert_eq!(
+            runner.calls().len(),
+            before,
+            "refusal runs no command: {result:?}"
         );
-        assert!(
-            matches!(
-                result,
-                Ok(Outcome::BanagerFailed(Fault::HomebrewSettingsChanged))
-                    | Err(AdapterError::Refused(_))
-            ),
-            "needs a fresh preview: {result:?}"
+        assert_eq!(
+            result.unwrap(),
+            Outcome::BanagerFailed(Fault::HomebrewSettingsChanged)
         );
     }
 
     #[tokio::test]
-    #[ignore = "bug: G05: an uninstall still runs after brew.env turned autoremove on since its preview"]
     async fn f08_g05_autoremove_enabled_after_uninstall_preview() {
         f08_uninstall_env_changes(false).await;
     }
     #[tokio::test]
-    #[ignore = "bug: G05: an uninstall still runs after what brew.env says became unknown since its preview"]
     async fn f08_g05_brew_env_unknown_after_uninstall_preview() {
         f08_uninstall_env_changes(true).await;
     }
@@ -8415,6 +8447,75 @@ mod plan_execute_tests {
     #[tokio::test]
     async fn f08_g08_unchanged_cask_receipt_executes() {
         f08_cask_receipt_changes(false).await;
+    }
+
+    #[tokio::test]
+    async fn f30a_g05_autoremove_limits_and_unchanged_controls() {
+        type Files = fn(&Path) -> brew_env::EnvFile;
+        let off: Files = |_| brew_env::EnvFile::Skipped;
+        let on: Files = |_| brew_env::EnvFile::Read(b"HOMEBREW_NO_AUTOREMOVE=0\n".to_vec());
+        let unknown: Files = |_| brew_env::EnvFile::Unknown;
+        let except: Files = |_| {
+            brew_env::EnvFile::Read(
+                b"HOMEBREW_NO_AUTOREMOVE=0\nHOMEBREW_NO_CLEANUP_FORMULAE=keep-me\n".to_vec(),
+            )
+        };
+        for (before, after, refused) in [
+            (off, off, false),
+            (off, on, true),
+            (off, unknown, true),
+            (on, on, false),
+            (on, unknown, false),
+            (unknown, on, false),
+            (except, on, true),
+            (except, unknown, true),
+            (on, except, false),
+            (except, off, false),
+        ] {
+            for kind in [ArtifactKind::Formula, ArtifactKind::Cask] {
+                let runner = Arc::new(MockRunner::new());
+                let mut adapter = BrewAdapter::new(runner.clone()).with_brew_env_fn(before);
+                let inst = test_instance();
+                runner.respond(
+                    vec!["/opt/homebrew/bin/brew", "uses", "--installed", "wget"],
+                    f08_ok(),
+                );
+                let plan = adapter
+                    .plan(
+                        &inst,
+                        &OpRequest {
+                            kind: OpKind::Uninstall,
+                            instance_id: inst.id.clone(),
+                            artifact_kind: kind,
+                            name: "wget".into(),
+                        },
+                    )
+                    .await
+                    .unwrap();
+                adapter.brew_env_fn = after;
+                let PlanAction::Command { program, args, .. } = &plan.action else {
+                    panic!("command")
+                };
+                let mut argv = vec![program.to_str().unwrap()];
+                argv.extend(args.iter().map(String::as_str));
+                runner.respond(argv, f08_ok());
+                let calls = runner.calls().len();
+                let result = adapter
+                    .execute(&plan, Arc::new(VecSink::new()), 1, CancellationToken::new())
+                    .await
+                    .unwrap();
+                if refused {
+                    assert_eq!(
+                        result,
+                        Outcome::BanagerFailed(Fault::HomebrewSettingsChanged)
+                    );
+                    assert_eq!(runner.calls().len(), calls, "refusal runs no command");
+                } else {
+                    assert_eq!(result, Outcome::Succeeded);
+                    assert_eq!(runner.calls().len(), calls + 1);
+                }
+            }
+        }
     }
 
     /// U9 (r6): an update deletes the old versions of the formula it
