@@ -247,7 +247,7 @@ describe("JustUpdated", () => {
     renderWithProviders(<JustUpdated entries={[entry]} onClear={() => {}} />);
 
     const line = screen.getByRole("listitem");
-    expect(line).toHaveClass("h-7");
+    expect(line).toHaveClass("min-h-7");
     // git has no logo in the test's pack: the program tile, at 20 (I8).
     expect(line.querySelector("[data-program-tile]")?.className).toMatch(/h-5 w-5/);
     expect(within(line).getByText("git")).toHaveClass("text-body");
@@ -582,4 +582,82 @@ it("names each saved warning log by its tool, as the update rows' View Log does 
   renderWithProviders(<JustUpdated entries={[entry("node@22"), entry("python@3.13")]} onClear={() => {}} />);
   expect(screen.getByRole("button", { name: "View log: node@22" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "View log: python@3.13" })).toBeInTheDocument();
+});
+
+describe("the columns of 「最近的更新记录」 (p1 polish)", () => {
+  const line = (name: string, ending: JustUpdatedEntry["ending"], fields: Partial<JustUpdatedEntry> = {}): JustUpdatedEntry => ({
+    id: `old:${name}`,
+    opId: null,
+    key: { instance_id: "brew:/opt/homebrew", kind: "Formula", name },
+    adapterId: "brew",
+    sourceLabel: "Homebrew",
+    name,
+    version: "1.0",
+    finishedAt: Date.now(),
+    verified: true,
+    ending,
+    ...fields,
+  });
+  const warned = endingOfRecord("Succeeded", null, [{ NoLongerLinked: { name: "node@22", commands: ["node"] } }])!;
+
+  /** A line's cells in sight, in order: what each one is. */
+  function cellsOf(item: HTMLElement): string[] {
+    return [...item.children]
+      .filter((cell) => !cell.classList.contains("sr-only"))
+      .map((cell) =>
+        cell.hasAttribute("data-just-updated-ending")
+          ? "ending"
+          : (cell.getAttribute("data-just-updated-cell") ?? (cell.getAttribute("aria-hidden") === "true" ? "avatar" : "?")),
+      );
+  }
+
+  it("keeps the versions in one column down the list, a line with View Log or View Steps no different", async () => {
+    await i18n.changeLanguage("en");
+    renderWithProviders(
+      <JustUpdated
+        entries={[
+          line("node@22", warned, { version: "22.23.3" }),
+          line("htop", { kind: "succeeded" }, { version: "3.4.1" }),
+          line("pcre2", { kind: "succeeded", already: "BeforeItsTurn" }, { version: "10.47" }),
+          line("example", { kind: "failed", cause: "needsPassword" }, { version: null }),
+        ]}
+        onClear={() => {}}
+      />,
+    );
+    // One set of columns for the whole list, each line laid on it: a
+    // version is where every other line's is, however wide what follows it.
+    // The name takes what is left, but never less than 6rem.
+    const list = screen.getByRole("list");
+    expect(list.className.split(" ")).toEqual(expect.arrayContaining(["grid", "grid-cols-[auto_minmax(6rem,1fr)_auto_auto_auto]"]));
+    const items = within(list).getAllByRole("listitem");
+    for (const item of items) {
+      expect(item.className.split(" ")).toEqual(expect.arrayContaining(["col-span-full", "grid", "grid-cols-subgrid"]));
+      // The same cells in the same order, with a button or without.
+      expect(cellsOf(item)).toEqual(["avatar", "name", "version", "ending", "time"]);
+    }
+    // A line's button after its words, in the words' column: not a cell of its own that moves the version.
+    for (const name of ["View log: node@22", "View steps: example"]) {
+      expect(screen.getByRole("button", { name }).closest("[data-just-updated-cell]")).toHaveAttribute("data-just-updated-cell", "ending");
+    }
+    // An empty version keeps its cell too.
+    expect(items[3].querySelector('[data-just-updated-cell="version"]')?.textContent).toBe("");
+  });
+
+  it("lets the words wrap, and the line grow, where the window is too narrow, rather than push the time out", async () => {
+    await i18n.changeLanguage("en");
+    renderWithProviders(
+      <JustUpdated
+        entries={[line("Android SDK Platform-Tools", { kind: "failed", cause: "appMissing" }, { version: null })]}
+        onClear={() => {}}
+      />,
+    );
+    const item = screen.getByRole("listitem");
+    // At least 28 high, not exactly.
+    expect(item.className.split(" ")).toEqual(expect.arrayContaining(["min-h-7"]));
+    expect(item.className.split(" ")).not.toContain("h-7");
+    const words = within(item).getByText("Couldn't update: The app isn't where it was installed");
+    expect(words.className.split(" ")).toContain("min-w-0");
+    expect(words.className.split(" ")).not.toContain("whitespace-nowrap");
+    expect(words.closest('[data-just-updated-cell="ending"]')?.className.split(" ")).toContain("min-w-0");
+  });
 });

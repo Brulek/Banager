@@ -288,7 +288,10 @@ function EndingWords({ entry }: { entry: JustUpdatedEntry }) {
   return (
     <span
       data-just-updated-ending={ending.kind}
-      className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-small text-foreground"
+      // On one line where the list has the room; where it has not -- a
+      // window at its narrowest beside a long cause -- the words wrap
+      // under one another rather than push the time out of the list.
+      className="inline-flex min-w-0 items-center gap-1 text-small text-foreground"
     >
       <OutcomeIcon tone={tone} size={12} />
       {words}
@@ -300,6 +303,22 @@ function EndingWords({ entry }: { entry: JustUpdatedEntry }) {
       )}
     </span>
   );
+}
+
+/**
+ * A line's one button, or null: View Log for an update that worked with a
+ * warning about what came after it (`FollowUpWarnings`), and View Steps for
+ * a Homebrew update the history kept as stopped for the Mac's password
+ * (`PasswordRecovery`).
+ */
+function lineAction(entry: JustUpdatedEntry) {
+  if (entry.ending.kind === "succeeded" && entry.ending.warnings?.length) {
+    return <FollowUpWarnings warnings={entry.ending.warnings} opId={entry.opId} name={entry.name} />;
+  }
+  if (entry.opId === null && entry.adapterId === "brew" && entry.ending.kind === "failed" && entry.ending.cause === "needsPassword") {
+    return <PasswordRecovery artifactKey={entry.key} name={entry.name} />;
+  }
+  return null;
 }
 
 /**
@@ -324,9 +343,14 @@ export interface JustUpdatedProps {
  * a small grey Clear beside it -- of quiet lines, not rows: 28 high, the
  * 20 icon, the name in 13, the version it has now in 11 muted, how it
  * ended in 11 (`EndingWords`: 「已更新」 or 「已确认更新」, 「未能更新」 with
- * its cause, 「没有更新成功：版本没有变」, or what else did not add up), and
- * when it finished, 11 muted. Nothing to
- * select or press but an ending's ⓘ, View Steps for a recorded Homebrew
+ * its cause, 「没有更新成功：版本没有变」, or what else did not add up) with
+ * the line's button after it (`lineAction`), and when it finished, 11
+ * muted -- each in a column the whole list shares, so a version is where
+ * every other line's is, however wide the words or the button after it.
+ * Where the window is too narrow for the widest words, they wrap, and
+ * the line grows, rather than push the time out of the list. Nothing to
+ * select or press but an ending's ⓘ, View Log for a warning after an
+ * update, View Steps for a recorded Homebrew
  * password stop, Clear, which hides what it lists,
  * after a restart too, until the next update ends, and, past
  * `JUST_UPDATED_SHOWN` lines, the "N More" line that shows the rest; it
@@ -355,19 +379,27 @@ export function JustUpdated({ entries, onClear }: JustUpdatedProps) {
           {t("updates.justUpdated.clear")}
         </button>
       </div>
-      <ul id={listId} aria-labelledby={headingId} className={`py-1 ${GROUP}`}>
+      {/* The list's columns, laid out once for every line (each a
+          subgrid of them): the icon, the name, which takes what is left
+          and keeps at least 6rem of it, the version, how it ended with the
+          line's button after it, and the time. */}
+      <ul
+        id={listId}
+        aria-labelledby={headingId}
+        className={`grid grid-cols-[auto_minmax(6rem,1fr)_auto_auto_auto] gap-x-2 py-1 ${GROUP}`}
+      >
         {shown.map((entry) => {
           const finished =
             entry.finishedAt === null ? null : finishedText(entry.finishedAt, now, i18n.language);
           return (
-            <li key={entry.id} className="flex h-7 items-center gap-2 px-2.5">
+            <li key={entry.id} className="col-span-full grid min-h-7 grid-cols-subgrid items-center px-2.5 py-0.5">
               <ToolAvatar
                 size="compact"
                 adapterId={entry.adapterId}
                 sourceLabel={entry.sourceLabel}
                 iconKey={entry.key}
               />
-              <span title={entry.name} className="min-w-0 flex-1 truncate text-body text-foreground">
+              <span data-just-updated-cell="name" title={entry.name} className="min-w-0 truncate text-body text-foreground">
                 {entry.name}
               </span>
               {/* The source, for a screen reader: in sight the line shows
@@ -378,19 +410,24 @@ export function JustUpdated({ entries, onClear }: JustUpdatedProps) {
               <span data-just-updated-source="" className="sr-only">
                 {entry.sourceLabel}
               </span>
-              {/* The version and the time each take a column, with or
-                  without one, so that the ticks line up down the list. */}
-              <span className="min-w-20 shrink-0 whitespace-nowrap text-right text-small tabular-nums text-muted">
+              {/* The version, how it ended and the time each take a column
+                  of the list's, with or without one, so that the versions
+                  and the ticks line up down the list, however wide the
+                  words or the button after them. */}
+              <span
+                data-just-updated-cell="version"
+                className="min-w-20 whitespace-nowrap text-right text-small tabular-nums text-muted"
+              >
                 {entry.version}
               </span>
-              <EndingWords entry={entry} />
-              {entry.ending.kind === "succeeded" && entry.ending.warnings?.length ? (
-                <FollowUpWarnings warnings={entry.ending.warnings} opId={entry.opId} name={entry.name} />
-              ) : null}
-              {entry.opId === null && entry.adapterId === "brew" && entry.ending.kind === "failed" && entry.ending.cause === "needsPassword" ? (
-                <PasswordRecovery artifactKey={entry.key} name={entry.name} />
-              ) : null}
-              <span className="w-24 shrink-0 whitespace-nowrap text-right text-small tabular-nums text-muted">
+              <span data-just-updated-cell="ending" className="flex min-w-0 items-center gap-2">
+                <EndingWords entry={entry} />
+                {lineAction(entry)}
+              </span>
+              <span
+                data-just-updated-cell="time"
+                className="w-24 whitespace-nowrap text-right text-small tabular-nums text-muted"
+              >
                 {entry.finishedAt !== null && finished !== null ? (
                   <time dateTime={new Date(entry.finishedAt).toISOString()} title={finished.title}>
                     {finished.today ? t("history.today", { time: finished.text }) : finished.text}
