@@ -394,7 +394,7 @@ pub fn parse_info_installed(
                 command_inputs: CommandInputs {
                     keg_only,
                     keg_only_by_macos: keg_only && keg_only_by_macos(f.keg_only_reason.as_ref()),
-                    linked: f.linked_keg.is_some(),
+                    link_recorded: f.linked_keg.is_some(),
                     ..Default::default()
                 },
                 ..Default::default()
@@ -1317,7 +1317,7 @@ mod tests {
         let result = parse_info_installed(json, "brew:/opt/homebrew").expect("parse");
         let linked: Vec<(&str, bool)> = result
             .iter()
-            .map(|a| (a.key.name.as_str(), a.facts.command_inputs.linked))
+            .map(|a| (a.key.name.as_str(), a.facts.command_inputs.link_recorded))
             .collect();
         assert_eq!(
             linked,

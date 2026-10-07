@@ -14,17 +14,22 @@
 //! successfully"). Homebrew does link a keg again that was linked before an
 //! upgrade (upgrade.rb:643 in Homebrew 7.0.8); the file in the way stopped
 //! it. `/opt/homebrew/bin/node` was gone, and with it every npm command.
-//! `brew link --force node@22` puts it back once nothing is in the way
-//! (`adapters/brew/link.rs`); npm's own update is no longer offered where
-//! npm is a formula's, so it does not happen again that way
-//! (`UpdateBlocked::UpdatesWithFormula`).
+//! `brew link --formula --force node@22` puts it back once nothing is in
+//! the way -- the same command, read the same way (`adapters/brew/links.rs`),
+//! that links a keg-only formula back after its update (y1-keg); npm's own
+//! update is no longer offered where npm is a formula's, so it does not
+//! happen again that way (`UpdateBlocked::UpdatesWithFormula`).
 //!
 //! A formula is offered when it is, by the snapshot alone -- nothing is
 //! read from the disk and nothing runs here:
 //! - a formula of a Homebrew source Banager can act on (writable and
 //!   answering: the gate `Session::issue_plan` keeps);
-//! - keg-only and not linked (`CommandInputs::keg_only`, `linked`, from
-//!   `brew info --installed --json=v2`'s `keg_only` and `linked_keg`);
+//! - keg-only, not because of macOS, and not linked (`CommandInputs::keg_only`,
+//!   `keg_only_by_macos`, `link_recorded`, from `brew info --installed
+//!   --json=v2`'s `keg_only`, `keg_only_reason` and `linked_keg`): `brew
+//!   link` refuses a formula macOS provides at Homebrew's default prefix,
+//!   and the link's plan refuses it too (y1-keg's rule); "linked" is
+//!   Homebrew's record of a `brew link`, as everywhere (`link_recorded`);
 //! - named for the program: `node`, or `node@<version>` -- Homebrew's own
 //!   naming for a formula that installs `node`. A formula that provides it
 //!   under another name is not offered: nothing Banager reads says so.
@@ -74,7 +79,8 @@ fn fixes_for(
             artifact.key.kind == ArtifactKind::Formula
                 && homebrews.contains(&artifact.key.instance_id)
                 && artifact.facts.command_inputs.keg_only
-                && !artifact.facts.command_inputs.linked
+                && !artifact.facts.command_inputs.keg_only_by_macos
+                && !artifact.facts.command_inputs.link_recorded
         })
         .filter_map(|artifact| {
             named_for(&artifact.key.name, program).map(|version| (artifact, version))
@@ -167,7 +173,7 @@ mod tests {
         let mut artifact = installed_artifact(BREW, ArtifactKind::Formula, name);
         artifact.version = version.to_string();
         artifact.facts.command_inputs.keg_only = keg_only;
-        artifact.facts.command_inputs.linked = linked;
+        artifact.facts.command_inputs.link_recorded = linked;
         artifact
     }
 
@@ -244,7 +250,8 @@ mod tests {
     #[test]
     fn test_nothing_is_offered_that_would_not_put_it_back() {
         // Linked already (something else is wrong), not keg-only (Homebrew
-        // links it itself), a cask, another source's package of that name.
+        // links it itself), keg-only because of macOS (`brew link` refuses
+        // it, y1-keg), a cask, another source's package of that name.
         let mut instances = vec![
             brew(),
             npm_without(Some("node"), NoAnswerKind::CouldNotStart),
@@ -254,9 +261,12 @@ mod tests {
         let mut npm_package =
             installed_artifact("npm:/opt/homebrew", ArtifactKind::Formula, "node");
         npm_package.facts.command_inputs.keg_only = true;
+        let mut by_macos = formula("node@20", "20.19.5", true, false);
+        by_macos.facts.command_inputs.keg_only_by_macos = true;
         let artifacts = vec![
             formula("node@22", "22.23.3_1", true, true),
             formula("node", "26.0.0", false, false),
+            by_macos,
             cask,
             npm_package,
         ];

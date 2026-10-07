@@ -625,7 +625,7 @@ pub fn reconcile_from(artifacts: Vec<InstalledArtifact>, key: &ArtifactKey) -> R
 }
 
 /// What every adapter but Homebrew's answers an `OpKind::Link` with: only a
-/// Homebrew formula is linked (`brew link --force`, `NoAnswer::link_fixes`).
+/// Homebrew formula is linked (`brew link --formula --force`, `NoAnswer::link_fixes`).
 /// Asked first in each `plan()`, before anything is read or run, and in
 /// every `match` over the kind after it.
 pub(crate) fn links_nothing(adapter_id: &str) -> AdapterError {

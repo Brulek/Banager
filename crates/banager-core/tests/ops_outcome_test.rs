@@ -264,7 +264,7 @@ async fn test_succeeded_uninstall_reconcile_err_is_unconfirmed() {
 
 #[tokio::test]
 async fn test_a_link_that_exited_0_is_succeeded_only_once_the_formula_is_linked() {
-    // `brew link --force` (`OpKind::Link`) exits 0 having linked nothing
+    // `brew link --formula --force` (`OpKind::Link`) exits 0 having linked nothing
     // too: "Refusing to link macOS provided/shadowed software"
     // (cmd/link.rb in Homebrew 7.0.8). What decides is whether Homebrew
     // says it is linked afterwards (`Adapter::reconcile_link`); gone, or

@@ -940,3 +940,167 @@ async fn the_link_runs_before_the_cleanup() {
     assert!(runner.links().fully_linked());
     std::fs::remove_dir_all(&prefix).unwrap();
 }
+
+// -- The link a source's notice offers (y2-npmwhy) ------------------------
+//
+// The same `brew link --formula --force`, read the same way: what the
+// preview says Homebrew would stop at is what `FakeHomebrew`, by
+// `keg.rb:823-861`, stops at; and "linked" after it is what it is after
+// an update's link (`KegLinks::fully_linked`).
+
+fn link(inst: &ManagerInstance, name: &str) -> OpRequest {
+    request(inst, OpKind::Link, ArtifactKind::Formula, name)
+}
+
+fn formula_key(inst: &ManagerInstance, name: &str) -> ArtifactKey {
+    ArtifactKey {
+        instance_id: inst.id.clone(),
+        kind: ArtifactKind::Formula,
+        name: name.to_string(),
+    }
+}
+
+#[tokio::test]
+async fn the_link_a_notice_offers_is_the_link_after_an_update_and_reads_linked_after_it() {
+    // node@22 installed and not linked: nothing of it in `bin`.
+    let prefix = node_22_prefix("keg-fix-free");
+    let inst = instance(&prefix);
+    let runner = Arc::new(FakeHomebrew::new(&prefix, Upgrade::AsHomebrew));
+    let adapter = adapter(runner.clone(), &inst);
+    let plan = adapter
+        .plan(&inst, &link(&inst, "node@22"))
+        .await
+        .expect("plan");
+    assert_eq!(
+        crate::testing::command_args(&plan),
+        ["link", "--formula", "--force", "node@22"]
+    );
+    assert_eq!(plan.timeout_secs, BrewAdapter::LINK_TIMEOUT_SECS);
+    assert_eq!(
+        plan.warnings,
+        [Warning::LinkPutsCommands {
+            names: strings(&ALL),
+        }]
+    );
+    assert_eq!(
+        adapter
+            .reconcile_link(&inst, &formula_key(&inst, "node@22"))
+            .await
+            .unwrap(),
+        Some(false),
+        "not linked before it"
+    );
+    let sink = Arc::new(VecSink::new());
+    let outcome = adapter
+        .execute(&plan, sink.clone(), 7, CancellationToken::new())
+        .await
+        .expect("execute");
+    assert_eq!(outcome, Outcome::Succeeded);
+    assert_eq!(
+        runner.calls(),
+        [strings(&["link", "--formula", "--force", "node@22"])]
+    );
+    assert_eq!(
+        adapter
+            .reconcile_link(&inst, &formula_key(&inst, "node@22"))
+            .await
+            .unwrap(),
+        Some(true)
+    );
+    assert!(runner.links().fully_linked());
+    std::fs::remove_dir_all(&prefix).unwrap();
+}
+
+#[tokio::test]
+async fn the_link_names_every_place_homebrew_would_stop_at_and_homebrew_stops_there() {
+    // The author's Mac after 2026-10-07, with a link of their own back:
+    // npm's own `npm` and `npx` in `bin`, and `bin/node` through `opt`.
+    // Each is in the way of `brew link`, as of an update's link back
+    // (`KegLinks::held_paths`, y1-keg's `LinkTaken`).
+    let prefix = node_22_prefix("keg-fix-held");
+    npm_updates_itself(&prefix);
+    symlink("../opt/node@22/bin/node", prefix.join("bin/node")).unwrap();
+    let inst = instance(&prefix);
+    let runner = Arc::new(FakeHomebrew::new(&prefix, Upgrade::AsHomebrew));
+    let adapter = adapter(runner.clone(), &inst);
+    let plan = adapter
+        .plan(&inst, &link(&inst, "node@22"))
+        .await
+        .expect("still planned, with what is in the way");
+    let held =
+        ["bin/node", "bin/npm", "bin/npx"].map(|path| prefix.join(path).display().to_string());
+    assert_eq!(
+        plan.warnings,
+        [
+            Warning::LinkPutsCommands {
+                names: strings(&ALL),
+            },
+            Warning::LinkConflicts {
+                paths: held.to_vec(),
+            },
+        ]
+    );
+    // `Session::submit` refuses it (`SubmitError::LinkBlocked`). Run all
+    // the same, Homebrew links nothing: it took back `corepack`, and left
+    // no record.
+    let outcome = adapter
+        .execute(&plan, Arc::new(VecSink::new()), 7, CancellationToken::new())
+        .await
+        .expect("execute");
+    assert!(matches!(outcome, Outcome::Failed { .. }), "{outcome:?}");
+    assert!(std::fs::symlink_metadata(prefix.join("bin/corepack")).is_err());
+    assert_eq!(
+        adapter
+            .reconcile_link(&inst, &formula_key(&inst, "node@22"))
+            .await
+            .unwrap(),
+        Some(false)
+    );
+    std::fs::remove_dir_all(&prefix).unwrap();
+}
+
+#[tokio::test]
+async fn a_link_is_planned_only_for_a_keg_only_formula_brew_link_links() {
+    // y1-keg's rule, for the link too: the recorded `brew info` lists
+    // sqlite, readline and icu4c@78 as keg-only because of macOS, which
+    // `brew link` refuses at Homebrew's default prefix, exiting 0 having
+    // linked nothing; python@3.14 and git are not keg-only. Before an
+    // inventory nothing is known, and nothing is linked.
+    let prefix = node_22_prefix("keg-fix-inventory");
+    let inst = instance(&prefix);
+    let runner = Arc::new(MockRunner::new());
+    let json = std::fs::read_to_string("../../adapters/fixtures/brew/7.0.3/info-installed.json")
+        .expect("read the recorded brew info");
+    let brew = prefix.join("bin/brew").display().to_string();
+    runner.respond(
+        vec![brew.as_str(), "info", "--installed", "--json=v2"],
+        CommandOutput {
+            stderr_cause: Default::default(),
+            exit_code: Some(0),
+            stdout: json,
+            stderr: String::new(),
+            timed_out: false,
+            cancelled: false,
+        },
+    );
+    let adapter = BrewAdapter::new(runner).with_links_fn(links::read_links);
+    assert!(matches!(
+        adapter.plan(&inst, &link(&inst, "node@22")).await,
+        Err(AdapterError::Unsupported(_))
+    ));
+    adapter.inventory(&inst).await.expect("inventory");
+    adapter
+        .plan(&inst, &link(&inst, "node@22"))
+        .await
+        .expect("node@22 is linked");
+    for name in ["sqlite", "readline", "icu4c@78", "python@3.14", "git"] {
+        assert!(
+            matches!(
+                adapter.plan(&inst, &link(&inst, name)).await,
+                Err(AdapterError::Unsupported(_))
+            ),
+            "{name}"
+        );
+    }
+    std::fs::remove_dir_all(&prefix).unwrap();
+}

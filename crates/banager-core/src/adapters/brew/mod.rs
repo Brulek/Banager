@@ -4,7 +4,6 @@ pub(crate) mod cask_receipt;
 mod keg_link_tests;
 pub(crate) mod kegs;
 pub(crate) mod links;
-pub(crate) mod link;
 pub mod parse;
 pub(crate) mod trust;
 
@@ -181,37 +180,27 @@ pub struct BrewAdapter {
     kegs_fn: fn(&Path, &str) -> Option<Kegs>,
     /// How to read whether a keg-only formula is linked into a prefix, and
     /// what holds its commands' places there, for its update's preview and
-    /// around the update itself (`links::read_links`, y1-keg): the real
+    /// around the update itself (`links::read_links`, y1-keg), and for the
+    /// preview of the link a source's notice offers and the reading after
+    /// it (`OpKind::Link`, `reconcile_link`, y2-npmwhy): the real
     /// prefix outside this crate's unit tests; inside them nothing is read
     /// unless a test installs a reader (`with_links_fn`), so that no test
     /// answers differently for the links on the Mac running it.
     links_fn: fn(&Path, &str) -> Option<KegLinks>,
-    /// The keg-only formulae of each instance that `brew link --force` may
-    /// link -- by name in the prefix (a tap's `user/tap/name` is `name`) --
+    /// The keg-only formulae of each instance that `brew link --formula
+    /// --force` may link -- by name in the prefix (a tap's `user/tap/name`
+    /// is `name`) --
     /// as its last inventory read them (`brew info --installed --json=v2`'s
     /// `keg_only`, `CommandInputs`): an update's preview has only the
     /// request, and only that answer is Homebrew's own. One whose
     /// `keg_only_reason` is macOS's (`provided_by_macos`,
     /// `shadowed_by_macos`) is left out: `brew link` refuses to link it at
     /// Homebrew's default prefix (`cmd/link.rb`). Empty until an inventory
-    /// has run, which every refresh does before a row can be updated; an
-    /// update of a formula not here is planned as before.
+    /// has run, which every refresh does before a row can be updated or a
+    /// source's notice can offer a link; an update of a formula not here is
+    /// planned as before, and a link of one is refused.
     keg_only: Mutex<HashMap<InstanceId, HashSet<String>>>,
-    /// How to read what `brew link --force` would do for a formula -- its
-    /// commands, and what stands in their way -- for the link preview
-    /// (`link::link_preview`): the real prefix outside this crate's unit
-    /// tests; inside them nothing is read unless a test installs a reader
-    /// (`with_link_preview_fn`).
-    link_preview_fn: fn(&Path, &str) -> link::LinkPreview,
 }
-
-/// `BrewAdapter::link_preview_fn` as `BrewAdapter::new` sets it: the real
-/// prefix in every build but this crate's unit tests, where nothing is read.
-#[cfg(not(test))]
-const DEFAULT_LINK_PREVIEW_FN: fn(&Path, &str) -> link::LinkPreview = link::link_preview;
-#[cfg(test)]
-const DEFAULT_LINK_PREVIEW_FN: fn(&Path, &str) -> link::LinkPreview =
-    |_, _| link::LinkPreview::default();
 
 /// `BrewAdapter::update_lock_fn` as `BrewAdapter::new` sets it: the real
 /// probe in every build but this crate's unit tests.
@@ -361,11 +350,12 @@ impl BrewAdapter {
     /// for the trust document's test, which finds it in its table.
     pub const CLEANUP_TIMEOUT_SECS: u64 = 10 * 60;
 
-    /// How long the `brew link --formula --force <name>` after an upgrade may run
-    /// (y1-keg): it makes one formula's links in the prefix, which takes
-    /// seconds even for node's thousands of files. Public for the trust
-    /// document's test, which finds it in its table.
-    pub const RELINK_TIMEOUT_SECS: u64 = 5 * 60;
+    /// How long a `brew link --formula --force <name>` may run (`link_argv`),
+    /// after an upgrade (y1-keg) or on its own (`OpKind::Link`, y2-npmwhy):
+    /// it makes one formula's links in the prefix, which takes seconds even
+    /// for node's thousands of files. Public for the trust document's test,
+    /// which finds it in its table.
+    pub const LINK_TIMEOUT_SECS: u64 = 5 * 60;
 
     pub const CANDIDATE_PATHS: [&'static str; 3] = [
         "/opt/homebrew/bin/brew",
@@ -398,7 +388,6 @@ impl BrewAdapter {
             kegs_fn: DEFAULT_KEGS_FN,
             links_fn: DEFAULT_LINKS_FN,
             keg_only: Mutex::new(HashMap::new()),
-            link_preview_fn: DEFAULT_LINK_PREVIEW_FN,
         }
     }
 
@@ -539,17 +528,6 @@ impl BrewAdapter {
             instance_id.to_string(),
             names.iter().map(|name| name.to_string()).collect(),
         );
-        self
-    }
-
-    /// Test-only hook to give a formula commands and put files in the
-    /// way of its link (see `link_preview_fn`).
-    #[cfg(test)]
-    fn with_link_preview_fn(
-        mut self,
-        link_preview_fn: fn(&Path, &str) -> link::LinkPreview,
-    ) -> BrewAdapter {
-        self.link_preview_fn = link_preview_fn;
         self
     }
 
@@ -2219,6 +2197,22 @@ fn is_disabled(artifacts: &[InstalledArtifact], key: &ArtifactKey) -> bool {
     })
 }
 
+/// `brew link --formula --force <name>`: the one link Banager runs, after
+/// the update of a keg-only formula whose link Homebrew recorded where
+/// Homebrew did not link it back (y1-keg), and on its own for the formula a
+/// source's notice offers (`OpKind::Link`, y2-npmwhy). `--formula`: `brew
+/// link` also takes a name as a cask of that name, whose links `--force`
+/// would overwrite (`cmd/link.rb`); `--force`: what Homebrew asks before it
+/// links a keg-only formula. Never `--overwrite`.
+fn link_argv(name: &str) -> Vec<String> {
+    vec![
+        "link".to_string(),
+        "--formula".to_string(),
+        "--force".to_string(),
+        name.to_string(),
+    ]
+}
+
 impl BrewAdapter {
     pub async fn plan(
         &self,
@@ -2232,46 +2226,54 @@ impl BrewAdapter {
         }
         let lock = ResourceLock(inst.id.clone());
         match req.kind {
-            // `brew link --force <formula>`: a keg-only formula's
-            // commands put where Terminal looks, for a source whose
-            // launcher could not find one of them (`NoAnswer::link_fixes`;
-            // the gate plans only one a snapshot offers). `--force` is what
-            // Homebrew asks of a keg-only formula; `--overwrite` is never
-            // passed, so a file already there is never replaced -- what is
-            // in the way is read first and said (`Warning::LinkConflicts`),
-            // and Homebrew itself refuses and takes back what it linked if
-            // it meets one. The commands it puts where Terminal looks are
-            // read too, and said (`Warning::LinkPutsCommands`): linking
-            // `node@20` changes which `node` Terminal runs. No password, no
-            // download, no update of Homebrew: `brew link` does none of
-            // those.
+            // `brew link --formula --force <formula>` (`link_argv`, the
+            // same command that links a keg-only formula back after its
+            // update): a keg-only formula's commands put where Terminal
+            // looks, for a source whose launcher could not find one of them
+            // (`NoAnswer::link_fixes`; the gate plans only one a snapshot
+            // offers). Only one the last inventory listed as keg-only and
+            // linkable (`is_keg_only`): not one keg-only because of macOS,
+            // which `brew link` refuses at Homebrew's default prefix and
+            // exits 0 having linked nothing, nor one that is not keg-only,
+            // which Homebrew linked itself. `--formula` keeps the name to
+            // the formula; `--force` is what Homebrew asks of a keg-only
+            // one; `--overwrite` is never passed, so a file already there is
+            // never replaced. Its links are read as for an update
+            // (`links::read_links`): the commands it puts where Terminal
+            // looks are said (`Warning::LinkPutsCommands`) -- linking
+            // `node@20` changes which `node` Terminal runs -- and every
+            // place `brew link` would stop at (`KegLinks::held_paths`, what
+            // makes an update `UpdateBlocked::LinkTaken`) is said too
+            // (`Warning::LinkConflicts`), which `Session::submit` refuses
+            // to run. No password, no download, no update of Homebrew:
+            // `brew link` does none of those.
             OpKind::Link => {
                 if req.artifact_kind != ArtifactKind::Formula {
                     return Err(AdapterError::Unsupported(
                         "only a Homebrew formula is linked".to_string(),
                     ));
                 }
-                let preview = (self.link_preview_fn)(&inst.prefix, &req.name);
-                let mut warnings = Vec::new();
-                if !preview.commands.is_empty() {
-                    warnings.push(Warning::LinkPutsCommands {
-                        names: preview.commands,
-                    });
+                if !self.is_keg_only(&inst.id, &req.name) {
+                    return Err(AdapterError::Unsupported(
+                        "only a keg-only formula Homebrew links is linked".to_string(),
+                    ));
                 }
-                if !preview.in_the_way.is_empty() {
-                    warnings.push(Warning::LinkConflicts {
-                        paths: preview
-                            .in_the_way
-                            .iter()
-                            .map(|path| path.display().to_string())
-                            .collect(),
-                    });
+                let mut warnings = Vec::new();
+                if let Some(links) = (self.links_fn)(&inst.prefix, &req.name) {
+                    let names = links.command_names();
+                    if !names.is_empty() {
+                        warnings.push(Warning::LinkPutsCommands { names });
+                    }
+                    let paths = links.held_paths();
+                    if !paths.is_empty() {
+                        warnings.push(Warning::LinkConflicts { paths });
+                    }
                 }
                 Ok(Plan {
                     request: req.clone(),
                     action: PlanAction::Command {
                         program: inst.exe_path.clone(),
-                        args: vec!["link".to_string(), "--force".to_string(), req.name.clone()],
+                        args: link_argv(&req.name),
                         env: self.env_vec(),
                     },
                     needs_password: false,
@@ -2279,7 +2281,7 @@ impl BrewAdapter {
                     cancel_policy: CancelPolicy::KillThenReconcile,
                     warnings,
                     affected: Vec::new(),
-                    timeout_secs: 300,
+                    timeout_secs: Self::LINK_TIMEOUT_SECS,
                 })
             }
             OpKind::Install => {
@@ -2442,15 +2444,7 @@ impl BrewAdapter {
                             commands,
                         },
                     );
-                    then.insert(
-                        0,
-                        vec![
-                            "link".to_string(),
-                            "--formula".to_string(),
-                            "--force".to_string(),
-                            req.name.clone(),
-                        ],
-                    );
+                    then.insert(0, link_argv(&req.name));
                 }
                 let action = if then.is_empty() {
                     PlanAction::Command { program, args, env }
@@ -2564,7 +2558,7 @@ impl BrewAdapter {
         for follow_up in then {
             match follow_up.first().map(String::as_str) {
                 Some("link") if relink => {
-                    let link = step(follow_up, Self::RELINK_TIMEOUT_SECS);
+                    let link = step(follow_up, Self::LINK_TIMEOUT_SECS);
                     self.link_back(plan, &link, &prefix, &sink, op_id, &cancel)
                         .await;
                 }
@@ -2585,7 +2579,7 @@ impl BrewAdapter {
     /// commands' places now -- npm's own copy of itself in `bin/npm`, put
     /// there by an update of npm since the preview -- is `Fault::LinkTaken`,
     /// and nothing runs: the update would unlink the formula, and neither
-    /// Homebrew's link afterwards nor `brew link --force` gets past that
+    /// Homebrew's link afterwards nor `brew link --formula --force` gets past that
     /// file (`Keg::ConflictError`), so its commands would leave Terminal,
     /// as `node` did on 2026-10-07. Otherwise whether to check it after the
     /// update: not when its link is no longer recorded (unlinked since the
@@ -2799,20 +2793,19 @@ impl BrewAdapter {
         Ok(reconciled)
     }
 
-    /// After `brew link --force`: whether the formula is installed, and if
-    /// so whether Homebrew says it is linked now (`linked_keg`, which the
-    /// inventory reads into `CommandInputs::linked`).
+    /// After a link (`OpKind::Link`): whether the formula is linked now,
+    /// read off its links as after the link that follows an update
+    /// (`link_back`): Homebrew's record of the link there, and every one of
+    /// its commands' places holding Homebrew's link to it
+    /// (`KegLinks::fully_linked`). `None` when its links cannot be read --
+    /// no `opt/<name>` leading into its Cellar folder, the formula gone.
+    /// Nothing runs.
     pub async fn reconcile_link(
         &self,
         inst: &ManagerInstance,
         key: &ArtifactKey,
     ) -> Result<Option<bool>, AdapterError> {
-        let artifacts = self.inventory(inst).await?;
-        let key = qualified_key(&artifacts, key);
-        Ok(artifacts
-            .iter()
-            .find(|artifact| artifact.key == key)
-            .map(|artifact| artifact.facts.command_inputs.linked))
+        Ok((self.links_fn)(&inst.prefix, &key.name).map(|links| links.fully_linked()))
     }
 }
 
@@ -4099,11 +4092,35 @@ mod plan_execute_tests {
         }
     }
 
+    /// `node@22` under `/opt/homebrew`, keg-only and not linked, as
+    /// `links::read_links` reads it on the author's Mac after 2026-10-07:
+    /// npm's own copy of itself in `bin/npm` and `bin/npx`, `bin/node` and
+    /// `bin/corepack` free.
+    fn node_22_unlinked_with_npms_own(prefix: &Path, name: &str) -> Option<KegLinks> {
+        assert_eq!((prefix, name), (Path::new("/opt/homebrew"), "node@22"));
+        let command = |name: &str, place| links::CommandLink {
+            name: name.to_string(),
+            path: prefix.join("bin").join(name),
+            place,
+        };
+        Some(KegLinks {
+            recorded: false,
+            commands: vec![
+                command("corepack", links::Place::Free),
+                command("node", links::Place::Free),
+                command("npm", links::Place::Taken),
+                command("npx", links::Place::Taken),
+            ],
+        })
+    }
+
     #[tokio::test]
-    async fn test_a_link_plans_brew_link_force_and_says_what_is_in_the_way() {
+    async fn test_a_link_plans_brew_link_formula_force_and_says_what_is_in_the_way() {
         // Finding (1) of the 2026-10-07 run: the fix for a source that
-        // could not find `node` is `brew link --force node@22`, previewed
-        // and run as any operation is. Nothing runs to plan it.
+        // could not find `node` is the link of `node@22`, previewed and
+        // run as any operation is -- the same `brew link --formula --force`
+        // that links a keg-only formula back after its update (y1-keg).
+        // Nothing runs to plan it.
         let runner = Arc::new(MockRunner::new());
         let inst = test_instance();
         let req = OpRequest {
@@ -4112,7 +4129,8 @@ mod plan_execute_tests {
             artifact_kind: ArtifactKind::Formula,
             name: "node@22".into(),
         };
-        let plan = BrewAdapter::new(runner.clone())
+        let keg_only = || BrewAdapter::new(runner.clone()).with_keg_only(&inst.id, &["node@22"]);
+        let plan = keg_only()
             .plan(&inst, &req)
             .await
             .expect("a link is planned");
@@ -4120,28 +4138,29 @@ mod plan_execute_tests {
             crate::testing::command_program(&plan),
             inst.exe_path.as_path()
         );
-        assert_eq!(command_args(&plan), ["link", "--force", "node@22"]);
+        assert_eq!(
+            command_args(&plan),
+            ["link", "--formula", "--force", "node@22"]
+        );
         assert_eq!(
             command_env(&plan),
             BrewAdapter::new(runner.clone()).env_vec()
         );
+        assert_eq!(plan.timeout_secs, BrewAdapter::LINK_TIMEOUT_SECS);
         assert!(!plan.needs_password);
         assert_eq!(plan.cancel_policy, CancelPolicy::KillThenReconcile);
         assert_eq!(plan.locks, vec![ResourceLock(inst.id.clone())]);
+        // Links that cannot be read: nothing said, Homebrew's own refusal
+        // says what it meets.
         assert!(plan.warnings.is_empty(), "{:?}", plan.warnings);
         assert!(plan.affected.is_empty());
         assert!(runner.calls().is_empty(), "planning runs nothing");
 
         // The formula's commands, which the link puts where Terminal
-        // looks; npm's own `npm` in `bin`: Homebrew would link nothing.
-        let plan = BrewAdapter::new(runner.clone())
-            .with_link_preview_fn(|prefix, name| {
-                assert_eq!((prefix, name), (Path::new("/opt/homebrew"), "node@22"));
-                link::LinkPreview {
-                    commands: vec!["node".to_string(), "npm".to_string()],
-                    in_the_way: vec![PathBuf::from("/opt/homebrew/bin/npm")],
-                }
-            })
+        // looks; npm's own `npm` and `npx` in `bin`: Homebrew would link
+        // nothing (`KegLinks::held_paths`).
+        let plan = keg_only()
+            .with_links_fn(node_22_unlinked_with_npms_own)
             .plan(&inst, &req)
             .await
             .expect("still planned, with what is in the way");
@@ -4149,10 +4168,15 @@ mod plan_execute_tests {
             plan.warnings,
             vec![
                 Warning::LinkPutsCommands {
-                    names: vec!["node".to_string(), "npm".to_string()],
+                    names: ["corepack", "node", "npm", "npx"]
+                        .map(String::from)
+                        .to_vec(),
                 },
                 Warning::LinkConflicts {
-                    paths: vec!["/opt/homebrew/bin/npm".to_string()],
+                    paths: vec![
+                        "/opt/homebrew/bin/npm".to_string(),
+                        "/opt/homebrew/bin/npx".to_string(),
+                    ],
                 },
             ]
         );
@@ -4163,7 +4187,23 @@ mod plan_execute_tests {
             ..req.clone()
         };
         assert!(matches!(
-            BrewAdapter::new(runner.clone()).plan(&inst, &cask).await,
+            keg_only().plan(&inst, &cask).await,
+            Err(AdapterError::Unsupported(_))
+        ));
+        // ... and only one the last inventory listed as keg-only and
+        // linkable (y1-keg's rule): not one keg-only because of macOS,
+        // which `brew link` refuses at Homebrew's default prefix and exits
+        // 0 having linked nothing, nor one before any inventory.
+        let sqlite = OpRequest {
+            name: "sqlite".into(),
+            ..req.clone()
+        };
+        assert!(matches!(
+            keg_only().plan(&inst, &sqlite).await,
+            Err(AdapterError::Unsupported(_))
+        ));
+        assert!(matches!(
+            BrewAdapter::new(runner.clone()).plan(&inst, &req).await,
             Err(AdapterError::Unsupported(_))
         ));
         assert!(runner.calls().is_empty());
@@ -6034,25 +6074,28 @@ mod plan_execute_tests {
 
     #[tokio::test]
     async fn test_reconcile_link_reads_whether_the_formula_is_linked_now() {
-        // After `brew link --force`, Homebrew's own `linked_keg`: set,
-        // linked; null, installed and not linked; no row, not installed.
+        // After a link, its links as after the link that follows an update
+        // (`KegLinks::fully_linked`): recorded with every command Homebrew's
+        // link, linked; not recorded -- Homebrew refused -- not linked;
+        // links that cannot be read, not known to be installed. No command
+        // runs.
+        fn read(prefix: &Path, name: &str) -> Option<KegLinks> {
+            let place = match name {
+                "node@22" => links::Place::Linked,
+                "openssl@3" => links::Place::Taken,
+                _ => return None,
+            };
+            Some(KegLinks {
+                recorded: name == "node@22",
+                commands: vec![links::CommandLink {
+                    name: "node".to_string(),
+                    path: prefix.join("bin/node"),
+                    place,
+                }],
+            })
+        }
         let runner = Arc::new(MockRunner::new());
-        let json = r#"{"formulae":[
-            {"name":"node@22","full_name":"node@22","keg_only":true,"linked_keg":"22.23.3_1","installed":[{"version":"22.23.3_1","installed_on_request":true,"installed_as_dependency":false,"time":null}]},
-            {"name":"ruby","full_name":"ruby","keg_only":true,"linked_keg":null,"installed":[{"version":"3.4.7","installed_on_request":true,"installed_as_dependency":false,"time":null}]}
-        ],"casks":[]}"#;
-        runner.respond(
-            vec!["/opt/homebrew/bin/brew", "info", "--installed", "--json=v2"],
-            CommandOutput {
-                stderr_cause: Default::default(),
-                exit_code: Some(0),
-                stdout: json.to_string(),
-                stderr: String::new(),
-                timed_out: false,
-                cancelled: false,
-            },
-        );
-        let adapter = BrewAdapter::new(runner);
+        let adapter = BrewAdapter::new(runner.clone()).with_links_fn(read);
         let inst = test_instance();
         let formula = |name: &str| ArtifactKey {
             instance_id: inst.id.clone(),
@@ -6068,7 +6111,7 @@ mod plan_execute_tests {
         );
         assert_eq!(
             adapter
-                .reconcile_link(&inst, &formula("ruby"))
+                .reconcile_link(&inst, &formula("openssl@3"))
                 .await
                 .unwrap(),
             Some(false)
@@ -6080,6 +6123,7 @@ mod plan_execute_tests {
                 .unwrap(),
             None
         );
+        assert!(runner.calls().is_empty(), "the reading runs nothing");
     }
 
     /// (F3) A cask installed from a third-party tap — the real, committed

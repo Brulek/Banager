@@ -1250,7 +1250,7 @@ mod tests {
 
     #[test]
     fn test_lists_request_wants_a_link_some_source_is_offered_as_its_fix() {
-        // `brew link --force` of exactly the formula a source's reason
+        // `brew link --formula --force` of exactly the formula a source's reason
         // offers (`NoAnswer::link_fixes`), and nothing else: not a formula
         // that is merely installed, nor one of another name or source.
         use super::lists_request;
@@ -1460,7 +1460,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_submit_refuses_a_link_whose_preview_found_files_in_the_way() {
-        // Where the preview found files in the way of `brew link --force`
+        // Where the preview found files in the way of `brew link --formula --force`
         // (`Warning::LinkConflicts`), Homebrew would link nothing: the
         // window offers no Link, and this refuses one whatever it sent.
         use crate::model::Warning;

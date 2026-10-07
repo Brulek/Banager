@@ -140,9 +140,10 @@ pub struct NoAnswer {
     /// (`runner::no_answer::missing_program`). Only with `CouldNotStart`.
     #[serde(default)]
     pub missing_program: Option<String>,
-    /// Homebrew formulae that would put `missing_program` back: keg-only,
-    /// installed, not linked, and named for it (`node@22` for `node`),
-    /// newest first. Each is offered as `brew link --force <name>`, an
+    /// Homebrew formulae that would put `missing_program` back: keg-only
+    /// (not because of macOS), installed, not linked, and named for it
+    /// (`node@22` for `node`), newest first. Each is offered as `brew link
+    /// --formula --force <name>`, an
     /// `OpKind::Link` the window plans and runs like any other operation.
     /// Worked out over the whole snapshot once a round has read every
     /// source (`link_fixes::fill`), never by an adapter's `detect`, which
@@ -546,12 +547,17 @@ pub struct CommandInputs {
     /// macOS provided/shadowed software", `cmd/link.rb` in Homebrew 7.0.8),
     /// so Banager never offers to link it back after its update (y1-keg).
     pub keg_only_by_macos: bool,
-    /// Homebrew's `linked_keg` for a formula is set: one of its versions is
-    /// linked into the prefix's own folders (`brew link`). Read with
-    /// `keg_only` by `link_fixes::fill`: a keg-only formula that is not
-    /// linked has none of its commands where Terminal looks, and `brew link
+    /// Homebrew's record of a `brew link` of the formula is there:
+    /// `<prefix>/var/homebrew/linked/<name>`, which `brew info`'s
+    /// `linked_keg` reports (`Formula#linked_keg`, `linked_version`,
+    /// `formula.rb:1004-1007`, `1103-1107`, `3146` in Homebrew 7.0.8) --
+    /// the one thing Banager calls "linked": the record `links::read_links`
+    /// reads off the disk at a preview (`KegLinks::recorded`), as the
+    /// snapshot keeps it. Read with `keg_only` by `link_fixes::fill`: a
+    /// keg-only formula with no record has none of its commands where
+    /// Terminal looks by Homebrew's doing, and `brew link --formula
     /// --force` puts them there.
-    pub linked: bool,
+    pub link_recorded: bool,
 }
 
 /// One command a source's own answer names (`CommandInputs.provided`).
@@ -815,17 +821,22 @@ pub struct OthersData {
 /// are not.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Warning {
-    /// `brew link --force <formula>` (`OpKind::Link`) would stop at these
-    /// files: each is already in the prefix's `bin` folder under the name
-    /// of one of the formula's commands, and is not a link to it, and
-    /// Homebrew links nothing over a file that is there
-    /// (`adapters/brew/link.rs`). The link would change nothing, so the
-    /// preview says so and offers no Link button. `paths` are absolute, as
+    /// `brew link --formula --force <formula>` (`OpKind::Link`) would stop
+    /// at these places: each is already in the prefix's `bin` or `sbin`
+    /// folder under the name of one of the formula's commands, and is not
+    /// Homebrew's own link to it -- a file, a link that leads elsewhere, or
+    /// a person's own link into the formula -- and Homebrew links nothing
+    /// over any of them (`Keg::ConflictError`; `KegLinks::held_paths` in
+    /// `adapters/brew/links.rs`, the places that make an update
+    /// `UpdateBlocked::LinkTaken` too). The link would change nothing, so
+    /// the preview says so and offers no Link button, and `Session::submit`
+    /// refuses it (`SubmitError::LinkBlocked`). `paths` are absolute, as
     /// Homebrew names them. Built only by `BrewAdapter::plan` for a link.
     LinkConflicts { paths: Vec<String> },
-    /// The commands `brew link --force <formula>` (`OpKind::Link`) puts
-    /// where Terminal looks: the names in the formula's own `bin` folder,
-    /// sorted (`adapters/brew/link.rs`). Once linked, typing any of them in
+    /// The commands `brew link --formula --force <formula>` (`OpKind::Link`)
+    /// puts where Terminal looks: the names of what it links of the
+    /// formula's `bin` and `sbin` folders, sorted (`KegLinks::command_names`
+    /// in `adapters/brew/links.rs`). Once linked, typing any of them in
     /// Terminal runs the formula's copy -- linking `node@20` changes which
     /// `node`, `npm` and `npx` run everywhere -- so the preview names them
     /// in its sentence, not as a line of its own. Built only by
@@ -1676,8 +1687,8 @@ pub enum OpKind {
     Install,
     Uninstall,
     Upgrade,
-    /// `brew link --force <formula>`: puts a keg-only Homebrew formula's
-    /// commands where Terminal looks, for a source whose launcher could not
+    /// `brew link --formula --force <formula>`: puts a keg-only Homebrew
+    /// formula's commands where Terminal looks, for a source whose launcher could not
     /// find one of them (`NoAnswer::link_fixes`). Planned only by
     /// `BrewAdapter::plan`, only for a formula a snapshot offers as a fix
     /// (`Session::issue_listed_plan`'s `lists_request`); every other adapter
@@ -2070,9 +2081,10 @@ pub enum Attention {
     /// `run_operation` passes on unchanged; read by `attentionKey` in
     /// src/lib/format.ts.
     BackAfterUninstall,
-    /// `brew link --force` exited 0 and Homebrew says the formula is still
-    /// not linked (`linked_keg` null in `brew info --installed --json=v2`,
-    /// `Adapter::reconcile_link`): it refused without an error, as it does
+    /// `brew link --formula --force` exited 0 and the formula is still not
+    /// linked: no record of the link, or a command of it not linked
+    /// (`KegLinks::fully_linked`, `Adapter::reconcile_link`): it refused
+    /// without an error, as it does
     /// for software macOS provides or shadows ("Refusing to link macOS
     /// provided/shadowed software", cmd/link.rb in Homebrew 7.0.8). Built
     /// by `run_operation` (`crates/banager-core/src/ops/mod.rs`); read by
@@ -2557,7 +2569,7 @@ mod tests {
                 }],
                 keg_only: true,
                 keg_only_by_macos: true,
-                linked: false,
+                link_recorded: false,
             },
         };
         let json = serde_json::to_string(&facts).unwrap();
@@ -3418,7 +3430,7 @@ mod tests {
         assert_eq!(serde_json::to_string(&action).unwrap(), json);
         assert_eq!(serde_json::from_str::<PlanAction>(json).unwrap(), action);
         // y1-keg (r6): a keg-only formula linked into the prefix gets its
-        // `brew link --force` first, then the cleanup.
+        // `brew link --formula --force` first, then the cleanup.
         let action = PlanAction::CommandThen {
             program: PathBuf::from("/opt/homebrew/bin/brew"),
             args: vec![

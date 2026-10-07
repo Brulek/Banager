@@ -1,7 +1,10 @@
 //! Whether a keg-only formula is linked into its Homebrew prefix, and
 //! whether each of its commands' places there is free for it, read for an
 //! update's preview, again right before the update runs and once more right
-//! after it (y1-keg, r6).
+//! after it (y1-keg, r6); and for the preview of the link a source's notice
+//! offers and once it has run (`OpKind::Link`, y2-npmwhy): the one reading
+//! of a formula's links both use, so that "linked" and "in the way" mean
+//! the same to both, and both run the same `brew link --formula --force`.
 //!
 //! Homebrew leaves a keg-only formula -- `node@22`, `openssl@3` -- out of
 //! `<prefix>/bin` on purpose, except a versioned one installed on request
@@ -108,6 +111,16 @@ impl KegLinks {
     /// links again.
     pub(crate) fn linked_names(&self) -> Vec<String> {
         self.names_where(|place| place == Place::Linked)
+    }
+
+    /// The names of all of the formula's commands, in its keg's `bin` and
+    /// `sbin`, sorted, each once: what `brew link` puts where Terminal
+    /// looks (`Warning::LinkPutsCommands`, the link a source's notice
+    /// offers, y2-npmwhy).
+    pub(crate) fn command_names(&self) -> Vec<String> {
+        let mut names = self.names_where(|_| true);
+        names.dedup();
+        names
     }
 
     /// The names of the commands typing which runs the formula: whose
