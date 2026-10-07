@@ -394,6 +394,7 @@ pub fn parse_info_installed(
                 command_inputs: CommandInputs {
                     keg_only,
                     keg_only_by_macos: keg_only && keg_only_by_macos(f.keg_only_reason.as_ref()),
+                    linked: f.linked_keg.is_some(),
                     ..Default::default()
                 },
                 ..Default::default()
@@ -1297,6 +1298,31 @@ mod tests {
             .map(|a| a.facts.command_inputs.keg_only_by_macos)
             .collect();
         assert_eq!(flags, vec![true, true, false, false, false, false]);
+    }
+
+    #[test]
+    fn parse_info_installed_says_which_formulae_are_linked() {
+        // `linked_keg` names the linked version, or is null: a keg-only
+        // `node@22` that `brew upgrade` unlinked (2026-10-07) is not.
+        let json = r#"{
+            "formulae": [
+                { "name": "node@22", "keg_only": true, "linked_keg": null,
+                  "installed": [{ "version": "22.23.3_1" }] },
+                { "name": "node@20", "keg_only": true, "linked_keg": "20.19.5",
+                  "installed": [{ "version": "20.19.5" }] },
+                { "name": "jq", "linked_keg": "1.8.1", "installed": [{ "version": "1.8.1" }] }
+            ],
+            "casks": []
+        }"#;
+        let result = parse_info_installed(json, "brew:/opt/homebrew").expect("parse");
+        let linked: Vec<(&str, bool)> = result
+            .iter()
+            .map(|a| (a.key.name.as_str(), a.facts.command_inputs.linked))
+            .collect();
+        assert_eq!(
+            linked,
+            vec![("node@22", false), ("node@20", true), ("jq", true)]
+        );
     }
 
     // Regressions found by `adapters/robustness.rs`: each is the smallest

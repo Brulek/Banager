@@ -79,6 +79,10 @@ pub mod icon;
 /// What an uninstall leaves behind -- a tool's settings and data, Ollama's
 /// models -- named in its preview, measured read-only, never deleted.
 pub mod kept_data;
+/// What would put back a program a source's launcher could not find:
+/// keg-only Homebrew formulae that are installed and not linked
+/// (`NoAnswer::link_fixes`), worked out from the snapshot alone.
+pub mod link_fixes;
 pub mod model;
 /// Which other sources run on a Homebrew package an uninstall would
 /// remove -- npm on `node`, pip and pipx's environments on `python@3.x`,

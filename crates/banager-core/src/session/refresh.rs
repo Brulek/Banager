@@ -896,6 +896,10 @@ impl Session {
         // over every instance's rows -- this round's and the ones carried
         // forward alike -- rather than in each adapter's inventory.
         crate::families::assign(&instances, &mut artifacts);
+        // What would put back a program a source's launcher could not find
+        // (`NoAnswer::link_fixes`): over every source's rows, this round's
+        // and the ones carried forward alike, as above.
+        crate::link_fixes::fill(&mut instances, &artifacts);
         let candidate = Snapshot {
             generation: previous.generation,
             round,
@@ -1521,6 +1525,56 @@ mod tests {
     /// Every artifact in a committed snapshot says which AI coding tool it
     /// is, set once where the round puts the snapshot together
     /// (`families::assign`) from the adapter its instance belongs to.
+    #[tokio::test]
+    async fn test_refresh_offers_the_unlinked_formula_an_npm_that_could_not_start_needs() {
+        // Finding (1) of the 2026-10-07 run: npm found no `node`, and
+        // Homebrew lists `node@22` keg-only and unlinked. The round has
+        // both, so npm's reason carries the fix (`link_fixes::fill`).
+        use crate::model::{LinkFix, NoAnswer, NoAnswerKind};
+        let (brew, brew_state) = FakeAdapter::new("brew");
+        let (npm, npm_state) = FakeAdapter::new("npm");
+        let mut node_22 = make_artifact_at("brew:/opt/homebrew", "node@22", "22.23.3_1");
+        node_22.facts.command_inputs.keg_only = true;
+        {
+            let mut s = brew_state.lock().unwrap();
+            s.instances = vec![make_instance("brew", "brew:/opt/homebrew")];
+            s.artifacts
+                .insert("brew:/opt/homebrew".to_string(), vec![node_22.clone()]);
+        }
+        npm_state.lock().unwrap().instances = vec![ManagerInstance {
+            version: None,
+            status: InstanceStatus {
+                unavailable: Some(Unavailable::NotResponding),
+                notes: Vec::new(),
+                no_answer: Some(NoAnswer {
+                    kind: NoAnswerKind::CouldNotStart,
+                    missing_program: Some("node".to_string()),
+                    link_fixes: Vec::new(),
+                }),
+            },
+            ..make_instance("npm", "npm:/opt/homebrew")
+        }];
+        let session = Session::with_adapters(Arc::new(VecSink::new()), vec![brew, npm], None);
+        let snapshot = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        let npm = snapshot
+            .instances
+            .iter()
+            .find(|instance| instance.adapter_id == "npm")
+            .expect("npm is listed");
+        assert_eq!(
+            npm.status
+                .no_answer
+                .as_ref()
+                .map(|why| why.link_fixes.clone()),
+            Some(vec![LinkFix {
+                key: node_22.key.clone(),
+                version: "22.23.3_1".to_string(),
+            }])
+        );
+    }
+
     #[tokio::test]
     async fn test_refresh_tags_each_artifact_with_its_ai_tool_family() {
         let (adapter, state) = FakeAdapter::new("brew");

@@ -546,6 +546,12 @@ pub struct CommandInputs {
     /// macOS provided/shadowed software", `cmd/link.rb` in Homebrew 7.0.8),
     /// so Banager never offers to link it back after its update (y1-keg).
     pub keg_only_by_macos: bool,
+    /// Homebrew's `linked_keg` for a formula is set: one of its versions is
+    /// linked into the prefix's own folders (`brew link`). Read with
+    /// `keg_only` by `link_fixes::fill`: a keg-only formula that is not
+    /// linked has none of its commands where Terminal looks, and `brew link
+    /// --force` puts them there.
+    pub linked: bool,
 }
 
 /// One command a source's own answer names (`CommandInputs.provided`).
@@ -2489,6 +2495,7 @@ mod tests {
                 }],
                 keg_only: true,
                 keg_only_by_macos: true,
+                linked: false,
             },
         };
         let json = serde_json::to_string(&facts).unwrap();
