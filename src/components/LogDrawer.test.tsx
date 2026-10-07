@@ -292,7 +292,9 @@ describe("LogDrawer", () => {
         [
           "The update is done. Running brew link --formula --force node@22 to link it back into Terminal.",
           "Homebrew linked node@22 back into Terminal itself, so brew link wasn't needed.",
-          "node@22 isn't linked back into Terminal, so typing node or npm no longer runs it. To link it back, run brew link --formula --force node@22 in Terminal; if a file is in the way, it says which.",
+          // The command names operation 1's Homebrew (brew:/opt/homebrew),
+          // not Terminal's brew (r33 T1).
+          "node@22 isn't linked back into Terminal, so typing node or npm no longer runs it. To link it back, run /opt/homebrew/bin/brew link --formula --force node@22 in Terminal; if a file is in the way, it says which.",
         ],
       ],
       [
@@ -300,7 +302,7 @@ describe("LogDrawer", () => {
         [
           "更新已完成，接着运行brew link --formula --force node@22，把它重新链接到终端。",
           "Homebrew已把node@22重新链接到终端，不需要运行brew link。",
-          "node@22没有重新链接到终端，输入node或npm不再运行它。要重新链接，可以在终端里运行brew link --formula --force node@22；如果有文件挡住，它会说出是哪个。",
+          "node@22没有重新链接到终端，输入node或npm不再运行它。要重新链接，可以在终端里运行/opt/homebrew/bin/brew link --formula --force node@22；如果有文件挡住，它会说出是哪个。",
         ],
       ],
       [
@@ -308,7 +310,7 @@ describe("LogDrawer", () => {
         [
           "更新已完成，接著執行brew link --formula --force node@22，把它重新連結到終端機。",
           "Homebrew已把node@22重新連結到終端機，不需要執行brew link。",
-          "node@22沒有重新連結到終端機，輸入node或npm不再執行它。要重新連結，可以在終端機裡執行brew link --formula --force node@22；如果有檔案擋住，它會說出是哪一個。",
+          "node@22沒有重新連結到終端機，輸入node或npm不再執行它。要重新連結，可以在終端機裡執行/opt/homebrew/bin/brew link --formula --force node@22；如果有檔案擋住，它會說出是哪一個。",
         ],
       ],
     ];
@@ -322,8 +324,13 @@ describe("LogDrawer", () => {
           for (const note of notes) useUiStore.getState().appendLog({ opId: 1, note });
         });
         await findByText("==> Upgrading node@22");
-        const shown = Array.from(getByRole("log").querySelectorAll("p")).map((p) => p.textContent);
-        expect(shown).toEqual(["==> Upgrading node@22", ...lines]);
+        // Once the operation is known, whose Homebrew the command names.
+        await waitFor(() =>
+          expect(Array.from(getByRole("log").querySelectorAll("p")).map((p) => p.textContent)).toEqual([
+            "==> Upgrading node@22",
+            ...lines,
+          ]),
+        );
         unmount();
       }
     } finally {
@@ -1155,8 +1162,36 @@ it("still shows and copies retained follow-up notes after the transcript was evi
     follow_up_warnings: [{ NoLongerLinked: { name: "node@22", commands: ["node", "npm"] } }],
   }];
   const view = renderWithProviders(<LogDrawer />);
-  await waitFor(() => expect(view.getByRole("dialog")).toHaveTextContent("brew link --formula --force node@22"));
+  await waitFor(() => expect(view.getByRole("dialog")).toHaveTextContent("/opt/homebrew/bin/brew link --formula --force node@22"));
   expect(view.getByRole("button", { name: "Copy Log" })).toBeEnabled();
+});
+
+it("names the Intel Homebrew's brew in the note of an update of brew:/usr/local, shown and copied (r33 T1)", async () => {
+  await i18n.changeLanguage("en");
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+  try {
+    operations = [{
+      ...runningOp,
+      kind: "Upgrade",
+      instance_id: "brew:/usr/local",
+      name: "node@22",
+      status: "Done",
+      outcome: "Succeeded",
+      argv_preview: ["/usr/local/bin/brew", "upgrade", "--formula", "node@22"],
+      follow_up_warnings: [{ NoLongerLinked: { name: "node@22", commands: ["node", "npm"] } }],
+    }];
+    act(() => useUiStore.getState().appendLog({ opId: 1, note: { NoLongerLinked: { name: "node@22", commands: ["node", "npm"] } } }));
+    const view = renderWithProviders(<LogDrawer />);
+    const sentence =
+      "node@22 isn't linked back into Terminal, so typing node or npm no longer runs it. To link it back, run /usr/local/bin/brew link --formula --force node@22 in Terminal; if a file is in the way, it says which.";
+    expect(await view.findByText(sentence)).toBeInTheDocument();
+    fireEvent.click(view.getByRole("button", { name: "Copy Log" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(sentence));
+    expect(view.getByRole("dialog").textContent).not.toMatch(/(^|[^/])brew link/);
+  } finally {
+    Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+  }
 });
 
 it("marks a success with follow-up warnings as needing attention, as the operation bar does (f13b review)", async () => {

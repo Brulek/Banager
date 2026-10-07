@@ -554,7 +554,7 @@
     "relinksDetailNoCommands": "没有链接上时会运行brew link --formula --force {{name}}；遇到其他程序的文件，它会停下，不会覆盖。",
     "logRelinking": "更新已完成，接着运行brew link --formula --force {{name}}，把它重新链接到终端。",
     "logStillLinked": "Homebrew已把{{name}}重新链接到终端，不需要运行brew link。",
-    "logNoLongerLinked": "{{name}}没有重新链接到终端，输入{{commands}}不再运行它。要重新链接，可以在终端里运行brew link --formula --force {{name}}；如果有文件挡住，它会说出是哪个。",
+    "logNoLongerLinked": "{{name}}没有重新链接到终端，输入{{commands}}不再运行它。要重新链接，可以在终端里运行{{command}}；如果有文件挡住，它会说出是哪个。",
     "logNoLongerLinkedLead": "{{name}}没有重新链接到终端，输入{{commands}}不再运行它。要重新链接，可以在终端里运行下面的命令。",
     "logNoLongerLinkedAfter": "如果有文件挡住，命令会说出是哪个。",
     "blockedBadge": "无法重新链接",

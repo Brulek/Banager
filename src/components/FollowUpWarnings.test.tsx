@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderWithProviders } from "../test/setup";
 import i18n from "../i18n";
-import type { FollowUpWarning } from "../lib/types";
+import { queryKeys } from "../lib/queries";
+import type { ArtifactKey, FollowUpWarning, ManagerInstance, Snapshot } from "../lib/types";
 import { FollowUpWarnings } from "./FollowUpWarnings";
 
 const warnings: FollowUpWarning[] = [
@@ -11,11 +12,14 @@ const warnings: FollowUpWarning[] = [
   { NoLongerLinked: { name: "node@22", commands: ["node", "npm"] } },
 ];
 
+/** node@22 of the Apple-silicon Homebrew, which the snapshot here does not list: its brew is read off the id. */
+const node22: ArtifactKey = { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "node@22" };
+
 /** The saved warnings of an update from an earlier launch: its log is gone, so the dialog is all there is. */
-function open() {
-  renderWithProviders(<FollowUpWarnings warnings={warnings} opId={null} name="node@22" />);
+function open(artifactKey: ArtifactKey = node22, saved: FollowUpWarning[] = warnings) {
+  const view = renderWithProviders(<FollowUpWarnings warnings={saved} opId={null} name="node@22" artifactKey={artifactKey} />);
   fireEvent.click(screen.getByRole("button", { name: i18n.t("updates.progress.viewLogLabel", { name: "node@22" }) }));
-  return screen.getByRole("dialog", { name: "node@22" });
+  return Object.assign(screen.getByRole("dialog", { name: "node@22" }), { view });
 }
 
 afterEach(async () => {
@@ -32,20 +36,20 @@ describe("a saved follow-up warning's log (p1 polish)", () => {
     // The command on its own, as the link-fix sheet and the password steps set theirs.
     const group = within(dialog).getByRole("group", { name: "Command to run in Terminal" });
     const code = group.querySelector("code");
-    expect(code?.textContent).toBe("brew link --formula --force node@22");
+    expect(code?.textContent).toBe("/opt/homebrew/bin/brew link --formula --force node@22");
     expect(code?.className.split(" ")).toEqual(expect.arrayContaining(["block", "select-all", "font-mono", "bg-group"]));
     // A line breaks between its words, never inside one: each a box of
     // its own that goes to the next line whole (`unbrokenTokens`), and
     // only the spaces between them loose.
     const tokens = [...(code?.querySelectorAll("[data-command-token]") ?? [])];
-    expect(tokens.map((s) => s.textContent)).toEqual(["brew", "link", "--formula", "--force", "node@22"]);
+    expect(tokens.map((s) => s.textContent)).toEqual(["/opt/homebrew/bin/brew", "link", "--formula", "--force", "node@22"]);
     for (const token of tokens) expect(token.className.split(" ")).toEqual(["inline-block", "max-w-full", "break-words"]);
     const line = tokens[0]?.parentElement;
     expect(line?.textContent).toBe(code?.textContent);
     const loose = [...(line?.childNodes ?? [])].filter((node) => node.nodeType === Node.TEXT_NODE);
     expect(loose.map((node) => node.textContent)).toEqual(Array(tokens.length - 1).fill(" "));
     fireEvent.click(within(dialog).getByRole("button", { name: "Copy Command" }));
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith("brew link --formula --force node@22"));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("/opt/homebrew/bin/brew link --formula --force node@22"));
     // The sentence before it and the one after it say no command.
     const before = within(dialog).getByText(
       "node@22 isn't linked back into Terminal, so typing node or npm no longer runs it. To link it back, you can run this command in Terminal.",
@@ -66,7 +70,7 @@ describe("a saved follow-up warning's log (p1 polish)", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Copy Log" }));
     await waitFor(() =>
       expect(writeText).toHaveBeenCalledWith(
-        `${i18n.t("brewVersions.logNotCleanedUp")}\nnode@22 isn't linked back into Terminal, so typing node or npm no longer runs it. To link it back, run brew link --formula --force node@22 in Terminal; if a file is in the way, it says which.`,
+        `${i18n.t("brewVersions.logNotCleanedUp")}\nnode@22 isn't linked back into Terminal, so typing node or npm no longer runs it. To link it back, run /opt/homebrew/bin/brew link --formula --force node@22 in Terminal; if a file is in the way, it says which.`,
       ),
     );
   });
@@ -110,7 +114,7 @@ describe("a saved follow-up warning's log (p1 polish)", () => {
     expect(within(dialog).getByText("已更新，有警告")).toBeInTheDocument();
     expect(within(dialog).getByText(language === "zh-CN" ? "这里只保留了警告，完整日志已不再保留。" : "這裡只保留了警告，完整記錄已不再保留。")).toBeInTheDocument();
     const group = within(dialog).getByRole("group", { name: groupName });
-    expect(group.querySelector("code")?.textContent).toBe("brew link --formula --force node@22");
+    expect(group.querySelector("code")?.textContent).toBe("/opt/homebrew/bin/brew link --formula --force node@22");
     expect(within(dialog).getByRole("button", { name: copyName })).toBeInTheDocument();
   });
 
@@ -124,7 +128,12 @@ describe("a saved follow-up warning's log (p1 polish)", () => {
       const user = userEvent.setup();
       // node@22 left unlinked: Copy Command is the dialog's first control.
       renderWithProviders(
-        <FollowUpWarnings warnings={[{ NoLongerLinked: { name: "node@22", commands: ["node", "npm"] } }]} opId={null} name="node@22" />,
+        <FollowUpWarnings
+          warnings={[{ NoLongerLinked: { name: "node@22", commands: ["node", "npm"] } }]}
+          opId={null}
+          name="node@22"
+          artifactKey={node22}
+        />,
       );
       const viewLog = screen.getByRole("button", { name: i18n.t("updates.progress.viewLogLabel", { name: "node@22" }) });
       viewLog.focus();
@@ -139,4 +148,84 @@ describe("a saved follow-up warning's log (p1 polish)", () => {
       await waitFor(() => expect(viewLog).toHaveFocus());
     },
   );
+});
+
+describe("the relink command names the Homebrew the update was in, not Terminal's brew (r33 T1)", () => {
+  /** A saved node@22 warning of the Intel Homebrew, as an Apple-silicon Mac that came through Rosetta keeps one. */
+  const intel: ArtifactKey = { instance_id: "brew:/usr/local", kind: "Formula", name: "node@22" };
+  const unlinked: FollowUpWarning[] = [{ NoLongerLinked: { name: "node@22", commands: ["node", "npm"] } }];
+
+  function homebrew(id: string, exePath: string): ManagerInstance {
+    return {
+      id,
+      adapter_id: "brew",
+      exe_path: exePath,
+      prefix: id.slice("brew:".length),
+      scope: "System",
+      version: "7.0.3",
+      answered_at: null,
+      unverified_version: null,
+      read_only_reason: null,
+      status: { unavailable: null, notes: [] },
+    };
+  }
+  function snapshotOf(instances: ManagerInstance[]): Snapshot {
+    return {
+      generation: 1,
+      round: 1,
+      detect: "Found",
+      instances,
+      artifacts: [],
+      updates: [],
+      refreshed_at: 1789700000,
+      stale: false,
+      errors: [],
+    };
+  }
+
+  it("gives /usr/local/bin/brew for a record of brew:/usr/local, in Copy Command and Copy Log alike", async () => {
+    await i18n.changeLanguage("en");
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    const dialog = open(intel, unlinked);
+    const group = within(dialog).getByRole("group", { name: "Command to run in Terminal" });
+    expect(group.querySelector("code")?.textContent).toBe("/usr/local/bin/brew link --formula --force node@22");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Copy Command" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("/usr/local/bin/brew link --formula --force node@22"));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Copy Log" }));
+    await waitFor(() =>
+      expect(writeText).toHaveBeenLastCalledWith(
+        "node@22 isn't linked back into Terminal, so typing node or npm no longer runs it. To link it back, run /usr/local/bin/brew link --formula --force node@22 in Terminal; if a file is in the way, it says which.",
+      ),
+    );
+    // Nowhere a bare brew, which in Terminal is the Apple-silicon one.
+    expect(dialog.textContent).not.toMatch(/(^|[^/])brew link/);
+  });
+
+  it("takes the program from the snapshot's instance where it lists it, each token quoted as the preview quotes it", async () => {
+    await i18n.changeLanguage("zh-CN");
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    const custom: ArtifactKey = { instance_id: "brew:/Users/Alice Smith/homebrew", kind: "Formula", name: "node@22" };
+    const dialog = open(custom, unlinked);
+    act(() => {
+      dialog.view.queryClient.setQueryData(
+        queryKeys.snapshot,
+        snapshotOf([
+          homebrew("brew:/opt/homebrew", "/opt/homebrew/bin/brew"),
+          homebrew("brew:/Users/Alice Smith/homebrew", "/Users/Alice Smith/homebrew/bin/brew"),
+        ]),
+      );
+    });
+    const group = within(dialog).getByRole("group", { name: "要在终端里运行的命令" });
+    await waitFor(() =>
+      expect(group.querySelector("code")?.textContent).toBe("'/Users/Alice Smith/homebrew/bin/brew' link --formula --force node@22"),
+    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "拷贝日志" }));
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith(
+        "node@22没有重新链接到终端，输入node或npm不再运行它。要重新链接，可以在终端里运行'/Users/Alice Smith/homebrew/bin/brew' link --formula --force node@22；如果有文件挡住，它会说出是哪个。",
+      ),
+    );
+  });
 });

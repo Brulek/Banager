@@ -1260,7 +1260,13 @@ planned as any other's):
   `formula_installer.rb:1297`). Then the links are read once more, and the
   commands the preview named that no longer lead into it are named in the
   log with how to link it back (`LogNote::NoLongerLinked`,
-  「node@22没有重新链接到终端，输入node或npm不再运行它。……」). How the link
+  「node@22没有重新链接到终端，输入node或npm不再运行它。……」). The command
+  it hands over for Terminal -- in the log's sentence and, after a
+  restart, set apart with Copy Command -- is `<brew> link --formula
+  --force {name}` with the brew of the Homebrew that ran the update, as
+  the link above ran (`brewProgram` and `linkBackCommand` in
+  `src/lib/sources.ts`), never a bare `brew`, which in Terminal is
+  whichever Homebrew PATH finds first. Banager never runs it. How the link
   ends never changes the update's outcome. After an update that
   succeeded, this note and the cleanup's `OldVersionsNotCleanedUp`
   (above) are also kept on the operation apart from its log

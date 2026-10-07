@@ -723,6 +723,36 @@ export function unpinCommand(key: ArtifactKey, instance: ManagerInstance | undef
 }
 
 /**
+ * The Homebrew program to name in a command handed over for Terminal
+ * about a package of the Homebrew `instanceId` is (`brew:<prefix>`), as
+ * `unpinCommand` names it: the instance's `exe_path` where the snapshot
+ * has it, else `<prefix>/bin/brew` from the id -- Banager's brew is
+ * always that (`BrewAdapter::prefix_for`, the folder above `bin`, in
+ * crates/banager-core/src/adapters/brew/mod.rs) -- and a bare `brew` only
+ * for an id with no prefix, which the backend never sends. Not `brew`:
+ * with Homebrews in /opt/homebrew and /usr/local, Terminal's `brew` is
+ * whichever one PATH finds first, and `link --force` there would link
+ * another Homebrew's keg (r33 T1). Untouched by `displayToken`; the
+ * caller quotes each token.
+ */
+export function brewProgram(instanceId: string, instance: ManagerInstance | undefined): string {
+  if (instance !== undefined) return instance.exe_path;
+  const prefix = instanceId.startsWith("brew:") ? instanceId.slice("brew:".length) : "";
+  return prefix === "" ? "brew" : `${prefix.replace(/\/+$/, "")}/bin/brew`;
+}
+
+/**
+ * `<brew> link --formula --force <name>`, a token each, quoted as
+ * `CommandPreview` quotes them (`displayToken`): the command a
+ * `NoLongerLinked` warning hands over to link a keg-only formula back
+ * after its update, with the program of the Homebrew it was updated in
+ * (`brewProgram`), which Banager's own relink after the update ran under.
+ */
+export function linkBackCommand(brew: string, name: string): string[] {
+  return [brew, "link", "--formula", "--force", name].map(displayToken);
+}
+
+/**
  * The command that opens a `SelfUpdatesOnly` row's tool once: the tool
  * itself -- its launcher, which is the standalone instance's `exe_path`
  * (`StandaloneAdapter::detect`) -- with no arguments. Opening it is what

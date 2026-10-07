@@ -554,7 +554,7 @@
     "relinksDetailNoCommands": "沒有連結上時會執行brew link --formula --force {{name}}；遇到其他程式的檔案，它會停下，不會覆寫。",
     "logRelinking": "更新已完成，接著執行brew link --formula --force {{name}}，把它重新連結到終端機。",
     "logStillLinked": "Homebrew已把{{name}}重新連結到終端機，不需要執行brew link。",
-    "logNoLongerLinked": "{{name}}沒有重新連結到終端機，輸入{{commands}}不再執行它。要重新連結，可以在終端機裡執行brew link --formula --force {{name}}；如果有檔案擋住，它會說出是哪一個。",
+    "logNoLongerLinked": "{{name}}沒有重新連結到終端機，輸入{{commands}}不再執行它。要重新連結，可以在終端機裡執行{{command}}；如果有檔案擋住，它會說出是哪一個。",
     "logNoLongerLinkedLead": "{{name}}沒有重新連結到終端機，輸入{{commands}}不再執行它。要重新連結，可以在終端機裡執行下面的指令。",
     "logNoLongerLinkedAfter": "如果有檔案擋住，指令會說出是哪一個。",
     "blockedBadge": "無法重新連結",

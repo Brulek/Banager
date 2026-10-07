@@ -1,10 +1,10 @@
 import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { FollowUpWarning } from "../lib/types";
+import type { ArtifactKey, FollowUpWarning } from "../lib/types";
 import { copyStatusText, useCopyCommand } from "../lib/clipboard";
-import { displayToken } from "../lib/format";
+import { useSnapshot } from "../lib/queries";
 import { useUiStore } from "../store/ui";
-import { namesInSentence } from "../lib/sources";
+import { brewProgram, linkBackCommand, namesInSentence } from "../lib/sources";
 import { noteText } from "./LogDrawer";
 import { CopyButton } from "./CopyButton";
 import { CommandCode } from "./PasswordCommand";
@@ -19,13 +19,15 @@ import { BUTTON } from "./ui/controls";
  * Command beside a word on whether it worked (as the link-fix sheet's and
  * the password steps'), the sentence before it saying what and why, and
  * the one after it what the command says if a file is in the way. Text
- * only: Banager never runs it here.
+ * only: Banager never runs it here. The command names the brew of the
+ * Homebrew the update was in (`brew`, from `brewProgram`), as the link-fix
+ * sheet's does: Terminal's own `brew` may be another Homebrew's (r33 T1).
  */
-function SavedWarning({ note }: { note: FollowUpWarning }) {
+function SavedWarning({ note, brew }: { note: FollowUpWarning; brew: string }) {
   const { t } = useTranslation();
   if ("NoLongerLinked" in note) {
     const { name, commands } = note.NoLongerLinked;
-    const command = ["brew", "link", "--formula", "--force", name].map(displayToken);
+    const command = linkBackCommand(brew, name);
     return (
       <div className="flex flex-col gap-2">
         <p className="break-words text-body text-foreground">
@@ -39,7 +41,7 @@ function SavedWarning({ note }: { note: FollowUpWarning }) {
       </div>
     );
   }
-  return <p className="break-words text-body text-foreground">{noteText(t, note)}</p>;
+  return <p className="break-words text-body text-foreground">{noteText(t, note, brew)}</p>;
 }
 
 /**
@@ -52,17 +54,21 @@ function SavedWarning({ note }: { note: FollowUpWarning }) {
  * the attention sign under it (as `PasswordRecovery` heads a recorded
  * password stop) -- that the full log is gone, then each warning
  * (`SavedWarning`). Copy Log copies them as the log says them, a sentence
- * each.
+ * each. `artifactKey` is the updated tool's, whose Homebrew a command in a
+ * warning names.
  */
-export function FollowUpWarnings({ warnings, opId, name, heading }: {
-  warnings: FollowUpWarning[]; opId: number | null; name: string; heading?: string;
+export function FollowUpWarnings({ warnings, opId, name, heading, artifactKey }: {
+  warnings: FollowUpWarning[]; opId: number | null; name: string; heading?: string; artifactKey: ArtifactKey;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const openLogRun = useUiStore((s) => s.openLogRun);
   const { status: copyStatus, copy } = useCopyCommand();
+  const { data: snapshot } = useSnapshot();
   const savedId = useId();
-  const text = warnings.map((note) => noteText(t, note)).join("\n");
+  const instanceId = artifactKey.instance_id;
+  const brew = brewProgram(instanceId, snapshot?.instances.find((instance) => instance.id === instanceId));
+  const text = warnings.map((note) => noteText(t, note, brew)).join("\n");
   return <>
     {/* Named by its tool, as an update row's View Log is: the list can hold several. */}
     <button type="button" className={BUTTON.small.grey} aria-label={t("updates.progress.viewLogLabel", { name })} onClick={() => {
@@ -107,7 +113,7 @@ export function FollowUpWarnings({ warnings, opId, name, heading }: {
       </p>
       <div className="flex flex-col gap-3">
         {warnings.map((note, index) => (
-          <SavedWarning key={index} note={note} />
+          <SavedWarning key={index} note={note} brew={brew} />
         ))}
       </div>
     </Dialog>

@@ -3,6 +3,7 @@ import {
   ADAPTER_LABEL_KEYS,
   adapterIdOf,
   adapterLabel,
+  brewProgram,
   canWrite,
   failedSourceAdapters,
   failedSourceNames,
@@ -10,6 +11,7 @@ import {
   instanceLabels,
   instanceNames,
   isAvailable,
+  linkBackCommand,
   namesInSentence,
   notActionableMessage,
   NOTHING_FOUND_KEYS,
@@ -2573,5 +2575,33 @@ describe("uninstallBlockedCopy", () => {
     expect(uninstallBlockedCopy("NoSafeMethod", undefined)).toBe(UNINSTALL_BLOCKED_KEYS.NoSafeMethod);
     expect(uninstallBlockedCopy("Pinned", "standalone-rustup")).toBe(UNINSTALL_BLOCKED_KEYS.Pinned);
     expect(uninstallBlockedCopy("Pinned", "brew")).toBe(UNINSTALL_BLOCKED_KEYS.Pinned);
+  });
+});
+
+describe("brewProgram and linkBackCommand (r33 T1)", () => {
+  it("names the snapshot's brew where it lists the instance", () => {
+    const listed = instance({ id: "brew:/usr/local", adapter_id: "brew", exe_path: "/usr/local/bin/brew", prefix: "/usr/local" });
+    expect(brewProgram("brew:/usr/local", listed)).toBe("/usr/local/bin/brew");
+  });
+
+  it("reads <prefix>/bin/brew off a brew:<prefix> id the snapshot no longer lists, never a bare brew", () => {
+    expect(brewProgram("brew:/usr/local", undefined)).toBe("/usr/local/bin/brew");
+    expect(brewProgram("brew:/opt/homebrew", undefined)).toBe("/opt/homebrew/bin/brew");
+    expect(brewProgram("brew:/opt/homebrew/", undefined)).toBe("/opt/homebrew/bin/brew");
+    // An id with no prefix, which the backend never sends.
+    expect(brewProgram("brew", undefined)).toBe("brew");
+  });
+
+  it("gives the Intel Homebrew's command for a brew:/usr/local record, a token each, quoted as the preview quotes them", () => {
+    expect(linkBackCommand(brewProgram("brew:/usr/local", undefined), "node@22").join(" ")).toBe(
+      "/usr/local/bin/brew link --formula --force node@22",
+    );
+    expect(linkBackCommand("/Users/Alice Smith/homebrew/bin/brew", "node@22")).toEqual([
+      "'/Users/Alice Smith/homebrew/bin/brew'",
+      "link",
+      "--formula",
+      "--force",
+      "node@22",
+    ]);
   });
 });

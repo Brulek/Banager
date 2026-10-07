@@ -3,11 +3,11 @@ import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import type { LogNote, OpSummary } from "../lib/types";
 import { useUiStore } from "../store/ui";
-import { useCancelOperation, useOperations, useSettings } from "../lib/queries";
+import { useCancelOperation, useOperations, useSettings, useSnapshot } from "../lib/queries";
 import { copyStatusText, useCopyCommand } from "../lib/clipboard";
 import { FAILURE_CAUSE_KEYS, outcomeCause } from "../lib/failureCause";
 import { outcomeStepKey } from "../lib/format";
-import { namesInSentence } from "../lib/sources";
+import { brewProgram, linkBackCommand, namesInSentence } from "../lib/sources";
 import {
   OP_CANCEL_KEYS,
   cancelState,
@@ -32,9 +32,11 @@ const NEAR_BOTTOM_PX = 32;
  * The words for one of Banager's own log notes, in the user's language.
  * Each `LogNote` variant needs a case here: the log is the one place the
  * app shows text it did not write, and a remark of Banager's that arrived
- * as plain text would be English sitting among the tool's lines.
+ * as plain text would be English sitting among the tool's lines. `brew` is
+ * the program of the Homebrew the note's operation ran in (`brewProgram`),
+ * which a command handed over for Terminal names (`NoLongerLinked`).
  */
-export function noteText(t: TFunction, note: LogNote): string {
+export function noteText(t: TFunction, note: LogNote, brew: string): string {
   if ("WaitingForBrewUpdate" in note) {
     return t("operations.logNote.waitingForBrewUpdate", {
       minutes: note.WaitingForBrewUpdate.minutes,
@@ -96,7 +98,12 @@ export function noteText(t: TFunction, note: LogNote): string {
   if ("NoLongerLinked" in note) {
     const { name, commands } = note.NoLongerLinked;
     // Typing any one of them no longer runs it: "node or npm" (r21 C6).
-    return t("kegLinks.logNoLongerLinked", { name, commands: namesInSentence(t, commands, "or") });
+    // The command names this Homebrew's own brew, not Terminal's (r33 T1).
+    return t("kegLinks.logNoLongerLinked", {
+      name,
+      commands: namesInSentence(t, commands, "or"),
+      command: linkBackCommand(brew, name).join(" "),
+    });
   }
   const unhandled: never = note;
   return unhandled;
@@ -152,6 +159,7 @@ export function LogDrawer() {
   const logs = useUiStore((s) => s.logs);
   const { data: operations } = useOperations();
   const { data: settings } = useSettings();
+  const { data: snapshot } = useSnapshot();
   const technical = settings?.show_technical_details ?? false;
   const nameOf = useOperationName(operations);
   const cancelMutation = useCancelOperation();
@@ -160,6 +168,11 @@ export function LogDrawer() {
   const [stickToBottom, setStickToBottom] = useState(true);
 
   const operation = (operations ?? []).find((op) => op.id === focusedOpId);
+  // Every note shown is this operation's: its Homebrew's program, for a
+  // command a note hands over.
+  const brew = operation === undefined
+    ? "brew"
+    : brewProgram(operation.instance_id, snapshot?.instances.find((instance) => instance.id === operation.instance_id));
   const visibleLogs = logs.filter((l) => l.opId === focusedOpId);
   // Typed warnings outlive the bounded transcript and can always be copied.
   for (const note of operation?.follow_up_warnings ?? []) {
@@ -191,7 +204,7 @@ export function LogDrawer() {
 
   /** The log as text, a line each, Banager's notes in the user's words. */
   const logText = () =>
-    visibleLogs.map((line) => ("note" in line ? noteText(t, line.note) : line.line)).join("\n");
+    visibleLogs.map((line) => ("note" in line ? noteText(t, line.note, brew) : line.line)).join("\n");
 
   /** The subtitle, the next step and the Cancel button for one operation. */
   function partsOf(op: OpSummary) {
@@ -344,7 +357,7 @@ export function LogDrawer() {
                 key={line.seq}
                 className="my-1 break-words border-l-2 border-accent/50 pl-2 font-sans text-small text-foreground"
               >
-                {noteText(t, line.note)}
+                {noteText(t, line.note, brew)}
               </p>
             ) : (
               <p

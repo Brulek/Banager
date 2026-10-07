@@ -357,7 +357,7 @@ function EndingWords({ entry }: { entry: JustUpdatedEntry }) {
  */
 function lineAction(entry: JustUpdatedEntry, t: (key: string) => string) {
   if (entry.ending.kind === "succeeded" && entry.ending.warnings?.length) {
-    return <FollowUpWarnings warnings={entry.ending.warnings} opId={entry.opId} name={entry.name} />;
+    return <FollowUpWarnings warnings={entry.ending.warnings} opId={entry.opId} name={entry.name} artifactKey={entry.key} />;
   }
   if (entry.ending.kind === "updatedButStepFailed" && (entry.opId !== null || entry.ending.warnings?.length)) {
     return (
