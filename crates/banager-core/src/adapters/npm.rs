@@ -1536,7 +1536,15 @@ mod tests {
     fn ls_global_answering(code: i32, stdout: &str, stderr: &str) -> Arc<MockRunner> {
         let runner = Arc::new(MockRunner::new());
         runner.respond(
-            vec!["/opt/homebrew/bin/npm", "ls", "-g", "--depth=0", "--json"],
+            vec![
+                "/opt/homebrew/bin/npm",
+                "ls",
+                "-g",
+                "--depth=0",
+                "--json",
+                "--prefix",
+                "/opt/homebrew",
+            ],
             CommandOutput {
                 stderr_cause: Default::default(),
                 exit_code: Some(code),
