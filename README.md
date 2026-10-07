@@ -64,7 +64,8 @@ a protected place**, and the link is not followed.
   judged from the Terminal settings read when Banager opened. A tool another source installed too says
   **Installed twice**, and where Banager can tell, its details say which copy Terminal runs. An AI tool's
   Homebrew formula that Homebrew didn't link (another copy's file was in its way, say) still counts as a
-  copy, and its details say Homebrew didn't link it where Terminal looks.
+  copy, and its details say Homebrew didn't link it where Terminal looks; where its other copy is the one
+  Terminal runs, the Updates page says **Not used in Terminal**.
 - A package Homebrew has disabled or deprecated says so, with what that means and, where Homebrew
   gives one, the name it suggests instead. A newer version of a disabled one, which `brew outdated`
   still lists, is held back on the Updates page as **Disabled**, with no Update button. The details also list a formula's other installed versions
@@ -134,8 +135,9 @@ a protected place**, and the link is not followed.
   (`docs/what-we-run.md`, "What a tool prints about a login", says which).
 - **Check Tool Setup…**, in the Help menu and as a button on the Overview and in Settings, says in short lines
   how this Mac's tools are set up — whether Terminal's login settings were read, each source that
-  isn't answering, how many tools Terminal can't find or has twice, what Homebrew disabled or keeps
-  other versions of, and the disk measured. Each line that counts tools, and each line about a source
+  isn't answering, how many tools Terminal can't find or has twice, which ones Homebrew didn't link
+  where Terminal looks, what Homebrew disabled or keeps other versions of, and the disk measured. Each
+  line that counts tools, but the one that names those Homebrew didn't link, and each line about a source
   with a problem, has a **Show in Installed** (or **Show in Other Programs**) button that opens that list or that source. It has no score; it is built from what the last check found, and runs nothing.
   When some of its lines are warnings, the Overview's row says how many need attention.
 
@@ -526,7 +528,8 @@ formula 与 cask，以及 npm、PyPI、crates.io 上的包，每条都译自该�
 - 工具详情里的“在终端里输入”，说明输入它的每条命令会运行什么：这一份、另一份或另一个同名程序，或者什么都
   运行不了（命令所在的文件夹不在终端的搜索路径里）——按打开 Banager 时读到的终端设置判断。别的来源也装了
   一份的工具会标“装了两份”，能判断时，详情里说终端运行的是哪一份。AI 工具的 Homebrew formula 没有被 Homebrew 链接时
-  （比如另一份的文件挡住了），仍算作一份，详情里说明 Homebrew 没有把它链接到终端能找到的地方。
+  （比如另一份的文件挡住了），仍算作一份，详情里说明 Homebrew 没有把它链接到终端能找到的地方；终端运行的是另一份时，
+  “更新”页标“终端用另一份”。
 - Homebrew 停用或弃用了的软件会标出来，并说明这意味着什么；Homebrew 给了建议时，也写出建议改用哪个。已停用的软件
   `brew outdated` 仍会列出新版本，更新页把它标为“已停用”，不给“更新”按钮。详情里还列出 formula
   装着的其他版本，以及 Homebrew 自己的英文说明（默认收起）。
@@ -572,7 +575,8 @@ formula 与 cask，以及 npm、PyPI、crates.io 上的包，每条都译自该�
   “What a tool prints about a login”）。
 - 菜单栏“帮助”里的“检查工具环境…”（概览和设置里“工具环境”旁边的“检查…”也一样）用几行短句说明这台 Mac 上的工具
   环境：有没有读取终端登录时的设置、哪个来源没有响应、终端里找不到或装了不止一份的工具有几个、Homebrew
-  停用或保留了其他版本的工具、实测占用的空间；数到工具的那几行和说某个来源有问题的那几行都有“查看”，会打开
+  没有链接到终端能找到的地方的是哪些工具、Homebrew 停用或保留了其他版本的工具、实测占用的空间；数到工具的那几行
+  （写出 Homebrew 没有链接的工具名的那一行除外）和说某个来源有问题的那几行都有“查看”，会打开
   对应的列表或那个来源。不打分，
   只用上次检查的结果，不运行任何命令。其中有警告时，概览上那一行会写出“N项需要查看”。
 - 用 OpenAI 自己的脚本装的 Codex：Banager 不为它运行任何命令，连版本检查也不做；卸载时把 `~/.local/bin` 里它的

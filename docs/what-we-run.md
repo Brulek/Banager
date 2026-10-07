@@ -3385,11 +3385,15 @@ Homebrew directory, an npm one or anywhere else — not which program it
 is, so the notice calls a `grok` that comes first another program with
 that name, which may or may not be Grok Build, and never another copy.
 Where that `grok` is the other copy of Grok Build that Banager lists (the
-cask's), the notice is left out as Claude Code's is, whatever `agent`
-runs: each command the copies share counts on its own, so Cursor's
-`agent` coming first (its install script puts it in `~/.local/bin`) does
-not bring back "couldn't confirm" beside rows that say **Installed
-twice** (r36 V3).
+cask's), the Installed page and the Overview leave the notice out as they
+do Claude Code's, whatever `agent` runs: each command the copies share
+counts on its own, so Cursor's `agent` coming first (its install script
+puts it in `~/.local/bin`) does not bring back "couldn't confirm" beside
+rows that say **Installed twice** (r36 V3). The Updates page, as for
+Claude Code, leaves it out only where it lists this copy's update as
+**Not used in Terminal**, which needs every command the copies share,
+`agent` too, to run the cask's copy: with Cursor's `agent` first it
+keeps the notice, and no row there says which copy runs.
 That is a notice, not a command.
 
 **Read-only commands** (background checks that never need a password.
@@ -4082,7 +4086,7 @@ It reads:
 |---|---|
 | every `PATH` folder, in `PATH`'s order; the `bin` and `sbin` folders of every Homebrew prefix and the `bin` folder of every npm prefix | where the folder leads, then `read_dir`, one level deep: each folder once, however many entries name it. An empty or relative `PATH` entry is skipped, and so is a folder that does not exist or that no shell could reach. A `PATH` folder that is there but cannot be listed is kept in its place, unread, as a protected one is (`read_folders`) |
 | each entry in a Homebrew or npm prefix's `bin` (and Homebrew's `sbin`) | where it leads: which formula's folder in `Cellar`, or which package's in `lib/node_modules` |
-| for a formula of an AI coding tool Banager knows (`families.rs`) that Homebrew has not linked -- not keg-only, and `brew info` says `linked_keg: null` (its link step stopped at another program's file, as `brew install gemini-cli` does at npm's `bin/gemini`, or it was unlinked) -- the `bin` and `sbin` of its keg, `<prefix>/Cellar/<name>/<version>`, the version its row shows (`commands::keg`) | where the folder leads, then `read_dir`, as for the folders above, and where each entry leads: those that lead into the formula's own folder in `Cellar` are its commands. They are named so its other copies are known as copies (**Installed twice**), with no folder of theirs and so never "not found": what typing them runs is said only where a `PATH` folder reaches the keg. Its details say Homebrew didn't link it where Terminal looks. No other formula's keg is read. Working out the answer, which lists these folders, stops after 100,000 of their names as after its 5 seconds |
+| for a formula of an AI coding tool Banager knows (`families.rs`) that Homebrew has not linked -- not keg-only, and `brew info` says `linked_keg: null` (its link step stopped at another program's file, as `brew install gemini-cli` does at npm's `bin/gemini`, or it was unlinked) -- the `bin` and `sbin` of its keg, `<prefix>/Cellar/<name>/<version>`, the version its row shows (`commands::keg`) | where the folder leads, then `read_dir`, as for the folders above, and where each entry leads: those that lead into the formula's own folder in `Cellar` are its commands. They are named so its other copies are known as copies (**Installed twice**), with no folder of theirs and so never "not found": a verdict of their own only where a `PATH` folder reaches the keg. Where every command it shares with another copy runs that copy, typing them runs that copy, so the Updates page says this one is **Not used in Terminal** and Update All leaves it unticked (`twinVerdict` in `src/lib/commands.ts`). Its details say Homebrew didn't link it where Terminal looks and, once the login shell's `PATH` was read, that typing it doesn't run this copy; Check Tool Setup and the copied diagnostics count one that is no copy of another, Check Tool Setup by name (`toolsNotLinked`). A batch uninstall says nothing of those commands going, and takes none of them for the program another source runs (an Ollama model's `ollama`; `src/lib/batchUninstall.ts`). No other formula's keg is read. Working out the answer, which lists these folders, stops after 100,000 of their names as after its 5 seconds |
 | each command a source's own answer names: a cask's `binary` link (`brew info --installed --json=v2`), a pipx app and `~/.local/bin/<its name>`, a uv tool's executable (`uv tool list --show-paths`), a Cargo crate's binaries in `<CARGO_HOME>/bin` (`.crates2.json`), a tool with its own installer's launcher and the commands its installer puts beside it (Grok Build's `agent`, rustup's proxies) | where it leads: whether into that tool's own folder, and whether to a file with an execute bit. A cask's link that leads elsewhere also has its own text read (`readlink`, from its folder, every link on the way to that folder followed): one that names a place inside the cask's folder in `Caskroom` is the cask's, as Homebrew takes it (Flutter's `dart`, into the suite Homebrew moved to `<prefix>/share/flutter`; Homebrew's section, "A cask's links") |
 | in each `PATH` folder, the entry of each name some tool provides, however the folder spells it that a Mac's disk takes for the same name (typing `node` runs `NODE`; `protected::same_name`) | where it leads, and whether to a file with an execute bit, in `PATH`'s order |
 
@@ -4703,7 +4707,8 @@ prints about a login"); the folders on `PATH` and whether they are the
 login shell's; when the last check was and whether it covered every
 source, as the Updates page counts it, naming those it did not; how many
 tools Terminal cannot find and how many are installed more than once, or
-that this check did not look at the commands; and the disk
+that this check did not look at the commands, and, where there are any,
+how many Homebrew has not linked that are no copy of another tool; and the disk
 they take, once measured. Settings' checkbox, off each time Settings opens,
 adds each source's tools by name and version.
 
@@ -4747,7 +4752,9 @@ Diagnostic Info in Settings' Diagnostics group, opens a sheet that says the same
 in sentences: whether the login shell's `PATH` was read, how many of its
 folders the last check read and how many it could not, each source's
 status, how many tools Terminal cannot find or has twice (and how many
-copies those are, the rows its Show in Installed lists), what Homebrew
+copies those are, the rows its Show in Installed lists), which tools
+Homebrew has not linked that are no copy of another (by name, with no
+Show in Installed: no Show choice lists them), what Homebrew
 disabled, deprecated or keeps other versions of, and the disk measured. It
 is built from the same `get_system_facts` answer and the snapshot and sizes
 the window holds; the folder counts, and the unread folders' paths that it
@@ -4772,7 +4779,10 @@ Documents from `/usr/local/bin`, Homebrew's prefix on an Intel Mac — is
 no formula's or package's and marks none; one whose text cannot be read,
 or a `bin` folder that could not be read, marks every one of that
 prefix's. Check Tool Setup and copied diagnostics count those tools
-as uncheckable, alongside commands with no verdict. When only some tools
+as uncheckable, alongside commands with no verdict -- but for the
+commands of an AI tool's formula Homebrew has not linked, named from its
+keg with none by design (Which copy a command runs, above), unless its
+keg could not all be read. When only some tools
 were checked, the positive Terminal sentence refers only to those tools,
 and so does the sentence that no tool is installed more than once when
 some tools' commands could not be listed.
