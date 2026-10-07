@@ -5,6 +5,7 @@ import App from "../App";
 import i18n from "../i18n";
 import en from "../i18n/en.json";
 import zhCN from "../i18n/zh-CN.json";
+import zhHant from "../i18n/zh-Hant.json";
 import { FAQ_ITEMS, openFaqSheet, useFaqSheet, type FaqId } from "../lib/faq";
 import { useUiStore } from "../store/ui";
 import { fakeMenuBar } from "../test/menuBar";
@@ -44,6 +45,24 @@ function shown(dialog: HTMLElement): { id: string | null; question: string; answ
 }
 
 describe("FaqSheet", () => {
+  it.each([
+    ["en", en, ["For an update or uninstall you choose here, the confirmation", "migrations or renames", "install, move or uninstall packages without a preview or confirmation"]],
+    ["zh-CN", zhCN, ["在这里选择更新或卸载时", "迁移或重命名", "未经预览或确认就安装、移动或卸载软件包"]],
+    ["zh-Hant", zhHant, ["在這裡選擇更新或解除安裝時", "移轉或重新命名", "未經預覽或確認就安裝、移動或解除安裝套件"]],
+  ] as const)("discloses Homebrew's unconfirmed refresh changes in %s", async (language, locale, disclosures) => {
+    await i18n.changeLanguage(language);
+    try {
+      renderWithProviders(<FaqSheet />);
+      act(() => openFaqSheet());
+      const dialog = await screen.findByRole("dialog");
+      const answer = shown(dialog).find(({ id }) => id === "changesMac")?.answer;
+      expect(answer).toBe(locale.faq.questions.changesMac.answer);
+      for (const disclosure of disclosures) expect(answer).toContain(disclosure);
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+
   it("answers all ten questions in English, each under its question, Done focused", async () => {
     renderWithProviders(<FaqSheet />);
     expect(screen.queryByRole("dialog")).toBeNull();

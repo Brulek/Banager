@@ -36,6 +36,18 @@ fn blocks(readme: &str) -> (&str, &str) {
         .expect("README.md has no `## 中文` heading between its English and Chinese blocks")
 }
 
+#[test]
+fn test_readme_scopes_confirmation_to_chosen_operations_and_discloses_refresh_migrations() {
+    let readme = read_readme();
+    let (english, chinese) = blocks(&readme);
+    let english = english.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(english.contains("For updates and uninstalls you choose in Banager"));
+    assert!(english.contains("without a preview or confirmation"));
+    let chinese = squeeze(chinese);
+    assert!(chinese.contains("在Banager里选择更新或卸载时"));
+    assert!(chinese.contains("未经预览或确认就安装、移动或卸载软件包"));
+}
+
 /// The name a recipe's source goes by (its meta file's `name`), which is
 /// how the README spells it.
 fn name_of(recipe: &Recipe) -> String {

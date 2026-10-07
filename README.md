@@ -134,8 +134,9 @@ same check, and a Homebrew index update left running in the
 background starts one on its own when it ends (`ipc::refresh_on_background_change`,
 `src-tauri/src/lib.rs:70-73`). Checks run Homebrew's own `brew update`, which updates Homebrew and
 its index, and when Homebrew has moved a package you have between a formula and a cask, or renamed
-one, can install, move or uninstall Homebrew packages by itself (`docs/what-we-run.md`,
-"Homebrew"). After one that succeeded, checks skip it for six hours on the clock (time the Mac spends
+one, can install, move or uninstall Homebrew packages by itself without a preview or confirmation
+(`docs/what-we-run.md`, "Homebrew"). After one that succeeded, checks skip it for six hours on the
+clock (time the Mac spends
 asleep counts, and a clock set back to before it ended counts as the six hours gone); after one that
 failed, the next check runs it again — or, when a check had stopped waiting for it, the check after
 the one its end sets off. With **Check for updates** set to Daily in Settings — it is set to
@@ -209,9 +210,10 @@ This app runs package managers on your behalf, so the boundary matters more than
 - **The window cannot ask for a command.** The UI sends an operation kind and a single-use,
   expiring identifier for a plan the Rust side built itself. There is no general "run this" path,
   so a compromised web view cannot invent one.
-- **You see the exact command before it runs.** Every update and uninstall lets you see the exact
-  command before it runs, with the variables Banager sets for it (all but the `PATH` and the proxy
-  and mirror settings it takes from your login shell, which `docs/what-we-run.md` lists under "How
+- **You can preview the operations you choose.** For updates and uninstalls you choose in Banager,
+  you can see the exact command before it runs, with the variables Banager sets for it (all but
+  the `PATH` and the proxy and mirror settings it takes from your login shell, which
+  `docs/what-we-run.md` lists under "How
   Banager runs anything" and which are never shown, since a proxy setting can hold a password) —
   one press on "Show Command" in its confirmation, or open from the start with Settings' "Show
   technical details" on — and
@@ -556,7 +558,7 @@ Banager 在打开时、每次操作完成后，以及你按下“概览”“更
 后台运行的 Homebrew 索引更新自行结束时，它也会自己再查一遍（`ipc::refresh_on_background_change`，
 `src-tauri/src/lib.rs:70-73`，不需要用户动手）。检查时会运行 Homebrew 自己的 `brew update`，
 它会更新 Homebrew 本身和它的索引；Homebrew 把你装的某个软件在 formula 和 cask 之间挪了位置或者改了名时，
-它还能自己安装、移动或卸载 Homebrew 软件（见 `docs/what-we-run.md` 的“Homebrew”一节）。
+它还能未经预览或确认就安装、移动或卸载软件包（见 `docs/what-we-run.md` 的“Homebrew”一节）。
 上一次 `brew update` 成功后，六小时内的检查都不再运行它（按时钟算，Mac 睡眠的时间也算在内；
 时钟被调回到它结束之前，就当六小时已过）；上一次失败了，下一次检查就会再运行——
 如果当时的检查没等它结束，那就是它结束时引发的那次检查之后的下一次。
