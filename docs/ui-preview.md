@@ -579,3 +579,8 @@ as the real adapter sets it on a Mac whose `OLLAMA_HOST` has no login
 (`?state=full&page=updates&tech=1`, then preview a model update). The
 preview has no Ollama with a login: how one shows (`http://****:****@host`)
 is pinned by `src/lib/previewEnv.test.ts` and `src/components/CommandPreview.test.tsx`.
+
+### Retained failure details
+
+- `?state=startup-error`: npm fails at startup; open its notice details and copy the masked diagnostic.
+- Add `&lang=zh-CN` or `&lang=zh-Hant` for the Chinese copies.

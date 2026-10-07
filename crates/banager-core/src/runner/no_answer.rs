@@ -72,7 +72,19 @@ pub fn of(result: &Result<CommandOutput, RunnerError>) -> Option<NoAnswer> {
             _ => (NoAnswerKind::ExitedWithError, None),
         },
     };
+    let diagnostic = result.as_ref().ok().and_then(|output| {
+        let summary = super::failure_summary(&output.stderr);
+        // Keep the tail, on a UTF-8 boundary, after redaction and line selection.
+        let mut start = summary.len().saturating_sub(4096);
+        while !summary.is_char_boundary(start) {
+            start += 1;
+        }
+        let tail = summary[start..].trim();
+        (!tail.is_empty()).then(|| tail.to_string())
+    });
     Some(NoAnswer {
+        diagnostic,
+        cause: result.as_ref().ok().and_then(CommandOutput::failure_cause),
         kind,
         missing_program,
         link_fixes: Vec::new(),
@@ -112,10 +124,42 @@ mod tests {
 
     fn said(kind: NoAnswerKind, missing_program: Option<&str>) -> Option<NoAnswer> {
         Some(NoAnswer {
+            diagnostic: None,
+            cause: None,
             kind,
             missing_program: missing_program.map(str::to_string),
             link_fixes: Vec::new(),
         })
+    }
+
+    #[test]
+    fn test_detect_diagnostic_is_bounded_redacted_and_keeps_cause_read_before_masking() {
+        let raw = format!(
+            "{}\nsudo: a password is required\nhttps://person:secret@proxy.test",
+            "界".repeat(5000)
+        );
+        let redactor = crate::runner::redact::Redactor::for_settings([(
+            "HTTPS_PROXY",
+            "http://person:pass@proxy.test",
+        )]);
+        let output = CommandOutput {
+            stderr_cause: StderrCause::Read {
+                cause: Some(crate::history::FailureCause::NeedsPassword),
+                missing_program: None,
+            },
+            ..ran(Some(1), &redactor.redact(&raw))
+        };
+        let why = of(&Ok(output)).unwrap();
+        let diagnostic = why.diagnostic.as_deref().unwrap();
+        assert!(diagnostic.len() <= 4096);
+        assert!(!diagnostic.contains("secret"));
+        assert!(!diagnostic.contains("person"));
+        assert!(!diagnostic.contains("password"));
+        assert!(diagnostic.contains("****word"));
+        assert_eq!(why.cause, Some(crate::history::FailureCause::NeedsPassword));
+        let wire = serde_json::to_value(&why).unwrap();
+        assert_eq!(wire["cause"], "needsPassword");
+        assert_eq!(serde_json::from_value::<NoAnswer>(wire).unwrap(), why);
     }
 
     const ENV_NODE: &str = "env: node: No such file or directory\n";
@@ -193,7 +237,12 @@ mod tests {
             ),
         ];
         for (case, result, expected) in cases {
-            assert_eq!(of(&result), expected, "{case}");
+            let actual = of(&result).map(|mut why| {
+                why.diagnostic = None;
+                why.cause = None;
+                why
+            });
+            assert_eq!(actual, expected, "{case}");
         }
     }
 
@@ -209,7 +258,10 @@ mod tests {
             ..ran(Some(127), "env: ****: No such file or directory\n")
         };
         assert_eq!(
-            of(&Ok(masked)),
+            of(&Ok(masked)).map(|mut why| {
+                why.diagnostic = None;
+                why
+            }),
             said(NoAnswerKind::CouldNotStart, Some("node"))
         );
         let read_none = CommandOutput {
@@ -220,7 +272,10 @@ mod tests {
             ..ran(Some(127), ENV_NODE)
         };
         assert_eq!(
-            of(&Ok(read_none)),
+            of(&Ok(read_none)).map(|mut why| {
+                why.diagnostic = None;
+                why
+            }),
             said(NoAnswerKind::CouldNotStart, None),
             "what the runner read stands"
         );

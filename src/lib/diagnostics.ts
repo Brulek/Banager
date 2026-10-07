@@ -212,6 +212,8 @@ export function diagnosticsText(t: Translate, input: DiagnosticsInput): string {
     );
     lines.push(INDENT + t("diagnostics.text.path", { path: paths.get(instance.id) ?? instance.exe_path }));
     lines.push(INDENT + t("diagnostics.text.status", { status: statusOf(t, instance) }));
+    const diagnostic = instance.status.no_answer?.diagnostic;
+    if (diagnostic) lines.push(INDENT + t("sourceDiagnostic.label") + "\n" + diagnostic);
     if (instance.status.notes.length > 0) {
       lines.push(INDENT + t("diagnostics.text.notes", { number: instance.status.notes.length }));
     }

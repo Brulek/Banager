@@ -73,6 +73,7 @@ export const SCENARIO_STATES = [
   "nonode",
   "nonode-intel",
   "nonode-partial",
+  "startup-error",
 ] as const;
 export type ScenarioState = (typeof SCENARIO_STATES)[number];
 

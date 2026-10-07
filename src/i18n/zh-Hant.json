@@ -794,6 +794,11 @@
     "handoff": "要連結它，可以在終端機執行下面的指令。若指令中途停止，Homebrew也會刪除上面這些連結。",
     "handoffConflicts": "要連結它，可以在終端機執行下面的指令。它會刪除擋住連結的檔案，換成「{{formula}}」中的。若仍然中途停止，Homebrew也會刪除原本已有的連結。"
   },
+  "sourceDiagnostic": {
+    "label": "啟動診斷",
+    "next": "查看詳細資訊，或拷貝給能協助的人。處理錯誤後，再重新檢查。",
+    "copy": "拷貝診斷"
+  },
   "loginPathNotice": {
     "title": "無法讀取終端機的設定",
     "description": "終端機裡能找到的工具可能沒有列在這裡，例如用npm、pipx、uv或Cargo安裝的。"

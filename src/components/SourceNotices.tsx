@@ -1,3 +1,4 @@
+import { SourceDiagnostic } from "./SourceDiagnostic";
 import { useEffect, useId, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -251,6 +252,7 @@ export function SourceNotices({ notices, layout = "line", fold, grid = "avatar",
       variant: notice.variant,
       title,
       description: t(notice.descriptionKey, values),
+      details: notice.diagnostic ? <SourceDiagnostic notice={notice} /> : undefined,
       action: notice.action ? button(notice.action, values) : undefined,
       // Only the notice whose button failed says so.
       error: notice.action?.id === "openOllama" ? openOllamaError : undefined,

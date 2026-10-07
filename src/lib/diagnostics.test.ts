@@ -527,3 +527,17 @@ describe("the home folder, wherever a path can carry it", () => {
     }
   });
 });
+
+it("includes the retained startup diagnostic without opting into the tool list", () => {
+  const diagnostic = "npm error config Invalid npmrc at https://****@proxy.test";
+  const broken = instance(NPM, "/opt/homebrew/bin/npm", { status: {
+    unavailable: "NotResponding", notes: [], no_answer: {
+      kind: "ExitedWithError", missing_program: null, link_fixes: [], diagnostic, cause: null,
+    },
+  } });
+  const text = diagnosticsText(i18n.getFixedT("en"), input({
+    snapshot: { ...SNAPSHOT, instances: [broken] }, includeTools: false,
+  }));
+  expect(text).toContain(diagnostic);
+  expect(text).toContain("Startup Diagnostic");
+});

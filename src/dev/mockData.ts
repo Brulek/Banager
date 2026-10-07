@@ -1056,6 +1056,8 @@ function onlyHomebrewDates(world: World): void {
 function scenarioWorld(state: ScenarioState): World {
   const world = fullWorld();
   switch (state) {
+    case "startup-error":
+      return withStartupError(world);
     case "full":
     case "loading":
     case "error":
@@ -1579,3 +1581,14 @@ export function withNpmPrefixProtected(world: World): void {
 const NO_NODE_PARTIAL_FORMULAE: readonly LinkFix[] = [
   { key: key(IDS.brew, "Formula", "node@18"), version: "18.20.8" },
 ];
+
+/** A malformed npm configuration: retained redacted startup diagnostic. */
+function withStartupError(world: World): World {
+  world.instances = world.instances.map((instance) => instance.adapter_id === "npm" ? {
+    ...instance, version: null, status: { unavailable: "NotResponding", notes: [], no_answer: {
+      kind: "ExitedWithError", missing_program: null, link_fixes: [], cause: null,
+      diagnostic: "npm error config Invalid npmrc\nnpm error Invalid proxy URL https://****@proxy.example.test",
+    } },
+  } : instance);
+  return world;
+}

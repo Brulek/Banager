@@ -53,6 +53,7 @@ export interface SourceNoticeProps {
   variant: SourceNoticeVariant;
   title: string;
   description?: string;
+  details?: ReactNode;
   action?: SourceNoticeAction;
   /**
    * What went wrong the last time `action` was pressed, already in the
@@ -88,7 +89,7 @@ function NoticeIcon({ variant, className = "" }: { variant: SourceNoticeVariant;
  * Purely presentational -- callers decide when it applies and what its
  * action does; this component never calls `invoke`.
  */
-export function SourceNotice({ variant, title, description, action, error }: SourceNoticeProps) {
+export function SourceNotice({ variant, title, description, details, action, error }: SourceNoticeProps) {
   // No fill and no corners (spec §3.8): the icon, the title, and the
   // description on the line under it, quieter, as a Mac list's secondary
   // line is.
@@ -98,6 +99,7 @@ export function SourceNotice({ variant, title, description, action, error }: Sou
       <div className="min-w-0 flex-1">
         <p className="text-foreground">{title}</p>
         {description ? <p className="mt-0.5 text-small text-muted">{description}</p> : null}
+        {details}
         {action ? (
           <button
             type="button"
@@ -151,6 +153,7 @@ export function SourceNoticeLine({
   variant,
   title,
   description,
+  details,
   action,
   error,
   detailsAriaLabel,
@@ -175,7 +178,7 @@ export function SourceNoticeLine({
         {description ? (
           // Its 20 box holds the 12 ⓘ 4 from the title, as a status word's.
           <span className="flex shrink-0">
-            <InfoDetail label={detailsAriaLabel}>{description}</InfoDetail>
+            <InfoDetail label={detailsAriaLabel}>{description}{details}</InfoDetail>
           </span>
         ) : null}
         {action ? (

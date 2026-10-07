@@ -1779,6 +1779,14 @@ else (`InstanceStatus::no_answer`, `NoAnswer`):
 | Any other non-zero exit, or a signal Banager did not send | `ExitedWithError` |
 | It exited 0, was stopped by Banager's own Cancel, or wrote more than Banager reads | no reason |
 
+A failed startup also keeps a diagnostic: the last five lines of the
+runner's already-redacted stderr, capped at 4,096 UTF-8 bytes. Its recovery
+category is read before masking, just as `Outcome::Failed.cause` is. The
+shared source notice and Overview offer details and Copy Diagnostic;
+Copy Diagnostic Info includes the same diagnostic even without the tool
+list. No raw stderr or spawn-error text is added. Review or share these
+details, address the error, then use Check Again.
+
 The program's name is read off stderr as the command wrote it, before a
 proxy's or mirror's login is masked out of it (`StderrCause::Read`), as an
 operation's failure cause is: a proxy user name `node` would mask the very

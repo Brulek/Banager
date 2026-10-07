@@ -1438,6 +1438,8 @@ mod tests {
         assert_eq!(
             instances[0].status.no_answer,
             Some(NoAnswer {
+                diagnostic: Some("env: node: No such file or directory".into()),
+                cause: Some(crate::history::FailureCause::NotFound),
                 kind: NoAnswerKind::CouldNotStart,
                 missing_program: Some("node".to_string()),
                 link_fixes: Vec::new(),
@@ -1515,6 +1517,16 @@ mod tests {
             Some(Unavailable::NotResponding)
         );
         assert!(!instances[0].available());
+        assert_eq!(
+            instances[0]
+                .status
+                .no_answer
+                .as_ref()
+                .unwrap()
+                .diagnostic
+                .as_deref(),
+            Some("npm error config Invalid npmrc")
+        );
         assert_eq!(instances[0].version, None);
         assert_eq!(instances_again.len(), 1);
         assert_eq!(instances[0].id, instances_again[0].id);

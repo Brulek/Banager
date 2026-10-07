@@ -77,6 +77,8 @@ export function noAnswerNotice(
     // The same id as the "not responding" notice it takes the place of.
     id: `${instance.id}:unreachable`,
     variant: "warning",
+    diagnostic: why.diagnostic,
+    diagnosticCause: why.cause,
     titleKey: NO_ANSWER_TITLE_KEYS[why.kind],
     descriptionKey: installedCount > 0 ? keys.withRows : keys.withoutRows,
     values: {

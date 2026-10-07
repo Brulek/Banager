@@ -1478,6 +1478,8 @@ mod tests {
                 unavailable: Some(Unavailable::NotResponding),
                 notes: Vec::new(),
                 no_answer: Some(NoAnswer {
+                    diagnostic: None,
+                    cause: None,
                     kind: NoAnswerKind::CouldNotStart,
                     missing_program: Some("node".to_string()),
                     link_fixes: vec![offered],

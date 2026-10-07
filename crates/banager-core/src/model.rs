@@ -134,6 +134,13 @@ pub enum NoAnswerKind {
 /// Banager can offer about it. Mirrored by `NoAnswer` in src/lib/types.ts.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NoAnswer {
+    /// Last five stderr lines, at most 4096 UTF-8 bytes, already masked by
+    /// runner/redact.rs. No raw output or runner error is retained here.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub diagnostic: Option<String>,
+    /// Read before masking, as Outcome::Failed.cause is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cause: Option<crate::history::FailureCause>,
     pub kind: NoAnswerKind,
     /// The program the source's own launcher needed and `env` did not find
     /// on `PATH`: `node` in "env: node: No such file or directory"
@@ -3538,6 +3545,8 @@ mod tests {
             unavailable: Some(Unavailable::NotResponding),
             notes: Vec::new(),
             no_answer: Some(NoAnswer {
+                diagnostic: None,
+                cause: None,
                 kind: NoAnswerKind::CouldNotStart,
                 missing_program: Some("node".to_string()),
                 link_fixes: vec![LinkFix {
@@ -3579,6 +3588,8 @@ mod tests {
         assert_eq!(
             bare,
             NoAnswer {
+                diagnostic: None,
+                cause: None,
                 kind: NoAnswerKind::TimedOut,
                 missing_program: None,
                 link_fixes: Vec::new(),

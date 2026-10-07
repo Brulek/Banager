@@ -151,3 +151,11 @@ describe("why a source did not answer", () => {
     expect(linkFixesOf(npm({ kind: "ExitedWithError", missing_program: null, link_fixes: [NODE_22] }))).toEqual([]);
   });
 });
+
+it("keeps a startup diagnostic and cause through the wire and shared notice", () => {
+  const why: NoAnswer = JSON.parse('{"kind":"ExitedWithError","missing_program":null,"link_fixes":[],"diagnostic":"npm error EJSONPARSE at https://****@proxy.test","cause":null}');
+  const notice = noAnswerNotice(npm(why), "npm", 0);
+  expect(notice?.diagnostic).toBe(why.diagnostic);
+  expect(notice?.diagnosticCause).toBeNull();
+  expect(JSON.parse(JSON.stringify(why))).toEqual(why);
+});

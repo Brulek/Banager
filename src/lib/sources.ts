@@ -301,6 +301,8 @@ export type SourceNoticeAction =
  * rows' "View only" chip, on both lists (`READ_ONLY_DETAIL_KEYS`).
  */
 export interface SourceNoticeSpec {
+  diagnostic?: string | null;
+  diagnosticCause?: import("./failureCause").FailureCause | null;
   /** Stable React key: one instance can need more than one notice. */
   id: string;
   variant: "info" | "warning";
@@ -481,6 +483,8 @@ export function sourceNoticesFor(
       id: `${instance.id}:unreachable`,
       variant: "warning",
       titleKey: "sourceNotice.unreachable.title",
+      diagnostic: instance.status.no_answer?.diagnostic,
+      diagnosticCause: instance.status.no_answer?.cause,
       // Two sentences for one state, chosen by what is actually on screen.
       // Each ends with the one next step there is, the one its rows' chips
       // give too: check again later -- with the notice's own Check again

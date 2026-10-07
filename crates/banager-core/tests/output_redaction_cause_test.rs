@@ -177,3 +177,31 @@ async fn test_no_password_reaches_the_summary_or_the_log() {
         }
     }
 }
+
+#[tokio::test]
+async fn test_source_detection_keeps_only_real_runner_redacted_diagnostic_and_original_cause() {
+    use banager_core::runner::{no_answer, CommandRunner, CommandSpec, OutputUse, RealRunner};
+    accept_the_settings();
+    // A synthetic command only prints fixture stderr; no package manager runs.
+    let result = RealRunner::new()
+        .run(
+            CommandSpec {
+                program: PathBuf::from("/bin/sh"),
+                args: vec!["-c".into(), SUDO_SAYS.into()],
+                env: vec![],
+                cwd: None,
+                timeout: std::time::Duration::from_secs(5),
+                output_use: OutputUse::Parsed,
+            },
+            None,
+            CancellationToken::new(),
+        )
+        .await;
+    let why = no_answer::of(&result).unwrap();
+    let diagnostic = why.diagnostic.as_deref().unwrap();
+    assert!(diagnostic.contains("sudo: a ******** is ****ired"));
+    assert_eq!(failure_cause(diagnostic), None);
+    assert_eq!(why.cause, Some(FailureCause::NeedsPassword));
+    assert!(!diagnostic.contains("password"));
+    assert!(diagnostic.len() <= 4096);
+}

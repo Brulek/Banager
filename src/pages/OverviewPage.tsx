@@ -1,3 +1,4 @@
+import { SourceDiagnostic } from "../components/SourceDiagnostic";
 import { Fragment, useId, useState } from "react";
 import { AUTO_CHECK_CHOICE_KEYS, autoCheckChoice } from "../lib/checkFrequency";
 import type { ReactNode } from "react";
@@ -258,6 +259,7 @@ function ProblemRow({ notice }: { notice: SourceNoticeSpec }) {
             {t(notice.titleKey, values)}
           </p>
           <p className={`${SMALL_WRAPPING} text-muted`}>{t(notice.descriptionKey, values)}</p>
+          {notice.diagnostic ? <SourceDiagnostic notice={notice} /> : null}
           {/* A <div>: the error's own "Details" panel is one. */}
           {error !== null ? (
             <div role="alert" className="text-small text-danger-text">

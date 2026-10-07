@@ -160,6 +160,8 @@ mod tests {
                 unavailable: Some(Unavailable::NotResponding),
                 notes: Vec::new(),
                 no_answer: Some(NoAnswer {
+                    diagnostic: None,
+                    cause: None,
                     kind,
                     missing_program: program.map(str::to_string),
                     link_fixes: Vec::new(),

@@ -863,6 +863,11 @@
     "handoff": "To link it, you can run this command in Terminal. If it stops partway, Homebrew removes the links above too.",
     "handoffConflicts": "To link it, you can run this command in Terminal. It deletes the files in the way and links the ones in “{{formula}}” in their place. If it still stops partway, Homebrew also removes the links that were already there."
   },
+  "sourceDiagnostic": {
+    "label": "Startup Diagnostic",
+    "next": "Review the details or copy them for someone who can help. Check again after addressing the error.",
+    "copy": "Copy Diagnostic"
+  },
   "loginPathNotice": {
     "title": "Couldn't read Terminal's settings",
     "description": "Tools that Terminal finds may be missing here, such as those installed with npm, pipx, uv or Cargo."

@@ -584,6 +584,10 @@ export type NoAnswerKind = "TimedOut" | "CouldNotStart" | "ExitedWithError";
  * would put it back, newest first, each offered as `brew link --formula --force`.
  */
 export interface NoAnswer {
+  /** Bounded stderr already masked by runner/redact.rs. */
+  diagnostic?: string | null;
+  /** Read by the runner before masking. */
+  cause?: FailureCause | null;
   kind: NoAnswerKind;
   missing_program: string | null;
   link_fixes: LinkFix[];
