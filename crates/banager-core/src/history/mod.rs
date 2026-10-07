@@ -9,7 +9,11 @@
 //! which version to which, and how it ended, as a category. Never a line
 //! of a log, a command line or a path other than the ones a package's key
 //! already carries (an instance id names its source's prefix, which can be
-//! in the home folder; the window never shows one).
+//! in the home folder; the window never shows one) -- but for one line: a
+//! failure that no cause names keeps the first line of the tool's error,
+//! with the home folder, any login and any query masked and cut to
+//! `DETAIL_CHARS` (`failure_detail`), so that 「最近的更新记录」 can still say
+//! why after the window that watched it has closed (r6 y3-batch).
 //!
 //! Bounded: the newest `MAX_RECORDS`, none older than `MAX_AGE_MS` before
 //! a time the file keeps as trusted (`Clock`): a time the clock jumped to
@@ -68,9 +72,17 @@ pub enum HistoryResult {
     /// `Outcome::NeedsAttention`, with its reason as it is.
     NeedsAttention(Attention),
     /// `Outcome::Failed` or `Outcome::BanagerFailed`, with the cause in a
-    /// word where one is known: read off the tool's last lines
-    /// (`failure_cause`), or Banager's own `HomebrewStillUpdating`.
-    Failed { cause: Option<FailureCause> },
+    /// word where one is known: read off the tool's last lines as it wrote
+    /// them (`operation_failure_cause`, `Outcome::Failed`'s `cause`), or
+    /// one of Banager's own faults (`record_for`). Where none is, `detail`
+    /// is the first line of the tool's error, masked (`failure_detail`) --
+    /// `None` where the tool wrote nothing, and in a record from before it
+    /// existed (which may have a cause of `None` for any failure).
+    Failed {
+        cause: Option<FailureCause>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        detail: Option<String>,
+    },
     /// `Outcome::Unconfirmed`.
     Unconfirmed,
     /// `Outcome::Cancelled`, for an operation Banager had handed to its
@@ -206,11 +218,22 @@ pub fn record_for(
         Outcome::NeedsAttention(a) => HistoryResult::NeedsAttention(*a),
         // Read as the tool wrote it, before a login was masked out of the
         // summary (`Outcome::Failed`'s `cause`), never off the summary.
-        Outcome::Failed { cause, .. } => HistoryResult::Failed { cause: *cause },
-        Outcome::BanagerFailed(Fault::HomebrewStillUpdating { .. }) => HistoryResult::Failed {
-            cause: Some(FailureCause::HomebrewUpdating),
+        // Where it names none, the summary's first error line, masked.
+        Outcome::Failed {
+            cause: Some(cause), ..
+        } => HistoryResult::Failed {
+            cause: Some(*cause),
+            detail: None,
         },
-        Outcome::BanagerFailed(_) => HistoryResult::Failed { cause: None },
+        Outcome::Failed {
+            cause: None,
+            summary,
+            ..
+        } => HistoryResult::Failed {
+            cause: None,
+            detail: failure_detail(summary),
+        },
+        Outcome::BanagerFailed(fault) => fault_result(fault),
         Outcome::Unconfirmed => HistoryResult::Unconfirmed,
     };
     let known = |v: Option<&str>| v.filter(|v| !v.is_empty()).map(str::to_string);
@@ -255,6 +278,105 @@ pub fn record_for(
         result,
         verified,
     })
+}
+
+/// How long a kept error line may be, in characters, the `…` that ends a
+/// cut one included (`failure_detail`).
+pub const DETAIL_CHARS: usize = 160;
+
+/// A failure of Banager's own, as the history keeps it: a cause for each,
+/// and none of the paths or names a `Fault` carries. macOS's words for a
+/// program it would not start are read like a tool's, and kept as a line
+/// where they name no cause.
+fn fault_result(fault: &Fault) -> HistoryResult {
+    let cause = |cause| HistoryResult::Failed {
+        cause: Some(cause),
+        detail: None,
+    };
+    match fault {
+        Fault::HomebrewStillUpdating { .. } => cause(FailureCause::HomebrewUpdating),
+        Fault::ProgramMissing { .. } => cause(FailureCause::NotFound),
+        Fault::SpawnFailed { detail } => match operation_failure_cause(detail) {
+            Some(known) => cause(known),
+            None => HistoryResult::Failed {
+                cause: None,
+                detail: failure_detail(detail),
+            },
+        },
+        Fault::PathChanged { .. }
+        | Fault::FormulaChanged { .. }
+        | Fault::HomebrewSettingsChanged => cause(FailureCause::Changed),
+        Fault::Panicked | Fault::Internal => cause(FailureCause::Internal),
+    }
+}
+
+/// The patterns `failure_detail` uses, compiled once.
+struct DetailPatterns {
+    escape: regex::Regex,
+    error: regex::Regex,
+    bookkeeping: regex::Regex,
+    label: regex::Regex,
+    home: regex::Regex,
+    login: regex::Regex,
+    query: regex::Regex,
+}
+
+fn detail_patterns() -> &'static DetailPatterns {
+    static PATTERNS: std::sync::OnceLock<DetailPatterns> = std::sync::OnceLock::new();
+    PATTERNS.get_or_init(|| {
+        let re = |p: &str| regex::Regex::new(p).expect("a fixed pattern compiles");
+        DetailPatterns {
+            escape: re(r"\x1b\[[0-9;?]*[ -/]*[@-~]"),
+            error: re(r"(?i)^(?:error|fatal|npm (?:err!|error))\b|^E:"),
+            bookkeeping: re(
+                r"(?i)^npm (?:err!|error) (?:code|errno|syscall|path|dest|signal|command|cwd|\d{3}\s*$|a complete log|log files)",
+            ),
+            label: re(
+                r"(?i)^(?:(?:error|fatal)\b\s*(?:\[[^\]]*\])?\s*:?|npm (?:err!|error)\b|E:)\s*",
+            ),
+            home: re(r"/Users/[^/\s'\x22`]+"),
+            login: re(r"([A-Za-z][A-Za-z0-9+.-]*://)[^/\s@'\x22`]+@"),
+            query: re(r"([A-Za-z][A-Za-z0-9+.-]*://[^\s?#'\x22`]*)[?#][^\s'\x22`]*"),
+        }
+    })
+}
+
+/// The one line of a failed tool's words the history keeps where no cause
+/// is named: the first line that says it is an error -- `Error:`,
+/// `error:`, `fatal:`, npm's `npm error` but for its bookkeeping (`code`,
+/// `errno`, `path`, the log file) -- or, with none, the last line, with
+/// its label taken off. Masked: the escape codes that colour it, any home
+/// folder (`/Users/<name>` becomes `~`), any login in an address (one the
+/// runner did not already mask, `runner::redact`), and an address's query
+/// and fragment; then cut to `DETAIL_CHARS`. `None` for words that are
+/// all blank.
+fn failure_detail(summary: &str) -> Option<String> {
+    let p = detail_patterns();
+    let lines: Vec<String> = summary
+        .lines()
+        .map(|line| p.escape.replace_all(line, "").trim().to_string())
+        .filter(|line| !line.is_empty() && line != "[…]")
+        .collect();
+    let line = lines
+        .iter()
+        .find(|line| p.error.is_match(line) && !p.bookkeeping.is_match(line))
+        .or_else(|| lines.last())?;
+    let unlabelled = p.label.replace(line, "");
+    let text = if unlabelled.trim().is_empty() {
+        line.as_str()
+    } else {
+        unlabelled.trim()
+    };
+    let text = p.home.replace_all(text, "~");
+    let text = p.login.replace_all(&text, "${1}****@");
+    let text = p.query.replace_all(&text, "${1}");
+    let text = text.trim();
+    if text.chars().count() <= DETAIL_CHARS {
+        return Some(text.to_string());
+    }
+    let mut cut: String = text.chars().take(DETAIL_CHARS - 1).collect();
+    cut.push('…');
+    Some(cut)
 }
 
 /// Where a history with no `Clock` yet starts trusting from: `now`, or
@@ -843,7 +965,8 @@ mod tests {
         assert_eq!(
             r.result,
             HistoryResult::Failed {
-                cause: Some(FailureCause::Network)
+                cause: Some(FailureCause::Network),
+                detail: None
             }
         );
         assert_eq!(r.to_version, None);
@@ -868,7 +991,13 @@ mod tests {
             program: "/Users/me/.local/bin/claude".to_string(),
         });
         let r = record_for(&ended(&k, &missing), &started("cmake"), "r", NOW).unwrap();
-        assert_eq!(r.result, HistoryResult::Failed { cause: None });
+        assert_eq!(
+            r.result,
+            HistoryResult::Failed {
+                cause: Some(FailureCause::NotFound),
+                detail: None
+            }
+        );
         assert!(!serde_json::to_string(&r).unwrap().contains("/Users/me"));
 
         let waited = Outcome::BanagerFailed(Fault::HomebrewStillUpdating { minutes: 10 });
@@ -876,9 +1005,162 @@ mod tests {
         assert_eq!(
             r.result,
             HistoryResult::Failed {
-                cause: Some(FailureCause::HomebrewUpdating)
+                cause: Some(FailureCause::HomebrewUpdating),
+                detail: None
             }
         );
+    }
+
+    fn failed_with(summary: &str) -> Outcome {
+        Outcome::Failed {
+            exit_code: Some(1),
+            summary: summary.to_string(),
+            cause: crate::history::operation_failure_cause(summary),
+        }
+    }
+
+    fn kept_result(outcome: &Outcome) -> HistoryResult {
+        let k = key("claudebar");
+        record_for(&ended(&k, outcome), &started("claudebar"), "r", NOW)
+            .unwrap()
+            .result
+    }
+
+    #[test]
+    fn test_every_failure_keeps_a_cause_and_one_no_cause_names_keeps_its_first_error_line() {
+        // r6 y3-batch, finding 3: Claudebar's and OnyX's updates were kept
+        // as failed with no cause, and once the window closed nothing said
+        // why. A cause, where the tool's words name one ...
+        assert_eq!(
+            kept_result(&failed_with(
+                "Error: It seems the App source '/Applications/Claudebar.app' is not there."
+            )),
+            HistoryResult::Failed {
+                cause: Some(FailureCause::AppMissing),
+                detail: None
+            }
+        );
+        // ... and otherwise the first line that says what went wrong, its
+        // label off, the rest of the summary dropped.
+        assert_eq!(
+            kept_result(&failed_with(
+                "==> Purging files for version 0.2.0 of Cask claudebar\n\
+                 Error: SHA256 mismatch\n\
+                 Expected: 1f2e\n\
+                   Actual: 3a4b"
+            )),
+            HistoryResult::Failed {
+                cause: None,
+                detail: Some("SHA256 mismatch".to_string())
+            }
+        );
+        // npm's bookkeeping lines are not what went wrong.
+        assert_eq!(
+            kept_result(&failed_with(
+                "npm error code ETARGET\nnpm error notarget No matching version found for typescript@99.\nnpm error A complete log of this run can be found in: /Users/me/.npm/_logs/x.log"
+            )),
+            HistoryResult::Failed {
+                cause: None,
+                detail: Some("notarget No matching version found for typescript@99.".to_string())
+            }
+        );
+        // With no error line, the last line the tool wrote.
+        assert_eq!(
+            kept_result(&failed_with("Building wheel\nsomething odd happened")),
+            HistoryResult::Failed {
+                cause: None,
+                detail: Some("something odd happened".to_string())
+            }
+        );
+        // A tool that said nothing keeps nothing to quote.
+        assert_eq!(
+            kept_result(&failed_with("  \n")),
+            HistoryResult::Failed {
+                cause: None,
+                detail: None
+            }
+        );
+    }
+
+    #[test]
+    fn test_a_kept_error_line_has_the_home_folder_logins_and_queries_masked_and_is_short() {
+        let HistoryResult::Failed { detail, .. } = kept_result(&failed_with(
+            "Error: \u{1b}[31mcannot read\u{1b}[0m /Users/brulek/Library/Caches/x and /Users/other/y via https://me:secret@mirror.example/simple/?token=abc#frag",
+        )) else {
+            panic!("a failure");
+        };
+        let detail = detail.expect("a line");
+        assert_eq!(
+            detail,
+            "cannot read ~/Library/Caches/x and ~/y via https://****@mirror.example/simple/"
+        );
+        let long = format!("Error: {}", "x".repeat(400));
+        let HistoryResult::Failed { detail, .. } = kept_result(&failed_with(&long)) else {
+            panic!("a failure");
+        };
+        let detail = detail.expect("a line");
+        assert_eq!(detail.chars().count(), DETAIL_CHARS);
+        assert!(detail.ends_with('…'));
+    }
+
+    #[test]
+    fn test_banagers_own_failures_keep_a_cause_of_their_own() {
+        let program_missing = Outcome::BanagerFailed(Fault::ProgramMissing {
+            program: "/opt/homebrew/bin/npm".to_string(),
+        });
+        let cases = [
+            (program_missing, Some(FailureCause::NotFound), None),
+            (
+                Outcome::BanagerFailed(Fault::SpawnFailed {
+                    detail: "Permission denied (os error 13)".to_string(),
+                }),
+                Some(FailureCause::Permission),
+                None,
+            ),
+            (
+                Outcome::BanagerFailed(Fault::SpawnFailed {
+                    detail: "Exec format error (os error 8)".to_string(),
+                }),
+                None,
+                Some("Exec format error (os error 8)".to_string()),
+            ),
+            (
+                Outcome::BanagerFailed(Fault::PathChanged {
+                    path: "~/.local/bin/claude".to_string(),
+                }),
+                Some(FailureCause::Changed),
+                None,
+            ),
+            (
+                Outcome::BanagerFailed(Fault::FormulaChanged {
+                    name: "node".to_string(),
+                }),
+                Some(FailureCause::Changed),
+                None,
+            ),
+            (
+                Outcome::BanagerFailed(Fault::HomebrewSettingsChanged),
+                Some(FailureCause::Changed),
+                None,
+            ),
+            (
+                Outcome::BanagerFailed(Fault::Panicked),
+                Some(FailureCause::Internal),
+                None,
+            ),
+            (
+                Outcome::BanagerFailed(Fault::Internal),
+                Some(FailureCause::Internal),
+                None,
+            ),
+        ];
+        for (outcome, cause, detail) in cases {
+            assert_eq!(
+                kept_result(&outcome),
+                HistoryResult::Failed { cause, detail },
+                "{outcome:?}"
+            );
+        }
     }
 
     #[test]
@@ -945,10 +1227,27 @@ mod tests {
         );
         let failed = HistoryResult::Failed {
             cause: Some(FailureCause::DiskFull),
+            detail: None,
         };
         assert_eq!(
             serde_json::to_string(&failed).unwrap(),
             r#"{"Failed":{"cause":"diskFull"}}"#
+        );
+        // A line where no cause is named; one from before it existed reads.
+        let other = HistoryResult::Failed {
+            cause: None,
+            detail: Some("SHA256 mismatch".to_string()),
+        };
+        assert_eq!(
+            serde_json::to_string(&other).unwrap(),
+            r#"{"Failed":{"cause":null,"detail":"SHA256 mismatch"}}"#
+        );
+        assert_eq!(
+            serde_json::from_str::<HistoryResult>(r#"{"Failed":{"cause":null}}"#).unwrap(),
+            HistoryResult::Failed {
+                cause: None,
+                detail: None
+            }
         );
         let back: HistoryRecord =
             serde_json::from_str(&serde_json::to_string(&r).unwrap()).unwrap();

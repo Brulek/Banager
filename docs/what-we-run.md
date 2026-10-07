@@ -3844,11 +3844,20 @@ attention with its reason, failed with the cause in one word when one is
 known, could not be confirmed, or cancelled once Banager had handed it to
 the tool's adapter, which can be before the tool's own command started, as
 when Homebrew was still finishing a `brew update`), and whether Banager
-saw the change itself (the version it read before and after differ). Also
-the time the page's Clear was last pressed. Never a line of a log, a
-command line, an error message or any other path: a failure's cause is
-read from the tool's last lines as the operation finishes, and the lines
-are dropped. An operation cancelled before Banager began carrying it out
+saw the change itself (the version it read before and after differ). An
+update that succeeded because its package was already at the version its
+confirmed plan aimed for when its turn came -- an earlier update of the
+same Update all had upgraded it as a dependency, say -- also keeps that it
+was so, and whether an earlier update of the same source had ended in
+between. Also the time the page's Clear was last pressed. Never a line of
+a log, a command line or any other path, and of an error message one line
+at most: a failure's cause is read from the tool's last lines as the
+operation finishes, and the lines are dropped; only where they name no
+cause is the first line that says what went wrong kept, so that the page
+can say why after the window that watched it has closed -- at most 160
+characters, its label (`Error:`) taken off, with any home folder written
+as `~` and any login, query or fragment in an address masked
+(`failure_detail`). An operation cancelled before Banager began carrying it out
 (while it waited for its turn, or while Banager read the installed
 version) is not recorded. Each record also carries a random id of the
 launch of Banager that ran it and the operation's number in that launch,

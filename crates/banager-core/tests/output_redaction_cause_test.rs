@@ -154,7 +154,8 @@ async fn test_a_password_inside_sudos_words_is_masked_and_the_cause_still_read()
     assert_eq!(
         record.result,
         HistoryResult::Failed {
-            cause: Some(FailureCause::NeedsPassword)
+            cause: Some(FailureCause::NeedsPassword),
+            detail: None
         }
     );
     // On the wire, for the window: the cause, beside the masked summary.
