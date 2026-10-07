@@ -2195,13 +2195,30 @@ pub enum Attention {
     /// that depend on it, a tool's own updater failing after it switched
     /// versions (r35 U2). Its log says which step. `version` is the one
     /// read after, the version it was updated to; `None` for a model, whose
-    /// "version" is a digest Banager never shows. Built by `run_operation`
+    /// "version" is a digest Banager never shows. `cause` is the tool's
+    /// failure's (`Outcome::Failed`'s), kept as it was read:
+    /// `FailureCause::NotLinked` where Homebrew's link step failed, which
+    /// the window words as the new version not linked
+    /// (`UpdatedButNotLinked` in src/lib/format.ts). `detail` is, for any
+    /// other cause or none, the tool's first error line, masked
+    /// (`history::failure_detail` over the failure's summary): what says
+    /// which step once the log is gone, as the history keeps it; `None`
+    /// for `NotLinked`, whose words say it, and where the tool wrote
+    /// nothing. Built by `run_operation`
     /// (`crates/banager-core/src/ops/mod.rs`) only when both readings name a
     /// version and they differ, and only for a command that ran and exited
-    /// non-zero; read by `attentionKey` in src/lib/format.ts. The one
-    /// variant with data, so `history.json` that holds it is format 3
+    /// non-zero; never for a cask, or for a failure whose cause says the
+    /// command waited on another program (`Busy`, `HomebrewUpdating`);
+    /// read by `attentionKey` in src/lib/format.ts. The one variant with
+    /// data, so `history.json` that holds it is format 3
     /// (`history::HISTORY_FORMAT`).
-    UpdatedButStepFailed { version: Option<String> },
+    UpdatedButStepFailed {
+        version: Option<String>,
+        #[serde(default)]
+        cause: Option<crate::history::FailureCause>,
+        #[serde(default)]
+        detail: Option<String>,
+    },
 }
 
 /// How an update that `Succeeded` came to be done when its own command
@@ -3443,22 +3460,52 @@ mod tests {
     #[test]
     fn test_an_update_with_a_failed_step_carries_its_version_on_the_wire() {
         // The one `Attention` with data (r35 U2): the version the update
-        // moved to, `null` for a model's digest. `src/lib/types.ts` mirrors
-        // it as `{ UpdatedButStepFailed: { version: string | null } }`.
-        for (version, json) in [
+        // moved to, `null` for a model's digest; the tool's failure's
+        // cause, camelCase as `FailureCause` is; and its first error line.
+        // `src/lib/types.ts` mirrors it as `{ UpdatedButStepFailed: {
+        // version: string | null; cause: FailureCause | null; detail:
+        // string | null } }`.
+        for (version, cause, detail, json) in [
             (
                 Some("3.13.8".to_string()),
-                r#"{"NeedsAttention":{"UpdatedButStepFailed":{"version":"3.13.8"}}}"#,
+                None,
+                Some("Warning: The post-install step did not complete successfully".to_string()),
+                r#"{"NeedsAttention":{"UpdatedButStepFailed":{"version":"3.13.8","cause":null,"detail":"Warning: The post-install step did not complete successfully"}}}"#,
+            ),
+            (
+                Some("22.23.3_1".to_string()),
+                Some(crate::history::FailureCause::NotLinked),
+                None,
+                r#"{"NeedsAttention":{"UpdatedButStepFailed":{"version":"22.23.3_1","cause":"notLinked","detail":null}}}"#,
             ),
             (
                 None,
-                r#"{"NeedsAttention":{"UpdatedButStepFailed":{"version":null}}}"#,
+                None,
+                None,
+                r#"{"NeedsAttention":{"UpdatedButStepFailed":{"version":null,"cause":null,"detail":null}}}"#,
             ),
         ] {
-            let outcome = Outcome::NeedsAttention(Attention::UpdatedButStepFailed { version });
+            let outcome = Outcome::NeedsAttention(Attention::UpdatedButStepFailed {
+                version,
+                cause,
+                detail,
+            });
             assert_eq!(serde_json::to_string(&outcome).unwrap(), json);
             assert_eq!(serde_json::from_str::<Outcome>(json).unwrap(), outcome);
         }
+        // Written before the cause and the line were kept (this branch's
+        // first build of format 3): read with neither.
+        assert_eq!(
+            serde_json::from_str::<Outcome>(
+                r#"{"NeedsAttention":{"UpdatedButStepFailed":{"version":"3.13.8"}}}"#
+            )
+            .unwrap(),
+            Outcome::NeedsAttention(Attention::UpdatedButStepFailed {
+                version: Some("3.13.8".to_string()),
+                cause: None,
+                detail: None,
+            })
+        );
     }
 
     #[test]

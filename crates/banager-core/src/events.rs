@@ -86,11 +86,15 @@ pub enum LogNote {
     /// when it has none -- a Cancel, its time limit, or a runner that
     /// could not start it -- or a Cancel that landed after the upgrade and
     /// before the cleanup, which then did not run (no
-    /// `CleaningUpOldVersions` before it). The upgrade before it stands,
-    /// and stays the operation's outcome; what the cleanup did not delete
-    /// is still listed as the tool's other versions. From
-    /// `BrewAdapter::execute`; worded by `LogDrawer.tsx`, the same either
-    /// way: the cleanup did not finish.
+    /// `CleaningUpOldVersions` before it) -- or an upgrade that exited
+    /// non-zero once its new version was installed
+    /// (`Attention::UpdatedButStepFailed`), after which the cleanup does
+    /// not run either (`exit_code` `None`; `run_operation`'s
+    /// `say_promised_cleanup_did_not_run`, r35 U2). The upgrade before it
+    /// stands, and stays the operation's outcome; what the cleanup did not
+    /// delete is still listed as the tool's other versions. From
+    /// `BrewAdapter::execute`, and that one from `run_operation`; worded by
+    /// `LogDrawer.tsx`, the same either way: the cleanup did not finish.
     OldVersionsNotCleanedUp {
         name: String,
         exit_code: Option<i32>,

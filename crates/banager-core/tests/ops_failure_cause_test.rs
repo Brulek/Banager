@@ -107,14 +107,22 @@ async fn test_a_cask_that_needs_the_password_still_says_that_first() {
 }
 
 #[tokio::test]
-async fn test_a_formula_whose_link_step_failed_says_it_is_not_linked() {
+async fn test_a_formula_whose_link_step_failed_with_nothing_to_compare_says_it_is_not_linked() {
     // Review of r6 y3-batch, finding 2: node@22's own upgrade on
     // 2026-10-07. Homebrew writes only its `ofail` line to stderr; "Could
     // not symlink bin/npm / Target /opt/homebrew/bin/npm already exists"
     // goes to stdout with `puts` (`FormulaInstaller#link`,
     // formula_installer.rb in Homebrew 7.0.8), where no cause is read.
-    let info = std::fs::read_to_string("../../adapters/fixtures/brew/7.0.3/info-installed.json")
-        .expect("fixture");
+    //
+    // The link fails only after the new keg is poured, so where both
+    // readings of the version could be taken it reads as moved, and the
+    // update as installed with that step failed, still not linked
+    // (`test_a_formula_whose_link_step_met_a_file_in_the_way_says_it_is_not_linked`
+    // in ops_upgrade_version_test.rs; skeptic of r35 U2, 1). This is the
+    // update with nothing to compare -- no reading of what is installed
+    // before it or after it (here `brew info` refuses both times; on a
+    // real Mac, a `brew update` still running refuses the one before) --
+    // which stays a failure, with that cause.
     let runner = Arc::new(MockRunner::new());
     runner.respond(
         vec![BREW, "upgrade", "--formula", "jq"],
@@ -130,7 +138,7 @@ async fn test_a_formula_whose_link_step_failed_says_it_is_not_linked() {
     );
     runner.respond(
         vec![BREW, "info", "--installed", "--json=v2"],
-        output(0, &info, ""),
+        output(1, "", "Error: Failed to load the installed formulae\n"),
     );
     // Nothing of the Mac running the test is read: not its Cellar, pins
     // or `brew.env` files.

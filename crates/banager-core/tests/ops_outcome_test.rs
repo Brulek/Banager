@@ -11,10 +11,12 @@
 
 use async_trait::async_trait;
 use banager_core::adapters::{Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome};
-use banager_core::events::{EventSink, OpId, VecSink};
+use banager_core::events::{EventSink, LogNote, OpId, OperationEvent, VecSink};
+use banager_core::follow_up::FollowUpWarning;
+use banager_core::history::FailureCause;
 use banager_core::model::{
     ArtifactKey, ArtifactKind, Attention, CancelPolicy, InstalledArtifact, ManagerInstance, OpKind,
-    OpRequest, Outcome, Plan, PlanAction, Reconciled, ResourceLock, SearchHit,
+    OpRequest, Outcome, Plan, PlanAction, Reconciled, ResourceLock, SearchHit, Warning,
 };
 use banager_core::ops::OperationManager;
 use banager_core::runner::HostEnv;
@@ -539,12 +541,219 @@ async fn test_an_upgrade_whose_tool_failed_after_its_version_moved_was_updated_w
         ReconcileBehavior::Readings(vec![at("1.6.58"), at("1.6.59")]),
     )
     .await;
+    // The tool's first error line says which step, once the log is gone.
     assert_eq!(
         outcome,
         Outcome::NeedsAttention(Attention::UpdatedButStepFailed {
-            version: Some("1.6.59".to_string())
+            version: Some("1.6.59".to_string()),
+            cause: None,
+            detail: Some(
+                "Warning: The post-install step did not complete successfully".to_string()
+            ),
         })
     );
+}
+
+/// The tool's failure with its cause, as `run_plan` reads it off the
+/// summary's lines (`CommandOutput::failure_cause`).
+fn tool_failed_saying(summary: &str) -> Outcome {
+    Outcome::Failed {
+        exit_code: Some(1),
+        summary: summary.to_string(),
+        cause: banager_core::history::operation_failure_cause(summary),
+    }
+}
+
+#[tokio::test]
+async fn test_an_upgrade_whose_link_step_failed_after_its_version_moved_keeps_that_it_is_not_linked(
+) {
+    // Skeptic of r35 U2, 1: Homebrew's link step fails only after the new
+    // keg is poured (formula_installer.rb:1313/1321 in Homebrew 7.0.8), so
+    // its version always reads as moved. The cause the tool's line named
+    // stays with it, for the window's words on it; the line itself adds
+    // nothing to them.
+    let outcome = run_failed_case(
+        OpKind::Upgrade,
+        ArtifactKind::Formula,
+        tool_failed_saying("Error: The `brew link` step did not complete successfully"),
+        ReconcileBehavior::Readings(vec![at("22.23.2"), at("22.23.3_1")]),
+    )
+    .await;
+    assert_eq!(
+        outcome,
+        Outcome::NeedsAttention(Attention::UpdatedButStepFailed {
+            version: Some("22.23.3_1".to_string()),
+            cause: Some(FailureCause::NotLinked),
+            detail: None,
+        })
+    );
+}
+
+#[tokio::test]
+async fn test_an_upgrade_whose_step_failed_for_a_named_cause_keeps_the_cause_and_its_line() {
+    // Any cause but `NotLinked`: the window has words for none of them on
+    // an update that is installed (theirs end "then try again"), so the
+    // tool's own line is what says which step.
+    let line = "Error: Permission denied @ rb_sysopen - /opt/homebrew/var/fontconfig/cache";
+    let outcome = run_failed_case(
+        OpKind::Upgrade,
+        ArtifactKind::Formula,
+        tool_failed_saying(line),
+        ReconcileBehavior::Readings(vec![at("2.18.3"), at("2.18.4")]),
+    )
+    .await;
+    assert_eq!(
+        outcome,
+        Outcome::NeedsAttention(Attention::UpdatedButStepFailed {
+            version: Some("2.18.4".to_string()),
+            cause: Some(FailureCause::Permission),
+            detail: Some(
+                "Permission denied @ rb_sysopen - /opt/homebrew/var/fontconfig/cache".to_string()
+            ),
+        })
+    );
+}
+
+#[tokio::test]
+async fn test_a_casks_upgrade_that_failed_though_its_version_moved_keeps_its_failure() {
+    // Skeptic of r35 U2, 4.1: Homebrew rolls a cask's failed upgrade back
+    // (cask/upgrade.rb:504-516 in Homebrew 7.0.8). A version that moved
+    // anyway is one whose rollback failed too, which leaves the new
+    // version's record with no word on whether its app is in place:
+    // "The new version is installed" would not be known.
+    let summary = "Warning: Rolling back the failed upgrade of onyx also failed: Errno::EACCES: Permission denied\n\
+                   Error: It seems there is already an App at '/Applications/OnyX.app'.";
+    let outcome = run_failed_case(
+        OpKind::Upgrade,
+        ArtifactKind::Cask,
+        tool_failed_saying(summary),
+        ReconcileBehavior::Readings(vec![at("5.0.2"), at("5.1.0")]),
+    )
+    .await;
+    assert_eq!(outcome, tool_failed_saying(summary));
+}
+
+#[tokio::test]
+async fn test_an_upgrade_that_waited_on_another_program_keeps_its_failure_though_its_version_moved()
+{
+    // Skeptic of r35 U2, 4.2: a command another program's lock stopped
+    // before it changed anything -- or that Homebrew's own list update
+    // held up -- did not move the version; whatever did (a `brew upgrade`
+    // in Terminal) is not this update with a failed step.
+    for line in [
+        "Error: A `brew upgrade aria2` process has already locked /opt/homebrew/Cellar/aria2.\n\
+         Please wait for it to finish or terminate it to continue.",
+        "Error: brew update timed out after 600 seconds",
+    ] {
+        let outcome = run_failed_case(
+            OpKind::Upgrade,
+            ArtifactKind::Formula,
+            tool_failed_saying(line),
+            ReconcileBehavior::Readings(vec![at("1.37.0_2"), at("1.37.0_3")]),
+        )
+        .await;
+        assert!(
+            matches!(
+                &outcome,
+                Outcome::Failed {
+                    cause: Some(FailureCause::Busy | FailureCause::HomebrewUpdating),
+                    ..
+                }
+            ),
+            "{line}: {outcome:?}"
+        );
+        assert_eq!(outcome, tool_failed_saying(line), "{line}");
+    }
+}
+
+/// `run_failed_case` for an upgrade whose confirmation said it deletes the
+/// old versions (`Warning::HomebrewCleansUpOldVersions`, a formula's
+/// update that a `brew cleanup` follows, U9): its outcome, its summary's
+/// follow-up warnings, and the notes its log got.
+async fn run_failed_case_promising_cleanup(
+    executed: Outcome,
+    readings: Vec<Option<Reconciled>>,
+) -> (Outcome, Vec<FollowUpWarning>, Vec<LogNote>) {
+    let sink = Arc::new(VecSink::new());
+    let mut manager = OperationManager::new(sink.clone());
+    let adapter = Arc::new(FakeAdapter {
+        executed,
+        ..FakeAdapter::new(ReconcileBehavior::Readings(readings))
+    });
+    manager.register_adapter(adapter.clone());
+    let manager = Arc::new(manager);
+    let inst = make_instance("fake:/cleanup-promised");
+    manager.register_instance(inst.clone());
+    let req = OpRequest {
+        kind: OpKind::Upgrade,
+        instance_id: inst.id.clone(),
+        artifact_kind: ArtifactKind::Formula,
+        name: "git".to_string(),
+    };
+    let mut plan = adapter.plan(&inst, &req).await.expect("plan");
+    plan.warnings.push(Warning::HomebrewCleansUpOldVersions {
+        versions: vec!["2.54.0".to_string(), "2.55.0".to_string()],
+    });
+    let op_id = manager.submit(plan);
+    let outcome = manager.wait(op_id).await.expect("an outcome");
+    let warnings = manager
+        .summaries()
+        .into_iter()
+        .find(|s| s.id == op_id)
+        .expect("its summary")
+        .follow_up_warnings;
+    let notes = sink
+        .snapshot()
+        .into_iter()
+        .filter_map(|event| match event {
+            OperationEvent::Note { op_id: id, note } if id == op_id => Some(note),
+            _ => None,
+        })
+        .collect();
+    (outcome, warnings, notes)
+}
+
+#[tokio::test]
+async fn test_an_update_installed_with_a_failed_step_says_the_promised_cleanup_did_not_run() {
+    // Skeptic of r35 U2, 3: the confirmation said the old versions go
+    // once the update is done, and `brew cleanup` follows only an update
+    // that exited 0 (`BrewAdapter::execute`). Said as an update installed,
+    // the old versions staying is said too -- in the log and in what the
+    // history keeps -- as a cleanup that did not finish is.
+    let (outcome, warnings, notes) =
+        run_failed_case_promising_cleanup(tool_failed(Some(1)), vec![at("2.55.0"), at("2.55.1")])
+            .await;
+    assert!(
+        matches!(
+            outcome,
+            Outcome::NeedsAttention(Attention::UpdatedButStepFailed { .. })
+        ),
+        "{outcome:?}"
+    );
+    let not_cleaned_up = LogNote::OldVersionsNotCleanedUp {
+        name: "git".to_string(),
+        exit_code: None,
+    };
+    assert_eq!(notes, vec![not_cleaned_up]);
+    assert_eq!(
+        warnings,
+        vec![FollowUpWarning::OldVersionsNotCleanedUp {
+            name: "git".to_string(),
+            exit_code: None,
+        }]
+    );
+}
+
+#[tokio::test]
+async fn test_an_update_that_failed_says_nothing_of_the_cleanup_it_never_reached() {
+    // Not updated: 「未能更新」 already says the update, and so its
+    // cleanup, did not happen; "the update itself is done" would be false.
+    let (outcome, warnings, notes) =
+        run_failed_case_promising_cleanup(tool_failed(Some(1)), vec![at("2.55.0"), at("2.55.0")])
+            .await;
+    assert_eq!(outcome, tool_failed(Some(1)));
+    assert_eq!(notes, Vec::<LogNote>::new());
+    assert_eq!(warnings, Vec::<FollowUpWarning>::new());
 }
 
 #[tokio::test]
@@ -560,7 +769,13 @@ async fn test_a_models_update_that_failed_after_its_digest_moved_names_no_versio
     .await;
     assert_eq!(
         outcome,
-        Outcome::NeedsAttention(Attention::UpdatedButStepFailed { version: None })
+        Outcome::NeedsAttention(Attention::UpdatedButStepFailed {
+            version: None,
+            cause: None,
+            detail: Some(
+                "Warning: The post-install step did not complete successfully".to_string()
+            ),
+        })
     );
 }
 

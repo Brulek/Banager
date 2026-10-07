@@ -441,6 +441,8 @@ mod tests {
         // never "couldn't be updated", held or evicted alike.
         let stepped = Outcome::NeedsAttention(crate::model::Attention::UpdatedButStepFailed {
             version: Some("3.13.8".into()),
+            cause: None,
+            detail: None,
         });
         let mut known = records(&[
             summary(3, OpKind::Upgrade, Some(stepped.clone())),

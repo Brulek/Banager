@@ -422,7 +422,9 @@ fn looks_like_a_token(part: &str) -> bool {
 }
 
 /// The one line of a failed tool's words the history keeps where no cause
-/// is named: the first line that says it is an error -- `Error:`,
+/// is named -- and that an update installed though a step after it failed
+/// carries for any cause but `NotLinked` (`Attention::UpdatedButStepFailed`'s
+/// `detail`, built by `run_operation`): the first line that says it is an error -- `Error:`,
 /// `error:`, `fatal:`, npm's `npm error` but for its bookkeeping (`code`,
 /// `errno`, `path`, the log file) -- or, with none, the last line, with
 /// its label taken off; and where it ends with a colon, the line after it
@@ -432,7 +434,7 @@ fn looks_like_a_token(part: &str) -> bool {
 /// already mask, `runner::redact`), an address's query and fragment, and a
 /// part of its path that looks like a token (`looks_like_a_token`); then
 /// cut to `DETAIL_CHARS`. `None` for words that are all blank.
-fn failure_detail(summary: &str) -> Option<String> {
+pub(crate) fn failure_detail(summary: &str) -> Option<String> {
     let p = detail_patterns();
     let lines: Vec<String> = summary
         .lines()
@@ -1351,6 +1353,10 @@ mod tests {
         let k = key("fontconfig");
         let stepped = Outcome::NeedsAttention(Attention::UpdatedButStepFailed {
             version: Some("4.0.0".to_string()),
+            cause: None,
+            detail: Some(
+                "Warning: The post-install step did not complete successfully".to_string(),
+            ),
         });
         store.record(&ended(&k, &stepped), &started("fontconfig"));
         assert!(store.flush(Duration::from_secs(5)));
@@ -1366,7 +1372,11 @@ mod tests {
             .clone();
         assert_eq!(
             written["result"],
-            serde_json::json!({"NeedsAttention": {"UpdatedButStepFailed": {"version": "4.0.0"}}})
+            serde_json::json!({"NeedsAttention": {"UpdatedButStepFailed": {
+                "version": "4.0.0",
+                "cause": null,
+                "detail": "Warning: The post-install step did not complete successfully",
+            }}})
         );
         assert_eq!(written["to_version"], "4.0.0");
         // An earlier build reads none of it and never writes over it.
@@ -1378,6 +1388,10 @@ mod tests {
             reopened.view().records[0].result,
             HistoryResult::NeedsAttention(Attention::UpdatedButStepFailed {
                 version: Some("4.0.0".to_string()),
+                cause: None,
+                detail: Some(
+                    "Warning: The post-install step did not complete successfully".to_string()
+                ),
             })
         );
         // The record is one a build without the variant drops: the frozen
@@ -1399,6 +1413,8 @@ mod tests {
         let k = key("node@22");
         let stepped = Outcome::NeedsAttention(Attention::UpdatedButStepFailed {
             version: Some("4.0.0".to_string()),
+            cause: Some(FailureCause::NotLinked),
+            detail: None,
         });
         let mut e = ended(&k, &stepped);
         e.follow_up_warnings = vec![FollowUpWarning::NoLongerLinked {
@@ -1406,10 +1422,14 @@ mod tests {
             commands: vec!["node".into()],
         }];
         let r = record_for(&e, &started("node@22"), "run1", NOW).unwrap();
+        // The cause kept as it was read: after a restart the window still
+        // says the new version is not linked (skeptic of r35 U2, 1).
         assert_eq!(
             r.result,
             HistoryResult::NeedsAttention(Attention::UpdatedButStepFailed {
                 version: Some("4.0.0".to_string()),
+                cause: Some(FailureCause::NotLinked),
+                detail: None,
             })
         );
         assert_eq!(r.from_version.as_deref(), Some("3.31.6"));

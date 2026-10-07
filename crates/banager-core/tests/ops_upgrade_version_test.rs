@@ -49,6 +49,7 @@ use banager_core::adapters::standalone::StandaloneAdapter;
 use banager_core::adapters::uv::UvAdapter;
 use banager_core::adapters::Adapter;
 use banager_core::events::VecSink;
+use banager_core::history::FailureCause;
 use banager_core::http::MockHttpClient;
 use banager_core::model::{
     ArtifactKind, Attention, InstanceNote, ManagerInstance, OpKind, OpRequest, Outcome,
@@ -87,10 +88,15 @@ fn exited(code: i32, stdout: &str, stderr: &str) -> CommandOutput {
 }
 
 /// An update whose tool exited non-zero after the installed version had
-/// moved to `version`: installed, and a step after it failed (r35 U2).
+/// moved to `version`: installed, and a step after it failed (r35 U2) --
+/// with the line the illustrative cases below have their tool write,
+/// "error: a later step failed", as its first error line, which names no
+/// cause.
 fn updated_but_a_step_failed(version: &str) -> Outcome {
     Outcome::NeedsAttention(Attention::UpdatedButStepFailed {
         version: Some(version.to_string()),
+        cause: None,
+        detail: Some("a later step failed".to_string()),
     })
 }
 
@@ -483,7 +489,17 @@ async fn test_a_formula_whose_post_install_step_failed_is_updated_and_says_a_ste
         vec![brew_info(|_| {}), after],
     )
     .await;
-    assert_eq!(outcome, updated_but_a_step_failed("2.18.4"));
+    // Homebrew's own line is what says which step, once the log is gone.
+    assert_eq!(
+        outcome,
+        Outcome::NeedsAttention(Attention::UpdatedButStepFailed {
+            version: Some("2.18.4".to_string()),
+            cause: None,
+            detail: Some(
+                "Warning: The post-install step did not complete successfully".to_string()
+            ),
+        })
+    );
 }
 
 #[tokio::test]
@@ -510,7 +526,97 @@ async fn test_a_formula_whose_link_step_failed_is_updated_and_says_a_step_failed
         vec![brew_info(|_| {}), after],
     )
     .await;
-    assert_eq!(outcome, updated_but_a_step_failed("1.37.0_3"));
+    // Not linked, as that line says (`FailureCause::NotLinked`): the
+    // window's words for it say its commands may not be found in Terminal
+    // (skeptic of r35 U2, 1).
+    assert_eq!(
+        outcome,
+        Outcome::NeedsAttention(Attention::UpdatedButStepFailed {
+            version: Some("1.37.0_3".to_string()),
+            cause: Some(FailureCause::NotLinked),
+            detail: None,
+        })
+    );
+}
+
+#[tokio::test]
+async fn test_a_formula_whose_link_step_met_a_file_in_the_way_says_it_is_not_linked() {
+    // Review of r6 y3-batch, finding 2, and the skeptic of r35 U2, 1:
+    // node@22's own upgrade on 2026-10-07, on jq. Homebrew writes only its
+    // `ofail` line to stderr; "Could not symlink bin/jq / Target
+    // /opt/homebrew/bin/jq already exists" goes to stdout with `puts`
+    // (`FormulaInstaller#link`, formula_installer.rb in Homebrew 7.0.8),
+    // where no cause is read. The link fails only after the pour, and
+    // Homebrew does not link the old keg back once the new one is
+    // installed (install.rb:652), so the reading after is the new keg,
+    // unlinked: `linked_keg` null, the last keg's version read.
+    let after = brew_info(|info| {
+        let jq = formula(info, "jq");
+        let mut new_keg = jq["installed"][0].clone();
+        new_keg["version"] = "1.8.3".into();
+        jq["installed"].as_array_mut().unwrap().push(new_keg);
+        jq["linked_keg"] = serde_json::Value::Null;
+    });
+    let outcome = brew_upgrade_formula(
+        "jq",
+        exited(
+            1,
+            "==> Pouring jq--1.8.3.arm64_tahoe.bottle.tar.gz\n\
+             The formula built, but is not symlinked into /opt/homebrew\n\
+             Could not symlink bin/jq\n\
+             Target /opt/homebrew/bin/jq\n\
+             already exists. You may want to remove it:\n  rm '/opt/homebrew/bin/jq'\n",
+            "Error: The `brew link` step did not complete successfully\n",
+        ),
+        vec![brew_info(|_| {}), after],
+    )
+    .await;
+    assert_eq!(
+        outcome,
+        Outcome::NeedsAttention(Attention::UpdatedButStepFailed {
+            version: Some("1.8.3".to_string()),
+            cause: Some(FailureCause::NotLinked),
+            detail: None,
+        })
+    );
+}
+
+#[tokio::test]
+async fn test_a_formula_upgrade_another_brew_held_the_lock_for_keeps_its_failure() {
+    // Skeptic of r35 U2, 4.2: Homebrew refuses a keg another `brew`
+    // process has locked before it changes anything (`FormulaLock`,
+    // "has already locked"). A `brew upgrade aria2` in Terminal that
+    // linked the new keg in the seconds between Banager's two readings
+    // moved the version, not this command: still 「未能更新」, with why.
+    let after = brew_info(|info| {
+        let aria2 = formula(info, "aria2");
+        let mut new_keg = aria2["installed"][0].clone();
+        new_keg["version"] = "1.37.0_3".into();
+        aria2["installed"].as_array_mut().unwrap().push(new_keg);
+        aria2["linked_keg"] = "1.37.0_3".into();
+    });
+    let outcome = brew_upgrade_formula(
+        "aria2",
+        exited(
+            1,
+            "",
+            "Error: A `brew upgrade aria2` process has already locked /opt/homebrew/Cellar/aria2.\n\
+             Please wait for it to finish or terminate it to continue.\n",
+        ),
+        vec![brew_info(|_| {}), after],
+    )
+    .await;
+    assert!(
+        matches!(
+            outcome,
+            Outcome::Failed {
+                exit_code: Some(1),
+                cause: Some(FailureCause::Busy),
+                ..
+            }
+        ),
+        "{outcome:?}"
+    );
 }
 
 #[tokio::test]
@@ -527,6 +633,40 @@ async fn test_a_formula_upgrade_that_failed_before_its_version_moved_still_faile
             "Error: aria2: Failed to download resource \"aria2\"\n",
         ),
         vec![recorded.clone(), recorded],
+    )
+    .await;
+    assert!(
+        matches!(
+            outcome,
+            Outcome::Failed {
+                exit_code: Some(1),
+                ..
+            }
+        ),
+        "{outcome:?}"
+    );
+}
+
+#[tokio::test]
+async fn test_a_cask_upgrade_whose_rollback_also_failed_still_failed() {
+    // Skeptic of r35 U2, 4.1: when putting the old version back fails too,
+    // Homebrew says so with `opoo` and raises the first error
+    // (cask/upgrade.rb:504-516 in Homebrew 7.0.8); the new version's
+    // record can still be there to read while its app may not be in
+    // place. "The new version is installed" is not known: 「未能更新」,
+    // with Homebrew's words, as before r35 U2.
+    let after = brew_info(|info| {
+        cask(info, "onyx")["installed"] = "5.1.0".into();
+    });
+    let outcome = brew_upgrade_cask(
+        "onyx",
+        exited(
+            1,
+            "",
+            "Warning: Rolling back the failed upgrade of onyx also failed: Errno::EACCES: Permission denied\n\
+             Error: It seems there is already an App at '/Applications/OnyX.app'.\n",
+        ),
+        vec![brew_info(|_| {}), after],
     )
     .await;
     assert!(

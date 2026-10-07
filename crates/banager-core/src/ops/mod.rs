@@ -1,10 +1,10 @@
 use crate::adapters::{Adapter, AdapterError};
-use crate::events::{EventSink, OpId, OperationEvent};
+use crate::events::{EventSink, LogNote, OpId, OperationEvent};
 use crate::follow_up::{FollowUpWarning, WarningSink};
 use crate::model::{
     AdapterId, AlreadyUpdated, ArtifactKey, ArtifactKind, Attention, CancelPolicy, Fault,
     InstanceId, ManagerInstance, OpKind, OpRequest, OpStatus, Outcome, Plan, PlanAction,
-    Reconciled, ResourceLock,
+    Reconciled, ResourceLock, Warning,
 };
 use crate::runner::RunnerError;
 use serde::{Deserialize, Serialize};
@@ -1372,11 +1372,20 @@ impl OperationManager {
             // the update, and 「未能更新」 with nothing to retry would be
             // false: it is `UpdatedButStepFailed`, the version it moved to
             // with it (none for a model's digest), the log saying which
-            // step. A cask's failed upgrade puts its old version back first
-            // (`purge_versioned_files`, `revert_upgrade`, cask/upgrade.rb:
-            // 506-510), so it reads unchanged and stays `Failed`; only a
-            // rollback that also failed leaves the new version read here,
-            // and Homebrew says so in the log.
+            // step. It keeps the tool's failure's cause -- `NotLinked`,
+            // where the link step failed, has words of its own in the
+            // window, that the new version's commands may not be found in
+            // Terminal -- and, for any other cause or none, the tool's
+            // first error line (`history::failure_detail`), which says
+            // which step after a restart too (skeptic of r35 U2, 1).
+            //
+            // Not a cask: Homebrew puts a cask's old version back when its
+            // upgrade fails (`purge_versioned_files`, `revert_upgrade`,
+            // cask/upgrade.rb:504-516 in Homebrew 7.0.8), so it reads
+            // unchanged; one whose version moved anyway is one whose
+            // rollback failed too, which Homebrew says in the log, and its
+            // new version's record says nothing of whether the new app is
+            // in place. It stays `Failed` (skeptic of r35 U2, 4.1).
             //
             // Only a version that moved decides it, as for an exit 0: not
             // the same version, nothing to compare (`VersionChange`), a
@@ -1388,14 +1397,28 @@ impl OperationManager {
             // and failed also never started the command, and is told apart
             // from it by nothing here: a version another program moved in
             // the seconds between Banager's reading before and that read
-            // would be said as this one's.
+            // would be said as this one's. Nor a failure whose cause says
+            // the command waited on another program -- a lock another
+            // `brew` held (`Busy`), Homebrew's list update over its time
+            // (`HomebrewUpdating`) -- which stops it before it changes
+            // anything: a version that moved then is that program's doing,
+            // a `brew upgrade` in Terminal, say (skeptic of r35 U2, 4.2).
             Ok(Outcome::Failed {
                 exit_code: Some(code),
                 summary,
                 cause,
             }) => {
+                let waited_on_another = matches!(
+                    cause,
+                    Some(crate::history::FailureCause::Busy)
+                        | Some(crate::history::FailureCause::HomebrewUpdating)
+                );
                 let moved_to = match (&reconciled, plan.request.kind) {
-                    (Ok(r), OpKind::Upgrade) if r.present => {
+                    (Ok(r), OpKind::Upgrade)
+                        if r.present
+                            && plan.request.artifact_kind != ArtifactKind::Cask
+                            && !waited_on_another =>
+                    {
                         match version_change(before.as_ref(), r) {
                             VersionChange::Changed => Some(r.version.clone()),
                             VersionChange::Unchanged | VersionChange::Unknown => None,
@@ -1404,10 +1427,18 @@ impl OperationManager {
                     _ => None,
                 };
                 match moved_to {
-                    Some(version) => Outcome::NeedsAttention(Attention::UpdatedButStepFailed {
-                        version: version
-                            .filter(|_| plan.request.artifact_kind != ArtifactKind::Model),
-                    }),
+                    Some(version) => {
+                        self.say_promised_cleanup_did_not_run(op_id, &plan, &warning_sink);
+                        Outcome::NeedsAttention(Attention::UpdatedButStepFailed {
+                            version: version
+                                .filter(|_| plan.request.artifact_kind != ArtifactKind::Model),
+                            detail: match cause {
+                                Some(crate::history::FailureCause::NotLinked) => None,
+                                _ => crate::history::failure_detail(&summary),
+                            },
+                            cause,
+                        })
+                    }
                     None => Outcome::Failed {
                         exit_code: Some(code),
                         summary,
@@ -1427,6 +1458,43 @@ impl OperationManager {
         };
 
         self.finish(op_id, final_outcome, true);
+    }
+
+    /// For an update installed though a step after it failed
+    /// (`Attention::UpdatedButStepFailed`) whose confirmation said it
+    /// deletes the old versions (`Warning::HomebrewCleansUpOldVersions`,
+    /// on a plan only when a `brew cleanup` follows it, U9): that cleanup
+    /// runs only after the update exited 0 (`BrewAdapter::execute`), so it
+    /// did not run, and the old versions stay. Said as a cleanup that did
+    /// not finish is -- `LogNote::OldVersionsNotCleanedUp` with no exit
+    /// code, in the log and among the follow-up warnings the summary and
+    /// the history keep -- so that "Updated with an error" does not read as
+    /// the confirmed plan carried out but for one step (skeptic of r35 U2,
+    /// 3). Nothing for an update that failed: 「未能更新」 says its cleanup
+    /// did not happen either.
+    fn say_promised_cleanup_did_not_run(
+        &self,
+        op_id: OpId,
+        plan: &Plan,
+        warning_sink: &Arc<WarningSink>,
+    ) {
+        if !plan
+            .warnings
+            .iter()
+            .any(|warning| matches!(warning, Warning::HomebrewCleansUpOldVersions { .. }))
+        {
+            return;
+        }
+        warning_sink.emit(OperationEvent::Note {
+            op_id,
+            note: LogNote::OldVersionsNotCleanedUp {
+                name: plan.request.name.clone(),
+                exit_code: None,
+            },
+        });
+        if let Some(r) = self.records.lock().unwrap().get_mut(&op_id) {
+            r.follow_up_warnings = warning_sink.warnings();
+        }
     }
 
     fn set_status(&self, op_id: OpId, status: OpStatus) {

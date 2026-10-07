@@ -11,7 +11,7 @@ use banager_core::follow_up::FollowUpWarning;
 use banager_core::history::{HistoryKind, HistoryResult, HistoryStore, Started};
 use banager_core::model::{
     ArtifactKey, ArtifactKind, Attention, CancelPolicy, InstalledArtifact, ManagerInstance, OpKind,
-    OpRequest, OpStatus, Outcome, Plan, PlanAction, Reconciled, ResourceLock, SearchHit,
+    OpRequest, OpStatus, Outcome, Plan, PlanAction, Reconciled, ResourceLock, SearchHit, Warning,
 };
 use banager_core::ops::{OnFinish, OperationManager};
 use banager_core::runner::HostEnv;
@@ -436,7 +436,9 @@ async fn test_follow_up_warnings_cross_operation_wire_and_history_without_changi
 /// needs a look, with the version it moved to, the reading Banager saw
 /// change, and what the step left unlinked -- not as 「未能更新」 with no
 /// version, which a restart then stopped listing once nothing offered the
-/// update any more.
+/// update any more. And, after a restart, what says which step: the
+/// tool's first error line (skeptic of r35 U2, 1); and that the cleanup
+/// its confirmation promised did not run (skeptic of r35 U2, 3).
 #[tokio::test]
 async fn test_an_update_whose_tool_failed_after_its_version_moved_is_kept_as_updated_with_a_failed_step(
 ) {
@@ -452,14 +454,21 @@ async fn test_an_update_whose_tool_failed_after_its_version_moved_is_kept_as_upd
         name: "cmake".into(),
         commands: vec!["cmake".into()],
     }];
-    let plan = f
+    let mut plan = f
         .adapter
         .plan(&f.instance, &upgrade(&f.instance))
         .await
         .unwrap();
+    // Its confirmation said the update deletes the old version, as a
+    // formula's does when a `brew cleanup` follows it (U9).
+    plan.warnings.push(Warning::HomebrewCleansUpOldVersions {
+        versions: vec!["0.9".to_string()],
+    });
     let id = f.manager.submit_with(plan, Some(on_finish(&f.store)));
     let stepped = Outcome::NeedsAttention(Attention::UpdatedButStepFailed {
         version: Some("2.0".to_string()),
+        cause: None,
+        detail: Some("Warning: The post-install step did not complete successfully".to_string()),
     });
     assert_eq!(f.manager.wait(id).await, Some(stepped.clone()));
     let summary = f
@@ -471,7 +480,11 @@ async fn test_an_update_whose_tool_failed_after_its_version_moved_is_kept_as_upd
     // On the wire as the window reads it (`Attention` in src/lib/types.ts).
     assert_eq!(
         serde_json::to_value(&summary).unwrap()["outcome"],
-        serde_json::json!({"NeedsAttention": {"UpdatedButStepFailed": {"version": "2.0"}}})
+        serde_json::json!({"NeedsAttention": {"UpdatedButStepFailed": {
+            "version": "2.0",
+            "cause": null,
+            "detail": "Warning: The post-install step did not complete successfully",
+        }}})
     );
     assert!(f.store.flush(Duration::from_secs(5)));
     let reopened = HistoryStore::open(f.dir.join("history.json"));
@@ -488,10 +501,16 @@ async fn test_an_update_whose_tool_failed_after_its_version_moved_is_kept_as_upd
     assert!(record.verified, "Banager read the version change itself");
     assert_eq!(
         record.follow_up_warnings,
-        vec![FollowUpWarning::NoLongerLinked {
-            name: "cmake".into(),
-            commands: vec!["cmake".into()],
-        }]
+        vec![
+            FollowUpWarning::NoLongerLinked {
+                name: "cmake".into(),
+                commands: vec!["cmake".into()],
+            },
+            FollowUpWarning::OldVersionsNotCleanedUp {
+                name: "cmake".into(),
+                exit_code: None,
+            },
+        ]
     );
 }
 

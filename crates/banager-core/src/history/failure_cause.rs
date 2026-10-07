@@ -71,7 +71,12 @@ pub enum FailureCause {
     /// the formula's commands may be gone from Terminal. Only "The `brew
     /// link` step did not complete successfully" reaches stderr; which
     /// file was in the way goes to stdout (review of r6 y3-batch,
-    /// finding 2).
+    /// finding 2). The step runs after the new keg is poured, so where
+    /// Banager read the version before the update and after it, the two
+    /// differ and the update is installed with this step failed: the
+    /// cause then goes with `Attention::UpdatedButStepFailed` (skeptic of
+    /// r35 U2, 1), and is an `Outcome::Failed`'s only where there was no
+    /// reading to compare.
     NotLinked,
     /// Banager stopped because what it was about to change was no longer
     /// what the confirmation showed (`Fault::PathChanged`,
