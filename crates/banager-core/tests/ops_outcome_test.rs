@@ -241,6 +241,18 @@ async fn test_succeeded_uninstall_reconcile_err_is_unconfirmed() {
 }
 
 #[tokio::test]
+async fn test_a_link_that_exited_0_is_succeeded_while_the_formula_is_still_there() {
+    // `brew link --force` (`OpKind::Link`) leaves the formula installed:
+    // present, it did what it said; gone, nothing is known.
+    let outcome = run_case(OpKind::Link, ReconcileBehavior::Present(true)).await;
+    assert_eq!(outcome, Outcome::Succeeded);
+    let outcome = run_case(OpKind::Link, ReconcileBehavior::Present(false)).await;
+    assert_eq!(outcome, Outcome::Unconfirmed);
+    let outcome = run_case(OpKind::Link, ReconcileBehavior::Err).await;
+    assert_eq!(outcome, Outcome::Unconfirmed);
+}
+
+#[tokio::test]
 async fn test_succeeded_upgrade_present_is_succeeded() {
     let outcome = run_case(OpKind::Upgrade, ReconcileBehavior::Present(true)).await;
     assert_eq!(outcome, Outcome::Succeeded);

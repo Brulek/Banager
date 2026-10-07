@@ -495,6 +495,9 @@ impl UvAdapter {
     ) -> Result<Plan, AdapterError> {
         ensure_instance_match(req, inst)?;
         validate_package_name(&req.name)?;
+        if req.kind == OpKind::Link {
+            return Err(super::links_nothing(&self.meta.id));
+        }
         // The gate's late twin (`blocked_uninstall` in session/plans.rs
         // refuses the same row from the snapshot): read again here, so no
         // preview of `uv tool uninstall` is ever built while uv would take
@@ -521,6 +524,7 @@ impl UvAdapter {
                 req.name.clone(),
             ],
             OpKind::Upgrade => vec!["tool".to_string(), "upgrade".to_string(), req.name.clone()],
+            OpKind::Link => return Err(super::links_nothing(&self.meta.id)),
         };
         // What `uv tool uninstall` removes and leaves (uv 0.12.17
         // `crates/uv/src/commands/tool/uninstall.rs:187-226`: the tool's
@@ -532,6 +536,7 @@ impl UvAdapter {
                 what: UninstallScope::Uv,
             }],
             OpKind::Install | OpKind::Upgrade => Vec::new(),
+            OpKind::Link => return Err(super::links_nothing(&self.meta.id)),
         };
         Ok(Plan {
             request: req.clone(),
@@ -1256,6 +1261,7 @@ ruff v0.15.0 (/Users/someone/.local/share/uv/tools/ruff)
                     what: UninstallScope::Uv,
                 }],
                 OpKind::Install | OpKind::Upgrade => vec![],
+                OpKind::Link => unreachable!("only the three kinds are planned here"),
             };
             assert_eq!(plan.warnings, scope, "{kind:?}");
         }

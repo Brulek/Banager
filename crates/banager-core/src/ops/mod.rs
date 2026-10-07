@@ -1086,7 +1086,9 @@ impl OperationManager {
                     .reconcile_after_uninstall(&instance, &key, &plan)
                     .await
             }
-            OpKind::Install | OpKind::Upgrade => adapter.reconcile(&instance, &key).await,
+            OpKind::Install | OpKind::Upgrade | OpKind::Link => {
+                adapter.reconcile(&instance, &key).await
+            }
         };
         if plan.request.kind == OpKind::Upgrade {
             if let Ok(r) = reconciled.as_ref() {
@@ -1120,6 +1122,17 @@ impl OperationManager {
                             Outcome::Succeeded
                         } else {
                             Outcome::NeedsAttention(Attention::StillInstalledAfterUninstall)
+                        }
+                    }
+                    // `brew link` exited 0: it linked the formula, which is
+                    // still installed. Gone after it, what happened is not
+                    // known. Whether the source that needed it answers now
+                    // is the next refresh's to say (`NoAnswer`).
+                    OpKind::Link => {
+                        if r.present {
+                            Outcome::Succeeded
+                        } else {
+                            Outcome::Unconfirmed
                         }
                     }
                     // The tool exited 0: it says it ran to the end, so
@@ -1261,7 +1274,10 @@ impl OperationManager {
             Ok(Outcome::Unconfirmed) => {
                 let user_cancelled = cancel.is_cancelled();
                 match plan.request.kind {
-                    OpKind::Upgrade => Outcome::Unconfirmed,
+                    // A link stopped partway may have linked some of the
+                    // formula's files: Homebrew takes them back only on its
+                    // own error, not on a stop.
+                    OpKind::Upgrade | OpKind::Link => Outcome::Unconfirmed,
                     OpKind::Install => match reconciled {
                         Ok(r) if r.present => Outcome::Succeeded,
                         Ok(_) if user_cancelled => Outcome::Cancelled,

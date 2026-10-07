@@ -511,6 +511,7 @@ impl PipxAdapter {
             OpKind::Install => vec!["install".to_string(), req.name.clone()],
             OpKind::Uninstall => vec!["uninstall".to_string(), req.name.clone()],
             OpKind::Upgrade => vec!["upgrade".to_string(), req.name.clone()],
+            OpKind::Link => return Err(super::links_nothing(&self.meta.id)),
         };
         // What `pipx uninstall` removes and leaves (pipx 1.17.3
         // `commands/uninstall.py:67-125`: the tool's venv and the links
@@ -520,6 +521,7 @@ impl PipxAdapter {
                 what: UninstallScope::Pipx,
             }],
             OpKind::Install | OpKind::Upgrade => Vec::new(),
+            OpKind::Link => return Err(super::links_nothing(&self.meta.id)),
         };
         Ok(Plan {
             request: req.clone(),
@@ -1349,6 +1351,7 @@ mod tests {
                     what: UninstallScope::Pipx,
                 }],
                 OpKind::Install | OpKind::Upgrade => vec![],
+                OpKind::Link => unreachable!("only the three kinds are planned here"),
             };
             assert_eq!(plan.warnings, scope, "{kind:?}");
         }

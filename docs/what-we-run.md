@@ -1465,20 +1465,25 @@ preview):
 | Then, once that upgrade has exited 0, link a keg-only formula whose link Homebrew recorded back into the prefix, where Homebrew did not (Keg-only formulae linked into Terminal, below) | `<brew> link --formula --force {name}` | 300 s | No |
 | Then, once that upgrade has exited 0, delete the formula's old versions (Old versions, below) | `<brew> cleanup {name}` | 600 s | No |
 | Upgrade one cask | `<brew> upgrade --cask {name}` | 1800 s | Sometimes — as for install |
+| Link a keg-only formula another source's launcher could not find a program of (Why a source did not answer, below) | `<brew> link --force {name}` | 300 s | No |
 
 Every one of these argvs is exactly the verb, the kind flag and the name
 (`test_plan_never_passes_zap_force_or_ignore_dependencies` in the same
 file), but for the two the author's decision U9 added (Old versions,
 below) -- the `brew cleanup {name}` that follows a formula's upgrade, and
 the `--force` of the uninstall of a formula with more than one version --
-and the one added for a keg-only formula linked into Terminal (Keg-only
+the one added for a keg-only formula linked into Terminal (Keg-only
 formulae linked into Terminal, below): the `brew link --formula --force {name}` that
-follows its upgrade. Banager never passes `--zap`, `--ignore-dependencies`
+follows its upgrade; and the link of a keg-only formula another source's
+launcher needs, whose `--force` is what Homebrew asks before it links a
+keg-only formula (`test_a_link_plans_brew_link_force_and_says_what_is_in_the_way`).
+Banager never passes `--zap`, `--ignore-dependencies`
 or `--overwrite` to Homebrew, never passes `--force` to anything but that
-uninstall and that `brew link`, and never runs a bare `brew upgrade`, a
+uninstall and those two links, and never runs a bare `brew upgrade`, a
 bare `brew cleanup` or a bare `brew link`: upgrades are one confirmed
-artifact per invocation, and a cleanup or a link names the formula just
-upgraded. Before a write command starts,
+artifact per invocation, a cleanup or a link after an upgrade names the
+formula just upgraded, and the other link names the formula a source's
+notice offered. Before a write command starts,
 `execute` waits up to ten minutes (`OP_UPDATE_WAIT`) for a `brew update`
 still running in the background; if it is still running after that,
 nothing is run and the operation is reported as failed for that reason.
@@ -1551,7 +1556,65 @@ takes the account's home from the user database instead
 (`Trust.trust_file`, `trust.rb:27-43`), so where `$HOME` points elsewhere
 the two read different files, and the uninstall confirmation may say or
 leave out the trust list line wrongly. Nothing is run or changed because
-of it.
+of it. The link preview (`OpKind::Link`) reads what stands in the way of
+`brew link --force {name}` (`link::link_conflicts` in
+`crates/banager-core/src/adapters/brew/link.rs`): where
+`<prefix>/Cellar/<name>` leads, the names in `<prefix>/opt/<name>/bin`,
+and where `<prefix>/bin/<each of them>` leads, every link followed; one
+that leads anywhere but into the formula's own folder in the Cellar is in
+the way (`Warning::LinkConflicts`), and one that leads nowhere is not, as
+Homebrew replaces it. Only `bin` is read, only names and where links lead,
+never a file's contents.
+
+## Why a source did not answer, and the link that fixes it: no command runs
+
+A source that did not answer is `NotResponding`, and the window used to say
+only that it was "not responding" -- which is true only of one that ran
+and did not answer in time. On 2026-10-07 the author's npm said so after
+`brew upgrade node@22` had unlinked `node@22` (keg-only, linked by hand
+with `brew link --force`): `/opt/homebrew/bin/node` was gone, npm's
+launcher, `#!/usr/bin/env node`, could not start (`env: node: No such
+file or directory`, exit 127), and nothing on screen said why.
+
+**Why.** Each package manager's `detect` hands the result of the command
+that did not answer -- npm's `npm prefix -g` or `npm --version`, the
+`--version` of Homebrew, Cargo, pipx and uv, pip's `<python> -m pip
+--version` -- to `runner::no_answer::of`, which reads it, and nothing
+else (`InstanceStatus::no_answer`, `NoAnswer`):
+
+| What the command did | Reason (`NoAnswerKind`) |
+|---|---|
+| The runner stopped it when its time ran out | `TimedOut` |
+| Its program is not there or macOS would not start it (`RunnerError::NotFound`, `Spawn`), or it exited 126 or 127 | `CouldNotStart` |
+| It exited 127 and its last lines include `env`'s `env: <name>: No such file or directory` | `CouldNotStart`, with `<name>` as the program it needs |
+| Any other non-zero exit, or a signal Banager did not send | `ExitedWithError` |
+| It exited 0, was stopped by Banager's own Cancel, or wrote more than Banager reads | no reason |
+
+The program's name is read off stderr as the command wrote it, before a
+proxy's or mirror's login is masked out of it (`StderrCause::Read`), as an
+operation's failure cause is: a proxy user name `node` would mask the very
+word. A Python with no pip keeps its own reason (`NoPip`) and no other;
+Homebrew under root asks nothing and has none; a tool with its own
+installer, and Ollama, which is asked over HTTP, have none yet.
+
+**The fix it offers.** For a source that could not start for want of a
+program, once a refresh round has every source's rows
+(`link_fixes::fill`, from the snapshot alone -- nothing is read or run):
+the formulae of a Homebrew source Banager can act on that are keg-only and
+not linked (`keg_only` and `linked_keg` of `brew info --installed
+--json=v2`, already read for the inventory) and named for the program
+(`node`, or `node@<version>`), newest first (`NoAnswer::link_fixes`).
+The source's notice says why it did not answer and offers them; each is
+planned as `brew link --force {name}` (Homebrew's write commands, above),
+previewed with what stands in the way (Homebrew's files, above), and runs
+only once confirmed, as every operation does. The window may ask for the
+preview of a link only of a formula a source's reason offers
+(`Session::issue_listed_plan`). A link is not kept in the history: it
+updates and uninstalls nothing. Where `bin` holds a file of one of the
+formula's command names already -- npm's own `npm`, after npm was updated
+through itself -- Homebrew would link nothing and say so; the preview says
+it first and offers no Link button, and `--overwrite`, which would replace
+that file, is never passed.
 
 ## npm
 
@@ -4378,9 +4441,11 @@ configured, `index.crates.io`, and cargo still follows a
 - Never passes `--zap`, `--ignore-dependencies` or `--overwrite` to
   Homebrew, nor `--force` but to the uninstall of a formula with more than
   one version installed and no pin, so that every version goes (the brew
-  plan tests; the author's decision U9), and to the `brew link` that links
+  plan tests; the author's decision U9), to the `brew link` that links
   a keg-only formula whose link Homebrew recorded back after its update,
-  which without `--overwrite` stops rather than overwrite another
+  and to the `brew link` of a keg-only formula another source's launcher
+  needs (Why a source did not answer) -- each of which without
+  `--overwrite` stops rather than overwrite another
   program's file -- but for a cask's link, which Homebrew replaces, and
   the formulae it names as linking over it, which it unlinks first
   (Homebrew's section, "Keg-only formulae linked into Terminal"); and
@@ -4413,11 +4478,12 @@ configured, `index.crates.io`, and cargo still follows a
   uninstall Homebrew packages by itself when Homebrew has moved a package
   between a formula and a cask, or renamed one (Homebrew's section).
 - Never lets the window ask for an install: it can ask for the preview
-  of an upgrade or an uninstall only, and `plan_operation_impl`
+  of an upgrade, an uninstall or a link only, and `plan_operation_impl`
   (`src-tauri/src/ipc.rs`) refuses an install before any source is
   asked, whatever it names. Nor by another name: the window may ask for
-  an upgrade only of an update the last check listed, and an uninstall
-  only of a tool it listed installed (`Session::issue_listed_plan`),
+  an upgrade only of an update the last check listed, an uninstall
+  only of a tool it listed installed, and a link only of a formula a
+  source's reason offers (`Session::issue_listed_plan`),
   since npm, Cargo and Ollama would install a name they were asked to
   upgrade.
 - Never launches an application from a refresh; `open -a Ollama` runs

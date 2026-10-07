@@ -815,6 +815,14 @@ pub struct OthersData {
 /// are not.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Warning {
+    /// `brew link --force <formula>` (`OpKind::Link`) would stop at these
+    /// files: each is already in the prefix's `bin` folder under the name
+    /// of one of the formula's commands, and is not a link to it, and
+    /// Homebrew links nothing over a file that is there
+    /// (`adapters/brew/link.rs`). The link would change nothing, so the
+    /// preview says so and offers no Link button. `paths` are absolute, as
+    /// Homebrew names them. Built only by `BrewAdapter::plan` for a link.
+    LinkConflicts { paths: Vec<String> },
     /// brew's `uses --installed` check itself failed or timed out -- or the
     /// look for the other sources that run on the package
     /// (`NeededBySource`) did not finish. Not the same thing as "confirmed
@@ -1641,6 +1649,14 @@ pub enum OpKind {
     Install,
     Uninstall,
     Upgrade,
+    /// `brew link --force <formula>`: puts a keg-only Homebrew formula's
+    /// commands where Terminal looks, for a source whose launcher could not
+    /// find one of them (`NoAnswer::link_fixes`). Planned only by
+    /// `BrewAdapter::plan`, only for a formula a snapshot offers as a fix
+    /// (`Session::issue_listed_plan`'s `lists_request`); every other adapter
+    /// refuses it. Not kept in the history (`history::record_for`): it
+    /// updates and uninstalls nothing.
+    Link,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

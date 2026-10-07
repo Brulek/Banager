@@ -616,6 +616,9 @@ impl OllamaAdapter {
     ) -> Result<Plan, AdapterError> {
         ensure_instance_match(req, inst)?;
         validate_model_reference(&req.name)?;
+        if req.kind == OpKind::Link {
+            return Err(super::links_nothing(&self.meta.id));
+        }
         let lock = ResourceLock(inst.id.clone());
         // The registry warning belongs to the arm that fetches, not to the
         // operation as a whole. Computed before this `match` it also rode
@@ -628,6 +631,7 @@ impl OllamaAdapter {
         // legitimate thing to want, it just has to be said out loud.
         // `Plan::warnings` is already rendered in the preview.
         let (args, warnings) = match req.kind {
+            OpKind::Link => return Err(super::links_nothing(&self.meta.id)),
             OpKind::Install | OpKind::Upgrade => {
                 let mut warnings: Vec<Warning> = third_party_registry(&req.name)
                     .map(|host| Warning::ThirdPartyRegistry {

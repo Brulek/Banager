@@ -454,6 +454,7 @@ impl NpmAdapter {
                 .into_iter()
                 .collect(),
             OpKind::Install | OpKind::Upgrade => Vec::new(),
+            OpKind::Link => return Err(super::links_nothing(&self.meta.id)),
         };
         let args = match req.kind {
             OpKind::Install => vec!["install".to_string(), "-g".to_string(), req.name.clone()],
@@ -463,6 +464,7 @@ impl NpmAdapter {
                 "-g".to_string(),
                 format!("{}@latest", req.name),
             ],
+            OpKind::Link => return Err(super::links_nothing(&self.meta.id)),
         };
         Ok(Plan {
             request: req.clone(),

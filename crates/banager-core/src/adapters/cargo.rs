@@ -801,6 +801,9 @@ impl CargoAdapter {
     ) -> Result<Plan, AdapterError> {
         ensure_instance_match(req, inst)?;
         validate_package_name(&req.name)?;
+        if req.kind == OpKind::Link {
+            return Err(super::links_nothing(&self.meta.id));
+        }
         let lock = ResourceLock(inst.id.clone());
         let root = inst
             .prefix
@@ -847,6 +850,7 @@ impl CargoAdapter {
             installs = Some(json);
         }
         match req.kind {
+            OpKind::Link => Err(super::links_nothing(&self.meta.id)),
             OpKind::Install | OpKind::Upgrade => {
                 // The path `detect` resolved through HostEnv, not a fresh
                 // guess: whatever is previewed here is exactly what runs.

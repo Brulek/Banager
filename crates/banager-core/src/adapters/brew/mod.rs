@@ -4,6 +4,7 @@ pub(crate) mod cask_receipt;
 mod keg_link_tests;
 pub(crate) mod kegs;
 pub(crate) mod links;
+pub(crate) mod link;
 pub mod parse;
 pub(crate) mod trust;
 
@@ -196,7 +197,19 @@ pub struct BrewAdapter {
     /// has run, which every refresh does before a row can be updated; an
     /// update of a formula not here is planned as before.
     keg_only: Mutex<HashMap<InstanceId, HashSet<String>>>,
+    /// How to read what stands in the way of `brew link --force` for a
+    /// formula, for the link preview (`link::link_conflicts`): the real
+    /// prefix outside this crate's unit tests; inside them nothing is read
+    /// unless a test installs a reader (`with_link_conflicts_fn`).
+    link_conflicts_fn: fn(&Path, &str) -> Vec<PathBuf>,
 }
+
+/// `BrewAdapter::link_conflicts_fn` as `BrewAdapter::new` sets it: the real
+/// prefix in every build but this crate's unit tests, where nothing is read.
+#[cfg(not(test))]
+const DEFAULT_LINK_CONFLICTS_FN: fn(&Path, &str) -> Vec<PathBuf> = link::link_conflicts;
+#[cfg(test)]
+const DEFAULT_LINK_CONFLICTS_FN: fn(&Path, &str) -> Vec<PathBuf> = |_, _| Vec::new();
 
 /// `BrewAdapter::update_lock_fn` as `BrewAdapter::new` sets it: the real
 /// probe in every build but this crate's unit tests.
@@ -383,6 +396,7 @@ impl BrewAdapter {
             kegs_fn: DEFAULT_KEGS_FN,
             links_fn: DEFAULT_LINKS_FN,
             keg_only: Mutex::new(HashMap::new()),
+            link_conflicts_fn: DEFAULT_LINK_CONFLICTS_FN,
         }
     }
 
@@ -523,6 +537,17 @@ impl BrewAdapter {
             instance_id.to_string(),
             names.iter().map(|name| name.to_string()).collect(),
         );
+        self
+    }
+
+    /// Test-only hook to put files in the way of a link (see
+    /// `link_conflicts_fn`).
+    #[cfg(test)]
+    fn with_link_conflicts_fn(
+        mut self,
+        link_conflicts_fn: fn(&Path, &str) -> Vec<PathBuf>,
+    ) -> BrewAdapter {
+        self.link_conflicts_fn = link_conflicts_fn;
         self
     }
 
@@ -2205,6 +2230,48 @@ impl BrewAdapter {
         }
         let lock = ResourceLock(inst.id.clone());
         match req.kind {
+            // `brew link --force <formula>`: a keg-only formula's
+            // commands put where Terminal looks, for a source whose
+            // launcher could not find one of them (`NoAnswer::link_fixes`;
+            // the gate plans only one a snapshot offers). `--force` is what
+            // Homebrew asks of a keg-only formula; `--overwrite` is never
+            // passed, so a file already there is never replaced -- what is
+            // in the way is read first and said (`Warning::LinkConflicts`),
+            // and Homebrew itself refuses and takes back what it linked if
+            // it meets one. No password, no download, no update of
+            // Homebrew: `brew link` does none of those.
+            OpKind::Link => {
+                if req.artifact_kind != ArtifactKind::Formula {
+                    return Err(AdapterError::Unsupported(
+                        "only a Homebrew formula is linked".to_string(),
+                    ));
+                }
+                let conflicts = (self.link_conflicts_fn)(&inst.prefix, &req.name);
+                let warnings = if conflicts.is_empty() {
+                    Vec::new()
+                } else {
+                    vec![Warning::LinkConflicts {
+                        paths: conflicts
+                            .iter()
+                            .map(|path| path.display().to_string())
+                            .collect(),
+                    }]
+                };
+                Ok(Plan {
+                    request: req.clone(),
+                    action: PlanAction::Command {
+                        program: inst.exe_path.clone(),
+                        args: vec!["link".to_string(), "--force".to_string(), req.name.clone()],
+                        env: self.env_vec(),
+                    },
+                    needs_password: false,
+                    locks: vec![lock],
+                    cancel_policy: CancelPolicy::KillThenReconcile,
+                    warnings,
+                    affected: Vec::new(),
+                    timeout_secs: 300,
+                })
+            }
             OpKind::Install => {
                 let flag = match req.artifact_kind {
                     ArtifactKind::Cask => "--cask",
@@ -3999,6 +4066,67 @@ mod plan_execute_tests {
     }
 
     #[tokio::test]
+    async fn test_a_link_plans_brew_link_force_and_says_what_is_in_the_way() {
+        // Finding (1) of the 2026-10-07 run: the fix for a source that
+        // could not find `node` is `brew link --force node@22`, previewed
+        // and run as any operation is. Nothing runs to plan it.
+        let runner = Arc::new(MockRunner::new());
+        let inst = test_instance();
+        let req = OpRequest {
+            kind: OpKind::Link,
+            instance_id: inst.id.clone(),
+            artifact_kind: ArtifactKind::Formula,
+            name: "node@22".into(),
+        };
+        let plan = BrewAdapter::new(runner.clone())
+            .plan(&inst, &req)
+            .await
+            .expect("a link is planned");
+        assert_eq!(
+            crate::testing::command_program(&plan),
+            inst.exe_path.as_path()
+        );
+        assert_eq!(command_args(&plan), ["link", "--force", "node@22"]);
+        assert_eq!(
+            command_env(&plan),
+            BrewAdapter::new(runner.clone()).env_vec()
+        );
+        assert!(!plan.needs_password);
+        assert_eq!(plan.cancel_policy, CancelPolicy::KillThenReconcile);
+        assert_eq!(plan.locks, vec![ResourceLock(inst.id.clone())]);
+        assert!(plan.warnings.is_empty(), "{:?}", plan.warnings);
+        assert!(plan.affected.is_empty());
+        assert!(runner.calls().is_empty(), "planning runs nothing");
+
+        // npm's own `npm` in `bin`: Homebrew would link nothing.
+        let plan = BrewAdapter::new(runner.clone())
+            .with_link_conflicts_fn(|prefix, name| {
+                assert_eq!((prefix, name), (Path::new("/opt/homebrew"), "node@22"));
+                vec![PathBuf::from("/opt/homebrew/bin/npm")]
+            })
+            .plan(&inst, &req)
+            .await
+            .expect("still planned, with what is in the way");
+        assert_eq!(
+            plan.warnings,
+            vec![Warning::LinkConflicts {
+                paths: vec!["/opt/homebrew/bin/npm".to_string()],
+            }]
+        );
+
+        // Only a formula is linked.
+        let cask = OpRequest {
+            artifact_kind: ArtifactKind::Cask,
+            ..req.clone()
+        };
+        assert!(matches!(
+            BrewAdapter::new(runner.clone()).plan(&inst, &cask).await,
+            Err(AdapterError::Unsupported(_))
+        ));
+        assert!(runner.calls().is_empty());
+    }
+
+    #[tokio::test]
     async fn regression_brew_env_cannot_reenable_an_untracked_auto_update() {
         let runner = Arc::new(MockRunner::new());
         let safe = BrewAdapter::new(runner.clone());
@@ -4529,6 +4657,7 @@ mod plan_execute_tests {
             // only what goes -- for a formula, "only" this version -- and
             // an install or upgrade says nothing.
             let expected = match plan.request.kind {
+                OpKind::Link => unreachable!("every_plan plans no link"),
                 OpKind::Uninstall => vec![scope_of(plan.request.artifact_kind, false)],
                 OpKind::Install | OpKind::Upgrade => vec![],
             };
@@ -4561,6 +4690,7 @@ mod plan_execute_tests {
         for plan in every_plan(&runner, &adapter).await {
             // A formula's sentence loses its "only".
             let expected = match plan.request.kind {
+                OpKind::Link => unreachable!("every_plan plans no link"),
                 OpKind::Uninstall => vec![
                     scope_of(plan.request.artifact_kind, true),
                     Warning::HomebrewAutoremoves,
@@ -4593,6 +4723,7 @@ mod plan_execute_tests {
         });
         for plan in every_plan(&runner, &adapter).await {
             let expected = match plan.request.kind {
+                OpKind::Link => unreachable!("every_plan plans no link"),
                 OpKind::Uninstall => vec![
                     scope_of(plan.request.artifact_kind, true),
                     Warning::HomebrewAutoremoves,
@@ -4629,6 +4760,7 @@ mod plan_execute_tests {
         });
         for plan in every_plan(&runner, &adapter).await {
             let expected = match plan.request.kind {
+                OpKind::Link => unreachable!("every_plan plans no link"),
                 OpKind::Uninstall => vec![scope_of(plan.request.artifact_kind, false)],
                 OpKind::Install | OpKind::Upgrade => vec![Warning::HomebrewPeriodicCleanup],
             };

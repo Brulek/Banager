@@ -946,6 +946,7 @@ impl StandaloneAdapter {
                 "{} is installed by its own installer, which Banager never runs",
                 self.meta.name
             ))),
+            OpKind::Link => Err(super::links_nothing(&self.meta.id)),
             OpKind::Uninstall => {
                 let Some(uninstall) = &self.recipe.uninstall else {
                     return Err(AdapterError::UninstallBlocked {
@@ -1174,6 +1175,7 @@ impl StandaloneAdapter {
                             }));
                         }
                     }
+                    OpKind::Link => return Err(super::links_nothing(&self.meta.id)),
                     OpKind::Install => {
                         return Err(AdapterError::Refused(format!(
                             "{} is never installed by a plan of Banager's",

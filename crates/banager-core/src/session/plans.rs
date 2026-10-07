@@ -6,8 +6,8 @@ use super::{IssuedPlan, PlanId, Session, SubmitError};
 use crate::adapters::AdapterError;
 use crate::events::OpId;
 use crate::model::{
-    InstalledArtifact, OpKind, OpRequest, UninstallBlocked, UpdateBlocked, UpdateCandidate,
-    UpdateChannel,
+    InstalledArtifact, ManagerInstance, OpKind, OpRequest, UninstallBlocked, UpdateBlocked,
+    UpdateCandidate, UpdateChannel,
 };
 use std::time::{Duration, Instant};
 
@@ -173,9 +173,12 @@ fn blocked_uninstall(artifacts: &[InstalledArtifact], req: &OpRequest) -> Option
 
 /// Whether `updates` and `artifacts` -- one snapshot's -- list what `req`
 /// names: for an `Upgrade`, an update candidate of exactly that instance,
-/// kind and name; for an `Uninstall`, an installed row of it. An `Install`
+/// kind and name; for an `Uninstall`, an installed row of it; for a `Link`,
+/// a formula some source's reason offers to link (`NoAnswer::link_fixes`)
+/// -- the one thing the window may ask Homebrew to link. An `Install`
 /// names nothing listed.
 fn lists_request(
+    instances: &[ManagerInstance],
     updates: &[UpdateCandidate],
     artifacts: &[InstalledArtifact],
     req: &OpRequest,
@@ -186,6 +189,11 @@ fn lists_request(
     match req.kind {
         OpKind::Upgrade => updates.iter().any(|u| names(&u.key)),
         OpKind::Uninstall => artifacts.iter().any(|a| names(&a.key)),
+        OpKind::Link => instances
+            .iter()
+            .filter_map(|instance| instance.status.no_answer.as_ref())
+            .flat_map(|why| &why.link_fixes)
+            .any(|fix| names(&fix.key)),
         OpKind::Install => false,
     }
 }
@@ -241,7 +249,12 @@ impl Session {
                 blocked_upgrade(&snapshot.updates, req),
                 blocked_uninstall(&snapshot.artifacts, req),
                 super::kept::family_of_uninstall(&snapshot.artifacts, req),
-                lists_request(&snapshot.updates, &snapshot.artifacts, req),
+                lists_request(
+                    &snapshot.instances,
+                    &snapshot.updates,
+                    &snapshot.artifacts,
+                    req,
+                ),
                 super::needed_by::subject(&snapshot.instances, &snapshot.artifacts, req),
                 offered_version(&snapshot.updates, req),
             )
@@ -1145,22 +1158,26 @@ mod tests {
         let artifacts = [installed_on("fake:1", ArtifactKind::Formula, "wget", None)];
         // What the window was offered, and shown installed.
         assert!(lists_request(
+            &[],
             &updates,
             &artifacts,
             &request(OpKind::Upgrade, "jq")
         ));
         assert!(lists_request(
+            &[],
             &updates,
             &artifacts,
             &request(OpKind::Uninstall, "wget")
         ));
         // A name nothing lists: an upgrade of it would install it.
         assert!(!lists_request(
+            &[],
             &updates,
             &artifacts,
             &request(OpKind::Upgrade, "evil")
         ));
         assert!(!lists_request(
+            &[],
             &updates,
             &artifacts,
             &request(OpKind::Uninstall, "evil")
@@ -1168,31 +1185,99 @@ mod tests {
         // Installed but offered no update; offered but asked to uninstall
         // under that list's name only -- each list answers for its kind.
         assert!(!lists_request(
+            &[],
             &updates,
             &artifacts,
             &request(OpKind::Upgrade, "wget")
         ));
         assert!(!lists_request(
+            &[],
             &updates,
             &artifacts,
             &request(OpKind::Uninstall, "jq")
         ));
         // The same name of another kind, or on another source.
         assert!(!lists_request(
+            &[],
             &updates,
             &artifacts,
             &upgrade_on("fake:1", ArtifactKind::Cask, "jq")
         ));
         assert!(!lists_request(
+            &[],
             &updates,
             &artifacts,
             &upgrade_on("fake:2", ArtifactKind::Formula, "jq")
         ));
         // An install is never listed.
         assert!(!lists_request(
+            &[],
             &updates,
             &artifacts,
             &request(OpKind::Install, "jq")
+        ));
+    }
+
+    #[test]
+    fn test_lists_request_wants_a_link_some_source_is_offered_as_its_fix() {
+        // `brew link --force` of exactly the formula a source's reason
+        // offers (`NoAnswer::link_fixes`), and nothing else: not a formula
+        // that is merely installed, nor one of another name or source.
+        use super::lists_request;
+        use crate::model::{
+            InstanceStatus, LinkFix, ManagerInstance, NoAnswer, NoAnswerKind, Unavailable,
+        };
+        let offered = LinkFix {
+            key: ArtifactKey {
+                instance_id: "fake:1".to_string(),
+                kind: ArtifactKind::Formula,
+                name: "node@22".to_string(),
+            },
+            version: "22.23.3_1".to_string(),
+        };
+        let npm = ManagerInstance {
+            status: InstanceStatus {
+                unavailable: Some(Unavailable::NotResponding),
+                notes: Vec::new(),
+                no_answer: Some(NoAnswer {
+                    kind: NoAnswerKind::CouldNotStart,
+                    missing_program: Some("node".to_string()),
+                    link_fixes: vec![offered],
+                }),
+            },
+            ..crate::testing::manager_instance("npm", "npm:/opt/homebrew")
+        };
+        let artifacts = [
+            installed_on("fake:1", ArtifactKind::Formula, "node@22", None),
+            installed_on("fake:1", ArtifactKind::Formula, "node@20", None),
+        ];
+        let link = |instance_id: &str, name: &str| OpRequest {
+            kind: OpKind::Link,
+            ..upgrade_on(instance_id, ArtifactKind::Formula, name)
+        };
+        assert!(lists_request(
+            std::slice::from_ref(&npm),
+            &[],
+            &artifacts,
+            &link("fake:1", "node@22")
+        ));
+        assert!(!lists_request(
+            std::slice::from_ref(&npm),
+            &[],
+            &artifacts,
+            &link("fake:1", "node@20")
+        ));
+        assert!(!lists_request(
+            std::slice::from_ref(&npm),
+            &[],
+            &artifacts,
+            &link("fake:2", "node@22")
+        ));
+        assert!(!lists_request(
+            &[],
+            &[],
+            &artifacts,
+            &link("fake:1", "node@22")
         ));
     }
 

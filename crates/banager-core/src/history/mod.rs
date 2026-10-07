@@ -193,7 +193,8 @@ pub struct Ended<'a> {
 }
 
 /// The record for an operation that ended, or `None` for one that is not
-/// kept: an install (Banager runs none), or one cancelled before it reached
+/// kept: an install (Banager runs none), a link (`OpKind::Link`, which
+/// updates and uninstalls nothing), or one cancelled before it reached
 /// its adapter's `execute` -- nothing was done, so there is nothing to
 /// remember. (One cancelled inside `execute` is kept as `Cancelled`, even
 /// where the adapter had not started the tool's command yet:
@@ -207,7 +208,7 @@ pub fn record_for(
     let kind = match ended.op_kind {
         OpKind::Upgrade => HistoryKind::Update,
         OpKind::Uninstall => HistoryKind::Uninstall,
-        OpKind::Install => return None,
+        OpKind::Install | OpKind::Link => return None,
     };
     if !ended.started && *ended.outcome == Outcome::Cancelled {
         return None;
@@ -1322,6 +1323,9 @@ mod tests {
         );
         let mut e = ended(&k, &Outcome::Succeeded);
         e.op_kind = OpKind::Install;
+        assert_eq!(record_for(&e, &started("cmake"), "r", NOW), None);
+        // Nor a link: it updates and uninstalls nothing.
+        e.op_kind = OpKind::Link;
         assert_eq!(record_for(&e, &started("cmake"), "r", NOW), None);
     }
 

@@ -440,7 +440,8 @@ fn submit_operation_error(e: banager_core::session::SubmitError) -> String {
 }
 
 /// The window's preview of an operation, through `Session::issue_plan`,
-/// for an upgrade or an uninstall only (`window_may_plan`).
+/// for an upgrade, an uninstall, or the link a source's reason offers only
+/// (`window_may_plan`).
 ///
 /// An install is refused here, before the snapshot or any adapter is
 /// asked: no page offers one, and `issue_plan`'s gate asks only whether the
@@ -478,11 +479,13 @@ pub(crate) async fn plan_operation_impl(
 }
 
 /// Whether `plan_operation` may preview an operation of this kind: an
-/// upgrade or an uninstall, never an install. No wildcard arm, so a kind
+/// upgrade, an uninstall, or the link a source's reason offers
+/// (`OpKind::Link`, `NoAnswer::link_fixes` -- `issue_listed_plan` plans
+/// only a formula offered so), never an install. No wildcard arm, so a kind
 /// added to `OpKind` does not compile until it is sorted here.
 fn window_may_plan(kind: OpKind) -> bool {
     match kind {
-        OpKind::Upgrade | OpKind::Uninstall => true,
+        OpKind::Upgrade | OpKind::Uninstall | OpKind::Link => true,
         OpKind::Install => false,
     }
 }
@@ -2053,20 +2056,22 @@ mod tests {
         assert!(
             folded.contains(
                 "Never lets the window ask for an install: it can ask for the preview of an \
-                 upgrade or an uninstall only, and `plan_operation_impl` \
+                 upgrade, an uninstall or a link only, and `plan_operation_impl` \
                  (`src-tauri/src/ipc.rs`) refuses an install before any source is asked"
             ),
             "the never-list of docs/what-we-run.md does not say the window cannot ask for an install"
         );
         assert!(
             folded.contains(
-                "the window may ask for an upgrade only of an update the last check listed, and \
-                 an uninstall only of a tool it listed installed (`Session::issue_listed_plan`)"
+                "the window may ask for an upgrade only of an update the last check listed, an \
+                 uninstall only of a tool it listed installed, and a link only of a formula a \
+                 source's reason offers (`Session::issue_listed_plan`)"
             ),
             "the never-list of docs/what-we-run.md does not say the window plans only what was listed"
         );
         assert!(!window_may_plan(OpKind::Install));
         assert!(window_may_plan(OpKind::Upgrade) && window_may_plan(OpKind::Uninstall));
+        assert!(window_may_plan(OpKind::Link));
     }
 
     #[tokio::test]
