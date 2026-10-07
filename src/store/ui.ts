@@ -188,7 +188,11 @@ export interface UninstallBatchRecord {
 const MAX_LOG_LINES = 2000;
 
 export function artifactKeyId(key: ArtifactKey): string {
-  return `${key.instance_id}|${key.kind}|${key.name}`;
+  // History and saved settings omit Ollama URL logins. Compare their
+  // keys with live ones without changing the URL sent back to Rust.
+  // Keep in sync with runner::redact::without_ollama_login.
+  const instance = key.instance_id.replace(/^(ollama:https?:\/\/)[^/?#|]*@/, "$1");
+  return `${instance}|${key.kind}|${key.name}`;
 }
 
 // Ever-increasing across the page's lifetime (React keys need stable

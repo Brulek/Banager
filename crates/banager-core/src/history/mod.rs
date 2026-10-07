@@ -275,7 +275,11 @@ pub fn record_for(
         run: run.to_string(),
         op_id: ended.op_id,
         finished_at,
-        key: ended.key.clone(),
+        key: ArtifactKey {
+            instance_id: crate::runner::redact::without_ollama_login(&ended.key.instance_id)
+                .into_owned(),
+            ..ended.key.clone()
+        },
         display_name: started.display_name.clone(),
         adapter_id: started.adapter_id.clone(),
         kind,
@@ -519,10 +523,12 @@ enum Loaded {
         cleared_before: Option<i64>,
         records: Vec<HistoryRecord>,
         clock: Clock,
-        /// Whether `bound` dropped records the file still has: too old, or
-        /// past the newest `MAX_RECORDS`. The file is then written again
-        /// at once, so that it holds no more than its bounds say for
-        /// longer than this launch takes to start.
+        /// Whether the records read differ from the file's: `bound`
+        /// dropped some (too old, or past the newest `MAX_RECORDS`), or an
+        /// Ollama login was taken out of a key
+        /// (`redact::without_ollama_login`). The file is then written
+        /// again at once, so that it holds no more than its bounds say,
+        /// and no login, for longer than this launch takes to start.
         pruned: bool,
     },
     /// A newer Banager's file: start empty and never write over it.
@@ -566,6 +572,15 @@ fn load(path: &Path, now: i64) -> Loaded {
                 .collect()
         })
         .unwrap_or_default();
+    let mut redacted = false;
+    for record in &mut records {
+        if let std::borrow::Cow::Owned(id) =
+            crate::runner::redact::without_ollama_login(&record.key.instance_id)
+        {
+            record.key.instance_id = id;
+            redacted = true;
+        }
+    }
     let read = records.len();
     let mut clock = Clock {
         trusted: value
@@ -578,7 +593,7 @@ fn load(path: &Path, now: i64) -> Loaded {
     bound(&mut records, clock.anchor(now));
     Loaded::Usable {
         cleared_before,
-        pruned: records.len() < read,
+        pruned: redacted || records.len() < read,
         records,
         clock,
     }
@@ -687,8 +702,8 @@ impl HistoryStore {
                 records,
                 clock,
                 writable,
-                // A file with records past its bounds is written again
-                // straight away, without them.
+                // Rewrite records past their bounds or containing a legacy
+                // Ollama login straight away, without those details.
                 changes: u64::from(pruned),
                 written: 0,
                 tries: 0,
@@ -1400,6 +1415,108 @@ mod tests {
         let back: HistoryRecord =
             serde_json::from_str(&serde_json::to_string(&r).unwrap()).unwrap();
         assert_eq!(back, r);
+    }
+
+    #[test]
+    fn test_ollama_login_is_redacted_before_history_is_kept_or_written() {
+        for host in [
+            "http://alice:secret@server:11434",
+            "http://alice:s%40cret@server:11434",
+            "http://token@server:11434",
+            "http://:secret@server:11434",
+        ] {
+            let dir = TempDir::new("ollama-login");
+            let store = HistoryStore::open_with_clock(dir.file(), now);
+            let k = ArtifactKey {
+                instance_id: format!("ollama:{host}"),
+                kind: ArtifactKind::Model,
+                name: "llama3:latest".to_string(),
+            };
+            for op_kind in [OpKind::Upgrade, OpKind::Uninstall] {
+                let mut e = ended(&k, &Outcome::Succeeded);
+                e.op_kind = op_kind;
+                store.record(
+                    &e,
+                    &Started {
+                        adapter_id: "ollama".to_string(),
+                        ..started("llama3:latest")
+                    },
+                );
+            }
+            assert_eq!(
+                store.view().records[0].key.instance_id,
+                "ollama:http://server:11434"
+            );
+            assert!(store.flush(Duration::from_secs(5)));
+            let disk = std::fs::read_to_string(dir.file()).unwrap();
+            for secret in ["alice", "secret", "s%40cret", "token@"] {
+                assert!(!disk.contains(secret), "history retained {secret}");
+            }
+            assert_eq!(
+                k.instance_id,
+                format!("ollama:{host}"),
+                "live identity is unchanged"
+            );
+        }
+    }
+
+    #[test]
+    fn test_old_ollama_history_is_redacted_on_read_and_rewritten() {
+        let dir = TempDir::new("old-ollama-login");
+        let mut record = record_at("llama3:latest", NOW);
+        record.key.instance_id = "ollama:http://alice:secret@server:11434".to_string();
+        record.key.kind = ArtifactKind::Model;
+        record.adapter_id = "ollama".to_string();
+        std::fs::write(
+            dir.file(),
+            serde_json::to_vec(&serde_json::json!({
+                "format": HISTORY_FORMAT, "records": [record]
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let store = HistoryStore::open_with_clock(dir.file(), now);
+        assert_eq!(
+            store.view().records[0].key.instance_id,
+            "ollama:http://server:11434"
+        );
+        assert!(store.flush(Duration::from_secs(5)));
+        assert!(!std::fs::read_to_string(dir.file())
+            .unwrap()
+            .contains("secret"));
+    }
+
+    /// A file with no Ollama login is read as it is and not written again
+    /// for one: an `@` in another source's id, or an Ollama id with no
+    /// login, is not one.
+    #[test]
+    fn test_history_without_an_ollama_login_is_read_as_it_is_and_not_rewritten() {
+        let dir = TempDir::new("no-ollama-login");
+        let mut pip = record_at("requests", NOW);
+        pip.key.instance_id = "pip:/opt/homebrew/opt/python@3.13/bin/python3.13".to_string();
+        pip.key.kind = ArtifactKind::Package;
+        pip.adapter_id = "pip".to_string();
+        let mut model = record_at("llama3:latest", NOW - DAY);
+        model.key.instance_id = "ollama:http://127.0.0.1:11434".to_string();
+        model.key.kind = ArtifactKind::Model;
+        model.adapter_id = "ollama".to_string();
+        std::fs::write(
+            dir.file(),
+            serde_json::to_vec(&serde_json::json!({
+                "format": HISTORY_FORMAT, "trusted_at": NOW, "records": [model, pip]
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        match load(&dir.file(), NOW) {
+            Loaded::Usable {
+                records, pruned, ..
+            } => {
+                assert_eq!(records, vec![model, pip]);
+                assert!(!pruned, "nothing to write again");
+            }
+            Loaded::Newer => panic!("the file is this format"),
+        }
     }
 
     #[test]

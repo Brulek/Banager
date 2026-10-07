@@ -201,16 +201,55 @@ pub fn load_at(path: &Path, now: i64) -> Settings {
         Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or_default(),
         Err(_) => Settings::default(),
     };
+    // Check even keys about to expire, so a legacy login left on disk
+    // still triggers the rewrite after those keys have been dropped.
+    let redacted = redact_ollama_logins(&mut settings);
     settings
         .snoozed_updates
         .retain(|snoozed| snoozed.until > now);
+    if redacted {
+        // Best effort, as for ordinary settings writes. Never hand the
+        // old login back to the window even when the disk is read-only.
+        let _ = save(path, &settings);
+    }
     settings
+}
+
+/// Strip logins from every stored key, without touching the live adapter.
+fn redact_ollama_logins(settings: &mut Settings) -> bool {
+    let mut changed = false;
+    for key in settings
+        .ignored_updates
+        .iter_mut()
+        .chain(
+            settings
+                .skipped_versions
+                .iter_mut()
+                .map(|item| &mut item.key),
+        )
+        .chain(
+            settings
+                .snoozed_updates
+                .iter_mut()
+                .map(|item| &mut item.key),
+        )
+    {
+        if let std::borrow::Cow::Owned(id) =
+            crate::runner::redact::without_ollama_login(&key.instance_id)
+        {
+            key.instance_id = id;
+            changed = true;
+        }
+    }
+    changed
 }
 
 /// Writes through an exclusively created staging file beside `path`, then
 /// atomically replaces it. Concurrent processes cannot share a staging file.
 pub fn save(path: &Path, settings: &Settings) -> std::io::Result<()> {
-    let json = serde_json::to_vec_pretty(settings)
+    let mut settings = settings.clone();
+    redact_ollama_logins(&mut settings);
+    let json = serde_json::to_vec_pretty(&settings)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
     crate::atomic_file::write(path, &json)
 }
@@ -239,6 +278,105 @@ mod tests {
             kind: ArtifactKind::Formula,
             name: name.to_string(),
         }
+    }
+
+    #[test]
+    fn test_ollama_logins_are_removed_from_saved_and_legacy_settings() {
+        let path = temp_settings_path("ollama-login");
+        let k = ArtifactKey {
+            instance_id: "ollama:http://alice:secret@server:11434".to_string(),
+            kind: ArtifactKind::Model,
+            name: "llama3:latest".to_string(),
+        };
+        let settings = Settings {
+            ignored_updates: vec![k.clone()],
+            skipped_versions: vec![SkippedVersion {
+                key: k.clone(),
+                version: "digest".to_string(),
+            }],
+            snoozed_updates: vec![SnoozedUpdate {
+                key: k,
+                until: i64::MAX,
+            }],
+            ..Settings::default()
+        };
+        save(&path, &settings).unwrap();
+        assert!(!std::fs::read_to_string(&path).unwrap().contains("secret"));
+        // An older file is scrubbed before it reaches the window and rewritten.
+        std::fs::write(&path, serde_json::to_vec(&settings).unwrap()).unwrap();
+        let loaded = load_at(&path, 0);
+        for key in [
+            &loaded.ignored_updates[0],
+            &loaded.skipped_versions[0].key,
+            &loaded.snoozed_updates[0].key,
+        ] {
+            assert_eq!(key.instance_id, "ollama:http://server:11434");
+        }
+        assert!(!std::fs::read_to_string(&path).unwrap().contains("secret"));
+        assert!(settings.ignored_updates[0].instance_id.contains("secret"));
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn test_expired_ollama_snooze_still_scrubs_the_legacy_file() {
+        let path = temp_settings_path("expired-ollama-login");
+        let settings = Settings {
+            snoozed_updates: vec![SnoozedUpdate {
+                key: ArtifactKey {
+                    instance_id: "ollama:http://alice:secret@server:11434".to_string(),
+                    kind: ArtifactKind::Model,
+                    name: "llama3:latest".to_string(),
+                },
+                until: 1,
+            }],
+            ..Settings::default()
+        };
+        std::fs::write(&path, serde_json::to_vec(&settings).unwrap()).unwrap();
+        assert!(load_at(&path, 2).snoozed_updates.is_empty());
+        assert!(!std::fs::read_to_string(&path).unwrap().contains("secret"));
+        let _ = std::fs::remove_file(path);
+    }
+
+    /// Loading writes nothing when there is no login to take out: an `@`
+    /// elsewhere in a key, or an Ollama id with no login, leaves the file's
+    /// bytes as they were (compact here, where a write would be pretty).
+    #[test]
+    fn test_settings_without_an_ollama_login_are_not_rewritten_on_load() {
+        let path = temp_settings_path("no-ollama-login");
+        let key = |instance_id: &str, kind, name: &str| ArtifactKey {
+            instance_id: instance_id.to_string(),
+            kind,
+            name: name.to_string(),
+        };
+        let settings = Settings {
+            ignored_updates: vec![key(
+                "pip:/opt/homebrew/opt/python@3.13/bin/python3.13",
+                ArtifactKind::Package,
+                "requests",
+            )],
+            skipped_versions: vec![SkippedVersion {
+                key: key(
+                    "npm:/opt/homebrew",
+                    ArtifactKind::Package,
+                    "@anthropic-ai/claude-code",
+                ),
+                version: "2.1.0".to_string(),
+            }],
+            snoozed_updates: vec![SnoozedUpdate {
+                key: key(
+                    "ollama:http://127.0.0.1:11434",
+                    ArtifactKind::Model,
+                    "llama3:latest",
+                ),
+                until: i64::MAX,
+            }],
+            ..Settings::default()
+        };
+        let bytes = serde_json::to_vec(&settings).unwrap();
+        std::fs::write(&path, &bytes).unwrap();
+        assert_eq!(load_at(&path, 0), settings);
+        assert_eq!(std::fs::read(&path).unwrap(), bytes, "not written again");
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]

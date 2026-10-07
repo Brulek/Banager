@@ -48,6 +48,16 @@ use regex::Regex;
 use std::borrow::Cow;
 use std::sync::LazyLock;
 
+/// A persistent Ollama instance id, with URL userinfo removed. Runtime
+/// ids still carry the daemon URL used for authentication; history and
+/// settings must not persist that login. Preserve every other byte so
+/// credential-free ids keep matching. Mirrored by `artifactKeyId` in TS.
+pub(crate) fn without_ollama_login(id: &str) -> Cow<'_, str> {
+    static LOGIN: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"^(ollama:https?://)[^/?#|]*@").expect("a valid pattern"));
+    LOGIN.replace(id, "${1}")
+}
+
 /// What stands where a secret was.
 pub const MASK: &str = "****";
 
@@ -513,6 +523,54 @@ pub fn after_cut(text: &str) -> Cow<'_, str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Only an Ollama instance id's URL login goes: every other id, an `@`
+    /// in a path among them, is handed back as it is (`Cow::Borrowed`), so
+    /// a settings or history file without a login is never rewritten at
+    /// load. The ids are built as the adapters build them
+    /// (`model::instance_id`), an Ollama one from an `OLLAMA_HOST` with a
+    /// scheme as `path_env::normalize_ollama_host` turns it into a URL:
+    /// parsed by `url`, which percent-encodes an `@` in a password, and
+    /// with no trailing `/`.
+    #[test]
+    fn test_without_ollama_login_changes_only_an_ollama_url_login() {
+        let ollama = |host: &str| {
+            let url = url::Url::parse(host).expect("a URL");
+            crate::model::instance_id("ollama", Some(url.as_str().trim_end_matches('/')))
+        };
+        let id = |adapter: &str, path: &str| crate::model::instance_id(adapter, Some(path));
+        for (login, plain) in [
+            (
+                ollama("http://alice:secret@server:11434"),
+                "ollama:http://server:11434",
+            ),
+            (
+                ollama("http://alice:p@ss@server:11434/ollama"),
+                "ollama:http://server:11434/ollama",
+            ),
+            (
+                ollama("http://token@[::1]:11434"),
+                "ollama:http://[::1]:11434",
+            ),
+            (ollama("http://:secret@server"), "ollama:http://server"),
+        ] {
+            assert_eq!(without_ollama_login(&login), plain, "{login}");
+        }
+        for unchanged in [
+            ollama("http://127.0.0.1:11434"),
+            ollama("http://server:11434/a@b"),
+            ollama("http://server:11434/?who=a@b"),
+            id("pip", "/opt/homebrew/opt/python@3.13/bin/python3.13"),
+            id("npm", "/opt/homebrew/opt/node@22"),
+            id("brew", "/opt/homebrew"),
+            crate::model::instance_id("standalone-claude", None),
+        ] {
+            assert!(
+                matches!(without_ollama_login(&unchanged), Cow::Borrowed(same) if same == unchanged),
+                "{unchanged} must be left as it is"
+            );
+        }
+    }
 
     /// What curl 8.7.1 (macOS 27's `/usr/bin/curl`) printed for this
     /// setting, run read-only against a closed port on this Mac: it fails

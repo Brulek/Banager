@@ -95,6 +95,20 @@ describe("the history's wire shape", () => {
 });
 
 describe("recentUpdates", () => {
+  it("matches a redacted Ollama history key to live operations and offered updates", () => {
+    const key = { instance_id: "ollama:http://server:11434", kind: "Model", name: "llama3:latest" } as const;
+    const kept = record(key.name, { key, adapter_id: "ollama", result: { Failed: { cause: "network" } } });
+    for (const login of ["alice:secret", "alice:s%40cret", "token", ":secret"]) {
+      const liveId = `ollama:http://${login}@server:11434`;
+      const offered = new Set([artifactKeyId({ ...key, instance_id: liveId })]);
+      expect(recentUpdates(view([kept]), [], NOW, offered)).toEqual([kept]);
+      const live = { ...op(7, key.name), instance_id: liveId, artifact_kind: key.kind };
+      expect(recentUpdates(view([kept]), [live], NOW, offered)).toEqual([]);
+      const elsewhere = new Set([artifactKeyId({ ...key, instance_id: "ollama:http://other:11434" })]);
+      expect(recentUpdates(view([kept]), [], NOW, elsewhere)).toEqual([]);
+    }
+  });
+
   it("lists each tool's newest update that worked, newest first", () => {
     const listed = recentUpdates(
       view([

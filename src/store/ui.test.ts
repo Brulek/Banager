@@ -23,6 +23,25 @@ describe("useUiStore", () => {
     expect(artifactKeyId(key)).toBe("brew:/opt/homebrew|Formula|jq");
   });
 
+  it("artifactKeyId leaves out only an Ollama URL's login, as runner::redact::without_ollama_login does", () => {
+    const model = (instance_id: string): ArtifactKey => ({ instance_id, kind: "Model", name: "llama3:latest" });
+    expect(artifactKeyId(model("ollama:http://alice:p%40ss@server:11434/ollama"))).toBe(
+      "ollama:http://server:11434/ollama|Model|llama3:latest",
+    );
+    expect(artifactKeyId(model("ollama:http://token@[::1]:11434"))).toBe("ollama:http://[::1]:11434|Model|llama3:latest");
+    // An `@` anywhere else is not a login, in an Ollama URL or another source's id.
+    const unchanged: ArtifactKey[] = [
+      model("ollama:http://127.0.0.1:11434"),
+      model("ollama:http://server:11434/a@b"),
+      model("ollama:http://server:11434/?who=a@b"),
+      { instance_id: "pip:/opt/homebrew/opt/python@3.13/bin/python3.13", kind: "Package", name: "requests" },
+      { instance_id: "npm:/opt/homebrew", kind: "Package", name: "@anthropic-ai/claude-code" },
+    ];
+    for (const same of unchanged) {
+      expect(artifactKeyId(same)).toBe(`${same.instance_id}|${same.kind}|${same.name}`);
+    }
+  });
+
   it("starts on the Overview", () => {
     expect(useUiStore.getInitialState().page).toBe("overview");
   });
