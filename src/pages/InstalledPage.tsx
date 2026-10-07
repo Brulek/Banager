@@ -83,7 +83,7 @@ import { InspectorCallout, twinAdviceLines, twinVerdict } from "../components/Tw
 import { uncheckedUpdatesChip } from "../components/UncheckedUpdates";
 import { updatesUnchecked } from "../lib/uncheckedStandalone";
 import { CommandsGroup, notOnPathChip, twinChip, useTwins } from "../components/CommandFacts";
-import { withoutJudgedPathNotices } from "../lib/commands";
+import { commandsSaidOnRows, judgedCommands, withoutJudgedPathNotices } from "../lib/commands";
 import { sizeFact } from "../components/SizeFact";
 import { compareSizes, sizeCellOf, sizeOrderOf } from "../lib/sizes";
 import { cachedRankedComparator } from "../lib/sortRank";
@@ -691,6 +691,11 @@ export function InstalledPage() {
   // How much each source has installed: the number its row in the
   // sidebar shows.
   const countByInstance = useMemo(() => installedCountByInstance(snapshot?.artifacts ?? []), [snapshot]);
+  // The commands each source's rows say typing them runs (「装了两份」):
+  // the notices leave out their launcher's PATH sentence there, as the
+  // inspector does where its group says it (`withoutJudgedPathNotices`,
+  // r24 W8).
+  const judgedBySource = useMemo(() => commandsSaidOnRows(snapshot?.artifacts ?? [], twins), [snapshot, twins]);
 
   // The source the sidebar's row for it opened the page on. It stays,
   // with nothing installed or with nothing its source could list, and
@@ -934,7 +939,10 @@ export function InstalledPage() {
     () => [
       ...(unfinished === null ? [] : [unfinished]),
       ...instancesInView.flatMap((instance) =>
-        sourceNoticesFor(instance, labelOf(instance), countByInstance.get(instance.id) ?? 0),
+        withoutJudgedPathNotices(
+          sourceNoticesFor(instance, labelOf(instance), countByInstance.get(instance.id) ?? 0),
+          judgedBySource.get(instance.id),
+        ),
       ),
       ...instancesInView
         .filter((instance) => instance.unverified_version !== null && (countByInstance.get(instance.id) ?? 0) > 0)
@@ -952,7 +960,7 @@ export function InstalledPage() {
       // shows them (`discoverNotices`).
       ...discoverNotices(show, discover, discoverNamed),
     ],
-    [unfinished, instancesInView, labelOf, countByInstance, show, discover, discoverNamed],
+    [unfinished, instancesInView, labelOf, countByInstance, judgedBySource, show, discover, discoverNamed],
   );
   const noticeFold = useNoticeFold(notices.length);
   // The notices are the list's first line while it has rows to be the
@@ -1691,7 +1699,7 @@ export function InstalledPage() {
     // Nor the launcher's PATH sentence when 「在终端里输入时」 says it better.
     const sourceNotices = withoutJudgedPathNotices(
       sourceNoticesFor(instance, label, countByInstance.get(instance.id) ?? 0),
-      artifact,
+      judgedCommands(artifact),
     ).map((notice) => (notice.action?.id === "showTool" ? { ...notice, action: undefined } : notice));
     const line = describe(artifact, instance, label);
     const removable = canUninstall(artifact, instance);

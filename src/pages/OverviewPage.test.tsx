@@ -1404,6 +1404,37 @@ describe("OverviewPage", () => {
     expect(state.query).toBe("claude");
   });
 
+  it("leaves out the note on Claude Code's command where its rows say which copy runs (r24 W8)", async () => {
+    // npm's @anthropic-ai/claude-code and Claude Code's own install: the
+    // rows it would lead to say 「装了两份」 and that typing claude runs
+    // npm's copy, so 「无法确认它是不是另一份Claude Code」 is not said here.
+    const npm = instance("npm:/opt/homebrew", "npm");
+    const claude = instance("standalone-claude", "standalone-claude", {
+      exe_path: "/Users/someone/.local/bin/claude",
+      prefix: "/Users/someone/.local/share/claude",
+      status: { unavailable: null, notes: ["ShadowedByNpm"] },
+    });
+    const npmKey: ArtifactKey = { instance_id: npm.id, kind: "Package", name: "@anthropic-ai/claude-code" };
+    const npmCopy = { ...artifact(npmKey), facts: { ...NO_FACTS, family: "claude-code", commands: [{ name: "claude", state: "Runs" as const }] } };
+    const ownCopy = {
+      ...artifact({ instance_id: claude.id, kind: "Binary", name: "claude" }),
+      display_name: "Claude Code",
+      facts: { ...NO_FACTS, family: "claude-code", commands: [{ name: "claude", state: { ShadowedBy: { by: npmKey } } }] },
+    };
+    served = snapshotWith({
+      instances: [brew, npm, claude, stoppedOllama],
+      artifacts: [...snapshotWith().artifacts, npmCopy, ownCopy],
+    });
+    const { findByRole, queryByText } = renderOverview();
+
+    const list = await findByRole("list", { name: "Needs attention" });
+    expect(within(list).getAllByRole("listitem")).toHaveLength(1);
+    expect(within(list).getByText("Ollama isn't running")).toBeInTheDocument();
+    expect(within(list).queryByRole("button", { name: /more note/ })).toBeNull();
+    expect(queryByText("Typing claude in Terminal runs a program with that name from npm")).toBeNull();
+    expect(queryByText(/Couldn't confirm whether it's another copy/)).toBeNull();
+  });
+
   it("makes the group that one folded row when every problem is a note, in Chinese too", async () => {
     await i18n.changeLanguage("zh-CN");
     try {

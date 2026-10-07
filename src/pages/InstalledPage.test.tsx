@@ -3682,6 +3682,18 @@ describe("which copy of a command runs (advantages round, item 4)", () => {
     expect(inspector).toHaveTextContent("Typing claude in Terminal runs a program with that name from npm");
   });
 
+  it("leaves the note out of the list's notices too, where the rows say Installed twice (r24 W8)", async () => {
+    const shadowed = { ...claudeInstance, status: { unavailable: null, notes: ["ShadowedByNpm" as const] } };
+    serveBoth(nativeClaude, npmClaude);
+    served = { ...served, instances: [brew, npm, shadowed] };
+    renderInstalled();
+
+    const native = await findRow("Claude Code");
+    expect(chipsOf(native)).toEqual(["Installed twice"]);
+    expect(screen.queryByText("Typing claude in Terminal runs a program with that name from npm")).toBeNull();
+    expect(screen.queryByText(/Couldn't confirm whether it's another copy/)).toBeNull();
+  });
+
   it("names the folder of a copy Terminal cannot find, and marks no tool with only one copy", async () => {
     const formulaGrok: InstalledArtifact = {
       ...formula("grok"),

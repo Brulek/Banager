@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { commandGroups, stateId, twinsByArtifact, withoutJudgedPathNotices } from "./commands";
+import {
+  commandGroups,
+  commandsSaidOnRows,
+  judgedCommands,
+  stateId,
+  twinsByArtifact,
+  withoutJudgedPathNotices,
+} from "./commands";
 import type { SourceNoticeSpec } from "./sources";
 import type { ArtifactKey, CommandFact, InstalledArtifact } from "./types";
 import { NO_FACTS } from "./types";
@@ -112,16 +119,53 @@ describe("withoutJudgedPathNotices", () => {
 
   it("drops the launcher's PATH sentence when the command group judged that command", () => {
     const native = artifact(nativeKey, "claude-code", [{ name: "claude", state: { ShadowedBy: { by: npmKey } } }]);
-    expect(withoutJudgedPathNotices([...pathNotices, ...others], native)).toEqual(others);
+    expect(withoutJudgedPathNotices([...pathNotices, ...others], judgedCommands(native))).toEqual(others);
   });
 
   it("keeps it when nothing was judged about the launcher, or the verdict is for another command", () => {
     const unjudged = artifact(nativeKey, "claude-code", [{ name: "claude", state: null }]);
-    expect(withoutJudgedPathNotices(pathNotices, unjudged)).toEqual(pathNotices);
+    expect(withoutJudgedPathNotices(pathNotices, judgedCommands(unjudged))).toEqual(pathNotices);
+    expect(withoutJudgedPathNotices(pathNotices, undefined)).toEqual(pathNotices);
     const elsewhere = artifact(nativeKey, "claude-code", [
       { name: "claude", state: null },
       { name: "claude-helper", state: "Runs" },
     ]);
-    expect(withoutJudgedPathNotices(pathNotices, elsewhere)).toEqual(pathNotices);
+    expect(withoutJudgedPathNotices(pathNotices, judgedCommands(elsewhere))).toEqual(pathNotices);
+  });
+
+  // r24 W8: the lists give a source's notices, held to what the rows of
+  // its tools say, as the inspector holds them to its command group.
+  it("holds a source's notices to the commands its rows say, a copy's verdict, and to no other source's", () => {
+    const native = artifact(nativeKey, "claude-code", [{ name: "claude", state: { ShadowedBy: { by: npmKey } } }]);
+    const npm = artifact(npmKey, "claude-code", [{ name: "claude", state: "Runs" }]);
+    const said = commandsSaidOnRows([npm, native]);
+    // 「运行的是npm装的那一份」 on Claude Code's row, 「运行的是这一份」 on npm's.
+    expect(said.get("standalone-claude")).toEqual(new Set(["claude"]));
+    expect(said.get("npm:/opt/homebrew")).toEqual(new Set(["claude"]));
+    expect(withoutJudgedPathNotices([...pathNotices, ...others], said.get("standalone-claude"))).toEqual(others);
+  });
+
+  it("keeps the notice where the rows say nothing of the command: no copy, no one verdict, or not on PATH", () => {
+    // W2-9: npm's `claude` is a wrapper of no family, no copy of Claude Code;
+    // the row says nothing, and the notice, with its Show, is all there is.
+    const wrapperKey: ArtifactKey = { ...npmKey, name: "cc-wrapper" };
+    const wrapper = artifact(wrapperKey, null, [{ name: "claude", state: "Runs" }]);
+    const native = artifact(nativeKey, "claude-code", [{ name: "claude", state: { ShadowedBy: { by: wrapperKey } } }]);
+    expect(commandsSaidOnRows([wrapper, native]).has("standalone-claude")).toBe(false);
+    // Two copies, nothing judged: 「装了两份」 with no word on which runs.
+    const unjudged = [
+      artifact(npmKey, "claude-code", [{ name: "claude", state: null }]),
+      artifact(nativeKey, "claude-code", [{ name: "claude", state: null }]),
+    ];
+    expect(commandsSaidOnRows(unjudged).size).toBe(0);
+    // Terminal can't find Claude Code's copy: its 「终端里找不到」 agrees with
+    // the notice, which stays.
+    const lost = [
+      artifact(npmKey, "claude-code", [{ name: "claude", state: "Runs" }]),
+      artifact(nativeKey, "claude-code", [{ name: "claude", state: { NotOnPath: { dir: "~/.local/bin" } } }]),
+    ];
+    const said = commandsSaidOnRows(lost);
+    expect(said.has("standalone-claude")).toBe(false);
+    expect(withoutJudgedPathNotices(pathNotices, said.get("standalone-claude"))).toEqual(pathNotices);
   });
 });

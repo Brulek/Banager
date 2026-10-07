@@ -151,19 +151,61 @@ const PATH_NOTICE_TITLES = new Set([
 ]);
 
 /**
- * `notices` less the source's sentence about the launcher on `PATH` when
- * `artifact`'s own command group already says what typing that command
- * runs. The group knows more -- which copy, from which source -- and the
- * notice, which cannot tell whether npm's `claude` is Claude Code, would
- * contradict it a few lines up ("could not confirm it is Claude Code"
- * under "runs the copy npm installed"). A launcher with no verdict keeps
- * its notice: then the notice is all there is.
+ * The commands of `artifact` that its command group says something about:
+ * what typing each of them runs is known (`state` not null).
  */
-export function withoutJudgedPathNotices(notices: SourceNoticeSpec[], artifact: InstalledArtifact): SourceNoticeSpec[] {
-  const judged = new Set(
-    artifact.facts.commands.filter((command) => command.state !== null).map((command) => command.name),
-  );
-  if (judged.size === 0) return notices;
+export function judgedCommands(artifact: InstalledArtifact): Set<string> {
+  return new Set(artifact.facts.commands.filter((command) => command.state !== null).map((command) => command.name));
+}
+
+/**
+ * The commands the rows of each source say what typing them runs, by the
+ * source's instance id: those a tool of the source shares with another
+ * copy of itself, where `twinVerdict` has a verdict -- the 「装了两份」
+ * word's ⓘ, 「在终端里输入“claude”，运行的是npm装的那一份」, and the
+ * Updates page's 「终端用另一份」. What the lists' notices of each source
+ * are held to (`withoutJudgedPathNotices`), as the inspector's are to its
+ * command group (`judgedCommands`). A command whose rows say nothing of
+ * it -- typing `claude` runs an npm program that is no copy of Claude
+ * Code, or the launcher is not on `PATH` (the 「终端里找不到」 word, which
+ * agrees with its notice) -- keeps its notice, and with it the notice's
+ * Show (W2-9). `twins` is `twinsByArtifact(artifacts)`, where the caller
+ * has it already.
+ */
+export function commandsSaidOnRows(
+  artifacts: readonly InstalledArtifact[],
+  twins: ReadonlyMap<string, Twin[]> = twinsByArtifact(artifacts),
+): Map<string, Set<string>> {
+  const bySource = new Map<string, Set<string>>();
+  for (const artifact of artifacts) {
+    const copies = twins.get(artifactKeyId(artifact.key));
+    if (copies === undefined || twinVerdict(artifact, copies) === null) continue;
+    const id = artifact.key.instance_id;
+    const said = bySource.get(id) ?? new Set<string>();
+    for (const copy of copies) for (const name of copy.commands) said.add(name);
+    bySource.set(id, said);
+  }
+  return bySource;
+}
+
+/**
+ * `notices` less the source's sentence about the launcher on `PATH` when
+ * what is on screen with it already says what typing that command runs
+ * (`judged`): in the inspector, the tool's command group
+ * (`judgedCommands`); where the Overview, the Updates page and the
+ * Installed list give the source's notices, the rows of its tools
+ * (`commandsSaidOnRows`). They know more -- which copy, from which source
+ * -- and the notice, which cannot tell whether npm's `claude` is Claude
+ * Code, would contradict them ("could not confirm it is Claude Code" over
+ * "runs the copy npm installed", and over rows that say "Installed
+ * twice": r24 W8). A launcher with no verdict keeps its notice: then the
+ * notice is all there is.
+ */
+export function withoutJudgedPathNotices(
+  notices: SourceNoticeSpec[],
+  judged: ReadonlySet<string> | undefined,
+): SourceNoticeSpec[] {
+  if (judged === undefined || judged.size === 0) return notices;
   return notices.filter(
     (notice) =>
       !(PATH_NOTICE_TITLES.has(notice.titleKey) && judged.has(String(notice.values?.command ?? ""))),

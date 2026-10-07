@@ -18,6 +18,7 @@ import {
 } from "../lib/sources";
 import { copyStatusText, useCopyCommand } from "../lib/clipboard";
 import { useOperationName } from "../lib/operations";
+import { commandsSaidOnRows, withoutJudgedPathNotices } from "../lib/commands";
 import { useTranslatedDescription } from "../lib/toolDescriptions";
 import { listedName, modelPath, nameKey, namesUnderSeveralSources } from "../lib/names";
 import { rankedComparator } from "../lib/sortRank";
@@ -676,13 +677,19 @@ export function UpdatesPage() {
   // check.
   const notices = useMemo(() => {
     const installed = installedCountByInstance(snapshot?.artifacts ?? []);
+    // Less a launcher's PATH sentence where its tool's rows say what typing
+    // it runs (`commandsSaidOnRows`: 「终端用另一份」; r24 W8).
+    const judged = commandsSaidOnRows(snapshot?.artifacts ?? []);
     const unfinished = snapshot ? unfinishedChecksNotice(t, snapshot.errors, snapshot.instances) : null;
     const lookups = failedLookupsNotice(t, visibleUpdates.filter(isFailedLookup));
     return [
       ...(unfinished === null ? [] : [unfinished]),
       ...(lookups === null ? [] : [lookups]),
       ...(snapshot?.instances ?? []).flatMap((instance) =>
-        sourceNoticesFor(instance, sourceLabelFor(instance.id), installed.get(instance.id) ?? 0),
+        withoutJudgedPathNotices(
+          sourceNoticesFor(instance, sourceLabelFor(instance.id), installed.get(instance.id) ?? 0),
+          judged.get(instance.id),
+        ),
       ),
     ];
   }, [snapshot, sourceLabelFor, t]);

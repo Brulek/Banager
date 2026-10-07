@@ -25,6 +25,7 @@ import { notCheckedHeadline } from "../lib/allGood";
 import { failedLookupsOf, failedLookupsProblem, unsuccessfulLookupsOf } from "../lib/failedLookups";
 import { useSystemFacts } from "../lib/diagnostics";
 import { loginPathNotice } from "../lib/loginPathNotice";
+import { commandsSaidOnRows, withoutJudgedPathNotices } from "../lib/commands";
 import type { UpdatesSummary } from "../lib/updateState";
 import type { ManagerInstance, Settings, UpdateCandidate } from "../lib/types";
 import { artifactKeyId, useUiStore } from "../store/ui";
@@ -516,6 +517,10 @@ export function OverviewPage() {
   const labelOf = (instance: ManagerInstance): string => labels.get(instance.id) ?? instance.adapter_id;
 
   const installedByInstance = installedCountByInstance(snapshot.artifacts);
+  // Less a launcher's PATH sentence where its tool's rows say what typing
+  // it runs (`commandsSaidOnRows`, r24 W8): never 「无法确认它是不是另一份
+  // Claude Code」 leading to rows that say 「装了两份」.
+  const judgedBySource = commandsSaidOnRows(snapshot.artifacts);
 
   const summary = updatesSummary(
     snapshot,
@@ -552,7 +557,10 @@ export function OverviewPage() {
     ...(unfinished === null ? [] : [unfinished]),
     ...(lookups === null ? [] : [lookups]),
     ...snapshot.instances.flatMap((instance) => {
-      const notices = sourceNoticesFor(instance, labelOf(instance), installedByInstance.get(instance.id) ?? 0);
+      const notices = withoutJudgedPathNotices(
+        sourceNoticesFor(instance, labelOf(instance), installedByInstance.get(instance.id) ?? 0),
+        judgedBySource.get(instance.id),
+      );
       const notice = notices.find((each) => each.variant === "warning") ?? notices[0];
       return notice === undefined ? [] : [notice];
     }),

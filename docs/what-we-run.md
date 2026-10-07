@@ -2834,7 +2834,12 @@ typing `claude` then finds nothing or another program with that name.
 Where a `claude` resolves does not say what program it is, so the first
 of those notices says it may be another copy of Claude Code or a
 different program with the same name, and neither calls it another
-copy. Both looks are reads (`lstat` and `readlink`, one step at a time;
+copy. Where the rows already say which copy typing `claude` runs -- the
+one that comes first is another copy Banager lists, of the same AI tool
+(**Installed twice**; on the Updates page, **Not used in Terminal**) --
+the Overview, the Updates page and the Installed page leave the notice
+out, as a tool's details do under **In Terminal**: never "couldn't
+confirm" over rows that say which copy it is. Both looks are reads (`lstat` and `readlink`, one step at a time;
 listed under Files Banager reads); that is a notice, not a command. A
 `PATH` folder in one of the places Banager never reads (Which copy a
 command runs, below) -- `~/Documents`, iCloud Drive, `/Volumes` and the

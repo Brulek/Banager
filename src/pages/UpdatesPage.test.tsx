@@ -6053,6 +6053,34 @@ describe("UpdatesPage", () => {
     },
   );
 
+  it("leaves out the npm note on Claude Code's command where its row says Terminal uses npm's copy (r24 W8)", async () => {
+    // npm's @anthropic-ai/claude-code is a copy of Claude Code: the row says
+    // 「终端用另一份」, so the notice's "Couldn't confirm whether it's another
+    // copy of Claude Code" is not said over it.
+    const npmKey: ArtifactKey = { instance_id: "npm:/usr/local", kind: "Package", name: "@anthropic-ai/claude-code" };
+    instances = [...snapshot.instances, { ...claudeInstance, status: { unavailable: null, notes: ["ShadowedByNpm"] } }];
+    updates = [claudeUpdate];
+    artifacts = [
+      {
+        ...claudeArtifact,
+        facts: { ...NO_FACTS, family: "claude-code", commands: [{ name: "claude", state: { ShadowedBy: { by: npmKey } } }] },
+      },
+      {
+        ...claudeArtifact,
+        key: npmKey,
+        display_name: "@anthropic-ai/claude-code",
+        uninstall_blocked: null,
+        facts: { ...NO_FACTS, family: "claude-code", commands: [{ name: "claude", state: "Runs" }] },
+      },
+    ];
+    const { queryByText } = renderPage();
+
+    const claude = await findRow("Claude Code");
+    expect(within(claude).getByText("Not used in Terminal")).toBeInTheDocument();
+    expect(queryByText("Typing claude in Terminal runs a program with that name from npm")).toBeNull();
+    expect(queryByText(/Couldn't confirm whether it's another copy/)).toBeNull();
+  });
+
   it("does not say everything is up to date when Claude Code's launcher is left without its program: there was no installed version to check", async () => {
     // Its program files are gone, so `StandaloneAdapter::check_updates`
     // returns before reading either version: there is no installed one to
