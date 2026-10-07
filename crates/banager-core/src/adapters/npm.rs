@@ -2527,11 +2527,18 @@ mod tests {
     const F08_TREE: &str = r#"{"dependencies":{"jq":{"version":"1.0.0"}}}"#;
 
     #[tokio::test]
-    #[ignore = "bug: G03: npm's fatal error JSON is read as an empty list"]
     async fn f08_g03_fatal_exit_one_error_is_not_empty_inventory() {
         let runner = Arc::new(MockRunner::new());
         runner.respond(
-            vec!["/opt/homebrew/bin/npm", "ls", "-g", "--depth=0", "--json"],
+            vec![
+                "/opt/homebrew/bin/npm",
+                "ls",
+                "-g",
+                "--depth=0",
+                "--json",
+                "--prefix",
+                "/opt/homebrew",
+            ],
             f08_npm_output(F08_FATAL, 1),
         );
         let result = NpmAdapter::new(runner).inventory(&test_instance()).await;
@@ -2549,7 +2556,15 @@ mod tests {
         let runner = Arc::new(MockRunner::new());
         let tree = r#"{"problems":["invalid: jq@1.0.0"],"dependencies":{"jq":{"version":"1.0.0","invalid":"^2.0.0","problems":["invalid: jq@1.0.0"]}},"error":{"code":"ELSPROBLEMS","summary":"invalid: jq@1.0.0","detail":""}}"#;
         runner.respond(
-            vec!["/opt/homebrew/bin/npm", "ls", "-g", "--depth=0", "--json"],
+            vec![
+                "/opt/homebrew/bin/npm",
+                "ls",
+                "-g",
+                "--depth=0",
+                "--json",
+                "--prefix",
+                "/opt/homebrew",
+            ],
             f08_npm_output(tree, 1),
         );
         let rows = NpmAdapter::new(runner)
@@ -2562,11 +2577,18 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "bug: G03: npm's fatal error JSON makes the reading after an uninstall say the tool is gone"]
     async fn f08_g03_fatal_inventory_cannot_confirm_an_uninstall() {
         let runner = Arc::new(MockRunner::new());
         runner.respond(
-            vec!["/opt/homebrew/bin/npm", "ls", "-g", "--depth=0", "--json"],
+            vec![
+                "/opt/homebrew/bin/npm",
+                "ls",
+                "-g",
+                "--depth=0",
+                "--json",
+                "--prefix",
+                "/opt/homebrew",
+            ],
             f08_npm_output(F08_FATAL, 1),
         );
         let inst = test_instance();
@@ -2587,11 +2609,11 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "bug: G03: npm's fatal error JSON empties the list an earlier refresh read"]
     async fn f08_g03_session_keeps_inventory_after_fatal_npm_json() {
         let dir = tempfile::tempdir().unwrap();
         let exe = fake_exe(dir.path(), "npm");
         let npm = exe.to_str().unwrap();
+        let prefix = dir.path().to_str().unwrap();
         let runner = Arc::new(MockRunner::new());
         runner.respond(
             vec![npm, "prefix", "-g"],
@@ -2599,11 +2621,11 @@ mod tests {
         );
         runner.respond(vec![npm, "--version"], f08_npm_output("12.0.2", 0));
         runner.respond(
-            vec![npm, "outdated", "-g", "--json"],
+            vec![npm, "outdated", "-g", "--json", "--prefix", prefix],
             f08_npm_output("{}", 0),
         );
         runner.respond(
-            vec![npm, "ls", "-g", "--depth=0", "--json"],
+            vec![npm, "ls", "-g", "--depth=0", "--json", "--prefix", prefix],
             f08_npm_output(F08_TREE, 0),
         );
         let adapter = Arc::new(NpmAdapter::new(runner.clone()).with_prefix_read_only_fn(|_| None));
@@ -2625,7 +2647,7 @@ mod tests {
             "precondition: previous inventory was actually read"
         );
         runner.respond(
-            vec![npm, "ls", "-g", "--depth=0", "--json"],
+            vec![npm, "ls", "-g", "--depth=0", "--json", "--prefix", prefix],
             f08_npm_output(F08_FATAL, 1),
         );
         let next = session.refresh(&env, &CheckOptions::default()).await;

@@ -2643,7 +2643,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "bug: G01: an update can still be submitted after a refresh stopped listing its tool"]
     async fn f08_g01_removed_listed_tool_is_refused_at_submit() {
         f08_listed_refresh(true).await;
     }
