@@ -843,15 +843,25 @@ pub trait Adapter: Send + Sync {
     }
 
     /// The locks a refresh reads `inst` under (`Session::refresh_round`):
-    /// its detection, when last round found `inst`, and its inventory and
-    /// update check. The ones this source's plans take for it, so that no
-    /// operation another plan runs on the same files is under way while
-    /// the refresh reads them -- a refresh that finds one held carries
-    /// last round's rows instead. The instance's own lock, by default;
-    /// npm's adds the Homebrew prefix its plans take
-    /// (`NpmAdapter::instance_locks`).
+    /// its detection, when last round found `inst`, and its inventory, and
+    /// -- those of them `check_locks` keeps -- its update check. The ones
+    /// this source's plans take for it, so that no operation another plan
+    /// runs on the same files is under way while the refresh reads them --
+    /// a refresh that finds one held carries last round's rows instead.
+    /// The instance's own lock, by default; npm's adds the Homebrew prefix
+    /// its plans take (`NpmAdapter::instance_locks`).
     fn refresh_locks(&self, inst: &ManagerInstance) -> Vec<ResourceLock> {
         vec![ResourceLock(inst.id.clone())]
+    }
+
+    /// Which of `refresh_locks` a refresh keeps for `inst`'s update check,
+    /// once its inventory is read (`Session::refresh_round`); the others
+    /// are let go then, so an operation waiting for one starts without
+    /// waiting for the check. All of them, by default. npm's own alone:
+    /// its check asks the npm registry, up to a minute, and a Homebrew
+    /// operation at its prefix waits for its listing, not for that.
+    fn check_locks(&self, inst: &ManagerInstance) -> Vec<ResourceLock> {
+        self.refresh_locks(inst)
     }
 
     /// The reading after a link (`OpKind::Link`): `None` when `key` is not

@@ -2197,10 +2197,10 @@ Terminal"). With both locks no npm operation runs while a brew one on the
 same prefix does, in Update All too. Where no Homebrew lives at that
 prefix, no other plan takes the second lock. A refresh reads npm under the
 same two locks (`Adapter::refresh_locks`, `NpmAdapter::instance_locks`):
-while a Homebrew operation on that prefix runs -- `brew upgrade node`
-unlinking `bin/node`, `bin/npm` and `lib/node_modules/npm` and linking
-them again, when npm may not be found or not start -- it runs no command
-of an npm the last refresh listed there, neither `<npm> prefix -g` nor
+one that reaches npm while a Homebrew operation on that prefix runs --
+`brew upgrade node` unlinking `bin/node`, `bin/npm` and
+`lib/node_modules/npm` and linking them again, when npm may not be found
+or not start -- runs no command of an npm the last refresh listed there, neither `<npm> prefix -g` nor
 the reads above, and keeps the rows that npm had, as for any source an
 operation holds (`Session::refresh_round`). An npm no refresh has listed
 yet is looked for as ever, and if it is found there, nothing more is
@@ -2208,7 +2208,14 @@ asked of it until the operation ends: it is listed with no packages,
 having none to carry, until a refresh after the operation reads them,
 and an uninstall preview meanwhile does not take that for none ("What
 runs on a Homebrew package", below). A refresh in which Homebrew and
-npm are both read holds the shared lock once, for both. Both adapters use
+npm are both read holds the shared lock once, for both. Once npm's
+packages are listed, the refresh lets go of the prefix's lock: npm's
+update check, `<npm> outdated -g`, asks the npm registry and can take up
+to its minute, and is read under npm's own lock alone
+(`Adapter::check_locks`), so a Homebrew operation confirmed meanwhile
+waits for that listing, not for the registry. One that changes `node` or
+`npm` while that check runs can make it fail, which that refresh says as
+a check that did not finish, keeping npm's last updates. Both adapters use
 the same lock helper. It matches case variants with `protected::same_path` and symbolic-link
 aliases by directory device and inode, using protected, read-only path lookups,
 then reuses the fixed Homebrew discovery prefix in the lock string. A prefix

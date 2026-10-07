@@ -698,6 +698,17 @@ impl Adapter for NpmAdapter {
         self.instance_locks(inst)
     }
 
+    /// npm's own lock, without the Homebrew prefix's: `npm outdated -g`
+    /// asks the registry, which can take up to its minute
+    /// (`check_updates`), and a Homebrew operation confirmed meanwhile
+    /// waited for it. The listing before it is read under both (r37 F2).
+    /// An operation that unlinks `node` or `npm` just as the check starts
+    /// can make it fail, which that refresh says, keeping npm's last
+    /// updates; one already running has loaded what it runs.
+    fn check_locks(&self, inst: &ManagerInstance) -> Vec<ResourceLock> {
+        vec![ResourceLock(inst.id.clone())]
+    }
+
     async fn inventory(
         &self,
         inst: &ManagerInstance,
@@ -2139,6 +2150,13 @@ mod tests {
             assert_eq!(
                 crate::adapters::Adapter::refresh_locks(&adapter, &inst),
                 plan.locks,
+                "{kind:?}"
+            );
+            // Its update check, which asks the registry, under its own
+            // alone: a Homebrew operation waits for the listing only.
+            assert_eq!(
+                crate::adapters::Adapter::check_locks(&adapter, &inst),
+                vec![ResourceLock(inst.id.clone())],
                 "{kind:?}"
             );
         }

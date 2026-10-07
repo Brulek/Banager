@@ -1645,6 +1645,13 @@ pub struct ResourceLockGuard {
     lock: ResourceLock,
 }
 
+impl ResourceLockGuard {
+    /// The lock this guard holds.
+    pub(crate) fn lock(&self) -> &ResourceLock {
+        &self.lock
+    }
+}
+
 impl Drop for ResourceLockGuard {
     fn drop(&mut self) {
         self.held.lock().unwrap().remove(&self.lock);

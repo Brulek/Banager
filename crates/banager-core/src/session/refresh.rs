@@ -690,8 +690,10 @@ impl Session {
             handles.push((
                 inst.id.clone(),
                 AbortOnDropHandle::new(tokio::spawn(async move {
-                    // Held until this task ends, however it ends.
-                    let _locks = locks;
+                    // Held until this task ends, however it ends -- but for
+                    // those its update check does not need, let go once its
+                    // inventory is read (below).
+                    let mut locks = locks;
                     // When this source was asked: its `answered_at` if both
                     // halves below answer (`refresh`'s doc).
                     let asked_at = Session::clock(now_fn);
@@ -731,6 +733,15 @@ impl Session {
                             );
                         }
                     }
+                    // The update check is read under the locks it needs
+                    // (`Adapter::check_locks`): an npm's own, not the
+                    // Homebrew prefix its listing was read under, so that a
+                    // Homebrew operation confirmed meanwhile waits for the
+                    // listing and not for the npm registry. A lock another
+                    // of this round's reads shares stays held until that
+                    // one lets go of it too.
+                    let keep = adapter.check_locks(&inst);
+                    locks.retain(|guard| keep.contains(guard.lock()));
                     // What this round's own reading listed, for the
                     // preview, before the update check -- the slow half --
                     // starts. A read that failed or declined sends nothing:
@@ -3342,6 +3353,127 @@ mod tests {
         let after = session.refresh(&env, &CheckOptions::default()).await;
         assert_eq!(npm_calls(&runner), 8, "npm is read again once it is over");
         assert!(after.instances.iter().any(|i| i.id == npm_id));
+        assert!(session.ops.locks_held().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_a_homebrew_operation_waits_for_npms_listing_not_for_its_update_check() {
+        // The q3 skeptic: the npm in a Homebrew prefix is read under that
+        // Homebrew's lock (r37 F2), and its update check -- `npm outdated
+        // -g`, which asks the npm registry, up to a minute -- held it too,
+        // so a Homebrew operation confirmed meanwhile waited on the
+        // registry. The listing is read under it; the check under npm's
+        // own lock alone, and the operation starts while it runs.
+        use crate::adapters::npm::NpmAdapter;
+        let tree = crate::testing::TempTree::new("refresh-npm-check-unheld");
+        let prefix = tree.dir("homebrew");
+        let npm = tree.file("homebrew/bin/npm", 0o755);
+        let (p, n) = (prefix.to_str().unwrap(), npm.to_str().unwrap());
+        let brew_id = crate::model::instance_id("brew", Some(p));
+        let npm_id = crate::model::instance_id("npm", Some(p));
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(vec![n, "prefix", "-g"], exited_0(&format!("{p}\n")));
+        runner.respond(vec![n, "--version"], exited_0("10.9.9\n"));
+        runner.respond(
+            vec![n, "ls", "-g", "--depth=0", "--json", "--prefix", p],
+            exited_0(r#"{"dependencies":{"prettier":{"version":"3.6.2"}}}"#),
+        );
+        let outdated = vec![n, "outdated", "-g", "--json", "--prefix", p];
+        runner.respond(outdated.clone(), exited_0("{}"));
+        let (brew, brew_state) = FakeAdapter::new("brew");
+        {
+            let mut s = brew_state.lock().unwrap();
+            s.instances = vec![ManagerInstance {
+                prefix: prefix.clone(),
+                ..make_instance("brew", &brew_id)
+            }];
+            s.artifacts
+                .insert(brew_id.clone(), vec![make_artifact(&brew_id, "node")]);
+            s.block_execute = true;
+        }
+        let env = HostEnv {
+            path_dirs: vec![prefix.join("bin")],
+            home: tree.dir("home"),
+            euid: 501,
+            cargo_home: None,
+            rustup_home: None,
+            zdotdir: None,
+            ollama_host: None,
+        };
+        let session = Session::with_adapters(
+            Arc::new(VecSink::new()),
+            vec![brew, Arc::new(NpmAdapter::new(runner.clone()))],
+            None,
+        );
+        session.refresh(&env, &CheckOptions::default()).await;
+
+        // The registry takes its time from here.
+        let check = Duration::from_secs(4);
+        runner.delay(outdated.clone(), check);
+        let round = tokio::spawn({
+            let (session, env) = (session.clone(), env.clone());
+            async move { session.refresh(&env, &CheckOptions::default()).await }
+        });
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let checks = |runner: &MockRunner| {
+            runner
+                .calls()
+                .iter()
+                .filter(|argv| argv.iter().map(String::as_str).eq(outdated.iter().copied()))
+                .count()
+        };
+        while checks(&runner) < 2 {
+            assert!(
+                Instant::now() < deadline,
+                "the round never asked the registry"
+            );
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        let req = OpRequest {
+            kind: OpKind::Install,
+            instance_id: brew_id.clone(),
+            artifact_kind: ArtifactKind::Formula,
+            name: "node".to_string(),
+        };
+        let issued = session.issue_plan(&req).await.expect("issue_plan");
+        let confirmed = Instant::now();
+        let op_id = session.submit(issued.id).expect("submit");
+        while !session
+            .operations()
+            .iter()
+            .any(|o| o.id == op_id && o.status == OpStatus::Running)
+        {
+            assert!(
+                confirmed.elapsed() < check / 2,
+                "the Homebrew operation waited for npm's update check"
+            );
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert!(!round.is_finished(), "npm's update check is still running");
+
+        let snapshot = tokio::time::timeout(Duration::from_secs(10), round)
+            .await
+            .expect("the round ends when the registry answers")
+            .expect("the round did not panic");
+        assert!(snapshot.errors.is_empty(), "{:?}", snapshot.errors);
+        assert!(snapshot
+            .artifacts
+            .iter()
+            .any(|a| a.key.instance_id == npm_id && a.key.name == "prettier"));
+
+        session.cancel(op_id).expect("cancel a Running op");
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !session
+            .operations()
+            .iter()
+            .any(|o| o.id == op_id && o.status == OpStatus::Done)
+        {
+            assert!(
+                Instant::now() < deadline,
+                "the cancelled operation never finished"
+            );
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
         assert!(session.ops.locks_held().is_empty());
     }
 
