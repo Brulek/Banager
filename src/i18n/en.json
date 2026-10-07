@@ -1015,7 +1015,7 @@
         "LinkTakenDetail": "The update unlinks this tool first, and the files in use would stop it being linked back, leaving its commands missing from Terminal. Nothing was updated; it still works in Terminal.",
         "Internal": "Couldn't finish because of an internal error. Nothing changed",
         "LinkRollbackRisk": "Couldn't start: linking {{name}} could remove links already there",
-        "LinkRollbackRiskDetail": "Links to it appeared after the preview, and Homebrew removes them too if linking stops partway. Nothing was linked; they're as they were."
+        "LinkRollbackRiskDetail": "Links to it appeared after the confirmation opened, and Homebrew removes them too if linking stops partway. Nothing was linked; they're as they were."
       }
     },
     "copyLog": "Copy Log"

@@ -941,7 +941,7 @@
         "LinkTakenDetail": "更新会先断开这个工具，被占用的文件会挡住它重新接上，终端里就会找不到它的命令。没有更新，它仍可在终端里使用。",
         "Internal": "未能完成：发生内部错误，没有改动",
         "LinkRollbackRisk": "未能开始：链接{{name}}可能删除已有的链接",
-        "LinkRollbackRiskDetail": "预览之后出现了指向它的链接，如果链接中途停止，Homebrew也会删除它们。链接没有开始，它们保持原样。"
+        "LinkRollbackRiskDetail": "确认窗口打开后出现了指向它的链接，如果链接中途停止，Homebrew也会删除它们。没有链接，它们保持原样。"
       }
     },
     "copyLog": "拷贝日志"

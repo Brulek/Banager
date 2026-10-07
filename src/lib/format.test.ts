@@ -285,6 +285,27 @@ describe("outcomeKey for Banager's own failures", () => {
     expect(keys.size).toBe(faults.length);
   });
 
+  it("calls the sheet a refusal points back to the confirmation, never a preview, as every sibling does (r21 C3)", () => {
+    for (const [locale, word] of [
+      [en, /preview/i],
+      [zhCN, /预览/],
+      [zhHant, /預覽/],
+    ] as const) {
+      for (const text of Object.values(locale.operations.outcome.BanagerFailed)) {
+        expect(text).not.toMatch(word);
+      }
+    }
+    expect(en.operations.outcome.BanagerFailed.LinkRollbackRiskDetail).toBe(
+      "Links to it appeared after the confirmation opened, and Homebrew removes them too if linking stops partway. Nothing was linked; they're as they were.",
+    );
+    expect(zhCN.operations.outcome.BanagerFailed.LinkRollbackRiskDetail).toBe(
+      "确认窗口打开后出现了指向它的链接，如果链接中途停止，Homebrew也会删除它们。没有链接，它们保持原样。",
+    );
+    expect(zhHant.operations.outcome.BanagerFailed.LinkRollbackRiskDetail).toBe(
+      "確認視窗開啟後出現了指向它的連結，若連結中途停止，Homebrew也會刪除它們。沒有連結，它們維持原樣。",
+    );
+  });
+
   it("passes a fault's data, never a sentence, to its translation", () => {
     expect(outcomeKey({ BanagerFailed: { ProgramMissing: { program: "/x/brew" } } })).toBe(
       "BanagerFailed.ProgramMissing",

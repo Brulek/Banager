@@ -941,7 +941,7 @@
         "LinkTakenDetail": "更新會先中斷這個工具的連結，被佔用的檔案會擋住它重新接上，終端機裡就會找不到它的指令。沒有更新，它仍可在終端機裡使用。",
         "Internal": "未能完成：發生內部錯誤，沒有改動",
         "LinkRollbackRisk": "未能開始：連結{{name}}可能刪除已有的連結",
-        "LinkRollbackRiskDetail": "預覽之後出現了指向它的連結，若連結中途停止，Homebrew也會刪除它們。連結沒有開始，它們維持原樣。"
+        "LinkRollbackRiskDetail": "確認視窗開啟後出現了指向它的連結，若連結中途停止，Homebrew也會刪除它們。沒有連結，它們維持原樣。"
       }
     },
     "copyLog": "拷貝記錄"
