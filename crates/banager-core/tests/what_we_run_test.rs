@@ -2125,3 +2125,73 @@ fn test_what_we_run_says_a_proxy_settings_change_gets_new_connections() {
         );
     }
 }
+
+/// r26 D1: a pre-run read of npm or uv that does not answer ends as that
+/// program's own failure (`adapters::read_before_run`, r20 R20-2); only
+/// an answer that differs, or that cannot be used, is "changed since
+/// shown" with its reopen. The English sections say so; the Chinese
+/// summaries, a Chinese reader's only account of it, say both cases
+/// apart and no longer say an unreadable read ends as 「未能开始」.
+#[test]
+fn test_what_we_run_says_an_npm_or_uv_read_before_running_that_does_not_answer_ends_as_its_own_failure(
+) {
+    let doc = read_doc();
+    for (source, phrase) in [
+        ("npm", "the operation ends as npm's own failure would"),
+        ("uv", "ends as uv's own failure would"),
+    ] {
+        let body = section_body(&doc, source).unwrap_or_else(|| panic!("a `## {source}` section"));
+        let folded = body.split_whitespace().collect::<Vec<_>>().join(" ");
+        assert!(
+            folded.contains(phrase),
+            "the `## {source}` section of docs/what-we-run.md does not say {phrase:?}"
+        );
+    }
+    for (section, old, phrases) in [
+        (
+            "简体中文：运行与隐私要点",
+            "与预览时不一致或无法读取时",
+            [
+                "读到的与预览时不一致，或读到了却用不上",
+                "结果显示为未能开始，请重新打开确认窗口。",
+                "npm 或 uv 的读取命令本身没有回答时，同样不运行写入命令，但按该程序自己的失败结束",
+                "程序已不在或无法启动，显示为未能开始、没有改动",
+                "非零退出，是该程序的失败，带有退出码和它最后写到 stderr 的几行",
+                "超过时限（npm 30 秒、uv 60 秒）没有回答，是运行超时，没有退出码",
+            ],
+        ),
+        (
+            "繁體中文：執行與隱私要點",
+            "與預覽時不一致或無法讀取時",
+            [
+                "讀到的與預覽時不一致，或讀到了卻無法使用",
+                "結果顯示為未能開始，請重新開啟確認視窗。",
+                "npm 或 uv 的讀取命令本身沒有回答時，同樣不執行寫入命令，但按該程式自己的失敗結束",
+                "程式已不在或無法啟動，顯示為未能開始、沒有改動",
+                "非零結束，是該程式的失敗，帶有結束代碼和它最後寫到 stderr 的幾行",
+                "超過時限（npm 30 秒、uv 60 秒）沒有回答，是執行逾時，沒有結束代碼",
+            ],
+        ),
+    ] {
+        let body =
+            section_body(&doc, section).unwrap_or_else(|| panic!("a `## {section}` section"));
+        let bullet = body
+            .lines()
+            .find(|line| line.starts_with("- npm 的操作"))
+            .unwrap_or_else(|| {
+                panic!(
+                    "`## {section}` has no bullet on npm's, Cargo's and uv's read before running"
+                )
+            });
+        assert!(
+            !bullet.contains(old),
+            "`## {section}` still says a read that does not answer ends as 「未能开始」: {bullet}"
+        );
+        for phrase in phrases {
+            assert!(
+                bullet.contains(phrase),
+                "`## {section}`'s bullet on the read before running does not say {phrase:?}"
+            );
+        }
+    }
+}
