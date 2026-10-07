@@ -380,6 +380,54 @@ describe("the browser preview's mock backend", () => {
     expect(snapshot.updates.filter((u) => u.warnings.includes("TransientLookupFailure"))).toEqual([]);
   });
 
+  it("has npm unable to start for want of node with ?state=nonode, and a link that puts it back", async () => {
+    // The author's Mac on 2026-10-07 (finding 1): npm says why, and offers
+    // node@22 and node@20, newest first; node@22's link has npm's own npm
+    // and npx in its way, node@20's does not.
+    const { backend, events } = backendFor({ state: "nonode" });
+    const before = await answer<Snapshot>(backend.invoke("refresh"));
+    const npm = before.instances.find((i) => i.adapter_id === "npm");
+    expect(npm?.status.unavailable).toBe("NotResponding");
+    expect(npm?.status.no_answer?.kind).toBe("CouldNotStart");
+    expect(npm?.status.no_answer?.missing_program).toBe("node");
+    expect(npm?.status.no_answer?.link_fixes.map((fix) => fix.key.name)).toEqual(["node@22", "node@20"]);
+    expect(before.artifacts.filter((a) => a.key.name.startsWith("node@")).map((a) => a.version)).toEqual([
+      "22.23.3_1",
+      "20.19.5",
+    ]);
+    const link = (name: string): OpRequest => ({
+      kind: "Link",
+      instance_id: "brew:/opt/homebrew",
+      artifact_kind: "Formula",
+      name,
+    });
+    const blocked = await answer<IssuedPlan>(backend.invoke("plan_operation", { request: link("node@22") }));
+    expect(blocked.plan.warnings).toEqual([
+      { LinkConflicts: { paths: ["/opt/homebrew/bin/npm", "/opt/homebrew/bin/npx"] } },
+    ]);
+    // Only a formula a source's reason offers.
+    const refused = backend.invoke("plan_operation", { request: link("jq") }).catch((error: unknown) => error);
+    await vi.runOnlyPendingTimersAsync();
+    expect(await refused).toBe('{"kind":"not_listed"}');
+    const issued = await answer<IssuedPlan>(backend.invoke("plan_operation", { request: link("node@20") }));
+    expect(issued.plan.action).toEqual({
+      Command: {
+        program: "/opt/homebrew/bin/brew",
+        args: ["link", "--force", "node@20"],
+        env: expect.any(Array) as unknown as [string, string][],
+      },
+    });
+    expect(issued.plan.warnings).toEqual([]);
+    const opId = await answer<number>(backend.invoke("submit_operation", { planId: issued.id }));
+    await vi.runAllTimersAsync();
+    const own = operationEvents(events, opId);
+    expect(own[own.length - 1]).toEqual({ Finished: { op_id: opId, outcome: "Succeeded" } });
+    const after = await answer<Snapshot>(backend.invoke("refresh"));
+    const answered = after.instances.find((i) => i.adapter_id === "npm");
+    expect(answered?.status).toEqual({ unavailable: null, notes: [], no_answer: null });
+    expect(answered?.version).toBe("12.0.2");
+  });
+
   it("installs about 800 real tools with ?state=many, one in seven with an update, the same on every run", async () => {
     const { backend } = backendFor({ state: "many" });
     const snapshot = await answer<Snapshot>(backend.invoke("refresh"));

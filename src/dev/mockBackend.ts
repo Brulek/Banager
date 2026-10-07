@@ -31,6 +31,7 @@ import { adapterIdOf } from "../lib/sources";
 import {
   buildWorld,
   initialSettings,
+  NO_NODE_ANSWERS_AGAIN,
   sameKey,
   unknownScan,
   unverifiedVersion,
@@ -484,6 +485,17 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       applyMockCleanup(plan, world);
       return;
     }
+    if (plan.request.kind === "Link") {
+      // `node` is back where Terminal looks: the source that needed it
+      // answers the next check, with no fix left to offer.
+      for (const needing of world.instances) {
+        if ((needing.status.no_answer?.link_fixes ?? []).some((fix) => sameKey(fix.key, target))) {
+          needing.status = { unavailable: null, notes: [], no_answer: null };
+          needing.version = NO_NODE_ANSWERS_AGAIN.get(needing.id) ?? needing.version;
+        }
+      }
+      return;
+    }
     if (plan.request.kind === "Uninstall") {
       world.artifacts = world.artifacts.filter((a) => !sameKey(a.key, target));
       world.updates = world.updates.filter((u) => !sameKey(u.key, target));
@@ -757,6 +769,13 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       if (request.kind === "Uninstall") {
         const blocked = world.artifacts.find((a) => sameKey(a.key, target))?.uninstall_blocked ?? null;
         if (blocked !== null) throw refusal({ kind: "uninstall_blocked", reason: blocked });
+      }
+      // Only a formula a source's reason offers (`lists_request`).
+      if (
+        request.kind === "Link" &&
+        !world.instances.some((i) => (i.status.no_answer?.link_fixes ?? []).some((fix) => sameKey(fix.key, target)))
+      ) {
+        throw refusal({ kind: "not_listed" });
       }
       planCount += 1;
       const issued: IssuedPlan = {

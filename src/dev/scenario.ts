@@ -39,6 +39,12 @@ import type { Page } from "../store/ui";
  * - `unchecked`: nothing to update, and uv not answering: the Overview
  *   names it, 「uv这次没检查，其余能在这里更新的都已是最新」 (decision I22;
  *   Codex's own install, which Banager never checks, is there too).
+ * - `nonode`: the author's Mac on 2026-10-07: npm could not start, for want
+ *   of the `node` that `brew upgrade node@22` unlinked, and Homebrew lists
+ *   `node@22` and `node@20`, keg-only and not linked. npm's notice says why
+ *   and offers Fix…, whose sheet previews `brew link --force`: for
+ *   `node@22`, with npm's own `npm` and `npx` in the way, so no Link; for
+ *   `node@20`, a Link that puts npm back (`withNoNode` in ./mockData.ts).
  */
 export const SCENARIO_STATES = [
   "full",
@@ -57,6 +63,7 @@ export const SCENARIO_STATES = [
   "preview",
   "refused",
   "unchecked",
+  "nonode",
 ] as const;
 export type ScenarioState = (typeof SCENARIO_STATES)[number];
 

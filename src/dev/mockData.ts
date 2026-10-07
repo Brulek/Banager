@@ -17,6 +17,7 @@ import type {
   DetectOutcome,
   HomebrewFacts,
   InstalledArtifact,
+  LinkFix,
   ManagerInstance,
   Settings,
   SourceError,
@@ -1013,6 +1014,13 @@ export function buildWorld(state: ScenarioState): World {
   addCommands(world);
   addCodexCommands(world);
   markSourcePrograms(world);
+  // Not linked, so none of its commands is where Terminal looks: the
+  // command check finds none of them (`?state=nonode`).
+  if (state === "nonode") {
+    for (const row of world.artifacts) {
+      if (NO_NODE_FORMULAE.some((fix) => sameKey(fix.key, row.key))) row.facts = { ...row.facts, commands: [] };
+    }
+  }
   return world;
 }
 
@@ -1120,6 +1128,9 @@ function scenarioWorld(state: ScenarioState): World {
       world.updates = [];
       world.greedyUpdates = [];
       return world;
+    case "nonode":
+      withNoNode(world);
+      return world;
   }
 }
 
@@ -1170,6 +1181,56 @@ function withRefusedLookups(world: World): void {
         "request to https://static.rust-lang.org/rustup/release-stable.toml failed: refused: refusing to follow a redirect: https://static.rust-lang.org/rustup/release-stable.toml answered 302 Found pointing at http://portal.example.net/login",
     }),
   );
+}
+
+/**
+ * The formulae `?state=nonode` adds: Node.js 22 and 20 from Homebrew,
+ * keg-only, neither linked. Fix… on npm's notice links one of them
+ * (`linkFixFor` in ./mockPlans.ts says what is in each one's way).
+ */
+export const NO_NODE_ANSWERS_AGAIN = new Map<string, string | null>();
+
+export const NO_NODE_FORMULAE: readonly LinkFix[] = [
+  { key: key(IDS.brew, "Formula", "node@22"), version: "22.23.3_1" },
+  { key: key(IDS.brew, "Formula", "node@20"), version: "20.19.5" },
+];
+
+/**
+ * `?state=nonode`, the author's Mac on 2026-10-07: `brew upgrade node@22`
+ * unlinked the `node@22` they had linked by hand, `/opt/homebrew/bin/node`
+ * is gone, and npm's launcher (`#!/usr/bin/env node`) could not start:
+ * `NotResponding`, with why (`no_answer`), and the two formulae that have
+ * `node` as its fixes, newest first -- what `link_fixes::fill` gives. Its
+ * rows are last time's, as a source that did not answer keeps them.
+ */
+function withNoNode(world: World): void {
+  allAnswering(world);
+  for (const fix of NO_NODE_FORMULAE) {
+    // The pretend Mac's own node@22 is the one `brew upgrade` moved on.
+    const listed = world.artifacts.find((a) => sameKey(a.key, fix.key));
+    if (listed !== undefined) {
+      listed.version = fix.version;
+      continue;
+    }
+    world.artifacts.push(
+      artifact(IDS.brew, "Formula", fix.key.name, fix.version, {
+        description: "Open-source, cross-platform JavaScript runtime environment",
+        homepage: "https://nodejs.org/",
+        installed_at: daysAgo(14),
+      }),
+    );
+  }
+  world.updates = world.updates.filter((u) => !NO_NODE_FORMULAE.some((fix) => sameKey(fix.key, u.key)));
+  const npm = findInstance(world, IDS.npm);
+  // What it says again once it can run (`apply` in ./mockBackend.ts).
+  NO_NODE_ANSWERS_AGAIN.set(npm.id, npm.version);
+  npm.version = null;
+  npm.unverified_version = null;
+  npm.status = {
+    unavailable: "NotResponding",
+    notes: [],
+    no_answer: { kind: "CouldNotStart", missing_program: "node", link_fixes: [...NO_NODE_FORMULAE] },
+  };
 }
 
 /**

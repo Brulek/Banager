@@ -252,6 +252,17 @@ function standalonePlan(plan: Plan, inst: ManagerInstance, world: World): Plan {
 }
 
 /**
+ * What stands in the way of linking `name` (`link::link_conflicts`): for
+ * `node@22`, npm's own `npm` and `npx`, as on the author's Mac, where npm
+ * had been updated through itself; nothing for any other.
+ */
+function linkConflictsFor(name: string): Warning[] {
+  return name === "node@22"
+    ? [{ LinkConflicts: { paths: ["/opt/homebrew/bin/npm", "/opt/homebrew/bin/npx"] } }]
+    : [];
+}
+
+/**
  * The plan the real adapter would build for `request` on `inst`, or a
  * thrown refusal. Called after the actionability gate, as
  * `Session::issue_plan` calls `Adapter::plan`.
@@ -274,6 +285,15 @@ export function buildPlan(world: World, inst: ManagerInstance, request: OpReques
   };
   switch (inst.adapter_id) {
     case "brew": {
+      // Fix… on a source that could not find a program (`?state=nonode`).
+      if (kind === "Link") {
+        return {
+          ...plan,
+          action: command(inst.exe_path, ["link", "--force", name], BREW_ENV),
+          warnings: linkConflictsFor(name),
+          timeout_secs: 300,
+        };
+      }
       const cask = request.artifact_kind === "Cask";
       const flag = cask ? "--cask" : "--formula";
       if (upgrade) {
