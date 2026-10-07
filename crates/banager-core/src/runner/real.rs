@@ -1,5 +1,5 @@
 //! `RealRunner` is Unix-only by design for this plan: it puts the spawned
-//! child in its own process group (`process_group(0)`) and stops that whole
+//! child in a session and process group of its own (`setsid`) and stops that whole
 //! group with `libc::killpg` on timeout/cancel -- SIGTERM, a grace period,
 //! then SIGKILL for whatever is left -- so that a `brew` invocation's
 //! grandchildren (e.g. a `curl` download) stop with it. Both APIs are
@@ -577,7 +577,7 @@ struct GroupedChild {
 }
 
 impl GroupedChild {
-    /// Takes the freshly spawned child (spawned with `process_group(0)`, so
+    /// Takes the freshly spawned child (spawned with `setsid`, so
     /// its pid is also its group's id) and arms the kill.
     fn new(child: tokio::process::Child) -> Self {
         let pgid = child.id().map(|p| p as libc::pid_t);
@@ -784,7 +784,26 @@ impl CommandRunner for RealRunner {
         cmd.stdin(std::process::Stdio::null());
         cmd.stdout(std::process::Stdio::piped());
         cmd.stderr(std::process::Stdio::piped());
-        cmd.process_group(0);
+        // A session of its own, which is also a process group of its own
+        // (its pgid is its pid, so `killpg` stops it and its children as
+        // before). A process group alone is not enough: when Banager has a
+        // controlling terminal -- `pnpm tauri dev` from Terminal -- an
+        // interactive shell (the login shell read, `zsh -il`) in a
+        // background group of that terminal is stopped by SIGTTOU/SIGTTIN
+        // the moment it touches it, and waits out its timeout. Without a
+        // controlling terminal, as when opened from the Finder, the two
+        // are the same.
+        // SAFETY: `setsid` is async-signal-safe, takes no arguments and
+        // touches no memory of the parent; it is all that runs between
+        // fork and exec.
+        unsafe {
+            cmd.pre_exec(|| {
+                if libc::setsid() == -1 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
 
         // Owns the child, so on a drop mid-run its `Drop` signals the group
         // before the `Child` inside it can reap anything. See `GroupedChild`.
@@ -1254,6 +1273,42 @@ mod tests {
         assert!(output.cancelled);
         assert_eq!(output.exit_code, None);
         assert!(!marker.exists(), "the process must never have been spawned");
+    }
+
+    #[tokio::test]
+    async fn test_a_command_runs_in_a_session_of_its_own() {
+        // A process group alone left an interactive login shell stopped by
+        // SIGTTOU when Banager had a controlling terminal (`pnpm tauri
+        // dev` from Terminal): the launch-time PATH read timed out. The
+        // child must lead its own session (and so its own process group).
+        let seen: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let seen_cb = seen.clone();
+        let on_line: Option<LineCallback> = Some(Arc::new(move |run_line| {
+            if let RunLine::Output(_, line) = run_line {
+                let pid: libc::pid_t = line.trim().parse().expect("a pid");
+                // SAFETY: getsid/getpgid take an integer and no pointers.
+                let (sid, pgid) = unsafe { (libc::getsid(pid), libc::getpgid(pid)) };
+                seen_cb.lock().unwrap().push(format!("{pid} {sid} {pgid}"));
+            }
+        }));
+        let spec = CommandSpec {
+            program: sh(),
+            args: vec!["-c".to_string(), "echo $$; sleep 1".to_string()],
+            env: vec![],
+            cwd: None,
+            timeout: std::time::Duration::from_secs(5),
+            output_use: OutputUse::Transcript,
+        };
+        let output = RealRunner::new()
+            .run(spec, on_line, CancellationToken::new())
+            .await
+            .expect("spawn /bin/sh");
+        assert_eq!(output.exit_code, Some(0));
+        let seen = seen.lock().unwrap();
+        assert_eq!(seen.len(), 1, "{seen:?}");
+        let ids: Vec<&str> = seen[0].split(' ').collect();
+        assert_eq!(ids[0], ids[1], "the child leads its own session: {seen:?}");
+        assert_eq!(ids[0], ids[2], "and its own process group: {seen:?}");
     }
 
     #[tokio::test]
