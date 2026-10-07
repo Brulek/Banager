@@ -425,7 +425,22 @@ impl NpmAdapter {
                 reason: UninstallBlocked::SourceProgram,
             });
         }
-        let lock = ResourceLock(inst.id.clone());
+        // npm's own lock, and that of a Homebrew at npm's global prefix
+        // (y1-keg review): npm that came with a Node from Homebrew writes
+        // into Homebrew's prefix -- `npm install -g npm@latest` puts its own
+        // `bin/npm` there -- and a `brew upgrade` of that Node unlinks the
+        // places it linked and links them again, stopping at any file in
+        // the way (`Keg::ConflictError`). With both locks no npm operation
+        // runs while a brew one on the same prefix does, so none can land
+        // between that unlink and that link. Where no Homebrew lives at the
+        // prefix, no other plan takes the second lock.
+        let locks = vec![
+            ResourceLock(inst.id.clone()),
+            ResourceLock(crate::model::instance_id(
+                "brew",
+                Some(&inst.prefix.display().to_string()),
+            )),
+        ];
         let warnings = match req.kind {
             OpKind::Uninstall => uninstall_scope(inst.version.as_deref())
                 .into_iter()
@@ -449,7 +464,7 @@ impl NpmAdapter {
                 env: self.env_vec(),
             },
             needs_password: false,
-            locks: vec![lock],
+            locks,
             cancel_policy: CancelPolicy::KillThenReconcile,
             warnings,
             affected: Vec::new(),
@@ -1318,8 +1333,40 @@ mod tests {
         let plan = adapter.plan(&inst, &req).await.expect("plan");
         assert_eq!(command_args(&plan), vec!["install", "-g", "jq"]);
         assert!(!plan.needs_password);
-        assert_eq!(plan.locks, vec![ResourceLock(inst.id.clone())]);
+        assert_eq!(plan.locks[0], ResourceLock(inst.id.clone()));
         assert_eq!(plan.cancel_policy, CancelPolicy::KillThenReconcile);
+    }
+
+    /// y1-keg review: npm's global prefix is Homebrew's own when npm came
+    /// with a Node from Homebrew, and `npm install -g npm@latest` there
+    /// rewrites `bin/npm` -- the very place `brew upgrade node@22` unlinks
+    /// and links again. Each npm operation takes the lock of a Homebrew at
+    /// that prefix too, so the two never run at the same time.
+    #[tokio::test]
+    async fn test_every_plan_takes_the_lock_of_a_homebrew_at_its_prefix() {
+        let adapter =
+            NpmAdapter::new(Arc::new(MockRunner::new())).with_prefix_read_only_fn(|_| None);
+        let inst = ManagerInstance {
+            prefix: PathBuf::from("/opt/homebrew"),
+            ..test_instance()
+        };
+        for kind in [OpKind::Install, OpKind::Upgrade, OpKind::Uninstall] {
+            let req = OpRequest {
+                kind,
+                instance_id: inst.id.clone(),
+                artifact_kind: ArtifactKind::Package,
+                name: "typescript".to_string(),
+            };
+            let plan = adapter.plan(&inst, &req).await.expect("plan");
+            assert_eq!(
+                plan.locks,
+                vec![
+                    ResourceLock(inst.id.clone()),
+                    ResourceLock("brew:/opt/homebrew".to_string()),
+                ],
+                "{kind:?}"
+            );
+        }
     }
 
     #[tokio::test]
