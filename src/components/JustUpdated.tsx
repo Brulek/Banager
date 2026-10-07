@@ -1,7 +1,7 @@
 import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { artifactKeyId } from "../store/ui";
-import { FAILURE_CAUSE_KEYS, outcomeCause, type FailureCause } from "../lib/failureCause";
+import { FAILURE_CAUSE_KEYS, failureDetail, outcomeCause, type FailureCause } from "../lib/failureCause";
 import { ALREADY_UPDATED_KEYS, outcomeSentence, outcomeTone } from "../lib/operations";
 import { calendarDaysBetween, shortDateText, shortTimeText } from "../lib/shortDate";
 import type { AlreadyUpdated, ArtifactKey, Attention, HistoryResult, OpSummary, Outcome } from "../lib/types";
@@ -43,8 +43,14 @@ export function endingOfOutcome(
   switch (outcomeTone(outcome)) {
     case "success":
       return succeeded(alreadyUpdated);
-    case "failure":
-      return { kind: "failed", cause: outcomeCause(outcome) };
+    case "failure": {
+      // A tool's words no cause names: its first error line, as the
+      // history keeps it (`failureDetail`).
+      const cause = outcomeCause(outcome);
+      const detail =
+        cause === null && typeof outcome !== "string" && "Failed" in outcome ? failureDetail(outcome.Failed.summary) : null;
+      return detail === null ? { kind: "failed", cause } : { kind: "failed", cause, detail };
+    }
     case "attention":
       return {
         kind: "attention",

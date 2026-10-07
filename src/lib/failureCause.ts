@@ -318,6 +318,43 @@ export function operationFailureCause(text: string): FailureCause | null {
   return failureCause(text) ?? lastNamed(text.split(/\r?\n/).filter((line) => line.trim() !== ""), OPERATION_PATTERNS);
 }
 
+/** How long a kept error line may be, the `…` of a cut one included: Rust's `DETAIL_CHARS`. */
+const DETAIL_CHARS = 160;
+
+/**
+ * The one line of a failed tool's words that says what went wrong, where
+ * no cause names it (Rust `failure_detail`, crates/banager-core/src/history/
+ * mod.rs, which the history keeps): the first line that says it is an
+ * error -- `Error:`, `error:`, `fatal:`, npm's `npm error` but for its
+ * bookkeeping (`code`, `errno`, `path`, the log file) -- or, with none, the
+ * last line, its label taken off. Masked as the history masks it: the
+ * escape codes that colour it, any home folder (`/Users/<name>` as `~`),
+ * a login in an address, an address's query and fragment; cut to 160
+ * characters. Null for words that are all blank. 「最近的更新记录」 says it
+ * behind 「原因：」 for an update this window ran as for one the history
+ * kept, so the two read the same.
+ */
+export function failureDetail(summary: string): string | null {
+  const bookkeeping =
+    /^npm (?:err!|error) (?:code|errno|syscall|path|dest|signal|command|cwd|\d{3}\s*$|a complete log|log files)/i;
+  const lines = summary
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "").trim())
+    .filter((line) => line !== "" && line !== "[…]");
+  const line =
+    lines.find((each) => /^(?:error|fatal|npm (?:err!|error))\b|^E:/i.test(each) && !bookkeeping.test(each)) ??
+    lines[lines.length - 1];
+  if (line === undefined) return null;
+  const unlabelled = line.replace(/^(?:(?:error|fatal)\b\s*(?:\[[^\]]*\])?\s*:?|npm (?:err!|error)\b|E:)\s*/i, "").trim();
+  const masked = (unlabelled === "" ? line : unlabelled)
+    .replace(/\/Users\/[^/\s'"`]+/g, "~")
+    .replace(/([A-Za-z][A-Za-z0-9+.-]*:\/\/)[^/\s@'"`]+@/g, "$1****@")
+    .replace(/([A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s?#'"`]*)[?#][^\s'"`]*/g, "$1")
+    .trim();
+  const characters = [...masked];
+  return characters.length <= DETAIL_CHARS ? masked : `${characters.slice(0, DETAIL_CHARS - 1).join("")}…`;
+}
+
 /**
  * The cause a failed lookup's words give (`failureCause`), where the
  * words for it hold for a lookup too: only `network`. The others are said

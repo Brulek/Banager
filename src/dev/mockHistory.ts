@@ -22,7 +22,7 @@ import type {
   OpRequest,
   Outcome,
 } from "../lib/types";
-import { operationFailureCause } from "../lib/failureCause";
+import { failureDetail, operationFailureCause } from "../lib/failureCause";
 import { IDS, key } from "./mockData";
 
 const MINUTE = 60 * 1000;
@@ -128,26 +128,6 @@ export function mockHistory(now: number): HistoryView {
   };
 }
 
-/**
- * `history::failure_detail`, as far as the preview needs it: the first line
- * that says it is an error (npm's bookkeeping aside), or the last, its
- * label off, the home folder as `~`, cut to 160 characters.
- */
-function detailOf(summary: string): string | null {
-  const lines = summary
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line !== "" && line !== "[…]");
-  const bookkeeping = /^npm (?:err!|error) (?:code|errno|syscall|path|dest|signal|command|cwd|\d{3}\s*$|a complete log|log files)/i;
-  const line =
-    lines.find((each) => /^(?:error|fatal|npm (?:err!|error))\b|^E:/i.test(each) && !bookkeeping.test(each)) ?? lines[lines.length - 1];
-  if (line === undefined) return null;
-  const unlabelled =
-    line.replace(/^(?:(?:error|fatal)\b\s*(?:\[[^\]]*\])?\s*:?|npm (?:err!|error)\b|E:)\s*/i, "").trim() || line;
-  const masked = unlabelled.replace(/\/Users\/[^/\s'"`]+/g, "~");
-  return masked.length <= 160 ? masked : `${masked.slice(0, 159)}…`;
-}
-
 /** `history::fault_result`: a cause for each of Banager's own failures. */
 function faultResult(fault: Fault): HistoryResult {
   if (typeof fault === "string") {
@@ -158,7 +138,7 @@ function faultResult(fault: Fault): HistoryResult {
   if ("SpawnFailed" in fault) {
     const cause = operationFailureCause(fault.SpawnFailed.detail);
     if (cause !== null) return { Failed: { cause } };
-    const detail = detailOf(fault.SpawnFailed.detail);
+    const detail = failureDetail(fault.SpawnFailed.detail);
     return { Failed: detail === null ? { cause: null } : { cause: null, detail } };
   }
   return { Failed: { cause: "changed" } };
@@ -171,7 +151,7 @@ function resultOf(outcome: Outcome): HistoryResult {
   if ("Failed" in outcome) {
     const { cause, summary } = outcome.Failed;
     if (cause !== null) return { Failed: { cause } };
-    const detail = detailOf(summary);
+    const detail = failureDetail(summary);
     return { Failed: detail === null ? { cause: null } : { cause: null, detail } };
   }
   return faultResult(outcome.BanagerFailed);

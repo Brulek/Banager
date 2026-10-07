@@ -90,7 +90,8 @@ describe("endingOfOutcome and endingOfRecord", () => {
       kind: "failed",
       cause: "needsPassword",
     });
-    expect(endingOfOutcome({ Failed: { exit_code: 1, summary: "Error: no bottle", cause: failureCause("Error: no bottle") } })).toEqual({ kind: "failed", cause: null });
+    expect(endingOfOutcome({ Failed: { exit_code: 1, summary: "Error: no bottle", cause: failureCause("Error: no bottle") } })).toEqual({ kind: "failed", cause: null, detail: "no bottle" });
+    expect(endingOfOutcome({ Failed: { exit_code: 1, summary: " ", cause: null } })).toEqual({ kind: "failed", cause: null });
     expect(endingOfOutcome({ BanagerFailed: "Panicked" })).toEqual({ kind: "failed", cause: null });
     expect(endingOfOutcome("Unconfirmed")).toEqual({ kind: "attention", outcome: "Unconfirmed" });
     expect(endingOfOutcome({ NeedsAttention: "UnchangedAfterUpgrade" })).toEqual({
@@ -122,6 +123,12 @@ describe("endingOfOutcome and endingOfRecord", () => {
     });
     expect(endingOfRecord({ Failed: { cause: "appMissing" } })).toEqual({ kind: "failed", cause: "appMissing" });
     expect(endingOfRecord({ Failed: { cause: null, detail: "SHA256 mismatch" } })).toEqual({
+      kind: "failed",
+      cause: null,
+      detail: "SHA256 mismatch",
+    });
+    // This window's own, the line read off its summary as the history keeps it.
+    expect(endingOfOutcome({ Failed: { exit_code: 1, summary: "==> Fetching\nError: SHA256 mismatch", cause: null } })).toEqual({
       kind: "failed",
       cause: null,
       detail: "SHA256 mismatch",

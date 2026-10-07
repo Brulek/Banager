@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   FAILURE_CAUSE_KEYS,
   failureCause,
+  failureDetail,
   lookupFailureCause,
   operationFailureCause,
   outcomeCause,
@@ -376,6 +377,37 @@ describe("operationFailureCause", () => {
     expect(lookup(zhCN, FAILURE_CAUSE_KEYS.appMissing.word)).toBe("App已不在原来的位置");
     expect(lookup(zhCN, FAILURE_CAUSE_KEYS.appMissing.next)).toContain("废纸篓");
     expect(lookup(zhHant, FAILURE_CAUSE_KEYS.appMissing.next)).toContain("垃圾桶");
+  });
+});
+
+describe("failureDetail", () => {
+  // The same lines as Rust's failure_detail tests
+  // (test_every_failure_keeps_a_cause_and_one_no_cause_names_keeps_its_first_error_line,
+  // test_a_kept_error_line_has_the_home_folder_logins_and_queries_masked_and_is_short),
+  // so a failure says the same before a restart and after it.
+  it("keeps the first line that says what went wrong, its label off, or the last line", () => {
+    expect(
+      failureDetail("==> Purging files for version 0.2.0 of Cask claudebar\nError: SHA256 mismatch\nExpected: 1f2e\n  Actual: 3a4b"),
+    ).toBe("SHA256 mismatch");
+    expect(
+      failureDetail(
+        "npm error code ETARGET\nnpm error notarget No matching version found for typescript@99.\nnpm error A complete log of this run can be found in: /Users/me/.npm/_logs/x.log",
+      ),
+    ).toBe("notarget No matching version found for typescript@99.");
+    expect(failureDetail("Building wheel\nsomething odd happened")).toBe("something odd happened");
+    expect(failureDetail("Exec format error (os error 8)")).toBe("Exec format error (os error 8)");
+    expect(failureDetail("  \n")).toBeNull();
+  });
+
+  it("masks the home folder, a login, a query and a fragment, and cuts it to 160 characters", () => {
+    expect(
+      failureDetail(
+        "Error: \u001b[31mcannot read\u001b[0m /Users/brulek/Library/Caches/x and /Users/other/y via https://me:secret@mirror.example/simple/?token=abc#frag",
+      ),
+    ).toBe("cannot read ~/Library/Caches/x and ~/y via https://****@mirror.example/simple/");
+    const long = failureDetail(`Error: ${"x".repeat(400)}`) ?? "";
+    expect([...long].length).toBe(160);
+    expect(long.endsWith("…")).toBe(true);
   });
 });
 
