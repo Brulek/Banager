@@ -2403,6 +2403,12 @@ impl Adapter for BrewAdapter {
         &self.meta
     }
 
+    /// `brew upgrade` upgrades a formula's outdated dependencies before the
+    /// formula itself (`Adapter::one_update_can_update_others`).
+    fn one_update_can_update_others(&self) -> bool {
+        true
+    }
+
     async fn detect(&self, env: &HostEnv) -> Vec<ManagerInstance> {
         BrewAdapter::detect(self, env).await
     }

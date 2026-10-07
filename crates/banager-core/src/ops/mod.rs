@@ -115,6 +115,27 @@ fn version_change(before: Option<&Reconciled>, after: &Reconciled) -> VersionCha
     }
 }
 
+/// Whether an update that ended with `outcome` may have changed what is
+/// installed, and so brought a later update's package along
+/// (`OperationManager::upgrades_ended`, `already_at_target`): its version
+/// moved, or there was nothing to compare (`Succeeded`, but not one that
+/// was `already` at its target); it failed, as Homebrew upgrades the
+/// dependencies before the formula and a failure on the formula leaves
+/// them moved; it was stopped partway (`Unconfirmed`); or the package is
+/// gone. Not one the tool skipped (`UnchangedAfterUpgrade`), one cancelled
+/// before its command, or one Banager stopped before its command
+/// (`BanagerFailed`): those changed nothing (review of r6 y3-batch,
+/// finding 1).
+fn may_have_moved_others(outcome: &Outcome, already: Option<AlreadyUpdated>) -> bool {
+    match outcome {
+        Outcome::Succeeded => already.is_none(),
+        Outcome::Failed { .. } | Outcome::Unconfirmed => true,
+        Outcome::NeedsAttention(Attention::UnchangedAfterUpgrade) => false,
+        Outcome::NeedsAttention(_) => true,
+        Outcome::Cancelled | Outcome::BanagerFailed(_) => false,
+    }
+}
+
 /// Whether `after`, an installed version, is at least `target`, the one the
 /// confirmed plan aimed for (`OperationManager::submit_toward`): the same
 /// string, or -- where both are made only of numbers and the separators
@@ -288,12 +309,14 @@ pub struct OperationManager {
     evicted: Mutex<EvictedLedger>,
     /// Caps `evicted`: `MAX_EVICTED`, smaller in this module's tests.
     max_evicted: usize,
-    /// How many updates that reached their command have ended, by source
-    /// instance, counted as each one's locks are released (`finish`), so
-    /// that the next operation on that source, which waits for them, reads
-    /// it. An update whose package is already at its target when its turn
-    /// comes (`run_operation`) was brought there by an earlier one of the
-    /// same source when this count moved after it was submitted
+    /// How many updates that reached their command and may have changed
+    /// something (`may_have_moved_others`) have ended, by source instance,
+    /// counted as each one's locks are released (`finish`), so that the
+    /// next operation on that source, which waits for them, reads it. An
+    /// update whose package is already at its target when its turn comes
+    /// (`run_operation`) was brought there by an earlier one of the same
+    /// source when this count moved after it was submitted and the source
+    /// is one where an update can bring others along
     /// (`AlreadyUpdated::ByEarlierUpdate`). Locked after `records` where
     /// both are held, and never the other way round.
     upgrades_ended: Mutex<HashMap<InstanceId, u64>>,
@@ -1124,7 +1147,12 @@ impl OperationManager {
                         } else {
                             match version_change(before.as_ref(), &r) {
                                 VersionChange::Unchanged => {
-                                    match self.already_at_target(op_id, &plan, &r) {
+                                    match self.already_at_target(
+                                        op_id,
+                                        &plan,
+                                        &r,
+                                        adapter.one_update_can_update_others(),
+                                    ) {
                                         Some(how) => {
                                             if let Some(rec) =
                                                 self.records.lock().unwrap().get_mut(&op_id)
@@ -1266,25 +1294,20 @@ impl OperationManager {
         self.sink.emit(OperationEvent::Status { op_id, status });
     }
 
-    /// `release_locks` must be `false` when this op never actually acquired
-    /// its locks (cancelled while still waiting for them, or for a
-    /// concurrency permit) — passing `true` in that case would be
-    /// harmless in itself (there is no `lock_release` yet to act on), but
-    /// stays `false` there for clarity. When `true` and the op *did*
-    /// acquire locks, the actual removal is delegated to that op's
-    /// `LockRelease` (shared with its `LockGuard`), so a panic-triggered
-    /// release racing with this one can never double-release — whichever
-    /// runs first wins and the other is a no-op.
     /// For an update whose two readings are equal (`after`): how it was
     /// already at its confirmed target (`submit_toward`), or `None` where
     /// there is no target or the reading is below it. By an earlier update
-    /// when one of the same source has ended since this one was submitted
-    /// (`upgrades_ended`), which on a source's lock means before its turn.
+    /// when one of the same source that may have changed something has
+    /// ended since this one was submitted (`upgrades_ended`), which on a
+    /// source's lock means before its turn -- and only on a source where
+    /// one update can update another package at all
+    /// (`Adapter::one_update_can_update_others`, `others_move`).
     fn already_at_target(
         &self,
         op_id: OpId,
         plan: &Plan,
         after: &Reconciled,
+        others_move: bool,
     ) -> Option<AlreadyUpdated> {
         let (target, seen) = {
             let records = self.records.lock().unwrap();
@@ -1295,13 +1318,22 @@ impl OperationManager {
         if !reached_target(version, &target) {
             return None;
         }
-        if self.upgrades_ended_on(&plan.request.instance_id) > seen {
+        if others_move && self.upgrades_ended_on(&plan.request.instance_id) > seen {
             Some(AlreadyUpdated::ByEarlierUpdate)
         } else {
             Some(AlreadyUpdated::BeforeItsTurn)
         }
     }
 
+    /// `release_locks` must be `false` when this op never actually acquired
+    /// its locks (cancelled while still waiting for them, or for a
+    /// concurrency permit) — passing `true` in that case would be
+    /// harmless in itself (there is no `lock_release` yet to act on), but
+    /// stays `false` there for clarity. When `true` and the op *did*
+    /// acquire locks, the actual removal is delegated to that op's
+    /// `LockRelease` (shared with its `LockGuard`), so a panic-triggered
+    /// release racing with this one can never double-release — whichever
+    /// runs first wins and the other is a no-op.
     fn finish(&self, op_id: OpId, outcome: Outcome, release_locks: bool) {
         // An op that never took its locks is still in the queue; left there,
         // every later op needing one of its locks would wait for it for
@@ -1319,8 +1351,12 @@ impl OperationManager {
                 // Counted before the locks are let go: the next operation
                 // on this source waits for them, and reads the count to
                 // tell whether an update ended before its turn
-                // (`already_at_target`).
-                if r.plan.request.kind == OpKind::Upgrade && r.started {
+                // (`already_at_target`). Only an update that may have
+                // changed something counts (`may_have_moved_others`).
+                if r.plan.request.kind == OpKind::Upgrade
+                    && r.started
+                    && may_have_moved_others(&outcome, r.already_updated)
+                {
                     *self
                         .upgrades_ended
                         .lock()

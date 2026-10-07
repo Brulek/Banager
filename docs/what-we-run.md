@@ -1373,8 +1373,12 @@ confirmation showed). Homebrew upgrades a formula's outdated dependencies
 before the formula itself, so in an Update all an earlier update often
 upgrades a later one's package first; that later `brew upgrade` finds it
 current, says so and exits 0. It is reported as done -- by an earlier
-update when another update of the same Homebrew ended after it was
-confirmed, otherwise as already up to date when its turn came -- not as
+update when another update of the same Homebrew that may have changed
+something (its version moved, it failed, or it was stopped partway; not
+one that was itself already up to date or skipped) ended after it was
+confirmed, otherwise as already up to date when its turn came; on every
+other source, where one update never updates another package, always
+the latter -- not as
 needing attention, which it is when the version is still below that
 target (`already_at_target` in `crates/banager-core/src/ops/mod.rs`).
 
@@ -3861,8 +3865,8 @@ saw the change itself (the version it read before and after differ). An
 update that succeeded because its package was already at the version its
 confirmed plan aimed for when its turn came -- an earlier update of the
 same Update all had upgraded it as a dependency, say -- also keeps that it
-was so, and whether an earlier update of the same source had ended in
-between. Also the time the page's Clear was last pressed. Never a line of
+was so, and whether an earlier update of the same Homebrew that may have
+changed something had ended in between. Also the time the page's Clear was last pressed. Never a line of
 a log, a command line or any other path, and of an error message one line
 at most: a failure's cause is read from the tool's last lines as the
 operation finishes, and the lines are dropped; only where they name no

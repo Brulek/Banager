@@ -710,6 +710,19 @@ pub trait Adapter: Send + Sync {
     ) -> Result<Reconciled, AdapterError> {
         self.reconcile(inst, key).await
     }
+
+    /// Whether one update of this source can update another of its
+    /// packages along with it, so that a later update of the same batch
+    /// may find its package already new (`AlreadyUpdated::ByEarlierUpdate`,
+    /// ops/mod.rs). Homebrew does: it upgrades a formula's outdated
+    /// dependencies before the formula. No other source does -- npm's,
+    /// cargo's, pipx's and uv's tools are each installed apart, a model is
+    /// pulled by its own name, and a standalone installer is one tool -- so
+    /// the default is `false`, and such a package found already new is only
+    /// said to be (`AlreadyUpdated::BeforeItsTurn`).
+    fn one_update_can_update_others(&self) -> bool {
+        false
+    }
 }
 
 /// Runs a plan through the runner, streaming each line to the sink, and maps

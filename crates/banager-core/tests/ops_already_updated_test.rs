@@ -23,8 +23,10 @@
 
 use async_trait::async_trait;
 use banager_core::adapters::brew::BrewAdapter;
+use banager_core::adapters::pipx::PipxAdapter;
 use banager_core::adapters::Adapter;
 use banager_core::events::VecSink;
+use banager_core::http::MockHttpClient;
 use banager_core::model::{
     AlreadyUpdated, ArtifactKind, Attention, ManagerInstance, OpKind, OpRequest, Outcome,
 };
@@ -342,6 +344,200 @@ async fn test_an_update_of_another_source_does_not_count_as_an_earlier_one() {
     assert_eq!(manager.wait(first).await, Some(Outcome::Succeeded));
     assert_eq!(
         already_updated(&manager, first),
+        Some(AlreadyUpdated::BeforeItsTurn)
+    );
+}
+
+// --- Review of y3-batch, finding 1 -----------------------------------------
+//
+// An update counts as one that may have brought a later one along only
+// when it may have changed something itself: its version moved (or there
+// was nothing to compare), it failed (Homebrew upgrades the dependencies
+// before the formula, so a failed upgrade may still have moved them), or
+// it was stopped partway. One that was already at its target, or that the
+// tool skipped, changed nothing, and an update after it that finds its
+// package already new was not done by it. And only on a source where one
+// update can update another package at all: Homebrew.
+
+#[tokio::test]
+async fn test_an_update_after_one_that_changed_nothing_was_not_done_by_it() {
+    // The person ran `brew upgrade` in Terminal, then pressed Update all on
+    // the check from before: libpng and libtiff are both at their new
+    // versions before the batch starts. Neither command changes anything,
+    // so neither was done by the other.
+    let runner = Arc::new(ScriptedRunner::default());
+    runner.script(
+        &[BREW, "upgrade", "--formula", "libpng"],
+        vec![exited(0, "", "Warning: libpng 1.6.59 already installed\n")],
+    );
+    runner.script(
+        &[BREW, "upgrade", "--formula", "libtiff"],
+        vec![exited(0, "", "Warning: libtiff 4.7.3 already installed\n")],
+    );
+    let new = brew_info(&[("libpng", "1.6.59"), ("libtiff", "4.7.3")]);
+    runner.script(&BREW_INFO, vec![exited(0, &new, "")]);
+    let (manager, adapter) = manager(&runner);
+    let libpng = plan_upgrade(&adapter, "libpng").await;
+    let libtiff = plan_upgrade(&adapter, "libtiff").await;
+    let first = manager.submit_toward(libpng, Some("1.6.59".to_string()), None);
+    let second = manager.submit_toward(libtiff, Some("4.7.3".to_string()), None);
+    assert_eq!(manager.wait(first).await, Some(Outcome::Succeeded));
+    assert_eq!(manager.wait(second).await, Some(Outcome::Succeeded));
+    assert_eq!(
+        already_updated(&manager, first),
+        Some(AlreadyUpdated::BeforeItsTurn)
+    );
+    assert_eq!(
+        already_updated(&manager, second),
+        Some(AlreadyUpdated::BeforeItsTurn),
+        "the update before it changed nothing"
+    );
+}
+
+#[tokio::test]
+async fn test_an_update_after_one_the_tool_skipped_was_not_done_by_it() {
+    // harfbuzz's upgrade exits 0 and moves nothing, below its target (a
+    // pinned or disabled formula): `UnchangedAfterUpgrade`, and it brought
+    // nothing along either.
+    let runner = Arc::new(ScriptedRunner::default());
+    runner.script(
+        &[BREW, "upgrade", "--formula", "harfbuzz"],
+        vec![exited(0, "", "")],
+    );
+    runner.script(
+        &[BREW, "upgrade", "--formula", "libpng"],
+        vec![exited(0, "", "Warning: libpng 1.6.59 already installed\n")],
+    );
+    let info = brew_info(&[("libpng", "1.6.59")]);
+    runner.script(&BREW_INFO, vec![exited(0, &info, "")]);
+    let (manager, adapter) = manager(&runner);
+    let harfbuzz = plan_upgrade(&adapter, "harfbuzz").await;
+    let libpng = plan_upgrade(&adapter, "libpng").await;
+    let first = manager.submit_toward(harfbuzz, Some("14.5.0".to_string()), None);
+    let second = manager.submit_toward(libpng, Some("1.6.59".to_string()), None);
+    assert_eq!(
+        manager.wait(first).await,
+        Some(Outcome::NeedsAttention(Attention::UnchangedAfterUpgrade))
+    );
+    assert_eq!(manager.wait(second).await, Some(Outcome::Succeeded));
+    assert_eq!(
+        already_updated(&manager, second),
+        Some(AlreadyUpdated::BeforeItsTurn)
+    );
+}
+
+#[tokio::test]
+async fn test_a_failed_homebrew_update_may_have_done_a_later_one() {
+    // `brew upgrade harfbuzz` upgrades libpng, as a dependency, and then
+    // fails on harfbuzz itself: libpng was moved all the same.
+    let runner = Arc::new(ScriptedRunner::default());
+    runner.script(
+        &[BREW, "upgrade", "--formula", "harfbuzz"],
+        vec![exited(
+            1,
+            "",
+            "Error: harfbuzz: Failed executing: meson compile -C build\n",
+        )],
+    );
+    runner.script(
+        &[BREW, "upgrade", "--formula", "libpng"],
+        vec![exited(0, "", "Warning: libpng 1.6.59 already installed\n")],
+    );
+    let old = brew_info(&[]);
+    let new = brew_info(&[("libpng", "1.6.59")]);
+    runner.script(
+        &BREW_INFO,
+        vec![
+            exited(0, &old, ""), // harfbuzz, before
+            exited(0, &new, ""), // harfbuzz, after
+            exited(0, &new, ""), // libpng, before
+            exited(0, &new, ""), // libpng, after
+        ],
+    );
+    let (manager, adapter) = manager(&runner);
+    let harfbuzz = plan_upgrade(&adapter, "harfbuzz").await;
+    let libpng = plan_upgrade(&adapter, "libpng").await;
+    let first = manager.submit_toward(harfbuzz, Some("14.5.0".to_string()), None);
+    let second = manager.submit_toward(libpng, Some("1.6.59".to_string()), None);
+    assert!(matches!(
+        manager.wait(first).await,
+        Some(Outcome::Failed { .. })
+    ));
+    assert_eq!(manager.wait(second).await, Some(Outcome::Succeeded));
+    assert_eq!(
+        already_updated(&manager, second),
+        Some(AlreadyUpdated::ByEarlierUpdate)
+    );
+}
+
+const PIPX: &str = "/opt/homebrew/bin/pipx";
+
+/// The recorded `pipx list --json`, with a second venv, httpie, copied
+/// from cowsay's, and each venv's version as given.
+fn pipx_list(cowsay: &str, httpie: &str) -> String {
+    let path = format!("{FIXTURES}/pipx/1.17.3/list.json");
+    let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {path}: {e}"));
+    let mut list: serde_json::Value = serde_json::from_str(&text).expect("fixture");
+    let venvs = list["venvs"].as_object_mut().expect("venvs");
+    let mut copy = venvs["cowsay"].clone();
+    let main = &mut copy["metadata"]["main_package"];
+    main["package"] = "httpie".into();
+    main["package_or_url"] = "httpie".into();
+    main["package_version"] = httpie.into();
+    venvs.insert("httpie".to_string(), copy);
+    venvs["cowsay"]["metadata"]["main_package"]["package_version"] = cowsay.into();
+    list.to_string()
+}
+
+#[tokio::test]
+async fn test_on_a_source_where_one_update_never_updates_another_none_is_done_by_an_earlier_one() {
+    // pipx keeps each tool in a venv of its own: upgrading cowsay changes
+    // nothing of httpie's. cowsay's update moved it; httpie was at its new
+    // version before its turn all the same (updated in Terminal, say), and
+    // is not said to be done by cowsay's.
+    let runner = Arc::new(ScriptedRunner::default());
+    runner.script(
+        &[PIPX, "upgrade", "cowsay"],
+        vec![exited(0, "upgraded package cowsay\n", "")],
+    );
+    runner.script(
+        &[PIPX, "upgrade", "httpie"],
+        vec![exited(0, "httpie is already at latest version 3.3\n", "")],
+    );
+    runner.script(
+        &[PIPX, "list", "--json"],
+        vec![
+            exited(0, &pipx_list("5.0", "3.3"), ""), // cowsay, before
+            exited(0, &pipx_list("6.1", "3.3"), ""), // cowsay, after; httpie's two
+        ],
+    );
+    let inst = ManagerInstance {
+        exe_path: PathBuf::from(PIPX),
+        ..banager_core::testing::manager_instance("pipx", "pipx")
+    };
+    let adapter: Arc<dyn Adapter> = Arc::new(PipxAdapter::new(
+        runner.clone(),
+        Arc::new(MockHttpClient::new()),
+    ));
+    let mut manager = OperationManager::new(Arc::new(VecSink::new()));
+    manager.register_adapter(adapter.clone());
+    let manager = Arc::new(manager);
+    manager.register_instance(inst.clone());
+    let plan = |name: &str| OpRequest {
+        kind: OpKind::Upgrade,
+        instance_id: inst.id.clone(),
+        artifact_kind: ArtifactKind::Tool,
+        name: name.to_string(),
+    };
+    let cowsay = adapter.plan(&inst, &plan("cowsay")).await.expect("plan");
+    let httpie = adapter.plan(&inst, &plan("httpie")).await.expect("plan");
+    let first = manager.submit_toward(cowsay, Some("6.1".to_string()), None);
+    let second = manager.submit_toward(httpie, Some("3.3".to_string()), None);
+    assert_eq!(manager.wait(first).await, Some(Outcome::Succeeded));
+    assert_eq!(already_updated(&manager, first), None, "cowsay moved");
+    assert_eq!(manager.wait(second).await, Some(Outcome::Succeeded));
+    assert_eq!(
+        already_updated(&manager, second),
         Some(AlreadyUpdated::BeforeItsTurn)
     );
 }
