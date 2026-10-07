@@ -219,16 +219,19 @@ login (`:ab@`, the whole login before its `@`, the whole value):
   `runner/redact.rs`).
 
 A user name alone that is that short or one of those words
-(`git@github.com:…`) holds no secret, and nothing is masked for it.
+(`git@github.com:…`) adds no literal rule. Inside a URL authority it is
+still masked by the generic rule below.
 Anything else is masked wherever it appears, more than needed rather than
 less: a password of digits masks a date's year that matches it, and a
 user name that is the Mac account's masks it in every path a tool prints
 (`/Users/****/…`), and a password that is part of a word masks that
 part in every word that holds it (`pass`: "a ****word is required").
-Besides, the password of any `scheme://user:password@` in the output is
-masked, whatever setting or file it came from; its user name is left,
-since without the setting there is no telling a token from a person's
-name.
+Besides, the complete login of any `scheme://user:password@` or
+`scheme://user@` in the output is masked, whatever setting or file it came
+from, including Git configuration. Both user name and password are hidden:
+either may be a token. This generic rule ends at the authority, so an `@`
+in a public path, query or fragment stays as written. It does not discover
+bare tokens supplied by files outside the imported settings.
 
 Why an operation failed is not read off what the mask left. The runner
 reads it off the last five lines the tool wrote to stderr as the tool
@@ -3296,7 +3299,12 @@ replaced by a link while it is read is never followed.
   skipped, not reported as read, and left as it is.
 
 It stops after 2000 entries or 10 seconds (`ScanBudget::default`) and
-says so on the page, with the number it stopped at. It never runs, opens,
+says so on the page, with the number it stopped at. Directory names are read
+one at a time under the deadline; at most one extra name, never statted,
+distinguishes an exactly full entry budget from an unfinished scan. Only
+retained results are sorted, so an oversized directory is never collected
+in full. The deadline is checked between filesystem calls; it cannot
+interrupt a single call that has stopped answering. It never runs, opens,
 moves or deletes anything it finds. It takes no lock and is not part of a
 refresh (`Session::scan_unknown` in
 `crates/banager-core/src/session/scan.rs`): it runs when the page opens
@@ -3594,8 +3602,13 @@ not what it points at; a folder on another volume is never entered; a file
 counts the blocks the disk holds for it (`st_blocks`), and a file with
 several hard links counts once. A folder that cannot be read is skipped and
 the size is shown as partial (「部分无法读取」). One round looks at
-300,000 entries and spends 30 seconds at most (`SizeBudget::default`) --
-every entry a listing names counts, also one that then cannot be looked
+at most 300,000 entries, with a deadline of 30 seconds (`SizeBudget::default`)
+checked between filesystem calls, starting before planning and including
+old-version directory enumeration. A call already waiting on the disk
+cannot be interrupted by this budget.
+Planning checks for a newer round before each directory entry and stat;
+exhaustion leaves unplanned sizes unknown and totals marked "or more".
+Every entry a listing names counts, also one that then cannot be looked
 at, and the time is checked before each one; a
 size it stopped short of is shown as "or more" (「…以上」), and a tool
 it did not reach before the budget ran out shows no size that round. One
@@ -3608,6 +3621,8 @@ is shown as "about" (「约」): an APFS clone (uv builds its tools'
 environments that way from its cache) counts in full though it shares its
 blocks.
 
+Even when a kept-data link leads to the home folder or its Library, a
+protected child is skipped before its stat and the measurement is partial.
 It never looks into these places, nor follows a link into them, so
 measuring never makes macOS ask for permission: `~/Desktop`,
 `~/Documents`, `~/Downloads`, `~/Pictures`, `~/Movies`, `~/Music`,
@@ -3818,7 +3833,8 @@ What it looks at, during the uninstall preview of a formula or cask only:
   it, whether the package has a program of that name: for a formula
   `<prefix>/opt/<name>/bin/<program>`, for a cask `<prefix>/bin/<program>`,
   every link followed -- one look a name; and then, by the names in them
-  (`protected::look::list`, one look a folder), for a Python a formula's
+  (`protected::look::list`, one look a folder and one before each name
+  read in it), for a Python a formula's
   `<prefix>/opt/<name>/bin`, and a cask's app's `Contents/MacOS` and
   `Contents/Resources` (for a program) and the `bin` of each folder in its
   `<prefix>/Caskroom/<token>` but the hidden `.metadata`.
@@ -3852,7 +3868,10 @@ and never into the places macOS asks about first nor onto another disk --
 the same places the command check never reads. Only folders are opened,
 to follow each link and to read the names in the few listed above: no
 file's contents are read, nothing is written, and no command runs. At most 2,000 paths and 1 second for one
-preview (`needed_by::BUDGET`), and the preview waits one second more at
+preview (`needed_by::BUDGET`), including one look before each directory-name
+read. Names are consumed one at a time, with no directory-sized collection;
+the search stops at the first match, and exhaustion stays unknown. The
+preview waits one second more at
 most for a step that does not answer at all (a folder on a disk that
 stopped answering), then goes on without it; a look that did not finish
 says so (「无法确定还有哪些软件要用它。卸载前请自行确认。」, "Couldn't check what

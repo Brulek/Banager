@@ -1945,6 +1945,9 @@ fn test_what_we_run_says_a_login_in_a_setting_is_masked_in_what_tools_print() {
         "HTTP Basic",
         "fewer than three characters",
         "any `scheme://user:password@`",
+        "`scheme://user@` in the output is masked",
+        "including Git configuration",
+        "This generic rule ends at the authority",
         "split across two reads",
         "the word on each side of the cut",
         "What a parser reads",
@@ -1991,6 +1994,7 @@ fn test_what_we_run_says_a_login_in_a_setting_is_masked_in_what_tools_print() {
     // like a token, and a proxy's name never masked.
     for gone in [
         "A proxy's user name is not",
+        "its user name is left",
         "not letters alone or digits alone",
         "16 characters or more",
         "only when it looks like a token",
