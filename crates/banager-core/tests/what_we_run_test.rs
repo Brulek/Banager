@@ -2187,6 +2187,18 @@ fn test_what_we_run_says_an_npm_or_uv_read_before_running_that_does_not_answer_e
             !bullet.contains(old),
             "`## {section}` still says a read that does not answer ends as 「未能开始」: {bullet}"
         );
+        // A read stopped at its deadline ends `Failed`, `TimedOut`; a write
+        // command stopped at its 600 s limit, or by a signal it did not
+        // send, ends `Unconfirmed` (`run_plan`), 「结果未确认」. So the read
+        // does not end "as its write command would, failing the same way".
+        for unlike in ["和它的写入命令这样失败时一样", "和它的寫入命令這樣失敗時相同"]
+        {
+            assert!(
+                !bullet.contains(unlike),
+                "`## {section}` says a read that does not answer ends as its write command \
+                 would ({unlike:?}), which is untrue of one that runs out of time: {bullet}"
+            );
+        }
         for phrase in phrases {
             assert!(
                 bullet.contains(phrase),
