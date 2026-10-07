@@ -880,6 +880,7 @@ export function createMockBackend(scenario: Scenario): MockBackend {
               ),
               world,
               request,
+              scenario.path !== "default",
             ),
             world,
             request,

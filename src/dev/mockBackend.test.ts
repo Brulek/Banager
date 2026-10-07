@@ -961,6 +961,21 @@ describe("the browser preview's mock backend", () => {
     expect(withMockNeededBy(bare, buildWorld("full"), uninstall("node@22")).warnings).toEqual(node.plan.warnings.filter(
       (w) => typeof w !== "string" && "NeededBySource" in w,
     ));
+    // With the login shell's PATH never read (`?path=default`), a source
+    // that runs on a runtime may not have been found: its preview says the
+    // look did not finish, after what it found; git's says nothing.
+    expect(withMockNeededBy(bare, buildWorld("notices"), uninstall("node@22"), false).warnings).toEqual([
+      "DependentsUnknown",
+    ]);
+    const unread = backendFor({ path: "default" }).backend;
+    await answer<Snapshot>(unread.invoke("refresh"));
+    const nodeUnread = await answer<IssuedPlan>(unread.invoke("plan_operation", { request: uninstall("node@22") }));
+    expect(nodeUnread.plan.warnings.slice(-2)).toEqual([
+      { NeededBySource: { instance_id: "npm:/opt/homebrew", program: true, tools: npmTools.length } },
+      "DependentsUnknown",
+    ]);
+    const gitUnread = await answer<IssuedPlan>(unread.invoke("plan_operation", { request: uninstall("git") }));
+    expect(gitUnread.plan.warnings).not.toContain("DependentsUnknown");
   });
 
   it("offers Uninstall on Codex's own install and previews the two links and the package folder it moves (U8)", async () => {
