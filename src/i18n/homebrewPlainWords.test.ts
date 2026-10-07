@@ -81,7 +81,7 @@ describe("Homebrew's link, by one name", () => {
     // 接 alone, with 链接 / 連結 taken out: 接在、接回、接上、接到、接不回;
     // and 断开 / 斷開 for unlinking, which is 解除链接 / 解除連結.
     const otherName = /接[在回上到不]|断开|斷開/;
-    expect(sentences.filter(([, text]) => otherName.test(text.replaceAll(word, "")))).toEqual([]);
+    expect(sentences.filter(([, text]) => otherName.test(text.split(word).join("")))).toEqual([]);
     // The ones that are about the link say it by that name.
     for (const key of ["kegLinks.relinks", "kegLinks.blockedBadge", "kegLinks.logNoLongerLinkedLead"]) {
       expect(sentences.find(([each]) => each === key)?.[1]).toContain(word);
