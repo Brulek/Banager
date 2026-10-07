@@ -979,4 +979,177 @@ mod tests {
         )
         .expect("antigravity-cli-auto-updater-974169037036.us-central1.run.app");
     }
+
+    async fn f08_read_request_headers(socket: &mut tokio::net::TcpStream) {
+        let mut header = Vec::new();
+        let mut buffer = [0; 4096];
+        while !header.windows(4).any(|bytes| bytes == b"\r\n\r\n") {
+            let read = socket.read(&mut buffer).await.unwrap();
+            assert!(read > 0, "client closed before sending request headers");
+            header.extend_from_slice(&buffer[..read]);
+        }
+    }
+
+    // Headers have already succeeded: exercise the separate body-read path.
+    #[tokio::test]
+    async fn f08_g11_deadline_expires_after_headers_and_partial_body() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let (sent, received) = tokio::sync::oneshot::channel();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            f08_read_request_headers(&mut socket).await;
+            socket
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\n{")
+                .await
+                .unwrap();
+            sent.send(()).unwrap();
+            std::future::pending::<()>().await;
+        });
+        let timeout = std::time::Duration::from_millis(200);
+        let started = std::time::Instant::now();
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(3),
+            RealHttpClient::new().send(HttpRequest {
+                method: "GET",
+                url: format!("http://{addr}/"),
+                headers: vec![],
+                timeout,
+            }),
+        )
+        .await;
+        server.abort();
+        received
+            .await
+            .expect("server actually sent headers and a body prefix");
+        assert!(matches!(result.unwrap(), Err(HttpError::Timeout(d)) if d == timeout));
+        assert!(started.elapsed() < std::time::Duration::from_secs(3));
+    }
+
+    #[tokio::test]
+    async fn f08_g12_truncated_framing_never_returns_a_partial_response() {
+        // 100 bytes promised and 13 sent; a 16-byte (0x10) chunk cut off
+        // after 13. The server closes the connection after either.
+        const SHORT_OF_ITS_LENGTH: &[u8] = concat!(
+            "HTTP/1.1 200 OK\r\nContent-Length: 100\r\nConnection: close\r\n\r\n",
+            "{\"version\":\"1"
+        )
+        .as_bytes();
+        const UNFINISHED_CHUNK: &[u8] = concat!(
+            "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n",
+            "10\r\n{\"version\":\"1"
+        )
+        .as_bytes();
+        for response in [SHORT_OF_ITS_LENGTH, UNFINISHED_CHUNK] {
+            let addr = serve_one_response(response).await;
+            let result = RealHttpClient::new()
+                .send(HttpRequest {
+                    method: "GET",
+                    url: format!("http://{addr}/"),
+                    headers: vec![],
+                    timeout: std::time::Duration::from_secs(2),
+                })
+                .await;
+            assert!(
+                matches!(result, Err(HttpError::Network(_))),
+                "truncated body is a network failure: {result:?}"
+            );
+        }
+    }
+
+    async fn f08_stream_without_length(chunked: bool, over: bool) {
+        // Keep the over-limit connection open, so a Content-Length-only
+        // check (or waiting for EOF before checking) fails the deadline.
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let (sent, received) = tokio::sync::oneshot::channel();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            f08_read_request_headers(&mut socket).await;
+            let header = if chunked {
+                "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n"
+            } else {
+                "HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n"
+            };
+            socket.write_all(header.as_bytes()).await.unwrap();
+            let mut sent = Some(sent);
+            let mut written = 0;
+            for size in [511, 513, usize::from(over)] {
+                if size == 0 {
+                    continue;
+                }
+                if chunked {
+                    socket
+                        .write_all(format!("{size:x}\r\n").as_bytes())
+                        .await
+                        .unwrap();
+                }
+                socket.write_all(&vec![b'x'; size]).await.unwrap();
+                written += size;
+                if written == 1024 + usize::from(over) {
+                    sent.take().unwrap().send(()).unwrap();
+                }
+                if chunked {
+                    // Once the last over-limit byte arrives the client may
+                    // close immediately, before the chunk's trailing CRLF.
+                    let _ = socket.write_all(b"\r\n").await;
+                }
+                if written < 1024 + usize::from(over) {
+                    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                }
+            }
+            if over {
+                std::future::pending::<()>().await;
+            }
+            if chunked {
+                socket.write_all(b"0\r\n\r\n").await.unwrap();
+            }
+            socket.shutdown().await.unwrap();
+        });
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(3),
+            RealHttpClient::with_body_limit(1024).send(HttpRequest {
+                method: "GET",
+                url: format!("http://{addr}/"),
+                headers: vec![],
+                timeout: std::time::Duration::from_secs(5),
+            }),
+        )
+        .await;
+        if over {
+            server.abort();
+        } else {
+            server.await.unwrap();
+        }
+        received
+            .await
+            .expect("the test stream crossed the boundary");
+        let result =
+            result.expect("client must abandon an over-limit stream without waiting for EOF");
+        if over {
+            assert!(
+                matches!(result, Err(HttpError::BodyTooLarge { limit: 1024 })),
+                "{result:?}"
+            );
+        } else {
+            assert_eq!(result.unwrap().body, "x".repeat(1024));
+        }
+    }
+
+    #[tokio::test]
+    async fn f08_g13_chunked_exact_limit() {
+        f08_stream_without_length(true, false).await;
+    }
+    #[tokio::test]
+    async fn f08_g13_chunked_one_byte_over_limit() {
+        f08_stream_without_length(true, true).await;
+    }
+    #[tokio::test]
+    async fn f08_g13_close_delimited_exact_limit() {
+        f08_stream_without_length(false, false).await;
+    }
+    #[tokio::test]
+    async fn f08_g13_close_delimited_one_byte_over_limit() {
+        f08_stream_without_length(false, true).await;
+    }
 }

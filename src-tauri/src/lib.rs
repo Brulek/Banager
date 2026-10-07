@@ -25,6 +25,23 @@ use state::AppState;
 use tauri::Manager;
 use tauri_plugin_window_state::StateFlags;
 
+// These window/session commands have one registration list in production
+// and the mock-runtime dispatch test. Native-only commands follow them at
+// the call site; the test never calls startup or creates a native window.
+macro_rules! session_handlers {
+    ($($native:path),* $(,)?) => {
+        tauri::generate_handler![
+            $crate::ipc::get_snapshot,
+            $crate::ipc::plan_operation,
+            $crate::ipc::submit_operation,
+            $crate::ipc::subscribe_events,
+            $($native),*
+        ]
+    };
+}
+#[cfg(test)]
+pub(crate) use session_handlers;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -164,16 +181,12 @@ pub fn run() {
         // Closing the window hides it, and Banager keeps running until it
         // quits (window.rs).
         .on_window_event(window::on_window_event)
-        .invoke_handler(tauri::generate_handler![
-            ipc::get_snapshot,
+        .invoke_handler(session_handlers![
             ipc::refresh,
-            ipc::plan_operation,
-            ipc::submit_operation,
             ipc::cancel_operation,
             ipc::list_operations,
             ipc::get_settings,
             ipc::set_settings,
-            ipc::subscribe_events,
             ipc::open_ollama_app,
             ipc::scan_unknown,
             reveal::reveal_in_finder,

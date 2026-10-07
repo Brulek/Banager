@@ -3308,4 +3308,127 @@ mod tests {
             other => panic!("expected the preview, then the snapshot, and nothing else: {other:?}"),
         };
     }
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn f08_g14_generated_dispatch_handles_wire_arguments_and_events() {
+        use tauri::ipc::{CallbackFn, InvokeBody};
+        use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY};
+        let (state, executed, _) = state_with_fake_adapter_and_now(None);
+        // Only the injected fake adapter runs. No AppState::new, production
+        // startup/discovery, plugins, native event loop, or settings write.
+        state
+            .session
+            .refresh(
+                &banager_core::runner::HostEnv {
+                    path_dirs: vec![],
+                    home: "/tmp".into(),
+                    euid: 501,
+                    cargo_home: None,
+                    rustup_home: None,
+                    zdotdir: None,
+                    ollama_host: None,
+                },
+                &CheckOptions::default(),
+            )
+            .await;
+        let received = Arc::new(Mutex::new(Vec::new()));
+        let capture = received.clone();
+        let app = mock_builder()
+            .manage(state)
+            .channel_interceptor(move |_, callback, index, body| {
+                capture.lock().unwrap().push((
+                    callback.0,
+                    index,
+                    match body {
+                        tauri::ipc::InvokeResponseBody::Json(json) => {
+                            serde_json::from_str::<serde_json::Value>(json).unwrap()
+                        }
+                        tauri::ipc::InvokeResponseBody::Raw(_) => panic!("event must be JSON"),
+                    },
+                ));
+                true
+            })
+            .invoke_handler(crate::session_handlers![])
+            .build(mock_context(noop_assets()))
+            .unwrap();
+        let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .unwrap();
+        let dispatch = |cmd: &str, body: serde_json::Value| {
+            get_ipc_response(
+                &webview,
+                tauri::webview::InvokeRequest {
+                    cmd: cmd.into(),
+                    callback: CallbackFn(1),
+                    error: CallbackFn(2),
+                    url: "tauri://localhost".parse().unwrap(),
+                    body: InvokeBody::Json(body),
+                    headers: Default::default(),
+                    invoke_key: INVOKE_KEY.into(),
+                },
+            )
+            .map(|body| body.deserialize::<serde_json::Value>().unwrap())
+        };
+        let snapshot = dispatch("get_snapshot", serde_json::json!({})).unwrap();
+        assert_eq!(snapshot["instances"][0]["id"], "fake:1");
+        assert!(snapshot["updates"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|row| row["key"]["name"] == "jq"));
+        let error =
+            dispatch("submit_operation", serde_json::json!({"planId":"forged"})).unwrap_err();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(error.as_str().unwrap()).unwrap()["kind"],
+            "unknown"
+        );
+        assert_eq!(executed.load(Ordering::SeqCst), 0);
+        dispatch(
+            "subscribe_events",
+            serde_json::json!({"channel":"__CHANNEL__:17"}),
+        )
+        .unwrap();
+        let issued = dispatch(
+            "plan_operation",
+            serde_json::json!({"request": {
+                "kind":"Upgrade", "instance_id":"fake:1", "artifact_kind":"Formula", "name":"jq"
+            }}),
+        )
+        .unwrap();
+        let id = issued["id"].as_str().unwrap();
+        assert_eq!(issued["plan"]["request"]["name"], "jq");
+        // A Rust spelling must not silently stand in for JS's camelCase.
+        let wrong_case =
+            dispatch("submit_operation", serde_json::json!({"plan_id":id})).unwrap_err();
+        assert!(
+            wrong_case.as_str().unwrap().contains("planId"),
+            "{wrong_case}"
+        );
+        let op_id = dispatch("submit_operation", serde_json::json!({"planId":id}))
+            .unwrap()
+            .as_u64()
+            .unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(3), async {
+            loop {
+                if received
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .any(|(_, _, body)| body["Operation"]["Finished"]["op_id"] == op_id)
+                {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("an actual serialized operation event reaches the dispatched subscription");
+        assert_eq!(executed.load(Ordering::SeqCst), 1);
+        let events = received.lock().unwrap();
+        assert!(!events.is_empty());
+        for (index, (callback, sequence, body)) in events.iter().enumerate() {
+            assert_eq!(*callback, 17);
+            assert_eq!(*sequence, index);
+            let _: UiEvent = serde_json::from_value(body.clone()).unwrap();
+        }
+    }
 }

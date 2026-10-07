@@ -106,6 +106,8 @@ block2 = "0.6"
 notify-rust = "4.11"
 
 [dev-dependencies]
+# Mock-runtime dispatch through the same generated handlers as production.
+tauri = { version = "2.11.1", features = ["test"] }
 # The parser tauri reads a menu item's shortcut with -- `MenuItem::with_id`
 # parses the string, and drops a shortcut it cannot read without a word --
 # so that `menu.rs`'s tests read the page items' shortcuts as tauri will.
