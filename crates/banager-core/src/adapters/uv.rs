@@ -14,7 +14,7 @@ use crate::runner::{resolve_exe, CommandOutput, CommandRunner, CommandSpec, Host
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::ffi::OsString;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
@@ -167,6 +167,10 @@ fn require_parsed_tools(text: &str, count: usize) -> Result<(), AdapterError> {
 /// must never be advertised as an unconstrained upgrade. Unknown receipts
 /// are equally unable to prove that `uv tool upgrade` can install latest.
 fn upgrade_requirement(artifact: &InstalledArtifact) -> Result<(), String> {
+    upgrade_basis(artifact).map(|_| ())
+}
+
+fn upgrade_basis(artifact: &InstalledArtifact) -> Result<String, String> {
     let path = artifact
         .path
         .as_ref()
@@ -177,7 +181,15 @@ fn upgrade_requirement(artifact: &InstalledArtifact) -> Result<(), String> {
         &crate::protected::Protected::of_this_process(),
     )
     .map_err(|_| "could not read uv tool requirements".to_string())?;
-    unconstrained_requirement(&text, &artifact.key.name)
+    unconstrained_requirement(&text, &artifact.key.name)?;
+    let receipt: toml::Value =
+        toml::from_str(&text).map_err(|_| "could not parse uv tool requirements".to_string())?;
+    Ok(super::plan_basis(serde_json::json!([
+        artifact.key.name,
+        artifact.version,
+        path,
+        receipt
+    ])))
 }
 
 /// The words a tool's row says when something saved in its receipt can
@@ -373,12 +385,12 @@ impl UvAdapter {
 
     async fn run_uv(
         &self,
-        inst: &ManagerInstance,
+        program: &Path,
         args: Vec<String>,
         timeout: Duration,
     ) -> Result<CommandOutput, AdapterError> {
         let spec = CommandSpec {
-            program: inst.exe_path.clone(),
+            program: program.to_owned(),
             args,
             env: vec![("NO_COLOR".into(), "1".into())],
             cwd: None,
@@ -396,9 +408,17 @@ impl UvAdapter {
         &self,
         inst: &ManagerInstance,
     ) -> Result<Vec<InstalledArtifact>, AdapterError> {
+        self.inventory_at(&inst.exe_path, &inst.id).await
+    }
+
+    async fn inventory_at(
+        &self,
+        program: &Path,
+        instance_id: &str,
+    ) -> Result<Vec<InstalledArtifact>, AdapterError> {
         let output = self
             .run_uv(
-                inst,
+                program,
                 vec![
                     "tool".to_string(),
                     "list".to_string(),
@@ -414,7 +434,7 @@ impl UvAdapter {
             });
         }
         let uninstall_blocked = self.uninstall_blocked();
-        let artifacts = parse_tool_list_show_paths(&output.stdout, &inst.id);
+        let artifacts = parse_tool_list_show_paths(&output.stdout, instance_id);
         require_parsed_tools(&output.stdout, artifacts.len())?;
         Ok(artifacts
             .into_iter()
@@ -432,7 +452,7 @@ impl UvAdapter {
     ) -> Result<CheckOutcome, AdapterError> {
         let output = self
             .run_uv(
-                inst,
+                &inst.exe_path,
                 vec![
                     "tool".to_string(),
                     "list".to_string(),
@@ -507,13 +527,14 @@ impl UvAdapter {
                 return Err(AdapterError::UninstallBlocked { reason });
             }
         }
+        let mut basis = None;
         if req.kind == OpKind::Upgrade {
             let installed = self.inventory(inst).await?;
             let artifact = installed
                 .iter()
                 .find(|a| a.key.name == req.name)
                 .ok_or_else(|| AdapterError::Refused("uv tool is absent from inventory".into()))?;
-            upgrade_requirement(artifact).map_err(AdapterError::Refused)?;
+            basis = Some(upgrade_basis(artifact).map_err(AdapterError::Refused)?);
         }
         let lock = ResourceLock(inst.id.clone());
         let args = match req.kind {
@@ -550,7 +571,7 @@ impl UvAdapter {
             cancel_policy: CancelPolicy::KillThenReconcile,
             warnings,
             affected: Vec::new(),
-            basis: None,
+            basis,
             timeout_secs: 600,
         })
     }
@@ -562,6 +583,33 @@ impl UvAdapter {
         op_id: OpId,
         cancel: CancellationToken,
     ) -> Result<Outcome, AdapterError> {
+        if plan.request.kind == OpKind::Upgrade {
+            let current = match &plan.action {
+                PlanAction::Command { program, .. } if plan.basis.is_some() => self
+                    .inventory_at(program, &plan.request.instance_id)
+                    .await
+                    .ok()
+                    .and_then(|installed| {
+                        let mut matching = installed
+                            .iter()
+                            .filter(|artifact| artifact.key.name == plan.request.name);
+                        let artifact = matching.next()?;
+                        if matching.next().is_some() {
+                            return None;
+                        }
+                        upgrade_basis(artifact).ok()
+                    }),
+                _ => None,
+            };
+            if cancel.is_cancelled() {
+                return Ok(Outcome::Cancelled);
+            }
+            if current.is_none() || current != plan.basis {
+                return Ok(Outcome::BanagerFailed(
+                    crate::model::Fault::ChangedSinceShown,
+                ));
+            }
+        }
         run_plan(&self.runner, plan, sink, op_id, cancel).await
     }
 
@@ -1443,7 +1491,6 @@ ruff v0.15.0 (/Users/someone/.local/share/uv/tools/ruff)
         let result = <UvAdapter as Adapter>::search(&adapter, &inst, "ruff").await;
         assert!(matches!(result, Err(AdapterError::Unsupported(_))));
     }
-
     async fn f08_execute_saved_receipt(changed: Option<&str>) {
         let (dir, runner) = receipt_runner();
         let adapter = UvAdapter::new(runner.clone());
@@ -1452,7 +1499,26 @@ ruff v0.15.0 (/Users/someone/.local/share/uv/tools/ruff)
             .await
             .unwrap();
         if let Some(receipt) = changed {
-            std::fs::write(dir.path().join("uv-receipt.toml"), receipt).unwrap();
+            let path = dir.path().join("uv-receipt.toml");
+            match receipt {
+                "remove receipt" => std::fs::remove_file(path).unwrap(),
+                "receipt is a directory" => {
+                    std::fs::remove_file(&path).unwrap();
+                    std::fs::create_dir(path).unwrap();
+                }
+                _ => {
+                    std::fs::write(path, receipt).unwrap();
+                    // Even an accepted new preview with identical argv
+                    // cannot authorize the saved plan's changed basis.
+                    if let Ok(again) = adapter
+                        .plan(&test_instance(), &request(OpKind::Upgrade))
+                        .await
+                    {
+                        assert_eq!(plan.action, again.action);
+                        assert_ne!(plan.basis, again.basis);
+                    }
+                }
+            }
         }
         let crate::model::PlanAction::Command { program, args, .. } = &plan.action else {
             panic!("command");
@@ -1492,18 +1558,22 @@ ruff v0.15.0 (/Users/someone/.local/share/uv/tools/ruff)
             assert!(
                 matches!(
                     result,
-                    Err(AdapterError::Refused(_)) | Ok(Outcome::BanagerFailed(_))
+                    Ok(Outcome::BanagerFailed(
+                        crate::model::Fault::ChangedSinceShown
+                    ))
                 ),
                 "explicit stale-preview refusal: {result:?}"
             );
         } else {
             assert_eq!(result.unwrap(), Outcome::Succeeded);
-            assert_eq!(writes.len(), 1);
+            let expected: Vec<_> = std::iter::once(program.to_string_lossy().into_owned())
+                .chain(args.clone())
+                .collect();
+            assert_eq!(writes, [expected]);
         }
     }
 
     #[tokio::test]
-    #[ignore = "bug: G09: a uv upgrade still runs after its receipt gained a version constraint since its preview"]
     async fn f08_g09_execute_original_plan_after_constraint_change() {
         f08_execute_saved_receipt(Some(
             "[tool]\nrequirements = [{name = 'ruff', specifier = '==0.15.0'}]\n",
@@ -1512,7 +1582,6 @@ ruff v0.15.0 (/Users/someone/.local/share/uv/tools/ruff)
     }
 
     #[tokio::test]
-    #[ignore = "bug: G09: a uv upgrade still runs after its receipt became unreadable since its preview"]
     async fn f08_g09_execute_original_plan_after_unreadable_receipt() {
         f08_execute_saved_receipt(Some("not valid [toml")).await;
     }
@@ -1520,5 +1589,99 @@ ruff v0.15.0 (/Users/someone/.local/share/uv/tools/ruff)
     #[tokio::test]
     async fn f08_g09_unchanged_receipt_executes_saved_plan() {
         f08_execute_saved_receipt(None).await;
+    }
+    #[tokio::test]
+    async fn f30b_uv_changed_dependency_constraint_refuses_saved_plan() {
+        f08_execute_saved_receipt(Some(
+            "[tool]\nrequirements = [{name = 'ruff'}]\nconstraints = [{name = 'dependency', specifier = '<2'}]\n",
+        )).await;
+    }
+
+    #[tokio::test]
+    async fn f30b_uv_missing_or_non_file_receipt_refuses_saved_plan() {
+        for changed in ["remove receipt", "receipt is a directory"] {
+            f08_execute_saved_receipt(Some(changed)).await;
+        }
+    }
+
+    /// A receipt in the shape uv writes one (requirements, entrypoints and
+    /// `[tool.options]`), read again by a refresh between the preview and
+    /// the confirmation: reading the same receipt again changes nothing,
+    /// so the saved upgrade runs, exactly as previewed.
+    #[tokio::test]
+    async fn f30b_uv_refresh_rereading_the_same_receipt_keeps_the_saved_plan() {
+        let (dir, runner) = receipt_runner();
+        std::fs::write(
+            dir.path().join("uv-receipt.toml"),
+            format!(
+                "[tool]\nrequirements = [{{ name = \"ruff\" }}]\nentrypoints = [\n    {{ name = \"ruff\", install-path = \"{home}/.local/bin/ruff\", from = \"ruff\" }},\n]\n\n[tool.options]\nexclude-newer-package = {{}}\n",
+                home = dir.path().display()
+            ),
+        )
+        .unwrap();
+        let adapter = UvAdapter::new(runner.clone());
+        let plan = adapter
+            .plan(&test_instance(), &request(OpKind::Upgrade))
+            .await
+            .unwrap();
+        let basis = plan
+            .basis
+            .clone()
+            .expect("an upgrade preview carries its basis");
+        assert_eq!(basis.len(), 64);
+        assert!(basis.bytes().all(|b| b.is_ascii_hexdigit()));
+        // A refresh: the list and every receipt are read again.
+        for _ in 0..2 {
+            let rows = adapter.inventory(&test_instance()).await.unwrap();
+            assert_eq!(rows.len(), 1);
+        }
+        let crate::model::PlanAction::Command { program, args, .. } = &plan.action else {
+            panic!("command");
+        };
+        let argv: Vec<String> = std::iter::once(program.to_string_lossy().into_owned())
+            .chain(args.iter().cloned())
+            .collect();
+        runner.respond(
+            argv.iter().map(String::as_str).collect(),
+            CommandOutput {
+                stderr_cause: Default::default(),
+                exit_code: Some(0),
+                stdout: String::new(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let before = runner.calls().len();
+        let result = adapter
+            .execute(
+                &plan,
+                Arc::new(crate::events::VecSink::new()),
+                1,
+                CancellationToken::new(),
+            )
+            .await;
+        assert_eq!(result.unwrap(), Outcome::Succeeded);
+        let list = vec![
+            program.to_string_lossy().into_owned(),
+            "tool".into(),
+            "list".into(),
+            "--show-paths".into(),
+        ];
+        assert_eq!(
+            runner.calls()[before..],
+            [list, argv],
+            "one documented read, then exactly the previewed upgrade"
+        );
+    }
+
+    #[tokio::test]
+    async fn f30b_uv_saved_overrides_and_extras_changes_refuse_saved_plan() {
+        for receipt in [
+            "[tool]\nrequirements = [{name = 'ruff'}]\noverrides = [{name = 'ruff', specifier = '==0.15.0'}]\n",
+            "[tool]\nrequirements = [{name = 'ruff', extras = ['custom']}]\n",
+        ] {
+            f08_execute_saved_receipt(Some(receipt)).await;
+        }
     }
 }

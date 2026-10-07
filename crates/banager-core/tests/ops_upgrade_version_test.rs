@@ -598,9 +598,9 @@ async fn uv_upgrade(upgrade_output: CommandOutput, lists: Vec<String>) -> Outcom
     runner.script(&[UV, "tool", "upgrade", "ruff"], vec![upgrade_output]);
     runner.script(
         &[UV, "tool", "list", "--show-paths"],
-        // Planning now reads the receipt's environment before the
-        // operation's own before/after reconciliation readings.
-        std::iter::once(&lists[0])
+        // Planning and execute's final basis check each read the receipt's
+        // environment, in addition to before/after reconciliation.
+        std::iter::repeat_n(&lists[0], 2)
             .chain(lists.iter())
             .map(|l| exited_0(l, ""))
             .collect(),

@@ -2160,7 +2160,15 @@ requirements `--with` added, are not resolved: should uv keep the version
 it has because of one of them, that upgrade ends as needing attention,
 with the version unchanged. Planning an upgrade repeats the
 inventory and receipt check and refuses a constraint or unknown receipt.
-It neither edits a receipt nor removes a version pin. uv has no
+The preview carries a fingerprint of that tool's environment path, version and
+parsed receipt, including its saved requirements, constraints, overrides and
+options. Immediately before a saved upgrade runs, Banager repeats the existing
+`tool list --show-paths` read and bounded receipt read. A changed environment,
+record, missing tool or unreadable receipt refuses the plan as changed since
+shown, before any upgrade command. An unchanged record runs the original argv.
+The fingerprint also participates when a batch prepares an evicted plan again;
+identical commands cannot hide a changed installation basis. No receipt contents
+are sent to the window. It neither edits a receipt nor removes a version pin. uv has no
 tool-search command Banager uses.
 
 **Write commands:**
@@ -4420,9 +4428,11 @@ not read (`protected::look`; How Banager runs anything, above):
   directory `xcode-select -p` names leads, and whether that is an
   executable file (`realpath`, `stat`).
 - uv: `<tool environment>/uv-receipt.toml`, at the environment path its
-  inventory returns; only the saved main-package requirement and the saved
-  constraints and overrides naming the main package are inspected, for
-  update checks and upgrade planning (uv's section).
+  inventory returns. The saved main-package requirement and constraints and
+  overrides naming the main package determine whether an upgrade can be offered.
+  Planning and revalidation before execution also fingerprint the whole parsed
+  receipt, so changed dependency constraints or options invalidate the saved
+  preview too (uv's section).
 - Cargo: `<CARGO_HOME>/.crates2.json` and `<CARGO_HOME>/.crates.toml`
   (Cargo's two install manifests, merged as the Cargo section says);
   whether `cargo-binstall` is on `PATH`.
@@ -5285,6 +5295,7 @@ that has been set up.
 - 预览必须在生成后 10 分钟内确认并提交。已接受的操作可以排队超过 10 分钟再执行。
 - 更新后版本未变通常需要检查；若已达到或超过确认的目标版本，则报告已更新。这也适用于 Grok Build 和 rustup。没有可比较的目标版本时，不适用此例外。
 - 已安装页详情里的 HTTPS 首页链接只交给默认浏览器打开：先按 `https:` 查出系统设置的默认浏览器，再指定由它打开，不会被声明了该域名的 App 直接接走；查不到默认浏览器时不打开。只打开当前列表里某个工具的来源报告的首页，普通 HTTP 首页只供拷贝。
+- npm 的操作，以及 Cargo 和 uv 的更新，在开始前会再核对一次：npm 重新读取全局安装位置（`npm prefix -g`），Cargo 重新读取这个工具的安装记录，uv 重新读取这个工具的环境和安装记录（receipt）。与预览时不一致或无法读取时，不运行任何写入命令，结果显示为未能开始，请重新打开确认窗口；一致时运行的仍是预览中的原命令。这些都是已有的只读命令和有大小上限的文件读取，没有新的主机、权限或写入的文件。
 
 ## 繁體中文：執行與隱私要點
 
@@ -5301,3 +5312,4 @@ that has been set up.
 - 預覽必須在產生後 10 分鐘內確認並送出。已接受的操作可以排隊超過 10 分鐘再執行。
 - 更新後版本未變通常需要檢查；若已達到或超過確認的目標版本，則回報已更新。這也適用於 Grok Build 和 rustup。沒有可比較的目標版本時，不適用此例外。
 - 已安裝頁詳細資訊裡的 HTTPS 首頁連結只交給預設瀏覽器開啟：先依 `https:` 查出系統設定的預設瀏覽器，再指定由它開啟，不會被宣告了該網域的 App 直接接走；查不到預設瀏覽器時不開啟。只開啟目前清單裡某個工具的來源回報的首頁，一般 HTTP 首頁只供拷貝。
+- npm 的操作，以及 Cargo 和 uv 的更新，在開始前會再核對一次：npm 重新讀取全域安裝位置（`npm prefix -g`），Cargo 重新讀取這個工具的安裝紀錄，uv 重新讀取這個工具的環境和安裝紀錄（receipt）。與預覽時不一致或無法讀取時，不執行任何寫入命令，結果顯示為未能開始，請重新開啟確認視窗；一致時執行的仍是預覽中的原命令。這些都是既有的唯讀命令和有大小上限的檔案讀取，沒有新的主機、權限或寫入的檔案。
