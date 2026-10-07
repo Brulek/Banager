@@ -414,7 +414,7 @@ describe("the browser preview's mock backend", () => {
     expect(issued.plan.action).toEqual({
       Command: {
         program: "/opt/homebrew/bin/brew",
-        args: ["link", "--force", "node@20"],
+        args: ["link", "--formula", "--force", "node@20"],
         env: expect.any(Array) as unknown as [string, string][],
       },
     });

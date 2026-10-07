@@ -280,7 +280,7 @@ export type SourceNoticeAction =
   /**
    * Fix… on a source whose launcher could not find a program a keg-only
    * Homebrew formula has (`noAnswerNotice`, src/lib/noAnswer.ts): the
-   * preview of `brew link --force` for one of that source's
+   * preview of `brew link --formula --force` for one of that source's
    * `NoAnswer.link_fixes` (`LinkFixSheet`).
    */
   | { id: "linkFix"; labelKey: string; instanceId: string };

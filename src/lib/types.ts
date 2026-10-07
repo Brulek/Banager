@@ -3,7 +3,7 @@ export type ArtifactKind = "Formula" | "Cask" | "Package" | "Tool" | "Model" | "
 export type InstallReason = "Requested" | "Dependency" | "Unknown";
 /**
  * Mirrors `OpKind` in crates/banager-core/src/model.rs. `Link` is
- * `brew link --force <formula>`, the fix a source's notice offers when its
+ * `brew link --formula --force <formula>`, the fix a source's notice offers when its
  * launcher could not find a program a keg-only formula provides
  * (`NoAnswer.link_fixes`): planned and confirmed like any operation, kept
  * in no history.
@@ -319,13 +319,15 @@ export type RemoveCheck =
  */
 export type Warning =
   /**
-   * `brew link --force` (`OpKind.Link`) would stop at these files, each
-   * already in the prefix's `bin` under one of the formula's command names:
-   * the link preview says so and offers no Link button.
+   * `brew link --formula --force` (`OpKind.Link`) would stop at these places,
+   * each already in the prefix's `bin` or `sbin` under one of the formula's
+   * command names and not Homebrew's own link to it (Rust
+   * `KegLinks::held_paths`, the places that make an update `LinkTaken`
+   * too): the link preview says so and offers no Link button.
    */
   | { LinkConflicts: { paths: string[] } }
   /**
-   * The commands `brew link --force` (`OpKind.Link`) puts where Terminal
+   * The commands `brew link --formula --force` (`OpKind.Link`) puts where Terminal
    * looks, sorted: the link preview names them in its sentence
    * (`LinkFixSheet`), never as a line.
    */
@@ -567,7 +569,7 @@ export type NoAnswerKind = "TimedOut" | "CouldNotStart" | "ExitedWithError";
  * Mirrors `NoAnswer` in crates/banager-core/src/model.rs. `missing_program`
  * is the program the source's launcher needed and did not find (`node`, for
  * npm's `#!/usr/bin/env node`); `link_fixes` the Homebrew formulae that
- * would put it back, newest first, each offered as `brew link --force`.
+ * would put it back, newest first, each offered as `brew link --formula --force`.
  */
 export interface NoAnswer {
   kind: NoAnswerKind;

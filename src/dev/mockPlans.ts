@@ -293,7 +293,7 @@ export function buildPlan(world: World, inst: ManagerInstance, request: OpReques
       if (kind === "Link") {
         return {
           ...plan,
-          action: command(inst.exe_path, ["link", "--force", name], BREW_ENV),
+          action: command(inst.exe_path, ["link", "--formula", "--force", name], BREW_ENV),
           warnings: linkPreviewFor(name),
           timeout_secs: 300,
         };

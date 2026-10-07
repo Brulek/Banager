@@ -43,7 +43,7 @@ import type { Page } from "../store/ui";
  *   of the `node` that `brew upgrade node@22` could not link again (npm's
  *   own self-update had taken its place in `bin`), and Homebrew lists
  *   `node@22` and `node@20`, keg-only and not linked. npm's notice says why
- *   and offers Fix…, whose sheet previews `brew link --force`: for
+ *   and offers Fix…, whose sheet previews `brew link --formula --force`: for
  *   `node@22`, with npm's own `npm` and `npx` in the way, it says so and
  *   gives the Terminal command that would link it anyway; for `node@20`, a
  *   Link that puts npm back, after which npm's own update is shown as

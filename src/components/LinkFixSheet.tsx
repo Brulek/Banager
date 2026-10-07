@@ -13,7 +13,7 @@ import { Dialog } from "./ui/Dialog";
 import { BUTTON } from "./ui/controls";
 import { PopupButton } from "./ui/PopupButton";
 
-/** The `OpKind.Link` request for one offered formula: `brew link --force <name>`. */
+/** The `OpKind.Link` request for one offered formula: `brew link --formula --force <name>`. */
 export function linkRequest(fix: LinkFix): OpRequest {
   return { kind: "Link", instance_id: fix.key.instance_id, artifact_kind: "Formula", name: fix.key.name };
 }
@@ -39,7 +39,7 @@ export function linkedCommands(plan: Plan, program: string | null): string[] {
 
 /**
  * What the person can run in Terminal where Homebrew would link nothing
- * (`Warning.LinkConflicts`): the same `brew link --force` with
+ * (`Warning.LinkConflicts`): the same `brew link --formula --force` with
  * `--overwrite`, which deletes what is in the way. Text only: Banager
  * never runs it (docs/what-we-run.md, "Why a source did not answer").
  */
@@ -50,7 +50,7 @@ export function overwriteCommand(plan: Plan, formula: string): string {
 /** `overwriteCommand`'s tokens, each as `displayToken` spells it. */
 function overwriteTokens(plan: Plan, formula: string): string[] {
   const program = "Command" in plan.action ? plan.action.Command.program : "brew";
-  return [program, "link", "--force", "--overwrite", formula].map(displayToken);
+  return [program, "link", "--formula", "--force", "--overwrite", formula].map(displayToken);
 }
 
 export interface LinkFixSheetProps {

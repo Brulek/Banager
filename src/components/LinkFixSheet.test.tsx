@@ -65,7 +65,7 @@ function snapshotWith(npm: ManagerInstance): Snapshot {
 function issued(request: OpRequest, warnings: Warning[] = []): IssuedPlan {
   const plan: Plan = {
     request,
-    action: { Command: { program: "/opt/homebrew/bin/brew", args: ["link", "--force", request.name], env: [] } },
+    action: { Command: { program: "/opt/homebrew/bin/brew", args: ["link", "--formula", "--force", request.name], env: [] } },
     needs_password: false,
     locks: ["brew:/opt/homebrew"],
     cancel_policy: "KillThenReconcile",
@@ -98,7 +98,7 @@ beforeEach(() => {
 });
 
 describe("LinkFixSheet", () => {
-  it("previews brew link --force for the formula, and runs that plan only once Link is pressed", async () => {
+  it("previews brew link --formula --force for the formula, and runs that plan only once Link is pressed", async () => {
     const npm = npmWithout([NODE_22]);
     backend(npm);
     const onClose = vi.fn();
@@ -123,7 +123,7 @@ describe("LinkFixSheet", () => {
     const link = await screen.findByRole("button", { name: "Link" });
     await waitFor(() => expect(link).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "Show Command" }));
-    expect(await screen.findByText("/opt/homebrew/bin/brew link --force node@22")).toBeInTheDocument();
+    expect(await screen.findByText("/opt/homebrew/bin/brew link --formula --force node@22")).toBeInTheDocument();
     fireEvent.click(link);
     await waitFor(() => expect(calls("submit_operation")).toHaveLength(1));
     expect(calls("submit_operation")[0][1]).toEqual({ planId: "plan-node@22" });
@@ -188,7 +188,7 @@ describe("LinkFixSheet", () => {
       "To link it, you can run this command in Terminal. It deletes the files in the way, the ones above among them, and links the ones in “node@22” in their place.",
     );
     expect(screen.getByRole("group", { name: "Command to run in Terminal" })).toHaveTextContent(
-      "/opt/homebrew/bin/brew link --force --overwrite node@22",
+      "/opt/homebrew/bin/brew link --formula --force --overwrite node@22",
     );
     expect(screen.getByRole("button", { name: "Copy Command" })).toBeInTheDocument();
     expect(dialog).toHaveTextContent("When it's done, click Check Again.");

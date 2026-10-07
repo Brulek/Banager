@@ -15,7 +15,7 @@
  * and its state word in Diagnostics and Check Tool Setup
  * (`NO_ANSWER_WORDS`). A source whose launcher could not find a program a
  * keg-only Homebrew formula has (`link_fixes`) is offered Fix…, which
- * previews `brew link --force <formula>` (`LinkFixSheet`).
+ * previews `brew link --formula --force <formula>` (`LinkFixSheet`).
  *
  * Only for a package manager's source -- the ones whose `detect` says why
  * (Homebrew, npm, pipx, uv, pip, Cargo). Ollama's models and a tool with

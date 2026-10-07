@@ -48,7 +48,7 @@ export const OP_KIND_KEYS: Record<OpKind, string> = {
   Install: "operations.kind.Install",
   Uninstall: "operations.kind.Uninstall",
   Upgrade: "operations.kind.Upgrade",
-  // `brew link --force`, a source notice's Fix… (src/lib/noAnswer.ts).
+  // `brew link --formula --force`, a source notice's Fix… (src/lib/noAnswer.ts).
   Link: "noAnswer.op.kind",
 };
 
