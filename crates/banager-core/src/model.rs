@@ -480,6 +480,12 @@ pub struct CommandInputs {
     /// are never said to be "not found"; linked by hand (`brew link
     /// --force`), which copy runs is said of them as of any formula's.
     pub keg_only: bool,
+    /// Homebrew's `keg_only_reason` for a keg-only formula is macOS's own
+    /// (`:provided_by_macos`, `:shadowed_by_macos`): `brew link` refuses to
+    /// link such a formula at Homebrew's default prefix ("Refusing to link
+    /// macOS provided/shadowed software", `cmd/link.rb` in Homebrew 7.0.8),
+    /// so Banager never offers to link it back after its update (y1-keg).
+    pub keg_only_by_macos: bool,
 }
 
 /// One command a source's own answer names (`CommandInputs.provided`).
@@ -2406,6 +2412,7 @@ mod tests {
                     within: Vec::new(),
                 }],
                 keg_only: true,
+                keg_only_by_macos: true,
             },
         };
         let json = serde_json::to_string(&facts).unwrap();

@@ -44,6 +44,12 @@ struct FormulaInfo {
     /// not keg-only.
     #[serde(default)]
     keg_only: Option<serde_json::Value>,
+    /// `keg_only_reason` (`formula.rb`'s `"keg_only_reason" =>
+    /// keg_only_reason&.to_hash`): `{"reason": ":provided_by_macos", …}`.
+    /// Only its `reason` is read, for `CommandInputs.keg_only_by_macos`;
+    /// read as any JSON value for the same reason as `keg_only`.
+    #[serde(default)]
+    keg_only_reason: Option<serde_json::Value>,
     #[serde(default)]
     installed: Vec<FormulaInstalledEntry>,
     /// `brew pin`. `brew info --json=v2` writes it for every formula
@@ -263,6 +269,18 @@ fn cask_commands(artifacts: &[CaskArtifact]) -> Vec<ProvidedCommand> {
         .collect()
 }
 
+/// Whether a formula's `keg_only_reason` is macOS's own: its `reason` is
+/// `:provided_by_macos` or `:shadowed_by_macos` (`KegOnlyReason#by_macos?`,
+/// Homebrew's `keg_only_reason.rb`). Anything else, or nothing, is not.
+fn keg_only_by_macos(reason: Option<&serde_json::Value>) -> bool {
+    matches!(
+        reason
+            .and_then(|reason| reason.get("reason"))
+            .and_then(serde_json::Value::as_str),
+        Some(":provided_by_macos" | ":shadowed_by_macos")
+    )
+}
+
 /// Parses `brew info --installed --json=v2`. For each formula, picks the
 /// `installed` entry whose `version` matches `linked_keg` (falling back to
 /// the last entry in the chronological array if no match, e.g. an unlinked
@@ -353,6 +371,7 @@ pub fn parse_info_installed(
             .full_name
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| f.name.clone());
+        let keg_only = matches!(f.keg_only, Some(serde_json::Value::Bool(true)));
 
         out.push(InstalledArtifact {
             key: ArtifactKey {
@@ -373,7 +392,8 @@ pub fn parse_info_installed(
             facts: ArtifactFacts {
                 homebrew: homebrew_facts(&f.status, other_versions),
                 command_inputs: CommandInputs {
-                    keg_only: matches!(f.keg_only, Some(serde_json::Value::Bool(true))),
+                    keg_only,
+                    keg_only_by_macos: keg_only && keg_only_by_macos(f.keg_only_reason.as_ref()),
                     ..Default::default()
                 },
                 ..Default::default()
@@ -1242,6 +1262,41 @@ mod tests {
             .map(|a| a.facts.command_inputs.keg_only)
             .collect();
         assert_eq!(flags, vec![false, false, false, true]);
+    }
+
+    #[test]
+    fn parse_info_installed_marks_the_formulae_keg_only_because_of_macos() {
+        // y1-keg: `brew link` refuses those at Homebrew's default prefix;
+        // a versioned formula (`node@22`) it links.
+        let json =
+            std::fs::read_to_string("../../adapters/fixtures/brew/7.0.3/info-installed.json")
+                .expect("read the recorded brew info");
+        let result = parse_info_installed(&json, "brew:/opt/homebrew").expect("parse");
+        let by_macos: Vec<&str> = result
+            .iter()
+            .filter(|a| a.facts.command_inputs.keg_only_by_macos)
+            .map(|a| a.key.name.as_str())
+            .collect();
+        assert_eq!(by_macos, vec!["icu4c@78", "readline", "sqlite"]);
+        // Read as any JSON value: only those two reasons count, and only
+        // for a formula that is keg-only.
+        let json = r#"{
+            "formulae": [
+                { "name": "a", "keg_only": true, "keg_only_reason": { "reason": ":provided_by_macos" }, "installed": [] },
+                { "name": "b", "keg_only": true, "keg_only_reason": { "reason": ":shadowed_by_macos", "explanation": "x" }, "installed": [] },
+                { "name": "c", "keg_only": true, "keg_only_reason": { "reason": ":versioned_formula" }, "installed": [] },
+                { "name": "d", "keg_only": true, "keg_only_reason": "provided_by_macos", "installed": [] },
+                { "name": "e", "keg_only": true, "installed": [] },
+                { "name": "f", "keg_only": false, "keg_only_reason": { "reason": ":provided_by_macos" }, "installed": [] }
+            ],
+            "casks": []
+        }"#;
+        let result = parse_info_installed(json, "brew:/opt/homebrew").expect("parse");
+        let flags: Vec<bool> = result
+            .iter()
+            .map(|a| a.facts.command_inputs.keg_only_by_macos)
+            .collect();
+        assert_eq!(flags, vec![true, true, false, false, false, false]);
     }
 
     // Regressions found by `adapters/robustness.rs`: each is the smallest
