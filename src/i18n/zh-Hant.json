@@ -807,6 +807,7 @@
   },
   "followUpWarning": {
     "batch_other": "已更新{{total}}個工具，{{count}}個有警告",
+    "batchSucceeded_other": "{{total}}個都已成功，{{count}}個有警告",
     "succeeded_other": "已更新，有警告",
     "saved_other": "這裡只保留了警告，完整記錄已不再保留。"
   },

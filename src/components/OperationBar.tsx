@@ -246,9 +246,13 @@ export function OperationBar() {
       tone = tones.includes("failure") ? "failure" : "attention";
       // Failures said as failures, with what else the run came to --
       // 「2个更新失败，3个已成功」; 「需要查看」 only for a run with none.
+      // All succeeded but for a warning left after: 「已更新2个工具，1个有
+      // 警告」 where every one was an update, and in words for any
+      // operation where not -- an uninstall started while an update ran
+      // was not updated (r31 E1): 「2个都已成功，1个有警告」.
       words =
         failedRunWords(t, inRun) ?? (tones.every((each) => each === "success")
-          ? t("followUpWarning.batch", { count: toLook.length, total })
+          ? t(updates ? "followUpWarning.batch" : "followUpWarning.batchSucceeded", { count: toLook.length, total })
           : t("operations.batch.needsAttention", { count: toLook.length, total }));
       if (toLook.length > 1) logsOf = toLook;
       else logOf = newestToLook;

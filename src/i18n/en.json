@@ -879,6 +879,8 @@
   "followUpWarning": {
     "batch_one": "Updated {{total}} tools · {{count}} with a warning",
     "batch_other": "Updated {{total}} tools · {{count}} with warnings",
+    "batchSucceeded_one": "All {{total}} succeeded · {{count}} with a warning",
+    "batchSucceeded_other": "All {{total}} succeeded · {{count}} with warnings",
     "succeeded_one": "Updated with a warning",
     "succeeded_other": "Updated with warnings",
     "saved_one": "Only its warning was saved; the full log is no longer available.",

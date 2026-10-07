@@ -1142,3 +1142,36 @@ it("counts a batch's follow-up warnings in English as one or many, and calls the
   ]);
   expect(await view.findByText("Updated 2 tools · 2 with warnings")).toBeInTheDocument();
 });
+
+it("says a run that updated one tool and uninstalled another, one update leaving a warning, in words for any operation (r31 E1)", async () => {
+  await i18n.changeLanguage("en");
+  const warned = { follow_up_warnings: [{ OldVersionsNotCleanedUp: { name: "git", exit_code: 1 } }] };
+  const uninstalled = { kind: "Uninstall" as const, artifact_kind: "Package" as const, instance_id: "pipx:/Users/test/.local", argv_preview: ["/opt/homebrew/bin/pipx", "uninstall", "aider-chat"] };
+  // git's update, and aider-chat's uninstall started from Installed while it ran.
+  operations = [op(2, "aider-chat", "Queued", null, uninstalled), op(1, "git", "Running")];
+  const view = renderWithProviders(<OperationBar />);
+  await view.findByText(/Working on/);
+  await listNow(view.queryClient, [
+    op(2, "aider-chat", "Done", "Succeeded", uninstalled),
+    op(1, "git", "Done", "Succeeded", warned),
+  ]);
+  // Not "Updated 2 tools": aider-chat was uninstalled.
+  expect(await view.findByText("All 2 succeeded · 1 with a warning")).toBeInTheDocument();
+  expect(view.queryByText(/Updated 2 tools/)).toBeNull();
+  // Its log is still the warned one's.
+  fireEvent.click(view.getByRole("button", { name: "View Log" }));
+  expect(useUiStore.getState().focusedOpId).toBe(1);
+  for (const [language, words] of [
+    ["zh-CN", "2个都已成功，1个有警告"],
+    ["zh-Hant", "2個都已成功，1個有警告"],
+  ] as const) {
+    await act(async () => {
+      await i18n.changeLanguage(language);
+    });
+    expect(await view.findByText(words)).toBeInTheDocument();
+    expect(view.queryByText(/已更新2/)).toBeNull();
+  }
+  await act(async () => {
+    await i18n.changeLanguage("en");
+  });
+});
