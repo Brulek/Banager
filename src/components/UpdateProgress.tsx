@@ -1,6 +1,7 @@
 import { useCallback, useId, useMemo, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useOperations, useSettings, useSnapshot } from "../lib/queries";
+import { operationWords } from "../lib/operations";
 import { actionableUpdatesOf, countedUpdatesOf } from "../lib/updateState";
 import { artifactKeyId, useUiStore } from "../store/ui";
 import type { OpSummary, Outcome, UpdateCandidate } from "../lib/types";
@@ -14,6 +15,7 @@ import { CheckIcon, InfoIcon, SpinnerIcon, WarningFilledIcon } from "./icons";
  * the tool's own words say (`outcomeCause`), or null.
  */
 export type RowProgress =
+  | { kind: "pendingAction"; operation: OpSummary }
   | { kind: "queued" }
   | { kind: "running" }
   | { kind: "cancelling" }
@@ -107,11 +109,12 @@ export function holdsRow(op: OpSummary | null): boolean {
 
 /** Whether an update is still going: queued, running, being cancelled or read back. */
 export function isUnderway(op: OpSummary | null): boolean {
-  return op !== null && op.status !== "Done";
+  return op !== null && op.kind === "Upgrade" && op.status !== "Done";
 }
 
 /** Where an update stands, from its operation. A `switch` with no default, so a new status fails `tsc`. */
 export function progressOf(op: OpSummary): RowProgress {
+  if (op.kind !== "Upgrade" && op.status !== "Done") return { kind: "pendingAction", operation: op };
   switch (op.status) {
     case "Queued":
       return { kind: "queued" };
@@ -129,6 +132,8 @@ export function progressOf(op: OpSummary): RowProgress {
 }
 
 /**
+ * Any unfinished action holds the row by full artifact key; completed
+ * outcomes below are matched only for upgrades.
  * The operation an update's row shows in place of its Update button, or
  * null -- on the Updates page's row and in the Installed page's detail
  * alike.
@@ -150,10 +155,12 @@ export function useUpdateOperationFor(): (candidate: UpdateCandidate) => OpSumma
   const latestUpdateOp = useMemo(() => {
     const byKey = new Map<string, OpSummary>();
     for (const op of operations ?? []) {
-      if (op.kind !== "Upgrade") continue;
+      if (op.kind !== "Upgrade" && op.status === "Done") continue;
       const id = artifactKeyId({ instance_id: op.instance_id, kind: op.artifact_kind, name: op.name });
       const seen = byKey.get(id);
-      if (seen === undefined || op.id > seen.id) byKey.set(id, op);
+      // Any unfinished action takes priority over a completed update.
+      if (seen === undefined || (seen.status === "Done" && op.status !== "Done") ||
+          ((seen.status === "Done") === (op.status === "Done") && op.id > seen.id)) byKey.set(id, op);
     }
     return byKey;
   }, [operations]);
@@ -236,7 +243,7 @@ export function useUpdateCount(): number | undefined {
 }
 
 /** Whatever `useTranslation()`'s `t` needs here. */
-type Translate = (key: string) => string;
+type Translate = (key: string, options?: Record<string, unknown>) => string;
 
 /**
  * What a row's progress says, in words (`UpdateProgress`): 「正在更新…」,
@@ -245,6 +252,8 @@ type Translate = (key: string) => string;
  */
 export function progressWord(t: Translate, progress: RowProgress): string {
   switch (progress.kind) {
+    case "pendingAction":
+      return operationWords(t, progress.operation, [], false);
     case "queued":
       return t("updates.progress.queued");
     case "running":
@@ -304,6 +313,7 @@ export function UpdateProgress({ progress, name, onViewLog }: UpdateProgressProp
   );
   const word = progressWord(t, progress);
   switch (progress.kind) {
+    case "pendingAction":
     case "queued":
       return <span className="whitespace-nowrap text-small text-muted">{word}</span>;
     case "running":

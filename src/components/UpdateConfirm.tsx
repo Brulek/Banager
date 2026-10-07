@@ -1,4 +1,6 @@
 import { Fragment, memo, useEffect, useId, useMemo, useRef, useState, type RefObject } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "../lib/queryKeys";
 import { useTranslation } from "react-i18next";
 import { usePlanOperation, useSettings, useSnapshot, useSubmitOperation } from "../lib/queries";
 import { adapterIdOf, adapterLabel, instanceLabels, planErrorDetail, refusalSentence } from "../lib/sources";
@@ -7,7 +9,7 @@ import { isRoutineNote, warningLines, type WarningLine } from "../lib/warnings";
 import { majorJump } from "../lib/versionJump";
 import { CHANGED_SINCE_SHOWN, letGoPolicy, PLAN_LIFETIME_MS, startShown } from "../lib/heldPlans";
 import { artifactKeyId, useUiStore } from "../store/ui";
-import type { ArtifactKey, InstalledArtifact, IssuedPlan, OpRequest, UpdateCandidate } from "../lib/types";
+import type { OpSummary, ArtifactKey, InstalledArtifact, IssuedPlan, OpRequest, UpdateCandidate } from "../lib/types";
 import { CommandPreview } from "./CommandPreview";
 import { useTwins } from "./CommandFacts";
 import { twinAdviceLines, twinVerdict } from "./TwinAdvice";
@@ -26,6 +28,8 @@ import {
 import { CheckIcon } from "./icons";
 import { Dialog } from "./ui/Dialog";
 import { BUTTON } from "./ui/controls";
+
+const BUSY_ACTION = "pending_artifact_action";
 
 function toRequest(candidate: UpdateCandidate): OpRequest {
   return {
@@ -180,6 +184,7 @@ export interface UpdateConfirm {
  */
 export function useUpdateConfirm({ nameOf, compare, sourceLabelFor }: UpdateConfirmOptions): UpdateConfirm {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
   // Used only for their promise-returning `mutateAsync` — which keeps
   // `useSubmitOperation`'s ask for the operations (`refetchOperations`) —
   // never for their `isPending`/`isError`/`error`; every flag the UI needs
@@ -291,9 +296,19 @@ export function useUpdateConfirm({ nameOf, compare, sourceLabelFor }: UpdateConf
     // held, and each is worked out again at its turn, and started only if
     // it is the plan shown (`startShown`, src/lib/heldPlans.ts).
     const planned = items.filter((item) => item.issued !== null).length;
+    let submittingKey: ArtifactKey;
     const through = {
       plan: (request: OpRequest) => planMutation.mutateAsync(request),
-      submit: (planId: string) => submitMutation.mutateAsync(planId),
+      submit: (planId: string) => {
+        // Read at each attempt, including after a let-go plan is prepared
+        // again: the held callback and its render may both be stale.
+        const key = submittingKey;
+        const busy = (queryClient.getQueryData<OpSummary[]>(queryKeys.operations) ?? []).some(
+          (op) => op.status !== "Done" && artifactKeyId({ instance_id: op.instance_id, kind: op.artifact_kind, name: op.name }) === artifactKeyId(key),
+        );
+        if (busy) return Promise.reject(new Error(BUSY_ACTION));
+        return submitMutation.mutateAsync(planId);
+      },
     };
 
     const batchDeadline = askedAtRef.current + PLAN_LIFETIME_MS;
@@ -307,6 +322,7 @@ export function useUpdateConfirm({ nameOf, compare, sourceLabelFor }: UpdateConf
     for (let i = 0; i < items.length; i += 1) {
       const item = items[i];
       if (!item.issued) continue;
+      submittingKey = item.candidate.key;
       try {
         const letGo = letGoPolicy(planned, askedAtRef.current, performance.now());
         const opId = await startShown(item.issued, toRequest(item.candidate), letGo, through, batchDeadline);
@@ -376,6 +392,9 @@ export function useUpdateConfirm({ nameOf, compare, sourceLabelFor }: UpdateConf
         text: refusalSentence(t, "updates.planFailed", item.planError, source, technical),
         detail: item.planErrorDetail,
       };
+    }
+    if (item.submitError === BUSY_ACTION) {
+      return { text: t("updates.submitFailed", { message: t("updateConcurrency.busy") }), detail: null };
     }
     if (item.submitError === CHANGED_SINCE_SHOWN) {
       return {

@@ -1775,7 +1775,11 @@ export function InstalledPage() {
                   {uninstallUnderway(artifact) ?? t("installed.uninstall")}
                 </button>
               ) : null}
-              {progress !== null ? <UpdateProgress progress={progress} name={name} onViewLog={openLog} /> : null}
+              {/* An uninstall under way holds Update, and the Uninstall
+                  button beside it already says so: not twice. */}
+              {progress !== null && !(progress.kind === "pendingAction" && progress.operation.kind === "Uninstall") ? (
+                <UpdateProgress progress={progress} name={name} onViewLog={openLog} />
+              ) : null}
               {/* As on the Updates page's row: an update that ended without
                   updating keeps how it ended, with Retry in Update's place. */}
               {updatable && listed !== undefined && (progress === null || isRetryable(progress)) ? (

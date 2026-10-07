@@ -824,6 +824,9 @@
     "changed": "这项更新在显示之后有了变化，因此未执行。请重新打开并确认。",
     "changedDetail": "一次更新这么多工具时，有些会在开始前重新准备。这一项重新准备后，与这里显示的不一样。"
   },
+  "updateConcurrency": {
+    "busy": "这个工具还有操作未完成。请等操作结束后再试。"
+  },
   "operations": {
     "current": "{{name}}：{{status}}",
     "kindStatus": "{{kind}} · {{status}}",

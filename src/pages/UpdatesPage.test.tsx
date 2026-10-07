@@ -3612,7 +3612,7 @@ describe("UpdatesPage", () => {
       expect(within(glib).queryByRole("button", { name: ROW_UPDATE })).toBeNull();
     });
 
-    it("goes by the newest update of the package, and by no other kind of operation", async () => {
+    it("shows the newest update and holds another row for its pending uninstall", async () => {
       operations = [
         operation(onyxKey, { id: 14, kind: "Uninstall", status: "Running" }),
         operation(glibKey, { id: 13, status: "Running" }),
@@ -3623,7 +3623,9 @@ describe("UpdatesPage", () => {
 
       expect(await within(await findRow("glib")).findByText("Updating…")).toBeInTheDocument();
       expect(within(rowOf("glib")).queryByText("Cancelled")).toBeNull();
-      expect(within(rowOf("onyx")).getByRole("button", { name: ROW_UPDATE })).toBeInTheDocument();
+      expect(within(rowOf("onyx")).getByText("Uninstalling…")).toBeInTheDocument();
+      expect(within(rowOf("onyx")).queryByRole("button", { name: ROW_UPDATE })).toBeNull();
+      expect(within(rowOf("onyx")).queryByRole("checkbox")).toBeNull();
     });
 
     it("remembers which version an update it started was for", async () => {

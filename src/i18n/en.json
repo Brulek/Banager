@@ -893,6 +893,9 @@
     "changed": "This update changed after it was shown, so it didn't run. Open it again and confirm.",
     "changedDetail": "With this many updates at once, some are prepared again just before they start. This one came out different from what was shown here."
   },
+  "updateConcurrency": {
+    "busy": "Another operation for this tool hasn't finished. Wait for it to finish, then try again."
+  },
   "operations": {
     "current": "{{name}}: {{status}}",
     "kindStatus": "{{kind}} · {{status}}",

@@ -7,7 +7,8 @@ import { I18nextProvider } from "react-i18next";
 import { invoke, type InvokeArgs } from "@tauri-apps/api/core";
 import i18n from "../i18n";
 import { PLAN_LIFETIME_MS, PLANS_HELD } from "../lib/heldPlans";
-import type { IssuedPlan, OpRequest, Plan, Settings, UpdateCandidate } from "../lib/types";
+import { queryKeys } from "../lib/queryKeys";
+import type { OpSummary, IssuedPlan, OpRequest, Plan, Settings, UpdateCandidate } from "../lib/types";
 import { useUpdateConfirm } from "./UpdateConfirm";
 
 // Update all of more tools than the backend holds plans for
@@ -119,7 +120,7 @@ function renderConfirm() {
       { client },
       React.createElement(I18nextProvider, { i18n }, children),
     );
-  return renderHook(
+  const rendered = renderHook(
     () =>
       useUpdateConfirm({
         nameOf: (c) => c.key.name,
@@ -128,6 +129,7 @@ function renderConfirm() {
       }),
     { wrapper },
   );
+  return { ...rendered, client };
 }
 
 const tools = (count: number) => Array.from({ length: count }, (_, i) => `tool-${String(i).padStart(4, "0")}`);
@@ -257,4 +259,18 @@ describe("Update all of more tools than the backend holds plans for", () => {
     expect(submitted.map((issued) => issued.plan.request.name)).toEqual(tools(1100));
     expect(result.current.batch).toBeNull();
   });
+});
+
+it.each(["Queued", "Running"] as const)("rechecks a held batch against a %s uninstall at confirmation", async (status) => {
+  const { result, client } = renderConfirm();
+  await act(() => result.current.openConfirm([candidate("jq"), candidate("wget")]));
+  const pending: OpSummary = { id: 90, kind: "Uninstall", instance_id: "brew:/opt/homebrew", artifact_kind: "Formula", name: "jq", status, outcome: null, argv_preview: [], cancel_policy: "KillThenReconcile" };
+  // No render between the cache update and confirming the held callback.
+  const confirm = result.current.confirmAndSubmit;
+  client.setQueryData(queryKeys.operations, [pending]);
+  await act(() => confirm());
+  expect(submitted.map((issued) => issued.plan.request.name)).toEqual(["wget"]);
+  const refused = result.current.batch!.items.find((item) => item.name === "jq")!;
+  expect(refused.submittedOpId).toBeNull();
+  expect(result.current.refusalOf(refused)?.text).toContain("Another operation for this tool hasn't finished");
 });

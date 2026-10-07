@@ -3015,6 +3015,36 @@ describe("InstalledPage", () => {
       expect(within(drawer).queryByRole("button", { name: "Uninstall…" })).toBeNull();
     });
 
+    it.each([
+      ["Queued", "Queued"],
+      ["Running", "Uninstalling…"],
+    ] as const)("offers no Update of a tool whose uninstall is %s, and says the uninstall once", async (status, label) => {
+      operations = [
+        {
+          id: 12,
+          kind: "Uninstall",
+          instance_id: "brew:/opt/homebrew",
+          artifact_kind: "Formula",
+          name: "glib",
+          status,
+          outcome: null,
+          argv_preview: ["/opt/homebrew/bin/brew", "uninstall", "glib"],
+          cancel_policy: "KillThenReconcile",
+        },
+      ];
+      renderInstalled();
+
+      await findRow("jq");
+      fireEvent.click(screen.getByRole("button", { name: /^1 more package was installed for other software to use/ }));
+      const drawer = await openDetails("glib");
+      expect(within(drawer).getByRole("button", { name: label })).toBeDisabled();
+      // Its upgrade would only queue behind the uninstall, and fail.
+      expect(within(drawer).queryByRole("button", { name: "Update" })).toBeNull();
+      // The held Uninstall says it; nothing beside it says it again.
+      const actions = drawer.querySelector("[data-inspector-actions]")!;
+      expect(actions.textContent).toBe(label);
+    });
+
     it("offers no Update for an update the Updates page does not offer", async () => {
       served = {
         ...snapshot,

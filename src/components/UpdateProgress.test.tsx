@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import i18n from "../i18n";
+import { useUiStore } from "../store/ui";
 import { queryKeys } from "../lib/queryKeys";
 import { actionableUpdatesOf } from "../lib/updateState";
 import type { OpStatus, OpSummary, Settings, Snapshot, UpdateCandidate } from "../lib/types";
@@ -10,6 +12,10 @@ import {
   passwordStepsOpId,
   progressOf,
   useStartableUpdates,
+  useCountedUpdates,
+  useUpdateOperationFor,
+  progressWord,
+  isUnderway,
   waitsForPassword,
   type RowProgress,
 } from "./UpdateProgress";
@@ -157,5 +163,47 @@ describe("passwordStepsOpId", () => {
     for (const progress of every.filter((each) => each.kind === "failed")) {
       expect(isRetryable(progress), JSON.stringify(progress)).toBe(passwordStepsOpId(progress) === null);
     }
+  });
+});
+
+describe("updates held by another action", () => {
+  it.each(["Queued", "Running", "Verifying", "CancelRequested", "Cancelling"] as const)(
+    "excludes a %s uninstall by full key and names its action",
+    (status) => {
+      const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity } } });
+      const uninstall: OpSummary = { ...upgradeOf("glib", status), kind: "Uninstall", id: 2 };
+      // A newer completed upgrade must not hide the pending uninstall.
+      const completed = { ...upgradeOf("glib", "Done"), id: 3, outcome: "Succeeded" as const };
+      useUiStore.getState().rememberUpdateTarget(3, "1.0.9");
+      const otherKind = { ...update("glib"), key: { ...update("glib").key, kind: "Cask" as const } };
+      const otherSource = { ...update("glib"), key: { ...update("glib").key, instance_id: "brew:/usr/local" } };
+      const data = { ...snapshot, updates: [...snapshot.updates, otherKind, otherSource],
+        instances: [...snapshot.instances, { ...snapshot.instances[0], id: otherSource.key.instance_id }] };
+      client.setQueryData(queryKeys.snapshot, data);
+      client.setQueryData(queryKeys.settings, settings);
+      client.setQueryData(queryKeys.operations, [uninstall, completed]);
+      const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+      const { result } = renderHook(() => ({ startable: useStartableUpdates(), counted: useCountedUpdates(), operationFor: useUpdateOperationFor() }), { wrapper });
+      expect(result.current.startable).toEqual([update("wget"), otherKind, otherSource]);
+      expect(result.current.counted).toEqual([update("wget"), otherKind, otherSource]);
+      expect(result.current.operationFor(update("glib"))).toEqual(uninstall);
+      expect(isUnderway(uninstall)).toBe(false); // Never counted as updating.
+      for (const language of ["en", "zh-CN", "zh-Hant"]) {
+        const t = i18n.getFixedT(language);
+        expect(progressWord(t, progressOf(uninstall))).toContain(
+          t(status === "Running" ? "operations.running.Uninstall" : "operations.kind.Uninstall"),
+        );
+      }
+    },
+  );
+
+  it("does not show a completed uninstall as an update outcome", () => {
+    const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity } } });
+    const completed = { ...upgradeOf("glib", "Done"), kind: "Uninstall" as const, outcome: "Succeeded" as const };
+    useUiStore.getState().rememberUpdateTarget(completed.id, "1.1.0");
+    client.setQueryData(queryKeys.operations, [completed]);
+    const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+    const { result } = renderHook(useUpdateOperationFor, { wrapper });
+    expect(result.current(update("glib"))).toBeNull();
   });
 });

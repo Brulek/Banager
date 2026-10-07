@@ -529,6 +529,26 @@ partway is never settled either way
 (`run_plan` in `crates/banager-core/src/adapters/mod.rs`, then
 `run_operation`).
 
+**An update and another action on the same tool.** Update and Update All
+leave out a tool with any unfinished operation under the same full key
+(source instance, artifact kind and name) -- an uninstall queued behind
+another operation, running, being cancelled or checking its result, as
+much as an update -- and its row says that action in the operation bar's
+words (「卸载 · 排队中」, "Uninstall · Queued") where Update was; it is not
+counted among the updates being installed. How a finished update ended
+still shows only while the row offers the version it was for, and a
+finished uninstall shows nothing there. An update confirmation that is
+already open checks the operations the window last heard of again just
+before it submits each update, a re-prepared one included, and starts no
+update of a tool that has one: that update is listed as not started,
+「这个工具还有操作未完成。请等操作结束后再试。」 ("Another operation for
+this tool hasn't finished. Wait for it to finish, then try again.") --
+otherwise its upgrade would queue behind the uninstall and fail against a
+tool already gone (`useUpdateOperationFor` in
+`src/components/UpdateProgress.tsx`, `useUpdateConfirm` in
+`src/components/UpdateConfirm.tsx`). This runs no command and adds no host,
+permission or file.
+
 **Uninstalling several tools at once** runs nothing a single uninstall
 does not. The Installed page's 「卸载所选」 previews each ticked tool exactly
 as that tool's own Uninstall does: one `plan_operation` each, at most three
