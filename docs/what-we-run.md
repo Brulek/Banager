@@ -827,6 +827,15 @@ click on it brings Banager to the front, and with the window closed or in
 the Dock brings the window back as it was left
 (`NotificationPending::set_window` in `src-tauri/src/window.rs`).
 
+After a successful operations-list response, the window also retires the
+finished times, display names, update targets and cleared-row IDs of
+operations no longer listed (`listOperations` in `src/lib/api.ts`,
+`pruneOperationMetadata` in `src/store/ui.ts`). Metadata needed by an
+open log or uninstall result is kept. A list cannot retire metadata
+added after it started; a list that overlaps a submission still waiting
+for its response, a failed list and a list a newer one has overtaken
+retire nothing.
+
 ## Homebrew
 
 Adapter: `BrewAdapter` in `crates/banager-core/src/adapters/brew/mod.rs`.
@@ -1466,6 +1475,12 @@ list anything.
 | Search by name | `<brew> search {query}` | 30 s |
 | Search by name + description | `<brew> search --desc {query}` | 30 s |
 | List installed formulae depending on a formula (uninstall preview) | `<brew> uses --installed {name}` | 120 s |
+
+The fresh inventory used to qualify outdated names is indexed once per
+check by kind and full/short name, preserving the first installed match
+for ambiguous short names. Reconciliation before and after each operation
+still runs the full installed-info reader above; it does not use a cached
+inventory or a new per-package command.
 
 `brew outdated` lists a formula or cask Homebrew disabled like any other —
 its JSON has no field for the mark, and neither `Formula#outdated?` nor
@@ -2186,7 +2201,9 @@ record.
 `check_updates` reads the
 merged record and, for each crate installed from crates.io, asks crates.io
 once: `GET https://crates.io/api/v1/crates/{name}` (30 s), the name
-percent-encoded. Crates installed from a git repository or a local path
+percent-encoded, one crate at a time and within the registry phase's
+120-second budget (see "Network: Banager only connects to these hosts").
+Crates installed from a git repository or a local path
 or another registry are never looked up; they are listed as "could not
 check" with that reason. The complete source identity is retained and
 checked again when planning an upgrade; an unsupported source is refused.
@@ -4545,6 +4562,22 @@ one never reaches the proxy. A proxy setting that holds a login
 (`http://name:password@host:port`) gives that login to that proxy alone.
 The mirror settings change nothing here: Banager's own checks still ask
 the hosts in the table.
+
+The per-package registry phases for legacy pipx (PyPI), Cargo (crates.io)
+and local Ollama models run at most four lookups at once per source
+(`registry_checks` and `get_ok` in `crates/banager-core/src/adapters/mod.rs`).
+A shared limit also allows at most four requests at once to pypi.org and
+to registry.ollama.ai across source instances, and one to crates.io:
+crates.io asks API users for at most one request per second
+(<https://crates.io/data-access>, "crates.io API"), so its lookups stay
+one after another, as before -- not overlapped, though not paced to one
+per second either. The existing 30-second request timeout stays in
+place. Each source's registry phase has a 120-second total budget,
+including waits for a host permit; inventory and detection are outside
+that budget. Completed answers are kept in inventory order. Requests
+still waiting or not yet started at the deadline become transient
+uncheckable rows, never claims that those tools are up to date. Dropping
+a check cancels its pending requests; no background lookup tasks remain.
 
 Every HTTPS request uses TLS through rustls; plain HTTP Ollama requests
 are not encrypted. Every request has the header `User-Agent:
