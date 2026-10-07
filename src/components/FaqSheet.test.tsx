@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -7,6 +10,7 @@ import en from "../i18n/en.json";
 import zhCN from "../i18n/zh-CN.json";
 import zhHant from "../i18n/zh-Hant.json";
 import { FAQ_ITEMS, openFaqSheet, useFaqSheet, type FaqId } from "../lib/faq";
+import { RECENT_DAYS } from "../lib/history";
 import { useUiStore } from "../store/ui";
 import { fakeMenuBar } from "../test/menuBar";
 import { renderWithProviders } from "../test/setup";
@@ -15,6 +19,8 @@ import { FaqSheet } from "./FaqSheet";
 const mockInvoke = vi.mocked(invoke);
 
 const BREW = "brew:/opt/homebrew";
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
 beforeEach(() => {
   useFaqSheet.setState({ open: false });
@@ -179,6 +185,47 @@ describe("FaqSheet", () => {
       expect(locale.updates.justUpdated.title).toBe(history);
     },
   );
+
+  it.each([
+    ["en", en, "the password can't be typed here", "for 30 days"],
+    ["zh-CN", zhCN, "这里无法输入密码", "30天内"],
+    ["zh-Hant", zhHant, "這裡無法輸入密碼", "30天內"],
+  ] as const)(
+    "names the password as what can't be typed here, and says how long View Steps stays and that Clear History takes it out of Update History, in %s (r26 D4 skeptic)",
+    (_language, locale, cantType, days) => {
+      const answer = locale.faq.questions.password.answer;
+      // "it can't be typed here" after "the confirmation says so" read as
+      // the confirmation; the Chinese always named the password.
+      expect(answer).toContain(cantType);
+      // After a restart the row keeps View Steps only for `RECENT_DAYS`
+      // (src/lib/history.ts), and Clear History hides Update History's
+      // line while the row keeps it (src/lib/passwordRecovery.ts).
+      expect(RECENT_DAYS).toBe(30);
+      expect(answer).toContain(days);
+      expect(answer).toContain(locale.updates.justUpdated.clear);
+    },
+  );
+
+  it("has the README say the same as the FAQ of a password stop after a restart, in English and Chinese (r26 D4 skeptic)", () => {
+    const readme = readFileSync(path.join(ROOT, "README.md"), "utf-8");
+    // The one list item each block has on it, from its dash to the next.
+    const item = (start: string) => {
+      const from = readme.indexOf(start);
+      expect(from, start).toBeGreaterThanOrEqual(0);
+      const to = readme.indexOf("\n- ", from + start.length);
+      return readme.slice(from, to === -1 ? undefined : to);
+    };
+    const english = item("- When a Homebrew update or uninstall stopped because it needed your Mac's password").replace(/\s+/g, " ");
+    expect(english).toContain(`**${en.needsPassword.viewSteps}**`);
+    expect(english).toContain(`**${en.updates.justUpdated.title}**`);
+    expect(english).toContain("for 30 days");
+    expect(english).toContain(`unless you press **${en.updates.justUpdated.clear}**`);
+    const chinese = item("- Homebrew 的更新或卸载因为要输入 Mac 密码而停下时").replace(/\n\s*/g, "");
+    expect(chinese).toContain(`「${zhCN.needsPassword.viewSteps}」`);
+    expect(chinese).toContain(`“${zhCN.updates.justUpdated.title}”`);
+    expect(chinese).toContain("30 天内");
+    expect(chinese).toContain(`没有按“${zhCN.updates.justUpdated.clear}”的话`);
+  });
 
   it("offers no 查看 where there is no one place to act: the password, and what the app changes", async () => {
     renderWithProviders(<FaqSheet />);

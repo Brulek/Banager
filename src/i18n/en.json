@@ -1507,7 +1507,7 @@
       },
       "password": {
         "question": "Why is my Mac password needed? Can it be typed for me here?",
-        "answer": "Some apps installed with Homebrew ask for your Mac's login password when they're updated or uninstalled, and the confirmation says so beforehand; it can't be typed here, and it isn't saved. If that stops one, its View Steps gives a command to copy into Terminal, where you type the password when asked; nothing appears on screen as you type, and that's normal. When it's done, come back here and press ⌘R to check again. For an update, View Steps is still on its row and in Update History after Banager is quit and reopened."
+        "answer": "Some apps installed with Homebrew ask for your Mac's login password when they're updated or uninstalled, and the confirmation says so beforehand; the password can't be typed here, and it isn't saved. If that stops one, its View Steps gives a command to copy into Terminal, where you type the password when asked; nothing appears on screen as you type, and that's normal. When it's done, come back here and press ⌘R to check again. After Banager is quit and reopened, an update's View Steps is still on its row for 30 days, and in Update History unless you click Clear History."
       },
       "leftBehind": {
         "question": "What stays behind after uninstalling, and where?",
