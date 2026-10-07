@@ -298,8 +298,30 @@ async fn test_an_uninstall_runs_exactly_the_command_its_preview_showed_and_nothi
         }
 
         let planned = runner.calls().len();
+        let mut expected = Vec::new();
+        if instance.adapter_id == "npm" {
+            let check = vec![
+                program.to_string_lossy().into_owned(),
+                "prefix".into(),
+                "-g".into(),
+            ];
+            let mut shown = vec![placeholder.to_string()];
+            shown.extend(check[1..].iter().cloned());
+            assert!(
+                reads.iter().any(|read| is(&shown, read)),
+                "{what}: documented read"
+            );
+            runner.respond(
+                check.iter().map(String::as_str).collect(),
+                CommandOutput {
+                    stdout: instance.prefix.to_string_lossy().into_owned(),
+                    ..exited_0()
+                },
+            );
+            expected.push(check);
+        }
         runner.respond(argv.iter().map(String::as_str).collect(), exited_0());
-        adapter
+        let outcome = adapter
             .execute(&plan, Arc::new(VecSink::new()), 1, CancellationToken::new())
             .await
             .unwrap_or_else(|e| panic!("{what}: execute: {e}"));
@@ -318,10 +340,12 @@ async fn test_an_uninstall_runs_exactly_the_command_its_preview_showed_and_nothi
                 }
             }
         }
+        assert_eq!(outcome, banager_core::model::Outcome::Succeeded, "{what}");
+        expected.push(argv.clone());
         assert_eq!(
             runner.calls()[planned..].to_vec(),
-            vec![argv.clone()],
-            "{what}: the one command run is the one previewed"
+            expected,
+            "{what}: only the documented recheck and the exact previewed write run"
         );
     }
 }

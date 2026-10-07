@@ -622,6 +622,7 @@ async fn test_a_numeric_prerelease_an_update_left_as_it_was_is_below_its_release
         prefix: prefix.clone(),
         ..banager_core::testing::manager_instance("npm", "npm:/opt/homebrew")
     };
+    runner.script(&[npm, "prefix", "-g"], vec![exited(0, prefix_text, "")]);
     // `npm ls`'s shape, the same before and after the install.
     runner.script(
         &[

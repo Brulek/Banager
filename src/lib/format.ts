@@ -112,6 +112,8 @@ export function outcomeDetailKey(outcome: Outcome): string | null {
       switch (fault) {
         case "Panicked":
           return "operations.outcome.BanagerFailed.PanickedDetail";
+        case "ChangedSinceShown":
+          return "operations.outcome.BanagerFailed.ChangedSinceShownDetail";
         case "HomebrewSettingsChanged":
           return "operations.outcome.BanagerFailed.HomebrewSettingsChangedDetail";
         // Its sentence says it is an internal error and that nothing
@@ -157,6 +159,7 @@ function faultKey(fault: Fault): string {
   if (typeof fault === "string") {
     switch (fault) {
       case "Panicked":
+      case "ChangedSinceShown":
       case "HomebrewSettingsChanged":
       case "Internal":
         return fault;

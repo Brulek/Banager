@@ -444,3 +444,24 @@ it("renders the pre-upgrade absence wire outcome in all three languages", () => 
   expect(zhCN.operations.outcome.NeedsAttention.GoneBeforeUpgrade).toBe("未开始更新：已找不到它");
   expect(zhHant.operations.outcome.NeedsAttention.GoneBeforeUpgrade).toBe("未開始更新：已找不到它");
 });
+
+it("says a saved operation whose installation changed since its preview did not start", () => {
+  const outcome = { BanagerFailed: "ChangedSinceShown" } as const;
+  expect(outcomeKey(outcome)).toBe("BanagerFailed.ChangedSinceShown");
+  expect(outcomeDetailKey(outcome)).toBe("operations.outcome.BanagerFailed.ChangedSinceShownDetail");
+  expect(outcomeArgs(outcome)).toEqual({});
+  expect(en.operations.outcome.BanagerFailed.ChangedSinceShown).toBe(
+    "Couldn't start: where or how it's installed changed after the confirmation opened, or couldn't be read",
+  );
+  expect(zhCN.operations.outcome.BanagerFailed.ChangedSinceShown).toBe(
+    "未能开始：确认窗口打开后，它的安装位置或安装方式有了变化，或无法读取",
+  );
+  expect(zhHant.operations.outcome.BanagerFailed.ChangedSinceShown).toBe(
+    "未能開始：確認視窗開啟後，它的安裝位置或安裝方式有了變化，或無法讀取",
+  );
+  for (const locale of [en, zhCN, zhHant]) {
+    expect(locale.operations.outcome.BanagerFailed.ChangedSinceShownDetail).toBeTruthy();
+  }
+  // The batch's own sentence for a plan worked out again stays its own.
+  expect(en.planAgain.changed).toBe("This update changed after it was shown, so it didn't run. Open it again and confirm.");
+});

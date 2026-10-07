@@ -1955,7 +1955,7 @@ prefix is unknown. No other command runs.
 
 | Purpose | Argv | Timeout |
 |---|---|---|
-| Global prefix | `<npm> prefix -g` | 30 s |
+| Global prefix (discovery and before executing a saved plan) | `<npm> prefix -g` | 30 s |
 | Version | `<npm> --version` | 30 s |
 | List global packages (`inventory`) | `<npm> ls -g --depth=0 --json --prefix {prefix}` | 60 s |
 | List outdated global packages (`check_updates`) | `<npm> outdated -g --json --prefix {prefix}` | 60 s |
@@ -1995,7 +1995,12 @@ and `NpmAdapter::plan`). npm ranks a setting given on the command line above
 the environment and every `npmrc` (`@npmcli/config` 9.0.0, `lib/index.js:42-48`,
 `:260`), so changing npm's configuration while a confirmation is open cannot
 move the operation away from the prefix its permission check and locks were
-taken for. Search and `<npm> prefix -g` itself run without it.
+taken for. Immediately before executing a saved plan, Banager repeats the
+existing `<npm> prefix -g` read with the plan's program and environment, without
+`--prefix` (30 s). A different answer, a failed read or no usable answer refuses
+the plan as changed since shown; no write command runs. An unchanged answer
+allows only the original, prefix-pinned argv to run. Search and
+`<npm> prefix -g` itself run without `--prefix`.
 
 Naming the prefix has two side effects. npm then reads its global settings
 file from `{prefix}/etc/npmrc` (`lib/index.js:286-293`): the same file it read

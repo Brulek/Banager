@@ -475,6 +475,9 @@ describe("types", () => {
     // Review of v1-brew's fixes (r6): an install or update found Homebrew
     // would now delete more than its preview said (model.rs builds the same
     // string).
+    const basisChanged: Outcome = { BanagerFailed: "ChangedSinceShown" };
+    expect(JSON.stringify(basisChanged)).toBe('{"BanagerFailed":"ChangedSinceShown"}');
+    expect(roundTrip(basisChanged)).toEqual(basisChanged);
     const settings: Outcome = { BanagerFailed: "HomebrewSettingsChanged" };
     expect(JSON.stringify(settings)).toBe('{"BanagerFailed":"HomebrewSettingsChanged"}');
     expect(roundTrip(settings)).toEqual(settings);

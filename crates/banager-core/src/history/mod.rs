@@ -351,6 +351,7 @@ fn fault_result(fault: &Fault) -> HistoryResult {
         },
         Fault::PathChanged { .. }
         | Fault::FormulaChanged { .. }
+        | Fault::ChangedSinceShown
         | Fault::HomebrewSettingsChanged
         | Fault::LinkTaken { .. }
         | Fault::LinkRollbackRisk { .. } => cause(FailureCause::Changed),
@@ -1779,6 +1780,11 @@ mod tests {
                 Outcome::BanagerFailed(Fault::FormulaChanged {
                     name: "node".to_string(),
                 }),
+                Some(FailureCause::Changed),
+                None,
+            ),
+            (
+                Outcome::BanagerFailed(Fault::ChangedSinceShown),
                 Some(FailureCause::Changed),
                 None,
             ),

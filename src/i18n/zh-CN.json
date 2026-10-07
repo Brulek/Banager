@@ -921,6 +921,8 @@
       "FailedSilent": "未能完成，程序没有给出原因",
       "FailedSilentDetail": "可以在操作日志中查看它的输出。",
       "BanagerFailed": {
+        "ChangedSinceShown": "未能开始：确认窗口打开后，它的安装位置或安装方式有了变化，或无法读取",
+        "ChangedSinceShownDetail": "没有改动。请重新打开确认窗口，查看它现在会做什么。",
         "Panicked": "未能完成：发生内部错误",
         "PanickedDetail": "请查看列表，确认是否有变化。",
         "ProgramMissing": "未能开始：找不到{{program}}，没有改动",

@@ -451,7 +451,7 @@ export function outcomeCause(outcome: Outcome | null): FailureCause | null {
  */
 export function faultFailure(fault: Fault): { cause: FailureCause | null; detail: string | null } {
   if (fault === "Panicked" || fault === "Internal") return { cause: "internal", detail: null };
-  if (fault === "HomebrewSettingsChanged") return { cause: "changed", detail: null };
+  if (fault === "HomebrewSettingsChanged" || fault === "ChangedSinceShown") return { cause: "changed", detail: null };
   if ("HomebrewStillUpdating" in fault) return { cause: "homebrewUpdating", detail: null };
   if ("ProgramMissing" in fault) return { cause: "notFound", detail: null };
   if ("SpawnFailed" in fault) {

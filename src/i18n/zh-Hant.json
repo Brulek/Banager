@@ -921,6 +921,8 @@
       "FailedSilent": "未能完成，程式沒有給出原因",
       "FailedSilentDetail": "可以在操作記錄中查看它的輸出。",
       "BanagerFailed": {
+        "ChangedSinceShown": "未能開始：確認視窗開啟後，它的安裝位置或安裝方式有了變化，或無法讀取",
+        "ChangedSinceShownDetail": "沒有改動。請重新開啟確認視窗，查看它現在會做什麼。",
         "Panicked": "未能完成：發生內部錯誤",
         "PanickedDetail": "請查看清單，確認是否有變化。",
         "ProgramMissing": "未能開始：找不到{{program}}，沒有改動",

@@ -157,6 +157,7 @@ describe("Banager's own failures (review of r6 y3-batch, finding 6)", () => {
     expect(endingOfOutcome({ BanagerFailed: "Panicked" })).toEqual({ kind: "failed", cause: "internal" });
     expect(endingOfOutcome({ BanagerFailed: "Internal" })).toEqual({ kind: "failed", cause: "internal" });
     expect(endingOfOutcome({ BanagerFailed: "HomebrewSettingsChanged" })).toEqual({ kind: "failed", cause: "changed" });
+    expect(endingOfOutcome({ BanagerFailed: "ChangedSinceShown" })).toEqual({ kind: "failed", cause: "changed" });
     expect(endingOfOutcome({ BanagerFailed: { PathChanged: { path: "~/.local/bin/claude" } } })).toEqual({
       kind: "failed",
       cause: "changed",

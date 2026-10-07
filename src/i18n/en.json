@@ -995,6 +995,8 @@
       "FailedSilent": "Couldn't finish, and the program didn't say why",
       "FailedSilentDetail": "The operation log shows its output.",
       "BanagerFailed": {
+        "ChangedSinceShown": "Couldn't start: where or how it's installed changed after the confirmation opened, or couldn't be read",
+        "ChangedSinceShownDetail": "Nothing was changed. Open the confirmation again to see what it does now.",
         "Panicked": "Couldn't finish because of an internal error",
         "PanickedDetail": "Check the list to see whether anything changed.",
         "ProgramMissing": "Couldn't start: {{program}} wasn't found. Nothing changed",

@@ -52,6 +52,7 @@ export type Fault =
   // after it than the preview said (a brew.env changed or unreadable since
   // then), and ran nothing.
   | "HomebrewSettingsChanged"
+  | "ChangedSinceShown"
   // y1-keg (r6): the update of a keg-only formula linked into its prefix
   // found another program in one of its commands' places (`paths`, full
   // paths such as /opt/homebrew/bin/npm) right before it ran, and ran

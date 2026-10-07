@@ -592,6 +592,46 @@ impl NpmAdapter {
         op_id: OpId,
         cancel: CancellationToken,
     ) -> Result<Outcome, AdapterError> {
+        let refused = Outcome::BanagerFailed(crate::model::Fault::ChangedSinceShown);
+        let PlanAction::Command { program, args, env } = &plan.action else {
+            return Ok(refused);
+        };
+        let Some(prefix) = args
+            .windows(2)
+            .find(|pair| pair[0] == "--prefix")
+            .map(|pair| Path::new(&pair[1]))
+            .filter(|path| path.is_absolute())
+        else {
+            return Ok(refused);
+        };
+        // Ask the same npm which global root it selects now. Do not pass
+        // --prefix to this read: that would merely echo our own answer.
+        // The write below still uses the *confirmed* argv, even if config
+        // changes again between this read and spawning it.
+        let output = self
+            .runner
+            .run(
+                CommandSpec {
+                    program: program.clone(),
+                    args: vec!["prefix".into(), "-g".into()],
+                    env: env.clone(),
+                    cwd: None,
+                    timeout: Duration::from_secs(30),
+                    output_use: OutputUse::Parsed,
+                },
+                None,
+                cancel.clone(),
+            )
+            .await;
+        if cancel.is_cancelled() {
+            return Ok(Outcome::Cancelled);
+        }
+        if !matches!(output, Ok(ref output) if output.exit_code == Some(0)
+            && !output.timed_out && !output.cancelled
+            && Path::new(output.stdout.trim()) == prefix)
+        {
+            return Ok(refused);
+        }
         run_plan(&self.runner, plan, sink, op_id, cancel).await
     }
 
@@ -967,6 +1007,10 @@ mod tests {
                 "{call:?}"
             );
         }
+        runner.respond(
+            vec!["/opt/homebrew/bin/npm", "prefix", "-g"],
+            f08_npm_output("/tmp/confirmed prefix", 0),
+        );
         for kind in [OpKind::Install, OpKind::Upgrade, OpKind::Uninstall] {
             let plan = adapter
                 .plan(
@@ -2300,6 +2344,10 @@ mod tests {
                 cancelled: false,
             },
         );
+        runner.respond(
+            vec!["/opt/homebrew/bin/npm", "prefix", "-g"],
+            f08_npm_output("/opt/homebrew", 0),
+        );
         let adapter = NpmAdapter::new(runner).with_prefix_read_only_fn(|_| None);
         let inst = test_instance();
         let req = OpRequest {
@@ -2700,6 +2748,9 @@ mod tests {
         current: std::sync::Mutex<PathBuf>,
         installed: std::sync::Mutex<std::collections::HashSet<PathBuf>>,
         writes: std::sync::Mutex<Vec<PathBuf>>,
+        write_specs: std::sync::Mutex<Vec<CommandSpec>>,
+        prefix_reply: std::sync::Mutex<Option<CommandOutput>>,
+        switch_after_prefix: std::sync::Mutex<Option<PathBuf>>,
     }
     #[async_trait]
     impl CommandRunner for F08PrefixNpm {
@@ -2732,7 +2783,15 @@ mod tests {
                 .find(|arg| matches!(arg.as_str(), "prefix" | "--version" | "ls" | "uninstall"))
                 .expect("a supported fake npm command");
             let output = match command.as_str() {
-                "prefix" => root.to_str().unwrap().to_owned(),
+                "prefix" => {
+                    if let Some(reply) = self.prefix_reply.lock().unwrap().clone() {
+                        return Ok(reply);
+                    }
+                    if let Some(next) = self.switch_after_prefix.lock().unwrap().take() {
+                        *self.current.lock().unwrap() = next;
+                    }
+                    root.to_str().unwrap().to_owned()
+                }
                 "--version" => "12.0.2".into(),
                 "ls" => if self.installed.lock().unwrap().contains(&root) {
                     F08_TREE
@@ -2742,6 +2801,7 @@ mod tests {
                 .into(),
                 "uninstall" => {
                     self.writes.lock().unwrap().push(root.clone());
+                    self.write_specs.lock().unwrap().push(spec.clone());
                     self.installed.lock().unwrap().remove(&root);
                     String::new()
                 }
@@ -2752,6 +2812,10 @@ mod tests {
     }
 
     async fn f08_prefix_change(changes: bool) {
+        f30b_prefix_change(if changes { "changed" } else { "unchanged" }).await;
+    }
+
+    async fn f30b_prefix_change(change: &str) {
         let a = tempfile::tempdir().unwrap();
         let b = tempfile::tempdir().unwrap();
         fake_exe(a.path(), "npm");
@@ -2759,6 +2823,9 @@ mod tests {
             current: std::sync::Mutex::new(a.path().to_owned()),
             installed: std::sync::Mutex::new([a.path().to_owned(), b.path().to_owned()].into()),
             writes: std::sync::Mutex::new(Vec::new()),
+            write_specs: std::sync::Mutex::new(Vec::new()),
+            prefix_reply: std::sync::Mutex::new(None),
+            switch_after_prefix: std::sync::Mutex::new(None),
         });
         let adapter = NpmAdapter::new(runner.clone()).with_prefix_read_only_fn(|_| None);
         let env = HostEnv {
@@ -2788,9 +2855,30 @@ mod tests {
             )
             .await
             .unwrap();
-        if changes {
-            *runner.current.lock().unwrap() = b.path().to_owned();
+        match change {
+            "changed" => *runner.current.lock().unwrap() = b.path().to_owned(),
+            "race" => *runner.switch_after_prefix.lock().unwrap() = Some(b.path().to_owned()),
+            "failed" => *runner.prefix_reply.lock().unwrap() = Some(f08_npm_output("", 1)),
+            "empty" => *runner.prefix_reply.lock().unwrap() = Some(f08_npm_output("", 0)),
+            "relative" => {
+                *runner.prefix_reply.lock().unwrap() = Some(f08_npm_output("relative", 0))
+            }
+            "timeout" => {
+                *runner.prefix_reply.lock().unwrap() = Some(CommandOutput {
+                    timed_out: true,
+                    ..f08_npm_output(a.path().to_str().unwrap(), 0)
+                })
+            }
+            _ => {
+                // A refresh between the preview and the confirmation reads
+                // the same prefix and list again; that is no change.
+                let again = adapter.detect(&env).await;
+                assert_eq!(again.len(), 1);
+                assert_eq!(again[0].prefix, a.path());
+                assert_eq!(adapter.inventory(&again[0]).await.unwrap().len(), 1);
+            }
         }
+        let changes = !matches!(change, "unchanged" | "race");
         let result = adapter
             .execute(&plan, Arc::new(VecSink::new()), 1, CancellationToken::new())
             .await;
@@ -2799,18 +2887,32 @@ mod tests {
             !writes.contains(&b.path().to_owned()),
             "must never uninstall the other prefix: {writes:?}; {result:?}"
         );
-        if writes.is_empty() {
+        if changes {
             assert!(
-                changes
-                    && matches!(
-                        result,
-                        Err(AdapterError::Refused(_)) | Ok(Outcome::BanagerFailed(_))
-                    ),
+                writes.is_empty(),
+                "changed prefix must refuse the saved plan: {writes:?}; {result:?}"
+            );
+            assert!(
+                matches!(
+                    result,
+                    Ok(Outcome::BanagerFailed(
+                        crate::model::Fault::ChangedSinceShown
+                    ))
+                ),
                 "explicit stale-preview refusal: {result:?}"
             );
         } else {
             assert_eq!(result.unwrap(), Outcome::Succeeded);
             assert_eq!(writes, [a.path().to_owned()]);
+            let PlanAction::Command { program, args, env } = &plan.action else {
+                panic!("command");
+            };
+            let specs = runner.write_specs.lock().unwrap().clone();
+            assert_eq!(specs.len(), 1);
+            assert_eq!(
+                (&specs[0].program, &specs[0].args, &specs[0].env),
+                (program, args, env)
+            );
             assert!(
                 !adapter.reconcile(inst, &rows[0].key).await.unwrap().present,
                 "reconcile must read the same root A"
@@ -2824,12 +2926,22 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "bug: G06: npm uninstall follows a changed global prefix instead of the previewed one"]
     async fn f08_g06_changed_npm_prefix_never_removes_other_installation() {
         f08_prefix_change(true).await;
     }
     #[tokio::test]
     async fn f08_g06_unchanged_npm_prefix_removes_and_reconciles_same_root() {
         f08_prefix_change(false).await;
+    }
+    #[tokio::test]
+    async fn f30b_npm_unanswered_prefix_refuses_without_a_write() {
+        for change in ["failed", "empty", "relative", "timeout"] {
+            f30b_prefix_change(change).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn f30b_npm_change_after_recheck_still_uses_confirmed_prefix() {
+        f30b_prefix_change("race").await;
     }
 }

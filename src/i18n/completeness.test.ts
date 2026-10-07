@@ -235,6 +235,7 @@ const INTERPOLATED_SUBTREES: Record<string, readonly string[]> = {
     "BanagerFailed.PathChanged",
     "BanagerFailed.FormulaChanged",
     "BanagerFailed.HomebrewSettingsChanged",
+    "BanagerFailed.ChangedSinceShown",
     // y1-keg: one path in the sentence, or the first of several.
     "BanagerFailed.LinkTaken",
     "BanagerFailed.LinkTakenMany",

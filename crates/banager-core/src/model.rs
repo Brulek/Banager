@@ -2069,6 +2069,10 @@ pub enum Fault {
     /// `BrewAdapter::require_uninstall_as_previewed`); read by `faultKey`
     /// in src/lib/format.ts.
     HomebrewSettingsChanged,
+    /// The confirmed operation's basis changed or could not be read again.
+    /// No write command ran. Uses the same changed-since-shown explanation
+    /// as a batch whose newly prepared plan differs from its preview.
+    ChangedSinceShown,
     /// The update of the keg-only formula `name`, linked into the prefix
     /// with Homebrew's record, was not started, because something else is
     /// at the place of one of its commands there now -- `paths`, each a
@@ -3335,6 +3339,7 @@ mod tests {
         );
         for fault in [
             Fault::Panicked,
+            Fault::ChangedSinceShown,
             Fault::HomebrewStillUpdating { minutes: 10 },
             Fault::FormulaChanged {
                 name: "wget".to_string(),
