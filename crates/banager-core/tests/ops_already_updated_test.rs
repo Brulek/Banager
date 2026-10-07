@@ -51,6 +51,9 @@ fn exited(code: i32, stdout: &str, stderr: &str) -> CommandOutput {
     }
 }
 
+/// How many times an argv has been answered, and its outputs in order.
+type Script = (usize, Vec<CommandOutput>);
+
 /// Answers each argv with its scripted outputs in order, repeating the
 /// last one, so the inventory can read one way before an update and
 /// another way after it.
@@ -58,7 +61,7 @@ fn exited(code: i32, stdout: &str, stderr: &str) -> CommandOutput {
 /// An argv with a gate (`gate`) is not answered until the test opens it.
 #[derive(Default)]
 struct ScriptedRunner {
-    scripts: Mutex<HashMap<Vec<String>, (usize, Vec<CommandOutput>)>>,
+    scripts: Mutex<HashMap<Vec<String>, Script>>,
     gates: Mutex<HashMap<Vec<String>, Arc<Notify>>>,
 }
 
