@@ -547,4 +547,70 @@ describe("Dialog", () => {
     // body, from where the next Tab starts over at the top.
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Updates" })));
   });
+
+  // r24 W10: the window's body is where the focus is when nothing has it,
+  // and no opener -- given back to it, the next Tab starts over at the
+  // sidebar and VoiceOver's cursor is nowhere.
+  it.each([
+    ["the welcome sheet, open as the window first draws", { atOnce: true, passBody: false }],
+    ["a sheet the menu bar opens while nothing has the focus", { atOnce: false, passBody: false }],
+    ["a sheet told the body opened it, as Update All from the menu bar", { atOnce: false, passBody: true }],
+  ] as const)("gives the focus to the page's title, not the body, after %s", async (_what, { atOnce, passBody }) => {
+    let openSheet: () => void = () => undefined;
+    function Window() {
+      const [open, setOpen] = useState<boolean>(atOnce);
+      const opener = useRef<HTMLElement | null>(null);
+      openSheet = () => {
+        opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        setOpen(true);
+      };
+      return (
+        <>
+          <PageHeader title="Overview" actions={null} />
+          <Dialog open={open} onOpenChange={setOpen} title="Welcome" returnFocusTo={passBody ? opener : undefined}>
+            <button type="button" onClick={() => setOpen(false)}>
+              Get Started
+            </button>
+          </Dialog>
+        </>
+      );
+    }
+    const user = userEvent.setup();
+    renderWithProviders(<Window />);
+    if (!atOnce) {
+      expect(document.activeElement).toBe(document.body);
+      act(() => openSheet());
+    }
+    const done = await screen.findByRole("button", { name: "Get Started" });
+    await waitFor(() => expect(document.activeElement).toBe(done));
+
+    await user.keyboard("{Escape}");
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Overview" })));
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  it("gives the focus to the page's title after its own button closes a sheet nothing opened", async () => {
+    function Window() {
+      const [open, setOpen] = useState(true);
+      return (
+        <>
+          <PageHeader title="Overview" actions={null} />
+          <Dialog open={open} onOpenChange={setOpen} title="Welcome">
+            <button type="button" onClick={() => setOpen(false)}>
+              Get Started
+            </button>
+          </Dialog>
+        </>
+      );
+    }
+    const user = userEvent.setup();
+    renderWithProviders(<Window />);
+
+    await user.click(await screen.findByRole("button", { name: "Get Started" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Overview" })));
+  });
 });

@@ -16,6 +16,17 @@ export const DIALOG_WIDTHS = { one: 360, several: 480, log: 560 } as const;
 
 export type DialogWidth = keyof typeof DIALOG_WIDTHS;
 
+/**
+ * `element` as what opened a sheet -- or null for the window's body, which
+ * is where the focus is when nothing has it: the welcome sheet at first
+ * launch, a sheet the menu bar opens. Given back to the body, the focus
+ * would stay where the next Tab starts over at the sidebar; with no
+ * opener, it goes to the page's title (`focusOrFallback`).
+ */
+function openerOf(element: Element | null | undefined): HTMLElement | null {
+  return element instanceof HTMLElement && element !== document.body ? element : null;
+}
+
 export interface DialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -122,7 +133,9 @@ export interface DialogProps {
  * layout effect, which runs ahead of Radix's own -- but only when the
  * focus went with the sheet. When something else took it meanwhile, such
  * as the log an uninstall opens, it stays there. When the opener is gone
- * or off by then, it goes to the page's title (`focusOrFallback`) -- and
+ * or off by then, or there was none -- nothing had the focus as it opened,
+ * and the window's body is no opener (`openerOf`) -- it goes to the
+ * page's title (`focusOrFallback`) -- and
  * `onClosed` may put it somewhere better from there: the update
  * confirmation puts it on the row whose Update gave way to its progress,
  * or on the list after Update all (`useUpdateConfirm`'s `onStarted`).
@@ -154,7 +167,7 @@ export function Dialog({
   // Its subtitle, then its main text; nothing, where it has neither.
   const describedByIds = [hasSubtitle ? subtitleId : null, describedBy ?? null].filter((id) => id !== null).join(" ");
   useLayoutEffect(() => {
-    if (open) noted.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (open) noted.current = openerOf(document.activeElement);
   }, [open]);
   const hasFooter = footer !== undefined && footer !== null;
   // A body that scrolls says when more of it is below (`watchMoreBelow`);
@@ -199,9 +212,9 @@ export function Dialog({
             event.preventDefault();
             const focus = document.activeElement;
             const lost = focus === null || focus === document.body || !focus.isConnected;
-            const opener = [returnFocusTo?.current, noted.current].find(
-              (element): element is HTMLElement => element instanceof HTMLElement && element.isConnected,
-            );
+            const opener = [returnFocusTo?.current, noted.current]
+              .map(openerOf)
+              .find((element): element is HTMLElement => element?.isConnected === true);
             if (lost) focusOrFallback(opener);
             onClosed?.();
           }}
