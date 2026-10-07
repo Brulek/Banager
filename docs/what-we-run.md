@@ -2059,8 +2059,24 @@ Verified against pip 26.2.1 (`adapters/meta/pip.toml`).
 **Detect.** For each of `python3.14`, `python3.13`, `python3.12`,
 `python3.11`, `python3.10`, `python3` and `python` found on `PATH`
 (`PipAdapter::CANDIDATE_INTERPRETERS`), Banager canonicalises the path so
-two names for one interpreter count once, and runs `<python> -m pip
---version` (30 s). Every pip instance is read-only by design. Only the
+two names for one program count once -- Homebrew's `python3` and
+`python3.13` are asked once -- and runs `<python> -m pip --version` (30 s)
+for each launcher left. A launcher in a virtual environment is counted by
+its environment as well as its program: Banager checks for `pyvenv.cfg`
+beside the launcher and one folder above, without reading its contents,
+and includes that environment's resolved directory in the identity, so
+different venvs remain separate even when their executable links share a
+base binary, and a venv stays apart from the base program it links to.
+The existing answer, `pip X from <site-packages>/pip (python 3.13)`, then
+supplies the environment location: Banager resolves that directory with
+protected read-only path lookups and counts it once, including distinct
+pyenv shim files that reach the same pip. The first launcher's original
+path remains the source ID and argv. No extra command is run. The venv
+directory is part of that identity too, which keeps venvs separate when
+they inherit the base environment's pip.
+An unavailable or unparseable answer, a location that cannot be resolved,
+or an unreadable venv marker does not establish identity; those launchers
+remain separate. Every pip instance is read-only by design. Only the
 outdated check is given environment variables, `PIP_QUIET=0`,
 `PIP_VERBOSE=0` and `PIP_RETRIES=5` (`PipAdapter::OUTDATED_ENV`), which
 outrank a `pip.conf`. The first two hold pip at its normal verbosity —
@@ -4177,7 +4193,11 @@ not read (`protected::look`; How Banager runs anything, above):
   update is planned, to tell a Homebrew formula's npm (npm's section).
   Planning also compares the prefix directory's device/inode with Homebrew's
   fixed discovery prefixes to share one lock across symbolic-link aliases.
-- pip: the canonical path of each interpreter found, to count it once;
+- pip: the canonical path of each interpreter found, to count it once, and
+  for the shim guard; whether `pyvenv.cfg` is a regular file beside the
+  launcher or one folder above, and the site-packages directory named by
+  the existing version output, to count environments once without merging
+  separate venvs;
   for one in `/usr/bin`, where `usr/bin/<its name>` in the developer
   directory `xcode-select -p` names leads, and whether that is an
   executable file (`realpath`, `stat`).

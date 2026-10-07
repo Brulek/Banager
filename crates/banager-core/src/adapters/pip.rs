@@ -299,6 +299,9 @@ pub struct PipAdapter {
     /// folder of the test's own in the tests below, which cannot put a
     /// file in `/usr/bin`.
     shim_dir: PathBuf,
+    /// Version fixtures contain real host paths. Filesystem identity is
+    /// opt-in for unit tests, which supply only synthetic trees.
+    environment_key_fn: fn(&str, &Path, &Protected) -> Option<Vec<u8>>,
 }
 
 /// The folder macOS keeps its developer-tool shims in: since macOS 10.9,
@@ -313,11 +316,90 @@ pub struct PipAdapter {
 /// `python3`, would have done at every refresh.
 const SHIM_DIR: &str = "/usr/bin";
 
+/// Reuse pip's existing version answer; launcher files (notably pyenv
+/// shims) are not environment identities. Unknown locations stay separate.
+fn environment_key(stdout: &str, python: &Path, protected: &Protected) -> Option<Vec<u8>> {
+    let (version, rest) = stdout.trim().strip_prefix("pip ")?.split_once(" from ")?;
+    if version.is_empty() || version.chars().any(char::is_whitespace) {
+        return None;
+    }
+    let (location, python_version) = rest.rsplit_once(" (python ")?;
+    if !python_version.ends_with(')') || python_version.contains('\n') {
+        return None;
+    }
+    let pip = Path::new(location);
+    if !pip.is_absolute() || pip.file_name()? != "pip" {
+        return None;
+    }
+    let (site, stat) = look::target(pip.parent()?, protected).ok()?;
+    if !stat.is_dir() {
+        return None;
+    }
+    let mut key = protected::folded(&site);
+    // A venv may use its base environment's pip via system-site-packages.
+    // An unreadable marker cannot prove these are one environment.
+    if let Some(venv) = venv_of(python, protected).ok()? {
+        key.push(0);
+        key.extend(protected::folded(&venv));
+    }
+    Some(key)
+}
+
+/// The venv a launcher at `python` runs in, resolved: Python discovers
+/// `pyvenv.cfg` beside its launcher or one folder above, before resolving
+/// the launcher link, so a venv's link to its base program is the venv's
+/// own environment. `Ok(None)` when neither place has the marker;
+/// `Err(())` when one could not be looked at, which proves nothing. Only
+/// its presence is inspected, never what it says.
+fn venv_of(python: &Path, protected: &Protected) -> Result<Option<PathBuf>, ()> {
+    let Some(bin) = python.parent() else {
+        return Ok(None);
+    };
+    for root in [Some(bin), bin.parent()].into_iter().flatten() {
+        match look::target(&root.join("pyvenv.cfg"), protected) {
+            Ok((_, stat)) if stat.is_file() => {
+                return look::real_path(root, protected).map(Some).map_err(|_| ());
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            _ => return Err(()),
+        }
+    }
+    Ok(None)
+}
+
+/// What two launchers on `PATH` must share to be one interpreter before
+/// either is run: the program each leads to (`program`), and the venv
+/// each is in (`venv_of`). Homebrew's `python3` and `python3.13`, links to
+/// one program in no venv, are one interpreter and asked once; a venv's
+/// link to that program is not. A launcher whose venv marker could not be
+/// looked at is only ever itself.
+fn launcher_key(python: &Path, program: &Path, protected: &Protected) -> Vec<u8> {
+    let mut key = protected::folded(program);
+    match venv_of(python, protected) {
+        Ok(None) => {}
+        Ok(Some(venv)) => {
+            key.extend([0, b'v']);
+            key.extend(protected::folded(&venv));
+        }
+        Err(()) => {
+            key.extend([0, b'l']);
+            key.extend(protected::folded(python));
+        }
+    }
+    key
+}
+
+#[cfg(not(test))]
+const DEFAULT_ENVIRONMENT_KEY_FN: fn(&str, &Path, &Protected) -> Option<Vec<u8>> = environment_key;
+#[cfg(test)]
+const DEFAULT_ENVIRONMENT_KEY_FN: fn(&str, &Path, &Protected) -> Option<Vec<u8>> = |_, _, _| None;
+
 impl PipAdapter {
     /// Interpreter names to probe on `PATH`, most-specific first, so a
     /// `python3` symlink and its versioned target (e.g. `python3.14`)
     /// resolving to the same real file are still only counted once (see
-    /// `detect`'s canonicalization-based dedup).
+    /// `detect`'s `launcher_key`), and distinct launchers reporting the
+    /// same pip environment once too (`environment_key`).
     pub const CANDIDATE_INTERPRETERS: [&'static str; 7] = [
         "python3.14",
         "python3.13",
@@ -373,14 +455,19 @@ impl PipAdapter {
             runner,
             meta,
             shim_dir: PathBuf::from(SHIM_DIR),
+            environment_key_fn: DEFAULT_ENVIRONMENT_KEY_FN,
         }
     }
 
     /// One `ManagerInstance` per distinct Python interpreter on `PATH` that
     /// has a working `pip` module (contract: "one per interpreter, invoked
-    /// as `{python} -m pip`"). Interpreters are deduplicated by their
-    /// canonicalized path so `python3` and `python3.14` naming the same
-    /// binary do not produce two instances.
+    /// as `{python} -m pip`"). Launchers are deduplicated before any is
+    /// run by the program they resolve to and the venv they are in
+    /// (`launcher_key`), so `python3` and `python3.14` naming the same
+    /// binary are asked once; then distinct launchers whose version answer
+    /// names the same resolved pip location -- pyenv's shims, one file per
+    /// name -- are counted once (`environment_key`). Distinct virtual
+    /// environments stay distinct either way.
     ///
     /// An interpreter that is one of the developer-tool shims (`SHIM_DIR`)
     /// is run only when the developer directory has its tool
@@ -392,6 +479,7 @@ impl PipAdapter {
     /// the refresh after the tools are installed finds them.
     pub async fn detect(&self, env: &HostEnv) -> Vec<ManagerInstance> {
         let mut seen = HashSet::new();
+        let mut environments = HashSet::new();
         let mut found = Vec::new();
         // `Some(answer)` once xcode-select has been asked in this call.
         let mut developer_dir: Option<Option<PathBuf>> = None;
@@ -406,8 +494,10 @@ impl PipAdapter {
             let canonical =
                 look::real_path(&python_path, &protected).unwrap_or_else(|_| python_path.clone());
             // As the disk compares names: each is spelled as `PATH` and
-            // its links spell it (`protected::look`).
-            if !seen.insert(protected::folded(&canonical)) {
+            // its links spell it (`protected::look`). Links to a common
+            // base program in different venvs stay apart: Python uses the
+            // launcher's location to select its virtual environment.
+            if !seen.insert(launcher_key(&python_path, &canonical, &protected)) {
                 continue;
             }
             // By where it leads, so a link elsewhere on `PATH` to the shim
@@ -440,6 +530,17 @@ impl PipAdapter {
                     CancellationToken::new(),
                 )
                 .await;
+            if let Ok(o) = &output {
+                if o.exit_code == Some(0) {
+                    if let Some(key) =
+                        (self.environment_key_fn)(&o.stdout, &python_path, &protected)
+                    {
+                        if !environments.insert(key) {
+                            continue;
+                        }
+                    }
+                }
+            }
             let (version, no_pip) = match &output {
                 // "pip 26.2.1 from … (python 3.14)" — the shared
                 // second-token rule (crate::adapters::second_token, Task 5)
@@ -1539,6 +1640,282 @@ mod tests {
         assert_eq!(runner.calls(), vec![argv(&PipAdapter::XCODE_SELECT_ARGV)]);
     }
 
+    #[tokio::test]
+    async fn test_f12_three_pyenv_shims_have_one_inventory() {
+        let root = temp_folder("f12-pyenv");
+        let shims = root.join(".pyenv/shims");
+        let site = root.join(".pyenv/versions/3.13.7/lib/python3.13/site-packages");
+        std::fs::create_dir_all(site.join("pip")).unwrap();
+        let alias = root.join("site alias");
+        std::os::unix::fs::symlink(&site, &alias).unwrap();
+        let runner = Arc::new(MockRunner::new());
+        let packages = r#"[{"name":"rich","version":"14.1.0"}]"#;
+        for (name, location) in [
+            ("python3.13", &site),
+            ("python3", &alias),
+            ("python", &site),
+        ] {
+            let shim = shims.join(name);
+            file_at(&shim, 0o755); // Distinct files, as pyenv rehash creates.
+            runner.respond(
+                vec![text(&shim), "-m", "pip", "--version"],
+                exited(
+                    0,
+                    &format!("pip 26.2.1 from {}/pip (python 3.13)\n", location.display()),
+                ),
+            );
+            runner.respond(
+                vec![text(&shim), "-m", "pip", "list", "--format=json"],
+                exited(0, packages),
+            );
+            runner.respond(
+                vec![
+                    text(&shim),
+                    "-m",
+                    "pip",
+                    "list",
+                    "--format=json",
+                    "--not-required",
+                ],
+                exited(0, packages),
+            );
+        }
+        let adapter = PipAdapter {
+            environment_key_fn: environment_key,
+            ..PipAdapter::new(runner.clone())
+        };
+        let instances = adapter.detect(&path_of(&[&shims])).await;
+        let mut rows = Vec::new();
+        for inst in &instances {
+            rows.extend(adapter.inventory(inst).await.unwrap());
+        }
+        std::fs::remove_dir_all(root).unwrap();
+        assert_eq!(instances.len(), 1);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].key.name, "rich");
+        assert_eq!(
+            runner.calls().len(),
+            5,
+            "three existing version probes, one inventory pair"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_f12_virtualenvs_with_one_base_binary_stay_separate() {
+        for shared_pip in [false, true] {
+            let root = temp_folder("f12-venvs");
+            let base = root.join("base/bin/python3.13");
+            file_at(&base, 0o755);
+            let runner = Arc::new(MockRunner::new());
+            let mut bins = Vec::new();
+            for (venv, name) in [("venv a", "python3.13"), ("venv b", "python3")] {
+                let environment = root.join(venv);
+                let bin = environment.join("bin");
+                std::fs::create_dir_all(&bin).unwrap();
+                std::fs::write(environment.join("pyvenv.cfg"), "home = ../base/bin\n").unwrap();
+                let python = bin.join(name);
+                std::os::unix::fs::symlink(&base, &python).unwrap();
+                let site = if shared_pip {
+                    root.join("base/lib/python3.13/site-packages")
+                } else {
+                    environment.join("lib/python3.13/site-packages")
+                };
+                std::fs::create_dir_all(site.join("pip")).unwrap();
+                runner.respond(
+                    vec![text(&python), "-m", "pip", "--version"],
+                    exited(
+                        0,
+                        &format!("pip 26.2.1 from {}/pip (python 3.13)\n", site.display()),
+                    ),
+                );
+                bins.push(bin);
+            }
+            let instances = PipAdapter {
+                environment_key_fn: environment_key,
+                ..PipAdapter::new(runner.clone())
+            }
+            .detect(&path_of(&[&bins[0], &bins[1]]))
+            .await;
+            std::fs::remove_dir_all(root).unwrap();
+            assert_eq!(instances.len(), 2, "shared pip: {shared_pip}");
+            assert_ne!(instances[0].id, instances[1].id);
+            assert_eq!(runner.calls().len(), 2);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_f12_unusable_environment_locations_do_not_merge_sources() {
+        for output in [
+            exited(0, "pip 26.2.1"),
+            exited(0, "pip 26.2.1 from relative/pip (python 3.13)"),
+            exited(0, "pip 26.2.1 from /missing-f12/pip (python 3.13)"),
+            exited(1, ""),
+        ] {
+            let root = temp_folder("f12-no-location");
+            let runner = Arc::new(MockRunner::new());
+            for name in ["python3", "python"] {
+                let python = root.join(name);
+                file_at(&python, 0o755);
+                runner.respond(
+                    vec![text(&python), "-m", "pip", "--version"],
+                    output.clone(),
+                );
+            }
+            let instances = PipAdapter {
+                environment_key_fn: environment_key,
+                ..PipAdapter::new(runner)
+            }
+            .detect(&path_of(&[&root]))
+            .await;
+            std::fs::remove_dir_all(root).unwrap();
+            assert_eq!(instances.len(), 2);
+        }
+    }
+
+    /// Homebrew's layout: `bin/python3.13` a link into the keg's framework,
+    /// `bin/python3` a link to that. One program under two names is one
+    /// interpreter, asked once -- as before f12 -- not asked again and
+    /// merged afterwards.
+    #[tokio::test]
+    async fn test_f12_review_one_program_under_two_names_is_asked_once() {
+        let root = temp_folder("f12-one-program");
+        let program = root.join(
+            "Cellar/python@3.13/3.13.7/Frameworks/Python.framework/Versions/3.13/bin/python3.13",
+        );
+        file_at(&program, 0o755);
+        let bin = root.join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        std::os::unix::fs::symlink(&program, bin.join("python3.13")).unwrap();
+        std::os::unix::fs::symlink("python3.13", bin.join("python3")).unwrap();
+        let site = root.join("lib/python3.13/site-packages");
+        std::fs::create_dir_all(site.join("pip")).unwrap();
+        let runner = Arc::new(MockRunner::new());
+        for name in ["python3.13", "python3"] {
+            runner.respond(
+                vec![text(&bin.join(name)), "-m", "pip", "--version"],
+                exited(
+                    0,
+                    &format!("pip 25.2 from {}/pip (python 3.13)\n", site.display()),
+                ),
+            );
+        }
+        let instances = PipAdapter {
+            environment_key_fn: environment_key,
+            ..PipAdapter::new(runner.clone())
+        }
+        .detect(&path_of(&[&bin]))
+        .await;
+        std::fs::remove_dir_all(root).unwrap();
+        assert_eq!(instances.len(), 1, "{instances:?}");
+        assert_eq!(instances[0].exe_path, bin.join("python3.13"));
+        assert_eq!(
+            runner.calls(),
+            vec![argv(&[
+                text(&bin.join("python3.13")),
+                "-m",
+                "pip",
+                "--version"
+            ])],
+            "python3 is the same program: not run again"
+        );
+    }
+
+    /// `uv venv` makes a venv with no pip: `python`, `python3` and
+    /// `python3.13` all links to one base program, and `pyvenv.cfg` beside
+    /// `bin`. With no pip there is no answer to compare environments by, so
+    /// only the program and the venv can say these three are one: one row
+    /// saying it has no pip, not three.
+    #[tokio::test]
+    async fn test_f12_review_venv_without_pip_is_one_source() {
+        let root = temp_folder("f12-uv-venv");
+        let base = root.join("uv/python/cpython-3.13.7-macos-aarch64-none/bin/python3.13");
+        file_at(&base, 0o755);
+        let venv = root.join("project/.venv");
+        let bin = venv.join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::write(
+            venv.join("pyvenv.cfg"),
+            "home = /x\nimplementation = CPython\nuv = 0.12.17\n",
+        )
+        .unwrap();
+        std::os::unix::fs::symlink(&base, bin.join("python")).unwrap();
+        std::os::unix::fs::symlink("python", bin.join("python3")).unwrap();
+        std::os::unix::fs::symlink("python", bin.join("python3.13")).unwrap();
+        let runner = Arc::new(MockRunner::new());
+        for name in ["python3.13", "python3", "python"] {
+            let python = bin.join(name);
+            runner.respond(
+                vec![text(&python), "-m", "pip", "--version"],
+                exited_with(
+                    1,
+                    "",
+                    &format!("{}: No module named pip\n", python.display()),
+                ),
+            );
+        }
+        let instances = PipAdapter {
+            environment_key_fn: environment_key,
+            ..PipAdapter::new(runner.clone())
+        }
+        .detect(&path_of(&[&bin]))
+        .await;
+        std::fs::remove_dir_all(root).unwrap();
+        assert_eq!(instances.len(), 1, "{instances:?}");
+        assert_eq!(instances[0].status.unavailable, Some(Unavailable::NoPip));
+        assert_eq!(runner.calls().len(), 1);
+    }
+
+    /// A venv's link to its base program is still its own environment, and
+    /// the base program on `PATH` is another: both listed, as distinct
+    /// sources, even though both run one program.
+    #[tokio::test]
+    async fn test_f12_review_venv_and_its_base_program_stay_separate() {
+        let root = temp_folder("f12-venv-base");
+        let base_bin = root.join("base/bin");
+        let base = base_bin.join("python3");
+        file_at(&base, 0o755);
+        let venv = root.join("venv");
+        std::fs::create_dir_all(venv.join("bin")).unwrap();
+        std::fs::write(venv.join("pyvenv.cfg"), "home = ../base/bin\n").unwrap();
+        std::os::unix::fs::symlink(&base, venv.join("bin/python3")).unwrap();
+        std::os::unix::fs::symlink(&base, base_bin.join("python")).unwrap();
+        let runner = Arc::new(MockRunner::new());
+        for (python, site) in [
+            (
+                venv.join("bin/python3"),
+                venv.join("lib/python3.13/site-packages"),
+            ),
+            (
+                base_bin.join("python"),
+                root.join("base/lib/python3.13/site-packages"),
+            ),
+        ] {
+            std::fs::create_dir_all(site.join("pip")).unwrap();
+            runner.respond(
+                vec![text(&python), "-m", "pip", "--version"],
+                exited(
+                    0,
+                    &format!("pip 25.2 from {}/pip (python 3.13)\n", site.display()),
+                ),
+            );
+        }
+        let instances = PipAdapter {
+            environment_key_fn: environment_key,
+            ..PipAdapter::new(runner.clone())
+        }
+        .detect(&path_of(&[&venv.join("bin"), &base_bin]))
+        .await;
+        std::fs::remove_dir_all(root).unwrap();
+        let found: Vec<&Path> = instances.iter().map(|i| i.exe_path.as_path()).collect();
+        assert_eq!(
+            found,
+            vec![
+                venv.join("bin/python3").as_path(),
+                base_bin.join("python").as_path()
+            ]
+        );
+    }
+
     const PIP_VERSION: &str =
         "pip 21.2.4 from /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/site-packages/pip (python 3.9)\n";
 
@@ -1717,7 +2094,7 @@ mod tests {
         // Two shims on `PATH` (distinct files, so both are probed): one
         // question for both in a refresh. Its answer is not kept past the
         // refresh, so once the tools are installed the next refresh asks
-        // again, finds them, and lists both.
+        // again, finds them, and lists both distinct pip environments.
         let shims = temp_folder("shims-twice");
         let python3 = shims.join("python3");
         let python = shims.join("python");
@@ -1725,7 +2102,8 @@ mod tests {
         file_at(&python, 0o755);
         let runner = Arc::new(MockRunner::new());
         runner.respond(PipAdapter::XCODE_SELECT_ARGV.to_vec(), exited(2, ""));
-        let adapter = adapter_with_shims_in(runner.clone(), &shims);
+        let mut adapter = adapter_with_shims_in(runner.clone(), &shims);
+        adapter.environment_key_fn = environment_key;
         let env = path_of(&[&shims]);
 
         let before = adapter.detect(&env).await;
@@ -1741,9 +2119,16 @@ mod tests {
             exited(0, &format!("{}\n", developer.display())),
         );
         for shim in [&python3, &python] {
+            let site = developer
+                .join(shim.file_name().unwrap())
+                .join("site-packages");
+            std::fs::create_dir_all(site.join("pip")).unwrap();
             runner.respond(
                 vec![text(shim), "-m", "pip", "--version"],
-                exited(0, PIP_VERSION),
+                exited(
+                    0,
+                    &format!("pip 26.2.1 from {}/pip (python 3.13)\n", site.display()),
+                ),
             );
         }
         let after = adapter.detect(&env).await;
