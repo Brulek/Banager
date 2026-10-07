@@ -1188,7 +1188,8 @@ export function parseUninstallBlocked(message: string): UninstallBlocked | null 
  * The reasons an uninstall preview can be refused by one of its checks
  * (`removal::plan_removal` in
  * crates/banager-core/src/adapters/standalone/removal.rs, a cask's links
- * in `brew/cask_links.rs`, an AI tool's data paths in `kept_data.rs`), as
+ * in `brew/cask_links.rs`, a uv tool's commands in `uv.rs`, an AI tool's
+ * data paths in `kept_data.rs`), as
  * `plan_operation_error` in src-tauri/src/ipc.rs spells them -- by hand,
  * in snake_case, one `match` arm each. Mirrored here as a union so the
  * copy table below is a `Record` over it: a reason without a sentence

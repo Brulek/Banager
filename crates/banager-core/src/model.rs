@@ -710,7 +710,14 @@ pub enum UninstallUnsafeReason {
     OverlapsKept,
     /// A cask uninstall would remove a link the cask recorded that now
     /// leads to another tool's file, or that Banager cannot follow or
-    /// place (`brew/cask_links.rs`). `path` is the link.
+    /// place (`brew/cask_links.rs`). `path` is the link. Also a uv tool's
+    /// uninstall that would remove a command its receipt records which is
+    /// no longer uv's -- pipx's `~/.local/bin/ruff` after `pipx
+    /// reinstall-all`, a file another installer wrote -- or that Banager
+    /// cannot look at (`taken_command` in `adapters/uv.rs`); `path` is the
+    /// command, the home folder abbreviated. The name is from the cask's,
+    /// the first; the sentence the user reads (`uninstallLinks.notOwned`)
+    /// names no source.
     CaskLinkNotOwned,
 }
 
@@ -2053,7 +2060,10 @@ pub enum Fault {
     /// what changed. Built by
     /// `removal::execute_removal` (`adapters/standalone/removal.rs`) and
     /// `StandaloneAdapter::execute` (`adapters/standalone/mod.rs`); read by
-    /// `faultKey`/`faultArgs` in src/lib/format.ts.
+    /// `faultKey`/`faultArgs` in src/lib/format.ts. Also a cask's link, or a
+    /// command a uv tool's receipt records, that another tool took over
+    /// after the preview (`BrewAdapter::execute`, `UvAdapter::execute`): the
+    /// uninstall command was not started.
     PathChanged { path: String },
     /// The uninstall of every version of the Homebrew formula `name` (the
     /// author's decision U9, r6: `brew uninstall --formula --force`) was

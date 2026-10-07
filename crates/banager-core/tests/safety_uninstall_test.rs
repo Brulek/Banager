@@ -224,6 +224,14 @@ async fn test_an_uninstall_runs_exactly_the_command_its_preview_showed_and_nothi
     )
     .unwrap();
     std::fs::write(casks.join("docker.json"), "{}").unwrap();
+    // uv's list, which its preview and its run read for the commands it
+    // recorded, in uv 0.12.17's shape, with paths of the test's own.
+    let uv_root = tempfile::tempdir().unwrap();
+    let uv_list = format!(
+        "ruff v0.15.0 ({})\n- ruff ({})\n",
+        uv_root.path().join("tools/ruff").display(),
+        uv_root.path().join("bin/ruff").display()
+    );
     for case in cases(
         npm_root.path().to_str().unwrap(),
         brew_root.path().to_str().unwrap(),
@@ -247,6 +255,21 @@ async fn test_an_uninstall_runs_exactly_the_command_its_preview_showed_and_nothi
             ],
             exited_0(),
         );
+        let uv_list_argv = vec![
+            instance.exe_path.to_string_lossy().into_owned(),
+            "tool".to_string(),
+            "list".to_string(),
+            "--show-paths".to_string(),
+        ];
+        if instance.adapter_id == "uv" {
+            runner.respond(
+                uv_list_argv.iter().map(String::as_str).collect(),
+                CommandOutput {
+                    stdout: uv_list.clone(),
+                    ..exited_0()
+                },
+            );
+        }
         let request = OpRequest {
             kind: OpKind::Uninstall,
             instance_id: instance.id.clone(),
@@ -330,14 +353,28 @@ async fn test_an_uninstall_runs_exactly_the_command_its_preview_showed_and_nothi
             );
             expected.push(check);
         }
+        if instance.adapter_id == "uv" {
+            // The commands uv recorded, looked at again right before it
+            // runs: the list its preview read, already answered.
+            let mut shown = vec![placeholder.to_string()];
+            shown.extend(uv_list_argv[1..].iter().cloned());
+            assert!(
+                reads.iter().any(|read| is(&shown, read)),
+                "{what}: documented read"
+            );
+            expected.push(uv_list_argv.clone());
+        }
         runner.respond(argv.iter().map(String::as_str).collect(), exited_0());
         let outcome = adapter
             .execute(&plan, Arc::new(VecSink::new()), 1, CancellationToken::new())
             .await
             .unwrap_or_else(|e| panic!("{what}: execute: {e}"));
         let dispatched = runner.specs();
+        // The write, after any read that comes right before it (npm's
+        // prefix, uv's list), which is run with its own read's settings.
         assert_eq!(
-            dispatched[planned].env, *env,
+            dispatched.last().unwrap().env,
+            *env,
             "{what}: dispatch keeps the confirmed environment"
         );
         for call in &dispatched {

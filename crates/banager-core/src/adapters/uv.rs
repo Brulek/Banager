@@ -10,6 +10,7 @@ use crate::model::{
     PlanAction, ProvidedCommand, Reconciled, ResourceLock, Scope, SearchHit, Unavailable,
     UninstallBlocked, UninstallScope, UpdateCandidate, UpdateChannel, Warning,
 };
+use crate::protected::{self, Protected, Resolution};
 use crate::runner::{resolve_exe, CommandOutput, CommandRunner, CommandSpec, HostEnv, OutputUse};
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -324,6 +325,85 @@ fn unconstrained_requirement(text: &str, name: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// The first command uv recorded for `artifact` (`CommandInputs.provided`:
+/// the `- name (path)` lines of `uv tool list --show-paths`, its receipt's
+/// entrypoints) that is there and is no longer uv's, or that Banager cannot
+/// look at; `None` when each is uv's or is not there. `uv tool uninstall`
+/// removes every path its receipt records, whatever is there now (uv
+/// 0.12.17 `crates/uv/src/commands/tool/uninstall.rs:198-223`:
+/// `remove_file(&entrypoint.install_path)`), so a `~/.local/bin/ruff` that
+/// pipx has since linked to its own program (`pipx reinstall-all` relinks
+/// with force) would go with uv's ruff. uv links each command to its
+/// program in the tool's environment (`replace_symlink`,
+/// `commands/tool/common.rs:903`): a command is uv's when its own text
+/// names a place inside that environment (`ProvidedCommand.within`, as
+/// spelled and as it leads; a text with a `..` after a name is followed
+/// instead, `commands::link_names`), or when it leads, every link
+/// followed, into it -- as a cask's link is the cask's
+/// (`brew/cask_links.rs`). Not there, and so no reason to refuse: nothing
+/// at the path, or a link to nothing (removing it stops nothing that
+/// works). Reads links and folders only (`protected::resolve`,
+/// `protected::look::link_text`), never into a protected place.
+fn taken_command(artifact: &InstalledArtifact, protected: &Protected) -> Option<PathBuf> {
+    for provided in &artifact.facts.command_inputs.provided {
+        let path = &provided.path;
+        let at = match protected::resolve(path, protected, false) {
+            Resolution::Missing => continue,
+            Resolution::Found(at, _) => at,
+            Resolution::Protected(_) | Resolution::Refused => return Some(path.clone()),
+        };
+        let environments: Vec<PathBuf> = provided
+            .within
+            .iter()
+            .flat_map(|environment| {
+                let leads = match protected::resolve(environment, protected, true) {
+                    Resolution::Found(real, _) => Some(real),
+                    _ => None,
+                };
+                std::iter::once(environment.clone()).chain(leads)
+            })
+            .collect();
+        let inside = |place: &Path| {
+            environments.iter().any(|environment| {
+                protected::strip_prefix_folded(place, environment)
+                    .is_some_and(|rest| rest.components().next().is_some())
+            })
+        };
+        let named = at.parent().and_then(|folder| {
+            let text = protected::look::link_text(&at, protected).ok()?;
+            crate::commands::link_names(folder, &text)
+        });
+        if named.as_deref().is_some_and(inside) {
+            continue;
+        }
+        match protected::resolve(path, protected, true) {
+            Resolution::Missing => continue,
+            Resolution::Found(target, _) if inside(&target) => continue,
+            _ => return Some(path.clone()),
+        }
+    }
+    None
+}
+
+/// `taken_command` of the tool `name` among `installed`.
+fn taken_of(installed: &[InstalledArtifact], name: &str) -> Option<PathBuf> {
+    let protected = Protected::of_this_process();
+    installed
+        .iter()
+        .filter(|artifact| artifact.key.name == name)
+        .find_map(|artifact| taken_command(artifact, &protected))
+}
+
+/// `path` as a refusal or a stopped run names it: the home folder
+/// abbreviated to `~`, as the standalone uninstalls name theirs
+/// (`crate::scan::display_path`).
+fn shown(path: &Path) -> String {
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_default();
+    crate::scan::display_path(path, &home).display().to_string()
+}
+
 pub struct UvAdapter {
     runner: Arc<dyn CommandRunner>,
     meta: AdapterMeta,
@@ -600,6 +680,16 @@ impl UvAdapter {
             if let Some(reason) = self.uninstall_blocked() {
                 return Err(AdapterError::UninstallBlocked { reason });
             }
+            // A command uv recorded that another tool has since taken over
+            // would go with this one (`taken_command`): no preview, as a
+            // cask's link another source took (`brew/cask_links.rs`).
+            let installed = self.inventory(inst).await?;
+            if let Some(path) = taken_of(&installed, &req.name) {
+                return Err(AdapterError::UninstallUnsafe {
+                    path: shown(&path),
+                    reason: crate::model::UninstallUnsafeReason::CaskLinkNotOwned,
+                });
+            }
         }
         let mut basis = None;
         if req.kind == OpKind::Upgrade {
@@ -717,6 +807,40 @@ impl UvAdapter {
                 return Ok(Outcome::BanagerFailed(
                     crate::model::Fault::ChangedSinceShown,
                 ));
+            }
+        }
+        // The commands uv recorded, looked at again right before the
+        // uninstall: one another tool took over since the preview stops it
+        // before uv removes anything (`taken_command`). The list is read
+        // as the upgrade's is above -- the uninstall's own deadline, since
+        // `uv tool list` waits for the same lock of the tools folder
+        // (`InstalledTools::lock`), and the operation's token.
+        if plan.request.kind == OpKind::Uninstall {
+            if let PlanAction::Command { program, .. } = &plan.action {
+                let read = self
+                    .list_tools(
+                        program,
+                        Duration::from_secs(plan.timeout_secs),
+                        cancel.clone(),
+                    )
+                    .await;
+                if cancel.is_cancelled() {
+                    return Ok(Outcome::Cancelled);
+                }
+                let output = match super::read_before_run(read, sink.as_ref(), op_id)? {
+                    super::ReadBeforeRun::Answered(output) => output,
+                    super::ReadBeforeRun::Ends(outcome) => return Ok(outcome),
+                };
+                let Ok(installed) = self.tools_in(&output.stdout, &plan.request.instance_id) else {
+                    return Ok(Outcome::BanagerFailed(
+                        crate::model::Fault::ChangedSinceShown,
+                    ));
+                };
+                if let Some(path) = taken_of(&installed, &plan.request.name) {
+                    return Ok(Outcome::BanagerFailed(crate::model::Fault::PathChanged {
+                        path: shown(&path),
+                    }));
+                }
             }
         }
         run_plan(&self.runner, plan, sink, op_id, cancel).await
@@ -1951,5 +2075,214 @@ ruff v0.15.0 (/Users/someone/.local/share/uv/tools/ruff)
         ] {
             f08_execute_saved_receipt(Some(receipt)).await;
         }
+    }
+
+    /// r34 U2. uv's ruff in a home folder of the test's own, as uv 0.12.17
+    /// leaves it (`replace_symlink`: `~/.local/bin/ruff` a link to the
+    /// program in the tool's environment), beside pipx's ruff, and a runner
+    /// that answers `uv tool list --show-paths` in the recorded shape
+    /// (`adapters/fixtures/uv/0.12.17/tool-list-show-paths.txt`) with these
+    /// paths, and `uv tool uninstall ruff`.
+    struct Ruffs {
+        _dir: tempfile::TempDir,
+        env: PathBuf,
+        link: PathBuf,
+        pipx: PathBuf,
+        runner: Arc<MockRunner>,
+    }
+
+    impl Ruffs {
+        fn new() -> Ruffs {
+            let dir = tempfile::tempdir().unwrap();
+            let home = std::fs::canonicalize(dir.path()).unwrap();
+            let env = home.join(".local/share/uv/tools/ruff");
+            let pipx = home.join(".local/pipx/venvs/ruff/bin/ruff");
+            for program in [env.join("bin/ruff"), pipx.clone()] {
+                std::fs::create_dir_all(program.parent().unwrap()).unwrap();
+                std::fs::write(&program, "ruff").unwrap();
+            }
+            let link = home.join(".local/bin/ruff");
+            std::fs::create_dir_all(link.parent().unwrap()).unwrap();
+            let runner = Arc::new(MockRunner::new());
+            runner.respond(
+                vec!["/opt/homebrew/bin/uv", "tool", "list", "--show-paths"],
+                CommandOutput {
+                    stderr_cause: Default::default(),
+                    exit_code: Some(0),
+                    stdout: format!(
+                        "ruff v0.15.0 ({})\n- ruff ({})\n",
+                        env.display(),
+                        link.display()
+                    ),
+                    stderr: String::new(),
+                    timed_out: false,
+                    cancelled: false,
+                },
+            );
+            runner.respond(
+                vec!["/opt/homebrew/bin/uv", "tool", "uninstall", "ruff"],
+                CommandOutput {
+                    stderr_cause: Default::default(),
+                    exit_code: Some(0),
+                    stdout: String::new(),
+                    stderr: String::new(),
+                    timed_out: false,
+                    cancelled: false,
+                },
+            );
+            let ruffs = Ruffs {
+                _dir: dir,
+                env,
+                link,
+                pipx,
+                runner,
+            };
+            ruffs.link_to(&ruffs.env.join("bin/ruff"));
+            ruffs
+        }
+
+        /// `~/.local/bin/ruff`, now a link whose text is `to`.
+        fn link_to(&self, to: &Path) {
+            let _ = std::fs::remove_file(&self.link);
+            std::os::unix::fs::symlink(to, &self.link).unwrap();
+        }
+
+        fn adapter(&self) -> UvAdapter {
+            UvAdapter::new(self.runner.clone())
+        }
+
+        fn uninstalls(&self) -> usize {
+            self.runner
+                .calls()
+                .iter()
+                .filter(|argv| argv.iter().any(|arg| arg == "uninstall"))
+                .count()
+        }
+
+        /// The link as a refusal names it.
+        fn shown_link(&self) -> String {
+            shown(&self.link)
+        }
+    }
+
+    /// `uv tool install ruff`, then `pipx install ruff` and `pipx
+    /// reinstall-all`, which relinks `~/.local/bin/ruff` to pipx's program
+    /// with force (pipx 1.17.3 `commands/reinstall.py:192`): uninstalling
+    /// uv's ruff would remove pipx's command (`uv tool uninstall` removes
+    /// every path its receipt records, uv 0.12.17
+    /// `crates/uv/src/commands/tool/uninstall.rs:198-223`). The preview is
+    /// refused as the cask's is, and nothing is run but the list.
+    #[tokio::test]
+    async fn test_an_uninstall_whose_command_pipx_took_over_is_refused() {
+        let ruffs = Ruffs::new();
+        ruffs.link_to(&ruffs.pipx);
+        match ruffs
+            .adapter()
+            .plan(&test_instance(), &request(OpKind::Uninstall))
+            .await
+        {
+            Err(AdapterError::UninstallUnsafe { path, reason }) => {
+                assert_eq!(path, ruffs.shown_link());
+                assert_eq!(
+                    reason,
+                    crate::model::UninstallUnsafeReason::CaskLinkNotOwned
+                );
+            }
+            other => panic!("expected UninstallUnsafe, got {other:?}"),
+        }
+        assert_eq!(
+            ruffs.runner.calls(),
+            vec![vec![
+                "/opt/homebrew/bin/uv".to_string(),
+                "tool".into(),
+                "list".into(),
+                "--show-paths".into()
+            ]]
+        );
+        assert_eq!(std::fs::read_link(&ruffs.link).unwrap(), ruffs.pipx);
+    }
+
+    /// The same look, right before the uninstall runs: pipx taking the
+    /// command over after the preview stops it before uv starts; with uv's
+    /// own link there, it runs.
+    #[tokio::test]
+    async fn test_an_uninstall_looks_at_its_commands_again_right_before_it_runs() {
+        let ruffs = Ruffs::new();
+        let adapter = ruffs.adapter();
+        let plan = adapter
+            .plan(&test_instance(), &request(OpKind::Uninstall))
+            .await
+            .expect("uv's own link: the preview is offered");
+        assert_eq!(
+            plan.warnings,
+            vec![Warning::UninstallScope {
+                what: UninstallScope::Uv
+            }]
+        );
+        ruffs.link_to(&ruffs.pipx);
+        let outcome = adapter
+            .execute(&plan, Arc::new(VecSink::new()), 1, CancellationToken::new())
+            .await
+            .unwrap();
+        assert_eq!(
+            outcome,
+            Outcome::BanagerFailed(crate::model::Fault::PathChanged {
+                path: ruffs.shown_link()
+            })
+        );
+        assert_eq!(ruffs.uninstalls(), 0);
+        ruffs.link_to(&ruffs.env.join("bin/ruff"));
+        let outcome = adapter
+            .execute(&plan, Arc::new(VecSink::new()), 2, CancellationToken::new())
+            .await
+            .unwrap();
+        assert_eq!(outcome, Outcome::Succeeded);
+        assert_eq!(ruffs.uninstalls(), 1);
+    }
+
+    /// What uv's uninstall removes without anything that works stopping,
+    /// and uv's own link whose program is itself a link out of the
+    /// environment, go ahead; a plain file put there, and a link whose
+    /// text reaches the environment only by name (a `..` after a link),
+    /// are not uv's.
+    #[tokio::test]
+    async fn test_a_missing_dead_or_own_command_goes_ahead_and_anything_else_refuses() {
+        let ruffs = Ruffs::new();
+        let plan = |ruffs: &Ruffs| {
+            let adapter = ruffs.adapter();
+            async move {
+                adapter
+                    .plan(&test_instance(), &request(OpKind::Uninstall))
+                    .await
+            }
+        };
+        // Nothing there: `uv tool uninstall` finds nothing to remove.
+        std::fs::remove_file(&ruffs.link).unwrap();
+        assert!(plan(&ruffs).await.is_ok());
+        // A link to nothing: its environment's program is gone.
+        let program = ruffs.env.join("bin/ruff");
+        std::fs::remove_file(&program).unwrap();
+        ruffs.link_to(&program);
+        assert!(plan(&ruffs).await.is_ok());
+        // uv's link, to a program in the environment that is itself a link
+        // out of it (a venv's `python`, to the Python it was made from).
+        std::os::unix::fs::symlink(&ruffs.pipx, &program).unwrap();
+        assert!(plan(&ruffs).await.is_ok());
+        let refused = |result: Result<Plan, AdapterError>| matches!(result, Err(AdapterError::UninstallUnsafe { path, .. }) if path == ruffs.shown_link());
+        // A plain file put there by another installer.
+        std::fs::remove_file(&ruffs.link).unwrap();
+        std::fs::write(&ruffs.link, "ruff").unwrap();
+        assert!(refused(plan(&ruffs).await));
+        // By name inside the environment; on the disk, through a link in
+        // it and a `..`, pipx's program.
+        let inner = ruffs.pipx.parent().unwrap().join("inner");
+        std::fs::create_dir_all(&inner).unwrap();
+        std::os::unix::fs::symlink(&inner, ruffs.env.join("to-pipx")).unwrap();
+        ruffs.link_to(&ruffs.env.join("to-pipx/../ruff"));
+        assert_eq!(
+            std::fs::canonicalize(&ruffs.link).unwrap(),
+            std::fs::canonicalize(&ruffs.pipx).unwrap()
+        );
+        assert!(refused(plan(&ruffs).await));
     }
 }

@@ -106,6 +106,9 @@ mod tests {
         warnings: Vec<Warning>,
         path: Option<PathBuf>,
         recorded: Option<InstalledArtifact>,
+        /// What `uv tool list --show-paths` printed for `recorded`, which
+        /// the real uv plan reads again (its commands, `taken_command`).
+        listed: String,
     }
 
     #[async_trait]
@@ -170,8 +173,24 @@ mod tests {
             if self.recorded.is_some() && self.meta.id == "uv" {
                 // Real uv uninstall planning, with a runner that can never
                 // spawn a package manager on the host.
-                let adapter =
-                    crate::adapters::uv::UvAdapter::new(Arc::new(crate::runner::MockRunner::new()));
+                let runner = Arc::new(crate::runner::MockRunner::new());
+                runner.respond(
+                    vec![
+                        inst.exe_path.to_str().unwrap(),
+                        "tool",
+                        "list",
+                        "--show-paths",
+                    ],
+                    crate::runner::CommandOutput {
+                        stderr_cause: Default::default(),
+                        exit_code: Some(0),
+                        stdout: self.listed.clone(),
+                        stderr: String::new(),
+                        timed_out: false,
+                        cancelled: false,
+                    },
+                );
+                let adapter = crate::adapters::uv::UvAdapter::new(runner);
                 plan = adapter.plan(inst, req).await?;
             }
             plan.warnings.extend(self.warnings.clone());
@@ -206,6 +225,7 @@ mod tests {
             warnings,
             path: None,
             recorded: None,
+            listed: String::new(),
         })
     }
 
@@ -337,12 +357,13 @@ mod tests {
             inner.path = (adapter_id != "npm").then(|| home.0.join(root));
             inner.instance.prefix = home.0.join("prefix");
             if adapter_id == "uv" {
+                inner.listed = format!(
+                    "mistral-vibe v1.0.0 ({})\n- vibe ({})\n",
+                    home.0.join(root).display(),
+                    home.0.join(".local/bin/vibe").display()
+                );
                 inner.recorded = crate::adapters::uv::parse_tool_list_show_paths(
-                    &format!(
-                        "mistral-vibe v1.0.0 ({})\n- vibe ({})\n",
-                        home.0.join(root).display(),
-                        home.0.join(".local/bin/vibe").display()
-                    ),
+                    &inner.listed,
                     &inner.instance.id,
                 )
                 .pop();

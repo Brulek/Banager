@@ -2214,6 +2214,8 @@ itself, under uv's own configuration.
 | List installed tools (`inventory`) | `<uv> tool list --show-paths` | 60 s |
 | List outdated tools (`check_updates`) | `<uv> tool list --outdated` | 60 s |
 | List installed tools right before a saved upgrade runs (`execute`) | `<uv> tool list --show-paths` | 600 s, the upgrade's own |
+| List installed tools while an uninstall is previewed (`plan`) | `<uv> tool list --show-paths` | 60 s |
+| List installed tools right before an uninstall runs (`execute`) | `<uv> tool list --show-paths` | 600 s, the uninstall's own |
 
 If `uv tool list --outdated` exits non-zero, `<uv> tool list --show-paths`
 is run once more so every installed tool can be listed as "could not
@@ -2304,6 +2306,36 @@ does not send anyone to run the same `uv tool uninstall` in Terminal,
 where it does the same (`UninstallBlocked::UvToolDirSet`);
 `Session::issue_plan` refuses the uninstall, and `UvAdapter::plan` reads
 the variable again and refuses it too. Install and upgrade plan as before.
+
+**A tool's commands.** `uv tool uninstall` removes every command path the
+tool's receipt records, whatever is there now (uv 0.12.17
+`crates/uv/src/commands/tool/uninstall.rs:198-223`). pipx can have put its
+own `~/.local/bin/ruff` there since -- `pipx reinstall-all` relinks pipx's
+commands over whatever is there (pipx 1.17.3 `commands/reinstall.py:192`,
+`commands/common.py:200-205`) -- and the uninstall would remove pipx's
+command with uv's tool. So an uninstall's
+preview runs `uv tool list --show-paths` (60 s) and looks at each command
+the tool's `- name (path)` lines name (`taken_command` in
+`crates/banager-core/src/adapters/uv.rs`). uv links each command to its
+program in the tool's environment (`replace_symlink`,
+`crates/uv/src/commands/tool/common.rs:903`), so one is uv's when its own
+text (`readlink`) names a place inside that environment, or when it leads,
+every link followed, into it; a text with a `..` after a name in it is not
+taken at its word but followed. Anything else at the path -- another
+tool's link, a plain file another installer wrote, a link Banager cannot
+follow -- refuses the uninstall with the sentence a cask's link another
+source took refuses with (`UninstallUnsafeReason::CaskLinkNotOwned`;
+Homebrew's section, "A cask's links"): that path may now belong to another
+tool, nothing was removed, and uninstalling the other tool first lets this
+one go. Nothing at the path, or a link to nothing, is no reason to refuse.
+Right before the uninstall runs, Banager runs the list again, with the
+uninstall's own 600 s and its Cancel, as before a saved upgrade, and looks
+again: a command another tool took since the preview stops the uninstall
+before uv starts (`Fault::PathChanged`), a list that does not answer ends
+as uv's own failure would, and one that no longer reads as a list ends as
+changed since shown. This reads links and folders only: no command beside
+the list, no file written, no permission is added. A command that changes
+after the last look and before uv reaches it is still possible.
 
 ## pip (read-only)
 
@@ -4593,7 +4625,11 @@ not read (`protected::look`; How Banager runs anything, above):
   overrides naming the main package determine whether an upgrade can be offered.
   Planning and revalidation before execution also fingerprint the whole parsed
   receipt, so changed dependency constraints or options invalidate the saved
-  preview too (uv's section).
+  preview too (uv's section). During an uninstall preview and again right
+  before the uninstall runs, the text of each command link the tool's
+  `- name (path)` lines name and where it leads, and where its environment
+  leads (`lstat` and `readlink`, names and links only; uv's section, "A
+  tool's commands").
 - Cargo: `<CARGO_HOME>/.crates2.json` and `<CARGO_HOME>/.crates.toml`
   (Cargo's two install manifests, merged as the Cargo section says);
   whether `cargo-binstall` is on `PATH`.
