@@ -1,5 +1,5 @@
 use crate::events::{LogNote, Stream};
-use crate::history::{failure_cause, FailureCause};
+use crate::history::{operation_failure_cause, FailureCause};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -90,7 +90,7 @@ pub struct CommandOutput {
 
 /// How many of the last lines a failed command wrote to stderr are its
 /// failure's summary (`Outcome::Failed`, `run_plan`), and are read for why
-/// it failed (`history::failure_cause`).
+/// it failed (`history::operation_failure_cause`).
 pub const SUMMARY_LINES: usize = 5;
 
 /// A failed command's summary: the last [`SUMMARY_LINES`] lines of its
@@ -116,10 +116,14 @@ pub enum StderrCause {
 
 impl CommandOutput {
     /// Why the command failed, by the last lines it wrote to stderr
-    /// (`history::failure_cause` over `failure_summary`), as it wrote them.
+    /// (`history::operation_failure_cause` over `failure_summary`), as it
+    /// wrote them. Only an operation's failure is read with it (`run_plan`):
+    /// a lookup's words are read for the network alone
+    /// (`adapters::says_network_failed`, `lookupFailureCause` in
+    /// src/lib/failureCause.ts).
     pub fn failure_cause(&self) -> Option<FailureCause> {
         match self.stderr_cause {
-            StderrCause::InStderr => failure_cause(&failure_summary(&self.stderr)),
+            StderrCause::InStderr => operation_failure_cause(&failure_summary(&self.stderr)),
             StderrCause::Read(cause) => cause,
         }
     }

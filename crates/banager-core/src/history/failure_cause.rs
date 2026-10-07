@@ -9,6 +9,13 @@
 //! read by the tests on both sides (this module's and
 //! src/lib/history.test.ts), so a phrase added to one and not the other
 //! fails one of them.
+//!
+//! An operation's failure is read further (`operation_failure_cause`, r6
+//! y3-batch): when none of those causes is named, for the ones only a
+//! change can meet -- a file or an app in the way, something missing, a
+//! Mac the version does not support, a step that ran too long. Its shared
+//! cases are `operation_cause_cases.json` (src/lib/failureCause.test.ts
+//! reads them too).
 
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -17,6 +24,13 @@ use std::sync::OnceLock;
 /// The causes, by the names `FailureCause` has in src/lib/failureCause.ts:
 /// camelCase on the wire (`rename_all`), so the window's type is the same
 /// union of strings and its words (`FAILURE_CAUSE_KEYS`) apply as they are.
+///
+/// The first seven are read off any failure, a lookup's included
+/// (`failure_cause`); the next five only off an operation's
+/// (`operation_failure_cause`); the last two are never read off words but
+/// kept by the history for a failure of Banager's own (`record_for`).
+/// An older Banager reading a history record with one of the later ones
+/// drops that record and keeps the rest (`load` reads them one by one).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum FailureCause {
@@ -27,6 +41,32 @@ pub enum FailureCause {
     HomebrewUpdating,
     NeedsPassword,
     PasswordNotAccepted,
+    /// Something already where it installs: an app or a file of the same
+    /// name, a link Homebrew would make, another package it conflicts
+    /// with.
+    Conflict,
+    /// Something it needs is not there: a package its source no longer
+    /// has, a program it runs (`env: node: No such file or directory`), a
+    /// file a step looked for.
+    NotFound,
+    /// A Homebrew cask's app is not where it was installed: Homebrew
+    /// backs the old app up before an upgrade and refuses with "It seems
+    /// the App source '/Applications/…' is not there" when it has been
+    /// moved to the Trash or deleted (`move_back`,
+    /// cask/artifact/moved.rb in Homebrew 7.0.8).
+    AppMissing,
+    /// The version does not run on this Mac: its macOS, or its chip.
+    Unsupported,
+    /// A step of the tool's ran past the tool's own time limit -- not a
+    /// download, which is `Network`, and not Banager's own deadline, which
+    /// ends an operation `Unconfirmed`.
+    TimedOut,
+    /// Banager stopped because what it was about to change was no longer
+    /// what the confirmation showed (`Fault::PathChanged`,
+    /// `FormulaChanged`, `HomebrewSettingsChanged`).
+    Changed,
+    /// Banager itself failed (`Fault::Panicked`, `Fault::Internal`).
+    Internal,
 }
 
 struct Patterns {
@@ -34,6 +74,9 @@ struct Patterns {
     asked_in_a_window: Vec<Regex>,
     password_required: Regex,
     by_cause: Vec<(FailureCause, Vec<Regex>)>,
+    /// `operation_failure_cause`'s, read only where `by_cause` and the
+    /// password lines named nothing.
+    by_operation_cause: Vec<(FailureCause, Vec<Regex>)>,
 }
 
 fn compile(patterns: &[&str]) -> Vec<Regex> {
@@ -128,7 +171,108 @@ fn patterns() -> &'static Patterns {
                 ]),
             ),
         ],
+        // `OPERATION_PATTERNS` in src/lib/failureCause.ts, in its order.
+        by_operation_cause: vec![
+            (
+                FailureCause::AppMissing,
+                compile(&[
+                    r"(?i)\bIt seems the App source '[^']*/Applications/[^']*' is not there\b",
+                ]),
+            ),
+            (
+                FailureCause::Unsupported,
+                compile(&[
+                    r"(?i)\bdoes not run on macOS versions\b",
+                    r"(?i)\bis not available on macOS\b",
+                    r"(?i)\bdepends on hardware architecture being one of\b",
+                    r"(?i)\beither does not compile or function as expected on macOS\b",
+                    r"\bEBADPLATFORM\b",
+                    r"(?i)\bis not a supported wheel on this platform\b",
+                ]),
+            ),
+            (
+                FailureCause::Conflict,
+                compile(&[
+                    r"(?i)\bIt seems there is already an? [A-Za-z ]+ at\b",
+                    r"(?i)\bconflicts with '",
+                    r"(?i)\bconflicting formulae\b",
+                    r"(?i)\bCould not symlink\b",
+                    r"(?i)\balready exists\. You may want to remove it\b",
+                    r"\bEEXIST\b",
+                    r"(?i)\bbinary `[^`]+` already exists in destination\b",
+                    r"(?i)\bExecutable already exists\b",
+                ]),
+            ),
+            (
+                FailureCause::NotFound,
+                compile(&[
+                    r"(?i)\bIt seems the [A-Za-z ]+ source '[^']*' is not there\b",
+                    r"(?i)\bNo available (?:formula|cask)\b",
+                    r"(?i)\bNo (?:cask|formula|formulae) with (?:this|the) name\b",
+                    r"(?i)\b(?:Cask|Formula) '[^']+' is not installed\b",
+                    r"(?i)\bNo such keg\b",
+                    r"\bE404\b",
+                    r"(?i)\b404 Not Found\b",
+                    r"(?i)\bis not in this registry\b",
+                    r"(?i)\bcommand not found\b",
+                    r"(?i)\bNo such file or directory\b",
+                    r"\bENOENT\b",
+                    r"(?i)\bNo matching distribution found\b",
+                    r"(?i)\bcould not find `[^`]+` in registry\b",
+                    r"(?i)\bwas not found in the package registry\b",
+                    r"(?i)\bfile does not exist\b",
+                ]),
+            ),
+            (
+                FailureCause::Permission,
+                compile(&[
+                    r"(?i)\bFailed to quarantine\b",
+                    r"(?i)\bFailed to release .* from quarantine\b",
+                    r"(?i)\bCannot remove undeletable\b",
+                ]),
+            ),
+            (
+                FailureCause::TimedOut,
+                compile(&[
+                    r"\bTimeout::Error\b",
+                    r"(?i)\bexecution expired\b",
+                    r"(?i)\bdid not finish within\b",
+                ]),
+            ),
+        ],
     })
+}
+
+/// `text`'s lines that are not blank, without a trailing `\r`.
+fn lines_of(text: &str) -> Vec<&str> {
+    text.split('\n')
+        .map(|line| line.strip_suffix('\r').unwrap_or(line))
+        .filter(|line| !line.trim().is_empty())
+        .collect()
+}
+
+/// The first of `by_cause` that a line of `lines` names, from the last
+/// line up.
+fn last_named(lines: &[&str], by_cause: &[(FailureCause, Vec<Regex>)]) -> Option<FailureCause> {
+    for line in lines.iter().rev() {
+        for (cause, patterns) in by_cause {
+            if patterns.iter().any(|re| re.is_match(line)) {
+                return Some(*cause);
+            }
+        }
+    }
+    None
+}
+
+/// Why an operation failed, by the words of the tool that failed it: the
+/// causes `failure_cause` reads first, on all of `text`; then, only where
+/// it names none, the ones only a change meets (`by_operation_cause`),
+/// each line from the last up. Two passes, not one: a network failure a
+/// tool retried and then gave up on in other words -- pip's "No matching
+/// distribution found" after its retries -- stays the network.
+/// `operationFailureCause` in src/lib/failureCause.ts is the same rule.
+pub fn operation_failure_cause(text: &str) -> Option<FailureCause> {
+    failure_cause(text).or_else(|| last_named(&lines_of(text), &patterns().by_operation_cause))
 }
 
 /// The cause `text` names, or `None`: sudo's password lines first, on any
@@ -136,11 +280,7 @@ fn patterns() -> &'static Patterns {
 /// deciding -- `failureCause` in src/lib/failureCause.ts says why.
 pub fn failure_cause(text: &str) -> Option<FailureCause> {
     let p = patterns();
-    let lines: Vec<&str> = text
-        .split('\n')
-        .map(|line| line.strip_suffix('\r').unwrap_or(line))
-        .filter(|line| !line.trim().is_empty())
-        .collect();
+    let lines = lines_of(text);
     let any = |patterns: &[Regex]| {
         lines
             .iter()
@@ -155,14 +295,7 @@ pub fn failure_cause(text: &str) -> Option<FailureCause> {
     if lines.iter().any(|line| p.password_required.is_match(line)) {
         return Some(FailureCause::NeedsPassword);
     }
-    for line in lines.iter().rev() {
-        for (cause, patterns) in &p.by_cause {
-            if patterns.iter().any(|re| re.is_match(line)) {
-                return Some(*cause);
-            }
-        }
-    }
-    None
+    last_named(&lines, &p.by_cause)
 }
 
 #[cfg(test)]
@@ -187,6 +320,48 @@ mod tests {
     }
 
     #[test]
+    fn test_operation_failure_cause_reads_every_shared_case_as_the_window_does() {
+        // r6 y3-batch, finding 3: an operation's failure is read for the
+        // causes a lookup's is, and then for the ones only a change can
+        // meet -- a conflict, something missing, a Mac it does not support,
+        // a step that ran too long. `operation_cause_cases.json` is read by
+        // src/lib/failureCause.test.ts too.
+        let cases: Vec<Case> =
+            serde_json::from_str(include_str!("operation_cause_cases.json")).expect("cases parse");
+        assert!(cases.len() >= 30, "the shared cases are all there");
+        for case in cases {
+            assert_eq!(
+                operation_failure_cause(&case.text),
+                case.cause,
+                "{}",
+                case.name
+            );
+        }
+    }
+
+    #[test]
+    fn test_a_lookup_is_read_for_the_first_causes_only() {
+        // `failure_cause`, which a lookup's words are read with too
+        // (adapters/mod.rs), names none of the causes only a change meets.
+        assert_eq!(
+            failure_cause("Error: It seems the App source '/Applications/Foo.app' is not there."),
+            None
+        );
+        assert_eq!(failure_cause("env: node: No such file or directory"), None);
+        // Every shared case of the first causes reads the same through both.
+        let cases: Vec<Case> =
+            serde_json::from_str(include_str!("failure_cause_cases.json")).expect("cases parse");
+        for case in cases.into_iter().filter(|case| case.cause.is_some()) {
+            assert_eq!(
+                operation_failure_cause(&case.text),
+                case.cause,
+                "{}",
+                case.name
+            );
+        }
+    }
+
+    #[test]
     fn test_failure_cause_wire_names_are_the_windows() {
         assert_eq!(
             serde_json::to_string(&[
@@ -197,9 +372,16 @@ mod tests {
                 FailureCause::HomebrewUpdating,
                 FailureCause::NeedsPassword,
                 FailureCause::PasswordNotAccepted,
+                FailureCause::Conflict,
+                FailureCause::NotFound,
+                FailureCause::AppMissing,
+                FailureCause::Unsupported,
+                FailureCause::TimedOut,
+                FailureCause::Changed,
+                FailureCause::Internal,
             ])
             .unwrap(),
-            r#"["network","diskFull","permission","busy","homebrewUpdating","needsPassword","passwordNotAccepted"]"#
+            r#"["network","diskFull","permission","busy","homebrewUpdating","needsPassword","passwordNotAccepted","conflict","notFound","appMissing","unsupported","timedOut","changed","internal"]"#
         );
     }
 }

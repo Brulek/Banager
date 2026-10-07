@@ -25,7 +25,7 @@
 
 mod failure_cause;
 
-pub use failure_cause::{failure_cause, FailureCause};
+pub use failure_cause::{failure_cause, operation_failure_cause, FailureCause};
 
 use crate::events::OpId;
 use crate::model::{

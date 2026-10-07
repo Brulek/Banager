@@ -1301,7 +1301,7 @@ pub async fn execute_removal(
                 // cause is read off it as it is.
                 return Ok(Outcome::Failed {
                     exit_code: None,
-                    cause: crate::history::failure_cause(&detail),
+                    cause: crate::history::operation_failure_cause(&detail),
                     summary: detail,
                 });
             }

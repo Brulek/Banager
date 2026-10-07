@@ -387,7 +387,7 @@ impl StreamBuffer {
     }
 
     /// Why the command failed, by the last lines of this stream as the
-    /// command wrote them (`history::failure_cause` over
+    /// command wrote them (`history::operation_failure_cause` over
     /// `failure_summary`): the same lines `into_transcript` hands on
     /// masked, read before the mask can take the words that say why --
     /// sudo's "password", with a proxy password `pass` (re-check 2's N1).
@@ -401,7 +401,7 @@ impl StreamBuffer {
             text.push_str(&String::from_utf8_lossy(&self.bytes[self.head_len..]));
             text
         };
-        crate::history::failure_cause(&failure_summary(&text))
+        crate::history::operation_failure_cause(&failure_summary(&text))
     }
 
     /// Hands `on_line` the line from `line_start` to `end` (exclusive),
@@ -2771,6 +2771,31 @@ mod tests {
             .unwrap()
             .iter()
             .all(|(_, line)| !line.contains("pass")));
+    }
+
+    #[test]
+    fn test_an_operations_cause_is_read_for_the_causes_only_a_change_meets() {
+        // r6 y3-batch, finding 3: Claudebar's and OnyX's updates failed
+        // with no cause kept. What Homebrew says when the app was moved out
+        // of Applications before the update is read as that.
+        use crate::history::FailureCause;
+        let mut buf = StreamBuffer::new(CapPolicy::ElideMiddle);
+        buf.push(
+            b"Error: It seems the App source '/Applications/Claudebar.app' is not there.\n",
+            Stream::Stderr,
+            &None,
+        );
+        assert_eq!(buf.cause_as_written(), Some(FailureCause::AppMissing));
+        // ... and the same off a runner that masks nothing.
+        let output = CommandOutput {
+            exit_code: Some(1),
+            stdout: String::new(),
+            stderr: "env: node: No such file or directory\n".to_string(),
+            timed_out: false,
+            cancelled: false,
+            stderr_cause: Default::default(),
+        };
+        assert_eq!(output.failure_cause(), Some(FailureCause::NotFound));
     }
 
     #[test]
