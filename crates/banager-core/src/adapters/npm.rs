@@ -392,16 +392,37 @@ impl NpmAdapter {
                 Duration::from_secs(60),
             )
             .await?;
-        // `npm ls -g --depth=0 --json` exits 1 for various non-fatal
-        // reasons (e.g. peer dependency mismatches); accept 0 or 1 and
-        // always parse stdout — see the per-adapter contract table.
+        // `npm ls -g --depth=0 --json` can exit 1 for non-fatal peer
+        // mismatches, but only a valid tree makes that a usable inventory.
         if output.exit_code != Some(0) && output.exit_code != Some(1) {
             return Err(AdapterError::CommandFailed {
                 code: output.exit_code,
-                stderr: output.stderr,
+                stderr: if output.stderr.trim().is_empty() {
+                    output.stdout
+                } else {
+                    output.stderr
+                },
             });
         }
-        parse_ls_global(&output.stdout, &inst.id)
+        let parsed = parse_ls_global(&output.stdout, &inst.id);
+        // Exit 1 is useful only with an actual dependency tree. Error-only
+        // JSON, invalid JSON and stderr-only failures are not an empty list.
+        if output.exit_code == Some(1) {
+            let has_tree = serde_json::from_str::<serde_json::Value>(&output.stdout)
+                .ok()
+                .is_some_and(|root| root.get("dependencies").is_some_and(|d| d.is_object()));
+            if parsed.is_err() || !has_tree {
+                return Err(AdapterError::CommandFailed {
+                    code: output.exit_code,
+                    stderr: if output.stderr.trim().is_empty() {
+                        output.stdout
+                    } else {
+                        output.stderr
+                    },
+                });
+            }
+        }
+        parsed
     }
 
     pub async fn check_updates(
@@ -651,8 +672,8 @@ impl Adapter for NpmAdapter {
 
 #[derive(Debug, Deserialize)]
 struct LsGlobalRoot {
-    #[serde(default)]
-    dependencies: HashMap<String, LsGlobalDependency>,
+    dependencies: Option<HashMap<String, LsGlobalDependency>>,
+    error: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -675,8 +696,14 @@ pub(crate) fn parse_ls_global(
 ) -> Result<Vec<InstalledArtifact>, crate::adapters::AdapterError> {
     let root: LsGlobalRoot = serde_json::from_str(json)
         .map_err(|e| crate::adapters::AdapterError::Parse(e.to_string()))?;
+    if root.dependencies.is_none() {
+        if let Some(error) = root.error {
+            return Err(AdapterError::Parse(error.to_string()));
+        }
+    }
     let mut out: Vec<InstalledArtifact> = root
         .dependencies
+        .unwrap_or_default()
         .into_iter()
         .map(|(name, dep)| InstalledArtifact {
             key: ArtifactKey {
@@ -1491,6 +1518,80 @@ mod tests {
             runner.calls().len(),
             2,
             "must not run --version after prefix already failed to answer, across both detect() calls"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_f20_inventory_error_without_a_tree_is_a_failure_with_its_reason() {
+        for (code, stdout, stderr) in [
+            (
+                1,
+                r#"{"error":{"code":"EACCES","summary":"permission denied"}}"#,
+                "",
+            ),
+            (1, "", "npm error EACCES permission denied"),
+            (1, "not json", "npm error EACCES permission denied"),
+            (1, "{}", "npm error EACCES permission denied"),
+            (1, r#"{"dependencies":[]}"#, "npm error permission denied"),
+            (2, r#"{"error":{"summary":"permission denied"}}"#, ""),
+        ] {
+            let runner = Arc::new(MockRunner::new());
+            runner.respond(
+                vec!["/opt/homebrew/bin/npm", "ls", "-g", "--depth=0", "--json"],
+                CommandOutput {
+                    stderr_cause: Default::default(),
+                    exit_code: Some(code),
+                    stdout: stdout.into(),
+                    stderr: stderr.into(),
+                    timed_out: false,
+                    cancelled: false,
+                },
+            );
+            let result = NpmAdapter::new(runner).inventory(&test_instance()).await;
+            assert!(
+                matches!(&result, Err(AdapterError::CommandFailed { code: Some(actual), stderr }) if *actual == code && stderr.contains("permission denied")),
+                "{result:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_f20_inventory_keeps_valid_empty_and_nonfatal_trees() {
+        for (code, stdout, count) in [
+            (0, "{}", 0),
+            (0, r#"{"dependencies":{}}"#, 0),
+            (1, r#"{"dependencies":{},"problems":["peer mismatch"]}"#, 0),
+            (
+                1,
+                r#"{"dependencies":{"tool":{"version":"1.0"}},"error":{"code":"ELSPROBLEMS"}}"#,
+                1,
+            ),
+        ] {
+            let runner = Arc::new(MockRunner::new());
+            runner.respond(
+                vec!["/opt/homebrew/bin/npm", "ls", "-g", "--depth=0", "--json"],
+                CommandOutput {
+                    stderr_cause: Default::default(),
+                    exit_code: Some(code),
+                    stdout: stdout.into(),
+                    stderr: "peer mismatch".into(),
+                    timed_out: false,
+                    cancelled: false,
+                },
+            );
+            let artifacts = NpmAdapter::new(runner)
+                .inventory(&test_instance())
+                .await
+                .unwrap();
+            assert_eq!(artifacts.len(), count);
+        }
+    }
+
+    #[test]
+    fn test_f20_error_only_json_is_not_an_empty_inventory_even_on_exit_zero() {
+        let result = parse_ls_global(r#"{"error":{"summary":"permission denied"}}"#, "npm:prefix");
+        assert!(
+            matches!(result, Err(AdapterError::Parse(reason)) if reason.contains("permission denied"))
         );
     }
 
