@@ -145,6 +145,41 @@ describe("withoutJudgedPathNotices", () => {
     expect(withoutJudgedPathNotices([...pathNotices, ...others], said.get("standalone-claude"))).toEqual(others);
   });
 
+  // r36 V3: Grok Build from Homebrew's cask (`grok` and `agent` in
+  // /opt/homebrew/bin) and from its own installer (~/.grok/bin), with
+  // Cursor's install script's `~/.local/bin/agent` first on PATH. `grok`
+  // runs the cask's copy and `agent` Cursor's, so no one verdict covers
+  // both shared commands -- and the rows still say 「装了两份」, the
+  // inspector, for `grok`, 「运行的是Homebrew装的那一份」. Each command is
+  // counted on its own: the notice about `grok` goes, never "couldn't
+  // confirm whether it's another copy" beside them.
+  it("counts each shared command on its own where the copies' commands run different programs", () => {
+    const caskKey: ArtifactKey = { instance_id: "brew:/opt/homebrew", kind: "Cask", name: "grok-build" };
+    const ownKey: ArtifactKey = { instance_id: "standalone-grok", kind: "Binary", name: "grok" };
+    const cask = artifact(caskKey, "grok-build", [
+      { name: "agent", state: { ShadowedBy: { by: null } } },
+      { name: "grok", state: "Runs" },
+    ]);
+    const own = artifact(ownKey, "grok-build", [
+      { name: "agent", state: { ShadowedBy: { by: null } } },
+      { name: "grok", state: { ShadowedBy: { by: caskKey } } },
+    ]);
+    const said = commandsSaidOnRows([cask, own]);
+    expect(said.get("standalone-grok")).toEqual(new Set(["grok"]));
+    expect(said.get("brew:/opt/homebrew")).toEqual(new Set(["grok"]));
+    const grokNotice: SourceNoticeSpec = {
+      ...notice("sourceNotice.shadowedByHomebrew.title", "grok"),
+      values: { source: "Grok Build", command: "grok" },
+    };
+    expect(withoutJudgedPathNotices([grokNotice, ...others], said.get("standalone-grok"))).toEqual(others);
+    // Another program first for both of them: nothing is said of either.
+    const behindOthers = artifact(ownKey, "grok-build", [
+      { name: "agent", state: { ShadowedBy: { by: null } } },
+      { name: "grok", state: { ShadowedBy: { by: null } } },
+    ]);
+    expect(commandsSaidOnRows([cask, behindOthers]).has("standalone-grok")).toBe(false);
+  });
+
   it("keeps the notice where the rows say nothing of the command: no copy, no one verdict, or not on PATH", () => {
     // W2-9: npm's `claude` is a wrapper of no family, no copy of Claude Code;
     // the row says nothing, and the notice, with its Show, is all there is.

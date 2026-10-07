@@ -3729,6 +3729,67 @@ describe("which copy of a command runs (advantages round, item 4)", () => {
     expect(screen.queryByText(/Couldn't confirm whether it's another copy/)).toBeNull();
   });
 
+  it("leaves the note on grok out where its rows say Installed twice, though Cursor's agent comes first (r36 V3)", async () => {
+    // Grok Build from Homebrew's cask (`grok` and `agent`) and from its own
+    // installer, with Cursor's `~/.local/bin/agent` first on PATH: `grok`
+    // runs the cask's copy, `agent` Cursor's, for both copies.
+    const caskGrok: InstalledArtifact = {
+      ...formula("grok-build"),
+      key: { instance_id: brew.id, kind: "Cask", name: "grok-build" },
+      facts: {
+        ...NO_FACTS,
+        family: "grok-build",
+        commands: [
+          { name: "agent", state: { ShadowedBy: { by: null } } },
+          { name: "grok", state: "Runs" },
+        ],
+      },
+    };
+    const grokInstance: ManagerInstance = {
+      ...claudeInstance,
+      id: "standalone-grok",
+      adapter_id: "standalone-grok",
+      exe_path: "/Users/someone/.grok/bin/grok",
+      prefix: "/Users/someone/.grok",
+      version: "1.0.41",
+      status: { unavailable: null, notes: ["ShadowedByHomebrew"] },
+    };
+    const ownGrok: InstalledArtifact = {
+      ...claudeArtifact,
+      key: { instance_id: grokInstance.id, kind: "Binary", name: "grok" },
+      display_name: "Grok Build",
+      version: "1.0.41",
+      homepage: null,
+      path: "/Users/someone/.grok/downloads/grok-1.0.41-macos-aarch64",
+      facts: {
+        ...NO_FACTS,
+        family: "grok-build",
+        commands: [
+          { name: "agent", state: { ShadowedBy: { by: null } } },
+          { name: "grok", state: { ShadowedBy: { by: caskGrok.key } } },
+        ],
+      },
+    };
+    served = {
+      ...snapshot,
+      instances: [brew, grokInstance],
+      artifacts: [...snapshot.artifacts, caskGrok, ownGrok],
+      updates: [],
+    };
+    renderInstalled();
+
+    expect(chipsOf(await findRow("Grok Build"))).toEqual(["Installed twice"]);
+    expect(chipsOf(rowOf("grok-build"))).toEqual(["Installed twice"]);
+    expect(screen.queryByText("Typing grok in Terminal runs a program with that name from Homebrew")).toBeNull();
+    expect(screen.queryByText(/Couldn't confirm whether it's another copy/)).toBeNull();
+    // What the details say instead, a line per verdict.
+    const inspector = await openDetails("Grok Build");
+    expect([...inspector.querySelectorAll("[data-command-line]")].map((line) => line.textContent?.trim())).toEqual([
+      "agentRuns another program with this name",
+      "grokRuns the copy from Homebrew",
+    ]);
+  });
+
   it("names the folder of a copy Terminal cannot find, and marks no tool with only one copy", async () => {
     const formulaGrok: InstalledArtifact = {
       ...formula("grok"),

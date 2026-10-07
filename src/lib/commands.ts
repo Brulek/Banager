@@ -159,18 +159,44 @@ export function judgedCommands(artifact: InstalledArtifact): Set<string> {
 }
 
 /**
+ * The commands a tool shares with its other copies (`twins`) whose verdict
+ * here is about those copies: typing it runs this copy, or one of them --
+ * what the inspector's 「在终端里输入时」 says as 「运行的是这一份」 /
+ * 「运行的是npm装的那一份」, under a row that says 「装了两份」. Each command on
+ * its own: Grok Build's `grok` that runs Homebrew's copy is one, beside an
+ * `agent` that runs Cursor's (r36 V3). Not a command with no verdict, one
+ * not on `PATH`, or one another program comes first for.
+ */
+function sharedCommandsSaid(artifact: InstalledArtifact, twins: readonly Twin[]): string[] {
+  const copies = new Set(twins.map((twin) => artifactKeyId(twin.artifact.key)));
+  const shared = new Set(twins.flatMap((twin) => twin.commands));
+  return artifact.facts.commands
+    .filter(({ name, state }) => {
+      if (!shared.has(name) || state === null) return false;
+      if (state === "Runs") return true;
+      return "ShadowedBy" in state && state.ShadowedBy.by !== null && copies.has(artifactKeyId(state.ShadowedBy.by));
+    })
+    .map(({ name }) => name);
+}
+
+/**
  * The commands the rows of each source say what typing them runs, by the
  * source's instance id: those a tool of the source shares with another
- * copy of itself, where `twinVerdict` has a verdict -- the 「装了两份」
- * word's ⓘ, 「在终端里输入“claude”，运行的是npm装的那一份」, and the
- * Updates page's 「终端用另一份」. What the lists' notices of each source
- * are held to (`withoutJudgedPathNotices`), as the inspector's are to its
- * command group (`judgedCommands`). A command whose rows say nothing of
- * it -- typing `claude` runs an npm program that is no copy of Claude
- * Code, or the launcher is not on `PATH` (the 「终端里找不到」 word, which
- * agrees with its notice) -- keeps its notice, and with it the notice's
- * Show (W2-9). `twins` is `twinsByArtifact(artifacts)`, where the caller
- * has it already.
+ * copy of itself where typing it runs this copy or another of them
+ * (`sharedCommandsSaid`), each command on its own -- the 「装了两份」 word,
+ * the inspector's 「在终端里输入时」 line for `grok`, 「运行的是Homebrew装的
+ * 那一份」, the 「装了两份」 word's ⓘ where every shared command has that one verdict
+ * (`twinVerdict`), and the Updates page's 「终端用另一份」. What the lists'
+ * notices of each source are held to (`withoutJudgedPathNotices`), as the
+ * inspector's are to its command group (`judgedCommands`): never
+ * 「无法确认它是不是另一份Grok Build」 over rows that say it is installed
+ * twice, though Cursor's `agent` comes first for Grok Build's other
+ * command (r36 V3). A command whose rows say nothing of it -- typing
+ * `claude` runs an npm program that is no copy of Claude Code, or the
+ * launcher is not on `PATH` (the 「终端里找不到」 word, which agrees with
+ * its notice) -- keeps its notice, and with it the notice's Show (W2-9).
+ * `twins` is `twinsByArtifact(artifacts)`, where the caller has it
+ * already.
  */
 export function commandsSaidOnRows(
   artifacts: readonly InstalledArtifact[],
@@ -179,10 +205,12 @@ export function commandsSaidOnRows(
   const bySource = new Map<string, Set<string>>();
   for (const artifact of artifacts) {
     const copies = twins.get(artifactKeyId(artifact.key));
-    if (copies === undefined || twinVerdict(artifact, copies) === null) continue;
+    if (copies === undefined) continue;
+    const names = sharedCommandsSaid(artifact, copies);
+    if (names.length === 0) continue;
     const id = artifact.key.instance_id;
     const said = bySource.get(id) ?? new Set<string>();
-    for (const copy of copies) for (const name of copy.commands) said.add(name);
+    for (const name of names) said.add(name);
     bySource.set(id, said);
   }
   return bySource;

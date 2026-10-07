@@ -3052,7 +3052,8 @@ of those notices says it may be another copy of Claude Code or a
 different program with the same name, and neither calls it another
 copy. Where the rows already say which copy typing `claude` runs -- the
 one that comes first is another copy Banager lists, of the same AI tool,
-and the Installed page's rows say **Installed twice** -- the Installed
+and the Installed page's rows say **Installed twice**; that command's
+verdict, whatever a tool's other commands run -- the Installed
 page and the Overview, whose notices lead there, leave the notice out;
 the Updates page leaves it out only where a row it lists says **Not used
 in Terminal**, and keeps it while it lists no update of that copy; a
@@ -3383,6 +3384,12 @@ wrapper), are not Grok Build. Banager tells where a `grok` resolves — a
 Homebrew directory, an npm one or anywhere else — not which program it
 is, so the notice calls a `grok` that comes first another program with
 that name, which may or may not be Grok Build, and never another copy.
+Where that `grok` is the other copy of Grok Build that Banager lists (the
+cask's), the notice is left out as Claude Code's is, whatever `agent`
+runs: each command the copies share counts on its own, so Cursor's
+`agent` coming first (its install script puts it in `~/.local/bin`) does
+not bring back "couldn't confirm" beside rows that say **Installed
+twice** (r36 V3).
 That is a notice, not a command.
 
 **Read-only commands** (background checks that never need a password.
