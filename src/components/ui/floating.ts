@@ -185,8 +185,9 @@ export function usePlacement(
  * which wins in a list narrower than the panel, where its start is what
  * is read first. With an arrow (`fromMiddle`), never so far that the
  * arrow, pointing at `middle`, would come nearer either of the panel's
- * sides than `fromMiddle`. In whole pixels, rounded inwards, so its text
- * is not drawn between two and no part of a pixel is left over the side.
+ * sides than `fromMiddle`. In whole pixels, rounded inwards, so no part
+ * of a pixel is left over the side. Only the shift is whole: the panel's
+ * side, from the button's middle, can still fall between two pixels.
  */
 function shiftInside(
   left: number,
