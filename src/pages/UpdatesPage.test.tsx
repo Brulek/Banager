@@ -4654,6 +4654,52 @@ describe("UpdatesPage", () => {
           await expectHeldWithSteps();
         });
 
+        /** Update History's line of the stop, once it is listed. */
+        async function stopLine(): Promise<HTMLElement> {
+          const section = await screen.findByRole("region", { name: "Update History" });
+          const ending = await within(section).findByText("Couldn't update: Needs your password");
+          // One line for it: this window's own, not the history's beside it.
+          expect(within(section).getAllByText("Couldn't update: Needs your password")).toHaveLength(1);
+          return ending.closest("li")!;
+        }
+
+        // o3 skeptic 4: the row has View Steps back after the reload, and
+        // so does the stop's line in Update History -- this window's own
+        // (op 7), listed once the row no longer shows it -- as the
+        // history's line of it has them after a restart.
+        it("gives the stop's line in Update History View Steps after the reload too, as after a restart", async () => {
+          operations = [stopped()];
+          answerHistory({ run: "this-launch", cleared_before: null, records: [thisLaunch()] });
+          renderPage();
+          await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("get_history"));
+          const line = await stopLine();
+          expect(await within(line).findByRole("button", { name: "View steps: onyx" })).toBeInTheDocument();
+        });
+
+        it("lists no line of the stop before the reload: its row still shows it", async () => {
+          operations = [stopped()];
+          started(7, "5.1.0");
+          answerHistory({ run: "this-launch", cleared_before: null, records: [thisLaunch()] });
+          renderPage();
+          await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("get_history"));
+          await expectHeldWithSteps();
+          expect(screen.queryByText("Couldn't update: Needs your password")).toBeNull();
+        });
+
+        it("gives the line no View Steps once onyx is offered no update: there is nothing to plan", async () => {
+          // Updated in Terminal since: the last check offers onyx nothing.
+          updates = updates.filter((candidate) => candidate.key.name !== "onyx");
+          operations = [stopped()];
+          answerHistory({ run: "this-launch", cleared_before: null, records: [thisLaunch()] });
+          renderPage();
+          await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("get_history"));
+          const line = await stopLine();
+          await act(async () => {
+            await new Promise((resolve) => setTimeout(resolve, 50));
+          });
+          expect(within(line).queryByRole("button", { name: "View steps: onyx" })).toBeNull();
+        });
+
         it("lets an update the row shows say how it stands, over an earlier stop's View Steps", async () => {
           // Started again after the reload: the row shows that one.
           operations = [operation(onyxKey, { id: 8, status: "Running" }), stopped()];

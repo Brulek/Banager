@@ -440,7 +440,9 @@ offers -- and so does a later record the history kept. A stop of this
 launch that the row no longer shows, because the window reloaded (the
 error screen's Reload) and forgot which version each update was for,
 gives that row View Steps from its record as after a restart
-(`usePasswordRecoveryKeys` in `src/lib/passwordRecovery.ts`). While the
+(`usePasswordRecoveryKeys` in `src/lib/passwordRecovery.ts`), and its
+line in Update History too (`recordedPasswordStop` in
+`src/components/JustUpdated.tsx`). While the
 tool is offered no update, the recorded stop shows no recovery action. The stop is kept per tool,
 not per version: if the source offers a newer version within the 30-day
 window below, that update offers View Steps too, which plans the newer

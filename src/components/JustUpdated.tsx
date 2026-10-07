@@ -153,6 +153,16 @@ export interface JustUpdatedEntry {
   verified: boolean;
   /** How it ended (`JustUpdatedEnding`). */
   ending: JustUpdatedEnding;
+  /**
+   * For one of this window's (`opId` set): whether the history's record
+   * of it gives its row View Steps for a password stop
+   * (`usePasswordRecoveryKeys`) -- its row no longer shows the operation,
+   * the page having reloaded, and the tool is still offered an update --
+   * so that its line has View Steps too, as the history's line of it has
+   * after a restart (r35 U3, o3 skeptic 4). A line the history kept has
+   * them whenever it says so (`lineAction`).
+   */
+  recordedPasswordStop?: boolean;
 }
 
 export interface JustUpdatedFilter {
@@ -357,7 +367,9 @@ function EndingWords({ entry }: { entry: JustUpdatedEntry }) {
  * installed though a step after it failed -- this window's log, or what
  * the history kept of its follow-up, and nothing where it kept nothing and
  * the log is gone -- and View Steps for a Homebrew update the history kept
- * as stopped for the Mac's password (`PasswordRecovery`).
+ * as stopped for the Mac's password (`PasswordRecovery`) -- this window's
+ * own too, once that record gives its row View Steps
+ * (`recordedPasswordStop`).
  */
 function lineAction(entry: JustUpdatedEntry, t: (key: string) => string) {
   if (entry.ending.kind === "succeeded" && entry.ending.warnings?.length) {
@@ -370,10 +382,12 @@ function lineAction(entry: JustUpdatedEntry, t: (key: string) => string) {
         opId={entry.opId}
         name={entry.name}
         heading={t("updates.progress.stepFailed")}
+        artifactKey={entry.key}
       />
     );
   }
-  if (entry.opId === null && entry.adapterId === "brew" && entry.ending.kind === "failed" && entry.ending.cause === "needsPassword") {
+  if ((entry.opId === null || entry.recordedPasswordStop === true) &&
+      entry.adapterId === "brew" && entry.ending.kind === "failed" && entry.ending.cause === "needsPassword") {
     return <PasswordRecovery artifactKey={entry.key} name={entry.name} size="small" />;
   }
   return null;

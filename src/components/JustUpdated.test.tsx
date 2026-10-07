@@ -611,6 +611,36 @@ it("names each saved warning log by its tool, as the update rows' View Log does 
   expect(screen.getByRole("button", { name: "View log: python@3.13" })).toBeInTheDocument();
 });
 
+// o3 skeptic 4 (r35 U3): this window's own line of a Homebrew password
+// stop has View Steps only while the history's record of it gives its row
+// them (`recordedPasswordStop`); the history's own line always.
+it("gives this window's line of a password stop View Steps only where its record gives the row them", async () => {
+  await i18n.changeLanguage("en");
+  const stopped = (name: string, fields: Partial<JustUpdatedEntry>): JustUpdatedEntry => ({
+    id: `op:${name}`, opId: 7, key: { instance_id: "brew:/opt/homebrew", kind: "Cask", name },
+    adapterId: "brew", sourceLabel: "Homebrew", name, version: null, finishedAt: Date.now(), verified: false,
+    ending: { kind: "failed", cause: "needsPassword" },
+    ...fields,
+  });
+  renderWithProviders(
+    <JustUpdated
+      entries={[
+        stopped("onyx", { recordedPasswordStop: true }),
+        stopped("iterm2", { id: "op:iterm2", opId: 8, recordedPasswordStop: false }),
+        stopped("zoom", { id: "op:zoom", opId: 9 }),
+        stopped("ollama", { id: "op:ollama", opId: 10, adapterId: "npm", recordedPasswordStop: true }),
+        stopped("kept", { id: "history:kept", opId: null }),
+      ]}
+      onClear={() => {}}
+    />,
+  );
+  expect(screen.getByRole("button", { name: "View steps: onyx" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "View steps: kept" })).toBeInTheDocument();
+  for (const name of ["iterm2", "zoom", "ollama"]) {
+    expect(screen.queryByRole("button", { name: `View steps: ${name}` })).toBeNull();
+  }
+});
+
 describe("the columns of 「最近的更新记录」 (p1 polish)", () => {
   const line = (name: string, ending: JustUpdatedEntry["ending"], fields: Partial<JustUpdatedEntry> = {}): JustUpdatedEntry => ({
     id: `old:${name}`,

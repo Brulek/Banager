@@ -638,6 +638,9 @@ export function UpdatesPage() {
           finishedAt: opFinishedAt[op.id] ?? null,
           verified: verifiedHere(history, op.id),
           ending,
+          // A password stop its row no longer shows -- the page reloaded --
+          // whose record gives that row View Steps gives its line them too.
+          recordedPasswordStop: passwordRecoveryKeys.has(artifactKeyId(key)),
         },
       ];
     });
@@ -682,6 +685,7 @@ export function UpdatesPage() {
     artifactsById,
     opName,
     updateTargets,
+    passwordRecoveryKeys,
     labels,
     t,
   ]);

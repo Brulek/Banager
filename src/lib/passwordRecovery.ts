@@ -14,7 +14,8 @@ import { artifactKeyId } from "../store/ui";
  * (the error screen's Reload) the window forgets which version each
  * update was for, and the backend still lists this launch's stop -- its
  * record then gives the row View Steps as after a restart, not a checkbox
- * and a plain Update counted again (r35 U3). Clear does not supersede it
+ * and a plain Update counted again (r35 U3), and the stop's line in
+ * 「最近的更新记录」 too (`JustUpdatedEntry.recordedPasswordStop`). Clear does not supersede it
  * either: it marks every record dismissed
  * (`HistoryStore::clear`), which tidies 「最近的更新记录」 but does not resolve
  * the stop, so the records it dismissed count here too (`includeDismissed`).
