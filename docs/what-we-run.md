@@ -584,7 +584,17 @@ needing attention, not as one that could not be updated: "Updated to
 3.13.8, but a step after it failed; see the log"
 (「已更新到3.13.8，但之后有一步失败了，请查看日志」;
 「已更新到3.13.8，但之後有一步失敗了，請查看記錄」), with no version named for
-a model (`Attention::UpdatedButStepFailed` in `run_operation`). Homebrew
+a model (`Attention::UpdatedButStepFailed` in `run_operation`). It keeps
+the tool's failure's cause; where that is Homebrew's link step
+(`FailureCause::NotLinked`), it says so: "Updated to 22.23.3_1, but the
+new version isn't linked; see the log"
+(「已更新到22.23.3_1，但新版本没有链接到终端，请查看日志」;
+「已更新到22.23.3_1，但新版本沒有連結到終端機，請查看記錄」), and under the
+log that its commands may not be found in Terminal, usually because a
+file of the same name is in the way, which the log names. For any other
+cause, or none, it keeps the tool's first error line, masked as the
+history masks a failure's (`history::failure_detail`), which
+「最近的更新记录」 shows behind the ⓘ before a restart and after it. Homebrew
 fails that way when a formula's post-install or link step fails after its
 new version was poured (Homebrew's section). Every source's update is
 judged this way: each one's non-zero exit reaches `run_operation` as the
@@ -596,7 +606,14 @@ the step that failed; 「最近的更新记录」 lists it with the version it m
 to whatever the next check offers (`isUpdatedButStepFailed` in
 `src/lib/format.ts`). One whose version did not move, whose
 readings have nothing to compare, or whose command never started (npm's
-or uv's read before it did not finish) keeps the tool's failure; npm's or
+or uv's read before it did not finish) keeps the tool's failure. So does
+a cask's, whose failed upgrade Homebrew rolls back: one whose version
+moved anyway is one whose rollback failed too, and nothing says its new
+app is in place. So does one whose cause says the command waited on
+another program -- a lock another `brew` held (`Busy`), Homebrew's list
+update over its time (`HomebrewUpdating`) -- which stops it before it
+changes anything: a version that moved meanwhile is that program's doing,
+a `brew upgrade` in Terminal, say. npm's or
 uv's read that finished and failed started no command either, and a
 version another program moved in the seconds between Banager's reading
 and that read would be said as updated. The one case with less to go
@@ -1880,13 +1897,22 @@ on its own) and exits 1 with the new version installed
 (`FormulaInstaller#link` and `#post_install`, formula_installer.rb:1313,
 :1321 and :1478-1486 in Homebrew 7.0.8). The reading after it then shows
 the new version, so the update is reported as updated with a step that
-failed, needing attention, and the next check no longer offers it; the
-log has Homebrew's words for the step. The cleanup and the link back that
-follow an update run only after it exits 0, so neither runs after one of
-these. A cask's failed upgrade puts its old version back before it exits
-(cask/upgrade.rb:506-510), and reads as before: it is reported as failed
--- unless that rollback failed too, which Homebrew says in the log, and
-the new version's record is still there to read.
+failed, needing attention -- for the link step, as updated but not
+linked -- and the next check no longer offers it; the log has Homebrew's
+words for the step. The cleanup and the link back that follow an update
+run only after it exits 0, so neither runs after one of these. Where the
+update's confirmation said it deletes the old versions, the log then says
+the cleanup did not finish, that the update itself is done and that the
+old versions are still listed, and the update keeps that note as it keeps
+a cleanup's that stopped (`LogNote::OldVersionsNotCleanedUp` with no exit
+code, from `say_promised_cleanup_did_not_run` in `run_operation`); where
+a keg-only formula's commands are left out of Terminal, the log names
+them, as for an update that failed (`NoLongerLinked`). A cask's failed
+upgrade puts its old version back before it exits
+(cask/upgrade.rb:504-516), and reads as before: it is reported as failed.
+So is one whose rollback failed too, which Homebrew says in the log,
+though the new version's record may still be there to read: nothing says
+its new app is in place.
 
 **Files this adapter reads.** Besides checking that the three candidate
 paths exist, the uninstall preview looks at Homebrew's own update lock,
@@ -1971,8 +1997,10 @@ first, so `/opt/homebrew/bin/node` was gone; npm's launcher,
 directory`, exit 127), and nothing on screen said why. Its other links went
 too: corepack's, so `/opt/homebrew/bin/pnpm`, a link into
 `lib/node_modules/corepack`, led nowhere. Three things now answer for it:
-the reason said here; the failed update's cause, 「新版本没有链接到终端」
-(`FailureCause::NotLinked`, read off that line); and npm's own update,
+the reason said here; the update's cause, read off that line
+(`FailureCause::NotLinked`) -- with the version it moved to, read after
+the new keg was poured, as here, 「已更新到22.23.3_1，但新版本没有链接到终端，请查看日志」,
+and where no version could be read to compare, 「新版本没有链接到终端」; and npm's own update,
 which is no longer offered where npm is a formula's
 (`UpdateBlocked::UpdatesWithFormula`, npm, below), so it cannot happen
 again that way.
@@ -4953,7 +4981,13 @@ before and the version read back after, how it ended (succeeded, needs
 attention with its reason, failed with the cause in one word when one is
 known, could not be confirmed, or cancelled once Banager had handed it to
 the tool's adapter, which can be before the tool's own command started, as
-when Homebrew was still finishing a `brew update`), and whether Banager
+when Homebrew was still finishing a `brew update`; for an update installed
+though a step after it failed, its reason also holds the tool's failure's
+cause and, for any cause but the link step's, the tool's first error line,
+masked (`history::failure_detail`: its colour codes taken out, a home
+folder as `~`, a login in an address and a part of its path that looks
+like a token as `****`, an address's query and fragment left out, cut to
+160 characters)), and whether Banager
 saw the change itself (the version it read before and after differ). An
 update that succeeded because its package was already at the version its
 confirmed plan aimed for when its turn came -- an earlier update of the
@@ -4966,9 +5000,11 @@ with the version it moved to (`Attention::UpdatedButStepFailed`) -- also keeps a
 note of each such step (`follow_up_warnings`, at most two, read off the
 log's own notes, never its lines): a `brew cleanup` that did not finish
 (`OldVersionsNotCleanedUp`: the formula's name and the cleanup's exit
-code, when it had one) and commands left unlinked (`NoLongerLinked`: the
-formula's name and the names of those commands), so that after a restart
-「最近的更新记录」 still says 「已更新，有警告」 and its View Log shows those
+code, when it had one -- none for the cleanup an update installed though
+a step after it failed never ran) and commands left unlinked
+(`NoLongerLinked`: the formula's name and the names of those commands), so
+that after a restart 「最近的更新记录」 still says 「已更新，有警告」 (or
+「已更新，有错误」) and its View Log shows those
 notes with their existing next step, saying the full log was not kept. A
 note this build does not know is skipped, never its record
 (`follow_up::known_warnings`); a record written before the field existed
