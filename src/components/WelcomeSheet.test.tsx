@@ -92,10 +92,11 @@ describe("WelcomeSheet", () => {
     renderWithProviders(<WelcomeSheet />);
     const sheet = await findSheet();
     const points = within(sheet).getAllByRole("listitem");
+    // Titles alone, nothing under them (the author, 2026-10-07).
     expect(points.map((point) => point.textContent)).toEqual([
-      "See What's InstalledTools you use in Terminal, like Claude Code, Codex and Gemini CLI, all in one list. Once the first check finishes, Sources in the sidebar shows how each was installed, such as Homebrew, npm or the tool's own installer; programs installed some other way are under Other Programs.",
-      "You Confirm Every Update and UninstallBefore an update or uninstall, you see what it will do and the commands it will run. It starts only when you confirm, and it's checked again when it's done.",
-      "No Terminal Changes, No Data CollectedIt doesn't change your Terminal settings files; if a tool's own uninstaller does, you're told before it starts. It collects no usage data and needs no account.",
+      "See What's Installed",
+      "You Confirm Every Update and Uninstall",
+      "No Terminal Changes, No Data Collected",
     ]);
     // Each point's symbol is decoration: its title says it.
     for (const point of points) {
@@ -114,42 +115,28 @@ describe("WelcomeSheet", () => {
     expect(within(sheet).getByText("看清装了什么")).toBeInTheDocument();
     expect(within(sheet).getByText("更新、卸载都由你确认")).toBeInTheDocument();
     expect(within(sheet).getByText("不改终端配置，不收集数据")).toBeInTheDocument();
-    expect(
-      within(sheet).getByText("更新或卸载前，先写明要做什么和要运行的命令，确认后才开始；完成后会再检查一遍。"),
-    ).toBeInTheDocument();
-    expect(
-      within(sheet).getByText("不改终端的配置文件；个别工具自己的卸载会改，卸载前会写明。不收集使用情况，也不需要账号。"),
-    ).toBeInTheDocument();
-    expect(
-      within(sheet).getByText(
-        "Claude Code、Codex、Gemini CLI这类在终端里用的工具，都列在一处。第一次检查完成后，边栏会出现“来源”，按安装方式列出，比如Homebrew、npm或工具自带的安装程序；其他方式装的程序，列在“其他程序”里。",
-      ),
-    ).toBeInTheDocument();
+    expect(within(sheet).getAllByRole("listitem").map((point) => point.textContent)).toEqual([
+      "看清装了什么",
+      "更新、卸载都由你确认",
+      "不改终端配置，不收集数据",
+    ]);
     expect(within(sheet).getByRole("button", { name: "开始使用" })).toBeInTheDocument();
   });
 
-  it("says what the sidebar's Sources are, by the names the sidebar uses, and names no tool's uninstall", async () => {
-    // Someone who installed Claude Code by pasting a command knows neither
-    // Homebrew nor rustup: the first point says what Sources are -- how
-    // each tool was installed -- under the very headings the sidebar shows,
-    // and the third point's one exception (rustup's own uninstall edits
-    // its startup line, and its preview says so: `EditsShellConfig`) is
-    // said without naming a tool they may never have heard of.
-    //
-    // On a first launch the sheet is up while the first check runs, and
-    // the sidebar draws no 「来源」 and no 「其他程序」 until it ends
-    // (`useSourcesShown`, src/components/Sidebar.tsx): so the point says
-    // they appear once it has, and never points at them as if they were
-    // there already (W2-7 review).
-    for (const language of ["en", "zh-CN"] as const) {
+  it("has no sentence under its titles, in any language", async () => {
+    // The author asked for the titles alone (2026-10-07): each point is
+    // one line, its symbol and its title.
+    for (const language of ["en", "zh-CN", "zh-Hant"] as const) {
       await i18n.changeLanguage(language);
-      const listText = i18n.t("welcome.listText");
-      expect(listText, language).toContain(i18n.t("nav.sources"));
-      expect(listText, language).toContain(i18n.t("nav.unknown"));
-      expect(listText, language).toContain("Claude Code");
-      expect(listText, language).not.toMatch(/左边|on the left/);
-      expect(listText, language).toMatch(/第一次检查完成后|Once the first check finishes/);
-      expect(i18n.t("welcome.settingsText"), language).not.toMatch(/rustup/i);
+      const { unmount } = renderWithProviders(<WelcomeSheet />);
+      const sheet = await screen.findByRole("dialog");
+      for (const point of within(sheet).getAllByRole("listitem")) {
+        expect(point.querySelectorAll("p"), language).toHaveLength(1);
+      }
+      unmount();
+    }
+    for (const key of ["welcome.listText", "welcome.confirmText", "welcome.settingsText"]) {
+      expect(i18n.exists(key), key).toBe(false);
     }
   });
 

@@ -7,11 +7,8 @@
   "welcome": {
     "title": "歡迎使用{{name}}",
     "listTitle": "看清裝了什麼",
-    "listText": "Claude Code、Codex、Gemini CLI這類在終端機裡用的工具，都列在同一處。第一次檢查完成後，側邊欄會出現「來源」，按安裝方式列出，例如Homebrew、npm或工具內附的安裝程式；其他方式安裝的程式，列在「其他程式」裡。",
     "confirmTitle": "更新、解除安裝都由你確認",
-    "confirmText": "更新或解除安裝前，先寫明要做什麼和要執行的指令，確認後才開始；完成後會再檢查一遍。",
     "settingsTitle": "不改終端機設定，不收集資料",
-    "settingsText": "不更動終端機的設定檔；個別工具自己的解除安裝會更動，解除安裝前會寫明。不收集使用情況，也不需要帳號。",
     "start": "開始使用"
   },
   "inventoryPreview": {

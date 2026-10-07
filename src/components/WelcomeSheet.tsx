@@ -13,24 +13,17 @@ import { BUTTON } from "./ui/controls";
 const APP_NAME = "Banager";
 
 /**
- * The sheet's three points, each a symbol, a bold title and one line. Every
- * line is a promise docs/what-we-run.md makes: everything in one list, by
- * the sidebar's 「来源」 -- how each tool was installed -- and the rest
- * under 「其他程序」, both of which the sidebar draws only once the first
- * check has answered (`useSourcesShown`), while this sheet may already be
- * up, so the point says when they appear; an update or uninstall previewed, run only once
- * confirmed and checked again after it ("When commands run", "What Banager
- * never does"); no shell startup file edited, no host but the registries
- * it reads versions from, and no account ("Network", "What Banager never
- * does"). The one tool whose own uninstall edits a startup file, rustup,
- * goes unnamed: its preview always says so (`Warning::EditsShellConfig`,
- * crates/banager-core/src/adapters/standalone/rustup.rs), and a name the
- * reader may never have heard of only worries them.
+ * The sheet's three points, each a symbol and a short title, and nothing
+ * under it: the author asked for the titles alone (2026-10-07), as a
+ * welcome is read at a glance. What each title stands for is said where it
+ * applies -- the sidebar's 「来源」 and 「其他程序」 once the first check
+ * has answered, every preview before an update or uninstall, and
+ * docs/what-we-run.md.
  */
-const POINTS: { icon: ComponentType<{ size?: number; className?: string }>; title: string; text: string }[] = [
-  { icon: InstalledIcon, title: "welcome.listTitle", text: "welcome.listText" },
-  { icon: CheckCircleIcon, title: "welcome.confirmTitle", text: "welcome.confirmText" },
-  { icon: SettingsIcon, title: "welcome.settingsTitle", text: "welcome.settingsText" },
+const POINTS: { icon: ComponentType<{ size?: number; className?: string }>; title: string }[] = [
+  { icon: InstalledIcon, title: "welcome.listTitle" },
+  { icon: CheckCircleIcon, title: "welcome.confirmTitle" },
+  { icon: SettingsIcon, title: "welcome.settingsTitle" },
 ];
 
 /**
@@ -46,7 +39,7 @@ export function welcomeDue(settings: Settings | undefined): boolean {
 /**
  * The sheet Banager shows the first time it opens, in the manner of
  * macOS's welcome and What's New sheets: 「欢迎使用Banager」, three short
- * points, and one button, 「开始使用」, which has the focus, so Return
+ * titles, and one button, 「开始使用」, which has the focus, so Return
  * presses it.
  *
  * It decides once, as the settings first arrive (`welcomeDue`), and from
@@ -113,13 +106,10 @@ export function WelcomeSheet() {
       }
     >
       <ul data-welcome-points="" className="flex flex-col gap-4 pb-1 pt-3">
-        {POINTS.map(({ icon: Icon, title, text }) => (
-          <li key={title} className="flex items-start gap-3">
+        {POINTS.map(({ icon: Icon, title }) => (
+          <li key={title} className="flex items-center gap-3">
             <Icon size={28} className="shrink-0 text-accent" />
-            <div className="min-w-0">
-              <p className="break-words text-title text-foreground">{t(title)}</p>
-              <p className="mt-0.5 break-words text-body-long text-muted">{t(text)}</p>
-            </div>
+            <p className="min-w-0 break-words text-title text-foreground">{t(title)}</p>
           </li>
         ))}
       </ul>
