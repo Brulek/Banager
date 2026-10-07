@@ -1471,6 +1471,21 @@ describe("the mock backend's first-round list (InventoryPreview)", () => {
     expect(cleared.cleared_before).not.toBeNull();
     expect(cleared.records).toHaveLength(after.records.length);
   });
+
+  // r33 T1, o3 skeptic 2: as docs/ui-preview.md says of `follow-up`, the
+  // saved node@22 record is the Intel Homebrew's with ?state=nonode-intel,
+  // where that Homebrew answers. `notices` has an Intel Homebrew too, one
+  // never heard from: no update ran in it, and the record stays
+  // /opt/homebrew's.
+  it.each([
+    ["full", "brew:/opt/homebrew"],
+    ["nonode-intel", "brew:/usr/local"],
+    ["notices", "brew:/opt/homebrew"],
+  ] as const)("keeps the follow-up's saved node@22 update with ?state=%s under %s", async (state, homebrew) => {
+    const { records } = await answer<HistoryView>(backendFor({ state, outcome: "follow-up" }).backend.invoke("get_history"));
+    const saved = records.filter((record) => record.key.name === "node@22" && record.follow_up_warnings?.length);
+    expect(saved.map((record) => record.key.instance_id)).toEqual([homebrew]);
+  });
 });
 
 describe("the mock backend's facts for the diagnostic text (get_system_facts)", () => {

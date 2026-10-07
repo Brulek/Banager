@@ -270,12 +270,11 @@ export function createMockBackend(scenario: Scenario): MockBackend {
   /** What `get_history` answers: earlier launches' records, then this one's. */
   let history: HistoryView = mockHistory(Date.now());
   if (scenario.outcome === "follow-up") {
-    // Of the Intel Homebrew where the pretend Mac has one (`nonode-intel`),
-    // so that the command its View Log hands over shows whose brew it
-    // names: /usr/local/bin/brew, not Terminal's (r33 T1).
-    const homebrew = world.instances.some((instance) => instance.id === "brew:/usr/local")
-      ? "brew:/usr/local"
-      : "brew:/opt/homebrew";
+    // Of the Intel Homebrew with `nonode-intel`, where it answers, so that
+    // the command its View Log hands over shows whose brew it names:
+    // /usr/local/bin/brew, not Terminal's (r33 T1). Not with `notices`,
+    // whose Intel Homebrew was never heard from: no update ran in it.
+    const homebrew = scenario.state === "nonode-intel" ? "brew:/usr/local" : "brew:/opt/homebrew";
     history.records.unshift({
       run: "mock-earlier-launch", op_id: 100, finished_at: Date.now() - 60_000,
       key: { instance_id: homebrew, kind: "Formula", name: "node@22" },
