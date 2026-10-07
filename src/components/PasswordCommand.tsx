@@ -23,9 +23,9 @@ const LEFT_OUT = new Set(["SUDO_ASKPASS"]);
 
 /**
  * The command a failed operation ran, as Terminal would take it -- the
- * plan's variables, then its argv, each token per `displayToken`, exactly
- * as the confirmation showed it (`commandText`) -- or null for one that
- * ran no command.
+ * plan's variables, then its argv, each token per `displayToken`, the
+ * tokens the confirmation showed (`commandTokens`) on one line
+ * (`commandText`) -- or null for one that ran no command.
  */
 export function terminalCommand(op: TerminalPreview): string | null {
   const [program, ...args] = op.argv_preview;

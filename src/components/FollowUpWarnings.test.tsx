@@ -33,14 +33,16 @@ describe("a saved follow-up warning's log (p1 polish)", () => {
     const code = group.querySelector("code");
     expect(code?.textContent).toBe("brew link --formula --force node@22");
     expect(code?.className.split(" ")).toEqual(expect.arrayContaining(["block", "select-all", "font-mono", "bg-group"]));
-    // A line breaks between its words, never inside one.
-    expect([...(code?.querySelectorAll("[data-command-token]") ?? [])].map((s) => s.textContent)).toEqual([
-      "brew",
-      "link",
-      "--formula",
-      "--force",
-      "node@22",
-    ]);
+    // A line breaks between its words, never inside one: each a box of
+    // its own that goes to the next line whole (`unbrokenTokens`), and
+    // only the spaces between them loose.
+    const tokens = [...(code?.querySelectorAll("[data-command-token]") ?? [])];
+    expect(tokens.map((s) => s.textContent)).toEqual(["brew", "link", "--formula", "--force", "node@22"]);
+    for (const token of tokens) expect(token.className.split(" ")).toEqual(["inline-block", "max-w-full", "break-words"]);
+    const line = tokens[0]?.parentElement;
+    expect(line?.textContent).toBe(code?.textContent);
+    const loose = [...(line?.childNodes ?? [])].filter((node) => node.nodeType === Node.TEXT_NODE);
+    expect(loose.map((node) => node.textContent)).toEqual(Array(tokens.length - 1).fill(" "));
     fireEvent.click(within(dialog).getByRole("button", { name: "Copy Command" }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("brew link --formula --force node@22"));
     // The sentence before it and the one after it say no command.

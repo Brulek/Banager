@@ -292,6 +292,23 @@ describe("LinkFixSheet", () => {
     expect(screen.getByRole("group", { name: "Command to run in Terminal" })).toHaveTextContent(
       "/opt/homebrew/bin/brew link --formula --force --overwrite node@22",
     );
+    // A line breaks between its tokens, never inside one: each a box of
+    // its own that goes to the next line whole (`unbrokenTokens`), and
+    // only the spaces between them loose -- 「--」 / 「overwrite」 reads as
+    // something else.
+    const code = screen.getByRole("group", { name: "Command to run in Terminal" }).querySelector("code") as HTMLElement;
+    const tokens = [...code.querySelectorAll<HTMLElement>("[data-command-token]")];
+    expect(tokens.map((token) => token.textContent)).toEqual([
+      "/opt/homebrew/bin/brew",
+      "link",
+      "--formula",
+      "--force",
+      "--overwrite",
+      "node@22",
+    ]);
+    for (const token of tokens) expect(token.className.split(" ")).toEqual(["inline-block", "max-w-full", "break-words"]);
+    const loose = [...code.childNodes].filter((node) => node.nodeType === Node.TEXT_NODE);
+    expect(loose.map((node) => node.textContent)).toEqual(Array(tokens.length - 1).fill(" "));
     expect(screen.getByRole("button", { name: "Copy Command" })).toBeInTheDocument();
     expect(dialog).toHaveTextContent("When it's done, click Check Again.");
     expect(screen.queryByRole("button", { name: "Link" })).toBeNull();

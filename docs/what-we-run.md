@@ -505,7 +505,7 @@ move to the Trash (the Claude Code, Antigravity CLI and Grok Build
 sections) — and the front end shows it: the paths in the confirmation,
 the command one press away there ("Show Command") — the variables
 the plan sets on top of Banager's environment, as `NAME=value`, then the
-argv (`commandText` in `src/components/CommandPreview.tsx`) — open from
+argv (`commandTokens` in `src/components/CommandPreview.tsx`) — open from
 the start with Settings' "Show technical details" on (`plan_operation` in
 `src-tauri/src/ipc.rs`; the front end never builds an argv and sends back
 only the id of a plan Rust issued). The plan can be confirmed for ten
