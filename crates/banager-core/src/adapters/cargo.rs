@@ -3049,4 +3049,142 @@ mod tests {
         )
         .await;
     }
+
+    async fn f08_cargo_changed_record(change: &str) {
+        let dir = tempfile::tempdir().unwrap();
+        let record = dir.path().join(".crates2.json");
+        // Inline input, independent of the immutable recorded fixtures.
+        let initial = serde_json::json!({"installs": {
+            "hexyl 0.17.0 (registry+https://github.com/rust-lang/crates.io-index)": {
+                "version_req": "*", "bins": ["hexyl"], "features": [], "all_features": false,
+                "no_default_features": false, "profile": "release", "target": "aarch64-apple-darwin",
+                "rustc": "rustc 1.98.1\nhost: aarch64-apple-darwin\n"
+            }
+        }});
+        std::fs::write(&record, initial.to_string()).unwrap();
+        let runner = Arc::new(MockRunner::new());
+        let adapter = CargoAdapter::new(runner.clone(), Arc::new(MockHttpClient::new()));
+        let inst = test_instance(dir.path().to_owned());
+        let request = OpRequest {
+            kind: OpKind::Upgrade,
+            instance_id: inst.id.clone(),
+            artifact_kind: ArtifactKind::Binary,
+            name: "hexyl".into(),
+        };
+        let plan = adapter.plan(&inst, &request).await.unwrap();
+        let mut altered = initial.clone();
+        let installs = altered["installs"].as_object_mut().unwrap();
+        let old_key = installs.keys().next().unwrap().clone();
+        if change == "features" {
+            installs.get_mut(&old_key).unwrap()["features"] = serde_json::json!(["custom"]);
+        } else if change != "unchanged" {
+            let value = installs.remove(&old_key).unwrap();
+            installs.insert(format!("hexyl 0.17.0 ({change})"), value);
+        }
+        std::fs::write(&record, altered.to_string()).unwrap();
+        let program = command_program(&plan);
+        let args = command_args(&plan);
+        let mut argv = vec![program.to_str().unwrap()];
+        argv.extend(args.iter().map(String::as_str));
+        runner.respond(
+            argv,
+            CommandOutput {
+                stderr_cause: Default::default(),
+                exit_code: Some(0),
+                stdout: String::new(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let result = adapter
+            .execute(
+                &plan,
+                Arc::new(crate::events::VecSink::new()),
+                1,
+                CancellationToken::new(),
+            )
+            .await;
+        // Only `cargo install` counts: a fix may read before it refuses.
+        let installs = runner
+            .calls()
+            .into_iter()
+            .filter(|call| call.iter().any(|arg| arg == "install"))
+            .count();
+        if change == "unchanged" {
+            assert_eq!(result.unwrap(), Outcome::Succeeded);
+            assert_eq!(installs, 1);
+        } else {
+            assert_eq!(
+                installs,
+                0,
+                "changed {change} must not overwrite a custom install: {:?}; {result:?}",
+                runner.calls()
+            );
+            assert!(
+                matches!(
+                    result,
+                    Err(AdapterError::Refused(_)) | Ok(Outcome::BanagerFailed(_))
+                ),
+                "explicit stale-preview refusal: {result:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "bug: G07: a Cargo update still runs after the install's source or features changed since its preview"]
+    async fn f08_g07_git_provenance_changed_after_preview() {
+        f08_cargo_changed_record("git+https://github.com/example/hexyl#abc").await;
+    }
+    #[tokio::test]
+    #[ignore = "bug: G07: a Cargo update still runs after the install's source or features changed since its preview"]
+    async fn f08_g07_path_provenance_changed_after_preview() {
+        f08_cargo_changed_record("path+file:///tmp/custom-hexyl").await;
+    }
+    #[tokio::test]
+    #[ignore = "bug: G07: a Cargo update still runs after the install's source or features changed since its preview"]
+    async fn f08_g07_features_changed_after_preview() {
+        f08_cargo_changed_record("features").await;
+    }
+    #[tokio::test]
+    async fn f08_g07_unchanged_provenance_executes() {
+        f08_cargo_changed_record("unchanged").await;
+    }
+
+    #[tokio::test]
+    async fn f08_g12_body_read_error_is_an_unsuccessful_lookup_not_up_to_date() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join(".crates2.json"), r#"{"installs":{"hexyl 0.17.0 (registry+https://github.com/rust-lang/crates.io-index)":{"bins":["hexyl"],"features":[],"all_features":false,"no_default_features":false}}}"#).unwrap();
+        let http = Arc::new(MockHttpClient::new());
+        http.fail_with(
+            "https://crates.io/api/v1/crates/hexyl",
+            crate::http::HttpError::Network("error decoding response body: unexpected EOF".into()),
+        );
+        let adapter = CargoAdapter::new(Arc::new(MockRunner::new()), http.clone());
+        let result = adapter
+            .check_updates(
+                &test_instance(dir.path().to_owned()),
+                &CheckOptions::default(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            http.calls().len(),
+            1,
+            "the registry lookup was actually attempted"
+        );
+        assert_eq!(
+            result.candidates.len(),
+            1,
+            "a failed lookup cannot become no updates"
+        );
+        let row = &result.candidates[0];
+        assert!(!row.checkable);
+        assert_eq!(row.current, "0.17.0");
+        assert!(row.warnings.contains(&Warning::TransientLookupFailure));
+        assert!(row
+            .warnings
+            .iter()
+            .any(|w| matches!(w, Warning::Message(text) if text.contains("unexpected EOF"))));
+    }
 }

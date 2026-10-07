@@ -654,6 +654,7 @@ mod tests {
         plan_delay: std::sync::Mutex<Duration>,
         in_flight: std::sync::atomic::AtomicUsize,
         most_in_flight: std::sync::atomic::AtomicUsize,
+        execute_calls: std::sync::atomic::AtomicUsize,
         /// The version `reconcile` reads, before and after an operation
         /// alike; `None` reads no version (`test_support::fake_reconciled`).
         version_read: std::sync::Mutex<Option<String>>,
@@ -672,6 +673,7 @@ mod tests {
                 plan_delay: std::sync::Mutex::new(Duration::ZERO),
                 in_flight: std::sync::atomic::AtomicUsize::new(0),
                 most_in_flight: std::sync::atomic::AtomicUsize::new(0),
+                execute_calls: std::sync::atomic::AtomicUsize::new(0),
                 version_read: std::sync::Mutex::new(None),
                 plan_warnings: std::sync::Mutex::new(Vec::new()),
             })
@@ -800,6 +802,7 @@ mod tests {
             _op_id: OpId,
             _cancel: CancellationToken,
         ) -> Result<Outcome, AdapterError> {
+            self.execute_calls.fetch_add(1, Ordering::SeqCst);
             Ok(Outcome::Succeeded)
         }
 
@@ -2587,5 +2590,66 @@ mod tests {
             ))
         );
         assert_eq!(how, None);
+    }
+
+    // R08 G01: use the same listed-plan entry point as the window.
+    async fn f08_listed_refresh(removes_target: bool) {
+        let adapter = FakeAdapter::new(vec![test_support::make_instance("fake", "fake:1")]);
+        adapter.set_updates(vec![candidate("jq", None)]);
+        adapter.set_artifacts(vec![installed_on(
+            "fake:1",
+            ArtifactKind::Formula,
+            "jq",
+            None,
+        )]);
+        let session = Session::with_adapters(Arc::new(VecSink::new()), vec![adapter.clone()], None);
+        let generation = session
+            .refresh(&test_support::non_root_env(), &CheckOptions::default())
+            .await
+            .generation;
+        let issued = session
+            .issue_listed_plan(&request(OpKind::Upgrade, "jq"))
+            .await
+            .unwrap();
+        if removes_target {
+            adapter.set_artifacts(vec![]);
+            adapter.set_updates(vec![]);
+        } else {
+            adapter.set_artifacts(vec![
+                installed_on("fake:1", ArtifactKind::Formula, "jq", None),
+                installed_on("fake:1", ArtifactKind::Formula, "wget", None),
+            ]);
+        }
+        refresh_and_expect_a_new_generation(&session, generation).await;
+        let result = session.submit(issued.id);
+        if removes_target {
+            assert!(
+                result.is_err(),
+                "a removed listed tool must not be reinstalled: {result:?}"
+            );
+            assert!(
+                session.operations().is_empty(),
+                "nothing may reach the executor"
+            );
+            tokio::task::yield_now().await;
+            assert_eq!(adapter.execute_calls.load(Ordering::SeqCst), 0);
+        } else {
+            assert!(
+                result.is_ok(),
+                "unrelated changes must keep the preview valid: {result:?}"
+            );
+            assert_eq!(session.operations().len(), 1);
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "bug: G01: an update can still be submitted after a refresh stopped listing its tool"]
+    async fn f08_g01_removed_listed_tool_is_refused_at_submit() {
+        f08_listed_refresh(true).await;
+    }
+
+    #[tokio::test]
+    async fn f08_g01_unrelated_package_change_keeps_listed_plan_valid() {
+        f08_listed_refresh(false).await;
     }
 }

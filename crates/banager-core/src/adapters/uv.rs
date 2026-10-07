@@ -1442,4 +1442,82 @@ ruff v0.15.0 (/Users/someone/.local/share/uv/tools/ruff)
         let result = <UvAdapter as Adapter>::search(&adapter, &inst, "ruff").await;
         assert!(matches!(result, Err(AdapterError::Unsupported(_))));
     }
+
+    async fn f08_execute_saved_receipt(changed: Option<&str>) {
+        let (dir, runner) = receipt_runner();
+        let adapter = UvAdapter::new(runner.clone());
+        let plan = adapter
+            .plan(&test_instance(), &request(OpKind::Upgrade))
+            .await
+            .unwrap();
+        if let Some(receipt) = changed {
+            std::fs::write(dir.path().join("uv-receipt.toml"), receipt).unwrap();
+        }
+        let crate::model::PlanAction::Command { program, args, .. } = &plan.action else {
+            panic!("command");
+        };
+        let mut argv = vec![program.to_str().unwrap()];
+        argv.extend(args.iter().map(String::as_str));
+        runner.respond(
+            argv,
+            CommandOutput {
+                stderr_cause: Default::default(),
+                exit_code: Some(0),
+                stdout: String::new(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let before = runner.calls().len();
+        let result = adapter
+            .execute(
+                &plan,
+                Arc::new(crate::events::VecSink::new()),
+                1,
+                CancellationToken::new(),
+            )
+            .await;
+        let writes: Vec<_> = runner.calls()[before..]
+            .iter()
+            .filter(|call| call.iter().any(|arg| arg == "upgrade"))
+            .cloned()
+            .collect();
+        if changed.is_some() {
+            assert!(
+                writes.is_empty(),
+                "saved preview must be refused after receipt changes: {writes:?}; {result:?}"
+            );
+            assert!(
+                matches!(
+                    result,
+                    Err(AdapterError::Refused(_)) | Ok(Outcome::BanagerFailed(_))
+                ),
+                "explicit stale-preview refusal: {result:?}"
+            );
+        } else {
+            assert_eq!(result.unwrap(), Outcome::Succeeded);
+            assert_eq!(writes.len(), 1);
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "bug: G09: a uv upgrade still runs after its receipt gained a version constraint since its preview"]
+    async fn f08_g09_execute_original_plan_after_constraint_change() {
+        f08_execute_saved_receipt(Some(
+            "[tool]\nrequirements = [{name = 'ruff', specifier = '==0.15.0'}]\n",
+        ))
+        .await;
+    }
+
+    #[tokio::test]
+    #[ignore = "bug: G09: a uv upgrade still runs after its receipt became unreadable since its preview"]
+    async fn f08_g09_execute_original_plan_after_unreadable_receipt() {
+        f08_execute_saved_receipt(Some("not valid [toml")).await;
+    }
+
+    #[tokio::test]
+    async fn f08_g09_unchanged_receipt_executes_saved_plan() {
+        f08_execute_saved_receipt(None).await;
+    }
 }

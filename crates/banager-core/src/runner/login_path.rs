@@ -819,4 +819,55 @@ mod tests {
         .expect("bounded startup subprocess");
         assert_eq!(result, None);
     }
+
+    #[tokio::test]
+    #[ignore = "bug: G04: two PATH lines pick the first one instead of keeping the inherited PATH"]
+    async fn f08_g04_duplicate_path_lines_are_ambiguous_in_both_orders() {
+        for (first, second) in [("/embedded", "/terminal"), ("/terminal", "/embedded")] {
+            let found = read_of(&format!("MULTILINE=value\nPATH={first}\nPATH={second}\n")).await;
+            assert!(
+                found.is_none(),
+                "ambiguous PATH must leave inherited discovery in place: {found:?}"
+            );
+            let runner = Arc::new(MockRunner::new());
+            runner.respond(
+                vec!["/test-shell", "-ilc", COMMAND],
+                CommandOutput {
+                    stderr_cause: Default::default(),
+                    exit_code: Some(0),
+                    stdout: format!("{DELIMITER}PATH={first}\nPATH={second}\n{DELIMITER}"),
+                    stderr: String::new(),
+                    timed_out: false,
+                    cancelled: false,
+                },
+            );
+            // An injected publisher models discovery's inherited fallback
+            // without mutating the process-global PATH in parallel tests.
+            let inherited = Arc::new(std::sync::Mutex::new("/inherited".to_string()));
+            let published = inherited.clone();
+            let discovery = LoginPath::new(
+                runner,
+                "/test-shell".into(),
+                "/tmp".into(),
+                Duration::from_millis(20),
+                move |env| {
+                    *published.lock().unwrap() = env.path.clone();
+                },
+            );
+            assert!(!discovery.ensure().await);
+            assert!(!discovery.is_read());
+            assert_eq!(*inherited.lock().unwrap(), "/inherited");
+        }
+    }
+
+    #[tokio::test]
+    async fn f08_g04_single_path_is_still_accepted() {
+        assert_eq!(
+            read_of("OTHER=value\nPATH=/terminal:/usr/bin\n")
+                .await
+                .unwrap()
+                .path,
+            "/terminal:/usr/bin"
+        );
+    }
 }

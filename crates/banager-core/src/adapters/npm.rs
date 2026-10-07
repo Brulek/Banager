@@ -2512,4 +2512,267 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&prefix);
     }
+    fn f08_npm_output(stdout: &str, exit: i32) -> CommandOutput {
+        CommandOutput {
+            stderr_cause: Default::default(),
+            exit_code: Some(exit),
+            stdout: stdout.into(),
+            stderr: String::new(),
+            timed_out: false,
+            cancelled: false,
+        }
+    }
+    const F08_FATAL: &str =
+        r#"{"error":{"code":"EJSONPARSE","summary":"Failed to parse","detail":""}}"#;
+    const F08_TREE: &str = r#"{"dependencies":{"jq":{"version":"1.0.0"}}}"#;
+
+    #[tokio::test]
+    #[ignore = "bug: G03: npm's fatal error JSON is read as an empty list"]
+    async fn f08_g03_fatal_exit_one_error_is_not_empty_inventory() {
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec!["/opt/homebrew/bin/npm", "ls", "-g", "--depth=0", "--json"],
+            f08_npm_output(F08_FATAL, 1),
+        );
+        let result = NpmAdapter::new(runner).inventory(&test_instance()).await;
+        assert!(
+            matches!(
+                result,
+                Err(AdapterError::Parse(_)) | Err(AdapterError::CommandFailed { .. })
+            ),
+            "fatal npm JSON is not a successful empty inventory: {result:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn f08_g03_usable_elsproblems_tree_retains_dependency_rows() {
+        let runner = Arc::new(MockRunner::new());
+        let tree = r#"{"problems":["invalid: jq@1.0.0"],"dependencies":{"jq":{"version":"1.0.0","invalid":"^2.0.0","problems":["invalid: jq@1.0.0"]}},"error":{"code":"ELSPROBLEMS","summary":"invalid: jq@1.0.0","detail":""}}"#;
+        runner.respond(
+            vec!["/opt/homebrew/bin/npm", "ls", "-g", "--depth=0", "--json"],
+            f08_npm_output(tree, 1),
+        );
+        let rows = NpmAdapter::new(runner)
+            .inventory(&test_instance())
+            .await
+            .unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].key.name, "jq");
+        assert_eq!(rows[0].version, "1.0.0");
+    }
+
+    #[tokio::test]
+    #[ignore = "bug: G03: npm's fatal error JSON makes the reading after an uninstall say the tool is gone"]
+    async fn f08_g03_fatal_inventory_cannot_confirm_an_uninstall() {
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec!["/opt/homebrew/bin/npm", "ls", "-g", "--depth=0", "--json"],
+            f08_npm_output(F08_FATAL, 1),
+        );
+        let inst = test_instance();
+        let result = NpmAdapter::new(runner)
+            .reconcile(
+                &inst,
+                &ArtifactKey {
+                    instance_id: inst.id.clone(),
+                    kind: ArtifactKind::Package,
+                    name: "jq".into(),
+                },
+            )
+            .await;
+        assert!(
+            result.is_err(),
+            "fatal inventory cannot assert the tool is absent: {result:?}"
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "bug: G03: npm's fatal error JSON empties the list an earlier refresh read"]
+    async fn f08_g03_session_keeps_inventory_after_fatal_npm_json() {
+        let dir = tempfile::tempdir().unwrap();
+        let exe = fake_exe(dir.path(), "npm");
+        let npm = exe.to_str().unwrap();
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec![npm, "prefix", "-g"],
+            f08_npm_output(dir.path().to_str().unwrap(), 0),
+        );
+        runner.respond(vec![npm, "--version"], f08_npm_output("12.0.2", 0));
+        runner.respond(
+            vec![npm, "outdated", "-g", "--json"],
+            f08_npm_output("{}", 0),
+        );
+        runner.respond(
+            vec![npm, "ls", "-g", "--depth=0", "--json"],
+            f08_npm_output(F08_TREE, 0),
+        );
+        let adapter = Arc::new(NpmAdapter::new(runner.clone()).with_prefix_read_only_fn(|_| None));
+        let session =
+            crate::session::Session::with_adapters(Arc::new(VecSink::new()), vec![adapter], None);
+        let env = HostEnv {
+            path_dirs: vec![dir.path().to_owned()],
+            home: PathBuf::from("/tmp"),
+            euid: 501,
+            cargo_home: None,
+            rustup_home: None,
+            zdotdir: None,
+            ollama_host: None,
+        };
+        let initial = session.refresh(&env, &CheckOptions::default()).await;
+        assert_eq!(
+            initial.artifacts.len(),
+            1,
+            "precondition: previous inventory was actually read"
+        );
+        runner.respond(
+            vec![npm, "ls", "-g", "--depth=0", "--json"],
+            f08_npm_output(F08_FATAL, 1),
+        );
+        let next = session.refresh(&env, &CheckOptions::default()).await;
+        assert_eq!(
+            next.artifacts, initial.artifacts,
+            "retain previously known tools on failed inventory"
+        );
+        assert!(!next.errors.is_empty(), "report inventory failure");
+    }
+
+    // A fake npm with two real test-owned roots. It applies writes only to
+    // its in-memory package sets, choosing the destination exactly from the
+    // dispatched --prefix / npm_config_prefix, or the current config.
+    struct F08PrefixNpm {
+        current: std::sync::Mutex<PathBuf>,
+        installed: std::sync::Mutex<std::collections::HashSet<PathBuf>>,
+        writes: std::sync::Mutex<Vec<PathBuf>>,
+    }
+    #[async_trait]
+    impl CommandRunner for F08PrefixNpm {
+        async fn run(
+            &self,
+            spec: CommandSpec,
+            _: Option<crate::runner::LineCallback>,
+            _: CancellationToken,
+        ) -> Result<CommandOutput, crate::runner::RunnerError> {
+            let root = spec
+                .args
+                .windows(2)
+                .find(|pair| pair[0] == "--prefix")
+                .map(|pair| PathBuf::from(&pair[1]))
+                .or_else(|| {
+                    spec.args
+                        .iter()
+                        .find_map(|arg| arg.strip_prefix("--prefix=").map(PathBuf::from))
+                })
+                .or_else(|| {
+                    spec.env
+                        .iter()
+                        .find(|(key, _)| key.eq_ignore_ascii_case("npm_config_prefix"))
+                        .map(|(_, value)| PathBuf::from(value))
+                })
+                .unwrap_or_else(|| self.current.lock().unwrap().clone());
+            let command = spec
+                .args
+                .iter()
+                .find(|arg| matches!(arg.as_str(), "prefix" | "--version" | "ls" | "uninstall"))
+                .expect("a supported fake npm command");
+            let output = match command.as_str() {
+                "prefix" => root.to_str().unwrap().to_owned(),
+                "--version" => "12.0.2".into(),
+                "ls" => if self.installed.lock().unwrap().contains(&root) {
+                    F08_TREE
+                } else {
+                    "{}"
+                }
+                .into(),
+                "uninstall" => {
+                    self.writes.lock().unwrap().push(root.clone());
+                    self.installed.lock().unwrap().remove(&root);
+                    String::new()
+                }
+                other => panic!("unexpected fake npm command: {other}: {spec:?}"),
+            };
+            Ok(f08_npm_output(&output, 0))
+        }
+    }
+
+    async fn f08_prefix_change(changes: bool) {
+        let a = tempfile::tempdir().unwrap();
+        let b = tempfile::tempdir().unwrap();
+        fake_exe(a.path(), "npm");
+        let runner = Arc::new(F08PrefixNpm {
+            current: std::sync::Mutex::new(a.path().to_owned()),
+            installed: std::sync::Mutex::new([a.path().to_owned(), b.path().to_owned()].into()),
+            writes: std::sync::Mutex::new(Vec::new()),
+        });
+        let adapter = NpmAdapter::new(runner.clone()).with_prefix_read_only_fn(|_| None);
+        let env = HostEnv {
+            path_dirs: vec![a.path().to_owned()],
+            home: PathBuf::from("/tmp"),
+            euid: 501,
+            cargo_home: None,
+            rustup_home: None,
+            zdotdir: None,
+            ollama_host: None,
+        };
+        let instances = adapter.detect(&env).await;
+        assert_eq!(instances.len(), 1);
+        let inst = &instances[0];
+        assert_eq!(inst.prefix, a.path());
+        let rows = adapter.inventory(inst).await.unwrap();
+        assert_eq!(rows.len(), 1);
+        let plan = adapter
+            .plan(
+                inst,
+                &OpRequest {
+                    kind: OpKind::Uninstall,
+                    instance_id: inst.id.clone(),
+                    artifact_kind: ArtifactKind::Package,
+                    name: "jq".into(),
+                },
+            )
+            .await
+            .unwrap();
+        if changes {
+            *runner.current.lock().unwrap() = b.path().to_owned();
+        }
+        let result = adapter
+            .execute(&plan, Arc::new(VecSink::new()), 1, CancellationToken::new())
+            .await;
+        let writes = runner.writes.lock().unwrap().clone();
+        assert!(
+            !writes.contains(&b.path().to_owned()),
+            "must never uninstall the other prefix: {writes:?}; {result:?}"
+        );
+        if writes.is_empty() {
+            assert!(
+                changes
+                    && matches!(
+                        result,
+                        Err(AdapterError::Refused(_)) | Ok(Outcome::BanagerFailed(_))
+                    ),
+                "explicit stale-preview refusal: {result:?}"
+            );
+        } else {
+            assert_eq!(result.unwrap(), Outcome::Succeeded);
+            assert_eq!(writes, [a.path().to_owned()]);
+            assert!(
+                !adapter.reconcile(inst, &rows[0].key).await.unwrap().present,
+                "reconcile must read the same root A"
+            );
+            assert!(
+                adapter.inventory(inst).await.unwrap().is_empty(),
+                "inventory must remain bound to A"
+            );
+        }
+        assert!(runner.installed.lock().unwrap().contains(b.path()));
+    }
+
+    #[tokio::test]
+    #[ignore = "bug: G06: npm uninstall follows a changed global prefix instead of the previewed one"]
+    async fn f08_g06_changed_npm_prefix_never_removes_other_installation() {
+        f08_prefix_change(true).await;
+    }
+    #[tokio::test]
+    async fn f08_g06_unchanged_npm_prefix_removes_and_reconciles_same_root() {
+        f08_prefix_change(false).await;
+    }
 }
