@@ -10,10 +10,11 @@
 //! with numbers out of range, unexpected types and unknown keys in its
 //! JSON, plus inputs of its own: empty, a 10 MB line, 100,000 nested
 //! brackets, localised error messages. Every call runs under
-//! `catch_unwind` and against a time bound (`CALL_LIMIT` for one that
-//! returns; a watchdog ends the test process on one still running after
-//! `HANG_LIMIT`, so an endless loop fails the suite rather than hanging
-//! it), and what comes back must be a
+//! `catch_unwind` and against a budget of the CPU time it used
+//! (`CALL_LIMIT`, so that a parser gone quadratic fails whether or not
+//! the machine is busy), and a watchdog ends the test process on one
+//! still running after `HANG_LIMIT`, so an endless loop fails the suite
+//! rather than hanging it. What comes back must be a
 //! typed error or a sane value: no artifact, update or search hit with an
 //! empty name, no name or version with a control character (a newline
 //! among them).
@@ -49,15 +50,26 @@ impl Rng {
     }
 }
 
-/// How long one call may take. Generous for a debug build parsing 10 MB;
-/// a quadratic parser over a large input blows through it by orders of
-/// magnitude.
-const CALL_LIMIT: Duration = Duration::from_secs(3);
+/// How much CPU time one call may use. The heaviest call, 10 MB through
+/// the name lookups, uses about 1.1 s in a debug build, 1.9 s confined to
+/// an efficiency core; a quadratic parser over a large input blows
+/// through it by orders of magnitude -- uv's show-paths parser, when it
+/// filtered the whole list for every tool, took 56 s over 100,000 tools,
+/// under `HANG_LIMIT`, so only this budget catches a regression like it.
+///
+/// CPU time, not wall-clock time (`thread_cpu_time`): with every core
+/// busy, as when other test runs build beside this one, a call waits its
+/// turn for one, and calls of about 1 s took up to 4.7 s by the clock --
+/// time no parser spent.
+const CALL_LIMIT: Duration = Duration::from_secs(5);
 
-/// How long one call may take before the suite stops waiting for it. A
-/// call over `CALL_LIMIT` that returns is reported with the rest; one
-/// that never returns would hang `cargo test`, so a watchdog ends the
-/// test process instead, naming the parser and the input it was on.
+/// How long, by the clock, one call may run before the suite stops
+/// waiting for it. A call over `CALL_LIMIT` that returns is reported with
+/// the rest; one that never returns would hang `cargo test`, so a
+/// watchdog ends the test process instead, naming the parser and the
+/// input it was on. Wall-clock time, as a call that never returns cannot
+/// be asked what it used: generous, so that a busy machine does not end
+/// the suite over a call that would have returned.
 const HANG_LIMIT: Duration = Duration::from_secs(60);
 
 const TEN_MB: usize = 10 * 1024 * 1024;
@@ -409,6 +421,13 @@ impl Watchdog {
         Watchdog { state }
     }
 
+    /// Only parsing is watched, not validation or preparing the next input.
+    fn off(&self) {
+        if let Ok(mut state) = self.state.lock() {
+            *state = None;
+        }
+    }
+
     /// The call about to start.
     fn on(&self, label: &str) {
         if let Ok(mut state) = self.state.lock() {
@@ -425,9 +444,40 @@ struct Problem {
     what: String,
 }
 
+/// The CPU time this thread has used: what a call costs, whatever else
+/// the machine is doing. Time the thread spends waiting for a core, or
+/// asleep, is not in it.
+fn thread_cpu_time() -> Duration {
+    let mut now = libc::timespec {
+        tv_sec: 0,
+        tv_nsec: 0,
+    };
+    // SAFETY: `now` is a valid, writable `timespec`, which is all the call
+    // writes to.
+    let rc = unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut now) };
+    assert_eq!(
+        rc,
+        0,
+        "clock_gettime(CLOCK_THREAD_CPUTIME_ID): {}",
+        std::io::Error::last_os_error()
+    );
+    Duration::new(now.tv_sec as u64, now.tv_nsec as u32)
+}
+
 /// Runs `parse` over every input, collecting each panic, overlong call and
 /// absurd result. `sane` says what is absurd about a result.
 fn run<T>(
+    parser: &'static str,
+    inputs: &[(String, String)],
+    parse: impl Fn(&str) -> T,
+    sane: impl Fn(&T) -> Result<(), String>,
+) -> Vec<Problem> {
+    run_within(CALL_LIMIT, parser, inputs, parse, sane)
+}
+
+/// `run`, with `limit` of CPU time for each call.
+fn run_within<T>(
+    limit: Duration,
     parser: &'static str,
     inputs: &[(String, String)],
     parse: impl Fn(&str) -> T,
@@ -437,9 +487,10 @@ fn run<T>(
     let watchdog = Watchdog::start(parser);
     for (label, input) in inputs {
         watchdog.on(label);
-        let started = Instant::now();
+        let started = thread_cpu_time();
         let result = catch_unwind(AssertUnwindSafe(|| parse(input)));
-        let took = started.elapsed();
+        let took = thread_cpu_time().saturating_sub(started);
+        watchdog.off();
         let what = match result {
             Err(panic) => Some(format!(
                 "panicked: {}",
@@ -449,7 +500,7 @@ fn run<T>(
                     .or_else(|| panic.downcast_ref::<&str>().map(|s| s.to_string()))
                     .unwrap_or_default()
             )),
-            Ok(_) if took > CALL_LIMIT => Some(format!("took {took:?}")),
+            Ok(_) if took > limit => Some(format!("took {took:?} of CPU time")),
             Ok(value) => sane(&value).err(),
         };
         if let Some(what) = what {
@@ -1145,4 +1196,42 @@ fn the_harness_is_deterministic_and_covers_its_mutations() {
             "no input of kind {kind:?}"
         );
     }
+}
+
+/// The budget is CPU time: a call that computes past it is reported
+/// however idle the machine, and one that waits -- as a call does for a
+/// core on a busy machine -- is not, however long it waits.
+#[test]
+fn the_harness_counts_the_cpu_time_a_call_uses_not_the_time_it_waits() {
+    let limit = Duration::from_millis(50);
+    let inputs = [
+        ("computes".to_string(), "200".to_string()),
+        ("waits".to_string(), "wait 200".to_string()),
+        ("returns".to_string(), "0".to_string()),
+    ];
+    let problems = run_within(
+        limit,
+        "a parser that computes or waits",
+        &inputs,
+        |input| match input.strip_prefix("wait ") {
+            Some(ms) => std::thread::sleep(Duration::from_millis(ms.parse().unwrap())),
+            None => {
+                let started = thread_cpu_time();
+                let busy = Duration::from_millis(input.parse().unwrap());
+                let mut spun = 0u64;
+                while thread_cpu_time().saturating_sub(started) < busy {
+                    spun = std::hint::black_box(spun.wrapping_add(1));
+                }
+            }
+        },
+        |_| Ok(()),
+    );
+    let reported: Vec<(&str, &str)> = problems
+        .iter()
+        .map(|p| (p.input.as_str(), p.what.as_str()))
+        .collect();
+    assert_eq!(reported.len(), 1, "{reported:?}");
+    assert!(reported[0].0.starts_with("computes: "), "{reported:?}");
+    assert!(reported[0].1.starts_with("took "), "{reported:?}");
+    assert!(reported[0].1.ends_with(" of CPU time"), "{reported:?}");
 }
