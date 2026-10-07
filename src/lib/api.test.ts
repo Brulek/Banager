@@ -32,7 +32,8 @@ import {
   quitQuestionShown,
   quitAnyway,
 } from "./api";
-import type { ArtifactKey, IssuedPlan, OpRequest, Settings, Sizes, UiEvent, UnknownScan } from "./types";
+import type { ArtifactKey, IssuedPlan, OpRequest, OpSummary, Settings, Sizes, UiEvent, UnknownScan } from "./types";
+import { useUiStore } from "../store/ui";
 import { watchDock } from "../test/dock";
 
 const mockInvoke = vi.mocked(invoke);
@@ -489,5 +490,96 @@ describe("the notification plugin", () => {
     expect(capability.permissions.filter((p) => p.startsWith("notification:"))).toEqual([
       "notification:allow-is-permission-granted",
     ]);
+  });
+});
+
+
+describe("operation metadata retention", () => {
+  beforeEach(() => useUiStore.setState(useUiStore.getInitialState()));
+  function running(id: number): OpSummary {
+    return { id, status: "Running", instance_id: "cargo", artifact_kind: "Binary", name: "rg", kind: "Upgrade", outcome: null, argv_preview: ["cargo", "install", "ripgrep"], cancel_policy: "KillThenReconcile" };
+  }
+  function remember(id: number) {
+    const s = useUiStore.getState();
+    s.rememberUpdateTarget(id, "2.0");
+    s.rememberOpNames({ [id]: `tool-${id}` });
+    s.rememberOpFinished(id, 1000);
+    s.clearJustUpdated([id]);
+  }
+  it("retires all four maps after an authoritative list, preserving open logs and results", async () => {
+    for (let i = 1; i <= 2000; i++) remember(i);
+    useUiStore.getState().openLogRun([2, 3], 2);
+    useUiStore.getState().setUninstallBatch({ id: 1, items: [{ key: { instance_id: "cargo", kind: "Binary", name: "rg" }, name: "rg", opId: 4, after: [] }] });
+    mockInvoke.mockResolvedValueOnce([running(2000)]);
+    await listOperations();
+    const s = useUiStore.getState();
+    for (const map of [s.updateTargets, s.opNames, s.opFinishedAt]) expect(Object.keys(map)).toEqual(["2", "3", "4", "2000"]);
+    expect(s.clearedJustUpdated).toEqual([2, 3, 4, 2000]);
+    s.setDrawerOpen(false);
+    s.dismissUninstallBatch();
+    mockInvoke.mockResolvedValueOnce([]);
+    await listOperations();
+    expect(useUiStore.getState().updateTargets).toEqual({});
+  });
+  it("keeps metadata added while a list was in flight, then retires it on a fresh list", async () => {
+    let answer!: (ops: unknown[]) => void;
+    mockInvoke.mockImplementationOnce(() => new Promise(resolve => { answer = resolve; }));
+    const pending = listOperations();
+    remember(3000);
+    answer([]);
+    await pending;
+    expect(useUiStore.getState().updateTargets[3000]).toBe("2.0");
+    mockInvoke.mockResolvedValueOnce([]);
+    await listOperations();
+    expect(useUiStore.getState().updateTargets).toEqual({});
+  });
+  it("ignores an older list that answers after a newer list", async () => {
+    remember(4000);
+    let answer!: (ops: unknown[]) => void;
+    mockInvoke.mockImplementationOnce(() => new Promise(resolve => { answer = resolve; }));
+    const older = listOperations();
+    mockInvoke.mockResolvedValueOnce([running(4000)]);
+    await listOperations();
+    answer([]);
+    await older;
+    expect(useUiStore.getState().updateTargets[4000]).toBe("2.0");
+  });
+  it("keeps metadata on list failure and releases protection on submission failure", async () => {
+    remember(4001);
+    mockInvoke.mockRejectedValueOnce("list unavailable");
+    await expect(listOperations()).rejects.toThrow("list unavailable");
+    expect(useUiStore.getState().updateTargets[4001]).toBe("2.0");
+    mockInvoke.mockRejectedValueOnce("plan expired");
+    await expect(submitOperation("expired")).rejects.toThrow("plan expired");
+    mockInvoke.mockResolvedValueOnce([]);
+    await listOperations();
+    expect(useUiStore.getState().updateTargets).toEqual({});
+  });
+  it("leaves the store untouched when a list retires nothing", async () => {
+    remember(5000);
+    const before = useUiStore.getState();
+    const notified = vi.fn();
+    const unsubscribe = useUiStore.subscribe(notified);
+    mockInvoke.mockResolvedValueOnce([running(5000)]);
+    await listOperations();
+    unsubscribe();
+    // Every operations refetch lands here: a fresh `clearedJustUpdated`
+    // array each time re-rendered the Updates page for nothing.
+    expect(notified).not.toHaveBeenCalled();
+    expect(useUiStore.getState().clearedJustUpdated).toBe(before.clearedJustUpdated);
+  });
+  it("does not retire metadata while a submission response is pending", async () => {
+    let answer!: (id: number) => void;
+    mockInvoke.mockImplementationOnce(() => new Promise(resolve => { answer = resolve; }));
+    const pending = submitOperation("pending-plan");
+    remember(3001); // An event may arrive before submit_operation answers.
+    mockInvoke.mockResolvedValueOnce([]);
+    await listOperations();
+    expect(useUiStore.getState().opFinishedAt[3001]).toBe(1000);
+    answer(3001);
+    await pending;
+    mockInvoke.mockResolvedValueOnce([]);
+    await listOperations();
+    expect(useUiStore.getState().opFinishedAt).toEqual({});
   });
 });

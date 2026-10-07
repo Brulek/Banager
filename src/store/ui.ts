@@ -130,6 +130,8 @@ export interface UiState {
   // version it no longer offers, whose row gets its Update button back.
   updateTargets: Record<number, string>;
   rememberUpdateTarget(opId: number, target: string): void;
+  // Retire evicted IDs known before the list began, preserving open readers.
+  pruneOperationMetadata(current: ReadonlySet<number>, eligible: ReadonlySet<number>): void;
   // The name the lists showed for what each operation acts on, by
   // operation id (`useOperationName`): an operation carries only its key's
   // name -- `claude`, `visual-studio-code` -- and an uninstalled row, which
@@ -311,6 +313,35 @@ export const useUiStore = create<UiState>((set, get) => ({
       const given = new Set(keys.map(artifactKeyId));
       return { selectedUpdates: s.selectedUpdates.filter((id) => !given.has(id)) };
     }),
+  pruneOperationMetadata: (current, eligible) => set((s) => {
+    const keep = new Set(current);
+    if (s.drawerOpen) {
+      if (s.focusedOpId !== null) keep.add(s.focusedOpId);
+      for (const id of s.logRun) keep.add(id);
+    }
+    for (const item of s.uninstallBatch?.items ?? []) if (item.opId !== null) keep.add(item.opId);
+    const retained = (id: number) => !eligible.has(id) || keep.has(id);
+    function prune<T>(map: Record<number, T>): Record<number, T> {
+      const entries = Object.entries(map);
+      const kept = entries.filter(([id]) => retained(Number(id)));
+      return kept.length === entries.length ? map : Object.fromEntries(kept);
+    }
+    const cleared = s.clearedJustUpdated.filter(retained);
+    const next = {
+      updateTargets: prune(s.updateTargets),
+      opNames: prune(s.opNames),
+      opFinishedAt: prune(s.opFinishedAt),
+      clearedJustUpdated: cleared.length === s.clearedJustUpdated.length ? s.clearedJustUpdated : cleared,
+    };
+    // Nothing retired: the same state, so no subscriber hears of it --
+    // every operations refetch ends here.
+    const unchanged =
+      next.updateTargets === s.updateTargets &&
+      next.opNames === s.opNames &&
+      next.opFinishedAt === s.opFinishedAt &&
+      next.clearedJustUpdated === s.clearedJustUpdated;
+    return unchanged ? s : next;
+  }),
   updateTargets: {},
   rememberUpdateTarget: (opId, target) =>
     set((s) => ({ updateTargets: { ...s.updateTargets, [opId]: target } })),

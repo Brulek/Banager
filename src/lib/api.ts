@@ -1,3 +1,4 @@
+import { useUiStore } from "../store/ui";
 import { invoke, Channel, type InvokeArgs } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -55,16 +56,37 @@ export function planOperation(request: OpRequest): Promise<IssuedPlan> {
   return call<IssuedPlan>("plan_operation", { request });
 }
 
-export function submitOperation(planId: PlanId): Promise<number> {
-  return call<number>("submit_operation", { planId });
+let pendingSubmissions = 0;
+let operationListsStarted = 0;
+
+export async function submitOperation(planId: PlanId): Promise<number> {
+  pendingSubmissions += 1;
+  try {
+    return await call<number>("submit_operation", { planId });
+  } finally {
+    pendingSubmissions -= 1;
+  }
 }
 
 export function cancelOperation(opId: number): Promise<void> {
   return call<void>("cancel_operation", { opId });
 }
 
-export function listOperations(): Promise<OpSummary[]> {
-  return call<OpSummary[]>("list_operations");
+export async function listOperations(): Promise<OpSummary[]> {
+  const sequence = ++operationListsStarted;
+  const submissionPending = pendingSubmissions > 0;
+  const s = useUiStore.getState();
+  // Only retire IDs already known when this request began. Events and
+  // submission responses can add metadata while the list is in flight.
+  const eligible = new Set([
+    ...Object.keys(s.updateTargets), ...Object.keys(s.opNames),
+    ...Object.keys(s.opFinishedAt), ...s.clearedJustUpdated,
+  ].map(Number));
+  const operations = await call<OpSummary[]>("list_operations");
+  if (!submissionPending && pendingSubmissions === 0 && sequence === operationListsStarted) {
+    useUiStore.getState().pruneOperationMetadata(new Set(operations.map(op => op.id)), eligible);
+  }
+  return operations;
 }
 
 export function getSettings(): Promise<Settings> {
