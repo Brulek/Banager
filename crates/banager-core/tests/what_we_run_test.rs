@@ -2283,12 +2283,20 @@ fn test_what_we_run_never_list_says_a_previewed_update_no_longer_offered_may_sti
         .find(|bullet| bullet.starts_with("Never lets the window ask for an install"))
         .expect("the never-list's bullet that the window never asks for an install");
     for words in [
-        "Nor by another name: the window may ask for an upgrade only of an update the last check listed, or of one it previewed less than ten minutes before whose tool the last check still lists installed under the same source, kind and name, aimed at the version it was offered then (When commands run)",
-        "(`Session::issue_listed_plan`)",
+        "Nor by another name: the window may ask for an upgrade only of an update the last check listed, or of one the window previewed less than ten minutes before whose tool the last check still lists installed under the same source, kind and name, aimed at the version offered then (When commands run); for an uninstall only of a tool the last check listed installed; and for a link only of a formula a source's reason offers (`Session::issue_listed_plan`)",
     ] {
         assert!(
             bullet.contains(words),
             "the never-list's bullet on asking for an install does not say {words:?}: {bullet}"
+        );
+    }
+    // Each "it" named a different subject -- the window that previewed,
+    // the check that listed -- three clauses apart: each is named.
+    for unclear in ["of one it previewed", "of a tool it listed installed"] {
+        assert!(
+            !bullet.contains(unclear),
+            "the never-list's bullet on asking for an install still says {unclear:?}, whose \
+             \"it\" reads as the window: {bullet}"
         );
     }
     let when = section_body(&doc, "When commands run").expect("a `## When commands run` section");
