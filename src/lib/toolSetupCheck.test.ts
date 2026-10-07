@@ -15,6 +15,7 @@ import { NO_FACTS } from "./types";
 
 const en = i18n.getFixedT("en");
 const zh = i18n.getFixedT("zh-CN");
+const zhHant = i18n.getFixedT("zh-Hant");
 
 function instance(id: string, more: Partial<ManagerInstance> = {}): ManagerInstance {
   return {
@@ -61,6 +62,7 @@ const INTEL = "brew:/usr/local";
 const NPM = "npm:/opt/homebrew";
 const OLLAMA = "ollama:http://127.0.0.1:11434";
 const CLAUDE = "standalone-claude:/Users/alice/.local/bin/claude";
+const CODEX = "standalone-codex:/Users/alice/.local/bin/codex";
 
 const runs = (name: string): CommandFact => ({ name, state: "Runs" });
 const notOnPath = (name: string): CommandFact => ({ name, state: { NotOnPath: { dir: "~/.npm-global/bin" } } });
@@ -359,14 +361,33 @@ describe("toolSetupCheck's command lines", () => {
     const check = toolSetupCheck(zh, input({ snapshot: twinsSnapshot() }));
     expect(shape(check)["命令"]).toEqual([
       "warning 1个工具在终端里找不到 → installed:notOnPath",
-      "note 1个工具装了不止一份 → installed:twins",
+      "note 1个工具装了不止一份，共2份 → installed:twins",
     ]);
     expect(lineOf(check, "commands", "notOnPath").detail).toBe(zh("notOnPathMore.detailOne"));
     expect(lineOf(check, "commands", "twins").detail).toMatch(/只会运行其中一份/);
     expect(shape(toolSetupCheck(en, input({ snapshot: twinsSnapshot() })))["Commands"]).toEqual([
       "warning 1 tool can't be found in Terminal → installed:notOnPath",
-      "note 1 tool is installed more than once → installed:twins",
+      "note 1 tool is installed more than once, 2 copies in all → installed:twins",
     ]);
+  });
+
+  it("says how many copies the tools installed more than once are, the rows its 查看 lists (r24 W3)", () => {
+    // Claude Code twice, and Codex three times: two tools, five copies --
+    // the five rows 「装了不止一份（5）」 shows.
+    const snapshot = twinsSnapshot();
+    snapshot.instances.push(instance(CODEX));
+    snapshot.artifacts.push(
+      artifact({ instance_id: NPM, kind: "Package", name: "@openai/codex" }, { family: "codex", commands: [runs("codex")] }),
+      artifact({ instance_id: BREW, kind: "Cask", name: "codex" }, { family: "codex", commands: [runs("codex")] }),
+      artifact({ instance_id: CODEX, kind: "Binary", name: "codex" }, { family: "codex", commands: [runs("codex")] }),
+    );
+    expect(lineOf(toolSetupCheck(zh, input({ snapshot })), "commands", "twins").text).toBe("2个工具装了不止一份，共5份");
+    expect(lineOf(toolSetupCheck(en, input({ snapshot })), "commands", "twins").text).toBe(
+      "2 tools are installed more than once, 5 copies in all",
+    );
+    expect(lineOf(toolSetupCheck(zhHant, input({ snapshot })), "commands", "twins").text).toBe(
+      "2個工具裝了不止一份，共5份",
+    );
   });
 
   it("says which half is fine when only the other is not", () => {
@@ -374,7 +395,7 @@ describe("toolSetupCheck's command lines", () => {
     snapshot.artifacts[2] = artifact(snapshot.artifacts[2].key, { family: "claude-code", commands: [runs("claude")] });
     expect(shape(toolSetupCheck(en, input({ snapshot })))["Commands"]).toEqual([
       "fine Terminal finds every installed tool",
-      "note 1 tool is installed more than once → installed:twins",
+      "note 1 tool is installed more than once, 2 copies in all → installed:twins",
     ]);
     const lone = fineSnapshot();
     lone.artifacts.push(
@@ -394,7 +415,7 @@ describe("toolSetupCheck's command lines", () => {
     // The names are still there: two copies can still be told apart.
     expect(shape(toolSetupCheck(zh, input({ snapshot })))["命令"]).toEqual([
       "note 终端找不到：这次没有判断",
-      "note 1个工具装了不止一份 → installed:twins",
+      "note 1个工具装了不止一份，共2份 → installed:twins",
     ]);
     for (const a of snapshot.artifacts) a.facts = { ...a.facts, commands: [] };
     expect(shape(toolSetupCheck(en, input({ snapshot })))["Commands"]).toEqual([

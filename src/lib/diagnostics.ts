@@ -28,7 +28,7 @@ import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { create } from "zustand";
 import { getSystemFacts } from "./api";
-import { twinsByArtifact } from "./commands";
+import { twinsByArtifact, type Twin } from "./commands";
 import { commandsKnown, toolsNotJudged } from "./commandsKnown";
 import { updatesUnchecked } from "./uncheckedStandalone";
 import { useSizes, useSnapshot } from "./queries";
@@ -160,14 +160,31 @@ function notFoundInTerminal(artifact: InstalledArtifact): boolean {
  * Claude Code from npm and from its own installer) counts once however many
  * of its copies there are, not once a copy as `twinsByArtifact` keys them.
  */
-export function toolsInstalledTwice(artifacts: readonly InstalledArtifact[]): number {
+export function toolsInstalledTwice(
+  artifacts: readonly InstalledArtifact[],
+  twins: ReadonlyMap<string, Twin[]> = twinsByArtifact(artifacts),
+): number {
   const families = new Set<string>();
-  for (const twins of twinsByArtifact(artifacts).values()) {
+  for (const copies of twins.values()) {
     // Every twin is of the artifact's own family (`twinsByArtifact` pairs within one).
-    const family = twins[0]?.artifact.facts.family;
+    const family = copies[0]?.artifact.facts.family;
     if (family != null) families.add(family);
   }
   return families.size;
+}
+
+/**
+ * How many copies those tools are, all told: every copy `twinsByArtifact`
+ * keys, which is every row the Installed page's 「装了不止一份」 shows, and
+ * the number beside it (「装了不止一份（2）」). Check Tool Setup says it
+ * after `toolsInstalledTwice` -- 「1个工具装了不止一份，共2份」 -- so that
+ * the list its 查看 opens counts what the sheet said (r24 W3).
+ */
+export function copiesOfToolsInstalledTwice(
+  artifacts: readonly InstalledArtifact[],
+  twins: ReadonlyMap<string, Twin[]> = twinsByArtifact(artifacts),
+): number {
+  return twins.size;
 }
 
 /**

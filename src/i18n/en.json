@@ -1412,8 +1412,8 @@
     "commands": {
       "allFine": "Terminal finds every installed tool, and none is installed more than once",
       "notOnPathFine": "Terminal finds every installed tool",
-      "twins_one": "{{count}} tool is installed more than once",
-      "twins_other": "{{count}} tools are installed more than once",
+      "twins_one": "{{count}} tool is installed more than once, {{copies}} copies in all",
+      "twins_other": "{{count}} tools are installed more than once, {{copies}} copies in all",
       "twinsDetail": "Different sources each installed a copy of the same tool. Typing its command in Terminal runs only one of them.",
       "twinsFine": "No tool is installed more than once"
     },

@@ -20,7 +20,8 @@
  */
 import { create } from "zustand";
 import { commandsKnown, toolsNamesIncomplete, toolsNotJudged } from "./commandsKnown";
-import { sourceStateWords, toolsInstalledTwice, type Translate } from "./diagnostics";
+import { copiesOfToolsInstalledTwice, sourceStateWords, toolsInstalledTwice, type Translate } from "./diagnostics";
+import { twinsByArtifact } from "./commands";
 import { discoverCounts, keepsOtherVersions, notOnPathDetailKey, type DiscoverShow } from "./families";
 import { modelsTotalText } from "./sizes";
 import { sizeTotalsOf, sourceTotalText, type SizeTotal } from "./sizeTotals";
@@ -267,8 +268,9 @@ function sourceLines(t: Translate, input: ToolSetupInput): SetupLine[] {
 
 /**
  * 「命令」: how many tools Terminal cannot find, and how many are installed
- * more than once, each with 查看 to the Installed page's choice that lists
- * them -- or, where the check did not look at the commands, that it did
+ * more than once and how many copies those are (「1个工具装了不止一份，共2
+ * 份」: the list the choice shows has a row a copy), each with 查看 to the
+ * Installed page's choice that lists them -- or, where the check did not look at the commands, that it did
  * not (`commandsKnown`), as the diagnostic text says it. Where it looked at
  * some tools' commands and not at others' (`toolsNotJudged`), 「终端都能找到」
  * is said of the tools checked, and how many it could not check under it:
@@ -291,7 +293,8 @@ function commandLines(t: Translate, input: ToolSetupInput): SetupLine[] {
   const verdicts = commandsKnown(artifacts, false, "verdicts") === "known";
   const names = commandsKnown(artifacts, false, "names") === "known";
   const notOnPath = discoverCounts(artifacts).notOnPath;
-  const twins = toolsInstalledTwice(artifacts);
+  const copiesOf = twinsByArtifact(artifacts);
+  const twins = toolsInstalledTwice(artifacts, copiesOf);
   const notJudged = verdicts ? toolsNotJudged(artifacts) : 0;
   // Tools some of whose commands could not be listed: the twins found are
   // among the others only.
@@ -330,10 +333,15 @@ function commandLines(t: Translate, input: ToolSetupInput): SetupLine[] {
     lines.push(line("twins", "note", t("commandsKnown.twinsUnknown")));
   } else if (twins > 0) {
     lines.push(
-      line("twins", "note", t("setupCheck.commands.twins", { count: twins }), {
-        detail: t("setupCheck.commands.twinsDetail"),
-        view: { kind: "installed", show: "twins" },
-      }),
+      // How many tools, and how many copies they are: the copies are what
+      // 查看 lists, a row each, and what its 「装了不止一份（2）」 counts --
+      // never "1 tool" here over "2 of 61 tools" there (r24 W3).
+      line(
+        "twins",
+        "note",
+        t("setupCheck.commands.twins", { count: twins, copies: copiesOfToolsInstalledTwice(artifacts, copiesOf) }),
+        { detail: t("setupCheck.commands.twinsDetail"), view: { kind: "installed", show: "twins" } },
+      ),
     );
   } else {
     lines.push(

@@ -1294,7 +1294,7 @@
     "commands": {
       "allFine": "終端機都能找到已安裝的工具，也沒有裝了不止一份的",
       "notOnPathFine": "終端機都能找到已安裝的工具",
-      "twins_other": "{{count}}個工具裝了不止一份",
+      "twins_other": "{{count}}個工具裝了不止一份，共{{copies}}份",
       "twinsDetail": "同一個工具由不同的來源各裝了一份。在終端機裡輸入它的指令，只會執行其中一份。",
       "twinsFine": "沒有裝了不止一份的工具"
     },

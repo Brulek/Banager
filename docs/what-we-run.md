@@ -4457,7 +4457,8 @@ Check Tool Setup (「检查工具环境」), in the Help menu, on the Overview a
 Diagnostic Info in Settings' Diagnostics group, opens a sheet that says the same facts
 in sentences: whether the login shell's `PATH` was read, how many of its
 folders the last check read and how many it could not, each source's
-status, how many tools Terminal cannot find or has twice, what Homebrew
+status, how many tools Terminal cannot find or has twice (and how many
+copies those are, the rows its Show in Installed lists), what Homebrew
 disabled, deprecated or keeps other versions of, and the disk measured. It
 is built from the same `get_system_facts` answer and the snapshot and sizes
 the window holds; the folder counts, and the unread folders' paths that it
