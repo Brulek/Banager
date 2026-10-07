@@ -609,10 +609,11 @@ impl UvAdapter {
                     }
                     // A list that did not answer -- uv gone (as between
                     // `brew upgrade uv`'s unlink and link), failing, or not
-                    // in time -- ends as running uv would have, with
-                    // nothing written; only an answer that no longer reads
-                    // as the preview did is a change (r20 R20-2).
-                    let output = match super::read_before_run(read)? {
+                    // in time -- ends as uv's own failure would, its stderr
+                    // in the log, with nothing written; only an answer
+                    // that no longer reads as the preview did is a change
+                    // (r20 R20-2).
+                    let output = match super::read_before_run(read, sink.as_ref(), op_id)? {
                         super::ReadBeforeRun::Answered(output) => output,
                         super::ReadBeforeRun::Ends(outcome) => return Ok(outcome),
                     };
@@ -1705,36 +1706,76 @@ ruff v0.15.0 (/Users/someone/.local/share/uv/tools/ruff)
         );
     }
 
+    /// A uv at `dir/bin/uv` -- the test's own, never this Mac's -- whose
+    /// `tool list --show-paths` lists ruff at `version` in `dir`, ruff's
+    /// receipt `receipt`: the instance, and the runner answering for it.
+    fn own_uv(
+        dir: &std::path::Path,
+        version: &str,
+        receipt: &str,
+    ) -> (ManagerInstance, Arc<MockRunner>) {
+        std::fs::write(dir.join("uv-receipt.toml"), receipt).unwrap();
+        let inst = ManagerInstance {
+            exe_path: dir.join("bin/uv"),
+            prefix: dir.join("bin"),
+            ..test_instance()
+        };
+        let runner = Arc::new(MockRunner::new());
+        list_ruff(&runner, &inst, dir, version);
+        (inst, runner)
+    }
+
+    /// `inst`'s uv lists ruff at `version`, its environment `dir`.
+    fn list_ruff(
+        runner: &MockRunner,
+        inst: &ManagerInstance,
+        dir: &std::path::Path,
+        version: &str,
+    ) {
+        runner.respond(
+            vec![
+                inst.exe_path.to_str().unwrap(),
+                "tool",
+                "list",
+                "--show-paths",
+            ],
+            CommandOutput {
+                stderr_cause: Default::default(),
+                exit_code: Some(0),
+                stdout: format!("ruff v{version} ({})\n", dir.display()),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+    }
+
     /// ruff updated another way before its turn (`uv tool upgrade` in
     /// Terminal): the list's version moved, the receipt did not. The saved
     /// upgrade runs as previewed, and the readings around it say it was
     /// already updated (r20 R20-1).
     #[tokio::test]
     async fn r20_uv_version_moved_keeps_the_saved_plan() {
-        let (dir, runner) = receipt_runner();
+        let dir = tempfile::tempdir().unwrap();
+        let (inst, runner) = own_uv(
+            dir.path(),
+            "0.15.0",
+            "[tool]\nrequirements = [{name = 'ruff'}]\n",
+        );
+        let uv = inst.exe_path.to_str().unwrap().to_string();
         let adapter = UvAdapter::new(runner.clone());
         let plan = adapter
-            .plan(&test_instance(), &request(OpKind::Upgrade))
+            .plan(&inst, &request(OpKind::Upgrade))
             .await
             .unwrap();
-        runner.respond(
-            vec!["/opt/homebrew/bin/uv", "tool", "list", "--show-paths"],
-            CommandOutput {
-                stderr_cause: Default::default(),
-                exit_code: Some(0),
-                stdout: format!("ruff v0.16.8 ({})\n", dir.path().display()),
-                stderr: String::new(),
-                timed_out: false,
-                cancelled: false,
-            },
-        );
+        list_ruff(&runner, &inst, dir.path(), "0.16.8");
         let again = adapter
-            .plan(&test_instance(), &request(OpKind::Upgrade))
+            .plan(&inst, &request(OpKind::Upgrade))
             .await
             .unwrap();
         assert_eq!((&again.action, &again.basis), (&plan.action, &plan.basis));
         runner.respond(
-            vec!["/opt/homebrew/bin/uv", "tool", "upgrade", "ruff"],
+            vec![&uv, "tool", "upgrade", "ruff"],
             CommandOutput {
                 stderr_cause: Default::default(),
                 exit_code: Some(0),
@@ -1755,7 +1796,7 @@ ruff v0.15.0 (/Users/someone/.local/share/uv/tools/ruff)
         assert_eq!(result.unwrap(), Outcome::Succeeded);
         assert_eq!(
             runner.calls().last().unwrap(),
-            &["/opt/homebrew/bin/uv", "tool", "upgrade", "ruff"]
+            &[uv.as_str(), "tool", "upgrade", "ruff"]
         );
     }
 

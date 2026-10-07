@@ -13,7 +13,12 @@ import { TRY_AGAIN_KEYS, subtitleStep } from "./FailureNextStep";
  * none of its lines any more -- it keeps the newest 2,000, and a reloaded
  * web view keeps none -- or null. Only a summary that is not empty: its
  * words were lines the log once had, so "no longer available" is true; a
- * tool that wrote nothing to stderr may have written nothing at all.
+ * tool that wrote nothing to stderr may have written nothing at all. The
+ * core puts a failure's words in the log before its outcome: a command's
+ * stderr as it runs (`run_plan`), the stderr of the read npm and uv take
+ * before a command when it ends the operation (`read_before_run`, both in
+ * crates/banager-core/src/adapters/mod.rs), and macOS's refusal to move a
+ * path to the Trash as a note (`removal::execute_removal`).
  */
 export function missingLogSummary(op: OpSummary, logs: readonly LogEntry[]): string | null {
   if (op.status !== "Done") return null;

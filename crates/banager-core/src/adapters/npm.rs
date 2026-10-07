@@ -628,13 +628,15 @@ impl NpmAdapter {
             return Ok(Outcome::Cancelled);
         }
         // A read that did not answer -- npm gone, its launcher finding no
-        // `node`, no answer in time -- ends as running npm would have,
-        // with nothing written; only another (or an empty or relative)
-        // prefix is a change since the preview (r20 R20-2).
-        let output = match super::read_before_run(read.map_err(AdapterError::from))? {
-            super::ReadBeforeRun::Answered(output) => output,
-            super::ReadBeforeRun::Ends(outcome) => return Ok(outcome),
-        };
+        // `node`, no answer in time -- ends as npm's own failure would,
+        // its stderr in the log, with nothing written; only another (or
+        // an empty or relative) prefix is a change since the preview
+        // (r20 R20-2).
+        let output =
+            match super::read_before_run(read.map_err(AdapterError::from), sink.as_ref(), op_id)? {
+                super::ReadBeforeRun::Answered(output) => output,
+                super::ReadBeforeRun::Ends(outcome) => return Ok(outcome),
+            };
         if Path::new(output.stdout.trim()) != prefix {
             return Ok(refused);
         }
@@ -2930,7 +2932,7 @@ mod tests {
                     Outcome::Failed {
                         exit_code: None,
                         summary: String::new(),
-                        cause: None,
+                        cause: Some(crate::history::FailureCause::TimedOut),
                     }
                 ),
                 _ => assert!(
@@ -2975,8 +2977,11 @@ mod tests {
     async fn f08_g06_unchanged_npm_prefix_removes_and_reconciles_same_root() {
         f08_prefix_change(false).await;
     }
+    /// A prefix read that answers with no usable prefix refuses the plan;
+    /// one that fails or runs out of time ends as npm's own failure (r20
+    /// R20-2). Neither writes anything.
     #[tokio::test]
-    async fn f30b_npm_unanswered_prefix_refuses_without_a_write() {
+    async fn f30b_npm_prefix_read_with_no_usable_answer_writes_nothing() {
         for change in ["failed", "empty", "relative", "timeout"] {
             f30b_prefix_change(change).await;
         }

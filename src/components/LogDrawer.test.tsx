@@ -1226,6 +1226,43 @@ describe("evicted failure log", () => {
     expect(view.queryByRole("button", { name: i18n.t("failureRecovery.details") })).toBeNull();
   });
 
+  // The read npm and uv take right before a confirmed command, when it
+  // ends the operation (r20 R20-2, review of g1): the core sends its
+  // stderr lines to the log before the outcome, and a deadline that
+  // stopped it as `timedOut` (`read_before_run` in
+  // crates/banager-core/src/adapters/mod.rs).
+  const npmOp: OpSummary = {
+    ...runningOp,
+    kind: "Upgrade",
+    instance_id: "npm:/opt/homebrew",
+    artifact_kind: "Package",
+    name: "typescript",
+    status: "Done",
+    argv_preview: ["/opt/homebrew/bin/npm", "install", "-g", "typescript@latest", "--prefix", "/opt/homebrew"],
+  };
+
+  it("says no log was lost for a read before the command that failed in its own words", async () => {
+    const line = "env: node: No such file or directory";
+    operations = [{ ...npmOp, outcome: { Failed: { exit_code: 127, summary: line, cause: "notFound" } } }];
+    useUiStore.getState().appendLog({ opId: 1, stream: "Stderr", line });
+    const view = renderWithProviders(<LogDrawer />);
+    const dialog = await view.findByRole("dialog");
+    await waitFor(() => expect(within(dialog).getByRole("log")).toHaveTextContent(line));
+    expect(view.queryByText(i18n.t("failureRecovery.logGone"))).toBeNull();
+    expect(dialog).toHaveTextContent("The lines above are the error message from npm itself.");
+    expect(view.getByRole("button", { name: i18n.t("operations.copyLog") })).toBeEnabled();
+  });
+
+  it("says a read before the command that ran out of time took too long, pointing at no empty log", async () => {
+    operations = [{ ...npmOp, outcome: { Failed: { exit_code: null, summary: "", cause: "timedOut" } } }];
+    const view = renderWithProviders(<LogDrawer />);
+    const dialog = await view.findByRole("dialog");
+    await waitFor(() => expect(dialog).toHaveTextContent("Update · Took too long"));
+    expect(dialog).toHaveTextContent(i18n.t("failureMore.next.timedOut"));
+    expect(view.queryByText(i18n.t("operations.outcome.FailedSilentDetail"))).toBeNull();
+    expect(view.queryByText(i18n.t("failureRecovery.logGone"))).toBeNull();
+  });
+
   it("closes the details again for the next log of a run", async () => {
     const failedWith = (id: number, summary: string): OpSummary => ({
       ...runningOp, id, kind: "Upgrade", name: `tool${id}`, status: "Done",

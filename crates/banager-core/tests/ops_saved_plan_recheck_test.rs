@@ -20,10 +20,11 @@
 //! program is gone, its launcher cannot start (`env: node: No such file
 //! or directory`, npm's `#!/usr/bin/env node` with no `node`), or it ran
 //! out of time -- nothing changed after the confirmation: the operation
-//! ends as running its command would have, with the runner's error or the
-//! read's own exit and words, and nothing written. Only a read that
-//! answers with something else (another prefix, a changed receipt) is
-//! "changed since shown".
+//! ends as the program's own failure would, with the runner's error or
+//! the read's own exit and words (its stderr in the operation's log, as
+//! a command's is), or as taking too long, and nothing written. Only a
+//! read that answers with something else (another prefix, a changed
+//! receipt) is "changed since shown".
 //!
 //! Every program sits inside the test's own temp folder, so nothing here
 //! reads this Mac's Homebrew or home.
@@ -33,7 +34,7 @@ use banager_core::adapters::cargo::CargoAdapter;
 use banager_core::adapters::npm::NpmAdapter;
 use banager_core::adapters::uv::UvAdapter;
 use banager_core::adapters::Adapter;
-use banager_core::events::VecSink;
+use banager_core::events::{OperationEvent, Stream, VecSink};
 use banager_core::history::FailureCause;
 use banager_core::http::MockHttpClient;
 use banager_core::model::{
@@ -185,10 +186,17 @@ fn request(
     }
 }
 
+/// How a confirmed operation ended: its outcome, how it was already
+/// updated, and the lines its log was given (the window's operation log).
+struct Ran {
+    outcome: Outcome,
+    how: Option<AlreadyUpdated>,
+    log: Vec<(Stream, String)>,
+}
+
 /// Plans `request`, hands the plan to `script` (to script its command),
 /// runs `between` (what happened on the Mac after the confirmation), then
-/// submits the plan toward `target` through a fresh `OperationManager`:
-/// its outcome, and how it was already updated.
+/// submits the plan toward `target` through a fresh `OperationManager`.
 async fn confirm_then_run(
     adapter: Arc<dyn Adapter>,
     inst: &ManagerInstance,
@@ -196,8 +204,9 @@ async fn confirm_then_run(
     target: Option<&str>,
     script: impl FnOnce(&Plan),
     between: impl FnOnce(),
-) -> (Outcome, Option<AlreadyUpdated>) {
-    let mut manager = OperationManager::new(Arc::new(VecSink::new()));
+) -> Ran {
+    let sink = Arc::new(VecSink::new());
+    let mut manager = OperationManager::new(sink.clone());
     manager.register_adapter(adapter.clone());
     let manager = Arc::new(manager);
     manager.register_instance(inst.clone());
@@ -212,7 +221,19 @@ async fn confirm_then_run(
         .find(|s| s.id == op_id)
         .expect("the operation is listed")
         .already_updated;
-    (outcome, how)
+    let log = sink
+        .snapshot()
+        .into_iter()
+        .filter_map(|event| match event {
+            OperationEvent::Log {
+                op_id: id,
+                stream,
+                line,
+            } if id == op_id => Some((stream, line)),
+            _ => None,
+        })
+        .collect();
+    Ran { outcome, how, log }
 }
 
 // --- uv -------------------------------------------------------------------
@@ -239,10 +260,7 @@ fn uv_setup(dir: &Path) -> (ManagerInstance, std::path::PathBuf) {
     std::fs::create_dir_all(&env).unwrap();
     std::fs::write(
         env.join("uv-receipt.toml"),
-        format!(
-            "[tool]\nrequirements = [{{ name = \"ruff\" }}]\nentrypoints = [\n    {{ name = \"ruff\", install-path = \"{}/bin/ruff\", from = \"ruff\" }},\n]\n\n[tool.options]\nexclude-newer-package = {{}}\n",
-            dir.display()
-        ),
+        ruff_receipt(dir, &[("ruff", "ruff")]),
     )
     .unwrap();
     let inst = ManagerInstance {
@@ -254,12 +272,15 @@ fn uv_setup(dir: &Path) -> (ManagerInstance, std::path::PathBuf) {
     (inst, env)
 }
 
-#[tokio::test]
-async fn test_a_uv_tool_at_its_target_before_its_turn_was_already_updated() {
-    // ruff confirmed at 0.15.0 toward 0.16.8 (the recorded
-    // `tool list --outdated`'s latest); before its turn a `uv tool
-    // upgrade ruff` in Terminal brought it to 0.16.8. uv rewrites the
-    // receipt as it was; only the version in the list moved.
+/// ruff confirmed at 0.15.0 toward 0.16.8 (the recorded `tool list
+/// --outdated`'s latest); before its turn a `uv tool upgrade ruff` in
+/// Terminal brought it to 0.16.8 and wrote its receipt again, which
+/// `rewrite` does to the receipt `uv_setup` wrote (`dir`, then ruff's
+/// environment): the outcome, how it was already updated, and how many
+/// upgrade commands ran.
+async fn ruff_updated_in_terminal(
+    rewrite: impl FnOnce(&Path, &Path),
+) -> (Outcome, Option<AlreadyUpdated>, usize) {
     let dir = tempfile::tempdir().unwrap();
     let (inst, env) = uv_setup(dir.path());
     let uv = inst.exe_path.to_str().unwrap().to_string();
@@ -274,22 +295,55 @@ async fn test_a_uv_tool_at_its_target_before_its_turn_was_already_updated() {
         ],
     );
     runner.script(&upgrade, vec![exited(0, "", "Nothing to upgrade\n")]);
-    let (outcome, how) = confirm_then_run(
+    let ran = confirm_then_run(
         Arc::new(UvAdapter::new(runner.clone())),
         &inst,
         request(&inst, OpKind::Upgrade, ArtifactKind::Tool, "ruff"),
         Some("0.16.8"),
         |_| {},
-        || {},
+        || rewrite(dir.path(), &env),
     )
     .await;
-    assert_eq!(outcome, Outcome::Succeeded, "{:?}", runner.calls());
-    assert_eq!(how, Some(AlreadyUpdated::BeforeItsTurn));
     let upgrades = runner
         .calls()
         .into_iter()
         .filter(|call| call.iter().any(|arg| arg == "upgrade"))
         .count();
+    (ran.outcome, ran.how, upgrades)
+}
+
+/// ruff's receipt as `uv_setup` writes it, with `entrypoints` in its
+/// place: what uv writes after an upgrade, the commands it installed
+/// for the version it installed (`finalize_tool_install`).
+fn ruff_receipt(dir: &Path, entrypoints: &[(&str, &str)]) -> String {
+    let entrypoints: String = entrypoints
+        .iter()
+        .map(|(name, from)| {
+            format!(
+                "    {{ name = \"{name}\", install-path = \"{}/bin/{name}\", from = \"{from}\" }},\n",
+                dir.display()
+            )
+        })
+        .collect();
+    format!(
+        "[tool]\nrequirements = [{{ name = \"ruff\" }}]\nentrypoints = [\n{entrypoints}]\n\n[tool.options]\nexclude-newer-package = {{}}\n"
+    )
+}
+
+#[tokio::test]
+async fn test_a_uv_tool_at_its_target_before_its_turn_was_already_updated() {
+    // uv wrote the receipt again as it was; only the version in the list
+    // moved.
+    let (outcome, how, upgrades) = ruff_updated_in_terminal(|dir, env| {
+        std::fs::write(
+            env.join("uv-receipt.toml"),
+            ruff_receipt(dir, &[("ruff", "ruff")]),
+        )
+        .unwrap()
+    })
+    .await;
+    assert_eq!(outcome, Outcome::Succeeded, "{how:?}");
+    assert_eq!(how, Some(AlreadyUpdated::BeforeItsTurn));
     assert_eq!(upgrades, 1, "the confirmed command ran, as previewed");
 }
 
@@ -335,7 +389,7 @@ async fn hexyl_updated_in_terminal(release: &str) -> (Outcome, Option<AlreadyUpd
     };
     let runner = Arc::new(ScriptedRunner::default());
     let scripted = runner.clone();
-    let (outcome, how) = confirm_then_run(
+    let ran = confirm_then_run(
         Arc::new(CargoAdapter::new(
             runner.clone(),
             Arc::new(MockHttpClient::new()),
@@ -358,7 +412,7 @@ async fn hexyl_updated_in_terminal(release: &str) -> (Outcome, Option<AlreadyUpd
         || write_hexyl(&root, "0.18.0", release),
     )
     .await;
-    (outcome, how, runner.calls().len())
+    (ran.outcome, ran.how, runner.calls().len())
 }
 
 #[tokio::test]
@@ -394,9 +448,9 @@ fn npm_instance(dir: &Path) -> ManagerInstance {
 
 /// typescript's update toward 5.9.3, confirmed while npm answered, run
 /// with `runner` answering as the Mac does when its turn comes.
-async fn npm_update(dir: &Path, runner: &Arc<ScriptedRunner>) -> Outcome {
+async fn npm_update(dir: &Path, runner: &Arc<ScriptedRunner>) -> Ran {
     let inst = npm_instance(dir);
-    let (outcome, _) = confirm_then_run(
+    confirm_then_run(
         Arc::new(NpmAdapter::new(runner.clone())),
         &inst,
         request(&inst, OpKind::Upgrade, ArtifactKind::Package, "typescript"),
@@ -404,8 +458,15 @@ async fn npm_update(dir: &Path, runner: &Arc<ScriptedRunner>) -> Outcome {
         |_| {},
         || {},
     )
-    .await;
-    outcome
+    .await
+}
+
+/// `lines` as lines npm or uv wrote to stderr, in the operation's log.
+fn stderr_lines(lines: &[&str]) -> Vec<(Stream, String)> {
+    lines
+        .iter()
+        .map(|line| (Stream::Stderr, line.to_string()))
+        .collect()
 }
 
 #[tokio::test]
@@ -416,14 +477,21 @@ async fn test_npm_with_no_node_at_its_turn_says_what_is_missing() {
     let dir = tempfile::tempdir().unwrap();
     let runner = Arc::new(ScriptedRunner::default());
     runner.otherwise(Answer::Output(no_node()));
-    let outcome = npm_update(dir.path(), &runner).await;
+    let ran = npm_update(dir.path(), &runner).await;
     assert_eq!(
-        outcome,
+        ran.outcome,
         Outcome::Failed {
             exit_code: Some(127),
             summary: "env: node: No such file or directory".to_string(),
             cause: Some(FailureCause::NotFound),
         }
+    );
+    // The line is in the operation's log too, as npm's command would
+    // have put it there: the log is not "no longer available", it has
+    // what npm said.
+    assert_eq!(
+        ran.log,
+        stderr_lines(&["env: node: No such file or directory"])
     );
     assert!(!wrote(&runner.calls()), "{:?}", runner.calls());
 }
@@ -433,9 +501,9 @@ async fn test_npm_gone_at_its_turn_is_a_missing_program() {
     let dir = tempfile::tempdir().unwrap();
     let runner = Arc::new(ScriptedRunner::default());
     runner.otherwise(Answer::NotFound);
-    let outcome = npm_update(dir.path(), &runner).await;
+    let ran = npm_update(dir.path(), &runner).await;
     assert_eq!(
-        outcome,
+        ran.outcome,
         Outcome::BanagerFailed(Fault::ProgramMissing {
             program: dir.path().join("bin/npm").display().to_string(),
         })
@@ -448,15 +516,18 @@ async fn test_npm_that_does_not_answer_its_prefix_in_time_did_not_update() {
     let dir = tempfile::tempdir().unwrap();
     let runner = Arc::new(ScriptedRunner::default());
     runner.otherwise(Answer::Output(timed_out()));
-    let outcome = npm_update(dir.path(), &runner).await;
+    let ran = npm_update(dir.path(), &runner).await;
+    // Banager stopped waiting for it: that it took too long, which is
+    // true, rather than that npm gave no reason over an empty log.
     assert_eq!(
-        outcome,
+        ran.outcome,
         Outcome::Failed {
             exit_code: None,
             summary: String::new(),
-            cause: None,
+            cause: Some(FailureCause::TimedOut),
         }
     );
+    assert_eq!(ran.log, []);
     assert!(!wrote(&runner.calls()), "{:?}", runner.calls());
 }
 
@@ -471,8 +542,13 @@ async fn test_npm_answering_another_prefix_is_still_changed_since_shown() {
         vec![exited(0, &format!("{}\n", other.path().display()), "")],
     );
     runner.otherwise(Answer::Output(exited(1, "", "")));
-    let outcome = npm_update(dir.path(), &runner).await;
-    assert_eq!(outcome, Outcome::BanagerFailed(Fault::ChangedSinceShown));
+    let ran = npm_update(dir.path(), &runner).await;
+    assert_eq!(
+        ran.outcome,
+        Outcome::BanagerFailed(Fault::ChangedSinceShown)
+    );
+    // A read that answered is compared, not logged.
+    assert_eq!(ran.log, []);
     assert!(!wrote(&runner.calls()), "{:?}", runner.calls());
 }
 
@@ -481,12 +557,12 @@ async fn test_npm_answering_another_prefix_is_still_changed_since_shown() {
 /// ruff's update toward 0.16.8, confirmed while uv listed it at 0.15.0.
 /// When its turn comes, `uv tool list` gives what `at_its_turn` makes of
 /// ruff's environment (to the reading before the command and the recheck
-/// alike), after `between` ran on it: the outcome, and whether anything
+/// alike), after `between` ran on it: how it ended, and whether anything
 /// was written.
 async fn uv_update(
     at_its_turn: impl FnOnce(&Path) -> Answer,
     between: impl FnOnce(&Path),
-) -> (Outcome, bool) {
+) -> (Ran, bool) {
     let dir = tempfile::tempdir().unwrap();
     let (inst, env) = uv_setup(dir.path());
     let uv = inst.exe_path.to_str().unwrap().to_string();
@@ -502,7 +578,7 @@ async fn uv_update(
         &[uv.as_str(), "tool", "upgrade", "ruff"],
         vec![exited(0, "", "Updated ruff v0.15.0 -> v0.16.8\n")],
     );
-    let (outcome, _) = confirm_then_run(
+    let ran = confirm_then_run(
         Arc::new(UvAdapter::new(runner.clone())),
         &inst,
         request(&inst, OpKind::Upgrade, ArtifactKind::Tool, "ruff"),
@@ -511,30 +587,31 @@ async fn uv_update(
         || between(&env),
     )
     .await;
-    if let Outcome::BanagerFailed(Fault::ProgramMissing { program }) = &outcome {
+    if let Outcome::BanagerFailed(Fault::ProgramMissing { program }) = &ran.outcome {
         assert_eq!(program, &uv, "the plan's own uv");
     }
-    (outcome, wrote(&runner.calls()))
+    (ran, wrote(&runner.calls()))
 }
 
 #[tokio::test]
 async fn test_uv_gone_at_its_turn_is_a_missing_program() {
     // `brew upgrade uv` beside it in Update all, between its unlink and
     // its link: uv's tool updates hold only uv's own lock.
-    let (outcome, wrote) = uv_update(|_| Answer::NotFound, |_| {}).await;
+    let (ran, wrote) = uv_update(|_| Answer::NotFound, |_| {}).await;
     assert!(
         matches!(
-            outcome,
+            ran.outcome,
             Outcome::BanagerFailed(Fault::ProgramMissing { .. })
         ),
-        "{outcome:?}"
+        "{:?}",
+        ran.outcome
     );
     assert!(!wrote);
 }
 
 #[tokio::test]
 async fn test_uv_list_failing_at_its_turn_says_why() {
-    let (outcome, wrote) = uv_update(
+    let (ran, wrote) = uv_update(
         |_| {
             Answer::Output(exited(
                 2,
@@ -546,34 +623,39 @@ async fn test_uv_list_failing_at_its_turn_says_why() {
     )
     .await;
     assert_eq!(
-        outcome,
+        ran.outcome,
         Outcome::Failed {
             exit_code: Some(2),
             summary: "error: No such file or directory (os error 2)".to_string(),
             cause: Some(FailureCause::NotFound),
         }
     );
+    assert_eq!(
+        ran.log,
+        stderr_lines(&["error: No such file or directory (os error 2)"])
+    );
     assert!(!wrote);
 }
 
 #[tokio::test]
 async fn test_uv_list_not_answering_in_time_at_its_turn_did_not_update() {
-    let (outcome, wrote) = uv_update(|_| Answer::Output(timed_out()), |_| {}).await;
+    let (ran, wrote) = uv_update(|_| Answer::Output(timed_out()), |_| {}).await;
     assert_eq!(
-        outcome,
+        ran.outcome,
         Outcome::Failed {
             exit_code: None,
             summary: String::new(),
-            cause: None,
+            cause: Some(FailureCause::TimedOut),
         }
     );
+    assert_eq!(ran.log, []);
     assert!(!wrote);
 }
 
 #[tokio::test]
 async fn test_uv_receipt_changed_after_the_confirmation_is_still_changed_since_shown() {
     // The list answers as it did; the receipt now pins ruff.
-    let (outcome, wrote) = uv_update(
+    let (ran, wrote) = uv_update(
         |env| Answer::Output(exited(0, &uv_list(env, "0.15.0"), "")),
         |env| {
             std::fs::write(
@@ -584,6 +666,10 @@ async fn test_uv_receipt_changed_after_the_confirmation_is_still_changed_since_s
         },
     )
     .await;
-    assert_eq!(outcome, Outcome::BanagerFailed(Fault::ChangedSinceShown));
+    assert_eq!(
+        ran.outcome,
+        Outcome::BanagerFailed(Fault::ChangedSinceShown)
+    );
+    assert_eq!(ran.log, []);
     assert!(!wrote);
 }

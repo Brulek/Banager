@@ -964,8 +964,8 @@ pub async fn run_plan(
 /// and an answer too long to read (`OutputTooLarge`) is "changed since
 /// shown" as an answer it cannot read would be. A read that did not
 /// answer says nothing about the plan -- the same program would not have
-/// run the command either -- so the operation ends as running the command
-/// would have, and nothing is written:
+/// run the command either -- so the operation ends as that program's own
+/// failure would, and nothing is written:
 /// - the program is not there, or macOS would not start it: the runner's
 ///   own error, returned as `run_plan` returns it (`Fault::ProgramMissing`,
 ///   `Fault::SpawnFailed`);
@@ -973,11 +973,24 @@ pub async fn run_plan(
 ///   five lines of stderr and their cause, as `run_plan` reports a command
 ///   that exits non-zero -- npm's `env: node: No such file or directory`
 ///   when `node` is gone, kept with its line (`FailureCause::NotFound`);
-/// - it did not finish (the read's deadline, or a signal it did not
-///   send): `Failed` with no exit code. Not `Unconfirmed`, which says the
-///   command may have taken effect: none was started.
+/// - it did not finish: `Failed` with no exit code, and, where the read's
+///   deadline stopped it, `FailureCause::TimedOut`, the read having taken
+///   too long; a signal it did not send leaves the cause to its stderr.
+///   Not `Unconfirmed`, as a command stopped the same way is: that says
+///   the command may have taken effect, and none was started.
+///
+/// A `Failed` read's stderr goes to the operation's log first, line by
+/// line, as `run_plan` streams a command's: the summary is lines the log
+/// has (the drawer says a log "is no longer available" only where a
+/// failure's summary has words and the log none of its lines,
+/// `missingLogSummary` in src/components/MissingFailureLog.tsx). Its
+/// stdout, the answer it was asked for, does not: it is held as the
+/// program wrote it, with no login masked out of it, and the log is for a
+/// person. A read that answered is compared, not logged.
 pub(crate) fn read_before_run(
     read: Result<crate::runner::CommandOutput, AdapterError>,
+    sink: &dyn EventSink,
+    op_id: OpId,
 ) -> Result<ReadBeforeRun, AdapterError> {
     let output = match read {
         Ok(output) => output,
@@ -992,10 +1005,24 @@ pub(crate) fn read_before_run(
     if finished && output.exit_code == Some(0) {
         return Ok(ReadBeforeRun::Answered(output));
     }
+    // Masked on every path (`CommandOutput::stderr`), as a command's
+    // lines are on their way to the log.
+    for line in output.stderr.lines() {
+        sink.emit(crate::events::OperationEvent::Log {
+            op_id,
+            stream: crate::events::Stream::Stderr,
+            line: line.to_string(),
+        });
+    }
+    let cause = if output.timed_out && !output.cancelled {
+        Some(crate::history::FailureCause::TimedOut)
+    } else {
+        output.failure_cause()
+    };
     Ok(ReadBeforeRun::Ends(Outcome::Failed {
         exit_code: output.exit_code.filter(|_| finished),
         summary: crate::runner::failure_summary(&output.stderr),
-        cause: output.failure_cause(),
+        cause,
     }))
 }
 
@@ -1026,9 +1053,11 @@ mod tests {
 
     /// The read before a confirmed command (r20 R20-2): only an exit 0
     /// is an answer to compare; anything else ends the operation as the
-    /// command would have, nothing written.
+    /// program's own failure would, its stderr in the operation's log,
+    /// nothing written.
     #[test]
     fn test_a_read_before_the_command_that_did_not_answer_ends_as_the_command_would_have() {
+        use crate::events::{OperationEvent, Stream, VecSink};
         use crate::history::FailureCause;
         use crate::runner::{CommandOutput, RunnerError};
         let output = |exit_code: Option<i32>, stderr: &str| CommandOutput {
@@ -1039,30 +1068,75 @@ mod tests {
             timed_out: false,
             cancelled: false,
         };
-        let ends = |read| match read_before_run(read) {
-            Ok(ReadBeforeRun::Ends(outcome)) => Some(outcome),
-            Ok(ReadBeforeRun::Answered(_)) => None,
-            Err(error) => panic!("{error}"),
+        // The outcome it ends in, if any, and the lines it logged.
+        let ends = |read| {
+            let sink = VecSink::new();
+            let outcome = match read_before_run(read, &sink, 7) {
+                Ok(ReadBeforeRun::Ends(outcome)) => Some(outcome),
+                Ok(ReadBeforeRun::Answered(_)) => None,
+                Err(error) => panic!("{error}"),
+            };
+            (outcome, sink.snapshot())
         };
-        assert_eq!(ends(Ok(output(Some(0), "npm warn config\n"))), None);
+        let stderr = |line: &str| OperationEvent::Log {
+            op_id: 7,
+            stream: Stream::Stderr,
+            line: line.to_string(),
+        };
+        // An answer is compared, not logged: neither its stdout nor the
+        // warnings npm writes beside it.
+        assert_eq!(
+            ends(Ok(output(Some(0), "npm warn config\n"))),
+            (None, vec![])
+        );
         assert_eq!(
             ends(Ok(output(
                 Some(127),
                 "env: node: No such file or directory\n"
             ))),
+            (
+                Some(Outcome::Failed {
+                    exit_code: Some(127),
+                    summary: "env: node: No such file or directory".to_string(),
+                    cause: Some(FailureCause::NotFound),
+                }),
+                vec![stderr("env: node: No such file or directory")]
+            )
+        );
+        // Every line of stderr to the log, the last five in the summary.
+        let long = "one\ntwo\nthree\nfour\nfive\nsix\n";
+        let (outcome, logged) = ends(Ok(output(Some(1), long)));
+        assert_eq!(
+            outcome,
             Some(Outcome::Failed {
-                exit_code: Some(127),
-                summary: "env: node: No such file or directory".to_string(),
-                cause: Some(FailureCause::NotFound),
+                exit_code: Some(1),
+                summary: "two\nthree\nfour\nfive\nsix".to_string(),
+                cause: None,
             })
         );
-        // Stopped at its deadline, or by a signal it did not send: no
-        // exit code to report, even one the runner saw during the stop.
-        for stopped in [
-            CommandOutput {
+        assert_eq!(
+            logged,
+            ["one", "two", "three", "four", "five", "six"].map(stderr)
+        );
+        // Stopped at its deadline: it took too long, no exit code to
+        // report, even one the runner saw during the stop.
+        assert_eq!(
+            ends(Ok(CommandOutput {
                 timed_out: true,
-                ..output(None, "")
-            },
+                ..output(Some(143), "")
+            })),
+            (
+                Some(Outcome::Failed {
+                    exit_code: None,
+                    summary: String::new(),
+                    cause: Some(FailureCause::TimedOut),
+                }),
+                vec![]
+            )
+        );
+        // Stopped by a signal it did not send, or by the runner's own
+        // cancel: no exit code, and no cause but what it wrote.
+        for stopped in [
             CommandOutput {
                 cancelled: true,
                 ..output(Some(0), "")
@@ -1071,11 +1145,14 @@ mod tests {
         ] {
             assert_eq!(
                 ends(Ok(stopped)),
-                Some(Outcome::Failed {
-                    exit_code: None,
-                    summary: String::new(),
-                    cause: None,
-                })
+                (
+                    Some(Outcome::Failed {
+                        exit_code: None,
+                        summary: String::new(),
+                        cause: None,
+                    }),
+                    vec![]
+                )
             );
         }
         // An answer too long to read is one that cannot be compared.
@@ -1083,15 +1160,22 @@ mod tests {
             ends(Err(AdapterError::Runner(RunnerError::OutputTooLarge {
                 limit: 1
             }))),
-            Some(Outcome::BanagerFailed(
-                crate::model::Fault::ChangedSinceShown
-            ))
+            (
+                Some(Outcome::BanagerFailed(
+                    crate::model::Fault::ChangedSinceShown
+                )),
+                vec![]
+            )
         );
         // The program gone is the runner's error, as `run_plan` returns it.
         assert!(matches!(
-            read_before_run(Err(AdapterError::Runner(RunnerError::NotFound(
-                "/opt/homebrew/bin/npm".into()
-            )))),
+            read_before_run(
+                Err(AdapterError::Runner(RunnerError::NotFound(
+                    "/opt/homebrew/bin/npm".into()
+                ))),
+                &VecSink::new(),
+                7
+            ),
             Err(AdapterError::Runner(RunnerError::NotFound(_)))
         ));
     }

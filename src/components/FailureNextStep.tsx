@@ -124,7 +124,9 @@ export const TOOL_WORDS_STEP_KEYS = {
  * is not empty, and a command ran (`exit_code` is set). A path-list
  * uninstall that macOS would not move to the Trash also ends `Failed`, in
  * macOS's words, with no exit code -- not the source's words, so not said
- * to be.
+ * to be. Nor, with no exit code, the read npm and uv take before a
+ * command that did not finish: what it wrote before it was stopped is no
+ * verdict of the source's; it stays in the log.
  */
 function endedInToolWords(op: OpSummary): boolean {
   if (op.status !== "Done") return false;

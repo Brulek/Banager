@@ -57,7 +57,10 @@ import type { Fault, Outcome } from "./types";
  *   moved to the Trash or deleted -- so Homebrew cannot back it up to
  *   update it ("It seems the App source '/Applications/…' is not there").
  * - `unsupported`: the version does not run on this Mac's macOS or chip.
- * - `timedOut`: a step of the tool's ran past the tool's own time limit.
+ * - `timedOut`: a step of the tool's ran past the tool's own time limit;
+ *   or, set by the core and never read off words, the read npm and uv
+ *   take right before a command ran past Banager's own time for it, and
+ *   the command was not started.
  * - `notLinked`: Homebrew installed a formula's new version but could not
  *   link it into its prefix ("The `brew link` step did not complete
  *   successfully"): an upgrade unlinks the old version first, so its

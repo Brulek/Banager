@@ -58,8 +58,11 @@ pub enum FailureCause {
     /// The version does not run on this Mac: its macOS, or its chip.
     Unsupported,
     /// A step of the tool's ran past the tool's own time limit -- not a
-    /// download, which is `Network`, and not Banager's own deadline, which
-    /// ends an operation `Unconfirmed`.
+    /// download, which is `Network`, and not Banager's own deadline for a
+    /// command, which ends an operation `Unconfirmed`. Or, never read off
+    /// words, the read npm and uv take right before a command ran past
+    /// Banager's deadline for it, the command not started
+    /// (`adapters::read_before_run`).
     TimedOut,
     /// Homebrew installed the new version of a formula but could not link
     /// it into its prefix (`FormulaInstaller#link`, formula_installer.rb

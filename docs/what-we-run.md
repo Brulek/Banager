@@ -2013,12 +2013,15 @@ existing `<npm> prefix -g` read with the plan's program and environment, without
 `--prefix` (30 s). An answer naming another prefix, or an empty or relative one,
 refuses the plan as changed since shown. A read that does not answer changes
 nothing about the plan -- npm could not have run the write either -- so the
-operation ends as running npm would have: npm gone is a missing program, a
-non-zero exit is npm's own failure with the last lines it wrote (`env: node: No
-such file or directory` when `node` is gone, say: a Homebrew `node` an earlier
-update of the same Update all could not link again), and a read that runs out of
-its 30 s is a failure with no exit code. No write command runs either way. An
-unchanged answer allows only the original, prefix-pinned argv to run. Search and
+operation ends as npm's own failure would: npm gone is a missing program; a
+non-zero exit is npm's failure, with its exit code and the last lines it wrote
+to stderr (`env: node: No such file or directory` when `node` is gone, say: a
+Homebrew `node` an earlier update of the same Update all could not link again),
+and every line it wrote to stderr is in the operation's log, as a command's
+are; a read that runs out of its 30 s is a failure that took too long, with no
+exit code. No write command runs either way. An answer is compared, not
+logged. An unchanged answer allows only the original, prefix-pinned argv to
+run. Search and
 `<npm> prefix -g` itself run without `--prefix`.
 
 Naming the prefix has two side effects. npm then reads its global settings
@@ -2191,7 +2194,7 @@ path or receipt, a tool the list no longer names (or names twice) or an
 unreadable receipt refuses the plan as changed since shown, before any upgrade
 command. A list that does not answer -- uv gone (between the unlink and the link
 of a `brew upgrade uv` running beside it, say), exiting non-zero or not
-answering within 60 s -- ends as running uv would have, as npm's prefix read
+answering within 60 s -- ends as uv's own failure would, as npm's prefix read
 does (npm's section), and no upgrade command runs. An unchanged record runs the
 original argv.
 The fingerprint also participates when a batch prepares an evicted plan again;

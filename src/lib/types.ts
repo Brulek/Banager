@@ -64,8 +64,13 @@ export type Fault =
   | "Internal";
 // `Failed.summary` is another program's own words, never Banager's: the
 // last lines of a tool's stderr, or macOS's own reason for refusing to move
-// a path to the Trash (`exit_code` is then `null`: no command ran).
-// Banager's own failures are `BanagerFailed`. `Failed.cause` is why it
+// a path to the Trash (`exit_code` is then `null`: no command ran). The
+// read npm and uv take right before a command ends `Failed` too, the command
+// not started, with the read's own exit code and stderr lines -- `null` and
+// most often no words where it did not finish, with `cause` `timedOut` where
+// Banager stopped waiting for it (`read_before_run` in
+// crates/banager-core/src/adapters/mod.rs); every line of its stderr is in
+// the operation's log. Banager's own failures are `BanagerFailed`. `Failed.cause` is why it
 // failed, read by the core off those lines as the tool wrote them, before a
 // proxy's or mirror's login was masked out of `summary` -- the mask can take
 // the words that say it, a password `pass` in sudo's "password" (re-check

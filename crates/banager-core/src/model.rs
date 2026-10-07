@@ -1945,17 +1945,20 @@ pub enum Outcome {
     /// take right before a confirmed command (`npm prefix -g`, `uv tool
     /// list --show-paths`), when it exited non-zero or did not finish: the
     /// command was not started, `exit_code` is the read's (`None` when it
-    /// did not finish) and `summary` the last five lines of the read's
-    /// stderr -- npm's `env: node: No such file or directory`, say
-    /// (`read_before_run` in `adapters/mod.rs`). A path-list uninstall
-    /// the system refused: no command ran, so `exit_code` is `None`, and
-    /// `summary` is macOS's own description of the refusal -- the
-    /// `NSError`'s localized description, `TrashError::Refused`
-    /// (`removal::execute_removal`, which also writes it to the log as a
-    /// `LogNote::TrashFailed`). A failure of Banager's own is
-    /// `BanagerFailed`, never this. A tool a signal ended before it could
-    /// exit reported no failure, and is `Unconfirmed`, never this
-    /// (`run_plan` in `adapters/mod.rs`).
+    /// did not finish, and `cause` `TimedOut` when its deadline stopped
+    /// it) and `summary` the last five lines of the read's stderr, every
+    /// line of which is in the operation's log -- npm's `env: node: No
+    /// such file or directory`, say (`read_before_run` in
+    /// `adapters/mod.rs`). A path-list uninstall the system refused: no
+    /// command ran, so `exit_code` is `None`, and `summary` is macOS's own
+    /// description of the refusal -- the `NSError`'s localized
+    /// description, `TrashError::Refused` (`removal::execute_removal`,
+    /// which also writes it to the log as a `LogNote::TrashFailed`). A
+    /// failure of Banager's own is `BanagerFailed`, never this. A command
+    /// a signal or Banager's deadline ended before it could exit reported
+    /// no failure, and may have taken effect: it is `Unconfirmed`, never
+    /// this (`run_plan` in `adapters/mod.rs`). The read before a command
+    /// ended that way is this, with no exit code: no command was started.
     ///
     /// `cause` is why it failed, in one of a few words a person knows
     /// (`history::FailureCause`), read off the summary's lines as the tool
@@ -2087,8 +2090,9 @@ pub enum Fault {
     /// record that changed, a tool missing from uv's list or listed twice)
     /// or no longer reads as one (a receipt or record gone or unreadable).
     /// A read whose program did not answer at all is not this: npm's and
-    /// uv's end as running the command would have (`read_before_run` in
-    /// `adapters/mod.rs`). No write command ran. Uses the same
+    /// uv's end as the program's own failure would -- missing, failed, or
+    /// taking too long (`read_before_run` in `adapters/mod.rs`). No write
+    /// command ran. Uses the same
     /// changed-since-shown explanation as a batch whose newly prepared plan
     /// differs from its preview.
     ChangedSinceShown,
