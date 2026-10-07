@@ -79,6 +79,8 @@ base64 = "0.22"
 regex = "1"
 # Already locked transitively; compare Cargo versions by SemVer precedence.
 semver = "1"
+# Already locked transitively; identify the manifest reported by Ollama.
+sha2 = "0.10"
 # Exclusive same-directory staging files for settings and history.
 tempfile = "3"
 

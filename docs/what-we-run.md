@@ -2279,7 +2279,11 @@ daemon identified as on this Mac, `check_updates` reads the local manifest file
 `~/.ollama/models/manifests/registry.ollama.ai/{namespace}/{name}/{tag}`
 (opened without waiting, and read only when `fstat` says it is a regular
 file of at most 16 MiB; otherwise the model is "could not check") and
-compares its layer digests with the registry's. The file is looked up one
+first checks that the SHA-256 of its original bytes matches the live
+`/api/tags` manifest digest. A mismatch, including a leftover default-store
+copy when the local daemon uses another model folder or port, is "could
+not check" with no registry request or download estimate. Only a matching
+manifest is compared by its layer digests with the registry's. The file is looked up one
 step at a time and never in or through a place Banager never looks into
 (How Banager runs anything, above): models kept on another disk through a
 link -- `~/.ollama/models`, or `~/.ollama`, linked to `/Volumes/<disk>/…`,

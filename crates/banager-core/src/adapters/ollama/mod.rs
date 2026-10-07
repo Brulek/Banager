@@ -419,7 +419,8 @@ impl OllamaAdapter {
     /// unchanged by a republish and `UpdateCandidate`'s contract is that
     /// current and target differ, and the most the pull can download, from
     /// the same two manifests (`changed_blob_bytes`) — or `Err(reason)` when
-    /// either manifest could not be read/fetched/parsed. A network failure
+    /// either manifest could not be read/fetched/parsed or the local bytes
+    /// do not match the daemon's live manifest digest. A network failure
     /// or a 404 for a model removed upstream must not crash the whole
     /// `check_updates` call, so the caller turns that into a single
     /// `checkable: false` candidate for just this model. A reference whose
@@ -439,6 +440,7 @@ impl OllamaAdapter {
         namespace: &str,
         name: &str,
         tag: &str,
+        live_digest: &str,
     ) -> Result<Option<RegistryChange>, LookupFailure> {
         let local_path = contained_manifest_path(manifests_root, namespace, name, tag)?;
         // Never in or through a protected place (`read_file`): a
@@ -458,6 +460,16 @@ impl OllamaAdapter {
             })?;
         let local_digests = layer_digests(&local_json)
             .map_err(|e| format!("could not parse local manifest: {e}"))?;
+
+        // /api/tags identifies the manifest bytes, not its config or layer
+        // digests. A loopback daemon may use a different OLLAMA_MODELS store.
+        use sha2::{Digest, Sha256};
+        let local_digest = format!("{:x}", Sha256::digest(local_json.as_bytes()));
+        if local_digest != live_digest {
+            return Err(LookupFailure::not_looked_up(
+                "local manifest does not match the model reported by this daemon".to_string(),
+            ));
+        }
 
         // Percent-encoded per segment: these three come off the network in
         // an `/api/tags` body, and raw they can re-point the request within
@@ -521,7 +533,7 @@ impl OllamaAdapter {
         }
         let (namespace, name, tag) = split_model_reference(&artifact.key.name);
         match self
-            .compare_digests(manifests_root, &namespace, &name, &tag)
+            .compare_digests(manifests_root, &namespace, &name, &tag, &artifact.version)
             .await
         {
             Ok(None) => None,
@@ -752,6 +764,71 @@ impl Adapter for OllamaAdapter {
 #[cfg(test)]
 mod tests {
     #[tokio::test]
+    async fn regression_f01_local_daemon_rejects_an_unrelated_manifest() {
+        // The default store keeps the recorded qwen3.8 manifest as a
+        // leftover backup, while the daemon -- another loopback port, its
+        // own OLLAMA_MODELS -- has since pulled a republished one. Its
+        // `/api/tags` row (the recorded row, with that manifest's digest)
+        // names a manifest the backup is not.
+        use sha2::{Digest, Sha256};
+        let backup = std::fs::read_to_string(
+            "../../adapters/fixtures/ollama/0.34.1/local-manifest-qwen3.8-27b-mlx.json",
+        )
+        .expect("read local manifest fixture");
+        let mut republished: serde_json::Value =
+            serde_json::from_str(&backup).expect("fixture parses");
+        republished["config"]["digest"] = format!("sha256:{}", "c".repeat(64)).into();
+        let republished = republished.to_string();
+        let live = format!("{:x}", Sha256::digest(republished.as_bytes()));
+        let recorded = "5642e97495e1a088883805981563dcdc4a040c2f53388b7a41d1f24d3622cf7e";
+        let tags = std::fs::read_to_string("../../adapters/fixtures/ollama/0.34.1/api-tags.json")
+            .expect("read ollama api-tags.json fixture")
+            .replace(recorded, &live);
+        let home = tempfile::tempdir().unwrap();
+        let dir = home
+            .path()
+            .join("models/manifests/registry.ollama.ai/library/qwen3.8");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("27b-mlx"), &backup).unwrap();
+        // Either way round the registry stands, comparing with the backup
+        // would be wrong: equal to it hides the daemon's state, equal to
+        // the daemon's offers what it already has.
+        for registry in [&backup, &republished] {
+            let http = Arc::new(MockHttpClient::new());
+            http.respond(
+                "http://127.0.0.1:11435/api/tags",
+                HttpResponse {
+                    status: 200,
+                    body: tags.clone(),
+                },
+            );
+            http.respond(
+                "https://registry.ollama.ai/v2/library/qwen3.8/manifests/27b-mlx",
+                HttpResponse {
+                    status: 200,
+                    body: registry.clone(),
+                },
+            );
+            let adapter = OllamaAdapter::new(Arc::new(MockRunner::new()), http.clone());
+            let inst = test_instance("http://127.0.0.1:11435", home.path().into());
+            let rows = adapter
+                .check_updates(&inst, &CheckOptions::default())
+                .await
+                .unwrap()
+                .candidates;
+            assert_eq!(rows.len(), 1);
+            assert_eq!(rows[0].key.name, "qwen3.8:27b-mlx");
+            assert!(!rows[0].checkable);
+            assert_eq!(rows[0].download_bytes, None);
+            assert_eq!(
+                http.calls().len(),
+                1,
+                "unrelated local data must never reach registry comparison"
+            );
+        }
+    }
+
+    #[tokio::test]
     async fn test_remote_models_are_uncheckable_without_reading_local_manifests() {
         // A real, readable manifest is essential: with a missing file the
         // local comparison also returns uncheckable without a registry call,
@@ -943,7 +1020,13 @@ mod tests {
         let adapter = OllamaAdapter::new(Arc::new(MockRunner::new()), http.clone());
 
         let difference = adapter
-            .compare_digests(&tmp_root, "library", "qwen3.8", "27b-mlx")
+            .compare_digests(
+                &tmp_root,
+                "library",
+                "qwen3.8",
+                "27b-mlx",
+                "5642e97495e1a088883805981563dcdc4a040c2f53388b7a41d1f24d3622cf7e",
+            )
             .await
             .expect("compare_digests should succeed against the recorded fixture pair");
         assert!(
@@ -1263,12 +1346,24 @@ mod tests {
         );
         let adapter = OllamaAdapter::new(Arc::new(MockRunner::new()), http);
         let read = adapter
-            .compare_digests(&manifests_root, "library", "qwen3.8", "27b-mlx")
+            .compare_digests(
+                &manifests_root,
+                "library",
+                "qwen3.8",
+                "27b-mlx",
+                "5642e97495e1a088883805981563dcdc4a040c2f53388b7a41d1f24d3622cf7e",
+            )
             .await;
         assert!(read.is_ok(), "read where nothing is protected");
         let as_if = crate::protected::as_if_home(&home);
         let refused = adapter
-            .compare_digests(&manifests_root, "library", "qwen3.8", "27b-mlx")
+            .compare_digests(
+                &manifests_root,
+                "library",
+                "qwen3.8",
+                "27b-mlx",
+                "5642e97495e1a088883805981563dcdc4a040c2f53388b7a41d1f24d3622cf7e",
+            )
             .await;
         drop(as_if);
         // No request made, now or next time: not looked up on this Mac
@@ -2248,7 +2343,13 @@ mod tests {
         let adapter = OllamaAdapter::new(Arc::new(MockRunner::new()), http.clone());
 
         let outcome = adapter
-            .compare_digests(&fx.manifests_root, "library", "qwen3.8", "27b-mlx?x=1#f")
+            .compare_digests(
+                &fx.manifests_root,
+                "library",
+                "qwen3.8",
+                "27b-mlx?x=1#f",
+                "4ac6cfed28d63e05cb031035ec11ada72d31b40316bab204cb971e9495946171",
+            )
             .await;
 
         assert!(
@@ -2408,7 +2509,13 @@ mod tests {
             "registry",
             |http| async move {
                 OllamaAdapter::new(Arc::new(MockRunner::new()), http)
-                    .compare_digests(at, "library", "qwen3.8", "27b-mlx")
+                    .compare_digests(
+                        at,
+                        "library",
+                        "qwen3.8",
+                        "27b-mlx",
+                        "5642e97495e1a088883805981563dcdc4a040c2f53388b7a41d1f24d3622cf7e",
+                    )
                     .await
             },
         )
