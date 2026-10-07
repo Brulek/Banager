@@ -24,7 +24,7 @@ pub mod removal;
 pub mod route;
 pub mod rustup;
 
-use self::recipe::{CommandUninstall, Latest, Recipe, Uninstall, VersionSource};
+use self::recipe::{CommandUninstall, Latest, Recipe, SelfUpdates, Uninstall, VersionSource};
 use self::route::Probe;
 use crate::adapters::{
     ensure_instance_match, get_ok, lookup_failure_reason, reconcile_from, run_plan,
@@ -57,7 +57,7 @@ const VERSION_TIMEOUT: Duration = Duration::from_secs(30);
 /// What `detect` learned that the `Adapter` methods without a `HostEnv`
 /// need later -- the same seat `CargoAdapter.binstall` is (detect writes,
 /// later calls read; `Session` always detects before it asks anything
-/// else of an instance). `home`: `check_updates` finds
+/// else of an instance). `home`: `check_updates` and `inventory` find
 /// `~/.claude/settings.json` with it, the removal expands its paths
 /// against it, and the rustup recipe's uninstall warnings read the shell
 /// startup files under it. `euid`: the removal's check 3 compares each
@@ -158,7 +158,7 @@ struct VersionRead {
     /// install follows the latest release, which is when its updater
     /// installs new ones (`release_link::LinkReading::follows_latest`);
     /// `None` for a command read, where the recipe's `self_updates` says
-    /// it alone.
+    /// it (with, for Claude Code, its settings: `rows`).
     follows_latest: Option<bool>,
 }
 
@@ -648,17 +648,23 @@ impl StandaloneAdapter {
     /// binary. Read by `inventory` and `reconcile`.
     fn rows(&self, inst: &ManagerInstance, look: Look) -> Vec<InstalledArtifact> {
         // A link-read tool updates itself only when its install follows
-        // the latest release; a launcher alone follows nothing.
-        let auto_updates = self.recipe.self_updates
-            && match &self.recipe.version {
-                VersionSource::Command(_) | VersionSource::NotRead => true,
-                VersionSource::ReleaseLink(_) => look.follows_latest == Some(true),
-            };
+        // the latest release; a launcher alone follows nothing. Claude
+        // Code does not when its settings turn its updater off.
+        let follows = match &self.recipe.version {
+            VersionSource::Command(_) | VersionSource::NotRead => true,
+            VersionSource::ReleaseLink(_) => look.follows_latest == Some(true),
+        };
         let (version, path) = match look.probe {
             Probe::Absent => return Vec::new(),
             Probe::LauncherOnly => (String::new(), None),
             Probe::Present { real } => (look.version.unwrap_or_default(), Some(real)),
         };
+        let auto_updates = follows
+            && match self.recipe.self_updates {
+                SelfUpdates::No => false,
+                SelfUpdates::Yes => true,
+                SelfUpdates::UnlessOffInClaudeSettings => !self.claude_updater_off(),
+            };
         vec![InstalledArtifact {
             key: self.artifact_key(inst),
             // From the meta TOML, not a second copy in the recipe.
@@ -1113,6 +1119,24 @@ impl StandaloneAdapter {
             .map(|seat| seat.home.clone())
             .unwrap_or_default();
         Protected::new(&home)
+    }
+
+    /// Whether `~/.claude/settings.json`, under the home the last `detect`
+    /// was given, turns Claude Code's own updater off
+    /// (`latest::claude_updater_off`), for `rows`
+    /// (`SelfUpdates::UnlessOffInClaudeSettings`). `false`, Claude Code's
+    /// default, when the file is in or through a protected place, which is
+    /// not read, and before any detect, which `Session` never lets an
+    /// instance reach.
+    fn claude_updater_off(&self) -> bool {
+        let home = self
+            .detected
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|seat| seat.home.clone());
+        home.and_then(|home| latest::claude_updater_off(&home))
+            .unwrap_or(false)
     }
 
     /// A `Command` plan -- the upgrade, `<launcher> update`, or a
@@ -2709,6 +2733,116 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_inventory_does_not_say_claude_updates_itself_when_its_settings_turn_the_updater_off(
+    ) {
+        // r39 S2: with Claude Code's own updater turned off in
+        // `~/.claude/settings.json`, it never installs a new version by
+        // itself, so its row must not say it does (`auto_updates`, the
+        // Updates page's 「会自行更新」). The update is listed all the same,
+        // a plain row with its button. No file, or one that leaves the
+        // updater on, is Claude Code's default.
+        for (settings, updates_itself) in [
+            (None, true),
+            (Some(r#"{"autoUpdatesChannel":"latest"}"#), true),
+            (Some(r#"{"env":{"DISABLE_AUTOUPDATER":"0"}}"#), true),
+            (Some("{ not json"), true),
+            (Some(r#"{"env":{"DISABLE_AUTOUPDATER":"1"}}"#), false),
+            (Some(r#"{"env":{"DISABLE_UPDATES":"true"}}"#), false),
+            (
+                Some(r#"{"env":{"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC":"1"}}"#),
+                false,
+            ),
+        ] {
+            let home = TempHome::new("inventory-updater-off");
+            let layout = claude_layout(&home, "2.1.281");
+            if let Some(json) = settings {
+                home.dir(".claude");
+                std::fs::write(home.path().join(".claude/settings.json"), json)
+                    .expect("write settings");
+            }
+            let runner = Arc::new(MockRunner::new());
+            runner.respond(
+                vec![layout.launcher.to_str().unwrap(), "--version"],
+                exited_0("2.1.281 (Claude Code)\n"),
+            );
+            let http = Arc::new(MockHttpClient::new());
+            http.respond(LATEST_URL, answer("2.1.290"));
+            let adapter =
+                StandaloneAdapter::new(&CLAUDE, runner, http.clone(), Arc::new(MockTrasher::new()));
+            let inst = adapter
+                .detect(&home.env(vec![home.path().join(".local/bin")]))
+                .await
+                .remove(0);
+
+            let artifacts = adapter.inventory(&inst).await.expect("inventory");
+            assert_eq!(artifacts.len(), 1, "{settings:?}");
+            assert_eq!(artifacts[0].auto_updates, updates_itself, "{settings:?}");
+
+            let out = adapter
+                .check_updates(&inst, &CheckOptions::default())
+                .await
+                .expect("check_updates");
+            assert_eq!(out.candidates.len(), 1, "{settings:?}");
+            let c = &out.candidates[0];
+            assert!(c.checkable, "{settings:?}");
+            assert_eq!(c.target, "2.1.290", "{settings:?}");
+            assert_eq!(c.blocked, None, "{settings:?}");
+            assert_eq!(http.calls(), vec![LATEST_URL.to_string()], "{settings:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_inventory_keeps_claudes_default_when_its_settings_are_in_a_protected_place() {
+        // `~/.claude` a link into `~/Documents` or iCloud Drive, its
+        // settings turning the updater off: not read there, so the row
+        // keeps what a fresh install does -- and the check, which reads
+        // the same file, lists it as one it could not check, a row that
+        // never says it updates itself. Kept anywhere else, it is read.
+        for keep in [
+            "claude-settings",
+            "Documents/claude-settings",
+            "Library/Mobile Documents/com~apple~CloudDocs/claude-settings",
+        ] {
+            let home = TempHome::new("inventory-updater-off-protected");
+            let layout = claude_layout(&home, "2.1.281");
+            let settings = home.dir(keep);
+            std::fs::write(
+                settings.join("settings.json"),
+                r#"{"env":{"DISABLE_AUTOUPDATER":"1"}}"#,
+            )
+            .expect("write settings");
+            home.link(".claude", &settings);
+            let http = Arc::new(MockHttpClient::new());
+            http.respond(LATEST_URL, answer("2.1.290"));
+            let runner = Arc::new(MockRunner::new());
+            runner.respond(
+                vec![layout.launcher.to_str().unwrap(), "--version"],
+                exited_0("2.1.281 (Claude Code)\n"),
+            );
+            let adapter =
+                StandaloneAdapter::new(&CLAUDE, runner, http.clone(), Arc::new(MockTrasher::new()));
+            let inst = adapter
+                .detect(&home.env(vec![home.path().join(".local/bin")]))
+                .await
+                .remove(0);
+
+            let artifacts = adapter.inventory(&inst).await.expect("inventory");
+            let out = adapter
+                .check_updates(&inst, &CheckOptions::default())
+                .await
+                .expect("check_updates");
+            if keep == "claude-settings" {
+                assert!(!artifacts[0].auto_updates, "{keep}");
+                assert!(out.candidates[0].checkable, "{keep}");
+            } else {
+                assert!(artifacts[0].auto_updates, "{keep}");
+                assert!(!out.candidates[0].checkable, "{keep}");
+                assert!(http.calls().is_empty(), "{keep}: {:?}", http.calls());
+            }
+        }
+    }
+
+    #[tokio::test]
     async fn test_check_updates_marks_a_failed_request_uncheckable_never_an_error() {
         // A network failure is "Banager could not find out", not a failed
         // source (which would hold the snapshot stale): one row at the
@@ -3142,7 +3276,7 @@ mod tests {
         latest: Latest::ClaudeChannel {
             base: "https://downloads.claude.ai/claude-code-releases",
         },
-        self_updates: true,
+        self_updates: SelfUpdates::UnlessOffInClaudeSettings,
         upgrade: Some(UpgradeCmd {
             args: &["update"],
             timeout_secs: 1800,
@@ -4537,7 +4671,7 @@ mod tests {
             parse: VersionParse::SecondToken,
         }),
         latest: Latest::HttpTomlVersion { url: RELEASE_URL },
-        self_updates: false,
+        self_updates: SelfUpdates::No,
         upgrade: Some(UpgradeCmd {
             args: &["self", "update"],
             timeout_secs: 600,

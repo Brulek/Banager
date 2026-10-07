@@ -6158,6 +6158,23 @@ describe("UpdatesPage", () => {
     expect(within(claude).getByRole("button", { name: ROW_UPDATE })).toBeInTheDocument();
   });
 
+  it("makes Claude Code a plain row when its settings turn its own updater off (r39 S2)", async () => {
+    // `auto_updates: false`: the backend read `DISABLE_AUTOUPDATER` (or
+    // another switch Claude Code checks) in ~/.claude/settings.json, so
+    // Claude Code never installs a new version by itself. No 「会自行更新」,
+    // no ⓘ saying it does; the update and its button stay.
+    instances = [...snapshot.instances, claudeInstance];
+    updates = [claudeUpdate];
+    artifacts = [{ ...claudeArtifact, auto_updates: false }];
+    renderPage();
+
+    const claude = await findRow("Claude Code");
+    expect(within(claude).getByText("2.1.281 → 2.1.290")).toBeInTheDocument();
+    expect(within(claude).queryByText("Updates itself")).toBeNull();
+    expect(document.body).not.toHaveTextContent("It installs new versions itself when it runs.");
+    expect(within(claude).getByRole("button", { name: ROW_UPDATE })).toBeInTheDocument();
+  });
+
   it("keeps a status column on every row while any row shown has a word, and gives its room to the names where none has", async () => {
     // glib pinned, under the folded "can't be updated here": the rows
     // shown -- onyx alone -- have no word, and no column for one.

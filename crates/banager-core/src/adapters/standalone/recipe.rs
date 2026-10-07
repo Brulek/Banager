@@ -52,11 +52,13 @@ pub struct Recipe {
     /// `check_updates`.
     pub latest: Latest,
     /// Whether the tool updates itself in the background when its own
-    /// updater is on (claude: yes, VERIFIED in claude.md §5). Read by
-    /// `inventory`, into `InstalledArtifact.auto_updates`, which the
-    /// Updates page reads for a standalone tool's 「会自行更新」
-    /// (`saysItUpdatesItself`).
-    pub self_updates: bool,
+    /// updater is on (claude: yes, VERIFIED in claude.md §5), and whether
+    /// Banager reads the setting that turns that updater off (claude's
+    /// alone, `SelfUpdates::UnlessOffInClaudeSettings`). Read by
+    /// `inventory` (`StandaloneAdapter::rows`), into
+    /// `InstalledArtifact.auto_updates`, which the Updates page reads for a
+    /// standalone tool's 「会自行更新」 (`saysItUpdatesItself`).
+    pub self_updates: SelfUpdates,
     /// The tool's own documented update command, or `None` for a tool that
     /// installs its updates itself and offers nothing Banager may run
     /// (agy: `agy update` is undocumented, takes no options and has never
@@ -244,6 +246,29 @@ pub enum VersionParse {
     /// `adapters/fixtures/standalone-rustup/<v>/version-stderr.txt`). Its
     /// producers are the `RUSTUP` and `GROK` recipes.
     SecondToken,
+}
+
+/// Whether a tool installs its updates itself, in the background
+/// (`Recipe::self_updates`). Read by `StandaloneAdapter::rows`, into
+/// `InstalledArtifact.auto_updates`; for a `VersionSource::ReleaseLink`
+/// tool (Codex) only when its install also follows the latest release.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SelfUpdates {
+    /// It does not, or that it does is not verified (grok, rustup).
+    No,
+    /// It does, and Banager reads no setting that turns that off (agy,
+    /// Codex, opencode).
+    Yes,
+    /// Claude Code: it does, unless `~/.claude/settings.json` turns its
+    /// updater off (`latest::claude_updater_off`, the switches Claude Code
+    /// itself checks before it updates in the background). Then the row is
+    /// a plain one, and the Updates page does not say it updates itself
+    /// (r39 S2). A file that is not there or cannot be read is Claude
+    /// Code's default, the updater on; one in or through a protected place
+    /// is not read, and the row keeps saying what a fresh install does --
+    /// the update check, which reads the same file, then lists it as one it
+    /// could not check, a row that carries no such word.
+    UnlessOffInClaudeSettings,
 }
 
 /// Where the newest published version is read from. Only VERIFIED

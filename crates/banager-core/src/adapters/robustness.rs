@@ -1082,6 +1082,22 @@ fn standalone_parsers_survive_any_input() {
         latest::claude_channel_from_json,
         |_| Ok(()),
     ));
+    // `~/.claude/settings.json` with the switches that turn Claude Code's
+    // own updater off: no fixture records one, so the shape
+    // `claude_updater_off_from_json` reads, inline (r39 S2).
+    let claude_settings = inputs_from(
+        77,
+        &[(
+            "Claude Code settings.json".into(),
+            r#"{"autoUpdatesChannel":"stable","env":{"DISABLE_AUTOUPDATER":"1","DISABLE_UPDATES":"true","CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC":"1","N":1.0}}"#.into(),
+        )],
+    );
+    problems.extend(run(
+        "standalone claude_updater_off_from_json",
+        &claude_settings,
+        latest::claude_updater_off_from_json,
+        |_| Ok(()),
+    ));
     let startup = inputs_for(76, &["standalone-rustup/1.29.1/toolchains.txt"]);
     let patterns = crate::adapters::standalone::rustup::leftover_patterns(
         std::path::Path::new("/Users/someone"),

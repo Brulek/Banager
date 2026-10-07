@@ -3101,6 +3101,25 @@ the version the launcher reported to the same refresh's inventory, so the
 Installed and Updates pages show one reading, and a self-update that
 lands between the inventory and the check is listed by the next refresh.
 
+The Updates page says **Updates itself** on Claude Code's row only while
+that updater is on. The inventory, and the reading after an update, read
+`~/.claude/settings.json` for it too (the same bounded read the channel
+gets, never in or through a protected place), and when its `env` turns
+the updater off the ways Claude Code itself checks before updating --
+`DISABLE_AUTOUPDATER` or `DISABLE_UPDATES` set to `1`, `true`, `yes` or
+`on` (any case), or `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` set to
+anything but an empty value -- the row is a plain update, listed all the
+same and with its button. A file that is missing or cannot be read means
+the updater is on, as it does to Claude Code; one in or through a
+protected place is not read, and its row is one the check could not check
+(above), which carries no such word. Banager reads no other place such a
+switch can be set: not the older `autoUpdates: false` in `~/.claude.json`,
+whose contents Banager never reads (Claude Code itself moves that setting
+into `settings.json` as `DISABLE_AUTOUPDATER`), nor the same variables
+exported in a shell, a project's own settings or settings an
+administrator manages; with one of those, the row still says Claude Code
+updates itself.
+
 **Write commands** (only run after the user reviews and confirms a plan
 preview):
 
@@ -4878,12 +4897,19 @@ not read (`protected::look`; How Banager runs anything, above):
   whether that is a regular file with executable bits) until the first
   such file, and, when that one does not resolve to this copy, on down
   `PATH` the same way until one does or `PATH` ends;
-  `~/.claude/settings.json`, for the one key `autoUpdatesChannel` (read
-  and discarded, only when it is a regular file of at most 16 MiB, opened
-  without waiting; a missing or unreadable file or key means `latest`,
-  as it does to Claude Code; one in or through a protected place is not
-  read, and since Claude Code still reads it, the channel is not known and
-  the update check lists Claude Code as one it could not check).
+  `~/.claude/settings.json`, for the key `autoUpdatesChannel` (the
+  update check) and, in its `env`, `DISABLE_AUTOUPDATER`,
+  `DISABLE_UPDATES` and `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` (the
+  inventory and the reading after an update: when they turn Claude
+  Code's own updater off, the Updates page does not say it updates
+  itself) (read and discarded, only when it is a regular file of at most
+  16 MiB, opened without waiting; a missing or unreadable file or key
+  means `latest` and the updater on, as it does to Claude Code; one in or
+  through a protected place is not read, and since Claude Code still
+  reads it, the channel is not known and the update check lists Claude
+  Code as one it could not check). The older `autoUpdates` key of
+  `~/.claude.json` is not read: Banager never reads what that file
+  holds.
   For an uninstall preview, when it is confirmed, and again right before
   each path is moved: `lstat` and the resolved path of each path on the
   uninstall list and of the folder it is in, the resolved home folder and

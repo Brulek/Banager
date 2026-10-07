@@ -7,7 +7,7 @@
 
 use super::recipe::{
     no_extra_locks, CommandUninstall, Expect, KeepSpec, Latest, Recipe, ReleaseLink, RemoveSpec,
-    Route, RouteKind, Uninstall, UpgradeCmd, VersionCmd, VersionParse, VersionSource,
+    Route, RouteKind, SelfUpdates, Uninstall, UpgradeCmd, VersionCmd, VersionParse, VersionSource,
 };
 use super::rustup;
 use crate::adapters::cargo::RUSTUP_AUTO_INSTALL_OFF;
@@ -39,6 +39,9 @@ use crate::scan::Glob;
 ///   2026-09-24), which is why `check_updates` compares rather than tests
 ///   inequality;
 /// - it updates itself in the background when its updater is on (§5);
+///   the row says so unless `~/.claude/settings.json` turns that updater
+///   off (`SelfUpdates::UnlessOffInClaudeSettings`,
+///   `latest::claude_updater_off`: r39 S2);
 /// - `claude update` (alias `upgrade`, no options) is the documented
 ///   updater (§6). The install script stages its download under
 ///   `~/.claude/downloads`, checks it against the release manifest's
@@ -80,7 +83,7 @@ pub static CLAUDE: Recipe = Recipe {
     latest: Latest::ClaudeChannel {
         base: "https://downloads.claude.ai/claude-code-releases",
     },
-    self_updates: true,
+    self_updates: SelfUpdates::UnlessOffInClaudeSettings,
     upgrade: Some(UpgradeCmd {
         args: &["update"],
         timeout_secs: 1800,
@@ -157,7 +160,7 @@ pub static CLAUDE: Recipe = Recipe {
 ///   (`latest::manifest_arch_allowed`); the amd64 manifest is spec §十一's;
 /// - it installs its updates itself, in the background, at most every 15
 ///   minutes (§4: the documented debounce and this Mac's own log), so
-///   `self_updates` is true and, since `agy update` is undocumented, takes
+///   `self_updates` is `Yes` and, since `agy update` is undocumented, takes
 ///   no options and has never been run (§4), there is no `upgrade`: every
 ///   newer version is `UpdateBlocked::SelfUpdatesOnly` -- a badge, no
 ///   button, and a sentence saying to open it once (spec §4.4, D5, Q3);
@@ -197,7 +200,7 @@ pub static AGY: Recipe = Recipe {
         url: "https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/darwin_arm64.json",
         field: "version",
     },
-    self_updates: true,
+    self_updates: SelfUpdates::Yes,
     upgrade: None,
     uninstall: Some(Uninstall::Paths {
         remove: &[RemoveSpec {
@@ -337,7 +340,7 @@ pub static GROK: Recipe = Recipe {
         available_field: "updateAvailable",
         error_field: Some("error"),
     },
-    self_updates: false,
+    self_updates: SelfUpdates::No,
     upgrade: Some(UpgradeCmd {
         args: &["update"],
         timeout_secs: 1800,
@@ -530,7 +533,7 @@ pub static RUSTUP: Recipe = Recipe {
     latest: Latest::HttpTomlVersion {
         url: "https://static.rust-lang.org/rustup/release-stable.toml",
     },
-    self_updates: false,
+    self_updates: SelfUpdates::No,
     upgrade: Some(UpgradeCmd {
         args: &["self", "update"],
         timeout_secs: 600,
@@ -639,7 +642,7 @@ pub static CODEX: Recipe = Recipe {
         follows_latest: "auto-update-version",
     }),
     latest: Latest::Unchecked,
-    self_updates: true,
+    self_updates: SelfUpdates::Yes,
     upgrade: None,
     uninstall: Some(Uninstall::Paths {
         remove: &[
@@ -737,7 +740,7 @@ pub static OPENCODE: Recipe = Recipe {
     },
     version: VersionSource::NotRead,
     latest: Latest::Unchecked,
-    self_updates: true,
+    self_updates: SelfUpdates::Yes,
     upgrade: None,
     uninstall: None,
     extra_locks: no_extra_locks,
@@ -944,7 +947,7 @@ mod tests {
             &[("DISABLE_AUTOUPDATER", "1")]
         );
         assert_eq!(CLAUDE.version.command().parse, VersionParse::FirstToken);
-        assert!(CLAUDE.self_updates);
+        assert_eq!(CLAUDE.self_updates, SelfUpdates::UnlessOffInClaudeSettings);
     }
 
     #[test]
@@ -1247,7 +1250,7 @@ mod tests {
             &[crate::adapters::cargo::RUSTUP_AUTO_INSTALL_OFF]
         );
         assert_eq!(RUSTUP.version.command().parse, VersionParse::SecondToken);
-        assert!(!RUSTUP.self_updates);
+        assert_eq!(RUSTUP.self_updates, SelfUpdates::No);
         assert_eq!(
             RUSTUP.latest,
             Latest::HttpTomlVersion {
@@ -1392,7 +1395,7 @@ mod tests {
             &[("AGY_CLI_DISABLE_AUTO_UPDATE", "true")]
         );
         assert_eq!(AGY.version.command().parse, VersionParse::FirstToken);
-        assert!(AGY.self_updates);
+        assert_eq!(AGY.self_updates, SelfUpdates::Yes);
         assert_eq!(
             AGY.latest,
             Latest::HttpJsonField {
@@ -1472,7 +1475,7 @@ mod tests {
         assert_eq!(GROK.version.command().args, &["--version"]);
         assert!(GROK.version.command().env.is_empty());
         assert_eq!(GROK.version.command().parse, VersionParse::SecondToken);
-        assert!(!GROK.self_updates);
+        assert_eq!(GROK.self_updates, SelfUpdates::No);
         assert_eq!(
             GROK.latest,
             Latest::Command {
@@ -1626,7 +1629,7 @@ mod tests {
         assert_eq!(link.follows_latest, "auto-update-version");
         // Nothing asked and nothing run: no update check, no update.
         assert_eq!(CODEX.latest, Latest::Unchecked);
-        assert!(CODEX.self_updates);
+        assert_eq!(CODEX.self_updates, SelfUpdates::Yes);
         assert!(CODEX.upgrade.is_none());
         assert!(CODEX.backup_globs.is_empty());
         assert!(CODEX.other_commands.is_empty());
