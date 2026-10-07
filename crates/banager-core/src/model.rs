@@ -206,10 +206,11 @@ pub enum InstanceNote {
     /// `grok` is a regular-expression tool, not Grok Build), so its notice
     /// never calls it a copy. Same producer and reader as `NotOnPath`.
     ShadowedByHomebrew,
-    /// As `ShadowedByHomebrew`, for one that resolves under a
-    /// `node_modules` directory (npm's; the `grok` of its package
+    /// As `ShadowedByHomebrew`, for one that resolves into an npm global
+    /// prefix's `lib/node_modules` (npm's; the `grok` of its package
     /// `grok-cli`, a third-party wrapper, resolves there and is not Grok
-    /// Build).
+    /// Build). bun's and Yarn's global `node_modules` are not npm's: one
+    /// there is `ShadowedByOther` (`route::shadow_note`).
     ShadowedByNpm,
     /// As `ShadowedByHomebrew`, for one that resolves anywhere else, or
     /// that Banager could not resolve; the Unknown page may show where it

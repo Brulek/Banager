@@ -3040,7 +3040,10 @@ notice. When it is another file, Banager looks on down `PATH` the same
 way for a `claude` that resolves to this copy, stopping at the first
 that does or at the end of `PATH`, and says so under the source:
 another program named `claude` comes first — from Homebrew, from npm or
-from somewhere else, by where the first one resolves — when this copy
+from somewhere else, by where the first one resolves (into a `Cellar` or
+`Caskroom`; into an npm prefix's `lib/node_modules`; anywhere else, bun's
+`~/.bun/install/global/node_modules` and Yarn's
+`~/.config/yarn/global/node_modules` among them, which are not npm's) — when this copy
 comes later on `PATH`, or not on `PATH` when no such file is this copy —
 also the notice when `PATH` has no executable `claude` at all — whether
 typing `claude` then finds nothing or another program with that name.

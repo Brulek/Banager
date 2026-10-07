@@ -7,14 +7,15 @@
 
 use async_trait::async_trait;
 use banager_core::adapters::brew::parse::parse_info_installed;
+use banager_core::adapters::standalone::route::shadow_note;
 use banager_core::adapters::{Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome};
 use banager_core::commands::{bin_folders, judge, read_folders, CommandBudget, Folders};
 use banager_core::diagnostics::PathFolders;
 use banager_core::events::{EventSink, OpId, VecSink};
 use banager_core::model::{
     ArtifactKey, ArtifactKind, CommandFact, CommandInputs, CommandState, InstallReason,
-    InstalledArtifact, ManagerInstance, OpRequest, Outcome, Plan, ProvidedCommand, Reconciled,
-    SearchHit,
+    InstalledArtifact, InstanceNote, ManagerInstance, OpRequest, Outcome, Plan, ProvidedCommand,
+    Reconciled, SearchHit,
 };
 use banager_core::runner::HostEnv;
 use banager_core::session::Session;
@@ -770,6 +771,65 @@ fn test_a_file_no_artifact_provides_is_another_program() {
         &artifacts,
     );
     assert_eq!(found, vec![vec![shadowed("claude", None)]]);
+}
+
+#[test]
+fn test_a_claude_bun_or_yarn_installed_is_another_program_to_the_notice_as_to_the_verdicts() {
+    // r36 V2. npm's Claude Code and the native install, with a third
+    // `claude` first on PATH from `bun add -g` (bun's installer puts
+    // `~/.bun/bin` first) or `yarn global add`, in their own layouts:
+    // `~/.bun/bin/claude` -> `../install/global/node_modules/…/cli.js`;
+    // `~/.yarn/bin/claude` -> `../../.config/yarn/global/node_modules/.bin/claude`
+    // -> `../@anthropic-ai/claude-code/cli.js`. No row lists that file, so
+    // both copies are behind "another program" (`judge`), and the native
+    // copy's notice says the same -- it used to say "from npm", over
+    // npm's own copy, whose details say it does not run.
+    let package = "node_modules/@anthropic-ai/claude-code/cli.js";
+    for installer in ["bun", "yarn"] {
+        let home = Home::new(&format!("claude-from-{installer}"));
+        let setup = two_claudes(&home);
+        let first = if installer == "bun" {
+            home.exe(&format!(".bun/install/global/{package}"));
+            home.link(
+                ".bun/bin/claude",
+                Path::new("../install/global/node_modules/@anthropic-ai/claude-code/cli.js"),
+            );
+            home.at(".bun/bin")
+        } else {
+            home.exe(&format!(".config/yarn/global/{package}"));
+            home.link(
+                ".config/yarn/global/node_modules/.bin/claude",
+                Path::new("../@anthropic-ai/claude-code/cli.js"),
+            );
+            home.link(
+                ".yarn/bin/claude",
+                Path::new("../../.config/yarn/global/node_modules/.bin/claude"),
+            );
+            home.at(".yarn/bin")
+        };
+        let path = vec![first, setup.local_bin.clone(), setup.npm_bin.clone()];
+        assert_eq!(
+            verdicts(&home, &path, &setup.instances, &setup.artifacts),
+            vec![
+                vec![shadowed("claude", None)],
+                vec![shadowed("claude", None)]
+            ],
+            "{installer}"
+        );
+        let real = home.at(".local/share/claude/versions/2.1.281");
+        assert_eq!(
+            shadow_note("claude", &home.env(path.clone()), &real),
+            Some(InstanceNote::ShadowedByOther),
+            "{installer}"
+        );
+        // npm's copy first instead: the notice's npm is the row's.
+        let npm_first = vec![setup.npm_bin.clone(), setup.local_bin.clone()];
+        assert_eq!(
+            shadow_note("claude", &home.env(npm_first), &real),
+            Some(InstanceNote::ShadowedByNpm),
+            "{installer}"
+        );
+    }
 }
 
 #[test]

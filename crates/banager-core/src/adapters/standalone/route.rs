@@ -101,6 +101,29 @@ fn has_component(path: &Path, names: &[&str]) -> bool {
     })
 }
 
+/// Whether `path` is in an npm global prefix's packages: its first
+/// `node_modules` folder is `<prefix>/lib/node_modules`, where `npm install
+/// -g` puts a package and the folder Banager's npm source lists. Not bun's
+/// `~/.bun/install/global/node_modules`, Yarn's
+/// `~/.config/yarn/global/node_modules` or pnpm's
+/// `~/Library/pnpm/global/5/node_modules`: those are other programs'
+/// (r36 V2), and no row of npm's is there. Names compared as
+/// `has_component` compares them.
+fn in_npm_global(path: &Path) -> bool {
+    let mut before: Option<&std::ffi::OsStr> = None;
+    for component in path.components() {
+        let Component::Normal(name) = component else {
+            before = None;
+            continue;
+        };
+        if protected::same_name(name.as_bytes(), b"node_modules") {
+            return before.is_some_and(|lib| protected::same_name(lib.as_bytes(), b"lib"));
+        }
+        before = Some(name);
+    }
+    false
+}
+
 /// Resolve existing components before interpreting `..`; only genuinely
 /// missing components may remain lexical. Errors (permissions, loops,
 /// non-directories, or dangling intermediate symlinks) are not evidence of
@@ -382,7 +405,11 @@ pub fn lexical_join(dir: &Path, target: &Path) -> PathBuf {
 /// `grok`, a regular-expression tool, gets the same `ShadowedByHomebrew`
 /// as the `grok` of Homebrew's cask `grok-build`, which is Grok Build, and
 /// the `grok` of npm's package `grok-cli`, a third-party wrapper, gets
-/// `ShadowedByNpm`. So the notices call the first one another program
+/// `ShadowedByNpm`. npm's is what resolves into an npm global prefix's
+/// `lib/node_modules` (`in_npm_global`): a `claude` bun or Yarn installed
+/// resolves into its own global `node_modules`, is no row's, and gets
+/// `ShadowedByOther`, the note `commands::judge`'s verdict for this copy
+/// agrees with (r36 V2). So the notices call the first one another program
 /// with that name, never another copy. Payload-free on purpose
 /// (`InstanceNote`'s rule, from the instance-level channel spec's §2.3,
 /// restated in spec §七); the sentence names the command, which the user
@@ -435,7 +462,7 @@ pub fn shadow_note(command: &str, env: &HostEnv, real: &Path) -> Option<Instance
     }
     Some(if has_component(&first, &["Cellar", "Caskroom"]) {
         InstanceNote::ShadowedByHomebrew
-    } else if has_component(&first, &["node_modules"]) {
+    } else if in_npm_global(&first) {
         InstanceNote::ShadowedByNpm
     } else {
         InstanceNote::ShadowedByOther
@@ -1587,6 +1614,129 @@ mod tests {
                 Some(expected),
                 "{tail}"
             );
+        }
+    }
+
+    #[test]
+    fn test_shadow_note_calls_only_an_npm_global_prefix_npms_not_bun_or_yarn() {
+        // r36 V2: `bun add -g @anthropic-ai/claude-code` links
+        // `~/.bun/bin/claude` to `../install/global/node_modules/…/cli.js`,
+        // and bun's installer puts `~/.bun/bin` first on PATH; Yarn's
+        // `yarn global add` links `~/.yarn/bin/claude` to
+        // `../../.config/yarn/global/node_modules/.bin/claude`, itself a
+        // link to `../@anthropic-ai/claude-code/cli.js`. Neither is npm's,
+        // and no row of npm's lists them: the notice said "from npm" over
+        // an inspector that said "another program" (`commands::judge`
+        // finds no owner). npm's own layout, under Homebrew's node or
+        // nvm's, still is npm's.
+        // (what it is, the file, its links as (link, text), the PATH
+        // folder that comes first, the note)
+        let cases = [
+            (
+                "bun",
+                ".bun/install/global/node_modules/@anthropic-ai/claude-code/cli.js",
+                vec![(
+                    ".bun/bin/claude",
+                    "../install/global/node_modules/@anthropic-ai/claude-code/cli.js",
+                )],
+                ".bun/bin",
+                InstanceNote::ShadowedByOther,
+            ),
+            (
+                "yarn",
+                ".config/yarn/global/node_modules/@anthropic-ai/claude-code/cli.js",
+                vec![
+                    (
+                        ".config/yarn/global/node_modules/.bin/claude",
+                        "../@anthropic-ai/claude-code/cli.js",
+                    ),
+                    (
+                        ".yarn/bin/claude",
+                        "../../.config/yarn/global/node_modules/.bin/claude",
+                    ),
+                ],
+                ".yarn/bin",
+                InstanceNote::ShadowedByOther,
+            ),
+            (
+                "npm under Homebrew's node",
+                "opt/homebrew/lib/node_modules/@anthropic-ai/claude-code/cli.js",
+                vec![(
+                    "opt/homebrew/bin/claude",
+                    "../lib/node_modules/@anthropic-ai/claude-code/cli.js",
+                )],
+                "opt/homebrew/bin",
+                InstanceNote::ShadowedByNpm,
+            ),
+            (
+                "npm under nvm's node",
+                ".nvm/versions/node/v22.23.1/lib/node_modules/@anthropic-ai/claude-code/cli.js",
+                vec![(
+                    ".nvm/versions/node/v22.23.1/bin/claude",
+                    "../lib/node_modules/@anthropic-ai/claude-code/cli.js",
+                )],
+                ".nvm/versions/node/v22.23.1/bin",
+                InstanceNote::ShadowedByNpm,
+            ),
+        ];
+        for (case, file, links, first, expected) in cases {
+            let home = TempHome::new("shadow-js-installers");
+            let layout = claude_layout(&home, "2.1.281");
+            home.executable(file);
+            for (link, text) in links {
+                home.link(link, Path::new(text));
+            }
+            let env = home.env(vec![
+                home.path().join(first),
+                home.path().join(".local/bin"),
+            ]);
+            assert_eq!(
+                shadow_note("claude", &env, &layout.real),
+                Some(expected),
+                "{case}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_in_npm_global_is_the_first_node_modules_under_a_lib_folder() {
+        for (path, npm) in [
+            ("/opt/homebrew/lib/node_modules/grok-cli/index.js", true),
+            (
+                "/usr/local/lib/node_modules/@openai/codex/bin/codex.js",
+                true,
+            ),
+            // A dependency's file inside an npm package is still npm's.
+            (
+                "/opt/homebrew/lib/node_modules/a/node_modules/b/cli.js",
+                true,
+            ),
+            // As the disk compares names.
+            ("/opt/homebrew/LIB/Node_Modules/a/cli.js", true),
+            (
+                "/Users/a/.bun/install/global/node_modules/opencode-ai/bin/opencode",
+                false,
+            ),
+            (
+                "/Users/a/.config/yarn/global/node_modules/@anthropic-ai/claude-code/cli.js",
+                false,
+            ),
+            (
+                "/Users/a/Library/pnpm/global/5/node_modules/@openai/codex/bin/codex.js",
+                false,
+            ),
+            // A bun package whose own files have a `lib/node_modules`
+            // further down is still bun's.
+            (
+                "/Users/a/.bun/install/global/node_modules/x/lib/node_modules/y/cli.js",
+                false,
+            ),
+            (
+                "/opt/homebrew/Cellar/gemini-cli/0.60.0/libexec/bin/gemini",
+                false,
+            ),
+        ] {
+            assert_eq!(in_npm_global(Path::new(path)), npm, "{path}");
         }
     }
 }
