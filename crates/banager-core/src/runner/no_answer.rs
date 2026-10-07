@@ -79,6 +79,20 @@ pub fn of(result: &Result<CommandOutput, RunnerError>) -> Option<NoAnswer> {
     })
 }
 
+/// [`of`], for a command whose answer Banager read as `answer` (a
+/// `--version`'s version): no reason when it read one, whatever the command
+/// did -- an answer is an answer.
+pub fn unless_answered<T>(
+    answer: &Option<T>,
+    result: &Result<CommandOutput, RunnerError>,
+) -> Option<NoAnswer> {
+    if answer.is_some() {
+        None
+    } else {
+        of(result)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

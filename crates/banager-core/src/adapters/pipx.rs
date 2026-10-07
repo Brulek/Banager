@@ -318,7 +318,7 @@ impl PipxAdapter {
                 CancellationToken::new(),
             )
             .await;
-        let version = match output {
+        let version = match &output {
             Ok(o) if o.exit_code == Some(0) => parse_version(&o.stdout),
             _ => None,
         };
@@ -340,7 +340,7 @@ impl PipxAdapter {
                 // answer.
                 unavailable: version.is_none().then_some(Unavailable::NotResponding),
                 notes: Vec::new(),
-                no_answer: None,
+                no_answer: crate::runner::no_answer::unless_answered(&version, &output),
             },
             version,
             answered_at: None,

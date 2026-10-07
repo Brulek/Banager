@@ -440,7 +440,7 @@ impl PipAdapter {
                     CancellationToken::new(),
                 )
                 .await;
-            let (version, no_pip) = match output {
+            let (version, no_pip) = match &output {
                 // "pip 26.2.1 from … (python 3.14)" — the shared
                 // second-token rule (crate::adapters::second_token, Task 5)
                 // yields pip's own version, which is what
@@ -488,7 +488,12 @@ impl PipAdapter {
                         (None, false) => Some(Unavailable::NotResponding),
                     },
                     notes: Vec::new(),
-                    no_answer: None,
+                    // `NoPip` is its own reason.
+                    no_answer: if no_pip {
+                        None
+                    } else {
+                        crate::runner::no_answer::unless_answered(&version, &output)
+                    },
                 },
                 version,
                 answered_at: None,

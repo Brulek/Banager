@@ -338,7 +338,7 @@ impl UvAdapter {
                 CancellationToken::new(),
             )
             .await;
-        let version = match output {
+        let version = match &output {
             // `uv --version` prints "uv X.Y.Z (...)" — the shared
             // second-token rule (crate::adapters::second_token, Task 5).
             Ok(o) if o.exit_code == Some(0) => second_token(&o.stdout),
@@ -362,7 +362,7 @@ impl UvAdapter {
                 // answer.
                 unavailable: version.is_none().then_some(Unavailable::NotResponding),
                 notes: Vec::new(),
-                no_answer: None,
+                no_answer: crate::runner::no_answer::unless_answered(&version, &output),
             },
             version,
             answered_at: None,

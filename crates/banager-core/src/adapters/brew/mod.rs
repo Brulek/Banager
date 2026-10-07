@@ -1572,8 +1572,8 @@ impl BrewAdapter {
             if !(self.path_exists_fn)(&path) {
                 continue;
             }
-            let version = if as_root {
-                None
+            let (version, no_answer) = if as_root {
+                (None, None)
             } else {
                 let spec = CommandSpec {
                     program: path.clone(),
@@ -1584,10 +1584,12 @@ impl BrewAdapter {
                     output_use: OutputUse::Parsed,
                 };
                 let output = self.runner.run(spec, None, CancellationToken::new()).await;
-                match output {
+                let version = match &output {
                     Ok(o) if o.exit_code == Some(0) => parse_version(&o.stdout),
                     _ => None,
-                }
+                };
+                let no_answer = crate::runner::no_answer::unless_answered(&version, &output);
+                (version, no_answer)
             };
             let unverified_version = self.meta.unverified_version(&version);
             let prefix = Self::prefix_for(&path);
@@ -1611,7 +1613,7 @@ impl BrewAdapter {
                         version.is_none().then_some(Unavailable::NotResponding)
                     },
                     notes: Vec::new(),
-                    no_answer: None,
+                    no_answer,
                 },
                 version,
                 answered_at: None,
@@ -3043,6 +3045,42 @@ mod tests {
             instances[0].status.unavailable,
             Some(Unavailable::NotResponding)
         );
+    }
+
+    #[tokio::test]
+    async fn test_detect_says_why_homebrew_did_not_answer() {
+        // What `brew --version` did is the reason (`NoAnswer`): it ran and
+        // failed here. Under root nothing was asked, so there is none.
+        use crate::model::NoAnswerKind;
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec!["/opt/homebrew/bin/brew", "--version"],
+            CommandOutput {
+                stderr_cause: Default::default(),
+                exit_code: Some(1),
+                stdout: String::new(),
+                stderr: "Error: Homebrew's Ruby could not be found\n".to_string(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let instances = BrewAdapter::new(runner.clone())
+            .with_path_exists_fn(apple_silicon_layout)
+            .detect(&detect_env(501))
+            .await;
+        assert_eq!(
+            instances[0].status.no_answer.as_ref().map(|why| why.kind),
+            Some(NoAnswerKind::ExitedWithError)
+        );
+        let instances = BrewAdapter::new(runner)
+            .with_path_exists_fn(apple_silicon_layout)
+            .detect(&detect_env(0))
+            .await;
+        assert_eq!(
+            instances[0].status.unavailable,
+            Some(Unavailable::RefusesAsRoot)
+        );
+        assert_eq!(instances[0].status.no_answer, None);
     }
 
     #[tokio::test]
