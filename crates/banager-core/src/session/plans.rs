@@ -335,7 +335,14 @@ impl Session {
                     &snapshot.artifacts,
                     req,
                 ),
-                super::needed_by::subject(&snapshot.instances, &snapshot.artifacts, req),
+                // The sources no round has read, of this snapshot: written
+                // with it, under its lock (`Session::unlisted`).
+                super::needed_by::subject(
+                    &snapshot.instances,
+                    &snapshot.artifacts,
+                    &self.unlisted.lock().unwrap(),
+                    req,
+                ),
                 remembered
                     .as_ref()
                     .map(|r| r.target.clone())
@@ -595,8 +602,13 @@ impl Session {
         // confirmation was open -- was never looked at. Its token is spent
         // (`Unknown`, 「此确认已失效」); a fresh preview looks again
         // and names that tool's source (`needed_by::adds_no_dependent`).
-        let now = super::needed_by::subject(&snapshot.instances, &snapshot.artifacts, request)
-            .map(|subject| subject.inputs());
+        let now = super::needed_by::subject(
+            &snapshot.instances,
+            &snapshot.artifacts,
+            &self.unlisted.lock().unwrap(),
+            request,
+        )
+        .map(|subject| subject.inputs());
         if !super::needed_by::adds_no_dependent(stored.needed_by.as_ref(), now.as_ref()) {
             return Err(SubmitError::Unknown);
         }

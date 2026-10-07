@@ -10,16 +10,20 @@ use crate::model::{
 };
 use crate::needed_by::{self, HOSTED};
 use crate::runner::HostEnv;
+use std::collections::HashSet;
 use std::path::PathBuf;
 
 /// What `needed_by` looks at for one uninstall, copied out of the snapshot
 /// under its lock: the Homebrew package, its Homebrew, and the sources
-/// that could run on it with their rows.
+/// that could run on it with their rows -- and which of those sources no
+/// round has read the packages of (`Session::unlisted`), whose rows are
+/// no list of what they have.
 pub(super) struct Subject {
     package: InstalledArtifact,
     brew: ManagerInstance,
     instances: Vec<ManagerInstance>,
     artifacts: Vec<InstalledArtifact>,
+    unlisted: Vec<InstanceId>,
 }
 
 /// What `needed_by` reads of a `Subject` that a later snapshot can change,
@@ -32,12 +36,15 @@ pub(super) struct Subject {
 /// dependent the preview did not look for (`adds_no_dependent`). Not the
 /// rows themselves: a version, a description or when a source answered is
 /// nothing `needed_by` reads, and a preview held for ten minutes keeps no
-/// copy of every hosted source's list.
+/// copy of every hosted source's list. And each source no round has read
+/// the packages of (`Subject::unlisted`), with its program, which the look
+/// is in doubt about by that program (`needed_by::Refreshed`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct Inputs {
     package: (ArtifactKey, Option<PathBuf>),
     brew: (InstanceId, PathBuf),
     sources: Vec<Source>,
+    unlisted: Vec<(InstanceId, PathBuf)>,
 }
 
 /// One source of `Inputs`: one with at least one tool that counts.
@@ -72,10 +79,17 @@ impl Subject {
                 })
             })
             .collect();
+        let unlisted = self
+            .instances
+            .iter()
+            .filter(|source| self.unlisted.contains(&source.id))
+            .map(|source| (source.id.clone(), source.exe_path.clone()))
+            .collect();
         Inputs {
             package: (self.package.key.clone(), self.package.path.clone()),
             brew: (self.brew.id.clone(), self.brew.prefix.clone()),
             sources,
+            unlisted,
         }
     }
 }
@@ -91,14 +105,22 @@ impl Subject {
 /// or uv tool gone is one fewer on the package -- so an uninstall or an
 /// update in another source, a source gone quiet with its rows carried,
 /// or a Homebrew whose catalogue update ended, leaves the preview the one
-/// to confirm. A preview with no subject (an uninstall `needed_by` does
-/// not look at) stays so only while the request still has none.
+/// to confirm. A source listed now whose packages no round has read, and
+/// that the preview did not know as one, is one whose tools it never
+/// looked for: in doubt now, and not then. One read since is listed with
+/// what it has, which the tools above judge. A preview with no subject (an
+/// uninstall `needed_by` does not look at) stays so only while the request
+/// still has none.
 pub(super) fn adds_no_dependent(before: Option<&Inputs>, now: Option<&Inputs>) -> bool {
     let (Some(before), Some(now)) = (before, now) else {
         return before.is_none() && now.is_none();
     };
     before.package == now.package
         && before.brew == now.brew
+        && now
+            .unlisted
+            .iter()
+            .all(|source| before.unlisted.contains(source))
         && now.sources.iter().all(|source| {
             before.sources.iter().any(|was| {
                 was.id == source.id
@@ -111,9 +133,11 @@ pub(super) fn adds_no_dependent(before: Option<&Inputs>, now: Option<&Inputs>) -
 
 /// The `Subject` of `req`, when it uninstalls a formula or cask of a
 /// Homebrew the snapshot lists with that row; `None` for anything else.
+/// `unlisted` is the snapshot's (`Session::unlisted`).
 pub(super) fn subject(
     instances: &[ManagerInstance],
     artifacts: &[InstalledArtifact],
+    unlisted: &HashSet<InstanceId>,
     req: &OpRequest,
 ) -> Option<Subject> {
     if req.kind != OpKind::Uninstall
@@ -142,11 +166,17 @@ pub(super) fn subject(
         .filter(|a| hosted.iter().any(|i| i.id == a.key.instance_id))
         .cloned()
         .collect();
+    let unlisted = hosted
+        .iter()
+        .filter(|i| unlisted.contains(&i.id))
+        .map(|i| i.id.clone())
+        .collect();
     Some(Subject {
         package: package.clone(),
         brew: brew.clone(),
         instances: hosted,
         artifacts,
+        unlisted,
     })
 }
 
@@ -182,8 +212,9 @@ impl Session {
     /// look did not finish -- or did not come back within `GRACE` of its
     /// budget -- and the plan does not say it already. A look after a round
     /// whose `PATH` was not the login shell's does not finish for a package
-    /// a source it could not have found may run on. `plan` as it is with
-    /// no subject, and before any refresh.
+    /// a source it could not have found may run on, nor one for a package a
+    /// source no round has read may run on (`Subject::unlisted`). `plan` as
+    /// it is with no subject, and before any refresh.
     pub(super) async fn with_needed_by(&self, mut plan: Plan, subject: Option<Subject>) -> Plan {
         let Some(subject) = subject else {
             return plan;
@@ -200,7 +231,10 @@ impl Session {
                     &subject.instances,
                     &subject.artifacts,
                     &env,
-                    path_known,
+                    &needed_by::Refreshed {
+                        path_known,
+                        unlisted: subject.unlisted,
+                    },
                     budget,
                 )
             },
@@ -248,11 +282,12 @@ mod tests {
     use crate::events::{EventSink, OpId, VecSink};
     use crate::model::{
         ArtifactKey, ArtifactKind, InstallReason, InstalledArtifact, ManagerInstance, OpKind,
-        OpRequest, Outcome, Plan, Reconciled, SearchHit, UninstallBlocked, Warning,
+        OpRequest, Outcome, Plan, Reconciled, ResourceLock, SearchHit, UninstallBlocked, Warning,
     };
     use crate::runner::{CommandOutput, HostEnv, MockRunner};
     use crate::session::{Session, SubmitError};
     use async_trait::async_trait;
+    use std::collections::HashSet;
     use std::os::unix::fs::{symlink, PermissionsExt};
     use std::path::{Path, PathBuf};
     use std::sync::{Arc, Mutex};
@@ -268,12 +303,22 @@ mod tests {
         /// Found only when its program's folder is on the round's `PATH`,
         /// as every source `needed_by` looks at is (`resolve_exe`).
         found_on_path: bool,
+        /// Read under this lock as well as its own (`refresh_locks`), as an
+        /// npm at a Homebrew's prefix is read under that Homebrew's
+        /// (`NpmAdapter::instance_locks`).
+        also_locked: Option<&'static str>,
     }
 
     #[async_trait]
     impl Adapter for Fake {
         fn meta(&self) -> &AdapterMeta {
             &self.meta
+        }
+
+        fn refresh_locks(&self, inst: &ManagerInstance) -> Vec<ResourceLock> {
+            let mut locks = vec![ResourceLock(inst.id.clone())];
+            locks.extend(self.also_locked.map(|id| ResourceLock(id.to_string())));
+            locks
         }
 
         async fn detect(&self, env: &HostEnv) -> Vec<ManagerInstance> {
@@ -453,6 +498,7 @@ mod tests {
             rows: Mutex::new(rows),
             brew: None,
             found_on_path: false,
+            also_locked: None,
         })
     }
 
@@ -645,6 +691,7 @@ mod tests {
                 rows: Mutex::new(rows),
                 brew: None,
                 found_on_path: false,
+                also_locked: None,
             })
         };
         let brew = fake(
@@ -797,13 +844,22 @@ mod tests {
         instances: &[ManagerInstance],
         artifacts: &[InstalledArtifact],
     ) -> Option<super::Inputs> {
+        inputs_with(instances, artifacts, &HashSet::new())
+    }
+
+    /// `inputs_of`, with the sources no round has read (`Session::unlisted`).
+    fn inputs_with(
+        instances: &[ManagerInstance],
+        artifacts: &[InstalledArtifact],
+        unlisted: &HashSet<String>,
+    ) -> Option<super::Inputs> {
         let request = OpRequest {
             kind: OpKind::Uninstall,
             instance_id: BREW.to_string(),
             artifact_kind: ArtifactKind::Formula,
             name: "python@3.13".to_string(),
         };
-        super::subject(instances, artifacts, &request).map(|subject| subject.inputs())
+        super::subject(instances, artifacts, unlisted, &request).map(|subject| subject.inputs())
     }
 
     #[test]
@@ -942,6 +998,24 @@ mod tests {
         ] {
             assert!(!with(change), "{what}");
         }
+        // A source listed now whose packages no round has read, that the
+        // preview did not know as one: what it has was never looked for.
+        let unread = HashSet::from([pipx.id.clone()]);
+        let now_unread = inputs_with(&instances, &artifacts, &unread);
+        assert!(!super::adds_no_dependent(
+            before.as_ref(),
+            now_unread.as_ref()
+        ));
+        // One the preview knew as such, or one read since, leaves it the
+        // one to confirm.
+        assert!(super::adds_no_dependent(
+            now_unread.as_ref(),
+            now_unread.as_ref()
+        ));
+        assert!(super::adds_no_dependent(
+            now_unread.as_ref(),
+            before.as_ref()
+        ));
         // A preview that looked at nothing stays one only while there is
         // nothing to look at.
         assert!(super::adds_no_dependent(None, None));
@@ -988,6 +1062,7 @@ mod tests {
             rows: Mutex::new(vec![(ArtifactKind::Formula, "node@22")]),
             brew: Some(BrewAdapter::new(runner.clone())),
             found_on_path: false,
+            also_locked: None,
         });
         let npm = Arc::new(Fake {
             meta: test_support::fake_adapter_meta("npm"),
@@ -1002,6 +1077,7 @@ mod tests {
             ]),
             brew: None,
             found_on_path: false,
+            also_locked: None,
         });
         let session = Session::with_adapters_and_sizes(
             Arc::new(VecSink::new()),
@@ -1171,6 +1247,7 @@ mod tests {
             ]),
             brew: None,
             found_on_path: true,
+            also_locked: None,
         });
         let session =
             Session::with_adapters_and_sizes(Arc::new(VecSink::new()), vec![brew, npm], None);
@@ -1241,6 +1318,142 @@ mod tests {
                 reason: UninstallBlocked::NeededBySource
             })
         );
+    }
+
+    #[tokio::test]
+    async fn test_an_npm_first_found_while_an_operation_holds_its_prefix_is_not_one_with_no_tools()
+    {
+        // The r37 skeptic: a round on Finder's few folders finds Homebrew
+        // and no npm. A Homebrew operation then holds its prefix -- here its
+        // lock, held as an operation holds it -- and the next round, on the
+        // login shell's `PATH`, finds npm there and does not read it (r37
+        // F2, F4): it is listed with no rows, having had none to carry.
+        // That is no list of what runs on the linked `node`, whose preview
+        // says the look did not finish; jq's says nothing of it. Once npm
+        // is read, `node`'s names it and is refused, and the preview made
+        // before is spent.
+        let root = Root::new("first-found-held");
+        root.link_into_bin("node/24.9.0");
+        let prefix = root.path("opt/homebrew");
+        let jq = prefix.join("Cellar/jq/1.8.1/bin/jq");
+        std::fs::create_dir_all(jq.parent().unwrap()).unwrap();
+        std::fs::write(&jq, b"#!/bin/sh\n").unwrap();
+        std::fs::set_permissions(&jq, std::fs::Permissions::from_mode(0o755)).unwrap();
+        root.link("opt/homebrew/opt/jq", "../Cellar/jq/1.8.1");
+        std::fs::create_dir_all(root.path("usr/bin")).unwrap();
+        let brew = fake(
+            "brew",
+            BREW,
+            prefix.join("bin/brew"),
+            prefix.clone(),
+            vec![
+                (ArtifactKind::Formula, "jq"),
+                (ArtifactKind::Formula, "node"),
+            ],
+        );
+        let npm = Arc::new(Fake {
+            meta: test_support::fake_adapter_meta("npm"),
+            instance: ManagerInstance {
+                exe_path: prefix.join("bin/npm"),
+                prefix: prefix.clone(),
+                ..test_support::make_instance("npm", NPM)
+            },
+            rows: Mutex::new(vec![
+                (ArtifactKind::Package, "npm"),
+                (ArtifactKind::Package, "@openai/codex"),
+                (ArtifactKind::Package, "prettier"),
+            ]),
+            brew: None,
+            found_on_path: true,
+            also_locked: Some(BREW),
+        });
+        let session =
+            Session::with_adapters_and_sizes(Arc::new(VecSink::new()), vec![brew, npm], None);
+        let env = |path_dirs: Vec<PathBuf>| HostEnv {
+            path_dirs,
+            home: root.path("home"),
+            euid: 501,
+            cargo_home: None,
+            rustup_home: None,
+            zdotdir: None,
+            ollama_host: None,
+        };
+        let finder = env(vec![root.path("usr/bin")]);
+        let login = env(vec![prefix.join("bin"), root.path("usr/bin")]);
+        let refresh_on = |env: HostEnv, path_known: bool| {
+            let session = session.clone();
+            async move {
+                session
+                    .refresh_recording_on(
+                        &env,
+                        path_known,
+                        &CheckOptions::default(),
+                        |_, _| {},
+                        |_| {},
+                    )
+                    .await
+                    .1
+            }
+        };
+
+        let unread = refresh_on(finder, false).await;
+        let ids: Vec<&str> = unread.instances.iter().map(|i| i.id.as_str()).collect();
+        assert_eq!(ids, vec![BREW], "npm is not found on Finder's folders");
+
+        let operation = session
+            .ops
+            .acquire_resource_lock(ResourceLock(BREW.to_string()))
+            .await;
+        let held = tokio::time::timeout(Duration::from_secs(3), refresh_on(login.clone(), true))
+            .await
+            .expect("the round does not wait for the operation");
+        let ids: Vec<&str> = held.instances.iter().map(|i| i.id.as_str()).collect();
+        assert_eq!(ids, vec![BREW, NPM], "npm is found on the login PATH");
+        assert!(
+            !held.artifacts.iter().any(|a| a.key.instance_id == NPM),
+            "precondition: npm was not read while its prefix was held"
+        );
+        assert!(held.errors.is_empty(), "{:?}", held.errors);
+        let node = session.issue_plan(&uninstall("node")).await.unwrap();
+        assert_eq!(needed(&node.plan), Vec::new());
+        assert!(
+            node.plan.warnings.contains(&Warning::DependentsUnknown),
+            "an npm whose packages were never read is no proof that nothing runs \
+             on node: {:?}",
+            node.plan.warnings
+        );
+        let bystander = session.issue_plan(&uninstall("jq")).await.unwrap();
+        assert!(
+            !bystander
+                .plan
+                .warnings
+                .contains(&Warning::DependentsUnknown),
+            "jq is nothing npm runs on: {:?}",
+            bystander.plan.warnings
+        );
+
+        drop(operation);
+        let read = refresh_on(login, true).await;
+        assert!(read
+            .artifacts
+            .iter()
+            .any(|a| a.key.instance_id == NPM && a.key.name == "prettier"));
+        let again = session.issue_plan(&uninstall("node")).await.unwrap();
+        assert_eq!(
+            needed(&again.plan),
+            vec![Warning::NeededBySource {
+                instance_id: NPM.to_string(),
+                program: true,
+                tools: 2,
+            }]
+        );
+        assert!(!again.plan.warnings.contains(&Warning::DependentsUnknown));
+        assert_eq!(
+            session.submit(node.id),
+            Err(SubmitError::Unknown),
+            "the preview from the round that did not read npm is spent"
+        );
+        assert!(session.operations().is_empty(), "nothing was queued");
     }
 
     #[tokio::test]
@@ -1344,8 +1557,10 @@ mod tests {
             row(NPM, ArtifactKind::Package, "prettier"),
             row("standalone-claude", ArtifactKind::Binary, "claude"),
         ];
-        let subject = super::subject(&instances, &artifacts, &uninstall("node@22")).unwrap();
+        let none = HashSet::new();
+        let subject = super::subject(&instances, &artifacts, &none, &uninstall("node@22")).unwrap();
         assert_eq!(subject.package.key.name, "node@22");
+        assert!(subject.unlisted.is_empty());
         assert_eq!(subject.brew.id, BREW);
         let ids: Vec<&str> = subject.instances.iter().map(|i| i.id.as_str()).collect();
         assert_eq!(ids, vec![NPM]);
@@ -1356,16 +1571,21 @@ mod tests {
             .collect();
         assert_eq!(names, vec!["prettier"]);
         // Not a row the snapshot lists, not Homebrew's, not an uninstall.
-        assert!(super::subject(&instances, &artifacts, &uninstall("node")).is_none());
+        // Of the sources no round has read, those that could run on it.
+        let unread = HashSet::from([NPM.to_string(), "standalone-claude".to_string()]);
+        let subject =
+            super::subject(&instances, &artifacts, &unread, &uninstall("node@22")).unwrap();
+        assert_eq!(subject.unlisted, vec![NPM.to_string()]);
+        assert!(super::subject(&instances, &artifacts, &none, &uninstall("node")).is_none());
         let npm_uninstall = OpRequest {
             instance_id: NPM.to_string(),
             ..uninstall("node@22")
         };
-        assert!(super::subject(&instances, &artifacts, &npm_uninstall).is_none());
+        assert!(super::subject(&instances, &artifacts, &none, &npm_uninstall).is_none());
         let upgrade = OpRequest {
             kind: OpKind::Upgrade,
             ..uninstall("node@22")
         };
-        assert!(super::subject(&instances, &artifacts, &upgrade).is_none());
+        assert!(super::subject(&instances, &artifacts, &none, &upgrade).is_none());
     }
 }

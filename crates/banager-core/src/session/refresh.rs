@@ -238,6 +238,11 @@ impl Session {
         // read a thing, and may share it (`refresh`'s check).
         let round = self.rounds_started.fetch_add(1, Ordering::SeqCst) + 1;
         let previous = self.previous_for_refresh();
+        // Which of last round's sources it had never read the packages of
+        // (`Session::unlisted`): a source this round carries rows for again
+        // without reading stays one. Under the gate, so of `previous`'s
+        // round: only `commit` writes it.
+        let previously_unlisted = self.unlisted.lock().unwrap().clone();
         // Owned copy (CheckOptions is Copy): each per-instance spawned task
         // below needs its own 'static value, and the caller's `&opts`
         // reference cannot outlive this function. Stamped with this
@@ -883,7 +888,15 @@ impl Session {
                         (false, false) => inst.answered_at,
                         _ => None,
                     };
-                    (artifacts, updates, errors, stale, notes, answered_at)
+                    (
+                        artifacts,
+                        updates,
+                        errors,
+                        stale,
+                        notes,
+                        answered_at,
+                        inventory_confirmed,
+                    )
                 })),
             ));
         }
@@ -941,9 +954,14 @@ impl Session {
         // refresh couldn't finish for {count} sources") would have been
         // false with a count of zero.
         let mut stale = !errors.is_empty();
+        // The sources whose packages this round read (`inventory_confirmed`).
+        let mut read_now: HashSet<InstanceId> = HashSet::new();
         for (instance_id, handle) in handles {
             match handle.await {
-                Ok((a, u, e, s, notes, answered_at)) => {
+                Ok((a, u, e, s, notes, answered_at, read)) => {
+                    if read {
+                        read_now.insert(instance_id.clone());
+                    }
                     artifacts.extend(a);
                     updates.extend(u);
                     errors.extend(e);
@@ -1025,6 +1043,22 @@ impl Session {
         // (`NoAnswer::link_fixes`): over every source's rows, this round's
         // and the ones carried forward alike, as above.
         crate::link_fixes::fill(&mut instances, &artifacts);
+        // The sources whose packages no round has read (`Session::unlisted`):
+        // not this one, and not the one whose rows -- if any -- it carries.
+        // One found for the first time while an operation holds a lock it
+        // is read under carries none, and is one of these until a round
+        // reads it; so is one whose first reading failed, or that did not
+        // answer from the start. A Python with no pip has nothing to read.
+        let unlisted: HashSet<InstanceId> = instances
+            .iter()
+            .filter(|inst| {
+                !read_now.contains(&inst.id)
+                    && inst.status.unavailable != Some(Unavailable::NoPip)
+                    && (previously_unlisted.contains(&inst.id)
+                        || !previous.instances.iter().any(|last| last.id == inst.id))
+            })
+            .map(|inst| inst.id.clone())
+            .collect();
         let candidate = Snapshot {
             generation: previous.generation,
             round,
@@ -1038,26 +1072,36 @@ impl Session {
             // The shell's to fill in (`Snapshot::next_auto_check_at`).
             next_auto_check_at: None,
         };
-        (round, self.commit(round, &previous, candidate, record))
+        (
+            round,
+            self.commit(round, &previous, candidate, unlisted, record),
+        )
     }
 
     /// Assigns the real generation number (bumping only on a content
     /// change), hands the result to `record` (`refresh_recording`), stores
-    /// it as the current snapshot, and records `round` as the last one
-    /// committed regardless of whether `generation` moved (M5 in the design
-    /// review -- see `last_committed_round`'s field doc).
+    /// it as the current snapshot, with the sources it lists whose packages
+    /// no round has read (`Session::unlisted`, under the snapshot's lock),
+    /// and records `round` as the last one committed regardless of whether
+    /// `generation` moved (M5 in the design review -- see
+    /// `last_committed_round`'s field doc).
     fn commit(
         &self,
         round: u64,
         previous: &Snapshot,
         mut candidate: Snapshot,
+        unlisted: HashSet<InstanceId>,
         record: impl FnOnce(u64, &Snapshot),
     ) -> Snapshot {
         if !previous.same_content(&candidate) {
             candidate.generation = previous.generation + 1;
         }
         record(round, &candidate);
-        *self.snapshot.lock().unwrap() = candidate.clone();
+        {
+            let mut snapshot = self.snapshot.lock().unwrap();
+            *self.unlisted.lock().unwrap() = unlisted;
+            *snapshot = candidate.clone();
+        }
         self.last_committed_round.store(round, Ordering::SeqCst);
         candidate
     }
@@ -3299,6 +3343,89 @@ mod tests {
         assert_eq!(npm_calls(&runner), 8, "npm is read again once it is over");
         assert!(after.instances.iter().any(|i| i.id == npm_id));
         assert!(session.ops.locks_held().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_a_source_no_round_has_read_stays_unlisted_until_one_reads_it() {
+        // `Session::unlisted`: the sources whose rows are no reading of
+        // their packages. One whose first reading failed, one that did not
+        // answer from the start, and one first found while an operation
+        // holds its lock -- for as long as it is held, round after round --
+        // until a round reads it. Not a Python with no pip, which has none
+        // to read, nor a source read once that then stops answering: its
+        // rows carried are an answer.
+        let quiet = |id: &str, why: Unavailable| ManagerInstance {
+            status: InstanceStatus {
+                unavailable: Some(why),
+                notes: Vec::new(),
+                no_answer: None,
+            },
+            ..make_instance("fake", id)
+        };
+        let (fake, state) = FakeAdapter::new("fake");
+        {
+            let mut s = state.lock().unwrap();
+            s.instances = vec![
+                make_instance("fake", "fake:read"),
+                make_instance("fake", "fake:failing"),
+                quiet("fake:quiet", Unavailable::NotResponding),
+                quiet("fake:nopip", Unavailable::NoPip),
+            ];
+            s.failing.push("fake:failing".to_string());
+        }
+        let (other, other_state) = FakeAdapter::new("other");
+        let session = Session::with_adapters(Arc::new(VecSink::new()), vec![fake, other], None);
+        let unlisted = |session: &Session| {
+            let mut ids: Vec<String> = session.unlisted.lock().unwrap().iter().cloned().collect();
+            ids.sort();
+            ids
+        };
+
+        session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        assert_eq!(unlisted(&session), vec!["fake:failing", "fake:quiet"]);
+
+        session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        assert_eq!(
+            unlisted(&session),
+            vec!["fake:quiet"],
+            "read the second time"
+        );
+
+        // A source first found while an operation holds its lock.
+        let operation = session
+            .ops
+            .acquire_resource_lock(crate::model::ResourceLock("other:late".to_string()))
+            .await;
+        other_state.lock().unwrap().instances = vec![make_instance("other", "other:late")];
+        for round in ["first", "second"] {
+            let snapshot = session
+                .refresh(&non_root_env(), &CheckOptions::default())
+                .await;
+            assert!(snapshot.instances.iter().any(|i| i.id == "other:late"));
+            assert_eq!(
+                unlisted(&session),
+                vec!["fake:quiet", "other:late"],
+                "{round} round while it is held"
+            );
+        }
+        drop(operation);
+
+        state.lock().unwrap().instances[2].status.unavailable = None;
+        session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        assert!(unlisted(&session).is_empty(), "{:?}", unlisted(&session));
+
+        // Read once, then quiet: its rows are last round's answer.
+        state.lock().unwrap().instances[2].status.unavailable = Some(Unavailable::NotResponding);
+        session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        assert!(unlisted(&session).is_empty(), "{:?}", unlisted(&session));
     }
 
     #[tokio::test]

@@ -2204,7 +2204,10 @@ of an npm the last refresh listed there, neither `<npm> prefix -g` nor
 the reads above, and keeps the rows that npm had, as for any source an
 operation holds (`Session::refresh_round`). An npm no refresh has listed
 yet is looked for as ever, and if it is found there, nothing more is
-asked of it until the operation ends. A refresh in which Homebrew and
+asked of it until the operation ends: it is listed with no packages,
+having none to carry, until a refresh after the operation reads them,
+and an uninstall preview meanwhile does not take that for none ("What
+runs on a Homebrew package", below). A refresh in which Homebrew and
 npm are both read holds the shared lock once, for both. Both adapters use
 the same lock helper. It matches case variants with `protected::same_path` and symbolic-link
 aliases by directory device and inode, using protected, read-only path lookups,
@@ -4518,9 +4521,10 @@ A preview that found nothing running on the package found nothing among
 the tools the snapshot listed then, so it keeps what the look read of the
 snapshot (`needed_by::Inputs` in
 `crates/banager-core/src/session/needed_by.rs`): the package's key and a
-cask's app, its Homebrew's id and prefix, and for each source with a tool
+cask's app, its Homebrew's id and prefix, for each source with a tool
 that counts, its program and those tools, with a pipx or uv tool's
-environment. When a refresh has committed since, `Session::submit`
+environment, and each source no refresh has read the packages of (below),
+with its program. When a refresh has committed since, `Session::submit`
 compares the latest snapshot with that, in memory under the snapshot's
 lock (`needed_by::adds_no_dependent`): a tool the look never saw -- a
 source's first tool that counts (an npm package installed in Terminal
@@ -4623,6 +4627,23 @@ jq's says nothing of it. It names only what it did find, and does not
 refuse the uninstall. A refresh on the login shell's `PATH` looks for
 those sources again, and a preview confirmed after such a refresh listed
 a source's tool the preview never looked at is spent, as above.
+
+Nor are a source's rows a list of what it has when no refresh has read
+its packages: an npm first found while a Homebrew operation holds its
+prefix (npm, above) is listed with none, and so is a source whose first
+reading failed, or one that has not answered since Banager opened (an
+Ollama that is not running, say). Each refresh keeps, with the snapshot
+it commits, which of its sources these are: those it did not read whose
+rows it carries from no reading either (`Session::unlisted`, in
+`Session::refresh_round` and `commit`). A Python with no pip has nothing
+to read and is not one; a source read once that later stops answering
+keeps last time's rows, an answer, and is looked at by them. The look is
+in doubt about each of these sources by its own program, as above
+(`needed_by::Refreshed`): with such an npm, the preview of `node` or
+`node@22` says it could not check, and jq's says nothing of it; the
+doubt alone refuses nothing. A preview confirmed after a refresh listed such a
+source that the preview did not know as one is spent, as above; once a
+refresh reads its packages, its tools are looked at like any other's.
 
 ## Diagnostic info: read-only, no command runs
 

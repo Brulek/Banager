@@ -320,6 +320,17 @@ pub struct Session {
     /// started after it arrived has committed.
     refresh_gate: tokio::sync::Mutex<()>,
     snapshot: Mutex<Snapshot>,
+    /// The sources `snapshot` lists whose packages no round has read: rows
+    /// it carried from nothing, or from a round that had not read them
+    /// either -- an npm first found while a Homebrew operation holds its
+    /// prefix (`refresh_round`'s `held_now`), a source whose first reading
+    /// failed or that did not answer. They have no rows, which is not "no
+    /// tools", and an uninstall preview does not read it as such
+    /// (`needed_by::Unseen`). A Python with no pip (`Unavailable::NoPip`)
+    /// has none to read, and is not one. Written by `commit` with the
+    /// snapshot, under its lock, and read under it too, so the two are
+    /// always of one round.
+    unlisted: Mutex<std::collections::HashSet<InstanceId>>,
     /// How many refresh rounds have begun. Bumped by `refresh_round`, under
     /// `refresh_gate`, before the round reads anything; `refresh` reads it
     /// on arrival, so a round numbered above that reading began after the
@@ -526,6 +537,7 @@ impl Session {
             ops: Arc::new(ops),
             refresh_gate: tokio::sync::Mutex::new(()),
             snapshot: Mutex::new(Snapshot::empty()),
+            unlisted: Mutex::new(std::collections::HashSet::new()),
             rounds_started: AtomicU64::new(0),
             last_committed_round: AtomicU64::new(0),
             refreshes_under_way: AtomicUsize::new(0),

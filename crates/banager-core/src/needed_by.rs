@@ -77,7 +77,9 @@
 //! Run on the blocking pool by `Session::issue_plan`
 //! (`session/needed_by.rs`).
 
-use crate::model::{ArtifactKind, InstallReason, InstalledArtifact, ManagerInstance, Warning};
+use crate::model::{
+    ArtifactKind, InstallReason, InstalledArtifact, InstanceId, ManagerInstance, Warning,
+};
 use crate::protected::{self, look, Protected, Resolution};
 use crate::runner::HostEnv;
 use std::path::{Component, Path, PathBuf};
@@ -181,11 +183,28 @@ pub fn needed_by(
     env: &HostEnv,
     budget: Budget,
 ) -> NeededBy {
-    needed_by_on_path(package, brew, instances, artifacts, env, true, budget)
+    let refreshed = Refreshed {
+        path_known: true,
+        unlisted: Vec::new(),
+    };
+    needed_by_on_path(package, brew, instances, artifacts, env, &refreshed, budget)
+}
+
+/// What a look knows of the refresh whose sources it is given
+/// (`needed_by_on_path`), beyond what that refresh listed.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Refreshed {
+    /// Whether the refresh's `PATH` was the login shell's
+    /// (`Session::refresh_recording_on`).
+    pub path_known: bool,
+    /// The sources it lists whose packages no round has read
+    /// (`Session::unlisted`): their rows -- none, as a rule -- are no list
+    /// of what they have.
+    pub unlisted: Vec<InstanceId>,
 }
 
 /// `needed_by`, for sources a refresh looked for along `env`'s `PATH`,
-/// which `path_known` says was the login shell's or not
+/// which `refreshed` says was the login shell's or not
 /// (`Session::refresh_recording_on`). Every kind of source in `HOSTED` is
 /// found only on `PATH` (`resolve_exe`), so on a `PATH` that was not the
 /// login shell's -- Finder's four folders, when reading it failed -- one
@@ -194,17 +213,21 @@ pub fn needed_by(
 /// kind of source (`unseen_sources`), and does not finish when the package
 /// could be what one of them runs on (`Look::could_be`): a `node`, a
 /// Python, uv, Ollama. jq could not, and its preview says nothing of it.
+/// So is a look in doubt about each source `refreshed` lists as one whose
+/// packages no round has read (`unseen_source`, of its own program): an
+/// npm first found while a Homebrew operation held its prefix lists no
+/// tools, and that is not "none".
 pub fn needed_by_on_path(
     package: &InstalledArtifact,
     brew: &ManagerInstance,
     instances: &[ManagerInstance],
     artifacts: &[InstalledArtifact],
     env: &HostEnv,
-    path_known: bool,
+    refreshed: &Refreshed,
     budget: Budget,
 ) -> NeededBy {
     let mut look = Look::new(&env.home, budget);
-    if !path_known {
+    if !refreshed.path_known {
         look.doubts.extend(unseen_sources());
     }
     let Some(roots) = own_folders(package, brew, &mut look) else {
@@ -226,6 +249,13 @@ pub fn needed_by_on_path(
             || !runs_here(source)
         {
             continue;
+        }
+        // What a source no round has read has is not known, nor whether
+        // any of it runs on the package: in doubt by its program, whatever
+        // it lists (`Refreshed::unlisted`).
+        if refreshed.unlisted.contains(&source.id) {
+            look.doubts
+                .extend(unseen_source(&source.adapter_id, &source.exe_path));
         }
         let tools: Vec<&InstalledArtifact> = artifacts
             .iter()
@@ -428,16 +458,23 @@ const FOUND_AS: [(&str, &str); 6] = [
 ];
 
 /// The doubts about sources a refresh could not have found
-/// (`needed_by_on_path`): each kind's program as it is found on `PATH`,
-/// with npm's `node` (`Doubt::of_program`), and a Python for the
-/// environments of pipx's and uv's tools.
+/// (`needed_by_on_path`): each kind's, by its program as it is found on
+/// `PATH` (`unseen_source`).
 fn unseen_sources() -> Vec<Doubt> {
-    let mut doubts = Vec::new();
-    for (adapter_id, name) in FOUND_AS {
-        doubts.extend(Doubt::of_program(adapter_id, Path::new(name)));
-        if has_environments(adapter_id) {
-            doubts.push(Doubt::Python);
-        }
+    FOUND_AS
+        .iter()
+        .flat_map(|(adapter_id, name)| unseen_source(adapter_id, Path::new(name)))
+        .collect()
+}
+
+/// The doubts about a source of kind `adapter_id` whose program is
+/// `program`, when what it has is not known: that program, with npm's
+/// `node` (`Doubt::of_program`), and a Python for the environments of
+/// pipx's and uv's tools.
+fn unseen_source(adapter_id: &str, program: &Path) -> Vec<Doubt> {
+    let mut doubts = Doubt::of_program(adapter_id, program);
+    if has_environments(adapter_id) {
+        doubts.push(Doubt::Python);
     }
     doubts
 }
