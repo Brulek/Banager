@@ -3051,13 +3051,25 @@ mod tests {
         assert_eq!(output.exit_code, Some(5));
         let seen = lines.lock().unwrap().clone();
         assert_eq!(seen.len(), 4, "{seen:?}");
-        // Stderr's first line, not the first line of all: each stream has
-        // its own reader, and the stdout line written right after the
-        // stderr ones can reach `on_line` first on a busy machine.
+        // Check complete delivery and order within each pipe. The OS may
+        // deliver either pipe first, even though the shell writes stderr first.
+        let from_stream = |wanted| {
+            seen.iter()
+                .filter(|(stream, _)| *stream == wanted)
+                .map(|(_, line)| line.as_str())
+                .collect::<Vec<_>>()
+        };
         assert_eq!(
-            seen.iter().find(|(stream, _)| *stream == Stream::Stderr),
-            Some(&(Stream::Stderr, CURL_MASKED_BY_PATTERN.to_string())),
-            "{seen:?}"
+            from_stream(Stream::Stderr),
+            vec![
+                CURL_MASKED_BY_PATTERN,
+                "pip._vendor.urllib3.exceptions.LocationParseError: Failed to parse: http://****:****@127.0.0.1:invalid",
+                "pip._vendor.requests.exceptions.InvalidURL: Failed to parse: http://****:****@127.0.0.1:invalid",
+            ],
+        );
+        assert_eq!(
+            from_stream(Stream::Stdout),
+            vec!["Using proxy http://****:****@127.0.0.1:7890"],
         );
         for (_, line) in &seen {
             assert!(!line.contains("review-secret"), "{line}");
