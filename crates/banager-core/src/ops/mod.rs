@@ -2,8 +2,8 @@ use crate::adapters::{Adapter, AdapterError};
 use crate::events::{EventSink, OpId, OperationEvent};
 use crate::model::{
     AdapterId, AlreadyUpdated, ArtifactKey, ArtifactKind, Attention, CancelPolicy, Fault,
-    InstanceId, ManagerInstance, OpKind, OpStatus, Outcome, Plan, PlanAction, Reconciled,
-    ResourceLock,
+    InstanceId, ManagerInstance, OpKind, OpRequest, OpStatus, Outcome, Plan, PlanAction,
+    Reconciled, ResourceLock,
 };
 use crate::runner::RunnerError;
 use serde::{Deserialize, Serialize};
@@ -310,8 +310,9 @@ pub struct OperationManager {
     /// Caps `evicted`: `MAX_EVICTED`, smaller in this module's tests.
     max_evicted: usize,
     /// How many updates that reached their command and may have changed
-    /// something (`may_have_moved_others`) have ended, by source instance,
-    /// counted as each one's locks are released (`finish`), so that the
+    /// something (`may_have_moved_others`) have ended, by source instance
+    /// and kind -- Homebrew brings a formula's dependencies along, which
+    /// are formulae, so a cask's update brings no formula -- counted as each one's locks are released (`finish`), so that the
     /// next operation on that source, which waits for them, reads it. An
     /// update whose package is already at its target when its turn comes
     /// (`run_operation`) was brought there by an earlier one of the same
@@ -319,7 +320,7 @@ pub struct OperationManager {
     /// is one where an update can bring others along
     /// (`AlreadyUpdated::ByEarlierUpdate`). Locked after `records` where
     /// both are held, and never the other way round.
-    upgrades_ended: Mutex<HashMap<InstanceId, u64>>,
+    upgrades_ended: Mutex<HashMap<(InstanceId, ArtifactKind), u64>>,
 }
 
 /// A read-only view of one operation for a UI, independent of the
@@ -706,12 +707,13 @@ impl OperationManager {
         op_id
     }
 
-    /// How many updates of `instance` have ended (`upgrades_ended`).
-    fn upgrades_ended_on(&self, instance: &str) -> u64 {
+    /// How many updates of `request`'s source and kind have ended
+    /// (`upgrades_ended`).
+    fn upgrades_ended_on(&self, request: &OpRequest) -> u64 {
         self.upgrades_ended
             .lock()
             .unwrap()
-            .get(instance)
+            .get(&(request.instance_id.clone(), request.artifact_kind))
             .copied()
             .unwrap_or(0)
     }
@@ -737,7 +739,7 @@ impl OperationManager {
         on_finish: Option<OnFinish>,
     ) {
         let cancel = CancellationToken::new();
-        let upgrades_seen = self.upgrades_ended_on(&plan.request.instance_id);
+        let upgrades_seen = self.upgrades_ended_on(&plan.request);
         let record = OpInternal {
             id: op_id,
             plan: plan.clone(),
@@ -1297,8 +1299,8 @@ impl OperationManager {
     /// For an update whose two readings are equal (`after`): how it was
     /// already at its confirmed target (`submit_toward`), or `None` where
     /// there is no target or the reading is below it. By an earlier update
-    /// when one of the same source that may have changed something has
-    /// ended since this one was submitted (`upgrades_ended`), which on a
+    /// when one of the same source and kind that may have changed something
+    /// has ended since this one was submitted (`upgrades_ended`), which on a
     /// source's lock means before its turn -- and only on a source where
     /// one update can update another package at all
     /// (`Adapter::one_update_can_update_others`, `others_move`).
@@ -1318,7 +1320,7 @@ impl OperationManager {
         if !reached_target(version, &target) {
             return None;
         }
-        if others_move && self.upgrades_ended_on(&plan.request.instance_id) > seen {
+        if others_move && self.upgrades_ended_on(&plan.request) > seen {
             Some(AlreadyUpdated::ByEarlierUpdate)
         } else {
             Some(AlreadyUpdated::BeforeItsTurn)
@@ -1361,7 +1363,10 @@ impl OperationManager {
                         .upgrades_ended
                         .lock()
                         .unwrap()
-                        .entry(r.plan.request.instance_id.clone())
+                        .entry((
+                            r.plan.request.instance_id.clone(),
+                            r.plan.request.artifact_kind,
+                        ))
                         .or_insert(0) += 1;
                 }
                 if release_locks {

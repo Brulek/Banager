@@ -541,3 +541,62 @@ async fn test_on_a_source_where_one_update_never_updates_another_none_is_done_by
         Some(AlreadyUpdated::BeforeItsTurn)
     );
 }
+
+/// `brew_info(&[])` with the cask `token` installed at `version`.
+fn brew_info_with_cask(token: &str, version: &str, formulae: &[(&str, &str)]) -> String {
+    let mut info: serde_json::Value = serde_json::from_str(&brew_info(formulae)).expect("json");
+    let cask = info["casks"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|c| c["token"] == token)
+        .unwrap_or_else(|| panic!("no cask {token} in the fixture"));
+    cask["installed"] = version.into();
+    info.to_string()
+}
+
+#[tokio::test]
+async fn test_a_cask_update_does_not_count_as_one_that_brought_a_formula_along() {
+    // Homebrew upgrades a formula's dependencies, which are formulae: a
+    // cask's update that moved its version brought no formula along.
+    // onyx moved; libpng was at its new version before its turn all the
+    // same.
+    let runner = Arc::new(ScriptedRunner::default());
+    runner.script(
+        &[BREW, "upgrade", "--cask", "onyx"],
+        vec![exited(0, "==> Upgrading onyx\n", "")],
+    );
+    runner.script(
+        &[BREW, "upgrade", "--formula", "libpng"],
+        vec![exited(0, "", "Warning: libpng 1.6.59 already installed\n")],
+    );
+    let old = brew_info_with_cask("onyx", "5.0.2", &[("libpng", "1.6.59")]);
+    let new = brew_info_with_cask("onyx", "5.1.0", &[("libpng", "1.6.59")]);
+    runner.script(
+        &BREW_INFO,
+        vec![
+            exited(0, &old, ""), // onyx, before
+            exited(0, &new, ""), // onyx, after
+            exited(0, &new, ""), // libpng, before
+            exited(0, &new, ""), // libpng, after
+        ],
+    );
+    let (manager, adapter) = manager(&runner);
+    let req = OpRequest {
+        kind: OpKind::Upgrade,
+        instance_id: "brew:/opt/homebrew".to_string(),
+        artifact_kind: ArtifactKind::Cask,
+        name: "onyx".to_string(),
+    };
+    let onyx = adapter.plan(&brew_instance(), &req).await.expect("plan");
+    let libpng = plan_upgrade(&adapter, "libpng").await;
+    let first = manager.submit_toward(onyx, Some("5.1.0".to_string()), None);
+    let second = manager.submit_toward(libpng, Some("1.6.59".to_string()), None);
+    assert_eq!(manager.wait(first).await, Some(Outcome::Succeeded));
+    assert_eq!(already_updated(&manager, first), None, "onyx moved");
+    assert_eq!(manager.wait(second).await, Some(Outcome::Succeeded));
+    assert_eq!(
+        already_updated(&manager, second),
+        Some(AlreadyUpdated::BeforeItsTurn)
+    );
+}

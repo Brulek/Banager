@@ -249,11 +249,15 @@ export function createMockBackend(scenario: Scenario): MockBackend {
   const held = new Set<string>();
   let running = 0;
   /**
-   * How many updates of each source that may have changed something have
-   * ended (`OperationManager::upgrades_ended`, `may_have_moved_others`):
-   * one that moved its version, failed or was stopped partway.
+   * How many updates of each source and kind that may have changed
+   * something have ended (`OperationManager::upgrades_ended`,
+   * `may_have_moved_others`): one that moved its version, failed or was
+   * stopped partway. By kind too: Homebrew brings a formula's dependencies
+   * along, which are formulae.
    */
   const movedUpgrades = new Map<string, number>();
+  const movedKey = (request: { instance_id: string; artifact_kind: string }) =>
+    `${request.instance_id}\u0000${request.artifact_kind}`;
   let nextOpId = 1;
   /** What `get_sizes` answers: the newest round's sizes so far. */
   let sizes: Sizes = NO_SIZES;
@@ -499,14 +503,13 @@ export function createMockBackend(scenario: Scenario): MockBackend {
     // along, when one of its source that may have changed something ended
     // since it was submitted -- as `OperationManager::already_at_target`
     // tells them apart.
-    const instanceId = op.summary.instance_id;
-    const moved = movedUpgrades.get(instanceId) ?? 0;
+    const moved = movedUpgrades.get(movedKey(op.plan.request)) ?? 0;
     if (op.already === true && outcome === "Succeeded") {
       op.summary.already_updated =
-        adapterIdOf(instanceId) === "brew" && moved > op.movedSeen ? "ByEarlierUpdate" : "BeforeItsTurn";
+        adapterIdOf(op.summary.instance_id) === "brew" && moved > op.movedSeen ? "ByEarlierUpdate" : "BeforeItsTurn";
     }
     if (op.summary.kind === "Upgrade" && op.started && mayHaveMovedOthers(outcome, op.summary.already_updated)) {
-      movedUpgrades.set(instanceId, moved + 1);
+      movedUpgrades.set(movedKey(op.plan.request), moved + 1);
     }
     const target = requestKey(op.plan.request);
     // Read before `apply`, which changes the row in place.
@@ -560,8 +563,8 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       scenario.outcome !== "mixed" ? scenario.outcome : op.summary.id % 2 === 0 ? "failed" : "succeeded";
     // `?outcome=already`: only an update the check offered a newer version
     // is aimed at one (`offered_version`); a model's digest never is. On
-    // Homebrew the first of a source updates for real, and brings the
-    // later ones along; elsewhere each is new before its turn.
+    // Homebrew the first of a source and kind updates for real, and brings
+    // the later ones along; elsewhere each is new before its turn.
     if (scripted === "already") {
       const aimed =
         op.plan.request.kind === "Upgrade" &&
@@ -569,7 +572,7 @@ export function createMockBackend(scenario: Scenario): MockBackend {
         subject.candidate.checkable &&
         subject.candidate.channel !== "Digest" &&
         subject.candidate.current !== subject.candidate.target;
-      const first = inst.adapter_id === "brew" && (movedUpgrades.get(inst.id) ?? 0) === 0;
+      const first = inst.adapter_id === "brew" && (movedUpgrades.get(movedKey(op.plan.request)) ?? 0) === 0;
       if (!aimed || first) scripted = "succeeded";
       else op.already = true;
     }
@@ -668,7 +671,7 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       plan,
       timers: [],
       started: false,
-      movedSeen: movedUpgrades.get(plan.request.instance_id) ?? 0,
+      movedSeen: movedUpgrades.get(movedKey(plan.request)) ?? 0,
     };
     operations.set(id, op);
     emit({ Operation: { Status: { op_id: id, status: "Queued" } } });
