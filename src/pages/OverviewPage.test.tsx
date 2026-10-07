@@ -1567,14 +1567,20 @@ describe("OverviewPage", () => {
   });
 });
 
-it("counts a persisted password stop as needing steps after restart", async () => {
+// r22 W1: Clear in 「最近的更新记录」 dismisses the record (as Rust sends it
+// since f17), which does not resolve the stop.
+it.each([
+  ["", false],
+  [", also once Clear has dismissed it", true],
+] as const)("counts a persisted password stop as needing steps after restart%s", async (_when, dismissed) => {
   served = snapshotWith({ updates: [candidate(formula("glib"))] });
   const key = served.updates[0].key;
   const answer = mockInvoke.getMockImplementation()!;
   mockInvoke.mockImplementation((cmd, args) => cmd === "get_history" ? Promise.resolve({
-    run: "current", cleared_before: null, records: [{
+    run: "current", cleared_before: dismissed ? Date.now() : null, records: [{
       run: "previous", op_id: 1, finished_at: Date.now() - 1000, key, display_name: "glib", adapter_id: "brew",
       kind: "Update", from_version: "1.0.0", to_version: null, result: { Failed: { cause: "needsPassword" } }, verified: false,
+      dismissed,
     }],
   }) : answer(cmd, args));
   const view = renderOverview();

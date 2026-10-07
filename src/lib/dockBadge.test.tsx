@@ -10,6 +10,8 @@ import { useSnoozeExpiry } from "./snoozeExpiry";
 import { queryKeys } from "./queries";
 import type {
   ArtifactKey,
+  HistoryRecord,
+  HistoryView,
   InstalledArtifact,
   ManagerInstance,
   Settings,
@@ -129,6 +131,40 @@ describe("the Dock's badge", () => {
 
     await waitFor(() => expect(dock.badge()).toBe(2));
     expect(getByRole("button", { name: "Updates" })).toHaveAccessibleDescription("2 can be updated");
+  });
+
+  it("leaves out a recorded password stop, also once Clear has dismissed its record (r22 W1)", async () => {
+    // What `get_history` answers after a restart: glib's last update
+    // stopped for the Mac's password. Update all would stop there again.
+    const record: HistoryRecord = {
+      run: "earlier", op_id: 4, finished_at: Date.now() - 60_000, key: formula("glib"), display_name: "glib",
+      adapter_id: "brew", kind: "Update", from_version: "1.0.0", to_version: null,
+      result: { Failed: { cause: "needsPassword" } }, verified: false, dismissed: false,
+    };
+    const history: HistoryView = { run: "now", cleared_before: null, records: [record] };
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "get_snapshot") return Promise.resolve(served);
+      if (cmd === "get_settings") return Promise.resolve(settings);
+      if (cmd === "get_history") return Promise.resolve(history);
+      return Promise.resolve(undefined);
+    });
+    const dock = watchDock();
+    const { getByRole, queryClient } = renderWithProviders(<Shell />);
+    await waitFor(() => expect(dock.badge()).toBe(1));
+    expect(getByRole("button", { name: "Updates" })).toHaveAccessibleDescription("1 can be updated");
+
+    // What `clear_history` answers (Rust's `HistoryStore::clear`).
+    act(() => {
+      queryClient.setQueryData<HistoryView>(queryKeys.history, {
+        run: "now", cleared_before: Date.now(), records: [{ ...record, dismissed: true }],
+      });
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(dock.counts()).not.toContain(2);
+    expect(dock.badge()).toBe(1);
+    expect(getByRole("button", { name: "Updates" })).toHaveAccessibleDescription("1 can be updated");
   });
 
   it("shows none before the first check has answered, and the count once it has", async () => {

@@ -2950,7 +2950,12 @@ describe("InstalledPage", () => {
       });
     });
 
-    it("offers View Steps, not Update, for an update an earlier launch kept as stopped for the password", async () => {
+    // r22 W1: also once Clear in 「最近的更新记录」 has dismissed the record,
+    // as Rust sends it since f17: Clear does not resolve the stop.
+    it.each([
+      ["", false],
+      [", also once Clear has dismissed it", true],
+    ] as const)("offers View Steps, not Update, for an update an earlier launch kept as stopped for the password%s", async (_when, dismissed) => {
       // As `get_history` answers after a restart: the stop is the newest
       // record of glib, from another run, and the check still offers glib.
       const answer = mockInvoke.getMockImplementation()!;
@@ -2958,13 +2963,13 @@ describe("InstalledPage", () => {
         cmd === "get_history"
           ? Promise.resolve({
               run: "this-launch",
-              cleared_before: null,
+              cleared_before: dismissed ? Date.now() : null,
               records: [
                 {
                   run: "earlier-launch", op_id: 4, finished_at: Date.now() - 60_000,
                   key: { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "glib" }, display_name: "glib",
                   adapter_id: "brew", kind: "Update", from_version: "2.88.3", to_version: null,
-                  result: { Failed: { cause: "needsPassword" } }, verified: false,
+                  result: { Failed: { cause: "needsPassword" } }, verified: false, dismissed,
                 },
               ],
             })
