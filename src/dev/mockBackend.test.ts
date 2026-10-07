@@ -19,6 +19,8 @@ import type {
   UpdateCandidate,
 } from "../lib/types";
 import { NO_FACTS } from "../lib/types";
+import en from "../i18n/en.json";
+import zhCN from "../i18n/zh-CN.json";
 import { toolsNotJudged } from "../lib/commandsKnown";
 import { outcomeCause, failureCause } from "../lib/failureCause";
 import { resolveToolIcon } from "../lib/toolIcons";
@@ -1202,6 +1204,21 @@ describe("the preview's URL switches", () => {
     ] as const) {
       expect([...(listed.get(name) ?? [])].sort(), `?${name}=`).toEqual([...values].sort());
     }
+  });
+
+  it("are walked in docs/ui-preview.md with the names the window gives its controls (r31 E7)", () => {
+    // The recipes said "Show self-updating apps", a switch Settings does
+    // not have, and "open its notice details and copy the masked
+    // diagnostic" for the startup error's Show / Copy Error Details.
+    const doc = readFileSync(path.resolve(__dirname, "../../docs/ui-preview.md"), "utf-8").replace(/\s+/g, " ");
+    for (const name of [
+      en.settings.includeSelfUpdating.label,
+      `「${zhCN.settings.includeSelfUpdating.label}」`,
+      `click ${en.sourceDiagnostic.label}, then ${en.sourceDiagnostic.copy}`,
+    ]) {
+      expect(doc).toContain(name);
+    }
+    expect(doc).not.toMatch(/Show self-updating apps|notice details|masked diagnostic/i);
   });
 });
 

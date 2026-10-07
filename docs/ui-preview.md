@@ -187,9 +187,10 @@ Paths are under a generic home folder, `/Users/you`.
   disappears altogether.
 - Cancel works on a queued or running operation, except rustup's, which
   refuses once it runs.
-- Settings are kept until the page reloads. Turning on Show
-  self-updating apps adds the Visual Studio Code update on the next
-  refresh. Check for updates (Manually, Daily or Weekly) is kept too,
+- Settings are kept until the page reloads. Turning on Show Homebrew
+  apps that have their own updater (「显示自带更新的Homebrew App」) adds
+  the Visual Studio Code update on the next refresh. Check for updates
+  (Manually, Daily or Weekly) is kept too,
   and moves the next check's time under it, and checks nothing:
   the daily check is a task of the app's Rust side, which the preview
   does not have. Notify me when there are updates turns on without
@@ -587,14 +588,15 @@ is pinned by `src/lib/previewEnv.test.ts` and `src/components/CommandPreview.tes
 
 ### Retained failure details
 
-- `?state=startup-error`: npm fails at startup; open its notice details and copy the masked diagnostic.
+- `?state=startup-error`: npm ran into an error at startup; on its notice, click Show Error Details, then Copy Error Details (a login in them masked).
 - `?page=updates&outcome=follow-up`: Update History includes a saved relink warning with View Log; updating a Homebrew formula whose preview includes cleanup, such as git, succeeds with a cleanup warning, visible in its row and operation bar.
 - Add `&lang=zh-CN` or `&lang=zh-Hant` for the Chinese copies.
 
 ### A password stop from an earlier launch
 
 Open `?page=updates&lang=zh-cn` (or `lang=en`, `lang=zh-hant`), turn on
-Show self-updating apps in Settings and click Check Again, so that the
+Show Homebrew apps that have their own updater
+(「显示自带更新的Homebrew App」) in Settings and click Check Again, so that the
 Visual Studio Code update is offered. The pretend history kept its last
 update, yesterday, as stopped where it needed the Mac's password
 (「未能更新：需要输入密码」), with no command. Its row has View Steps in
