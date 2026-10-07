@@ -370,6 +370,78 @@ fn test_stops_at_the_file_limit_and_says_which_limit() {
 }
 
 #[test]
+fn test_a_usr_local_bin_full_of_homebrews_links_is_read_last_and_is_the_folder_cut_short() {
+    // An Intel Mac: Homebrew's prefix is `/usr/local`, so `/usr/local/bin`
+    // holds a link for every command of every formula, each claimed by
+    // Homebrew's `Cellar` and each counting toward the entry budget. Read
+    // third, it spent the budget, and the user's own folders after it --
+    // `~/.cargo/bin`, `~/go/bin`, `~/.bun/bin`, a `PATH` folder under home
+    // -- were never read. Read last, every one of them is; the stand-in
+    // `/usr/local/bin` (a folder of the test's own, never this Mac's) is
+    // the one cut short, and the scan says so. A budget of 40 entries
+    // stands in for the 2,000: the order is what is under test.
+    let home = Home::new("intel-usr-local");
+    let usr_local = home.path().join("usr-local");
+    let system_bin = home.dir("usr-local/bin");
+    for index in 0..60 {
+        let name = format!("f{index:02}");
+        let keg_bin = home.dir(&format!("usr-local/Cellar/{name}/1.0/bin"));
+        exe(&keg_bin, &name, b"x");
+        link(
+            &system_bin,
+            &name,
+            &Path::new("../Cellar")
+                .join(&name)
+                .join("1.0/bin")
+                .join(&name),
+        );
+    }
+    let mut mine = Vec::new();
+    for (folder, name) in [
+        (".local/bin", "mine-local"),
+        (".cargo/bin", "mine-cargo"),
+        ("go/bin", "mine-go"),
+        (".bun/bin", "mine-bun"),
+        ("tools/bin", "mine-path"),
+    ] {
+        exe(&home.dir(folder), name, b"x");
+        mine.push(tilde(folder).join(name));
+    }
+    let brew = ManagerInstance {
+        exe_path: system_bin.join("brew"),
+        prefix: usr_local.clone(),
+        ..manager_instance("brew", &format!("brew:{}", usr_local.display()))
+    };
+    let budget = ScanBudget {
+        max_entries: 40,
+        max_duration: Duration::from_secs(10),
+    };
+
+    let scan = banager_core::scan::scan_unknown(
+        &home.env(vec![home.path().join("tools/bin")]),
+        &system_bin,
+        &[brew],
+        &[],
+        &[],
+        budget,
+    );
+
+    let listed: Vec<PathBuf> = scan.entries.iter().map(|e| e.path.clone()).collect();
+    assert_eq!(listed, mine, "{:?}", scan.scanned);
+    assert_eq!(scan.stopped, Some(ScanStop::FileLimit { max_entries: 40 }));
+    assert_eq!(
+        scan.scanned.last(),
+        Some(&ScannedDir {
+            path: tilde("usr-local/bin"),
+            entries: 35,
+        }),
+        "{:?}",
+        scan.scanned
+    );
+    assert_eq!(scan.attributed, 35, "Homebrew's links, as far as it read");
+}
+
+#[test]
 fn test_stops_at_a_zero_time_budget_before_reading_anything() {
     let home = Home::new("time-limit");
     let bin = home.dir(".local/bin");

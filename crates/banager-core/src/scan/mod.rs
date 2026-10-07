@@ -266,6 +266,15 @@ pub const SYSTEM_BIN: &str = "/usr/local/bin";
 /// reads each distinct directory once, by canonical path, so a `PATH`
 /// that names `~/.local/bin` twice, or through a link, costs one read.
 ///
+/// `system_bin`, `/usr/local/bin`, last, after every folder of the
+/// user's own: on an Intel Mac it is Homebrew's link folder, a link for
+/// every command of every formula -- the scale test's big Mac has 3,600
+/// -- each one Homebrew's and each counting toward the scan's 2,000
+/// entries (`ScanBudget`). Read third, as it once was, it spent the
+/// budget and `~/.cargo/bin`, `~/go/bin`, `~/.bun/bin` and the `PATH`
+/// folders under home were never read; read last, a `/usr/local/bin` too
+/// big for what is left is the folder cut short, and the page says so.
+///
 /// Only `PATH` entries under `home` are taken. The rest --
 /// `/opt/homebrew/bin`, `/usr/bin` -- are Homebrew's and macOS's, and
 /// not what this page is for. Which `PATH` that is depends on how Banager
@@ -283,7 +292,6 @@ fn candidate_dirs(env: &HostEnv, system_bin: &Path) -> Vec<PathBuf> {
     let mut dirs = vec![
         home.join(".local/bin"),
         home.join("bin"),
-        system_bin.to_path_buf(),
         home.join(".cargo/bin"),
         home.join("go/bin"),
         home.join(".bun/bin"),
@@ -298,6 +306,7 @@ fn candidate_dirs(env: &HostEnv, system_bin: &Path) -> Vec<PathBuf> {
             .filter(|dir| dir.starts_with(home))
             .cloned(),
     );
+    dirs.push(system_bin.to_path_buf());
     dirs
 }
 
@@ -1380,7 +1389,7 @@ mod tests {
     }
 
     #[test]
-    fn test_candidate_dirs_are_the_seven_fixed_ones_plus_path_entries_under_home() {
+    fn test_candidate_dirs_are_the_fixed_ones_and_path_entries_under_home_then_usr_local_bin() {
         let dirs = candidate_dirs(
             &env(
                 "/Users/someone",
@@ -1397,7 +1406,6 @@ mod tests {
         let expected: Vec<PathBuf> = [
             "/Users/someone/.local/bin",
             "/Users/someone/bin",
-            "/usr/local/bin",
             "/Users/someone/.cargo/bin",
             "/Users/someone/go/bin",
             "/Users/someone/.bun/bin",
@@ -1405,6 +1413,9 @@ mod tests {
             "/Users/someone/.opencode/bin",
             // Raw: the duplicate is `scan_dirs`'s to drop, by canonical path.
             "/Users/someone/.local/bin",
+            // Last, after every folder of the user's own: on an Intel Mac
+            // it holds Homebrew's links, enough to spend the whole budget.
+            "/usr/local/bin",
         ]
         .iter()
         .map(PathBuf::from)
@@ -1426,6 +1437,8 @@ mod tests {
             dirs.contains(&PathBuf::from("/Users/someone/.cargo/bin")),
             "{dirs:?}"
         );
+        // Still before `/usr/local/bin`, which is always last.
+        assert_eq!(dirs.last(), Some(&PathBuf::from(SYSTEM_BIN)), "{dirs:?}");
     }
 
     #[test]
