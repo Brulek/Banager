@@ -259,4 +259,50 @@ mod tests {
             assert_eq!(missing_program(text).as_deref(), expected, "{text:?}");
         }
     }
+
+    #[test]
+    fn test_the_last_not_found_line_names_the_program() {
+        // A launcher that tries `python3`, warns, then falls back to
+        // `node`: the last line `env` wrote is what ended it.
+        let stderr = "env: python3: No such file or directory\nwarning: trying node\nenv: node: No such file or directory\n";
+        assert_eq!(missing_program(stderr).as_deref(), Some("node"));
+        assert_eq!(
+            of(&Ok(ran(Some(127), stderr))),
+            said(NoAnswerKind::CouldNotStart, Some("node"))
+        );
+    }
+
+    #[test]
+    fn test_blanks_at_the_end_of_envs_line_do_not_hide_the_program() {
+        // Spaces or a tab before the newline, or a carriage return with
+        // no newline after it, which `str::lines` leaves on the line.
+        for text in [
+            "env: node: No such file or directory \t\n",
+            "env: node: No such file or directory\r",
+        ] {
+            assert_eq!(missing_program(text).as_deref(), Some("node"), "{text:?}");
+        }
+    }
+
+    #[test]
+    fn test_exit_126_names_no_program_whatever_stderr_says() {
+        // 126 is found but not runnable: whatever `env` line is in its
+        // stderr, no program is missing.
+        assert_eq!(
+            of(&Ok(ran(Some(126), ENV_NODE))),
+            said(NoAnswerKind::CouldNotStart, None)
+        );
+    }
+
+    #[test]
+    fn test_a_version_read_is_an_answer_whatever_the_command_did() {
+        // Today's callers read a version off an exit 0 alone; one read
+        // off anything else is an answer all the same.
+        let failed = Ok(ran(Some(127), ENV_NODE));
+        assert_eq!(unless_answered(&Some("11.6.2".to_string()), &failed), None);
+        assert_eq!(
+            unless_answered(&None::<String>, &failed),
+            said(NoAnswerKind::CouldNotStart, Some("node"))
+        );
+    }
 }
