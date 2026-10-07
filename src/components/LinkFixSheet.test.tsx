@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { screen, waitFor, fireEvent } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
+import { command } from "../test/command";
 import i18n from "../i18n";
 import { LinkFixSheet, linkRequest } from "./LinkFixSheet";
 import { SourceNotices } from "./SourceNotices";
@@ -124,7 +125,7 @@ describe("LinkFixSheet", () => {
     const link = await screen.findByRole("button", { name: "Link" });
     await waitFor(() => expect(link).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "Show Command" }));
-    expect(await screen.findByText("/opt/homebrew/bin/brew link --formula --force node@22")).toBeInTheDocument();
+    expect(await screen.findByText(command("/opt/homebrew/bin/brew link --formula --force node@22"))).toBeInTheDocument();
     fireEvent.click(link);
     await waitFor(() => expect(calls("submit_operation")).toHaveLength(1));
     expect(calls("submit_operation")[0][1]).toEqual({ planId: "plan-node@22" });
@@ -212,7 +213,7 @@ describe("LinkFixSheet", () => {
     await waitFor(() => expect(link).toBeEnabled());
     expect(screen.getByRole("alertdialog")).toHaveTextContent("Linking adds links for its commands under /usr/local.");
     fireEvent.click(screen.getByRole("button", { name: "Show Command" }));
-    expect(await screen.findByText("/usr/local/bin/brew link --formula --force node@22")).toBeInTheDocument();
+    expect(await screen.findByText(command("/usr/local/bin/brew link --formula --force node@22"))).toBeInTheDocument();
     fireEvent.click(link);
     await waitFor(() => expect(calls("submit_operation")).toEqual([
       ["submit_operation", { planId: intelPlan.id }],

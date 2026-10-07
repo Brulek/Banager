@@ -742,6 +742,17 @@ describe("the batch uninstall's sheet", () => {
       "HOMEBREW_NO_AUTOREMOVE=1 /opt/homebrew/bin/brew uninstall --formula pipx",
       "HOMEBREW_NO_AUTOREMOVE=1 /opt/homebrew/bin/brew uninstall --formula python@3.13",
     ]);
+    // A command breaks between its tokens, never inside one: 「--」 /
+    // 「formula」 reads as something else (r24 W1). The paths stay a line each.
+    const [paths, pipxCode] = [...dialog.querySelectorAll<HTMLElement>("[data-batch-plans] code")];
+    expect(paths.querySelectorAll("[data-command-token]")).toHaveLength(0);
+    expect([...pipxCode.querySelectorAll("[data-command-token]")].map((token) => token.textContent)).toEqual([
+      "HOMEBREW_NO_AUTOREMOVE=1",
+      "/opt/homebrew/bin/brew",
+      "uninstall",
+      "--formula",
+      "pipx",
+    ]);
   });
 
   it("calls it Show Commands, closed, where nothing moves to the Trash and technical details are off", async () => {

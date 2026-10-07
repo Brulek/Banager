@@ -7,7 +7,7 @@ import { warningText } from "../lib/warnings";
 import { artifactKeyId } from "../store/ui";
 import { displayToken } from "../lib/format";
 import type { LinkFix, OpRequest, Plan, Warning } from "../lib/types";
-import { CommandPreview } from "./CommandPreview";
+import { CommandPreview, unbrokenTokens } from "./CommandPreview";
 import { CopyButton } from "./CopyButton";
 import { Refusal, SheetIcon, SheetLines, SheetPending, SheetSection, SheetText, sheetMeta } from "./SheetParts";
 import { Dialog } from "./ui/Dialog";
@@ -335,16 +335,9 @@ export function LinkFixSheet({ instanceId, onClose }: LinkFixSheetProps) {
             </p>
             <div role="group" aria-label={t("noAnswer.sheet.commandLabel")}>
               {/* A line breaks between tokens, never inside one: 「--」 /
-                  「overwrite」 reads as something else (as `PasswordCommand`). */}
+                  「overwrite」 reads as something else (`unbrokenTokens`). */}
               <code className="block select-all break-words rounded-control bg-group px-2.5 py-2 font-mono text-small text-foreground">
-                {plan === undefined
-                  ? terminal
-                  : overwriteTokens(plan, fix.key.name).flatMap((token, index) => [
-                      ...(index === 0 ? [] : [" "]),
-                      <span key={index} className="whitespace-nowrap">
-                        {token}
-                      </span>,
-                    ])}
+                {plan === undefined ? terminal : unbrokenTokens(overwriteTokens(plan, fix.key.name))}
               </code>
             </div>
             <div className="flex items-center justify-start">

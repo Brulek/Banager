@@ -137,8 +137,12 @@ describe("LogDrawer, where sudo wanted a password", () => {
       expect(env).toHaveClass("text-muted");
       expect(argv.textContent).toMatch(/\/brew upgrade --cask /);
       expect(env.textContent?.trim()).toBe(EXPECTED_COMMAND.slice(0, EXPECTED_COMMAND.length - argv.textContent!.length).trim());
-      for (const token of argv.querySelectorAll("span")) expect(token).toHaveClass("whitespace-nowrap");
-      expect([...argv.querySelectorAll("span")].map((token) => token.textContent)).toContain("--cask");
+      // Each token a box of its own that goes to the next line whole
+      // (`unbrokenTokens`), and only the spaces between them loose.
+      const tokens = [...argv.querySelectorAll("[data-command-token]")];
+      for (const token of tokens) expect(token).toHaveClass("inline-block", "max-w-full", "break-words");
+      expect(tokens.map((token) => token.textContent).join(" ")).toBe(argv.textContent);
+      expect(tokens.map((token) => token.textContent)).toContain("--cask");
       expect(getByRole("group", { name: "Command to run in Terminal" })).toContainElement(code);
       expect(await findByText("When it's done, come back here and press ⌘R to check again.")).toBeInTheDocument();
 

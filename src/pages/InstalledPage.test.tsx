@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { invoke, type InvokeArgs } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
+import { command } from "../test/command";
 import { WithToolbarSlot } from "../test/toolbarSlot";
 import { InstalledPage } from "./InstalledPage";
 import { BUTTON } from "../components/ui/controls";
@@ -698,7 +699,7 @@ describe("InstalledPage", () => {
     });
     await within(dialog).findByRole("button", { name: "Show Command" });
     showCommand(dialog);
-    expect(within(dialog).getByText("/opt/homebrew/bin/brew uninstall --formula jq")).toBeInTheDocument();
+    expect(within(dialog).getByText(command("/opt/homebrew/bin/brew uninstall --formula jq"))).toBeInTheDocument();
     // The row's button, not the row: nothing selected under the dialog.
     expect(screen.queryByRole("complementary", { name: "jq" })).toBeNull();
   });
@@ -2893,7 +2894,7 @@ describe("InstalledPage", () => {
         request: { kind: "Upgrade", instance_id: "brew:/opt/homebrew", artifact_kind: "Formula", name: "glib" },
       });
       showCommand(confirm);
-      expect(await within(confirm).findByText("/opt/homebrew/bin/brew upgrade --formula glib")).toBeInTheDocument();
+      expect(await within(confirm).findByText(command("/opt/homebrew/bin/brew upgrade --formula glib"))).toBeInTheDocument();
       expect(within(confirm).getByText("2.88.3 → 2.90.0")).toBeInTheDocument();
 
       operations = [
@@ -3130,7 +3131,7 @@ describe("InstalledPage", () => {
       const dialog = await screen.findByRole("alertdialog", { name: "Uninstall “jq”?" });
       await within(dialog).findByRole("button", { name: "Show Command" });
       showCommand(dialog);
-      expect(within(dialog).getByText("/opt/homebrew/bin/brew uninstall --formula jq")).toBeInTheDocument();
+      expect(within(dialog).getByText(command("/opt/homebrew/bin/brew uninstall --formula jq"))).toBeInTheDocument();
 
       fireEvent.click(within(dialog).getByRole("button", { name: "Uninstall" }));
       await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("submit_operation", { planId: "1" }));

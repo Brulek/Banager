@@ -2,7 +2,7 @@ import { useTranslation } from "react-i18next";
 import { copyStatusText, useCopyCommand } from "../lib/clipboard";
 import { outcomeCause } from "../lib/failureCause";
 import type { OpSummary } from "../lib/types";
-import { commandText } from "./CommandPreview";
+import { commandText, unbrokenTokens } from "./CommandPreview";
 import { displayToken } from "../lib/format";
 import { previewEnvValue } from "../lib/previewEnv";
 import { adapterIdOf } from "../lib/sources";
@@ -51,22 +51,13 @@ export function terminalCommandParts(op: TerminalPreview): { env: string[]; comm
   };
 }
 
-/** `tokens` set with a space between each two, a line breaking only there. */
-function unbrokenTokens(tokens: string[]) {
-  return tokens.flatMap((token, index) => [
-    ...(index === 0 ? [] : [" "]),
-    <span key={index} className="whitespace-nowrap">
-      {token}
-    </span>,
-  ]);
-}
-
 /**
  * A command for Terminal, set as code that selects whole: the settings it
  * runs with (`env`), technical and muted on a line of their own, then the
  * command, each a list of tokens (`displayToken`) a line breaks between
- * and never inside. Named by a group around it (`label`): a name on
- * <code> itself is not one assistive technology reliably reads. The
+ * and never inside (`unbrokenTokens`). Named by a group around it
+ * (`label`): a name on <code> itself is not one assistive technology
+ * reliably reads. The
  * password steps' (`PasswordInstructions`) and a saved relink warning's
  * (`FollowUpWarnings`); the copy button and the sentences are the caller's.
  */

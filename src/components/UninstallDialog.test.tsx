@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { screen, waitFor, fireEvent, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
+import { command } from "../test/command";
 import i18n from "../i18n";
 import zhCN from "../i18n/zh-CN.json";
 import { UninstallDialog } from "./UninstallDialog";
@@ -290,7 +291,7 @@ describe("UninstallDialog", () => {
 
     // Wait for the plan to land, so absence means "not rendered", not "not yet".
     await showCommand();
-    expect(screen.getByText(JQ_COMMAND)).toBeInTheDocument();
+    expect(screen.getByText(command(JQ_COMMAND))).toBeInTheDocument();
     expect(screen.queryByText(/password/)).not.toBeInTheDocument();
   });
 
@@ -443,7 +444,7 @@ describe("UninstallDialog", () => {
     expect(confirmButton).toBeDisabled();
     within(group("Notes")).getByText("Software that uses it");
     await showCommand();
-    expect(screen.getByText(JQ_COMMAND)).toBeInTheDocument();
+    expect(screen.getByText(command(JQ_COMMAND))).toBeInTheDocument();
     // The reason Confirm is disabled, and what to do about it, is plain text
     // in the dialog body -- not a `title` on a disabled button, which a
     // disabled button never actually shows: it takes no pointer events (no
@@ -1468,9 +1469,9 @@ describe("UninstallDialog", () => {
 
     const disclosure = await screen.findByRole("button", { name: "Show Command" });
     expect(disclosure).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByText(JQ_COMMAND)).toBeNull();
+    expect(screen.queryByText(command(JQ_COMMAND))).toBeNull();
     fireEvent.click(disclosure);
-    expect(screen.getByText(JQ_COMMAND)).toBeInTheDocument();
+    expect(screen.getByText(command(JQ_COMMAND))).toBeInTheDocument();
     unmount();
 
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
@@ -1490,7 +1491,7 @@ describe("UninstallDialog", () => {
     });
     renderWithProviders(<UninstallDialog open onOpenChange={() => {}} request={request} displayName="jq" />);
 
-    expect(await screen.findByText(JQ_COMMAND)).toBeInTheDocument();
+    expect(await screen.findByText(command(JQ_COMMAND))).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Show Command" })).toHaveAttribute("aria-expanded", "true");
   });
 
@@ -1519,7 +1520,7 @@ describe("UninstallDialog", () => {
     // The exact command is a press away, and nothing has been submitted,
     // before the user is allowed to confirm.
     await showCommand();
-    expect(screen.getByText(JQ_COMMAND)).toBeInTheDocument();
+    expect(screen.getByText(command(JQ_COMMAND))).toBeInTheDocument();
     expect(submitCalls()).toHaveLength(0);
     fireEvent.click(confirmButton);
 
@@ -1601,7 +1602,7 @@ describe("UninstallDialog", () => {
     // the only submit so far, and nothing was reported as started.
     await waitFor(() => expect(confirmButton).not.toBeDisabled());
     await showCommand();
-    expect(screen.getByText(JQ_COMMAND)).toBeInTheDocument();
+    expect(screen.getByText(command(JQ_COMMAND))).toBeInTheDocument();
     expect(submitCalls().map(([, args]) => args)).toEqual([{ planId: "1" }]);
     expect(onSubmitted).not.toHaveBeenCalled();
 
@@ -1700,7 +1701,7 @@ describe("UninstallDialog", () => {
 
     await waitFor(() => expect(confirmButton).not.toBeDisabled());
     await showCommand();
-    expect(screen.getByText(JQ_COMMAND)).toBeInTheDocument();
+    expect(screen.getByText(command(JQ_COMMAND))).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(saying()).toHaveLength(1);
     expect(saying()[0]).toHaveTextContent("That didn't start, so it was checked again. Confirm once more.");
@@ -2152,7 +2153,7 @@ describe("UninstallDialog", () => {
     );
     await screen.findByRole("alertdialog", { name: "Uninstall “yq”?" });
     await showCommand();
-    await screen.findByText("/opt/homebrew/bin/brew uninstall --formula yq");
+    await screen.findByText(command("/opt/homebrew/bin/brew uninstall --formula yq"));
 
     resolveSubmit(7);
 
@@ -2161,7 +2162,7 @@ describe("UninstallDialog", () => {
     await waitFor(() => expect(confirmButton).not.toBeDisabled());
     expect(onSubmitted).not.toHaveBeenCalled();
     expect(onOpenChange).not.toHaveBeenCalled();
-    expect(screen.getByText("/opt/homebrew/bin/brew uninstall --formula yq")).toBeInTheDocument();
+    expect(screen.getByText(command("/opt/homebrew/bin/brew uninstall --formula yq"))).toBeInTheDocument();
   });
 
   it("says a NoCancel plan cannot be stopped once it starts, and says nothing of the kind for a cancellable one", async () => {

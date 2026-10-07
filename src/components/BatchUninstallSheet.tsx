@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
+import { Fragment, useEffect, useId, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { usePlanOperation, useSettings, useSizes, useSnapshot, useSubmitOperation } from "../lib/queries";
 import {
@@ -35,7 +35,7 @@ import { twinsByArtifact } from "../lib/commands";
 import { modelPath } from "../lib/names";
 import { artifactKeyId, useUiStore } from "../store/ui";
 import type { InstalledArtifact, ManagerInstance, OpRequest, PlanAction, Snapshot } from "../lib/types";
-import { commandTexts } from "./CommandPreview";
+import { commandTokens, unbrokenTokens } from "./CommandPreview";
 import { KeptDataGroup } from "./KeptDataGroup";
 import { familyStaysAfter } from "../lib/keptData";
 import { installedBy, twinUninstallLine } from "./TwinAdvice";
@@ -838,7 +838,8 @@ export function BatchUninstallSheet({ uninstall }: { uninstall: BatchUninstall }
 /**
  * The exact commands and the exact paths a batch's previews carry, one
  * click away (spec §5.5, item 7), in the order the tools run: under each
- * tool's name, its command as Terminal would take it (`commandText`), or
+ * tool's name, its command as Terminal would take it (`commandTokens`, a
+ * line breaking between its tokens and never inside one), or
  * the paths a tool with its own installer moves to the Trash. Open from
  * the start while "Show technical details" is on, as `CommandPreview` is.
  * 「查看命令」, or 「查看命令和路径」 where any of them moves paths.
@@ -861,7 +862,16 @@ function BatchPlanDetails({ plans }: { plans: Array<{ id: string; name: string; 
             <div key={id}>
               <p className={`mb-1 text-muted ${SMALL_WRAPPING}`}>{name}</p>
               <code className="block select-text whitespace-pre-wrap break-words rounded-control bg-group px-2.5 py-2 font-mono text-small text-foreground">
-                {"TrashPaths" in action ? action.TrashPaths.paths.join("\n") : commandTexts(action).join("\n")}
+                {"TrashPaths" in action
+                  ? action.TrashPaths.paths.join("\n")
+                  : // Each command on a line of its own, broken between its
+                    // tokens, never inside one (`unbrokenTokens`).
+                    commandTokens(action).map((tokens, index) => (
+                      <Fragment key={index}>
+                        {index > 0 ? "\n" : null}
+                        {unbrokenTokens(tokens)}
+                      </Fragment>
+                    ))}
               </code>
             </div>
           ))}

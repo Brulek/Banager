@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import type { QueryClient } from "@tanstack/react-query";
 import { invoke, type InvokeArgs } from "@tauri-apps/api/core";
 import { renderWithProviders, type RenderOptions } from "../test/setup";
+import { command } from "../test/command";
 import { UpdatesToolbar } from "../test/updatesToolbar";
 import { UpdatesPage } from "./UpdatesPage";
 import { PageHeader } from "../components/PageHeader";
@@ -636,7 +637,7 @@ describe("UpdatesPage", () => {
 
     const dialog = await findByRole("alertdialog");
     showCommands(dialog);
-    await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
+    await within(dialog).findByText(command("/opt/homebrew/bin/brew upgrade --formula glib"));
     expect(mockInvoke).toHaveBeenCalledWith("plan_operation", {
       request: {
         kind: "Upgrade",
@@ -666,8 +667,8 @@ describe("UpdatesPage", () => {
     fireEvent.click(getByRole("button", { name: "Update Selected (2)" }));
     const dialog = await findByRole("alertdialog");
     showCommands(dialog);
-    await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
-    await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --cask onyx");
+    await within(dialog).findByText(command("/opt/homebrew/bin/brew upgrade --formula glib"));
+    await within(dialog).findByText(command("/opt/homebrew/bin/brew upgrade --cask onyx"));
     expect(submittedPlanIds()).toEqual([]);
 
     fireEvent.click(within(dialog).getByRole("button", { name: UPDATE_SEVERAL }));
@@ -692,8 +693,8 @@ describe("UpdatesPage", () => {
     fireEvent.click(getByRole("button", { name: /^Update Selected/ }));
     const dialog = await findByRole("alertdialog");
     showCommands(dialog);
-    await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
-    await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --cask onyx");
+    await within(dialog).findByText(command("/opt/homebrew/bin/brew upgrade --formula glib"));
+    await within(dialog).findByText(command("/opt/homebrew/bin/brew upgrade --cask onyx"));
 
     const notices = within(dialog).getAllByText("You can't enter your Mac password here. If an app asks for it at this step, you'll see how to finish in Terminal.");
     expect(notices).toHaveLength(1);
@@ -1011,7 +1012,7 @@ describe("UpdatesPage", () => {
 
     const dialog = await findByRole("alertdialog");
     showCommands(dialog);
-    await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
+    await within(dialog).findByText(command("/opt/homebrew/bin/brew upgrade --formula glib"));
     expect(plannedNames()).toEqual(["glib"]);
   });
 
@@ -1964,7 +1965,7 @@ describe("UpdatesPage", () => {
 
     const dialog = await findByRole("alertdialog");
     showCommands(dialog);
-    await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
+    await within(dialog).findByText(command("/opt/homebrew/bin/brew upgrade --formula glib"));
     expect(plannedNames()).toEqual(["glib"]);
   });
 
@@ -2205,7 +2206,7 @@ describe("UpdatesPage", () => {
     fireEvent.click((await findAllByRole("button", { name: ROW_UPDATE }))[0]);
     const dialog = await findByRole("alertdialog");
     showCommands(dialog);
-    await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
+    await within(dialog).findByText(command("/opt/homebrew/bin/brew upgrade --formula glib"));
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
 
@@ -2225,7 +2226,7 @@ describe("UpdatesPage", () => {
     fireEvent.click((await findAllByRole("button", { name: ROW_UPDATE }))[0]);
     let dialog = await findByRole("alertdialog");
     showCommands(dialog);
-    await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
+    await within(dialog).findByText(command("/opt/homebrew/bin/brew upgrade --formula glib"));
     fireEvent.click(within(dialog).getByRole("button", { name: "Update" }));
 
     expect(await within(dialog).findByRole("alert")).toHaveTextContent(
@@ -2244,7 +2245,7 @@ describe("UpdatesPage", () => {
     fireEvent.click((await findAllByRole("button", { name: ROW_UPDATE }))[0]);
     dialog = await findByRole("alertdialog");
     showCommands(dialog);
-    await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
+    await within(dialog).findByText(command("/opt/homebrew/bin/brew upgrade --formula glib"));
     expect(calls("plan_operation")).toHaveLength(2);
     expect(submittedPlanIds()).toEqual([{ planId: "1" }]);
 
@@ -2271,9 +2272,9 @@ describe("UpdatesPage", () => {
     // One tool can still be updated: the sheet asks about it by name.
     expect(dialog).toHaveAccessibleName("Update “onyx”?");
     showCommands(dialog);
-    await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --cask onyx");
+    await within(dialog).findByText(command("/opt/homebrew/bin/brew upgrade --cask onyx"));
     expect(
-      within(dialog).queryByText("/opt/homebrew/bin/brew upgrade --formula glib"),
+      within(dialog).queryByText(command("/opt/homebrew/bin/brew upgrade --formula glib")),
     ).not.toBeInTheDocument();
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Update" }));
@@ -2312,7 +2313,7 @@ describe("UpdatesPage", () => {
     fireEvent.click((await plain.findAllByRole("button", { name: ROW_UPDATE }))[0]);
     let dialog = await plain.findByRole("alertdialog");
     showCommands(dialog);
-    await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
+    await within(dialog).findByText(command("/opt/homebrew/bin/brew upgrade --formula glib"));
     fireEvent.click(within(dialog).getByRole("button", { name: "Update" }));
     expect(await within(dialog).findByRole("alert")).toHaveTextContent("Couldn't start the update. Try again later.");
     expect(within(dialog).queryByText(/operation queue is closed/)).toBeNull();
@@ -2323,7 +2324,7 @@ describe("UpdatesPage", () => {
     const technical = renderPage();
     fireEvent.click((await technical.findAllByRole("button", { name: ROW_UPDATE }))[0]);
     dialog = await technical.findByRole("alertdialog");
-    await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
+    await within(dialog).findByText(command("/opt/homebrew/bin/brew upgrade --formula glib"));
     fireEvent.click(within(dialog).getByRole("button", { name: "Update" }));
     expect(await within(dialog).findByRole("alert")).toHaveTextContent(
       "Couldn't start the update: operation queue is closed",
@@ -2363,7 +2364,7 @@ describe("UpdatesPage", () => {
 
     let dialog = await findByRole("alertdialog");
     showCommands(dialog);
-    await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --cask onyx");
+    await within(dialog).findByText(command("/opt/homebrew/bin/brew upgrade --cask onyx"));
     fireEvent.click(within(dialog).getByRole("button", { name: UPDATE_SEVERAL }));
 
     // glib started, onyx did not, and the dialog says which is which.
@@ -2383,7 +2384,7 @@ describe("UpdatesPage", () => {
     fireEvent.click(getByRole("button", { name: "Update Selected (1)" }));
     dialog = await findByRole("alertdialog");
     showCommands(dialog);
-    await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --cask onyx");
+    await within(dialog).findByText(command("/opt/homebrew/bin/brew upgrade --cask onyx"));
     const secondRound = calls("plan_operation").slice(2);
     expect(secondRound).toHaveLength(1);
     expect(secondRound[0][1]).toEqual({
@@ -2426,7 +2427,7 @@ describe("UpdatesPage", () => {
     fireEvent.click(updateButtons[1]);
     const dialog = await findByRole("alertdialog", { name: "Update “onyx”?" });
     showCommands(dialog);
-    await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --cask onyx");
+    await within(dialog).findByText(command("/opt/homebrew/bin/brew upgrade --cask onyx"));
     await waitFor(() => expect(releasePlan.glib).toBeDefined());
 
     // Batch 1's plan lands late. It must neither replace nor add to the
@@ -2437,9 +2438,9 @@ describe("UpdatesPage", () => {
     });
     expect(queryByRole("alertdialog")).toBe(dialog);
     expect(
-      within(dialog).queryByText("/opt/homebrew/bin/brew upgrade --formula glib"),
+      within(dialog).queryByText(command("/opt/homebrew/bin/brew upgrade --formula glib")),
     ).not.toBeInTheDocument();
-    expect(within(dialog).getByText("/opt/homebrew/bin/brew upgrade --cask onyx")).toBeInTheDocument();
+    expect(within(dialog).getByText(command("/opt/homebrew/bin/brew upgrade --cask onyx"))).toBeInTheDocument();
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Update" }));
 
@@ -2567,10 +2568,10 @@ describe("UpdatesPage", () => {
 
       const dialog = await findByRole("alertdialog");
       showCommands(dialog);
-      await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula jq");
+      await within(dialog).findByText(command("/opt/homebrew/bin/brew upgrade --formula jq"));
       expect([...plannedNames()].sort()).toEqual(["glib", "jq", "onyx"]);
       // In the list's order.
-      expect(within(dialog).getAllByText(/brew upgrade/).map((command) => command.textContent)).toEqual([
+      expect(within(dialog).getAllByText(command(/brew upgrade/)).map((code) => code.textContent)).toEqual([
         "/opt/homebrew/bin/brew upgrade --formula glib",
         "/opt/homebrew/bin/brew upgrade --formula jq",
         "/opt/homebrew/bin/brew upgrade --cask onyx",
@@ -3688,7 +3689,7 @@ describe("UpdatesPage", () => {
       fireEvent.click((await findAllByRole("button", { name: ROW_UPDATE }))[0]);
       const dialog = await findByRole("alertdialog");
       showCommands(dialog);
-      await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
+      await within(dialog).findByText(command("/opt/homebrew/bin/brew upgrade --formula glib"));
       fireEvent.click(within(dialog).getByRole("button", { name: "Update" }));
 
       await waitFor(() => expect(useUiStore.getState().updateTargets).toEqual({ 7: "2.90.0" }));
@@ -5103,7 +5104,7 @@ describe("UpdatesPage", () => {
       fireEvent.click(disclosure);
       // Each under its tool's name.
       expect(
-        within(dialog).getByText("/opt/homebrew/bin/brew upgrade --cask onyx").previousElementSibling,
+        within(dialog).getByText(command("/opt/homebrew/bin/brew upgrade --cask onyx")).previousElementSibling,
       ).toHaveTextContent("onyx");
     });
 
@@ -5114,7 +5115,7 @@ describe("UpdatesPage", () => {
       fireEvent.click((await findAllByRole("button", { name: ROW_UPDATE }))[0]);
       const dialog = await findByRole("alertdialog");
 
-      expect(await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib")).toBeInTheDocument();
+      expect(await within(dialog).findByText(command("/opt/homebrew/bin/brew upgrade --formula glib"))).toBeInTheDocument();
       expect(within(dialog).getByRole("button", { name: "Show Command" })).toHaveAttribute(
         "aria-expanded",
         "true",
@@ -5462,8 +5463,8 @@ describe("UpdatesPage", () => {
       expect(first.querySelector("[data-sheet-name]")).toHaveTextContent("onyx");
       expect(first).toHaveTextContent("You can't enter your Mac password here. If an app asks for it at this step, you'll see how to finish in Terminal.");
       showCommands(dialog);
-      expect(within(dialog).getByText("/opt/homebrew/bin/brew upgrade --formula glib")).toBeInTheDocument();
-      expect(within(dialog).getByText("/opt/homebrew/bin/brew upgrade --cask onyx")).toBeInTheDocument();
+      expect(within(dialog).getByText(command("/opt/homebrew/bin/brew upgrade --formula glib"))).toBeInTheDocument();
+      expect(within(dialog).getByText(command("/opt/homebrew/bin/brew upgrade --cask onyx"))).toBeInTheDocument();
       expect(submittedPlanIds()).toEqual([]);
 
       fireEvent.click(update);
@@ -6107,7 +6108,7 @@ describe("UpdatesPage", () => {
     expect(
       within(detail).getByText(wholeSentence("In Terminal: /Users/someone/.local/bin/claude")),
     ).toBeInTheDocument();
-    expect(within(detail).getByText("/Users/someone/.local/bin/claude").tagName).toBe("CODE");
+    expect(within(detail).getByText(command("/Users/someone/.local/bin/claude")).tagName).toBe("CODE");
     fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
     expect(
       within(openMenu(claude)).getByRole("menuitem", { name: "Copy Command" }),
@@ -6289,8 +6290,8 @@ describe("UpdatesPage", () => {
     fireEvent.click(getByRole("button", { name: /^Update Selected/ }));
     const dialog = await findByRole("alertdialog");
     showCommands(dialog);
-    await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
-    await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --cask onyx");
+    await within(dialog).findByText(command("/opt/homebrew/bin/brew upgrade --formula glib"));
+    await within(dialog).findByText(command("/opt/homebrew/bin/brew upgrade --cask onyx"));
 
     const hints = within(dialog).getAllByText(
       noteLine("This can't be cancelled once it starts. Don't quit Banager or shut down your Mac until it finishes."),

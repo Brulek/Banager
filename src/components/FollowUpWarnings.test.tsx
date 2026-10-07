@@ -34,7 +34,7 @@ describe("a saved follow-up warning's log (p1 polish)", () => {
     expect(code?.textContent).toBe("brew link --formula --force node@22");
     expect(code?.className.split(" ")).toEqual(expect.arrayContaining(["block", "select-all", "font-mono", "bg-group"]));
     // A line breaks between its words, never inside one.
-    expect([...(code?.querySelectorAll("span.whitespace-nowrap") ?? [])].map((s) => s.textContent)).toEqual([
+    expect([...(code?.querySelectorAll("[data-command-token]") ?? [])].map((s) => s.textContent)).toEqual([
       "brew",
       "link",
       "--formula",
