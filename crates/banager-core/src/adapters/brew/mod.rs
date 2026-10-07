@@ -2788,6 +2788,22 @@ impl BrewAdapter {
         }
         Ok(reconciled)
     }
+
+    /// After `brew link --force`: whether the formula is installed, and if
+    /// so whether Homebrew says it is linked now (`linked_keg`, which the
+    /// inventory reads into `CommandInputs::linked`).
+    pub async fn reconcile_link(
+        &self,
+        inst: &ManagerInstance,
+        key: &ArtifactKey,
+    ) -> Result<Option<bool>, AdapterError> {
+        let artifacts = self.inventory(inst).await?;
+        let key = qualified_key(&artifacts, key);
+        Ok(artifacts
+            .iter()
+            .find(|artifact| artifact.key == key)
+            .map(|artifact| artifact.facts.command_inputs.linked))
+    }
 }
 
 // Adapter is implemented by forwarding to the inherent methods above via
@@ -2855,6 +2871,14 @@ impl Adapter for BrewAdapter {
         key: &ArtifactKey,
     ) -> Result<Reconciled, AdapterError> {
         BrewAdapter::reconcile(self, inst, key).await
+    }
+
+    async fn reconcile_link(
+        &self,
+        inst: &ManagerInstance,
+        key: &ArtifactKey,
+    ) -> Result<Option<bool>, AdapterError> {
+        BrewAdapter::reconcile_link(self, inst, key).await
     }
 }
 
@@ -5986,6 +6010,56 @@ mod plan_execute_tests {
                 present: false,
                 version: None
             }
+        );
+    }
+
+    #[tokio::test]
+    async fn test_reconcile_link_reads_whether_the_formula_is_linked_now() {
+        // After `brew link --force`, Homebrew's own `linked_keg`: set,
+        // linked; null, installed and not linked; no row, not installed.
+        let runner = Arc::new(MockRunner::new());
+        let json = r#"{"formulae":[
+            {"name":"node@22","full_name":"node@22","keg_only":true,"linked_keg":"22.23.3_1","installed":[{"version":"22.23.3_1","installed_on_request":true,"installed_as_dependency":false,"time":null}]},
+            {"name":"ruby","full_name":"ruby","keg_only":true,"linked_keg":null,"installed":[{"version":"3.4.7","installed_on_request":true,"installed_as_dependency":false,"time":null}]}
+        ],"casks":[]}"#;
+        runner.respond(
+            vec!["/opt/homebrew/bin/brew", "info", "--installed", "--json=v2"],
+            CommandOutput {
+                stderr_cause: Default::default(),
+                exit_code: Some(0),
+                stdout: json.to_string(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let adapter = BrewAdapter::new(runner);
+        let inst = test_instance();
+        let formula = |name: &str| ArtifactKey {
+            instance_id: inst.id.clone(),
+            kind: ArtifactKind::Formula,
+            name: name.to_string(),
+        };
+        assert_eq!(
+            adapter
+                .reconcile_link(&inst, &formula("node@22"))
+                .await
+                .unwrap(),
+            Some(true)
+        );
+        assert_eq!(
+            adapter
+                .reconcile_link(&inst, &formula("ruby"))
+                .await
+                .unwrap(),
+            Some(false)
+        );
+        assert_eq!(
+            adapter
+                .reconcile_link(&inst, &formula("node@20"))
+                .await
+                .unwrap(),
+            None
         );
     }
 

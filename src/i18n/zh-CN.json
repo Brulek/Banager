@@ -872,7 +872,9 @@
         "UnchangedAfterUpgrade": "显示已更新，但版本没有变化",
         "UnchangedAfterUpgradeDetail": "可以在操作日志中查看它输出了什么。",
         "BackAfterUninstall": "移走后，原处又出现了文件",
-        "BackAfterUninstallDetail": "请先退出此工具。如果列表中仍有它，请再卸载一次；否则请将日志中列出的文件手动移到废纸篓。"
+        "BackAfterUninstallDetail": "请先退出此工具。如果列表中仍有它，请再卸载一次；否则请将日志中列出的文件手动移到废纸篓。",
+        "NotLinkedAfterLink": "显示已完成，但没有链接",
+        "NotLinkedAfterLinkDetail": "可以在操作日志中查看Homebrew输出了什么。"
       },
       "Failed": "未能完成：{{summary}}",
       "FailedSilent": "未能完成，程序没有给出原因",

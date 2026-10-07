@@ -19,14 +19,16 @@ export type OpStatus =
 export type DetectOutcome = "Found" | "Missing";
 // Rust `Attention`: which way reconcile contradicted a command that
 // reported success -- or, `BackAfterUninstall`, what a path-list
-// uninstall's own last look found after it had moved everything. Worded by
-// the front end, per variant.
+// uninstall's own last look found after it had moved everything;
+// `NotLinkedAfterLink`, a `brew link` that exited 0 and linked nothing.
+// Worded by the front end, per variant.
 export type Attention =
   | "NotInstalledAfterInstall"
   | "StillInstalledAfterUninstall"
   | "GoneAfterUpgrade"
   | "UnchangedAfterUpgrade"
-  | "BackAfterUninstall";
+  | "BackAfterUninstall"
+  | "NotLinkedAfterLink";
 // Rust `Fault`: why Banager itself could not carry an operation out.
 // Unit variants are bare strings, data variants single-key objects (serde's
 // external tagging). Worded by the front end, per variant; the fields are

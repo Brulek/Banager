@@ -52,6 +52,7 @@ function attentionKey(attention: Attention): string {
     case "GoneAfterUpgrade":
     case "UnchangedAfterUpgrade":
     case "BackAfterUninstall":
+    case "NotLinkedAfterLink":
       return attention;
     default: {
       const unhandled: never = attention;
@@ -88,6 +89,8 @@ export function outcomeDetailKey(outcome: Outcome): string | null {
         return "operations.outcome.NeedsAttention.UnchangedAfterUpgradeDetail";
       case "BackAfterUninstall":
         return "operations.outcome.NeedsAttention.BackAfterUninstallDetail";
+      case "NotLinkedAfterLink":
+        return "operations.outcome.NeedsAttention.NotLinkedAfterLinkDetail";
       case "NotInstalledAfterInstall":
       case "StillInstalledAfterUninstall":
       case "GoneAfterUpgrade":

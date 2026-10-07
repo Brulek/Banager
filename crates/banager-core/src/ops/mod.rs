@@ -1080,15 +1080,31 @@ impl OperationManager {
         // installed (`Adapter::reconcile_after_uninstall`, handed the plan
         // `execute` just carried out: a path-list uninstall's reading asks
         // which paths it moved); everything else keeps the full reading.
+        //
+        // After a link, whether Homebrew says it is linked now
+        // (`reconcile_link`): `brew link` exits 0 having linked nothing
+        // too. `linked_after` is that reading -- `Ok(None)`, not installed --
+        // and `reconciled` its presence, for the arms that read only that.
+        let linked_after = match plan.request.kind {
+            OpKind::Link => Some(adapter.reconcile_link(&instance, &key).await),
+            _ => None,
+        };
         let reconciled = match plan.request.kind {
             OpKind::Uninstall => {
                 adapter
                     .reconcile_after_uninstall(&instance, &key, &plan)
                     .await
             }
-            OpKind::Install | OpKind::Upgrade | OpKind::Link => {
-                adapter.reconcile(&instance, &key).await
-            }
+            OpKind::Install | OpKind::Upgrade => adapter.reconcile(&instance, &key).await,
+            OpKind::Link => match &linked_after {
+                Some(Ok(linked)) => Ok(Reconciled {
+                    present: linked.is_some(),
+                    version: None,
+                }),
+                _ => Err(AdapterError::Refused(
+                    "the reading after the link failed".to_string(),
+                )),
+            },
         };
         if plan.request.kind == OpKind::Upgrade {
             if let Ok(r) = reconciled.as_ref() {
@@ -1124,17 +1140,19 @@ impl OperationManager {
                             Outcome::NeedsAttention(Attention::StillInstalledAfterUninstall)
                         }
                     }
-                    // `brew link` exited 0: it linked the formula, which is
-                    // still installed. Gone after it, what happened is not
-                    // known. Whether the source that needed it answers now
-                    // is the next refresh's to say (`NoAnswer`).
-                    OpKind::Link => {
-                        if r.present {
-                            Outcome::Succeeded
-                        } else {
-                            Outcome::Unconfirmed
+                    // `brew link` exited 0: linked, if Homebrew says so
+                    // now; it also exits 0 having refused ("Refusing to
+                    // link macOS provided/shadowed software", cmd/link.rb
+                    // in Homebrew 7.0.8). Gone after it, what happened is
+                    // not known. Whether the source that needed it answers
+                    // now is the next refresh's to say (`NoAnswer`).
+                    OpKind::Link => match (r.present, &linked_after) {
+                        (true, Some(Ok(Some(true)))) => Outcome::Succeeded,
+                        (true, Some(Ok(Some(false)))) => {
+                            Outcome::NeedsAttention(Attention::NotLinkedAfterLink)
                         }
-                    }
+                        _ => Outcome::Unconfirmed,
+                    },
                     // The tool exited 0: it says it ran to the end, so
                     // the reading after is of a finished run, and the two
                     // readings say what that run did.

@@ -943,7 +943,9 @@
         "UnchangedAfterUpgrade": "Update reported success, but the version didn't change",
         "UnchangedAfterUpgradeDetail": "The operation log shows what it printed.",
         "BackAfterUninstall": "Files showed up again after the uninstall",
-        "BackAfterUninstallDetail": "Quit the tool first. If it's still listed, uninstall it again; otherwise move the files named in the log to the Trash yourself."
+        "BackAfterUninstallDetail": "Quit the tool first. If it's still listed, uninstall it again; otherwise move the files named in the log to the Trash yourself.",
+        "NotLinkedAfterLink": "Reported done, but it isn't linked",
+        "NotLinkedAfterLinkDetail": "The operation log shows what Homebrew printed."
       },
       "Failed": "Couldn't finish: {{summary}}",
       "FailedSilent": "Couldn't finish, and the program didn't say why",

@@ -1612,7 +1612,13 @@ previewed with what stands in the way (Homebrew's files, above), and runs
 only once confirmed, as every operation does. The window may ask for the
 preview of a link only of a formula a source's reason offers
 (`Session::issue_listed_plan`). A link is not kept in the history: it
-updates and uninstalls nothing. Where `bin` holds a file of one of the
+updates and uninstalls nothing. One that exits 0 counts as done only when
+the reading after it -- the inventory's `brew info --installed
+--json=v2`, as after every operation -- says the formula is linked
+(`linked_keg`, `Adapter::reconcile_link`): `brew link` also exits 0
+having linked nothing ("Refusing to link macOS provided/shadowed
+software"), which is said as needing attention
+(`Attention::NotLinkedAfterLink`). Where `bin` holds a file of one of the
 formula's command names already -- npm's own `npm`, after npm was updated
 through itself -- Homebrew would link nothing and say so; the preview says
 it first and offers no Link button, `Session::submit` refuses such a plan

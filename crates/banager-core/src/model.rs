@@ -2043,6 +2043,14 @@ pub enum Attention {
     /// `run_operation` passes on unchanged; read by `attentionKey` in
     /// src/lib/format.ts.
     BackAfterUninstall,
+    /// `brew link --force` exited 0 and Homebrew says the formula is still
+    /// not linked (`linked_keg` null in `brew info --installed --json=v2`,
+    /// `Adapter::reconcile_link`): it refused without an error, as it does
+    /// for software macOS provides or shadows ("Refusing to link macOS
+    /// provided/shadowed software", cmd/link.rb in Homebrew 7.0.8). Built
+    /// by `run_operation` (`crates/banager-core/src/ops/mod.rs`); read by
+    /// `attentionKey` in src/lib/format.ts.
+    NotLinkedAfterLink,
 }
 
 /// How an update that `Succeeded` came to be done when its own command
@@ -3229,6 +3237,11 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&Outcome::NeedsAttention(Attention::BackAfterUninstall)).unwrap(),
             r#"{"NeedsAttention":"BackAfterUninstall"}"#
+        );
+        // A link Homebrew finished without linking (`reconcile_link`).
+        assert_eq!(
+            serde_json::to_string(&Outcome::NeedsAttention(Attention::NotLinkedAfterLink)).unwrap(),
+            r#"{"NeedsAttention":"NotLinkedAfterLink"}"#
         );
     }
 

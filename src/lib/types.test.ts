@@ -414,6 +414,10 @@ describe("types", () => {
     const backAfter: Outcome = { NeedsAttention: "BackAfterUninstall" };
     expect(JSON.stringify(backAfter)).toBe('{"NeedsAttention":"BackAfterUninstall"}');
     expect(roundTrip(backAfter)).toEqual(backAfter);
+    // A link Homebrew finished without linking.
+    const notLinked: Outcome = { NeedsAttention: "NotLinkedAfterLink" };
+    expect(JSON.stringify(notLinked)).toBe('{"NeedsAttention":"NotLinkedAfterLink"}');
+    expect(roundTrip(notLinked)).toEqual(notLinked);
     expect(roundTrip(failed)).toEqual({ Failed: { exit_code: 1, summary: "boom", cause: null } });
     expect(JSON.stringify(failed)).toBe('{"Failed":{"exit_code":1,"summary":"boom","cause":null}}');
     // What `model.rs`'s `test_outcome_failed_carries_its_cause_on_the_wire`

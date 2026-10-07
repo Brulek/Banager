@@ -30,6 +30,9 @@ enum ReconcileBehavior {
     /// reconciles twice -- before `execute` and after -- so a two-entry
     /// script is "what was installed before, what is installed after".
     Readings(Vec<Option<Reconciled>>),
+    /// What `reconcile_link` reads after a link: `None`, not installed;
+    /// `Some(linked)` otherwise.
+    Linked(Option<bool>),
 }
 
 struct FakeAdapter {
@@ -141,10 +144,29 @@ impl Adapter for FakeAdapter {
                 present: *present,
                 version: None,
             }),
+            ReconcileBehavior::Linked(linked) => Ok(Reconciled {
+                present: linked.is_some(),
+                version: None,
+            }),
             ReconcileBehavior::Err => Err(AdapterError::Refused("reconcile failed".to_string())),
             ReconcileBehavior::Readings(readings) => readings[nth.min(readings.len() - 1)]
                 .clone()
                 .ok_or_else(|| AdapterError::Refused("reconcile failed".to_string())),
+        }
+    }
+
+    async fn reconcile_link(
+        &self,
+        _inst: &ManagerInstance,
+        _key: &ArtifactKey,
+    ) -> Result<Option<bool>, AdapterError> {
+        self.calls.lock().unwrap().push("reconcile");
+        match &self.reconcile_behavior {
+            ReconcileBehavior::Linked(linked) => Ok(*linked),
+            ReconcileBehavior::Present(present) => Ok(present.then_some(true)),
+            ReconcileBehavior::Err | ReconcileBehavior::Readings(_) => {
+                Err(AdapterError::Refused("reconcile failed".to_string()))
+            }
         }
     }
 }
@@ -241,12 +263,20 @@ async fn test_succeeded_uninstall_reconcile_err_is_unconfirmed() {
 }
 
 #[tokio::test]
-async fn test_a_link_that_exited_0_is_succeeded_while_the_formula_is_still_there() {
-    // `brew link --force` (`OpKind::Link`) leaves the formula installed:
-    // present, it did what it said; gone, nothing is known.
-    let outcome = run_case(OpKind::Link, ReconcileBehavior::Present(true)).await;
+async fn test_a_link_that_exited_0_is_succeeded_only_once_the_formula_is_linked() {
+    // `brew link --force` (`OpKind::Link`) exits 0 having linked nothing
+    // too: "Refusing to link macOS provided/shadowed software"
+    // (cmd/link.rb in Homebrew 7.0.8). What decides is whether Homebrew
+    // says it is linked afterwards (`Adapter::reconcile_link`); gone, or
+    // not read, nothing is known.
+    let outcome = run_case(OpKind::Link, ReconcileBehavior::Linked(Some(true))).await;
     assert_eq!(outcome, Outcome::Succeeded);
-    let outcome = run_case(OpKind::Link, ReconcileBehavior::Present(false)).await;
+    let outcome = run_case(OpKind::Link, ReconcileBehavior::Linked(Some(false))).await;
+    assert_eq!(
+        outcome,
+        Outcome::NeedsAttention(Attention::NotLinkedAfterLink)
+    );
+    let outcome = run_case(OpKind::Link, ReconcileBehavior::Linked(None)).await;
     assert_eq!(outcome, Outcome::Unconfirmed);
     let outcome = run_case(OpKind::Link, ReconcileBehavior::Err).await;
     assert_eq!(outcome, Outcome::Unconfirmed);

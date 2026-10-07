@@ -733,6 +733,19 @@ pub trait Adapter: Send + Sync {
     fn one_update_can_update_others(&self) -> bool {
         false
     }
+
+    /// The reading after a link (`OpKind::Link`): `None` when `key` is not
+    /// installed, and otherwise whether its tool says it is linked now --
+    /// `brew link` exits 0 having linked nothing too (`run_operation`,
+    /// `Attention::NotLinkedAfterLink`). Only Homebrew links; every other
+    /// adapter refuses, as its `plan` does (`links_nothing`).
+    async fn reconcile_link(
+        &self,
+        _inst: &ManagerInstance,
+        _key: &ArtifactKey,
+    ) -> Result<Option<bool>, AdapterError> {
+        Err(links_nothing(&self.meta().id))
+    }
 }
 
 /// Runs a plan through the runner, streaming each line to the sink, and maps
