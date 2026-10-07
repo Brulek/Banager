@@ -5,6 +5,7 @@
  * and a tool installed this year.
  */
 export function shortDateText(date: Date, language: string): string {
+  if (!Number.isFinite(date.getTime())) return "";
   return new Intl.DateTimeFormat(language, { month: "short", day: "numeric" }).format(date);
 }
 
@@ -15,6 +16,7 @@ export function shortDateText(date: Date, language: string): string {
  * update's finishing time.
  */
 export function shortTimeText(date: Date, language: string): string {
+  if (!Number.isFinite(date.getTime())) return "";
   return new Intl.DateTimeFormat(language, { timeStyle: "short" }).format(date);
 }
 
@@ -24,6 +26,7 @@ export function shortTimeText(date: Date, language: string): string {
  * file last changed, which "3 days ago" would blur.
  */
 export function mediumDateText(date: Date, language: string): string {
+  if (!Number.isFinite(date.getTime())) return "";
   return new Intl.DateTimeFormat(language, { dateStyle: "medium" }).format(date);
 }
 

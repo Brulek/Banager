@@ -186,6 +186,11 @@ describe("Banager's own failures (review of r6 y3-batch, finding 6)", () => {
 });
 
 describe("finishedText", () => {
+  it("does not format an invalid persisted date", () => {
+    for (const value of [9_000_000_000_000_000, NaN, Infinity]) {
+      expect(finishedText(value, Date.now(), "en")).toBeNull();
+    }
+  });
   const morning = new Date(2026, 8, 28, 8, 5).getTime();
 
   it("says the time for today, and the date and time in full in its title", () => {
@@ -200,7 +205,7 @@ describe("finishedText", () => {
   it("says the date for another day: 9月28日, Sep 28", () => {
     const nextDay = new Date(2026, 8, 29, 0, 1).getTime();
     expect(finishedText(morning, nextDay, "en")).toMatchObject({ text: "Sep 28", today: false });
-    expect(finishedText(morning, nextDay, "zh-CN").text).toBe("9月28日");
+    expect(finishedText(morning, nextDay, "zh-CN")?.text).toBe("9月28日");
   });
 });
 

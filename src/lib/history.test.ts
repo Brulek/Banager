@@ -271,6 +271,11 @@ describe("persisted dismissal after a backward clock correction", () => {
     expect(clearedHere(parsed, 1)).toBe(true);
     expect(clearedHere(parsed, 2)).toBe(false);
   });
+  it("ignores an out-of-range date before choosing the latest record for a tool", () => {
+    const good = record("git");
+    const bad = record("git", { finished_at: 9_000_000_000_000_000 });
+    expect(recentUpdates(view([good, bad]), [], NOW, offered())).toEqual([good]);
+  });
 });
 
 it("a dismissed future-dated record cannot shadow the same tool updated after Clear", () => {

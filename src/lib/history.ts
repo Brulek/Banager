@@ -86,7 +86,7 @@ export function recentUpdates(
   );
   const newest = new Map<string, HistoryRecord>();
   for (const record of view.records) {
-    if (isDismissed(view, record)) continue;
+    if (!Number.isFinite(new Date(record.finished_at).getTime()) || isDismissed(view, record)) continue;
     const id = artifactKeyId(record.key);
     const seen = newest.get(id);
     if (seen === undefined || record.finished_at > seen.finished_at) newest.set(id, record);

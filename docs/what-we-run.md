@@ -4546,7 +4546,8 @@ choices, among them the updates hidden from the Updates page: versions
 skipped (`skipped_versions`), tools never to remind about
 (`ignored_updates`) and tools put off for 30 days (`snoozed_updates`,
 each with the time it ends; it hides every version of the tool, not only
-the one offered, and is dropped as the file is loaded after that time),
+the one offered, and is dropped as the file is loaded after that time or
+when that timestamp is outside JavaScript Date's supported range),
 and whether the welcome sheet of the first launch has been shown
 (`welcome_seen`), so that it shows once. A `settings.json` written before
 that field existed reads it as not shown, so the sheet also shows once
@@ -4634,7 +4635,9 @@ a random, exclusively created `history.json.tmp.<random>` beside it by the
 same atomic writer as settings and renamed into place, on a thread of
 its own, after each operation finishes and after Clear. A missing,
 unreadable or malformed file is an empty history and is replaced at the
-next record. New writes use format 2, including the current outcome and failure
+next record. Individual records with dates outside JavaScript Date's range are
+dropped without discarding valid records; invalid Clear/retention timestamps
+are ignored. New writes use format 2, including the current outcome and failure
 variants and per-record dismissal. All existing format-1 shapes remain readable.
 Older format-1 builds leave format-2 files untouched; a file a newer Banager wrote is left exactly as it is. To
 remove the history, quit Banager and delete `history.json`; it starts

@@ -199,8 +199,9 @@ export function finishedText(
   finishedAt: number,
   now: number,
   language: string,
-): { text: string; title: string; today: boolean } {
+): { text: string; title: string; today: boolean } | null {
   const then = new Date(finishedAt);
+  if (!Number.isFinite(then.getTime())) return null;
   const sameDay = calendarDaysBetween(then, new Date(now)) === 0;
   const text = sameDay ? shortTimeText(then, language) : shortDateText(then, language);
   const title = new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "short" }).format(then);

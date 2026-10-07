@@ -39,3 +39,11 @@ describe("the date and time styles", () => {
     expect(mediumDateText(date, "en")).toBe("Apr 19, 2025");
   });
 });
+
+it("shared date formatters tolerate invalid persisted dates in all supported languages", () => {
+  for (const language of ["en", "zh-CN", "zh-TW"]) {
+    for (const format of [shortDateText, shortTimeText, mediumDateText]) {
+      expect(format(new Date(9_000_000_000_000_000), language)).toBe("");
+    }
+  }
+});

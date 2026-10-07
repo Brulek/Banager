@@ -47,6 +47,11 @@ use std::time::Duration;
 /// Banager: this one reads none of it and never writes over it.
 pub const HISTORY_FORMAT: u32 = 2;
 
+/// JavaScript Date's inclusive millisecond range, also exactly representable.
+pub fn valid_timestamp_ms(value: i64) -> bool {
+    (-8_640_000_000_000_000..=8_640_000_000_000_000).contains(&value)
+}
+
 /// How many records the file keeps: the newest.
 pub const MAX_RECORDS: usize = 1_000;
 
@@ -584,7 +589,8 @@ fn load(path: &Path, now: i64) -> Loaded {
     }
     let cleared_before = value
         .get("cleared_before")
-        .and_then(serde_json::Value::as_i64);
+        .and_then(serde_json::Value::as_i64)
+        .filter(|value| valid_timestamp_ms(*value));
     // One record that does not read -- cut short, or from a hand that
     // edited the file -- costs that record, not the rest.
     let mut records: Vec<HistoryRecord> = value
@@ -595,6 +601,9 @@ fn load(path: &Path, now: i64) -> Loaded {
                 .iter()
                 .filter_map(|item| {
                     let mut record: HistoryRecord = serde_json::from_value(item.clone()).ok()?;
+                    if !valid_timestamp_ms(record.finished_at) {
+                        return None;
+                    }
                     // Format-1 releases did not write this field. Convert their
                     // cutoff once, including when the clock has moved backwards.
                     if item.get("dismissed").is_none() {
@@ -620,8 +629,12 @@ fn load(path: &Path, now: i64) -> Loaded {
         trusted: value
             .get("trusted_at")
             .and_then(serde_json::Value::as_i64)
+            .filter(|value| valid_timestamp_ms(*value))
             .unwrap_or_else(|| age_anchor(&records, now)),
-        pending: value.get("pending_at").and_then(serde_json::Value::as_i64),
+        pending: value
+            .get("pending_at")
+            .and_then(serde_json::Value::as_i64)
+            .filter(|value| valid_timestamp_ms(*value)),
     };
     clock.observe(now);
     bound(&mut records, clock.anchor(now));
@@ -1232,6 +1245,27 @@ mod tests {
         let reopened = HistoryStore::open_with_clock(dir.file(), now);
         let wire = serde_json::to_value(reopened.view()).unwrap();
         assert_eq!(wire["records"][1]["dismissed"], false);
+    }
+
+    #[test]
+    fn test_f4_bad_dates_do_not_cost_valid_history() {
+        let dir = TempDir::new("f4-dates");
+        let good = serde_json::to_value(record_at("good", NOW)).unwrap();
+        let mut bad = good.clone();
+        bad["finished_at"] = serde_json::json!(9_000_000_000_000_000_i64);
+        std::fs::write(
+            dir.file(),
+            serde_json::to_vec(&serde_json::json!({
+                "format": 1, "cleared_before": 9_000_000_000_000_000_i64,
+                "trusted_at": i64::MAX, "pending_at": i64::MIN,
+                "records": [bad, good]
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let store = HistoryStore::open_with_clock(dir.file(), now);
+        assert_eq!(store.view().records.len(), 1);
+        assert_eq!(store.view().cleared_before, None);
     }
 
     #[test]

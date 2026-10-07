@@ -202,9 +202,13 @@ pub fn load_at(path: &Path, now: i64) -> Settings {
     // Check even keys about to expire, so a legacy login left on disk
     // still triggers the rewrite after those keys have been dropped.
     let redacted = redact_ollama_logins(&mut settings);
-    settings
-        .snoozed_updates
-        .retain(|snoozed| snoozed.until > now);
+    settings.snoozed_updates.retain(|snoozed| {
+        snoozed.until > now
+            && snoozed
+                .until
+                .checked_mul(1_000)
+                .is_some_and(crate::history::valid_timestamp_ms)
+    });
     if redacted {
         // Best effort, as for ordinary settings writes. Never hand the
         // old login back to the window even when the disk is read-only.
@@ -330,6 +334,31 @@ mod tests {
             kind: ArtifactKind::Formula,
             name: name.to_string(),
         }
+    }
+
+    #[test]
+    fn test_f4_invalid_snooze_date_drops_only_that_entry() {
+        let path = temp_settings_path("f4-snooze");
+        let settings = Settings {
+            language: Language::En,
+            snoozed_updates: vec![
+                SnoozedUpdate {
+                    key: key("bad"),
+                    until: i64::MAX,
+                },
+                SnoozedUpdate {
+                    key: key("good"),
+                    until: 8_640_000_000_000,
+                },
+            ],
+            ..Settings::default()
+        };
+        std::fs::write(&path, serde_json::to_vec(&settings).unwrap()).unwrap();
+        let loaded = load_at(&path, 0);
+        assert_eq!(loaded.language, Language::En);
+        assert_eq!(loaded.snoozed_updates.len(), 1);
+        assert_eq!(loaded.snoozed_updates[0].key.name, "good");
+        std::fs::remove_file(path).unwrap();
     }
 
     #[test]
@@ -526,7 +555,7 @@ mod tests {
             }],
             snoozed_updates: vec![SnoozedUpdate {
                 key: k,
-                until: i64::MAX,
+                until: 8_640_000_000_000,
             }],
             ..Settings::default()
         };
@@ -598,7 +627,7 @@ mod tests {
                     ArtifactKind::Model,
                     "llama3:latest",
                 ),
-                until: i64::MAX,
+                until: 8_640_000_000_000,
             }],
             ..Settings::default()
         };
