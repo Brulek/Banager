@@ -2,7 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ReactNode, Ref } from "react";
 import { useTranslation } from "react-i18next";
 import { requestNotificationPermission } from "../lib/api";
-import { useSettings, useSaveSettings, useSnapshot } from "../lib/queries";
+import { useSettings, useSaveSettings, useSnapshot, type SettingsEdit } from "../lib/queries";
 import { ADAPTER_LABEL_KEYS, adapterIdOf, adapterLabel, instanceLabels, settingsSaveSentence } from "../lib/sources";
 import { activeSnoozes, shownSkippedVersion, skippedVersionId } from "../lib/updateState";
 import { snoozeDate } from "../lib/snooze";
@@ -160,6 +160,11 @@ export function SettingsPage() {
   const settingsQuery = useSettings();
   const saveMutation = useSaveSettings();
   const { data: snapshot } = useSnapshot();
+  // A change made here, shown at once and while it is being saved
+  // (`persist`). Otherwise the page shows the settings as last saved:
+  // with the change once its save has ended, without it if that failed,
+  // and with what another page saved meanwhile -- an update hidden on the
+  // Updates page just before this page opened, say.
   const [draft, setDraft] = useState<Settings | null>(null);
   const [creditsOpen, setCreditsOpen] = useState(false);
   // 「有更新时通知我」 while the permission it needs is being asked for
@@ -175,12 +180,6 @@ export function SettingsPage() {
   useEffect(() => {
     held.current = draft ?? settingsQuery.data;
   });
-
-  useEffect(() => {
-    if (settingsQuery.data && draft === null) {
-      setDraft(settingsQuery.data);
-    }
-  }, [settingsQuery.data, draft]);
 
   // What the Updates and Installed rows call each package they list: its
   // `display_name` ("Claude Code", where the package is "claude").
@@ -248,17 +247,21 @@ export function SettingsPage() {
   // function expressions, so a `function persist() {}` here would see
   // `current` as `Settings | undefined` and fail `pnpm build` (TS18048 /
   // TS2345) two tasks later, at Task 17's type-check.
-  const persist = (next: Settings, previous: Settings = current) => {
-    setDraft(next);
-    saveMutation.mutate(next, {
-      onError: () => setDraft(previous),
+  //
+  // `edit` is saved as the change alone, made to the settings as last
+  // saved (`useSaveSettings`); on screen it is made to `from`, what the
+  // page shows, until the save ends.
+  const persist = (edit: SettingsEdit, from: Settings = current) => {
+    setDraft(edit(from));
+    saveMutation.mutate(edit, {
+      onSettled: () => setDraft(null),
     });
   };
 
   // 「有更新时通知我」 turned on: permission to post is asked for first,
   // the switch on and still meanwhile, and the setting saved on only once
-  // it is granted -- over what the page holds by then, and only while the
-  // daily check is still on. Refused, or the asking itself failed, the
+  // it is granted -- while the daily check is still on, on the page by
+  // then and in what is saved. Refused, or the asking itself failed, the
   // switch is back off with the line that says where to allow it.
   const turnNotifyOn = () => {
     setNotifyRefused(false);
@@ -272,14 +275,15 @@ export function SettingsPage() {
           return;
         }
         const now = held.current;
-        if (now?.auto_check) persist({ ...now, notify_updates: true }, now);
+        if (now?.auto_check) {
+          persist((saved) => (saved.auto_check ? { ...saved, notify_updates: true } : saved), now);
+        }
       });
   };
 
   // 「操作完成时通知」 turned on: as 「有更新时通知我」 is, permission
   // first -- the same permission, asked the same way -- and saved on only
-  // once it is granted, over what the page holds by then. It needs no
-  // automatic check.
+  // once it is granted. It needs no automatic check.
   const turnNotifyOpsOn = () => {
     setNotifyOpsRefused(false);
     setAskingToNotifyOps(true);
@@ -292,7 +296,7 @@ export function SettingsPage() {
           return;
         }
         const now = held.current;
-        if (now) persist({ ...now, notify_operations: true }, now);
+        if (now) persist((saved) => ({ ...saved, notify_operations: true }), now);
       });
   };
 
@@ -327,31 +331,31 @@ export function SettingsPage() {
   const snoozes = activeSnoozes(current);
 
   const unignore = (key: Settings["ignored_updates"][number]) => {
-    persist({
-      ...current,
-      ignored_updates: current.ignored_updates.filter(
+    persist((saved) => ({
+      ...saved,
+      ignored_updates: saved.ignored_updates.filter(
         (k) => artifactKeyId(k) !== artifactKeyId(key),
       ),
-    });
+    }));
   };
 
   // A snooze taken back: its package listed again on the Updates page.
   const unsnooze = (snoozed: SnoozedUpdate) => {
-    persist({
-      ...current,
-      snoozed_updates: (current.snoozed_updates ?? []).filter(
+    persist((saved) => ({
+      ...saved,
+      snoozed_updates: (saved.snoozed_updates ?? []).filter(
         (s) => artifactKeyId(s.key) !== artifactKeyId(snoozed.key),
       ),
-    });
+    }));
   };
 
   const unskip = (skipped: SkippedVersion) => {
-    persist({
-      ...current,
-      skipped_versions: current.skipped_versions.filter(
+    persist((saved) => ({
+      ...saved,
+      skipped_versions: saved.skipped_versions.filter(
         (s) => skippedVersionId(s) !== skippedVersionId(skipped),
       ),
-    });
+    }));
   };
 
   return (
@@ -387,7 +391,7 @@ export function SettingsPage() {
               id="settings-language"
               value={current.language}
               options={LANGUAGES.map((lang) => ({ value: lang, label: t(languageLabelKey(lang)) }))}
-              onChange={(language) => persist({ ...current, language })}
+              onChange={(language) => persist((saved) => ({ ...saved, language }))}
             />
           }
         />
@@ -408,7 +412,7 @@ export function SettingsPage() {
               id="settings-show-technical"
               aria-describedby="settings-show-technical-desc"
               checked={current.show_technical_details}
-              onCheckedChange={(checked) => persist({ ...current, show_technical_details: checked })}
+              onCheckedChange={(checked) => persist((saved) => ({ ...saved, show_technical_details: checked }))}
             />
           }
         />
@@ -459,7 +463,7 @@ export function SettingsPage() {
               options={AUTO_CHECK_CHOICES.map((choice) => ({ value: choice, label: t(AUTO_CHECK_CHOICE_KEYS[choice]) }))}
               onChange={(choice) => {
                 setNotifyRefused(false);
-                persist(withAutoCheckChoice(current, choice));
+                persist((saved) => withAutoCheckChoice(saved, choice));
               }}
             />
           }
@@ -498,7 +502,7 @@ export function SettingsPage() {
               checked={current.auto_check && (current.notify_updates || askingToNotify)}
               disabled={!current.auto_check || askingToNotify}
               onCheckedChange={(checked) =>
-                checked ? turnNotifyOn() : persist({ ...current, notify_updates: false })
+                checked ? turnNotifyOn() : persist((saved) => ({ ...saved, notify_updates: false }))
               }
             />
           }
@@ -529,7 +533,7 @@ export function SettingsPage() {
               checked={(current.notify_operations ?? false) || askingToNotifyOps}
               disabled={askingToNotifyOps}
               onCheckedChange={(checked) =>
-                checked ? turnNotifyOpsOn() : persist({ ...current, notify_operations: false })
+                checked ? turnNotifyOpsOn() : persist((saved) => ({ ...saved, notify_operations: false }))
               }
             />
           }
@@ -545,7 +549,7 @@ export function SettingsPage() {
               id="settings-include-self-updating"
               aria-describedby="settings-include-self-updating-desc"
               checked={current.include_self_updating}
-              onCheckedChange={(checked) => persist({ ...current, include_self_updating: checked })}
+              onCheckedChange={(checked) => persist((saved) => ({ ...saved, include_self_updating: checked }))}
             />
           }
         />

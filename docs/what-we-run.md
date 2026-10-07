@@ -5098,9 +5098,9 @@ configured, `index.crates.io`, and cargo still follows a
 ## Known bugs not fixed yet
 
 Each of these is reproduced by a test that is kept out of the ordinary run
-(`#[ignore = "bug: …"]`, or `it.skip("bug: …")` for the window's) and fails
-until the bug is fixed; `cargo test -- --ignored` runs the Rust ones. Until
-then, what this document says above holds only as narrowed here.
+(`#[ignore = "bug: …"]`) and fails until the bug is fixed;
+`cargo test -- --ignored` runs them. Until then, what this document says
+above holds only as narrowed here.
 
 - A Homebrew uninstall still runs when, since its confirmation was shown,
   `brew.env` has turned autoremove on or now sits in a protected place
@@ -5112,9 +5112,6 @@ then, what this document says above holds only as narrowed here.
   the installed copy was replaced from Git or a local path, or rebuilt with
   other features, since its confirmation; a uv upgrade still runs after
   the tool's receipt gained a version constraint or became unreadable.
-- Hiding an update on the Updates page, then changing a setting in
-  Settings before that first save has finished, can lose the hidden
-  update even when both saves succeed.
 
 Put Back itself is still untested (“Moving files to the Trash” above).
 Testing it needs a throwaway macOS account, Banager started from Finder

@@ -2,7 +2,7 @@ import { PasswordRecovery } from "../components/PasswordRecovery";
 import { usePasswordRecoveryKeys } from "../lib/passwordRecovery";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useCheckAgain, useOperations, useSnapshot, useSettings, useSaveSettings } from "../lib/queries";
+import { useCheckAgain, useOperations, useSnapshot, useSettings, useSaveSettings, type SettingsEdit } from "../lib/queries";
 import { elapsedSince } from "../lib/format";
 import { useUiStore, artifactKeyId } from "../store/ui";
 import {
@@ -878,13 +878,13 @@ export function UpdatesPage() {
     }
   };
 
-  // What a row's two hiding items share: `next` builds the settings to
-  // save from the ones on screen.
-  function hide(candidate: UpdateCandidate, next: (current: Settings) => Settings) {
-    // One save at a time. A second choice while the first save is pending
-    // would build its settings from the same stale base, and the later save
-    // would overwrite the earlier one. The items are disabled meanwhile;
-    // this guard covers a choice that was already on its way.
+  // What a row's hiding items share: `next` makes the change to the
+  // settings as last saved (`useSaveSettings`), not to the ones on screen,
+  // which a save from another page may not have reached yet.
+  function hide(candidate: UpdateCandidate, next: SettingsEdit) {
+    // One hide at a time, so that the focus follows one row once it is
+    // gone (`refocusAfterHide`). The items are disabled while a save is
+    // pending; this guard covers a choice that was already on its way.
     if (!settings || saveSettings.isPending) return;
     if (selectedUpdates.includes(artifactKeyId(candidate.key))) {
       toggleUpdate(candidate.key);
@@ -894,7 +894,7 @@ export function UpdatesPage() {
     const neighbour =
       items.slice(at + 1).find(keyboardRow) ?? items.slice(0, Math.max(at, 0)).reverse().find(keyboardRow);
     refocusAfterHide.current = { gone, next: neighbour === undefined ? null : listItemKey(neighbour), base: settings };
-    saveSettings.mutate(next(settings), {
+    saveSettings.mutate(next, {
       onError: () => {
         refocusAfterHide.current = null;
       },
@@ -1362,7 +1362,7 @@ export function UpdatesPage() {
                   type="button"
                   disabled={saveSettings.isPending}
                   title={t("updates.showReasonsHint", { setting: t("settings.showTechnicalDetails.label") })}
-                  onClick={() => saveSettings.mutate({ ...settings, show_technical_details: true })}
+                  onClick={() => saveSettings.mutate((saved) => ({ ...saved, show_technical_details: true }))}
                   className={BUTTON.small.grey}
                 >
                   {t("updates.showReasons")}

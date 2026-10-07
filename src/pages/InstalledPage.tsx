@@ -1176,14 +1176,16 @@ export function InstalledPage() {
   // The Settings page's 「取消跳过」 and 「恢复提醒」 for one update, from its
   // inspector: the skip that hides it -- the one `hidingRule` matched, by
   // the version it offers -- or its never-remind, out of the settings,
-  // which lists it again. One save at a time, as the Updates page's hiding
-  // items: a second built from the same settings would undo the first.
+  // which lists it again -- out of the settings as last saved
+  // (`useSaveSettings`). One at a time, as the Updates page's hiding
+  // items: what the inspector says failed, and where the focus goes after,
+  // are about one.
   const undoHiding = ({ by, candidate }: HiddenUpdate) => {
     if (!settings || saveSettings.isPending) return;
     const id = artifactKeyId(candidate.key);
     setUndoFailed(null);
     saveSettings.mutate(
-      withoutHiding(settings, by, candidate),
+      (saved) => withoutHiding(saved, by, candidate),
       {
         onSuccess: () => {
           refocusAfterUndo.current = true;

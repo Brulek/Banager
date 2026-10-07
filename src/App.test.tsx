@@ -1200,9 +1200,83 @@ async function f08SettingsAcrossNavigation(firstFails: boolean) {
   expect(queryClient.getQueryData<Settings>(queryKeys.settings)).toEqual(persisted);
 }
 
-it.skip("bug: G10: an update hidden on Updates is lost when Settings saves before that save finishes", async () => {
+it("f08 G10 keeps an update hidden on Updates when Settings saves before that save finishes", async () => {
   await f08SettingsAcrossNavigation(false);
 });
 it("f08 G10 retains the second edit when the previous page's save fails", async () => {
   await f08SettingsAcrossNavigation(true);
+});
+
+// f31, after G10: the settings as the window really saves them. Never
+// Remind Me on the Updates page, then Settings opened while that save is
+// still on its way; persistence is fake, held until each save is let go.
+async function f31HideJqThenOpenSettings(initial: Settings) {
+  vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (this: HTMLElement) {
+    return this.getAttribute("data-index") === null ? 600 : 56;
+  });
+  vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(800);
+  const key = snapshot.artifacts[0].key;
+  const snap: Snapshot = { ...snapshot, updates: [{
+    key, current: "1.8.2", target: "1.9.0", checkable: true, blocked: null,
+    warnings: [], channel: "Native",
+  }] };
+  const disk = { persisted: initial };
+  const pending: { value: Settings; resolve: () => void }[] = [];
+  mockBackend(snap, initial);
+  const fallback = mockInvoke.getMockImplementation()!;
+  mockInvoke.mockImplementation((cmd, args) => {
+    if (cmd === "get_settings") return Promise.resolve(disk.persisted);
+    if (cmd === "set_settings") {
+      const value = (args as { settings: Settings }).settings;
+      return new Promise<void>((resolve) => {
+        pending.push({ value, resolve: () => { disk.persisted = value; resolve(); } });
+      });
+    }
+    return fallback(cmd, args);
+  });
+  const view = renderWithProviders(<App />);
+  fireEvent.click(view.getByRole("button", { name: "Updates" }));
+  await view.findByRole("button", { name: "Update jq" });
+  fireEvent.click(view.getByRole("button", { name: "More actions for jq" }));
+  fireEvent.click(await view.findByRole("menuitem", { name: "Don't Remind Me About This Tool" }));
+  await waitFor(() => expect(pending).toHaveLength(1));
+  fireEvent.click(view.getByRole("button", { name: "Settings" }));
+  await view.findByRole("combobox", { name: "Check for updates" });
+  return { key, disk, pending, view };
+}
+
+it("f31 G10 keeps an update hidden on Updates when its save lands after Settings opened, and shows it there", async () => {
+  // The likelier order: the first save lands while Settings is open,
+  // before anything is changed there. The page read the settings before
+  // it landed, and once saved the change over what it had read.
+  const initial: Settings = { ...defaultSettings, auto_check_every: "Day" };
+  const { key, disk, pending, view } = await f31HideJqThenOpenSettings(initial);
+  await act(async () => pending[0].resolve());
+  expect(await view.findByRole("button", { name: "Remind me again about jq" })).toBeInTheDocument();
+  fireEvent.change(view.getByRole("combobox", { name: "Check for updates" }), { target: { value: "Week" } });
+  await waitFor(() => expect(pending).toHaveLength(2));
+  await act(async () => pending[1].resolve());
+  const expected: Settings = { ...initial, ignored_updates: [key], auto_check: true, auto_check_every: "Week" };
+  expect(disk.persisted).toEqual(expected);
+  await waitFor(() => expect(view.queryClient.getQueryData<Settings>(queryKeys.settings)).toEqual(expected));
+  expect(view.getByRole("button", { name: "Remind me again about jq" })).toBeInTheDocument();
+});
+
+it("f31 G10 keeps both changes to the never-remind list when Settings takes one tool off it before Updates' save of another lands", async () => {
+  // Both pages change the same list: one adds jq, the other takes wget
+  // off. Neither may undo the other, as a save of the whole list (or of
+  // the fields that differ from what the page read) would.
+  const wget = { instance_id: "brew:/opt/homebrew", kind: "Formula" as const, name: "wget" };
+  const initial: Settings = { ...defaultSettings, ignored_updates: [wget] };
+  const { key, disk, pending, view } = await f31HideJqThenOpenSettings(initial);
+  fireEvent.click(await view.findByRole("button", { name: "Remind me again about wget" }));
+  await act(async () => { await Promise.resolve(); });
+  await act(async () => pending[0].resolve());
+  await waitFor(() => expect(pending).toHaveLength(2));
+  expect(pending[0].value.ignored_updates).toEqual([wget, key]);
+  expect(pending[1].value.ignored_updates).toEqual([key]);
+  await act(async () => pending[1].resolve());
+  expect(disk.persisted).toEqual({ ...initial, ignored_updates: [key] });
+  expect(await view.findByRole("button", { name: "Remind me again about jq" })).toBeInTheDocument();
+  expect(view.queryByRole("button", { name: "Remind me again about wget" })).toBeNull();
 });

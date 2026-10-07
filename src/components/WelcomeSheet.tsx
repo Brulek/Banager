@@ -84,7 +84,7 @@ export function WelcomeSheet() {
     const latest = queryClient.getQueryData<Settings>(queryKeys.settings) ?? settings;
     if (latest === undefined || latest.welcome_seen !== false) return;
     save.mutate(
-      { ...latest, welcome_seen: true },
+      (saved) => ({ ...saved, welcome_seen: true }),
       {
         onError: (e: unknown) => {
           console.error("saving welcome_seen failed", e);

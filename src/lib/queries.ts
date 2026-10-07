@@ -161,13 +161,59 @@ export function useCheckAgain(): { checkAgain: () => void; checking: boolean; er
   return { checkAgain, checking, error };
 }
 
-export function useSaveSettings(): UseMutationResult<void, Error, Settings> {
+/**
+ * One change to the settings (`useSaveSettings`): given them as last
+ * saved, the settings with the change made.
+ */
+export type SettingsEdit = (saved: Settings) => Settings;
+
+/** What a settings save wrote, and the settings it was made to. */
+export interface SettingsSave {
+  previous: Settings;
+  saved: Settings;
+}
+
+/** Each client's last settings save, which the next one waits for. */
+const lastSettingsSave = new WeakMap<QueryClient, Promise<unknown>>();
+
+/**
+ * Saves `edit`, made to the settings as the saves before it left them:
+ * after the last one started has ended, whether it worked or not, and
+ * into the cache as soon as it is written, before the next one starts.
+ *
+ * Every save writes the whole settings. A save made from what one page
+ * held could otherwise land after another page's and write it out again:
+ * Never Remind Me on the Updates page, then a change in Settings, which
+ * had read the settings before that save had landed, lost the hidden
+ * update though both saves worked (G10 of the r7 test review). Each save
+ * is the change alone, made to what is saved by its turn.
+ */
+function saveSettingsInTurn(queryClient: QueryClient, edit: SettingsEdit): Promise<SettingsSave> {
+  const turn = (lastSettingsSave.get(queryClient) ?? Promise.resolve())
+    .catch(() => undefined)
+    .then(async () => {
+      const previous = await queryClient.ensureQueryData({ queryKey: queryKeys.settings, queryFn: getSettings });
+      const saved = edit(previous);
+      await setSettings(saved);
+      queryClient.setQueryData(queryKeys.settings, saved);
+      return { previous, saved };
+    });
+  lastSettingsSave.set(queryClient, turn);
+  return turn;
+}
+
+/**
+ * Saves a change to the settings (`SettingsEdit`), one save at a time, each
+ * made to the settings as the one before it left them
+ * (`saveSettingsInTurn`), wherever it was asked for: the Settings page, the
+ * Updates page's ⋯ and Show Reasons, the Installed page's inspector and the
+ * welcome sheet.
+ */
+export function useSaveSettings(): UseMutationResult<SettingsSave, Error, SettingsEdit> {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: setSettings,
-    onSuccess: (_data, settings) => {
-      const previous = queryClient.getQueryData<Settings>(queryKeys.settings);
-      queryClient.setQueryData(queryKeys.settings, settings);
+    mutationFn: (edit: SettingsEdit) => saveSettingsInTurn(queryClient, edit),
+    onSuccess: ({ previous, saved: settings }) => {
       // `include_self_updating` is read fresh by the backend on every
       // refresh and changes which update candidates come back -- but nothing
       // was triggering a refresh, so flipping the switch changed nothing the
@@ -180,14 +226,14 @@ export function useSaveSettings(): UseMutationResult<void, Error, Settings> {
       // this mutation). A failed refresh is swallowed: the save itself did
       // succeed, and the snapshot's own stale/errors fields are what report
       // a bad refresh.
-      if (previous && previous.include_self_updating !== settings.include_self_updating) {
+      if (previous.include_self_updating !== settings.include_self_updating) {
         return refreshIntoCache(queryClient, "include_self_updating changed").catch(() => {});
       }
       // When the next automatic check is due (`Snapshot::next_auto_check_at`)
       // is worked out for how often it runs, as the settings are saved
       // (`with_next_auto_check` in src-tauri/src/ipc.rs): fetched again --
       // the same round, no refresh -- so 「每周」 says a week on at once.
-      if (previous && checkEvery(previous) !== checkEvery(settings)) {
+      if (checkEvery(previous) !== checkEvery(settings)) {
         return queryClient.invalidateQueries({ queryKey: queryKeys.snapshot });
       }
     },
