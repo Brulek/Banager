@@ -50,7 +50,8 @@ function needsALook(tone: OutcomeTone): boolean {
  * for all of it that can still be stopped -- 「取消其余」 while one of it
  * runs that nothing can stop. Once everything is done, how it went in
  * place of where it stood -- 「已更新3个工具」, 「1个更新失败，2个已成功」, 「git：
- * 更新 · 网络连接失败」 -- with its log where it needs a look, and a close ×.
+ * 更新 · 网络连接失败」, 「2个已取消」 -- with its log where it needs a look
+ * or was cancelled, and a close ×.
  * What it does is said in front wherever the words do not say it
  * (`operationWords`). What a program wrote -- a tool's error, macOS's
  * reason a program would not start -- is said here only with "Show
@@ -259,10 +260,19 @@ export function OperationBar() {
           : t("operations.batch.allSucceeded", { count: total });
     } else {
       tone = "cancelled";
-      words = t("operations.batch.finished", {
-        succeeded: tones.filter((each) => each === "success").length,
-        cancelled: tones.filter((each) => each === "cancelled").length,
-      });
+      const succeeded = tones.filter((each) => each === "success").length;
+      const cancelled = inRun.filter((_, index) => tones[index] === "cancelled");
+      // 「1个已成功，2个已取消」; with none succeeded, not 「0个已成功」 first,
+      // read as one that was to succeed and did not: 「2个已取消」, a zero
+      // left out as `failedRunWords` leaves it (r24 W5).
+      words =
+        succeeded > 0
+          ? t("operations.batch.finished", { succeeded, cancelled: cancelled.length })
+          : t("failureSteps.bar.cancelled", { count: cancelled.length });
+      // Their logs, as one operation's bar offers its own after a cancel:
+      // what had already happened -- 「查看2个日志」, stepping through them.
+      if (cancelled.length > 1) logsOf = cancelled;
+      else logOf = cancelled[0];
     }
     lead = <OutcomeIcon tone={tone} size={12} />;
     said = (

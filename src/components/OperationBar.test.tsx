@@ -754,8 +754,8 @@ describe("OperationBar", () => {
     expect(useUiStore.getState().logRun).toEqual([]);
   });
 
-  it("says a run of several all succeeded, or how many were cancelled, with nothing to look at", async () => {
-    const { findByText, queryByRole, queryClient } = renderWithProviders(<OperationBar />);
+  it("says a run of several all succeeded, with nothing to look at, or how many were cancelled, with their log", async () => {
+    const { findByText, getByRole, queryByRole, queryClient } = renderWithProviders(<OperationBar />);
     await waitFor(() => expect(queryClient.getQueryData(queryKeys.operations)).toEqual([]));
 
     await listNow(queryClient, [op(2, "jq", "Running"), op(1, "git", "Running")]);
@@ -778,7 +778,38 @@ describe("OperationBar", () => {
       op(1, "git", "Done", "Succeeded"),
     ]);
     await findByText("1 succeeded, 1 cancelled");
-    expect(queryByRole("button", { name: "View Log" })).toBeNull();
+    // The cancelled one's log, as a single operation's bar offers it after a
+    // cancel: what had already happened (r24 W5).
+    fireEvent.click(getByRole("button", { name: "View Log" }));
+    expect(useUiStore.getState().focusedOpId).toBe(4);
+  });
+
+  it("leaves out a zero when every one of a run was cancelled, and offers their logs (r24 W5)", async () => {
+    // Cancel All while each was still waiting: not 「0个已成功，2个已取消」.
+    await i18n.changeLanguage("zh-CN");
+    try {
+      const { findByText, getByRole, queryByText, queryClient, unmount } = renderWithProviders(<OperationBar />);
+      await waitFor(() => expect(queryClient.getQueryData(queryKeys.operations)).toEqual([]));
+      await listNow(queryClient, [op(2, "httpie", "Queued"), op(1, "git", "Running")]);
+      await listNow(queryClient, [op(2, "httpie", "Done", "Cancelled"), op(1, "git", "Done", "Cancelled")]);
+
+      await findByText("2个已取消");
+      expect(queryByText(/0个已成功/)).toBeNull();
+      // Both logs, the first one opened, from where 下一个 steps to the other.
+      fireEvent.click(getByRole("button", { name: "查看2个日志" }));
+      expect(useUiStore.getState().logRun).toEqual([1, 2]);
+      unmount();
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+
+    // In English: never "0 succeeded" first either.
+    const { findByText, queryByText, queryClient } = renderWithProviders(<OperationBar />);
+    await waitFor(() => expect(queryClient.getQueryData(queryKeys.operations)).toBeDefined());
+    await listNow(queryClient, [op(4, "wget", "Queued"), op(3, "gh", "Running")]);
+    await listNow(queryClient, [op(4, "wget", "Done", "Cancelled"), op(3, "gh", "Done", "Cancelled")]);
+    await findByText("2 cancelled");
+    expect(queryByText(/0 succeeded/)).toBeNull();
   });
 
   it("calls what it acts on by the name its row shows, and keeps it once the row is gone", async () => {
