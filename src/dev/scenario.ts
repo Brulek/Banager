@@ -52,6 +52,9 @@ import type { Page } from "../store/ui";
  *   /usr/local with the same `node@20` at the same version: Fix… offers
  *   three choices, each saying where its Homebrew is (「Apple芯片」,
  *   「Intel」), and the Intel one is linked by `/usr/local/bin/brew` (r7 F1).
+ * - `startup-error`: npm ran into an error at startup; its notice's Show
+ *   Error Details shows the last lines it wrote, a login in them masked
+ *   (`withStartupError` in ./mockData.ts).
  */
 export const SCENARIO_STATES = [
   "full",
@@ -88,7 +91,12 @@ export type ScenarioState = (typeof SCENARIO_STATES)[number];
  * its turn comes, as an earlier update of an Update all that upgraded it as a
  * dependency leaves it (r6 y3-batch): done, the first of a source
  * 「轮到它时已是新版本」, the rest 「已由前面的更新一并完成」
- * (`OpSummary.already_updated`). Anything else ends as `succeeded`.
+ * (`OpSummary.already_updated`).
+ * `follow-up`: every operation succeeds; an update a `brew cleanup` follows
+ * ends with that cleanup not finished (`OldVersionsNotCleanedUp`), and the
+ * history has an earlier launch's node@22 update with a saved
+ * `NoLongerLinked` warning.
+ * Anything else ends as `succeeded`.
  */
 export const SCENARIO_OUTCOMES = [
   "succeeded",

@@ -28,7 +28,16 @@ import { createMockBackend, MOCK_COMMANDS, TIMING, type MockBackend } from "./mo
 import { MODELS, buildWorld } from "./mockData";
 import { withMockNeededBy } from "./mockNeededBy";
 import { getCurrentWindow as previewWindow } from "./mockTauriWindow";
-import { DEFAULT_SCENARIO, parseScenario, type Scenario } from "./scenario";
+import {
+  DEFAULT_SCENARIO,
+  parseScenario,
+  SCENARIO_OUTCOMES,
+  SCENARIO_PATHS,
+  SCENARIO_SCANS,
+  SCENARIO_SIZES,
+  SCENARIO_STATES,
+  type Scenario,
+} from "./scenario";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -1139,6 +1148,38 @@ describe("the preview's URL switches", () => {
     const { scenario, problems } = parseScenario("?state=bogus&lang=fr");
     expect(scenario).toEqual(DEFAULT_SCENARIO);
     expect(problems).toHaveLength(2);
+  });
+
+  it("are each listed, with every value they take, in docs/ui-preview.md's table", () => {
+    // r26 D6: the table had no row for `startup-error` and no `follow-up`
+    // among the outcomes, though later sections of the same file use them.
+    // A value read here and missing there, or listed there and no longer
+    // read, fails.
+    const doc = readFileSync(path.resolve(__dirname, "../../docs/ui-preview.md"), "utf-8");
+    const start = doc.indexOf("\n## URL switches\n");
+    expect(start).toBeGreaterThanOrEqual(0);
+    const end = doc.indexOf("\n## ", start + 1);
+    const table = doc.slice(start, end === -1 ? undefined : end);
+    const listed = new Map<string, string[]>();
+    let current = "";
+    for (const line of table.split("\n")) {
+      if (!line.startsWith("| ") || line.startsWith("|---")) continue;
+      const [name, values] = line.split(" | ");
+      const named = /^\| `([a-z]+)`$/.exec(name ?? "")?.[1];
+      if (named !== undefined) current = named;
+      else if (name !== "|") continue;
+      const found = [...(values ?? "").matchAll(/`([^`]+)`/g)].map((match) => match[1]);
+      listed.set(current, [...(listed.get(current) ?? []), ...found]);
+    }
+    for (const [name, values] of [
+      ["state", SCENARIO_STATES],
+      ["outcome", SCENARIO_OUTCOMES],
+      ["scan", SCENARIO_SCANS],
+      ["sizes", SCENARIO_SIZES],
+      ["path", SCENARIO_PATHS],
+    ] as const) {
+      expect([...(listed.get(name) ?? [])].sort(), `?${name}=`).toEqual([...values].sort());
+    }
   });
 });
 
