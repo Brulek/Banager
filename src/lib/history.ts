@@ -64,7 +64,9 @@ export function listedResult(result: HistoryResult): boolean {
  * way to know of (`listedResult`) -- the rule `justUpdatedOps` has for this
  * window's own -- finished in the last `RECENT_DAYS` and not dismissed by
  * a Clear (`isDismissed`). Newest per tool, so an update that failed and then worked is
- * listed as the one that worked, and one uninstalled since not at all.
+ * listed as the one that worked, and one uninstalled since not at all --
+ * by an uninstall that worked: one that failed or was stopped does not
+ * count (`recordWeighs`).
  * None for a tool whose say is this window's (`seenHere`, below): its
  * operation decides, whatever the history says, so an update this window
  * saw finish is listed once.
@@ -85,7 +87,8 @@ export function listedResult(result: HistoryResult): boolean {
  * otherwise the later finish is (`keptLater`).
  *
  * `seenHere`, by `artifactKeyId`, the tools whose say is this window's:
- * for the list, those it has an operation of (`toolsWithOperations`); for
+ * for the list, those it has an update or a finished uninstall of that
+ * worked (`toolsSeenHere`); for
  * `usePasswordRecoveryKeys`, those whose row shows one, so that a stop of
  * this launch the row no longer shows -- the page reloaded -- still
  * counts from its record (r35 U3).
@@ -101,6 +104,9 @@ export function recentUpdates(
   for (const record of view.records) {
     if (!Number.isFinite(new Date(record.finished_at).getTime())) continue;
     if (!includeDismissed && isDismissed(view, record)) continue;
+    // An uninstall that failed or was stopped leaves the update before it
+    // listed, as it does in the window that ran it (`opWeighs`).
+    if (!recordWeighs(record)) continue;
     const id = artifactKeyId(record.key);
     const seen = newest.get(id);
     if (seen === undefined || keptLater(view, record, seen)) newest.set(id, record);
@@ -120,13 +126,40 @@ export function recentUpdates(
 }
 
 /**
- * The tools this window has an operation of, by `artifactKeyId`: the
- * ones whose update 「最近的更新记录」 takes from the window's own list
- * (`justUpdatedOps`), not from the history (`recentUpdates`).
+ * Whether an operation of this window has a say in what 「最近的更新记录」
+ * lists of its tool: an update, and an uninstall that worked, which ends
+ * the tool's line -- not a Fix… link (`Link`), nor an uninstall that did
+ * not happen or did not work (cancelled while it waited its turn, failed,
+ * or one to check): the update before it still happened (r35 U4).
+ * `justUpdatedOps` weighs only these, and `toolsSeenHere` counts only
+ * these, so the history can stand in for the rest; `recordWeighs` is the
+ * same rule for the history's records.
  */
-export function toolsWithOperations(operations: readonly OpSummary[]): Set<string> {
+export function opWeighs(op: OpSummary): boolean {
+  return op.kind === "Upgrade" || (op.kind === "Uninstall" && op.status === "Done" && op.outcome === "Succeeded");
+}
+
+/**
+ * `opWeighs` for a record the history kept: an update, or an uninstall
+ * that worked. The history keeps no link and no operation cancelled
+ * before it started (`history::record_for`).
+ */
+export function recordWeighs(record: HistoryRecord): boolean {
+  return record.kind === "Update" || record.result === "Succeeded";
+}
+
+/**
+ * The tools, by `artifactKeyId`, whose line 「最近的更新记录」 takes from
+ * this window's own operations (`justUpdatedOps`) rather than from the
+ * history (`recentUpdates`): those with an operation that has a say
+ * (`opWeighs`). A tool whose only operations here are a Fix… link or an
+ * uninstall that did not happen is still the history's to list.
+ */
+export function toolsSeenHere(operations: readonly OpSummary[]): Set<string> {
   return new Set(
-    operations.map((op) => artifactKeyId({ instance_id: op.instance_id, kind: op.artifact_kind, name: op.name })),
+    operations
+      .filter(opWeighs)
+      .map((op) => artifactKeyId({ instance_id: op.instance_id, kind: op.artifact_kind, name: op.name })),
   );
 }
 

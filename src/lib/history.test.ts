@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { failureCause, type FailureCause } from "./failureCause";
-import { RECENT_DAYS, clearedHere, recentUpdates, toolsWithOperations, verifiedHere } from "./history";
+import { RECENT_DAYS, clearedHere, recentUpdates, toolsSeenHere, verifiedHere } from "./history";
 import { artifactKeyId } from "../store/ui";
 import type { HistoryRecord, HistoryView, OpSummary } from "./types";
 
@@ -112,7 +112,7 @@ describe("recentUpdates", () => {
       const offered = new Set([artifactKeyId({ ...key, instance_id: liveId })]);
       expect(recentUpdates(view([kept]), new Set(), NOW, offered)).toEqual([kept]);
       const live = { ...op(7, key.name), instance_id: liveId, artifact_kind: key.kind };
-      expect(recentUpdates(view([kept]), toolsWithOperations([live]), NOW, offered)).toEqual([]);
+      expect(recentUpdates(view([kept]), toolsSeenHere([live]), NOW, offered)).toEqual([]);
       const elsewhere = new Set([artifactKeyId({ ...key, instance_id: "ollama:http://other:11434" })]);
       expect(recentUpdates(view([kept]), new Set(), NOW, elsewhere)).toEqual([]);
     }
@@ -202,13 +202,41 @@ describe("recentUpdates", () => {
     ]);
   });
 
+  it("lets only an uninstall that worked hide an update, as the window that ran it does (r35 U4)", () => {
+    const listed = recentUpdates(
+      view([
+        record("wget", { finished_at: NOW - 3 * DAY }),
+        record("wget", { kind: "Uninstall", finished_at: NOW - 2 * DAY, result: { Failed: { cause: "permission" } } }),
+        record("jq", { finished_at: NOW - 4 * DAY }),
+        record("jq", { kind: "Uninstall", finished_at: NOW - 2 * DAY, result: "Cancelled" }),
+        record("tree", { finished_at: NOW - 3 * DAY }),
+        record("tree", { kind: "Uninstall", finished_at: NOW - 2 * DAY }),
+      ]),
+      new Set(),
+      NOW,
+      offered(),
+    );
+    expect(listed.map((r) => r.key.name)).toEqual(["wget", "jq"]);
+  });
+
+  it("counts as this window's only the tools it has an update or an uninstall that worked of (r35 U4)", () => {
+    const seen = toolsSeenHere([
+      op(7, "cmake"),
+      { ...op(8, "node@22"), kind: "Link" },
+      { ...op(9, "wget"), kind: "Uninstall", outcome: "Cancelled" },
+      { ...op(10, "jq"), kind: "Uninstall", status: "Running", outcome: null },
+      { ...op(11, "tree"), kind: "Uninstall", outcome: "Succeeded" },
+    ]);
+    expect([...seen]).toEqual(["cmake", "tree"].map((name) => artifactKeyId({ instance_id: "brew:/opt/homebrew", kind: "Formula", name })));
+  });
+
   it("lists no tool this window has an operation of: that operation decides, so nothing is listed twice", () => {
     const history = view([
       record("cmake", { run: "now", op_id: 7 }),
       record("git", { run: "earlier", op_id: 7, finished_at: NOW - 9 * DAY }),
       record("jq"),
     ]);
-    expect(recentUpdates(history, toolsWithOperations([op(7, "cmake"), op(8, "git")]), NOW, offered()).map((r) => r.key.name)).toEqual([
+    expect(recentUpdates(history, toolsSeenHere([op(7, "cmake"), op(8, "git")]), NOW, offered()).map((r) => r.key.name)).toEqual([
       "jq",
     ]);
   });

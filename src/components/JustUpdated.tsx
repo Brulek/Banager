@@ -2,6 +2,7 @@ import { FollowUpWarnings } from "./FollowUpWarnings";
 import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { artifactKeyId } from "../store/ui";
+import { opWeighs } from "../lib/history";
 import {
   FAILURE_CAUSE_KEYS,
   causeKeepsItsLine,
@@ -170,7 +171,10 @@ export interface JustUpdatedFilter {
  * has run. One that worked, and also one that failed or asks to be
  * checked: a person should know of those too, and an update that failed
  * and then worked is listed as the one that worked. Not one cancelled,
- * nor a tool uninstalled since, whose newest operation is the uninstall.
+ * nor a tool uninstalled since, whose newest operation is the uninstall
+ * that worked. Only operations with a say count (`opWeighs`): a Fix…
+ * link of the same formula, or an uninstall cancelled before it started
+ * or that failed, does not take its update off the list (r35 U4).
  *
  * Only once its row no longer shows it: until the check after it lands, a
  * finished update's row stays, with its tick where its Update button was,
@@ -187,7 +191,7 @@ export interface JustUpdatedFilter {
  */
 export function justUpdatedOps(operations: readonly OpSummary[], filter: JustUpdatedFilter): OpSummary[] {
   const newest = new Map<string, OpSummary>();
-  for (const op of operations) {
+  for (const op of operations.filter(opWeighs)) {
     const id = artifactKeyId({ instance_id: op.instance_id, kind: op.artifact_kind, name: op.name });
     const seen = newest.get(id);
     if (seen === undefined || op.id > seen.id) newest.set(id, op);

@@ -4266,6 +4266,128 @@ describe("UpdatesPage", () => {
       expect(container.textContent).not.toMatch(/sha256|5642e974/);
     });
 
+    // r35 U4: a later operation of the same tool that is not an uninstall
+    // that worked -- a Fix… link, an uninstall cancelled while it waited
+    // its turn or one that failed -- leaves its update listed, in this
+    // launch as after a restart.
+    describe("an update, then another operation of the same tool", () => {
+      const nodeKey: ArtifactKey = { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "node@22" };
+      const wgetKey: ArtifactKey = { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "wget" };
+      const unlinked = { NoLongerLinked: { name: "node@22", commands: ["node", "npm"] } };
+
+      function record(key: ArtifactKey, run: string, opId: number, fields: Partial<HistoryRecord> = {}): HistoryRecord {
+        return {
+          run,
+          op_id: opId,
+          finished_at: Date.now() - (opId === 7 ? 120_000 : 60_000),
+          key,
+          display_name: key.name,
+          adapter_id: "brew",
+          kind: "Update",
+          from_version: "1.0",
+          to_version: "1.1",
+          result: "Succeeded",
+          verified: true,
+          dismissed: false,
+          ...fields,
+        };
+      }
+
+      function answerHistory(view: HistoryView): void {
+        const answer = mockInvoke.getMockImplementation()!;
+        mockInvoke.mockImplementation((cmd: string, args?: InvokeArgs) =>
+          cmd === "get_history" ? Promise.resolve(view) : answer(cmd, args),
+        );
+      }
+
+      /** Each line of Update History: its tool, how it ended, and its button, if any. */
+      async function lines(): Promise<string[][]> {
+        await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("get_history"));
+        await findRow("glib");
+        await act(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        });
+        const section = justUpdated();
+        return section === null
+          ? []
+          : within(section).getAllByRole("listitem").map((line) => [
+              line.querySelector("span[title]")?.textContent ?? "",
+              line.querySelector("[data-just-updated-ending]")?.textContent ?? "",
+              // Its buttons with words: not the ⓘ after the ending.
+              ...within(line).queryAllByRole("button").map((button) => button.textContent ?? "").filter((words) => words !== ""),
+            ]);
+      }
+
+      const nodeLine = ["node@22", "Updated with a warning", "View Log"];
+
+      it("keeps node@22's update after a Fix… link of it, in this launch and after a restart", async () => {
+        artifacts = [...artifacts, installed(nodeKey, "22.23.3")];
+        answerHistory({ run: "now", cleared_before: null, records: [record(nodeKey, "now", 7, { follow_up_warnings: [unlinked] })] });
+        operations = [
+          operation(nodeKey, { id: 8, kind: "Link", status: "Done", outcome: "Succeeded" }),
+          operation(nodeKey, { id: 7, status: "Done", outcome: "Succeeded", follow_up_warnings: [unlinked] }),
+        ];
+        const launch = renderPage();
+        expect(await lines()).toEqual([nodeLine]);
+        // This window's own line: View Log opens op 7's log.
+        fireEvent.click(within(justUpdated()!).getByRole("button", { name: "View log: node@22" }));
+        expect(useUiStore.getState().focusedOpId).toBe(7);
+        launch.unmount();
+
+        // After a restart: no operations, the same record, the same line.
+        useUiStore.setState(useUiStore.getInitialState());
+        operations = [];
+        renderPage();
+        expect(await lines()).toEqual([nodeLine]);
+      });
+
+      it.each([
+        ["cancelled while it waited its turn", { status: "Done", outcome: "Cancelled" }, null],
+        [
+          "that failed",
+          { status: "Done", outcome: { Failed: { exit_code: 1, summary: "Error: Permission denied", cause: failureCause("Error: Permission denied") } } },
+          { Failed: { cause: "permission", detail: null } },
+        ],
+        ["still under way", { status: "Running", outcome: null }, null],
+      ] as const)("keeps wget's update after an uninstall of it %s", async (_how, uninstall, kept) => {
+        artifacts = [...artifacts, installed(wgetKey, "1.1")];
+        const records = [record(wgetKey, "now", 7)];
+        // The history keeps an uninstall that started; not one cancelled before it did.
+        if (kept !== null) records.push(record(wgetKey, "now", 8, { kind: "Uninstall", result: kept as HistoryRecord["result"], to_version: null, verified: false }));
+        answerHistory({ run: "now", cleared_before: null, records });
+        operations = [
+          operation(wgetKey, { id: 8, kind: "Uninstall", ...(uninstall as Partial<OpSummary>) }),
+          operation(wgetKey, { id: 7, status: "Done", outcome: "Succeeded" }),
+        ];
+        const launch = renderPage();
+        expect(await lines()).toEqual([["wget", "Updated"]]);
+        launch.unmount();
+
+        // After a restart.
+        useUiStore.setState(useUiStore.getInitialState());
+        operations = [];
+        renderPage();
+        expect(await lines()).toEqual([["wget", "Updated"]]);
+      });
+
+      it("takes wget's update off the list once an uninstall of it worked, in this launch and after a restart", async () => {
+        const records = [record(wgetKey, "now", 7), record(wgetKey, "now", 8, { kind: "Uninstall", to_version: null })];
+        answerHistory({ run: "now", cleared_before: null, records });
+        operations = [
+          operation(wgetKey, { id: 8, kind: "Uninstall", status: "Done", outcome: "Succeeded" }),
+          operation(wgetKey, { id: 7, status: "Done", outcome: "Succeeded" }),
+        ];
+        const launch = renderPage();
+        expect(await lines()).toEqual([]);
+        launch.unmount();
+
+        useUiStore.setState(useUiStore.getInitialState());
+        operations = [];
+        renderPage();
+        expect(await lines()).toEqual([]);
+      });
+    });
+
     describe("after a restart: what the history kept", () => {
       // A launch before this one kept these (`get_history`); this window
       // has run nothing yet. Each carries `dismissed`, as Rust sends it.

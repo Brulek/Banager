@@ -29,7 +29,7 @@ import {
   justUpdatedOps,
   type JustUpdatedEntry,
 } from "../components/JustUpdated";
-import { clearedHere, recentUpdates, toolsWithOperations, useClearHistory, useHistory, verifiedHere } from "../lib/history";
+import { clearedHere, recentUpdates, toolsSeenHere, useClearHistory, useHistory, verifiedHere } from "../lib/history";
 import { NO_HISTORY } from "../lib/types";
 import { RowAction, ToolRow } from "../components/ToolRow";
 import { StatusChip, type StatusChipProps } from "../components/StatusChip";
@@ -592,7 +592,9 @@ export function UpdatesPage() {
   // add up, where it would read as the version the tool was updated to.
   //
   // Then what the history kept from before this window, of the last 30
-  // days (`recentUpdates`): never a tool this window has an operation of,
+  // days (`recentUpdates`): never a tool this window has an update or an
+  // uninstall that worked of (`toolsSeenHere`) -- a Fix… link or an
+  // uninstall that did not happen leaves it to the history (r35 U4) --
   // and one that did not work or asks to be checked only while the last
   // check still offers that tool an update. Its row then lists it too, on
   // purpose: the row is a plain update that does not know the last try.
@@ -641,7 +643,7 @@ export function UpdatesPage() {
     });
     // A failure or one to check, only while its update is still offered.
     const offered = new Set((snapshot?.updates ?? []).map((candidate) => artifactKeyId(candidate.key)));
-    const kept = recentUpdates(history, toolsWithOperations(operations ?? []), Date.now(), offered).flatMap((record): JustUpdatedEntry[] => {
+    const kept = recentUpdates(history, toolsSeenHere(operations ?? []), Date.now(), offered).flatMap((record): JustUpdatedEntry[] => {
       const ending = endingOfRecord(record.result, record.already_updated ?? null, record.follow_up_warnings);
       if (ending === null) return [];
       return [

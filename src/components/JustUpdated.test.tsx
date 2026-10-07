@@ -77,6 +77,31 @@ describe("justUpdatedOps", () => {
     expect(listed.map((op) => op.id)).toEqual([3]);
   });
 
+  it("lets only an uninstall that worked take a tool's update off, not a later link or an uninstall that did not happen (r35 U4)", () => {
+    const failed = { outcome: { Failed: { exit_code: 1, summary: "Error: Permission denied", cause: failureCause("Error: Permission denied") } } } as const;
+    const operations = [
+      upgrade(1, "node@22"),
+      upgrade(2, "node@22", { kind: "Link" }),
+      upgrade(3, "wget"),
+      upgrade(4, "wget", { kind: "Uninstall", outcome: "Cancelled" }),
+      upgrade(5, "jq"),
+      upgrade(6, "jq", { kind: "Uninstall", ...failed }),
+      upgrade(7, "gh"),
+      upgrade(8, "gh", { kind: "Uninstall", status: "Queued", outcome: null }),
+      upgrade(9, "tree"),
+      upgrade(10, "tree", { kind: "Uninstall" }),
+      upgrade(11, "fd"),
+      upgrade(12, "fd", { kind: "Uninstall", outcome: "Unconfirmed" }),
+    ];
+    expect(justUpdatedOps(operations, none).map((op) => [op.name, op.id])).toEqual([
+      ["fd", 11],
+      ["gh", 7],
+      ["jq", 5],
+      ["wget", 3],
+      ["node@22", 1],
+    ]);
+  });
+
   it("puts the newest finished first, and the ones it did not see finish after them, newest first", () => {
     const operations = [upgrade(1, "jq"), upgrade(2, "wget"), upgrade(3, "glib"), upgrade(4, "gh")];
     const listed = justUpdatedOps(operations, { ...none, finishedAt: { 3: 1000, 2: 3000 } });
