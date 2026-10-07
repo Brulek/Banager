@@ -368,8 +368,8 @@ describe("the browser preview's mock backend", () => {
     const { artifacts, updates, instances } = snapshot;
     // Two of them the rows `withHomebrewState` adds, four the AI tools `aiTools` adds, one Codex's own install
     // (`codexStandalone`), one npm's Claude Code (`addMany`), whose uninstall preview names what stays
-    // (./mockKeptData.ts).
-    expect(artifacts.length).toBe(800);
+    // (./mockKeptData.ts), and five pip packages of two Pythons (`secondPython`).
+    expect(artifacts.length).toBe(805);
     const ids = artifacts.map((a) => artifactKeyId(a.key));
     expect(new Set(ids).size).toBe(ids.length);
     const count = (instanceId: string) => artifacts.filter((a) => a.key.instance_id === instanceId).length;
@@ -414,7 +414,7 @@ describe("the browser preview's mock backend", () => {
     const byId = new Map(artifacts.map((a) => [artifactKeyId(a.key), a]));
     for (const row of many.artifacts) expect(byId.get(artifactKeyId(row.key))).toEqual(row);
     const count = (instanceId: string) => artifacts.filter((a) => a.key.instance_id === instanceId).length;
-    expect(artifacts.length).toBe(4892);
+    expect(artifacts.length).toBe(4897);
     expect(count("brew:/opt/homebrew")).toBe(3893);
     expect(artifacts.filter((a) => a.key.kind === "Cask")).toHaveLength(335);
     for (const id of ["npm:/opt/homebrew", "pipx", "uv", "cargo:/Users/you/.cargo"]) expect(count(id)).toBeGreaterThan(100);

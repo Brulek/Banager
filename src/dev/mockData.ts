@@ -837,6 +837,40 @@ function addMany(world: World): void {
   // have it: its uninstall preview names the `~/.claude` and
   // `~/.claude.json` it leaves behind (./mockKeptData.ts).
   world.artifacts.push(...manyRows(world, { ...NO_NAMES, npm: [NPM_CLAUDE] }));
+  // A second Python of Homebrew's beside python3, as many Macs keep one.
+  secondPython(world);
+}
+
+/** The instance id of `?state=many`'s second Python (`secondPython`). */
+const PIP_311 = "pip:/opt/homebrew/bin/python3.11";
+
+/**
+ * A second Python of Homebrew's, python@3.11's, beside `python3`
+ * (`?state=many`), as on a Mac that kept an older Python for a project:
+ * pip lists the packages of each, read-only, and the two are told apart by
+ * their programs' paths -- 「pip（/opt/homebrew/bin/python3.11）」 -- after a
+ * name both list (pip, setuptools, wheel), which the rows keep whole while
+ * the path gives way. wheel has an update in both, so the Updates page
+ * names it twice as well.
+ */
+function secondPython(world: World): void {
+  world.instances = withInstance(
+    world.instances,
+    instance("pip", PIP_311, "/opt/homebrew/bin/python3.11", "/opt/homebrew/bin", "26.2.1", {
+      read_only_reason: "ByDesign",
+    }),
+  );
+  world.artifacts.push(
+    artifact(IDS.pip, "Package", "setuptools", "80.9.0", { reason: "Unknown" }),
+    artifact(IDS.pip, "Package", "wheel", "0.45.1", { reason: "Unknown" }),
+    artifact(PIP_311, "Package", "pip", "26.2.1", { reason: "Unknown" }),
+    artifact(PIP_311, "Package", "setuptools", "65.5.0", { reason: "Unknown" }),
+    artifact(PIP_311, "Package", "wheel", "0.45.1", { reason: "Unknown" }),
+  );
+  world.updates.push(
+    update(key(IDS.pip, "Package", "wheel"), "0.45.1", "0.46.1", "Native"),
+    update(key(PIP_311, "Package", "wheel"), "0.45.1", "0.46.1", "Native"),
+  );
 }
 
 /** The tools `manyRows` lists, by source. */
