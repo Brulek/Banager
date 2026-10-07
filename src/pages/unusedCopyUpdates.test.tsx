@@ -74,11 +74,12 @@ const glibKey: ArtifactKey = { instance_id: BREW.id, kind: "Formula", name: "gli
 const ownCodexKey: ArtifactKey = { instance_id: CODEX.id, kind: "Binary", name: "codex" };
 const npmCodexKey: ArtifactKey = { instance_id: NPM.id, kind: "Package", name: "@openai/codex" };
 
-const artifacts = [
+const codexArtifacts = [
   installed(glibKey, null, "Runs"),
   installed(ownCodexKey, "codex", "Runs"),
   installed(npmCodexKey, "codex", { ShadowedBy: { by: ownCodexKey } }),
 ];
+let artifacts: InstalledArtifact[];
 
 function update(key: ArtifactKey, target = "1.1.0"): UpdateCandidate {
   return { key, current: "1.0.0", target, channel: "Native", checkable: true, warnings: [], blocked: null };
@@ -101,6 +102,7 @@ const settings: Settings = {
 
 beforeEach(() => {
   updates = [glib, npmCodex];
+  artifacts = codexArtifacts;
   mockInvoke.mockReset();
   vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (this: HTMLElement) {
     return this.getAttribute("data-index") === null ? 600 : 56;
@@ -229,5 +231,38 @@ describe("the update of a copy Terminal does not run", () => {
     expect(await screen.findByRole("heading", { level: 2, name: "1 tool can be updated" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Review Updates" }));
     expect(useUiStore.getState().selectedUpdates).toEqual([artifactKeyId(glibKey)]);
+  });
+});
+
+describe("the update of a formula Homebrew didn't link, beside npm's copy that runs (q1b skeptic 5)", () => {
+  // `npm i -g @google/gemini-cli` under Homebrew's node, then `brew install
+  // gemini-cli`: its link step stopped at npm's `bin/gemini`. The formula's
+  // `gemini`, named from its keg, has no verdict of its own; typing it runs
+  // npm's. Updating the formula changes nothing typed (U4).
+  const formulaKey: ArtifactKey = { instance_id: BREW.id, kind: "Formula", name: "gemini-cli" };
+  const npmGeminiKey: ArtifactKey = { instance_id: NPM.id, kind: "Package", name: "@google/gemini-cli" };
+
+  beforeEach(() => {
+    const formula = installed(formulaKey, "gemini-cli", null);
+    artifacts = [
+      installed(glibKey, null, "Runs"),
+      installed(npmGeminiKey, "gemini-cli", "Runs"),
+      { ...formula, facts: { ...formula.facts, unlinked: true } },
+    ];
+    updates = [glib, update(formulaKey, "0.9.0")];
+  });
+
+  it("says Not used in Terminal, and Update All leaves it unticked", async () => {
+    renderUpdates();
+    await screen.findByText("gemini-cli", { selector: "[data-tool-row] p" });
+    const row = rowOf("gemini-cli");
+    expect(within(row).getByText("Not used in Terminal")).toBeInTheDocument();
+    expect(within(row).getByRole("checkbox", { name: "Select gemini-cli for update" })).not.toBeChecked();
+    expect(document.querySelector("[data-toolbar-subtitle]")?.textContent).toBe(
+      "1 update available, 1 not used in Terminal",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Update All" }));
+    await screen.findByRole("alertdialog");
+    await waitFor(() => expect(plannedNames()).toEqual(["glib"]));
   });
 });

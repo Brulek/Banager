@@ -5,8 +5,11 @@ import {
   judgedCommands,
   stateId,
   twinsByArtifact,
+  twinVerdict,
+  unusedCopies,
   withoutJudgedPathNotices,
 } from "./commands";
+import { artifactKeyId } from "../store/ui";
 import type { SourceNoticeSpec } from "./sources";
 import type { ArtifactKey, CommandFact, InstalledArtifact } from "./types";
 import { NO_FACTS } from "./types";
@@ -202,5 +205,43 @@ describe("withoutJudgedPathNotices", () => {
     const said = commandsSaidOnRows(lost);
     expect(said.has("standalone-claude")).toBe(false);
     expect(withoutJudgedPathNotices(pathNotices, said.get("standalone-claude"))).toEqual(pathNotices);
+  });
+});
+
+describe("twinVerdict and unusedCopies, for a formula Homebrew didn't link (q1b skeptic 5)", () => {
+  // npm's `gemini` under Homebrew's node, then `brew install gemini-cli`:
+  // the formula's link step stopped at npm's file. Its `gemini`, named
+  // from its keg, has no verdict of its own; npm's runs.
+  const formulaKey: ArtifactKey = { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "gemini-cli" };
+  const npmGeminiKey: ArtifactKey = { instance_id: "npm:/opt/homebrew", kind: "Package", name: "@google/gemini-cli" };
+  const npmGemini = artifact(npmGeminiKey, "gemini-cli", [{ name: "gemini", state: "Runs" }]);
+  const unlinked: InstalledArtifact = {
+    ...artifact(formulaKey, "gemini-cli", [{ name: "gemini", state: null }]),
+    facts: { ...NO_FACTS, family: "gemini-cli", commands: [{ name: "gemini", state: null }], unlinked: true },
+  };
+
+  it("is the other copy's where its command runs: Terminal does not use this one", () => {
+    const all = [npmGemini, unlinked];
+    const twins = twinsByArtifact(all);
+    expect(twinVerdict(unlinked, twins.get(artifactKeyId(formulaKey)))).toEqual({
+      kind: "unused",
+      command: "gemini",
+      by: npmGemini,
+    });
+    expect([...unusedCopies(all)]).toEqual([artifactKeyId(formulaKey)]);
+    // npm's side is unchanged: typing `gemini` runs it.
+    expect(twinVerdict(npmGemini, twins.get(artifactKeyId(npmGeminiKey)))?.kind).toBe("runs");
+  });
+
+  it("is nothing where no copy's command runs, or the formula is linked", () => {
+    // The login shell's PATH was not read: no verdict anywhere.
+    const unjudgedNpm = artifact(npmGeminiKey, "gemini-cli", [{ name: "gemini", state: null }]);
+    expect([...unusedCopies([unjudgedNpm, unlinked])]).toEqual([]);
+    // Another program comes first for npm's too.
+    const behind = artifact(npmGeminiKey, "gemini-cli", [{ name: "gemini", state: { ShadowedBy: { by: null } } }]);
+    expect([...unusedCopies([behind, unlinked])]).toEqual([]);
+    // A linked formula's command with no verdict says nothing, as before.
+    const linked = { ...unlinked, facts: { ...unlinked.facts, unlinked: false } };
+    expect([...unusedCopies([npmGemini, linked])]).toEqual([]);
   });
 });

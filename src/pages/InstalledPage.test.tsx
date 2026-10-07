@@ -3769,6 +3769,11 @@ describe("which copy of a command runs (advantages round, item 4)", () => {
     expect([...inspector.querySelectorAll("[data-command-line]")].map((line) => line.textContent?.trim())).toEqual([
       "geminiHomebrew didn't link it where Terminal looks",
     ]);
+    // Typing `gemini` runs npm's copy, so Terminal doesn't use this one, as
+    // npm's side says of it (q1b skeptic 5).
+    expect(inspector.querySelector("[data-inspector-callout]")?.textContent).toContain(
+      "Typing gemini in Terminal runs the copy from npm, version 1.8.2, so Terminal doesn't use this one.",
+    );
   });
 
   it("leaves the note on grok out where its rows say Installed twice, though Cursor's agent comes first (r36 V3)", async () => {

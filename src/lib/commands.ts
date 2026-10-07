@@ -94,7 +94,11 @@ export function twinsByArtifact(artifacts: readonly InstalledArtifact[]): Map<st
  * Said from `ArtifactFacts.commands` alone, as the 「在终端里输入时」 group
  * judges them (against the `PATH` read when the app opened). The
  * inspector's advice and the Updates page's 「终端用另一份」
- * (src/components/TwinAdvice.tsx) go by it.
+ * (src/components/TwinAdvice.tsx) go by it. A formula Homebrew has not
+ * linked (`unlinked`) has no verdict of its own for a command named from
+ * its keg; where another copy's command of that name runs, typing it runs
+ * that copy, and so this one is `unused` -- the `gemini-cli` formula
+ * `brew install` could not link over npm's `gemini` (q1b skeptic 5).
  */
 export type TwinVerdict =
   | { kind: "runs"; command: string; others: Twin[] }
@@ -104,7 +108,7 @@ export type TwinVerdict =
 export function twinVerdict(artifact: InstalledArtifact, twins: readonly Twin[] | undefined): TwinVerdict {
   if (twins === undefined || twins.length === 0) return null;
   const shared = [...new Set(twins.flatMap((twin) => twin.commands))];
-  const states = shared.map((name) => artifact.facts.commands.find((fact) => fact.name === name)?.state ?? null);
+  const states = shared.map((name) => ownOrRunning(artifact, twins, name));
   const state: CommandState | null = states[0] ?? null;
   if (state === null || !states.every((other) => other !== null && stateId(other) === stateId(state))) return null;
   const command = twins[0].commands[0];
@@ -115,6 +119,22 @@ export function twinVerdict(artifact: InstalledArtifact, twins: readonly Twin[] 
     if (twin !== undefined) return { kind: "unused", command, by: twin.artifact };
   }
   return null;
+}
+
+/**
+ * `artifact`'s verdict for the command `name` -- or, for one with none of
+ * a formula Homebrew has not linked, `ShadowedBy` the copy among `twins`
+ * whose command of that name runs (typing it runs that one), or null.
+ */
+function ownOrRunning(artifact: InstalledArtifact, twins: readonly Twin[], name: string): CommandState | null {
+  const own = artifact.facts.commands.find((fact) => fact.name === name)?.state ?? null;
+  if (own !== null || !artifact.facts.unlinked) return own;
+  const running = twins.find(
+    (twin) =>
+      twin.commands.includes(name) &&
+      twin.artifact.facts.commands.some((fact) => fact.name === name && fact.state === "Runs"),
+  );
+  return running === undefined ? null : { ShadowedBy: { by: running.artifact.key } };
 }
 
 /**
