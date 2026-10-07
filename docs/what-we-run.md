@@ -4058,6 +4058,28 @@ window sends, `Session::submit` refuses such a preview
 (`UninstallBlocked::NeededBySource`), and a batch leaves the package out
 with the same words.
 
+A preview that found nothing running on the package found nothing among
+the tools the snapshot listed then, so it keeps what the look read of the
+snapshot (`needed_by::Inputs` in
+`crates/banager-core/src/session/needed_by.rs`): the package's key and a
+cask's app, its Homebrew's id and prefix, and for each source with a tool
+that counts, its program and those tools, with a pipx or uv tool's
+environment. When a refresh has committed since, `Session::submit`
+compares the latest snapshot with that, in memory under the snapshot's
+lock (`needed_by::adds_no_dependent`): a tool the look never saw -- a
+source's first tool that counts (an npm package installed in Terminal
+while the confirmation was open, say), a pip package that came to count,
+a tool in another environment, or a source run by another program -- spends
+the preview (`unknown`: 「此确认已失效。请关闭后重新开始。」, "This
+confirmation is no longer valid. Close it and start again."), and
+nothing runs; the new preview looks again and names that source. Fewer
+tools cannot add one, so an uninstall or update in another source, a
+source that stopped answering with its rows carried, another Homebrew
+package, a note on Homebrew's catalogue or when a source last answered
+leaves the preview the one to confirm. This reads no disk and runs no
+command at submission; a change that no refresh has committed, or one
+after submission, is not seen by it.
+
 How: read-only, as the command check is (Which copy a command runs,
 above): each path is followed one step at a time (`protected::resolve`:
 `lstat` and `readlink`, each asked of the folder before it, held open),

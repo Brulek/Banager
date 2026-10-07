@@ -5,10 +5,12 @@
 
 use super::Session;
 use crate::model::{
-    ArtifactKind, InstalledArtifact, ManagerInstance, OpKind, OpRequest, Plan, Warning,
+    ArtifactKey, ArtifactKind, InstalledArtifact, InstanceId, ManagerInstance, OpKind, OpRequest,
+    Plan, Warning,
 };
 use crate::needed_by::{self, HOSTED};
 use crate::runner::HostEnv;
+use std::path::PathBuf;
 
 /// What `needed_by` looks at for one uninstall, copied out of the snapshot
 /// under its lock: the Homebrew package, its Homebrew, and the sources
@@ -18,6 +20,93 @@ pub(super) struct Subject {
     brew: ManagerInstance,
     instances: Vec<ManagerInstance>,
     artifacts: Vec<InstalledArtifact>,
+}
+
+/// What `needed_by` reads of a `Subject` that a later snapshot can change,
+/// and nothing else: the package's key and a cask's app (`own_folders`),
+/// its Homebrew's id and prefix, and of each source with a tool that
+/// counts (`needed_by::counts`) its kind, its program and those tools, each
+/// with its environment (pipx's and uv's, `InstalledArtifact::path`). Kept
+/// with a Homebrew uninstall's preview, so that `Session::submit` can tell
+/// whether the snapshot it is confirmed against could give the package a
+/// dependent the preview did not look for (`adds_no_dependent`). Not the
+/// rows themselves: a version, a description or when a source answered is
+/// nothing `needed_by` reads, and a preview held for ten minutes keeps no
+/// copy of every hosted source's list.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct Inputs {
+    package: (ArtifactKey, Option<PathBuf>),
+    brew: (InstanceId, PathBuf),
+    sources: Vec<Source>,
+}
+
+/// One source of `Inputs`: one with at least one tool that counts.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Source {
+    id: InstanceId,
+    adapter_id: String,
+    exe_path: PathBuf,
+    tools: Vec<(ArtifactKey, Option<PathBuf>)>,
+}
+
+impl Subject {
+    pub(super) fn inputs(&self) -> Inputs {
+        let sources = self
+            .instances
+            .iter()
+            .filter_map(|source| {
+                let tools: Vec<_> = self
+                    .artifacts
+                    .iter()
+                    .filter(|tool| {
+                        tool.key.instance_id == source.id
+                            && needed_by::counts(&source.adapter_id, tool)
+                    })
+                    .map(|tool| (tool.key.clone(), tool.path.clone()))
+                    .collect();
+                (!tools.is_empty()).then(|| Source {
+                    id: source.id.clone(),
+                    adapter_id: source.adapter_id.clone(),
+                    exe_path: source.exe_path.clone(),
+                    tools,
+                })
+            })
+            .collect();
+        Inputs {
+            package: (self.package.key.clone(), self.package.path.clone()),
+            brew: (self.brew.id.clone(), self.brew.prefix.clone()),
+            sources,
+        }
+    }
+}
+
+/// Whether a preview whose look was given `before` still says all that
+/// runs on its package when the snapshot gives `now`: nothing `needed_by`
+/// reads of the package or its Homebrew has changed, and every tool that
+/// counts now was there to be looked at -- in the same source, run by the
+/// same program, with the same environment. A source's first such tool,
+/// or one that has come to count (a pip package no longer a dependency),
+/// is one the preview never looked at: a fresh preview has to. Fewer tools
+/// cannot add a dependent -- a source with none is not looked at, a pipx
+/// or uv tool gone is one fewer on the package -- so an uninstall or an
+/// update in another source, a source gone quiet with its rows carried,
+/// or a Homebrew whose catalogue update ended, leaves the preview the one
+/// to confirm. A preview with no subject (an uninstall `needed_by` does
+/// not look at) stays so only while the request still has none.
+pub(super) fn adds_no_dependent(before: Option<&Inputs>, now: Option<&Inputs>) -> bool {
+    let (Some(before), Some(now)) = (before, now) else {
+        return before.is_none() && now.is_none();
+    };
+    before.package == now.package
+        && before.brew == now.brew
+        && now.sources.iter().all(|source| {
+            before.sources.iter().any(|was| {
+                was.id == source.id
+                    && was.adapter_id == source.adapter_id
+                    && was.exe_path == source.exe_path
+                    && source.tools.iter().all(|tool| was.tools.contains(tool))
+            })
+        })
 }
 
 /// The `Subject` of `req`, when it uninstalls a formula or cask of a
@@ -147,18 +236,19 @@ where
 #[cfg(test)]
 mod tests {
     use super::super::test_support;
+    use crate::adapters::brew::BrewAdapter;
     use crate::adapters::{Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome};
     use crate::events::{EventSink, OpId, VecSink};
     use crate::model::{
         ArtifactKey, ArtifactKind, InstallReason, InstalledArtifact, ManagerInstance, OpKind,
         OpRequest, Outcome, Plan, Reconciled, SearchHit, UninstallBlocked, Warning,
     };
-    use crate::runner::HostEnv;
+    use crate::runner::{CommandOutput, HostEnv, MockRunner};
     use crate::session::{Session, SubmitError};
     use async_trait::async_trait;
     use std::os::unix::fs::{symlink, PermissionsExt};
     use std::path::{Path, PathBuf};
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex};
     use std::time::Duration;
     use tokio_util::sync::CancellationToken;
 
@@ -166,7 +256,8 @@ mod tests {
     struct Fake {
         meta: AdapterMeta,
         instance: ManagerInstance,
-        rows: Vec<(ArtifactKind, &'static str)>,
+        rows: Mutex<Vec<(ArtifactKind, &'static str)>>,
+        brew: Option<BrewAdapter>,
     }
 
     #[async_trait]
@@ -185,6 +276,8 @@ mod tests {
         ) -> Result<Vec<InstalledArtifact>, AdapterError> {
             Ok(self
                 .rows
+                .lock()
+                .unwrap()
                 .iter()
                 .map(|(kind, name)| InstalledArtifact {
                     key: ArtifactKey {
@@ -228,16 +321,22 @@ mod tests {
             inst: &ManagerInstance,
             req: &OpRequest,
         ) -> Result<Plan, AdapterError> {
+            if let Some(brew) = &self.brew {
+                return brew.plan(inst, req).await;
+            }
             Ok(test_support::fake_plan(inst, req))
         }
 
         async fn execute(
             &self,
-            _plan: &Plan,
-            _sink: Arc<dyn EventSink>,
-            _op_id: OpId,
-            _cancel: CancellationToken,
+            plan: &Plan,
+            sink: Arc<dyn EventSink>,
+            op_id: OpId,
+            cancel: CancellationToken,
         ) -> Result<Outcome, AdapterError> {
+            if let Some(brew) = &self.brew {
+                return brew.execute(plan, sink, op_id, cancel).await;
+            }
             Ok(Outcome::Succeeded)
         }
 
@@ -332,7 +431,8 @@ mod tests {
                 prefix,
                 ..test_support::make_instance(adapter_id, id)
             },
-            rows,
+            rows: Mutex::new(rows),
+            brew: None,
         })
     }
 
@@ -507,6 +607,453 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// `session_over(root, true)`, with its Homebrew's and npm's fakes
+    /// kept so a test can change what their next inventory lists, and the
+    /// environment it refreshes with.
+    async fn session_with_fakes(root: &Root) -> (Arc<Session>, Arc<Fake>, Arc<Fake>, HostEnv) {
+        let prefix = root.path("opt/homebrew");
+        let fake = |adapter_id: &str, id: &str, rows: Vec<(ArtifactKind, &'static str)>| {
+            Arc::new(Fake {
+                meta: test_support::fake_adapter_meta(adapter_id),
+                instance: ManagerInstance {
+                    exe_path: prefix.join("bin").join(adapter_id),
+                    prefix: prefix.clone(),
+                    ..test_support::make_instance(adapter_id, id)
+                },
+                rows: Mutex::new(rows),
+                brew: None,
+            })
+        };
+        let brew = fake(
+            "brew",
+            BREW,
+            vec![
+                (ArtifactKind::Formula, "node"),
+                (ArtifactKind::Formula, "node@22"),
+            ],
+        );
+        let npm = fake(
+            "npm",
+            NPM,
+            vec![
+                (ArtifactKind::Package, "@openai/codex"),
+                (ArtifactKind::Package, "corepack"),
+                (ArtifactKind::Package, "npm"),
+                (ArtifactKind::Package, "prettier"),
+                (ArtifactKind::Package, "typescript"),
+            ],
+        );
+        let session = Session::with_adapters_and_sizes(
+            Arc::new(VecSink::new()),
+            vec![brew.clone(), npm.clone()],
+            None,
+        );
+        let env = HostEnv {
+            path_dirs: vec![prefix.join("bin")],
+            home: root.path("home"),
+            euid: 501,
+            cargo_home: None,
+            rustup_home: None,
+            zdotdir: None,
+            ollama_host: None,
+        };
+        session.refresh(&env, &CheckOptions::default()).await;
+        (session, brew, npm, env)
+    }
+
+    #[tokio::test]
+    async fn test_refreshes_that_add_no_dependent_leave_runtime_preview_usable() {
+        // npm runs on the linked `node` (24.9.0), so node@22's preview
+        // names nothing. A refresh that commits while it is open, and can
+        // make nothing run on node@22, leaves it the one to confirm: the
+        // round after an operation in another source finished (the
+        // frontend refreshes after each), after `brew update` ended, or
+        // after a source went quiet. Through the fakes' own answers where
+        // they can give it, else as such a round commits it.
+        type Listed = fn(&Fake, &Fake);
+        type Committed = fn(&mut crate::session::Snapshot);
+        // Each: what the fakes list before the preview, then after it.
+        let listed: [(&str, Listed, Listed); 3] = [
+            (
+                "another Homebrew package",
+                |_, _| {},
+                |brew, _| {
+                    brew.rows
+                        .lock()
+                        .unwrap()
+                        .push((ArtifactKind::Formula, "jq"))
+                },
+            ),
+            (
+                "an npm tool uninstalled",
+                |_, _| {},
+                |_, npm| {
+                    npm.rows
+                        .lock()
+                        .unwrap()
+                        .retain(|(_, name)| *name != "prettier")
+                },
+            ),
+            // npm's own, which runs on whatever npm does: not a tool.
+            (
+                "npm's own corepack listed",
+                |_, npm| {
+                    npm.rows
+                        .lock()
+                        .unwrap()
+                        .retain(|(_, name)| *name != "corepack")
+                },
+                |_, npm| {
+                    npm.rows
+                        .lock()
+                        .unwrap()
+                        .push((ArtifactKind::Package, "corepack"))
+                },
+            ),
+        ];
+        let committed: [(&str, Committed); 4] = [
+            ("an npm tool updated", |snapshot| {
+                let tool = snapshot
+                    .artifacts
+                    .iter_mut()
+                    .find(|a| a.key.instance_id == NPM && a.key.name == "prettier");
+                tool.unwrap().version = "3.6.2".to_string();
+            }),
+            ("Homebrew's catalogue may be behind", |snapshot| {
+                let brew = snapshot.instances.iter_mut().find(|i| i.id == BREW);
+                brew.unwrap().status.notes = vec![crate::model::InstanceNote::IndexMayBeStale];
+            }),
+            ("npm stopped answering, its rows carried", |snapshot| {
+                let npm = snapshot.instances.iter_mut().find(|i| i.id == NPM);
+                npm.unwrap().status.unavailable = Some(crate::model::Unavailable::NotResponding);
+            }),
+            ("only the answer times", |snapshot| {
+                for instance in &mut snapshot.instances {
+                    instance.answered_at = Some(42);
+                }
+            }),
+        ];
+        for (what, prepare, change) in listed {
+            let root = Root::new("no-dependent-listed");
+            root.link_into_bin("node/24.9.0");
+            let (session, brew, npm, env) = session_with_fakes(&root).await;
+            prepare(&brew, &npm);
+            let before = session.refresh(&env, &CheckOptions::default()).await;
+            let old = session
+                .issue_listed_plan(&uninstall("node@22"))
+                .await
+                .unwrap();
+            assert!(needed(&old.plan).is_empty(), "{what}");
+            change(&brew, &npm);
+            let after = session.refresh(&env, &CheckOptions::default()).await;
+            assert!(after.generation > before.generation, "{what}");
+            assert!(session.submit(old.id).is_ok(), "{what}");
+        }
+        for (what, change) in committed {
+            let root = Root::new("no-dependent-committed");
+            root.link_into_bin("node/24.9.0");
+            let (session, _, _, _) = session_with_fakes(&root).await;
+            let old = session
+                .issue_listed_plan(&uninstall("node@22"))
+                .await
+                .unwrap();
+            assert!(needed(&old.plan).is_empty(), "{what}");
+            {
+                let mut snapshot = session.snapshot.lock().unwrap();
+                change(&mut snapshot);
+                snapshot.generation += 1;
+            }
+            assert!(session.submit(old.id).is_ok(), "{what}");
+        }
+    }
+
+    /// `subject`'s `Inputs` for an uninstall of the formula `python@3.13`
+    /// of this Homebrew, over `instances` and `artifacts` as a snapshot
+    /// lists them.
+    fn inputs_of(
+        instances: &[ManagerInstance],
+        artifacts: &[InstalledArtifact],
+    ) -> Option<super::Inputs> {
+        let request = OpRequest {
+            kind: OpKind::Uninstall,
+            instance_id: BREW.to_string(),
+            artifact_kind: ArtifactKind::Formula,
+            name: "python@3.13".to_string(),
+        };
+        super::subject(instances, artifacts, &request).map(|subject| subject.inputs())
+    }
+
+    #[test]
+    fn test_only_a_tool_the_preview_did_not_look_at_spends_it() {
+        // A Homebrew Python, a pip that runs on whatever its `python3`
+        // leads to, and a pipx whose tools each have an environment: the
+        // rows as their inventories give them.
+        let brew = ManagerInstance {
+            prefix: PathBuf::from("/opt/homebrew"),
+            ..test_support::make_instance("brew", BREW)
+        };
+        let pip = ManagerInstance {
+            exe_path: PathBuf::from("/opt/homebrew/bin/python3"),
+            ..test_support::make_instance("pip", "pip:/opt/homebrew/bin/python3")
+        };
+        let pipx = ManagerInstance {
+            exe_path: PathBuf::from("/opt/homebrew/bin/pipx"),
+            ..test_support::make_instance("pipx", "pipx:/Users/me/.local")
+        };
+        let row = |instance: &ManagerInstance, name: &str, reason, path: Option<&str>| {
+            InstalledArtifact {
+                key: ArtifactKey {
+                    instance_id: instance.id.clone(),
+                    kind: if instance.adapter_id == "brew" {
+                        ArtifactKind::Formula
+                    } else if instance.adapter_id == "pipx" {
+                        ArtifactKind::Tool
+                    } else {
+                        ArtifactKind::Package
+                    },
+                    name: name.to_string(),
+                },
+                display_name: name.to_string(),
+                version: "1.0.0".to_string(),
+                reason,
+                description: None,
+                homepage: None,
+                size_bytes: None,
+                installed_at: None,
+                path: path.map(PathBuf::from),
+                auto_updates: false,
+                uninstall_blocked: None,
+                facts: Default::default(),
+            }
+        };
+        let instances = vec![brew.clone(), pip.clone(), pipx.clone()];
+        let artifacts = vec![
+            row(&brew, "python@3.13", InstallReason::Requested, None),
+            row(&pip, "pip", InstallReason::Requested, None),
+            row(&pip, "requests", InstallReason::Requested, None),
+            row(&pip, "urllib3", InstallReason::Dependency, None),
+            row(
+                &pipx,
+                "ruff",
+                InstallReason::Requested,
+                Some("/Users/me/.local/pipx/venvs/ruff"),
+            ),
+        ];
+        let before = inputs_of(&instances, &artifacts);
+        assert!(before.is_some());
+        let with = |change: &dyn Fn(&mut Vec<ManagerInstance>, &mut Vec<InstalledArtifact>)| {
+            let (mut instances, mut artifacts) = (instances.clone(), artifacts.clone());
+            change(&mut instances, &mut artifacts);
+            super::adds_no_dependent(before.as_ref(), inputs_of(&instances, &artifacts).as_ref())
+        };
+        // Nothing `needed_by` reads, or fewer tools: the preview stands.
+        assert!(with(&|_, _| {}));
+        assert!(with(&|instances, artifacts| {
+            for instance in instances.iter_mut() {
+                instance.answered_at = Some(42);
+                instance.version = Some("9.9.9".to_string());
+                instance.status.notes = vec![crate::model::InstanceNote::IndexMayBeStale];
+            }
+            for artifact in artifacts.iter_mut() {
+                artifact.version = "2.0.0".to_string();
+                artifact.description = Some("changed".to_string());
+            }
+        }));
+        assert!(with(
+            &|_, artifacts| artifacts.retain(|a| a.key.name != "requests")
+        ));
+        assert!(with(
+            &|_, artifacts| artifacts.retain(|a| a.key.name != "ruff")
+        ));
+        assert!(with(&|instances, artifacts| {
+            instances.retain(|i| i.adapter_id != "pipx");
+            artifacts.retain(|a| a.key.instance_id != pipx.id);
+        }));
+        assert!(with(&|_, artifacts| {
+            artifacts.push(row(&pip, "setuptools", InstallReason::Requested, None));
+            artifacts.push(row(&pip, "idna", InstallReason::Dependency, None));
+            artifacts.push(row(&brew, "jq", InstallReason::Requested, None));
+        }));
+        // A tool the preview never looked at, or looked at elsewhere: a
+        // fresh preview has to.
+        for (what, change) in [
+            (
+                "a pip package installed",
+                &(|_: &mut Vec<ManagerInstance>, artifacts: &mut Vec<InstalledArtifact>| {
+                    artifacts.push(row(&pip, "black", InstallReason::Requested, None))
+                })
+                    as &dyn Fn(&mut Vec<ManagerInstance>, &mut Vec<InstalledArtifact>),
+            ),
+            ("a dependency that came to count", &|_, artifacts| {
+                artifacts
+                    .iter_mut()
+                    .find(|a| a.key.name == "urllib3")
+                    .unwrap()
+                    .reason = InstallReason::Requested
+            }),
+            ("a pipx tool in another environment", &|_, artifacts| {
+                artifacts
+                    .iter_mut()
+                    .find(|a| a.key.name == "ruff")
+                    .unwrap()
+                    .path = Some(PathBuf::from("/Users/me/.local/share/pipx/venvs/ruff"))
+            }),
+            ("pip run by another python3", &|instances, _| {
+                instances
+                    .iter_mut()
+                    .find(|i| i.adapter_id == "pip")
+                    .unwrap()
+                    .exe_path = PathBuf::from("/usr/local/bin/python3")
+            }),
+            ("a new source with a tool", &|instances, artifacts| {
+                let uv = test_support::make_instance("uv", "uv:/Users/me/.local");
+                artifacts.push(row(&uv, "httpie", InstallReason::Requested, None));
+                instances.push(uv);
+            }),
+            ("the package's Homebrew elsewhere", &|instances, _| {
+                instances[0].prefix = PathBuf::from("/usr/local")
+            }),
+            ("the package gone", &|_, artifacts| {
+                artifacts.retain(|a| a.key.name != "python@3.13")
+            }),
+        ] {
+            assert!(!with(change), "{what}");
+        }
+        // A preview that looked at nothing stays one only while there is
+        // nothing to look at.
+        assert!(super::adds_no_dependent(None, None));
+        assert!(!super::adds_no_dependent(None, before.as_ref()));
+    }
+
+    #[tokio::test]
+    async fn test_first_dependent_committed_after_runtime_preview_runs_no_removal() {
+        let root = Root::new("first-dependent-after-preview");
+        root.link_into_bin("node@22/22.23.3");
+        let prefix = root.path("opt/homebrew");
+        let runner = Arc::new(MockRunner::new());
+        let brew_exe = prefix.join("bin/brew");
+        let answer = CommandOutput {
+            exit_code: Some(0),
+            stdout: String::new(),
+            stderr: String::new(),
+            stderr_cause: Default::default(),
+            timed_out: false,
+            cancelled: false,
+        };
+        runner.respond(
+            vec![brew_exe.to_str().unwrap(), "uses", "--installed", "node@22"],
+            answer.clone(),
+        );
+        runner.respond(
+            vec![
+                brew_exe.to_str().unwrap(),
+                "uninstall",
+                "--formula",
+                "node@22",
+            ],
+            answer,
+        );
+        // Fixture inventory, real Homebrew planning/execution over MockRunner.
+        // Every on-disk path is in this test's synthetic tree.
+        let brew = Arc::new(Fake {
+            meta: test_support::fake_adapter_meta("brew"),
+            instance: ManagerInstance {
+                exe_path: brew_exe,
+                prefix: prefix.clone(),
+                ..test_support::make_instance("brew", BREW)
+            },
+            rows: Mutex::new(vec![(ArtifactKind::Formula, "node@22")]),
+            brew: Some(BrewAdapter::new(runner.clone())),
+        });
+        let npm = Arc::new(Fake {
+            meta: test_support::fake_adapter_meta("npm"),
+            instance: ManagerInstance {
+                exe_path: prefix.join("bin/npm"),
+                prefix: prefix.clone(),
+                ..test_support::make_instance("npm", NPM)
+            },
+            rows: Mutex::new(vec![
+                (ArtifactKind::Package, "npm"),
+                (ArtifactKind::Package, "corepack"),
+            ]),
+            brew: None,
+        });
+        let session = Session::with_adapters_and_sizes(
+            Arc::new(VecSink::new()),
+            vec![brew, npm.clone()],
+            None,
+        );
+        let env = HostEnv {
+            path_dirs: vec![prefix.join("bin")],
+            home: root.path("home"),
+            euid: 501,
+            cargo_home: None,
+            rustup_home: None,
+            zdotdir: None,
+            ollama_host: None,
+        };
+        let before = session.refresh(&env, &CheckOptions::default()).await;
+        let old = session
+            .issue_listed_plan(&uninstall("node@22"))
+            .await
+            .unwrap();
+        assert!(old.plan.affected.is_empty());
+        assert!(needed(&old.plan).is_empty());
+        assert!(!old.plan.warnings.contains(&Warning::DependentsUnknown));
+        assert!(
+            matches!(&old.plan.action, crate::model::PlanAction::Command { args, .. } if args == &["uninstall", "--formula", "node@22"])
+        );
+
+        npm.rows
+            .lock()
+            .unwrap()
+            .push((ArtifactKind::Package, "prettier"));
+        let after = session.refresh(&env, &CheckOptions::default()).await;
+        assert!(after.generation > before.generation);
+        assert!(after
+            .artifacts
+            .iter()
+            .any(|a| a.key.instance_id == NPM && a.key.name == "prettier"));
+        let result = session.submit(old.id.clone());
+        // Drain a mistakenly accepted operation too, so the mock command
+        // count observes the regression rather than task scheduling.
+        for _ in 0..100 {
+            if !session.busy() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert_eq!(
+            runner
+                .calls()
+                .iter()
+                .filter(|argv| argv.get(1).is_some_and(|verb| verb == "uninstall"))
+                .count(),
+            0
+        );
+        assert_eq!(result, Err(SubmitError::Unknown));
+        assert!(session.operations().is_empty());
+        assert_eq!(session.submit(old.id), Err(SubmitError::Unknown));
+        let fresh = session
+            .issue_listed_plan(&uninstall("node@22"))
+            .await
+            .unwrap();
+        assert_eq!(
+            needed(&fresh.plan),
+            vec![Warning::NeededBySource {
+                instance_id: NPM.to_string(),
+                program: true,
+                tools: 1
+            }]
+        );
+        assert_eq!(
+            session.submit(fresh.id),
+            Err(SubmitError::UninstallBlocked {
+                reason: UninstallBlocked::NeededBySource
+            })
+        );
     }
 
     #[tokio::test]

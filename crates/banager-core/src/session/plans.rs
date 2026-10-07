@@ -82,6 +82,11 @@ pub(crate) struct StoredPlan {
     pub(super) generation: u64,
     /// Whether the preview was restricted to the window's listed tools.
     listed_only: bool,
+    /// What the look for other sources running on a Homebrew uninstall's
+    /// package read of the snapshot (`needed_by::Inputs`): `submit`
+    /// refuses the preview once a later snapshot could give that package
+    /// a dependent it did not look for. `None` for any other request.
+    needed_by: Option<super::needed_by::Inputs>,
     /// When this plan was issued, read from a clock nothing can set.
     ///
     /// Expiry is a *lifetime* -- "ten minutes have gone by since you
@@ -400,6 +405,7 @@ impl Session {
         // The other sources that run on a Homebrew package, which `brew
         // uses` does not name (`needed_by.rs`): listed with its dependents,
         // and such a preview is never run (`submit`).
+        let inputs = needed_by.as_ref().map(super::needed_by::Subject::inputs);
         let plan = self.with_needed_by(plan, needed_by).await;
         let id = random_plan_id();
         let issued_at = self.now();
@@ -439,6 +445,7 @@ impl Session {
                 issued: issued.clone(),
                 generation,
                 listed_only,
+                needed_by: inputs,
                 issued_monotonic,
                 target_version: target,
             },
@@ -475,7 +482,10 @@ impl Session {
     /// again and re-tested rather than the plan being rejected outright --
     /// the generation is global and this invariant is per instance, so
     /// rejecting on any change would invalidate a preview the user is
-    /// reading because some unrelated source gained a package.
+    /// reading because some unrelated source gained a package. The one
+    /// change of another source that does spend a preview is the one its
+    /// look never saw: a tool that could run on the Homebrew package it
+    /// uninstalls (`needed_by::adds_no_dependent`).
     ///
     /// This is the last gate `Session` owns, not the last gate there
     /// should be: the operation still queues behind its resource lock, and
@@ -579,6 +589,17 @@ impl Session {
             return Err(SubmitError::UninstallBlocked { reason });
         }
         let request = &stored.issued.plan.request;
+        // A preview that found nothing running on its Homebrew package
+        // found nothing in what the snapshot listed then: a tool listed
+        // since -- installed in Terminal, committed by a refresh while the
+        // confirmation was open -- was never looked at. Its token is spent
+        // (`Unknown`, 「此确认已失效」); a fresh preview looks again
+        // and names that tool's source (`needed_by::adds_no_dependent`).
+        let now = super::needed_by::subject(&snapshot.instances, &snapshot.artifacts, request)
+            .map(|subject| subject.inputs());
+        if !super::needed_by::adds_no_dependent(stored.needed_by.as_ref(), now.as_ref()) {
+            return Err(SubmitError::Unknown);
+        }
         // A missing update candidate can mean another operation already
         // updated the tool, so a missing candidate alone refuses nothing.
         // Absence is an installed row gone *and* no update still offered

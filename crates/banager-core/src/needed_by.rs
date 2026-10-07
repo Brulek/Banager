@@ -129,8 +129,10 @@ fn normalized(name: &str) -> String {
 }
 
 /// Whether `tool`, one of `adapter_id`'s rows, counts as a tool that needs
-/// the package its source runs on (the module doc says which do not).
-fn counts(adapter_id: &str, tool: &InstalledArtifact) -> bool {
+/// the package its source runs on (the module doc says which do not). Also
+/// what a preview keeps of each source for `Session::submit` to compare
+/// (`Inputs` in session/needed_by.rs).
+pub(crate) fn counts(adapter_id: &str, tool: &InstalledArtifact) -> bool {
     tool.reason != InstallReason::Dependency
         && !comes_with_program(adapter_id).contains(&normalized(&tool.key.name).as_str())
 }
