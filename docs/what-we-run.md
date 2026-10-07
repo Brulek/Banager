@@ -1366,7 +1366,17 @@ no reading before: `inventory` refuses at once with `IndexUpdating`, no
 package is still installed afterwards, whether or not its version moved
 (the `Unknown` arm of `run_operation`). This is one way an exit-0
 upgrade whose version did not move is not reported as needing attention;
-Claude Code's section names another.
+Claude Code's section names another. A third: one whose version, read
+before its command and after, is already at least the version the
+confirmed update aimed for (the check's new version, which the
+confirmation showed). Homebrew upgrades a formula's outdated dependencies
+before the formula itself, so in an Update all an earlier update often
+upgrades a later one's package first; that later `brew upgrade` finds it
+current, says so and exits 0. It is reported as done -- by an earlier
+update when another update of the same Homebrew ended after it was
+confirmed, otherwise as already up to date when its turn came -- not as
+needing attention, which it is when the version is still below that
+target (`already_at_target` in `crates/banager-core/src/ops/mod.rs`).
 
 **Files this adapter reads.** Besides checking that the three candidate
 paths exist, the uninstall preview looks at Homebrew's own update lock,
@@ -2151,7 +2161,10 @@ that loops back on itself — never taken as the launcher being gone),
 verification fails and the outcome is also unconfirmed. If it
 exits 0 and the version did not move (Claude Code already updated itself,
 or reports "up to date"), the operation is reported as needing attention
-whenever a version before it could be read, as for every source. When
+whenever a version before it could be read and it is below the version
+the confirmed update aimed for, as for every source; at or past that
+version -- it updated itself to it before Banager's turn came -- the
+update is reported as done, already up to date. When
 none could (`--version` did not answer just before the update), there is
 nothing to compare, and an update that exits 0 is reported as a success
 if a version can be read afterwards — even when `claude update` found
@@ -4297,6 +4310,9 @@ configured, `index.crates.io`, and cargo still follows a
   the inventory is re-read afterwards, and a package still present after
   an uninstall, one missing after an install, or an upgraded version that
   did not move is reported as needing attention — the last whenever a
-  version before could be read; when Homebrew's index was updating and
-  the reading before was refused, presence afterwards is all there is to
-  go on (Homebrew's section).
+  version before could be read, unless both readings are at least the
+  version the confirmed update aimed for (an earlier update of the same
+  Update all had already upgraded it, say), which is reported as done and
+  says so (`run_operation`'s `already_at_target`); when Homebrew's index
+  was updating and the reading before was refused, presence afterwards is
+  all there is to go on (Homebrew's section).
