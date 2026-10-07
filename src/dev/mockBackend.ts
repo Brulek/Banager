@@ -268,6 +268,15 @@ export function createMockBackend(scenario: Scenario): MockBackend {
   const measuredBefore = new Set<string>();
   /** What `get_history` answers: earlier launches' records, then this one's. */
   let history: HistoryView = mockHistory(Date.now());
+  if (scenario.outcome === "follow-up") {
+    history.records.unshift({
+      run: "mock-earlier-launch", op_id: 100, finished_at: Date.now() - 60_000,
+      key: { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "node@22" },
+      display_name: "node@22", adapter_id: "brew", kind: "Update", from_version: "22.23.2", to_version: "22.23.3",
+      result: "Succeeded", verified: true,
+      follow_up_warnings: [{ NoLongerLinked: { name: "node@22", commands: ["node", "npm"] } }],
+    });
+  }
   // What Show in Finder may show (`reveal::Revealable`): the paths the
   // newest scan resolved.
   let revealable = new Set<string>();
@@ -482,7 +491,7 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       }
       world.updates = world.updates.filter((u) => !sameKey(u.key, target));
       world.greedyUpdates = world.greedyUpdates.filter((u) => !sameKey(u.key, target));
-      applyMockCleanup(plan, world);
+      if (scenario.outcome !== "follow-up") applyMockCleanup(plan, world);
       return;
     }
     if (plan.request.kind === "Link") {
@@ -511,6 +520,9 @@ export function createMockBackend(scenario: Scenario): MockBackend {
     stopTimers(op);
     op.summary.status = "Done";
     op.summary.outcome = outcome;
+    if (scenario.outcome === "follow-up" && outcome === "Succeeded" && mockCleanupLines(op.plan, world).length > 0) {
+      op.summary.follow_up_warnings = [{ OldVersionsNotCleanedUp: { name: op.summary.name, exit_code: 1 } }];
+    }
     // `?outcome=already`: done because it was already at its new version
     // -- by an earlier update on Homebrew, where one update brings others
     // along, when one of its source that may have changed something ended
@@ -542,6 +554,7 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       after: world.artifacts.find((a) => sameKey(a.key, target))?.version ?? null,
       now: Date.now(),
       alreadyUpdated: op.summary.already_updated ?? null,
+      followUpWarnings: op.summary.follow_up_warnings,
     });
     if (record !== null) history = { ...history, records: [record, ...history.records] };
     if (op.started) {
@@ -574,6 +587,7 @@ export function createMockBackend(scenario: Scenario): MockBackend {
     // `?outcome=mixed`: the session's 2nd, 4th, … operation fails.
     let scripted =
       scenario.outcome !== "mixed" ? scenario.outcome : op.summary.id % 2 === 0 ? "failed" : "succeeded";
+    if (scripted === "follow-up") scripted = "succeeded";
     // `?outcome=already`: only an update the check offered a newer version
     // is aimed at one (`offered_version`); a model's digest never is. On
     // Homebrew the first of a source and kind updates for real, and brings
@@ -603,9 +617,13 @@ export function createMockBackend(scenario: Scenario): MockBackend {
     // An update a `brew cleanup` follows (U9) goes on to it once it
     // succeeded -- after the link of a keg-only formula linked by hand
     // (y1-keg), which Homebrew did itself here.
+    const cleanup = mockCleanupLines(op.plan, world);
+    const cleanupLines: LogLine[] = scenario.outcome === "follow-up" && cleanup.length > 0
+      ? [{ note: { OldVersionsNotCleanedUp: { name: op.summary.name, exit_code: 1 } } }]
+      : cleanup;
     const lines =
       outcome === "Succeeded"
-        ? [...played.lines, ...mockRelinkLines(op.plan), ...mockCleanupLines(op.plan, world)]
+        ? [...played.lines, ...mockRelinkLines(op.plan), ...cleanupLines]
         : played.lines;
     let at = TIMING.start;
     schedule(op, at, () => setStatus(op, "Running"));

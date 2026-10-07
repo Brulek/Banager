@@ -583,4 +583,5 @@ is pinned by `src/lib/previewEnv.test.ts` and `src/components/CommandPreview.tes
 ### Retained failure details
 
 - `?state=startup-error`: npm fails at startup; open its notice details and copy the masked diagnostic.
+- `?page=updates&outcome=follow-up`: Recent Updates includes a saved relink warning with View Log; updating a Homebrew formula whose preview includes cleanup, such as git, succeeds with a cleanup warning, visible in its row and operation bar.
 - Add `&lang=zh-CN` or `&lang=zh-Hant` for the Chinese copies.

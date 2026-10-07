@@ -4509,6 +4509,17 @@ before being returned to the window and rewritten through their existing
 atomic writer. A failed rewrite can leave the old bytes on disk; a newer
 history format is still left untouched. No additional file is introduced.
 
+Successful updates with an unfinished cleanup or missing links keep a
+visible follow-up warning and View Log in the operation bar, batch result,
+update row and Recent Updates. `follow_up_warnings` carries only the two
+structured notes: `OldVersionsNotCleanedUp` (formula name and exit code)
+and `NoLongerLinked` (formula name and affected command names). It does not
+change `Succeeded`. These notes remain available when the bounded log is
+evicted. They are optional in the existing history file; files without
+them still read normally. After restart, View Log shows the saved warning
+notes and existing recovery instructions, explicitly saying the full log
+was not kept. This adds no command, host, permission or written file.
+
 `history.json`, Banager's record of the updates and uninstalls it ran,
 which the Updates page's 「最近的更新记录」 lists after a restart
 (`crates/banager-core/src/history/mod.rs`, attached in

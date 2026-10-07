@@ -1,3 +1,4 @@
+import { FollowUpWarnings } from "./FollowUpWarnings";
 import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { artifactKeyId } from "../store/ui";
@@ -11,7 +12,7 @@ import {
 } from "../lib/failureCause";
 import { ALREADY_UPDATED_KEYS, outcomeSentence, outcomeTone } from "../lib/operations";
 import { calendarDaysBetween, shortDateText, shortTimeText } from "../lib/shortDate";
-import type { AlreadyUpdated, ArtifactKey, Attention, HistoryResult, OpSummary, Outcome } from "../lib/types";
+import type { AlreadyUpdated, ArtifactKey, FollowUpWarning, Attention, HistoryResult, OpSummary, Outcome } from "../lib/types";
 import { InfoDetail } from "./InfoDetail";
 import { OutcomeIcon } from "./OutcomeIcon";
 import { ToolAvatar } from "./ToolAvatar";
@@ -29,13 +30,13 @@ import { GROUP } from "./ui/group";
  * confirm it -- the row's 「结果不符」.
  */
 export type JustUpdatedEnding =
-  | { kind: "succeeded"; already?: AlreadyUpdated }
+  | { kind: "succeeded"; already?: AlreadyUpdated; warnings?: FollowUpWarning[] }
   | { kind: "failed"; cause: FailureCause | null; detail?: string }
   | { kind: "attention"; outcome: "Unconfirmed" | { NeedsAttention: Attention } };
 
 /** `{ kind: "succeeded" }`, with how it was done where it was already done. */
-function succeeded(already: AlreadyUpdated | null | undefined): JustUpdatedEnding {
-  return already ? { kind: "succeeded", already } : { kind: "succeeded" };
+function succeeded(already: AlreadyUpdated | null | undefined, warnings: FollowUpWarning[]): JustUpdatedEnding {
+  return { kind: "succeeded", ...(already ? { already } : {}), ...(warnings.length ? { warnings } : {}) };
 }
 
 /**
@@ -46,11 +47,12 @@ function succeeded(already: AlreadyUpdated | null | undefined): JustUpdatedEndin
 export function endingOfOutcome(
   outcome: Outcome | null,
   alreadyUpdated: AlreadyUpdated | null = null,
+  warnings: FollowUpWarning[] = [],
 ): JustUpdatedEnding | null {
   if (outcome === null) return null;
   switch (outcomeTone(outcome)) {
     case "success":
-      return succeeded(alreadyUpdated);
+      return succeeded(alreadyUpdated, warnings);
     case "failure": {
       // Banager's own failure, as the history keeps it (`faultFailure`).
       if (typeof outcome !== "string" && "BanagerFailed" in outcome) {
@@ -85,8 +87,9 @@ export function endingOfOutcome(
 export function endingOfRecord(
   result: HistoryResult,
   alreadyUpdated: AlreadyUpdated | null = null,
+  warnings: FollowUpWarning[] = [],
 ): JustUpdatedEnding | null {
-  if (result === "Succeeded") return succeeded(alreadyUpdated);
+  if (result === "Succeeded") return succeeded(alreadyUpdated, warnings);
   if (result === "Cancelled") return null;
   if (result === "Unconfirmed") return { kind: "attention", outcome: "Unconfirmed" };
   if ("NeedsAttention" in result) return { kind: "attention", outcome: result };
@@ -227,7 +230,11 @@ function EndingWords({ entry }: { entry: JustUpdatedEntry }) {
   let why: string | undefined;
   switch (ending.kind) {
     case "succeeded":
-      tone = "success";
+      tone = ending.warnings?.length ? "attention" : "success";
+      if (ending.warnings?.length) {
+        words = t("followUpWarning.succeeded");
+        break;
+      }
       if (ending.already) {
         // Already at its new version when its turn came: done, and how.
         words = t(ALREADY_UPDATED_KEYS[ending.already].word);
@@ -374,6 +381,9 @@ export function JustUpdated({ entries, onClear }: JustUpdatedProps) {
                 {entry.version}
               </span>
               <EndingWords entry={entry} />
+              {entry.ending.kind === "succeeded" && entry.ending.warnings?.length ? (
+                <FollowUpWarnings warnings={entry.ending.warnings} opId={entry.opId} name={entry.name} />
+              ) : null}
               <span className="w-24 shrink-0 whitespace-nowrap text-right text-small tabular-nums text-muted">
                 {entry.finishedAt !== null && finished !== null ? (
                   <time dateTime={new Date(entry.finishedAt).toISOString()} title={finished.title}>

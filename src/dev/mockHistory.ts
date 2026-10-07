@@ -14,6 +14,7 @@
  */
 import type {
   AlreadyUpdated,
+  FollowUpWarning,
   ArtifactKey,
   HistoryRecord,
   HistoryResult,
@@ -164,6 +165,7 @@ export function mockRecord(args: {
   now: number;
   /** The operation's `already_updated`, kept for one that succeeded. */
   alreadyUpdated?: AlreadyUpdated | null;
+  followUpWarnings?: FollowUpWarning[];
 }): HistoryRecord | null {
   const { request, outcome } = args;
   if (request.kind === "Install") return null;
@@ -183,6 +185,7 @@ export function mockRecord(args: {
     from_version: model ? null : args.before,
     to_version: model || !update || !exitedZero ? null : args.after,
     result,
+    ...(args.followUpWarnings?.length ? { follow_up_warnings: args.followUpWarnings } : {}),
     // An update already at its new version did not move it itself: the
     // real readings before and after are the same (the preview moves its
     // row only to show it done).

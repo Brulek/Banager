@@ -799,6 +799,11 @@
     "next": "查看詳細資訊，或拷貝給能協助的人。處理錯誤後，再重新檢查。",
     "copy": "拷貝診斷"
   },
+  "followUpWarning": {
+    "batch": "已更新{{total}}個工具，{{count}}個工具的後續步驟需要查看",
+    "succeeded": "已更新，有警告",
+    "saved": "這裡只保留了後續步驟的警告，完整記錄已不再保留。"
+  },
   "loginPathNotice": {
     "title": "無法讀取終端機的設定",
     "description": "終端機裡能找到的工具可能沒有列在這裡，例如用npm、pipx、uv或Cargo安裝的。"

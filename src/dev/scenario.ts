@@ -100,6 +100,7 @@ export const SCENARIO_OUTCOMES = [
   "password",
   "mixed",
   "already",
+  "follow-up",
 ] as const;
 export type ScenarioOutcome = (typeof SCENARIO_OUTCOMES)[number];
 

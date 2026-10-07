@@ -347,6 +347,7 @@ mod tests {
             env_preview: vec![],
             cancel_policy: CancelPolicy::KillThenReconcile,
             already_updated: None,
+            follow_up_warnings: Vec::new(),
         }
     }
 

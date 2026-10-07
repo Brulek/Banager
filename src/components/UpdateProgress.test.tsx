@@ -207,3 +207,12 @@ describe("updates held by another action", () => {
     expect(result.current(update("glib"))).toBeNull();
   });
 });
+
+it("keeps a successful update with a follow-up warning non-retryable and gives it a log", () => {
+  const op = { ...upgradeOf("node@22", "Done"), outcome: "Succeeded" as const,
+    follow_up_warnings: [{ NoLongerLinked: { name: "node@22", commands: ["node"] } }],
+  };
+  const progress = progressOf(JSON.parse(JSON.stringify(op)));
+  expect(progress).toEqual({ kind: "succeeded", warningOpId: op.id });
+  expect(isRetryable(progress)).toBe(false);
+});

@@ -722,6 +722,7 @@ export interface OpSummary {
    * reader takes a missing one as none.
    */
   already_updated?: AlreadyUpdated | null;
+  follow_up_warnings?: FollowUpWarning[];
 }
 /**
  * Rust `AlreadyUpdated` (crates/banager-core/src/model.rs): an update
@@ -1087,6 +1088,7 @@ export interface HistoryRecord {
    * record from before it was kept.
    */
   already_updated?: AlreadyUpdated | null;
+  follow_up_warnings?: FollowUpWarning[];
 }
 /**
  * Rust `HistoryView`, from `get_history` and `clear_history`: this launch's
@@ -1147,3 +1149,6 @@ export interface SourcePath {
   instance_id: string;
   exe_path: string;
 }
+
+/** Rust follow_up::FollowUpWarning; also valid structured log notes. */
+export type FollowUpWarning = Extract<LogNote, { OldVersionsNotCleanedUp: unknown } | { NoLongerLinked: unknown }>;

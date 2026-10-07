@@ -601,6 +601,7 @@ export function playOutcome(
   const firstHalf = lines.slice(0, Math.ceil(lines.length / 2));
   const trashPaths = "TrashPaths" in plan.action ? plan.action.TrashPaths.paths : null;
   switch (outcome) {
+    case "follow-up":
     case "succeeded":
       return { lines, outcome: "Succeeded" };
     case "failed":

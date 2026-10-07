@@ -32,6 +32,7 @@ mod failure_cause;
 pub use failure_cause::{failure_cause, operation_failure_cause, FailureCause};
 
 use crate::events::OpId;
+use crate::follow_up::FollowUpWarning;
 use crate::model::{
     AdapterId, AlreadyUpdated, ArtifactKey, ArtifactKind, Attention, Fault, OpKind, Outcome,
 };
@@ -136,6 +137,8 @@ pub struct HistoryRecord {
     /// existed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub already_updated: Option<AlreadyUpdated>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub follow_up_warnings: Vec<FollowUpWarning>,
 }
 
 /// What the window is given (`get_history`): this launch's `run`, when the
@@ -190,6 +193,7 @@ pub struct Ended<'a> {
     /// What the operation's summary says of an update already at its
     /// target when its turn came (`OpSummary::already_updated`).
     pub already_updated: Option<AlreadyUpdated>,
+    pub follow_up_warnings: Vec<FollowUpWarning>,
 }
 
 /// The record for an operation that ended, or `None` for one that is not
@@ -285,6 +289,7 @@ pub fn record_for(
         kind,
         from_version,
         to_version,
+        follow_up_warnings: ended.follow_up_warnings.clone(),
         already_updated: ended
             .already_updated
             .filter(|_| result == HistoryResult::Succeeded),
@@ -941,6 +946,7 @@ mod tests {
             before: Some("3.31.6"),
             after: Some("4.0.0"),
             already_updated: None,
+            follow_up_warnings: Vec::new(),
         }
     }
 
@@ -973,6 +979,35 @@ mod tests {
         assert_eq!(r.from_version.as_deref(), Some("3.31.6"));
         assert_eq!(r.to_version.as_deref(), Some("4.0.0"));
         assert_eq!((r.run.as_str(), r.op_id, r.finished_at), ("run1", 4, NOW));
+    }
+
+    #[test]
+    fn test_follow_up_warning_survives_history_file_and_old_file_is_readable() {
+        use crate::follow_up::FollowUpWarning;
+        let dir = TempDir::new("follow-up");
+        let warning = FollowUpWarning::NoLongerLinked {
+            name: "node@22".into(),
+            commands: vec!["node".into(), "npm".into()],
+        };
+        let k = key("node@22");
+        let mut e = ended(&k, &Outcome::Succeeded);
+        e.follow_up_warnings = vec![warning.clone()];
+        let record = record_for(&e, &started("node@22"), "r", NOW).unwrap();
+        assert_eq!(record.result, HistoryResult::Succeeded);
+        let file = serde_json::json!({"format":1,"cleared_before":null,"records":[record]});
+        std::fs::write(dir.file(), serde_json::to_vec(&file).unwrap()).unwrap();
+        let stored: HistoryFile =
+            serde_json::from_slice(&std::fs::read(dir.file()).unwrap()).unwrap();
+        assert_eq!(stored.records[0].follow_up_warnings, vec![warning]);
+        let mut old = file;
+        old["records"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("follow_up_warnings");
+        std::fs::write(dir.file(), serde_json::to_vec(&old).unwrap()).unwrap();
+        let store = HistoryStore::open_with_clock(dir.file(), || NOW);
+        assert_eq!(store.view().records.len(), 1);
+        assert!(store.view().records[0].follow_up_warnings.is_empty());
     }
 
     #[test]

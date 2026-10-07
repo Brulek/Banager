@@ -216,7 +216,9 @@ export function OperationBar() {
   } else {
     // Done: one operation's own outcome, or what the run's came to.
     const tones = inRun.map((op) => outcomeTone(op.outcome));
-    const toLook = inRun.filter((_, index) => needsALook(tones[index]));
+    const toLook = inRun.filter((op, index) =>
+      needsALook(tones[index]) || Boolean(op.follow_up_warnings?.length),
+    );
     const newestToLook = toLook.reduce<OpSummary | undefined>(
       (found, op) => (found === undefined || op.id > found.id ? op : found),
       undefined,
@@ -232,7 +234,7 @@ export function OperationBar() {
     let logsOf: OpSummary[] = [];
     if (total === 1) {
       const [op] = inRun;
-      tone = tones[0];
+      tone = tones[0] === "success" && op.follow_up_warnings?.length ? "attention" : tones[0];
       words = t("operations.current", { name: nameOf(op), status: operationWords(t, op, logs, technical) });
       // The log of anything but a plain success: to see what went wrong,
       // or -- after a cancel -- what had already happened.
@@ -242,7 +244,9 @@ export function OperationBar() {
       // Failures said as failures, with what else the run came to --
       // 「2个更新失败，3个已成功」; 「需要查看」 only for a run with none.
       words =
-        failedRunWords(t, inRun) ?? t("operations.batch.needsAttention", { count: toLook.length, total });
+        failedRunWords(t, inRun) ?? (tones.every((each) => each === "success")
+          ? t("followUpWarning.batch", { count: toLook.length, total })
+          : t("operations.batch.needsAttention", { count: toLook.length, total }));
       if (toLook.length > 1) logsOf = toLook;
       else logOf = newestToLook;
     } else if (tones.every((each) => each === "success")) {

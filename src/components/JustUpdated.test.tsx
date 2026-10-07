@@ -546,3 +546,22 @@ describe("JustUpdated", () => {
     expect(screen.queryByRole("button", { name: /More|Show Fewer/ })).toBeNull();
   });
 });
+
+it("keeps both success warnings and their recovery log after a restart", async () => {
+  await i18n.changeLanguage("en");
+  const warnings = JSON.parse('[{"OldVersionsNotCleanedUp":{"name":"node@22","exit_code":1}},{"NoLongerLinked":{"name":"node@22","commands":["node","npm"]}}]');
+  const ending = endingOfRecord("Succeeded", null, warnings)!;
+  expect(endingOfOutcome("Succeeded", null, warnings)).toEqual(ending);
+  renderWithProviders(<JustUpdated entries={[{
+    id: "old:1", opId: null, key: { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "node@22" },
+    adapterId: "brew", sourceLabel: "Homebrew", name: "node@22", version: "22.23.3", finishedAt: Date.now(), verified: true, ending,
+  }]} onClear={() => {}} />);
+  expect(screen.getByText("Updated · Warning")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "View Log" }));
+  const log = screen.getByRole("dialog");
+  expect(log).toHaveTextContent("Only follow-up warnings were saved");
+  expect(log).toHaveTextContent("brew link --formula --force node@22");
+  expect(log).toHaveTextContent("npm");
+  expect(log).toHaveTextContent(i18n.getFixedT("en")("brewVersions.logNotCleanedUp"));
+  expect(within(log).getByRole("button", { name: "Copy Log" })).toBeInTheDocument();
+});

@@ -32,7 +32,7 @@ const NEAR_BOTTOM_PX = 32;
  * app shows text it did not write, and a remark of Banager's that arrived
  * as plain text would be English sitting among the tool's lines.
  */
-function noteText(t: TFunction, note: LogNote): string {
+export function noteText(t: TFunction, note: LogNote): string {
   if ("WaitingForBrewUpdate" in note) {
     return t("operations.logNote.waitingForBrewUpdate", {
       minutes: note.WaitingForBrewUpdate.minutes,
@@ -152,8 +152,14 @@ export function LogDrawer() {
   const viewportRef = useRef<HTMLDivElement>(null);
   const [stickToBottom, setStickToBottom] = useState(true);
 
-  const visibleLogs = logs.filter((l) => l.opId === focusedOpId);
   const operation = (operations ?? []).find((op) => op.id === focusedOpId);
+  const visibleLogs = logs.filter((l) => l.opId === focusedOpId);
+  // Typed warnings outlive the bounded transcript and can always be copied.
+  for (const note of operation?.follow_up_warnings ?? []) {
+    if (!visibleLogs.some((line) => "note" in line && JSON.stringify(line.note) === JSON.stringify(note))) {
+      visibleLogs.push({ opId: operation!.id, note, seq: -visibleLogs.length - 1 });
+    }
+  }
 
   // Another operation's log -- a step through a run, or another row's --
   // starts at its end, where the tool's error is, however far up the last

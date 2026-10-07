@@ -970,3 +970,24 @@ describe("OperationBar, after a batch uninstall", () => {
     await findByText("All 2 succeeded");
   });
 });
+
+it("keeps warning and log access for a successful single update and successful batch", async () => {
+  await i18n.changeLanguage("zh-CN");
+  operations = [op(1, "node@22", "Done", "Succeeded", {
+    follow_up_warnings: [{ NoLongerLinked: { name: "node@22", commands: ["node", "npm"] } }],
+  })];
+  const view = renderWithProviders(<OperationBar />);
+  const log = await view.findByRole("button", { name: "查看日志" });
+  expect(view.getByText(/已更新.*警告/)).toBeInTheDocument();
+  fireEvent.click(log);
+  expect(useUiStore.getState().focusedOpId).toBe(1);
+  // A new batch starts with both operations active, then finishes successfully.
+  await listNow(view.queryClient, [op(3, "node@22", "Running"), op(2, "jq", "Queued"), ...operations]);
+  await view.findByText(/正在更新/);
+  await listNow(view.queryClient, [op(3, "node@22", "Done", "Succeeded", {
+    follow_up_warnings: [{ NoLongerLinked: { name: "node@22", commands: ["node", "npm"] } }],
+  }), op(2, "jq", "Done", "Succeeded"), op(1, "old", "Done", "Succeeded")]);
+  await view.findByText("已更新2个工具，1个工具的后续步骤需要查看");
+  fireEvent.click(view.getByRole("button", { name: "查看日志" }));
+  expect(useUiStore.getState().focusedOpId).toBe(3);
+});

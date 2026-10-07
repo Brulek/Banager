@@ -630,6 +630,7 @@ mod tests {
             env_preview: Vec::new(),
             cancel_policy,
             already_updated: None,
+            follow_up_warnings: Vec::new(),
         }
     }
 

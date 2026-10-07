@@ -1047,3 +1047,13 @@ describe("LogDrawer, a tool's own words left only in the subtitle", () => {
     expect(view.container.ownerDocument.querySelector("[data-failure-next-step]")).toBeNull();
   });
 });
+
+it("still shows and copies retained follow-up notes after the transcript was evicted", async () => {
+  await i18n.changeLanguage("en");
+  operations = [{ ...runningOp, kind: "Upgrade", status: "Done", outcome: "Succeeded",
+    follow_up_warnings: [{ NoLongerLinked: { name: "node@22", commands: ["node", "npm"] } }],
+  }];
+  const view = renderWithProviders(<LogDrawer />);
+  await waitFor(() => expect(view.getByRole("dialog")).toHaveTextContent("brew link --formula --force node@22"));
+  expect(view.getByRole("button", { name: "Copy Log" })).toBeEnabled();
+});

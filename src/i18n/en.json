@@ -868,6 +868,11 @@
     "next": "Review the details or copy them for someone who can help. Check again after addressing the error.",
     "copy": "Copy Diagnostic"
   },
+  "followUpWarning": {
+    "batch": "Updated {{total}} tools · {{count}} follow-ups need attention",
+    "succeeded": "Updated · Warning",
+    "saved": "Only follow-up warnings were saved. The full log is no longer available."
+  },
   "loginPathNotice": {
     "title": "Couldn't read Terminal's settings",
     "description": "Tools that Terminal finds may be missing here, such as those installed with npm, pipx, uv or Cargo."

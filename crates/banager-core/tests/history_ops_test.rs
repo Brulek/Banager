@@ -6,7 +6,8 @@
 
 use async_trait::async_trait;
 use banager_core::adapters::{Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome};
-use banager_core::events::{EventSink, OpId, VecSink};
+use banager_core::events::{EventSink, LogNote, OpId, OperationEvent, VecSink};
+use banager_core::follow_up::FollowUpWarning;
 use banager_core::history::{HistoryKind, HistoryResult, HistoryStore, Started};
 use banager_core::model::{
     ArtifactKey, ArtifactKind, CancelPolicy, InstalledArtifact, ManagerInstance, OpKind, OpRequest,
@@ -25,6 +26,7 @@ struct FakeAdapter {
     meta: AdapterMeta,
     reconciles: Mutex<usize>,
     outcome: Outcome,
+    notes: Mutex<Vec<LogNote>>,
 }
 
 #[async_trait]
@@ -74,10 +76,16 @@ impl Adapter for FakeAdapter {
     async fn execute(
         &self,
         _plan: &Plan,
-        _sink: Arc<dyn EventSink>,
-        _op_id: OpId,
+        sink: Arc<dyn EventSink>,
+        op_id: OpId,
         _cancel: CancellationToken,
     ) -> Result<Outcome, AdapterError> {
+        for note in self.notes.lock().unwrap().iter() {
+            sink.emit(OperationEvent::Note {
+                op_id,
+                note: note.clone(),
+            });
+        }
         Ok(self.outcome.clone())
     }
     async fn reconcile(
@@ -134,6 +142,7 @@ fn fixture_with(tag: &str, outcome: Outcome) -> Fixture {
         },
         reconciles: Mutex::new(0),
         outcome,
+        notes: Mutex::new(Vec::new()),
     });
     manager.register_adapter(adapter.clone());
     let manager = Arc::new(manager);
@@ -354,4 +363,57 @@ async fn test_a_cancel_that_arrives_while_the_record_is_kept_changes_nothing() {
         .find(|op| op.id == op_id)
         .unwrap();
     assert_eq!(summary.status, OpStatus::Done);
+}
+
+#[tokio::test]
+async fn test_follow_up_warnings_cross_operation_wire_and_history_without_changing_success() {
+    let f = fixture("follow-up");
+    *f.adapter.notes.lock().unwrap() = vec![
+        LogNote::OldVersionsNotCleanedUp {
+            name: "cmake".into(),
+            exit_code: Some(1),
+        },
+        LogNote::NoLongerLinked {
+            name: "cmake".into(),
+            commands: vec!["cmake".into()],
+        },
+    ];
+    let plan = f
+        .adapter
+        .plan(&f.instance, &upgrade(&f.instance))
+        .await
+        .unwrap();
+    let id = f.manager.submit_with(plan, Some(on_finish(&f.store)));
+    assert_eq!(f.manager.wait(id).await, Some(Outcome::Succeeded));
+    let summary = f
+        .manager
+        .summaries()
+        .into_iter()
+        .find(|s| s.id == id)
+        .unwrap();
+    let expected = vec![
+        FollowUpWarning::OldVersionsNotCleanedUp {
+            name: "cmake".into(),
+            exit_code: Some(1),
+        },
+        FollowUpWarning::NoLongerLinked {
+            name: "cmake".into(),
+            commands: vec!["cmake".into()],
+        },
+    ];
+    assert_eq!(summary.follow_up_warnings, expected);
+    let wire = serde_json::to_value(&summary).unwrap();
+    assert_eq!(wire["outcome"], "Succeeded");
+    assert_eq!(
+        wire["follow_up_warnings"][1]["NoLongerLinked"]["commands"][0],
+        "cmake"
+    );
+    let back: banager_core::ops::OpSummary = serde_json::from_value(wire).unwrap();
+    assert_eq!(back.follow_up_warnings, expected);
+    assert!(f.store.flush(Duration::from_secs(5)));
+    let reopened = HistoryStore::open(f.dir.join("history.json"));
+    let record = &reopened.view().records[0];
+    assert_eq!(record.result, HistoryResult::Succeeded);
+    assert!(record.verified);
+    assert_eq!(record.follow_up_warnings, expected);
 }

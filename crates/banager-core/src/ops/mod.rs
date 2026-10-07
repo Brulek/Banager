@@ -1,5 +1,6 @@
 use crate::adapters::{Adapter, AdapterError};
 use crate::events::{EventSink, OpId, OperationEvent};
+use crate::follow_up::{FollowUpWarning, WarningSink};
 use crate::model::{
     AdapterId, AlreadyUpdated, ArtifactKey, ArtifactKind, Attention, CancelPolicy, Fault,
     InstanceId, ManagerInstance, OpKind, OpRequest, OpStatus, Outcome, Plan, PlanAction,
@@ -268,6 +269,7 @@ struct OpInternal {
     /// Set by `run_operation` for an update already at its target when its
     /// turn came (`OpSummary::already_updated`).
     already_updated: Option<AlreadyUpdated>,
+    follow_up_warnings: Vec<FollowUpWarning>,
 }
 
 pub struct OperationManager {
@@ -360,6 +362,9 @@ pub struct OpSummary {
     /// `serde(default)` so a summary from before it existed still reads.
     #[serde(default)]
     pub already_updated: Option<AlreadyUpdated>,
+    /// Structured follow-up failures, independent of the version update's outcome.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub follow_up_warnings: Vec<FollowUpWarning>,
 }
 
 /// How a finished operation ended, as the completion notification counts
@@ -611,6 +616,7 @@ impl OperationManager {
                     env_preview,
                     cancel_policy: r.plan.cancel_policy,
                     already_updated: r.already_updated,
+                    follow_up_warnings: r.follow_up_warnings.clone(),
                 }
             })
             .collect();
@@ -759,6 +765,7 @@ impl OperationManager {
             target_version: target_version.filter(|v| !v.is_empty()),
             upgrades_seen,
             already_updated: None,
+            follow_up_warnings: Vec::new(),
         };
         {
             let mut records = self.records.lock().unwrap();
@@ -1082,9 +1089,13 @@ impl OperationManager {
                 .filter(|b| b.present)
                 .and_then(|b| b.version.clone());
         }
+        let warning_sink = Arc::new(WarningSink::new(self.sink.clone(), op_id));
         let exec_result = adapter
-            .execute(&plan, self.sink.clone(), op_id, cancel.clone())
+            .execute(&plan, warning_sink.clone(), op_id, cancel.clone())
             .await;
+        if let Some(r) = self.records.lock().unwrap().get_mut(&op_id) {
+            r.follow_up_warnings = warning_sink.warnings();
+        }
 
         if cancel.is_cancelled() {
             self.set_status(op_id, OpStatus::Cancelling);
@@ -1432,13 +1443,23 @@ impl OperationManager {
                         r.before_version.clone(),
                         r.after_version.clone(),
                         r.already_updated,
+                        r.follow_up_warnings.clone(),
                     )
                 })
             } else {
                 None
             }
         };
-        if let Some((on_finish, request, started, before, after, already_updated)) = ended {
+        if let Some((
+            on_finish,
+            request,
+            started,
+            before,
+            after,
+            already_updated,
+            follow_up_warnings,
+        )) = ended
+        {
             let key = ArtifactKey {
                 instance_id: request.instance_id,
                 kind: request.artifact_kind,
@@ -1453,6 +1474,7 @@ impl OperationManager {
                 before: before.as_deref(),
                 after: after.as_deref(),
                 already_updated,
+                follow_up_warnings,
             };
             // A callback that panicked must not leave the operation
             // unfinished for good: it ends all the same, with no record.
@@ -1604,6 +1626,7 @@ mod already_updated_tests {
             env_preview: vec![],
             cancel_policy: CancelPolicy::KillThenReconcile,
             already_updated: Some(AlreadyUpdated::ByEarlierUpdate),
+            follow_up_warnings: Vec::new(),
         };
         let json = serde_json::to_string(&summary).unwrap();
         assert_eq!(

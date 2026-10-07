@@ -19,7 +19,7 @@ export type RowProgress =
   | { kind: "queued" }
   | { kind: "running" }
   | { kind: "cancelling" }
-  | { kind: "succeeded" }
+  | { kind: "succeeded"; warningOpId?: number }
   | { kind: "cancelled" }
   | { kind: "failed"; opId: number; cause: FailureCause | null }
   | { kind: "check"; opId: number };
@@ -127,6 +127,9 @@ export function progressOf(op: OpSummary): RowProgress {
     case "Cancelling":
       return { kind: "cancelling" };
     case "Done":
+      if (op.outcome === "Succeeded" && op.follow_up_warnings?.length) {
+        return { kind: "succeeded", warningOpId: op.id };
+      }
       return outcomeProgress(op.outcome, op.id);
   }
 }
@@ -325,6 +328,12 @@ export function UpdateProgress({ progress, name, onViewLog }: UpdateProgressProp
         </span>
       );
     case "succeeded":
+      if (progress.warningOpId !== undefined) {
+        return toLog(
+          progress.warningOpId, t("followUpWarning.succeeded"), "text-foreground",
+          <WarningFilledIcon size={12} className="shrink-0 text-warning" />,
+        );
+      }
       return (
         <span className="inline-flex items-center gap-1 whitespace-nowrap text-small text-foreground">
           <CheckIcon size={12} className="shrink-0 text-success" />

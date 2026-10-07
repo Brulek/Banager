@@ -121,3 +121,5 @@ pub mod trash;
 
 pub use events::*;
 pub use model::*;
+
+pub mod follow_up;

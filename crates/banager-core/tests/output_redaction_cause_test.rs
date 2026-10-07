@@ -141,6 +141,7 @@ async fn test_a_password_inside_sudos_words_is_masked_and_the_cause_still_read()
             before: Some("1.0"),
             after: Some("1.0"),
             already_updated: None,
+            follow_up_warnings: Vec::new(),
         },
         &Started {
             display_name: "example".to_string(),

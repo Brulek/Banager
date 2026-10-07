@@ -775,6 +775,7 @@ mod tests {
             env_preview: vec![],
             cancel_policy: banager_core::model::CancelPolicy::KillThenReconcile,
             already_updated: None,
+            follow_up_warnings: Vec::new(),
         }
     }
 
