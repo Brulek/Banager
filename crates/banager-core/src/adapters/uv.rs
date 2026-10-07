@@ -430,11 +430,14 @@ impl UvAdapter {
         }]
     }
 
+    /// `program` with `args`, stopped at `timeout` or once `cancel` is
+    /// cancelled, whichever comes first.
     async fn run_uv(
         &self,
         program: &Path,
         args: Vec<String>,
         timeout: Duration,
+        cancel: CancellationToken,
     ) -> Result<CommandOutput, AdapterError> {
         let spec = CommandSpec {
             program: program.to_owned(),
@@ -445,10 +448,7 @@ impl UvAdapter {
             // Every caller of this helper hands the result to a parser.
             output_use: OutputUse::Parsed,
         };
-        Ok(self
-            .runner
-            .run(spec, None, CancellationToken::new())
-            .await?)
+        Ok(self.runner.run(spec, None, cancel).await?)
     }
 
     pub async fn inventory(
@@ -463,7 +463,9 @@ impl UvAdapter {
         program: &Path,
         instance_id: &str,
     ) -> Result<Vec<InstalledArtifact>, AdapterError> {
-        let output = self.list_tools(program).await?;
+        let output = self
+            .list_tools(program, Self::LIST_TIMEOUT, CancellationToken::new())
+            .await?;
         if output.exit_code != Some(0) {
             return Err(AdapterError::CommandFailed {
                 code: output.exit_code,
@@ -473,8 +475,18 @@ impl UvAdapter {
         self.tools_in(&output.stdout, instance_id)
     }
 
-    /// `uv tool list --show-paths`, run by `program`.
-    async fn list_tools(&self, program: &Path) -> Result<CommandOutput, AdapterError> {
+    /// How long an inventory's `uv tool list --show-paths` and a check's
+    /// `uv tool list --outdated` are given.
+    const LIST_TIMEOUT: Duration = Duration::from_secs(60);
+
+    /// `uv tool list --show-paths`, run by `program`, stopped at `timeout`
+    /// or once `cancel` is cancelled.
+    async fn list_tools(
+        &self,
+        program: &Path,
+        timeout: Duration,
+        cancel: CancellationToken,
+    ) -> Result<CommandOutput, AdapterError> {
         self.run_uv(
             program,
             vec![
@@ -482,7 +494,8 @@ impl UvAdapter {
                 "list".to_string(),
                 "--show-paths".to_string(),
             ],
-            Duration::from_secs(60),
+            timeout,
+            cancel,
         )
         .await
     }
@@ -518,7 +531,8 @@ impl UvAdapter {
                     "list".to_string(),
                     "--outdated".to_string(),
                 ],
-                Duration::from_secs(60),
+                Self::LIST_TIMEOUT,
+                CancellationToken::new(),
             )
             .await?;
         // An index that did not answer is not a failed source: every tool
@@ -646,7 +660,26 @@ impl UvAdapter {
         if plan.request.kind == OpKind::Upgrade {
             let current = match &plan.action {
                 PlanAction::Command { program, .. } if plan.basis.is_some() => {
-                    let read = self.list_tools(program).await;
+                    // `uv tool list` takes the same exclusive lock of the
+                    // tools folder that `uv tool upgrade` holds from its
+                    // start (uv 0.12.17 `commands/tool/list.rs:45`,
+                    // `commands/tool/upgrade.rs:63`, `InstalledTools::lock`),
+                    // and uv waits up to 5 minutes for it
+                    // (`uv-fs/src/locked_file.rs:17-19`). So while another
+                    // uv holds it -- a `uv tool upgrade --all` in Terminal --
+                    // this read is given the upgrade's own deadline, to wait
+                    // for uv as the upgrade itself would, rather than the
+                    // inventory's 60 s; and it is handed the operation's own
+                    // token, as npm's prefix read is, so a Cancel while it
+                    // waits stops it, and the update ends cancelled with
+                    // nothing run (r28 R28-1).
+                    let read = self
+                        .list_tools(
+                            program,
+                            Duration::from_secs(plan.timeout_secs),
+                            cancel.clone(),
+                        )
+                        .await;
                     if cancel.is_cancelled() {
                         return Ok(Outcome::Cancelled);
                     }

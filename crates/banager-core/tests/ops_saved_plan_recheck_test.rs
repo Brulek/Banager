@@ -27,6 +27,12 @@
 //! read that answers with something else (another prefix, a changed
 //! receipt) is "changed since shown".
 //!
+//! R28-1 (r28 review of aaaf33c2): a Cancel while that read waits stops
+//! it, uv's as npm's, and the update ends cancelled with nothing run; and
+//! uv's list, which waits for the same tools-folder lock as `uv tool
+//! upgrade`, is given the upgrade's own deadline, so another uv holding
+//! that lock makes the update wait its turn rather than fail.
+//!
 //! Every program sits inside the test's own temp folder, and the adapters
 //! are given the integration tests' hooks -- npm's Homebrew queue key
 //! looks at no discovery prefix (`looking_at_no_homebrew_prefix`), uv
@@ -50,6 +56,7 @@ use banager_core::runner::{CommandOutput, CommandRunner, CommandSpec, LineCallba
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
 const FIXTURES: &str = "../../adapters/fixtures";
@@ -101,6 +108,28 @@ fn wrote(calls: &[Vec<String>]) -> bool {
 enum Answer {
     Output(CommandOutput),
     NotFound,
+    /// A read left waiting -- on a lock, a network, anything that does not
+    /// come: it answers only when the token it was run with is cancelled,
+    /// then as `RealRunner` reports a command it stopped for a Cancel (no
+    /// exit code, `cancelled`). Run with a token nobody fires, it gives up
+    /// after `NOBODY_CANCELS` as timed out, so such a read fails its test
+    /// rather than hanging it.
+    UntilCancelled,
+}
+
+/// How long an `Answer::UntilCancelled` waits for a Cancel that does not
+/// reach it before it answers as timed out.
+const NOBODY_CANCELS: Duration = Duration::from_secs(15);
+
+/// uv's tools-folder lock, held by another uv (a `uv tool upgrade --all`
+/// in Terminal): the time the commands have spent waiting for it so far,
+/// and when it is let go, both from when it was taken. Every uv command
+/// waits for it, as uv 0.12.17's `tool list` and `tool upgrade` both take
+/// it exclusively (`InstalledTools::lock`); one whose deadline comes first
+/// is stopped there, as `RealRunner` stops it, and answers nothing.
+struct HeldLock {
+    waited: Duration,
+    let_go_at: Duration,
 }
 
 /// How many times an argv has been answered, and its answers in order.
@@ -108,15 +137,39 @@ type Script = (usize, Vec<Answer>);
 
 /// Answers each argv with its scripted answers in order, repeating the
 /// last one, and any other argv with `otherwise` when one is set; keeps
-/// every argv it was asked to run.
+/// every argv it was asked to run, with the deadline it was given.
 #[derive(Default)]
 struct ScriptedRunner {
     scripts: Mutex<HashMap<Vec<String>, Script>>,
     otherwise: Mutex<Option<Answer>>,
     calls: Mutex<Vec<Vec<String>>>,
+    deadlines: Mutex<Vec<Duration>>,
+    lock: Mutex<Option<HeldLock>>,
+    /// Told each time an `Answer::UntilCancelled` starts waiting.
+    waiting: tokio::sync::Notify,
+    /// How many `Answer::UntilCancelled` reads a Cancel stopped.
+    stopped_by_cancel: Mutex<usize>,
 }
 
 impl ScriptedRunner {
+    /// Another uv takes the tools folder's lock now, and lets it go after
+    /// `held_for`.
+    fn hold_uvs_lock_for(&self, held_for: Duration) {
+        *self.lock.lock().unwrap() = Some(HeldLock {
+            waited: Duration::ZERO,
+            let_go_at: held_for,
+        });
+    }
+
+    /// Each call's deadline, in the order of `calls`.
+    fn deadlines(&self) -> Vec<Duration> {
+        self.deadlines.lock().unwrap().clone()
+    }
+
+    fn stopped_by_cancel(&self) -> usize {
+        *self.stopped_by_cancel.lock().unwrap()
+    }
+
     fn script(&self, argv: &[&str], outputs: Vec<CommandOutput>) {
         self.script_answers(argv, outputs.into_iter().map(Answer::Output).collect());
     }
@@ -142,11 +195,20 @@ impl CommandRunner for ScriptedRunner {
         &self,
         spec: CommandSpec,
         _on_line: Option<LineCallback>,
-        _cancel: CancellationToken,
+        cancel: CancellationToken,
     ) -> Result<CommandOutput, RunnerError> {
         let mut key = vec![spec.program.to_string_lossy().to_string()];
         key.extend(spec.args.iter().cloned());
         self.calls.lock().unwrap().push(key.clone());
+        self.deadlines.lock().unwrap().push(spec.timeout);
+        if let Some(lock) = self.lock.lock().unwrap().as_mut() {
+            let left = lock.let_go_at.saturating_sub(lock.waited);
+            if spec.timeout < left {
+                lock.waited += spec.timeout;
+                return Ok(timed_out());
+            }
+            lock.waited += left;
+        }
         let answer = match self.scripts.lock().unwrap().get_mut(&key) {
             Some((calls, answers)) => {
                 let answer = answers[(*calls).min(answers.len() - 1)].clone();
@@ -161,8 +223,50 @@ impl CommandRunner for ScriptedRunner {
         match answer {
             Answer::Output(output) => Ok(output),
             Answer::NotFound => Err(RunnerError::NotFound(spec.program)),
+            Answer::UntilCancelled => {
+                self.waiting.notify_one();
+                tokio::select! {
+                    _ = cancel.cancelled() => {
+                        *self.stopped_by_cancel.lock().unwrap() += 1;
+                        Ok(CommandOutput {
+                            exit_code: None,
+                            cancelled: true,
+                            ..exited(0, "", "")
+                        })
+                    }
+                    _ = tokio::time::sleep(NOBODY_CANCELS) => Ok(timed_out()),
+                }
+            }
         }
     }
+}
+
+/// Plans `request`, submits it toward `target` through a fresh
+/// `OperationManager`, and presses Cancel once one of `runner`'s reads is
+/// left waiting (`Answer::UntilCancelled`): how the operation ended, and
+/// how long after the Cancel it ended.
+async fn cancel_while_a_read_waits(
+    adapter: Arc<dyn Adapter>,
+    runner: &ScriptedRunner,
+    inst: &ManagerInstance,
+    request: OpRequest,
+    target: Option<&str>,
+) -> (Outcome, Duration) {
+    let mut manager = OperationManager::new(Arc::new(VecSink::new()));
+    manager.register_adapter(adapter.clone());
+    let manager = Arc::new(manager);
+    manager.register_instance(inst.clone());
+    let plan = adapter.plan(inst, &request).await.expect("plan");
+    let op_id = manager.submit_toward(plan, target.map(str::to_string), None);
+    tokio::time::timeout(Duration::from_secs(30), runner.waiting.notified())
+        .await
+        .expect("a read is left waiting");
+    let pressed = std::time::Instant::now();
+    manager
+        .cancel(op_id)
+        .expect("the running update takes a Cancel");
+    let outcome = manager.wait(op_id).await.expect("an outcome");
+    (outcome, pressed.elapsed())
 }
 
 /// The plan's program and arguments, as the runner is asked for them.
@@ -592,6 +696,43 @@ async fn test_npm_answering_another_prefix_is_still_changed_since_shown() {
     assert!(!wrote(&runner.calls()), "{:?}", runner.calls());
 }
 
+/// npm's prefix read before the command is handed the operation's own
+/// token, as it was before R28-1 gave uv's read the same: a Cancel while
+/// it waits stops it at once, the update is cancelled with nothing
+/// written, and the read keeps npm's 30 s.
+#[tokio::test]
+async fn test_npm_cancel_while_its_prefix_read_waits_stops_it_and_writes_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let inst = npm_instance(dir.path());
+    let npm = inst.exe_path.to_str().unwrap().to_string();
+    let prefix = [npm.as_str(), "prefix", "-g"];
+    let runner = Arc::new(ScriptedRunner::default());
+    runner.script_answers(&prefix, vec![Answer::UntilCancelled]);
+    runner.otherwise(Answer::Output(exited(1, "", "")));
+    let (outcome, after_cancel) = cancel_while_a_read_waits(
+        Arc::new(NpmAdapter::new(runner.clone()).looking_at_no_homebrew_prefix()),
+        &runner,
+        &inst,
+        request(&inst, OpKind::Upgrade, ArtifactKind::Package, "typescript"),
+        Some("5.9.3"),
+    )
+    .await;
+    assert_eq!(outcome, Outcome::Cancelled);
+    assert_eq!(
+        runner.stopped_by_cancel(),
+        1,
+        "the Cancel stopped the read itself, not its deadline"
+    );
+    assert!(after_cancel < NOBODY_CANCELS, "{after_cancel:?}");
+    let calls = runner.calls();
+    assert!(!wrote(&calls), "{calls:?}");
+    let read = calls
+        .iter()
+        .position(|call| call == &prefix)
+        .expect("the prefix read ran");
+    assert_eq!(runner.deadlines()[read], Duration::from_secs(30));
+}
+
 // --- uv: the list read before the command (R20-2) -------------------------
 
 /// ruff's update toward 0.16.8, confirmed while uv listed it at 0.15.0.
@@ -712,4 +853,106 @@ async fn test_uv_receipt_changed_after_the_confirmation_is_still_changed_since_s
     );
     assert_eq!(ran.log, []);
     assert!(!wrote);
+}
+
+/// ruff's update toward 0.16.8 as `uv_update` confirms it, `list` being
+/// uv's answers to `tool list --show-paths` in turn, the preview's first:
+/// the instance, ruff's environment, the runner and the adapter.
+fn uv_scripted(
+    dir: &Path,
+    list: impl FnOnce(&Path) -> Vec<Answer>,
+) -> (ManagerInstance, Arc<ScriptedRunner>, Arc<dyn Adapter>) {
+    let (inst, env) = uv_setup(dir);
+    let uv = inst.exe_path.to_str().unwrap().to_string();
+    let runner = Arc::new(ScriptedRunner::default());
+    runner.script_answers(&[uv.as_str(), "tool", "list", "--show-paths"], list(&env));
+    runner.script(
+        &[uv.as_str(), "tool", "upgrade", "ruff"],
+        vec![exited(0, "", "Updated ruff v0.15.0 -> v0.16.8\n")],
+    );
+    let adapter = Arc::new(UvAdapter::new(runner.clone()).with_tool_dir_fn(|| None));
+    (inst, runner, adapter)
+}
+
+/// ruff in `env` at `version`, as uv lists it.
+fn ruff_listed(env: &Path, version: &str) -> Answer {
+    Answer::Output(exited(0, &uv_list(env, version), ""))
+}
+
+/// R28-1: a Cancel while uv's list right before the command waits -- on
+/// uv's lock, say -- stops that read at once, as npm's prefix read is
+/// stopped: the update is cancelled and `uv tool upgrade` never runs.
+#[tokio::test]
+async fn test_uv_cancel_while_its_list_before_the_command_waits_stops_it_and_writes_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let (inst, runner, adapter) = uv_scripted(dir.path(), |env| {
+        vec![
+            ruff_listed(env, "0.15.0"), // the preview
+            ruff_listed(env, "0.15.0"), // the reading before the turn
+            Answer::UntilCancelled,     // right before the command
+            ruff_listed(env, "0.15.0"), // the reading after
+        ]
+    });
+    let (outcome, after_cancel) = cancel_while_a_read_waits(
+        adapter,
+        &runner,
+        &inst,
+        request(&inst, OpKind::Upgrade, ArtifactKind::Tool, "ruff"),
+        Some("0.16.8"),
+    )
+    .await;
+    assert_eq!(outcome, Outcome::Cancelled);
+    assert_eq!(
+        runner.stopped_by_cancel(),
+        1,
+        "the Cancel stopped the read itself, not its deadline"
+    );
+    assert!(after_cancel < NOBODY_CANCELS, "{after_cancel:?}");
+    assert!(!wrote(&runner.calls()), "{:?}", runner.calls());
+}
+
+/// R28-1: another uv holds uv's tools-folder lock for 150 s from the
+/// confirmation (a `uv tool upgrade --all` in Terminal). The reading
+/// before the turn gives up at its 60 s; the list right before the
+/// command waits for the lock as `uv tool upgrade` itself would, within
+/// the plan's own 600 s, and the update then runs -- as it did before
+/// that list was added, rather than failing as taking too long.
+#[tokio::test]
+async fn test_uv_list_before_the_command_waits_for_uvs_lock_as_its_upgrade_would() {
+    let dir = tempfile::tempdir().unwrap();
+    let (inst, runner, adapter) = uv_scripted(dir.path(), |env| {
+        vec![
+            ruff_listed(env, "0.15.0"), // the preview
+            ruff_listed(env, "0.15.0"), // once the lock is let go
+            ruff_listed(env, "0.16.8"), // the reading after
+        ]
+    });
+    let uv = inst.exe_path.to_str().unwrap().to_string();
+    let ran = confirm_then_run(
+        adapter,
+        &inst,
+        request(&inst, OpKind::Upgrade, ArtifactKind::Tool, "ruff"),
+        Some("0.16.8"),
+        |plan| assert_eq!(plan.timeout_secs, 600),
+        || runner.hold_uvs_lock_for(Duration::from_secs(150)),
+    )
+    .await;
+    assert_eq!(ran.outcome, Outcome::Succeeded, "{:?}", runner.calls());
+    let list: Vec<String> = [uv.as_str(), "tool", "list", "--show-paths"]
+        .map(String::from)
+        .into();
+    let upgrade: Vec<String> = [uv.as_str(), "tool", "upgrade", "ruff"]
+        .map(String::from)
+        .into();
+    assert_eq!(
+        runner.calls(),
+        [list.clone(), list.clone(), list.clone(), upgrade, list],
+        "the preview, the reading before the turn, the list right before the command, \
+         the upgrade, the reading after"
+    );
+    assert_eq!(
+        runner.deadlines(),
+        [60, 60, 600, 600, 60].map(Duration::from_secs),
+        "only the list right before the command waits as long as the upgrade"
+    );
 }

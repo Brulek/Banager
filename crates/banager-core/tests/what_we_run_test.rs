@@ -2188,7 +2188,9 @@ fn test_what_we_run_says_an_npm_or_uv_read_before_running_that_does_not_answer_e
                 "npm 或 uv 的读取命令本身没有回答时，同样不运行写入命令，但按该程序自己的失败结束",
                 "程序已不在或无法启动，显示为未能开始、没有改动",
                 "非零退出，是该程序的失败，带有退出码和它最后写到 stderr 的几行",
-                "超过时限（npm 30 秒、uv 60 秒）没有回答，是运行超时，没有退出码",
+                "超过时限（npm 30 秒；uv 与更新命令相同，600 秒）没有回答，是运行超时，没有退出码",
+                "uv 的这次读取和 `uv tool upgrade` 一样要等 uv 的工具文件夹锁",
+                "读取期间点“取消”会立即停下（npm 的读取也是这样），这个更新显示为已取消，不运行更新命令。",
             ],
         ),
         (
@@ -2200,7 +2202,9 @@ fn test_what_we_run_says_an_npm_or_uv_read_before_running_that_does_not_answer_e
                 "npm 或 uv 的讀取命令本身沒有回答時，同樣不執行寫入命令，但按該程式自己的失敗結束",
                 "程式已不在或無法啟動，顯示為未能開始、沒有改動",
                 "非零結束，是該程式的失敗，帶有結束代碼和它最後寫到 stderr 的幾行",
-                "超過時限（npm 30 秒、uv 60 秒）沒有回答，是執行逾時，沒有結束代碼",
+                "超過時限（npm 30 秒；uv 與更新命令相同，600 秒）沒有回答，是執行逾時，沒有結束代碼",
+                "uv 的這次讀取和 `uv tool upgrade` 一樣要等 uv 的工具檔案夾鎖",
+                "讀取期間點「取消」會立即停下（npm 的讀取也是這樣），這個更新顯示為已取消，不執行更新命令。",
             ],
         ),
     ] {
@@ -2239,6 +2243,33 @@ fn test_what_we_run_says_an_npm_or_uv_read_before_running_that_does_not_answer_e
             );
         }
     }
+}
+
+/// r28 R28-1: uv's list right before a saved upgrade waits for uv's own
+/// tools-folder lock as the upgrade itself would, within the upgrade's
+/// 600 s, and a Cancel stops it (`UvAdapter::execute`). The uv section
+/// says both, and its table lists that list with its own deadline.
+#[test]
+fn test_what_we_run_says_uvs_list_before_an_upgrade_waits_for_uvs_lock_and_stops_on_cancel() {
+    let doc = read_doc();
+    let body = section_body(&doc, "uv").expect("a `## uv` section");
+    let folded = body.split_whitespace().collect::<Vec<_>>().join(" ");
+    for phrase in [
+        "| List installed tools right before a saved upgrade runs (`execute`) | `<uv> tool list --show-paths` | 600 s, the upgrade's own |",
+        "so this list is given the upgrade's own 600 s, not the inventory's 60",
+        "it waits, as the upgrade itself would",
+        "A Cancel stops the list at once, as it stops npm's prefix read, and the update ends cancelled with no upgrade command run.",
+        "exiting non-zero or not answering within those 600 s",
+    ] {
+        assert!(
+            folded.contains(phrase),
+            "the `## uv` section of docs/what-we-run.md does not say {phrase:?}"
+        );
+    }
+    assert!(
+        !folded.contains("not answering within 60 s"),
+        "the `## uv` section still gives the list before an upgrade the inventory's 60 s"
+    );
 }
 
 /// r26 D3: a cask's uninstall preview, and its check just before the

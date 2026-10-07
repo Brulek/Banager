@@ -2196,6 +2196,7 @@ itself, under uv's own configuration.
 | Version | `<uv> --version` | 30 s |
 | List installed tools (`inventory`) | `<uv> tool list --show-paths` | 60 s |
 | List outdated tools (`check_updates`) | `<uv> tool list --outdated` | 60 s |
+| List installed tools right before a saved upgrade runs (`execute`) | `<uv> tool list --show-paths` | 600 s, the upgrade's own |
 
 If `uv tool list --outdated` exits non-zero, `<uv> tool list --show-paths`
 is run once more so every installed tool can be listed as "could not
@@ -2237,11 +2238,19 @@ refused as below. Immediately before a saved upgrade runs, Banager repeats the
 existing `tool list --show-paths` read and bounded receipt read. A changed environment
 path or receipt, a tool the list no longer names (or names twice) or an
 unreadable receipt refuses the plan as changed since shown, before any upgrade
-command. A list that does not answer -- uv gone (between the unlink and the link
-of a `brew upgrade uv` running beside it, say), exiting non-zero or not
-answering within 60 s -- ends as uv's own failure would, as npm's prefix read
-does (npm's section), and no upgrade command runs. An unchanged record runs the
-original argv.
+command. `uv tool list` takes the same lock of uv's tools folder that `uv tool
+upgrade` holds while it runs (uv 0.12.17 `crates/uv/src/commands/tool/list.rs:45`,
+`upgrade.rs:63`), so this list is given the upgrade's own 600 s, not the
+inventory's 60: while another uv command holds that lock -- a `uv tool upgrade
+--all` in Terminal, say -- it waits, as the upgrade itself would, and uv stops
+waiting on its own after 5 minutes, its default
+(`crates/uv-fs/src/locked_file.rs:17-19`), with an error of its own. A Cancel
+stops the list at once, as it stops npm's prefix read, and the update ends
+cancelled with no upgrade command run. A list that does not answer -- uv gone
+(between the unlink and the link of a `brew upgrade uv` running beside it, say),
+exiting non-zero or not answering within those 600 s -- ends as uv's own failure
+would, as npm's prefix read does (npm's section), and no upgrade command runs.
+An unchanged record runs the original argv.
 The fingerprint also participates when a batch prepares an evicted plan again;
 identical commands cannot hide a changed installation basis. No receipt contents
 are sent to the window. It neither edits a receipt nor removes a version pin. uv has no
@@ -5422,7 +5431,7 @@ that has been set up.
 - 预览必须在生成后 10 分钟内确认并提交。已接受的操作可以排队超过 10 分钟再执行。
 - 更新后版本未变通常需要检查；若已达到或超过确认的目标版本，则报告已更新。这也适用于 Grok Build 和 rustup。没有可比较的目标版本时，不适用此例外。
 - 已安装页详情里的 HTTPS 首页链接只交给默认浏览器打开：先按 `https:` 查出系统设置的默认浏览器，再指定由它打开，不会被声明了该域名的 App 直接接走；查不到默认浏览器时不打开。只打开当前列表里某个工具的来源报告的首页，普通 HTTP 首页只供拷贝。
-- npm 的操作，以及 Cargo 和 uv 的更新，在开始前会再核对一次：npm 重新读取全局安装位置（`npm prefix -g`），Cargo 重新读取这个工具的安装记录，uv 重新列出工具（`uv tool list --show-paths`）并读取这个工具的环境和安装记录（receipt）。读到的与预览时不一致，或读到了却用不上（npm 给出的位置为空或不是完整路径、回答长得无法读完、Cargo 或 uv 的安装记录无法读取、uv 的列表不再列出或列出两次这个工具）时，不运行任何写入命令，结果显示为未能开始，请重新打开确认窗口。npm 或 uv 的读取命令本身没有回答时，同样不运行写入命令，但按该程序自己的失败结束：程序已不在或无法启动，显示为未能开始、没有改动；非零退出，是该程序的失败，带有退出码和它最后写到 stderr 的几行（例如 `node` 不在时 npm 的 `env: node: No such file or directory`）；超过时限（npm 30 秒、uv 60 秒）没有回答，是运行超时，没有退出码。后两种情况下，它写到 stderr 的每一行都记在操作日志里。一致时运行的仍是预览中的原命令。这些都是已有的只读命令和有大小上限的文件读取，没有新的主机、权限或写入的文件。
+- npm 的操作，以及 Cargo 和 uv 的更新，在开始前会再核对一次：npm 重新读取全局安装位置（`npm prefix -g`），Cargo 重新读取这个工具的安装记录，uv 重新列出工具（`uv tool list --show-paths`）并读取这个工具的环境和安装记录（receipt）。读到的与预览时不一致，或读到了却用不上（npm 给出的位置为空或不是完整路径、回答长得无法读完、Cargo 或 uv 的安装记录无法读取、uv 的列表不再列出或列出两次这个工具）时，不运行任何写入命令，结果显示为未能开始，请重新打开确认窗口。npm 或 uv 的读取命令本身没有回答时，同样不运行写入命令，但按该程序自己的失败结束：程序已不在或无法启动，显示为未能开始、没有改动；非零退出，是该程序的失败，带有退出码和它最后写到 stderr 的几行（例如 `node` 不在时 npm 的 `env: node: No such file or directory`）；超过时限（npm 30 秒；uv 与更新命令相同，600 秒）没有回答，是运行超时，没有退出码。后两种情况下，它写到 stderr 的每一行都记在操作日志里。uv 的这次读取和 `uv tool upgrade` 一样要等 uv 的工具文件夹锁：终端里另一个 uv 命令（例如 `uv tool upgrade --all`）正在运行时，它会等那个命令结束（uv 自己最多等 5 分钟），而不是先失败。读取期间点“取消”会立即停下（npm 的读取也是这样），这个更新显示为已取消，不运行更新命令。一致时运行的仍是预览中的原命令。这些都是已有的只读命令和有大小上限的文件读取，没有新的主机、权限或写入的文件。
 
 ## 繁體中文：執行與隱私要點
 
@@ -5439,4 +5448,4 @@ that has been set up.
 - 預覽必須在產生後 10 分鐘內確認並送出。已接受的操作可以排隊超過 10 分鐘再執行。
 - 更新後版本未變通常需要檢查；若已達到或超過確認的目標版本，則回報已更新。這也適用於 Grok Build 和 rustup。沒有可比較的目標版本時，不適用此例外。
 - 已安裝頁詳細資訊裡的 HTTPS 首頁連結只交給預設瀏覽器開啟：先依 `https:` 查出系統設定的預設瀏覽器，再指定由它開啟，不會被宣告了該網域的 App 直接接走；查不到預設瀏覽器時不開啟。只開啟目前清單裡某個工具的來源回報的首頁，一般 HTTP 首頁只供拷貝。
-- npm 的操作，以及 Cargo 和 uv 的更新，在開始前會再核對一次：npm 重新讀取全域安裝位置（`npm prefix -g`），Cargo 重新讀取這個工具的安裝紀錄，uv 重新列出工具（`uv tool list --show-paths`）並讀取這個工具的環境和安裝紀錄（receipt）。讀到的與預覽時不一致，或讀到了卻無法使用（npm 給出的位置為空或不是完整路徑、回答長得無法讀完、Cargo 或 uv 的安裝紀錄無法讀取、uv 的清單不再列出或列出兩次這個工具）時，不執行任何寫入命令，結果顯示為未能開始，請重新開啟確認視窗。npm 或 uv 的讀取命令本身沒有回答時，同樣不執行寫入命令，但按該程式自己的失敗結束：程式已不在或無法啟動，顯示為未能開始、沒有改動；非零結束，是該程式的失敗，帶有結束代碼和它最後寫到 stderr 的幾行（例如 `node` 不在時 npm 的 `env: node: No such file or directory`）；超過時限（npm 30 秒、uv 60 秒）沒有回答，是執行逾時，沒有結束代碼。後兩種情況下，它寫到 stderr 的每一行都記在操作記錄裡。一致時執行的仍是預覽中的原命令。這些都是既有的唯讀命令和有大小上限的檔案讀取，沒有新的主機、權限或寫入的檔案。
+- npm 的操作，以及 Cargo 和 uv 的更新，在開始前會再核對一次：npm 重新讀取全域安裝位置（`npm prefix -g`），Cargo 重新讀取這個工具的安裝紀錄，uv 重新列出工具（`uv tool list --show-paths`）並讀取這個工具的環境和安裝紀錄（receipt）。讀到的與預覽時不一致，或讀到了卻無法使用（npm 給出的位置為空或不是完整路徑、回答長得無法讀完、Cargo 或 uv 的安裝紀錄無法讀取、uv 的清單不再列出或列出兩次這個工具）時，不執行任何寫入命令，結果顯示為未能開始，請重新開啟確認視窗。npm 或 uv 的讀取命令本身沒有回答時，同樣不執行寫入命令，但按該程式自己的失敗結束：程式已不在或無法啟動，顯示為未能開始、沒有改動；非零結束，是該程式的失敗，帶有結束代碼和它最後寫到 stderr 的幾行（例如 `node` 不在時 npm 的 `env: node: No such file or directory`）；超過時限（npm 30 秒；uv 與更新命令相同，600 秒）沒有回答，是執行逾時，沒有結束代碼。後兩種情況下，它寫到 stderr 的每一行都記在操作記錄裡。uv 的這次讀取和 `uv tool upgrade` 一樣要等 uv 的工具檔案夾鎖：終端機裡另一個 uv 命令（例如 `uv tool upgrade --all`）正在執行時，它會等那個命令結束（uv 自己最多等 5 分鐘），而不是先失敗。讀取期間點「取消」會立即停下（npm 的讀取也是這樣），這個更新顯示為已取消，不執行更新命令。一致時執行的仍是預覽中的原命令。這些都是既有的唯讀命令和有大小上限的檔案讀取，沒有新的主機、權限或寫入的檔案。

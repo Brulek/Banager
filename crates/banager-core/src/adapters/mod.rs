@@ -987,6 +987,11 @@ pub async fn run_plan(
 /// stdout, the answer it was asked for, does not: it is held as the
 /// program wrote it, with no login masked out of it, and the log is for a
 /// person. A read that answered is compared, not logged.
+///
+/// Each read is handed the operation's own token, and one a Cancel
+/// stopped never reaches here: the adapter answers `Outcome::Cancelled`
+/// first, nothing having started (`NpmAdapter::execute`,
+/// `UvAdapter::execute`; r28 R28-1).
 pub(crate) fn read_before_run(
     read: Result<crate::runner::CommandOutput, AdapterError>,
     sink: &dyn EventSink,
