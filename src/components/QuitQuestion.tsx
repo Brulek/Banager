@@ -182,7 +182,7 @@ export function QuitQuestion() {
  * again for each question that comes while it is up. Sent once more should
  * it fail; should that fail too, Banager quits 2 seconds after asking, as
  * it does with nobody here to answer, unless the user has answered
- * 「取消」 by then (`quitKeptWaiting`).
+ * 「继续等待」 by then (`quitKeptWaiting`).
  */
 function OnScreen({ question }: { question: number }) {
   useEffect(() => {

@@ -29,7 +29,7 @@
 //! can also go without a word: reloaded, or its web content crashed. So
 //! once asked, the page has `SHOW_WITHIN`, 2 seconds, to say that the
 //! question is on screen (`quit_question_shown`); without that, Banager
-//! quits, as it does on 「退出」 (`quit_unless_shown`). 「取消」, or
+//! quits, as it does on 「退出」 (`quit_unless_shown`). 「继续等待」, or
 //! Escape, says so too (`quit_kept_waiting`), which stops that wait from
 //! quitting should the first word not have got through; and a quit
 //! repeated while the question is pending asks it again without a second
@@ -244,7 +244,7 @@ pub struct Question {
 
 /// Whether a quit asks first -- whether the page listens for the question,
 /// and whether the user has already answered 「退出」 -- and which
-/// questions are settled: on screen, or answered 「取消」. Managed on
+/// questions are settled: on screen, or answered 「继续等待」. Managed on
 /// the builder in `run()`; in memory only, for this run.
 #[derive(Debug, Default)]
 pub struct QuitGuard {
@@ -255,7 +255,7 @@ pub struct QuitGuard {
     /// The newest question's number, counting from 1; 0 before the first.
     asked: AtomicU64,
     /// The newest question the page has said is on screen, or the user
-    /// has answered 「取消」 to; 0 before any. A question newer than
+    /// has answered 「继续等待」 to; 0 before any. A question newer than
     /// this is pending: its fallback still runs.
     settled: AtomicU64,
 }
@@ -322,7 +322,7 @@ impl QuitGuard {
         self.settle(question);
     }
 
-    /// The user answered question `question` 「取消」 -- or the sheet
+    /// The user answered question `question` 「继续等待」 -- or the sheet
     /// went by itself, everything having finished: its fallback, should it
     /// still run, does not quit, whether or not the page's word that the
     /// question was on screen got through. A number that no question has
@@ -475,7 +475,7 @@ pub fn quit_question_shown(guard: State<'_, QuitGuard>, question: u64) {
     guard.shown(question);
 }
 
-/// The user answered question `question` 「取消」 (or Escape), or the
+/// The user answered question `question` 「继续等待」 (or Escape), or the
 /// sheet went by itself, everything having finished: Banager does not quit
 /// for want of word from the page (`QuitGuard::kept_waiting`) -- which
 /// matters when that word, `quit_question_shown`, did not get through.
@@ -908,7 +908,7 @@ mod tests {
         assert_eq!(
             guard.decide(2),
             OnQuit::Ask,
-            "「取消」 changes nothing here"
+            "「继续等待」 changes nothing here"
         );
         guard.confirm();
         assert_eq!(
@@ -1076,7 +1076,7 @@ mod tests {
         assert!(wait_for_the_page(&guard, next, within).await);
     }
 
-    /// 「取消」 while the page's word that the question is on screen has
+    /// 「继续等待」 while the page's word that the question is on screen has
     /// not got through: Banager does not quit.
     #[tokio::test]
     async fn test_keep_waiting_stops_the_wait_from_quitting_without_word_that_it_was_shown() {
