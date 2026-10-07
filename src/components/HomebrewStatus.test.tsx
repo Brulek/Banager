@@ -137,7 +137,7 @@ describe("homepageFact", () => {
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
     vi.mocked(invoke).mockReset();
     vi.mocked(invoke).mockResolvedValue(undefined);
-    const fact = homepageFact(enT, "https://code.claude.com/docs/en/setup");
+    const fact = homepageFact(enT, "https://code.claude.com/docs/en/setup", false);
     expect(fact?.term).toBe("Homepage");
     const { container } = renderWithProviders(<>{fact?.value}</>);
     const shown = container.querySelector("[data-homepage]") as HTMLElement;
@@ -162,6 +162,36 @@ describe("homepageFact", () => {
     expect(status.parentElement).toBe(button.parentElement);
   });
 
+  it("sends the address trimmed, as the backend compares it with what the source listed", () => {
+    // `homepage::listed_homepage` matches the homepage trimmed, exactly:
+    // an address sent with the source's spaces or newline around it would
+    // be refused as one no tool lists.
+    vi.mocked(invoke).mockReset();
+    vi.mocked(invoke).mockResolvedValue(undefined);
+    renderWithProviders(<>{homepageFact(enT, "  https://jqlang.github.io/jq/\n", false)?.value}</>);
+    const link = screen.getByRole("link", { name: "jqlang.github.io" });
+    expect(link).toHaveAttribute("title", "https://jqlang.github.io/jq/");
+    fireEvent.click(link);
+    expect(invoke).toHaveBeenCalledWith("open_homepage", { address: "https://jqlang.github.io/jq/" });
+  });
+
+  it("offers no link while the first check's list is shown: the host as text, to copy", () => {
+    // The backend opens only a homepage its committed snapshot lists, and
+    // the list the page shows meanwhile is not committed: a link would
+    // only say 「无法打开」 until the check is done.
+    vi.mocked(invoke).mockReset();
+    const { container } = renderWithProviders(<>{homepageFact(enT, "https://iterm2.com/", true)?.value}</>);
+    expect(screen.queryByRole("link")).toBeNull();
+    const shown = container.querySelector("[data-homepage]") as HTMLElement;
+    expect(shown.tagName).toBe("SPAN");
+    expect(shown.textContent).toBe("iterm2.com");
+    expect(shown).toHaveAttribute("title", "https://iterm2.com/");
+    expect(shown.className.split(" ")).not.toEqual(expect.arrayContaining(LINK.split(" ")));
+    fireEvent.click(shown);
+    expect(screen.getByRole("button", { name: "Copy Link" })).toBeInTheDocument();
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
   it("names a host without its www., and shows whole what is not a web address", () => {
     expect(homepageHost("https://www.python.org/")).toBe("python.org");
     expect(homepageHost("http://jqlang.github.io/jq/")).toBe("jqlang.github.io");
@@ -176,7 +206,7 @@ describe("homepageFact", () => {
     vi.mocked(invoke).mockRejectedValue('{"kind":"not_listed"}');
     vi.useFakeTimers();
     try {
-      renderWithProviders(<>{homepageFact(enT, "https://jqlang.github.io/jq/")?.value}</>);
+      renderWithProviders(<>{homepageFact(enT, "https://jqlang.github.io/jq/", false)?.value}</>);
       const link = screen.getByRole("link", { name: "jqlang.github.io" });
       fireEvent.click(link);
       await act(() => vi.advanceTimersByTimeAsync(0));
@@ -191,7 +221,7 @@ describe("homepageFact", () => {
 
   it("offers no link for a homepage that is no web address: it is shown whole, to copy", () => {
     vi.mocked(invoke).mockReset();
-    const { container } = renderWithProviders(<>{homepageFact(enT, "ftp://ftp.gnu.org/gnu/wget/")?.value}</>);
+    const { container } = renderWithProviders(<>{homepageFact(enT, "ftp://ftp.gnu.org/gnu/wget/", false)?.value}</>);
     expect(screen.queryByRole("link")).toBeNull();
     const shown = container.querySelector("[data-homepage]") as HTMLElement;
     expect(shown.tagName).toBe("SPAN");
@@ -201,7 +231,7 @@ describe("homepageFact", () => {
   });
 
   it("says when the clipboard refused, beside the button", async () => {
-    renderWithProviders(<>{homepageFact(enT, "https://jqlang.github.io/jq/")?.value}</>);
+    renderWithProviders(<>{homepageFact(enT, "https://jqlang.github.io/jq/", false)?.value}</>);
     const button = screen.getByRole("button", { name: "Copy Link" });
     fireEvent.click(button);
     const status = button.parentElement?.querySelector('[role="status"]') as HTMLElement;
@@ -225,8 +255,8 @@ describe("homepageFact", () => {
   });
 
   it("is nothing where the source gave no address", () => {
-    expect(homepageFact(enT, null)).toBeNull();
-    expect(homepageFact(enT, "  ")).toBeNull();
+    expect(homepageFact(enT, null, false)).toBeNull();
+    expect(homepageFact(enT, "  ", false)).toBeNull();
   });
 });
 

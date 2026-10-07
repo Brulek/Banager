@@ -224,10 +224,17 @@ export function homepageHost(address: string): string | null {
  * the inspector selects only versions and a location. An address that is
  * not an http(s) one with a host is shown whole, as text, and only copied:
  * Banager opens no other kind (src-tauri/src/homepage.rs).
+ *
+ * While the page lists the first check's list (`preview`, from
+ * `useInstalledSnapshot`), the host is text, not a link: the backend opens
+ * only a homepage its committed snapshot lists, and that list is not
+ * committed, so a click could only say 「无法打开」. Once the check is
+ * done, the link -- as Uninstall waits for it too.
  */
 export function homepageFact(
   t: TFunction,
   homepage: string | null,
+  preview: boolean,
 ): { term: string; value: ReactNode; selectable: boolean } | null {
   const address = homepage?.trim() ?? "";
   if (address === "") return null;
@@ -236,11 +243,11 @@ export function homepageFact(
     term: t("brewStatus.homepage"),
     value: (
       <span className="flex flex-col items-end gap-1">
-        {host !== null ? (
+        {host !== null && !preview ? (
           <HomepageLink address={address} host={host} />
         ) : (
           <span data-homepage="" title={address} className="break-words">
-            {addressWithBreaks(address)}
+            {host ?? addressWithBreaks(address)}
           </span>
         )}
         <CopyButton text={address} label={t("brewStatus.copyLink")} />

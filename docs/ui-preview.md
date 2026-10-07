@@ -318,7 +318,8 @@ Paths are under a generic home folder, `/Users/you`.
   the page in the default browser; here it opens nothing, and the console
   says which address the browser would have been asked to open. Like the
   app, the preview refuses any address that is not the homepage of a tool
-  it lists.
+  it lists. With `?state=preview`, while the first check's list is shown,
+  the host is plain text, not a link, until the check is done.
 - On the Other Programs page, a row's Show in Finder opens nothing: the console
   says which path Finder would have been asked to show. Copy path copies
   where the browser lets the page write to the clipboard, and otherwise

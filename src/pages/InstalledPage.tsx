@@ -1625,7 +1625,7 @@ export function InstalledPage() {
         selectable: true,
       });
     }
-    const homepage = homepageFact(t, artifact.homepage);
+    const homepage = homepageFact(t, artifact.homepage, preview);
     if (homepage !== null) facts.push(homepage);
     // What asks something of the user, in the callout under the
     // description (`InspectorCallout`): what Homebrew's mark means, and

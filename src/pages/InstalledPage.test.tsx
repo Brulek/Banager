@@ -23,6 +23,7 @@ import type {
 } from "../lib/types";
 import { NO_FACTS } from "../lib/types";
 import { failureCause } from "../lib/failureCause";
+import { writeInventoryPreview } from "../lib/events";
 
 const mockInvoke = vi.mocked(invoke);
 
@@ -2102,6 +2103,30 @@ describe("InstalledPage", () => {
     expect(chipsOf(rowOf("jq"))).toEqual([]);
     fireEvent.click(within(rowOf("jq")).getByRole("button", { name: ROW_UNINSTALL }));
     expect(await screen.findByRole("alertdialog", { name: "Uninstall “jq”?" })).toBeInTheDocument();
+  });
+
+  it("shows a tool's homepage as text while the first check's list is shown, and as a link once the check is done", async () => {
+    // The backend opens only a homepage its committed snapshot lists
+    // (src-tauri/src/homepage.rs), and the list shown while the first check
+    // still checks for updates is not committed: a link there could only
+    // say 「无法打开」. As Uninstall waits for the check, so does the link.
+    served = { ...snapshot, generation: 0, round: 0, detect: "Missing", instances: [], artifacts: [], updates: [], refreshed_at: null };
+    const { queryClient } = renderInstalled();
+    act(() => writeInventoryPreview(queryClient, { round: 1, instances: [brew], artifacts: [snapshot.artifacts[0]] }));
+    const drawer = await openDetails("jq");
+    expect(within(drawer).queryByRole("link")).toBeNull();
+    const shown = drawer.querySelector("[data-homepage]") as HTMLElement;
+    expect(shown.textContent).toBe("jqlang.github.io");
+    expect(shown).toHaveAttribute("title", "https://jqlang.github.io/jq/");
+    fireEvent.click(shown);
+    expect(mockInvoke).not.toHaveBeenCalledWith("open_homepage", expect.anything());
+    expect(within(drawer).getByRole("button", { name: "Copy Link" })).toBeInTheDocument();
+
+    served = snapshot;
+    await act(() => queryClient.invalidateQueries());
+    const link = await screen.findByRole("link", { name: "jqlang.github.io" });
+    fireEvent.click(link);
+    expect(mockInvoke).toHaveBeenCalledWith("open_homepage", { address: "https://jqlang.github.io/jq/" });
   });
 
   it("unfolds one source's components without unfolding another's, each line naming its source", async () => {
