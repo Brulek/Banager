@@ -2259,10 +2259,13 @@ fn test_what_we_run_says_an_npm_or_uv_read_before_running_that_does_not_answer_e
 /// r30 Z1: the Traditional Chinese summary calls things what the zh-Hant
 /// window calls them -- 解除安裝 for an uninstall (the button
 /// `installed.uninstall`), 指令 for a command (`commandPreview.show_other`),
-/// 記錄 for the history (`updates.justUpdated.clear`) -- and not 移除,
-/// 命令, 歷程 or 紀錄, which a Taiwan reader takes for other features.
-/// 移除 stays where it means taking something away (「移除所有已安裝版本」,
-/// 「自動移除相依套件」), not uninstalling.
+/// 更新和解除安裝記錄 for the history (the FAQ's name for the file,
+/// `faq.questions.changesMac.answer`) -- and not 移除, 命令, 歷程 or 紀錄,
+/// which a Taiwan reader takes for other features. 移除 stays where it
+/// means taking something away (「移除所有已安裝版本」, 「自動移除相依套件」),
+/// not uninstalling. A bare 記錄 beside 安裝記錄, 固定記錄 and 操作記錄
+/// does not say which file it is (n1 skeptic), so the history's two
+/// sentences name it.
 #[test]
 fn test_what_we_run_traditional_chinese_summary_uses_the_windows_words() {
     let locale: serde_json::Value = serde_json::from_str(
@@ -2284,9 +2287,9 @@ fn test_what_we_run_traditional_chinese_summary_uses_the_windows_words() {
             &["命令"][..],
         ),
         (
-            &locale["updates"]["justUpdated"]["clear"],
-            "記錄",
-            &["歷程", "紀錄"][..],
+            &locale["faq"]["questions"]["changesMac"]["answer"],
+            "更新和解除安裝記錄",
+            &["歷程", "紀錄", "。記錄和", "格式的記錄檔案"][..],
         ),
     ] {
         let label = key.as_str().expect("a zh-Hant label");
@@ -2304,6 +2307,15 @@ fn test_what_we_run_traditional_chinese_summary_uses_the_windows_words() {
                 "`## {section}` says {other:?} where the window says {word:?}"
             );
         }
+    }
+    for phrase in [
+        "更新和解除安裝記錄及忽略、略過、稍後提醒設定儲存前會去除網址中的使用者名稱與密碼",
+        "較新格式的更新和解除安裝記錄檔案不會被覆寫",
+    ] {
+        assert!(
+            body.contains(phrase),
+            "`## {section}` does not say {phrase:?}"
+        );
     }
 }
 

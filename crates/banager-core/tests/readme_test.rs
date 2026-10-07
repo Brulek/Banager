@@ -229,7 +229,9 @@ fn test_readme_chinese_block_names_the_tools_each_installed_version_reason_can_c
 /// r30 Z1: the README's Traditional Chinese summary (`### 執行與隱私`, the
 /// end of the file) says 解除安裝 and 記錄 as the zh-Hant window does, not
 /// 移除 for an uninstall or 歷程 for the history. 移除 stays where the
-/// login is taken out of a web address before saving.
+/// login is taken out of a web address before saving. A bare 記錄 does not
+/// say which file it means, so the history goes by the FAQ's name for it,
+/// 「更新和解除安裝記錄」 (n1 skeptic).
 #[test]
 fn test_readme_traditional_chinese_summary_uses_the_windows_words() {
     let readme = read_readme();
@@ -237,7 +239,17 @@ fn test_readme_traditional_chinese_summary_uses_the_windows_words() {
         .split_once("\n### 執行與隱私\n")
         .expect("README.md has a `### 執行與隱私` heading");
     assert!(summary.contains("安裝、解除安裝及垃圾桶測試"));
-    assert!(summary.contains("並在記錄和設定儲存前移除"));
+    let history = "更新和解除安裝記錄";
+    let faq = read_locale("zh-Hant")["faq"]["questions"]["changesMac"]["answer"]
+        .as_str()
+        .expect("the zh-Hant FAQ's changesMac answer")
+        .to_string();
+    assert!(
+        faq.contains(history),
+        "the zh-Hant FAQ no longer calls the history {history:?}; say what it says"
+    );
+    assert!(summary.contains(&format!("並在{history}及設定儲存前移除")));
+    assert!(!summary.contains("在記錄和設定"));
     for unlike in ["安裝移除", "歷程", "紀錄", "命令"] {
         assert!(
             !summary.contains(unlike),
