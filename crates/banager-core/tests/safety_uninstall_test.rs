@@ -54,10 +54,6 @@ const REMOVES_MORE: [&str; 8] = [
     "--all",
 ];
 
-/// A prefix that is not there: the preview looks at Homebrew's update
-/// lock under it, and this Mac's own must not decide the test.
-const BREW_PREFIX: &str = "/nonexistent-banager-x3/homebrew";
-
 struct Case {
     what: &'static str,
     adapter: Arc<dyn Adapter>,
@@ -75,7 +71,7 @@ fn instance(adapter_id: &str, exe: &str, prefix: &str) -> ManagerInstance {
     }
 }
 
-fn cases(npm_prefix: &str) -> Vec<Case> {
+fn cases(npm_prefix: &str, brew_prefix: &str) -> Vec<Case> {
     let mut cases = Vec::new();
     let mut add = |what, adapter: fn(Arc<MockRunner>) -> Arc<dyn Adapter>, inst, kind, name| {
         let runner = Arc::new(MockRunner::new());
@@ -130,14 +126,14 @@ fn cases(npm_prefix: &str) -> Vec<Case> {
     add(
         "Homebrew formula",
         |r| Arc::new(BrewAdapter::new(r)),
-        instance("brew", "/opt/homebrew/bin/brew", BREW_PREFIX),
+        instance("brew", &format!("{brew_prefix}/bin/brew"), brew_prefix),
         ArtifactKind::Formula,
         "jq",
     );
     add(
         "Homebrew cask",
         |r| Arc::new(BrewAdapter::new(r)),
-        instance("brew", "/opt/homebrew/bin/brew", BREW_PREFIX),
+        instance("brew", &format!("{brew_prefix}/bin/brew"), brew_prefix),
         ArtifactKind::Cask,
         "docker",
     );
@@ -209,7 +205,20 @@ async fn test_an_uninstall_runs_exactly_the_command_its_preview_showed_and_nothi
     // npm checks prefix writability even with a MockRunner. Use a test-owned
     // root so this command-safety test does not depend on the Mac's Homebrew.
     let npm_root = tempfile::tempdir().unwrap();
-    for case in cases(npm_root.path().to_str().unwrap()) {
+    let brew_root = tempfile::tempdir().unwrap();
+    let metadata = brew_root.path().join("Caskroom/docker/.metadata");
+    let casks = metadata.join("1.0/20260101000000.000/Casks");
+    std::fs::create_dir_all(&casks).unwrap();
+    std::fs::write(
+        metadata.join("INSTALL_RECEIPT.json"),
+        r#"{"uninstall_artifacts":[{"app":["Docker.app"]}]}"#,
+    )
+    .unwrap();
+    std::fs::write(casks.join("docker.json"), "{}").unwrap();
+    for case in cases(
+        npm_root.path().to_str().unwrap(),
+        brew_root.path().to_str().unwrap(),
+    ) {
         let Case {
             what,
             adapter,
@@ -220,7 +229,12 @@ async fn test_an_uninstall_runs_exactly_the_command_its_preview_showed_and_nothi
         } = case;
         // Homebrew's preview asks which installed formulae need this one.
         runner.respond(
-            vec!["/opt/homebrew/bin/brew", "uses", "--installed", name],
+            vec![
+                instance.exe_path.to_str().unwrap(),
+                "uses",
+                "--installed",
+                name,
+            ],
             exited_0(),
         );
         let request = OpRequest {

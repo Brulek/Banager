@@ -257,6 +257,16 @@ export type UninstallScope =
   | "Uv"
   | "Cargo"
   | "Ollama";
+/** Why an uninstall preview is refused. Mirrors Rust UninstallUnsafeReason. */
+export type UninstallUnsafeReason =
+  | "outside_home"
+  | "shared_folder"
+  | "missing"
+  | "not_owned_by_you"
+  | "not_what_instructions_expect"
+  | "overlaps_kept"
+  | "cask_link_not_owned";
+
 /**
  * One kind of extra step a cask's recorded uninstall takes, the `step` of
  * `Warning.CaskUninstallStep`. Mirrors `CaskStep` in

@@ -108,6 +108,19 @@ describe("the browser preview's mock backend", () => {
     expect([...sent].sort()).toEqual([...MOCK_COMMANDS].sort());
   });
 
+  it("refuses a cask whose command link is now another source's in the preview", async () => {
+    const { backend } = backendFor({ state: "many" });
+    const snapshot = await answer<Snapshot>(backend.invoke("refresh"));
+    for (const [name, kind, reason] of [["codex", "Cask", "cask_link_not_owned"]] as const) {
+      const artifact = snapshot.artifacts.find((a) => a.key.name === name && a.key.kind === kind)!;
+      expect(artifact).toBeDefined();
+      const result = backend.invoke("plan_operation", { request: {
+        kind: "Uninstall", instance_id: artifact.key.instance_id, artifact_kind: kind, name,
+      } }).catch((error: unknown) => error);
+      expect(JSON.parse(await answer<string>(result))).toMatchObject({ kind: "uninstall_unsafe", reason });
+    }
+  });
+
   it("rejects an unknown command with a string, as Tauri does", async () => {
     const { backend } = backendFor();
     await expect(backend.invoke("no_such_command")).rejects.toBe("Command no_such_command not found");

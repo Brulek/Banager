@@ -1386,6 +1386,39 @@ read), the uninstall confirmation says Homebrew also removes the package
 from its trust list (`Warning::HomebrewForgetsTrust`); when it cannot read
 the list, it says nothing of it.
 
+Before offering a cask uninstall, and again immediately before the
+uninstall command starts, Banager looks at each link the cask's record
+says Homebrew will remove (`crates/banager-core/src/adapters/brew/cask_links.rs`):
+`binary` and `command_wrapper` links in `<prefix>/bin` (or the target the
+stanza names, a `~/` one under the home folder), `manpage` links in
+`<prefix>/share/man/man<section>`, and `bash_completion`, `zsh_completion`,
+`fish_completion` and `pwsh_completion` links in Homebrew's completion
+folders, each renamed as Homebrew renames it
+(`cask/artifact/{relocated,manpage,*completion}.rb`, `cask/config.rb`).
+Homebrew's `Symlinked#unlink` removes whatever link is at such a place,
+except one into a formula's keg (`conflicting_formula`). So a link that
+now leads somewhere else than the cask's Caskroom folder, an app it
+recorded or the absolute source its stanza names -- npm's package after
+`npm install -g --force`, another cask, a standalone program -- refuses
+the uninstall (`UninstallUnsafeReason::CaskLinkNotOwned`): the
+confirmation says that path may now belong to another tool, that nothing
+was removed, and that uninstalling the other tool first lets this one go.
+Left alone, and no reason to refuse: no link at the place (nothing there,
+or a file, which Homebrew does not touch), a link to nothing (an app
+dragged to the Trash left its command link behind; removing it stops
+nothing that works), and a link into `<prefix>/Cellar`, which Homebrew
+skips. A link Banager cannot follow (a protected place, a folder it may
+not read) or a linking stanza it cannot place refuses. A cask with no
+readable record -- installed before Homebrew recorded its uninstall, or
+one Banager cannot read (`cask_receipt::read_recorded`) -- has nothing
+that names a link, and uninstalls as before with the general sentence;
+Homebrew then removes the links of the cask's current definition, which
+Banager does not read. Links under a `--binarydir`, `--manpagedir` or
+completion folder set in `HOMEBREW_CASK_OPTS` are not looked at. This
+reads links and folders only: no command, file written or permission is
+added. A link that changes after the last look and before Homebrew
+reaches it is still possible.
+
 **What an uninstall says it removes.** Under the tool, the uninstall
 confirmation says in one sentence what the command removes and what it
 leaves (`Warning::UninstallScope`, built with the plan by

@@ -1000,6 +1000,7 @@ describe("planErrorMessage", () => {
       ["not_owned_by_you", "planRefused.uninstallUnsafe.notOwnedByYou"],
       ["not_what_instructions_expect", "planRefused.uninstallUnsafe.notWhatInstructionsExpect"],
       ["overlaps_kept", "planRefused.uninstallUnsafe.overlapsKept"],
+      ["cask_link_not_owned", "uninstallLinks.notOwned"],
     ]) {
       expect(
         planErrorMessage(

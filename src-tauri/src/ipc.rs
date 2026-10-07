@@ -333,6 +333,7 @@ fn plan_operation_error(e: banager_core::adapters::AdapterError) -> String {
                 UninstallUnsafeReason::NotOwnedByYou => "not_owned_by_you",
                 UninstallUnsafeReason::NotWhatInstructionsExpect => "not_what_instructions_expect",
                 UninstallUnsafeReason::OverlapsKept => "overlaps_kept",
+                UninstallUnsafeReason::CaskLinkNotOwned => "cask_link_not_owned",
             };
             serde_json::json!({ "kind": "uninstall_unsafe", "path": path, "reason": reason })
                 .to_string()
@@ -2281,6 +2282,10 @@ mod tests {
                 "not_what_instructions_expect",
             ),
             (UninstallUnsafeReason::OverlapsKept, "overlaps_kept"),
+            (
+                UninstallUnsafeReason::CaskLinkNotOwned,
+                "cask_link_not_owned",
+            ),
         ] {
             let raw = plan_operation_error(AdapterError::UninstallUnsafe {
                 path: "~/.claude/downloads".to_string(),

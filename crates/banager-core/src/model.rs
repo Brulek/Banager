@@ -705,6 +705,10 @@ pub enum UninstallUnsafeReason {
     /// it leads to could not be followed. `path` is the kept path (ruling
     /// 25 of the step C plan).
     OverlapsKept,
+    /// A cask uninstall would remove a link the cask recorded that now
+    /// leads to another tool's file, or that Banager cannot follow or
+    /// place (`brew/cask_links.rs`). `path` is the link.
+    CaskLinkNotOwned,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

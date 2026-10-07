@@ -13,6 +13,7 @@ import type {
   Snapshot,
   SourceError,
   UninstallBlocked,
+  UninstallUnsafeReason,
   Unavailable,
   UpdateBlocked,
   Warning,
@@ -1184,21 +1185,16 @@ export function parseUninstallBlocked(message: string): UninstallBlocked | null 
 }
 
 /**
- * The reasons a path-list uninstall preview can be refused by one of its
- * checks (`removal::plan_removal` in
- * crates/banager-core/src/adapters/standalone/removal.rs), as
+ * The reasons an uninstall preview can be refused by one of its checks
+ * (`removal::plan_removal` in
+ * crates/banager-core/src/adapters/standalone/removal.rs, a cask's links
+ * in `brew/cask_links.rs`, an AI tool's data paths in `kept_data.rs`), as
  * `plan_operation_error` in src-tauri/src/ipc.rs spells them -- by hand,
  * in snake_case, one `match` arm each. Mirrored here as a union so the
  * copy table below is a `Record` over it: a reason without a sentence
  * fails `tsc`.
  */
-export type UninstallUnsafeReason =
-  | "outside_home"
-  | "shared_folder"
-  | "missing"
-  | "not_owned_by_you"
-  | "not_what_instructions_expect"
-  | "overlaps_kept";
+export type { UninstallUnsafeReason } from "./types";
 
 /** The `planRefused.uninstallUnsafe.*` sentence for each reason; each
  *  interpolates `{{path}}` (home folder abbreviated on the Rust side). */
@@ -1209,6 +1205,7 @@ export const UNINSTALL_UNSAFE_KEYS: Record<UninstallUnsafeReason, string> = {
   not_owned_by_you: "planRefused.uninstallUnsafe.notOwnedByYou",
   not_what_instructions_expect: "planRefused.uninstallUnsafe.notWhatInstructionsExpect",
   overlaps_kept: "planRefused.uninstallUnsafe.overlapsKept",
+  cask_link_not_owned: "uninstallLinks.notOwned",
 };
 
 /**

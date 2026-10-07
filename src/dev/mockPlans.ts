@@ -287,6 +287,10 @@ export function buildPlan(world: World, inst: ManagerInstance, request: OpReques
   // Installing is phase 5: no page offers it, and `plan_operation` refuses
   // it before the gate (mockBackend.ts), as the real IPC does.
   if (request.kind === "Install") throw refusal({ kind: "refused" });
+  // Stable layouts reproducing the refusal checks without reading a disk.
+  if (request.kind === "Uninstall" && inst.adapter_id === "brew" && request.artifact_kind === "Cask" && request.name === "codex") {
+    throw refusal({ kind: "uninstall_unsafe", reason: "cask_link_not_owned", path: "/opt/homebrew/bin/codex" });
+  }
   const { kind, name } = request;
   const upgrade = kind === "Upgrade";
   const plan: Plan = {

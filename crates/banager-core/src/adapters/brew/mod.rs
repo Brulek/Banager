@@ -1,4 +1,5 @@
 pub(crate) mod brew_env;
+mod cask_links;
 pub(crate) mod cask_receipt;
 #[cfg(test)]
 mod keg_link_tests;
@@ -78,6 +79,8 @@ fn matching_prefix_lock(
 }
 
 pub struct BrewAdapter {
+    #[cfg(test)]
+    inspect_cask_links: bool,
     runner: Arc<dyn CommandRunner>,
     meta: AdapterMeta,
     /// Per-instance `brew update` bookkeeping: when one last succeeded
@@ -425,6 +428,8 @@ impl BrewAdapter {
             env_var_fn: DEFAULT_ENV_VAR_FN,
             brew_env_fn: DEFAULT_BREW_ENV_FN,
             recorded_uninstall_fn: DEFAULT_RECORDED_UNINSTALL_FN,
+            #[cfg(test)]
+            inspect_cask_links: false,
             app_bundle_id_fn: DEFAULT_APP_BUNDLE_ID_FN,
             trust_list_fn: DEFAULT_TRUST_LIST_FN,
             kegs_fn: DEFAULT_KEGS_FN,
@@ -582,6 +587,26 @@ impl BrewAdapter {
     ) -> BrewAdapter {
         self.app_bundle_id_fn = app_bundle_id_fn;
         self
+    }
+
+    /// A recorded link that cannot be confirmed as this cask's. Checked
+    /// at preview and again immediately before running its uninstall.
+    fn cask_link_conflict(&self, prefix: &Path, req: &OpRequest) -> Option<PathBuf> {
+        #[cfg(test)]
+        if !self.inspect_cask_links {
+            return None;
+        }
+        if req.kind != OpKind::Uninstall || req.artifact_kind != ArtifactKind::Cask {
+            return None;
+        }
+        // Nothing recorded names a link -- a cask installed before Homebrew
+        // recorded its uninstall, one Banager cannot read -- so none is held
+        // against it, as before links were checked (`docs/what-we-run.md`).
+        let recorded = (self.recorded_uninstall_fn)(prefix, &req.name)?;
+        let home = (self.env_var_fn)("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_default();
+        cask_links::conflict(prefix, &req.name, &recorded, &home)
     }
 
     /// What an uninstall of `req` says under the tool
@@ -2383,6 +2408,12 @@ impl BrewAdapter {
                 })
             }
             OpKind::Uninstall => {
+                if let Some(path) = self.cask_link_conflict(&inst.prefix, req) {
+                    return Err(AdapterError::UninstallUnsafe {
+                        path: path.to_string_lossy().into_owned(),
+                        reason: crate::model::UninstallUnsafeReason::CaskLinkNotOwned,
+                    });
+                }
                 let flag = match req.artifact_kind {
                     ArtifactKind::Cask => "--cask",
                     _ => "--formula",
@@ -2578,6 +2609,13 @@ impl BrewAdapter {
                 if let Err(fault) = self.require_cleanup_as_previewed(plan, &prefix, env) {
                     return Ok(Outcome::BanagerFailed(fault));
                 }
+            }
+        }
+        if let PlanAction::Command { program, .. } = &plan.action {
+            if let Some(path) = self.cask_link_conflict(&Self::prefix_for(program), &plan.request) {
+                return Ok(Outcome::BanagerFailed(Fault::PathChanged {
+                    path: path.to_string_lossy().into_owned(),
+                }));
             }
         }
         if let Err(fault) = self.require_kegs_as_previewed(plan) {
@@ -5341,6 +5379,175 @@ mod plan_execute_tests {
                 plan.warnings
             );
         }
+    }
+
+    #[tokio::test]
+    async fn test_cask_uninstall_refuses_npm_link_and_rechecks_before_dispatch() {
+        use std::os::unix::fs::symlink;
+        let prefix = CaskroomPrefix::new(
+            "foreign-link",
+            &[(
+                "codex",
+                r#"{"uninstall_artifacts":[{"binary":["codex-aarch64-apple-darwin",{"target":"codex"}]}]}"#,
+            )],
+        );
+        let bin = prefix.0.join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        let own = prefix
+            .0
+            .join("Caskroom/codex/1.0/codex-aarch64-apple-darwin");
+        std::fs::create_dir_all(own.parent().unwrap()).unwrap();
+        std::fs::write(&own, "cask binary").unwrap();
+        let foreign = prefix.0.join("lib/node_modules/@openai/codex/bin/codex.js");
+        std::fs::create_dir_all(foreign.parent().unwrap()).unwrap();
+        std::fs::write(&foreign, "npm binary").unwrap();
+        let link = bin.join("codex");
+        symlink(&foreign, &link).unwrap();
+        let runner = Arc::new(MockRunner::new());
+        let mut adapter = BrewAdapter::new(runner.clone())
+            .with_recorded_uninstall_fn(cask_receipt::read_recorded);
+        adapter.inspect_cask_links = true;
+        let inst = ManagerInstance {
+            prefix: prefix.0.clone(),
+            exe_path: bin.join("brew"),
+            ..test_instance()
+        };
+        runner.respond(
+            vec![
+                inst.exe_path.to_str().unwrap(),
+                "uses",
+                "--installed",
+                "codex",
+            ],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: String::new(),
+                stderr: String::new(),
+                stderr_cause: Default::default(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let req = OpRequest {
+            kind: OpKind::Uninstall,
+            instance_id: inst.id.clone(),
+            artifact_kind: ArtifactKind::Cask,
+            name: "codex".into(),
+        };
+        assert!(matches!(
+            adapter.plan(&inst, &req).await,
+            Err(AdapterError::UninstallUnsafe { .. })
+        ));
+        std::fs::remove_file(&link).unwrap();
+        symlink(&own, &link).unwrap();
+        let plan = adapter.plan(&inst, &req).await.unwrap();
+        std::fs::remove_file(&link).unwrap();
+        symlink(&foreign, &link).unwrap();
+        let outcome = adapter
+            .execute(
+                &plan,
+                Arc::new(VecSink::new()),
+                901,
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap();
+        assert!(matches!(
+            outcome,
+            Outcome::BanagerFailed(Fault::PathChanged { .. })
+        ));
+        assert!(runner
+            .calls()
+            .iter()
+            .all(|argv| !argv.iter().any(|arg| arg == "uninstall")));
+        assert_eq!(std::fs::read_link(&link).unwrap(), foreign);
+
+        // A recorded command_wrapper also owns a command path. Replacing
+        // its link with npm's must not bypass the binary-link check.
+        let receipt: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../../adapters/fixtures/brew/7.0.6/receipts/libreoffice.json"
+        ))
+        .unwrap();
+        let wrapper_record = Recorded {
+            artifacts: receipt["uninstall_artifacts"].as_array().unwrap().clone(),
+            ..Default::default()
+        };
+        let wrapper = bin.join("soffice");
+        symlink(&foreign, &wrapper).unwrap();
+        assert_eq!(
+            cask_links::conflict(&prefix.0, "libreoffice", &wrapper_record, &prefix.0),
+            Some(wrapper)
+        );
+    }
+
+    /// A cask installed before Homebrew recorded its uninstall artifacts
+    /// (a receipt with no `uninstall_artifacts`, a caskfile with no
+    /// `artifacts`): nothing recorded names a link, so none is held
+    /// against the uninstall, which goes ahead with the general sentence
+    /// as it did before links were checked -- even with its command now
+    /// npm's, which only a record could tell.
+    #[tokio::test]
+    async fn test_a_cask_with_no_record_of_its_links_still_uninstalls() {
+        use std::os::unix::fs::symlink;
+        let prefix = CaskroomPrefix::new(
+            "no-record",
+            &[(
+                "google-chrome",
+                r#"{"homebrew_version":"3.6.0","source":{"tap":"homebrew/cask"}}"#,
+            )],
+        );
+        let npm = prefix
+            .0
+            .join("lib/node_modules/chrome/bin/google-chrome.js");
+        std::fs::create_dir_all(npm.parent().unwrap()).unwrap();
+        std::fs::write(&npm, "npm").unwrap();
+        std::fs::create_dir_all(prefix.0.join("bin")).unwrap();
+        symlink(&npm, prefix.0.join("bin/google-chrome")).unwrap();
+        let runner = Arc::new(MockRunner::new());
+        let mut adapter = BrewAdapter::new(runner.clone())
+            .with_recorded_uninstall_fn(cask_receipt::read_recorded);
+        adapter.inspect_cask_links = true;
+        let inst = ManagerInstance {
+            prefix: prefix.0.clone(),
+            ..test_instance()
+        };
+        assert_eq!(
+            cask_receipt::read_recorded(&prefix.0, "google-chrome"),
+            None
+        );
+        let plan = cask_uninstall(&runner, &adapter, &inst, "google-chrome").await;
+        assert!(plan.warnings.contains(&Warning::UninstallScope {
+            what: UninstallScope::HomebrewCask
+        }));
+        // The mock runner answers the uninstall: nothing real runs.
+        let uninstall = vec![
+            "/opt/homebrew/bin/brew",
+            "uninstall",
+            "--cask",
+            "google-chrome",
+        ];
+        runner.respond(
+            uninstall.clone(),
+            CommandOutput {
+                stderr_cause: Default::default(),
+                exit_code: Some(0),
+                stdout: String::new(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let outcome = adapter
+            .execute(
+                &plan,
+                Arc::new(VecSink::new()),
+                902,
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap();
+        assert!(!matches!(outcome, Outcome::BanagerFailed(_)), "{outcome:?}");
+        assert!(runner.calls().iter().any(|argv| *argv == uninstall));
     }
 
     /// The home folder the constructed receipts were built for
