@@ -172,8 +172,9 @@ front posts one notification saying how it went, such as "Updated 3 tools" — n
 finish in the window. One that finishes with the window closed while Banager is still in front is
 posted once you switch to another app (`docs/what-we-run.md`, "The notification when operations finish"). A row's … menu on the Updates page has *Remind Me in 30 Days* between *Skip This Version* and
 *Don't Remind Me About This Tool*: it hides every version of that tool, not only the one offered, from
-the list, its counts and the Dock badge for 30 days, after which the tool is listed again (not
-notified again); Settings lists it until then, with a button to undo it. The Other Programs page's header has *Scan Again* in its place, with how long ago
+the list, its counts, the Dock badge and the update notification for 30 days, after which the tool is
+listed again and counted like any other update — in the update notification too, when that is on;
+Settings lists it until then, with a button to undo it. The Other Programs page's header has *Scan Again* in its place, with how long ago
 that page last scanned: it re-runs only that page's scan of your bin folders, against the sources'
 last known state — it does not refresh the sources. Settings' header has neither.
 
@@ -601,7 +602,8 @@ Banager 开着时还会每天做一次同样的检查，查到的更新都不安
 会发一条通知说结果，比如“已更新3个工具”——你在窗口里看着做完的不会通知；窗口关着、Banager 仍在最前面时做完的，
 等你切到别的应用时再通知。
 “更新”页每行“…”菜单里，“跳过此版本”和“不再提醒此工具”之间有“30天内不提醒”：这个工具的所有版本（不只是当前这一版）
-30天内都不列出，也不计入数量和程序坞角标，到期后重新列出（不会再发通知）；在那之前“设置”里会列出它，可以撤销。
+30天内都不列出，也不计入数量、程序坞角标和更新通知；到期后重新列出，和其他更新一样计入（开着“有更新时通知我”时，
+通知里也会算上它）；在那之前“设置”里会列出它，可以撤销。
 “其他程序”页（边栏“来源”下的最后一行）的页头换成“重新扫描”和上次扫描是多久以前，
 它只属于那一页：只重新扫描那一页看的几个 bin 文件夹，按各来源上次已知的状态判断——并不刷新各来源。
 “设置”页的页头两者都没有。
