@@ -251,6 +251,7 @@ const OPERATION_PATTERNS: Array<[FailureCause, RegExp[]]> = [
       /\bconflicting formulae\b/i,
       /\bCould not symlink\b/i,
       /\balready exists\. You may want to remove it\b/i,
+      /\bTo force the link and overwrite all conflicting files\b/i,
       /\bEEXIST\b/,
       /\bbinary `[^`]+` already exists in destination\b/i,
       /\bExecutable already exists\b/i,

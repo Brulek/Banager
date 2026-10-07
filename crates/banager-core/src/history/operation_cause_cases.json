@@ -70,6 +70,26 @@
     "cause": "conflict"
   },
   {
+    "name": "brew formula: its link step stopped, after the warning brew upgrade writes first (node@22, 2026-10-07)",
+    "text": "Warning: Treating node@22 as a formula.\nError: The `brew link` step did not complete successfully",
+    "cause": "notLinked"
+  },
+  {
+    "name": "brew link: a file already where it links, Homebrew's suggestions last, as the last five lines keep them",
+    "text": "To force the link and overwrite all conflicting files:\n  brew link --overwrite node@22\n\nTo list all files that would be deleted:\n  brew link --overwrite node@22 --dry-run",
+    "cause": "conflict"
+  },
+  {
+    "name": "brew link: the whole refusal, the file in the way first",
+    "text": "Error: Could not symlink bin/npm\nTarget /opt/homebrew/bin/npm\nalready exists. You may want to remove it:\n  rm '/opt/homebrew/bin/npm'\n\nTo force the link and overwrite all conflicting files:\n  brew link --overwrite node@22\n\nTo list all files that would be deleted:\n  brew link --overwrite node@22 --dry-run",
+    "cause": "conflict"
+  },
+  {
+    "name": "brew link: a folder it may not write is the permission",
+    "text": "Error: Could not symlink bin/node\n/opt/homebrew/bin is not writable.",
+    "cause": "permission"
+  },
+  {
     "name": "brew: no formula of that name any more",
     "text": "Error: No available formula with the name \"foo\". Did you mean foo2?",
     "cause": "notFound"

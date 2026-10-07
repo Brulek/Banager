@@ -230,6 +230,7 @@ fn patterns() -> &'static Patterns {
                     r"(?i)\bconflicting formulae\b",
                     r"(?i)\bCould not symlink\b",
                     r"(?i)\balready exists\. You may want to remove it\b",
+                    r"(?i)\bTo force the link and overwrite all conflicting files\b",
                     r"\bEEXIST\b",
                     r"(?i)\bbinary `[^`]+` already exists in destination\b",
                     r"(?i)\bExecutable already exists\b",
