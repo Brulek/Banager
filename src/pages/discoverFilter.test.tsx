@@ -546,6 +546,44 @@ describe("the details and the focus when a choice hides the selected tool", () =
     );
   });
 
+  // r24 W2's skeptic: a notice's own button that has done its work hands
+  // the focus to the page's title once its line goes -- but not 查看,
+  // whose line goes with the choice it makes, and whose rule above puts
+  // the focus on the list's first row: not on the title first.
+  it("puts the focus straight on the list's first row once 查看 has gone, the page's title never taking it", async () => {
+    artifacts = fullWorld().filter((a) => a.facts.homebrew?.deprecated == null && a.facts.homebrew?.disabled == null);
+    renderWithProviders(
+      <WithToolbarSlot>
+        <h1 tabIndex={-1} data-focus-fallback="">
+          Installed
+        </h1>
+        <InstalledPage />
+      </WithToolbarSlot>,
+    );
+    await screen.findByText("wget", { selector: "[data-tool-row] p" });
+    const title = screen.getByRole("heading", { name: "Installed" });
+    const titleFocused = vi.fn();
+    title.addEventListener("focus", titleFocused);
+    const view = screen.getByRole("button", { name: "Show Tools" });
+    act(() => view.focus());
+    // Pressed as in the app, not in `act`: React draws, and runs what each
+    // draw leaves, in the order it does there, so the page's own rule and
+    // the notice's button's are in the race they are in there.
+    const actEnvironment = (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
+    try {
+      view.click();
+      await waitFor(() => expect(rowNames()).toEqual(["Grok Build", "httpie"]));
+      await waitFor(() =>
+        expect(document.activeElement?.getAttribute("aria-label")).toBe("Grok Build, Not Found in Terminal"),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    } finally {
+      (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = actEnvironment;
+    }
+    expect(titleFocused).not.toHaveBeenCalled();
+  });
+
   it("puts it on the page's title when the focus was lost and the choice shows nothing", async () => {
     artifacts = [artifact(wget, [{ name: "wget", state: "Runs" }])];
     renderWithProviders(

@@ -4627,6 +4627,43 @@ describe("UpdatesPage", () => {
     await findByText("Everything is up to date");
   });
 
+  // r24 W2's skeptic: the list's first line, a source's notice, goes once
+  // its own button has fixed what it said -- Open Ollama once Ollama
+  // answers -- and with it the button the focus was on: to the window's
+  // body, from where the next Tab starts over at the sidebar.
+  it("puts the focus on the page's title once a notice's Open Ollama has done its work, not on the window's body", async () => {
+    instances = [...snapshot.instances, stoppedOllama];
+    const { findByRole, getByRole, queryClient } = renderWithProviders(
+      <>
+        <PageHeader title="Updates" actions={null} />
+        <UpdatesToolbar>
+          <UpdatesPage />
+        </UpdatesToolbar>
+      </>,
+    );
+    const open = await findByRole("button", { name: "Open Ollama" });
+    expect(open.closest("[data-list-slot]")).not.toBeNull();
+    act(() => open.focus());
+    fireEvent.click(open);
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("open_ollama_app"));
+    expect(document.activeElement).toBe(open);
+
+    // The check after it: Ollama answers, and its line goes.
+    act(() => {
+      queryClient.setQueryData(queryKeys.snapshot, {
+        ...snapshot,
+        generation: snapshot.generation + 1,
+        updates,
+        artifacts,
+        errors,
+        instances: [...snapshot.instances, { ...stoppedOllama, status: { unavailable: null, notes: [] } }],
+      });
+    });
+
+    await waitFor(() => expect(open.isConnected).toBe(false));
+    await waitFor(() => expect(document.activeElement).toBe(getByRole("heading", { name: "Updates" })));
+  });
+
   it("does not say everything is up to date when a source never answered", async () => {
     // The lie this page used to tell. No candidates is exactly what an
     // unreachable source produces, and the page read that silence as good

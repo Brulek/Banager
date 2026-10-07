@@ -235,12 +235,15 @@ export function SourceNotices({ notices, layout = "line", fold, grid = "avatar",
       case "showList":
         // The count over the list is search aside, so the search goes too,
         // as `openInstalled` lets it go: what 查看 lists is what it said.
+        // Its line goes with the choice, and the page puts the focus on
+        // the list's first row (`placesFocus`).
         return {
           label,
           onClick: () => {
             setQuery("");
             setInstalledShow(action.show);
           },
+          placesFocus: true,
         };
     }
   };

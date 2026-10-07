@@ -2,6 +2,7 @@ import { type ReactNode, useId } from "react";
 import { InfoIcon, WarningFilledIcon } from "./icons";
 import { InfoDetail } from "./InfoDetail";
 import { BUTTON, LINK } from "./ui/controls";
+import { refocusWhenGone } from "./ui/focus";
 
 /**
  * The look of a "Details" button beside a sentence -- the Overview's
@@ -44,6 +45,22 @@ export interface SourceNoticeAction {
   onClick: () => void;
   /** Off, as Check again is while a check runs, whoever started it. */
   disabled?: boolean;
+  /**
+   * Whether the page puts the focus somewhere once the notice has gone
+   * with what this button chose: 查看, whose line goes as the list shows
+   * what it chose, and whose page puts the focus on the list's first row
+   * (`InstalledPage`). Every other notice's button that goes with its
+   * notice, the focus on it -- Open Ollama once Ollama answers, Check
+   * Again once the source does, Fix… once the link has put the program
+   * back -- hands the focus to the page's title (`refocusWhenGone`), not
+   * to the window's body.
+   */
+  placesFocus?: boolean;
+}
+
+/** The ref a notice's button has: none where the page places the focus itself (`placesFocus`). */
+function actionRef(action: SourceNoticeAction) {
+  return action.placesFocus === true ? undefined : refocusWhenGone;
 }
 
 /** The look of a notice's own button, in a line or whole: a small grey one, its words dimmed while it is off. */
@@ -102,6 +119,7 @@ export function SourceNotice({ variant, title, description, details, action, err
         {details}
         {action ? (
           <button
+            ref={actionRef(action)}
             type="button"
             onClick={action.onClick}
             disabled={action.disabled}
@@ -177,12 +195,15 @@ export function SourceNoticeLine({
         </span>
         {description ? (
           // Its 20 box holds the 12 ⓘ 4 from the title, as a status word's.
-          <span className="flex shrink-0">
+          // The focus on its ⓘ as the notice goes goes to the page's title,
+          // as from the notice's button (`refocusWhenGone`).
+          <span ref={refocusWhenGone} className="flex shrink-0">
             <InfoDetail label={detailsAriaLabel}>{description}{details}</InfoDetail>
           </span>
         ) : null}
         {action ? (
           <button
+            ref={actionRef(action)}
             type="button"
             onClick={action.onClick}
             disabled={action.disabled}

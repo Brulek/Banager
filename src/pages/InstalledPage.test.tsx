@@ -8,6 +8,7 @@ import { InstalledPage } from "./InstalledPage";
 import { BUTTON } from "../components/ui/controls";
 import { UpdatesPage } from "./UpdatesPage";
 import { SnapshotStatus } from "../components/SnapshotStatus";
+import { PageHeader } from "../components/PageHeader";
 import { useUiStore } from "../store/ui";
 import { queryKeys } from "../lib/queries";
 import i18n from "../i18n";
@@ -1913,6 +1914,39 @@ describe("InstalledPage", () => {
   // InstalledPage on its own would bypass the gate the real app always goes
   // through, and this snapshot -- a stopped Ollama and nothing installed
   // anywhere -- is precisely the one that gate used to swallow.
+  // r24 W2's skeptic: the list's first line, a source's notice, goes once
+  // its own button has fixed what it said -- Check Again once the source
+  // answers -- and with it the button the focus was on: to the window's
+  // body, from where the next Tab starts over at the sidebar.
+  it("puts the focus on the page's title once a notice's Check Again has done its work, not on the window's body", async () => {
+    const silent = { ...ollama, status: { unavailable: "NotResponding" as const, notes: [] } };
+    served = { ...snapshot, instances: [brew, silent] };
+    const { getByRole, queryClient } = renderWithProviders(
+      <WithToolbarSlot>
+        <PageHeader title="Installed" actions={null} />
+        <InstalledPage />
+      </WithToolbarSlot>,
+    );
+    await findRow("jq");
+    const line = (await screen.findByText("Ollama isn't responding")).closest("[data-list-slot]") as HTMLElement;
+    const again = within(line).getByRole("button", { name: "Check Again" });
+    act(() => again.focus());
+    fireEvent.click(again);
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("refresh"));
+
+    // The check: Ollama answers, and its line goes.
+    act(() => {
+      queryClient.setQueryData(queryKeys.snapshot, {
+        ...served,
+        generation: served.generation + 1,
+        instances: [brew, ollama],
+      });
+    });
+
+    await waitFor(() => expect(again.isConnected).toBe(false));
+    await waitFor(() => expect(document.activeElement).toBe(getByRole("heading", { name: "Installed" })));
+  });
+
   it("shows a not-running line with an Open Ollama button when the daemon is not running", async () => {
     served = {
       ...snapshot,
