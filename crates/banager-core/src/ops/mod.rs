@@ -1,8 +1,9 @@
 use crate::adapters::{Adapter, AdapterError};
 use crate::events::{EventSink, OpId, OperationEvent};
 use crate::model::{
-    AdapterId, ArtifactKey, ArtifactKind, Attention, CancelPolicy, Fault, InstanceId,
-    ManagerInstance, OpKind, OpStatus, Outcome, Plan, PlanAction, Reconciled, ResourceLock,
+    AdapterId, AlreadyUpdated, ArtifactKey, ArtifactKind, Attention, CancelPolicy, Fault,
+    InstanceId, ManagerInstance, OpKind, OpStatus, Outcome, Plan, PlanAction, Reconciled,
+    ResourceLock,
 };
 use crate::runner::RunnerError;
 use serde::{Deserialize, Serialize};
@@ -114,6 +115,37 @@ fn version_change(before: Option<&Reconciled>, after: &Reconciled) -> VersionCha
     }
 }
 
+/// Whether `after`, an installed version, is at least `target`, the one the
+/// confirmed plan aimed for (`OperationManager::submit_toward`): the same
+/// string, or -- where both are made only of numbers and the separators
+/// versions use (`1.6.59`, Homebrew's `1.11.1_6`, a cask's `5.0,123`) --
+/// a later one by the numbers, run by run (`1.6.60`, `1.6.59_1`). Anything
+/// with a letter in it is compared only for being the same: "1.7.0-rc1"
+/// sorts after "1.7.0" by its characters and comes before it as a release,
+/// and an order that can be wrong would call an update that did not happen
+/// done.
+fn reached_target(after: &str, target: &str) -> bool {
+    if after == target {
+        return true;
+    }
+    let numeric = |v: &str| {
+        !v.is_empty()
+            && v.chars().next().is_some_and(|c| c.is_ascii_digit())
+            && v.chars()
+                .all(|c| c.is_ascii_digit() || matches!(c, '.' | '_' | ',' | '-'))
+    };
+    if !numeric(after) || !numeric(target) {
+        return false;
+    }
+    let runs = |v: &str| -> Vec<u128> {
+        v.split(|c: char| !c.is_ascii_digit())
+            .filter(|run| !run.is_empty())
+            .map(|run| run.parse::<u128>().unwrap_or(u128::MAX))
+            .collect()
+    };
+    runs(after) > runs(target)
+}
+
 /// Called once, as an operation finishes, with what it ended as: the
 /// history's way in (`Session::submit`, `history::HistoryStore::record`).
 /// Called on the operation's own task, with no lock of the manager's held,
@@ -203,6 +235,15 @@ struct OpInternal {
     /// command and after it (`run_operation`), for `on_finish`.
     before_version: Option<String>,
     after_version: Option<String>,
+    /// The version the confirmed plan of an update aimed for
+    /// (`submit_toward`), or `None` where none was known.
+    target_version: Option<String>,
+    /// How many updates of this op's source had ended (`upgrades_ended`)
+    /// when it was submitted.
+    upgrades_seen: u64,
+    /// Set by `run_operation` for an update already at its target when its
+    /// turn came (`OpSummary::already_updated`).
+    already_updated: Option<AlreadyUpdated>,
 }
 
 pub struct OperationManager {
@@ -247,6 +288,15 @@ pub struct OperationManager {
     evicted: Mutex<EvictedLedger>,
     /// Caps `evicted`: `MAX_EVICTED`, smaller in this module's tests.
     max_evicted: usize,
+    /// How many updates that reached their command have ended, by source
+    /// instance, counted as each one's locks are released (`finish`), so
+    /// that the next operation on that source, which waits for them, reads
+    /// it. An update whose package is already at its target when its turn
+    /// comes (`run_operation`) was brought there by an earlier one of the
+    /// same source when this count moved after it was submitted
+    /// (`AlreadyUpdated::ByEarlierUpdate`). Locked after `records` where
+    /// both are held, and never the other way round.
+    upgrades_ended: Mutex<HashMap<InstanceId, u64>>,
 }
 
 /// A read-only view of one operation for a UI, independent of the
@@ -275,6 +325,13 @@ pub struct OpSummary {
     /// offer no Cancel button for a Running `NoCancel` op
     /// (`OperationBar.tsx`), the one op `cancel` below refuses by policy.
     pub cancel_policy: CancelPolicy,
+    /// For an update that `Succeeded` though its own command changed
+    /// nothing, because the version was already at its target when its
+    /// turn came: how it got there, as far as Banager saw
+    /// (`AlreadyUpdated`). `None` for every other operation. Always sent;
+    /// `serde(default)` so a summary from before it existed still reads.
+    #[serde(default)]
+    pub already_updated: Option<AlreadyUpdated>,
 }
 
 /// How a finished operation ended, as the completion notification counts
@@ -428,6 +485,7 @@ impl OperationManager {
             max_records: DEFAULT_MAX_RECORDS,
             evicted: Mutex::new(EvictedLedger::default()),
             max_evicted: MAX_EVICTED,
+            upgrades_ended: Mutex::new(HashMap::new()),
         }
     }
 
@@ -524,6 +582,7 @@ impl OperationManager {
                     argv_preview,
                     env_preview,
                     cancel_policy: r.plan.cancel_policy,
+                    already_updated: r.already_updated,
                 }
             })
             .collect();
@@ -603,9 +662,35 @@ impl OperationManager {
     /// `submit`, with a callback for when the operation finishes
     /// (`OnFinish`).
     pub fn submit_with(self: &Arc<Self>, plan: Plan, on_finish: Option<OnFinish>) -> OpId {
+        self.submit_toward(plan, None, on_finish)
+    }
+
+    /// `submit_with`, for an update whose confirmed plan aimed at
+    /// `target_version`: the version the check offered and the
+    /// confirmation showed (`Session::submit` passes the candidate's
+    /// `target`). An update whose package is already at least there when
+    /// its turn comes, and still is after its command, is done
+    /// (`run_operation`, `AlreadyUpdated`); with `None` it is judged as it
+    /// always was.
+    pub fn submit_toward(
+        self: &Arc<Self>,
+        plan: Plan,
+        target_version: Option<String>,
+        on_finish: Option<OnFinish>,
+    ) -> OpId {
         let op_id = self.reserve(&plan);
-        self.record_and_run(op_id, plan, on_finish);
+        self.record_and_run(op_id, plan, target_version, on_finish);
         op_id
+    }
+
+    /// How many updates of `instance` have ended (`upgrades_ended`).
+    fn upgrades_ended_on(&self, instance: &str) -> u64 {
+        self.upgrades_ended
+            .lock()
+            .unwrap()
+            .get(instance)
+            .copied()
+            .unwrap_or(0)
     }
 
     /// Takes the next id, and the op joins the queue, in one step, so ids
@@ -621,8 +706,15 @@ impl OperationManager {
 
     /// The second half of `submit_with`: the record of the op `reserve`
     /// queued, and the task that runs it.
-    fn record_and_run(self: &Arc<Self>, op_id: OpId, plan: Plan, on_finish: Option<OnFinish>) {
+    fn record_and_run(
+        self: &Arc<Self>,
+        op_id: OpId,
+        plan: Plan,
+        target_version: Option<String>,
+        on_finish: Option<OnFinish>,
+    ) {
         let cancel = CancellationToken::new();
+        let upgrades_seen = self.upgrades_ended_on(&plan.request.instance_id);
         let record = OpInternal {
             id: op_id,
             plan: plan.clone(),
@@ -635,6 +727,9 @@ impl OperationManager {
             finishing: false,
             before_version: None,
             after_version: None,
+            target_version: target_version.filter(|v| !v.is_empty()),
+            upgrades_seen,
+            already_updated: None,
         };
         {
             let mut records = self.records.lock().unwrap();
@@ -1015,13 +1110,33 @@ impl OperationManager {
                     // - Nothing to compare (`Unknown`): presence is all
                     //   there is, and it is taken as success, as it was
                     //   before the reading existed.
+                    //
+                    // One that did not move but reads at least the version
+                    // its confirmed plan aimed for (`submit_toward`) was
+                    // already there before its command: an earlier update
+                    // of the batch upgraded it as a dependency, say. That
+                    // is an update done, not one skipped -- `Succeeded`,
+                    // with `already_updated` saying how. Below the target,
+                    // or with no target, it is `UnchangedAfterUpgrade`.
                     OpKind::Upgrade => {
                         if !r.present {
                             Outcome::NeedsAttention(Attention::GoneAfterUpgrade)
                         } else {
                             match version_change(before.as_ref(), &r) {
                                 VersionChange::Unchanged => {
-                                    Outcome::NeedsAttention(Attention::UnchangedAfterUpgrade)
+                                    match self.already_at_target(op_id, &plan, &r) {
+                                        Some(how) => {
+                                            if let Some(rec) =
+                                                self.records.lock().unwrap().get_mut(&op_id)
+                                            {
+                                                rec.already_updated = Some(how);
+                                            }
+                                            Outcome::Succeeded
+                                        }
+                                        None => Outcome::NeedsAttention(
+                                            Attention::UnchangedAfterUpgrade,
+                                        ),
+                                    }
                                 }
                                 VersionChange::Changed | VersionChange::Unknown => {
                                     Outcome::Succeeded
@@ -1160,6 +1275,33 @@ impl OperationManager {
     /// `LockRelease` (shared with its `LockGuard`), so a panic-triggered
     /// release racing with this one can never double-release — whichever
     /// runs first wins and the other is a no-op.
+    /// For an update whose two readings are equal (`after`): how it was
+    /// already at its confirmed target (`submit_toward`), or `None` where
+    /// there is no target or the reading is below it. By an earlier update
+    /// when one of the same source has ended since this one was submitted
+    /// (`upgrades_ended`), which on a source's lock means before its turn.
+    fn already_at_target(
+        &self,
+        op_id: OpId,
+        plan: &Plan,
+        after: &Reconciled,
+    ) -> Option<AlreadyUpdated> {
+        let (target, seen) = {
+            let records = self.records.lock().unwrap();
+            let r = records.get(&op_id)?;
+            (r.target_version.clone()?, r.upgrades_seen)
+        };
+        let version = after.version.as_deref().filter(|v| !v.is_empty())?;
+        if !reached_target(version, &target) {
+            return None;
+        }
+        if self.upgrades_ended_on(&plan.request.instance_id) > seen {
+            Some(AlreadyUpdated::ByEarlierUpdate)
+        } else {
+            Some(AlreadyUpdated::BeforeItsTurn)
+        }
+    }
+
     fn finish(&self, op_id: OpId, outcome: Outcome, release_locks: bool) {
         // An op that never took its locks is still in the queue; left there,
         // every later op needing one of its locks would wait for it for
@@ -1174,6 +1316,18 @@ impl OperationManager {
             let mut records = self.records.lock().unwrap();
             if let Some(r) = records.get_mut(&op_id) {
                 r.finishing = true;
+                // Counted before the locks are let go: the next operation
+                // on this source waits for them, and reads the count to
+                // tell whether an update ended before its turn
+                // (`already_at_target`).
+                if r.plan.request.kind == OpKind::Upgrade && r.started {
+                    *self
+                        .upgrades_ended
+                        .lock()
+                        .unwrap()
+                        .entry(r.plan.request.instance_id.clone())
+                        .or_insert(0) += 1;
+                }
                 if release_locks {
                     if let Some(lr) = &r.lock_release {
                         lr.release_once();
@@ -1304,6 +1458,70 @@ impl OperationManager {
             held: self.held.clone(),
             lock,
         }
+    }
+}
+
+#[cfg(test)]
+mod already_updated_tests {
+    use super::*;
+
+    #[test]
+    fn test_reached_target_orders_only_versions_made_of_numbers() {
+        assert!(reached_target("1.6.59", "1.6.59"));
+        assert!(reached_target("1.6.60", "1.6.59"));
+        assert!(
+            reached_target("1.10.0", "1.9.9"),
+            "by value, not by characters"
+        );
+        assert!(
+            reached_target("1.11.1_6", "1.11.1_5"),
+            "a Homebrew revision"
+        );
+        assert!(reached_target("1.6.59_1", "1.6.59"));
+        assert!(
+            reached_target("5.0,124", "5.0,123"),
+            "a cask's build after a comma"
+        );
+        assert!(reached_target("2026-08-14", "2026-08-13"));
+        assert!(!reached_target("1.6.58", "1.6.59"));
+        assert!(!reached_target("1.9.9", "1.10.0"));
+        // A letter anywhere: only the same string is at least it.
+        assert!(!reached_target("1.7.0-rc1", "1.7.0"));
+        assert!(!reached_target("1.7.1-beta", "1.7.0"));
+        assert!(reached_target("latest", "latest"));
+        assert!(!reached_target("sha256:bbbb", "sha256:aaaa"));
+        assert!(!reached_target("", "1.0"));
+    }
+
+    #[test]
+    fn test_op_summary_wire_shape_carries_already_updated_and_reads_without_it() {
+        // `OpSummary` in src/lib/types.ts; src/lib/types.test.ts round-trips
+        // the same shape.
+        let summary = OpSummary {
+            id: 10,
+            kind: OpKind::Upgrade,
+            instance_id: "brew:/opt/homebrew".into(),
+            artifact_kind: ArtifactKind::Formula,
+            name: "libpng".into(),
+            status: OpStatus::Done,
+            outcome: Some(Outcome::Succeeded),
+            argv_preview: vec![],
+            env_preview: vec![],
+            cancel_policy: CancelPolicy::KillThenReconcile,
+            already_updated: Some(AlreadyUpdated::ByEarlierUpdate),
+        };
+        let json = serde_json::to_string(&summary).unwrap();
+        assert_eq!(
+            json,
+            r#"{"id":10,"kind":"Upgrade","instance_id":"brew:/opt/homebrew","artifact_kind":"Formula","name":"libpng","status":"Done","outcome":"Succeeded","argv_preview":[],"env_preview":[],"cancel_policy":"KillThenReconcile","already_updated":"ByEarlierUpdate"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&AlreadyUpdated::BeforeItsTurn).unwrap(),
+            r#""BeforeItsTurn""#
+        );
+        let older = json.replace(r#","already_updated":"ByEarlierUpdate""#, "");
+        let back: OpSummary = serde_json::from_str(&older).unwrap();
+        assert_eq!(back.already_updated, None);
     }
 }
 
@@ -1491,7 +1709,7 @@ mod evicted_tests {
         assert_eq!(reported.completed(first, &known), None);
         assert_eq!(reported.completed(last, &known), None);
 
-        manager.record_and_run(first, held_back, None);
+        manager.record_and_run(first, held_back, None, None);
         assert_eq!(manager.wait(first).await, Some(Outcome::Succeeded));
         let told = reported
             .completed(first, &manager.completions_after(reported.through()))

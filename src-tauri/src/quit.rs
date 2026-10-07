@@ -629,6 +629,7 @@ mod tests {
             argv_preview: Vec::new(),
             env_preview: Vec::new(),
             cancel_policy,
+            already_updated: None,
         }
     }
 

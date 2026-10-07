@@ -774,6 +774,7 @@ mod tests {
             argv_preview: vec![],
             env_preview: vec![],
             cancel_policy: banager_core::model::CancelPolicy::KillThenReconcile,
+            already_updated: None,
         }
     }
 

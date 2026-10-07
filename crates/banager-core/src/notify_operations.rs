@@ -346,6 +346,7 @@ mod tests {
             argv_preview: vec![],
             env_preview: vec![],
             cancel_policy: CancelPolicy::KillThenReconcile,
+            already_updated: None,
         }
     }
 

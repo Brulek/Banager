@@ -1887,6 +1887,26 @@ pub enum Attention {
     BackAfterUninstall,
 }
 
+/// How an update that `Succeeded` came to be done when its own command
+/// changed nothing: the version read just before the command was already
+/// at least the one its confirmed plan targeted (`run_operation` in
+/// ops/mod.rs, `OperationManager::submit_toward`), and so was the one read
+/// after. Homebrew upgrades a formula's outdated dependencies before the
+/// formula, so in an Update all an earlier update often does a later one's
+/// work. `OpSummary::already_updated` and `HistoryRecord::already_updated`
+/// carry it; the window words it (`ALREADY_UPDATED_KEYS` in
+/// src/lib/operations.ts).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AlreadyUpdated {
+    /// Another update of the same source ended after this one was
+    /// confirmed and before its turn: 「已由前面的更新一并完成」.
+    ByEarlierUpdate,
+    /// No update of the same source ended in between, so Banager did not
+    /// see what brought it there -- a command in Terminal, say: it says
+    /// only that it was already there when its turn came.
+    BeforeItsTurn,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OpStatus {
     Queued,
