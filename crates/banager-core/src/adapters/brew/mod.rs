@@ -1,5 +1,7 @@
 pub(crate) mod brew_env;
 pub(crate) mod cask_receipt;
+#[cfg(test)]
+mod keg_link_tests;
 pub(crate) mod kegs;
 pub(crate) mod links;
 pub mod parse;
@@ -23,8 +25,9 @@ use async_trait::async_trait;
 use brew_env::HomebrewSwitches;
 use cask_receipt::{Classified, Recorded};
 use kegs::Kegs;
+use links::KegLinks;
 use parse::{parse_info_installed, parse_outdated, parse_search, parse_uses, parse_version};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -175,6 +178,24 @@ pub struct BrewAdapter {
     /// installs a reader (`with_kegs_fn`), so that no test answers
     /// differently for the formulae installed on the Mac running it.
     kegs_fn: fn(&Path, &str) -> Option<Kegs>,
+    /// How to read whether a keg-only formula is linked into a prefix, and
+    /// what holds its commands' places there, for its update's preview and
+    /// around the update itself (`links::read_links`, y1-keg): the real
+    /// prefix outside this crate's unit tests; inside them nothing is read
+    /// unless a test installs a reader (`with_links_fn`), so that no test
+    /// answers differently for the links on the Mac running it.
+    links_fn: fn(&Path, &str) -> Option<KegLinks>,
+    /// The keg-only formulae of each instance that `brew link --force` may
+    /// link -- by name in the prefix (a tap's `user/tap/name` is `name`) --
+    /// as its last inventory read them (`brew info --installed --json=v2`'s
+    /// `keg_only`, `CommandInputs`): an update's preview has only the
+    /// request, and only that answer is Homebrew's own. One whose
+    /// `keg_only_reason` is macOS's (`provided_by_macos`,
+    /// `shadowed_by_macos`) is left out: `brew link` refuses to link it at
+    /// Homebrew's default prefix (`cmd/link.rb`). Empty until an inventory
+    /// has run, which every refresh does before a row can be updated; an
+    /// update of a formula not here is planned as before.
+    keg_only: Mutex<HashMap<InstanceId, HashSet<String>>>,
 }
 
 /// `BrewAdapter::update_lock_fn` as `BrewAdapter::new` sets it: the real
@@ -234,6 +255,13 @@ const DEFAULT_TRUST_LIST_FN: fn(&Path) -> Option<TrustList> = |_| Some(TrustList
 const DEFAULT_KEGS_FN: fn(&Path, &str) -> Option<Kegs> = kegs::read_kegs;
 #[cfg(test)]
 const DEFAULT_KEGS_FN: fn(&Path, &str) -> Option<Kegs> = |_, _| None;
+
+/// `BrewAdapter::links_fn` as `BrewAdapter::new` sets it: the real prefix
+/// in every build but this crate's unit tests, where nothing is read.
+#[cfg(not(test))]
+const DEFAULT_LINKS_FN: fn(&Path, &str) -> Option<KegLinks> = links::read_links;
+#[cfg(test)]
+const DEFAULT_LINKS_FN: fn(&Path, &str) -> Option<KegLinks> = |_, _| None;
 
 /// `BrewAdapter::wall_clock_fn` as `BrewAdapter::new` sets it: the real
 /// clock in every build but this crate's unit tests, where it stands still
@@ -318,6 +346,12 @@ impl BrewAdapter {
     /// for the trust document's test, which finds it in its table.
     pub const CLEANUP_TIMEOUT_SECS: u64 = 10 * 60;
 
+    /// How long the `brew link --force <name>` after an upgrade may run
+    /// (y1-keg): it makes one formula's links in the prefix, which takes
+    /// seconds even for node's thousands of files. Public for the trust
+    /// document's test, which finds it in its table.
+    pub const RELINK_TIMEOUT_SECS: u64 = 5 * 60;
+
     pub const CANDIDATE_PATHS: [&'static str; 3] = [
         "/opt/homebrew/bin/brew",
         "/usr/local/bin/brew",
@@ -347,6 +381,8 @@ impl BrewAdapter {
             app_bundle_id_fn: DEFAULT_APP_BUNDLE_ID_FN,
             trust_list_fn: DEFAULT_TRUST_LIST_FN,
             kegs_fn: DEFAULT_KEGS_FN,
+            links_fn: DEFAULT_LINKS_FN,
+            keg_only: Mutex::new(HashMap::new()),
         }
     }
 
@@ -468,6 +504,25 @@ impl BrewAdapter {
     #[cfg(test)]
     fn with_kegs_fn(mut self, kegs_fn: fn(&Path, &str) -> Option<Kegs>) -> BrewAdapter {
         self.kegs_fn = kegs_fn;
+        self
+    }
+
+    /// Test-only hook to put a prefix's links on the disk the update's
+    /// preview and the update read (see `links_fn`).
+    #[cfg(test)]
+    fn with_links_fn(mut self, links_fn: fn(&Path, &str) -> Option<KegLinks>) -> BrewAdapter {
+        self.links_fn = links_fn;
+        self
+    }
+
+    /// Test-only hook for what an inventory of `instance_id` would have
+    /// said is keg-only and linkable (see `keg_only`).
+    #[cfg(test)]
+    fn with_keg_only(self, instance_id: &str, names: &[&str]) -> BrewAdapter {
+        self.keg_only.lock().expect("keg-only lock").insert(
+            instance_id.to_string(),
+            names.iter().map(|name| name.to_string()).collect(),
+        );
         self
     }
 
@@ -775,6 +830,80 @@ impl BrewAdapter {
         }
         let kegs = (self.kegs_fn)(prefix, name)?;
         (!kegs.pinned).then_some(kegs)
+    }
+
+    /// Whether the last inventory of `instance_id` listed the formula
+    /// `name` as keg-only and linkable (`keg_only`).
+    fn is_keg_only(&self, instance_id: &str, name: &str) -> bool {
+        let short = name.rsplit('/').next().unwrap_or(name);
+        self.keg_only
+            .lock()
+            .map(|known| {
+                known
+                    .get(instance_id)
+                    .is_some_and(|names| names.contains(short))
+            })
+            .unwrap_or(false)
+    }
+
+    /// Keeps which of `artifacts`, an inventory of `instance_id`, are
+    /// keg-only formulae `brew link` may link (`keg_only`).
+    fn remember_keg_only(&self, instance_id: &str, artifacts: &[InstalledArtifact]) {
+        let names: HashSet<String> = artifacts
+            .iter()
+            .filter(|artifact| {
+                artifact.key.kind == ArtifactKind::Formula
+                    && artifact.facts.command_inputs.keg_only
+                    && !artifact.facts.command_inputs.keg_only_by_macos
+            })
+            .map(|artifact| {
+                let name = &artifact.key.name;
+                name.rsplit('/').next().unwrap_or(name).to_string()
+            })
+            .collect();
+        if let Ok(mut known) = self.keg_only.lock() {
+            known.insert(instance_id.to_string(), names);
+        }
+    }
+
+    /// How the keg-only formula `name` under `prefix` stands in it, when
+    /// it is linked there (`brew::links`): `None` for a formula the last
+    /// inventory did not list as keg-only and linkable, one nobody linked,
+    /// or one whose links cannot be read -- whose update is planned as
+    /// before.
+    fn linked_keg_only(&self, instance_id: &str, prefix: &Path, name: &str) -> Option<KegLinks> {
+        if !self.is_keg_only(instance_id, name) {
+            return None;
+        }
+        (self.links_fn)(prefix, name).filter(KegLinks::linked)
+    }
+
+    /// The commands of the keg-only formula `req` names that its update
+    /// unlinks and Banager links back after it (`brew link --force`,
+    /// `Warning::HomebrewRelinksAfterUpdate`, y1-keg): those whose places
+    /// in the prefix lead into it now, by name. `Ok(None)` for anything but
+    /// such a formula's update (`linked_keg_only`). Refused as
+    /// `UpdateBlocked::LinkTaken` when another program holds one of its
+    /// commands' places: Homebrew's update would unlink it and nothing
+    /// would get past that file to link it back -- neither Homebrew's own
+    /// link nor `brew link --force` (`Keg::ConflictError`).
+    fn relink_after_upgrade(
+        &self,
+        inst: &ManagerInstance,
+        req: &OpRequest,
+    ) -> Result<Option<Vec<String>>, AdapterError> {
+        if req.kind != OpKind::Upgrade || req.artifact_kind != ArtifactKind::Formula {
+            return Ok(None);
+        }
+        let Some(links) = self.linked_keg_only(&inst.id, &inst.prefix, &req.name) else {
+            return Ok(None);
+        };
+        if !links.taken_paths().is_empty() {
+            return Err(AdapterError::UpdateBlocked {
+                reason: UpdateBlocked::LinkTaken,
+            });
+        }
+        Ok(Some(links.linked_names()))
     }
 
     /// What Homebrew makes of a plan's environment `env` on `inst` once
@@ -1518,7 +1647,9 @@ impl BrewAdapter {
                 stderr: output.stderr,
             });
         }
-        parse_info_installed(&output.stdout, &inst.id)
+        let artifacts = parse_info_installed(&output.stdout, &inst.id)?;
+        self.remember_keg_only(&inst.id, &artifacts);
+        Ok(artifacts)
     }
 
     pub async fn check_updates(
@@ -1599,6 +1730,22 @@ impl BrewAdapter {
                 if is_disabled(&installed, &candidate.key) {
                     candidate.blocked = Some(UpdateBlocked::Disabled);
                 }
+            }
+        }
+        // A keg-only formula linked into the prefix whose command's place
+        // another program holds: its update would take its commands out of
+        // Terminal for good (`relink_after_upgrade`, y1-keg). Read from the
+        // keg-only names the inventory above kept; a pinned or disabled
+        // one keeps that reason, which Homebrew refuses before it unlinks
+        // anything.
+        for candidate in &mut candidates {
+            if candidate.blocked.is_none()
+                && candidate.key.kind == ArtifactKind::Formula
+                && self
+                    .linked_keg_only(&inst.id, &inst.prefix, &candidate.key.name)
+                    .is_some_and(|links| !links.taken_paths().is_empty())
+            {
+                candidate.blocked = Some(UpdateBlocked::LinkTaken);
             }
         }
         Ok(CheckOutcome { candidates, notes })
@@ -2184,19 +2331,38 @@ impl BrewAdapter {
                 let mut warnings = self.brew_env_warnings(inst, req.kind, &env);
                 let program = inst.exe_path.clone();
                 let args = vec!["upgrade".to_string(), flag.to_string(), req.name.clone()];
+                let mut then = Vec::new();
                 // U9: a formula's old versions go once it is updated, said
                 // first, as the one thing this preview adds to the update.
-                let action = match self.cleanup_after_upgrade(inst, req, &env) {
-                    Some(versions) => {
-                        warnings.insert(0, Warning::HomebrewCleansUpOldVersions { versions });
-                        PlanAction::CommandThen {
-                            program,
-                            args,
-                            env,
-                            then: vec![vec!["cleanup".to_string(), req.name.clone()]],
-                        }
+                if let Some(versions) = self.cleanup_after_upgrade(inst, req, &env) {
+                    warnings.insert(0, Warning::HomebrewCleansUpOldVersions { versions });
+                    then.push(vec!["cleanup".to_string(), req.name.clone()]);
+                }
+                // y1-keg: a keg-only formula linked into the prefix is
+                // linked back once updated, before its cleanup, and that is
+                // said first of all.
+                if let Some(commands) = self.relink_after_upgrade(inst, req)? {
+                    warnings.insert(
+                        0,
+                        Warning::HomebrewRelinksAfterUpdate {
+                            name: req.name.clone(),
+                            commands,
+                        },
+                    );
+                    then.insert(
+                        0,
+                        vec!["link".to_string(), "--force".to_string(), req.name.clone()],
+                    );
+                }
+                let action = if then.is_empty() {
+                    PlanAction::Command { program, args, env }
+                } else {
+                    PlanAction::CommandThen {
+                        program,
+                        args,
+                        env,
+                        then,
                     }
-                    None => PlanAction::Command { program, args, env },
                 };
                 Ok(Plan {
                     request: req.clone(),
@@ -2253,6 +2419,10 @@ impl BrewAdapter {
         if let Err(fault) = self.require_kegs_as_previewed(plan) {
             return Ok(Outcome::BanagerFailed(fault));
         }
+        let relink = match self.require_link_places_free(plan) {
+            Ok(relink) => relink,
+            Err(fault) => return Ok(Outcome::BanagerFailed(fault)),
+        };
         let PlanAction::CommandThen {
             program,
             args,
@@ -2284,17 +2454,138 @@ impl BrewAdapter {
             cancel.clone(),
         )
         .await?;
+        let prefix = Self::prefix_for(program);
         if outcome != Outcome::Succeeded {
+            // An update that failed or stopped after Homebrew unlinked the
+            // version it replaces: said, with what is no longer in Terminal.
+            if relink {
+                self.say_what_is_unlinked(plan, &prefix, &sink, op_id);
+            }
             return Ok(outcome);
         }
         for follow_up in then {
-            if follow_up.first().map(String::as_str) == Some("cleanup") {
-                let cleanup = step(follow_up, Self::CLEANUP_TIMEOUT_SECS);
-                self.clean_up_old_versions(plan, &cleanup, &sink, op_id, &cancel)
-                    .await;
+            match follow_up.first().map(String::as_str) {
+                Some("link") if relink => {
+                    let link = step(follow_up, Self::RELINK_TIMEOUT_SECS);
+                    self.link_back(plan, &link, &prefix, &sink, op_id, &cancel)
+                        .await;
+                }
+                Some("cleanup") => {
+                    let cleanup = step(follow_up, Self::CLEANUP_TIMEOUT_SECS);
+                    self.clean_up_old_versions(plan, &cleanup, &sink, op_id, &cancel)
+                        .await;
+                }
+                _ => {}
             }
         }
         Ok(outcome)
+    }
+
+    /// For the update of a keg-only formula its preview said Banager links
+    /// back (a `brew link --force` follow-up, y1-keg), its links read again
+    /// right before it runs. Another program holding one of its commands'
+    /// places now -- npm's own copy of itself in `bin/npm`, put there by an
+    /// update of npm since the preview -- is `Fault::LinkTaken`, and
+    /// nothing runs: the update would unlink the formula, and neither
+    /// Homebrew's link afterwards nor `brew link --force` gets past that
+    /// file (`Keg::ConflictError`), so its commands would leave Terminal,
+    /// as `node` did on 2026-10-07. Otherwise whether to link it back after
+    /// the update: not when it is no longer linked at all (unlinked since
+    /// the preview, by the person); yes when it is, or when its links
+    /// cannot be read now (as the preview said). Any other plan: `false`.
+    fn require_link_places_free(&self, plan: &Plan) -> Result<bool, Fault> {
+        let PlanAction::CommandThen { program, then, .. } = &plan.action else {
+            return Ok(false);
+        };
+        if !then
+            .iter()
+            .any(|argv| argv.first().map(String::as_str) == Some("link"))
+        {
+            return Ok(false);
+        }
+        let Some(links) = (self.links_fn)(&Self::prefix_for(program), &plan.request.name) else {
+            return Ok(true);
+        };
+        if !links.linked() {
+            return Ok(false);
+        }
+        let paths = links.taken_paths();
+        if paths.is_empty() {
+            Ok(true)
+        } else {
+            Err(Fault::LinkTaken {
+                name: plan.request.name.clone(),
+                paths,
+            })
+        }
+    }
+
+    /// The `brew link --force <name>` that follows the update of a keg-only
+    /// formula linked into `prefix`, once it has exited 0 (y1-keg): `link`,
+    /// the plan of that one command. Not run where Homebrew linked it back
+    /// itself (`LogNote::StillLinkedAfterUpdate`), nor after a Cancel; how
+    /// it ends -- what of the formula is no longer in Terminal -- is said in
+    /// the log (`say_what_is_unlinked`), never in the outcome.
+    async fn link_back(
+        &self,
+        plan: &Plan,
+        link: &Plan,
+        prefix: &Path,
+        sink: &Arc<dyn EventSink>,
+        op_id: OpId,
+        cancel: &CancellationToken,
+    ) {
+        let name = plan.request.name.clone();
+        let note = |note| sink.emit(OperationEvent::Note { op_id, note });
+        if (self.links_fn)(prefix, &name).is_some_and(|links| links.fully_linked()) {
+            note(LogNote::StillLinkedAfterUpdate { name });
+            return;
+        }
+        if !cancel.is_cancelled() {
+            note(LogNote::RelinkingAfterUpdate { name });
+            // How it ended is read off the links themselves below: a
+            // `brew link` that exits 0 having linked nothing (macOS's own
+            // software, refused) is no better than one that failed.
+            let _ = run_plan(&self.runner, link, sink.clone(), op_id, cancel.clone()).await;
+        }
+        self.say_what_is_unlinked(plan, prefix, sink, op_id);
+    }
+
+    /// `LogNote::NoLongerLinked` for those of the commands the update's
+    /// preview said were in Terminal (`Warning::HomebrewRelinksAfterUpdate`)
+    /// whose places in `prefix` no longer lead into the formula; nothing
+    /// when all still do, or when its links cannot be read.
+    fn say_what_is_unlinked(
+        &self,
+        plan: &Plan,
+        prefix: &Path,
+        sink: &Arc<dyn EventSink>,
+        op_id: OpId,
+    ) {
+        let Some(previewed) = plan.warnings.iter().find_map(|warning| match warning {
+            Warning::HomebrewRelinksAfterUpdate { commands, .. } => Some(commands),
+            _ => None,
+        }) else {
+            return;
+        };
+        let Some(links) = (self.links_fn)(prefix, &plan.request.name) else {
+            return;
+        };
+        let linked = links.linked_names();
+        let commands: Vec<String> = previewed
+            .iter()
+            .filter(|command| !linked.contains(command))
+            .cloned()
+            .collect();
+        if !commands.is_empty() {
+            sink.emit(OperationEvent::Note {
+                op_id,
+                note: LogNote::NoLongerLinked {
+                    name: plan.request.name.clone(),
+                    commands,
+                },
+            });
+        }
     }
 
     /// The `brew cleanup <name>` that follows a formula's update once it

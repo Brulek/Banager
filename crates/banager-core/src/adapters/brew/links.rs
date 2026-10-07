@@ -116,9 +116,17 @@ impl KegLinks {
 pub(crate) fn read_links(prefix: &Path, name: &str) -> Option<KegLinks> {
     let protected = Protected::of_this_process();
     let short = name.rsplit('/').next().filter(|short| plain(short))?;
-    let (rack, rack_stat) = look::target(&prefix.join("Cellar").join(short), &protected).ok()?;
-    let (keg, keg_stat) = look::target(&prefix.join("opt").join(short), &protected).ok()?;
-    if !rack_stat.is_dir() || !keg_stat.is_dir() || !protected::starts_with_folded(&keg, &rack) {
+    // The formula's folder in the Cellar, and the keg `opt/<name>` leads
+    // to inside it: both folders, every link followed.
+    let folder = |path: PathBuf| {
+        look::target(&path, &protected)
+            .ok()
+            .filter(|(_, stat)| stat.is_dir())
+            .map(|(path, _)| path)
+    };
+    let rack = folder(prefix.join("Cellar").join(short))?;
+    let keg = folder(prefix.join("opt").join(short))?;
+    if !protected::starts_with_folded(&keg, &rack) {
         return None;
     }
     let recorded = match look::lstat(&prefix.join("var/homebrew/linked").join(short), &protected) {
@@ -152,7 +160,7 @@ pub(crate) fn read_links(prefix: &Path, name: &str) -> Option<KegLinks> {
             let links = if stat.is_symlink() {
                 matches!(
                     look::target(&keg.join(folder).join(command), &protected),
-                    Ok((to, to_stat)) if !to_stat.is_dir() && protected::starts_with_folded(&to, &keg)
+                    Ok((to, stat)) if !stat.is_dir() && protected::starts_with_folded(&to, &keg)
                 )
             } else {
                 stat.is_file()
@@ -202,13 +210,25 @@ pub(crate) mod tests {
     use std::os::unix::fs::symlink;
 
     /// A Homebrew prefix under a fresh temporary folder, laid out as
-    /// Homebrew 7.0.8 lays out `node@22` 22.23.3: the keg's `bin` with
-    /// `node` (a file) and `corepack`, `npm` and `npx` (links into the
-    /// keg's own `lib/node_modules`), `opt/node@22` leading to it, and the
-    /// prefix's `bin` and `lib/node_modules` with nothing of it yet.
+    /// Homebrew 7.0.8 lays out `node@22` 22.23.3 (`make_keg`), with
+    /// `opt/node@22` leading to it, and the prefix's `bin` and
+    /// `lib/node_modules` with nothing of it yet.
     pub(crate) fn node_22_prefix(tag: &str) -> PathBuf {
         let prefix = temp_dir(tag);
-        let keg = prefix.join("Cellar/node@22/22.23.3");
+        make_keg(&prefix, "22.23.3");
+        std::fs::create_dir_all(prefix.join("opt")).unwrap();
+        symlink("../Cellar/node@22/22.23.3", prefix.join("opt/node@22")).unwrap();
+        std::fs::create_dir_all(prefix.join("bin")).unwrap();
+        std::fs::create_dir_all(prefix.join("lib/node_modules")).unwrap();
+        std::fs::create_dir_all(prefix.join("var/homebrew/linked")).unwrap();
+        prefix
+    }
+
+    /// `node@22`'s keg `version` in `prefix`'s Cellar: its `bin` with
+    /// `node` (a file) and `corepack`, `npm` and `npx` (links into the
+    /// keg's own `lib/node_modules`).
+    pub(crate) fn make_keg(prefix: &Path, version: &str) {
+        let keg = prefix.join("Cellar/node@22").join(version);
         std::fs::create_dir_all(keg.join("bin")).unwrap();
         for module in ["npm/bin", "corepack/dist"] {
             std::fs::create_dir_all(keg.join("lib/node_modules").join(module)).unwrap();
@@ -232,12 +252,6 @@ pub(crate) mod tests {
             keg.join("bin/corepack"),
         )
         .unwrap();
-        std::fs::create_dir_all(prefix.join("opt")).unwrap();
-        symlink("../Cellar/node@22/22.23.3", prefix.join("opt/node@22")).unwrap();
-        std::fs::create_dir_all(prefix.join("bin")).unwrap();
-        std::fs::create_dir_all(prefix.join("lib/node_modules")).unwrap();
-        std::fs::create_dir_all(prefix.join("var/homebrew/linked")).unwrap();
-        prefix
     }
 
     /// What `brew link --force node@22` leaves: a relative link in the
