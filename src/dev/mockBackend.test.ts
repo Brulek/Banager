@@ -25,7 +25,7 @@ import { resolveToolIcon } from "../lib/toolIcons";
 import { everySourceChecked, hidingRule, updateStateOf } from "../lib/updateState";
 import { artifactKeyId } from "../store/ui";
 import { createMockBackend, MOCK_COMMANDS, TIMING, type MockBackend } from "./mockBackend";
-import { buildWorld } from "./mockData";
+import { MODELS, buildWorld } from "./mockData";
 import { withMockNeededBy } from "./mockNeededBy";
 import { getCurrentWindow as previewWindow } from "./mockTauriWindow";
 import { DEFAULT_SCENARIO, parseScenario, type Scenario } from "./scenario";
@@ -497,17 +497,50 @@ describe("the browser preview's mock backend", () => {
   });
 
   it("under ?outcome=already, says how each update already at its new version was done, and keeps it (r6 y3-batch)", async () => {
-    const { backend } = backendFor({ outcome: "already" });
+    // As the core tells them apart (review of r6 y3-batch, findings 1 and
+    // 7): on Homebrew the first update of the batch updates for real and
+    // brings the later ones along, which are then 「已由前面的更新一并完成」;
+    // on another source, where one update never updates another package,
+    // one already new was so before its turn, and says no Homebrew words; a
+    // model, whose digests are never compared, updates as ever.
+    const { backend, events } = backendFor({ outcome: "already" });
     await answer(backend.invoke("refresh"));
-    const [git, wget] = await submitUpgrades(backend, "git", "wget");
+    const [git, wget, typescript, coder] = await submitUpgrades(backend, "git", "wget", "typescript", MODELS.coder);
     await vi.runAllTimersAsync();
     const ops = (await backend.invoke("list_operations")) as OpSummary[];
     const of = (id: number) => ops.find((op) => op.id === id);
-    expect(of(git)).toMatchObject({ outcome: "Succeeded", already_updated: "BeforeItsTurn" });
+    const logOf = (id: number) =>
+      events.flatMap((event) =>
+        "Operation" in event && "Log" in event.Operation && event.Operation.Log.op_id === id ? [event.Operation.Log.line] : [],
+      );
+    expect(of(git)).toMatchObject({ outcome: "Succeeded" });
+    expect(of(git)?.already_updated ?? null).toBeNull();
     expect(of(wget)).toMatchObject({ outcome: "Succeeded", already_updated: "ByEarlierUpdate" });
+    // Homebrew's own words, then the clean-up that follows any update (U9).
+    expect(logOf(wget)[0]).toBe("Warning: wget 1.26.0 already installed");
+    expect(of(typescript)).toMatchObject({ outcome: "Succeeded", already_updated: "BeforeItsTurn" });
+    expect(logOf(typescript).join("\n")).not.toMatch(/already installed|Warning:/);
+    expect(of(coder)).toMatchObject({ outcome: "Succeeded" });
+    expect(of(coder)?.already_updated ?? null).toBeNull();
     const history = await answer<HistoryView>(backend.invoke("get_history"));
     const kept = history.records.find((record) => record.op_id === wget);
     expect(kept).toMatchObject({ result: "Succeeded", already_updated: "ByEarlierUpdate", verified: false });
+  });
+
+  it("under ?outcome=already, says a Homebrew update confirmed after the last that changed something ended was new before its turn", async () => {
+    // Two single updates, the second confirmed after the first ended: the
+    // first moved its version, but before the second was confirmed, so it
+    // did not bring the second along.
+    const { backend } = backendFor({ outcome: "already" });
+    await answer(backend.invoke("refresh"));
+    const [git] = await submitUpgrades(backend, "git");
+    await vi.runAllTimersAsync();
+    await answer(backend.invoke("refresh"));
+    const [wget] = await submitUpgrades(backend, "wget");
+    await vi.runAllTimersAsync();
+    const ops = (await backend.invoke("list_operations")) as OpSummary[];
+    expect(ops.find((op) => op.id === git)?.already_updated ?? null).toBeNull();
+    expect(ops.find((op) => op.id === wget)).toMatchObject({ outcome: "Succeeded", already_updated: "BeforeItsTurn" });
   });
 
   it("under ?outcome=failed, keeps a failure no cause names with its first error line (r6 y3-batch)", async () => {

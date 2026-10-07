@@ -618,10 +618,15 @@ export function playOutcome(
       };
     }
     case "already":
-      // Homebrew says so, and exits 0 (`mockBackend` says how it got there).
-      return plan.request.kind === "Upgrade"
+      // Already at its new version when its turn came, and the tool exits
+      // 0 (`mockBackend` says how it got there, and plays only an update
+      // the check offered a newer version this way). Homebrew says so in
+      // its own words; another source's words are its own, so the preview
+      // writes none for them.
+      if (plan.request.kind !== "Upgrade") return { lines, outcome: "Succeeded" };
+      return subject.inst.adapter_id === "brew"
         ? { lines: [err(`Warning: ${plan.request.name} ${subject.candidate?.target ?? ""} already installed`)], outcome: "Succeeded" }
-        : { lines, outcome: "Succeeded" };
+        : { lines: [], outcome: "Succeeded" };
   }
 }
 

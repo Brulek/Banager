@@ -8,6 +8,7 @@
  * clock: timings are fixed, and nothing is random.
  */
 import type {
+  AlreadyUpdated,
   ArtifactKey,
   CommandFact,
   HistoryView,
@@ -172,12 +173,33 @@ function requestKey(request: OpRequest): ArtifactKey {
   return { instance_id: request.instance_id, kind: request.artifact_kind, name: request.name };
 }
 
+/**
+ * `ops::may_have_moved_others`: whether an update that ended with
+ * `outcome` may have changed what is installed, and so brought a later
+ * update's package along.
+ */
+function mayHaveMovedOthers(outcome: Outcome, already: AlreadyUpdated | null | undefined): boolean {
+  if (outcome === "Succeeded") return !already;
+  if (outcome === "Unconfirmed") return true;
+  if (outcome === "Cancelled") return false;
+  if ("Failed" in outcome) return true;
+  if ("NeedsAttention" in outcome) return outcome.NeedsAttention !== "UnchangedAfterUpgrade";
+  return false;
+}
+
 interface Operation {
   summary: OpSummary;
   plan: Plan;
   timers: ReturnType<typeof setTimeout>[];
   /** Whether it holds its locks and a slot, from start until it finishes. */
   started: boolean;
+  /**
+   * `?outcome=already`: whether it played an update whose package was
+   * already at its new version (`playOutcome`'s `already`).
+   */
+  already?: boolean;
+  /** `movedUpgrades` of its source when it was submitted (`OpInternal.upgrades_seen`). */
+  movedSeen: number;
 }
 
 /**
@@ -226,6 +248,12 @@ export function createMockBackend(scenario: Scenario): MockBackend {
   const waiting: number[] = [];
   const held = new Set<string>();
   let running = 0;
+  /**
+   * How many updates of each source that may have changed something have
+   * ended (`OperationManager::upgrades_ended`, `may_have_moved_others`):
+   * one that moved its version, failed or was stopped partway.
+   */
+  const movedUpgrades = new Map<string, number>();
   let nextOpId = 1;
   /** What `get_sizes` answers: the newest round's sizes so far. */
   let sizes: Sizes = NO_SIZES;
@@ -466,18 +494,19 @@ export function createMockBackend(scenario: Scenario): MockBackend {
     stopTimers(op);
     op.summary.status = "Done";
     op.summary.outcome = outcome;
-    // `?outcome=already`: done because it was already at its new version,
-    // by an update of the same source before it when one has ended, as
-    // `OperationManager::already_at_target` tells them apart.
-    if (scenario.outcome === "already" && outcome === "Succeeded" && op.plan.request.kind === "Upgrade") {
-      const earlier = [...operations.values()].some(
-        (other) =>
-          other.summary.id < op.summary.id &&
-          other.summary.kind === "Upgrade" &&
-          other.summary.status === "Done" &&
-          other.summary.instance_id === op.summary.instance_id,
-      );
-      op.summary.already_updated = earlier ? "ByEarlierUpdate" : "BeforeItsTurn";
+    // `?outcome=already`: done because it was already at its new version
+    // -- by an earlier update on Homebrew, where one update brings others
+    // along, when one of its source that may have changed something ended
+    // since it was submitted -- as `OperationManager::already_at_target`
+    // tells them apart.
+    const instanceId = op.summary.instance_id;
+    const moved = movedUpgrades.get(instanceId) ?? 0;
+    if (op.already === true && outcome === "Succeeded") {
+      op.summary.already_updated =
+        adapterIdOf(instanceId) === "brew" && moved > op.movedSeen ? "ByEarlierUpdate" : "BeforeItsTurn";
+    }
+    if (op.summary.kind === "Upgrade" && op.started && mayHaveMovedOthers(outcome, op.summary.already_updated)) {
+      movedUpgrades.set(instanceId, moved + 1);
     }
     const target = requestKey(op.plan.request);
     // Read before `apply`, which changes the row in place.
@@ -527,8 +556,23 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       candidate: currentUpdates().find((u) => sameKey(u.key, target)),
     };
     // `?outcome=mixed`: the session's 2nd, 4th, … operation fails.
-    const scripted =
+    let scripted =
       scenario.outcome !== "mixed" ? scenario.outcome : op.summary.id % 2 === 0 ? "failed" : "succeeded";
+    // `?outcome=already`: only an update the check offered a newer version
+    // is aimed at one (`offered_version`); a model's digest never is. On
+    // Homebrew the first of a source updates for real, and brings the
+    // later ones along; elsewhere each is new before its turn.
+    if (scripted === "already") {
+      const aimed =
+        op.plan.request.kind === "Upgrade" &&
+        subject.candidate !== undefined &&
+        subject.candidate.checkable &&
+        subject.candidate.channel !== "Digest" &&
+        subject.candidate.current !== subject.candidate.target;
+      const first = inst.adapter_id === "brew" && (movedUpgrades.get(inst.id) ?? 0) === 0;
+      if (!aimed || first) scripted = "succeeded";
+      else op.already = true;
+    }
     // Homebrew refuses to uninstall what something installed still needs,
     // whatever else would have happened -- once it runs at all.
     const refused = scripted === "banager" ? null : homebrewRefusal(world, inst, op.plan);
@@ -624,6 +668,7 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       plan,
       timers: [],
       started: false,
+      movedSeen: movedUpgrades.get(plan.request.instance_id) ?? 0,
     };
     operations.set(id, op);
     emit({ Operation: { Status: { op_id: id, status: "Queued" } } });
