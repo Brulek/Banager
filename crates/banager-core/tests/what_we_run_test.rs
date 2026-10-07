@@ -1148,9 +1148,34 @@ fn test_what_we_run_says_what_the_homepage_link_opens_and_that_it_adds_no_permis
     let never = section_body(&doc, "What Banager never does")
         .expect("a `## What Banager never does` section");
     let never = never.split_whitespace().collect::<Vec<_>>().join(" ");
+    // Bounded, not denied: it does open one address the window names.
     assert!(
-        never.contains("Never opens a web address the window names"),
+        never.contains("Never opens just any web address the window names"),
         "the `## What Banager never does` section of docs/what-we-run.md does not bound the homepage link"
+    );
+    assert!(
+        !never.contains("Never opens a web address the window names"),
+        "the `## What Banager never does` section of docs/what-we-run.md says Banager never opens a web address the window names, which the homepage link does"
+    );
+    assert!(
+        never.contains("the default browser is started only by a click on a tool's homepage"),
+        "the `## What Banager never does` section of docs/what-we-run.md does not say when the homepage link may start the browser"
+    );
+    // The Open Ollama button's paragraph, which once called `open -a
+    // Ollama` the app's one launch outside the package managers: the
+    // homepage link can start the browser too, as Network says.
+    let ollama = doc
+        .split("\n\n")
+        .find(|paragraph| paragraph.starts_with("**The Open Ollama button**"))
+        .expect("docs/what-we-run.md has a paragraph on the Open Ollama button");
+    let ollama = ollama.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(
+        !ollama.contains("the one launch in the app"),
+        "docs/what-we-run.md calls the Open Ollama button the one launch in the app, though the homepage link can start the default browser"
+    );
+    assert!(
+        ollama.contains("the homepage link") && ollama.contains("(Network)"),
+        "docs/what-we-run.md's Open Ollama button paragraph does not name the homepage link as the other launch"
     );
 }
 

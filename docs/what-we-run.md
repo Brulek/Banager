@@ -2014,9 +2014,10 @@ only the warning.
 (`open_ollama_app_argv` in `src-tauri/src/ipc.rs`), with its stdin,
 stdout and stderr pointed at `/dev/null`, only when the user presses it and only when
 Ollama.app was found; it waits up to 20 seconds for `open` to report
-whether LaunchServices accepted the request. It is the one launch in the
-app that is not a package-manager command, and it never happens during a
-refresh.
+whether LaunchServices accepted the request. It and the homepage link in
+the Installed page's details, which can start the default browser
+(Network), are the only launches in the app that are not package-manager
+commands, and neither happens during a refresh.
 
 ## Claude Code
 
@@ -4238,8 +4239,9 @@ configured, `index.crates.io`, and cargo still follows a
   since npm, Cargo and Ollama would install a name they were asked to
   upgrade.
 - Never launches an application from a refresh; `open -a Ollama` runs
-  only when the button is pressed.
-- Never opens a web address the window names: a click on a tool's
+  only when the button is pressed, and the default browser is started
+  only by a click on a tool's homepage.
+- Never opens just any web address the window names: a click on a tool's
   homepage opens, in the default browser, only an `https` homepage a
   tool in the current snapshot lists (Network).
 - Never opens a tool to make it update itself: a self-updating tool's row
