@@ -211,6 +211,136 @@ pub fn run() {
 /// person (docs/what-we-run.md, Network; the security review of round 5).
 #[cfg(test)]
 mod window_rights {
+    use std::collections::BTreeSet;
+    use tauri::ipc::Origin;
+
+    /// Every command the page reaches, and no other: `listen` and `unlisten`
+    /// for the events Rust sends it (src/lib/api.ts), `set_badge_count` for
+    /// the Dock badge (`setDockBadge`), `start_dragging` and
+    /// `internal_toggle_maximize` from Tauri's own drag-region script, and
+    /// `is_permission_granted` from the notification plugin's script.
+    /// Banager's own commands (src-tauri/src/ipc.rs) are not plugin commands
+    /// and are behind no permission (`src-tauri/build.rs` declares no app
+    /// manifest). Not among them: `webview|internal_toggle_devtools`, which
+    /// Tauri's ⌥⌘I script asks for in a debug build only -- there Inspect
+    /// Element stays on the right-click menu (src/lib/contextMenu.ts) --
+    /// and `webview|print`, which `window.print` asks for and which the
+    /// window never had.
+    const PAGE_COMMANDS: [&str; 6] = [
+        "plugin:event|listen",
+        "plugin:event|unlisten",
+        "plugin:notification|is_permission_granted",
+        "plugin:window|internal_toggle_maximize",
+        "plugin:window|set_badge_count",
+        "plugin:window|start_dragging",
+    ];
+
+    /// The context `run()` builds, its ACL included. `test = true` only
+    /// leaves out the Info.plist, which one binary cannot embed twice.
+    /// Nothing is built, launched or dispatched.
+    fn context() -> tauri::Context<tauri::Wry> {
+        tauri::generate_context!(test = true)
+    }
+
+    /// Every command of every plugin in this build -- Tauri's core and each
+    /// plugin `run()` registers -- from the ACL manifests tauri-build wrote
+    /// for `generate_context!` to read.
+    fn every_plugin_command() -> BTreeSet<String> {
+        let manifests: serde_json::Value = serde_json::from_str(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/acl-manifests.json"
+        )))
+        .unwrap();
+        let mut commands = BTreeSet::new();
+        for (key, manifest) in manifests.as_object().unwrap() {
+            let plugin = key.strip_prefix("core:").unwrap_or(key);
+            for permission in manifest["permissions"].as_object().unwrap().values() {
+                for command in permission["commands"]["allow"].as_array().unwrap() {
+                    commands.insert(format!("plugin:{plugin}|{}", command.as_str().unwrap()));
+                }
+            }
+        }
+        commands
+    }
+
+    #[test]
+    fn test_of_every_plugin_command_the_window_reaches_only_the_page_s() {
+        let every = every_plugin_command();
+        // Tauri's whole plugin API, not an empty or partial manifest.
+        assert!(every.len() > 150, "{} commands", every.len());
+        for command in PAGE_COMMANDS {
+            assert!(
+                every.contains(command),
+                "{command} is not a command of this build"
+            );
+        }
+        let mut context = context();
+        let authority = context.runtime_authority_mut();
+        let reached: Vec<&str> = every
+            .iter()
+            .filter(|command| {
+                authority
+                    .resolve_access(command, "main", "main", &Origin::Local)
+                    .is_some()
+            })
+            .map(String::as_str)
+            .collect();
+        assert_eq!(reached, PAGE_COMMANDS);
+    }
+
+    #[test]
+    fn test_the_page_reaches_no_command_of_the_native_menu() {
+        // Rust builds the menu (menu.rs); the page only names its language,
+        // through Banager's own `set_menu_language`. `plugin:menu|new` with
+        // `{"kind": "Predefined", "handler": "__CHANNEL__:0"}` and no
+        // `options` panics in Tauri 2.11.5's handler; the ACL turns it away
+        // before the handler reads the arguments (`Webview::on_message`).
+        let menu: Vec<String> = every_plugin_command()
+            .into_iter()
+            .filter(|command| command.starts_with("plugin:menu|"))
+            .collect();
+        assert!(menu.iter().any(|command| command == "plugin:menu|new"));
+        let mut context = context();
+        let authority = context.runtime_authority_mut();
+        for command in &menu {
+            assert!(
+                authority
+                    .resolve_access(command, "main", "main", &Origin::Local)
+                    .is_none(),
+                "{command}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_the_page_s_commands_are_for_the_main_window_on_banager_s_own_page() {
+        let mut context = context();
+        let authority = context.runtime_authority_mut();
+        let elsewhere = Origin::Remote {
+            url: "https://example.com/".parse().unwrap(),
+        };
+        for command in PAGE_COMMANDS {
+            assert!(
+                authority
+                    .resolve_access(command, "main", "main", &Origin::Local)
+                    .is_some(),
+                "{command}"
+            );
+            assert!(
+                authority
+                    .resolve_access(command, "other", "other", &Origin::Local)
+                    .is_none(),
+                "{command} in another window"
+            );
+            assert!(
+                authority
+                    .resolve_access(command, "main", "main", &elsewhere)
+                    .is_none(),
+                "{command} from another address"
+            );
+        }
+    }
+
     fn permissions() -> Vec<String> {
         let capability: serde_json::Value =
             serde_json::from_str(include_str!("../capabilities/default.json")).unwrap();
@@ -229,16 +359,18 @@ mod window_rights {
 
     #[test]
     fn test_the_window_is_given_exactly_these_permissions() {
-        // `core:default` is Tauri's own set of getters, events, menus and
-        // paths; `core:image:deny-from-path` takes from it the one command
-        // that reads a file by the path it is given, which Tauri leaves out
-        // only while no `image-png` or `image-ico` feature is on.
+        // Only the page's existing calls and Tauri's drag-region script.
+        // Rust builds the menu; the page needs no native-menu IPC at all.
+        // Keep the explicit image-path denial as defence in depth if an
+        // image permission or decoding feature is ever enabled elsewhere.
         assert_eq!(
             permissions(),
             [
-                "core:default",
+                "core:event:allow-listen",
+                "core:event:allow-unlisten",
                 "core:image:deny-from-path",
                 "core:window:allow-start-dragging",
+                "core:window:allow-internal-toggle-maximize",
                 "core:window:allow-set-badge-count",
                 "notification:allow-is-permission-granted",
             ]

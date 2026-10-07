@@ -4,9 +4,11 @@
   "description": "Capability for the main window",
   "windows": ["main"],
   "permissions": [
-    "core:default",
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
     "core:image:deny-from-path",
     "core:window:allow-start-dragging",
+    "core:window:allow-internal-toggle-maximize",
     "core:window:allow-set-badge-count",
     "notification:allow-is-permission-granted"
   ]

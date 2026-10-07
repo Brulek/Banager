@@ -49,23 +49,30 @@ describe("the window", () => {
     expect([mainWindow.minWidth, mainWindow.minHeight]).toEqual([800, 560]);
   });
 
-  it("lets the page's drag regions move the window", () => {
-    // Tauri's drag script asks for `plugin:window|start_dragging`, which
-    // `core:default` does not allow; the zoom on a double-click, which it
-    // asks for as `internal_toggle_maximize`, it does.
-    expect(capability.permissions).toContain("core:default");
+  it("lets the page's drag regions move and zoom the window without the core default grant", () => {
+    // Both commands from Tauri's drag script are explicit now; the page
+    // does not need the default grant's native-menu commands or getters.
+    expect(capability.permissions).not.toContain("core:default");
     expect(capability.permissions).toContain("core:window:allow-start-dragging");
+    expect(capability.permissions).toContain("core:window:allow-internal-toggle-maximize");
   });
 
-  it("lets the page badge the Dock icon, and adds no other window command to core:default's", () => {
-    // `setDockBadge` (src/lib/api.ts) asks for
-    // `plugin:window|set_badge_count`, which `core:default` does not allow
-    // either. Beyond `core:default`'s -- reading the window, and the zoom
-    // on a drag region's double-click -- these two are the only commands
-    // of the window's the page is given.
+  it("lets the page badge the Dock icon, and grants only the three window commands it uses", () => {
+    // `setDockBadge` (src/lib/api.ts) and Tauri's drag-region script are
+    // the only callers of window commands.
     expect(capability.permissions.filter((p) => p.startsWith("core:window:"))).toEqual([
       "core:window:allow-start-dragging",
+      "core:window:allow-internal-toggle-maximize",
       "core:window:allow-set-badge-count",
+    ]);
+  });
+
+  it("lets the page hear the events Rust sends, and send none of its own", () => {
+    // `listen` in src/lib/api.ts asks for `plugin:event|listen`, and its
+    // unlisten for `plugin:event|unlisten`; the page emits nothing.
+    expect(capability.permissions.filter((p) => p.startsWith("core:event:"))).toEqual([
+      "core:event:allow-listen",
+      "core:event:allow-unlisten",
     ]);
   });
 
