@@ -92,7 +92,8 @@ const OTHER_VERSIONS: Record<string, number> = {
  * into that folder or one that leaves its files there, as Homebrew's cask
  * API has them in October 2026. What decides it (`CommandInputs`) is never
  * on the wire, so the preview names them. Not Flutter: its `suite` is
- * moved to `<prefix>/share/flutter`.
+ * moved to `<prefix>/share/flutter`. Not Google Cloud CLI: its steps copy
+ * the SDK to `<prefix>/share/google-cloud-sdk` and leave a link behind.
  */
 const COMMANDS_IN_CASKROOM = new Set([
   "1password-cli",
@@ -106,7 +107,6 @@ const COMMANDS_IN_CASKROOM = new Set([
   "codex",
   "copilot-cli",
   "cursor-cli",
-  "gcloud-cli",
   "gitkraken-cli",
   "miniconda",
   "miniforge",

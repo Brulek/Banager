@@ -8,7 +8,7 @@ use serde::de::IgnoredAny;
 use serde::Deserialize;
 use serde_json::Value;
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf};
 
 // Both partitions are required, deliberately. `brew info --installed
 // --json=v2` and `brew outdated --json=v2` always emit both keys, the
@@ -216,8 +216,10 @@ fn homebrew_facts(status: &StatusFields, other_versions: Vec<String>) -> Option<
 /// is the cask's `path`. A `binary` stanza's `target` is the link in
 /// `<prefix>/bin` itself -- the command -- which the unknown-source scan
 /// finds by reading that directory and `cask_commands` names for
-/// `commands::judge` and for that scan's rule 2 (`scan::Known`). Of every
-/// other stanza only its name is read (`other`, `stays_in_caskroom`).
+/// `commands::judge` and for that scan's rule 2 (`scan::Known`). Of an
+/// `installer` and of the steps Homebrew takes before and after an
+/// install, what they hold is read, for `stays_in_caskroom`; of every
+/// other stanza only its name is (`other`).
 #[derive(Debug, Deserialize)]
 struct CaskArtifact {
     /// Present exactly when this entry is an `app` stanza. What it holds
@@ -236,34 +238,48 @@ struct CaskArtifact {
     binary: Option<serde_json::Value>,
     #[serde(default)]
     target: Option<String>,
+    /// Present exactly when this entry is an `installer` stanza: a
+    /// `{"script": ...}` Homebrew runs, or a `{"manual": ...}` installer
+    /// the user opens (`cask/artifact/installer.rb`). Read by
+    /// `stays_in_caskroom` only for which of the two it is.
+    #[serde(default)]
+    installer: Option<serde_json::Value>,
+    /// Present exactly when this entry is Homebrew's `preflight_steps` or
+    /// `postflight_steps`: `[{"steps": [...]}]`, each step an object with
+    /// its `type` and the places it acts on, `{"base": "staged_path",
+    /// "path": "ngrok"}` or `{"path": "{{caskroom_path}}/latest"}`
+    /// (`AbstractInstallSteps#to_args`, `cask/artifact/install_steps.rb`;
+    /// the cached API's `meshlab.json` has one). Read by
+    /// `steps_stay_in_caskroom`, whatever else a step holds never looked
+    /// at.
+    #[serde(default)]
+    preflight_steps: Option<serde_json::Value>,
+    #[serde(default)]
+    postflight_steps: Option<serde_json::Value>,
     /// The entry's other keys, by name only, what each holds never looked
-    /// at: the stanza's name when it is neither `app` nor `binary` (`zap`,
-    /// `uninstall`, `pkg`, `suite`, `font`, ...). Read by
-    /// `stays_in_caskroom`.
+    /// at: the stanza's name when it is none of the above (`zap`,
+    /// `uninstall`, `pkg`, `suite`, `font`, a `preflight` block, ...). Read
+    /// by `stays_in_caskroom`.
     #[serde(flatten)]
     other: BTreeMap<String, IgnoredAny>,
 }
 
 /// The stanzas that leave what a cask installed in its folder in
-/// `<prefix>/Caskroom`: `binary` (a link into it, read through its own
-/// field), the completions and manual pages Homebrew links or makes from
-/// it, an installer script (run in that folder: Homebrew's Miniconda and
-/// gcloud-cli install into it), staying staged, and Homebrew's own steps
-/// before and after an install or uninstall and its uninstall and zap
-/// lists. Named as the stanzas are, by Homebrew's `dsl_key` and in the
-/// spellings of the steps the API names (`postflight_steps`); any other
-/// stanza -- `app`, `suite`, `pkg`, `artifact`, a font, a plug-in, one a
-/// later Homebrew adds -- may put files elsewhere.
+/// `<prefix>/Caskroom` whatever they hold, by name: the completions and
+/// manual pages Homebrew links or makes from it, staying staged, and
+/// Homebrew's uninstall and zap lists and the blocks and steps it runs
+/// only on uninstall. Named as the stanzas are, by Homebrew's `dsl_key`;
+/// a block of Ruby is written as its name and `null` (`artifacts_list`).
+/// Not here: `binary`, `installer` and the steps before and after an
+/// install, each read for what it holds (`stays_in_caskroom`); the
+/// `preflight` and `postflight` blocks, Ruby run on install that may put
+/// files anywhere; and any other stanza -- `app`, `suite`, `pkg`,
+/// `artifact`, a font, a plug-in, one a later Homebrew adds.
 const STAYS_IN_CASKROOM: &[&str] = &[
     "bash_completion",
     "fish_completion",
     "generate_completions_from_executable",
-    "installer",
     "manpage",
-    "postflight",
-    "postflight_steps",
-    "preflight",
-    "preflight_steps",
     "stage_only",
     "uninstall",
     "uninstall_postflight",
@@ -275,19 +291,134 @@ const STAYS_IN_CASKROOM: &[&str] = &[
 ];
 
 /// Whether a cask's stanzas all leave what it installed in its folder in
-/// `Caskroom` (`STAYS_IN_CASKROOM`) and one of them is a `binary`: Homebrew's
-/// Claude Code (`binary`, `zap`), Codex (`binary`,
-/// `generate_completions_from_executable`, `zap`). For
-/// `CommandInputs.cask_stays_in_caskroom`, which `size::roots_of` reads.
+/// `Caskroom` and one of them is a `binary`: Homebrew's Claude Code
+/// (`binary`, `zap`), Codex (`binary`,
+/// `generate_completions_from_executable`, `zap`), Miniconda (an
+/// installer script that installs into that folder, steps that move its
+/// environments back into it). Each stanza is one `STAYS_IN_CASKROOM`
+/// names, or a `binary` whose file `binary_stays_in_caskroom`, an
+/// `installer` that is a script (`installer_is_a_script`), or steps that
+/// put nothing outside the folder (`steps_stay_in_caskroom`). Not Google
+/// Cloud CLI, whose steps copy its SDK to `<prefix>/share` and leave a
+/// link behind. For `CommandInputs.cask_stays_in_caskroom`, which
+/// `size::roots_of` reads.
 fn stays_in_caskroom(artifacts: &[CaskArtifact]) -> bool {
     artifacts.iter().any(|artifact| artifact.binary.is_some())
         && artifacts.iter().all(|artifact| {
             artifact.app.is_none()
                 && artifact
+                    .binary
+                    .as_ref()
+                    .is_none_or(|args| binary_stays_in_caskroom(args, artifact.target.as_deref()))
+                && artifact
+                    .installer
+                    .as_ref()
+                    .is_none_or(installer_is_a_script)
+                && [&artifact.preflight_steps, &artifact.postflight_steps]
+                    .into_iter()
+                    .flatten()
+                    .all(steps_stay_in_caskroom)
+                && artifact
                     .other
                     .keys()
                     .all(|stanza| STAYS_IN_CASKROOM.contains(&stanza.as_str()))
         })
+}
+
+/// Whether a `binary` stanza's file can be placed in the cask's folder:
+/// its first argument a path with no `..` in it, and the stanza's `target`
+/// absolute, so that `cask_commands` names the command and an absolute
+/// path is checked against that folder (`size::commands_staged_in`). A
+/// relative path is joined to the cask's folder for this version
+/// (`Relocated#source`, `cask/artifact/relocated.rb`), and a `..` in it
+/// could climb out.
+fn binary_stays_in_caskroom(args: &serde_json::Value, target: Option<&str>) -> bool {
+    let Some(source) = args
+        .as_array()
+        .and_then(|args| args.first())
+        .and_then(serde_json::Value::as_str)
+    else {
+        return false;
+    };
+    target.is_some_and(|target| Path::new(target).is_absolute())
+        && !Path::new(source)
+            .components()
+            .any(|part| part == Component::ParentDir)
+}
+
+/// Whether an `installer` stanza is a script Homebrew runs in the cask's
+/// folder (`[{"script": ...}]`): Miniconda's, Miniforge's, MPLAB XC's and
+/// Yandex Cloud CLI's install into that folder, by their own arguments.
+/// Not a `manual` installer, which the user opens and which installs the
+/// program wherever it does.
+fn installer_is_a_script(args: &serde_json::Value) -> bool {
+    args.as_array().is_some_and(|args| {
+        !args.is_empty()
+            && args
+                .iter()
+                .all(|arg| arg.get("script").is_some() && arg.get("manual").is_none())
+    })
+}
+
+/// Whether the steps Homebrew takes before or after installing a cask
+/// (`preflight_steps`, `postflight_steps`: `[{"steps": [...]}]`) put
+/// nothing outside its folder in `Caskroom`. Each step must be one that
+/// only changes a file's mode or owner or removes files
+/// (`set_permissions`, `set_ownership`, `remove`), or one that copies or
+/// moves files into that folder (`copy`, `move`, `move_contents`, by its
+/// `target`), or makes a link there to a place there (`symlink`, by its
+/// `target` and its `source`). Any other step -- `run`, which runs a
+/// program, one that writes or edits a file, one a later Homebrew adds --
+/// or a place outside the folder, and the cask is not taken: Google Cloud
+/// CLI's `copy` to `<prefix>/share/google-cloud-sdk` and the link it
+/// leaves behind.
+fn steps_stay_in_caskroom(args: &serde_json::Value) -> bool {
+    args.as_array().is_some_and(|args| {
+        !args.is_empty()
+            && args.iter().all(|arg| {
+                arg.get("steps")
+                    .and_then(serde_json::Value::as_array)
+                    .is_some_and(|steps| steps.iter().all(step_stays_in_caskroom))
+            })
+    })
+}
+
+/// One step, for `steps_stay_in_caskroom`.
+fn step_stays_in_caskroom(step: &serde_json::Value) -> bool {
+    let there = |key: &str| step.get(key).is_some_and(in_caskroom_folder);
+    match step.get("type").and_then(serde_json::Value::as_str) {
+        Some("set_permissions" | "set_ownership" | "remove") => true,
+        Some("copy" | "move" | "move_contents") => there("target"),
+        Some("symlink") => there("target") && there("source"),
+        _ => false,
+    }
+}
+
+/// Whether a place a step names is in the cask's folder in `Caskroom`:
+/// relative to it (`"base": "staged_path"` or `"caskroom_path"`, the
+/// version's folder or the cask's), or written from it
+/// (`"{{staged_path}}/..."`, `"{{caskroom_path}}/..."`, with no `base`),
+/// and with no `..` that could climb out. Every other base -- `home`,
+/// `appdir`, `homebrew_prefix`, `temp`, a `relative` link -- and every
+/// other path is elsewhere (`resolve_path` in Homebrew's
+/// `install_steps.rb`).
+fn in_caskroom_folder(place: &serde_json::Value) -> bool {
+    let Some(path) = place.get("path").and_then(serde_json::Value::as_str) else {
+        return false;
+    };
+    if path.split('/').any(|part| part == "..") {
+        return false;
+    }
+    match place.get("base").and_then(serde_json::Value::as_str) {
+        Some("staged_path" | "caskroom_path") => !path.starts_with('/') && !path.starts_with("{{"),
+        None | Some("absolute") => ["{{staged_path}}", "{{caskroom_path}}"]
+            .iter()
+            .any(|folder| {
+                path.strip_prefix(folder)
+                    .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
+            }),
+        Some(_) => false,
+    }
 }
 
 /// The commands a cask's `binary` stanzas put in `<prefix>/bin`, for
@@ -1258,10 +1389,21 @@ mod tests {
     fn parse_info_installed_says_which_casks_leave_everything_in_their_caskroom_folder() {
         // `cask_stays_in_caskroom`, for the disk-use measurement: a cask
         // with a `binary` stanza and nothing but stanzas that leave what
-        // it installed in its Caskroom folder (the shapes of Homebrew's
-        // `claude-code`, `codex` and `gcloud-cli` casks in its cask API).
-        // Not one with an app, a `suite` (Flutter's), a `pkg`, a font, a
-        // stanza Banager does not know, or no `binary` at all.
+        // it installed in its Caskroom folder, in the shapes Homebrew's
+        // cask API gives `claude-code`, `codex`, `miniconda`, `ngrok` and
+        // `gcloud-cli` (steps as `brew info --json=v2` writes them, the
+        // way the cached `meshlab.json` has its `postflight_steps`).
+        // Not `gcloud-cli`: its `preflight_steps` copy the SDK to
+        // `<prefix>/share/google-cloud-sdk` and leave a link to it behind,
+        // and its `postflight_steps` run `gcloud`. Not a tap's cask with a
+        // `preflight` block (Ruby, written as `null`: no saying what it
+        // does), a step that links its folder to a place outside it, or
+        // one Banager does not know; an `installer` that is `manual` (the
+        // user runs it, and it installs wherever it installs); a `binary`
+        // whose relative path climbs out with `..`. Nor one with an app, a
+        // `suite` (Flutter's), a `pkg`, a font, a stanza Banager does not
+        // know, or no `binary` at all. A block or steps that run only on
+        // uninstall do not decide where anything is.
         let json = r#"{
             "formulae": [],
             "casks": [
@@ -1275,13 +1417,82 @@ mod tests {
                     { "zap": [{ "trash": ["~/.codex"] }] }
                 ] },
                 { "token": "gcloud-cli", "installed": "560.0.0", "artifacts": [
-                    { "preflight": null },
-                    { "uninstall": [{ "delete": "/opt/homebrew/Caskroom/gcloud-cli/latest" }] },
-                    { "installer": [{ "script": { "executable": "google-cloud-sdk/install.sh" } }] },
+                    { "preflight_steps": [{ "steps": [
+                        { "source": { "base": "staged_path", "path": "google-cloud-sdk/." },
+                          "target": { "base": "homebrew_prefix", "path": "share/google-cloud-sdk" },
+                          "recursive": true, "type": "copy" },
+                        { "paths": [{ "base": "staged_path", "path": "google-cloud-sdk" }],
+                          "recursive": true, "type": "remove" },
+                        { "source": { "path": "{{HOMEBREW_PREFIX}}/share/google-cloud-sdk" },
+                          "target": { "base": "staged_path", "path": "google-cloud-sdk" },
+                          "type": "symlink" }
+                    ] }] },
+                    { "uninstall": [{ "trash": "/opt/homebrew/Caskroom/gcloud-cli/latest" }] },
+                    { "installer": [{ "script": { "executable": "google-cloud-sdk/install.sh", "args": ["--quiet"] } }] },
                     { "binary": ["google-cloud-sdk/bin/gcloud"], "target": "/opt/homebrew/bin/gcloud" },
-                    { "bash_completion": ["google-cloud-sdk/completion.bash.inc"], "target": "/opt/homebrew/etc/bash_completion.d/gcloud" },
-                    { "postflight": null },
-                    { "zap": [{ "trash": ["~/.config/gcloud"] }] }
+                    { "bash_completion": ["google-cloud-sdk/completion.bash.inc", { "target": "google-cloud-sdk" }], "target": "/opt/homebrew/etc/bash_completion.d/google-cloud-sdk" },
+                    { "postflight_steps": [{ "steps": [
+                        { "source": { "path": "{{staged_path}}" },
+                          "target": { "path": "{{caskroom_path}}/latest" },
+                          "force": true, "type": "symlink" },
+                        { "command": { "base": "homebrew_prefix", "path": "share/google-cloud-sdk/bin/gcloud" },
+                          "type": "run", "args": ["version"] }
+                    ] }] },
+                    { "zap": [{ "trash": ["/opt/homebrew/share/google-cloud-sdk"] }] }
+                ] },
+                { "token": "miniconda", "installed": "py314", "artifacts": [
+                    { "uninstall_preflight_steps": [{ "steps": [
+                        { "source": { "base": "caskroom_path", "path": "base/envs" },
+                          "target": { "path": "{{temp}}/{{token}}-envs" },
+                          "type": "move", "overwrite": true }
+                    ] }] },
+                    { "uninstall": [{ "delete": "/opt/homebrew/Caskroom/miniconda/base" }] },
+                    { "installer": [{ "script": { "executable": "Miniconda3.sh", "args": ["-b", "-p", "/opt/homebrew/Caskroom/miniconda/base"] } }] },
+                    { "binary": ["/opt/homebrew/Caskroom/miniconda/base/condabin/conda"], "target": "/opt/homebrew/bin/conda" },
+                    { "postflight_steps": [{ "steps": [
+                        { "paths": [{ "base": "caskroom_path", "path": "base/envs" }],
+                          "recursive": true, "type": "remove" },
+                        { "source": { "path": "{{temp}}/{{token}}-envs" },
+                          "target": { "base": "caskroom_path", "path": "base/envs" },
+                          "type": "move", "overwrite": true }
+                    ] }] },
+                    { "zap": [{ "trash": ["~/.conda"] }] }
+                ] },
+                { "token": "ngrok", "installed": "3.39.11", "artifacts": [
+                    { "binary": ["ngrok"], "target": "/opt/homebrew/bin/ngrok" },
+                    { "postflight_steps": [{ "steps": [
+                        { "paths": [{ "base": "staged_path", "path": "ngrok" }],
+                          "permissions": "0755", "type": "set_permissions" }
+                    ] }] }
+                ] },
+                { "token": "tapped", "installed": "1.0", "artifacts": [
+                    { "preflight": null },
+                    { "binary": ["tapped"], "target": "/opt/homebrew/bin/tapped" }
+                ] },
+                { "token": "tapped-uninstall", "installed": "1.0", "artifacts": [
+                    { "binary": ["tapped"], "target": "/opt/homebrew/bin/tapped" },
+                    { "uninstall_postflight": null }
+                ] },
+                { "token": "linked-out", "installed": "1.0", "artifacts": [
+                    { "binary": ["sdk/bin/linked"], "target": "/opt/homebrew/bin/linked" },
+                    { "postflight_steps": [{ "steps": [
+                        { "source": { "base": "homebrew_prefix", "path": "share/linked-sdk" },
+                          "target": { "base": "staged_path", "path": "sdk" },
+                          "type": "symlink" }
+                    ] }] }
+                ] },
+                { "token": "ran", "installed": "1.0", "artifacts": [
+                    { "binary": ["ran"], "target": "/opt/homebrew/bin/ran" },
+                    { "postflight_steps": [{ "steps": [
+                        { "command": { "base": "staged_path", "path": "ran" }, "args": ["setup"], "type": "run" }
+                    ] }] }
+                ] },
+                { "token": "manual", "installed": "1.0", "artifacts": [
+                    { "installer": [{ "manual": "Manual Installer.app" }] },
+                    { "binary": ["manual"], "target": "/opt/homebrew/bin/manual" }
+                ] },
+                { "token": "climbs", "installed": "1.0", "artifacts": [
+                    { "binary": ["../../../share/climbs/bin/climbs"], "target": "/opt/homebrew/bin/climbs" }
                 ] },
                 { "token": "flutter", "installed": "3.35.0", "artifacts": [
                     { "suite": ["flutter"], "target": "/opt/homebrew/share/flutter" },
@@ -1313,7 +1524,16 @@ mod tests {
             .filter(|a| a.facts.command_inputs.cask_stays_in_caskroom)
             .map(|a| a.key.name.as_str())
             .collect();
-        assert_eq!(stays, vec!["claude-code", "codex", "gcloud-cli"]);
+        assert_eq!(
+            stays,
+            vec![
+                "claude-code",
+                "codex",
+                "miniconda",
+                "ngrok",
+                "tapped-uninstall"
+            ]
+        );
         // Reading the names of the other stanzas costs nothing else.
         let code = result
             .iter()

@@ -321,6 +321,27 @@ describe("the browser preview's mock backend", () => {
     expect(remembered.done).toBe(true);
   });
 
+  it("measures a cask with no app as its Caskroom folder only when its program stays there, with ?state=many", async () => {
+    // As size.rs: Claude Code and Codex keep their program in their folder
+    // in Caskroom and are measured; Google Cloud CLI's steps copy its SDK
+    // to <prefix>/share/google-cloud-sdk and leave a link behind, so it has
+    // no size, as Flutter (its `suite` moved out) and .NET SDK (a `pkg`).
+    const { backend } = backendFor({ state: "many" });
+    const snapshot = await answer<Snapshot>(backend.invoke("refresh"));
+    await vi.advanceTimersByTimeAsync(10_000);
+    const sizes = (await backend.invoke("get_sizes")) as Sizes;
+    expect(sizes.done).toBe(true);
+    const listed = new Set(sizes.artifacts.map((size) => artifactKeyId(size.key)));
+    const cask = (name: string) => {
+      const artifact = snapshot.artifacts.find((a) => a.key.kind === "Cask" && a.key.name === name);
+      expect(artifact, name).toBeDefined();
+      expect(artifact!.path, name).toBeNull();
+      return artifactKeyId(artifact!.key);
+    };
+    for (const name of ["claude-code", "codex"]) expect(listed.has(cask(name)), name).toBe(true);
+    for (const name of ["gcloud-cli", "flutter", "dotnet-sdk"]) expect(listed.has(cask(name)), name).toBe(false);
+  });
+
   it("never finishes measuring with ?sizes=pending", async () => {
     const { backend } = backendFor({ sizes: "pending" });
     await answer<Snapshot>(backend.invoke("refresh"));

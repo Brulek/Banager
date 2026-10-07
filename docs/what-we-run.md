@@ -4301,7 +4301,7 @@ than linked, is a folder like any other there and is measured:
 |---|---|
 | a Homebrew formula | `<prefix>/Cellar/<name>/<version>`; the names in `<prefix>/Cellar/<name>`, and each other version's folder there, as its other versions |
 | a Homebrew cask with an app | the `.app` Homebrew names for it (Homebrew's section, `brew info --installed --json=v2`) and `<prefix>/Caskroom/<token>` |
-| a Homebrew cask with no app whose program Homebrew keeps in its own folder — Claude Code, Codex, Copilot CLI, Cursor CLI, Grok Build, Droid and the like: every stanza `brew info --installed --json=v2` lists for it is a `binary` link or one that leaves its files there (completions, manual pages, an installer script, Homebrew's own uninstall and zap steps), and the file each `binary` stanza links is in that folder | `<prefix>/Caskroom/<token>` |
+| a Homebrew cask with no app whose program Homebrew keeps in its own folder — Claude Code, Codex, Copilot CLI, Cursor CLI, Grok Build, Droid and the like: every stanza `brew info --installed --json=v2` lists for it is a `binary` link or one that leaves its files there (completions, manual pages, an installer script, steps Homebrew takes before or after the install that only change a file's mode or owner, remove files, or copy, move or link files within that folder, Homebrew's own uninstall and zap steps), and the file each `binary` stanza links is in that folder, by a path with no `..` | `<prefix>/Caskroom/<token>` |
 | an npm package | `<prefix>/lib/node_modules/<name>` |
 | a pipx or uv tool | its environment, the folder its own listing names |
 | a Cargo crate | each program `<CARGO_HOME>/.crates2.json` says it installed, in `<CARGO_HOME>/bin` (that file is read again for this, only when it is a regular file of at most 16 MiB, as the Cargo source reads it: a larger one is refused by its size, not read, and the crate is measured as its own listing names it) |
@@ -4310,8 +4310,11 @@ than linked, is a folder like any other there and is measured:
 
 Nothing else is measured: not pip's packages, not any other cask with no
 app (a font, a `pkg`, one whose `suite` Homebrew moved elsewhere, as
-Flutter's, or whose command links a file outside its folder in
-`Caskroom`), not a tool's settings, caches or downloads. On the way to
+Flutter's, one whose steps copy its files elsewhere and leave a link
+behind, as Google Cloud CLI's, or run a program, one with a block of Ruby
+to run on install, one with an installer you open yourself, or one whose
+command links a file outside its folder in `Caskroom`), not a tool's
+settings, caches or downloads. On the way to
 each folder, every folder above it is `lstat`ed and a link among them read
 (`readlink`), so that where it leads is known before anything there is
 looked at; the folder before each step is held open, so a folder already

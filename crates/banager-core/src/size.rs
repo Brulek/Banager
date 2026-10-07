@@ -12,10 +12,11 @@
 //!   `<prefix>/Caskroom/<token>`;
 //! - a Homebrew cask with no app that keeps its program in
 //!   `<prefix>/Caskroom/<token>` -- Claude Code, Codex, Grok Build: `binary`
-//!   stanzas linking files in that folder, and no stanza that moves or
-//!   installs anything elsewhere (`commands_staged_in`) -- that folder. Any
-//!   other cask with no app (a font, a `pkg`, Flutter's `suite`) is not
-//!   measured: what it installed is elsewhere;
+//!   stanzas linking files in that folder, and no stanza or step that moves
+//!   or installs anything elsewhere (`commands_staged_in`) -- that folder.
+//!   Any other cask with no app (a font, a `pkg`, Flutter's `suite`, Google
+//!   Cloud CLI's SDK copied to `<prefix>/share`) is not measured: what it
+//!   installed is elsewhere;
 //! - an npm package: `<prefix>/lib/node_modules/<name>`;
 //! - a pipx or uv tool: its environment (`InstalledArtifact.path`);
 //! - a Cargo crate: the programs it installed in `<CARGO_HOME>/bin`, as
@@ -875,20 +876,26 @@ fn roots_of(
 /// folder in `<prefix>/Caskroom`: every stanza it has leaves what it
 /// installed there (`CommandInputs.cask_stays_in_caskroom`, from
 /// `brew/parse.rs`: `binary` links, completions, an installer script,
-/// Homebrew's own uninstall and zap steps -- no `suite`, `pkg`, font or
-/// anything else that moves a file out), it has `binary` stanzas
-/// (`CommandInputs.provided`), and the file each one links is in that
-/// folder -- named relative to it, as Homebrew's Claude Code, Codex,
+/// steps before or after the install that only change modes or owners,
+/// remove files, or copy, move or link files within that folder, and
+/// Homebrew's own uninstall and zap steps -- no `suite`, `pkg`, font,
+/// `preflight` block of Ruby, step that runs a program or puts a file
+/// elsewhere, or anything else that may move a file out), it has `binary`
+/// stanzas (`CommandInputs.provided`), and the file each one links is in
+/// that folder -- named relative to it, as Homebrew's Claude Code, Codex,
 /// Copilot CLI, Cursor CLI, Grok Build and Droid name theirs (`within`
 /// empty), or by an absolute path inside it, as a cask whose installer
 /// script fills its folder names its own
 /// (`<prefix>/Caskroom/miniconda/base/condabin/conda`). Otherwise what the
 /// folder holds is not the program, or not all of it -- the package a
 /// `pkg` installed from, the link to a `suite` Homebrew moved (Flutter's
-/// SDK, in `<prefix>/share/flutter`), a file inside an app -- and the cask
-/// is not measured; nor is one with no `binary` stanza (a font, a `pkg`
-/// alone). A path with a `..` in it is taken as elsewhere: by name alone,
-/// nobody knows where it stays.
+/// SDK, in `<prefix>/share/flutter`) or to an SDK its steps copied out
+/// (Google Cloud CLI's, in `<prefix>/share/google-cloud-sdk`), a file
+/// inside an app -- and the cask is not measured; nor is one with no
+/// `binary` stanza (a font, a `pkg` alone). A path with a `..` in it is
+/// taken as elsewhere, by name alone nobody knowing where it stays: an
+/// absolute one here, a relative one already in `brew/parse.rs`
+/// (`binary_stays_in_caskroom`).
 fn commands_staged_in(artifact: &InstalledArtifact, caskroom: &Path) -> bool {
     let inputs = &artifact.facts.command_inputs;
     inputs.cask_stays_in_caskroom
@@ -2452,7 +2459,11 @@ mod tests {
         // `suite`, moved to `<prefix>/share/flutter`, leaves only a link
         // behind, which would measure as a few bytes) or one Banager does
         // not know, a font, and a stanza whose path climbs out of the
-        // folder.
+        // folder, absolutely or relatively. Nor Google Cloud CLI: its
+        // `preflight_steps` copy the SDK to `<prefix>/share/google-cloud-sdk`
+        // and leave in the folder a link to it, a few bytes beside an SDK
+        // of hundreds of MB; nor a tap's cask with a `preflight` block,
+        // Ruby nobody can read from here.
         let scratch = Scratch::new("binary-cask");
         let home = scratch.dir("home");
         let prefix = scratch.dir("homebrew");
@@ -2487,6 +2498,21 @@ mod tests {
         )
         .unwrap();
         scratch.file("homebrew/Caskroom/wrapped/1.0/wrapped", 1_000);
+        scratch.file("homebrew/share/google-cloud-sdk/bin/gcloud", 400_000);
+        scratch.dir("homebrew/Caskroom/gcloud-cli/560.0.0");
+        symlink(
+            prefix.join("share/google-cloud-sdk"),
+            prefix.join("Caskroom/gcloud-cli/560.0.0/google-cloud-sdk"),
+        )
+        .unwrap();
+        symlink(
+            prefix.join("Caskroom/gcloud-cli/560.0.0"),
+            prefix.join("Caskroom/gcloud-cli/latest"),
+        )
+        .unwrap();
+        scratch.file("homebrew/Caskroom/tapped/1.0/tapped", 1_000);
+        scratch.file("homebrew/share/climbs/bin/climbs", 300_000);
+        scratch.dir("homebrew/Caskroom/climbs/1.0");
         let bin = prefix.join("bin");
         let caskroom = prefix.join("Caskroom");
         let json = serde_json::json!({
@@ -2530,14 +2556,76 @@ mod tests {
                     ]
                 },
                 {
+                    "token": "gcloud-cli",
+                    "installed": "560.0.0",
+                    "artifacts": [
+                        { "preflight_steps": [{ "steps": [
+                            {
+                                "source": { "base": "staged_path", "path": "google-cloud-sdk/." },
+                                "target": { "base": "homebrew_prefix", "path": "share/google-cloud-sdk" },
+                                "recursive": true,
+                                "type": "copy"
+                            },
+                            {
+                                "paths": [{ "base": "staged_path", "path": "google-cloud-sdk" }],
+                                "recursive": true,
+                                "type": "remove"
+                            },
+                            {
+                                "source": { "path": "{{HOMEBREW_PREFIX}}/share/google-cloud-sdk" },
+                                "target": { "base": "staged_path", "path": "google-cloud-sdk" },
+                                "type": "symlink"
+                            }
+                        ] }] },
+                        { "installer": [{ "script": { "executable": "google-cloud-sdk/install.sh" } }] },
+                        { "binary": ["google-cloud-sdk/bin/gcloud"], "target": bin.join("gcloud") },
+                        { "postflight_steps": [{ "steps": [{
+                            "source": { "path": "{{staged_path}}" },
+                            "target": { "path": "{{caskroom_path}}/latest" },
+                            "type": "symlink"
+                        }] }] }
+                    ]
+                },
+                {
+                    "token": "tapped",
+                    "installed": "1.0",
+                    "artifacts": [
+                        { "preflight": null },
+                        { "binary": ["tapped"], "target": bin.join("tapped") }
+                    ]
+                },
+                {
+                    "token": "climbs",
+                    "installed": "1.0",
+                    "artifacts": [{
+                        "binary": ["../../../share/climbs/bin/climbs"],
+                        "target": bin.join("climbs")
+                    }]
+                },
+                {
                     "token": "miniconda",
                     "installed": "py314",
                     "artifacts": [
-                        { "installer": [{ "script": { "executable": "Miniconda3.sh" } }] },
+                        { "installer": [{ "script": {
+                            "executable": "Miniconda3.sh",
+                            "args": ["-b", "-p", caskroom.join("miniconda/base")]
+                        } }] },
                         {
                             "binary": [caskroom.join("miniconda/base/condabin/conda")],
                             "target": bin.join("conda")
-                        }
+                        },
+                        { "postflight_steps": [{ "steps": [
+                            {
+                                "paths": [{ "base": "caskroom_path", "path": "base/envs" }],
+                                "recursive": true,
+                                "type": "remove"
+                            },
+                            {
+                                "source": { "path": "{{temp}}/{{token}}-envs" },
+                                "target": { "base": "caskroom_path", "path": "base/envs" },
+                                "type": "move"
+                            }
+                        ] }] }
                     ]
                 },
                 {
@@ -2584,7 +2672,16 @@ mod tests {
         assert_eq!(codex.bytes, du(&caskroom.join("codex")));
         let miniconda = measured("miniconda").unwrap();
         assert_eq!(miniconda.bytes, du(&caskroom.join("miniconda")));
-        for name in ["flutter", "wrapped", "dotnet-sdk", "font-x", "odd"] {
+        for name in [
+            "flutter",
+            "wrapped",
+            "gcloud-cli",
+            "tapped",
+            "climbs",
+            "dotnet-sdk",
+            "font-x",
+            "odd",
+        ] {
             assert!(size_of(&sizes, name).is_none(), "{name}");
         }
         assert_eq!(
