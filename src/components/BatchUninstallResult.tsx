@@ -17,15 +17,16 @@ import { SMALL_WRAPPING } from "./ui/group";
  * words (`outcomeWords`: 「未能卸载」, 「已取消」, a failure's cause), and its
  * 查看日志 where its log has anything to show -- not for one cancelled
  * before it printed anything, as the bar offers none for it either
- * (`printedAnything`, r29 X2) -- and, with technical details on, where that is the tool's own
- * words, whose they are and what to do next (`ResultRowStep`). Under a
- * Homebrew formula whose dependent in the batch did not
- * uninstall, the two facts that explain it, and no cause claimed beyond
- * them: that one did not uninstall, and Homebrew does not uninstall what
- * is still needed. Nothing while any of it still runs, nothing when all of
- * it succeeded, and nothing for a tool that never started (the sheet said
- * why). Its × puts it away; the next batch replaces it. The log drawer is
- * opened only by its buttons, never by itself.
+ * (`printedAnything`, r29 X2) -- and, with technical details on, where
+ * that is the tool's own words, whose they are and what to do next
+ * (`ResultRowStep`). Under a Homebrew formula whose dependent in the
+ * batch did not uninstall, the two facts that explain it, and no cause
+ * claimed beyond them: that one did not uninstall, and Homebrew does not
+ * uninstall what is still needed. Nothing while any of it still runs,
+ * nothing when all of it succeeded, and nothing for a tool that never
+ * started (the sheet said why). Its × puts it away; the next batch
+ * replaces it. The log drawer is opened only by its buttons, never by
+ * itself.
  */
 export function BatchUninstallResult() {
   const { t } = useTranslation();
