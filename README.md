@@ -446,8 +446,9 @@ window's language reads as it did before.
 
 ## License
 
-Not chosen yet. Until a license file is added this repository is "all rights reserved" by
-default, so please don't build on it yet — and I can't accept contributions until it's settled.
+Banager's own code is released under the [MIT License](LICENSE). The logos of tools and sources
+in `src/assets/tool-icons/` are not covered by it: they are their owners' trademarks and keep the
+terms described under [Logos](#logos).
 
 ---
 
@@ -654,3 +655,9 @@ Homebrew 公式更新通常會先預覽、再於成功後清理該公式的舊�
 一般測試略過 11 項，包括實際 Homebrew、垃圾桶、AppKit、磁碟探測及效能測試。安裝、解除安裝及垃圾桶測試需要明確啟用。
 `OLLAMA_HOST` 中的登入資訊可能透過一般 HTTP 傳送，會在視窗中遮蔽，並在更新和解除安裝記錄及設定儲存前移除。完整的執行範圍、例外與舊記錄處理請見[執行與隱私要點](docs/what-we-run.md#繁體中文執行與隱私要點)。
 已安裝頁裡的 HTTPS 首頁連結只交給預設瀏覽器開啟，不會被宣告了該網域的 App 直接接走；查不到預設瀏覽器時不開啟。一般 HTTP 首頁只供拷貝。
+
+### 许可证
+
+Banager 自己的代码采用 [MIT 许可证](LICENSE)。工具和来源的标志（`src/assets/tool-icons/`）属于各自的所有者，不在 MIT 许可之内。
+
+Banager 自己的程式碼採用 [MIT 授權條款](LICENSE)。工具和來源的標誌（`src/assets/tool-icons/`）屬於各自的擁有者，不在 MIT 授權範圍內。
