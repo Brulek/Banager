@@ -28,7 +28,7 @@
 //!
 //! Nothing here runs a command or writes a file: `plan` hands in what
 //! `detect` seated, and this module lists `<rustup_home>/toolchains` and
-//! `<cargo_home>/bin` by name, reads `.crates2.json`, looks for
+//! `<cargo_home>/bin` by name, reads `.crates2.json` and `.crates.toml`, looks for
 //! Homebrew's `Cellar/rustup`, reads eight startup files under the home
 //! (and zsh's three under a `ZDOTDIR` that is another folder), replays
 //! rustup's own cleanup on copies of them in memory, and answers with
@@ -36,7 +36,7 @@
 
 use super::recipe::GateRefusal;
 use super::Detected;
-use crate::adapters::cargo::{instance_id_for, parse_crates2_bins};
+use crate::adapters::cargo::{instance_id_for, merge_crates_v1, parse_crates2_bins};
 use crate::model::{ResourceLock, UninstallBlocked, Warning};
 use crate::protected::{look, Protected};
 use std::collections::BTreeMap;
@@ -250,8 +250,12 @@ pub fn toolchain_names(rustup_home: &Path, protected: &Protected) -> Result<Vec<
 /// or one of `RUSTUP_PROXIES` (self_update.rs:996-1022 compares names
 /// only, so a program copied there by hand goes too), read here with
 /// `read_dir` -- nothing is opened or run -- united with the binaries
-/// `.crates2.json` records (every crate's `bins`, through
-/// `parse_crates2_bins`, the parser cargo's own inventory uses). A
+/// Cargo's records list: `.crates2.json` brought up to date with
+/// `.crates.toml` (`merge_crates_v1`, as the Cargo source reads them, so a
+/// crate cargo-binstall recorded in `.crates.toml` alone counts too; a
+/// `.crates.toml` that is missing or cannot be read or merged leaves
+/// `.crates2.json` as it is), every crate's `bins` through
+/// `parse_crates2_bins`, the parser cargo's own inventory uses. A
 /// recorded program is named by its crate, as cargo's inventory names
 /// that crate's row (`jj-cli`, whose program is `jj`; `ripgrep`, whose
 /// is `rg`), so the list can be matched to the rows the user knows, and
@@ -279,11 +283,21 @@ pub fn bin_programs_rustup_removes(
         .filter_map(|name| name.to_str().map(str::to_string))
         .filter(|name| removed(name))
         .collect();
-    let recorded: Vec<(String, Vec<String>)> =
-        crate::adapters::read_file::read_text(&cargo_home.join(".crates2.json"), protected)
-            .ok()
-            .and_then(|json| parse_crates2_bins(&json).ok())
-            .unwrap_or_default();
+    let read = |name: &str| {
+        crate::adapters::read_file::read_text(&cargo_home.join(name), protected).ok()
+    };
+    let crates2 = read(".crates2.json");
+    let merged = read(".crates.toml").and_then(|crates_toml| {
+        merge_crates_v1(
+            crates2.as_deref().unwrap_or(r#"{"installs":{}}"#),
+            &crates_toml,
+        )
+        .ok()
+    });
+    let recorded: Vec<(String, Vec<String>)> = merged
+        .or(crates2)
+        .and_then(|json| parse_crates2_bins(&json).ok())
+        .unwrap_or_default();
     let mut names: Vec<String> = recorded
         .iter()
         .filter(|(_, bins)| bins.iter().any(|bin| removed(bin)))
@@ -1317,6 +1331,68 @@ mod tests {
                 "jj-cli".to_string(),
                 "mytool".to_string(),
                 "ripgrep".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn regression_bin_programs_rustup_removes_names_a_crate_only_crates_toml_records_by_its_crate()
+    {
+        // cargo-binstall records what it installs in `.crates.toml` alone,
+        // and the Cargo source reads that file merged with `.crates2.json`
+        // (`merge_crates_v1`), so its rows are `ripgrep` and `du-dust`,
+        // whose programs are `rg` and `dust`. The list names them the same
+        // way, also with no `.crates2.json` at all; a `.crates.toml` that
+        // cannot be read leaves `.crates2.json` alone.
+        let home = TempHome::new("rustup-bins-crates-toml");
+        let cargo_home = home.dir(".cargo");
+        rustup_layout(&cargo_home);
+        for program in ["hexyl", "rg", "dust", "cargo-binstall"] {
+            std::fs::write(cargo_home.join("bin").join(program), b"x").expect("write a program");
+        }
+        std::fs::copy(
+            "../../adapters/fixtures/cargo/1.98.1/crates2.json",
+            cargo_home.join(".crates2.json"),
+        )
+        .expect("copy the recorded record");
+        std::fs::write(
+            cargo_home.join(".crates.toml"),
+            r#"[v1]
+"cargo-binstall 1.17.4 (registry+https://github.com/rust-lang/crates.io-index)" = ["cargo-binstall"]
+"du-dust 1.2.3 (registry+https://github.com/rust-lang/crates.io-index)" = ["dust"]
+"hexyl 0.17.0 (registry+https://github.com/rust-lang/crates.io-index)" = ["hexyl"]
+"ripgrep 15.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = ["rg"]
+"#,
+        )
+        .expect("write .crates.toml");
+        let by_crate = vec![
+            "cargo-binstall".to_string(),
+            "du-dust".to_string(),
+            "hexyl".to_string(),
+            "ripgrep".to_string(),
+        ];
+        assert_eq!(
+            bin_programs_rustup_removes(&cargo_home, &Protected::of_this_process()).unwrap(),
+            by_crate
+        );
+        std::fs::remove_file(cargo_home.join(".crates2.json")).expect("remove .crates2.json");
+        assert_eq!(
+            bin_programs_rustup_removes(&cargo_home, &Protected::of_this_process()).unwrap(),
+            by_crate
+        );
+        std::fs::copy(
+            "../../adapters/fixtures/cargo/1.98.1/crates2.json",
+            cargo_home.join(".crates2.json"),
+        )
+        .expect("copy the recorded record");
+        std::fs::write(cargo_home.join(".crates.toml"), "[v1\n").expect("break .crates.toml");
+        assert_eq!(
+            bin_programs_rustup_removes(&cargo_home, &Protected::of_this_process()).unwrap(),
+            vec![
+                "cargo-binstall".to_string(),
+                "dust".to_string(),
+                "hexyl".to_string(),
+                "rg".to_string(),
             ]
         );
     }

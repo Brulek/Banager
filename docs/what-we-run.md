@@ -3850,7 +3850,10 @@ path, with its downloads, its record of what `cargo install` installed,
 Cargo's own settings and saved login, and anything else kept there; the
 programs in its `bin/` by name where known (a listing of `~/.cargo/bin`
 minus rustup and its thirteen links, together with the binaries
-`~/.cargo/.crates2.json` records — the same file the Cargo source reads —
+`~/.cargo/.crates2.json` and `~/.cargo/.crates.toml` record — the same
+two files the Cargo source reads, merged the same way, so a crate
+cargo-binstall recorded in `.crates.toml` alone counts too; when
+`.crates.toml` is missing or cannot be read, `.crates2.json` alone —
 each recorded one by its crate's name, the one its row has on the
 Installed page, and the others by their file names);
 that rustup will edit your shell startup files; and each startup file that
@@ -5165,7 +5168,8 @@ not read (`protected::look`; How Banager runs anything, above):
   inventory, at the uninstall preview, and again right before the
   uninstall command is started); during the uninstall preview only, the
   names in `~/.rustup/toolchains` and in `~/.cargo/bin` (directory
-  listings — nothing in them is opened), `~/.cargo/.crates2.json`, whether
+  listings — nothing in them is opened), `~/.cargo/.crates2.json` and
+  `~/.cargo/.crates.toml`, whether
   `/opt/homebrew/Cellar/rustup` or `/usr/local/Cellar/rustup` exists, and
   the shell startup files named in its section (eight under your home, and
   zsh's three under `ZDOTDIR` when that names another folder), each
@@ -5286,7 +5290,8 @@ A check that runs out never uses the names it did read:
   (`NoSafeMethod`) at that folder, and no partial list of toolchains or
   programs is shown. A `~/.rustup/toolchains` or `~/.cargo/bin` that cannot
   be opened at all keeps the preview's wording from before: "every
-  toolchain", and the programs `~/.cargo/.crates2.json` records, beside the
+  toolchain", and the programs Cargo's records (`.crates2.json` and
+  `.crates.toml`) list, beside the
   line that the whole of `~/.cargo` goes.
 - A standalone tool's uninstall -- one budget for all of its backup
   patterns, at each look: only a missing folder means no backups. One that
