@@ -324,3 +324,19 @@ fn test_readme_says_quit_neither_stops_nor_waits_for_an_operation_that_cannot_be
     assert!(chinese.contains("现在退出会中断能中断的那些"));
     assert!(chinese.contains("退出既不中断它，也不等它，Banager退出后它的命令照样运行"));
 }
+
+/// r20 R56-5: the window cannot install anything new -- `ipc.rs` refuses
+/// an `OpKind::Install` the window plans, and the README's "What it
+/// deliberately does not do yet" says so -- yet the source table's column
+/// read "Installs / updates / removes", with "yes" for six sources.
+#[test]
+fn test_readme_source_table_offers_no_install() {
+    let readme = read_readme();
+    let (english, _) = blocks(&readme);
+    let header = english
+        .lines()
+        .find(|line| line.starts_with("| Source |"))
+        .expect("README.md has no source table");
+    assert_eq!(header, "| Source | Reads | Updates / removes |");
+    assert!(english.contains("no way to install something new"));
+}
