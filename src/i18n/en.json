@@ -609,6 +609,9 @@
       "HomebrewFormula": "Removes what Homebrew installed of {{name}} and the links to it."
     }
   },
+  "uvLinks": {
+    "takesBack": "{{path}} now leads to the copy another tool installed. This update points it back to uv's copy."
+  },
   "kegLinks": {
     "relinks": "{{name}} is linked into Terminal. The update unlinks it first and Homebrew links it back; Banager checks afterwards and links it if it isn't.",
     "relinksDetail": "Its commands in Terminal: {{commands}}. If they aren't back, Banager runs brew link --formula --force {{name}}, which stops rather than overwrite another program's file.",

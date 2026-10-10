@@ -553,6 +553,9 @@
       "HomebrewFormula": "刪除Homebrew安裝的「{{name}}」和指向它的連結。"
     }
   },
+  "uvLinks": {
+    "takesBack": "{{path}}現在指向另一個工具裝的那一份。這次更新會把它改回uv裝的這一份。"
+  },
   "kegLinks": {
     "relinks": "{{name}}已連結到終端機。更新會先解除連結，再由Homebrew重新連結；更新後會檢查，沒有連結上就再連結一次。",
     "relinksDetail": "它連結到終端機的指令：{{commands}}。沒有連結上時會執行brew link --formula --force {{name}}；遇到其他程式的檔案，它會停下，不會覆寫。",

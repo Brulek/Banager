@@ -355,6 +355,12 @@ fn uv_list(env: &Path, version: &str) -> String {
             "/Users/brulek/.local/share/uv/tools/ruff",
             env.to_str().unwrap(),
         )
+        // Its command, which an update's preview looks at
+        // (`taken_command`), beside it in the test's own folder.
+        .replace(
+            "/Users/brulek/.local/bin/ruff",
+            env.with_file_name("ruff-command").to_str().unwrap(),
+        )
         .replace("ruff v0.15.0", &format!("ruff v{version}"));
     assert_ne!(list, recorded, "the fixture's path and version were found");
     list

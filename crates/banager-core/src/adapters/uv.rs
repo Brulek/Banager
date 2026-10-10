@@ -753,6 +753,13 @@ impl UvAdapter {
             }
         }
         let mut basis = None;
+        // A command of the tool another tool has taken over since
+        // (`taken_command`), which the update takes back: `uv tool
+        // upgrade` removes every command its receipt records and links
+        // each again with force (uv 0.12.17 `commands/tool/upgrade.rs:
+        // 592-614`, `common.rs:903` `replace_symlink`). Said in the
+        // preview, not refused: the update is still the user's to make.
+        let mut takes_back = None;
         if req.kind == OpKind::Upgrade {
             let installed = self.inventory(inst).await?;
             let artifact = installed
@@ -760,6 +767,8 @@ impl UvAdapter {
                 .find(|a| a.key.name == req.name)
                 .ok_or_else(|| AdapterError::Refused("uv tool is absent from inventory".into()))?;
             basis = Some(upgrade_basis(artifact).map_err(AdapterError::Refused)?);
+            takes_back = taken_of(&installed, &req.name)
+                .map(|path| Warning::TakesBackCommand { path: shown(&path) });
         }
         let lock = ResourceLock(inst.id.clone());
         let args = match req.kind {
@@ -781,7 +790,8 @@ impl UvAdapter {
             OpKind::Uninstall => vec![Warning::UninstallScope {
                 what: UninstallScope::Uv,
             }],
-            OpKind::Install | OpKind::Upgrade => Vec::new(),
+            OpKind::Install => Vec::new(),
+            OpKind::Upgrade => takes_back.into_iter().collect(),
             OpKind::Link => return Err(super::links_nothing(&self.meta.id)),
         };
         Ok(Plan {
@@ -848,6 +858,16 @@ impl UvAdapter {
                     };
                     self.tools_in(&output.stdout, &plan.request.instance_id, program)
                         .ok()
+                        .filter(|installed| {
+                            // A command taken over since the preview, which
+                            // the preview did not say the update takes back
+                            // (`Warning::TakesBackCommand`): not what was
+                            // shown, so the update does not run.
+                            taken_of(installed, &plan.request.name).is_none_or(|path| {
+                                plan.warnings
+                                    .contains(&Warning::TakesBackCommand { path: shown(&path) })
+                            })
+                        })
                         .and_then(|installed| {
                             let mut matching = installed
                                 .iter()
@@ -2388,6 +2408,74 @@ ruff v0.15.0 (/Users/someone/.local/share/uv/tools/ruff)
             .unwrap();
         assert_eq!(outcome, Outcome::Succeeded);
         assert_eq!(ruffs.uninstalls(), 1);
+    }
+
+    /// r15 R43-7. `uv tool upgrade` removes every command its receipt
+    /// records and links it again with force (uv 0.12.17
+    /// `commands/tool/upgrade.rs:592-614`, `common.rs:903`
+    /// `replace_symlink`), so the update of uv's ruff takes `~/.local/bin/ruff`
+    /// back from pipx's ruff. The preview says so; one taken after the
+    /// preview, which it did not say, stops the update before uv runs.
+    #[tokio::test]
+    async fn regression_r43_7_an_update_says_it_takes_back_a_command_pipx_took_over() {
+        let ruffs = Ruffs::new();
+        std::fs::write(
+            ruffs.env.join("uv-receipt.toml"),
+            "[tool]\nrequirements = [{name = 'ruff'}]\n",
+        )
+        .unwrap();
+        ruffs.runner.respond(
+            vec!["/opt/homebrew/bin/uv", "tool", "upgrade", "ruff"],
+            CommandOutput {
+                stderr_cause: Default::default(),
+                exit_code: Some(0),
+                stdout: String::new(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let adapter = ruffs.adapter();
+        let upgrade = request(OpKind::Upgrade);
+        let own = adapter.plan(&test_instance(), &upgrade).await.unwrap();
+        assert_eq!(own.warnings, []);
+        ruffs.link_to(&ruffs.pipx);
+        let taken = adapter.plan(&test_instance(), &upgrade).await.unwrap();
+        assert_eq!(
+            taken.warnings,
+            [Warning::TakesBackCommand {
+                path: ruffs.shown_link()
+            }]
+        );
+        let upgrades = || {
+            ruffs
+                .runner
+                .calls()
+                .iter()
+                .filter(|argv| argv.iter().any(|arg| arg == "upgrade"))
+                .count()
+        };
+        // Taken since the preview that did not say so: stopped.
+        let outcome = adapter
+            .execute(&own, Arc::new(VecSink::new()), 1, CancellationToken::new())
+            .await
+            .unwrap();
+        assert_eq!(
+            outcome,
+            Outcome::BanagerFailed(crate::model::Fault::ChangedSinceShown)
+        );
+        assert_eq!(upgrades(), 0);
+        // The preview that said so runs.
+        adapter
+            .execute(
+                &taken,
+                Arc::new(VecSink::new()),
+                2,
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(upgrades(), 1);
     }
 
     /// What uv's uninstall removes without anything that works stopping,

@@ -902,9 +902,15 @@ async fn uv_upgrade(upgrade_output: CommandOutput, lists: Vec<String>) -> Outcom
     let lists: Vec<_> = lists
         .iter()
         .map(|list| {
+            // ruff's command, which the update's preview looks at
+            // (`taken_command`), in the test's own folder, where nothing is.
             list.replace(
                 "/Users/brulek/.local/share/uv/tools/ruff",
                 dir.path().to_str().unwrap(),
+            )
+            .replace(
+                "/Users/brulek/.local/bin/ruff",
+                dir.path().join("bin/ruff").to_str().unwrap(),
             )
         })
         .collect();

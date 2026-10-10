@@ -2573,6 +2573,17 @@ changed since shown. This reads links and folders only: no command beside
 the list, no file written, no permission is added. A command that changes
 after the last look and before uv reaches it is still possible.
 
+An update makes the same look, at the list its preview already reads:
+`uv tool upgrade` removes every command the receipt records and links
+each again with force (uv 0.12.17 `crates/uv/src/commands/tool/upgrade.rs:592-614`,
+`common.rs:903`), so it takes back a command another tool took over. It
+is not refused: its preview says that the path now leads to the copy
+another tool installed and that this update points it back to uv's copy
+(`Warning::TakesBackCommand`). The list read right before the update
+runs is looked at too: a command taken since the preview, which the
+preview did not say, ends the update as changed since shown before uv
+starts.
+
 ## pip (read-only)
 
 Adapter: `PipAdapter` in `crates/banager-core/src/adapters/pip.rs`.

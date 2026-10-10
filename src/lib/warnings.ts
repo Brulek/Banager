@@ -310,6 +310,8 @@ export function warningKey(warning: Warning): string | null {
   if ("HomebrewRemovesEveryVersion" in warning) return "brewVersions.removesEvery";
   // y1-keg: a keg-only formula linked with `brew link` is linked back after its update.
   if ("HomebrewRelinksAfterUpdate" in warning) return "kegLinks.relinks";
+  // r15 R43-7: a uv tool's command another tool took over, which its update takes back.
+  if ("TakesBackCommand" in warning) return "uvLinks.takesBack";
   // The first file in the way, and how many there are.
   if ("LinkPlacesHeld" in warning) {
     return warning.LinkPlacesHeld.paths.length > 1 ? "kegLinks.heldMany" : "kegLinks.held";
@@ -385,6 +387,7 @@ export function warningArgs(warning: Warning, separator = ", "): Record<string, 
     const versions = warning.HomebrewRemovesEveryVersion.versions;
     return { count: versions.length, versions: versions.join(separator) };
   }
+  if ("TakesBackCommand" in warning) return { path: warning.TakesBackCommand.path };
   if ("HomebrewRelinksAfterUpdate" in warning) {
     const { name, commands } = warning.HomebrewRelinksAfterUpdate;
     return { name, commands: commands.join(separator) };
@@ -566,6 +569,7 @@ export function warningDetailKey(warning: Warning): string | null {
     "HomebrewNoCleanupFormulae" in warning ||
     "LinkPlacesHeld" in warning ||
     "HomebrewRemovesEveryVersion" in warning ||
+    "TakesBackCommand" in warning ||
     "UninstallScope" in warning ||
     "KeepsData" in warning ||
     "Message" in warning
@@ -621,6 +625,7 @@ export function warningGroup(warning: Warning): WarningGroup {
     "HomebrewCleansUpOldVersions" in warning ||
     "HomebrewRemovesEveryVersion" in warning ||
     "HomebrewRelinksAfterUpdate" in warning ||
+    "TakesBackCommand" in warning ||
     "LinkPlacesHeld" in warning ||
     "CaskUninstallStep" in warning ||
     "Message" in warning
@@ -708,6 +713,7 @@ export function deletesForGood(warning: Warning): boolean {
     "HomebrewRemovesEveryVersion" in warning ||
     // `brew link` deletes nothing (y1-keg: never `--overwrite`).
     "HomebrewRelinksAfterUpdate" in warning ||
+    "TakesBackCommand" in warning ||
     "LinkPlacesHeld" in warning ||
     "UninstallScope" in warning ||
     "KeepsData" in warning ||
@@ -884,6 +890,8 @@ export function isCaution(warning: Warning): boolean {
     "RemovesCargoInstalled" in warning ||
     "LeavesShellConfigLine" in warning ||
     "ShellConfigUnread" in warning ||
+    // A command another tool took over goes back to uv's (r15 R43-7).
+    "TakesBackCommand" in warning ||
     "CaskUninstallStep" in warning ||
     "Message" in warning
   ) {

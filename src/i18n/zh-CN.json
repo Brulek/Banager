@@ -553,6 +553,9 @@
       "HomebrewFormula": "删除Homebrew安装的“{{name}}”和指向它的链接。"
     }
   },
+  "uvLinks": {
+    "takesBack": "{{path}}现在指向另一个工具装的那一份。这次更新会把它改回uv装的这一份。"
+  },
   "kegLinks": {
     "relinks": "{{name}}已链接到终端。更新会先解除链接，再由Homebrew重新链接；更新后会检查，没有链接上就再链接一次。",
     "relinksDetail": "它链接到终端的命令：{{commands}}。没有链接上时会运行brew link --formula --force {{name}}；遇到其他程序的文件，它会停下，不会覆盖。",

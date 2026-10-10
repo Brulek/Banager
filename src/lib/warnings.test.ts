@@ -575,6 +575,7 @@ const EVERY_VARIANT: Warning[] = [
   { HomebrewCleansUpOldVersions: { versions: ["1.25.0"] } },
   { HomebrewRemovesEveryVersion: { versions: ["1.25.0", "1.26.0"] } },
   { HomebrewRelinksAfterUpdate: { name: "node@22", commands: ["node", "npm"] } },
+  { TakesBackCommand: { path: "~/.local/bin/ruff" } },
   { UninstallScope: { what: "HomebrewCaskPlain" } },
   { CaskUninstallStep: { step: "Deletes", items: ["~/Library/Application Support/Foo"] } },
   { Message: "boom" },
@@ -701,7 +702,7 @@ describe("warningGroup", () => {
           "UninstallScope" in warning
         ),
     );
-    expect(notes).toHaveLength(30);
+    expect(notes).toHaveLength(31);
     for (const warning of notes) expect(warningGroup(warning)).toBe("note");
     // Every kind of a cask's extra steps.
     for (const step of EVERY_STEP) {
@@ -1181,6 +1182,17 @@ describe("y1-keg: a keg-only formula linked into Terminal is linked back after i
   const enT = i18n.getFixedT("en");
   const zhHant = i18n.getFixedT("zh-Hant");
   const relinks: Warning = { HomebrewRelinksAfterUpdate: { name: "node@22", commands: ["node", "npm", "npx"] } };
+  const takesBack: Warning = { TakesBackCommand: { path: "~/.local/bin/ruff" } };
+
+  it("cautions that a uv update points a command another tool took over back to uv's copy (r15 R43-7)", () => {
+    expect(warningLine(enT, takesBack)).toEqual({
+      text: "~/.local/bin/ruff now leads to the copy another tool installed. This update points it back to uv's copy.",
+      detail: null,
+      caution: true,
+    });
+    expect(warningText(zh, takesBack)).toBe("~/.local/bin/ruff现在指向另一个工具装的那一份。这次更新会把它改回uv装的这一份。");
+    expect(warningText(zhHant, takesBack)).toBe("~/.local/bin/ruff現在指向另一個工具裝的那一份。這次更新會把它改回uv裝的這一份。");
+  });
   const noCommands: Warning = { HomebrewRelinksAfterUpdate: { name: "openssl@3", commands: [] } };
 
   it("says, not who linked it, that Homebrew links it back and it is checked after, with the commands and the command behind the ⓘ", () => {

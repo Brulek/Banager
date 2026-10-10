@@ -1321,6 +1321,18 @@ pub enum Warning {
     /// `warningKey`, `warningArgs` and `warningDetailKey` in
     /// src/lib/warnings.ts.
     HomebrewRelinksAfterUpdate { name: String, commands: Vec<String> },
+    /// A uv tool's command at `path` (home folder abbreviated) now leads to
+    /// another tool's copy -- pipx's, after `pipx reinstall-all` relinked it
+    /// -- and this update points it back to uv's: `uv tool upgrade` removes
+    /// every command its receipt records and links each again with force
+    /// (uv 0.12.17 `commands/tool/upgrade.rs:592-614`, `common.rs:903`).
+    /// The uninstall of such a tool is refused instead, since it would
+    /// remove the other tool's command (`UninstallUnsafeReason::
+    /// CaskLinkNotOwned`). Produced by `UvAdapter::plan` for an `Upgrade`
+    /// (`taken_command`); one taken after the preview that did not say so
+    /// ends the update as `Fault::ChangedSinceShown` before uv runs. A
+    /// caution, read by src/lib/warnings.ts. r15 R43-7.
+    TakesBackCommand { path: String },
     /// What stops Homebrew linking the keg-only formula `name` back after
     /// its update: `paths`, the places of its commands in the prefix where
     /// something else is (`brew::links`, `KegLinks::held_paths`), in the
@@ -3807,6 +3819,12 @@ mod tests {
                     commands: vec!["node".to_string(), "npm".to_string()],
                 },
                 r#"{"HomebrewRelinksAfterUpdate":{"name":"node@22","commands":["node","npm"]}}"#,
+            ),
+            (
+                Warning::TakesBackCommand {
+                    path: "~/.local/bin/ruff".to_string(),
+                },
+                r#"{"TakesBackCommand":{"path":"~/.local/bin/ruff"}}"#,
             ),
             (
                 Warning::LinkPlacesHeld {
