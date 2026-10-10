@@ -55,8 +55,10 @@ pub enum HttpError {
     Tls { host: String, detail: String },
     /// This client would not make the request, by its own rules: an https
     /// host not in `real::ALLOWED_HTTPS_HOSTS`, another scheme, a URL that
-    /// does not parse, a request that could not be built, or a redirect
-    /// the server answered with, which is never followed. The same rules
+    /// does not parse, a request that could not be built, a proxy setting
+    /// that names an address no request can go through
+    /// (`proxy::unusable_setting`), or a redirect the server answered
+    /// with, which is never followed. The same rules
     /// refuse it again next time.
     #[error("refused: {0}")]
     Refused(String),

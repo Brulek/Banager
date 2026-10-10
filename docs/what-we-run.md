@@ -134,8 +134,12 @@ folders an uninstall and its preview act on; nor any token, nor
 `OLLAMA_HOST`. Banager's own requests go through the proxy these settings
 name -- or, when they name none, the one this Mac's network settings name
 -- but never for this Mac itself, and still only to the hosts listed
-under Network: a mirror changes where the tools download from, not where
-Banager's own checks ask (Network, below). The values are never written
+under Network. One a shell or environment setting names that no request
+can go through is refused, never sent straight; one this Mac's network
+settings name that cannot be used is passed over, and the request goes
+straight (Network). A mirror changes
+where the tools download from, not where Banager's own checks ask
+(Network, below). The values are never written
 to a log and never in the diagnostic info, since a proxy setting can hold
 a password; the app's own output at launch names the settings read, not
 their values.
@@ -5860,7 +5864,16 @@ network settings itself (pip does) reads them as it does there. An https
 request then goes as a `CONNECT`
 tunnel through the proxy to the same host, and the certificate is checked
 against that host as before; a `socks5://` or `socks5h://` proxy -- as
-Clash and Surge print `all_proxy` -- is spoken to as SOCKS. This Mac itself
+Clash and Surge print `all_proxy` -- is spoken to as SOCKS. A shell or
+environment setting whose value is not an address a request can go through -- a port past
+65535, a scheme that is not an http, https or SOCKS proxy's, no host --
+does not send the request straight instead: Banager refuses it before
+connecting anywhere, as curl does, and its error names the setting,
+never its value (`http::proxy::unusable_setting`, called by
+`RealHttpClient`). A proxy this Mac's network settings name that is not
+such an address -- a port typed into the Server field as well as the
+Port field -- is not caught: hyper-util drops it before Banager sees it
+(`http::proxy::system_proxy`), and the request goes straight. This Mac itself
 is reached never through a proxy, whatever the settings say: `localhost`
 and any name under it, `127.0.0.1` and the rest of `127.0.0.0/8`, `::1`,
 and `0.0.0.0` or `::` (an `OLLAMA_HOST` of `0.0.0.0` is common) -- so the

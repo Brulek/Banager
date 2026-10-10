@@ -35,26 +35,87 @@ pub fn proxy_for(
     var: impl Fn(&str) -> Option<String>,
     system: impl FnOnce(&Url) -> Option<String>,
 ) -> Option<String> {
-    let host = url.host()?;
-    if is_this_mac(&host) {
-        return None;
+    match named(url, var) {
+        Named::Straight => None,
+        Named::Setting(_, value) => Some(value),
+        Named::Unset => system(url),
     }
-    let first = |names: &[&str]| {
+}
+
+/// The setting `proxy_for` takes `url`'s proxy from, when the address it
+/// holds is not one reqwest can send a request through (R51-1 of the
+/// round-10 review): a port past 65535, a scheme that is not a proxy's
+/// (`ftp://`), no host. reqwest drops such an address without a word and
+/// connects straight (`Proxy::custom`), so the request is refused before
+/// it is made instead (`real::RealHttpClient`), as curl and so `brew`
+/// refuse it. `None` when the address can be used, or when no setting
+/// names one for `url`.
+pub fn unusable_setting(url: &Url, var: impl Fn(&str) -> Option<String>) -> Option<&'static str> {
+    match named(url, var) {
+        Named::Setting(name, value) if !usable(&value, url) => Some(name),
+        _ => None,
+    }
+}
+
+/// What the settings say of the way to `url`.
+enum Named {
+    /// Straight: this Mac itself, or what `no_proxy` names.
+    Straight,
+    /// Through the proxy this setting holds, with its value.
+    Setting(&'static str, String),
+    /// No setting names a proxy for it.
+    Unset,
+}
+
+fn named(url: &Url, var: impl Fn(&str) -> Option<String>) -> Named {
+    let Some(host) = url.host() else {
+        return Named::Straight;
+    };
+    if is_this_mac(&host) {
+        return Named::Straight;
+    }
+    let first = |names: &[&'static str]| {
         names.iter().find_map(|name| {
             var(name)
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty())
+                .map(|value| (*name, value))
         })
     };
-    if first(&["no_proxy", "NO_PROXY"]).is_some_and(|list| listed(&host, &list)) {
-        return None;
+    if first(&["no_proxy", "NO_PROXY"]).is_some_and(|(_, list)| listed(&host, &list)) {
+        return Named::Straight;
     }
     let named = match url.scheme() {
         "https" => first(&["https_proxy", "HTTPS_PROXY", "all_proxy", "ALL_PROXY"]),
         "http" => first(&["http_proxy", "HTTP_PROXY", "all_proxy", "ALL_PROXY"]),
-        _ => return None,
+        _ => return Named::Straight,
     };
-    named.or_else(|| system(url))
+    match named {
+        Some((name, value)) => Named::Setting(name, value),
+        None => Named::Unset,
+    }
+}
+
+/// Whether reqwest 0.13 sends a request to `url` through `proxy` rather
+/// than straight, read the way it reads what `Proxy::custom` gives it: as
+/// an address, or with `http://` before it when it has no scheme or no
+/// host (`IntoProxy`), then by hyper-util's `Matcher`, which takes only an
+/// http, https or SOCKS proxy.
+fn usable(proxy: &str, url: &Url) -> bool {
+    let with_host = |value: &str| Url::parse(value).ok().filter(Url::has_host);
+    let target = match Url::parse(proxy) {
+        Ok(parsed) if parsed.has_host() => Some(parsed),
+        Ok(_) | Err(url::ParseError::RelativeUrlWithoutBase) => {
+            with_host(&format!("http://{proxy}"))
+        }
+        Err(_) => None,
+    };
+    target.is_some_and(|target| {
+        let matcher = hyper_util::client::proxy::matcher::Matcher::builder()
+            .all(String::from(target))
+            .build();
+        from_matcher(&matcher, url).is_some()
+    })
 }
 
 /// Every setting `proxy_for` reads through its `var`: each one of
@@ -107,7 +168,10 @@ impl Settings {
 /// to the login shell's or the environment's gets a new client:
 /// `RealHttpClient::client`). Neither the SOCKS
 /// proxy nor the list of hosts the settings bypass is read, as reqwest
-/// did not read them either.
+/// did not read them either. A host and port that make no address (a
+/// port typed into the Server field as well) are dropped by hyper-util,
+/// so `None` is returned and the request goes straight: unlike a shell
+/// or environment setting (`unusable_setting`), this is not refused.
 pub fn system_proxy(url: &Url) -> Option<String> {
     from_matcher(
         &hyper_util::client::proxy::matcher::Matcher::from_system(),
@@ -341,6 +405,22 @@ mod tests {
         );
     }
 
+    /// P1 of the R51 skeptic: a host and port in this Mac's network
+    /// settings that make no address -- a port typed into the Server field
+    /// as well as the Port field -- are dropped by hyper-util before
+    /// Banager sees them, so `system_proxy` names none and the request goes
+    /// straight, as docs/what-we-run.md says; only a shell or environment
+    /// setting is refused (`unusable_setting`).
+    #[test]
+    fn test_a_proxy_in_this_macs_network_settings_that_is_no_address_is_passed_over() {
+        use hyper_util::client::proxy::matcher::Matcher;
+        let settings = Matcher::builder().http("127.0.0.1:7890:8080").build();
+        assert_eq!(
+            from_matcher(&settings, &Url::parse("http://example.com/").unwrap()),
+            None
+        );
+    }
+
     /// R5 of the f19 review: a `RealHttpClient` pool is kept for one
     /// `Settings`, and its requests choose their proxy from that alone --
     /// so `Settings` must hold every setting `proxy_for` reads, or a change
@@ -537,6 +617,68 @@ mod tests {
                 &[("https_proxy", "http://p:1"), ("NO_PROXY", "crates.io")]
             ),
             None
+        );
+    }
+
+    /// R51-1 of the round-10 review: a proxy address reqwest cannot use
+    /// is named, with the setting that holds it, so the request is refused
+    /// rather than sent straight; one it can use, or none, is not.
+    #[test]
+    fn test_a_proxy_reqwest_cannot_use_is_named_with_its_setting() {
+        let unusable = |url: &str, set: &[(&str, &str)]| {
+            unusable_setting(&Url::parse(url).unwrap(), vars(set))
+        };
+        let crates = "https://crates.io/api/v1/crates/ripgrep";
+        for bad in [
+            "http://127.0.0.1:78900",
+            "127.0.0.1:78900",
+            "ftp://proxy.lan:21",
+            "http://",
+            "http://proxy lan:8080",
+        ] {
+            assert_eq!(
+                unusable(crates, &[("HTTPS_PROXY", bad)]),
+                Some("HTTPS_PROXY"),
+                "{bad}"
+            );
+        }
+        assert_eq!(
+            unusable(crates, &[("all_proxy", "http://127.0.0.1:65536")]),
+            Some("all_proxy")
+        );
+        for good in [
+            "http://127.0.0.1:7890",
+            "127.0.0.1:7890",
+            "proxy.lan:8080",
+            "https://user:pa%40ss@proxy.lan:8443/",
+            "socks5://127.0.0.1:7891",
+            "socks5h://proxy.lan",
+        ] {
+            assert_eq!(unusable(crates, &[("HTTPS_PROXY", good)]), None, "{good}");
+        }
+        // Not the setting this request takes its proxy from.
+        let bad = "http://127.0.0.1:78900";
+        assert_eq!(unusable(crates, &[("http_proxy", bad)]), None);
+        assert_eq!(
+            unusable(
+                crates,
+                &[("https_proxy", "http://p:1"), ("HTTPS_PROXY", bad)]
+            ),
+            None
+        );
+        // Straight anyway: this Mac itself, and what no_proxy names.
+        assert_eq!(
+            unusable("http://127.0.0.1:11434/", &[("http_proxy", bad)]),
+            None
+        );
+        assert_eq!(
+            unusable(crates, &[("https_proxy", bad), ("no_proxy", "crates.io")]),
+            None
+        );
+        // The http one for an http address.
+        assert_eq!(
+            unusable("http://192.168.1.20:11434/", &[("HTTP_PROXY", bad)]),
+            Some("HTTP_PROXY")
         );
     }
 }

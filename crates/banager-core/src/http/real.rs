@@ -152,8 +152,9 @@ impl RealHttpClient {
     /// the proxy its connection goes to. A request the old client has
     /// under way finishes on it, and its connections close once no request
     /// holds it. Read under the lock, so requests that see a change at once
-    /// make one new client, not one each in turn.
-    fn client(&self) -> reqwest::Client {
+    /// make one new client, not one each in turn. With the settings it
+    /// chooses from, which `fetch_on` checks the proxy of.
+    fn client(&self) -> (reqwest::Client, Settings) {
         let mut current = self.current.lock().unwrap_or_else(|e| e.into_inner());
         let now = proxy_settings();
         if current.settings != now {
@@ -162,13 +163,21 @@ impl RealHttpClient {
                 settings: now,
             };
         }
-        current.client.clone()
+        (current.client.clone(), current.settings.clone())
     }
 }
 
 /// A reqwest client whose requests choose their proxy from `settings`
 /// (`RealHttpClient::client`).
 fn build(settings: Settings) -> reqwest::Client {
+    builder(settings)
+        .build()
+        .expect("reqwest client with the rustls TLS backend must build")
+}
+
+/// `build`'s client before it is built, so a test can point a name at a
+/// loopback address (`ClientBuilder::resolve`).
+fn builder(settings: Settings) -> reqwest::ClientBuilder {
     let user_agent = format!("banager/{}", env!("CARGO_PKG_VERSION"));
     reqwest::Client::builder()
         .tls_backend_rustls()
@@ -201,8 +210,6 @@ fn build(settings: Settings) -> reqwest::Client {
             super::proxy::proxy_for(url, |name| settings.var(name), super::proxy::system_proxy)
         }))
         .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .expect("reqwest client with the rustls TLS backend must build")
 }
 
 impl Default for RealHttpClient {
@@ -286,10 +293,32 @@ impl RealHttpClient {
     /// `host_allowed` has passed it. Separate only so a test can reach a
     /// loopback https server, which the check would refuse.
     async fn fetch(&self, req: HttpRequest) -> Result<HttpResponse, HttpError> {
+        let (client, settings) = self.client();
+        self.fetch_on(&client, &settings, req).await
+    }
+
+    /// `fetch` on `client`, which chooses its proxy from `settings`.
+    /// Refused when the proxy those settings name for the request is not
+    /// an address reqwest can use, which it would drop and connect
+    /// straight (`proxy::unusable_setting`, R51-1 of the round-10 review):
+    /// the setting is named, never its value, which can hold a password.
+    async fn fetch_on(
+        &self,
+        client: &reqwest::Client,
+        settings: &Settings,
+        req: HttpRequest,
+    ) -> Result<HttpResponse, HttpError> {
+        if let Some(setting) = url::Url::parse(&req.url)
+            .ok()
+            .and_then(|url| super::proxy::unusable_setting(&url, |name| settings.var(name)))
+        {
+            return Err(HttpError::Refused(format!(
+                "the proxy {setting} names is not an address a request can go through"
+            )));
+        }
         let method = reqwest::Method::from_bytes(req.method.as_bytes())
             .map_err(|e| HttpError::Refused(format!("invalid method {:?}: {e}", req.method)))?;
-        let mut builder = self
-            .client()
+        let mut builder = client
             .request(method, req.url.as_str())
             .timeout(req.timeout);
         for (name, value) in &req.headers {
@@ -402,6 +431,94 @@ mod tests {
         let response = client.send(req).await.expect("real request over loopback");
         assert_eq!(response.status, 200);
         assert_eq!(response.body, "hello, world!");
+    }
+
+    /// Accepts connections on a loopback port, answering each `200` with
+    /// the first line of the request it got as the body, and counts them.
+    async fn counting_server() -> (
+        std::net::SocketAddr,
+        std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    ) {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind ephemeral port");
+        let addr = listener.local_addr().expect("local_addr");
+        let count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counted = count.clone();
+        tokio::spawn(async move {
+            while let Ok((mut socket, _)) = listener.accept().await {
+                counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let mut buf = Vec::new();
+                let mut chunk = [0u8; 4096];
+                while !buf.windows(4).any(|w| w == b"\r\n\r\n") {
+                    match socket.read(&mut chunk).await {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => buf.extend_from_slice(&chunk[..n]),
+                    }
+                }
+                let request = String::from_utf8_lossy(&buf);
+                let line = request.lines().next().unwrap_or("").to_string();
+                let answer = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{line}",
+                    line.len()
+                );
+                let _ = socket.write_all(answer.as_bytes()).await;
+                let _ = socket.shutdown().await;
+            }
+        });
+        (addr, count)
+    }
+
+    /// R51-1 of the round-10 review: `HTTP_PROXY` with a port past 65535
+    /// sent the request straight to its host, as reqwest drops a proxy
+    /// address it cannot read. Now it is refused, naming the setting and
+    /// not its value, and the host is never reached; a proxy that can be
+    /// used still gets the request. `dest.example` is pointed at a
+    /// loopback server, so nothing leaves this Mac.
+    #[tokio::test]
+    async fn test_a_proxy_address_reqwest_cannot_use_refuses_the_request_instead_of_going_straight()
+    {
+        let (dest, dest_count) = counting_server().await;
+        let (proxy, proxy_count) = counting_server().await;
+        let fetch_through = |proxy_value: String| async move {
+            let settings =
+                Settings::read(|name| (name == "HTTP_PROXY").then(|| proxy_value.clone()));
+            let client = builder(settings.clone())
+                .resolve("dest.example", dest)
+                .build()
+                .unwrap();
+            RealHttpClient::new()
+                .fetch_on(
+                    &client,
+                    &settings,
+                    HttpRequest {
+                        method: "GET",
+                        url: format!("http://dest.example:{}/", dest.port()),
+                        headers: vec![],
+                        timeout: std::time::Duration::from_secs(5),
+                    },
+                )
+                .await
+        };
+
+        match fetch_through("http://user:secret@127.0.0.1:78900".to_string()).await {
+            Err(HttpError::Refused(message)) => {
+                assert!(message.contains("HTTP_PROXY"), "{message}");
+                assert!(!message.contains("secret"), "{message}");
+            }
+            other => panic!("expected Refused, got {other:?}"),
+        }
+        assert_eq!(dest_count.load(std::sync::atomic::Ordering::SeqCst), 0);
+
+        let response = fetch_through(format!("http://{proxy}"))
+            .await
+            .expect("through the proxy");
+        assert_eq!(
+            response.body,
+            format!("GET http://dest.example:{}/ HTTP/1.1", dest.port())
+        );
+        assert_eq!(proxy_count.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert_eq!(dest_count.load(std::sync::atomic::Ordering::SeqCst), 0);
     }
 
     #[tokio::test]
