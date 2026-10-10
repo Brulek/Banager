@@ -658,14 +658,16 @@ describe("the batch uninstall's sheet", () => {
   describe("says that what stays can go to the Trash in Finder only where no tool left installed may use it (U15 e)", () => {
     const trashLine = (dialog: HTMLElement) => dialog.querySelector("[data-kept-trash]");
 
-    it("says it where nothing else of the family stays: npm's Codex alone", async () => {
-      expect(trashLine(await openSheet([codex]))).toHaveTextContent(
-        /^If you don't need these settings and data, you can move them to the Trash in Finder\.$/,
-      );
+    it("not for npm's Codex alone, whose ~/.codex the ChatGPT and Codex apps keep their own data in too", async () => {
+      const dialog = await openSheet([codex]);
+      expect(within(dialog).getByText("The ChatGPT and Codex apps keep their own settings and data here too, if installed.")).toBeInTheDocument();
+      expect(trashLine(dialog)).toBeNull();
     });
 
     it("says it where every copy goes together", async () => {
-      expect(trashLine(await openSheet([claudeCode, npmClaude]))).not.toBeNull();
+      expect(trashLine(await openSheet([claudeCode, npmClaude]))).toHaveTextContent(
+        /^If you don't need these settings and data, you can move them to the Trash in Finder\.$/,
+      );
     });
 
     it("not while a copy that isn't ticked stays: npm's Claude Code without the native one", async () => {

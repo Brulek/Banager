@@ -270,7 +270,8 @@ export type KeptData = "ToolData" | "Models";
  * Another tool's data inside a folder an uninstall leaves behind, which the
  * folder's size leaves out (`Warning.KeepsData.others`, absent on the wire
  * when there is none): the path as the table spells it, and the tool's name,
- * spelled the same in both languages. Mirrors `OthersData` in
+ * or an app's (Google Antigravity's `~/.gemini/antigravity`), spelled the
+ * same in every language. Mirrors `OthersData` in
  * crates/banager-core/src/model.rs.
  */
 export interface OthersData {

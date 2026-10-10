@@ -285,7 +285,7 @@ describe("the uninstall dialog's 「卸载后会保留」 group", () => {
     const { container, unmount } = renderWithProviders(
       <KeptDataGroup
         warnings={[
-          { WillKeep: { path: "~/.codex", what: "SettingsAndHistory" } },
+          { WillKeep: { path: "~/.claude", what: "SettingsAndHistory" } },
           { WillKeep: { path: "~/.zprofile", what: "ShellConfigLines" } },
         ]}
         familyStays={false}
@@ -327,6 +327,54 @@ describe("the uninstall dialog's 「卸载后会保留」 group", () => {
     it("not where a folder holds another tool's data: Antigravity CLI's inside ~/.gemini", () => {
       renderWithProviders(<KeptDataGroup warnings={[JSON.parse(SHARED_WIRE) as Warning]} familyStays={false} />);
       expect(trashLine()).toBeNull();
+    });
+
+    it("not for ~/.codex or ~/.copilot, which the ChatGPT, Codex and GitHub Copilot apps keep their own data in, and says so", () => {
+      const codex = renderWithProviders(
+        <KeptDataGroup
+          warnings={[
+            { KeepsData: { path: "~/.codex", what: "ToolData", size: { bytes: 1_200_000_000, partial: false, at_least: false }, left_out: [] } },
+          ]}
+          familyStays={false}
+        />,
+      );
+      expect(trashLine()).toBeNull();
+      expect(document.querySelector("[data-kept-others]")).toHaveTextContent(
+        /^The ChatGPT and Codex apps keep their own settings and data here too, if installed\.$/,
+      );
+      codex.unmount();
+      // Codex's own installer's uninstall keeps it as well.
+      const own = renderWithProviders(
+        <KeptDataGroup warnings={[{ WillKeep: { path: "~/.codex", what: "SettingsAndHistory" } }]} familyStays={false} />,
+      );
+      expect(trashLine()).toBeNull();
+      expect(document.querySelector("[data-kept-others]")).toHaveTextContent("The ChatGPT and Codex apps");
+      own.unmount();
+      renderWithProviders(
+        <KeptDataGroup
+          warnings={[{ KeepsData: { path: "~/.copilot", what: "ToolData", size: null, left_out: [] } }]}
+          familyStays={false}
+        />,
+      );
+      expect(trashLine()).toBeNull();
+      expect(document.querySelector("[data-kept-others]")).toHaveTextContent(
+        /^The GitHub Copilot app keeps its own settings and data here too, if installed\.$/,
+      );
+    });
+
+    it("says the apps in Chinese", async () => {
+      await i18n.changeLanguage("zh-CN");
+      const cn = renderWithProviders(
+        <KeptDataGroup warnings={[{ KeepsData: { path: "~/.codex", what: "ToolData", size: null, left_out: [] } }]} familyStays={false} />,
+      );
+      expect(document.querySelector("[data-kept-others]")).toHaveTextContent("ChatGPT和Codex App如已安装，也会把自己的设置和数据放在这里。");
+      cn.unmount();
+      await i18n.changeLanguage("zh-Hant");
+      renderWithProviders(
+        <KeptDataGroup warnings={[{ KeepsData: { path: "~/.copilot", what: "ToolData", size: null, left_out: [] } }]} familyStays={false} />,
+      );
+      expect(document.querySelector("[data-kept-others]")).toHaveTextContent("GitHub Copilot App如已安裝，也會把自己的設定和資料放在這裡。");
+      await i18n.changeLanguage("en");
     });
 
     it("not for any of the list where one folder in it holds another copy", () => {

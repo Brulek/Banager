@@ -1285,6 +1285,8 @@
     "copyPath": "Copy Path",
     "copyPathLabel": "Copy path: {{path}}",
     "notCounting": "{{path}} is {{tool}}'s data and isn't counted here",
+    "sharedWith_one": "The {{apps}} app keeps its own settings and data here too, if installed.",
+    "sharedWith_other": "The {{apps}} apps keep their own settings and data here too, if installed.",
     "findInFinder": "To see one in Finder, copy its path, press ⇧⌘G in Finder, paste the path and press Return.",
     "findInFinderHome": "“~” at the start of a path is your home folder. To see one in Finder, copy its path, press ⇧⌘G in Finder, paste the path and press Return."
   },

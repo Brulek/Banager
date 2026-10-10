@@ -310,7 +310,8 @@ Paths are under a generic home folder, `/Users/you`.
   Gemini CLI's and ollama's list one line says what isn't needed can go to
   the Trash in Finder; not under npm's Codex's, nor under Claude Code's
   with `?state=many`, nor under Codex's own install's: another copy of the
-  tool stays installed and still uses that folder. The
+  tool stays installed and still uses that folder, and under `~/.codex` a
+  line says the ChatGPT and Codex apps keep their own data there too. The
   native Claude Code's own list keeps those two under 「保留」 already, so
   its dialog does not repeat them.
 - The uninstall of a Homebrew package another source runs on lists that

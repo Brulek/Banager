@@ -4767,7 +4767,7 @@ The named paths are:
 |---|---|
 | Claude Code | `~/.claude`, `~/.claude.json` |
 | Codex | `~/.codex`, measured without `~/.codex/packages/standalone` |
-| Gemini CLI | `~/.gemini`, measured without `~/.gemini/antigravity-cli` |
+| Gemini CLI | `~/.gemini`, measured without `~/.gemini/antigravity-cli`, `~/.gemini/antigravity` and `~/.gemini/antigravity-ide` |
 | Qwen Code | `~/.qwen` |
 | Kimi Code | `~/.kimi-code`, `~/.kimi` |
 | iFlow CLI | `~/.iflow` |
@@ -4864,7 +4864,22 @@ another tool's path that the table puts inside its folder out of the size
 counts nor enters it, nor spends the budget on it -- and, when it met it,
 the line says whose it is and that it is not counted (「…是Antigravity
 CLI的数据，不算在内」, "… is Antigravity CLI's data and isn't counted
-here").
+here"). Two apps no source lists keep their conversations in folders of
+their own there, which are left out and named the same way:
+`~/.gemini/antigravity` (Google Antigravity) and
+`~/.gemini/antigravity-ide` (Google Antigravity IDE) -- the folders
+their Homebrew casks' `zap` trashes (`kept_data::APPS_INSIDE`).
+
+`~/.codex` and `~/.copilot` are shared too, but not in a folder of their
+own: the ChatGPT and Codex apps keep their own settings, login and
+history in `~/.codex` (Homebrew's casks `chatgpt` and `codex-app` only
+remove it if it is empty), and the GitHub Copilot app in `~/.copilot`
+(its cask `github-copilot-app` trashes it). Nothing can be left out of
+the size, so under the line the preview says these apps keep their own
+settings and data there too, if installed, and the list never says that
+it can go to the Trash (`SHARED_WITH_APPS` in `src/lib/keptData.ts`).
+Banager does not look for the apps: one downloaded from its vendor is on
+no list.
 
 How: during the uninstall preview only, each path is looked at as disk
 use measures a tool's folder (`size::look_at`: `lstat`, `readdir` and

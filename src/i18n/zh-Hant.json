@@ -1166,6 +1166,7 @@
     "copyPath": "拷貝路徑",
     "copyPathLabel": "拷貝路徑：{{path}}",
     "notCounting": "{{path}}是{{tool}}的資料，不算在內",
+    "sharedWith_other": "{{apps}} App如已安裝，也會把自己的設定和資料放在這裡。",
     "findInFinder": "要在Finder中查看，可以拷貝路徑，在Finder中按下⇧⌘G，貼上路徑後按下Return鍵。",
     "findInFinderHome": "路徑開頭的「~」是你的個人專屬檔案夾。要在Finder中查看，可以拷貝路徑，在Finder中按下⇧⌘G，貼上路徑後按下Return鍵。"
   },

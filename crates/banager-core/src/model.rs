@@ -939,7 +939,8 @@ pub enum KeptData {
 /// Another tool's data inside a folder an uninstall leaves behind
 /// (`Warning::KeepsData.others`): the path as the table spells it, and the
 /// tool's name, its product name, which no language translates
-/// (`families::Family.name_en`, pinned by `kept_data`'s tests).
+/// (`families::Family.name_en`, pinned by `kept_data`'s tests, or an app's
+/// from `kept_data::APPS_INSIDE`).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OthersData {
     pub path: String,

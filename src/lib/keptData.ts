@@ -19,6 +19,25 @@ export interface KeptDataItem {
   others: OthersData[];
 }
 
+/**
+ * Folders an uninstall keeps that apps no source lists keep their own
+ * settings and data in too, at the top of the folder rather than in one of
+ * their own (which `kept_data::APPS_INSIDE` would leave out of the size
+ * instead), with each app's product name: `~/.codex`, the ChatGPT app's
+ * and the Codex app's (Homebrew's casks `chatgpt` and `codex-app`, whose
+ * `zap` only removes it if empty, `rmdir`, as a folder others share), and
+ * `~/.copilot`, the GitHub Copilot app's (the cask `github-copilot-app`,
+ * whose `zap` trashes it). Read in Homebrew's API cache on the author's
+ * Mac on 2026-10-10, never run. Under such a folder's line the group says
+ * the apps keep their data there too, if installed, and it says nothing of
+ * the Trash: an app downloaded from its vendor is not on any list, so
+ * Banager cannot tell it is not there.
+ */
+export const SHARED_WITH_APPS: Readonly<Record<string, readonly string[]>> = {
+  "~/.codex": ["ChatGPT", "Codex"],
+  "~/.copilot": ["GitHub Copilot"],
+};
+
 /** The `KeepsData` lines of a plan's warnings, in order. */
 export function keptDataOf(warnings: readonly Warning[]): KeptDataItem[] {
   const items: KeptDataItem[] = [];

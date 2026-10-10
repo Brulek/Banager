@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { keptDataOf } from "../lib/keptData";
+import { keptDataOf, SHARED_WITH_APPS } from "../lib/keptData";
 import { saysSize, sizeText } from "../lib/sizes";
 import { namesInSentence } from "../lib/sources";
 import type { KeptWhat, Warning } from "../lib/types";
@@ -35,7 +35,10 @@ interface KeptLine {
   size: ReactNode | null;
   what: string;
   why: string | null;
-  /** Under it: whose data inside it the size does not count, one line each (`KeepsData`'s `others`). */
+  /**
+   * Under it: whose data inside it the size does not count (`KeepsData`'s
+   * `others`), then which apps keep theirs in it too (`SHARED_WITH_APPS`), one line each.
+   */
   others: string[];
   /** Whose it is, where the group is about several tools (`ownersOf`), or null. */
   owners: string | null;
@@ -93,11 +96,16 @@ export function KeptDataGroup({
     const names = ownersOf?.(path) ?? [];
     return names.length === 0 ? null : t("batchUninstall.keptBy", { names: namesInSentence(t, names) });
   };
+  // The apps that keep their own data in `path` too (`SHARED_WITH_APPS`), said under it.
+  const sharedWith = (path: string): string[] => {
+    const apps = SHARED_WITH_APPS[path] ?? [];
+    return apps.length === 0 ? [] : [t("keepsData.sharedWith", { count: apps.length, apps: namesInSentence(t, apps) })];
+  };
   const lines: KeptLine[] = [];
   // Whether the list holds the tool's settings or data, and a Terminal
   // settings file: what the last line says (`keptTrash`); and whether a
-  // folder in it holds another copy's program or another tool's data,
-  // which no line may invite moving to the Trash.
+  // folder in it holds another copy's program or another tool's or app's
+  // data, which no line may invite moving to the Trash.
   let settingsOrData = false;
   let shellFile = false;
   let holdsAnother = false;
@@ -106,20 +114,23 @@ export function KeptDataGroup({
       const { path, what } = warning.WillKeep;
       settingsOrData ||= SETTINGS_OR_DATA.has(what);
       shellFile ||= what === "ShellConfigLines";
+      const others = sharedWith(path);
+      holdsAnother ||= others.length > 0;
       const why = KEPT_WHAT_DETAIL_KEYS[what];
       lines.push({
         path,
         size: null,
         what: t(WILL_KEEP_WHAT_KEYS[what]),
         why: why === null ? null : t(why),
-        others: [],
+        others,
         owners: ownersText(path),
       });
     }
   }
   for (const item of keptDataOf(warnings)) {
     settingsOrData = true;
-    holdsAnother ||= item.leftOut.length > 0 || item.others.length > 0;
+    const apps = sharedWith(item.path);
+    holdsAnother ||= item.leftOut.length > 0 || item.others.length > 0 || apps.length > 0;
     // What the size does not count: another copy's program inside the
     // folder (Codex's own install in ~/.codex).
     const leftOut =
@@ -136,8 +147,12 @@ export function KeptDataGroup({
       );
     // With no size to hang it on, it goes behind the ⓘ of what it holds.
     const why = measured === null ? leftOut : null;
-    // Another tool's data inside it, which the size leaves out: said under it.
-    const others = item.others.map((other) => t("keepsData.notCounting", { tool: other.tool, path: other.path }));
+    // Another tool's data inside it, which the size leaves out, then the
+    // apps that keep theirs in it too: said under it.
+    const others = [
+      ...item.others.map((other) => t("keepsData.notCounting", { tool: other.tool, path: other.path })),
+      ...apps,
+    ];
     lines.push({ path: item.path, size, what: t(KEPT_DATA_KEYS[item.what]), why, others, owners: ownersText(item.path) });
   }
   if (lines.length === 0) return null;

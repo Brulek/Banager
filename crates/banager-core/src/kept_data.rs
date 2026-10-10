@@ -22,10 +22,17 @@
 //! (`others_inside`): `~/.gemini` is Gemini CLI's, but Antigravity CLI
 //! keeps everything of its own in `~/.gemini/antigravity-cli`, which on
 //! the author's Mac was 99 % of `~/.gemini`; Gemini CLI's line leaves it
-//! out and says so. The remainder is not shown to be Gemini CLI's alone:
-//! on that Mac it was only `config/`, `tasks/` and `users/` (about 7.4 MB),
-//! with none of Gemini CLI's documented files such as `settings.json`; the
-//! line names only the part that is Antigravity CLI's and claims no more.
+//! out and says so, as it does Google Antigravity's and Google Antigravity
+//! IDE's folders there, apps no source lists (`APPS_INSIDE`). The
+//! remainder is not shown to be Gemini CLI's alone: on that Mac it was
+//! once only `config/`, `tasks/` and `users/` (about 7.4 MB), with none of
+//! Gemini CLI's documented files such as `settings.json`; the line names
+//! only the parts that are another tool's and claims no more. A folder an
+//! app keeps its own data in at the top, not in a folder of its own --
+//! `~/.codex` (the ChatGPT and Codex apps), `~/.copilot` (the GitHub
+//! Copilot app) -- cannot be split this way: the front end says so under
+//! its line and does not say it can go to the Trash
+//! (`SHARED_WITH_APPS` in src/lib/keptData.ts).
 //!
 //! How: read-only, as disk use is measured (`size::look_at`: `lstat`,
 //! `readdir`, `readlink`, from folders held open with `O_NOFOLLOW`; no
@@ -225,14 +232,27 @@ pub fn data_paths(family: &str) -> Vec<(&'static str, KeptData)> {
     paths
 }
 
+/// What apps no source lists keep inside a family's data path, with each
+/// app's product name, which no language translates: Google Antigravity
+/// and Google Antigravity IDE keep their conversations in these two inside
+/// Gemini CLI's `~/.gemini` (their Homebrew casks `antigravity` and
+/// `antigravity-ide`, whose `zap` trashes exactly these, and whose
+/// `names` these are; read in Homebrew's API cache on the author's Mac on
+/// 2026-10-10, never run).
+pub const APPS_INSIDE: &[(&str, &str)] = &[
+    ("~/.gemini/antigravity", "Google Antigravity"),
+    ("~/.gemini/antigravity-ide", "Google Antigravity IDE"),
+];
+
 /// What other families keep inside `path`, a data path of `family`: each
 /// other family's data path that lies under it, as the table spells it,
 /// with that family's name -- `~/.gemini/antigravity-cli`, Antigravity
-/// CLI's, inside Gemini CLI's `~/.gemini`. Left out of `path`'s size and
-/// named on its line, so one tool's uninstall does not call another's data
-/// its own.
+/// CLI's, inside Gemini CLI's `~/.gemini` -- then what an app keeps there
+/// (`APPS_INSIDE`). Left out of `path`'s size and named on its line, so
+/// one tool's uninstall does not call another's data its own.
 pub fn others_inside(family: &str, path: &str) -> Vec<(&'static str, &'static str)> {
     let folder = format!("{}/", path.trim_end_matches('/'));
+    let inside = |inner: &str| inner.starts_with(&folder) && inner.len() > folder.len();
     families::families()
         .iter()
         .filter(|other| other.id != family)
@@ -240,9 +260,15 @@ pub fn others_inside(family: &str, path: &str) -> Vec<(&'static str, &'static st
             other
                 .data_paths
                 .iter()
-                .filter(|inner| inner.starts_with(&folder) && inner.len() > folder.len())
+                .filter(|inner| inside(inner))
                 .map(move |inner| (inner.as_str(), other.name_en.as_str()))
         })
+        .chain(
+            APPS_INSIDE
+                .iter()
+                .copied()
+                .filter(|(inner, _)| inside(inner)),
+        )
         .collect()
 }
 
@@ -779,10 +805,14 @@ mod tests {
     }
 
     #[test]
-    fn test_antigravitys_folder_is_the_only_other_tools_data_inside_one() {
+    fn test_antigravitys_folders_are_the_only_other_tools_data_inside_one() {
         assert_eq!(
             others_inside("gemini-cli", "~/.gemini"),
-            vec![("~/.gemini/antigravity-cli", "Antigravity CLI")]
+            vec![
+                ("~/.gemini/antigravity-cli", "Antigravity CLI"),
+                ("~/.gemini/antigravity", "Google Antigravity"),
+                ("~/.gemini/antigravity-ide", "Google Antigravity IDE"),
+            ]
         );
         // Its own family's path is not "another tool's", and a sibling
         // spelled with the same start is not inside.
@@ -794,6 +824,9 @@ mod tests {
         for family in families::families() {
             for path in &family.data_paths {
                 for (inner, tool) in others_inside(&family.id, path) {
+                    if APPS_INSIDE.contains(&(inner, tool)) {
+                        continue;
+                    }
                     let owner = families::families()
                         .iter()
                         .find(|f| f.data_paths.iter().any(|p| p == inner))
@@ -830,6 +863,37 @@ mod tests {
                         path: "~/.gemini/antigravity-cli".to_string(),
                         tool: "Antigravity CLI".to_string(),
                     }]
+                );
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_gemini_clis_line_leaves_google_antigravitys_folders_out_and_names_them() {
+        // Google Antigravity and Google Antigravity IDE, apps no source
+        // here lists, keep their conversations in these two (their
+        // Homebrew casks' zap trashes exactly these).
+        let home = Home::new("gemini-apps");
+        home.file(".gemini/settings.json", 1_000);
+        home.file(".gemini/antigravity/conversations/a.pb", 900_000);
+        home.file(".gemini/antigravity-ide/brain/b.json", 400_000);
+        match &kept_data(&home.0, "gemini-cli", &[], BUDGET)[..] {
+            [Warning::KeepsData { size, others, .. }] => {
+                let bytes = size.expect("measured").bytes;
+                assert!((1_000..100_000).contains(&bytes), "{bytes}");
+                assert_eq!(
+                    others,
+                    &vec![
+                        OthersData {
+                            path: "~/.gemini/antigravity".to_string(),
+                            tool: "Google Antigravity".to_string(),
+                        },
+                        OthersData {
+                            path: "~/.gemini/antigravity-ide".to_string(),
+                            tool: "Google Antigravity IDE".to_string(),
+                        },
+                    ]
                 );
             }
             other => panic!("{other:?}"),
