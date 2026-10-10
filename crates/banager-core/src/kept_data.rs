@@ -166,10 +166,9 @@ pub(crate) fn check_kept_paths(
                 Resolution::Missing => continue,
                 _ => return Err(refuse(path)),
             };
-            if way
-                .iter()
-                .any(|step| protected::starts_with_folded(step, &location))
-                || protected::starts_with_folded(&location, &target)
+            // Either spelling of the data volume (`protected::is_under`).
+            if way.iter().any(|step| protected::is_under(step, &location))
+                || protected::is_under(&location, &target)
             {
                 return Err(refuse(path));
             }
@@ -444,6 +443,28 @@ mod tests {
             std::fs::read(home.0.join("separate/settings")).unwrap(),
             vec![7; 20]
         );
+    }
+
+    #[test]
+    fn test_kept_data_refuses_a_link_into_the_environment_spelled_from_the_data_volume() {
+        // `/System/Volumes/Data/private/var/...` is `/private/var/...`
+        // (`protected::DATA_VOLUME`), on the way and as the target alike.
+        let home = Home::new("data-volume-overlap");
+        let root = home.0.join(".local/share/uv/tools/mistral-vibe");
+        home.file(".local/share/uv/tools/mistral-vibe/settings", 10);
+        let data = home.0.join(".vibe");
+        let spelled = |path: &Path| {
+            Path::new(crate::protected::DATA_VOLUME).join(path.strip_prefix("/").unwrap())
+        };
+        let roots = vec![root.clone()];
+        symlink(spelled(&root.join("settings")), &data).unwrap();
+        assert!(check_kept_paths(&home.0, "mistral-vibe", &[], &roots).is_err());
+        std::fs::remove_file(&data).unwrap();
+        // The environment inside the data folder, spelled from the data
+        // volume.
+        symlink(spelled(&home.0.join(".local/share/uv")), &data).unwrap();
+        assert!(check_kept_paths(&home.0, "mistral-vibe", &[], &roots).is_err());
+        assert!(check_kept_paths(&home.0, "mistral-vibe", &[], &[spelled(&root)]).is_err());
     }
 
     #[test]

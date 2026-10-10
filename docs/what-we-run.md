@@ -3560,7 +3560,9 @@ not take `~/.claude` or `~/.claude.json` along (of `~/.claude`, only
 what either leads to, or any link or folder on the way there: a
 `~/.claude.json` that is a link to a link inside
 `~/.local/share/claude`, which leads on to settings kept elsewhere,
-refuses the uninstall. Each of these looks is taken one step at a time
+refuses the uninstall, and so does one whose link names that folder as
+`/System/Volumes/Data/Users/you/.local/share/claude`, the same folder
+spelled from the data volume. Each of these looks is taken one step at a time
 and never into or through a place Banager never looks into
 (`protected::look`; How Banager runs anything, above). A listed path
 that is, or is reached through, one is not what the list describes, so

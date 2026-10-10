@@ -97,6 +97,13 @@ pub fn is_within(path: &Path, places: &[PathBuf]) -> bool {
         .any(|place| starts_with_folded(&path, &without_data_volume(place)))
 }
 
+/// Whether `path` is `root` or inside it, case aside, whichever spelling
+/// of the data volume either names it with (`DATA_VOLUME`):
+/// `/System/Volumes/Data/Users/you/.local` is inside `/Users/you`.
+pub fn is_under(path: &Path, root: &Path) -> bool {
+    starts_with_folded(&without_data_volume(path), &without_data_volume(root))
+}
+
 /// The characters an APFS volume that does not tell case apart -- a
 /// Mac's own disk, by default -- takes for ASCII letters, as UTF-8, and
 /// the letters it takes each for: its case folding is Unicode's full one,

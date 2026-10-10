@@ -356,11 +356,8 @@ fn dead_after(protected: &Protected, link: &Path, root: &Path, moved: &[PathBuf]
     }
     match look::real_path(link, protected) {
         Ok(_) => the_way_to(link, protected).is_ok_and(|way| {
-            way.iter().any(|step| {
-                moved
-                    .iter()
-                    .any(|place| protected::starts_with_folded(step, place))
-            })
+            way.iter()
+                .any(|step| moved.iter().any(|place| protected::is_under(step, place)))
         }),
         Err(error) => error.kind() == std::io::ErrorKind::NotFound,
     }
@@ -385,15 +382,15 @@ fn points_into(protected: &Protected, link: &Path, root: &Path) -> bool {
     }
     let canonical_root = look::real_path(root, protected).ok();
     match look::real_path(link, protected) {
-        Ok(real) => canonical_root.is_some_and(|root| protected::starts_with_folded(&real, &root)),
+        Ok(real) => canonical_root.is_some_and(|root| protected::is_under(&real, &root)),
         Err(_) => {
             let Ok(text) = look::link_text(link, protected) else {
                 return false;
             };
             let folder = link.parent().unwrap_or(Path::new("/"));
             let named = route::lexical_join(folder, &text);
-            protected::starts_with_folded(&named, root)
-                || canonical_root.is_some_and(|root| protected::starts_with_folded(&named, &root))
+            protected::is_under(&named, root)
+                || canonical_root.is_some_and(|root| protected::is_under(&named, &root))
         }
     }
 }
@@ -636,10 +633,11 @@ fn disturbed<'k>(kept: &'k [Kept], rel: &Path, location: &Path) -> Option<&'k Ke
     kept.iter().find(|kept| {
         let kept_rel = spelled(kept.spec.path);
         let target = kept.target.as_deref();
-        // As the disk compares names (`protected::starts_with_folded`):
-        // each path is spelled as its link texts spell it, not as the disk
-        // does (`protected::look`), and more alike is the safe direction.
-        let under = protected::starts_with_folded;
+        // As the disk compares names (`protected::is_under`): each path is
+        // spelled as its link texts spell it, not as the disk does
+        // (`protected::look`), `/System/Volumes/Data/Users` is `/Users`,
+        // and more alike is the safe direction.
+        let under = protected::is_under;
         let takes_it = under(&kept.entry, location)
             || target.is_some_and(|t| under(t, location))
             || kept.on_the_way.iter().any(|step| under(step, location));
@@ -1747,6 +1745,26 @@ mod tests {
         let layout = claude_layout(&home, "2.1.281");
         let inside = home.file(".local/share/claude/settings.json");
         home.link(".claude.json", &inside);
+        let d = detected(home.path());
+        let (path, reason) = refused(plan_removal(&claude_job(&d)));
+        assert_eq!(
+            (path.as_str(), reason),
+            ("~/.claude.json", UninstallUnsafeReason::OverlapsKept)
+        );
+        assert!(layout.root.is_dir());
+    }
+
+    #[test]
+    fn test_plan_removal_refuses_a_kept_link_into_the_program_spelled_from_the_data_volume() {
+        // `/System/Volumes/Data/private/var/...` is `/private/var/...`
+        // (`protected::DATA_VOLUME`): the settings link leads into the
+        // program folder all the same, so that folder stays.
+        let home = TempHome::new("removal-settings-data-volume");
+        let layout = claude_layout(&home, "2.1.281");
+        let inside = home.file(".local/share/claude/settings.json");
+        let spelled = Path::new(crate::protected::DATA_VOLUME)
+            .join(inside.strip_prefix("/").expect("an absolute path"));
+        home.link(".claude.json", &spelled);
         let d = detected(home.path());
         let (path, reason) = refused(plan_removal(&claude_job(&d)));
         assert_eq!(

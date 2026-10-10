@@ -641,10 +641,7 @@ fn same_place(a: &Path, b: &Path) -> bool {
 
 /// Whether `path` is `root` or under it, compared as `same_place` does.
 fn is_under(path: &Path, root: &Path) -> bool {
-    protected::starts_with_folded(
-        &protected::without_data_volume(path),
-        &protected::without_data_volume(root),
-    )
+    protected::is_under(path, root)
 }
 
 impl Known {
