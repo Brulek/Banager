@@ -2172,10 +2172,11 @@ a refresh whose `outdated` failed runs the inventory command twice.
 
 `npm outdated -g` looks every global up on the registry by name, whatever
 it was installed from, and the update below would put the registry's
-package of that name in its place. So when the check found an update to
-offer, it runs the same `<npm> ls -g --depth=0 --json --prefix {prefix}`
-once more, under npm's own lock as the check is, and offers no update for
-a global npm says it installed from somewhere other than a registry
+package of that name in its place. So when the check listed any row, one
+it could not check included, it runs the same `<npm> ls -g --depth=0
+--json --prefix {prefix}` once more, under npm's own lock as the check is,
+and lists no row -- neither an update nor "could not check" -- for a global
+npm says it installed from somewhere other than a registry
 (`installed_from_elsewhere` in `npm.rs`): `file:` -- what npm always says
 of an `npm link` or a folder -- `git+…`, a URL that is no registry's
 tarball of that name, or a registry tarball of another name (an alias).
@@ -2185,7 +2186,10 @@ keep no record for one installed from git, from a tarball or another URL,
 or under an alias (`npm install -g foo@npm:bar`), and say nothing for it.
 Such a global, like any npm says nothing about, keeps its update; for an
 alias that update would put the registry's `foo` in place of `bar`. The
-`git+…`, URL and alias answers above come only from npm 6. A refresh that found updates to offer runs the
+`git+…`, URL and alias answers above come only from npm 6. An `npm link`
+whose package.json has no version is such a row with no installed version,
+so it gets no row, whatever else the check lists; one whose folder is gone
+has no `resolved` and stays "could not check". A refresh whose check listed any row runs the
 inventory command twice; one whose listing then fails is a check that did
 not finish. The search query passes `validate_search_query`.
 

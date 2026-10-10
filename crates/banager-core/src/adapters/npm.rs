@@ -503,7 +503,9 @@ impl NpmAdapter {
     /// (npm 10.9.9 `outdated.js:122`, `:179`), and `npm install -g <name>`
     /// would put the registry's package in place of an `npm link`, a
     /// folder, a fork from git or an alias (R42-3). Read from one more `npm
-    /// ls -g`, only when the check found an update to offer. npm 7 and
+    /// ls -g`, only when the check listed a row: one it could not check too,
+    /// so a link npm reads no version for is no row whatever else is
+    /// listed beside it, not "couldn't check" only when alone (R45-2). npm 7 and
     /// later name the source of a link or a folder only (no hidden lockfile
     /// for globals, arborist `reify.js:253`), so git, URL and alias globals
     /// keep their update there.
@@ -512,7 +514,7 @@ impl NpmAdapter {
         inst: &ManagerInstance,
         mut candidates: Vec<UpdateCandidate>,
     ) -> Result<Vec<UpdateCandidate>, AdapterError> {
-        if !candidates.iter().any(|candidate| candidate.checkable) {
+        if candidates.is_empty() {
             return Ok(candidates);
         }
         let (_, listing) = self.read_ls_global(inst).await?;
@@ -2229,7 +2231,7 @@ mod tests {
 
     #[tokio::test]
     async fn r42_with_nothing_to_offer_the_check_lists_no_packages() {
-        // The listing is read only for an update the check would offer.
+        // The listing is read only for a row the check would list.
         let runner = Arc::new(MockRunner::new());
         runner.respond(
             vec![
