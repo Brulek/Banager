@@ -97,7 +97,10 @@ describe("WelcomeSheet", () => {
     // Titles alone, nothing under them (the author, 2026-10-07).
     expect(points.map((point) => point.textContent)).toEqual([
       "See What's Installed",
-      "You Confirm Every Update and Uninstall",
+      // r20 R56-1: the first check's `brew update` runs unconfirmed, so the
+      // promise is of the updates and uninstalls chosen here (the FAQ's
+      // "Does this app change my Mac?" says what the check does by itself).
+      "You Confirm Each Update and Uninstall You Choose",
       "No Data Collected",
     ]);
     // Each point's symbol is decoration: its title says it.
@@ -120,14 +123,22 @@ describe("WelcomeSheet", () => {
     renderWithProviders(<WelcomeSheet />);
     const sheet = await screen.findByRole("dialog", { name: "欢迎使用Banager" });
     expect(within(sheet).getByText("看清装了什么")).toBeInTheDocument();
-    expect(within(sheet).getByText("更新、卸载都由你确认")).toBeInTheDocument();
+    expect(within(sheet).getByText("你选的更新、卸载都由你确认")).toBeInTheDocument();
     expect(within(sheet).getByText("不收集数据")).toBeInTheDocument();
     expect(within(sheet).getAllByRole("listitem").map((point) => point.textContent)).toEqual([
       "看清装了什么",
-      "更新、卸载都由你确认",
+      "你选的更新、卸载都由你确认",
       "不收集数据",
     ]);
     expect(within(sheet).getByRole("button", { name: "开始使用" })).toBeInTheDocument();
+  });
+
+  it.each([
+    ["en", "You Confirm Each Update and Uninstall You Choose"],
+    ["zh-CN", "你选的更新、卸载都由你确认"],
+    ["zh-Hant", "你選的更新、解除安裝都由你確認"],
+  ])("promises %s confirmation only of what is chosen here, not the check's own brew update (r20 R56-1)", (language, confirmTitle) => {
+    expect(i18n.getFixedT(language)("welcome.confirmTitle")).toBe(confirmTitle);
   });
 
   it.each([

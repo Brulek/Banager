@@ -75,6 +75,35 @@ fn test_readme_scopes_confirmation_to_chosen_operations_and_discloses_refresh_mi
     assert!(chinese.contains("未经预览或确认就安装、移动或卸载软件包"));
 }
 
+/// r20 R56-1: the README restates the welcome sheet's three titles, and its
+/// second one promises confirmation only of what is chosen in Banager --
+/// the first check's `brew update`, running behind the sheet, asks nothing.
+#[test]
+fn test_readme_restates_the_welcome_confirmation_title_as_the_sheet_says_it() {
+    let readme = read_readme();
+    let (english, chinese) = blocks(&readme);
+    let english = english.split_whitespace().collect::<Vec<_>>().join(" ");
+    let en = read_locale("en");
+    let title = en["welcome"]["confirmTitle"]
+        .as_str()
+        .expect("welcome.confirmTitle")
+        .to_lowercase();
+    assert!(title.ends_with("you choose"), "{title:?}");
+    assert!(
+        english.contains(&format!("see what's installed; {title}; no data collected")),
+        "README.md's welcome sentence does not say {title:?}"
+    );
+    let zh = read_locale("zh-CN");
+    let title = zh["welcome"]["confirmTitle"]
+        .as_str()
+        .expect("welcome.confirmTitle");
+    assert!(title.starts_with("你选的"), "{title:?}");
+    assert!(
+        squeeze(chinese).contains(&format!("看清装了什么；{title}；不收集数据")),
+        "README.md's Chinese welcome sentence does not say {title:?}"
+    );
+}
+
 /// The name a recipe's source goes by (its meta file's `name`), which is
 /// how the README spells it.
 fn name_of(recipe: &Recipe) -> String {
