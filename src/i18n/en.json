@@ -7,7 +7,7 @@
   "welcome": {
     "title": "Welcome to {{name}}",
     "listTitle": "See What's Installed",
-    "confirmTitle": "You Confirm Every Update and Uninstall",
+    "confirmTitle": "You Confirm Each Update and Uninstall You Choose",
     "privacyTitle": "No Data Collected",
     "start": "Get Started"
   },

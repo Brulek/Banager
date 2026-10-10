@@ -7,7 +7,7 @@
   "welcome": {
     "title": "歡迎使用{{name}}",
     "listTitle": "看清裝了什麼",
-    "confirmTitle": "更新、解除安裝都由你確認",
+    "confirmTitle": "你選的更新、解除安裝都由你確認",
     "privacyTitle": "不收集資料",
     "start": "開始使用"
   },
