@@ -787,11 +787,37 @@ impl PipAdapter {
             .collect())
     }
 
+    /// How long `pip list --outdated` is given for `packages` installed:
+    /// pip looks each up on its index one at a time (pip 26.2.1
+    /// `commands/list.py:250-285`), about a second a package from the
+    /// author's Mac (0.75-1.26 s a PyPI page), so a fixed 60 s never
+    /// finished for a few hundred -- an Anaconda base, Jupyter installed
+    /// with pip -- and every package read "could not check" every round
+    /// (r15 R43-8). 60 s and 1.5 s more a package, at most 600 s, the
+    /// longest Banager gives any command it runs for an operation.
+    pub const OUTDATED_BASE_SECS: u64 = 60;
+    pub const OUTDATED_SECS_PER_PACKAGE: f64 = 1.5;
+    pub const OUTDATED_MAX_SECS: u64 = 600;
+
+    fn outdated_timeout(packages: usize) -> Duration {
+        let secs =
+            Self::OUTDATED_BASE_SECS as f64 + Self::OUTDATED_SECS_PER_PACKAGE * packages as f64;
+        Duration::from_secs((secs.ceil() as u64).min(Self::OUTDATED_MAX_SECS))
+    }
+
     pub async fn check_updates(
         &self,
         inst: &ManagerInstance,
         _opts: &CheckOptions,
     ) -> Result<CheckOutcome, AdapterError> {
+        // What is installed, first: its count sets the outdated check's
+        // deadline (`outdated_timeout`), and the rows below that name
+        // packages pip did not answer for are read from it. The plain
+        // list, not `inventory()`: nothing here reads install reasons,
+        // which `inventory()` runs a second `--not-required` pass for. A
+        // list that fails here gives the check the 60 s it had before,
+        // and is asked again where a row needs it.
+        let listed = self.run_pip_list(inst, &[]).await.ok();
         let args = vec![
             "-m".to_string(),
             "pip".to_string(),
@@ -810,7 +836,7 @@ impl PipAdapter {
                         .map(|(k, v)| (k.to_string(), v.to_string()))
                         .collect(),
                     cwd: None,
-                    timeout: Duration::from_secs(60),
+                    timeout: Self::outdated_timeout(listed.as_ref().map_or(0, Vec::len)),
                     output_use: OutputUse::Parsed,
                 },
                 None,
@@ -828,11 +854,10 @@ impl PipAdapter {
                 lookup_failure_reason("pip list --outdated", output.exit_code, &output.stderr),
                 &output.stderr,
             );
-            // The plain list, not `inventory()`: all this needs is what is
-            // installed and at what version, and `inventory()` would run a
-            // second `--not-required` pass to work out install reasons
-            // nothing here reads.
-            let installed = self.run_pip_list(inst, &[]).await?;
+            let installed = match listed {
+                Some(installed) => installed,
+                None => self.run_pip_list(inst, &[]).await?,
+            };
             return Ok(installed
                 .into_iter()
                 .map(|p| {
@@ -866,7 +891,7 @@ impl PipAdapter {
             return Ok(checked.into());
         }
         Ok(self
-            .with_lookups_given_up(inst, checked, &gave_up)
+            .with_lookups_given_up(inst, checked, &gave_up, listed)
             .await
             .into())
     }
@@ -879,7 +904,9 @@ impl PipAdapter {
     /// exits non-zero (`LookupFailure::words`). A lookup whose address
     /// names no installed package -- a `--find-links` page, say -- left
     /// every package's answer short, so every package not listed gets the
-    /// row. Installed packages come from the plain list, as on that path.
+    /// row. Installed packages come from the plain list, as on that path:
+    /// `listed`, the one read before the check, or read now when that one
+    /// failed.
     ///
     /// If that list cannot be had, `checked` as it is: the answers pip did
     /// give are real, and a package Banager cannot name gets no row -- it
@@ -890,9 +917,14 @@ impl PipAdapter {
         inst: &ManagerInstance,
         mut checked: Vec<UpdateCandidate>,
         gave_up: &[GaveUp],
+        listed: Option<Vec<PipPackage>>,
     ) -> Vec<UpdateCandidate> {
-        let Ok(installed) = self.run_pip_list(inst, &[]).await else {
-            return checked;
+        let installed = match listed {
+            Some(installed) => installed,
+            None => match self.run_pip_list(inst, &[]).await {
+                Ok(installed) => installed,
+                Err(_) => return checked,
+            },
         };
         let projects: HashSet<String> = installed
             .iter()
@@ -1206,8 +1238,13 @@ mod tests {
             assert_eq!(rows[0].key.name, "cowsay", "{stdout}");
             assert!(rows[0].checkable, "{stdout}");
             assert_eq!(rows[0].target, "6.1");
-            // No lookup was given up on, so no second list was needed.
-            assert_eq!(runner.calls(), vec![OUTDATED_ARGV.to_vec()], "{stdout}");
+            // No lookup was given up on, so nothing ran but the list read
+            // for the check's deadline (unanswered here) and the check.
+            assert_eq!(
+                runner.calls(),
+                vec![LIST_ARGV.to_vec(), OUTDATED_ARGV.to_vec()],
+                "{stdout}"
+            );
         }
     }
 
@@ -1285,6 +1322,41 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn regression_r43_8_a_large_environment_is_given_time_for_each_package() {
+        // pip 26.2.1 looks packages up one at a time (`list.py:250-285`),
+        // about a second each from the author's Mac: a few hundred (an
+        // Anaconda base, `pip3 install jupyter`) never finished in a fixed
+        // 60 s, and every package read "could not check" every round.
+        for (packages, secs) in [(0, 60), (10, 75), (300, 510), (1000, 600)] {
+            let list: Vec<String> = (0..packages)
+                .map(|i| format!(r#"{{"name":"p{i}","version":"1.0"}}"#))
+                .collect();
+            let runner = Arc::new(MockRunner::new());
+            let python = "/opt/homebrew/bin/python3.13";
+            runner.respond(
+                vec![python, "-m", "pip", "list", "--format=json"],
+                exited(0, &format!("[{}]", list.join(","))),
+            );
+            runner.respond(
+                vec![python, "-m", "pip", "list", "--outdated", "--format=json"],
+                exited(0, "[]"),
+            );
+            let mut inst = test_instance();
+            inst.exe_path = PathBuf::from(python);
+            PipAdapter::new(runner.clone())
+                .check_updates(&inst, &CheckOptions::default())
+                .await
+                .unwrap();
+            let outdated = runner
+                .specs()
+                .into_iter()
+                .find(|spec| spec.args.iter().any(|arg| arg == "--outdated"))
+                .expect("the outdated check ran");
+            assert_eq!(outdated.timeout, Duration::from_secs(secs), "{packages}");
+        }
+    }
+
+    #[tokio::test]
     async fn regression_the_outdated_check_runs_at_pips_normal_verbosity() {
         // opus-int finding 4: `-vv` printed a line per file pip skipped,
         // thousands for numpy alone. The check passes no `-v`, and pins
@@ -1298,7 +1370,10 @@ mod tests {
             .await
             .unwrap();
         let specs = runner.specs.lock().unwrap();
-        assert_eq!(specs.len(), 1);
+        // The plain list read for the check's deadline, then the check.
+        assert_eq!(specs.len(), 2);
+        assert_eq!(specs[0].args, ["-m", "pip", "list", "--format=json"]);
+        let specs = &specs[1..];
         assert_eq!(
             specs[0].args,
             ["-m", "pip", "list", "--outdated", "--format=json"]
@@ -2567,7 +2642,8 @@ mod tests {
                 candidate.key.name
             );
         }
-        assert_eq!(runner.calls(), vec![argv(&OUTDATED_ARGV), argv(&LIST_ARGV)]);
+        // The list read for the deadline names the packages: not read again.
+        assert_eq!(runner.calls(), vec![argv(&LIST_ARGV), argv(&OUTDATED_ARGV)]);
     }
 
     #[tokio::test]
@@ -2718,13 +2794,17 @@ mod tests {
         assert_eq!(candidates[0].key.name, "black");
         assert!(candidates[0].checkable);
         assert_eq!(candidates[0].target, "24.10.0");
-        assert_eq!(runner.calls(), vec![argv(&OUTDATED_ARGV), argv(&LIST_ARGV)]);
+        // Failed before the check too, which then had its 60 s.
+        assert_eq!(
+            runner.calls(),
+            vec![argv(&LIST_ARGV), argv(&OUTDATED_ARGV), argv(&LIST_ARGV)]
+        );
     }
 
     #[tokio::test]
     async fn test_check_updates_runs_nothing_more_when_every_retry_was_answered() {
         // One retry, then an answer: every lookup was made, so stdout is
-        // the whole answer and the plain list is not run.
+        // the whole answer and the plain list is not run again.
         let runner = Arc::new(MockRunner::new());
         runner.respond(
             OUTDATED_ARGV.to_vec(),
@@ -2737,7 +2817,7 @@ mod tests {
             .expect("check_updates")
             .candidates;
         assert!(candidates.is_empty());
-        assert_eq!(runner.calls(), vec![argv(&OUTDATED_ARGV)]);
+        assert_eq!(runner.calls(), vec![argv(&LIST_ARGV), argv(&OUTDATED_ARGV)]);
     }
 
     #[tokio::test]
