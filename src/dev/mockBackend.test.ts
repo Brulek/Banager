@@ -1396,6 +1396,22 @@ describe("the preview's URL switches", () => {
       `"${en.commandPreview.show_one}", or "${en.commandPreview.show_other}" when there is more than one`,
     );
   });
+
+  it("say the native mock's Rust side still reads the login shell, startup files and all (r20 R56-2)", () => {
+    // docs/ui-preview.md said `pnpm tauri:mock`'s Rust side "starts nothing
+    // by itself", while `run()` (src-tauri/src/lib.rs) reads the login
+    // shell's PATH at every launch, mock or not, with `$SHELL -ilc`, which
+    // runs ~/.zshrc and the shell's other startup files.
+    const flat = (file: string) =>
+      readFileSync(path.resolve(__dirname, file), "utf-8").replace(/\/\/ /g, "").replace(/\s+/g, " ");
+    const doc = flat("../../docs/ui-preview.md");
+    const native = doc.slice(doc.indexOf("pnpm tauri:mock"), doc.indexOf("The menu bar is the app's own too"));
+    expect(native).not.toMatch(/starts nothing by itself/);
+    expect(native).toContain("runs no package manager by itself");
+    expect(native).toContain("startup files");
+    expect(native).toContain("`pnpm dev:mock`");
+    expect(flat("../../src-tauri/tauri.mock.conf.json5")).not.toMatch(/starts nothing by itself/);
+  });
 });
 
 describe("the preview's commands, and which copy runs", () => {
