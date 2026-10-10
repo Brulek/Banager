@@ -294,6 +294,7 @@ export function warningKey(warning: Warning): string | null {
   }
   if ("DeletesCargoHome" in warning) return "warnings.deletesCargoHome";
   if ("RemovesCargoInstalled" in warning) return "warnings.removesCargoInstalled";
+  if ("RemovesUnrecordedPrograms" in warning) return "warnings.removesUnrecordedPrograms";
   if ("LeavesShellConfigLine" in warning) {
     // "will print an error" only for a line rustup's own sourcing form
     // spells with every line above it standing alone (the core decides,
@@ -374,6 +375,10 @@ export function warningArgs(warning: Warning, separator = ", "): Record<string, 
   if ("DeletesCargoHome" in warning) return { path: warning.DeletesCargoHome.path };
   if ("RemovesCargoInstalled" in warning) {
     const names = warning.RemovesCargoInstalled.names;
+    return { count: names.length, names: names.join(separator) };
+  }
+  if ("RemovesUnrecordedPrograms" in warning) {
+    const names = warning.RemovesUnrecordedPrograms.names;
     return { count: names.length, names: names.join(separator) };
   }
   if ("LeavesShellConfigLine" in warning) return { path: warning.LeavesShellConfigLine.path };
@@ -540,6 +545,7 @@ export function warningDetailKey(warning: Warning): string | null {
   // The listed and the unlisted sentence share one why.
   if ("RemovesToolchains" in warning) return "warnings.removesToolchainsDetail";
   if ("RemovesCargoInstalled" in warning) return "warnings.removesCargoInstalledDetail";
+  if ("RemovesUnrecordedPrograms" in warning) return "warnings.removesUnrecordedProgramsDetail";
   if ("HomebrewForgetsTrust" in warning) return "uninstall.forgetsTrustDetail";
   // How: the command, and that it is what Homebrew does by default.
   if ("HomebrewCleansUpOldVersions" in warning) return "brewVersions.cleansUpDetail";
@@ -618,6 +624,7 @@ export function warningGroup(warning: Warning): WarningGroup {
     "RemovesToolchains" in warning ||
     "DeletesCargoHome" in warning ||
     "RemovesCargoInstalled" in warning ||
+    "RemovesUnrecordedPrograms" in warning ||
     "LeavesShellConfigLine" in warning ||
     "ShellConfigUnread" in warning ||
     "HomebrewNoCleanupFormulae" in warning ||
@@ -683,7 +690,12 @@ export function deletesForGood(warning: Warning): boolean {
       }
     }
   }
-  if ("RemovesToolchains" in warning || "DeletesCargoHome" in warning || "RemovesCargoInstalled" in warning) {
+  if (
+    "RemovesToolchains" in warning ||
+    "DeletesCargoHome" in warning ||
+    "RemovesCargoInstalled" in warning ||
+    "RemovesUnrecordedPrograms" in warning
+  ) {
     return true;
   }
   if ("CaskUninstallStep" in warning) {
@@ -888,6 +900,7 @@ export function isCaution(warning: Warning): boolean {
     "RemovesToolchains" in warning ||
     "DeletesCargoHome" in warning ||
     "RemovesCargoInstalled" in warning ||
+    "RemovesUnrecordedPrograms" in warning ||
     "LeavesShellConfigLine" in warning ||
     "ShellConfigUnread" in warning ||
     // A command another tool took over goes back to uv's (r15 R43-7).

@@ -348,7 +348,8 @@ export type RemoveCheck =
  * uninstall's `WillTrash`, `WillKeep` and `AlreadyGone`, whose `path`
  * interpolates it and whose `what` picks the key, and rustup's own
  * uninstall's `RemovesToolchains`, `DeletesCargoHome`,
- * `RemovesCargoInstalled` and `LeavesShellConfigLine`, whose `path` and
+ * `RemovesCargoInstalled`, `RemovesUnrecordedPrograms` and
+ * `LeavesShellConfigLine`, whose `path` and
  * `names` interpolate it and whose empty `names` or `certain` pick the
  * key -- with `HomebrewRustupLosesToolchains` and `EditsShellConfig` as
  * that uninstall's two bare-string ones), Homebrew's three bare-string
@@ -441,6 +442,7 @@ export type Warning =
   | { RemovesToolchains: { path: string; names: string[] } }
   | { DeletesCargoHome: { path: string } }
   | { RemovesCargoInstalled: { names: string[] } }
+  | { RemovesUnrecordedPrograms: { names: string[] } }
   | "HomebrewRustupLosesToolchains"
   | "EditsShellConfig"
   | { LeavesShellConfigLine: { path: string; certain: boolean } }

@@ -631,6 +631,7 @@ describe("types", () => {
     };
     const deletesCargoHome: Warning = { DeletesCargoHome: { path: "~/.cargo" } };
     const removesCargoInstalled: Warning = { RemovesCargoInstalled: { names: ["hexyl", "rg"] } };
+    const removesUnrecordedPrograms: Warning = { RemovesUnrecordedPrograms: { names: ["uv", "uvx"] } };
     const homebrew: Warning = "HomebrewRustupLosesToolchains";
     const editsShellConfig: Warning = "EditsShellConfig";
     const leavesShellConfigLine: Warning = {
@@ -642,6 +643,9 @@ describe("types", () => {
     expect(JSON.stringify(deletesCargoHome)).toBe('{"DeletesCargoHome":{"path":"~/.cargo"}}');
     expect(JSON.stringify(removesCargoInstalled)).toBe(
       '{"RemovesCargoInstalled":{"names":["hexyl","rg"]}}',
+    );
+    expect(JSON.stringify(removesUnrecordedPrograms)).toBe(
+      '{"RemovesUnrecordedPrograms":{"names":["uv","uvx"]}}',
     );
     expect(roundTrip(homebrew)).toBe("HomebrewRustupLosesToolchains");
     expect(roundTrip(editsShellConfig)).toBe("EditsShellConfig");

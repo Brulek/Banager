@@ -1136,16 +1136,25 @@ pub enum Warning {
     /// rustup 1.29.1's `self uninstall` deletes everything in the Cargo
     /// home's `bin/` whose name is not `rustup` or one of its thirteen
     /// proxies -- by name, so a program copied there by hand goes too:
-    /// `names` are the crates `.crates2.json` lists with a program among
-    /// those, each by the crate's name, as cargo's inventory names its row
-    /// on the Installed page (`ripgrep`, whose program is `rg`), and the
-    /// other programs a read-only listing of `bin/` finds, minus those
-    /// fourteen names, by their file names
-    /// (`rustup::bin_programs_rustup_removes`) -- the programs named where
-    /// known. Only produced when there are any.
-    /// (The research read a newer rustup that keeps them; the tag this
-    /// recipe is verified against does not -- see the recipe's doc.)
+    /// `names` are the crates Cargo's records (`.crates2.json` merged with
+    /// `.crates.toml`) list with a program among those, each by the
+    /// crate's name, as cargo's inventory names its row on the Installed
+    /// page (`ripgrep`, whose program is `rg`)
+    /// (`rustup::bin_programs_rustup_removes`). When a record is there but
+    /// cannot be read, the other programs a read-only listing of `bin/`
+    /// finds, minus those fourteen names, are here too by their file
+    /// names, since whether Cargo installed them is not known; otherwise
+    /// they are `RemovesUnrecordedPrograms`. Only produced when there are
+    /// any. (The research read a newer rustup that keeps them; the tag
+    /// this recipe is verified against does not -- see the recipe's doc.)
     RemovesCargoInstalled { names: Vec<String> },
+    /// The programs in the Cargo home's `bin/` that rustup 1.29.1's `self
+    /// uninstall` deletes and that Cargo's records, read in full, do not
+    /// list -- by file name: copied there by hand or by another installer
+    /// (uv's before 0.5.0), so reinstalling Rust does not bring them back.
+    /// Only produced when there are any
+    /// (`rustup::bin_programs_rustup_removes`).
+    RemovesUnrecordedPrograms { names: Vec<String> },
     /// Homebrew's `rustup` formula is installed too (`Cellar/rustup`
     /// under one of Homebrew's default prefixes,
     /// `rustup::homebrew_rustup_present`), and rustup's homes depend
@@ -3243,6 +3252,13 @@ mod tests {
             })
             .unwrap(),
             r#"{"RemovesCargoInstalled":{"names":["hexyl","rg"]}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&Warning::RemovesUnrecordedPrograms {
+                names: vec!["uv".to_string(), "uvx".to_string()]
+            })
+            .unwrap(),
+            r#"{"RemovesUnrecordedPrograms":{"names":["uv","uvx"]}}"#
         );
         assert_eq!(
             serde_json::to_string(&Warning::HomebrewRustupLosesToolchains).unwrap(),

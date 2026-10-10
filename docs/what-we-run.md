@@ -3855,7 +3855,11 @@ two files the Cargo source reads, merged the same way, so a crate
 cargo-binstall recorded in `.crates.toml` alone counts too; when
 `.crates.toml` is missing or cannot be read, `.crates2.json` alone —
 each recorded one by its crate's name, the one its row has on the
-Installed page, and the others by their file names);
+Installed page, and the others by their file names — on a line of their
+own, which says reinstalling Rust won't bring them back, when Cargo's
+records were read in full, and beside the recorded ones when a record is
+there but cannot be read, since whether Cargo installed them is then not
+known);
 that rustup will edit your shell startup files; and each startup file that
 will still speak of Cargo's env file afterwards. It is not cancellable once
 running, for the same reason as the update, and holds the same two locks

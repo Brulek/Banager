@@ -97,6 +97,9 @@ describe("warningKey", () => {
     expect(warningKey({ RemovesCargoInstalled: { names: ["hexyl"] } })).toBe(
       "warnings.removesCargoInstalled",
     );
+    expect(warningKey({ RemovesUnrecordedPrograms: { names: ["uv"] } })).toBe(
+      "warnings.removesUnrecordedPrograms",
+    );
     expect(warningKey("HomebrewRustupLosesToolchains")).toBe("warnings.homebrewRustupLosesToolchains");
     expect(warningKey("EditsShellConfig")).toBe("warnings.editsShellConfig");
     expect(warningKey({ LeavesShellConfigLine: { path: "~/.zshrc", certain: true } })).toBe(
@@ -354,6 +357,7 @@ describe("warningKey", () => {
       { RemovesToolchains: { path: "~/.rustup", names: ["stable-aarch64-apple-darwin"] } },
       { DeletesCargoHome: { path: "~/.cargo" } },
       { RemovesCargoInstalled: { names: ["hexyl"] } },
+      { RemovesUnrecordedPrograms: { names: ["uv"] } },
       "HomebrewRustupLosesToolchains",
       "EditsShellConfig",
       { LeavesShellConfigLine: { path: "~/.zshrc", certain: true } },
@@ -427,6 +431,10 @@ describe("warningArgs", () => {
     expect(warningArgs({ RemovesCargoInstalled: { names: ["hexyl", "rg"] } })).toEqual({
       count: 2,
       names: "hexyl, rg",
+    });
+    expect(warningArgs({ RemovesUnrecordedPrograms: { names: ["uv", "uvx"] } })).toEqual({
+      count: 2,
+      names: "uv, uvx",
     });
     expect(warningArgs({ LeavesShellConfigLine: { path: "~/.zshrc", certain: false } })).toEqual({
       path: "~/.zshrc",
@@ -526,6 +534,9 @@ describe("warningText", () => {
     expect(warningText(chineseT, { RemovesCargoInstalled: { names: ["jj-cli", "tokei"] } })).toBe(
       'warnings.removesCargoInstalled({"count":2,"names":"jj-cli、tokei"})',
     );
+    expect(warningText(chineseT, { RemovesUnrecordedPrograms: { names: ["uv", "uvx"] } })).toBe(
+      'warnings.removesUnrecordedPrograms({"count":2,"names":"uv、uvx"})',
+    );
   });
 
   it("reads a Message's text directly, bypassing t()", () => {
@@ -561,6 +572,7 @@ const EVERY_VARIANT: Warning[] = [
   { RemovesToolchains: { path: "~/.rustup", names: ["stable-aarch64-apple-darwin"] } },
   { DeletesCargoHome: { path: "~/.cargo" } },
   { RemovesCargoInstalled: { names: ["hexyl"] } },
+  { RemovesUnrecordedPrograms: { names: ["uv"] } },
   { LeavesShellConfigLine: { path: "~/.zshrc", certain: true } },
   { ShellConfigUnread: { path: "~/.zshrc" } },
   "HomebrewAutoremoves",
@@ -746,6 +758,9 @@ describe("warningDetailKey", () => {
     );
     expect(warningDetailKey({ RemovesCargoInstalled: { names: ["hexyl"] } })).toBe(
       "warnings.removesCargoInstalledDetail",
+    );
+    expect(warningDetailKey({ RemovesUnrecordedPrograms: { names: ["uv"] } })).toBe(
+      "warnings.removesUnrecordedProgramsDetail",
     );
     expect(warningDetailKey({ LeavesShellConfigLine: { path: "~/.zshrc", certain: true } })).toBe(
       "warnings.leavesShellConfigLineDetail",
@@ -958,6 +973,34 @@ describe("warningDetailKey", () => {
       expect(typeof lookUp(zhCN, key), `zh-CN: ${key}`).toBe("string");
     }
   });
+
+  it("says cargo install puts back only what it installed, and that the rest does not come back", () => {
+    // ~/.cargo/bin can hold programs no Cargo record lists (uv's installer
+    // put uv there before 0.5.0); those have their own line, and neither
+    // language says everything there came from cargo install.
+    expect(en.warnings.removesCargoInstalledDetail).toBe(
+      "After you reinstall Rust, cargo install can put back the ones it installed.",
+    );
+    expect(zhCN.warnings.removesCargoInstalledDetail).toBe("重装Rust后，用“cargo install”安装的那些可以再装回来。");
+    expect(zhHant.warnings.removesCargoInstalledDetail).toBe("重裝Rust後，用「cargo install」安裝的那些可以再裝回來。");
+    expect(en.warnings.removesUnrecordedPrograms_one).toBe(
+      "Also permanently deletes {{names}}, which Cargo has no record of installing.",
+    );
+    expect(en.warnings.removesUnrecordedPrograms_other).toBe(
+      "Also permanently deletes {{count}} programs that Cargo has no record of installing: {{names}}.",
+    );
+    expect(zhCN.warnings.removesUnrecordedPrograms_other).toBe(
+      "还会永久删除{{count}}个没有Cargo安装记录的程序：{{names}}。",
+    );
+    expect(zhHant.warnings.removesUnrecordedPrograms_other).toBe(
+      "還會永久刪除{{count}}個沒有Cargo安裝記錄的程式：{{names}}。",
+    );
+    expect(en.warnings.removesUnrecordedProgramsDetail).toBe(
+      "Reinstalling Rust won't bring back what Cargo didn't install.",
+    );
+    expect(zhCN.warnings.removesUnrecordedProgramsDetail).toBe("重装Rust不会装回不是Cargo安装的程序。");
+    expect(zhHant.warnings.removesUnrecordedProgramsDetail).toBe("重裝Rust不會裝回不是Cargo安裝的程式。");
+  });
 });
 
 describe("deletesForGood", () => {
@@ -967,6 +1010,7 @@ describe("deletesForGood", () => {
       { RemovesToolchains: { path: "~/.rustup", names: ["stable-aarch64-apple-darwin"] } },
       { DeletesCargoHome: { path: "~/.cargo" } },
       { RemovesCargoInstalled: { names: ["hexyl"] } },
+      { RemovesUnrecordedPrograms: { names: ["uv"] } },
       { CaskUninstallStep: { step: "Deletes", items: ["~/Library/Application Support/Foo"] } },
     ]);
     expect(deletesForGood({ RemovesToolchains: { path: "~/.rustup", names: [] } })).toBe(true);
@@ -1062,6 +1106,7 @@ describe("isCaution", () => {
       { RemovesToolchains: { path: "~/.rustup", names: ["stable"] } },
       { DeletesCargoHome: { path: "~/.cargo" } },
       { RemovesCargoInstalled: { names: ["tokei"] } },
+      { RemovesUnrecordedPrograms: { names: ["uv", "uvx"] } },
       { LeavesShellConfigLine: { path: "~/.zshrc", certain: true } },
       { CaskUninstallStep: { step: "Deletes", items: ["~/Library/Foo"] } },
       { Message: "something this build has no words for" },

@@ -260,8 +260,12 @@ pub fn toolchain_names(rustup_home: &Path, protected: &Protected) -> Result<Vec<
 /// that crate's row (`jj-cli`, whose program is `jj`; `ripgrep`, whose
 /// is `rg`), so the list can be matched to the rows the user knows, and
 /// a crate is named once however many programs it installed; a program
-/// no record lists is named by its file name. The listing is what rustup
-/// acts on; the record still names what cargo installed when the
+/// no record lists is named by its file name, in `unrecorded` when the
+/// records were read in full (each one there merged, or none there at
+/// all) -- Cargo did not install it, so reinstalling Rust will not bring
+/// it back -- and in `recorded` when a record is there but could not be
+/// read or merged, since then that is not known. The listing is what
+/// rustup acts on; the record still names what cargo installed when the
 /// directory cannot be listed, and a crate whose programs are already
 /// gone is named although nothing is left to delete -- the safe
 /// direction. Not named: an entry starting with `.` (`.DS_Store`:
@@ -275,7 +279,7 @@ pub fn toolchain_names(rustup_home: &Path, protected: &Protected) -> Result<Vec<
 pub fn bin_programs_rustup_removes(
     cargo_home: &Path,
     protected: &Protected,
-) -> Result<Vec<String>, PathBuf> {
+) -> Result<BinPrograms, PathBuf> {
     let removed =
         |name: &str| !name.starts_with('.') && name != "rustup" && !RUSTUP_PROXIES.contains(&name);
     let listed: Vec<String> = preview_names(&cargo_home.join("bin"), protected)?
@@ -283,33 +287,61 @@ pub fn bin_programs_rustup_removes(
         .filter_map(|name| name.to_str().map(str::to_string))
         .filter(|name| removed(name))
         .collect();
+    // `Ok(None)`: no such file; `Err(())`: one there that cannot be read.
     let read =
-        |name: &str| crate::adapters::read_file::read_text(&cargo_home.join(name), protected).ok();
+        |name: &str| match crate::adapters::read_file::read_text(&cargo_home.join(name), protected)
+        {
+            Ok(text) => Ok(Some(text)),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(_) => Err(()),
+        };
+    fn text(file: &Result<Option<String>, ()>) -> Option<&str> {
+        file.as_ref().ok().and_then(Option::as_deref)
+    }
     let crates2 = read(".crates2.json");
-    let merged = read(".crates.toml").and_then(|crates_toml| {
-        merge_crates_v1(
-            crates2.as_deref().unwrap_or(r#"{"installs":{}}"#),
-            &crates_toml,
-        )
-        .ok()
+    let crates_toml = read(".crates.toml");
+    let merged = text(&crates_toml).and_then(|crates_toml| {
+        merge_crates_v1(text(&crates2).unwrap_or(r#"{"installs":{}}"#), crates_toml)
+            .and_then(|json| parse_crates2_bins(&json))
+            .ok()
     });
-    let recorded: Vec<(String, Vec<String>)> = merged
-        .or(crates2)
-        .and_then(|json| parse_crates2_bins(&json).ok())
-        .unwrap_or_default();
-    let mut names: Vec<String> = recorded
+    let (recorded, complete): (Vec<(String, Vec<String>)>, bool) = match merged {
+        Some(recorded) => (recorded, true),
+        None => {
+            let alone = text(&crates2).and_then(|json| parse_crates2_bins(json).ok());
+            let complete = crates_toml == Ok(None) && (crates2 == Ok(None) || alone.is_some());
+            (alone.unwrap_or_default(), complete)
+        }
+    };
+    let mut crates: Vec<String> = recorded
         .iter()
         .filter(|(_, bins)| bins.iter().any(|bin| removed(bin)))
         .map(|(krate, _)| krate.clone())
         .collect();
-    names.extend(
-        listed
-            .into_iter()
-            .filter(|name| !recorded.iter().any(|(_, bins)| bins.contains(name))),
-    );
-    names.sort();
-    names.dedup();
-    Ok(names)
+    let mut others: Vec<String> = listed
+        .into_iter()
+        .filter(|name| !recorded.iter().any(|(_, bins)| bins.contains(name)))
+        .collect();
+    if !complete {
+        crates.append(&mut others);
+    }
+    for names in [&mut crates, &mut others] {
+        names.sort();
+        names.dedup();
+    }
+    Ok(BinPrograms {
+        recorded: crates,
+        unrecorded: others,
+    })
+}
+
+/// `bin_programs_rustup_removes`'s answer: the names for the
+/// `RemovesCargoInstalled` line and for the `RemovesUnrecordedPrograms`
+/// one, each sorted and each name once.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct BinPrograms {
+    pub recorded: Vec<String>,
+    pub unrecorded: Vec<String>,
 }
 
 /// Whether Homebrew's `rustup` formula is installed: `<prefix>/Cellar/rustup`
@@ -886,8 +918,15 @@ pub fn preview_with(
             reason: UninstallBlocked::NoSafeMethod,
             path,
         })?;
-    if !bins.is_empty() {
-        warnings.push(Warning::RemovesCargoInstalled { names: bins });
+    if !bins.recorded.is_empty() {
+        warnings.push(Warning::RemovesCargoInstalled {
+            names: bins.recorded,
+        });
+    }
+    if !bins.unrecorded.is_empty() {
+        warnings.push(Warning::RemovesUnrecordedPrograms {
+            names: bins.unrecorded,
+        });
     }
     if homebrew_rustup_present(homebrew_prefixes, &protected) {
         warnings.push(Warning::HomebrewRustupLosesToolchains);
@@ -988,7 +1027,7 @@ mod tests {
         let names = finishes(move || {
             bin_programs_rustup_removes(&home, &Protected::of_this_process()).unwrap()
         });
-        assert!(names.is_empty(), "{names:?}");
+        assert_eq!(names, BinPrograms::default());
         let _ = std::fs::remove_dir_all(&cargo_home);
     }
 
@@ -1297,8 +1336,16 @@ mod tests {
         .expect("copy the recorded record");
         assert_eq!(
             bin_programs_rustup_removes(&cargo_home, &Protected::of_this_process()).unwrap(),
-            vec!["hexyl".to_string()]
+            programs(&["hexyl"], &[])
         );
+    }
+
+    fn programs(recorded: &[&str], unrecorded: &[&str]) -> BinPrograms {
+        let owned = |names: &[&str]| names.iter().map(|name| name.to_string()).collect();
+        BinPrograms {
+            recorded: owned(recorded),
+            unrecorded: owned(unrecorded),
+        }
     }
 
     #[test]
@@ -1325,12 +1372,7 @@ mod tests {
         .expect("write the record");
         assert_eq!(
             bin_programs_rustup_removes(&cargo_home, &Protected::of_this_process()).unwrap(),
-            vec![
-                "cargo-binstall".to_string(),
-                "jj-cli".to_string(),
-                "mytool".to_string(),
-                "ripgrep".to_string(),
-            ]
+            programs(&["cargo-binstall", "jj-cli", "ripgrep"], &["mytool"])
         );
     }
 
@@ -1364,12 +1406,7 @@ mod tests {
 "#,
         )
         .expect("write .crates.toml");
-        let by_crate = vec![
-            "cargo-binstall".to_string(),
-            "du-dust".to_string(),
-            "hexyl".to_string(),
-            "ripgrep".to_string(),
-        ];
+        let by_crate = programs(&["cargo-binstall", "du-dust", "hexyl", "ripgrep"], &[]);
         assert_eq!(
             bin_programs_rustup_removes(&cargo_home, &Protected::of_this_process()).unwrap(),
             by_crate
@@ -1384,15 +1421,11 @@ mod tests {
             cargo_home.join(".crates2.json"),
         )
         .expect("copy the recorded record");
+        // Whether Cargo installed `rg` is then not known: on the Cargo line.
         std::fs::write(cargo_home.join(".crates.toml"), "[v1\n").expect("break .crates.toml");
         assert_eq!(
             bin_programs_rustup_removes(&cargo_home, &Protected::of_this_process()).unwrap(),
-            vec![
-                "cargo-binstall".to_string(),
-                "dust".to_string(),
-                "hexyl".to_string(),
-                "rg".to_string(),
-            ]
+            programs(&["cargo-binstall", "dust", "hexyl", "rg"], &[])
         );
     }
 
@@ -1401,8 +1434,9 @@ mod tests {
         // rustup 1.29.1 deletes every entry of `bin/` whose *name* is not
         // one of its fourteen (self_update.rs:996-1022): a program copied
         // there by hand goes too, recorded or not, and with no record or
-        // a broken one the listing still names it. `.DS_Store` is deleted
-        // with the folder but is no program to name.
+        // a broken one the listing still names it: with no record as one
+        // Cargo did not install, with a broken one as one it may have.
+        // `.DS_Store` is deleted with the folder but is no program to name.
         let home = TempHome::new("rustup-bins-unrecorded");
         let cargo_home = home.dir(".cargo");
         rustup_layout(&cargo_home);
@@ -1410,12 +1444,12 @@ mod tests {
         std::fs::write(cargo_home.join("bin/.DS_Store"), b"x").expect("write .DS_Store");
         assert_eq!(
             bin_programs_rustup_removes(&cargo_home, &Protected::of_this_process()).unwrap(),
-            vec!["mytool".to_string()]
+            programs(&[], &["mytool"])
         );
         std::fs::write(cargo_home.join(".crates2.json"), "{ not json").expect("write");
         assert_eq!(
             bin_programs_rustup_removes(&cargo_home, &Protected::of_this_process()).unwrap(),
-            vec!["mytool".to_string()]
+            programs(&["mytool"], &[])
         );
     }
 
@@ -1440,11 +1474,7 @@ mod tests {
         .expect("write record");
         assert_eq!(
             bin_programs_rustup_removes(&cargo_home, &Protected::of_this_process()).unwrap(),
-            vec![
-                "cargo-binstall".to_string(),
-                "hexyl".to_string(),
-                "ripgrep".to_string(),
-            ]
+            programs(&["cargo-binstall", "hexyl", "ripgrep"], &[])
         );
     }
 
@@ -1457,18 +1487,18 @@ mod tests {
         let cargo_home = home.dir(".cargo");
         assert_eq!(
             bin_programs_rustup_removes(&cargo_home, &Protected::of_this_process()).unwrap(),
-            Vec::<String>::new()
+            BinPrograms::default()
         );
         std::fs::write(cargo_home.join(".crates2.json"), "{ not json").expect("write");
         assert_eq!(
             bin_programs_rustup_removes(&cargo_home, &Protected::of_this_process()).unwrap(),
-            Vec::<String>::new()
+            BinPrograms::default()
         );
         // rustup and its proxies alone: nothing else to name.
         rustup_layout(&cargo_home);
         assert_eq!(
             bin_programs_rustup_removes(&cargo_home, &Protected::of_this_process()).unwrap(),
-            Vec::<String>::new()
+            BinPrograms::default()
         );
     }
 
@@ -2324,6 +2354,45 @@ mod tests {
                 path: "~/.zshrc".to_string(),
                 certain: true
             }]
+        );
+    }
+
+    #[test]
+    fn regression_preview_gives_the_programs_no_cargo_record_lists_their_own_line() {
+        // uv's installer put `uv` and `uvx` in ~/.cargo/bin before uv
+        // 0.5.0, and no Cargo record lists them: rustup deletes them too,
+        // but reinstalling Rust will not bring them back, so they are not
+        // on the line that says cargo install can.
+        let home = TempHome::new("rustup-warnings-unrecorded");
+        let cargo_home = home.dir(".cargo");
+        rustup_layout(&cargo_home);
+        for program in ["hexyl", "uv", "uvx"] {
+            std::fs::write(cargo_home.join("bin").join(program), b"x").expect("write a program");
+        }
+        std::fs::copy(
+            "../../adapters/fixtures/cargo/1.98.1/crates2.json",
+            cargo_home.join(".crates2.json"),
+        )
+        .expect("copy");
+        let d = detected(home.path(), &cargo_home);
+        assert_eq!(
+            preview_with(&d, &[]),
+            Ok(vec![
+                Warning::RemovesToolchains {
+                    path: "~/.rustup".to_string(),
+                    names: Vec::new()
+                },
+                Warning::DeletesCargoHome {
+                    path: "~/.cargo".to_string()
+                },
+                Warning::RemovesCargoInstalled {
+                    names: vec!["hexyl".to_string()]
+                },
+                Warning::RemovesUnrecordedPrograms {
+                    names: vec!["uv".to_string(), "uvx".to_string()]
+                },
+                Warning::EditsShellConfig,
+            ])
         );
     }
 
