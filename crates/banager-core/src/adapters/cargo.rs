@@ -122,22 +122,26 @@ struct CratesIoResponse {
 
 #[derive(Deserialize)]
 struct CrateInfo {
-    max_stable_version: String,
+    // Required although an `Option`: `null` is an answer, a missing field
+    // is not.
+    #[serde(deserialize_with = "Option::deserialize")]
+    max_stable_version: Option<String>,
 }
 
 /// The newest stable version in crates.io's answer about one crate
-/// (`GET /api/v1/crates/<name>`), or why there is none. A version that is
-/// empty or holds a control character (`sanity::is_name`) is no version:
-/// the crate's row says it could not be checked rather than offer an
-/// update to it.
-pub(crate) fn parse_crates_io_body(body: &str) -> Result<String, String> {
+/// (`GET /api/v1/crates/<name>`), or why there is none. `None` when
+/// crates.io says `null`: the crate has no stable release that is not
+/// yanked (only prereleases, or every stable one yanked), so there is
+/// nothing to offer. A version that is empty or holds a control character
+/// (`sanity::is_name`) is no version: the crate's row says it could not be
+/// checked rather than offer an update to it.
+pub(crate) fn parse_crates_io_body(body: &str) -> Result<Option<String>, String> {
     let parsed: CratesIoResponse = serde_json::from_str(body)
         .map_err(|e| format!("could not parse crates.io response: {e}"))?;
-    let version = parsed.krate.max_stable_version;
-    if crate::adapters::sanity::is_name(&version) {
-        Ok(version)
-    } else {
-        Err("crates.io named no usable version".to_string())
+    match parsed.krate.max_stable_version {
+        None => Ok(None),
+        Some(version) if crate::adapters::sanity::is_name(&version) => Ok(Some(version)),
+        Some(_) => Err("crates.io named no usable version".to_string()),
     }
 }
 
@@ -762,7 +766,7 @@ impl CargoAdapter {
         parse_crates2(&json, &inst.id, &inst.prefix)
     }
 
-    async fn latest_stable_version(&self, name: &str) -> Result<String, LookupFailure> {
+    async fn latest_stable_version(&self, name: &str) -> Result<Option<String>, LookupFailure> {
         // Percent-encoded: the crate name is a `.crates2.json` key, i.e.
         // off disk, and raw it could add path segments or a query string to
         // crates.io's API url.
@@ -838,14 +842,20 @@ impl CargoAdapter {
                 continue;
             }
             // `None` only for the rows above that are never looked up; a
-            // row, never a panic, should the two conditions ever drift.
+            // row, never a panic, should the two conditions ever drift. No
+            // stable version on crates.io: nothing to offer, no row.
             match answer.and_then(|latest| {
                 let latest = latest.ok_or_else(|| {
                     LookupFailure::from("crates.io was not asked about this crate".to_string())
                 })?;
-                newer_stable(&latest, &version).map(|newer| (latest, newer))
+                match latest {
+                    Some(latest) => {
+                        newer_stable(&latest, &version).map(|newer| newer.then_some(latest))
+                    }
+                    None => Ok(None),
+                }
             }) {
-                Ok((latest, true)) => out.push(UpdateCandidate {
+                Ok(Some(latest)) => out.push(UpdateCandidate {
                     key,
                     current: version,
                     target: latest,
@@ -855,7 +865,7 @@ impl CargoAdapter {
                     blocked: None,
                     download_bytes: None,
                 }),
-                Ok(_) => {}
+                Ok(None) => {}
                 Err(reason) => out.push(uncheckable_candidate(
                     key,
                     version,
@@ -2437,6 +2447,44 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn regression_check_updates_offers_nothing_when_crates_io_has_no_stable_version() {
+        // crates.io answers `null` for a crate with only prereleases, or
+        // whose stable releases were all yanked: a lookup that worked, with
+        // nothing to offer. A body without the field is still no answer.
+        let json = std::fs::read_to_string("../../adapters/fixtures/cargo/1.98.1/crates2.json")
+            .expect("read cargo crates2.json fixture");
+        for (i, (body, rows)) in [
+            (r#"{"crate":{"max_stable_version":null}}"#, 0),
+            (r#"{"crate":{}}"#, 1),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let home = temp_cargo_home(&format!("no-stable-{i}"));
+            std::fs::create_dir_all(&home).expect("create cargo home");
+            std::fs::write(home.join(".crates2.json"), &json).expect("write crates2.json");
+            let http = Arc::new(MockHttpClient::new());
+            http.respond(
+                "https://crates.io/api/v1/crates/hexyl",
+                HttpResponse {
+                    status: 200,
+                    body: body.to_string(),
+                },
+            );
+            let adapter = CargoAdapter::new(Arc::new(MockRunner::new()), http);
+            let inst = test_instance(home.clone());
+            let candidates = adapter
+                .check_updates(&inst, &CheckOptions::default())
+                .await
+                .expect("check_updates")
+                .candidates;
+            let _ = std::fs::remove_dir_all(&home);
+            assert_eq!(candidates.len(), rows, "{body}");
+            assert!(candidates.iter().all(|c| !c.checkable), "{body}");
+        }
+    }
+
+    #[tokio::test]
     async fn regression_check_updates_skips_a_crate_whose_name_is_not_one() {
         // `parse_crates2` lists no row for it, so no update either.
         let json = r#"{"installs":{"bad\u001bname 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)":{"bins":[]}}}"#;
@@ -3130,7 +3178,7 @@ mod tests {
 
         let latest = adapter.latest_stable_version("evil/../summary?x=1").await;
 
-        assert_eq!(latest.as_deref(), Ok("1.0.0"));
+        assert_eq!(latest, Ok(Some("1.0.0".to_string())));
         assert_eq!(
             http.calls(),
             vec!["https://crates.io/api/v1/crates/evil%2F..%2Fsummary%3Fx=1".to_string()]

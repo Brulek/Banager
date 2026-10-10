@@ -643,6 +643,14 @@ fn string_result_ok(result: &Result<String, String>) -> Result<(), String> {
     }
 }
 
+fn optional_string_result_ok(result: &Result<Option<String>, String>) -> Result<(), String> {
+    match result {
+        Ok(Some(v)) => name_ok("version", v),
+        Ok(None) => Ok(()),
+        Err(reason) => reason_ok(reason),
+    }
+}
+
 // --- One test per tool ----------------------------------------------------
 
 const INSTANCE: &str = "test:/instance";
@@ -933,7 +941,7 @@ fn cargo_parsers_survive_any_input() {
         "cargo parse_crates_io_body",
         &crates_io,
         cargo::parse_crates_io_body,
-        string_result_ok,
+        optional_string_result_ok,
     ));
     let version = inputs_for(41, &["cargo/1.98.1/version.txt", "uv/0.12.17/version.txt"]);
     problems.extend(run(

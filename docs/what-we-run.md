@@ -2839,7 +2839,9 @@ checked again when planning an upgrade; an unsupported source is refused.
 Only a stable version with strictly greater SemVer precedence is offered;
 build metadata alone is not an update, and an older stable release never
 replaces a newer prerelease. Versions that cannot be compared are "could
-not check". Cargo has no search command Banager uses.
+not check". A crate crates.io names no stable version for (`null`: only
+prereleases, or every stable release yanked) has nothing to offer and gets
+no row. Cargo has no search command Banager uses.
 
 Upgrade planning also reads the saved `features`, `all_features`,
 `no_default_features`, `profile`, `target` and `rustc`
