@@ -234,6 +234,7 @@ impl Session {
                     &needed_by::Refreshed {
                         path_known,
                         unlisted: subject.unlisted,
+                        applications: std::path::PathBuf::from(needed_by::APPLICATIONS),
                     },
                     budget,
                 )

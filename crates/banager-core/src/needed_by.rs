@@ -19,7 +19,10 @@
 //!   `ollama` into their own -- or when the interpreter that program is run
 //!   with does: npm's `bin/npm-cli.js` begins `#!/usr/bin/env node`, so the
 //!   `node` first on `PATH` (`interpreter`), which is a Homebrew `node`'s
-//!   even where npm itself is a copy outside its keg;
+//!   even where npm itself is a copy outside its keg -- but not Ollama
+//!   while another `ollama` stays (`Look::another_ollama`): Ollama.app
+//!   from ollama.com beside Homebrew's formula runs the same models from
+//!   the same `~/.ollama/models`;
 //! - some of its tools, for pipx and uv, each of whose tools has an
 //!   environment of its own (`InstalledArtifact::path`): those whose
 //!   `bin/python` leads into it.
@@ -174,8 +177,11 @@ pub struct NeededBy {
 /// `instances`' order (the module doc says what counts). `env` is the one
 /// the last refresh had: its home folder decides the places never looked
 /// into, its `PATH` which `node` npm is run with. Empty for any other kind
-/// of package. Blocking: run it on the blocking pool.
-pub fn needed_by(
+/// of package. Blocking. For tests only: `~/Applications` under `env`'s
+/// home, the test's own, stands for `/Applications` too, so that none
+/// looks at this Mac's (the app asks through `needed_by_on_path`).
+#[cfg(test)]
+fn needed_by(
     package: &InstalledArtifact,
     brew: &ManagerInstance,
     instances: &[ManagerInstance],
@@ -186,6 +192,7 @@ pub fn needed_by(
     let refreshed = Refreshed {
         path_known: true,
         unlisted: Vec::new(),
+        applications: env.home.join("Applications"),
     };
     needed_by_on_path(package, brew, instances, artifacts, env, &refreshed, budget)
 }
@@ -201,7 +208,15 @@ pub struct Refreshed {
     /// (`Session::unlisted`): their rows -- none, as a rule -- are no list
     /// of what they have.
     pub unlisted: Vec<InstanceId>,
+    /// Where Ollama.app is looked for besides `~/Applications`
+    /// (`Look::another_ollama`): `/Applications` (`APPLICATIONS`) in the
+    /// app, a test's own folder in tests.
+    pub applications: PathBuf,
 }
+
+/// The system's folder of apps, where Ollama.app is looked for
+/// (`Refreshed::applications`), as `ollama::ollama_app_path` does.
+pub const APPLICATIONS: &str = "/Applications";
 
 /// `needed_by`, for sources a refresh looked for along `env`'s `PATH`,
 /// which `refreshed` says was the login shell's or not
@@ -294,6 +309,15 @@ pub fn needed_by_on_path(
                     None => doubts.push(Doubt::Program(name.to_string())),
                 }
             }
+        }
+        // An Ollama that stays -- Ollama.app outside the package, or
+        // another `ollama` on `PATH` -- runs the same models from the same
+        // folder (`~/.ollama/models`): they need nothing of this one.
+        if program
+            && source.adapter_id == "ollama"
+            && look.another_ollama(env, &refreshed.applications, &roots)
+        {
+            continue;
         }
         if program {
             warnings.push(Warning::NeededBySource {
@@ -796,6 +820,42 @@ impl Look {
     /// run. The one after it is still the one returned, as `resolve_exe`'s.
     /// A relative folder is passed over as `resolve_exe` passes it over: it
     /// names a folder only from wherever the program is run.
+    /// Whether an `ollama` other than the package's stays: the one in
+    /// Ollama.app's `Contents/Resources`, in `applications` or
+    /// `~/Applications` (`ollama::ollama_app_roots`), or one in a folder on
+    /// `env`'s `PATH`, that is there and leads, every link followed,
+    /// outside `roots`. One it could not follow, or did not reach within
+    /// the budget, is no proof: `false`, and the models still need the
+    /// package.
+    fn another_ollama(&mut self, env: &HostEnv, applications: &Path, roots: &[PathBuf]) -> bool {
+        let in_apps = [applications.to_path_buf(), env.home.join("Applications")]
+            .into_iter()
+            .map(|folder| folder.join("Ollama.app/Contents/Resources/ollama"));
+        let on_path = env
+            .path_dirs
+            .iter()
+            .filter(|dir| dir.is_absolute())
+            .map(|dir| dir.join("ollama"));
+        for candidate in in_apps.chain(on_path).collect::<Vec<_>>() {
+            if !self.one_more() {
+                return false;
+            }
+            if let Resolution::Found(real, meta) =
+                protected::resolve(&candidate, &self.protected, true)
+            {
+                let real = protected::without_data_volume(&real);
+                if meta.is_file()
+                    && !roots.iter().any(|root| {
+                        protected::starts_with_folded(&real, &protected::without_data_volume(root))
+                    })
+                {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
     fn on_path(&mut self, name: &str, env: &HostEnv) -> (Option<PathBuf>, bool) {
         let mut passed_over = false;
         for dir in env.path_dirs.iter().filter(|dir| dir.is_absolute()) {
@@ -1660,6 +1720,85 @@ mod tests {
             needed_by(&cask, &instances[0], &instances, &models, &env, BUDGET)
                 .warnings
                 .is_empty()
+        );
+    }
+
+    #[test]
+    fn test_an_ollama_that_stays_beside_the_formula_runs_its_models_without_it() {
+        // ollama.com's Ollama.app, with Homebrew's formula ahead of its CLI
+        // on `PATH`: Banager's Ollama source is the formula's `ollama`.
+        let root = Root::new("ollama-twice");
+        root.dir("opt/homebrew/Caskroom");
+        root.program("opt/homebrew/Cellar/ollama/0.34.1/bin/ollama");
+        root.link(
+            "opt/homebrew/bin/ollama",
+            "../Cellar/ollama/0.34.1/bin/ollama",
+        );
+        let ollama = instance(
+            "ollama",
+            "ollama:http://127.0.0.1:11434",
+            root.path("opt/homebrew/bin/ollama"),
+            root.path("home/.ollama"),
+        );
+        let models = vec![
+            row(&ollama.id, ArtifactKind::Model, "llama3.2:3b"),
+            row(&ollama.id, ArtifactKind::Model, "qwen3.8:27b-mlx"),
+        ];
+        let instances = vec![brew(&root), ollama.clone()];
+        let env = root.env(&["opt/homebrew/bin", "usr/local/bin"]);
+        let look = |applications: &str| {
+            needed_by_on_path(
+                &formula("ollama"),
+                &instances[0],
+                &instances,
+                &models,
+                &env,
+                &Refreshed {
+                    path_known: true,
+                    unlisted: Vec::new(),
+                    applications: root.path(applications),
+                },
+                BUDGET,
+            )
+        };
+        // No other Ollama: the models need the formula.
+        assert_eq!(
+            needed(&look("Applications").warnings),
+            vec![(ollama.id.clone(), true, 2)]
+        );
+        // Ollama.app in /Applications, or in ~/Applications, runs the same
+        // models from the same folder: they need nothing of the formula.
+        root.program("Applications/Ollama.app/Contents/Resources/ollama");
+        let found = look("Applications");
+        assert!(found.warnings.is_empty(), "{:?}", found.warnings);
+        assert!(found.complete);
+        root.program("home/Applications/Ollama.app/Contents/Resources/ollama");
+        assert!(look("no-system-apps").warnings.is_empty());
+        std::fs::remove_dir_all(root.path("Applications")).unwrap();
+        std::fs::remove_dir_all(root.path("home/Applications")).unwrap();
+        // An `Ollama.app` that is no app holds no `ollama`, and counts for
+        // nothing.
+        root.dir("Applications/Ollama.app");
+        assert_eq!(
+            needed(&look("Applications").warnings),
+            vec![(ollama.id.clone(), true, 2)]
+        );
+        // Another `ollama` further along `PATH` that leads outside the
+        // formula stays too.
+        let own = root.program("opt/ollama-download/ollama");
+        root.link("usr/local/bin/ollama", own.to_str().unwrap());
+        assert!(look("Applications").warnings.is_empty());
+        // One that leads into the formula as well is no other Ollama.
+        std::fs::remove_file(root.path("usr/local/bin/ollama")).unwrap();
+        root.link(
+            "usr/local/bin/ollama",
+            root.path("opt/homebrew/Cellar/ollama/0.34.1/bin/ollama")
+                .to_str()
+                .unwrap(),
+        );
+        assert_eq!(
+            needed(&look("Applications").warnings),
+            vec![(ollama.id.clone(), true, 2)]
         );
     }
 

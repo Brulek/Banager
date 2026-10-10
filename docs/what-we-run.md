@@ -4933,6 +4933,10 @@ What it looks at, during the uninstall preview of a formula or cask only:
   it;
 - each such source's program, the one Banager runs for it (found on
   `PATH` when the source was detected), every link followed;
+- for Ollama, when its program leads into the package, the `ollama` in
+  `Ollama.app/Contents/Resources` under `/Applications` and
+  `~/Applications`, and `ollama` in each folder on the `PATH` of the last
+  refresh, every link followed (below);
 - for npm, the `node` first on the `PATH` of the last refresh, found as
   Banager finds every program it runs (`resolve_exe`), every link
   followed: npm's `bin/npm-cli.js` begins `#!/usr/bin/env node`, so that
@@ -4963,7 +4967,16 @@ npm left can be uninstalled. A `node@22` that is keg-only and not linked
 is nobody's `node`: nothing Banager runs leads into it, and nothing is
 said of it. An Ollama whose `OLLAMA_HOST` names another machine is not
 looked at: its models are kept and run there, and the `ollama` on this
-Mac is only a client.
+Mac is only a client. Nor does Ollama need the package while another
+`ollama` stays (`Look::another_ollama`): the one in Ollama.app's
+`Contents/Resources`, in `/Applications` or `~/Applications` (where the
+Open Ollama button looks), or one in a folder on the `PATH` of the last
+refresh, that is there and leads, every link followed, outside the
+package's folder -- ollama.com's app beside Homebrew's formula runs the
+same models from the same `~/.ollama/models`, which the preview names
+among what stays. One look for each of those two apps and each `PATH`
+folder, each link followed; one it could not follow, or did not reach
+within the budget, counts for nothing.
 
 Each source with any tool that needs the package is listed under 「依赖此
 工具的软件」 ("Software that uses it"), after what Homebrew names --

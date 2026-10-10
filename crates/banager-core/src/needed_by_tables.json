@@ -11,7 +11,7 @@
   "manages_only_leaves_out": {
     "npm": "its packages start with #!/usr/bin/env node, and the node the package may be is what they run on (interpreter)",
     "pip": "its packages are modules of the Python it runs in, which the package may be",
-    "ollama": "its models are run by ollama, its own program, which the package may be"
+    "ollama": "its models are run by ollama, its own program, which the package may be, unless another ollama stays (Ollama.app, or one on PATH outside the package; Look::another_ollama)"
   },
   "batch_hosted_leaves_out": {
     "pip": "Banager uninstalls none of pip's packages, so none is ever in a batch for the host rule (X5) to protect; the Homebrew Python pip runs on is named by the preview's own NeededBySource, which leaves it out of a batch first (X1b)."

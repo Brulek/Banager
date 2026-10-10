@@ -109,7 +109,8 @@ a protected place**, and the link is not followed.
 - A Homebrew package another source runs on can't be uninstalled while that source has tools of its own:
   its preview lists the source under **Software that uses it**, after Homebrew's own dependents — "npm with
   its 4 tools" under the `node@22` npm runs on, "2 tools installed with pipx" under the `python@3.13` their
-  environments use, Ollama with its models under `ollama` — keeps Uninstall off and says which tools to
+  environments use, Ollama with its models under `ollama` unless Ollama.app or another `ollama` stays to run them —
+  keeps Uninstall off and says which tools to
   uninstall first; a batch leaves the package out with the same words. The preview finds them by following
   links, read-only, and runs no command (`docs/what-we-run.md`, "What runs on a Homebrew package"). npm's own
   `npm` row offers no Uninstall, nor does the row of a pipx or uv that installed itself as one of its own
@@ -559,7 +560,8 @@ formula 与 cask，以及 npm、PyPI、crates.io 上的包，每条都译自该�
   ChatGPT、Codex 和 GitHub Copilot App 也把自己的设置和数据放在那里，它们下面会有一行说明。
 - 别的来源要靠它运行的 Homebrew 软件，在那个来源还有自己的工具时不能卸载：预览把那个来源接在 Homebrew 自己的依赖者
   后面，列在“依赖此工具的软件”下——npm 靠着运行的 `node@22` 下是“npm及其4个工具”，pipx 工具环境所用的
-  `python@3.13` 下是“pipx装的2个工具”，`ollama` 下是 Ollama 及其模型——“卸载”保持不可点，并写明要先卸载哪些工具；
+  `python@3.13` 下是“pipx装的2个工具”，`ollama` 下是 Ollama 及其模型（Ollama App 或另一个 `ollama` 还在、能接着运行
+  这些模型时除外）——“卸载”保持不可点，并写明要先卸载哪些工具；
   批量卸载也用同样的话把它留下。预览只顺着链接读取，不运行任何命令（`docs/what-we-run.md` 的
   “What runs on a Homebrew package”）。npm 自己那一行不提供“卸载”；pipx 或 uv 把自己装成了自己的工具时，那一行也一样。
   随手动链接的 Homebrew Node（`node@22`）
