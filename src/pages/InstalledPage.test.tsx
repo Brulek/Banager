@@ -1687,30 +1687,40 @@ describe("InstalledPage", () => {
       expect(screen.getByText("Claude Code's program files are missing")).toBeInTheDocument();
     });
 
-    // Without --greedy-auto-updates, `brew outdated` leaves out a cask
-    // that updates itself, and Banager never passes --greedy, without
-    // which it leaves out one declared `version :latest` (R47-2), so no
-    // update listed for either is no news.
+    // While the switch is off Banager has `brew outdated` leave out a cask
+    // that updates itself (R47-4); with it on, Homebrew still never lists
+    // one whose app it cannot read -- Zoom, installed with a `pkg` (R47
+    // skeptic P1). Banager never passes --greedy, without which it leaves
+    // out one declared `version :latest` (R47-2). No update listed for any
+    // of these is no news.
     it.each([
       [false, []],
       [true, ["Up to date"]],
     ] as const)(
-      "with Show Homebrew apps that have their own updater %s, says it over a self-updating cask only when Homebrew checked it, and never over an always-latest one",
+      "with Show Homebrew apps that have their own updater %s, says it over a self-updating cask only when Homebrew checked it, and never over one whose app Homebrew cannot read or an always-latest one",
       async (includeSelfUpdating, leftOut) => {
         const cask = (name: string, over: Partial<InstalledArtifact> = {}) =>
           formula(name, { key: { instance_id: brew.id, kind: "Cask", name }, ...over });
         servedSettings = { ...settings, include_self_updating: includeSelfUpdating };
         served = {
           ...snapshot,
-          artifacts: [cask("onyx"), cask("zoom", { auto_updates: true }), cask("chromium", { version: "latest" })],
+          artifacts: [
+            cask("onyx"),
+            cask("firefox", { auto_updates: true }),
+            cask("zoom", { auto_updates: true, facts: { ...NO_FACTS, no_single_app: true } }),
+            cask("chromium", { version: "latest" }),
+          ],
           updates: [],
         };
         renderInstalled();
 
         // Never on the rows; in the details, where Homebrew checked it.
-        for (const name of ["onyx", "zoom", "chromium"]) expect(chipsOf(await findRow(name)), name).toEqual([]);
+        for (const name of ["onyx", "firefox", "zoom", "chromium"]) {
+          expect(chipsOf(await findRow(name)), name).toEqual([]);
+        }
         expect(await drawerChips("onyx")).toEqual(["Up to date"]);
-        expect(await drawerChips("zoom")).toEqual(leftOut);
+        expect(await drawerChips("firefox")).toEqual(leftOut);
+        expect(await drawerChips("zoom")).toEqual([]);
         expect(await drawerChips("chromium")).toEqual([]);
       },
     );

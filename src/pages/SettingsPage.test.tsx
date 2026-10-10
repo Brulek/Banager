@@ -8,6 +8,7 @@ import { useUiStore } from "../store/ui";
 import i18n from "../i18n";
 import zhCN from "../i18n/zh-CN.json";
 import enUS from "../i18n/en.json";
+import zhTW from "../i18n/zh-Hant.json";
 import { loadToolIcons, type ToolIconPack } from "../lib/toolIcons";
 import type { ArtifactKey, InstalledArtifact, Settings, Snapshot } from "../lib/types";
 import { NO_FACTS } from "../lib/types";
@@ -1083,7 +1084,7 @@ describe("SettingsPage", () => {
     expect(within(general).getByRole("combobox", { name: "Language" })).toBeInTheDocument();
     expect(within(general).getByRole("switch", { name: "Show technical details" })).toBeInTheDocument();
     expect(within(updates).getByRole("switch", { name: "Show Homebrew apps that have their own updater" })).toHaveAccessibleDescription(
-      "Also list apps installed with Homebrew that have their own updater, like Chrome, under Updates when Homebrew has a newer version than the one on this Mac. Apps marked “latest” aren't checked. Tools from other sources aren't affected.",
+      "Also list apps installed with Homebrew that have their own updater, like Chrome, under Updates when Homebrew has a newer version than the one on this Mac. Apps marked “latest” aren't checked, nor are apps whose version on this Mac Homebrew can't read, like those installed with an installer package. Tools from other sources aren't affected.",
     );
     expect(within(skipped).getByRole("button", { name: "Stop skipping 2.90.0 of glib" })).toBeInTheDocument();
     expect(within(never).getByRole("button", { name: "Remind me again about jq" })).toBeInTheDocument();
@@ -1217,7 +1218,7 @@ describe("SettingsPage", () => {
     const group = screen.getByRole("heading", { level: 2, name: "Updates" }).nextElementSibling as HTMLElement;
     const footnote = group.nextElementSibling as HTMLElement;
     expect(footnote).toHaveTextContent(
-      "Also list apps installed with Homebrew that have their own updater, like Chrome, under Updates when Homebrew has a newer version than the one on this Mac. Apps marked “latest” aren't checked. Tools from other sources aren't affected.",
+      "Also list apps installed with Homebrew that have their own updater, like Chrome, under Updates when Homebrew has a newer version than the one on this Mac. Apps marked “latest” aren't checked, nor are apps whose version on this Mac Homebrew can't read, like those installed with an installer package. Tools from other sources aren't affected.",
     );
     expect(footnote.className.split(" ")).toEqual(
       expect.arrayContaining(["mt-1.5", "px-2.5", "text-small", "leading-4", "text-muted"]),
@@ -1251,7 +1252,7 @@ describe("SettingsPage", () => {
     // its line names Homebrew; it is the switch's description, so it
     // does not say the switch's name over again.
     expect(zhCN.settings.includeSelfUpdating.description).toBe(
-      "当Homebrew有比这台Mac上更新的版本时，在“更新”中也显示通过Homebrew安装、自带更新功能的App，例如Chrome。版本标为“latest”的App不检查。其他来源的工具不受这项影响。",
+      "当Homebrew有比这台Mac上更新的版本时，在“更新”中也显示通过Homebrew安装、自带更新功能的App，例如Chrome。版本标为“latest”的App，以及Homebrew读不到这台Mac上所装版本的App（例如用安装包安装的），都不检查。其他来源的工具不受这项影响。",
     );
     // Not the Updates rows' 「会自行更新」 (Claude Code's own install, which
     // this switch never hides): two words, so neither reads as the other.
@@ -1267,6 +1268,10 @@ describe("SettingsPage", () => {
     // `leftOutOfUpdateCheck`), and the line says so.
     expect(zhCN.settings.includeSelfUpdating.description).toContain("“latest”");
     expect(enUS.settings.includeSelfUpdating.description).toContain("“latest”");
+    // Nor is one whose app Homebrew cannot read, which no flag Banager
+    // passes has it list (R47 skeptic P1, `leftOutOfUpdateCheck`).
+    expect(zhCN.settings.includeSelfUpdating.description).toContain("安装包");
+    expect(zhTW.settings.includeSelfUpdating.description).toContain("安裝套件");
     expect(zhCN.settings.includeSelfUpdating.description).not.toContain(zhCN.settings.includeSelfUpdating.label);
     // An empty group of hidden updates says so in one word, as System
     // Settings' lists do.

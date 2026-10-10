@@ -206,6 +206,16 @@ describe("types", () => {
     expect(JSON.stringify(NO_FACTS)).not.toContain("app_version");
   });
 
+  it("reads a self-updating cask with no single app as the Rust side writes it, only when marked (R47 skeptic P1)", () => {
+    // Same literal as Rust's test_a_self_updating_cask_with_no_single_app_is_on_the_wire_only_when_marked.
+    const wire =
+      '{"family":null,"homebrew":null,"commands":[],"commands_unavailable":false,"unlinked":false,"no_single_app":true}';
+    const facts: ArtifactFacts = { ...NO_FACTS, no_single_app: true };
+    expect(JSON.stringify(facts)).toBe(wire);
+    expect(roundTrip<ArtifactFacts>(JSON.parse(wire))).toEqual(facts);
+    expect(JSON.stringify(NO_FACTS)).not.toContain("no_single_app");
+  });
+
   it("reads Snapshot.next_auto_check_at as ipc.rs's wire test sends it: Unix seconds, or null before any check", () => {
     // test_every_snapshot_the_window_is_handed_says_when_the_daily_check_is_next_due
     // in src-tauri/src/ipc.rs: a window round at 1790586000, due a day on.

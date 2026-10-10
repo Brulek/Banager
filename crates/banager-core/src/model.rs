@@ -2840,6 +2840,21 @@ mod tests {
     }
 
     #[test]
+    fn test_a_self_updating_cask_with_no_single_app_is_on_the_wire_only_when_marked() {
+        // R47 skeptic P1 (r18). Same literal as src/lib/types.test.ts.
+        let wire = r#"{"family":null,"homebrew":null,"commands":[],"commands_unavailable":false,"unlinked":false,"no_single_app":true}"#;
+        let facts = ArtifactFacts {
+            no_single_app: true,
+            ..Default::default()
+        };
+        assert_eq!(serde_json::to_string(&facts).unwrap(), wire);
+        assert_eq!(serde_json::from_str::<ArtifactFacts>(wire).unwrap(), facts);
+        assert!(!serde_json::to_string(&ArtifactFacts::default())
+            .unwrap()
+            .contains("no_single_app"));
+    }
+
+    #[test]
     fn test_homebrew_facts_spell_every_field_on_the_wire_and_read_back() {
         // `src/lib/types.ts` mirrors this as `HomebrewFacts` /
         // `HomebrewLifecycle`, every optional field an explicit `null`, and

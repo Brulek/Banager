@@ -437,6 +437,19 @@ describe("leftOutOfUpdateCheck", () => {
     expect(leftOutOfUpdateCheck(installed(npm.id, "semver", "Dependency"), false)).toBe(false);
     expect(leftOutOfUpdateCheck(installed(brew.id, "glib", "Dependency", "Formula"), false)).toBe(false);
   });
+
+  it("leaves out a self-updating cask whose app Homebrew cannot read even with the switch on (R47 skeptic P1)", () => {
+    // Without a greedy flag Homebrew reads the app of a cask with exactly
+    // one `app` stanza; Zoom installs with a `pkg`.
+    const cask = (name: string, facts: Partial<InstalledArtifact["facts"]> = {}): InstalledArtifact => {
+      const artifact = installed(brew.id, name, "Requested", "Cask");
+      return { ...artifact, auto_updates: true, facts: { ...artifact.facts, ...facts } };
+    };
+    expect(leftOutOfUpdateCheck(cask("firefox"), true)).toBe(false);
+    expect(leftOutOfUpdateCheck(cask("firefox"), false)).toBe(true);
+    expect(leftOutOfUpdateCheck(cask("zoom", { no_single_app: true }), true)).toBe(true);
+    expect(leftOutOfUpdateCheck(cask("zoom", { no_single_app: true }), false)).toBe(true);
+  });
 });
 
 describe("updatesSummary with pip packages another one requires", () => {

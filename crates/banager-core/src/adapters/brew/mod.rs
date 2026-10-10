@@ -4168,6 +4168,55 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_inventory_marks_a_self_updating_cask_whose_app_homebrew_cannot_read() {
+        // R47 skeptic P1 (r18): without a greedy flag Homebrew 7.0.9 lists
+        // a cask that updates itself only by reading its app's Info.plist,
+        // which it finds only for a cask with exactly one `app` stanza
+        // (`cask/cask.rb:793-806`, `:819-821`). Zoom and Microsoft Word
+        // install with a `pkg`; one with two apps is not read either.
+        let runner = Arc::new(MockRunner::new());
+        let json = r#"{
+            "formulae": [],
+            "casks": [
+                {"token":"firefox","name":["Mozilla Firefox"],"installed":"128.0","auto_updates":true,"artifacts":[{"app":["Firefox.app"],"target":"/Applications/Firefox.app"}]},
+                {"token":"zoom","name":["Zoom"],"installed":"6.0.2","auto_updates":true,"artifacts":[{"uninstall":[{"quit":"us.zoom.xos"}]},{"pkg":["zoomusInstallerFull.pkg"]}]},
+                {"token":"two-apps","name":["Two Apps"],"installed":"2.0","auto_updates":true,"artifacts":[{"app":["One.app"],"target":"/Applications/One.app"},{"app":["Two.app"],"target":"/Applications/Two.app"}]},
+                {"token":"onyx","name":["OnyX"],"installed":"4.6.2","auto_updates":null,"artifacts":[{"pkg":["OnyX.pkg"]}]}
+            ]
+        }"#;
+        runner.respond(
+            vec!["/opt/homebrew/bin/brew", "info", "--installed", "--json=v2"],
+            CommandOutput {
+                stderr_cause: Default::default(),
+                exit_code: Some(0),
+                stdout: json.to_string(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let adapter = BrewAdapter::new(runner);
+        let artifacts = adapter
+            .inventory(&test_instance())
+            .await
+            .expect("inventory");
+        let marked: Vec<(&str, bool)> = artifacts
+            .iter()
+            .map(|artifact| (artifact.key.name.as_str(), artifact.facts.no_single_app))
+            .collect();
+        assert_eq!(
+            marked,
+            vec![
+                ("firefox", false),
+                ("zoom", true),
+                ("two-apps", true),
+                // Not one that updates itself: Homebrew compares its record.
+                ("onyx", false),
+            ]
+        );
+    }
+
+    #[tokio::test]
     async fn test_check_updates_respects_ttl() {
         let runner = Arc::new(MockRunner::new());
         runner.respond(
