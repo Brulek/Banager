@@ -2245,6 +2245,31 @@ describe("InstalledPage", () => {
     await waitFor(() => expect(queryByText("charset-normalizer")).not.toBeInTheDocument());
   });
 
+  it("says nothing about updates on a pip package another one requires: pip's check never looks it up", async () => {
+    // pip list --outdated --not-required (r16): no newer version listed
+    // for charset-normalizer is no news, so not 「已是最新」.
+    served = {
+      ...pipSnapshot,
+      artifacts: [
+        ...pipSnapshot.artifacts,
+        {
+          ...pipSnapshot.artifacts[0],
+          key: { instance_id: "pip:/usr/bin/python3", kind: "Package", name: "charset-normalizer" },
+          display_name: "charset-normalizer",
+          version: "3.4.0",
+          reason: "Dependency",
+        },
+      ],
+    };
+    const { getByRole } = renderInstalled();
+
+    await findRow("requests");
+    fireEvent.click(getByRole("button", { name: /^1 more package was installed for other software to use/ }));
+    await findRow("charset-normalizer");
+    expect(await drawerChips("requests")).toContain("Up to date");
+    expect(await drawerChips("charset-normalizer")).not.toContain("Up to date");
+  });
+
   describe("filters", () => {
     const twoSources = (): Snapshot => ({
       ...snapshot,

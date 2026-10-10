@@ -498,8 +498,13 @@ export function namedAsNotChecked(notChecked: NotChecked, instanceId: string): b
  * lists neither kind whatever version it has, so no update listed is no
  * news: the Installed page's row says nothing about updates rather than
  * 「已是最新」. With the switch on, `--greedy` checks both.
+ *
+ * Nor does pip's check look up a package another one requires: it runs
+ * `pip list --outdated --not-required` (`PipAdapter::check_updates`), as
+ * pip is view only here and such a package has nothing to offer.
  */
 export function leftOutOfUpdateCheck(artifact: InstalledArtifact, includeSelfUpdating: boolean): boolean {
+  if (artifact.reason === "Dependency" && adapterIdOf(artifact.key.instance_id) === "pip") return true;
   return (
     !includeSelfUpdating &&
     artifact.key.kind === "Cask" &&

@@ -114,8 +114,9 @@ export function failedLookupsOf(
  * installs (`Latest::Unchecked`, `UNCHECKED_STANDALONE` in
  * src/lib/uncheckedStandalone.ts), a launcher left without its program
  * (`LauncherOnly`), a Python with no pip (`NoPip`), an Ollama at an
- * `https://` address (`HttpsHostRefused`), and the Homebrew apps that
- * update themselves while Settings leaves them out (`leftOutOfUpdateCheck`).
+ * `https://` address (`HttpsHostRefused`), the Homebrew apps that update
+ * themselves while Settings leaves them out, and the pip packages another
+ * one requires (both `leftOutOfUpdateCheck`).
  */
 const NEVER_LOOKED_UP: readonly UpdateCandidate["warnings"][number][] = ["NonRegistrySource", "NotLookedUpHere"];
 
