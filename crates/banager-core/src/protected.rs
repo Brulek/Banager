@@ -1,6 +1,7 @@
 //! The places Banager never reads into, whatever it is doing: the folders
-//! macOS asks the user about before an app looks inside them, and every
-//! other disk. One list, one rule for case, shared by the three read-only
+//! macOS asks the user about before an app looks inside them, every
+//! other disk where macOS mounts it, and every network share wherever it
+//! is mounted. One list, one rule for case, shared by the three read-only
 //! walks that could otherwise reach them -- which copy a command runs
 //! (`commands::read_folders`, over `PATH`'s folders), how much a tool
 //! takes on disk (`size::Protected`, over a tool's own folders), and the
@@ -53,6 +54,119 @@ pub const PROTECTED_IN_HOME: [&str; 10] = [
 /// macOS ask, a network disk that went away does not answer at all, and
 /// none of it is this Mac's own disk.
 pub const OTHER_VOLUMES: &str = "/Volumes";
+
+/// A volume mounted on this Mac, as the kernel's table of mounts says
+/// (`getfsstat`): the folder it is mounted on, and whether its disk is
+/// attached to this Mac (`MNT_LOCAL`) rather than a network share.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Mount {
+    pub at: PathBuf,
+    pub local: bool,
+}
+
+/// Every network share mounted on this Mac, wherever it is mounted --
+/// `/Volumes`, where Finder mounts one, or any folder (`mount_smbfs`
+/// takes one: `~/NAS`) -- spelled from `/`: one that went away does not
+/// answer at all. Not one a home folder of `homes` is in, or is (a home
+/// folder kept on a server): nothing in it could be read then. A disk
+/// attached to this Mac and mounted outside `/Volumes` by hand -- the
+/// separate volume Nix keeps `/nix` on -- answers as this Mac's own does,
+/// and is read.
+fn network_shares(homes: &[PathBuf]) -> Vec<PathBuf> {
+    mounts()
+        .into_iter()
+        .filter(|mount| !mount.local && mount.at.is_absolute())
+        .map(|mount| without_data_volume(&mount.at))
+        .filter(|at| !homes.iter().any(|home| is_under(home, at)))
+        .collect()
+}
+
+/// The kernel's table of mounts, as it last knew it (`MNT_NOWAIT`): no
+/// volume is asked anything, so a network share that went away does not
+/// hold it up. Empty when it cannot be read. In this crate's tests, and
+/// with the `test-support` feature, what the test set (`as_if_mounted`):
+/// no test reads this Mac's own.
+pub fn mounts() -> Vec<Mount> {
+    #[cfg(any(test, feature = "test-support"))]
+    {
+        MOUNTS_FOR_TESTS.with(|mounts| mounts.borrow().clone())
+    }
+    #[cfg(not(any(test, feature = "test-support")))]
+    {
+        mount_table()
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[cfg_attr(any(test, feature = "test-support"), allow(dead_code))]
+fn mount_table() -> Vec<Mount> {
+    // SAFETY: with no buffer, `getfsstat` only counts the mounts.
+    let count = unsafe { libc::getfsstat(std::ptr::null_mut(), 0, libc::MNT_NOWAIT) };
+    let Ok(count) = usize::try_from(count) else {
+        return Vec::new();
+    };
+    // Room for a few mounted since they were counted.
+    let room = count + 8;
+    let Ok(size) = libc::c_int::try_from(room * std::mem::size_of::<libc::statfs>()) else {
+        return Vec::new();
+    };
+    let mut table: Vec<libc::statfs> = Vec::with_capacity(room);
+    // SAFETY: `table` has room for `room` entries, `size` bytes, as said;
+    // the count returned is checked against it before any is read.
+    let got = unsafe { libc::getfsstat(table.as_mut_ptr(), size, libc::MNT_NOWAIT) };
+    let Ok(got) = usize::try_from(got) else {
+        return Vec::new();
+    };
+    // SAFETY: the kernel filled the first `got` entries, at most `room`.
+    unsafe { table.set_len(got.min(room)) };
+    table.iter().map(mount_of).collect()
+}
+
+#[cfg(not(target_os = "macos"))]
+#[cfg_attr(any(test, feature = "test-support"), allow(dead_code))]
+fn mount_table() -> Vec<Mount> {
+    Vec::new()
+}
+
+/// One entry of the kernel's table of mounts, read.
+#[cfg(target_os = "macos")]
+fn mount_of(entry: &libc::statfs) -> Mount {
+    use std::os::unix::ffi::OsStringExt;
+    let at: Vec<u8> = entry
+        .f_mntonname
+        .iter()
+        .take_while(|&&byte| byte != 0)
+        .map(|&byte| byte as u8)
+        .collect();
+    Mount {
+        at: PathBuf::from(OsString::from_vec(at)),
+        local: entry.f_flags & libc::MNT_LOCAL as u32 != 0,
+    }
+}
+
+#[cfg(any(test, feature = "test-support"))]
+thread_local! {
+    /// What `mounts` answers on this thread (`as_if_mounted`).
+    static MOUNTS_FOR_TESTS: std::cell::RefCell<Vec<Mount>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// A test's stand-in for the kernel's table of mounts, on its own thread
+/// only, until the guard is dropped (`mounts`).
+#[cfg(any(test, feature = "test-support"))]
+pub fn as_if_mounted(mounts: Vec<Mount>) -> AsIfMounted {
+    MOUNTS_FOR_TESTS.with(|slot| *slot.borrow_mut() = mounts);
+    AsIfMounted
+}
+
+#[cfg(any(test, feature = "test-support"))]
+pub struct AsIfMounted;
+
+#[cfg(any(test, feature = "test-support"))]
+impl Drop for AsIfMounted {
+    fn drop(&mut self) {
+        MOUNTS_FOR_TESTS.with(|slot| slot.borrow_mut().clear());
+    }
+}
 
 /// Every protected place for the home folder as each of `homes` names it
 /// (the home folder as given, and where it leads): `OTHER_VOLUMES`, then
@@ -241,8 +355,9 @@ const MAX_LINKS: u32 = 32;
 
 /// The places no walk enters, for the home folder `HOME` names and for
 /// the account's own (`Protected::new`): each of `PROTECTED_IN_HOME`
-/// under each -- spelled as given and with its own links followed -- and
-/// `OTHER_VOLUMES`. What `resolve` checks every step against.
+/// under each -- spelled as given and with its own links followed --,
+/// `OTHER_VOLUMES`, and every network share mounted elsewhere
+/// (`network_shares`). What `resolve` checks every step against.
 #[derive(Clone, Debug, Default)]
 pub struct Protected {
     places: Vec<PathBuf>,
@@ -284,7 +399,15 @@ impl Protected {
                 }
             }
         }
-        Protected::of_homes(&homes)
+        // The shares last, when every home folder is known: one a home
+        // folder is on is not kept out (`network_shares`).
+        let mut protected = Protected::of_homes(&homes);
+        for share in network_shares(&homes) {
+            if !protected.contains(&share) {
+                protected.places.push(share);
+            }
+        }
+        protected
     }
 
     /// The places for `homes`, each as given, spelled from `/` once.
@@ -334,8 +457,9 @@ impl Protected {
     /// `/System/Volumes` or `DATA_VOLUME` itself, however spelled: only
     /// there is a folder spelled from `/` (`without_data_volume`) other
     /// than as the start of the path below it. No place is (each is
-    /// `/Volumes` or a name under the home folder), whatever the home
-    /// folder; this keeps the shortcut honest should one ever be added.
+    /// `/Volumes`, a name under the home folder, or a folder a network
+    /// share is mounted on), whatever the home folder; this keeps the
+    /// shortcut honest should one ever be.
     pub fn one_check_covers_the_way(&self) -> bool {
         let data = Path::new(DATA_VOLUME);
         !self
@@ -1015,6 +1139,55 @@ mod tests {
         fn drop(&mut self) {
             ACCOUNT_HOME_FOR_TESTS.with(|slot| *slot.borrow_mut() = None);
         }
+    }
+
+    #[test]
+    fn test_a_network_share_is_kept_out_wherever_it_is_mounted() {
+        // An SMB share at `~/NAS` (`mount_smbfs` takes any folder), one at
+        // `~/NAS2` as the kernel spells it, from the data volume, and a
+        // disk of this Mac's own at `~/disk`: the shares are kept out, the
+        // disk is read. A share holding the home folder itself -- a home
+        // folder kept on a server -- is not: the home would be unreadable.
+        let home = Temp::new("shares");
+        let _account = AsIfAccount::new(&home.0);
+        let spelled = Path::new(DATA_VOLUME).join(home.0.strip_prefix("/").unwrap());
+        let mount = |at: PathBuf, local| Mount { at, local };
+        let parent = home.0.parent().unwrap().to_path_buf();
+        let _mounted = as_if_mounted(vec![
+            mount(home.0.join("NAS"), false),
+            mount(spelled.join("NAS2"), false),
+            mount(home.0.join("disk"), true),
+            mount(parent.clone(), false),
+        ]);
+        let protected = Protected::new(&home.0);
+        assert!(protected.contains(&home.0.join("NAS/bin")));
+        assert!(protected.contains(&home.0.join("nas")));
+        assert!(protected.contains(&home.0.join("NAS2/bin")));
+        assert!(protected.under(&home.0));
+        assert!(!protected.contains(&home.0.join("disk/bin")));
+        assert!(!protected.contains(&home.0.join(".local/bin")));
+        assert!(!protected.contains(&parent));
+        assert!(protected.contains(&home.0.join("Documents")));
+        assert!(protected.one_check_covers_the_way());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn test_a_mount_is_read_from_its_entry_in_the_kernels_table() {
+        // SAFETY: `statfs` is plain data, for which all zeros is a value.
+        let mut entry: libc::statfs = unsafe { std::mem::zeroed() };
+        for (slot, byte) in entry.f_mntonname.iter_mut().zip(b"/Users/you/NAS") {
+            *slot = *byte as libc::c_char;
+        }
+        assert_eq!(
+            mount_of(&entry),
+            Mount {
+                at: PathBuf::from("/Users/you/NAS"),
+                local: false
+            }
+        );
+        entry.f_flags = libc::MNT_LOCAL as u32 | libc::MNT_NOSUID as u32;
+        assert!(mount_of(&entry).local);
     }
 
     #[test]

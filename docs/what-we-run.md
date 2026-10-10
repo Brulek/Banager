@@ -389,7 +389,16 @@ id, once; `protected::account_home`): a `HOME` set to another folder from
 a terminal keeps both out, and a `HOME` that is empty or relative names
 no home folder at all, so only the account's are kept out then
 (`Protected::new`). Where `HOME` is the account's folder, as it is when
-Banager is opened from the Finder, the list is the one folder's. What
+Banager is opened from the Finder, the list is the one folder's. Every
+network share mounted on this Mac is one of the places too, wherever it
+is mounted -- `/Volumes`, where Finder mounts one, or any folder, such
+as a `~/NAS` mounted from Terminal -- but one a home folder is on: each
+time the places are made, Banager reads the kernel's table of mounts as
+the kernel last knew it, asking no disk or server anything
+(`getfsstat` with `MNT_NOWAIT`; `protected::network_shares`), and takes
+each one not marked as this Mac's own (`MNT_LOCAL`). A disk attached to
+this Mac and mounted outside `/Volumes` by hand, such as the volume Nix
+keeps `/nix` on, is read like this Mac's own disk. What
 Banager does not look at, the programs it runs may: the login shell it
 runs at launch reads your startup files, and `brew`, `npm`, `pip` and
 `cargo` read their own folders, as they do when run from Terminal.
@@ -4304,8 +4313,9 @@ Like the command check and the disk-use measurement, this scan never
 reads into `~/Desktop`, `~/Documents`, `~/Downloads`, `~/Pictures`,
 `~/Movies`, `~/Music`, `~/Library/Mobile Documents` (iCloud Drive),
 `~/Library/CloudStorage`, `~/Library/Containers`,
-`~/Library/Group Containers` or `/Volumes` (every other disk),
-whatever case spells them -- ASCII letters in either case, and the
+`~/Library/Group Containers`, `/Volumes` (every other disk, where macOS
+mounts it) or a network share mounted anywhere else (How Banager runs
+anything, above), whatever case spells them -- ASCII letters in either case, and the
 characters a Mac's disk takes for ASCII letters: `ſ` (long s) for `s`,
 `K` (Kelvin sign) for `k`, `ß` and `ẞ` for `ss`, and the ligatures `ﬀ`
 `ﬁ` `ﬂ` `ﬃ` `ﬄ` `ﬅ` `ﬆ` for their letters (`protected::AS_ASCII`, found
@@ -4528,7 +4538,8 @@ A folder in `~/Desktop`, `~/Documents`, `~/Downloads`, `~/Pictures`,
 `~/Movies` or `~/Music`, in iCloud Drive or another cloud folder
 (`~/Library/Mobile Documents`, `~/Library/CloudStorage`), in another
 app's data (`~/Library/Containers`, `~/Library/Group Containers`) or on
-another disk (`/Volumes`), whatever case spells them -- ASCII letters in either case, and the
+another disk (`/Volumes`) or a network share mounted anywhere else (How
+Banager runs anything, above), whatever case spells them -- ASCII letters in either case, and the
 characters a Mac's disk takes for ASCII letters: `ſ` (long s) for `s`,
 `K` (Kelvin sign) for `k`, `ß` and `ẞ` for `ss`, and the ligatures `ﬀ`
 `ﬁ` `ﬂ` `ﬃ` `ﬄ` `ﬅ` `ﬆ` for their letters (`protected::AS_ASCII`, found
@@ -4712,8 +4723,9 @@ measuring never makes macOS ask for permission: `~/Desktop`,
 `~/Documents`, `~/Downloads`, `~/Pictures`, `~/Movies`, `~/Music`,
 `~/Library/Mobile Documents` (iCloud Drive), `~/Library/CloudStorage`
 (apps that keep files in the cloud), `~/Library/Containers` and
-`~/Library/Group Containers` (other apps' data), and `/Volumes` (every
-other disk), whatever case spells them -- ASCII letters in either case, and the
+`~/Library/Group Containers` (other apps' data), `/Volumes` (every
+other disk, where macOS mounts it), and a network share mounted anywhere
+else (How Banager runs anything, above), whatever case spells them -- ASCII letters in either case, and the
 characters a Mac's disk takes for ASCII letters: `ſ` (long s) for `s`,
 `K` (Kelvin sign) for `k`, `ß` and `ẞ` for `ss`, and the ligatures `ﬀ`
 `ﬁ` `ﬂ` `ﬃ` `ﬄ` `ﬅ` `ﬆ` for their letters (`protected::AS_ASCII`, found

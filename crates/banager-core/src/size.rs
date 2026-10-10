@@ -2037,6 +2037,52 @@ mod tests {
     }
 
     #[test]
+    fn test_a_network_share_mounted_in_the_home_folder_is_never_looked_at() {
+        // Shares at `~/NAS` and inside a tool's own folder (folders of the
+        // test's own stand in for them; the kernel's table of mounts names
+        // them as not local): a tool on the first is not measured, and the
+        // second is not even statted -- a share that went away would not
+        // answer.
+        use crate::protected::{as_if_mounted, Mount};
+        let scratch = Scratch::new("share");
+        let home = scratch.dir("home");
+        scratch.file("home/NAS/tool/bin/tool", 5_000);
+        scratch.file("home/.tool/bin/tool", 1_000);
+        scratch.file("home/.tool/share/big.bin", 500_000);
+        let _mounted = as_if_mounted(vec![
+            Mount {
+                at: home.join("NAS"),
+                local: false,
+            },
+            Mount {
+                at: home.join(".tool/share"),
+                local: false,
+            },
+        ]);
+        let protected = Protected::new(&home);
+        let mut budget = Budget::new(SizeBudget::default());
+        let on_share = walk(
+            &[home.join("NAS/tool")],
+            &mut budget,
+            &protected,
+            &mut || true,
+        );
+        assert_eq!(on_share, WalkEnd::Nothing);
+        let (end, made) = crate::dirfd::calls::measure(|| {
+            walk(&[home.join(".tool")], &mut budget, &protected, &mut || true)
+        });
+        let walked = walked(end);
+        assert!(walked.measured.bytes < 500_000, "{walked:?}");
+        assert!(walked.measured.partial, "{walked:?}");
+        for (call, path) in &made.paths {
+            assert!(
+                !path.starts_with(home.join(".tool/share")),
+                "{call:?} {path:?}"
+            );
+        }
+    }
+
+    #[test]
     fn test_a_newer_round_stops_a_walk_at_its_next_entry() {
         let scratch = Scratch::new("superseded");
         let tool = scratch.dir("tool");

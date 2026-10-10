@@ -1474,6 +1474,36 @@ fn test_a_scanned_folder_in_a_protected_place_is_not_read_and_is_named_once() {
 }
 
 #[test]
+fn test_a_folder_on_a_network_share_mounted_in_the_home_folder_is_not_read() {
+    // An SMB share mounted at `~/NAS` (`mount_smbfs` takes any folder),
+    // `~/NAS/bin` on `PATH`: a folder of the test's own stands in for the
+    // share, which the kernel's table of mounts names as not local.
+    use banager_core::protected::{as_if_mounted, Mount};
+    let home = Home::new("network-share");
+    let local = home.dir(".local/bin");
+    exe(&local, "mine", b"x");
+    let nas_bin = home.dir("NAS/bin");
+    exe(&nas_bin, "on-the-share", b"x");
+    let _mounted = as_if_mounted(vec![Mount {
+        at: home.path().join("NAS"),
+        local: false,
+    }]);
+
+    let scan = scan_dirs(
+        &[local, nas_bin],
+        &home.env(vec![]),
+        &[],
+        &[],
+        &[],
+        ScanBudget::default(),
+    );
+
+    let listed: Vec<PathBuf> = scan.entries.iter().map(|e| e.path.clone()).collect();
+    assert_eq!(listed, vec![tilde(".local/bin/mine")]);
+    assert_eq!(scan.protected_dirs, vec![tilde("NAS/bin")]);
+}
+
+#[test]
 fn test_a_link_into_documents_is_listed_by_its_own_name_and_not_followed() {
     let home = Home::new("protected-link");
     let bin = home.dir(".local/bin");
