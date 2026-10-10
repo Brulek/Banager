@@ -1722,7 +1722,7 @@ pub enum UpdateBlocked {
     /// npm's own package, where the `npm` in its prefix's `bin` is a
     /// Homebrew formula's: a link that leads, every link followed, into
     /// `<prefix>/Cellar/` -- `node@22` linked by hand (`brew link --force`)
-    /// puts its own npm there. `npm install -g npm@latest` replaces that
+    /// puts its own npm there. `npm install -g npm` replaces that
     /// link with npm's own, and the next `brew upgrade node@22` cannot link
     /// the new version over it: Homebrew stops at the file ("The `brew
     /// link` step did not complete successfully"), and leaves no `node`

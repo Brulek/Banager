@@ -438,7 +438,7 @@ describe("the browser preview's mock backend", () => {
     expect(issued?.plan.action).toEqual({
       Command: {
         program: npm?.exe_path,
-        args: ["install", "-g", "typescript@latest", "--prefix", npm?.prefix],
+        args: ["install", "-g", "typescript", "--prefix", npm?.prefix],
         env: expect.any(Array) as unknown as [string, string][],
       },
     });

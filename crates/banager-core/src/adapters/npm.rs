@@ -238,7 +238,7 @@ impl NpmAdapter {
     /// npm's own lock, and that of a Homebrew at npm's global prefix
     /// (y1-keg review), which every plan takes and a refresh reads under
     /// (`Adapter::refresh_locks`). npm that came with a Node from Homebrew
-    /// writes into Homebrew's prefix -- `npm install -g npm@latest` puts
+    /// writes into Homebrew's prefix -- `npm install -g npm` puts
     /// its own `bin/npm` there -- and a `brew upgrade` of that Node unlinks
     /// the places it linked and links them again, stopping at any file in
     /// the way (`Keg::ConflictError`). With both locks no npm operation
@@ -586,14 +586,18 @@ impl NpmAdapter {
             OpKind::Install | OpKind::Upgrade => Vec::new(),
             OpKind::Link => return Err(super::links_nothing(&self.meta.id)),
         };
+        // An update names the package bare, as an install does: npm reads
+        // that as the range `*` and picks from it as `npm outdated -g` did
+        // for the row (the newest version that runs on this Node and is
+        // not deprecated; npm 10.9.9 `outdated.js:186-187`), and installs
+        // it over the older one asked for by name (arborist
+        // `can-place-dep.js:166-176`). `<name>@latest` would take the
+        // `latest` tag whatever Node it needs (R42-1).
         let mut args = match req.kind {
-            OpKind::Install => vec!["install".to_string(), "-g".to_string(), req.name.clone()],
+            OpKind::Install | OpKind::Upgrade => {
+                vec!["install".to_string(), "-g".to_string(), req.name.clone()]
+            }
             OpKind::Uninstall => vec!["uninstall".to_string(), "-g".to_string(), req.name.clone()],
-            OpKind::Upgrade => vec![
-                "install".to_string(),
-                "-g".to_string(),
-                format!("{}@latest", req.name),
-            ],
             OpKind::Link => return Err(super::links_nothing(&self.meta.id)),
         };
         args.extend([
@@ -2231,7 +2235,7 @@ mod tests {
             .expect("an update of npm is planned");
         assert_eq!(
             command_args(&upgrade),
-            vec!["install", "-g", "npm@latest", "--prefix", "/opt/homebrew"]
+            vec!["install", "-g", "npm", "--prefix", "/opt/homebrew"]
         );
         // Nor is a package merely named like it, or npm's other bundled one.
         for name in ["npm-check-updates", "@scope/npm", "corepack"] {
@@ -2332,21 +2336,30 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_plan_upgrade_targets_latest() {
+    async fn r42_an_update_asks_for_the_version_npm_outdated_offered_not_the_latest_tag() {
+        // R42-1: `npm outdated -g` offers the newest version whose engines
+        // take the running Node and that is not deprecated (`*`, npm
+        // 10.9.9 outdated.js:186-187); `<name>@latest` takes the `latest`
+        // tag whatever it needs, so on an older Node it installed a
+        // version the row never showed, and npm's own update failed with
+        // EBADENGINE every time. The bare name is `*`, resolved as the
+        // check resolved it.
         let adapter =
             NpmAdapter::new(Arc::new(MockRunner::new())).with_prefix_read_only_fn(|_| None);
         let inst = test_instance();
-        let req = OpRequest {
-            kind: OpKind::Upgrade,
-            instance_id: inst.id.clone(),
-            artifact_kind: ArtifactKind::Package,
-            name: "jq".to_string(),
-        };
-        let plan = adapter.plan(&inst, &req).await.expect("plan");
-        assert_eq!(
-            command_args(&plan),
-            vec!["install", "-g", "jq@latest", "--prefix", "/opt/homebrew"]
-        );
+        for name in ["jq", "npm", "@scope/tool"] {
+            let req = OpRequest {
+                kind: OpKind::Upgrade,
+                instance_id: inst.id.clone(),
+                artifact_kind: ArtifactKind::Package,
+                name: name.to_string(),
+            };
+            let plan = adapter.plan(&inst, &req).await.expect("plan");
+            assert_eq!(
+                command_args(&plan),
+                vec!["install", "-g", name, "--prefix", "/opt/homebrew"]
+            );
+        }
     }
 
     #[tokio::test]

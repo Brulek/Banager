@@ -2109,7 +2109,7 @@ mod tests {
     #[tokio::test]
     async fn test_plan_operation_impl_refuses_an_upgrade_or_uninstall_of_a_name_the_snapshot_does_not_list(
     ) {
-        // An upgrade is planned by npm as `npm install -g <name>@latest`,
+        // An upgrade is planned by npm as `npm install -g <name>`,
         // by Cargo as `cargo install --force <name>` and by Ollama as
         // `ollama pull <name>`: of a name no source lists, an install of
         // whatever that name is, one `submit_operation` away. The window

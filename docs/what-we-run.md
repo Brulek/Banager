@@ -2173,7 +2173,14 @@ search query passes `validate_search_query`.
 |---|---|---|---|
 | Install | `<npm> install -g {name} --prefix {prefix}` | 600 s | No |
 | Uninstall | `<npm> uninstall -g {name} --prefix {prefix}` | 600 s | No |
-| Upgrade | `<npm> install -g {name}@latest --prefix {prefix}` | 600 s | No |
+| Upgrade | `<npm> install -g {name} --prefix {prefix}` | 600 s | No |
+
+An update names the package as an install does, with no tag. npm reads a
+bare name as any version and picks from it as `npm outdated -g` picked the
+version the row and the confirmation show: the newest that runs on this
+Node and is not deprecated. `{name}@latest` would take the `latest` tag
+whatever Node it needs, so on an older Node it installed a version nobody
+was shown, and npm's own update failed every time (`NpmAdapter::plan`).
 
 All global reads and saved write commands carry `--prefix {prefix}`, the
 answer `<npm> prefix -g` gave when the source was found (`NpmAdapter::run_npm`
@@ -2213,7 +2220,7 @@ that listed it.
 Every npm plan takes two locks: npm's own, and that of a Homebrew at
 npm's global prefix (`brew:{prefix}`; y1-keg review). An npm that came
 with a Node from Homebrew writes into Homebrew's prefix --
-`<npm> install -g npm@latest` puts its own `bin/npm` there -- where a
+`<npm> install -g npm` puts its own `bin/npm` there -- where a
 Homebrew upgrade of that Node unlinks and links again, and stops at any
 file in the way (Homebrew's section, "Keg-only formulae linked into
 Terminal"). With both locks no npm operation runs while a brew one on the
@@ -2255,7 +2262,7 @@ package's, but for one case: where the `npm` in the prefix's `bin` is a
 Homebrew formula's -- a link that leads, every link followed, into
 `<prefix>/Cellar/`, which is what `brew link --formula --force node@22` puts there
 -- its update is not offered (`UpdateBlocked::UpdatesWithFormula`), and
-`NpmAdapter::plan` refuses it too. `<npm> install -g npm@latest` would
+`NpmAdapter::plan` refuses it too. `<npm> install -g npm` would
 replace that link with npm's own, and the formula's next `brew upgrade`
 could not link its new version over it: Homebrew stops at a file it did
 not link, and leaves no `node` where Terminal looks -- what happened on the
