@@ -261,6 +261,9 @@ mod tests {
         // open descriptor, the `O_CLOEXEC` one too, until macOS has run its
         // exec; a flock lasts while any copy is open. This repeats that,
         // and `acquire_after_release` waits that moment out.
+        // r16 skeptic 1: 300 rounds took about 10 ms and were often over
+        // before the threads had spawned anything, so the rounds start once
+        // every thread has spawned a process and last a fixed 250 ms.
         let directory = std::env::temp_dir().join(format!(
             "banager-instance-spawn-{}-{}",
             std::process::id(),
@@ -270,22 +273,38 @@ mod tests {
                 .as_nanos()
         ));
         let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let started = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let spawners: Vec<_> = (0..4)
             .map(|_| {
                 let stop = stop.clone();
+                let started = started.clone();
                 std::thread::spawn(move || {
+                    let mut first = true;
                     while !stop.load(std::sync::atomic::Ordering::Relaxed) {
                         let _ = std::process::Command::new("/usr/bin/true")
                             .stdin(std::process::Stdio::null())
                             .stdout(std::process::Stdio::null())
                             .stderr(std::process::Stdio::null())
                             .status();
+                        if first {
+                            started.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                            first = false;
+                        }
                     }
                 })
             })
             .collect();
-        for _ in 0..300 {
-            drop(acquire_after_release(&directory));
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while started.load(std::sync::atomic::Ordering::Relaxed) < 4 {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the threads did not start a process"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        let end = std::time::Instant::now() + std::time::Duration::from_millis(250);
+        while std::time::Instant::now() < end {
+            drop(acquire(&directory).unwrap());
         }
         stop.store(true, std::sync::atomic::Ordering::Relaxed);
         for spawner in spawners {
