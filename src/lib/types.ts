@@ -137,6 +137,13 @@ export interface ArtifactFacts {
    * other copies pair with it (r36 V5). False for everything else.
    */
   unlinked: boolean;
+  /**
+   * Its source's update check never looks it up: a pipx tool not installed
+   * from a package index by name, an npm global from somewhere other than
+   * a registry (R45-1). Read as pip's required packages are
+   * (`notLookedUp` in src/lib/updateState.ts). False for everything else.
+   */
+  not_looked_up: boolean;
 }
 /** Shared by every artifact with nothing more to say: never mutate it. */
 export const NO_FACTS: ArtifactFacts = {
@@ -145,6 +152,7 @@ export const NO_FACTS: ArtifactFacts = {
   commands: [],
   commands_unavailable: false,
   unlinked: false,
+  not_looked_up: false,
 };
 /**
  * Homebrew's own state for one formula or cask, copied from `brew info

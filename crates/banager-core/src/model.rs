@@ -497,6 +497,16 @@ pub struct ArtifactFacts {
     /// so its other copies pair with it; the window says it is not linked
     /// (src/components/CommandFacts.tsx).
     pub unlinked: bool,
+    /// Its source's update check never looks this artifact up, so no
+    /// update listed for it is no news (R45-1): a pipx tool not installed
+    /// from a package index by name (`from_index` in `adapters/pipx.rs`;
+    /// pipx 1.16+ skips it too) and an npm global npm installed from
+    /// somewhere other than a registry (`installed_from_elsewhere` in
+    /// `adapters/npm.rs`). Set by those inventories; false for every
+    /// other artifact. The window treats it as pip's required packages
+    /// (`notLookedUp` in src/lib/updateState.ts): no "Up to date" on its
+    /// row, and only what can be updated here is said to be up to date.
+    pub not_looked_up: bool,
     /// What the inventory read about this artifact's commands, for
     /// `commands::judge`: never on the wire (the window has `commands`,
     /// which is the answer), so not in the TypeScript mirror either.
@@ -2709,7 +2719,7 @@ mod tests {
         let facts = ArtifactFacts::default();
         assert_eq!(
             serde_json::to_string(&facts).unwrap(),
-            r#"{"family":null,"homebrew":null,"commands":[],"commands_unavailable":false,"unlinked":false}"#
+            r#"{"family":null,"homebrew":null,"commands":[],"commands_unavailable":false,"unlinked":false,"not_looked_up":false}"#
         );
         // A payload written before a fact existed still reads.
         assert_eq!(
@@ -2722,14 +2732,14 @@ mod tests {
         };
         assert_eq!(
             serde_json::to_string(&claude).unwrap(),
-            r#"{"family":"claude-code","homebrew":null,"commands":[],"commands_unavailable":false,"unlinked":false}"#
+            r#"{"family":"claude-code","homebrew":null,"commands":[],"commands_unavailable":false,"unlinked":false,"not_looked_up":false}"#
         );
     }
 
     #[test]
     fn test_unavailable_commands_round_trip_even_when_every_claim_was_dropped() {
         // Same literal as src/lib/types.test.ts; old payloads default to false.
-        let wire = r#"{"family":null,"homebrew":null,"commands":[],"commands_unavailable":true,"unlinked":false}"#;
+        let wire = r#"{"family":null,"homebrew":null,"commands":[],"commands_unavailable":true,"unlinked":false,"not_looked_up":false}"#;
         let facts = ArtifactFacts {
             commands_unavailable: true,
             ..Default::default()
@@ -2746,7 +2756,7 @@ mod tests {
     #[test]
     fn test_an_unlinked_formula_says_so_on_the_wire_and_older_payloads_read_as_linked() {
         // Same literal as src/lib/types.test.ts (r36 V5).
-        let wire = r#"{"family":"gemini-cli","homebrew":null,"commands":[{"name":"gemini","state":null}],"commands_unavailable":false,"unlinked":true}"#;
+        let wire = r#"{"family":"gemini-cli","homebrew":null,"commands":[{"name":"gemini","state":null}],"commands_unavailable":false,"unlinked":true,"not_looked_up":false}"#;
         let facts = ArtifactFacts {
             family: Some("gemini-cli".to_string()),
             commands: vec![CommandFact {
@@ -2784,7 +2794,7 @@ mod tests {
         let json = serde_json::to_string(&facts).unwrap();
         assert_eq!(
             json,
-            r#"{"family":null,"homebrew":{"deprecated":null,"disabled":{"date":"2026-09-01","reason":"fails_gatekeeper_check","replacement":"onyx"},"caveats":"Turn on \"Launch at login\".\n","other_versions":["3.6.3"]},"commands":[],"commands_unavailable":false,"unlinked":false}"#
+            r#"{"family":null,"homebrew":{"deprecated":null,"disabled":{"date":"2026-09-01","reason":"fails_gatekeeper_check","replacement":"onyx"},"caveats":"Turn on \"Launch at login\".\n","other_versions":["3.6.3"]},"commands":[],"commands_unavailable":false,"unlinked":false,"not_looked_up":false}"#
         );
         assert_eq!(serde_json::from_str::<ArtifactFacts>(&json).unwrap(), facts);
         // Fields a payload leaves out read as empty.
@@ -2839,6 +2849,7 @@ mod tests {
             ],
             commands_unavailable: false,
             unlinked: false,
+            not_looked_up: false,
             command_inputs: CommandInputs {
                 provided: vec![ProvidedCommand {
                     name: "claude".to_string(),
@@ -2861,7 +2872,7 @@ mod tests {
                 r#"{"name":"grok","state":{"NotOnPath":{"dir":"~/.grok/bin"}}},"#,
                 r#"{"name":"rg","state":{"ShadowedBy":{"by":null}}},"#,
                 r#"{"name":"curl","state":null}"#,
-                "],\"commands_unavailable\":false,\"unlinked\":false}"
+                "],\"commands_unavailable\":false,\"unlinked\":false,\"not_looked_up\":false}"
             )
         );
         // The inputs stay behind: what comes back is the answer alone.

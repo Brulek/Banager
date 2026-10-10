@@ -467,6 +467,38 @@ describe("updatesSummary with pip packages another one requires", () => {
   });
 });
 
+describe("rows their source's check never looks up (R45-1)", () => {
+  // A pipx tool installed from git, a URL or a folder, an npm global npm
+  // installed from elsewhere: the inventory marks it (`not_looked_up`),
+  // and it reads as pip's required packages do.
+  const pipx: ManagerInstance = { ...brew, id: "pipx:/opt/homebrew/bin/pipx", adapter_id: "pipx" };
+  const llm = { ...installed(pipx.id, "llm", "Unknown", "Tool"), facts: { ...NO_FACTS, not_looked_up: true } };
+  const link = { ...installed(npm.id, "mytool", "Unknown"), facts: { ...NO_FACTS, not_looked_up: true } };
+
+  it("gets no Up to date on its row", () => {
+    expect(leftOutOfUpdateCheck(llm, false)).toBe(true);
+    expect(leftOutOfUpdateCheck(link, true)).toBe(true);
+    expect(leftOutOfUpdateCheck(installed(pipx.id, "black", "Unknown", "Tool"), false)).toBe(false);
+  });
+
+  it("makes only what can be updated here up to date", () => {
+    const summary = (artifacts: InstalledArtifact[], of: ManagerInstance[] = [brew, pipx, npm]) =>
+      updatesSummary({ instances: of, updates: [], errors: [], artifacts }, hiding());
+    expect(summary([installed(pipx.id, "black", "Unknown", "Tool")])).toMatchObject({ kind: "upToDate", everything: true });
+    expect(summary([llm])).toMatchObject({ kind: "upToDate", everything: false });
+    expect(summary([link])).toMatchObject({ kind: "upToDate", everything: false });
+    const quiet = { unavailable: "NotResponding" as const, notes: [] };
+    expect(summary([llm], [brew, npm, { ...pipx, status: quiet }])).toMatchObject({
+      kind: "nothingToUpdate",
+      everythingElse: true,
+    });
+    expect(summary([llm], [brew, pipx, { ...npm, status: quiet }])).toMatchObject({
+      kind: "nothingToUpdate",
+      everythingElse: false,
+    });
+  });
+});
+
 describe("updatesSummary", () => {
   it("counts what can be installed, before anything else", () => {
     const glib = candidate();

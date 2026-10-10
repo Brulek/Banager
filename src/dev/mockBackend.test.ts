@@ -1459,7 +1459,7 @@ describe("the preview's commands, and which copy runs", () => {
 
   it("gives each row facts of its own, and leaves the shared empty ones alone", async () => {
     await answer<Snapshot>(backendFor({ state: "notices" }).backend.invoke("refresh"));
-    expect(NO_FACTS).toEqual({ family: null, homebrew: null, commands: [], commands_unavailable: false, unlinked: false });
+    expect(NO_FACTS).toEqual({ family: null, homebrew: null, commands: [], commands_unavailable: false, unlinked: false, not_looked_up: false });
   });
 });
 

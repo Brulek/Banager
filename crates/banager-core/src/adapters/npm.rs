@@ -2187,6 +2187,41 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn r45_a_global_from_elsewhere_says_on_its_row_that_no_check_looks_it_up() {
+        // R45-1: the check lists no row for a global npm installed from
+        // somewhere other than a registry (R42-3), so its row reads no "Up
+        // to date" (as pip's required packages): the inventory marks it
+        // from the same `resolved` the check reads.
+        let runner = ls_global_answering(
+            0,
+            r#"{"name": "lib", "dependencies": {
+              "mytool": {"version": "0.0.0-development",
+                         "resolved": "file:../../../../Users/you/dev/mytool"},
+              "prettier": {"version": "3.8.1",
+                           "resolved": "https://registry.npmjs.org/prettier/-/prettier-3.8.1.tgz"},
+              "unsaid": {"version": "1.0.0"}
+            }}"#,
+            "",
+        );
+        let mut rows: Vec<(String, bool)> = NpmAdapter::new(runner)
+            .inventory(&test_instance())
+            .await
+            .expect("listed")
+            .into_iter()
+            .map(|a| (a.key.name, a.facts.not_looked_up))
+            .collect();
+        rows.sort();
+        assert_eq!(
+            rows,
+            [
+                ("mytool".to_string(), true),
+                ("prettier".to_string(), false),
+                ("unsaid".to_string(), false),
+            ]
+        );
+    }
+
+    #[tokio::test]
     async fn r45_a_link_npm_reads_no_version_for_is_no_row_with_nothing_else_listed() {
         // R45-2: an `npm link` whose package.json has no "version" is in
         // `npm outdated -g` with no `current` (an uncheckable row) and in

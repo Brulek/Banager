@@ -18,11 +18,11 @@ describe("families", () => {
     // `ArtifactFacts` in crates/banager-core/src/model.rs serialises to
     // exactly these (its test
     // test_facts_is_an_object_with_explicit_nulls_on_the_wire_and_optional_when_read).
-    const none: ArtifactFacts = JSON.parse('{"family":null,"homebrew":null,"commands":[],"commands_unavailable":false,"unlinked":false}');
-    const codex: ArtifactFacts = JSON.parse('{"family":"codex","homebrew":null,"commands":[],"commands_unavailable":false,"unlinked":false}');
+    const none: ArtifactFacts = JSON.parse('{"family":null,"homebrew":null,"commands":[],"commands_unavailable":false,"unlinked":false,"not_looked_up":false}');
+    const codex: ArtifactFacts = JSON.parse('{"family":"codex","homebrew":null,"commands":[],"commands_unavailable":false,"unlinked":false,"not_looked_up":false}');
     expect(none).toEqual(NO_FACTS);
     expect(codex).toEqual({ ...NO_FACTS, family: "codex" });
-    expect(JSON.stringify(codex)).toBe('{"family":"codex","homebrew":null,"commands":[],"commands_unavailable":false,"unlinked":false}');
+    expect(JSON.stringify(codex)).toBe('{"family":"codex","homebrew":null,"commands":[],"commands_unavailable":false,"unlinked":false,"not_looked_up":false}');
     expect(JSON.parse(JSON.stringify(NO_FACTS))).toEqual(NO_FACTS);
   });
 

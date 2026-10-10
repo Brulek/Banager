@@ -4920,6 +4920,16 @@ describe("UpdatesPage", () => {
     expect(getByRole("button", { name: "Check Again" })).toBeInTheDocument();
   });
 
+  it("says the same beside an npm global its check never looks up (R45-1)", async () => {
+    updates = [];
+    const link = installedRow({ instance_id: "npm:/opt/homebrew", kind: "Package", name: "mytool" });
+    artifacts = [{ ...link, facts: { ...link.facts, not_looked_up: true } }];
+    const { findByText, queryByText } = renderPage();
+
+    await findByText("Everything you can update here is up to date");
+    expect(queryByText("Everything is up to date")).not.toBeInTheDocument();
+  });
+
   it("says an empty list as macOS does: a 36 tertiary symbol, the title, when it was checked, one grey button", async () => {
     updates = [];
     const { findByText, getByRole } = renderPage();

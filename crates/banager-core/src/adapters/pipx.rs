@@ -1210,6 +1210,27 @@ mod tests {
                 "https://pypi.org/pypi/cowsay/json"
             ]
         );
+        // R45-1: the tools no check looks up say so on their row, which
+        // then reads no "Up to date" (as pip's required packages).
+        let mut not_looked_up: Vec<(String, bool)> = adapter
+            .inventory(&inst)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|a| (a.key.name, a.facts.not_looked_up))
+            .collect();
+        not_looked_up.sort();
+        assert_eq!(
+            not_looked_up,
+            [
+                ("black".to_string(), false),
+                ("cowsay".to_string(), false),
+                ("devtool".to_string(), true),
+                ("llm".to_string(), true),
+                ("mytool".to_string(), true),
+                ("wheel-tool".to_string(), true),
+            ]
+        );
     }
 
     #[tokio::test]
