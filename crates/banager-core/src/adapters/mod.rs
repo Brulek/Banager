@@ -35,7 +35,8 @@ mod robustness;
 /// adapter that does not read it.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CheckOptions {
-    /// Homebrew only: include casks that update themselves (`brew outdated --greedy`).
+    /// Homebrew only: include casks that update themselves (`brew outdated
+    /// --greedy-auto-updates`; never `--greedy`, R47-2).
     pub include_self_updating: bool,
     /// When the refresh round this check is part of began. Set by
     /// `Session`'s `refresh_round` over whatever the caller passed; `None`,

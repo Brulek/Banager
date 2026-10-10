@@ -1184,7 +1184,7 @@
     },
     "includeSelfUpdating": {
       "label": "顯示內建更新功能的Homebrew App",
-      "description": "在「更新」中也顯示透過Homebrew安裝、內建更新功能或版本標為「latest」的App，例如Chrome。其他來源的工具不受這項影響。"
+      "description": "在「更新」中也顯示透過Homebrew安裝、內建更新功能的App，例如Chrome。版本標為「latest」的App不檢查。其他來源的工具不受這項影響。"
     },
     "autoCheck": {
       "label": "檢查更新",

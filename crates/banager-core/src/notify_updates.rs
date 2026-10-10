@@ -52,7 +52,8 @@ impl Notified {
     /// update candidates -- has (`pair_of`'s key): a row no longer offered,
     /// because it was updated, uninstalled, or its source has gone. An
     /// update offered for that row later is news again, whatever version
-    /// it names: `brew outdated --greedy` lists a cask declared
+    /// it names: a greedy `brew outdated` (a person's own
+    /// `HOMEBREW_UPGRADE_GREEDY`; Banager passes no `--greedy`) lists a cask declared
     /// `version :latest` again whenever its download has changed, offering
     /// "latest" each time, so that pair alone could not tell one release
     /// from the next. A row still offered keeps its pairs, whatever version
@@ -588,7 +589,7 @@ mod tests {
     #[test]
     fn test_a_latest_cask_updated_and_offered_again_is_news_again() {
         // r38 S4: a Homebrew app declared `version :latest`, listed with
-        // `brew outdated --greedy`, offers "latest" for every release.
+        // a greedy `brew outdated`, offers "latest" for every release.
         let chrome = pair("brew:/opt/homebrew|Cask|google-chrome", "latest");
         let mut notified = Notified::default();
         let posted = RefCell::new(Vec::new());

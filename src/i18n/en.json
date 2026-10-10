@@ -1303,7 +1303,7 @@
     },
     "includeSelfUpdating": {
       "label": "Show Homebrew apps that have their own updater",
-      "description": "Also list apps installed with Homebrew that have their own updater or are marked “latest”, like Chrome, under Updates. Tools from other sources aren't affected."
+      "description": "Also list apps installed with Homebrew that have their own updater, like Chrome, under Updates. Apps marked “latest” aren't checked. Tools from other sources aren't affected."
     },
     "autoCheck": {
       "label": "Check for updates",

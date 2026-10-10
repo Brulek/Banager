@@ -2198,8 +2198,14 @@ impl BrewAdapter {
             IndexFreshness::MayBeStale => vec![InstanceNote::IndexMayBeStale],
         };
         let mut args = vec!["outdated".to_string(), "--json=v2".to_string()];
+        // R47-2 (r18): never `--greedy` or `--greedy-latest`, which have
+        // Homebrew download the whole installer of each installed `version
+        // :latest` cask to hash it (`cask/cask.rb:392-410`, `:437-438` in
+        // 7.0.9) -- a silent download inside a check whose timeout fails
+        // the whole source. `--greedy-auto-updates` lists the apps that
+        // update themselves and downloads nothing.
         if opts.include_self_updating {
-            args.push("--greedy".to_string());
+            args.push("--greedy-auto-updates".to_string());
         }
         let output = self.run_brew(inst, args, Duration::from_secs(120)).await?;
         if output.exit_code != Some(0) {
@@ -9165,8 +9171,8 @@ mod plan_execute_tests {
     /// Promise 3 of docs/what-we-run.md for Homebrew, which
     /// `tests/safety_refresh_commands_test.rs` cannot reach (Homebrew is
     /// found at fixed paths): every command a refresh asks of Homebrew --
-    /// `detect`, `inventory` and `check_updates` with and without
-    /// `--greedy`, and `search` -- is one the Homebrew section shows outside its
+    /// `detect`, `inventory` and `check_updates` with the setting on and
+    /// off, and `search` -- is one the Homebrew section shows outside its
     /// "Needs a password" table, with `{name}` standing for one argument,
     /// and none is one of that table's. `brew update` is the one command
     /// that changes Homebrew itself; it is checked apart: it runs once,
@@ -9199,7 +9205,7 @@ mod plan_execute_tests {
         let outdated = include_str!("../../../../../adapters/fixtures/brew/7.0.3/outdated.json");
         runner.respond(vec![BREW, "outdated", "--json=v2"], ok(outdated));
         runner.respond(
-            vec![BREW, "outdated", "--json=v2", "--greedy"],
+            vec![BREW, "outdated", "--json=v2", "--greedy-auto-updates"],
             ok(outdated),
         );
         let adapter = BrewAdapter::new(runner.clone())
@@ -9271,13 +9277,13 @@ mod plan_execute_tests {
                 }
             }
             // The `outdated` row adds its flag in words.
-            if line.contains("`<brew> outdated --json=v2`, plus `--greedy`") {
-                reads.push("<brew> outdated --json=v2 --greedy".to_string());
+            if line.contains("`<brew> outdated --json=v2`, plus `--greedy-auto-updates`") {
+                reads.push("<brew> outdated --json=v2 --greedy-auto-updates".to_string());
             }
         }
         assert!(
-            reads.contains(&"<brew> outdated --json=v2 --greedy".to_string()),
-            "the section says when `--greedy` is added"
+            reads.contains(&"<brew> outdated --json=v2 --greedy-auto-updates".to_string()),
+            "the section says when `--greedy-auto-updates` is added"
         );
         assert!(
             section.contains("| Update Homebrew and its local package index (`maybe_update`) | `<brew> update` |"),
@@ -9320,7 +9326,7 @@ mod plan_execute_tests {
             vec!["--version"],
             vec!["info", "--installed", "--json=v2"],
             vec!["outdated", "--json=v2"],
-            vec!["outdated", "--json=v2", "--greedy"],
+            vec!["outdated", "--json=v2", "--greedy-auto-updates"],
             vec!["search", "--desc", "jq"],
         ] {
             assert!(

@@ -742,7 +742,7 @@ impl StandaloneAdapter {
     /// check" row, never an `Err`: a failed lookup is not knowing, and an
     /// `Err` would hold the whole source stale.
     ///
-    /// `include_self_updating` is not read: that is Homebrew's `--greedy`
+    /// `include_self_updating` is not read: that is Homebrew's `--greedy-auto-updates`
     /// for casks whose live version `brew outdated` cannot see. This badge
     /// compares the launcher's live version and is true whatever the
     /// switch says; that the tool usually updates itself is for the row to
@@ -2978,7 +2978,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_check_updates_ignores_the_include_self_updating_switch() {
-        // D5: the switch is Homebrew's `--greedy`, for casks whose live
+        // D5: the switch is Homebrew's, for casks whose live
         // version `brew outdated` cannot see. This badge is read from the
         // launcher's live version and is true whatever the switch says.
         for include_self_updating in [false, true] {

@@ -519,16 +519,17 @@ export function notLookedUp(artifact: InstalledArtifact): boolean {
 }
 
 /**
- * Whether Homebrew's update check leaves `artifact` out while Settings'
- * "Show Homebrew apps that have their own updater" (`include_self_updating`) is off: a
- * cask that updates itself (`auto_updates`, from `brew info`'s
- * `auto_updates: true`) or one declared `version :latest`, which Homebrew
- * installs as "latest". Banager passes `--greedy` to `brew outdated
- * --json=v2` only while that switch is on
- * (crates/banager-core/src/adapters/brew/mod.rs), and without it Homebrew
- * lists neither kind whatever version it has, so no update listed is no
- * news: the Installed page's row says nothing about updates rather than
- * 「已是最新」. With the switch on, `--greedy` checks both.
+ * Whether Homebrew's update check leaves `artifact` out: a cask declared
+ * `version :latest`, which Homebrew installs as "latest", always -- Banager
+ * never passes `--greedy`, which has Homebrew download the whole installer
+ * of each such cask to see whether it changed (R47-2, r18) -- and, while
+ * Settings' "Show Homebrew apps that have their own updater"
+ * (`include_self_updating`) is off, a cask that updates itself
+ * (`auto_updates`, from `brew info`'s `auto_updates: true`). Banager passes
+ * `--greedy-auto-updates` to `brew outdated --json=v2` only while that
+ * switch is on (crates/banager-core/src/adapters/brew/mod.rs). No update
+ * listed for one left out is no news: the Installed page's row says nothing
+ * about updates rather than 「已是最新」.
  *
  * Nor does pip's check look up a package another one requires: it runs
  * `pip list --outdated --not-required` (`PipAdapter::check_updates`), as
@@ -537,11 +538,8 @@ export function notLookedUp(artifact: InstalledArtifact): boolean {
  */
 export function leftOutOfUpdateCheck(artifact: InstalledArtifact, includeSelfUpdating: boolean): boolean {
   if (notLookedUp(artifact)) return true;
-  return (
-    !includeSelfUpdating &&
-    artifact.key.kind === "Cask" &&
-    (artifact.auto_updates || artifact.version === "latest")
-  );
+  if (artifact.key.kind !== "Cask") return false;
+  return artifact.version === "latest" || (!includeSelfUpdating && artifact.auto_updates);
 }
 
 /**

@@ -898,7 +898,7 @@ export function UpdatesPage() {
    * its name runs this copy only where no note says otherwise
    * (`NAME_MAY_NOT_RUN_THIS_COPY`; the notice at the top says why): there
    * the row is a plain one, behind and updatable. Only for the standalone
-   * adapters: a self-updating Homebrew cask listed by --greedy is a plain
+   * adapters: a self-updating Homebrew cask is a plain
    * row too, since Homebrew, not the app, is what its button drives.
    */
   const saysItUpdatesItself = (

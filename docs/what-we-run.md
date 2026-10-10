@@ -906,8 +906,9 @@ opened again, nothing has been. Nor is it kept for a tool once a check
 finds no update for it — it was updated or uninstalled, or its source
 has gone — so that tool's next update is news, even one naming the same
 version, as a Homebrew app declared `version :latest` does for every
-release (listed with *Show Homebrew apps that have their own updater*
-on). A source that did not answer a check keeps its updates in the list,
+release (listed only where the person's own `HOMEBREW_UPGRADE_GREEDY` or
+`HOMEBREW_UPGRADE_GREEDY_CASKS` asks Homebrew to: Banager never passes
+`--greedy`, below). A source that did not answer a check keeps its updates in the list,
 and they stay told (`Notified::forget_unoffered` in
 `crates/banager-core/src/notify_updates.rs`, before each report:
 `report_offered` in `src-tauri/src/notify.rs`).
@@ -1780,11 +1781,21 @@ required (`BrewAdapter::update_steps`).
 |---|---|---|
 | Detect a Homebrew install | `<brew> --version` | 30 s |
 | List installed formulae + casks (`inventory`) | `<brew> info --installed --json=v2` | 120 s |
-| List outdated formulae + casks (`check_updates`) | `<brew> outdated --json=v2`, plus `--greedy` when the "Show Homebrew apps that have their own updater" setting is on | 120 s |
+| List outdated formulae + casks (`check_updates`) | `<brew> outdated --json=v2`, plus `--greedy-auto-updates` when the "Show Homebrew apps that have their own updater" setting is on | 120 s |
 | Qualify the names `outdated` reported, and read which of them Homebrew disabled (once per `check_updates`) | `<brew> info --installed --json=v2` | 120 s |
 | Search by name | `<brew> search {query}` | 30 s |
 | Search by name + description | `<brew> search --desc {query}` | 30 s |
 | List installed formulae depending on a formula (uninstall preview) | `<brew> uses --installed {name}` | 120 s |
+
+Never `--greedy` or `--greedy-latest` (R47-2, r18): with either, Homebrew
+7 downloads the whole installer of each installed cask declared `version
+:latest` to hash it and compare with the one it saved at install
+(`Cask#outdated_download_sha?`, `cask/cask.rb:392-410` and `:437-438`),
+which is no read-only check, and on a slow link outlasts the 120 s and
+fails the whole source. `--greedy-auto-updates` downloads nothing; apps
+declared `version :latest` are not checked, unless the person's own
+`HOMEBREW_UPGRADE_GREEDY` or `HOMEBREW_UPGRADE_GREEDY_CASKS` asks Homebrew
+to check them (`cmd/outdated.rb:40`, `:280-291`).
 
 The fresh inventory used to qualify outdated names is indexed once per
 check by kind and full/short name, preserving the first installed match

@@ -1128,7 +1128,7 @@ describe("UpdatesPage", () => {
   it("does not promise a pinned app that updates itself will stay at its version", async () => {
     // `brew pin` warns that a cask with `auto_updates true` "may update
     // itself outside Homebrew despite being pinned". Such a row reaches
-    // the page mostly with include_self_updating (`brew outdated --greedy`).
+    // the page mostly with include_self_updating.
     // Its detail says only what the pin stops and how to lift it, which is
     // true of it too.
     settings = { ...settings, include_self_updating: true };
@@ -2969,10 +2969,11 @@ describe("UpdatesPage", () => {
     expect(within(glibMenu).getByRole("menuitem", { name: "Skip This Version" })).toBeInTheDocument();
   });
 
-  // A Homebrew cask declared `version :latest`, as `brew outdated --json=v2
-  // --greedy` lists one -- Show self-updating apps is what makes Banager
-  // pass `--greedy` -- whenever it takes its download to have changed:
-  // `latest -> latest`, for every release.
+  // A Homebrew cask declared `version :latest`, as `brew outdated --json=v2`
+  // lists one when it is greedy -- Banager no longer passes `--greedy`
+  // (R47-2), but a person's own HOMEBREW_UPGRADE_GREEDY still makes it so --
+  // whenever it takes its download to have changed: `latest -> latest`,
+  // for every release.
   const chromiumKey: ArtifactKey = {
     instance_id: "brew:/opt/homebrew",
     kind: "Cask",
@@ -6314,7 +6315,7 @@ describe("UpdatesPage", () => {
     expect(within(rowOf("Claude Code")).getByRole("button", { name: ROW_UPDATE })).toBeInTheDocument();
   });
 
-  it("keeps a self-updating Homebrew cask a plain row: the chip is for tools that update themselves, not for --greedy", async () => {
+  it("keeps a self-updating Homebrew cask a plain row: the chip is for tools that update themselves, not for Show Homebrew apps that have their own updater", async () => {
     // A cask listed through `include_self_updating` carries
     // `auto_updates: true` too, but Homebrew, not the app, is what the
     // button drives; its row keeps its description and no chip.

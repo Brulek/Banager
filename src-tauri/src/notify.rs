@@ -745,7 +745,7 @@ mod forget_unoffered_tests {
     use tokio_util::sync::CancellationToken;
 
     /// A Homebrew with one app installed, declared `version :latest`:
-    /// `brew outdated --greedy` offers it as "latest" while `offers` is
+    /// a greedy `brew outdated` offers it as "latest" while `offers` is
     /// set, whatever the release. Its update check fails while `fails` is.
     struct LatestCask {
         meta: AdapterMeta,

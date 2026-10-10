@@ -1687,14 +1687,15 @@ describe("InstalledPage", () => {
       expect(screen.getByText("Claude Code's program files are missing")).toBeInTheDocument();
     });
 
-    // Without --greedy, `brew outdated` leaves out a cask that updates
-    // itself and one declared `version :latest`, so no update listed for
-    // either is no news.
+    // Without --greedy-auto-updates, `brew outdated` leaves out a cask
+    // that updates itself, and Banager never passes --greedy, without
+    // which it leaves out one declared `version :latest` (R47-2), so no
+    // update listed for either is no news.
     it.each([
       [false, []],
       [true, ["Up to date"]],
     ] as const)(
-      "with Show Homebrew apps that have their own updater %s, says it over a self-updating or always-latest cask only when Homebrew checked it",
+      "with Show Homebrew apps that have their own updater %s, says it over a self-updating cask only when Homebrew checked it, and never over an always-latest one",
       async (includeSelfUpdating, leftOut) => {
         const cask = (name: string, over: Partial<InstalledArtifact> = {}) =>
           formula(name, { key: { instance_id: brew.id, kind: "Cask", name }, ...over });
@@ -1710,7 +1711,7 @@ describe("InstalledPage", () => {
         for (const name of ["onyx", "zoom", "chromium"]) expect(chipsOf(await findRow(name)), name).toEqual([]);
         expect(await drawerChips("onyx")).toEqual(["Up to date"]);
         expect(await drawerChips("zoom")).toEqual(leftOut);
-        expect(await drawerChips("chromium")).toEqual(leftOut);
+        expect(await drawerChips("chromium")).toEqual([]);
       },
     );
   });
