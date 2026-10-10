@@ -1128,6 +1128,33 @@ describe("LogDrawer, a tool's own words left only in the subtitle", () => {
     }
   });
 
+  // The step says to send them to someone who can help: the home folder
+  // goes as `~`, as Copy Diagnostic Info writes it, and stays as it is on
+  // screen (r20 R50-1).
+  it("copies the words with the home folder written as ~, technical details on and off", async () => {
+    const summary = "Error: Permission denied @ rb_sysopen - /Users/janesmith/Library/Caches/Homebrew/wget.tar.gz";
+    const copied = "Error: Permission denied @ rb_sysopen - ~/Library/Caches/Homebrew/wget.tar.gz";
+    operations = [failed(summary)];
+    try {
+      let writeText = clipboard();
+      const off = renderWithProviders(<LogDrawer />);
+      fireEvent.click(await off.findByRole("button", { name: "Show Error Details" }));
+      expect(off.getByText(summary)).toBeVisible();
+      fireEvent.click(off.getByRole("button", { name: "Copy Error Details" }));
+      await waitFor(() => expect(writeText).toHaveBeenCalledWith(copied));
+      off.unmount();
+
+      technicalOn();
+      writeText = clipboard();
+      const on = renderWithProviders(<LogDrawer />);
+      fireEvent.click(await on.findByRole("button", { name: "Copy Error Details" }));
+      await waitFor(() => expect(writeText).toHaveBeenCalledWith(copied));
+      on.unmount();
+    } finally {
+      noClipboard();
+    }
+  });
+
   it("gives Copy Error Details where the log has lines of the operation but none of its words", async () => {
     technicalOn();
     const summary = "Error: wget: something went wrong";

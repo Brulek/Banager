@@ -482,7 +482,10 @@ Copy Error Details button over the log copies that summary alone -- also
 where the log still has other lines of the operation but none it wrote
 to stderr -- and, for a cause that is not recognised, the sentence under
 the subtitle says to click it and send the details to someone who can
-help. A failure that kept no words gets no such line, as its log may
+help. Both Copy Error Details buttons write the home folder in what they
+copy as `~` (`/Users/<name>` becomes `~`; not `/Users/Shared`), as Copy
+Diagnostic Info does; the words on screen keep it as the tool wrote it.
+A failure that kept no words gets no such line, as its log may
 never have had one. This fetches no old output and writes no log file.
 Copy Log stays disabled for an empty log.
 
@@ -2208,9 +2211,10 @@ A failed startup also keeps a diagnostic: the last five lines of the
 runner's already-redacted stderr, capped at 4,096 UTF-8 bytes. Its recovery
 category is read before masking, just as `Outcome::Failed.cause` is. The
 shared source notice and Overview offer it behind a closed disclosure,
-with Copy Error Details; Copy Diagnostic Info includes the same diagnostic,
+with Copy Error Details, which copies it with the home folder written as
+`~`; Copy Diagnostic Info includes the same diagnostic,
 indented under its source, even without the tool list, and writes the
-home folder in it as `~`, as it does every path. No raw stderr or
+home folder in it as `~` too, as it does every path. No raw stderr or
 spawn-error text is added, and it is kept in no file. Review or share these
 details, address the error, then use Check Again.
 

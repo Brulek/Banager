@@ -20,6 +20,24 @@ it("opens and copies the startup diagnostic through the shared notice without te
   await waitFor(() => expect(writeText).toHaveBeenCalledWith(diagnostic));
 });
 
+// The next step says to send them to someone who can help: the home
+// folder goes as `~`, as Copy Diagnostic Info writes the same words, and
+// stays as it is on screen (r20 R50-1).
+it("copies the diagnostic with the home folder written as ~", async () => {
+  await i18n.changeLanguage("en");
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+  const diagnostic = "Configuration file could not be loaded.\nfile: '/Users/janesmith/.config/pip/pip.conf', line: 1";
+  const notice = { id: "pip", variant: "warning" as const, titleKey: "", descriptionKey: "", diagnostic };
+  const view = renderWithProviders(<SourceDiagnostic notice={notice} />);
+  fireEvent.click(view.getByRole("button", { name: "Show Error Details" }));
+  expect(view.container.querySelector("[data-source-diagnostic]")).toHaveTextContent("/Users/janesmith/.config/pip/pip.conf");
+  fireEvent.click(view.getByRole("button", { name: "Copy Error Details" }));
+  await waitFor(() =>
+    expect(writeText).toHaveBeenCalledWith("Configuration file could not be loaded.\nfile: '~/.config/pip/pip.conf', line: 1"),
+  );
+});
+
 it("opens with the house disclosure button, closed until asked (f13b review)", async () => {
   await i18n.changeLanguage("en");
   const diagnostic = "npm error config Invalid npmrc";

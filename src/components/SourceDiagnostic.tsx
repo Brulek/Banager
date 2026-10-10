@@ -2,6 +2,7 @@ import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { SourceNoticeSpec } from "../lib/sources";
 import { FAILURE_CAUSE_KEYS } from "../lib/failureCause";
+import { withoutHomePaths } from "../lib/diagnostics";
 import { CopyButton } from "./CopyButton";
 import { DisclosureButton } from "./DisclosureButton";
 
@@ -10,6 +11,8 @@ import { DisclosureButton } from "./DisclosureButton";
  * behind a closed disclosure as Homebrew's caveats are: the cause's line
  * where one was read, the next step, the source's own words and Copy.
  * Only the runner's bounded, redacted diagnostic reaches this control.
+ * Copy writes the home folder in it as `~`, as Copy Diagnostic Info
+ * does (`withoutHomePaths`): the step says to send it to someone.
  *
  * `describedBy` is the id of the title of the row it is in, where several
  * sources' rows are drawn at once -- the Overview's problems: their
@@ -37,7 +40,7 @@ export function SourceDiagnostic({ notice, describedBy }: { notice: SourceNotice
           >
             {notice.diagnostic}
           </p>
-          <CopyButton text={notice.diagnostic} label={t("sourceDiagnostic.copy")} describedBy={describedBy} />
+          <CopyButton text={withoutHomePaths(notice.diagnostic)} label={t("sourceDiagnostic.copy")} describedBy={describedBy} />
         </div>
       ) : null}
     </div>

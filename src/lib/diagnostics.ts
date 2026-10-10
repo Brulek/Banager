@@ -86,7 +86,9 @@ export function diagnosticsTime(date: Date): string {
  * `/System/Volumes/Data~`. Rust already writes each path it hands over
  * with the home folder as `~`; this is the last guard, for a path the
  * snapshot carries that the facts did not cover (a source found since
- * they were read).
+ * they were read), and the only one for a tool's own words, which Copy
+ * Error Details copies through it too (`SourceDiagnostic`,
+ * `MissingFailureLog`).
  */
 export function withoutHomePaths(text: string): string {
   return text.replace(/(?:\/System\/Volumes\/Data)?\/Users\/(?!Shared(?:\/|\s|$))[^/\s]+/g, "~");
