@@ -50,7 +50,8 @@ crate — the one named after the crate, else the first its record lists — so 
 a crate that installs several (`cargo-binstall`'s `detect-targets`) stay on that page until it can
 report them all. The scan never reads the places macOS asks you about before an app reads them —
 Desktop, Documents, Downloads, Pictures, Movies, Music, iCloud Drive and other cloud folders, other
-apps' data — nor other disks under `/Volumes`, nor network volumes mounted anywhere, even by way of a link. A folder to scan that is in one
+apps' data — nor other disks under `/Volumes`, nor network volumes wherever they are mounted, even by way of a link; a network volume your
+home folder is on is read. A folder to scan that is in one
 is not read, and a line under the list says how many were left out (with Show technical details on,
 its ⓘ names them); a program that is a link into one is listed by its own name, marked **Points into
 a protected place**, and the link is not followed.
@@ -584,7 +585,8 @@ formula 与 cask，以及 npm、PyPI、crates.io 上的包，每条都译自该�
   里（有工具的卸载会把文件移到废纸篓时是“查看命令和路径”）。确认后，每个工具运行的就是它那一行单独卸载时的那一次
   卸载——批量里依赖它的工具没能开始的，它先不卸载；同一个来源上的按列出的顺序开始。
 - “其他程序”页的扫描不读 macOS 在应用读取前会先问你的那些位置——桌面、文稿、下载、图片、影片、音乐、iCloud
-  云盘和其他云盘、其他应用的数据——也不读 `/Volumes` 下的其他磁盘和挂载在任何位置的网络宗卷，经过链接也一样。要扫描的文件夹在这些位置里时
+  云盘和其他云盘、其他应用的数据——也不读 `/Volumes` 下的其他磁盘和挂载在任何位置的网络宗卷，经过链接也一样；存放个人文件夹的网络宗卷照常读取。
+  要扫描的文件夹在这些位置里时
   不读取，列表下方有一行写出有几个没有读取（打开“显示技术细节”后，它的 ⓘ 里列出是哪些）；指向这些位置的程序
   链接按它自己的名字列出，标着“指向受保护的位置”，不跟进去。
 - Homebrew 的更新或卸载因为要输入 Mac 密码而停下时，点「查看步骤」会给出一条命令，拷贝到终端里运行，就能在
