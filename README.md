@@ -12,9 +12,9 @@ Removing them needs a third. Most people never do either, and the tools quietly 
 
 Banager puts all of it in one window: what you have, what has an update, and a button for each.
 
-> **Status: pre-release.** The core and the UI work and are covered by 2234 Rust tests (plus 11 more
+> **Status: pre-release.** The core and the UI work and are covered by 2240 Rust tests (plus 11 more
 > that only run with `--ignored`: they touch a real Homebrew, the real Trash, AppKit or this Mac's
-> disk, or time a large run) and 3092 front-end tests, but there is no downloadable build yet — v0.1 is being prepared. Nothing here is
+> disk, or time a large run) and 3094 front-end tests, but there is no downloadable build yet — v0.1 is being prepared. Nothing here is
 > ready to rely on.
 
 <!-- A screenshot belongs here before the first release. -->
@@ -469,8 +469,8 @@ Banager 把它们放进同一个窗口：装了什么、哪个有更新、每个
 在 Banager 里选择更新或卸载时，都能在它运行之前看到确切的命令，连同 Banager 为它设的环境变量（从登录 shell 拿来的 `PATH` 和代理、镜像设置除外：这些在 `docs/what-we-run.md` 的“How Banager runs anything”一节列出，代理设置里可能有密码，所以从不显示）：在确认框里点「查看命令」，或者在设置里打开「显示技术细节」，
 让它一开始就展开；可能要输入 Mac 密码的，确认框也会先说。不运行命令的卸载，改为列出它要移到废纸篓的每一条路径。`OLLAMA_HOST` 中的登录信息在预览和拷贝的命令里会被遮蔽，实际执行仍使用原值。
 
-**目前处于发布前阶段**，核心与界面已经可用、有 2234 个 Rust 测试（另有 11 个平时跳过、要加
-`--ignored` 才跑：它们连着真实的 Homebrew、真实的废纸篓、AppKit 或本机磁盘，或给大批量计时）和 3092 个前端测试，但还没有可下载的版本，v0.1 正在
+**目前处于发布前阶段**，核心与界面已经可用、有 2240 个 Rust 测试（另有 11 个平时跳过、要加
+`--ignored` 才跑：它们连着真实的 Homebrew、真实的废纸篓、AppKit 或本机磁盘，或给大批量计时）和 3094 个前端测试，但还没有可下载的版本，v0.1 正在
 准备。现在还不适合依赖它。
 
 界面支持英文、简体中文和台湾用语的繁体中文，跟随系统语言，也可以在设置中选择。
