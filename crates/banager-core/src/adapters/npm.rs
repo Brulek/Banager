@@ -2230,6 +2230,52 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn r45_a_global_from_elsewhere_is_no_could_not_check_row_when_the_check_fails() {
+        // R45-1: a failed `npm outdated -g` (no network, a registry error)
+        // is "could not check" for the globals it would have looked up,
+        // not for one from elsewhere that it never does: offline as
+        // online, that row says nothing of updates (as pip's required
+        // packages, `pip.rs`).
+        let runner = ls_global_answering(
+            0,
+            r#"{"name": "lib", "dependencies": {
+              "mytool": {"version": "0.0.0-development",
+                         "resolved": "file:../../../../Users/you/dev/mytool"},
+              "prettier": {"version": "3.8.1",
+                           "resolved": "https://registry.npmjs.org/prettier/-/prettier-3.8.1.tgz"}
+            }}"#,
+            "",
+        );
+        runner.respond(
+            vec![
+                "/opt/homebrew/bin/npm",
+                "outdated",
+                "-g",
+                "--json",
+                "--prefix",
+                "/opt/homebrew",
+            ],
+            CommandOutput {
+                stderr_cause: Default::default(),
+                exit_code: Some(1),
+                stdout: String::new(),
+                stderr: "npm error code ENOTFOUND".to_string(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let rows: Vec<(String, bool)> = NpmAdapter::new(runner)
+            .check_updates(&test_instance(), &CheckOptions::default())
+            .await
+            .expect("a registry that did not answer is not a source failure")
+            .candidates
+            .into_iter()
+            .map(|c| (c.key.name, c.checkable))
+            .collect();
+        assert_eq!(rows, [("prettier".to_string(), false)]);
+    }
+
+    #[tokio::test]
     async fn r45_a_link_npm_reads_no_version_for_is_no_row_with_nothing_else_listed() {
         // R45-2: an `npm link` whose package.json has no "version" is in
         // `npm outdated -g` with no `current` (an uncheckable row) and in

@@ -1832,6 +1832,52 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn r45_a_tool_no_check_looks_up_is_no_could_not_check_row_when_the_check_fails() {
+        // R45-1: pipx 1.16+ skips a tool not installed from an index, so
+        // a `pipx list --outdated` that fails without naming its failures
+        // is "could not check" for the others only: offline as online,
+        // that tool's row says nothing of updates (as pip's required
+        // packages, `pip.rs`).
+        let list = r#"{"venvs":{
+          "llm":{"metadata":{"main_package":{"package":"llm","package_version":"0.19",
+                 "package_or_url":"git+https://github.com/simonw/llm"}}},
+          "cowsay":{"metadata":{"main_package":{"package":"cowsay","package_version":"6.1"}}}
+        }}"#;
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec!["/opt/homebrew/bin/pipx", "list", "--outdated"],
+            CommandOutput {
+                stderr_cause: Default::default(),
+                exit_code: Some(1),
+                stdout: String::new(),
+                stderr: "Error: Could not reach pypi.org".to_string(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        runner.respond(
+            vec!["/opt/homebrew/bin/pipx", "list", "--json"],
+            CommandOutput {
+                stderr_cause: Default::default(),
+                exit_code: Some(0),
+                stdout: list.to_string(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let rows: Vec<(String, bool)> = PipxAdapter::new(runner, Arc::new(MockHttpClient::new()))
+            .check_updates(&test_instance(), &CheckOptions::default())
+            .await
+            .expect("an index that did not answer is not a source failure")
+            .candidates
+            .into_iter()
+            .map(|c| (c.key.name, c.checkable))
+            .collect();
+        assert_eq!(rows, [("cowsay".to_string(), false)]);
+    }
+
+    #[tokio::test]
     async fn test_native_check_updates_marks_every_tool_uncheckable_when_the_lookup_fails() {
         // pipx >= 1.16 has its own `list --outdated`, which reaches PyPI.
         // Below 1.16 the same failure already produced `checkable: false`
