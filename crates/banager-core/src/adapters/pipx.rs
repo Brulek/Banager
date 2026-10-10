@@ -382,8 +382,8 @@ impl ListAnswer {
 /// {error}` (`outdated.py:36-43`), the error running on until the next
 /// such line, and the healthy environments' lines on stdout, then exits 1.
 /// Each listed tool named gets the words from its line to the next line
-/// that names one; a name that is no listed tool (an environment `list
-/// --json` left out) gets none.
+/// that names one or starts a left-out environment's failure
+/// (`left_out_failure_head`); a left-out environment gets none.
 fn failures_by_tool(stderr: &str, listed: &HashSet<&str>) -> HashMap<String, String> {
     let mut out: HashMap<String, String> = HashMap::new();
     let mut current: Option<String> = None;
@@ -391,6 +391,8 @@ fn failures_by_tool(stderr: &str, listed: &HashSet<&str>) -> HashMap<String, Str
         if let Some((name, _)) = line.split_once(": ") {
             if listed.contains(name) {
                 current = Some(name.to_string());
+            } else if left_out_failure_head(line) {
+                current = None;
             }
         }
         if let Some(name) = &current {
@@ -400,6 +402,36 @@ fn failures_by_tool(stderr: &str, listed: &HashSet<&str>) -> HashMap<String, Str
         }
     }
     out
+}
+
+/// Whether `line` starts the failure of an environment that is no listed
+/// tool: `{environment}: {error}`, the name without capitals or spaces and
+/// the error one pipx 1.17 words itself (`outdated.py:177,190`,
+/// `backends/_base.py:128`, `venv_inspect.py:475`). Any other line that
+/// names no listed tool, such as the backend's own `error: …`, goes on the
+/// failure before it.
+fn left_out_failure_head(line: &str) -> bool {
+    let Some((name, error)) = line.split_once(": ") else {
+        return false;
+    };
+    !name.is_empty()
+        && !name.chars().any(|c| c.is_whitespace() || c.is_uppercase())
+        && (error == "Missing internal pipx metadata."
+            || error.starts_with("Package backend exited with code ")
+            || (error.starts_with("Package ") && error.ends_with(" has corrupt pipx metadata."))
+            || error.ends_with(" while pipx inspected its environment."))
+}
+
+/// Whether a `pipx list --outdated` that exited 1 finished and said which
+/// environments it could not check, rather than dying before it printed
+/// anything: pipx 1.17 doesn't catch the FileNotFoundError a pip-backend
+/// environment whose Python is gone raises, so `cli()` ends in a traceback
+/// with nothing on stdout (`main.py` `cli`).
+fn named_its_failures(stderr: &str, failures: &HashMap<String, String>) -> bool {
+    !stderr
+        .lines()
+        .any(|line| line.starts_with("Traceback (most recent call last):"))
+        && (!failures.is_empty() || stderr.lines().any(left_out_failure_head))
 }
 
 /// The venv the pipx at `program` is in, when pipx installed itself
@@ -669,9 +701,9 @@ impl PipxAdapter {
                 // it could not: those listed tools are "could not check",
                 // in pipx's words for each, and the lines it printed for
                 // the rest stand. Without such an answer -- another exit,
-                // or nothing that names an environment while the list left
-                // none out -- every tool is, with pipx's first words.
-                if output.exit_code == Some(1) && (list.left_out || !failures.is_empty()) {
+                // a crash, or nothing that names an environment's failure
+                // -- every tool is, with pipx's first words.
+                if output.exit_code == Some(1) && named_its_failures(&output.stderr, &failures) {
                     let mut candidates: Vec<UpdateCandidate> =
                         parse_outdated(&output.stdout, &inst.id)
                             .into_iter()
@@ -1922,6 +1954,64 @@ mod tests {
             .warnings
             .iter()
             .any(|w| matches!(w, Warning::Message(m) if m.contains("Could not reach pypi.org") && !m.contains("black"))));
+    }
+
+    #[tokio::test]
+    async fn regression_r43_2_a_crashed_outdated_check_is_no_answer() {
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec!["/opt/homebrew/bin/pipx", "list", "--json"],
+            list_without_a_broken_venv(),
+        );
+        // pipx 1.17's `list --outdated` when the broken environment uses the
+        // pip backend: running its missing Python raises FileNotFoundError,
+        // which `_collect_outdated` doesn't catch, so pipx dies before
+        // printing the healthy environments' lines (`main.py` `cli`).
+        runner.respond(
+            vec!["/opt/homebrew/bin/pipx", "list", "--outdated"],
+            CommandOutput {
+                stderr_cause: Default::default(),
+                exit_code: Some(1),
+                stdout: String::new(),
+                stderr: "Traceback (most recent call last):\n  File \"/opt/homebrew/bin/pipx\", line 8, in <module>\n    sys.exit(cli())\nFileNotFoundError: [Errno 2] No such file or directory: '/Users/me/.local/pipx/venvs/black/bin/python'\n"
+                    .to_string(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let adapter = PipxAdapter::new(runner, Arc::new(MockHttpClient::new()));
+        let outcome = adapter
+            .check_updates(&test_instance(), &CheckOptions::default())
+            .await
+            .expect("a crashed check is each tool's \"could not check\"");
+        let rows: Vec<_> = outcome
+            .candidates
+            .iter()
+            .map(|c| (c.key.name.as_str(), c.checkable))
+            .collect();
+        assert_eq!(rows, [("cowsay", false), ("ruff", false)]);
+        assert_eq!(outcome.notes, [InstanceNote::SomeNotListed]);
+    }
+
+    #[test]
+    fn regression_r43_2_a_left_out_environments_failure_is_no_listed_tools() {
+        let listed: HashSet<&str> = ["aaa", "ruff"].into_iter().collect();
+        let failures = failures_by_tool(
+            "aaa: Could not reach pypi.org\nblack: Package backend exited with code 1.\nstderr: error: No interpreter found\nruff: /Users/me/.local/pipx/venvs/ruff/bin/python exited with code 1 while pipx inspected its environment.\n",
+            &listed,
+        );
+        assert_eq!(failures["aaa"], "aaa: Could not reach pypi.org\n");
+        assert!(failures["ruff"].starts_with("ruff: "));
+        assert_eq!(failures.len(), 2);
+        // A listed tool's own backend error keeps all its lines.
+        let failures = failures_by_tool(
+            "aaa: Package backend exited with code 1.\nstderr: error: No interpreter found\n",
+            &listed,
+        );
+        assert_eq!(
+            failures["aaa"],
+            "aaa: Package backend exited with code 1.\nstderr: error: No interpreter found\n"
+        );
     }
 
     #[tokio::test]

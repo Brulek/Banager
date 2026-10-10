@@ -2353,7 +2353,13 @@ more so every installed tool can be listed as "could not check", with the
 reason — one more process than the table shows, on that path only. When it
 exits 1 having named on stderr the environments it could not check (each
 as `name: error`), only those tools are "could not check", each with its
-own words, and the lines it printed for the others stand.
+own words, and the lines it printed for the others stand. A line counts
+as naming an environment `list --json` left out only when its error is one
+pipx words itself (`Package backend exited with code …`, say), so the
+backend's own `error: …` lines stay with the tool before them. When pipx
+instead crashed (a Python traceback on stderr, as pipx 1.17 does when a
+left-out environment that uses pip has lost its Python, with nothing on
+stdout), every tool is "could not check", never "up to date".
 pipx runs `pip list --outdated` in each tool's environment and keeps that
 command's error output to its own debug log, so a lookup pip gave up on
 there (as under pip, below) reaches Banager as no update; Banager cannot
