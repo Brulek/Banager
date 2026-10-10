@@ -729,10 +729,10 @@ async fn pipx_upgrade(upgrade_output: CommandOutput, mut lists: Vec<String>) -> 
     };
     upgrade(
         &runner,
-        Arc::new(PipxAdapter::new(
-            runner.clone(),
-            Arc::new(MockHttpClient::new()),
-        )),
+        Arc::new(
+            PipxAdapter::new(runner.clone(), Arc::new(MockHttpClient::new()))
+                .with_own_venv_fn(|_| None),
+        ),
         inst,
         ArtifactKind::Tool,
         "cowsay",
@@ -844,10 +844,10 @@ async fn pipx_uninstall(uninstall_output: CommandOutput, list_after: &str) -> Ou
     submit(
         OpKind::Uninstall,
         &runner,
-        Arc::new(PipxAdapter::new(
-            runner.clone(),
-            Arc::new(MockHttpClient::new()),
-        )),
+        Arc::new(
+            PipxAdapter::new(runner.clone(), Arc::new(MockHttpClient::new()))
+                .with_own_venv_fn(|_| None),
+        ),
         inst,
         ArtifactKind::Tool,
         "cowsay",
@@ -926,7 +926,11 @@ async fn uv_upgrade(upgrade_output: CommandOutput, lists: Vec<String>) -> Outcom
     upgrade(
         &runner,
         // Not the `UV_TOOL_DIR` of the Mac running the test.
-        Arc::new(UvAdapter::new(runner.clone()).with_tool_dir_fn(|| None)),
+        Arc::new(
+            UvAdapter::new(runner.clone())
+                .with_tool_dir_fn(|| None)
+                .with_own_tool_fn(|_| None),
+        ),
         inst,
         ArtifactKind::Tool,
         "ruff",

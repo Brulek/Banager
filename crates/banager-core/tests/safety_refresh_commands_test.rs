@@ -387,9 +387,13 @@ async fn test_a_refresh_runs_only_the_read_only_commands_each_sources_section_sh
     let http = Arc::new(MockHttpClient::new());
     let mut adapters: Vec<Arc<dyn Adapter>> = vec![
         Arc::new(NpmAdapter::new(runner.clone()).looking_at_no_homebrew_prefix()),
-        Arc::new(PipxAdapter::new(runner.clone(), http.clone())),
+        Arc::new(PipxAdapter::new(runner.clone(), http.clone()).with_own_venv_fn(|_| None)),
         // Not the `UV_TOOL_DIR` of the Mac running the test.
-        Arc::new(UvAdapter::new(runner.clone()).with_tool_dir_fn(|| None)),
+        Arc::new(
+            UvAdapter::new(runner.clone())
+                .with_tool_dir_fn(|| None)
+                .with_own_tool_fn(|_| None),
+        ),
         Arc::new(CargoAdapter::new(runner.clone(), http.clone())),
         Arc::new(PipAdapter::new(runner.clone())),
         // Its daemon does not answer, and the app that would start it is

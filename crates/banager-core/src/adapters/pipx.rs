@@ -6,9 +6,9 @@ use crate::adapters::{
 use crate::events::{EventSink, OpId};
 use crate::http::HttpClient;
 use crate::model::{
-    ArtifactFacts, ArtifactKey, ArtifactKind, CancelPolicy, CommandInputs, InstallReason, InstanceNote,
-    InstalledArtifact, InstanceStatus, ManagerInstance, OpKind, OpRequest, Outcome, Plan,
-    PlanAction, ProvidedCommand, Reconciled, ResourceLock, Scope, SearchHit, Unavailable,
+    ArtifactFacts, ArtifactKey, ArtifactKind, CancelPolicy, CommandInputs, InstallReason,
+    InstalledArtifact, InstanceNote, InstanceStatus, ManagerInstance, OpKind, OpRequest, Outcome,
+    Plan, PlanAction, ProvidedCommand, Reconciled, ResourceLock, Scope, SearchHit, Unavailable,
     UninstallBlocked, UninstallScope, UpdateBlocked, UpdateCandidate, UpdateChannel, Warning,
 };
 use crate::runner::{resolve_exe, CommandOutput, CommandRunner, CommandSpec, HostEnv, OutputUse};
@@ -132,14 +132,14 @@ fn from_index(package: &PipxMainPackage) -> bool {
         .find(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.')))
         .unwrap_or(requirement.len());
     let (name, rest) = requirement.split_at(name_end);
-    const ARCHIVES: [&str; 7] = [".whl", ".zip", ".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tar.xz"];
+    const ARCHIVES: [&str; 7] = [
+        ".whl", ".zip", ".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tar.xz",
+    ];
     !editable
         && name.starts_with(|c: char| c.is_ascii_alphanumeric())
         && name.ends_with(|c: char| c.is_ascii_alphanumeric())
         && !ARCHIVES.iter().any(|archive| name.ends_with(archive))
-        && rest
-            .chars()
-            .all(|c| !matches!(c, '@' | '/' | '\\' | ':'))
+        && rest.chars().all(|c| !matches!(c, '@' | '/' | '\\' | ':'))
         && rest
             .trim_start()
             .chars()
@@ -402,24 +402,50 @@ fn failures_by_tool(stderr: &str, listed: &HashSet<&str>) -> HashMap<String, Str
     out
 }
 
-/// The venv the pipx Banager runs is in, when pipx installed itself
+/// The venv the pipx at `program` is in, when pipx installed itself
 /// (`~/.local/bin/pipx` leading into `<PIPX_HOME>/venvs/pipx`, pipx 1.17's
 /// `self_install.py`): that tool is `UninstallBlocked::SourceProgram`.
-fn own_venv(inst: &ManagerInstance) -> Option<PathBuf> {
-    super::own_tool_environment(&inst.exe_path, "venvs")
+fn own_venv(program: &Path) -> Option<PathBuf> {
+    super::own_tool_environment(program, "venvs")
 }
+
+/// `PipxAdapter::own_venv_fn` as `PipxAdapter::new` sets it.
+#[cfg(not(test))]
+const DEFAULT_OWN_VENV_FN: fn(&Path) -> Option<PathBuf> = own_venv;
+#[cfg(test)]
+const DEFAULT_OWN_VENV_FN: fn(&Path) -> Option<PathBuf> = |_| None;
 
 pub struct PipxAdapter {
     runner: Arc<dyn CommandRunner>,
     http: Arc<dyn HttpClient>,
     meta: AdapterMeta,
+    /// Where the pipx at a path is a tool of its own (`own_venv`): looked
+    /// at by every list and uninstall preview. Inside this crate's unit
+    /// tests nothing is looked at unless a test sets it, and the
+    /// integration tests set it to nothing (`with_own_venv_fn`), so that no
+    /// test follows a link on the Mac running it.
+    own_venv_fn: fn(&Path) -> Option<PathBuf>,
 }
 
 impl PipxAdapter {
     pub fn new(runner: Arc<dyn CommandRunner>, http: Arc<dyn HttpClient>) -> PipxAdapter {
         let meta = AdapterMeta::from_toml(include_str!("../../../../adapters/meta/pipx.toml"))
             .expect("adapters/meta/pipx.toml must parse");
-        PipxAdapter { runner, http, meta }
+        PipxAdapter {
+            runner,
+            http,
+            meta,
+            own_venv_fn: DEFAULT_OWN_VENV_FN,
+        }
+    }
+
+    /// Test-only hook to set where the pipx at a path is a tool of its own
+    /// (see `own_venv_fn`). Public with the `test-support` feature, for the
+    /// integration tests, which are built without `cfg(test)`.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn with_own_venv_fn(mut self, own_venv_fn: fn(&Path) -> Option<PathBuf>) -> PipxAdapter {
+        self.own_venv_fn = own_venv_fn;
+        self
     }
 
     pub async fn detect(&self, env: &HostEnv) -> Vec<ManagerInstance> {
@@ -537,7 +563,7 @@ impl PipxAdapter {
         Ok(ListAnswer {
             artifacts: super::block_own_tool(
                 artifacts_from_list(root, &inst.id),
-                own_venv(inst).as_deref(),
+                (self.own_venv_fn)(&inst.exe_path).as_deref(),
             ),
             pinned,
             not_from_index,
@@ -636,11 +662,8 @@ impl PipxAdapter {
             // only on which pipx they happened to have installed.
             if output.exit_code != Some(0) {
                 let list = self.read_list(inst).await?;
-                let listed: HashSet<&str> = list
-                    .artifacts
-                    .iter()
-                    .map(|a| a.key.name.as_str())
-                    .collect();
+                let listed: HashSet<&str> =
+                    list.artifacts.iter().map(|a| a.key.name.as_str()).collect();
                 let failures = failures_by_tool(&output.stderr, &listed);
                 // pipx checked each environment on its own and said which
                 // it could not: those listed tools are "could not check",
@@ -699,7 +722,9 @@ impl PipxAdapter {
                 .cloned()
                 .collect();
             Ok(CheckOutcome {
-                candidates: self.check_outdated_via_pypi(&from_index, &list.pinned).await,
+                candidates: self
+                    .check_outdated_via_pypi(&from_index, &list.pinned)
+                    .await,
                 notes: list.notes(),
             })
         }
@@ -727,7 +752,8 @@ impl PipxAdapter {
         // the snapshot), so no preview of its uninstall is ever built. Its
         // update is planned as any tool's.
         if req.kind == OpKind::Uninstall
-            && own_venv(inst).is_some_and(|venv| venv.file_name() == Some(req.name.as_ref()))
+            && (self.own_venv_fn)(&inst.exe_path)
+                .is_some_and(|venv| venv.file_name() == Some(req.name.as_ref()))
         {
             return Err(AdapterError::UninstallBlocked {
                 reason: UninstallBlocked::SourceProgram,
@@ -1079,11 +1105,31 @@ mod tests {
         };
         let list = format!(
             r#"{{"venvs":{{{},{},{},{},{},{}}}}}"#,
-            venv("llm", r#","package_or_url":"git+https://github.com/simonw/llm""#, ""),
-            venv("mytool", r#","package_or_url":"/Users/someone/src/mytool""#, ""),
-            venv("devtool", r#","package_or_url":"devtool""#, r#","pip_args":["--editable"]"#),
-            venv("wheel-tool", r#","package_or_url":"wheel_tool-1.0-py3-none-any.whl""#, ""),
-            venv("black", r#","package_or_url":"black[d] >=24""#, r#","pip_args":[]"#),
+            venv(
+                "llm",
+                r#","package_or_url":"git+https://github.com/simonw/llm""#,
+                ""
+            ),
+            venv(
+                "mytool",
+                r#","package_or_url":"/Users/someone/src/mytool""#,
+                ""
+            ),
+            venv(
+                "devtool",
+                r#","package_or_url":"devtool""#,
+                r#","pip_args":["--editable"]"#
+            ),
+            venv(
+                "wheel-tool",
+                r#","package_or_url":"wheel_tool-1.0-py3-none-any.whl""#,
+                ""
+            ),
+            venv(
+                "black",
+                r#","package_or_url":"black[d] >=24""#,
+                r#","pip_args":[]"#
+            ),
             venv("cowsay", "", ""),
         );
         let runner = Arc::new(MockRunner::new());
@@ -1168,7 +1214,8 @@ mod tests {
                 cancelled: false,
             },
         );
-        let adapter = PipxAdapter::new(runner, Arc::new(MockHttpClient::new()));
+        let adapter =
+            PipxAdapter::new(runner, Arc::new(MockHttpClient::new())).with_own_venv_fn(own_venv);
         let inst = ManagerInstance {
             exe_path: exe.clone(),
             prefix: bin.clone(),
@@ -1187,9 +1234,13 @@ mod tests {
             artifact_kind: ArtifactKind::Tool,
             name: name.to_string(),
         };
-        let uninstall_pipx = adapter.plan(&inst, &request(OpKind::Uninstall, "pipx")).await;
+        let uninstall_pipx = adapter
+            .plan(&inst, &request(OpKind::Uninstall, "pipx"))
+            .await;
         let upgrade_pipx = adapter.plan(&inst, &request(OpKind::Upgrade, "pipx")).await;
-        let uninstall_cowsay = adapter.plan(&inst, &request(OpKind::Uninstall, "cowsay")).await;
+        let uninstall_cowsay = adapter
+            .plan(&inst, &request(OpKind::Uninstall, "cowsay"))
+            .await;
         std::fs::remove_dir_all(&root).unwrap();
         assert_eq!(
             blocked,
@@ -1836,7 +1887,10 @@ mod tests {
             artifact_kind: ArtifactKind::Tool,
             name: "cowsay".to_string(),
         };
-        let plan = adapter.plan(&inst, &upgrade).await.expect("the pin read answered");
+        let plan = adapter
+            .plan(&inst, &upgrade)
+            .await
+            .expect("the pin read answered");
         assert_eq!(command_args(&plan), ["upgrade", "cowsay"]);
 
         // A listed environment pipx could not check is that tool's own
@@ -1847,8 +1901,9 @@ mod tests {
                 stderr_cause: Default::default(),
                 exit_code: Some(1),
                 stdout: "cowsay: 5.0 -> 6.1\n".to_string(),
-                stderr: "black: Package backend exited with code 1.\nruff: Could not reach pypi.org\n"
-                    .to_string(),
+                stderr:
+                    "black: Package backend exited with code 1.\nruff: Could not reach pypi.org\n"
+                        .to_string(),
                 timed_out: false,
                 cancelled: false,
             },

@@ -1748,7 +1748,8 @@ mod tests {
         file_at(&mise, 0o755);
         let shims = root.join(".local/share/mise/shims");
         std::fs::create_dir_all(&shims).unwrap();
-        let site = root.join(".local/share/mise/installs/python/3.13.7/lib/python3.13/site-packages");
+        let site =
+            root.join(".local/share/mise/installs/python/3.13.7/lib/python3.13/site-packages");
         std::fs::create_dir_all(site.join("pip")).unwrap();
         let runner = Arc::new(MockRunner::new());
         for name in ["python3.14", "python3.13", "python3", "python"] {

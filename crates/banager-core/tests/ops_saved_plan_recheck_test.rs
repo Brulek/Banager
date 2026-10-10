@@ -404,7 +404,11 @@ async fn ruff_updated_in_terminal(
     );
     runner.script(&upgrade, vec![exited(0, "", "Nothing to upgrade\n")]);
     let ran = confirm_then_run(
-        Arc::new(UvAdapter::new(runner.clone()).with_tool_dir_fn(|| None)),
+        Arc::new(
+            UvAdapter::new(runner.clone())
+                .with_tool_dir_fn(|| None)
+                .with_own_tool_fn(|_| None),
+        ),
         &inst,
         request(&inst, OpKind::Upgrade, ArtifactKind::Tool, "ruff"),
         Some("0.16.8"),
@@ -760,7 +764,11 @@ async fn uv_update(
         vec![exited(0, "", "Updated ruff v0.15.0 -> v0.16.8\n")],
     );
     let ran = confirm_then_run(
-        Arc::new(UvAdapter::new(runner.clone()).with_tool_dir_fn(|| None)),
+        Arc::new(
+            UvAdapter::new(runner.clone())
+                .with_tool_dir_fn(|| None)
+                .with_own_tool_fn(|_| None),
+        ),
         &inst,
         request(&inst, OpKind::Upgrade, ArtifactKind::Tool, "ruff"),
         Some("0.16.8"),
@@ -870,7 +878,11 @@ fn uv_scripted(
         &[uv.as_str(), "tool", "upgrade", "ruff"],
         vec![exited(0, "", "Updated ruff v0.15.0 -> v0.16.8\n")],
     );
-    let adapter = Arc::new(UvAdapter::new(runner.clone()).with_tool_dir_fn(|| None));
+    let adapter = Arc::new(
+        UvAdapter::new(runner.clone())
+            .with_tool_dir_fn(|| None)
+            .with_own_tool_fn(|_| None),
+    );
     (inst, runner, adapter)
 }
 

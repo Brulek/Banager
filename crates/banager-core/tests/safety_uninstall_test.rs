@@ -99,14 +99,24 @@ fn cases(npm_prefix: &str, brew_prefix: &str, applications: &Path) -> Vec<Case> 
     );
     add(
         "pipx",
-        &|r| Arc::new(PipxAdapter::new(r, Arc::new(MockHttpClient::new()))),
+        &|r| {
+            Arc::new(
+                PipxAdapter::new(r, Arc::new(MockHttpClient::new())).with_own_venv_fn(|_| None),
+            )
+        },
         instance("pipx", "/opt/homebrew/bin/pipx", "/opt/homebrew"),
         ArtifactKind::Tool,
         "black",
     );
     add(
         "uv",
-        &|r| Arc::new(UvAdapter::new(r).with_tool_dir_fn(|| None)),
+        &|r| {
+            Arc::new(
+                UvAdapter::new(r)
+                    .with_tool_dir_fn(|| None)
+                    .with_own_tool_fn(|_| None),
+            )
+        },
         instance("uv", "/opt/homebrew/bin/uv", "/opt/homebrew"),
         ArtifactKind::Tool,
         "ruff",

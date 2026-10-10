@@ -520,10 +520,10 @@ async fn test_on_a_source_where_one_update_never_updates_another_none_is_done_by
         exe_path: PathBuf::from(PIPX),
         ..banager_core::testing::manager_instance("pipx", "pipx")
     };
-    let adapter: Arc<dyn Adapter> = Arc::new(PipxAdapter::new(
-        runner.clone(),
-        Arc::new(MockHttpClient::new()),
-    ));
+    let adapter: Arc<dyn Adapter> = Arc::new(
+        PipxAdapter::new(runner.clone(), Arc::new(MockHttpClient::new()))
+            .with_own_venv_fn(|_| None),
+    );
     let mut manager = OperationManager::new(Arc::new(VecSink::new()));
     manager.register_adapter(adapter.clone());
     let manager = Arc::new(manager);

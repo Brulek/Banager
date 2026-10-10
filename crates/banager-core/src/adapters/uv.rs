@@ -415,6 +415,25 @@ pub struct UvAdapter {
     /// (`with_tool_dir_fn`), so that no test answers differently on a Mac
     /// whose environment sets it.
     tool_dir_fn: fn() -> Option<OsString>,
+    /// Where the uv at a path is a tool of its own, when it installed
+    /// itself (`own_tool_environment`): looked at by every inventory and
+    /// uninstall preview. Inside this crate's unit tests nothing is looked
+    /// at unless a test sets it, and the integration tests set it to
+    /// nothing (`with_own_tool_fn`), so that no test follows a link on the
+    /// Mac running it.
+    own_tool_fn: fn(&Path) -> Option<PathBuf>,
+}
+
+/// `UvAdapter::own_tool_fn` as `UvAdapter::new` sets it.
+#[cfg(not(test))]
+const DEFAULT_OWN_TOOL_FN: fn(&Path) -> Option<PathBuf> = own_uv_tool;
+#[cfg(test)]
+const DEFAULT_OWN_TOOL_FN: fn(&Path) -> Option<PathBuf> = |_| None;
+
+/// The uv tool the uv at `program` is, when uv installed itself as a tool
+/// (`<tools>/<name>/bin/uv`, every link followed): `SourceProgram`.
+fn own_uv_tool(program: &Path) -> Option<PathBuf> {
+    super::own_tool_environment(program, "tools")
 }
 
 /// `UvAdapter::tool_dir_fn` as `UvAdapter::new` sets it: Banager's real
@@ -432,6 +451,7 @@ impl UvAdapter {
             runner,
             meta,
             tool_dir_fn: DEFAULT_TOOL_DIR_FN,
+            own_tool_fn: DEFAULT_OWN_TOOL_FN,
         }
     }
 
@@ -443,6 +463,15 @@ impl UvAdapter {
     #[cfg(any(test, feature = "test-support"))]
     pub fn with_tool_dir_fn(mut self, tool_dir_fn: fn() -> Option<OsString>) -> UvAdapter {
         self.tool_dir_fn = tool_dir_fn;
+        self
+    }
+
+    /// Test-only hook to set where the uv at a path is a tool of its own
+    /// (see `own_tool_fn`). Public with the `test-support` feature, for
+    /// the integration tests, which are built without `cfg(test)`.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn with_own_tool_fn(mut self, own_tool_fn: fn(&Path) -> Option<PathBuf>) -> UvAdapter {
+        self.own_tool_fn = own_tool_fn;
         self
     }
 
@@ -600,7 +629,7 @@ impl UvAdapter {
                     ..artifact
                 })
                 .collect(),
-            super::own_tool_environment(program, "tools").as_deref(),
+            (self.own_tool_fn)(program).as_deref(),
         ))
     }
 
@@ -690,7 +719,7 @@ impl UvAdapter {
             // (`own_tool_environment`): the gate refuses the same row from
             // the snapshot; no preview of its uninstall is built either.
             // Its update is planned as any tool's.
-            if super::own_tool_environment(&inst.exe_path, "tools")
+            if (self.own_tool_fn)(&inst.exe_path)
                 .is_some_and(|tool| tool.file_name() == Some(req.name.as_ref()))
             {
                 return Err(AdapterError::UninstallBlocked {
@@ -1643,7 +1672,7 @@ ruff v0.15.0 (/Users/someone/.local/share/uv/tools/ruff)
                 cancelled: false,
             },
         );
-        let adapter = UvAdapter::new(runner);
+        let adapter = UvAdapter::new(runner).with_own_tool_fn(own_uv_tool);
         let inst = ManagerInstance {
             exe_path: exe.clone(),
             prefix: bin.clone(),
