@@ -24,7 +24,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -48,7 +49,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -72,7 +74,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -96,7 +99,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -120,7 +124,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -144,7 +149,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -173,7 +179,8 @@ expression: result
       },
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -197,7 +204,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -221,7 +229,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -245,7 +254,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -269,7 +279,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -293,7 +304,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -317,7 +329,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -341,7 +354,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -365,7 +379,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -396,7 +411,8 @@ expression: result
       },
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -425,7 +441,8 @@ expression: result
       },
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -449,7 +466,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -480,7 +498,8 @@ expression: result
       },
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -504,7 +523,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -528,7 +548,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -552,7 +573,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -576,7 +598,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -600,7 +623,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -624,7 +648,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -648,7 +673,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -672,7 +698,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -696,7 +723,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -727,7 +755,8 @@ expression: result
       },
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -751,7 +780,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -775,7 +805,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -799,7 +830,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -830,7 +862,8 @@ expression: result
       },
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -861,7 +894,8 @@ expression: result
       },
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -892,7 +926,8 @@ expression: result
       },
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -916,7 +951,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -940,7 +976,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -964,7 +1001,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -988,7 +1026,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -1012,7 +1051,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -1036,7 +1076,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -1060,7 +1101,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -1084,7 +1126,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -1115,7 +1158,8 @@ expression: result
       },
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -1139,7 +1183,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -1163,7 +1208,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -1187,7 +1233,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -1211,7 +1258,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -1235,7 +1283,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -1259,7 +1308,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -1283,7 +1333,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -1307,7 +1358,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -1331,7 +1383,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -1362,7 +1415,8 @@ expression: result
       },
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -1393,7 +1447,8 @@ expression: result
       },
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -1417,7 +1472,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -1441,7 +1497,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -1465,7 +1522,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -1489,7 +1547,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -1513,7 +1572,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -1537,7 +1597,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -1568,7 +1629,8 @@ expression: result
       },
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -1592,7 +1654,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -1616,7 +1679,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -1640,7 +1704,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -1671,7 +1736,8 @@ expression: result
       },
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -1695,7 +1761,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -1719,7 +1786,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -1743,7 +1811,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -1767,7 +1836,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -1791,7 +1861,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -1815,7 +1886,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -1844,7 +1916,8 @@ expression: result
       },
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -1875,7 +1948,8 @@ expression: result
       },
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -1906,7 +1980,8 @@ expression: result
       },
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -1937,7 +2012,8 @@ expression: result
       },
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -1968,7 +2044,8 @@ expression: result
       },
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -1999,7 +2076,8 @@ expression: result
       },
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -2030,7 +2108,8 @@ expression: result
       },
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -2054,7 +2133,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -2078,7 +2158,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -2102,7 +2183,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -2126,7 +2208,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -2150,7 +2233,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -2181,7 +2265,8 @@ expression: result
       },
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -2205,7 +2290,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -2229,7 +2315,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -2260,7 +2347,8 @@ expression: result
       },
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -2284,7 +2372,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -2308,7 +2397,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -2337,7 +2427,8 @@ expression: result
       },
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -2361,7 +2452,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   },
   {
@@ -2385,7 +2477,8 @@ expression: result
       "homebrew": null,
       "commands": [],
       "commands_unavailable": false,
-      "unlinked": false
+      "unlinked": false,
+      "not_looked_up": false
     }
   }
 ]
