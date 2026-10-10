@@ -229,4 +229,46 @@ mod tests {
         drop(next);
         std::fs::remove_dir_all(directory).unwrap();
     }
+
+    #[test]
+    fn a_released_lock_is_taken_again_while_other_threads_spawn() {
+        // r16: the test above once failed in a full run, its lock not taken
+        // again right after `drop(guard)`. Other tests in this binary spawn
+        // processes at the same time (`/bin/echo`, `/usr/bin/false`, a
+        // probe script), and each spawned process holds a copy of every
+        // open descriptor, the `O_CLOEXEC` one too, until macOS has run its
+        // exec; a flock lasts while any copy is open. This repeats that.
+        let directory = std::env::temp_dir().join(format!(
+            "banager-instance-spawn-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let spawners: Vec<_> = (0..4)
+            .map(|_| {
+                let stop = stop.clone();
+                std::thread::spawn(move || {
+                    while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+                        let _ = std::process::Command::new("/usr/bin/true")
+                            .stdin(std::process::Stdio::null())
+                            .stdout(std::process::Stdio::null())
+                            .stderr(std::process::Stdio::null())
+                            .status();
+                    }
+                })
+            })
+            .collect();
+        let taken: Vec<_> = (0..300)
+            .map(|_| acquire(&directory).map(drop).map_err(|e| e.kind()))
+            .collect();
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        for spawner in spawners {
+            spawner.join().unwrap();
+        }
+        std::fs::remove_dir_all(directory).unwrap();
+        assert!(taken.iter().all(Result::is_ok), "{taken:?}");
+    }
 }
