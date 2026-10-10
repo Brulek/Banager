@@ -283,9 +283,8 @@ pub fn bin_programs_rustup_removes(
         .filter_map(|name| name.to_str().map(str::to_string))
         .filter(|name| removed(name))
         .collect();
-    let read = |name: &str| {
-        crate::adapters::read_file::read_text(&cargo_home.join(name), protected).ok()
-    };
+    let read =
+        |name: &str| crate::adapters::read_file::read_text(&cargo_home.join(name), protected).ok();
     let crates2 = read(".crates2.json");
     let merged = read(".crates.toml").and_then(|crates_toml| {
         merge_crates_v1(
