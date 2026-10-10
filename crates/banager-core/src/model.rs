@@ -1315,6 +1315,19 @@ pub enum Warning {
     /// read by `warningKey`, `warningArgs` and `warningDetailKey` in
     /// src/lib/warnings.ts.
     HomebrewForgetsTrust { name: String },
+    /// `brew services start` set this formula up to run in the background:
+    /// its service file is in `~/Library/LaunchAgents`, or in
+    /// `/Library/LaunchDaemons` when started with `sudo` (`system`), as
+    /// `sh.brew.<name>.plist` or `homebrew.mxcl.<name>.plist`
+    /// (`Homebrew::Service#plist_names`, `service.rb:86-105`;
+    /// `services/system.rb:68`, `:80`). `brew uninstall` neither stops the
+    /// service nor removes that file (`uninstall.rb:24-110` in Homebrew
+    /// 7.0.9), so the program keeps running from the deleted version, and
+    /// macOS keeps trying to start it at login. `name` is the formula's
+    /// name in the Cellar, for `brew services stop <name>` (r18 R46-3).
+    /// Produced by `BrewAdapter::plan` for a formula's `Uninstall`; read by
+    /// `warningKey` and `warningArgs` in src/lib/warnings.ts.
+    HomebrewServiceStays { name: String, system: bool },
     /// Once this upgrade of a formula has exited 0, Banager runs
     /// `brew cleanup <name>` (`PlanAction::CommandThen`), which deletes the
     /// formula's older versions -- `versions`, every version installed when

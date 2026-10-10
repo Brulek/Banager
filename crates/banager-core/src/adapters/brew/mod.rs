@@ -27,7 +27,7 @@ use async_trait::async_trait;
 use bottles::MacTag;
 use brew_env::HomebrewSwitches;
 use cask_receipt::{Classified, Recorded};
-use kegs::Kegs;
+use kegs::{Kegs, Service};
 use links::KegLinks;
 use parse::{parse_info_installed, parse_outdated, parse_search, parse_uses, parse_version};
 use std::collections::{HashMap, HashSet};
@@ -267,6 +267,13 @@ pub struct BrewAdapter {
     /// no test answers differently on the Mac running it. With none, no
     /// update is said to compile.
     mac_tag_fn: fn(&Path) -> Option<MacTag>,
+    /// How to look for a formula's `brew services` file, given the home
+    /// folder and the formula's name in the Cellar, for its uninstall
+    /// preview (`kegs::read_service`, r18 R46-3): the real
+    /// `~/Library/LaunchAgents` and `/Library/LaunchDaemons` outside this
+    /// crate's unit tests; inside them none unless a test installs a
+    /// reader (`with_service_fn`).
+    service_fn: fn(Option<&Path>, &str) -> Option<Service>,
     /// How to read whether a keg-only formula is linked into a prefix, and
     /// what holds its commands' places there, for its update's preview and
     /// around the update itself (`links::read_links`, y1-keg), and for the
@@ -362,6 +369,13 @@ const DEFAULT_KEGS_FN: fn(&Path, &str) -> Option<Kegs> = |_, _| None;
 
 /// `BrewAdapter::mac_tag_fn` as `BrewAdapter::new` sets it: this Mac in
 /// every build but this crate's unit tests, where there is none.
+/// `BrewAdapter::service_fn` as `BrewAdapter::new` sets it: the real
+/// folders in every build but this crate's unit tests, where none is read.
+#[cfg(not(test))]
+const DEFAULT_SERVICE_FN: fn(Option<&Path>, &str) -> Option<Service> = kegs::read_service;
+#[cfg(test)]
+const DEFAULT_SERVICE_FN: fn(Option<&Path>, &str) -> Option<Service> = |_, _| None;
+
 #[cfg(not(test))]
 const DEFAULT_MAC_TAG_FN: fn(&Path) -> Option<MacTag> = bottles::this_mac;
 #[cfg(test)]
@@ -515,6 +529,7 @@ impl BrewAdapter {
             kegs_fn: DEFAULT_KEGS_FN,
             racks_fn: DEFAULT_RACKS_FN,
             mac_tag_fn: DEFAULT_MAC_TAG_FN,
+            service_fn: DEFAULT_SERVICE_FN,
             links_fn: DEFAULT_LINKS_FN,
             keg_only: Mutex::new(HashMap::new()),
             unlisted_racks: Mutex::new(HashMap::new()),
@@ -660,6 +675,17 @@ impl BrewAdapter {
         self
     }
 
+    /// Test-only hook to put a formula's `brew services` file where its
+    /// uninstall preview looks (see `service_fn`).
+    #[cfg(test)]
+    fn with_service_fn(
+        mut self,
+        service_fn: fn(Option<&Path>, &str) -> Option<Service>,
+    ) -> BrewAdapter {
+        self.service_fn = service_fn;
+        self
+    }
+
     /// Test-only hook for the bottle tag of the Mac the inventory and the
     /// update's preview judge for (see `mac_tag_fn`).
     #[cfg(test)]
@@ -722,6 +748,7 @@ impl BrewAdapter {
         self.kegs_fn = |_, _| None;
         self.racks_fn = |_| None;
         self.mac_tag_fn = |_| None;
+        self.service_fn = |_, _| None;
         self.links_fn = |_, _| None;
         self.prefix_identity_fn = |_| None;
         self
@@ -749,6 +776,7 @@ impl BrewAdapter {
         };
         self.trust_list_fn = |_| Some(TrustList::default());
         self.mac_tag_fn = |_| None;
+        self.service_fn = |_, _| None;
         self.applications = applications.to_path_buf();
         self.prefix_identity_fn = |_| None;
         self
@@ -5161,6 +5189,62 @@ mod plan_execute_tests {
                 plan.warnings
             );
         }
+    }
+
+    /// r18 R46-3: a formula `brew services start` set up to run in the
+    /// background keeps running after `brew uninstall`, which neither
+    /// stops it nor removes its service file, so its uninstall preview
+    /// says so with the command that stops it.
+    #[tokio::test]
+    async fn a_formulas_uninstall_says_its_background_service_stays() {
+        fn ollama_service(home: Option<&Path>, name: &str) -> Option<Service> {
+            assert_eq!(home, Some(Path::new("/Users/someone")));
+            (name == "ollama").then_some(Service { system: false })
+        }
+        let runner = Arc::new(MockRunner::new());
+        for name in ["ollama", "jq"] {
+            runner.respond(
+                vec!["/opt/homebrew/bin/brew", "uses", "--installed", name],
+                CommandOutput {
+                    stderr_cause: Default::default(),
+                    exit_code: Some(0),
+                    stdout: String::new(),
+                    stderr: String::new(),
+                    timed_out: false,
+                    cancelled: false,
+                },
+            );
+        }
+        let adapter = BrewAdapter::new(runner)
+            .with_env_var_fn(|name| (name == "HOME").then(|| OsString::from("/Users/someone")))
+            .with_service_fn(ollama_service);
+        let inst = test_instance();
+        let uninstall = |name: &str| OpRequest {
+            kind: OpKind::Uninstall,
+            instance_id: inst.id.clone(),
+            artifact_kind: ArtifactKind::Formula,
+            name: name.to_string(),
+        };
+        let ollama = adapter
+            .plan(&inst, &uninstall("ollama"))
+            .await
+            .expect("plan");
+        assert!(
+            ollama.warnings.contains(&Warning::HomebrewServiceStays {
+                name: "ollama".to_string(),
+                system: false,
+            }),
+            "got {:?}",
+            ollama.warnings
+        );
+        let jq = adapter.plan(&inst, &uninstall("jq")).await.expect("plan");
+        assert!(
+            !jq.warnings
+                .iter()
+                .any(|w| matches!(w, Warning::HomebrewServiceStays { .. })),
+            "got {:?}",
+            jq.warnings
+        );
     }
 
     /// (F6 / M5) When `brew uses --installed {name}` itself fails (non-zero

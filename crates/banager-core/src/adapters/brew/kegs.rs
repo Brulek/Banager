@@ -77,6 +77,49 @@ pub(crate) fn read_racks(prefix: &Path) -> Option<Vec<String>> {
     Some(racks)
 }
 
+/// A formula's `brew services` file (`Warning::HomebrewServiceStays`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Service {
+    /// In `/Library/LaunchDaemons`, started with `sudo`, rather than in
+    /// the home folder's `Library/LaunchAgents`.
+    pub(crate) system: bool,
+}
+
+/// Where `brew services start` puts the service file of the formula
+/// `name` (a tap's `user/tap/name` is `name`), when one is there: in the
+/// home folder's `Library/LaunchAgents`, or in `/Library/LaunchDaemons`
+/// for one started with `sudo` (`services/system.rb:68`, `:80` in
+/// Homebrew 7.0.9), named `sh.brew.<name>.plist` or, as older versions of
+/// Homebrew named it, `homebrew.mxcl.<name>.plist`
+/// (`Homebrew::Service#plist_names`, `service.rb:86-105`). Only `lstat`:
+/// nothing in or through a protected place, and no file's contents.
+#[cfg_attr(test, allow(dead_code))]
+pub(crate) fn read_service(home: Option<&Path>, name: &str) -> Option<Service> {
+    read_service_in(home, Path::new("/Library/LaunchDaemons"), name)
+}
+
+/// `read_service`, with `daemons` for `/Library/LaunchDaemons`.
+fn read_service_in(home: Option<&Path>, daemons: &Path, name: &str) -> Option<Service> {
+    let short = name.rsplit('/').next().filter(|short| plain(short))?;
+    let protected = Protected::of_this_process();
+    let files = [
+        format!("sh.brew.{short}.plist"),
+        format!("homebrew.mxcl.{short}.plist"),
+    ];
+    let folders = home
+        .map(|home| (home.join("Library/LaunchAgents"), false))
+        .into_iter()
+        .chain([(daemons.to_path_buf(), true)]);
+    for (folder, system) in folders {
+        for file in &files {
+            if look::lstat(&folder.join(file), &protected).is_ok_and(|meta| meta.is_file()) {
+                return Some(Service { system });
+            }
+        }
+    }
+    None
+}
+
 /// Whether `name` is one plain path component: not empty, no `/`, not `.`
 /// or `..`.
 fn plain(name: &str) -> bool {
@@ -206,6 +249,34 @@ mod tests {
         racks.sort();
         assert_eq!(racks, ["jq", "speedtest"]);
         std::fs::remove_dir_all(&prefix).unwrap();
+    }
+
+    #[test]
+    fn finds_a_formulas_brew_services_file_by_either_name_in_either_folder() {
+        let root = temp_dir("services");
+        let home = root.join("home");
+        let agents = home.join("Library/LaunchAgents");
+        let daemons = root.join("LaunchDaemons");
+        std::fs::create_dir_all(&agents).unwrap();
+        std::fs::create_dir_all(&daemons).unwrap();
+        let find = |name: &str| read_service_in(Some(&home), &daemons, name);
+        assert_eq!(find("ollama"), None);
+        std::fs::write(agents.join("homebrew.mxcl.ollama.plist"), b"").unwrap();
+        std::fs::write(agents.join("sh.brew.redis.plist"), b"").unwrap();
+        std::fs::write(daemons.join("sh.brew.unbound.plist"), b"").unwrap();
+        std::fs::create_dir(agents.join("sh.brew.folder.plist")).unwrap();
+        assert_eq!(find("ollama"), Some(Service { system: false }));
+        assert_eq!(find("someone/tap/redis"), Some(Service { system: false }));
+        assert_eq!(find("unbound"), Some(Service { system: true }));
+        assert_eq!(
+            read_service_in(None, &daemons, "unbound"),
+            Some(Service { system: true })
+        );
+        assert_eq!(read_service_in(None, &daemons, "ollama"), None);
+        // A folder is no service file, and `..` no formula.
+        assert_eq!(find("folder"), None);
+        assert_eq!(find(".."), None);
+        std::fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]
