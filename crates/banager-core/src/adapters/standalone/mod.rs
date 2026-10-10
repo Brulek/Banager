@@ -742,8 +742,8 @@ impl StandaloneAdapter {
     /// check" row, never an `Err`: a failed lookup is not knowing, and an
     /// `Err` would hold the whole source stale.
     ///
-    /// `include_self_updating` is not read: that is Homebrew's `--greedy-auto-updates`
-    /// for casks whose live version `brew outdated` cannot see. This badge
+    /// `include_self_updating` is not read: that is Homebrew's switch,
+    /// for casks that update themselves. This badge
     /// compares the launcher's live version and is true whatever the
     /// switch says; that the tool usually updates itself is for the row to
     /// say (the Updates page's 「会自行更新」, `saysItUpdatesItself`), not
@@ -2978,8 +2978,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_check_updates_ignores_the_include_self_updating_switch() {
-        // D5: the switch is Homebrew's, for casks whose live
-        // version `brew outdated` cannot see. This badge is read from the
+        // D5: the switch is Homebrew's, for casks that update
+        // themselves. This badge is read from the
         // launcher's live version and is true whatever the switch says.
         for include_self_updating in [false, true] {
             let home = TempHome::new("check-greedy");

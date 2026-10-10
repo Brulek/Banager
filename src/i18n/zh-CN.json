@@ -1185,7 +1185,7 @@
     },
     "includeSelfUpdating": {
       "label": "显示自带更新的Homebrew App",
-      "description": "在“更新”中也显示通过Homebrew安装、自带更新功能的App，例如Chrome。版本标为“latest”的App不检查。其他来源的工具不受这项影响。"
+      "description": "当Homebrew有比这台Mac上更新的版本时，在“更新”中也显示通过Homebrew安装、自带更新功能的App，例如Chrome。版本标为“latest”的App不检查。其他来源的工具不受这项影响。"
     },
     "autoCheck": {
       "label": "检查更新",

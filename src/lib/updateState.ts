@@ -525,9 +525,10 @@ export function notLookedUp(artifact: InstalledArtifact): boolean {
  * of each such cask to see whether it changed (R47-2, r18) -- and, while
  * Settings' "Show Homebrew apps that have their own updater"
  * (`include_self_updating`) is off, a cask that updates itself
- * (`auto_updates`, from `brew info`'s `auto_updates: true`). Banager passes
- * `--greedy-auto-updates` to `brew outdated --json=v2` only while that
- * switch is on (crates/banager-core/src/adapters/brew/mod.rs). No update
+ * (`auto_updates`, from `brew info`'s `auto_updates: true`): while that
+ * switch is off Banager runs `brew outdated --json=v2` with
+ * `HOMEBREW_NO_UPGRADE_AUTO_UPDATES_CASKS=1` (R47-4,
+ * crates/banager-core/src/adapters/brew/mod.rs). No update
  * listed for one left out is no news: the Installed page's row says nothing
  * about updates rather than 「已是最新」.
  *

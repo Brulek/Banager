@@ -2322,7 +2322,8 @@ fn test_what_we_run_traditional_chinese_summary_uses_the_windows_words() {
     }
 }
 
-/// n1 skeptic: the Settings switch that adds `--greedy-auto-updates` is "Show Homebrew
+/// n1 skeptic: the Settings switch whose off sets
+/// `HOMEBREW_NO_UPGRADE_AUTO_UPDATES_CASKS` (R47-4) is "Show Homebrew
 /// apps that have their own updater" (`settings.includeSelfUpdating.label`),
 /// and the button that shows a preview's command lines is "Show Command",
 /// or "Show Commands" when there is more than one (`commandPreview.show`,
@@ -2344,7 +2345,7 @@ fn test_what_we_run_names_the_setting_and_the_command_button_as_the_window_does(
     assert_eq!(
         folded.matches(&setting).count(),
         2,
-        "docs/what-we-run.md should say {setting:?} where a refresh is started and where `--greedy-auto-updates` is added"
+        "docs/what-we-run.md should say {setting:?} where a refresh is started and where its variable is set"
     );
     assert!(
         !folded.contains("include self-updating apps"),

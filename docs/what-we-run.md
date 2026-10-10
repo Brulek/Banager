@@ -1057,6 +1057,15 @@ default, updates only when its last fetch is more than a day old
 a tap-qualified name), which the update a refresh runs every six hours
 (below) normally prevents.
 
+The update check's `brew outdated` additionally carries
+`HOMEBREW_NO_UPGRADE_AUTO_UPDATES_CASKS=1` while the "Show Homebrew apps that have their own updater"
+setting is off (R47-4, r18): Homebrew 6 and later otherwise list an app
+that updates itself whenever the copy on the Mac is older than the
+catalogue's (`env_config.rb:661-665` and `:764-773`, `cask/cask.rb:445-449`
+in Homebrew 7.0.9), and the setting says such apps are listed only while
+it is on. A Homebrew that does not know the variable ignores it, and lists
+none of them without a `--greedy` flag anyway.
+
 Install and upgrade plans additionally carry `SUDO_ASKPASS` when it is
 already set in Banager's process environment (`askpass_fn`, read per
 plan). It only has any effect for casks whose installer scripts invoke
@@ -1781,7 +1790,7 @@ required (`BrewAdapter::update_steps`).
 |---|---|---|
 | Detect a Homebrew install | `<brew> --version` | 30 s |
 | List installed formulae + casks (`inventory`) | `<brew> info --installed --json=v2` | 120 s |
-| List outdated formulae + casks (`check_updates`) | `<brew> outdated --json=v2`, with no `--greedy` flag whether the "Show Homebrew apps that have their own updater" setting is on or off (below) | 120 s |
+| List outdated formulae + casks (`check_updates`) | `<brew> outdated --json=v2`, with no `--greedy` flag (below); while the setting that shows Homebrew apps with their own updater is off, with `HOMEBREW_NO_UPGRADE_AUTO_UPDATES_CASKS=1` (Environment, above) | 120 s |
 | Qualify the names `outdated` reported, and read which of them Homebrew disabled (once per `check_updates`) | `<brew> info --installed --json=v2` | 120 s |
 | Search by name | `<brew> search {query}` | 30 s |
 | Search by name + description | `<brew> search --desc {query}` | 30 s |

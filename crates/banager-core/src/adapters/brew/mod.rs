@@ -1488,6 +1488,17 @@ impl BrewAdapter {
         args: Vec<String>,
         timeout: Duration,
     ) -> Result<CommandOutput, AdapterError> {
+        self.run_brew_with(inst, args, &[], timeout).await
+    }
+
+    /// `run_brew`, with `extra` set on top of `ENV` for this one command.
+    async fn run_brew_with(
+        &self,
+        inst: &ManagerInstance,
+        args: Vec<String>,
+        extra: &[(&str, &str)],
+        timeout: Duration,
+    ) -> Result<CommandOutput, AdapterError> {
         self.refuse_if_root()?;
         if matches!(
             args.first().map(String::as_str),
@@ -1495,10 +1506,12 @@ impl BrewAdapter {
         ) {
             self.require_no_auto_update(&inst.prefix, &self.env_vec())?;
         }
+        let mut env = self.env_vec();
+        env.extend(extra.iter().map(|(k, v)| (k.to_string(), v.to_string())));
         let spec = CommandSpec {
             program: inst.exe_path.clone(),
             args,
-            env: self.env_vec(),
+            env,
             cwd: None,
             timeout,
             // `inventory`, `check_updates`, `plan`'s dependent scan and
@@ -2261,7 +2274,20 @@ impl BrewAdapter {
         // only when the app on the disk is older than the catalogue
         // (`auto_updates_bundle_outdated?`, `:819-850`).
         let args = vec!["outdated".to_string(), "--json=v2".to_string()];
-        let output = self.run_brew(inst, args, Duration::from_secs(120)).await?;
+        // R47-4 (r18): Homebrew 6 and later list such a cask by default
+        // (`HOMEBREW_UPGRADE_AUTO_UPDATES_CASKS`, `env_config.rb:764-773`);
+        // the switch says those apps are left off while it is off, which
+        // `HOMEBREW_NO_UPGRADE_AUTO_UPDATES_CASKS` does (`:661-665`,
+        // `cask/cask.rb:445-449`). An older Homebrew does not know it and
+        // lists none of them anyway.
+        let extra: &[(&str, &str)] = if opts.include_self_updating {
+            &[]
+        } else {
+            &[("HOMEBREW_NO_UPGRADE_AUTO_UPDATES_CASKS", "1")]
+        };
+        let output = self
+            .run_brew_with(inst, args, extra, Duration::from_secs(120))
+            .await?;
         if output.exit_code != Some(0) {
             return Err(AdapterError::CommandFailed {
                 code: output.exit_code,
