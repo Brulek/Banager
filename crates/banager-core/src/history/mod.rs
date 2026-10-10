@@ -398,7 +398,10 @@ fn detail_patterns() -> &'static DetailPatterns {
             label: re(
                 r"(?i)^(?:(?:error|fatal)\b\s*(?:\[[^\]]*\])?\s*:?|npm (?:err!|error)\b|E:)\s*",
             ),
-            home: re(r"(?i)(?:/System/Volumes/Data)?/Users/([^/\s'\x22`]+)"),
+            // Not right after a host or a folder's name (a web address's
+            // `/users/<id>`), and the name only what an account's can hold,
+            // so a colon or a quote after it stays (r20 R50 skeptic 1, 2).
+            home: re(r"(?i)(^|[^A-Za-z0-9_.-])((?:/System/Volumes/Data)?/Users/([A-Za-z0-9_.-]+))"),
             login: re(r"([A-Za-z][A-Za-z0-9+.-]*://)[^/\s@'\x22`]+@"),
             query: re(r"([A-Za-z][A-Za-z0-9+.-]*://[^\s?#'\x22`]*)[?#][^\s'\x22`]*"),
             address_path: re(r"([A-Za-z][A-Za-z0-9+.-]*://[^/\s'\x22`]+)(/[^\s'\x22`]*)"),
@@ -469,10 +472,10 @@ fn failure_detail_in(summary: &str, home: Option<&Path>) -> Option<String> {
     let text = home_as_tilde(&text, home);
     // `/Users/Shared` is no one's home (review of r6 y3-batch, finding 8).
     let text = p.home.replace_all(&text, |c: &regex::Captures<'_>| {
-        if c[1].eq_ignore_ascii_case("Shared") {
-            c[0].to_string()
+        if c[3].eq_ignore_ascii_case("Shared") {
+            format!("{}{}", &c[1], &c[2])
         } else {
-            "~".to_string()
+            format!("{}~", &c[1])
         }
     });
     let text = p.login.replace_all(&text, "${1}****@");
@@ -1865,7 +1868,9 @@ mod tests {
     #[test]
     fn test_the_kept_line_reads_every_shared_case_as_the_window_does() {
         // `failure_detail_cases.json` is read by src/lib/failureCause.test.ts
-        // too, so a failure says the same before a restart and after it.
+        // too, so a failure says the same before a restart and after it --
+        // read with no `HOME`, which the window does not know, so the
+        // tester's own does not count.
         #[derive(serde::Deserialize)]
         struct Case {
             name: String,
@@ -1876,7 +1881,7 @@ mod tests {
             serde_json::from_str(include_str!("failure_detail_cases.json")).expect("cases parse");
         assert!(cases.len() >= 8, "the shared cases are all there");
         for case in cases {
-            assert_eq!(failure_detail(&case.summary), case.detail, "{}", case.name);
+            assert_eq!(failure_detail_in(&case.summary, None), case.detail, "{}", case.name);
         }
     }
 

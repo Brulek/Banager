@@ -375,6 +375,19 @@ describe("the text's helpers", () => {
     expect(withoutHomePaths("/users/jane/.npm-global/bin")).toBe("~/.npm-global/bin");
     expect(withoutHomePaths("/system/volumes/data/USERS/jane/bin")).toBe("~/bin");
     expect(withoutHomePaths("/users/shared/bin and /USERS/SHARED")).toBe("/users/shared/bin and /USERS/SHARED");
+    // A web address's `/users/<id>` is no home folder, and what follows
+    // a name -- a colon, a quote, a comma -- stays (r20 R50 skeptic 1, 2).
+    expect(withoutHomePaths("Not Found https://api.github.com/users/octocat/repos")).toBe(
+      "Not Found https://api.github.com/users/octocat/repos",
+    );
+    expect(withoutHomePaths("unable to access https://gitlab.com/api/v4/users/42/projects")).toBe(
+      "unable to access https://gitlab.com/api/v4/users/42/projects",
+    );
+    expect(withoutHomePaths("file:///Users/jane/x.html")).toBe("file://~/x.html");
+    expect(withoutHomePaths("cannot open /Users/jane: Permission denied")).toBe("cannot open ~: Permission denied");
+    expect(withoutHomePaths("x '/Users/jane' y \"/Users/bob\"")).toBe("x '~' y \"~\"");
+    expect(withoutHomePaths("x /Users/Shared, y /Users/Shared: z")).toBe("x /Users/Shared, y /Users/Shared: z");
+    expect(withoutHomePaths("PATH=/Users/jane/bin:/Users/bob/bin")).toBe("PATH=~/bin:~/bin");
   });
 });
 

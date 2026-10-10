@@ -396,9 +396,12 @@ export function failureDetail(summary: string): string | null {
   const next = lines[index + 1];
   if (text.endsWith(":") && next !== undefined) text = `${text} ${next}`;
   const masked = text
-    // `/Users/Shared` is no one's home (review of r6 y3-batch, finding 8).
-    .replace(/(?:\/System\/Volumes\/Data)?\/Users\/([^/\s'"`]+)/gi, (whole: string, name: string) =>
-      name.toLowerCase() === "shared" ? whole : "~",
+    // `/Users/Shared` is no one's home (review of r6 y3-batch, finding 8);
+    // nor a web address's `/users/<id>` (r20 R50 skeptic 1).
+    .replace(
+      /(^|[^A-Za-z0-9_.-])((?:\/System\/Volumes\/Data)?\/Users\/([A-Za-z0-9_.-]+))/gi,
+      (_whole: string, before: string, path: string, name: string) =>
+        before + (name.toLowerCase() === "shared" ? path : "~"),
     )
     .replace(/([A-Za-z][A-Za-z0-9+.-]*:\/\/)[^/\s@'"`]+@/g, "$1****@")
     .replace(/([A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s?#'"`]*)[?#][^\s'"`]*/g, "$1")

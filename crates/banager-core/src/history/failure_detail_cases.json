@@ -63,5 +63,15 @@
     "name": "a home folder spelled in lower case or through the data volume is written as ~ too, the shared folder in any case is not",
     "summary": "Error: cannot open /users/jane/.npmrc or /System/Volumes/Data/Users/bob/x or /USERS/Shared/y",
     "detail": "cannot open ~/.npmrc or ~/x or /USERS/Shared/y"
+  },
+  {
+    "name": "a web address's /users/<id> is no home folder (r20 R50 skeptic 1)",
+    "summary": "Error: GitHub API Error: Not Found https://api.github.com/users/octocat/repos and https://gitlab.com/api/v4/users/42/projects",
+    "detail": "GitHub API Error: Not Found https://api.github.com/users/octocat/repos and https://gitlab.com/api/v4/users/42/projects"
+  },
+  {
+    "name": "what follows a home folder's name stays, and so does the shared folder before a comma (r20 R50 skeptic 2)",
+    "summary": "Error: cannot open /Users/jane: denied; '/Users/bob' and /Users/Shared, too",
+    "detail": "cannot open ~: denied; '~' and /Users/Shared, too"
   }
 ]
