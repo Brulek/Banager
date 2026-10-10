@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { rowFitFor, ToolRow } from "../components/ToolRow";
 import { ListWidthProvider, StatusColumnProvider, useElementWidth } from "../components/VirtualList";
@@ -14,6 +15,7 @@ import { revealFailureKey } from "../lib/revealFailure";
 import { elapsedSince, formatBytes } from "../lib/format";
 import { mediumDateText } from "../lib/shortDate";
 import { useRevealInFinder, useSettings, useSnapshot, useUnknownScan } from "../lib/queries";
+import { queryKeys } from "../lib/queryKeys";
 import type { EntryKind, ScanStop, UnknownEntry } from "../lib/types";
 
 /**
@@ -354,15 +356,22 @@ export function UnknownPage() {
   // refresh, most often) corrects a list judged against an empty
   // snapshot (ruling 9). Scan again, in the page header, asks regardless
   // (`ScanAgain`). `refetch` is stable
-  // across renders. In development, StrictMode (src/main.tsx) runs this
-  // effect twice on mount and the second `refetch` restarts the first
-  // scan: a read that is thrown away, accepted over `cancelRefetch:
-  // false`, which would make a generation change join a scan still
-  // judging against the old snapshot.
+  // across renders. A scan still under way when the generation moves
+  // judges the snapshot before it (the backend copies the snapshot as it
+  // starts), so it is called off first and a new one asked for: a bare
+  // `refetch` would join it while the query has no answer yet -- the
+  // first scan, the one the startup refresh most often lands during --
+  // and its outdated list would stand (R52-1). Called off here, its
+  // answer is thrown away; the backend finishes it and then scans the
+  // new snapshot (`scan_unknown` in src-tauri/src/ipc.rs). In
+  // development, StrictMode (src/main.tsx) runs this effect twice on
+  // mount; the second run finds nothing yet to call off and joins the
+  // first's scan.
+  const queryClient = useQueryClient();
   useEffect(() => {
     if (generation === undefined) return;
-    void refetch();
-  }, [refetch, generation]);
+    void queryClient.cancelQueries({ queryKey: queryKeys.unknown }).then(() => refetch());
+  }, [queryClient, refetch, generation]);
 
   const result = scan.data;
   const technical = settings?.show_technical_details ?? false;

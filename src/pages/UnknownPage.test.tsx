@@ -642,6 +642,41 @@ describe("UnknownPage", () => {
     await waitFor(() => expect(scanCalls()).toBe(2));
   });
 
+  it("scans again when the sources' snapshot moves while its first scan is still under way", async () => {
+    // The page opened just after launch: its first scan began against the
+    // snapshot before the startup refresh, which commits while that scan
+    // still runs. That scan judges the old snapshot (the backend copies it
+    // before scanning), so the page asks again rather than waiting on it,
+    // and the list is the second scan's (R52-1).
+    holdScan = true;
+    const { findByText, queryByText, queryClient } = renderWithProviders(<UnknownPage />);
+    await waitFor(() => expect(scanCalls()).toBe(1));
+    const releaseFirst = releaseScan;
+
+    await act(async () => {
+      queryClient.setQueryData<Snapshot>(queryKeys.snapshot, { ...snapshot, generation: 2 });
+      // The query cache tells the page on a timer of its own: the page
+      // sees the new generation before the first scan answers.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    await waitFor(() => expect(scanCalls()).toBe(2));
+
+    // The first scan answers with the old list, and the page keeps waiting.
+    await act(async () => {
+      releaseFirst();
+    });
+    expect(queryByText("standalone-tool")).not.toBeInTheDocument();
+
+    // The second answers with the list the new snapshot leaves.
+    scan = { ...baseScan, entries: [], attributed: baseScan.attributed + 1 };
+    await act(async () => {
+      releaseScan();
+    });
+    expect(await findByText("No other programs")).toBeInTheDocument();
+    expect(queryByText("standalone-tool")).not.toBeInTheDocument();
+    expect(scanCalls()).toBe(2);
+  });
+
   it("keeps the list and the line over it when a scan again fails", async () => {
     const { findByText, findByRole, getByText, queryClient } = renderWithProviders(<UnknownPage />);
     await findByText("standalone-tool");
