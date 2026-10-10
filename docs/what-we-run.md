@@ -2637,7 +2637,11 @@ a few hundred packages (an Anaconda base, say) used to run into a fixed 60
 seconds every time. Offline, five retries take pip about 7.5 seconds a
 package, so an environment of more than about 10 packages still runs into
 its limit and every package is listed as "could not check" -- after up to
-10 minutes for a large one. Banager makes no network request of its own for
+10 minutes for a large one. A check shows its results only once every
+source has finished checking, so that wait holds back every source's
+updates, Homebrew's and npm's too, not pip's only (the first check since
+launch still lists each source's packages as soon as it has read them).
+Banager makes no network request of its own for
 pip: `pip list --outdated` reaches PyPI itself.
 
 When that command fails, the interpreter is still listed as a source,

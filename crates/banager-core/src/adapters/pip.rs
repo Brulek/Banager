@@ -793,8 +793,10 @@ impl PipAdapter {
     /// author's Mac (0.75-1.26 s a PyPI page), so a fixed 60 s never
     /// finished for a few hundred -- an Anaconda base, Jupyter installed
     /// with pip -- and every package read "could not check" every round
-    /// (r15 R43-8). 60 s and 1.5 s more a package, at most 600 s, the
-    /// longest Banager gives any command it runs for an operation.
+    /// (r15 R43-8). 60 s and 1.5 s more a package, at most 600 s, what an
+    /// install, upgrade or uninstall is given. A round commits only once
+    /// every source's check has ended (`Session::refresh_recording`), so
+    /// this wait holds back every source's update results, not pip's only.
     pub const OUTDATED_BASE_SECS: u64 = 60;
     pub const OUTDATED_SECS_PER_PACKAGE: f64 = 1.5;
     pub const OUTDATED_MAX_SECS: u64 = 600;
