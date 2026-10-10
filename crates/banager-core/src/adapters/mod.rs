@@ -732,10 +732,6 @@ pub fn reconcile_from(artifacts: Vec<InstalledArtifact>, key: &ArtifactKey) -> R
     }
 }
 
-/// What every adapter but Homebrew's answers an `OpKind::Link` with: only a
-/// Homebrew formula is linked (`brew link --formula --force`, `NoAnswer::link_fixes`).
-/// Asked first in each `plan()`, before anything is read or run, and in
-/// every `match` over the kind after it.
 /// The tool environment a source's own program is in, when the source
 /// installed itself as one of its tools: `program`, every link followed
 /// (`protected::look::real_path`, never into a protected place), is
@@ -790,6 +786,10 @@ pub(crate) fn block_own_tool(
     artifacts
 }
 
+/// What every adapter but Homebrew's answers an `OpKind::Link` with: only a
+/// Homebrew formula is linked (`brew link --formula --force`, `NoAnswer::link_fixes`).
+/// Asked first in each `plan()`, before anything is read or run, and in
+/// every `match` over the kind after it.
 pub(crate) fn links_nothing(adapter_id: &str) -> AdapterError {
     AdapterError::Unsupported(format!(
         "{adapter_id} links nothing: only a Homebrew formula is linked"
