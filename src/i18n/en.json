@@ -1559,7 +1559,7 @@
       },
       "twins": {
         "question": "What does “Installed twice” mean, and what should I do?",
-        "answer": "The same AI coding tool was installed in two ways, say once with npm and once by its own installer. Typing its command in Terminal runs one of them at most; select the tool, and “In Terminal” can show which one. Updating the copy Terminal doesn't use doesn't change the one it runs. Uninstalling one copy leaves the other as it is."
+        "answer": "The same AI coding tool was installed in two ways, say once with npm and once by its own installer. Typing its command in Terminal runs one of them at most; select the tool, and “In Terminal” can show which one. Updating the copy Terminal doesn't use doesn't change the one it runs, unless the confirmation says the update points the command back to the copy being updated. Uninstalling one copy leaves the other as it is."
       },
       "password": {
         "question": "Why is my Mac password needed? Can it be typed for me here?",
