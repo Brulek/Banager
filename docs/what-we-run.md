@@ -2159,7 +2159,11 @@ code alone (`ENOTDIR`); one with neither -- `{"name": "lib"}`, npm's own
 for a prefix with nothing installed -- is no global packages. `npm outdated`
 exits 1 whenever it finds a version difference, including one that is no
 update (a package installed ahead of `latest`), so exit 1 with rows npm
-printed is a result even when none of them is kept as an update. Any other
+printed is a result even when none of them is kept as an update. A row
+npm printed with one of its two versions left out -- npm lists a global
+whose own version it cannot read, such as an `npm link` whose folder is
+gone, with no installed version -- is that package's alone to be unable
+to check; the other rows keep npm's answer (`parse_outdated_result`). Any other
 non-zero exit, or exit 1 with no rows (empty or error output), is reported
 as "could not check" for every package rather than as "everything is up to
 date" — listing every package that way takes one more run of

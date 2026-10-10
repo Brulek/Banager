@@ -832,10 +832,18 @@ pub(crate) fn parse_ls_global(
     Ok(crate::adapters::sanity::artifacts(out))
 }
 
+/// One row of `npm outdated -g --json`. Either version may be missing:
+/// npm lists a global whose own version it cannot read -- an `npm link`
+/// whose working copy is gone, a folder left without its `package.json` --
+/// and leaves `current` out of the JSON (npm 10.9.9 `outdated.js:159`,
+/// `:188`, `:264-271`). Such a row is that package's alone to be unable to
+/// check (R42-4).
 #[derive(Debug, Deserialize)]
 struct OutdatedEntry {
-    current: String,
-    latest: String,
+    #[serde(default)]
+    current: Option<String>,
+    #[serde(default)]
+    latest: Option<String>,
 }
 
 /// Parses `npm outdated -g --json`. npm exits 1 whenever it finds anything
@@ -858,30 +866,77 @@ fn parse_outdated_result(
     }
     let root: HashMap<String, OutdatedEntry> = serde_json::from_str(json)
         .map_err(|e| crate::adapters::AdapterError::Parse(e.to_string()))?;
+    // A row is a name with a version npm gave, either of the two: npm's
+    // error answer, `{"error": {...}}`, has neither.
+    let is_version = |version: &Option<String>| {
+        version
+            .as_deref()
+            .is_some_and(crate::adapters::sanity::is_name)
+    };
     let has_rows = root.iter().any(|(name, entry)| {
         crate::adapters::sanity::is_name(name)
-            && crate::adapters::sanity::is_name(&entry.current)
-            && crate::adapters::sanity::is_name(&entry.latest)
+            && (is_version(&entry.current) || is_version(&entry.latest))
+            && entry
+                .current
+                .as_deref()
+                .is_none_or(crate::adapters::sanity::is_name)
+            && entry
+                .latest
+                .as_deref()
+                .is_none_or(crate::adapters::sanity::is_name)
     });
     let mut out = Vec::new();
+    // Rows npm gave one version for, kept past `sanity::candidates`, whose
+    // target must be a version: theirs is the unknown one they have, as on
+    // the rows of a check that failed (`uncheckable_from_inventory`).
+    let mut unreadable = Vec::new();
     for (name, entry) in root {
-        if !crate::adapters::sanity::is_name(&entry.latest) {
-            continue;
-        }
         let key = ArtifactKey {
             instance_id: instance_id.to_string(),
             kind: ArtifactKind::Package,
             name,
         };
+        let (current, latest) = match (entry.current, entry.latest) {
+            (Some(current), Some(latest)) => (current, latest),
+            (None, None) => continue,
+            (current, latest) => {
+                if !crate::adapters::sanity::is_name(&key.name)
+                    || latest
+                        .as_deref()
+                        .is_some_and(|latest| !crate::adapters::sanity::is_name(latest))
+                {
+                    continue;
+                }
+                let missing = if current.is_none() {
+                    "npm did not say which version of it is installed"
+                } else {
+                    "npm did not say which version of it is newest"
+                };
+                unreadable.push(crate::adapters::uncheckable_candidate(
+                    key,
+                    current
+                        .filter(|current| crate::adapters::sanity::is_version(current))
+                        .unwrap_or_default(),
+                    UpdateChannel::Native,
+                    missing.to_string(),
+                ));
+                continue;
+            }
+        };
+        if !crate::adapters::sanity::is_name(&latest) {
+            continue;
+        }
         match (
-            semver::Version::parse(&entry.latest),
-            semver::Version::parse(&entry.current),
+            semver::Version::parse(&latest),
+            semver::Version::parse(&current),
         ) {
-            (Ok(latest), Ok(current)) if latest.cmp_precedence(&current).is_gt() => {
+            (Ok(latest_version), Ok(current_version))
+                if latest_version.cmp_precedence(&current_version).is_gt() =>
+            {
                 out.push(UpdateCandidate {
                     key,
-                    current: entry.current,
-                    target: entry.latest,
+                    current,
+                    target: latest,
                     channel: UpdateChannel::Native,
                     checkable: true,
                     warnings: Vec::new(),
@@ -892,14 +947,16 @@ fn parse_outdated_result(
             (Ok(_), Ok(_)) => {}
             _ => out.push(crate::adapters::uncheckable_candidate(
                 key,
-                entry.current,
+                current,
                 UpdateChannel::Native,
                 "could not compare npm versions".to_string(),
             )),
         }
     }
+    let mut out = crate::adapters::sanity::candidates(out);
+    out.extend(unreadable);
     out.sort_by(|a, b| a.key.name.cmp(&b.key.name));
-    Ok((crate::adapters::sanity::candidates(out), has_rows))
+    Ok((out, has_rows))
 }
 
 #[derive(Debug, Deserialize)]
@@ -1859,6 +1916,73 @@ mod tests {
             .expect("exit 1 means updates were found, not a failure")
             .candidates;
         assert_eq!(candidates.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn r42_one_row_without_current_leaves_only_that_package_uncheckable() {
+        // R42-4: npm lists a global whose version it cannot read -- an
+        // `npm link` whose working copy is gone -- with no `current` key
+        // (npm 10.9.9 outdated.js:159, 188, 264-271). That one row made
+        // the whole answer unreadable, and every npm row "couldn't check".
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec![
+                "/opt/homebrew/bin/npm",
+                "outdated",
+                "-g",
+                "--json",
+                "--prefix",
+                "/opt/homebrew",
+            ],
+            CommandOutput {
+                stderr_cause: Default::default(),
+                exit_code: Some(1),
+                stdout: r#"{
+                  "left-behind": {"wanted": "1.0.0", "latest": "1.0.0", "dependent": "global",
+                                  "location": "/opt/homebrew/lib/node_modules/left-behind"},
+                  "prettier": {"current": "3.8.1", "wanted": "3.8.2", "latest": "3.8.2",
+                               "dependent": "global",
+                               "location": "/opt/homebrew/lib/node_modules/prettier"}
+                }"#
+                .to_string(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let candidates = NpmAdapter::new(runner)
+            .check_updates(&test_instance(), &CheckOptions::default())
+            .await
+            .expect("npm's answer, not a failed check")
+            .candidates;
+        let rows: Vec<(&str, &str, &str, bool)> = candidates
+            .iter()
+            .map(|c| {
+                (
+                    c.key.name.as_str(),
+                    c.current.as_str(),
+                    c.target.as_str(),
+                    c.checkable,
+                )
+            })
+            .collect();
+        assert_eq!(
+            rows,
+            vec![
+                ("left-behind", "", "", false),
+                ("prettier", "3.8.1", "3.8.2", true)
+            ]
+        );
+    }
+
+    #[test]
+    fn r42_an_answer_with_neither_version_is_no_row() {
+        // npm's error answer, `{"error": {...}}`, is no package named
+        // "error": exit 1 with it alone is still a check that failed.
+        let json = r#"{"error": {"code": "E404", "summary": "Not found", "detail": ""}}"#;
+        let (found, has_rows) = parse_outdated_result(json, "npm:/opt/homebrew").unwrap();
+        assert!(found.is_empty());
+        assert!(!has_rows);
     }
 
     /// A prefix as the author's was before 2026-10-07: `node@22` linked by

@@ -586,7 +586,18 @@ fn candidates_ok(candidates: &[UpdateCandidate]) -> Result<(), String> {
     for c in candidates {
         name_ok("name", &c.key.name)?;
         version_ok("current", &c.current)?;
-        name_ok("target", &c.target)?;
+        // A row that could not be checked updates to nothing: its target is
+        // its current version, unknown included, as on every row of a check
+        // that failed (`uncheckable_from_inventory`).
+        if c.checkable {
+            name_ok("target", &c.target)?;
+        } else if c.target != c.current {
+            return Err(format!(
+                "unchecked target {:?} is not current {:?}",
+                short(&c.target),
+                short(&c.current)
+            ));
+        }
     }
     Ok(())
 }
