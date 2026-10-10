@@ -5799,15 +5799,23 @@ mod plan_execute_tests {
 
     /// A Homebrew whose `brew info --installed` lists `node`, with bottles
     /// for Apple silicon on Sequoia and Tahoe only, as Homebrew 7 builds
-    /// them, and `jq`, with one bottle for every Mac.
+    /// them, and `jq`, with one bottle for every Mac: the reply names every
+    /// Mac's bottles when homebrew/core is tapped.
     fn runner_with_node_bottled_for_apple_silicon_only() -> Arc<MockRunner> {
+        runner_answering_installed_info(
+            r#"{"formulae":[{"name":"node","linked_keg":"25.1.0","installed":[{"version":"25.1.0","installed_on_request":true}],"bottle":{"stable":{"files":{"arm64_tahoe":{},"arm64_sequoia":{}}}}},{"name":"jq","linked_keg":"1.8.2","installed":[{"version":"1.8.2","installed_on_request":true}],"bottle":{"stable":{"files":{"all":{}}}}}],"casks":[]}"#,
+        )
+    }
+
+    /// A Homebrew whose `brew info --installed --json=v2` answers `stdout`.
+    fn runner_answering_installed_info(stdout: &str) -> Arc<MockRunner> {
         let runner = Arc::new(MockRunner::new());
         runner.respond(
             vec!["/opt/homebrew/bin/brew", "info", "--installed", "--json=v2"],
             CommandOutput {
                 stderr_cause: Default::default(),
                 exit_code: Some(0),
-                stdout: r#"{"formulae":[{"name":"node","linked_keg":"25.1.0","installed":[{"version":"25.1.0","installed_on_request":true}],"bottle":{"stable":{"files":{"arm64_tahoe":{},"arm64_sequoia":{}}}}},{"name":"jq","linked_keg":"1.8.2","installed":[{"version":"1.8.2","installed_on_request":true}],"bottle":{"stable":{"files":{"all":{}}}}}],"casks":[]}"#.to_string(),
+                stdout: stdout.to_string(),
                 stderr: String::new(),
                 timed_out: false,
                 cancelled: false,
@@ -5861,6 +5869,40 @@ mod plan_execute_tests {
                 .expect("plan");
             assert!(jq.warnings.is_empty(), "got {:?}", jq.warnings);
             assert_eq!(jq.timeout_secs, 1800);
+        }
+    }
+
+    /// r19 R48-1: Homebrew 7, in its default mode, sends a homebrew/core
+    /// formula with only the bottle that fits this Mac, or none, which
+    /// `brew info` writes as `"bottle": {}` (`api/formula_struct.rb:136-158`).
+    /// On an Intel Mac that reply is what says node compiles; a formula
+    /// from another tap sent with `{}` is not judged.
+    #[tokio::test]
+    async fn an_update_of_a_core_formula_homebrew_sends_with_no_bottle_compiles() {
+        let runner = runner_answering_installed_info(
+            r#"{"formulae":[{"name":"node","full_name":"node","tap":"homebrew/core","linked_keg":"25.1.0","installed":[{"version":"25.1.0","installed_on_request":true}],"bottle":{}},{"name":"jq","full_name":"jq","tap":"homebrew/core","linked_keg":"1.8.2","installed":[{"version":"1.8.2","installed_on_request":true}],"bottle":{"stable":{"files":{"all":{}}}}},{"name":"speedtest","full_name":"someone/tap/speedtest","tap":"someone/tap","linked_keg":"1.2.0","installed":[{"version":"1.2.0","installed_on_request":true}],"bottle":{}}],"casks":[]}"#,
+        );
+        let adapter = BrewAdapter::new(runner).with_mac_tag_fn(|_: &Path| {
+            Some(MacTag {
+                arm: false,
+                macos: (26, 0),
+            })
+        });
+        let inst = test_instance();
+        adapter.inventory(&inst).await.expect("inventory");
+        let node = adapter
+            .plan(&inst, &upgrade_formula(&inst, "node"))
+            .await
+            .expect("plan");
+        assert_eq!(node.warnings, [Warning::CompilesLocally]);
+        assert_eq!(node.timeout_secs, BrewAdapter::SOURCE_BUILD_TIMEOUT_SECS);
+        for name in ["jq", "someone/tap/speedtest"] {
+            let plan = adapter
+                .plan(&inst, &upgrade_formula(&inst, name))
+                .await
+                .expect("plan");
+            assert!(plan.warnings.is_empty(), "{name}: got {:?}", plan.warnings);
+            assert_eq!(plan.timeout_secs, 1800);
         }
     }
 

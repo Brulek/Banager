@@ -8,7 +8,9 @@
 //! keys of `bottle.stable.files` in the `brew info --installed --json=v2`
 //! reply the inventory already reads (`Formula#bottle_hash`,
 //! `formula.rb:3242-3269`), for the version the catalogue has now, which is
-//! the one an update installs.
+//! the one an update installs; for a homebrew/core formula Homebrew 7
+//! sends only the one that fits this Mac, or none (r19 R48-1,
+//! `formulae_built_from_source`).
 
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
@@ -109,12 +111,18 @@ struct Root {
     formulae: Vec<Formula>,
 }
 
+/// The tap every formula of Homebrew's own catalogue comes from.
+const CORE_TAP: &str = "homebrew/core";
+
 #[derive(Deserialize)]
 struct Formula {
     name: String,
-    /// `{}` for a formula with no bottle at all, `{"stable": {"files":
-    /// {...}}}` otherwise; absent from a brew that does not write it. Only
-    /// a formula with bottles is judged.
+    /// The tap it comes from, `homebrew/core` for Homebrew's own.
+    #[serde(default)]
+    tap: Option<String>,
+    /// `{}` for a formula with no bottle for this Mac, `{"stable":
+    /// {"files": {...}}}` otherwise; absent from a brew that does not
+    /// write it.
     #[serde(default)]
     bottle: Option<Bottle>,
 }
@@ -132,11 +140,21 @@ struct Stable {
 }
 
 /// The formulae of a `brew info --installed --json=v2` reply that no
-/// bottle fits `mac` (`builds_from_source`), by name in the Cellar. A
-/// reply that does not parse, a formula whose entry has no `bottle`, and
-/// one with no bottle at all give none: nothing is claimed of what was not
-/// read, nor of a formula Homebrew never bottles, often a ready-made
-/// program its tap only copies into place, whose install does not compile.
+/// bottle fits `mac` (`builds_from_source`), by name in the Cellar.
+///
+/// Homebrew 7 reads a homebrew/core formula from its catalogue for this
+/// Mac, which holds only the bottle that fits it, or none
+/// (`api/formula_struct.rb:136-158`, `formulary.rb:313-324`); with none,
+/// the reply's `bottle` is `{}` (`formula.rb:3128`). Every core formula is
+/// bottled for some Mac, so there `{}`, like a list of bottles none of
+/// which fits, means the update compiles. Only with homebrew/core tapped
+/// does the reply name every Mac's bottles.
+///
+/// A reply that does not parse, a formula whose entry has no `bottle`, and
+/// one from another tap with no bottle give none: nothing is claimed of
+/// what was not read, nor of a formula its tap never bottles, often a
+/// ready-made program it only copies into place, whose install does not
+/// compile.
 pub(crate) fn formulae_built_from_source(json: &str, mac: MacTag) -> HashSet<String> {
     let Ok(root) = serde_json::from_str::<Root>(json) else {
         return HashSet::new();
@@ -149,7 +167,8 @@ pub(crate) fn formulae_built_from_source(json: &str, mac: MacTag) -> HashSet<Str
                 .stable
                 .map(|stable| stable.files.into_keys().collect())
                 .unwrap_or_default();
-            (!tags.is_empty() && builds_from_source(&tags, mac)).then(|| {
+            let core = formula.tap.as_deref() == Some(CORE_TAP);
+            ((core || !tags.is_empty()) && builds_from_source(&tags, mac)).then(|| {
                 let name = formula.name;
                 name.rsplit('/').next().unwrap_or(&name).to_string()
             })
@@ -222,6 +241,29 @@ mod tests {
         assert!(built(ARM_TAHOE).is_empty(), "got {:?}", built(ARM_TAHOE));
         assert_eq!(built(ARM_SONOMA), ["node"]);
         assert!(formulae_built_from_source("not json", ARM_TAHOE).is_empty());
+    }
+
+    /// r19 R48-1: Homebrew 7 reads a homebrew/core formula from its per-Mac
+    /// catalogue, which holds only the bottle that fits this Mac, or none
+    /// (`api/formula_struct.rb:136-158`); with none, `brew info` writes
+    /// `"bottle": {}`. Every core formula is bottled for some Mac, so there
+    /// `{}` means none fits this one.
+    #[test]
+    fn reads_a_core_formula_sent_with_no_bottle_as_compiling() {
+        let intel = r#"{"formulae":[
+            {"name":"node","full_name":"node","tap":"homebrew/core","bottle":{}},
+            {"name":"jq","full_name":"jq","tap":"homebrew/core","bottle":{"stable":{"files":{"all":{}}}}},
+            {"name":"speedtest","full_name":"someone/tap/speedtest","tap":"someone/tap","bottle":{}}
+        ],"casks":[]}"#;
+        let built: Vec<String> = formulae_built_from_source(intel, INTEL_TAHOE)
+            .into_iter()
+            .collect();
+        // A third-party formula sent with `{}` is still not judged.
+        assert_eq!(built, ["node"]);
+        let apple_silicon = r#"{"formulae":[
+            {"name":"node","tap":"homebrew/core","bottle":{"stable":{"files":{"arm64_tahoe":{}}}}}
+        ],"casks":[]}"#;
+        assert!(formulae_built_from_source(apple_silicon, ARM_TAHOE).is_empty());
     }
 
     #[test]

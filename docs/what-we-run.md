@@ -1856,8 +1856,14 @@ build, which stays installed. Homebrew 7 builds no bottles for Intel Macs,
 nor for Apple silicon on macOS 14 or older (`docs/Support-Tiers.md:143-159`),
 so there nearly every formula update compiles, for minutes or hours. The
 `brew info --installed --json=v2` reply the inventory already reads names
-each formula's bottles for the version an update installs
-(`bottle.stable.files`, `formula.rb:3242-3269`); Banager compares them
+a formula's bottles for the version an update installs
+(`bottle.stable.files`, `formula.rb:3242-3269`). For a homebrew/core
+formula, Homebrew 7 reads its catalogue for this Mac, which holds only the
+bottle that fits it, or none (`api/formula_struct.rb:136-158`); with none,
+the reply's `bottle` is `{}` (`formulary.rb:313-324`, `formula.rb:3128`),
+and since every core formula is bottled for some Mac, Banager reads that
+as none fitting (r19 R48-1). Only with homebrew/core tapped does the reply
+name every Mac's bottles. Banager compares them
 with this Mac's: Apple silicon for a Homebrew in `/opt/homebrew`, Intel for
 one in `/usr/local`, and elsewhere the processor Banager runs on, and the
 macOS version the kernel keeps (`kern.osproductversion`, with
@@ -1866,7 +1872,7 @@ fits, the update's preview -- and Update All's, for that formula -- says
 "This compiles on your Mac and takes a while." (`Warning::CompilesLocally`,
 as Cargo's), and the update may run for 6 hours instead of 30 minutes
 (`BrewAdapter::SOURCE_BUILD_TIMEOUT_SECS`); Cancel stops it at any time.
-A formula Homebrew has no bottle of at all is not judged: it is often a
+A formula from another tap with no bottle is not judged: it is often a
 ready-made program its tap only copies into place, which does not compile.
 Neither it, one whose entry says nothing of bottles, a macOS newer than
 Banager knows, nor an inventory that did not answer changes anything. Nothing more runs for this.
