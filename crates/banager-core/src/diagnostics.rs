@@ -8,7 +8,9 @@
 //!
 //! Read-only and quick: two `sysctlbyname` reads of the kernel's own
 //! strings (`kern.osproductversion`, `machdep.cpu.brand_string`), the
-//! process's `PATH` and `HOME`, and the snapshot's instances. No command
+//! `PATH` its commands get (the login shell's once read, else the
+//! process's own: `runner::login_path::path`), the process's `HOME`, and
+//! the snapshot's instances. No command
 //! runs, no file is opened, nothing is written, and no other environment
 //! variable is read: the text the window builds from this is meant to be
 //! pasted to someone else, and a proxy setting can hold a password.
@@ -79,7 +81,8 @@ pub struct OsFacts {
 }
 
 /// `SystemFacts` from what it is made of. Pure: `current` hands in the
-/// process's own `PATH` and `HOME`, a test whatever it likes.
+/// `PATH` its commands get and the process's `HOME`, a test whatever it
+/// likes.
 pub fn system_facts(
     os: OsFacts,
     path: Option<&OsStr>,

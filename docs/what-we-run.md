@@ -5161,8 +5161,10 @@ takes nothing from it (the first of them is also read for a formula
 update's preview: Homebrew's section, "Formula updates that compile").
 That reads two strings the kernel keeps,
 `kern.osproductversion` and `machdep.cpu.brand_string`, with
-`sysctlbyname`; the process's own `PATH` and `HOME`, and no other
-environment variable; and the sources' last known state. No command runs,
+`sysctlbyname`; the `PATH` Banager hands its commands -- the login
+shell's, read when Banager started and kept in memory, or else the
+process's own -- and the process's `HOME`, and no other environment
+variable; and the sources' last known state. No command runs,
 no file is opened, nothing is written to disk, and no connection is made.
 Every path in the text has the home folder written as `~`: the folder
 `HOME` names, in any case, in the `PATH` folders and the sources' places,
