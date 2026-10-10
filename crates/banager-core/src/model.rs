@@ -695,6 +695,19 @@ pub enum UninstallBlocked {
     /// (`UNINSTALL_BLOCKED_KEYS` in src/lib/sources.ts). Its update is
     /// offered as any package's.
     SourceProgram,
+    /// corepack, where the `corepack` in its npm's prefix's `bin` is a
+    /// Homebrew formula's link into `<prefix>/Cellar/` -- `node@22` linked
+    /// by hand puts it there, as it does `npm`
+    /// (`UpdateBlocked::UpdatesWithFormula`). `npm uninstall -g corepack`
+    /// deletes that link and every command corepack declares (`pnpm`,
+    /// `pnpx`, `yarn`, `yarnpkg`), whoever put them there: Homebrew's own
+    /// pnpm and yarn formulas' links too (R42-2). It goes with its formula.
+    /// Produced by npm's inventory (`NpmAdapter::inventory`, from the same
+    /// read as `UpdatesWithFormula`) and refused by `NpmAdapter::plan` as
+    /// well; the gate refuses it (`blocked_uninstall` in
+    /// session/plans.rs), and the Installed page says why where the button
+    /// would be (`UNINSTALL_BLOCKED_KEYS` in src/lib/sources.ts).
+    ComesWithFormula,
     /// Another source runs on this Homebrew formula or cask: its preview
     /// said so (`Warning::NeededBySource`), and the confirmation offered no
     /// Uninstall. Produced only by `Session::submit`, for a plan whose
@@ -1728,9 +1741,12 @@ pub enum UpdateBlocked {
     /// link` step did not complete successfully"), and leaves no `node`
     /// where Terminal looks -- what happened on the author's Mac on
     /// 2026-10-07 (review of track y2-npmwhy, finding 2). Such an npm
-    /// updates with its formula. Produced by `NpmAdapter::check_updates`
-    /// (`adapters/npm.rs`) from a read of where `<prefix>/bin/npm` leads
-    /// (`real_npm_comes_with_formula`), and, for the same read, by
+    /// updates with its formula. So does corepack, where `<prefix>/bin/
+    /// corepack` is such a link (R42-2): its update replaces that link
+    /// the same way. Produced by `NpmAdapter::check_updates`
+    /// (`adapters/npm.rs`) from a read of where `<prefix>/bin/npm` or
+    /// `<prefix>/bin/corepack` leads (`real_comes_with_formula`), and, for
+    /// the same read, by
     /// `NpmAdapter::plan`'s `Upgrade` arm inside `AdapterError::UpdateBlocked`
     /// (the late twin). Not a state npm reports: the exception to the rule
     /// above, because the update it would block breaks another source.
@@ -2897,6 +2913,8 @@ mod tests {
         for (reason, wire) in [
             (UninstallBlocked::SourceProgram, r#""SourceProgram""#),
             (UninstallBlocked::NeededBySource, r#""NeededBySource""#),
+            // R42-2: corepack that a Homebrew formula linked.
+            (UninstallBlocked::ComesWithFormula, r#""ComesWithFormula""#),
         ] {
             assert_eq!(serde_json::to_string(&reason).unwrap(), wire);
             assert_eq!(

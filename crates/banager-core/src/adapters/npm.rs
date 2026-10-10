@@ -15,6 +15,16 @@ use crate::model::{
 /// every other package is updated and uninstalled with, and the program
 /// `npm uninstall -g npm` would remove (`UninstallBlocked::SourceProgram`).
 const OWN_PACKAGE: &str = "npm";
+
+/// The package Node brings beside npm (up to Node 24), whose `corepack`
+/// command a Homebrew `node@…` formula links into the prefix as it does
+/// `npm` (R42-2): then it updates and goes with that formula
+/// (`UpdateBlocked::UpdatesWithFormula`, `UninstallBlocked::ComesWithFormula`).
+const COREPACK: &str = "corepack";
+
+/// The packages whose command in the prefix's `bin` may be a Homebrew
+/// formula's link (`real_comes_with_formula`).
+const WITH_FORMULA: [&str; 2] = [OWN_PACKAGE, COREPACK];
 use crate::protected::{look, Protected};
 use crate::runner::{resolve_exe, CommandOutput, CommandRunner, CommandSpec, HostEnv, OutputUse};
 use async_trait::async_trait;
@@ -82,32 +92,33 @@ fn real_prefix_read_only(prefix: &Path) -> Option<ReadOnlyReason> {
     not_writable(prefix)
 }
 
-/// Whether the `npm` in `prefix`'s `bin` is a Homebrew formula's: a link
-/// that leads, every link followed, into `<prefix>/Cellar/` -- what
-/// `brew link --force node@22` puts there (`UpdateBlocked::UpdatesWithFormula`).
-/// The unversioned `node` formula's npm is a copy in
-/// `<prefix>/lib/node_modules/npm`, outside the Cellar, and is not; nor is
-/// npm's own, after `npm install -g npm`. Read-only: where two links lead,
-/// one step at a time and never into or through a protected place
-/// (`protected::look`); `false` for anything it cannot tell.
-fn real_npm_comes_with_formula(prefix: &Path) -> bool {
+/// Whether the `command` (`npm` or `corepack`) in `prefix`'s `bin` is a
+/// Homebrew formula's: a link that leads, every link followed, into
+/// `<prefix>/Cellar/` -- what `brew link --force node@22` puts there
+/// (`UpdateBlocked::UpdatesWithFormula`). The unversioned `node` formula's
+/// npm is a copy in `<prefix>/lib/node_modules/npm`, outside the Cellar,
+/// and is not; nor is npm's own, after `npm install -g npm`, or `npm
+/// install -g corepack`. Read-only: where two links lead, one step at a
+/// time and never into or through a protected place (`protected::look`);
+/// `false` for anything it cannot tell.
+fn real_comes_with_formula(prefix: &Path, command: &str) -> bool {
     let protected = Protected::of_this_process();
     let Ok(cellar) = look::real_path(&prefix.join("Cellar"), &protected) else {
         return false;
     };
-    match look::target(&prefix.join("bin").join(OWN_PACKAGE), &protected) {
+    match look::target(&prefix.join("bin").join(command), &protected) {
         Ok((real, _)) => real.starts_with(&cellar),
         Err(_) => false,
     }
 }
 
-/// `NpmAdapter::npm_comes_with_formula_fn` as `NpmAdapter::new` sets it: the
+/// `NpmAdapter::comes_with_formula_fn` as `NpmAdapter::new` sets it: the
 /// real read in every build but this crate's unit tests, where nothing is
 /// read unless a test installs a reader.
 #[cfg(not(test))]
-const DEFAULT_NPM_COMES_WITH_FORMULA_FN: fn(&Path) -> bool = real_npm_comes_with_formula;
+const DEFAULT_COMES_WITH_FORMULA_FN: fn(&Path, &str) -> bool = real_comes_with_formula;
 #[cfg(test)]
-const DEFAULT_NPM_COMES_WITH_FORMULA_FN: fn(&Path) -> bool = |_| false;
+const DEFAULT_COMES_WITH_FORMULA_FN: fn(&Path, &str) -> bool = |_, _| false;
 
 /// The sentence an uninstall says under the tool (`UninstallScope::Npm`),
 /// for the npm `version` Banager detected (`npm --version`), only when that
@@ -150,10 +161,11 @@ pub struct NpmAdapter {
     /// is why this takes `&Path` (the prefix) rather than a
     /// `&ManagerInstance` that does not exist yet.
     prefix_read_only_fn: fn(&Path) -> Option<ReadOnlyReason>,
-    /// How to tell whether the `npm` in a prefix's `bin` is a Homebrew
-    /// formula's (`real_npm_comes_with_formula`), whose own update is then
-    /// not offered (`UpdateBlocked::UpdatesWithFormula`).
-    npm_comes_with_formula_fn: fn(&Path) -> bool,
+    /// How to tell whether the `npm` or `corepack` in a prefix's `bin` is
+    /// a Homebrew formula's (`real_comes_with_formula`), whose package's
+    /// update is then not offered (`UpdateBlocked::UpdatesWithFormula`),
+    /// nor corepack's uninstall (`UninstallBlocked::ComesWithFormula`).
+    comes_with_formula_fn: fn(&Path, &str) -> bool,
     /// How the queue key of the Homebrew prefix a plan's prefix may be
     /// looks at folders (`brew::prefix_lock`): `brew::PREFIX_IDENTITY_FN`.
     prefix_identity_fn: fn(&Path) -> Option<(u64, u64)>,
@@ -173,7 +185,7 @@ impl NpmAdapter {
             runner,
             meta,
             prefix_read_only_fn: real_prefix_read_only,
-            npm_comes_with_formula_fn: DEFAULT_NPM_COMES_WITH_FORMULA_FN,
+            comes_with_formula_fn: DEFAULT_COMES_WITH_FORMULA_FN,
             prefix_identity_fn: super::brew::PREFIX_IDENTITY_FN,
         }
     }
@@ -204,31 +216,32 @@ impl NpmAdapter {
         self
     }
 
-    /// Test-only hook: whether the prefix's `npm` is a Homebrew formula's
-    /// (see `npm_comes_with_formula_fn`).
+    /// Test-only hook: whether the prefix's `npm` or `corepack` is a
+    /// Homebrew formula's (see `comes_with_formula_fn`).
     #[cfg(test)]
-    fn with_npm_comes_with_formula_fn(mut self, f: fn(&Path) -> bool) -> NpmAdapter {
-        self.npm_comes_with_formula_fn = f;
+    fn with_comes_with_formula_fn(mut self, f: fn(&Path, &str) -> bool) -> NpmAdapter {
+        self.comes_with_formula_fn = f;
         self
     }
 
-    /// `candidates`, npm's own marked `UpdatesWithFormula` where the npm in
-    /// `inst`'s prefix is a Homebrew formula's: its update would take that
-    /// formula's link away (`UpdateBlocked::UpdatesWithFormula`). The link
-    /// is read only when npm's own is among them.
+    /// Whether `name` is npm's own package or corepack, and its command in
+    /// `inst`'s prefix a Homebrew formula's link (`comes_with_formula_fn`).
+    fn comes_with_formula(&self, inst: &ManagerInstance, name: &str) -> bool {
+        WITH_FORMULA.contains(&name) && (self.comes_with_formula_fn)(&inst.prefix, name)
+    }
+
+    /// `candidates`, npm's own and corepack marked `UpdatesWithFormula`
+    /// where their command in `inst`'s prefix is a Homebrew formula's: the
+    /// update would take that formula's link away
+    /// (`UpdateBlocked::UpdatesWithFormula`). A link is read only when its
+    /// package's update is among them.
     fn with_formulas_npm_marked(
         &self,
         inst: &ManagerInstance,
         mut candidates: Vec<UpdateCandidate>,
     ) -> Vec<UpdateCandidate> {
-        let lists_own = candidates
-            .iter()
-            .any(|candidate| candidate.key.name == OWN_PACKAGE && candidate.blocked.is_none());
-        if lists_own && (self.npm_comes_with_formula_fn)(&inst.prefix) {
-            for candidate in candidates
-                .iter_mut()
-                .filter(|candidate| candidate.key.name == OWN_PACKAGE)
-            {
+        for candidate in candidates.iter_mut() {
+            if candidate.blocked.is_none() && self.comes_with_formula(inst, &candidate.key.name) {
                 candidate.blocked = Some(UpdateBlocked::UpdatesWithFormula);
             }
         }
@@ -423,7 +436,20 @@ impl NpmAdapter {
         &self,
         inst: &ManagerInstance,
     ) -> Result<Vec<InstalledArtifact>, AdapterError> {
-        Ok(self.read_ls_global(inst).await?.0)
+        let mut installed = self.read_ls_global(inst).await?.0;
+        // corepack that a Homebrew formula linked: `npm uninstall -g
+        // corepack` would delete that link and the commands corepack
+        // declares (pnpm, pnpx, yarn, yarnpkg), Homebrew's own pnpm's and
+        // yarn's among them (R42-2).
+        if let Some(corepack) = installed
+            .iter_mut()
+            .find(|artifact| artifact.key.name == COREPACK)
+        {
+            if self.comes_with_formula(inst, COREPACK) {
+                corepack.uninstall_blocked = Some(UninstallBlocked::ComesWithFormula);
+            }
+        }
+        Ok(installed)
     }
 
     /// `npm ls -g --depth=0 --json`, read: the packages, and npm's answer
@@ -599,15 +625,21 @@ impl NpmAdapter {
                 reason: UninstallBlocked::SourceProgram,
             });
         }
-        // npm that a Homebrew formula linked into the prefix updates with
-        // it (`UpdateBlocked::UpdatesWithFormula`): the gate's late twin,
-        // for a page from before the formula was linked.
-        if req.kind == OpKind::Upgrade
-            && req.name == OWN_PACKAGE
-            && (self.npm_comes_with_formula_fn)(&inst.prefix)
-        {
+        // npm or corepack that a Homebrew formula linked into the prefix
+        // updates and goes with it (`UpdateBlocked::UpdatesWithFormula`,
+        // `UninstallBlocked::ComesWithFormula`): the gate's late twins, for
+        // a page from before the formula was linked.
+        if req.kind == OpKind::Upgrade && self.comes_with_formula(inst, &req.name) {
             return Err(AdapterError::UpdateBlocked {
                 reason: UpdateBlocked::UpdatesWithFormula,
+            });
+        }
+        if req.kind == OpKind::Uninstall
+            && req.name == COREPACK
+            && self.comes_with_formula(inst, COREPACK)
+        {
+            return Err(AdapterError::UninstallBlocked {
+                reason: UninstallBlocked::ComesWithFormula,
             });
         }
         let locks = self.instance_locks(inst);
@@ -2204,6 +2236,165 @@ mod tests {
     }
 
     #[test]
+    fn r42_a_corepack_a_homebrew_formula_linked_is_that_formulas() {
+        // R42-2: `node@22` linked by hand puts its own `bin/corepack` in
+        // the prefix as well, a link into its keg.
+        use std::os::unix::fs::symlink;
+        let formulas = prefix_with_npm("corepack", false);
+        let keg = formulas.join("Cellar/node@22/22.23.3_1");
+        std::fs::create_dir_all(keg.join("lib/node_modules/corepack/dist")).unwrap();
+        std::fs::write(keg.join("lib/node_modules/corepack/dist/corepack.js"), b"").unwrap();
+        symlink(
+            "../lib/node_modules/corepack/dist/corepack.js",
+            keg.join("bin/corepack"),
+        )
+        .unwrap();
+        symlink(
+            "../Cellar/node@22/22.23.3_1/bin/corepack",
+            formulas.join("bin/corepack"),
+        )
+        .unwrap();
+        // npm's own copy, after `npm install -g corepack`.
+        let own = prefix_with_npm("corepack-own", true);
+        std::fs::create_dir_all(own.join("lib/node_modules/corepack/dist")).unwrap();
+        std::fs::write(own.join("lib/node_modules/corepack/dist/corepack.js"), b"").unwrap();
+        symlink(
+            "../lib/node_modules/corepack/dist/corepack.js",
+            own.join("bin/corepack"),
+        )
+        .unwrap();
+        let found = (
+            real_comes_with_formula(&formulas, "corepack"),
+            real_comes_with_formula(&own, "corepack"),
+            real_comes_with_formula(&own, "npm"),
+        );
+        let _ = std::fs::remove_dir_all(&formulas);
+        let _ = std::fs::remove_dir_all(&own);
+        assert_eq!(found, (true, false, false));
+    }
+
+    #[tokio::test]
+    async fn r42_corepack_that_comes_with_a_formula_is_neither_updated_nor_uninstalled() {
+        // R42-2: updating or uninstalling corepack takes away the formula's
+        // `bin/corepack` link and, with Homebrew's pnpm or yarn installed,
+        // theirs (corepack declares pnpm, pnpx, yarn and yarnpkg).
+        let runner = ls_global_answering(
+            0,
+            r#"{"name": "lib", "dependencies": {
+              "corepack": {"version": "0.34.0"}, "npm": {"version": "10.9.9"},
+              "prettier": {"version": "3.8.1"}}}"#,
+            "",
+        );
+        runner.respond(
+            vec![
+                "/opt/homebrew/bin/npm",
+                "outdated",
+                "-g",
+                "--json",
+                "--prefix",
+                "/opt/homebrew",
+            ],
+            CommandOutput {
+                stderr_cause: Default::default(),
+                exit_code: Some(1),
+                stdout: r#"{
+                  "corepack": {"current": "0.34.0", "wanted": "0.34.5", "latest": "0.34.5"},
+                  "npm": {"current": "10.9.9", "wanted": "10.9.9", "latest": "10.9.10"},
+                  "prettier": {"current": "3.8.1", "wanted": "3.8.2", "latest": "3.8.2"}
+                }"#
+                .to_string(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let inst = test_instance();
+        let request = |kind: OpKind, name: &str| OpRequest {
+            kind,
+            instance_id: inst.id.clone(),
+            artifact_kind: ArtifactKind::Package,
+            name: name.to_string(),
+        };
+        // Only corepack's link leads into the Cellar here.
+        let formulas = NpmAdapter::new(runner.clone())
+            .with_prefix_read_only_fn(|_| None)
+            .with_comes_with_formula_fn(|_, command| command == "corepack");
+        let blocked: Vec<(String, Option<UpdateBlocked>)> = formulas
+            .check_updates(&inst, &CheckOptions::default())
+            .await
+            .expect("checked")
+            .candidates
+            .into_iter()
+            .map(|candidate| (candidate.key.name, candidate.blocked))
+            .collect();
+        assert_eq!(
+            blocked,
+            vec![
+                (
+                    "corepack".to_string(),
+                    Some(UpdateBlocked::UpdatesWithFormula)
+                ),
+                ("npm".to_string(), None),
+                ("prettier".to_string(), None),
+            ]
+        );
+        let uninstall_blocked: Vec<(String, Option<UninstallBlocked>)> = formulas
+            .inventory(&inst)
+            .await
+            .expect("listed")
+            .into_iter()
+            .map(|artifact| (artifact.key.name, artifact.uninstall_blocked))
+            .collect();
+        assert_eq!(
+            uninstall_blocked,
+            vec![
+                (
+                    "corepack".to_string(),
+                    Some(UninstallBlocked::ComesWithFormula)
+                ),
+                ("npm".to_string(), Some(UninstallBlocked::SourceProgram)),
+                ("prettier".to_string(), None),
+            ]
+        );
+        match formulas
+            .plan(&inst, &request(OpKind::Upgrade, "corepack"))
+            .await
+        {
+            Err(AdapterError::UpdateBlocked { reason }) => {
+                assert_eq!(reason, UpdateBlocked::UpdatesWithFormula)
+            }
+            other => panic!("expected UpdateBlocked, got {other:?}"),
+        }
+        match formulas
+            .plan(&inst, &request(OpKind::Uninstall, "corepack"))
+            .await
+        {
+            Err(AdapterError::UninstallBlocked { reason }) => {
+                assert_eq!(reason, UninstallBlocked::ComesWithFormula)
+            }
+            other => panic!("expected UninstallBlocked, got {other:?}"),
+        }
+        // npm's own corepack, after `npm install -g corepack`, is any
+        // package's.
+        let own = NpmAdapter::new(runner)
+            .with_prefix_read_only_fn(|_| None)
+            .with_comes_with_formula_fn(|_, _| false);
+        for kind in [OpKind::Upgrade, OpKind::Uninstall] {
+            own.plan(&inst, &request(kind, "corepack"))
+                .await
+                .expect("planned");
+        }
+        let corepack = own
+            .inventory(&inst)
+            .await
+            .expect("listed")
+            .into_iter()
+            .find(|artifact| artifact.key.name == "corepack")
+            .expect("corepack");
+        assert_eq!(corepack.uninstall_blocked, None);
+    }
+
+    #[test]
     fn test_an_npm_a_homebrew_formula_linked_is_that_formulas() {
         // Finding (2) of the y2-npmwhy review: `npm install -g npm@latest`
         // in a prefix whose `bin/npm` is Homebrew's link into `node@22`'s
@@ -2213,9 +2404,9 @@ mod tests {
         let own = prefix_with_npm("own", true);
         let elsewhere = crate::testing::unique_temp_path("npm-formula-none");
         let found = (
-            real_npm_comes_with_formula(&formulas),
-            real_npm_comes_with_formula(&own),
-            real_npm_comes_with_formula(&elsewhere),
+            real_comes_with_formula(&formulas, "npm"),
+            real_comes_with_formula(&own, "npm"),
+            real_comes_with_formula(&elsewhere, "npm"),
         );
         let _ = std::fs::remove_dir_all(&formulas);
         let _ = std::fs::remove_dir_all(&own);
@@ -2259,7 +2450,7 @@ mod tests {
             found.sort_by(|a, b| a.0.cmp(&b.0));
             found
         }
-        let formulas = NpmAdapter::new(runner.clone()).with_npm_comes_with_formula_fn(|_| true);
+        let formulas = NpmAdapter::new(runner.clone()).with_comes_with_formula_fn(|_, _| true);
         assert_eq!(
             blocked(&formulas).await,
             vec![
@@ -2267,7 +2458,7 @@ mod tests {
                 ("prettier".to_string(), None),
             ]
         );
-        let own = NpmAdapter::new(runner).with_npm_comes_with_formula_fn(|_| false);
+        let own = NpmAdapter::new(runner).with_comes_with_formula_fn(|_, _| false);
         assert_eq!(
             blocked(&own).await,
             vec![("npm".to_string(), None), ("prettier".to_string(), None)]
@@ -2283,7 +2474,7 @@ mod tests {
         };
         let formulas = NpmAdapter::new(Arc::new(MockRunner::new()))
             .with_prefix_read_only_fn(|_| None)
-            .with_npm_comes_with_formula_fn(|_| true);
+            .with_comes_with_formula_fn(|_, _| true);
         match formulas.plan(&inst, &upgrade("npm")).await {
             Err(AdapterError::UpdateBlocked { reason }) => {
                 assert_eq!(reason, UpdateBlocked::UpdatesWithFormula)

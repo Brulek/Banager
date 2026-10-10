@@ -1071,6 +1071,50 @@ describe("InstalledPage", () => {
     expect(container.querySelector("code")).toBeNull();
   });
 
+  it("offers neither Update nor Uninstall on a corepack that comes with Homebrew's Node, and names it (R42-2)", async () => {
+    // `UninstallBlocked::ComesWithFormula` and `UpdateBlocked::UpdatesWithFormula`
+    // (npm's inventory and check, where `<prefix>/bin/corepack` is a
+    // formula's link): either would take that link, and Homebrew's pnpm
+    // and yarn links, away.
+    const npm: ManagerInstance = {
+      ...brew,
+      id: "npm:/opt/homebrew",
+      adapter_id: "npm",
+      exe_path: "/opt/homebrew/bin/npm",
+      version: "10.9.9",
+    };
+    const corepackKey = { instance_id: npm.id, kind: "Package" as const, name: "corepack" };
+    served = {
+      ...snapshot,
+      instances: [npm],
+      artifacts: [
+        formula("corepack", { key: corepackKey, version: "0.34.0", uninstall_blocked: "ComesWithFormula", facts: NO_FACTS }),
+      ],
+      updates: [
+        {
+          key: corepackKey,
+          current: "0.34.0",
+          target: "0.34.5",
+          channel: "Native",
+          checkable: true,
+          warnings: [],
+          blocked: "UpdatesWithFormula",
+        },
+      ],
+    };
+    const { queryAllByRole } = renderInstalled();
+
+    const corepack = await findRow("corepack");
+    expect(queryAllByRole("button", { name: ANY_UNINSTALL })).toHaveLength(0);
+    expect(queryAllByRole("button", { name: /^Update/ })).toHaveLength(0);
+    expect(chipDetail(corepack, "Can't uninstall here")).toHaveTextContent(
+      "It comes with the Node that Homebrew installed. Uninstalling it here would also remove commands that Homebrew linked into Terminal, so it can't be uninstalled here.",
+    );
+    // The row shows its first word; the details list both (the update's
+    // sentence is `blockedDetail`'s, in src/components/updateDetails.test.tsx).
+    expect(await drawerChips("corepack")).toEqual(["Can't uninstall here", "Updates with Node"]);
+  });
+
   it("shows the standalone summary beside its chip, and a Homebrew package with no description what Homebrew says it is", async () => {
     // A standalone artifact carries `description: null` (the line has to
     // be localised, so its key lives in `STANDALONE_SUMMARY_KEYS`); a

@@ -1295,6 +1295,13 @@ function withNoNode(world: World, formulae: readonly LinkFix[]): void {
   world.updates.push(
     update(key(IDS.npm, "Package", "npm"), "12.0.2", "12.2.0", "Native", { blocked: "UpdatesWithFormula" }),
   );
+  // So is its corepack, whose `bin/corepack` the formula links too (R42-2):
+  // no update of its own, and no Uninstall.
+  world.updates.push(
+    update(key(IDS.npm, "Package", "corepack"), "0.36.0", "0.36.1", "Native", { blocked: "UpdatesWithFormula" }),
+  );
+  const corepack = world.artifacts.find((a) => sameKey(a.key, key(IDS.npm, "Package", "corepack")));
+  if (corepack !== undefined) corepack.uninstall_blocked = "ComesWithFormula";
   const npm = findInstance(world, IDS.npm);
   // What it says again once it can run (`apply` in ./mockBackend.ts).
   NO_NODE_ANSWERS_AGAIN.set(npm.id, npm.version);

@@ -278,8 +278,17 @@ describe("types", () => {
     // in crates/banager-core/src/model.rs, whose
     // `test_uninstall_blocked_is_a_bare_string_on_the_wire_and_null_when_absent`
     // asserts these exact spellings from the Rust side.
-    const reasons: UninstallBlocked[] = ["Pinned", "NoSafeMethod", "UvToolDirSet", "SourceProgram", "NeededBySource"];
-    expect(JSON.stringify(reasons)).toBe('["Pinned","NoSafeMethod","UvToolDirSet","SourceProgram","NeededBySource"]');
+    const reasons: UninstallBlocked[] = [
+      "Pinned",
+      "NoSafeMethod",
+      "UvToolDirSet",
+      "SourceProgram",
+      "ComesWithFormula",
+      "NeededBySource",
+    ];
+    expect(JSON.stringify(reasons)).toBe(
+      '["Pinned","NoSafeMethod","UvToolDirSet","SourceProgram","ComesWithFormula","NeededBySource"]',
+    );
     expect(roundTrip(reasons)).toEqual(reasons);
     const removable: UninstallBlocked | null = null;
     expect(roundTrip(removable)).toBeNull();

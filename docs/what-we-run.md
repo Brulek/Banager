@@ -2288,11 +2288,25 @@ not link, and leaves no `node` where Terminal looks -- what happened on the
 author's Mac on 2026-10-07 (Why a source did not answer, above). Such an
 npm updates with its formula. To tell, `check_updates` (only when it lists
 npm's own update) and the plan of that update read where
-`<prefix>/Cellar` and `<prefix>/bin/npm` lead (`real_npm_comes_with_formula`
+`<prefix>/Cellar` and `<prefix>/bin/npm` lead (`real_comes_with_formula`
 in `npm.rs`): each link one step at a time, never into or through a
 protected place, never a file's contents; anything it cannot tell is not
 a formula's. The unversioned `node` formula's npm is a copy in
 `<prefix>/lib/node_modules/npm`, outside the Cellar, and keeps its update.
+
+corepack, which Node up to version 24 brings beside npm, is treated the
+same way where the `corepack` in the prefix's `bin` is such a link: its
+update is not offered (`UpdateBlocked::UpdatesWithFormula`), its row
+offers no Uninstall (`UninstallBlocked::ComesWithFormula`), and
+`NpmAdapter::plan` refuses both. Either would delete that link and every
+command corepack declares -- `pnpm`, `pnpx`, `yarn` and `yarnpkg` --
+whoever put them there, the links of Homebrew's own `pnpm` and `yarn`
+formulas included; the formula's next `brew upgrade` would then stop at
+npm's `bin/corepack` as it does at npm's `bin/npm`. To tell, the inventory
+when it lists corepack, `check_updates` when it lists corepack's update,
+and the plan of either read where `<prefix>/Cellar` and
+`<prefix>/bin/corepack` lead, as for npm. npm's own copy of corepack,
+after `<npm> install -g corepack`, is any package's.
 
 Under the package, the uninstall confirmation says that its folder in
 npm's global folder and its commands go, that npm runs none of its code,
@@ -4962,7 +4976,10 @@ not read (`protected::look`; How Banager runs anything, above):
   is writable, via `access(2)` (`faccessat` of the folder held open; one
   in a protected place is taken as not writable); where `{prefix}/Cellar`
   and `{prefix}/bin/npm` lead, when a check lists npm's own update or its
-  update is planned, to tell a Homebrew formula's npm (npm's section).
+  update is planned, to tell a Homebrew formula's npm; and where
+  `{prefix}/Cellar` and `{prefix}/bin/corepack` lead, when a listing
+  or a check lists corepack or its update is planned, or its uninstall
+  is, to tell a Homebrew formula's corepack (npm's section).
   Planning also compares the prefix directory's device/inode with Homebrew's
   fixed discovery prefixes to share one lock across symbolic-link aliases.
 - pip: the canonical path of each interpreter found, to count it once, and

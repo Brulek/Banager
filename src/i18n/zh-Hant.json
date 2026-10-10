@@ -803,7 +803,7 @@
     },
     "withFormula": {
       "badge": "隨Node更新",
-      "detail": "這個npm是Homebrew安裝的Node附帶的，會隨Node一起更新。在這裡單獨更新它，Homebrew下次更新Node時會出錯。",
+      "detail": "{{name}}是Homebrew安裝的Node附帶的，會隨Node一起更新。在這裡單獨更新它，Homebrew下次更新Node時會出錯。",
       "refused": "無法在這裡更新，它會隨Homebrew安裝的Node一起更新。"
     }
   },
@@ -1042,6 +1042,8 @@
     "reason": "還有軟體要用到它：{{names}}。要解除安裝它，請先解除安裝{{tools}}。",
     "sourceProgram": "這是{{source}}自己。{{source}}裝的工具都要靠它更新和解除安裝，所以不能在這裡解除安裝。",
     "sourceProgramRefused": "無法解除安裝，因為它是{{source}}自己。",
+    "withFormula": "它是Homebrew安裝的Node附帶的。在這裡解除安裝它，還會刪掉Homebrew連結到終端機的指令，所以不能在這裡解除安裝。",
+    "withFormulaRefused": "無法解除安裝，因為它是Homebrew安裝的Node附帶的。",
     "neededBy": "還有別的來源要靠它執行，所以不能在這裡解除安裝。",
     "neededByRefused": "無法解除安裝，因為還有別的來源要靠它執行。",
     "managedBy": "{{sources}}裝的工具要靠它更新和解除安裝。",

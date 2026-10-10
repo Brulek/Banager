@@ -871,7 +871,7 @@
     },
     "withFormula": {
       "badge": "Updates with Node",
-      "detail": "This npm comes with the Node that Homebrew installed and updates along with it. Updating it on its own here would make Homebrew's next update of that Node fail.",
+      "detail": "{{name}} comes with the Node that Homebrew installed and updates along with it. Updating it on its own here would make Homebrew's next update of that Node fail.",
       "refused": "It can't be updated here: it updates along with the Node that Homebrew installed."
     }
   },
@@ -1134,6 +1134,8 @@
     "reason": "Still used by {{names}}. To uninstall it, first uninstall {{tools}}.",
     "sourceProgram": "This is {{source}} itself. Every tool installed with {{source}} is updated and uninstalled with it, so it can't be uninstalled here.",
     "sourceProgramRefused": "Couldn't uninstall it because it's {{source}} itself.",
+    "withFormula": "It comes with the Node that Homebrew installed. Uninstalling it here would also remove commands that Homebrew linked into Terminal, so it can't be uninstalled here.",
+    "withFormulaRefused": "Couldn't uninstall it because it comes with the Node that Homebrew installed.",
     "neededBy": "Another source runs on it, so it can't be uninstalled here.",
     "neededByRefused": "Couldn't uninstall it because another source runs on it.",
     "managedBy": "Tools installed with {{sources}} are updated and uninstalled with it.",

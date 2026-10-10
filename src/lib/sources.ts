@@ -983,7 +983,8 @@ export const UPDATE_BLOCKED_KEYS: Record<UpdateBlocked, UpdateBlockedCopy> = {
   },
   UpdatesWithFormula: {
     // npm whose `npm` is a Homebrew formula's link (`node@22` linked by
-    // hand): it updates with that formula. Updated through npm, its own
+    // hand), or corepack whose `corepack` is (R42-2): it updates with that
+    // formula. The detail names the package (`{{name}}`). Updated through npm, its own
     // copy takes the link's place and the formula's next update cannot
     // link -- what left the author's Mac with no `node` on 2026-10-07.
     // The sentence names no formula: the reason carries none, and "the
@@ -1144,6 +1145,16 @@ export const UNINSTALL_BLOCKED_KEYS: Record<UninstallBlocked, UninstallBlockedCo
     description: "runtimeGuard.sourceProgram",
     command: () => "",
     refused: "runtimeGuard.sourceProgramRefused",
+  },
+  ComesWithFormula: {
+    // corepack whose command is a Homebrew formula's link (`node@22`
+    // linked by hand): uninstalling it would delete that link and the pnpm
+    // and yarn commands corepack declares, Homebrew's own among them
+    // (R42-2). The same word as npm's own row; nothing to run.
+    badge: "installed.blocked.UvToolDirSet.badge",
+    description: "runtimeGuard.withFormula",
+    command: () => "",
+    refused: "runtimeGuard.withFormulaRefused",
   },
   NeededBySource: {
     // On no row: only `Session::submit` sends it, for a preview that named

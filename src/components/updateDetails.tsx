@@ -135,7 +135,7 @@ export function blockedDetail(
     return detailLines([withCommand(t(copy.typed.detail, { command: COMMAND_SLOT, source }), typed), ...noteLines]);
   }
   return detailLines([
-    t(copy.detail, { source }),
+    t(copy.detail, { source, name: candidate.key.name }),
     ...noteLines,
     ...(showTechnicalDetails && command !== ""
       ? [withCommand(t("updates.runInTerminal", { command: COMMAND_SLOT }), command)]

@@ -566,6 +566,11 @@ describe("the browser preview's mock backend", () => {
     // formula's, so the same self-update cannot take the link away again.
     const ownUpdate = after.updates.find((u) => u.key.instance_id === answered?.id && u.key.name === "npm");
     expect(ownUpdate?.blocked).toBe("UpdatesWithFormula");
+    // So is its corepack (R42-2): no update of its own, and no Uninstall.
+    const corepackUpdate = after.updates.find((u) => u.key.instance_id === answered?.id && u.key.name === "corepack");
+    expect(corepackUpdate?.blocked).toBe("UpdatesWithFormula");
+    const corepack = after.artifacts.find((a) => a.key.instance_id === answered?.id && a.key.name === "corepack");
+    expect(corepack?.uninstall_blocked).toBe("ComesWithFormula");
   });
 
   it("ends a link that linked nothing as NotLinkedAfterLink with ?outcome=attention, and still offers Fix… (r24 W4)", async () => {

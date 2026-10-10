@@ -201,13 +201,21 @@ export type CommandState = "Runs" | { ShadowedBy: { by: ArtifactKey | null } } |
  * environment, since removing the last one would also delete the folder
  * above that one; `SourceProgram` by npm's inventory for its own `npm`,
  * the program every npm package is updated and uninstalled with;
+ * `ComesWithFormula` by npm's inventory for corepack where its command is
+ * a Homebrew formula's link, which uninstalling it would delete;
  * `NeededBySource` only by `Session::submit`, for a plan whose preview
  * named another source that runs on the package (`Warning.NeededBySource`),
  * so no row carries it. Read through `UNINSTALL_BLOCKED_KEYS` in
  * src/lib/sources.ts, a `Record` over this union, so a variant added here
  * without copy fails `tsc`.
  */
-export type UninstallBlocked = "Pinned" | "NoSafeMethod" | "UvToolDirSet" | "SourceProgram" | "NeededBySource";
+export type UninstallBlocked =
+  | "Pinned"
+  | "NoSafeMethod"
+  | "UvToolDirSet"
+  | "SourceProgram"
+  | "ComesWithFormula"
+  | "NeededBySource";
 /**
  * What one path a path-list uninstall moves to the Trash is. Mirrors
  * `RemovedWhat` in crates/banager-core/src/model.rs: bare-string unit

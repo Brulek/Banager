@@ -803,7 +803,7 @@
     },
     "withFormula": {
       "badge": "随Node更新",
-      "detail": "这个npm是Homebrew安装的Node自带的，会随Node一起更新。在这里单独更新它，Homebrew下次更新Node时会出错。",
+      "detail": "{{name}}是Homebrew安装的Node自带的，会随Node一起更新。在这里单独更新它，Homebrew下次更新Node时会出错。",
       "refused": "无法在这里更新，它会随Homebrew安装的Node一起更新。"
     }
   },
@@ -1042,6 +1042,8 @@
     "reason": "还有软件要用到它：{{names}}。要卸载它，请先卸载{{tools}}。",
     "sourceProgram": "这是{{source}}自己。{{source}}装的工具都要靠它更新和卸载，所以不能在这里卸载。",
     "sourceProgramRefused": "无法卸载，因为它是{{source}}自己。",
+    "withFormula": "它是Homebrew安装的Node自带的。在这里卸载它，还会删掉Homebrew链接到终端的命令，所以不能在这里卸载。",
+    "withFormulaRefused": "无法卸载，因为它是Homebrew安装的Node自带的。",
     "neededBy": "还有别的来源要靠它运行，所以不能在这里卸载。",
     "neededByRefused": "无法卸载，因为还有别的来源要靠它运行。",
     "managedBy": "{{sources}}装的工具要靠它更新和卸载。",
