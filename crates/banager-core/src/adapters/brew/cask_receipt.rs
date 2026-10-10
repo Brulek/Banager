@@ -841,8 +841,22 @@ pub(crate) fn app_targets(recorded: &Recorded) -> Vec<String> {
 /// The `CFBundleIdentifier` in `<app>/Contents/Info.plist`, XML or binary,
 /// or `None` when there is no such regular file or it holds no such
 /// string. Read only: the file is parsed, nothing is opened or run.
-#[cfg(target_os = "macos")]
 pub(crate) fn app_bundle_id(app: &Path) -> Option<String> {
+    info_plist_string(app, "CFBundleIdentifier")
+}
+
+/// The `CFBundleShortVersionString` in `<app>/Contents/Info.plist` -- the
+/// version Finder's Get Info shows, the one an app that updates itself
+/// moves on (R47-3, r18) -- read as `app_bundle_id` reads the bundle id.
+pub(crate) fn app_short_version(app: &Path) -> Option<String> {
+    info_plist_string(app, "CFBundleShortVersionString")
+}
+
+/// The string `key` holds in `<app>/Contents/Info.plist`, XML or binary,
+/// or `None` when there is no such regular file or it holds no such
+/// string. Read only: the file is parsed, nothing is opened or run.
+#[cfg(target_os = "macos")]
+fn info_plist_string(app: &Path, key: &str) -> Option<String> {
     let info = app.join("Contents").join("Info.plist");
     // A regular file only, links followed: a named pipe would wait for a
     // writer (`read_regular_file`); and never one in or through a
@@ -851,14 +865,14 @@ pub(crate) fn app_bundle_id(app: &Path) -> Option<String> {
     plist::Value::from_reader(std::io::Cursor::new(bytes))
         .ok()?
         .as_dictionary()?
-        .get("CFBundleIdentifier")?
+        .get(key)?
         .as_string()
         .map(str::to_string)
 }
 
 /// There is no app bundle to read off macOS.
 #[cfg(not(target_os = "macos"))]
-pub(crate) fn app_bundle_id(_app: &Path) -> Option<String> {
+fn info_plist_string(_app: &Path, _key: &str) -> Option<String> {
     None
 }
 
@@ -2149,6 +2163,8 @@ mod tests {
 	<string>Code</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.microsoft.VSCode</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.95.3</string>
 </dict>
 </plist>
 "#,
@@ -2158,6 +2174,8 @@ mod tests {
             app_bundle_id(&xml),
             Some("com.microsoft.VSCode".to_string())
         );
+        // R47-3 (r18): the version the app itself says, read the same way.
+        assert_eq!(app_short_version(&xml), Some("1.95.3".to_string()));
 
         let binary = dir.0.join("OnyX.app");
         std::fs::create_dir_all(binary.join("Contents")).unwrap();

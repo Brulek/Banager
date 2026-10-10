@@ -1716,6 +1716,28 @@ describe("InstalledPage", () => {
     );
   });
 
+  it("shows the version an app that updates itself says it is, with Homebrew's record beside it in the details (R47-3)", async () => {
+    // Firefox updated itself to 131.0.3; Homebrew's record stays at 128.0.
+    const firefox = formula("firefox", {
+      key: { instance_id: "brew:/opt/homebrew", kind: "Cask", name: "firefox" },
+      version: "128.0",
+      auto_updates: true,
+      facts: { ...NO_FACTS, app_version: "131.0.3" },
+    });
+    served = { ...snapshot, artifacts: [firefox, formula("onyx", { version: "4.6.2" })], updates: [] };
+    renderInstalled();
+
+    expect(await findRow("firefox")).toHaveTextContent("131.0.3");
+    expect(await findRow("firefox")).not.toHaveTextContent("128.0");
+    const drawer = await openDetails("firefox");
+    expect(within(drawer).getByText("Version").nextElementSibling).toHaveTextContent("131.0.3");
+    expect(within(drawer).getByText("Homebrew's record").nextElementSibling).toHaveTextContent("128.0");
+    // One whose app says nothing else has no such line.
+    const onyx = await openDetails("onyx");
+    expect(within(onyx).getByText("Version").nextElementSibling).toHaveTextContent("4.6.2");
+    expect(within(onyx).queryByText("Homebrew's record")).toBeNull();
+  });
+
   it("marks a read-only source's rows View only, offers no Uninstall on them, and keeps pip's way out behind the chip", async () => {
     served = pipSnapshot;
     const { queryByRole, queryAllByText } = renderInstalled();

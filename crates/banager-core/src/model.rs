@@ -522,6 +522,16 @@ pub struct ArtifactFacts {
     /// (`notLookedUp` in src/lib/updateState.ts): no "Up to date" on its
     /// row, and only what can be updated here is said to be up to date.
     pub not_looked_up: bool,
+    /// The version the app of a Homebrew cask that updates itself
+    /// (`auto_updates`) says it is -- its `CFBundleShortVersionString` --
+    /// where that is not Homebrew's record (`InstalledArtifact::version`),
+    /// which stays at the version Homebrew installed while the app moves on
+    /// (R47-3, r18). Read by `BrewAdapter::inventory` from the app at the
+    /// cask's `path`; `None` for every other artifact, and off the wire
+    /// then. The Installed page shows it as the version, with Homebrew's
+    /// record beside it in the details.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub app_version: Option<String>,
     /// What the inventory read about this artifact's commands, for
     /// `commands::judge`: never on the wire (the window has `commands`,
     /// which is the answer), so not in the TypeScript mirror either.
@@ -2815,6 +2825,21 @@ mod tests {
     }
 
     #[test]
+    fn test_an_apps_own_version_is_on_the_wire_only_where_there_is_one() {
+        // R47-3 (r18). Same literal as src/lib/types.test.ts.
+        let wire = r#"{"family":null,"homebrew":null,"commands":[],"commands_unavailable":false,"unlinked":false,"app_version":"131.0.3"}"#;
+        let facts = ArtifactFacts {
+            app_version: Some("131.0.3".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(serde_json::to_string(&facts).unwrap(), wire);
+        assert_eq!(serde_json::from_str::<ArtifactFacts>(wire).unwrap(), facts);
+        assert!(!serde_json::to_string(&ArtifactFacts::default())
+            .unwrap()
+            .contains("app_version"));
+    }
+
+    #[test]
     fn test_homebrew_facts_spell_every_field_on_the_wire_and_read_back() {
         // `src/lib/types.ts` mirrors this as `HomebrewFacts` /
         // `HomebrewLifecycle`, every optional field an explicit `null`, and
@@ -2892,6 +2917,7 @@ mod tests {
             commands_unavailable: false,
             unlinked: false,
             not_looked_up: false,
+            app_version: None,
             command_inputs: CommandInputs {
                 provided: vec![ProvidedCommand {
                     name: "claude".to_string(),

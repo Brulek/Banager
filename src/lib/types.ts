@@ -144,6 +144,13 @@ export interface ArtifactFacts {
    * (`notLookedUp` in src/lib/updateState.ts). False for everything else.
    */
   not_looked_up: boolean;
+  /**
+   * The version the app of a Homebrew cask that updates itself says it is
+   * (its `CFBundleShortVersionString`), where that is not Homebrew's record
+   * -- the artifact's `version`, which stays at what Homebrew installed
+   * (R47-3, r18). Absent for everything else.
+   */
+  app_version?: string;
 }
 /** Shared by every artifact with nothing more to say: never mutate it. */
 export const NO_FACTS: ArtifactFacts = {

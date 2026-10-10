@@ -232,6 +232,13 @@ pub struct BrewAdapter {
     /// differently for the apps in the `/Applications` of the Mac running
     /// it.
     app_bundle_id_fn: fn(&Path) -> Option<String>,
+    /// How to read the version an app on the disk says it is
+    /// (`CFBundleShortVersionString`), for the inventory to show where an
+    /// app that updates itself has moved past Homebrew's record (R47-3):
+    /// `cask_receipt::app_short_version` outside this crate's unit tests,
+    /// none inside them unless a test installs a reader
+    /// (`with_app_version_fn`), as for `app_bundle_id_fn`.
+    app_version_fn: fn(&Path) -> Option<String>,
     /// How the queue key of a plan's prefix looks at folders
     /// (`prefix_lock`): `PREFIX_IDENTITY_FN`.
     prefix_identity_fn: fn(&Path) -> Option<(u64, u64)>,
@@ -351,6 +358,13 @@ const DEFAULT_RECORDED_UNINSTALL_FN: fn(&Path, &str) -> Option<Recorded> = |_, _
 const DEFAULT_APP_BUNDLE_ID_FN: fn(&Path) -> Option<String> = cask_receipt::app_bundle_id;
 #[cfg(test)]
 const DEFAULT_APP_BUNDLE_ID_FN: fn(&Path) -> Option<String> = |_| None;
+
+/// `BrewAdapter::app_version_fn` as `BrewAdapter::new` sets it, as
+/// `DEFAULT_APP_BUNDLE_ID_FN`.
+#[cfg(not(test))]
+const DEFAULT_APP_VERSION_FN: fn(&Path) -> Option<String> = cask_receipt::app_short_version;
+#[cfg(test)]
+const DEFAULT_APP_VERSION_FN: fn(&Path) -> Option<String> = |_| None;
 
 /// `BrewAdapter::trust_list_fn` as `BrewAdapter::new` sets it: the real
 /// trust list in every build but this crate's unit tests, where it is
@@ -523,6 +537,7 @@ impl BrewAdapter {
             #[cfg(test)]
             inspect_cask_links: false,
             app_bundle_id_fn: DEFAULT_APP_BUNDLE_ID_FN,
+            app_version_fn: DEFAULT_APP_VERSION_FN,
             applications: PathBuf::from("/Applications"),
             prefix_identity_fn: PREFIX_IDENTITY_FN,
             trust_list_fn: DEFAULT_TRUST_LIST_FN,
@@ -724,6 +739,14 @@ impl BrewAdapter {
         self
     }
 
+    /// Test-only hook to put apps that say their version on the disk the
+    /// inventory reads (see `app_version_fn`).
+    #[cfg(test)]
+    fn with_app_version_fn(mut self, app_version_fn: fn(&Path) -> Option<String>) -> BrewAdapter {
+        self.app_version_fn = app_version_fn;
+        self
+    }
+
     /// Test support (the `test-support` feature, for the integration tests
     /// and the shell's, which are built without `cfg(test)` and so get every
     /// real reader): an adapter that reads nothing of the Mac running the
@@ -744,6 +767,7 @@ impl BrewAdapter {
         self.brew_env_fn = |_| brew_env::EnvFile::Skipped;
         self.recorded_uninstall_fn = |_, _| None;
         self.app_bundle_id_fn = |_| None;
+        self.app_version_fn = |_| None;
         self.trust_list_fn = |_| Some(TrustList::default());
         self.kegs_fn = |_, _| None;
         self.racks_fn = |_| None;
@@ -4024,6 +4048,70 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_inventory_shows_the_version_an_app_that_updates_itself_says_it_is() {
+        // R47-3 (r18): an app with its own updater moves on while Homebrew's
+        // record stays at the version it installed. The inventory reads the
+        // app's own `CFBundleShortVersionString` for a cask that updates
+        // itself and keeps it where it is not the record: the first field
+        // of a version like Docker's `4.35.0,184744` counts as the record.
+        let runner = Arc::new(MockRunner::new());
+        let json = r#"{
+            "formulae": [],
+            "casks": [
+                {"token":"firefox","name":["Mozilla Firefox"],"installed":"128.0","auto_updates":true,"artifacts":[{"app":["Firefox.app"],"target":"/Applications/Firefox.app"}]},
+                {"token":"docker-desktop","name":["Docker Desktop"],"installed":"4.35.0,184744","auto_updates":true,"artifacts":[{"app":["Docker.app"],"target":"/Applications/Docker.app"}]},
+                {"token":"onyx","name":["OnyX"],"installed":"4.6.2","auto_updates":null,"artifacts":[{"app":["OnyX.app"],"target":"/Applications/OnyX.app"}]},
+                {"token":"zoom","name":["Zoom"],"installed":"6.2.5","auto_updates":true,"artifacts":[{"app":["zoom.us.app"],"target":"/Applications/zoom.us.app"}]}
+            ]
+        }"#;
+        runner.respond(
+            vec!["/opt/homebrew/bin/brew", "info", "--installed", "--json=v2"],
+            CommandOutput {
+                stderr_cause: Default::default(),
+                exit_code: Some(0),
+                stdout: json.to_string(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let adapter = BrewAdapter::new(runner).with_app_version_fn(|app| {
+            match app.to_str()? {
+                "/Applications/Firefox.app" => Some("131.0.3"),
+                "/Applications/Docker.app" => Some("4.35.0"),
+                // Not one that updates itself: not read, whatever it says.
+                "/Applications/OnyX.app" => Some("4.7.0"),
+                // zoom.us.app says nothing.
+                _ => None,
+            }
+            .map(str::to_string)
+        });
+        let artifacts = adapter
+            .inventory(&test_instance())
+            .await
+            .expect("inventory");
+        let app_versions: Vec<(&str, &str, Option<&str>)> = artifacts
+            .iter()
+            .map(|artifact| {
+                (
+                    artifact.key.name.as_str(),
+                    artifact.version.as_str(),
+                    artifact.facts.app_version.as_deref(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            app_versions,
+            vec![
+                ("firefox", "128.0", Some("131.0.3")),
+                ("docker-desktop", "4.35.0,184744", None),
+                ("onyx", "4.6.2", None),
+                ("zoom", "6.2.5", None),
+            ]
+        );
+    }
+
+    #[tokio::test]
     async fn test_check_updates_respects_ttl() {
         let runner = Arc::new(MockRunner::new());
         runner.respond(
@@ -4378,6 +4466,26 @@ mod tests {
             .into_iter()
             .find(|spec| spec.args.first().map(String::as_str) == Some("outdated"))
             .expect("brew outdated ran")
+    }
+
+    #[tokio::test]
+    async fn test_check_updates_leaves_an_app_that_updates_itself_to_homebrews_own_look_at_it() {
+        // R47-3 (r18): `--greedy` and `--greedy-auto-updates` both have
+        // Homebrew 7.0.9 list an `auto_updates` cask whenever its record is
+        // not the catalogue's version, skipping its look at the app's own
+        // version (`Cask#outdated_version`, `cask/cask.rb:433-452`): an app
+        // that already updated itself is offered the version it has, or an
+        // older one. Without either flag, Homebrew lists it only when the
+        // app itself is older than the catalogue
+        // (`auto_updates_bundle_outdated?`, `:819-850`).
+        for include_self_updating in [false, true] {
+            let spec = outdated_run(include_self_updating).await;
+            assert_eq!(
+                spec.args,
+                vec!["outdated", "--json=v2"],
+                "{include_self_updating}"
+            );
+        }
     }
 
     #[tokio::test]

@@ -196,6 +196,16 @@ describe("types", () => {
     expect(roundTrip<ArtifactFacts>(JSON.parse(wire))).toEqual(facts);
   });
 
+  it("reads an app's own version as the Rust side writes it, only where there is one (R47-3)", () => {
+    // Same literal as Rust's test_an_apps_own_version_is_on_the_wire_only_where_there_is_one.
+    const wire =
+      '{"family":null,"homebrew":null,"commands":[],"commands_unavailable":false,"unlinked":false,"app_version":"131.0.3"}';
+    const facts: ArtifactFacts = { ...NO_FACTS, app_version: "131.0.3" };
+    expect(JSON.stringify(facts)).toBe(wire);
+    expect(roundTrip<ArtifactFacts>(JSON.parse(wire))).toEqual(facts);
+    expect(JSON.stringify(NO_FACTS)).not.toContain("app_version");
+  });
+
   it("reads Snapshot.next_auto_check_at as ipc.rs's wire test sends it: Unix seconds, or null before any check", () => {
     // test_every_snapshot_the_window_is_handed_says_when_the_daily_check_is_next_due
     // in src-tauri/src/ipc.rs: a window round at 1790586000, due a day on.
