@@ -1881,7 +1881,12 @@ mod tests {
             serde_json::from_str(include_str!("failure_detail_cases.json")).expect("cases parse");
         assert!(cases.len() >= 8, "the shared cases are all there");
         for case in cases {
-            assert_eq!(failure_detail_in(&case.summary, None), case.detail, "{}", case.name);
+            assert_eq!(
+                failure_detail_in(&case.summary, None),
+                case.detail,
+                "{}",
+                case.name
+            );
         }
     }
 
