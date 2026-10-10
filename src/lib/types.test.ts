@@ -691,6 +691,9 @@ describe("types", () => {
     const forgetsTrust: Warning = { HomebrewForgetsTrust: { name: "gautham-v/tap/claudebar" } };
     expect(JSON.stringify(forgetsTrust)).toBe('{"HomebrewForgetsTrust":{"name":"gautham-v/tap/claudebar"}}');
     expect(roundTrip(forgetsTrust)).toEqual(forgetsTrust);
+    const serviceStays: Warning = { HomebrewServiceStays: { name: "ollama", system: false } };
+    expect(JSON.stringify(serviceStays)).toBe('{"HomebrewServiceStays":{"name":"ollama","system":false}}');
+    expect(roundTrip(serviceStays)).toEqual(serviceStays);
 
     // Round 2: an uninstall's sentence about what goes and what stays, and
     // a cask's extra steps. Pinned against the same Rust test.

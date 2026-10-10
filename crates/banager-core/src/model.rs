@@ -3369,6 +3369,14 @@ mod tests {
             .unwrap(),
             r#"{"HomebrewForgetsTrust":{"name":"gautham-v/tap/claudebar"}}"#
         );
+        assert_eq!(
+            serde_json::to_string(&Warning::HomebrewServiceStays {
+                name: "ollama".to_string(),
+                system: false,
+            })
+            .unwrap(),
+            r#"{"HomebrewServiceStays":{"name":"ollama","system":false}}"#
+        );
 
         // Round 2: an uninstall's one sentence about what goes and what
         // stays, and a cask's extra steps. Two externally tagged objects

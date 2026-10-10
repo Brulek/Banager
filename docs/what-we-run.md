@@ -1840,6 +1840,22 @@ formula's uninstall preview says it couldn't check what else needs it
 (`Warning::DependentsUnknown`), whatever `brew uses` named. Nothing more
 runs for this. A Cellar Banager cannot read in full claims nothing.
 
+**A formula's background service** (r18 R46-3). `brew services start
+<name>` puts the formula's service file in `~/Library/LaunchAgents`, or in
+`/Library/LaunchDaemons` when started with `sudo`, as `sh.brew.<name>.plist`
+or, as older versions of Homebrew named it, `homebrew.mxcl.<name>.plist`
+(`service.rb:86-105`, `services/system.rb:68`, `:80`). `brew uninstall`
+neither stops the service nor removes that file (`uninstall.rb:24-110` in
+Homebrew 7.0.9): the program keeps running from the deleted version, and
+macOS keeps trying to start it at login. So a formula's uninstall preview
+looks for those four files (`lstat` only, `brew::kegs::read_service`) and,
+when one is there, says the formula is set to run in the background with
+brew services and that uninstalling doesn't stop it, with `brew services
+stop <name>` -- `sudo brew services stop <name>` for one in
+`/Library/LaunchDaemons` -- to run in Terminal first
+(`Warning::HomebrewServiceStays`). Banager runs neither. A service file
+the formula names some other way is not looked for.
+
 `brew uses` names only formulae and casks. The uninstall preview of a
 formula or cask also looks, read-only and running nothing, for the other
 sources that run on it — npm on a `node`, pip and pipx's environments on a
@@ -5127,6 +5143,10 @@ not read (`protected::look`; How Banager runs anything, above):
   section, "Old versions"); after every inventory, the names in
   `<prefix>/Cellar` and, of each folder there `brew info` did not list,
   the names in it (Homebrew's section, "Formulae Homebrew leaves out");
+  during a formula's uninstall preview, whether `sh.brew.<name>.plist` or
+  `homebrew.mxcl.<name>.plist` is in `~/Library/LaunchAgents` or
+  `/Library/LaunchDaemons` (`lstat` only; Homebrew's section, "A
+  formula's background service");
   for a keg-only formula's upgrade, during its
   preview, right before it, after it and after the `brew link` that
   follows, and for the link a source's notice offers, during its preview

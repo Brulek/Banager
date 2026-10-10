@@ -2866,6 +2866,19 @@ impl BrewAdapter {
                         names: affected.clone(),
                     });
                 }
+                // r18 R46-3: `brew uninstall` leaves a `brew services`
+                // service running, and its file where macOS starts it from.
+                if req.artifact_kind == ArtifactKind::Formula {
+                    let home = (self.env_var_fn)("HOME")
+                        .filter(|home| !home.is_empty())
+                        .map(PathBuf::from);
+                    if let Some(service) = (self.service_fn)(home.as_deref(), &req.name) {
+                        warnings.push(Warning::HomebrewServiceStays {
+                            name: req.name.rsplit('/').next().unwrap_or(&req.name).to_string(),
+                            system: service.system,
+                        });
+                    }
+                }
                 warnings.extend(cask_steps);
                 warnings.extend(forgets);
                 warnings.extend(autoremoves);

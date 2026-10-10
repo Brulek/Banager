@@ -1036,6 +1036,7 @@
     },
     "forgetsTrust": "Homebrew還會從它的信任清單中刪除「{{name}}」。",
     "forgetsTrustDetail": "這條記錄只針對它本身，清單裡的其他記錄不受影響。",
+    "serviceStays": "「{{name}}」已用brew services設為在背景執行，解除安裝不會停止它：它會繼續執行，macOS也會繼續嘗試啟動它。要先停止它，請在終端機執行{{command}}。",
     "scopeMore": {
       "HomebrewCaskPlainThirdParty": "刪除Homebrew為「{{name}}」放置的檔案；它的設定和資料保留不動，它的安裝程式如果另外裝了檔案，也不刪除。",
       "HomebrewCaskRuby": "刪除Homebrew為「{{name}}」放置的檔案，並執行它的解除安裝步驟；其中部分步驟還會刪除什麼，無法事先得知。Homebrew讀不出安裝時記下的步驟時，會按它現在的定義執行。",

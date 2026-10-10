@@ -492,6 +492,12 @@ export type Warning =
    */
   | { HomebrewForgetsTrust: { name: string } }
   /**
+   * r18 R46-3: `brew services start` set this formula up to run in the
+   * background (`system`: with `sudo`), and `brew uninstall` neither stops
+   * it nor removes its service file. `name` is its name in the Cellar.
+   */
+  | { HomebrewServiceStays: { name: string; system: boolean } }
+  /**
    * U9 (r6): once this upgrade of a formula exits 0, Banager runs
    * `brew cleanup <name>` (`PlanAction`'s `CommandThen`), which deletes
    * these older versions -- every version installed when the preview

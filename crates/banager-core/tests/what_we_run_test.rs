@@ -2596,3 +2596,31 @@ fn test_what_we_run_says_which_formula_updates_compile_and_how_long_they_get() {
         );
     }
 }
+
+#[test]
+fn test_what_we_run_says_a_formulas_uninstall_leaves_its_service_running() {
+    // r18 R46-3: the uninstall preview looks for a formula's `brew
+    // services` file and says the service stays; the files it looks at are
+    // listed with the rest.
+    let doc = read_doc();
+    let homebrew = section_body(&doc, "Homebrew").expect("a `## Homebrew` section");
+    let folded = homebrew.split_whitespace().collect::<Vec<_>>().join(" ");
+    for words in [
+        "**A formula's background service**",
+        "`uninstall.rb:24-110`",
+        "`Warning::HomebrewServiceStays`",
+        "`sudo brew services stop <name>`",
+    ] {
+        assert!(
+            folded.contains(words),
+            "the `## Homebrew` section does not say {words:?} of a formula's background service"
+        );
+    }
+    let reads =
+        section_body(&doc, "Files Banager reads").expect("a `## Files Banager reads` section");
+    let reads = reads.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(
+        reads.contains("`homebrew.mxcl.<name>.plist` is in `~/Library/LaunchAgents` or `/Library/LaunchDaemons`"),
+        "`## Files Banager reads` does not list the service files the uninstall preview looks for"
+    );
+}

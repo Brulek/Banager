@@ -137,6 +137,25 @@ describe("warningKey", () => {
     );
   });
 
+  it("says a formula's brew services service keeps running after its uninstall, with the command that stops it", () => {
+    // r18 R46-3: `brew uninstall` neither stops the service nor removes its
+    // file; one started with `sudo` is stopped with `sudo`.
+    const enT = i18n.getFixedT("en");
+    const zh = i18n.getFixedT("zh-CN");
+    const user: Warning = { HomebrewServiceStays: { name: "ollama", system: false } };
+    const system: Warning = { HomebrewServiceStays: { name: "unbound", system: true } };
+    expect(enT(warningKey(user) as string, warningArgs(user))).toBe(
+      "ollama is set to run in the background with brew services, and uninstalling doesn't stop it: it keeps running, and macOS keeps trying to start it. To stop it first, run brew services stop ollama in Terminal.",
+    );
+    expect(zh(warningKey(system) as string, warningArgs(system))).toBe(
+      "“unbound”已用brew services设为在后台运行，卸载不会停止它：它会继续运行，macOS也会继续尝试启动它。要先停止它，请在终端运行sudo brew services stop unbound。",
+    );
+    expect(warningDetailKey(user)).toBeNull();
+    expect(warningGroup(user)).toBe("note");
+    expect(deletesForGood(user)).toBe(false);
+    expect(isCaution(user)).toBe(true);
+  });
+
   it("says Homebrew deletes the trust list's entry for what it uninstalls, its why behind the ⓘ", () => {
     const warning: Warning = { HomebrewForgetsTrust: { name: "gautham-v/tap/claudebar" } };
     const zh = i18n.getFixedT("zh-CN");
@@ -371,6 +390,7 @@ describe("warningKey", () => {
       "HomebrewMayAutoUpdate",
       { HomebrewNoCleanupFormulae: { names: ["node"], old_versions: false, autoremove: true } },
       { HomebrewForgetsTrust: { name: "someone/tap/thing" } },
+      { HomebrewServiceStays: { name: "ollama", system: false } },
       { UninstallScope: { what: "Pipx" } },
       { CaskUninstallStep: { step: "Trashes", items: ["~/.nvs"] } },
       { Message: "boom" },
@@ -584,6 +604,7 @@ const EVERY_VARIANT: Warning[] = [
   "HomebrewMayAutoUpdate",
   { HomebrewNoCleanupFormulae: { names: ["node"], old_versions: true, autoremove: true } },
   { HomebrewForgetsTrust: { name: "someone/tap/thing" } },
+  { HomebrewServiceStays: { name: "ollama", system: false } },
   { HomebrewCleansUpOldVersions: { versions: ["1.25.0"] } },
   { HomebrewRemovesEveryVersion: { versions: ["1.25.0", "1.26.0"] } },
   { HomebrewRelinksAfterUpdate: { name: "node@22", commands: ["node", "npm"] } },
@@ -714,7 +735,7 @@ describe("warningGroup", () => {
           "UninstallScope" in warning
         ),
     );
-    expect(notes).toHaveLength(32);
+    expect(notes).toHaveLength(33);
     for (const warning of notes) expect(warningGroup(warning)).toBe("note");
     // Every kind of a cask's extra steps.
     for (const step of EVERY_STEP) {
@@ -1109,6 +1130,7 @@ describe("isCaution", () => {
       { RemovesUnrecordedPrograms: { names: ["uv", "uvx"] } },
       { LeavesShellConfigLine: { path: "~/.zshrc", certain: true } },
       { CaskUninstallStep: { step: "Deletes", items: ["~/Library/Foo"] } },
+      { HomebrewServiceStays: { name: "ollama", system: false } },
       { Message: "something this build has no words for" },
     ];
     const plain: Warning[] = [
