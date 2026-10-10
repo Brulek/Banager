@@ -337,7 +337,7 @@ async fn test_a_refresh_runs_only_the_read_only_commands_each_sources_section_sh
     );
     recorder.answer(
         "python3",
-        "-m pip list --outdated --format=json",
+        "-m pip list --outdated --not-required --format=json",
         0,
         fixture("pip/26.2.1/list-outdated.json"),
     );

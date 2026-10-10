@@ -2630,7 +2630,13 @@ project) and every index's answer. The third is pip's own default number
 of retries: with retries turned off (`retries = 0`), pip gives up on an
 index it cannot reach without printing anything at that verbosity, and
 every package would read as up to date (seen with pip 26.2.1 on
-2026-10-05: exit 0, `[]`, nothing on stderr). pip looks packages up one
+2026-10-05: exit 0, `[]`, nothing on stderr). The check looks up only the
+packages nothing else installed depends on (`--not-required`, which pip
+applies before it looks anything up). pip is view only here, so a package
+another one requires has nothing to offer, and looking each of those up
+made a large environment's check take minutes. Their rows show no newer
+version, even when there is one, and the Installed page says nothing
+about updates on them, rather than "Up to date". pip looks packages up one
 at a time, about a second each, so the check is given 60 seconds and 1.5
 more for each installed package, at most 600 (`PipAdapter::outdated_timeout`):
 a few hundred packages (an Anaconda base, say) used to run into a fixed 60
@@ -2679,12 +2685,13 @@ case variants such as `/USR/BIN` and links spelled that way are guarded too.
 | Version | `<python> -m pip --version` | 30 s |
 | List packages (`inventory`) | `<python> -m pip list --format=json` | 60 s |
 | List packages nothing else depends on (`inventory`, to tell dependencies apart) | `<python> -m pip list --format=json --not-required` | 60 s |
-| List packages, to count them (`check_updates`, before the next row) | `<python> -m pip list --format=json` | 60 s |
-| List outdated packages (`check_updates`) | `<python> -m pip list --outdated --format=json` with `PIP_QUIET=0`, `PIP_VERBOSE=0` and `PIP_RETRIES=5` | 60 s, plus 1.5 s for each package the row above listed, at most 600 s |
+| List packages nothing else depends on, to count them (`check_updates`, before the next row) | `<python> -m pip list --format=json --not-required` | 60 s |
+| List outdated packages nothing else depends on (`check_updates`) | `<python> -m pip list --outdated --not-required --format=json` with `PIP_QUIET=0`, `PIP_VERBOSE=0` and `PIP_RETRIES=5` | 60 s, plus 1.5 s for each package the row above listed, at most 600 s |
 
-If `pip list --outdated` exits non-zero, every installed package that list
-named is listed as "could not check", with the reason; if that list itself
-failed, `<python> -m pip list --format=json` is run once more for it. The
+If `pip list --outdated` exits non-zero, every package that list named is
+listed as "could not check", with the reason; if that list itself failed,
+`<python> -m pip list --format=json --not-required` is run once more for
+it. The
 list is read for the same rows when the command exits 0 but gave
 up on reaching the index for some package: pip then leaves that package
 out as if it were up to date. Banager reads two things pip prints at its
@@ -2698,8 +2705,8 @@ could not be verified (`final_fetch_failures`); the reason saved for such
 a line is a fixed sentence that never includes the index URL or its
 credentials. The JSON list is read past those lines. Each such package
 that is not listed is "could not check", with the error from that
-warning or line; where the address names no installed package (a
-`--find-links` page, say), every package not listed is. What was listed
+warning or line; where the address names none of the packages it looked
+up (a `--find-links` page, say), every one of them not listed is. What was listed
 is kept — also when that list fails both times, and then the packages pip
 gave up on cannot be named and read as up to date, as before. Nothing is
 printed when that final try answers, so a package

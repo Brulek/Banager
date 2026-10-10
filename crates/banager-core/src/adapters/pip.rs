@@ -812,19 +812,27 @@ impl PipAdapter {
         inst: &ManagerInstance,
         _opts: &CheckOptions,
     ) -> Result<CheckOutcome, AdapterError> {
-        // What is installed, first: its count sets the outdated check's
-        // deadline (`outdated_timeout`), and the rows below that name
-        // packages pip did not answer for are read from it. The plain
-        // list, not `inventory()`: nothing here reads install reasons,
-        // which `inventory()` runs a second `--not-required` pass for. A
-        // list that fails here gives the check the 60 s it had before,
-        // and is asked again where a row needs it.
-        let listed = self.run_pip_list(inst, &[]).await.ok();
+        // Only the packages nothing else installed requires are looked up
+        // (`--not-required`, which pip 26.2.1 applies before its lookups,
+        // `list.py:197-211`). pip is view only here, so a package another
+        // one requires offers nothing to do, and looking each of them up
+        // held every source's results for minutes in a large environment
+        // (r15 R43-8, the author's choice of 2026-10-10). The Installed
+        // page says nothing about updates on those rows
+        // (`leftOutOfUpdateCheck`), not 「已是最新」.
+        //
+        // Those packages first, as `inventory()` lists them: their count
+        // sets the check's deadline (`outdated_timeout`), and the rows
+        // below that name packages pip did not answer for are read from
+        // it. A list that fails here gives the check 60 s, and is asked
+        // again where a row needs it.
+        let listed = self.run_pip_list(inst, &["--not-required"]).await.ok();
         let args = vec![
             "-m".to_string(),
             "pip".to_string(),
             "list".to_string(),
             "--outdated".to_string(),
+            "--not-required".to_string(),
             "--format=json".to_string(),
         ];
         let output = self
@@ -858,7 +866,7 @@ impl PipAdapter {
             );
             let installed = match listed {
                 Some(installed) => installed,
-                None => self.run_pip_list(inst, &[]).await?,
+                None => self.run_pip_list(inst, &["--not-required"]).await?,
             };
             return Ok(installed
                 .into_iter()
@@ -900,13 +908,14 @@ impl PipAdapter {
 
     /// `checked` -- what `pip list --outdated` listed, each a real answer
     /// -- and, after it, a "could not check" row (`uncheckable_candidate`)
-    /// for each installed package it did not list whose lookup pip gave
-    /// up on (`lookups_given_up`), with that lookup's words: transient
-    /// where they say the network failed, as when `pip list --outdated`
-    /// exits non-zero (`LookupFailure::words`). A lookup whose address
-    /// names no installed package -- a `--find-links` page, say -- left
-    /// every package's answer short, so every package not listed gets the
-    /// row. Installed packages come from the plain list, as on that path:
+    /// for each package it asked about -- one nothing else requires -- and
+    /// did not list, whose lookup pip gave up on (`lookups_given_up`), with
+    /// that lookup's words: transient where they say the network failed,
+    /// as when `pip list --outdated` exits non-zero
+    /// (`LookupFailure::words`). A lookup whose address
+    /// names none of those -- a `--find-links` page, say -- left every
+    /// package's answer short, so every one not listed gets the row.
+    /// They come from the `--not-required` list, as on that path:
     /// `listed`, the one read before the check, or read now when that one
     /// failed.
     ///
@@ -923,7 +932,7 @@ impl PipAdapter {
     ) -> Vec<UpdateCandidate> {
         let installed = match listed {
             Some(installed) => installed,
-            None => match self.run_pip_list(inst, &[]).await {
+            None => match self.run_pip_list(inst, &["--not-required"]).await {
                 Ok(installed) => installed,
                 Err(_) => return checked,
             },
@@ -1131,7 +1140,7 @@ mod tests {
             ),
         );
         runner.respond(
-            LIST_ARGV.to_vec(),
+            NOT_REQUIRED_ARGV.to_vec(),
             exited_with(0, r#"[{"name":"cowsay","version":"5.0"}]"#, ""),
         );
         let adapter = PipAdapter::new(runner);
@@ -1171,7 +1180,7 @@ mod tests {
         let runner = Arc::new(MockRunner::new());
         runner.respond(OUTDATED_ARGV.to_vec(), exited_with(0, "[]\n", &stderr));
         runner.respond(
-            LIST_ARGV.to_vec(),
+            NOT_REQUIRED_ARGV.to_vec(),
             exited_with(
                 0,
                 r#"[{"name": "pymupdf", "version": "1.28.2"}, {"name": "PyYAML", "version": "6.0.3"}]"#,
@@ -1222,7 +1231,7 @@ mod tests {
             let runner = Arc::new(MockRunner::new());
             runner.respond(OUTDATED_ARGV.to_vec(), exited_with(0, &stdout, ""));
             runner.respond(
-                LIST_ARGV.to_vec(),
+                NOT_REQUIRED_ARGV.to_vec(),
                 exited_with(
                     0,
                     r#"[{"name":"cowsay","version":"5.0"},{"name":"six","version":"1.17.0"}]"#,
@@ -1244,7 +1253,7 @@ mod tests {
             // for the check's deadline (unanswered here) and the check.
             assert_eq!(
                 runner.calls(),
-                vec![LIST_ARGV.to_vec(), OUTDATED_ARGV.to_vec()],
+                vec![NOT_REQUIRED_ARGV.to_vec(), OUTDATED_ARGV.to_vec()],
                 "{stdout}"
             );
         }
@@ -1336,11 +1345,19 @@ mod tests {
             let runner = Arc::new(MockRunner::new());
             let python = "/opt/homebrew/bin/python3.13";
             runner.respond(
-                vec![python, "-m", "pip", "list", "--format=json"],
+                vec![python, "-m", "pip", "list", "--format=json", "--not-required"],
                 exited(0, &format!("[{}]", list.join(","))),
             );
             runner.respond(
-                vec![python, "-m", "pip", "list", "--outdated", "--format=json"],
+                vec![
+                    python,
+                    "-m",
+                    "pip",
+                    "list",
+                    "--outdated",
+                    "--not-required",
+                    "--format=json",
+                ],
                 exited(0, "[]"),
             );
             let mut inst = test_instance();
@@ -1374,11 +1391,14 @@ mod tests {
         let specs = runner.specs.lock().unwrap();
         // The plain list read for the check's deadline, then the check.
         assert_eq!(specs.len(), 2);
-        assert_eq!(specs[0].args, ["-m", "pip", "list", "--format=json"]);
+        assert_eq!(
+            specs[0].args,
+            ["-m", "pip", "list", "--format=json", "--not-required"]
+        );
         let specs = &specs[1..];
         assert_eq!(
             specs[0].args,
-            ["-m", "pip", "list", "--outdated", "--format=json"]
+            ["-m", "pip", "list", "--outdated", "--not-required", "--format=json"]
         );
         assert!(!specs[0].args.iter().any(|a| a.starts_with("-v")));
         assert_eq!(
@@ -2407,6 +2427,7 @@ mod tests {
                 "pip",
                 "list",
                 "--outdated",
+                "--not-required",
                 "--format=json",
             ],
             CommandOutput {
@@ -2434,8 +2455,9 @@ mod tests {
         // whole source made every refresh on such a machine report an error
         // and hold the entire snapshot stale, which is exactly what cargo's
         // own comment says must not happen.
-        let list = std::fs::read_to_string("../../adapters/fixtures/pip/26.2.1/list.json")
-            .expect("read pip list.json fixture");
+        let list =
+            std::fs::read_to_string("../../adapters/fixtures/pip/26.2.1/list-not-required.json")
+                .expect("read pip list-not-required.json fixture");
         let runner = Arc::new(MockRunner::new());
         runner.respond(
             vec![
@@ -2444,6 +2466,7 @@ mod tests {
                 "pip",
                 "list",
                 "--outdated",
+                "--not-required",
                 "--format=json",
             ],
             CommandOutput {
@@ -2462,6 +2485,7 @@ mod tests {
                 "pip",
                 "list",
                 "--format=json",
+                "--not-required",
             ],
             CommandOutput {
                 stderr_cause: Default::default(),
@@ -2514,13 +2538,22 @@ mod tests {
             .join("\n")
     }
 
-    const OUTDATED_ARGV: [&str; 6] = [
+    const OUTDATED_ARGV: [&str; 7] = [
         "/opt/homebrew/bin/python3.14",
         "-m",
         "pip",
         "list",
         "--outdated",
+        "--not-required",
         "--format=json",
+    ];
+    const NOT_REQUIRED_ARGV: [&str; 6] = [
+        "/opt/homebrew/bin/python3.14",
+        "-m",
+        "pip",
+        "list",
+        "--format=json",
+        "--not-required",
     ];
     const LIST_ARGV: [&str; 5] = [
         "/opt/homebrew/bin/python3.14",
@@ -2529,6 +2562,48 @@ mod tests {
         "list",
         "--format=json",
     ];
+
+    #[tokio::test]
+    async fn regression_r16_the_check_asks_only_about_packages_nothing_else_requires() {
+        // r15 R43-8, as the author decided it (2026-10-10): pip is view
+        // only here, so a package another one requires offers nothing to
+        // do, and looking it up held every source's results for minutes.
+        // The check asks only about the packages nothing requires
+        // (`--not-required`, which pip 26.2.1 applies before its lookups,
+        // `list.py:197-211`), and when it fails only those are "could not
+        // check": nothing about the others was asked.
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            NOT_REQUIRED_ARGV.to_vec(),
+            exited_with(0, r#"[{"name":"jupyter","version":"1.1.1"}]"#, ""),
+        );
+        runner.respond(
+            LIST_ARGV.to_vec(),
+            exited_with(
+                0,
+                r#"[{"name":"jupyter","version":"1.1.1"},{"name":"notebook","version":"7.4.0"}]"#,
+                "",
+            ),
+        );
+        runner.respond(
+            OUTDATED_ARGV.to_vec(),
+            exited_with(1, "", "ERROR: Could not fetch URL https://pypi.org/simple/"),
+        );
+        let rows = PipAdapter::new(runner.clone())
+            .check_updates(&test_instance(), &CheckOptions::default())
+            .await
+            .unwrap()
+            .candidates;
+        let names: Vec<(&str, bool)> = rows
+            .iter()
+            .map(|row| (row.key.name.as_str(), row.checkable))
+            .collect();
+        assert_eq!(names, [("jupyter", false)]);
+        assert_eq!(
+            runner.calls(),
+            vec![NOT_REQUIRED_ARGV.to_vec(), OUTDATED_ARGV.to_vec()]
+        );
+    }
 
     fn exited_with(code: i32, stdout: &str, stderr: &str) -> CommandOutput {
         CommandOutput {
@@ -2614,7 +2689,7 @@ mod tests {
         let runner = Arc::new(MockRunner::new());
         runner.respond(OUTDATED_ARGV.to_vec(), exited_with(0, "[]\n", &stderr));
         runner.respond(
-            LIST_ARGV.to_vec(),
+            NOT_REQUIRED_ARGV.to_vec(),
             exited_with(
                 0,
                 r#"[{"name": "cowsay", "version": "6.1"}, {"name": "pip", "version": "26.2.1"}, {"name": "requests", "version": "2.32.3"}]"#,
@@ -2645,7 +2720,7 @@ mod tests {
             );
         }
         // The list read for the deadline names the packages: not read again.
-        assert_eq!(runner.calls(), vec![argv(&LIST_ARGV), argv(&OUTDATED_ARGV)]);
+        assert_eq!(runner.calls(), vec![argv(&NOT_REQUIRED_ARGV), argv(&OUTDATED_ARGV)]);
     }
 
     #[tokio::test]
@@ -2668,7 +2743,7 @@ mod tests {
             ),
         );
         runner.respond(
-            LIST_ARGV.to_vec(),
+            NOT_REQUIRED_ARGV.to_vec(),
             exited_with(
                 0,
                 r#"[{"name": "black", "version": "24.1.0"}, {"name": "cowsay", "version": "6.1"}, {"name": "PyYAML", "version": "6.0.1"}, {"name": "requests", "version": "2.32.3"}]"#,
@@ -2708,7 +2783,7 @@ mod tests {
             exited_with(0, "[]", &gave_up_on(HUNG_UP, "/simple/cowsay/")),
         );
         runner.respond(
-            LIST_ARGV.to_vec(),
+            NOT_REQUIRED_ARGV.to_vec(),
             exited_with(0, r#"[{"name": "cowsay", "version": "6.1"}]"#, ""),
         );
         let adapter = PipAdapter::new(runner);
@@ -2742,7 +2817,7 @@ mod tests {
             ),
         );
         runner.respond(
-            LIST_ARGV.to_vec(),
+            NOT_REQUIRED_ARGV.to_vec(),
             exited_with(
                 0,
                 r#"[{"name": "black", "version": "24.1.0"}, {"name": "cowsay", "version": "6.1"}]"#,
@@ -2779,7 +2854,7 @@ mod tests {
             ),
         );
         runner.respond(
-            LIST_ARGV.to_vec(),
+            NOT_REQUIRED_ARGV.to_vec(),
             exited_with(
                 1,
                 "",
@@ -2799,7 +2874,7 @@ mod tests {
         // Failed before the check too, which then had its 60 s.
         assert_eq!(
             runner.calls(),
-            vec![argv(&LIST_ARGV), argv(&OUTDATED_ARGV), argv(&LIST_ARGV)]
+            vec![argv(&NOT_REQUIRED_ARGV), argv(&OUTDATED_ARGV), argv(&NOT_REQUIRED_ARGV)]
         );
     }
 
@@ -2819,7 +2894,7 @@ mod tests {
             .expect("check_updates")
             .candidates;
         assert!(candidates.is_empty());
-        assert_eq!(runner.calls(), vec![argv(&LIST_ARGV), argv(&OUTDATED_ARGV)]);
+        assert_eq!(runner.calls(), vec![argv(&NOT_REQUIRED_ARGV), argv(&OUTDATED_ARGV)]);
     }
 
     #[tokio::test]
