@@ -116,6 +116,28 @@ mod tests {
     use super::*;
     use std::path::Path;
 
+    /// Takes the lock just released on `directory`. Other tests in this
+    /// binary spawn processes at the same time, and a spawned process holds
+    /// a copy of every open descriptor, the `O_CLOEXEC` one too, until macOS
+    /// has run its exec; a flock lasts while any copy is open, so a release
+    /// can be seen a moment late. Only that answer, `WouldBlock`, is retried,
+    /// and for at most 5 s: a lock never released still fails.
+    fn acquire_after_release(directory: &Path) -> std::fs::File {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            match acquire(directory) {
+                Ok(lock) => return lock,
+                Err(error)
+                    if error.kind() == std::io::ErrorKind::WouldBlock
+                        && std::time::Instant::now() < deadline =>
+                {
+                    std::thread::sleep(std::time::Duration::from_millis(5));
+                }
+                Err(error) => panic!("the released lock was not taken again: {error:?}"),
+            }
+        }
+    }
+
     #[test]
     fn directory_lock_child() {
         let Some(path) = std::env::var_os("BANAGER_TEST_LOCK_DIRECTORY") else {
@@ -221,7 +243,7 @@ mod tests {
         );
         assert_eq!(std::fs::read_dir(&directory).unwrap().count(), 2);
         drop(guard);
-        let next = acquire(&directory).unwrap();
+        let next = acquire_after_release(&directory);
         assert_eq!(
             std::fs::read(directory.join("history.json")).unwrap(),
             br#"{"format":1,"records":[]}"#
@@ -237,7 +259,8 @@ mod tests {
         // processes at the same time (`/bin/echo`, `/usr/bin/false`, a
         // probe script), and each spawned process holds a copy of every
         // open descriptor, the `O_CLOEXEC` one too, until macOS has run its
-        // exec; a flock lasts while any copy is open. This repeats that.
+        // exec; a flock lasts while any copy is open. This repeats that,
+        // and `acquire_after_release` waits that moment out.
         let directory = std::env::temp_dir().join(format!(
             "banager-instance-spawn-{}-{}",
             std::process::id(),
@@ -261,14 +284,13 @@ mod tests {
                 })
             })
             .collect();
-        let taken: Vec<_> = (0..300)
-            .map(|_| acquire(&directory).map(drop).map_err(|e| e.kind()))
-            .collect();
+        for _ in 0..300 {
+            drop(acquire_after_release(&directory));
+        }
         stop.store(true, std::sync::atomic::Ordering::Relaxed);
         for spawner in spawners {
             spawner.join().unwrap();
         }
         std::fs::remove_dir_all(directory).unwrap();
-        assert!(taken.iter().all(Result::is_ok), "{taken:?}");
     }
 }
