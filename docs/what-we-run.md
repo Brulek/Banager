@@ -2143,7 +2143,7 @@ prefix is unknown. No other command runs.
 |---|---|---|
 | Global prefix (discovery and before executing a saved plan) | `<npm> prefix -g` | 30 s |
 | Version | `<npm> --version` | 30 s |
-| List global packages (`inventory`) | `<npm> ls -g --depth=0 --json --prefix {prefix}` | 60 s |
+| List global packages (`inventory`; `check_updates` before offering an update, or after `outdated` failed) | `<npm> ls -g --depth=0 --json --prefix {prefix}` | 60 s |
 | List outdated global packages (`check_updates`) | `<npm> outdated -g --json --prefix {prefix}` | 60 s |
 | Search | `<npm> search --json --searchlimit 20 {query}` | 30 s |
 
@@ -2168,8 +2168,23 @@ non-zero exit, or exit 1 with no rows (empty or error output), is reported
 as "could not check" for every package rather than as "everything is up to
 date" — listing every package that way takes one more run of
 `<npm> ls -g --depth=0 --json --prefix {prefix}`, so
-a refresh whose `outdated` failed runs the inventory command twice. The
-search query passes `validate_search_query`.
+a refresh whose `outdated` failed runs the inventory command twice.
+
+`npm outdated -g` looks every global up on the registry by name, whatever
+it was installed from, and the update below would put the registry's
+package of that name in its place. So when the check found an update to
+offer, it runs the same `<npm> ls -g --depth=0 --json --prefix {prefix}`
+once more, under npm's own lock as the check is, and offers no update for
+a global npm says it installed from somewhere other than a registry
+(`installed_from_elsewhere` in `npm.rs`): `file:` -- what npm always says
+of an `npm link` or a folder -- `git+…`, a URL that is no registry's
+tarball of that name, or a registry tarball of another name (an alias).
+A registry's tarball, a mirror's included, keeps its update. npm 7 and
+later keep no record of where a global from git or a tarball came from,
+and say nothing for it; such a global, like any npm says nothing about,
+keeps its update. A refresh that found updates to offer runs the
+inventory command twice; one whose listing then fails is a check that did
+not finish. The search query passes `validate_search_query`.
 
 **Write commands:**
 

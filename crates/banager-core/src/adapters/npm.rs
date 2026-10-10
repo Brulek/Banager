@@ -19,7 +19,7 @@ use crate::protected::{look, Protected};
 use crate::runner::{resolve_exe, CommandOutput, CommandRunner, CommandSpec, HostEnv, OutputUse};
 use async_trait::async_trait;
 use serde::Deserialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -423,6 +423,15 @@ impl NpmAdapter {
         &self,
         inst: &ManagerInstance,
     ) -> Result<Vec<InstalledArtifact>, AdapterError> {
+        Ok(self.read_ls_global(inst).await?.0)
+    }
+
+    /// `npm ls -g --depth=0 --json`, read: the packages, and npm's answer
+    /// they were read from (`installed_from_elsewhere` reads it again).
+    async fn read_ls_global(
+        &self,
+        inst: &ManagerInstance,
+    ) -> Result<(Vec<InstalledArtifact>, String), AdapterError> {
         let output = self
             .run_npm(
                 inst,
@@ -459,7 +468,28 @@ impl NpmAdapter {
                 });
             }
         }
-        parsed
+        Ok((parsed?, output.stdout))
+    }
+
+    /// `candidates` without the updates of globals npm did not install from
+    /// a registry (`installed_from_elsewhere`): `npm outdated -g` looks
+    /// every global up on the registry by name, whatever it came from
+    /// (npm 10.9.9 `outdated.js:122`, `:179`), and `npm install -g <name>`
+    /// would put the registry's package in place of an `npm link`, a
+    /// folder, a fork from git or an alias (R42-3). Read from one more `npm
+    /// ls -g`, only when the check found an update to offer.
+    async fn without_updates_from_elsewhere(
+        &self,
+        inst: &ManagerInstance,
+        mut candidates: Vec<UpdateCandidate>,
+    ) -> Result<Vec<UpdateCandidate>, AdapterError> {
+        if !candidates.iter().any(|candidate| candidate.checkable) {
+            return Ok(candidates);
+        }
+        let (_, listing) = self.read_ls_global(inst).await?;
+        let elsewhere = installed_from_elsewhere(&listing)?;
+        candidates.retain(|candidate| !elsewhere.contains(&candidate.key.name));
+        Ok(candidates)
     }
 
     pub async fn check_updates(
@@ -482,6 +512,7 @@ impl NpmAdapter {
         // and stdout that will not parse is a real parse error.
         if output.exit_code == Some(0) {
             let found = parse_outdated_global(&output.stdout, &inst.id)?;
+            let found = self.without_updates_from_elsewhere(inst, found).await?;
             return Ok(self.with_formulas_npm_marked(inst, found).into());
         }
         // npm exits 1 whenever it *finds* a version difference -- a result,
@@ -493,6 +524,7 @@ impl NpmAdapter {
         if output.exit_code == Some(1) {
             if let Ok((found, has_rows)) = parse_outdated_result(&output.stdout, &inst.id) {
                 if has_rows {
+                    let found = self.without_updates_from_elsewhere(inst, found).await?;
                     return Ok(self.with_formulas_npm_marked(inst, found).into());
                 }
             }
@@ -768,6 +800,48 @@ struct LsGlobalRoot {
 struct LsGlobalDependency {
     #[serde(default)]
     version: Option<String>,
+    /// Where npm installed it from (npm 10.9.9 `ls.js:358-360`): a
+    /// registry's tarball, or `file:` for a link (always, arborist
+    /// `link.js:94-98`), a folder or a tarball on disk, `git+…` for git,
+    /// another URL for a tarball fetched from it. Absent where npm has
+    /// no record of it.
+    #[serde(default)]
+    resolved: Option<String>,
+}
+
+/// The globals in `npm ls -g --depth=0 --json`'s answer that npm did not
+/// install from a registry (R42-3), whose registry namesake is no update.
+/// One came from a registry when it was resolved to an `http(s)` URL
+/// whose path holds `/<name>/-/`, every npm registry's tarball path,
+/// mirrors included (a scope's slash may be spelled `%2f`); anything else
+/// npm says -- `file:`, `git+…`, another URL, a registry tarball of
+/// another name (an alias) -- is from elsewhere. A global with no
+/// `resolved` is not known to be, and keeps its update.
+fn installed_from_elsewhere(json: &str) -> Result<HashSet<String>, AdapterError> {
+    let root: LsGlobalRoot =
+        serde_json::from_str(json).map_err(|e| AdapterError::Parse(e.to_string()))?;
+    Ok(root
+        .dependencies
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|(name, dep)| {
+            dep.resolved.as_deref().is_some_and(|resolved| {
+                let path = resolved
+                    .strip_prefix("https://")
+                    .or_else(|| resolved.strip_prefix("http://"))
+                    .and_then(|rest| rest.find('/').map(|slash| &rest[slash..]))
+                    .map(|path| path.split(['?', '#']).next().unwrap_or_default());
+                let from_registry = path.is_some_and(|path| {
+                    path.contains(&format!("/{name}/-/"))
+                        || path
+                            .to_ascii_lowercase()
+                            .contains(&format!("/{}/-/", name.replacen('/', "%2f", 1)))
+                });
+                !from_registry
+            })
+        })
+        .map(|(name, _)| name)
+        .collect())
 }
 
 /// Parses `npm ls -g --depth=0 --json`. The real, committed fixture
@@ -1887,7 +1961,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_check_updates_accepts_exit_code_1() {
-        let runner = Arc::new(MockRunner::new());
+        // The listing the check reads before offering an update.
+        let runner = ls_global_answering(
+            0,
+            &std::fs::read_to_string("../../adapters/fixtures/npm/12.0.2/ls-global.json")
+                .expect("read fixture"),
+            "",
+        );
         let json =
             std::fs::read_to_string("../../adapters/fixtures/npm/12.0.2/outdated-global.json")
                 .expect("read fixture");
@@ -1924,7 +2004,7 @@ mod tests {
         // `npm link` whose working copy is gone -- with no `current` key
         // (npm 10.9.9 outdated.js:159, 188, 264-271). That one row made
         // the whole answer unreadable, and every npm row "couldn't check".
-        let runner = Arc::new(MockRunner::new());
+        let runner = ls_global_answering(0, r#"{"name": "lib"}"#, "");
         runner.respond(
             vec![
                 "/opt/homebrew/bin/npm",
@@ -1973,6 +2053,117 @@ mod tests {
                 ("prettier", "3.8.1", "3.8.2", true)
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn r42_a_global_npm_did_not_install_from_a_registry_is_offered_no_update() {
+        // R42-3: `npm outdated -g` looks every global up on the registry by
+        // name, whatever it came from, and `npm install -g <name>` would put
+        // the registry's package in place of an `npm link`, a folder, a
+        // tarball, a fork from git, or an alias of another package. What
+        // each came from is `resolved` in `npm ls -g` (npm 10.9.9 ls.js:
+        // 358-360; a link's is always `file:`, arborist link.js:94-98).
+        let runner = ls_global_answering(
+            0,
+            r#"{"name": "lib", "dependencies": {
+              "mytool": {"version": "0.0.0-development",
+                         "resolved": "file:../../../../Users/you/dev/mytool"},
+              "fork": {"version": "1.0.0",
+                       "resolved": "git+ssh://git@github.com/them/fork.git#0123abc"},
+              "urltool": {"version": "1.0.0",
+                          "resolved": "https://example.com/releases/urltool-1.0.0.tgz"},
+              "alias": {"version": "1.0.0",
+                        "resolved": "https://registry.npmjs.org/bar/-/bar-1.0.0.tgz"},
+              "prettier": {"version": "3.8.1",
+                           "resolved": "https://registry.npmjs.org/prettier/-/prettier-3.8.1.tgz"},
+              "@scope/pkg": {"version": "1.0.0",
+                             "resolved": "https://registry.npmmirror.com/@scope/pkg/-/pkg-1.0.0.tgz"},
+              "@old/escaped": {"version": "1.0.0",
+                               "resolved": "https://npm.example.com/@old%2Fescaped/-/escaped-1.0.0.tgz"},
+              "unsaid": {"version": "1.0.0"}
+            }}"#,
+            "",
+        );
+        let row = |name: &str, current: &str| {
+            format!(
+                r#""{name}": {{"current": "{current}", "wanted": "4.2.0", "latest": "4.2.0", "dependent": "global"}}"#
+            )
+        };
+        let outdated = format!(
+            "{{{}}}",
+            [
+                row("mytool", "0.0.0-development"),
+                row("fork", "1.0.0"),
+                row("urltool", "1.0.0"),
+                row("alias", "1.0.0"),
+                row("prettier", "3.8.1"),
+                row("@scope/pkg", "1.0.0"),
+                row("@old/escaped", "1.0.0"),
+                row("unsaid", "1.0.0"),
+            ]
+            .join(",")
+        );
+        runner.respond(
+            vec![
+                "/opt/homebrew/bin/npm",
+                "outdated",
+                "-g",
+                "--json",
+                "--prefix",
+                "/opt/homebrew",
+            ],
+            CommandOutput {
+                stderr_cause: Default::default(),
+                exit_code: Some(1),
+                stdout: outdated,
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let candidates = NpmAdapter::new(runner)
+            .check_updates(&test_instance(), &CheckOptions::default())
+            .await
+            .expect("checked")
+            .candidates;
+        let names: Vec<&str> = candidates.iter().map(|c| c.key.name.as_str()).collect();
+        // A registry's tarball (any registry: a mirror, a scope's escaped
+        // spelling), or nothing said, keeps its update.
+        assert_eq!(
+            names,
+            vec!["@old/escaped", "@scope/pkg", "prettier", "unsaid"]
+        );
+    }
+
+    #[tokio::test]
+    async fn r42_with_nothing_to_offer_the_check_lists_no_packages() {
+        // The listing is read only for an update the check would offer.
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec![
+                "/opt/homebrew/bin/npm",
+                "outdated",
+                "-g",
+                "--json",
+                "--prefix",
+                "/opt/homebrew",
+            ],
+            CommandOutput {
+                stderr_cause: Default::default(),
+                exit_code: Some(0),
+                stdout: String::new(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let found = NpmAdapter::new(runner.clone())
+            .check_updates(&test_instance(), &CheckOptions::default())
+            .await
+            .expect("checked")
+            .candidates;
+        assert!(found.is_empty());
+        assert_eq!(runner.calls().len(), 1);
     }
 
     #[test]
@@ -2033,7 +2224,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_npm_that_comes_with_a_homebrew_formula_is_not_offered_its_own_update() {
-        let runner = Arc::new(MockRunner::new());
+        let runner = ls_global_answering(0, r#"{"name": "lib"}"#, "");
         let json = r#"{
             "npm": {"current": "10.9.9", "wanted": "10.9.9", "latest": "12.2.0", "dependent": "global", "location": "/opt/homebrew/lib/node_modules/npm"},
             "prettier": {"current": "3.8.1", "wanted": "3.8.2", "latest": "3.8.2", "dependent": "global", "location": "/opt/homebrew/lib/node_modules/prettier"}
