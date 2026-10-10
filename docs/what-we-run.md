@@ -1788,8 +1788,9 @@ So the update's confirmation reads the same record the uninstall's does
 and, where it holds such a step, says first that Homebrew runs the steps
 recorded for the version installed now -- and, where one quits apps, that
 it opens again any app it quits -- then the uninstall's own line for each
-of those steps (the apps quit named as above), without a line for
-`signal`. Nothing more is said for a record Banager does not read, or
+of those steps (the apps quit named as above), with a line for `signal`
+only when the record's `on_upgrade` names it, as Homebrew runs it only
+then (`cask_receipt::signals_on_upgrade`). Nothing more is said for a record Banager does not read, or
 for a Ruby record from a tap Homebrew may not trust, where trust is
 required (`BrewAdapter::update_steps`).
 
