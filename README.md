@@ -221,7 +221,8 @@ Banager (⌘Q) quits it. While an update or uninstall is still queued or running
 window back and asks: *2 operations haven't finished*, since quitting now stops the ones it can, and
 a tool that is being updated can be left half-updated. One that has started and can't be cancelled,
 such as rustup's self update, it names apart and asks you to wait for: quitting neither stops nor
-waits for it, and its command runs on after Banager quits. One whose result is being checked it
+waits for it, and its command is left running with nowhere to write its output, so it can fail
+partway. One whose result is being checked it
 waits for, up to a few seconds. *Keep Waiting* leaves Banager running, and *Quit* quits. Banager answers macOS at once, so a logout, restart or shutdown is called off rather than
 kept waiting, and after *Quit* you start it again (`src-tauri/src/quit.rs`). Should the window
 be unable to ask — it stopped working, or doesn't show the question within 2 seconds — Banager quits
@@ -656,7 +657,7 @@ Banager 开着时还会每天做一次同样的检查，查到的更新都不安
 选“退出 Banager”（⌘Q）才会退出。不过，还有更新或卸载在排队或进行时，退出——⌘Q、程序坞图标菜单里的“退出”，
 或者退出登录、重新启动、关机——会先把窗口叫回来问一句「还有2个操作未完成」：现在退出会中断能中断的那些，正在更新的
 工具有只更新一半的风险；已经开始、不能取消的（比如 rustup 的自我更新）会单独点名，请你等它做完：退出既不中断它，
-也不等它，Banager 退出后它的命令照样运行；正在核对结果的，退出时最多等几秒。选「继续等待」，Banager 接着运行；
+也不等它，Banager 退出后它的命令还在运行，输出却无处可写，可能中途失败；正在核对结果的，退出时最多等几秒。选「继续等待」，Banager 接着运行；
 选「退出」才退出。Banager 当场回答 macOS，所以退出登录、重新启动或关机会被取消，而不是一直等着，选了
 「退出」之后要再操作一次（`src-tauri/src/quit.rs`）。窗口要是问不了——出错停了，或者 2 秒内没把这句问话
 显示出来——Banager 就直接退出，不会在没人能回答时拦着不退。强制退出仍会立刻退出。
