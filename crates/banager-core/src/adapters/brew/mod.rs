@@ -1,3 +1,4 @@
+mod bottles;
 pub(crate) mod brew_env;
 mod cask_links;
 pub(crate) mod cask_receipt;
@@ -23,6 +24,7 @@ use crate::model::{
 use crate::protected::{look, Protected};
 use crate::runner::{CommandOutput, CommandRunner, CommandSpec, HostEnv, OutputUse};
 use async_trait::async_trait;
+use bottles::MacTag;
 use brew_env::HomebrewSwitches;
 use cask_receipt::{Classified, Recorded};
 use kegs::Kegs;
@@ -258,6 +260,13 @@ pub struct BrewAdapter {
     /// outside this crate's unit tests; inside them nothing is read unless
     /// a test installs a reader (`with_racks_fn`).
     racks_fn: fn(&Path) -> Option<Vec<String>>,
+    /// How to read the bottle tag Homebrew looks for on this Mac, for the
+    /// Homebrew at a prefix (`bottles::this_mac`, r18 R46-2): the real
+    /// processor and macOS version outside this crate's unit tests; inside
+    /// them none unless a test installs one (`with_mac_tag_fn`), so that
+    /// no test answers differently on the Mac running it. With none, no
+    /// update is said to compile.
+    mac_tag_fn: fn(&Path) -> Option<MacTag>,
     /// How to read whether a keg-only formula is linked into a prefix, and
     /// what holds its commands' places there, for its update's preview and
     /// around the update itself (`links::read_links`, y1-keg), and for the
@@ -286,6 +295,11 @@ pub struct BrewAdapter {
     /// until an inventory has run, and when the Cellar could not be read
     /// in full.
     unlisted_racks: Mutex<HashMap<InstanceId, Vec<String>>>,
+    /// The formulae of each instance, by name in the Cellar, that no
+    /// bottle fits this Mac as its last inventory read them
+    /// (`bottles::formulae_built_from_source`), whose update compiles.
+    /// Empty until an inventory has run, and with no `mac_tag_fn` answer.
+    source_builds: Mutex<HashMap<InstanceId, HashSet<String>>>,
 }
 
 /// `BrewAdapter::update_lock_fn` as `BrewAdapter::new` sets it: the real
@@ -345,6 +359,13 @@ const DEFAULT_TRUST_LIST_FN: fn(&Path) -> Option<TrustList> = |_| Some(TrustList
 const DEFAULT_KEGS_FN: fn(&Path, &str) -> Option<Kegs> = kegs::read_kegs;
 #[cfg(test)]
 const DEFAULT_KEGS_FN: fn(&Path, &str) -> Option<Kegs> = |_, _| None;
+
+/// `BrewAdapter::mac_tag_fn` as `BrewAdapter::new` sets it: this Mac in
+/// every build but this crate's unit tests, where there is none.
+#[cfg(not(test))]
+const DEFAULT_MAC_TAG_FN: fn(&Path) -> Option<MacTag> = bottles::this_mac;
+#[cfg(test)]
+const DEFAULT_MAC_TAG_FN: fn(&Path) -> Option<MacTag> = |_| None;
 
 /// `BrewAdapter::racks_fn` as `BrewAdapter::new` sets it: the real Cellar
 /// in every build but this crate's unit tests, where nothing is read.
@@ -450,6 +471,13 @@ impl BrewAdapter {
     /// which finds it in its table.
     pub const LINK_TIMEOUT_SECS: u64 = 5 * 60;
 
+    /// How long the update of a formula no bottle fits this Mac may take
+    /// (r18 R46-2): it compiles, and `llvm`, `gcc`, `rust` or `node` on an
+    /// older Intel Mac run well past the half hour every other update is
+    /// given. Cancel stops it at any time. Public for the trust document's
+    /// test, which finds it in its table.
+    pub const SOURCE_BUILD_TIMEOUT_SECS: u64 = 6 * 60 * 60;
+
     pub const CANDIDATE_PATHS: [&'static str; 3] = [
         "/opt/homebrew/bin/brew",
         "/usr/local/bin/brew",
@@ -486,9 +514,11 @@ impl BrewAdapter {
             trust_list_fn: DEFAULT_TRUST_LIST_FN,
             kegs_fn: DEFAULT_KEGS_FN,
             racks_fn: DEFAULT_RACKS_FN,
+            mac_tag_fn: DEFAULT_MAC_TAG_FN,
             links_fn: DEFAULT_LINKS_FN,
             keg_only: Mutex::new(HashMap::new()),
             unlisted_racks: Mutex::new(HashMap::new()),
+            source_builds: Mutex::new(HashMap::new()),
         }
     }
 
@@ -630,6 +660,14 @@ impl BrewAdapter {
         self
     }
 
+    /// Test-only hook for the bottle tag of the Mac the inventory and the
+    /// update's preview judge for (see `mac_tag_fn`).
+    #[cfg(test)]
+    fn with_mac_tag_fn(mut self, mac_tag_fn: fn(&Path) -> Option<MacTag>) -> BrewAdapter {
+        self.mac_tag_fn = mac_tag_fn;
+        self
+    }
+
     /// Test-only hook to put a prefix's links on the disk the update's
     /// preview and the update read (see `links_fn`).
     #[cfg(test)]
@@ -683,6 +721,7 @@ impl BrewAdapter {
         self.trust_list_fn = |_| Some(TrustList::default());
         self.kegs_fn = |_, _| None;
         self.racks_fn = |_| None;
+        self.mac_tag_fn = |_| None;
         self.links_fn = |_, _| None;
         self.prefix_identity_fn = |_| None;
         self
@@ -709,6 +748,7 @@ impl BrewAdapter {
             }
         };
         self.trust_list_fn = |_| Some(TrustList::default());
+        self.mac_tag_fn = |_| None;
         self.applications = applications.to_path_buf();
         self.prefix_identity_fn = |_| None;
         self
@@ -5261,6 +5301,99 @@ mod plan_execute_tests {
         let plan = adapter.plan(&inst, &req).await.expect("plan");
         assert_eq!(command_args(&plan), vec!["upgrade", "--formula", "jq"]);
         assert!(!plan.needs_password);
+    }
+
+    /// A Homebrew whose `brew info --installed` lists `node`, with bottles
+    /// for Apple silicon on Sequoia and Tahoe only, as Homebrew 7 builds
+    /// them, and `jq`, with one bottle for every Mac.
+    fn runner_with_node_bottled_for_apple_silicon_only() -> Arc<MockRunner> {
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec!["/opt/homebrew/bin/brew", "info", "--installed", "--json=v2"],
+            CommandOutput {
+                stderr_cause: Default::default(),
+                exit_code: Some(0),
+                stdout: r#"{"formulae":[{"name":"node","linked_keg":"25.1.0","installed":[{"version":"25.1.0","installed_on_request":true}],"bottle":{"stable":{"files":{"arm64_tahoe":{},"arm64_sequoia":{}}}}},{"name":"jq","linked_keg":"1.8.2","installed":[{"version":"1.8.2","installed_on_request":true}],"bottle":{"stable":{"files":{"all":{}}}}}],"casks":[]}"#.to_string(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        runner
+    }
+
+    fn upgrade_formula(inst: &ManagerInstance, name: &str) -> OpRequest {
+        OpRequest {
+            kind: OpKind::Upgrade,
+            instance_id: inst.id.clone(),
+            artifact_kind: ArtifactKind::Formula,
+            name: name.to_string(),
+        }
+    }
+
+    /// r18 R46-2: on a Mac no bottle of a formula fits -- an Intel Mac, or
+    /// Apple silicon on macOS 14 or older -- its update compiles: the
+    /// preview says so, as Cargo's does, and the update is given hours,
+    /// not the half hour that stops a long build every time.
+    #[tokio::test]
+    async fn an_update_no_bottle_fits_says_it_compiles_and_gets_hours() {
+        for mac in [
+            (|_: &Path| {
+                Some(MacTag {
+                    arm: false,
+                    macos: (26, 0),
+                })
+            }) as fn(&Path) -> Option<MacTag>,
+            |_: &Path| {
+                Some(MacTag {
+                    arm: true,
+                    macos: (14, 7),
+                })
+            },
+        ] {
+            let adapter = BrewAdapter::new(runner_with_node_bottled_for_apple_silicon_only())
+                .with_mac_tag_fn(mac);
+            let inst = test_instance();
+            adapter.inventory(&inst).await.expect("inventory");
+            let node = adapter
+                .plan(&inst, &upgrade_formula(&inst, "node"))
+                .await
+                .expect("plan");
+            assert_eq!(node.warnings, [Warning::CompilesLocally]);
+            assert_eq!(node.timeout_secs, BrewAdapter::SOURCE_BUILD_TIMEOUT_SECS);
+            let jq = adapter
+                .plan(&inst, &upgrade_formula(&inst, "jq"))
+                .await
+                .expect("plan");
+            assert!(jq.warnings.is_empty(), "got {:?}", jq.warnings);
+            assert_eq!(jq.timeout_secs, 1800);
+        }
+    }
+
+    /// Where a bottle fits, or the Mac's tag is not known, the update is
+    /// planned as before.
+    #[tokio::test]
+    async fn an_update_a_bottle_fits_or_on_an_unknown_mac_is_planned_as_before() {
+        for mac in [
+            (|_: &Path| {
+                Some(MacTag {
+                    arm: true,
+                    macos: (26, 1),
+                })
+            }) as fn(&Path) -> Option<MacTag>,
+            |_: &Path| None,
+        ] {
+            let adapter = BrewAdapter::new(runner_with_node_bottled_for_apple_silicon_only())
+                .with_mac_tag_fn(mac);
+            let inst = test_instance();
+            adapter.inventory(&inst).await.expect("inventory");
+            let node = adapter
+                .plan(&inst, &upgrade_formula(&inst, "node"))
+                .await
+                .expect("plan");
+            assert!(node.warnings.is_empty(), "got {:?}", node.warnings);
+            assert_eq!(node.timeout_secs, 1800);
+        }
     }
 
     #[tokio::test]
