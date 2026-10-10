@@ -1021,7 +1021,10 @@ fn test_what_we_run_shows_the_environment_of_pips_outdated_check_and_no_verbosit
         section_body(&doc, "pip").expect("docs/what-we-run.md has no `## pip` section for pip");
     let row = body
         .lines()
-        .find(|line| line.starts_with('|') && line.contains("pip list --outdated --not-required --format=json"))
+        .find(|line| {
+            line.starts_with('|')
+                && line.contains("pip list --outdated --not-required --format=json")
+        })
         .expect("pip's table in docs/what-we-run.md has no `pip list --outdated` row");
     for (name, value) in PipAdapter::OUTDATED_ENV {
         assert!(
