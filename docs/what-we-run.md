@@ -4721,7 +4721,11 @@ by asking the disk for every character); any other letter only as
 spelled -- and also as spelled from the
 volume that holds them, `/System/Volumes/Data` (`/System/Volumes/Data/Users/<you>/Documents`
 is `~/Documents`, through the firmlinks macOS keeps; `protected::DATA_VOLUME`).
-A tool kept in one of them shows no size (`Protected`). It is the same list the command check keeps out
+A tool kept in one of them shows no size (`Protected`). A folder that
+another program moves into one of them while it is measured is listed
+no further: before each folder is listed, the walk asks the folder
+itself where it is now (`fcntl(F_GETPATH)`, which reads nothing in it),
+and the measurement is partial. It is the same list the command check keeps out
 of (`crates/banager-core/src/protected.rs`). `~` there is both the home
 folder `HOME` names and the account's own home folder from the password
 database, whatever `HOME` says (How Banager runs anything, above;

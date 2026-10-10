@@ -500,6 +500,21 @@ fn walk_folder(
             tally.partial = true;
             continue;
         };
+        // Where the folder is now (`Dir::path`, `F_GETPATH`), which looks
+        // nothing up and reads nothing in it, not the path the walk met it
+        // by: one that another program moved into `~/Documents` since a
+        // folder above it was opened is still opened through that one,
+        // and is in `~/Documents` now. Asked once a folder, before
+        // anything in it is listed or looked at.
+        match dir.path() {
+            Ok(at) if !protected.contains(&at) => {}
+            // No such call off a Mac, where no place asks permission.
+            Err(e) if e.kind() == std::io::ErrorKind::Unsupported => {}
+            _ => {
+                tally.partial = true;
+                continue;
+            }
+        }
         let entries = match dir.entries() {
             Ok(entries) => entries,
             Err(_) => {
@@ -1979,6 +1994,44 @@ mod tests {
         assert!(
             walked.measured.bytes < 500_000,
             "~/Documents was listed through the link: {walked:?}"
+        );
+        assert!(walked.measured.partial, "{walked:?}");
+    }
+
+    #[test]
+    fn test_a_folder_moved_into_documents_while_open_is_not_listed_further() {
+        // The tool's folder is open and `sub` in it queued; before `sub`
+        // is listed, another program moves the tool's folder into
+        // `~/Documents`. Its descriptor still opens `sub`, which is now in
+        // `~/Documents`: not listed.
+        let scratch = Scratch::new("moved");
+        let home = scratch.dir("home");
+        scratch.dir("home/Documents");
+        let tool = scratch.dir("home/.tool");
+        scratch.file("home/.tool/small.bin", 1_000);
+        scratch.file("home/.tool/sub/private.bin", 500_000);
+        let protected = Protected::new(&home);
+        let mut calls = 0;
+        let mut move_it = || {
+            calls += 1;
+            // 1: the root; 2: the root folder popped; 3 and 4: its
+            // entries; 5: `sub` popped, before it is listed.
+            if calls == 5 {
+                std::fs::rename(&tool, home.join("Documents/.tool")).unwrap();
+            }
+            true
+        };
+        let mut budget = Budget::new(SizeBudget::default());
+        let walked = walked(walk(
+            std::slice::from_ref(&tool),
+            &mut budget,
+            &protected,
+            &mut move_it,
+        ));
+        assert!(calls >= 5, "the walk got to `sub`");
+        assert!(
+            walked.measured.bytes < 500_000,
+            "~/Documents was listed through the moved folder: {walked:?}"
         );
         assert!(walked.measured.partial, "{walked:?}");
     }
