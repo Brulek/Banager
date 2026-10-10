@@ -4519,6 +4519,23 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_check_updates_leaves_apps_that_update_themselves_off_while_the_switch_is() {
+        // R47-4 (r18): Homebrew 6 and later list a cask that updates itself
+        // whenever its app is older than the catalogue, unless
+        // `HOMEBREW_NO_UPGRADE_AUTO_UPDATES_CASKS` is set (Homebrew 7.0.9
+        // `env_config.rb:661-665`, `:764-773`; `cask/cask.rb:445-449`). The
+        // switch says such apps are listed only while it is on: off, the
+        // check sets it; on, it does not.
+        let set = |spec: &CommandSpec| {
+            spec.env
+                .iter()
+                .any(|(k, v)| k == "HOMEBREW_NO_UPGRADE_AUTO_UPDATES_CASKS" && v == "1")
+        };
+        assert!(set(&outdated_run(false).await));
+        assert!(!set(&outdated_run(true).await));
+    }
+
+    #[tokio::test]
     async fn test_check_updates_never_has_brew_download_a_latest_casks_installer() {
         // R47-2 (r18): with `--greedy` or `--greedy-latest`, Homebrew 7.0.9
         // downloads the whole installer of each installed `version :latest`
