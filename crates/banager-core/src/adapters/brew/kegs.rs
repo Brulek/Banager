@@ -54,6 +54,29 @@ pub(crate) fn read_kegs(prefix: &Path, name: &str) -> Option<Kegs> {
     Some(Kegs { versions, pinned })
 }
 
+/// The formula folders in `<prefix>/Cellar` -- its racks, as Homebrew
+/// lists them (`Formula.racks`, `formula.rb:2766-2774`: neither a link nor
+/// a name starting with a dot) -- by name, or `None` when the Cellar
+/// cannot be listed in full: not there, in or through a protected place,
+/// or more names than one directory budget. Whether a rack holds a version
+/// is `read_kegs`'s to say, and is asked only of the racks the inventory
+/// did not list (`BrewAdapter::remember_unlisted_racks`).
+pub(crate) fn read_racks(prefix: &Path) -> Option<Vec<String>> {
+    let protected = Protected::of_this_process();
+    let listing = look::list(&prefix.join("Cellar"), &protected).ok()?;
+    let racks = listing
+        .names(&mut look::ListingBudget::default())
+        .ok()?
+        .into_iter()
+        .filter_map(|entry| {
+            let meta = listing.lstat(&entry).ok()?;
+            let name = entry.into_string().ok()?;
+            (plain(&name) && !name.starts_with('.') && meta.is_dir()).then_some(name)
+        })
+        .collect();
+    Some(racks)
+}
+
 /// Whether `name` is one plain path component: not empty, no `/`, not `.`
 /// or `..`.
 fn plain(name: &str) -> bool {
@@ -165,6 +188,23 @@ mod tests {
         let as_if = crate::protected::as_if_home(&home);
         assert_eq!(read_kegs(&kept, "wget"), None);
         drop(as_if);
+        std::fs::remove_dir_all(&prefix).unwrap();
+    }
+
+    #[test]
+    fn lists_the_cellars_formula_folders_as_homebrew_does() {
+        let prefix = temp_dir("racks");
+        assert_eq!(read_racks(&prefix), None);
+        let cellar = prefix.join("Cellar");
+        std::fs::create_dir_all(cellar.join("jq/1.8.2")).unwrap();
+        std::fs::create_dir_all(cellar.join("speedtest")).unwrap();
+        std::fs::create_dir_all(cellar.join(".hidden/1.0")).unwrap();
+        std::fs::write(cellar.join(".DS_Store"), b"").unwrap();
+        std::fs::write(cellar.join("notes"), b"").unwrap();
+        std::os::unix::fs::symlink("jq", cellar.join("jq-link")).unwrap();
+        let mut racks = read_racks(&prefix).expect("listed");
+        racks.sort();
+        assert_eq!(racks, ["jq", "speedtest"]);
         std::fs::remove_dir_all(&prefix).unwrap();
     }
 

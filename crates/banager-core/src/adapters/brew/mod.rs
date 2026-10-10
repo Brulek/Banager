@@ -252,6 +252,12 @@ pub struct BrewAdapter {
     /// installs a reader (`with_kegs_fn`), so that no test answers
     /// differently for the formulae installed on the Mac running it.
     kegs_fn: fn(&Path, &str) -> Option<Kegs>,
+    /// How to read the formula folders in a prefix's `Cellar`, which the
+    /// inventory compares with what `brew info` listed
+    /// (`kegs::read_racks`, `remember_unlisted_racks`): the real Cellar
+    /// outside this crate's unit tests; inside them nothing is read unless
+    /// a test installs a reader (`with_racks_fn`).
+    racks_fn: fn(&Path) -> Option<Vec<String>>,
     /// How to read whether a keg-only formula is linked into a prefix, and
     /// what holds its commands' places there, for its update's preview and
     /// around the update itself (`links::read_links`, y1-keg), and for the
@@ -274,6 +280,12 @@ pub struct BrewAdapter {
     /// source's notice can offer a link; an update of a formula not here is
     /// planned as before, and a link of one is refused.
     keg_only: Mutex<HashMap<InstanceId, HashSet<String>>>,
+    /// The formula folders in each instance's `Cellar` that hold a version
+    /// and that its last inventory's `brew info --installed --json=v2` did
+    /// not list (`remember_unlisted_racks`), by name in the Cellar. Empty
+    /// until an inventory has run, and when the Cellar could not be read
+    /// in full.
+    unlisted_racks: Mutex<HashMap<InstanceId, Vec<String>>>,
 }
 
 /// `BrewAdapter::update_lock_fn` as `BrewAdapter::new` sets it: the real
@@ -333,6 +345,13 @@ const DEFAULT_TRUST_LIST_FN: fn(&Path) -> Option<TrustList> = |_| Some(TrustList
 const DEFAULT_KEGS_FN: fn(&Path, &str) -> Option<Kegs> = kegs::read_kegs;
 #[cfg(test)]
 const DEFAULT_KEGS_FN: fn(&Path, &str) -> Option<Kegs> = |_, _| None;
+
+/// `BrewAdapter::racks_fn` as `BrewAdapter::new` sets it: the real Cellar
+/// in every build but this crate's unit tests, where nothing is read.
+#[cfg(not(test))]
+const DEFAULT_RACKS_FN: fn(&Path) -> Option<Vec<String>> = kegs::read_racks;
+#[cfg(test)]
+const DEFAULT_RACKS_FN: fn(&Path) -> Option<Vec<String>> = |_| None;
 
 /// `BrewAdapter::links_fn` as `BrewAdapter::new` sets it: the real prefix
 /// in every build but this crate's unit tests, where nothing is read.
@@ -466,8 +485,10 @@ impl BrewAdapter {
             prefix_identity_fn: PREFIX_IDENTITY_FN,
             trust_list_fn: DEFAULT_TRUST_LIST_FN,
             kegs_fn: DEFAULT_KEGS_FN,
+            racks_fn: DEFAULT_RACKS_FN,
             links_fn: DEFAULT_LINKS_FN,
             keg_only: Mutex::new(HashMap::new()),
+            unlisted_racks: Mutex::new(HashMap::new()),
         }
     }
 
@@ -601,6 +622,14 @@ impl BrewAdapter {
         self
     }
 
+    /// Test-only hook to put formula folders in the Cellar the inventory
+    /// reads (see `racks_fn`).
+    #[cfg(test)]
+    fn with_racks_fn(mut self, racks_fn: fn(&Path) -> Option<Vec<String>>) -> BrewAdapter {
+        self.racks_fn = racks_fn;
+        self
+    }
+
     /// Test-only hook to put a prefix's links on the disk the update's
     /// preview and the update read (see `links_fn`).
     #[cfg(test)]
@@ -653,6 +682,7 @@ impl BrewAdapter {
         self.app_bundle_id_fn = |_| None;
         self.trust_list_fn = |_| Some(TrustList::default());
         self.kegs_fn = |_, _| None;
+        self.racks_fn = |_| None;
         self.links_fn = |_, _| None;
         self.prefix_identity_fn = |_| None;
         self
@@ -4861,6 +4891,130 @@ mod plan_execute_tests {
                 }
             ]
         );
+    }
+
+    /// A Homebrew whose `brew update` succeeds, whose `brew outdated` lists
+    /// nothing, whose `brew info --installed` lists `jq` alone, and whose
+    /// `brew uses --installed oniguruma` names nothing: what Homebrew 7
+    /// answers when `speedtest`, from a tap it does not trust, is in the
+    /// Cellar (`Formula.installed` drops it from all three, r18 R46-1).
+    fn runner_listing_jq_alone() -> Arc<MockRunner> {
+        let ok = |stdout: &str| CommandOutput {
+            stderr_cause: Default::default(),
+            exit_code: Some(0),
+            stdout: stdout.to_string(),
+            stderr: String::new(),
+            timed_out: false,
+            cancelled: false,
+        };
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(vec!["/opt/homebrew/bin/brew", "update"], ok(""));
+        runner.respond(
+            vec!["/opt/homebrew/bin/brew", "outdated", "--json=v2"],
+            ok(r#"{"formulae":[],"casks":[]}"#),
+        );
+        runner.respond(
+            vec!["/opt/homebrew/bin/brew", "info", "--installed", "--json=v2"],
+            ok(r#"{"formulae":[{"name":"jq","linked_keg":"1.8.2","installed":[{"version":"1.8.2","installed_on_request":true}]},{"name":"oniguruma","linked_keg":"6.9.10","installed":[{"version":"6.9.10","installed_on_request":false}]}],"casks":[]}"#),
+        );
+        runner.respond(
+            vec!["/opt/homebrew/bin/brew", "uses", "--installed", "oniguruma"],
+            ok(""),
+        );
+        runner
+    }
+
+    /// Each formula folder of the Cellar `runner_listing_jq_alone` stands
+    /// for has a version in it but `empty`, which has none.
+    fn kegs_but_in_empty(_: &Path, name: &str) -> Option<Kegs> {
+        Some(Kegs {
+            versions: if name == "empty" {
+                Vec::new()
+            } else {
+                vec!["1.0".to_string()]
+            },
+            pinned: false,
+        })
+    }
+
+    fn uninstall_oniguruma(inst: &ManagerInstance) -> OpRequest {
+        OpRequest {
+            kind: OpKind::Uninstall,
+            instance_id: inst.id.clone(),
+            artifact_kind: ArtifactKind::Formula,
+            name: "oniguruma".to_string(),
+        }
+    }
+
+    /// r18 R46-1: a formula in the Cellar that `brew info --installed` did
+    /// not list makes the check say Homebrew left some out, and an
+    /// uninstall preview say what needs the formula is not known -- even
+    /// with `brew uses --installed` naming nothing, as it names nothing of
+    /// what Homebrew dropped.
+    #[tokio::test]
+    async fn a_formula_homebrew_did_not_list_is_noted_and_leaves_dependents_unknown() {
+        let adapter = BrewAdapter::new(runner_listing_jq_alone())
+            .with_racks_fn(|_| {
+                Some(vec![
+                    "jq".to_string(),
+                    "oniguruma".to_string(),
+                    "speedtest".to_string(),
+                ])
+            })
+            .with_kegs_fn(kegs_but_in_empty);
+        let inst = test_instance();
+        let outcome = adapter
+            .check_updates(&inst, &CheckOptions::default())
+            .await
+            .expect("check_updates");
+        assert_eq!(outcome.notes, [InstanceNote::FormulaeNotListed]);
+        let plan = adapter
+            .plan(&inst, &uninstall_oniguruma(&inst))
+            .await
+            .expect("plan");
+        assert!(plan.affected.is_empty());
+        assert!(
+            plan.warnings.contains(&Warning::DependentsUnknown),
+            "got {:?}",
+            plan.warnings
+        );
+    }
+
+    /// A Cellar whose every formula folder with a version Homebrew listed
+    /// -- a folder with none it does not list either (`Formula.racks`) --
+    /// or that could not be read, gives no note, and the preview trusts
+    /// `brew uses --installed` as before.
+    #[tokio::test]
+    async fn a_cellar_homebrew_listed_in_full_or_could_not_be_read_changes_nothing() {
+        for racks in [
+            (|_: &Path| {
+                Some(vec![
+                    "jq".to_string(),
+                    "oniguruma".to_string(),
+                    "empty".to_string(),
+                ])
+            }) as fn(&Path) -> Option<Vec<String>>,
+            |_: &Path| None,
+        ] {
+            let adapter = BrewAdapter::new(runner_listing_jq_alone())
+                .with_racks_fn(racks)
+                .with_kegs_fn(kegs_but_in_empty);
+            let inst = test_instance();
+            let outcome = adapter
+                .check_updates(&inst, &CheckOptions::default())
+                .await
+                .expect("check_updates");
+            assert!(outcome.notes.is_empty(), "got {:?}", outcome.notes);
+            let plan = adapter
+                .plan(&inst, &uninstall_oniguruma(&inst))
+                .await
+                .expect("plan");
+            assert!(
+                !plan.warnings.contains(&Warning::DependentsUnknown),
+                "got {:?}",
+                plan.warnings
+            );
+        }
     }
 
     /// (F6 / M5) When `brew uses --installed {name}` itself fails (non-zero

@@ -237,6 +237,19 @@ pub enum InstanceNote {
     /// when `list --outdated` exits non-zero and from the one the check
     /// below pipx 1.16 always reads.
     SomeNotListed,
+    /// Homebrew listed fewer formulae than its `Cellar` holds: a folder
+    /// there with a version in it is missing from `brew info --installed
+    /// --json=v2`. Homebrew 7 loads each installed formula from its tap and
+    /// silently drops one it refuses to load (`Formula.installed`'s bare
+    /// `rescue`, `formula.rb:2784-2790`) -- above all one from a tap it
+    /// does not trust (`Trust.require_trusted_formula!`, the default since
+    /// `HOMEBREW_REQUIRE_TAP_TRUST`). `brew outdated` and `brew uses
+    /// --installed` drop it the same way, so its updates are not checked,
+    /// and an uninstall preview cannot know whether it needs the formula
+    /// being uninstalled (`Warning::DependentsUnknown`). Produced by
+    /// `BrewAdapter::check_updates` from what the inventory found
+    /// (`BrewAdapter::remember_unlisted_racks`).
+    FormulaeNotListed,
 }
 
 impl InstanceNote {
@@ -255,7 +268,8 @@ impl InstanceNote {
         match self {
             InstanceNote::IndexMayBeStale
             | InstanceNote::IndexUpdating
-            | InstanceNote::SomeNotListed => true,
+            | InstanceNote::SomeNotListed
+            | InstanceNote::FormulaeNotListed => true,
             InstanceNote::NotOnPath
             | InstanceNote::ShadowedByHomebrew
             | InstanceNote::ShadowedByNpm
@@ -280,6 +294,7 @@ impl InstanceNote {
             InstanceNote::IndexMayBeStale
             | InstanceNote::IndexUpdating
             | InstanceNote::SomeNotListed
+            | InstanceNote::FormulaeNotListed
             | InstanceNote::LauncherOnly => false,
         }
     }
