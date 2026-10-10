@@ -31,6 +31,11 @@ const RELEASES: [(&str, (u32, u32)); 12] = [
     ("el_capitan", (10, 11)),
 ];
 
+/// Whether Banager itself runs as Apple silicon: the processor of a
+/// Homebrew outside both default prefixes.
+#[cfg_attr(test, allow(dead_code))]
+const BUILT_FOR_ARM: bool = cfg!(target_arch = "aarch64");
+
 /// The bottle tag Homebrew looks for on this Mac
 /// (`Utils::Bottles.tag`, `extend/os/mac/utils/bottles.rb:9-13`): its
 /// processor as the Homebrew runs it, and the macOS version.
@@ -51,13 +56,8 @@ pub(crate) struct MacTag {
 /// running them (`BrewAdapter::mac_tag_fn`).
 #[cfg_attr(test, allow(dead_code))]
 pub(crate) fn this_mac(prefix: &Path) -> Option<MacTag> {
-    let arm = if prefix == Path::new("/opt/homebrew") {
-        true
-    } else if prefix == Path::new("/usr/local") {
-        false
-    } else {
-        cfg!(target_arch = "aarch64")
-    };
+    let arm = prefix == Path::new("/opt/homebrew")
+        || (prefix != Path::new("/usr/local") && BUILT_FOR_ARM);
     let version = crate::diagnostics::read_os().macos_version?;
     let macos = parse_version(&version)?;
     known(macos).then_some(MacTag { arm, macos })
@@ -113,8 +113,8 @@ struct Root {
 struct Formula {
     name: String,
     /// `{}` for a formula with no bottle at all, `{"stable": {"files":
-    /// {...}}}` otherwise; absent from a brew that does not write it, whose
-    /// formulae are not judged.
+    /// {...}}}` otherwise; absent from a brew that does not write it. Only
+    /// a formula with bottles is judged.
     #[serde(default)]
     bottle: Option<Bottle>,
 }
@@ -133,8 +133,10 @@ struct Stable {
 
 /// The formulae of a `brew info --installed --json=v2` reply that no
 /// bottle fits `mac` (`builds_from_source`), by name in the Cellar. A
-/// reply that does not parse, and a formula whose entry has no `bottle`,
-/// give none: nothing is claimed of what was not read.
+/// reply that does not parse, a formula whose entry has no `bottle`, and
+/// one with no bottle at all give none: nothing is claimed of what was not
+/// read, nor of a formula Homebrew never bottles, often a ready-made
+/// program its tap only copies into place, whose install does not compile.
 pub(crate) fn formulae_built_from_source(json: &str, mac: MacTag) -> HashSet<String> {
     let Ok(root) = serde_json::from_str::<Root>(json) else {
         return HashSet::new();
@@ -147,7 +149,7 @@ pub(crate) fn formulae_built_from_source(json: &str, mac: MacTag) -> HashSet<Str
                 .stable
                 .map(|stable| stable.files.into_keys().collect())
                 .unwrap_or_default();
-            builds_from_source(&tags, mac).then(|| {
+            (!tags.is_empty() && builds_from_source(&tags, mac)).then(|| {
                 let name = formula.name;
                 name.rsplit('/').next().unwrap_or(&name).to_string()
             })
@@ -205,6 +207,7 @@ mod tests {
             {"name":"node","bottle":{"stable":{"rebuild":0,"files":{"arm64_tahoe":{"cellar":":any"},"arm64_sequoia":{}}}}},
             {"name":"jq","bottle":{"stable":{"files":{"all":{}}}}},
             {"name":"someone/tap/speedtest","full_name":"someone/tap/speedtest","bottle":{}},
+            {"name":"empty","bottle":{"stable":{"files":{}}}},
             {"name":"old"}
         ],"casks":[]}"#;
         let built = |mac| {
@@ -216,11 +219,6 @@ mod tests {
         // A formula Homebrew has no bottle of at all (`{}`) is often a
         // ready-made program its tap only copies into place: it is not
         // judged, nor one whose bottle list is empty.
-        let json = json.replace(
-            r#"{"name":"old"}"#,
-            r#"{"name":"empty","bottle":{"stable":{"files":{}}}}"#,
-        );
-        let json = json.as_str();
         assert!(built(ARM_TAHOE).is_empty(), "got {:?}", built(ARM_TAHOE));
         assert_eq!(built(ARM_SONOMA), ["node"]);
         assert!(formulae_built_from_source("not json", ARM_TAHOE).is_empty());

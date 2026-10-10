@@ -1812,9 +1812,10 @@ fits, the update's preview -- and Update All's, for that formula -- says
 "This compiles on your Mac and takes a while." (`Warning::CompilesLocally`,
 as Cargo's), and the update may run for 6 hours instead of 30 minutes
 (`BrewAdapter::SOURCE_BUILD_TIMEOUT_SECS`); Cancel stops it at any time.
-A formula whose entry names no bottle at all compiles too; one whose entry
-says nothing of bottles, a macOS newer than Banager knows, and an
-inventory that did not answer change nothing. Nothing more runs for this.
+A formula Homebrew has no bottle of at all is not judged: it is often a
+ready-made program its tap only copies into place, which does not compile.
+Neither it, one whose entry says nothing of bottles, a macOS newer than
+Banager knows, nor an inventory that did not answer changes anything. Nothing more runs for this.
 
 **Formulae Homebrew leaves out** (r18 R46-1). Homebrew 7 lists an
 installed formula only if it can load it, and silently drops one it
@@ -1832,9 +1833,11 @@ looks at the names in `<prefix>/Cellar/<name>`: one with a version in it
 is a formula Homebrew left out (`BrewAdapter::remember_unlisted_racks`,
 `brew::kegs::read_racks`). While there is any, Homebrew's notice says some
 packages installed with it aren't shown, usually because it doesn't
-trust where they come from, so their updates weren't checked, and to run
-`brew tap` in Terminal and then `brew trust --tap` with the tap's name
-(`InstanceNote::FormulaeNotListed`); Banager runs neither. Until it is
+trust where they come from, so their updates weren't checked; that in
+Terminal `brew tap` lists every tap and `brew trust` the ones Homebrew
+trusts; and to run `brew trust --tap` with the name of one only in the
+first list (`InstanceNote::FormulaeNotListed`). Banager runs none of
+them. Until it is
 gone the Overview does not say everything is up to date, and every
 formula's uninstall preview says it couldn't check what else needs it
 (`Warning::DependentsUnknown`), whatever `brew uses` named. Nothing more
@@ -1935,7 +1938,7 @@ preview):
 | Uninstall a formula with more than one version installed and no pin | `<brew> uninstall --formula --force {name}` | 1800 s | No |
 | Uninstall a cask | `<brew> uninstall --cask {name}` | 1800 s | Sometimes — Homebrew runs `sudo`, for example when the cask's recorded uninstall deletes paths (`delete:`), removes a background service (`launchctl:`) or a kernel extension (`kext:`), removes an installer package that is installed (`pkgutil:`), or runs a program the cask marks to run as root |
 | Upgrade one formula | `<brew> upgrade --formula {name}` | 1800 s | No |
-| Upgrade one formula no bottle fits this Mac (Formula updates that compile, below; previewed with a "compiles on your Mac" warning) | `<brew> upgrade --formula {name}` | 21600 s (6 hours) | No |
+| Upgrade one formula no bottle fits this Mac (Formula updates that compile, above; previewed with a "compiles on your Mac" warning) | `<brew> upgrade --formula {name}` | 21600 s (6 hours) | No |
 | Then, once that upgrade has exited 0, link a keg-only formula whose link Homebrew recorded back into the prefix, where Homebrew did not (Keg-only formulae linked into Terminal, above) | `<brew> link --formula --force {name}` | 300 s | No |
 | Then, once that upgrade has exited 0, delete the formula's old versions (Old versions, below) | `<brew> cleanup {name}` | 600 s | No |
 | Upgrade one cask | `<brew> upgrade --cask {name}` | 1800 s | Sometimes — as for install |

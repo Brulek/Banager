@@ -789,7 +789,7 @@
     },
     "formulaeNotListed": {
       "title": "Some packages installed with {{source}} aren't shown",
-      "description": "{{source}} didn't list them, usually because it doesn't trust where they come from, so their updates weren't checked and Banager can't tell which other packages they need. To trust where one comes from, run {{command}} in Terminal to see its name, then run {{trust}} followed by that name and check again."
+      "description": "{{source}} didn't list them, usually because it doesn't trust where they come from, so their updates weren't checked and Banager can't tell which other packages they need. In Terminal, {{command}} lists every place {{source}} gets packages from and {{trusted}} lists the ones it trusts; to trust one that's only in the first list, run {{trust}} followed by its name, then check again."
     },
     "checksUnfinished": {
       "title": "Some checks didn't finish",

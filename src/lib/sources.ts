@@ -663,7 +663,8 @@ export function sourceNoticesFor(
       // `brew uses` alike. So they are neither shown nor checked, and an
       // uninstall preview can't say whether they need a formula. Trusting
       // the tap (`brew trust --tap`) is what brings them back; `brew tap`
-      // names the taps.
+      // names every tap and `brew trust` alone the trusted ones, so the two
+      // together show which taps it doesn't trust.
       notices.push({
         id: `${instance.id}:formulae-not-listed`,
         variant: "warning",
@@ -672,6 +673,7 @@ export function sourceNoticesFor(
         values: {
           source: sourceLabel,
           command: `${commandNameOf(instance)} tap`,
+          trusted: `${commandNameOf(instance)} trust`,
           trust: `${commandNameOf(instance)} trust --tap`,
         },
       });
