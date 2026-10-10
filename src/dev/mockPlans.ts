@@ -113,11 +113,14 @@ const CASK_SCOPES: Record<string, { what: UninstallScope; steps: Warning[] }> = 
  */
 function updateSteps(name: string): Warning[] {
   const steps = (CASK_STEPS[name] ?? (name === "quickjot" ? [] : (CASK_SCOPES[name]?.steps ?? []))).filter(
-    (warning) => !("CaskUninstallStep" in warning && warning.CaskUninstallStep.step === "SignalsApps"),
+    (warning) =>
+      typeof warning === "string" ||
+      !("CaskUninstallStep" in warning && warning.CaskUninstallStep.step === "SignalsApps"),
   );
   if (steps.length === 0) return [];
   const reopens = steps.some(
     (warning) =>
+      typeof warning !== "string" &&
       "CaskUninstallStep" in warning &&
       (warning.CaskUninstallStep.step === "QuitsApps" || warning.CaskUninstallStep.step === "QuitsNamedApps"),
   );
