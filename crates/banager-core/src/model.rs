@@ -1416,13 +1416,27 @@ pub enum Warning {
     /// sentences for a cask with steps (`HomebrewCaskStepsAutoremoves`,
     /// `HomebrewCaskStepsUnseen`, `HomebrewCaskStepsOnly`,
     /// `HomebrewCaskStepsOnlyUnseen`); read by `warningKey` and
-    /// `warningArgs` in src/lib/warnings.ts.
+    /// `warningArgs` in src/lib/warnings.ts. Also produced for a cask
+    /// `Upgrade`, after `CaskUpdateRunsOldSteps`, for each step of the
+    /// installed version's recorded uninstall that the update runs.
     CaskUninstallStep {
         step: CaskStep,
         items: Vec<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         only_if: Option<RemoveCheck>,
     },
+    /// Before it installs a cask's new version, `brew upgrade --cask` runs
+    /// the uninstall the installed version recorded -- every directive but
+    /// `signal`, unless that record's `on_upgrade` names it, and `rmdir`
+    /// (Homebrew 7.0.9 `cask/artifact/uninstall.rb:10`, `:25-53`), under
+    /// `sudo` where an uninstall would. Said first, before the
+    /// `CaskUninstallStep` lines of those steps, only when there is one.
+    /// `reopens`: one of them quits apps, which Homebrew opens again once
+    /// the update is in, those it quit (`abstract_uninstall.rb:91-127`,
+    /// `cask/upgrade.rb:342-366`). Produced by `BrewAdapter::plan` for a
+    /// cask `Upgrade` (R47-1, r18); read by `warningKey` in
+    /// src/lib/warnings.ts.
+    CaskUpdateRunsOldSteps { reopens: bool },
     /// Not yet localised -- see this type's doc comment.
     Message(String),
 }
@@ -3882,6 +3896,10 @@ mod tests {
                     commands: vec!["node".to_string(), "npm".to_string()],
                 },
                 r#"{"HomebrewRelinksAfterUpdate":{"name":"node@22","commands":["node","npm"]}}"#,
+            ),
+            (
+                Warning::CaskUpdateRunsOldSteps { reopens: true },
+                r#"{"CaskUpdateRunsOldSteps":{"reopens":true}}"#,
             ),
             (
                 Warning::TakesBackCommand {

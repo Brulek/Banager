@@ -6491,6 +6491,83 @@ mod plan_execute_tests {
     }
 
     #[tokio::test]
+    async fn test_a_cask_update_says_the_old_versions_recorded_uninstall_steps_homebrew_runs_first() {
+        // R47-1 (r18): `brew upgrade --cask` first runs the uninstall the
+        // installed version recorded, every directive but `signal` unless
+        // its `on_upgrade` names it (Homebrew 7.0.9
+        // `cask/artifact/uninstall.rb:10`, `:38-53`), and opens again each
+        // app its `quit:` quit (`abstract_uninstall.rb:91-127`,
+        // `cask/upgrade.rb:342-366`). The update's confirmation says the
+        // same lines the uninstall's does, after one that says why.
+        let charles = include_str!(
+            "../../../../../adapters/fixtures-derived/brew/7.0.6/receipts/charles.json"
+        );
+        let dbeaver = include_str!(
+            "../../../../../adapters/fixtures-derived/brew/7.0.6/receipts/dbeaver-community.json"
+        );
+        let prefix = CaskroomPrefix::new(
+            "update-steps",
+            &[
+                ("charles", charles),
+                ("microsoft-word", WORD_RECEIPT),
+                ("dbeaver-community", dbeaver),
+                ("claudebar", CLAUDEBAR_RECEIPT),
+            ],
+        );
+        let runner = Arc::new(MockRunner::new());
+        let inst = ManagerInstance {
+            prefix: prefix.0.clone(),
+            exe_path: prefix.0.join("bin/brew"),
+            ..test_instance()
+        };
+        let adapter = BrewAdapter::new(runner.clone())
+            .with_recorded_uninstall_fn(cask_receipt::read_recorded)
+            .with_env_var_fn(someones_home)
+            .with_app_bundle_id_fn(charles_in_applications);
+        let steps_of = |plan: &Plan| -> Vec<Warning> {
+            plan.warnings
+                .iter()
+                .filter(|warning| {
+                    matches!(
+                        warning,
+                        Warning::CaskUninstallStep { .. } | Warning::CaskUpdateRunsOldSteps { .. }
+                    )
+                })
+                .cloned()
+                .collect()
+        };
+        let update = |name: &str| OpRequest {
+            kind: OpKind::Upgrade,
+            instance_id: inst.id.clone(),
+            artifact_kind: ArtifactKind::Cask,
+            name: name.to_string(),
+        };
+
+        for name in ["charles", "microsoft-word", "claudebar"] {
+            let uninstall = cask_uninstall(&runner, &adapter, &inst, name).await;
+            let plan = adapter.plan(&inst, &update(name)).await.expect("plan");
+            let mut expected = vec![Warning::CaskUpdateRunsOldSteps { reopens: true }];
+            expected.extend(steps_of(&uninstall));
+            assert_eq!(steps_of(&plan), expected, "{name}");
+        }
+        // Charles is quit by name, and opened again after.
+        let plan = adapter.plan(&inst, &update("charles")).await.expect("plan");
+        assert!(plan.warnings.contains(&Warning::CaskUninstallStep {
+            step: CaskStep::QuitsNamedApps,
+            items: vec!["Charles".to_string()],
+            only_if: None,
+        }));
+
+        // DBeaver's record only signals its app, which an update skips:
+        // nothing to say.
+        let plan = adapter
+            .plan(&inst, &update("dbeaver-community"))
+            .await
+            .expect("plan");
+        assert_eq!(steps_of(&plan), Vec::<Warning>::new());
+    }
+
+    #[tokio::test]
     async fn test_an_uninstall_says_homebrew_deletes_the_trust_list_entry_it_holds_for_it_alone() {
         // `brew uninstall` deletes the trust list's entry for each package
         // it names whose tap is not on the list (`cmd/uninstall.rb:122-127`):
