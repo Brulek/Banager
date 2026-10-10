@@ -199,7 +199,7 @@ describe("types", () => {
   it("reads an app's own version as the Rust side writes it, only where there is one (R47-3)", () => {
     // Same literal as Rust's test_an_apps_own_version_is_on_the_wire_only_where_there_is_one.
     const wire =
-      '{"family":null,"homebrew":null,"commands":[],"commands_unavailable":false,"unlinked":false,"app_version":"131.0.3"}';
+      '{"family":null,"homebrew":null,"commands":[],"commands_unavailable":false,"unlinked":false,"not_looked_up":false,"app_version":"131.0.3"}';
     const facts: ArtifactFacts = { ...NO_FACTS, app_version: "131.0.3" };
     expect(JSON.stringify(facts)).toBe(wire);
     expect(roundTrip<ArtifactFacts>(JSON.parse(wire))).toEqual(facts);
@@ -209,7 +209,7 @@ describe("types", () => {
   it("reads a self-updating cask with no single app as the Rust side writes it, only when marked (R47 skeptic P1)", () => {
     // Same literal as Rust's test_a_self_updating_cask_with_no_single_app_is_on_the_wire_only_when_marked.
     const wire =
-      '{"family":null,"homebrew":null,"commands":[],"commands_unavailable":false,"unlinked":false,"no_single_app":true}';
+      '{"family":null,"homebrew":null,"commands":[],"commands_unavailable":false,"unlinked":false,"not_looked_up":false,"no_single_app":true}';
     const facts: ArtifactFacts = { ...NO_FACTS, no_single_app: true };
     expect(JSON.stringify(facts)).toBe(wire);
     expect(roundTrip<ArtifactFacts>(JSON.parse(wire))).toEqual(facts);

@@ -2839,7 +2839,7 @@ mod tests {
     #[test]
     fn test_an_apps_own_version_is_on_the_wire_only_where_there_is_one() {
         // R47-3 (r18). Same literal as src/lib/types.test.ts.
-        let wire = r#"{"family":null,"homebrew":null,"commands":[],"commands_unavailable":false,"unlinked":false,"app_version":"131.0.3"}"#;
+        let wire = r#"{"family":null,"homebrew":null,"commands":[],"commands_unavailable":false,"unlinked":false,"not_looked_up":false,"app_version":"131.0.3"}"#;
         let facts = ArtifactFacts {
             app_version: Some("131.0.3".to_string()),
             ..Default::default()
@@ -2854,7 +2854,7 @@ mod tests {
     #[test]
     fn test_a_self_updating_cask_with_no_single_app_is_on_the_wire_only_when_marked() {
         // R47 skeptic P1 (r18). Same literal as src/lib/types.test.ts.
-        let wire = r#"{"family":null,"homebrew":null,"commands":[],"commands_unavailable":false,"unlinked":false,"no_single_app":true}"#;
+        let wire = r#"{"family":null,"homebrew":null,"commands":[],"commands_unavailable":false,"unlinked":false,"not_looked_up":false,"no_single_app":true}"#;
         let facts = ArtifactFacts {
             no_single_app: true,
             ..Default::default()
