@@ -4907,6 +4907,19 @@ describe("UpdatesPage", () => {
     expect(useUiStore.getState().page).toBe("settings");
   });
 
+  it("says only what can be updated here is up to date beside a pip package another one requires (r16)", async () => {
+    // pip list --outdated --not-required never looks certifi up, so an
+    // empty list says nothing of it.
+    updates = [];
+    const certifi = installedRow({ instance_id: "pip:/opt/homebrew/bin/python3", kind: "Package", name: "certifi" });
+    artifacts = [{ ...certifi, reason: "Dependency" }];
+    const { findByText, queryByText, getByRole } = renderPage();
+
+    await findByText("Everything you can update here is up to date");
+    expect(queryByText("Everything is up to date")).not.toBeInTheDocument();
+    expect(getByRole("button", { name: "Check Again" })).toBeInTheDocument();
+  });
+
   it("says an empty list as macOS does: a 36 tertiary symbol, the title, when it was checked, one grey button", async () => {
     updates = [];
     const { findByText, getByRole } = renderPage();

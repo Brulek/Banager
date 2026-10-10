@@ -27,6 +27,7 @@ import type {
   Warning,
 } from "../lib/types";
 import { NO_FACTS } from "../lib/types";
+import { notLookedUpByPip } from "../lib/updateState";
 import {
   MANY_CARGO,
   MANY_CASKS,
@@ -771,7 +772,8 @@ const OFFLINE_CHANNELS: Record<string, UpdateCandidate["channel"]> = {
  * No registry answered (`?state=offline`): Homebrew could not download its
  * catalogue and checked against the copy it has, and every other lookup
  * became a "could not check" row -- one per installed package for the
- * sources that check everything with one command.
+ * sources that check everything with one command, but for the pip
+ * packages another one requires, which pip never looks up.
  */
 function offline(world: World): void {
   findInstance(world, IDS.brew).status.notes = ["IndexMayBeStale"];
@@ -791,7 +793,9 @@ function offline(world: World): void {
   const failed = world.artifacts.flatMap((a): UpdateCandidate[] => {
     const adapterId = adapterOf.get(a.key.instance_id) ?? "";
     const reason = OFFLINE_REASONS[adapterId];
-    if (reason === undefined || kept.some((u) => sameKey(u.key, a.key))) return [];
+    // pip's check never looks up a package another one requires
+    // (`--not-required`), so offline it fails for none of them.
+    if (reason === undefined || notLookedUpByPip(a) || kept.some((u) => sameKey(u.key, a.key))) return [];
     // Every one of these is the network, which Rust marks as a failure a
     // later check can get past (`LookupFailure` in
     // crates/banager-core/src/adapters/mod.rs).
@@ -1128,9 +1132,11 @@ function scenarioWorld(state: ScenarioState): World {
       world.updates = [];
       // Without Codex's own install, whose updates Banager never checks:
       // with it, no update listed is no news, and the pages say so
-      // (`everySourceChecked`) instead of "Everything is up to date".
+      // (`everySourceChecked`) instead of "Everything is up to date". Nor
+      // the pip packages another one requires, which pip never looks up
+      // (`notLookedUpByPip`), for the same reason.
       world.instances = world.instances.filter((i) => i.id !== IDS.codex);
-      world.artifacts = world.artifacts.filter((a) => a.key.instance_id !== IDS.codex);
+      world.artifacts = world.artifacts.filter((a) => a.key.instance_id !== IDS.codex && !notLookedUpByPip(a));
       return world;
     case "hidden":
       allAnswering(world);

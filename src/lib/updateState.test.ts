@@ -9,6 +9,7 @@ import {
   everySourceChecked,
   hidingRule,
   isUpdateActionable,
+  leftOutOfUpdateCheck,
   notHidden,
   shownSkippedVersion,
   updatesSummary,
@@ -17,7 +18,8 @@ import {
   withSkippedVersion,
 } from "./updateState";
 import type { HidingSettings } from "./updateState";
-import type { ArtifactKey, ManagerInstance, UpdateCandidate } from "./types";
+import type { ArtifactKey, InstallReason, InstalledArtifact, ManagerInstance, UpdateCandidate } from "./types";
+import { NO_FACTS } from "./types";
 
 const brew: ManagerInstance = {
   id: "brew:/opt/homebrew",
@@ -397,6 +399,71 @@ describe("everySourceChecked", () => {
     expect(
       everySourceChecked([brew], [{ instance_id: "npm", message: "internal error detecting this source" }]),
     ).toBe(false);
+  });
+});
+
+/** A package (or `kind`) `instanceId` lists, installed as `reason`. */
+function installed(
+  instanceId: string,
+  name: string,
+  reason: InstallReason,
+  kind: ArtifactKey["kind"] = "Package",
+): InstalledArtifact {
+  return {
+    key: { instance_id: instanceId, kind, name },
+    display_name: name,
+    version: "1.0.0",
+    reason,
+    description: null,
+    homepage: null,
+    size_bytes: null,
+    installed_at: null,
+    path: null,
+    auto_updates: false,
+    uninstall_blocked: null,
+    facts: NO_FACTS,
+  };
+}
+
+const pip: ManagerInstance = { ...brew, id: "pip:/opt/homebrew/bin/python3", adapter_id: "pip" };
+const npm: ManagerInstance = { ...brew, id: "npm:/opt/homebrew", adapter_id: "npm" };
+
+describe("leftOutOfUpdateCheck", () => {
+  it("leaves out a package another one requires only where pip checks: every other source looks it up", () => {
+    // pip list --outdated --not-required (r16). npm's and Homebrew's checks
+    // still look up what another package requires.
+    expect(leftOutOfUpdateCheck(installed(pip.id, "certifi", "Dependency"), false)).toBe(true);
+    expect(leftOutOfUpdateCheck(installed(pip.id, "requests", "Unknown"), false)).toBe(false);
+    expect(leftOutOfUpdateCheck(installed(npm.id, "semver", "Dependency"), false)).toBe(false);
+    expect(leftOutOfUpdateCheck(installed(brew.id, "glib", "Dependency", "Formula"), false)).toBe(false);
+  });
+});
+
+describe("updatesSummary with pip packages another one requires", () => {
+  // pip never looks them up (r16), so nothing listed does not make
+  // everything up to date: only what can be updated here.
+  const instances = [brew, pip];
+  const requests = installed(pip.id, "requests", "Unknown");
+  const certifi = installed(pip.id, "certifi", "Dependency");
+
+  it("calls everything up to date only where pip looked up every package", () => {
+    expect(updatesSummary({ instances, updates: [], errors: [], artifacts: [requests] }, hiding())).toMatchObject({
+      kind: "upToDate",
+      everything: true,
+    });
+    expect(
+      updatesSummary({ instances, updates: [], errors: [], artifacts: [requests, certifi] }, hiding()),
+    ).toMatchObject({ kind: "upToDate", everything: false });
+  });
+
+  it("does not call the rest up to date beside a source not checked, unless pip is that source", () => {
+    const quiet = { unavailable: "NotResponding" as const, notes: [] };
+    const uv: ManagerInstance = { ...brew, id: "uv", adapter_id: "uv", status: quiet };
+    const artifacts = [requests, certifi];
+    const summary = (of: ManagerInstance[]) =>
+      updatesSummary({ instances: of, updates: [], errors: [], artifacts }, hiding());
+    expect(summary([...instances, uv])).toMatchObject({ kind: "nothingToUpdate", everythingElse: false });
+    expect(summary([brew, { ...pip, status: quiet }])).toMatchObject({ kind: "nothingToUpdate", everythingElse: true });
   });
 });
 

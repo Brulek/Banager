@@ -488,6 +488,18 @@ export function namedAsNotChecked(notChecked: NotChecked, instanceId: string): b
 }
 
 /**
+ * Whether `artifact` is a pip package another one requires, which pip's
+ * check never looks up (`--not-required`, `PipAdapter::check_updates`).
+ * Unlike a self-updating cask, Settings cannot bring it back, so where one
+ * is installed nothing listed does not make everything up to date
+ * (`updatesSummary`, the Updates page's empty list): only what can be
+ * updated here, as for a source Banager never checks.
+ */
+export function notLookedUpByPip(artifact: InstalledArtifact): boolean {
+  return artifact.reason === "Dependency" && adapterIdOf(artifact.key.instance_id) === "pip";
+}
+
+/**
  * Whether Homebrew's update check leaves `artifact` out while Settings'
  * "Show Homebrew apps that have their own updater" (`include_self_updating`) is off: a
  * cask that updates itself (`auto_updates`, from `brew info`'s
@@ -504,7 +516,7 @@ export function namedAsNotChecked(notChecked: NotChecked, instanceId: string): b
  * pip is view only here and such a package has nothing to offer.
  */
 export function leftOutOfUpdateCheck(artifact: InstalledArtifact, includeSelfUpdating: boolean): boolean {
-  if (artifact.reason === "Dependency" && adapterIdOf(artifact.key.instance_id) === "pip") return true;
+  if (notLookedUpByPip(artifact)) return true;
   return (
     !includeSelfUpdating &&
     artifact.key.kind === "Cask" &&
@@ -542,8 +554,9 @@ export function leftOutOfUpdateCheck(artifact: InstalledArtifact, includeSelfUpd
  *   run. `everything` is whether nothing is listed at all and every
  *   source was checked in full (`everySourceChecked`) -- exactly when the
  *   Updates page says "Everything is up to date". It is false where a
- *   source Banager never checks is there too (Codex's own install), and
- *   where anything is listed: then the headline says that what can be
+ *   source Banager never checks is there too (Codex's own install), where
+ *   pip has a package another one requires, which it never looks up
+ *   (`notLookedUpByPip`), and where anything is listed: then the headline says that what can be
  *   updated here is up to date, not that everything is.
  * - `nothingToUpdate`: none to install, and a source was not checked in
  *   full this time: `notChecked` names it, for the headline to say
@@ -552,7 +565,8 @@ export function leftOutOfUpdateCheck(artifact: InstalledArtifact, includeSelfUpd
  *   group of problems says why, a row each. `everythingElse` is
  *   `everything` of the sources it does not name: none of them has a row
  *   listed -- hidden, can't be updated here, a copy Terminal does not run
- *   -- and each is one Banager checks (not Codex's own install). Where it
+ *   -- each is one Banager checks (not Codex's own install), and none is
+ *   a pip package another one requires (`notLookedUpByPip`). Where it
  *   is false the headline claims of the rest no more than the all good
  *   would of the same rows: 「其余能在这里更新的都已是最新」. The rows of
  *   a source it names (uv's, kept from its last answer) are its own, said
@@ -605,7 +619,8 @@ export function updatesSummary(
 ): UpdatesSummary {
   const actionable = actionableUpdatesOf(snapshot, settings);
   const password = actionable.filter(waitsForPassword).length;
-  const unused = unusedCopies(snapshot.artifacts ?? []);
+  const artifacts = snapshot.artifacts ?? [];
+  const unused = unusedCopies(artifacts);
   const free = actionable.filter((candidate) => !holdsRow(candidate));
   const startable = free.filter((candidate) => !unused.has(artifactKeyId(candidate.key)));
   if (startable.length > 0) return { kind: "updates", actionable: startable, password };
@@ -624,12 +639,16 @@ export function updatesSummary(
     const ofNamed = (instanceId: string) => namedAsNotChecked(notChecked, instanceId);
     const everythingElse =
       snapshot.updates.every((candidate) => ofNamed(candidate.key.instance_id)) &&
-      snapshot.instances.every((instance) => ofNamed(instance.id) || checkedInFull(instance));
+      snapshot.instances.every((instance) => ofNamed(instance.id) || checkedInFull(instance)) &&
+      artifacts.every((artifact) => ofNamed(artifact.key.instance_id) || !notLookedUpByPip(artifact));
     return { kind: "nothingToUpdate", notChecked, everythingElse, ...besides };
   }
   // Not yet the all good: a row whose lookup did not succeed is among
   // `cantUpdateHere`, and the Overview weighs it (`unsuccessfulLookupsOf`).
-  const everything = snapshot.updates.length === 0 && everySourceChecked(snapshot.instances, snapshot.errors);
+  const everything =
+    snapshot.updates.length === 0 &&
+    everySourceChecked(snapshot.instances, snapshot.errors) &&
+    !artifacts.some(notLookedUpByPip);
   return { kind: "upToDate", everything, ...besides };
 }
 

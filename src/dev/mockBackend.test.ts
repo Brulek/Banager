@@ -24,7 +24,7 @@ import zhCN from "../i18n/zh-CN.json";
 import { toolsNotJudged } from "../lib/commandsKnown";
 import { outcomeCause, failureCause } from "../lib/failureCause";
 import { resolveToolIcon } from "../lib/toolIcons";
-import { everySourceChecked, hidingRule, updateStateOf } from "../lib/updateState";
+import { everySourceChecked, hidingRule, updatesSummary, updateStateOf } from "../lib/updateState";
 import { artifactKeyId } from "../store/ui";
 import { createMockBackend, MOCK_COMMANDS, TIMING, type MockBackend } from "./mockBackend";
 import { MODELS, buildWorld } from "./mockData";
@@ -513,6 +513,23 @@ describe("the browser preview's mock backend", () => {
       channel: "Digest",
       download_bytes: 4_683_087_389,
     });
+  });
+
+  it("never lists a pip package another one requires as not checked offline: pip's check never looks it up (r16)", async () => {
+    // `pip list --outdated --not-required` drops certifi, charset-normalizer
+    // and urllib3 before it asks PyPI, so offline only pip and requests
+    // fail.
+    const { backend } = backendFor({ state: "offline" });
+    const snapshot = await answer<Snapshot>(backend.invoke("refresh"));
+    const ofPip = (key: { instance_id: string }) => key.instance_id === "pip:/opt/homebrew/bin/python3";
+    const pip = (required: boolean) =>
+      snapshot.artifacts
+        .filter((a) => ofPip(a.key) && (a.reason === "Dependency") === required)
+        .map((a) => a.key.name);
+    const rows = snapshot.updates.filter((u) => ofPip(u.key));
+    expect(pip(true)).toEqual(["certifi", "charset-normalizer", "urllib3"]);
+    expect(rows.map((u) => u.key.name).sort()).toEqual(pip(false).sort());
+    expect(rows.every((u) => !u.checkable && u.warnings.includes("TransientLookupFailure"))).toBe(true);
   });
 
   it("has npm unable to start for want of node with ?state=nonode, and a link that puts it back", async () => {
@@ -1433,6 +1450,11 @@ describe("the preview's commands, and which copy runs", () => {
     // pages can say "Everything is up to date".
     expect(upToDate.instances.some((i) => i.adapter_id === "standalone-codex")).toBe(false);
     expect(everySourceChecked(upToDate.instances, upToDate.errors)).toBe(true);
+    // Nor a pip package another one requires, which pip never looks up (r16).
+    expect(updatesSummary(upToDate, { ignored_updates: [], skipped_versions: [] })).toMatchObject({
+      kind: "upToDate",
+      everything: true,
+    });
   });
 
   it("gives each row facts of its own, and leaves the shared empty ones alone", async () => {
