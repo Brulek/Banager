@@ -304,7 +304,7 @@ mod tests {
         }
         let end = std::time::Instant::now() + std::time::Duration::from_millis(250);
         while std::time::Instant::now() < end {
-            drop(acquire(&directory).unwrap());
+            drop(acquire_after_release(&directory));
         }
         stop.store(true, std::sync::atomic::Ordering::Relaxed);
         for spawner in spawners {
