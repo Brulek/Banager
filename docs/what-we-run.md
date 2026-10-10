@@ -1793,6 +1793,29 @@ succeeds. When that reading fails, nothing is marked, and an upgrade is
 reported as before: failed, or needing attention when the version did not
 change.
 
+**Formula updates that compile** (r18 R46-2). Homebrew installs a ready-built
+copy of a formula, a bottle, only when one fits the Mac: one built for its
+processor and its macOS version or an older one, or one for every Mac
+(`formula_installer.rb:258-259`; `extend/os/mac/utils/bottles.rb:43-58`).
+Otherwise `brew upgrade` compiles it, with every tool it needs only to
+build, which stays installed. Homebrew 7 builds no bottles for Intel Macs,
+nor for Apple silicon on macOS 14 or older (`docs/Support-Tiers.md:143-159`),
+so there nearly every formula update compiles, for minutes or hours. The
+`brew info --installed --json=v2` reply the inventory already reads names
+each formula's bottles for the version an update installs
+(`bottle.stable.files`, `formula.rb:3242-3269`); Banager compares them
+with this Mac's: Apple silicon for a Homebrew in `/opt/homebrew`, Intel for
+one in `/usr/local`, and elsewhere the processor Banager runs on, and the
+macOS version the kernel keeps (`kern.osproductversion`, with
+`sysctlbyname`, as Diagnostic info reads it; `brew::bottles`). When none
+fits, the update's preview -- and Update All's, for that formula -- says
+"This compiles on your Mac and takes a while." (`Warning::CompilesLocally`,
+as Cargo's), and the update may run for 6 hours instead of 30 minutes
+(`BrewAdapter::SOURCE_BUILD_TIMEOUT_SECS`); Cancel stops it at any time.
+A formula whose entry names no bottle at all compiles too; one whose entry
+says nothing of bottles, a macOS newer than Banager knows, and an
+inventory that did not answer change nothing. Nothing more runs for this.
+
 **Formulae Homebrew leaves out** (r18 R46-1). Homebrew 7 lists an
 installed formula only if it can load it, and silently drops one it
 refuses to load -- above all one from a tap it does not trust, which
@@ -1896,6 +1919,7 @@ preview):
 | Uninstall a formula with more than one version installed and no pin | `<brew> uninstall --formula --force {name}` | 1800 s | No |
 | Uninstall a cask | `<brew> uninstall --cask {name}` | 1800 s | Sometimes — Homebrew runs `sudo`, for example when the cask's recorded uninstall deletes paths (`delete:`), removes a background service (`launchctl:`) or a kernel extension (`kext:`), removes an installer package that is installed (`pkgutil:`), or runs a program the cask marks to run as root |
 | Upgrade one formula | `<brew> upgrade --formula {name}` | 1800 s | No |
+| Upgrade one formula no bottle fits this Mac (Formula updates that compile, below; previewed with a "compiles on your Mac" warning) | `<brew> upgrade --formula {name}` | 21600 s (6 hours) | No |
 | Then, once that upgrade has exited 0, link a keg-only formula whose link Homebrew recorded back into the prefix, where Homebrew did not (Keg-only formulae linked into Terminal, above) | `<brew> link --formula --force {name}` | 300 s | No |
 | Then, once that upgrade has exited 0, delete the formula's old versions (Old versions, below) | `<brew> cleanup {name}` | 600 s | No |
 | Upgrade one cask | `<brew> upgrade --cask {name}` | 1800 s | Sometimes — as for install |
@@ -4996,7 +5020,9 @@ adds each source's tools by name and version.
 The window builds the text from what it already holds, and asks Rust only
 for what it cannot read itself, with `get_system_facts`
 (`src-tauri/src/ipc.rs`, `crates/banager-core/src/diagnostics.rs`), which
-takes nothing from it. That reads two strings the kernel keeps,
+takes nothing from it (the first of them is also read for a formula
+update's preview: Homebrew's section, "Formula updates that compile").
+That reads two strings the kernel keeps,
 `kern.osproductversion` and `machdep.cpu.brand_string`, with
 `sysctlbyname`; the process's own `PATH` and `HOME`, and no other
 environment variable; and the sources' last known state. No command runs,

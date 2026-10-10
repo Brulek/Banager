@@ -47,6 +47,9 @@ pub(crate) struct MacTag {
 /// (Homebrew's own default prefixes, `install.sh`); one elsewhere as
 /// Banager itself does. The version is the kernel's
 /// (`diagnostics::read_os`, `sysctlbyname`): nothing runs.
+/// Unused in this crate's unit tests, which read nothing of the Mac
+/// running them (`BrewAdapter::mac_tag_fn`).
+#[cfg_attr(test, allow(dead_code))]
 pub(crate) fn this_mac(prefix: &Path) -> Option<MacTag> {
     let arm = if prefix == Path::new("/opt/homebrew") {
         true

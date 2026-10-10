@@ -2564,3 +2564,35 @@ fn test_what_we_run_says_what_happens_when_homebrew_leaves_formulae_out() {
         "`## Files Banager reads` does not list the Cellar the inventory compares"
     );
 }
+
+#[test]
+fn test_what_we_run_says_which_formula_updates_compile_and_how_long_they_get() {
+    // r18 R46-2: a formula update no bottle fits this Mac compiles; the
+    // table states its longer time limit, and the section how Banager
+    // tells.
+    let doc = read_doc();
+    let homebrew = section_body(&doc, "Homebrew").expect("a `## Homebrew` section");
+    let row = homebrew
+        .lines()
+        .find(|line| line.starts_with("| Upgrade one formula no bottle fits this Mac"))
+        .unwrap_or_else(|| {
+            panic!("Homebrew's write-command table has no row for an update that compiles")
+        });
+    assert!(
+        row.contains(&format!("{} s", BrewAdapter::SOURCE_BUILD_TIMEOUT_SECS)),
+        "the row does not state its time limit: {row}"
+    );
+    let folded = homebrew.split_whitespace().collect::<Vec<_>>().join(" ");
+    for words in [
+        "**Formula updates that compile**",
+        "`bottle.stable.files`",
+        "`kern.osproductversion`",
+        "`Warning::CompilesLocally`",
+        "`docs/Support-Tiers.md:143-159`",
+    ] {
+        assert!(
+            folded.contains(words),
+            "the `## Homebrew` section does not say {words:?} of formula updates that compile"
+        );
+    }
+}

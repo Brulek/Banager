@@ -1151,6 +1151,32 @@ impl BrewAdapter {
         }
     }
 
+    /// Keeps which formulae of `json`, `inst`'s inventory reply, no bottle
+    /// fits this Mac (`bottles::formulae_built_from_source`, r18 R46-2):
+    /// their update compiles. A Mac whose tag is not known keeps none.
+    fn remember_source_builds(&self, inst: &ManagerInstance, json: &str) {
+        let names = (self.mac_tag_fn)(&inst.prefix)
+            .map(|mac| bottles::formulae_built_from_source(json, mac))
+            .unwrap_or_default();
+        if let Ok(mut known) = self.source_builds.lock() {
+            known.insert(inst.id.clone(), names);
+        }
+    }
+
+    /// Whether the update of the formula `name` compiles, as the last
+    /// inventory of `instance_id` read it (`remember_source_builds`).
+    fn builds_from_source(&self, instance_id: &str, name: &str) -> bool {
+        let short = name.rsplit('/').next().unwrap_or(name);
+        self.source_builds
+            .lock()
+            .map(|known| {
+                known
+                    .get(instance_id)
+                    .is_some_and(|names| names.contains(short))
+            })
+            .unwrap_or(false)
+    }
+
     /// Whether the last inventory of `instance_id` found formula folders
     /// Homebrew did not list (`remember_unlisted_racks`).
     fn has_unlisted_racks(&self, instance_id: &str) -> bool {
@@ -2029,6 +2055,7 @@ impl BrewAdapter {
         let artifacts = parse_info_installed(&output.stdout, &inst.id)?;
         self.remember_keg_only(&inst.id, &artifacts);
         self.remember_unlisted_racks(inst, &artifacts);
+        self.remember_source_builds(inst, &output.stdout);
         Ok(artifacts)
     }
 
@@ -2844,6 +2871,16 @@ impl BrewAdapter {
                 let program = inst.exe_path.clone();
                 let args = vec!["upgrade".to_string(), flag.to_string(), req.name.clone()];
                 let mut then = Vec::new();
+                // r18 R46-2: no bottle fits this Mac, so Homebrew compiles
+                // the update -- on every Intel Mac, and on Apple silicon
+                // with macOS 14 or older, since Homebrew 7 builds no
+                // bottle for them. Said as Cargo's compiling update is, and
+                // given hours instead of the half hour.
+                let compiles = req.artifact_kind == ArtifactKind::Formula
+                    && self.builds_from_source(&inst.id, &req.name);
+                if compiles {
+                    warnings.insert(0, Warning::CompilesLocally);
+                }
                 // U9: a formula's old versions go once it is updated, said
                 // first, as the one thing this preview adds to the update.
                 if let Some(versions) = self.cleanup_after_upgrade(inst, req, &env) {
@@ -2882,7 +2919,11 @@ impl BrewAdapter {
                     warnings,
                     affected: Vec::new(),
                     basis: None,
-                    timeout_secs: 1800,
+                    timeout_secs: if compiles {
+                        Self::SOURCE_BUILD_TIMEOUT_SECS
+                    } else {
+                        1800
+                    },
                 })
             }
         }
