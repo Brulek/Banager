@@ -2632,3 +2632,22 @@ fn test_what_we_run_says_a_formulas_uninstall_leaves_its_service_running() {
         "`## Files Banager reads` does not list the service files the uninstall preview looks for"
     );
 }
+
+#[test]
+fn test_what_we_run_says_a_cask_updates_signal_line_shows_when_on_upgrade_names_it() {
+    // r20 R56-6: `BrewAdapter::update_steps` keeps the `signal` step when
+    // the record's `on_upgrade` names it (`cask_receipt::signals_on_upgrade`),
+    // as Homebrew then runs it; the paragraph said flatly the confirmation
+    // has no line for `signal`.
+    let doc = read_doc();
+    let homebrew = section_body(&doc, "Homebrew").expect("a `## Homebrew` section");
+    let folded = homebrew.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(
+        !folded.contains("without a line for `signal`. Nothing more"),
+        "the cask update paragraph still says the confirmation never has a line for `signal`"
+    );
+    assert!(
+        folded.contains("with a line for `signal` only when the record's `on_upgrade` names it"),
+        "the cask update paragraph does not say when the confirmation has a line for `signal`"
+    );
+}
