@@ -787,19 +787,22 @@ impl PipAdapter {
             .collect())
     }
 
-    /// How long `pip list --outdated` is given for `packages` installed:
+    /// How long `pip list --outdated` is given for `packages` to look up:
     /// pip looks each up on its index one at a time (pip 26.2.1
     /// `commands/list.py:250-285`), about a second a package from the
     /// author's Mac (0.75-1.26 s a PyPI page), so a fixed 60 s never
     /// finished for a few hundred -- an Anaconda base, Jupyter installed
     /// with pip -- and every package read "could not check" every round
-    /// (r15 R43-8). 60 s and 1.5 s more a package, at most 600 s, what an
-    /// install, upgrade or uninstall is given. A round commits only once
-    /// every source's check has ended (`Session::refresh_recording`), so
-    /// this wait holds back every source's update results, not pip's only.
+    /// (r15 R43-8). 60 s and 1.5 s more a package, at most 3 minutes: a
+    /// round commits only once every source's check has ended
+    /// (`Session::refresh_recording`), so this wait holds back every
+    /// source's update results, not pip's only, and 600 s held Homebrew's
+    /// and npm's for 5-8 minutes (the author's choice of 2026-10-10).
+    /// `packages` counts only what the check looks up, those nothing else
+    /// requires (`--not-required`).
     pub const OUTDATED_BASE_SECS: u64 = 60;
     pub const OUTDATED_SECS_PER_PACKAGE: f64 = 1.5;
-    pub const OUTDATED_MAX_SECS: u64 = 600;
+    pub const OUTDATED_MAX_SECS: u64 = 180;
 
     fn outdated_timeout(packages: usize) -> Duration {
         let secs =
@@ -1337,8 +1340,10 @@ mod tests {
         // pip 26.2.1 looks packages up one at a time (`list.py:250-285`),
         // about a second each from the author's Mac: a few hundred (an
         // Anaconda base, `pip3 install jupyter`) never finished in a fixed
-        // 60 s, and every package read "could not check" every round.
-        for (packages, secs) in [(0, 60), (10, 75), (300, 510), (1000, 600)] {
+        // 60 s, and every package read "could not check" every round. At
+        // most 3 minutes (r16, the author's choice of 2026-10-10): this
+        // wait holds back every source's results.
+        for (packages, secs) in [(0, 60), (10, 75), (79, 179), (80, 180), (300, 180), (1000, 180)] {
             let list: Vec<String> = (0..packages)
                 .map(|i| format!(r#"{{"name":"p{i}","version":"1.0"}}"#))
                 .collect();

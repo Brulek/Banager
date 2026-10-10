@@ -2638,15 +2638,17 @@ made a large environment's check take minutes. Their rows show no newer
 version, even when there is one, and the Installed page says nothing
 about updates on them, rather than "Up to date". pip looks packages up one
 at a time, about a second each, so the check is given 60 seconds and 1.5
-more for each installed package, at most 600 (`PipAdapter::outdated_timeout`):
-a few hundred packages (an Anaconda base, say) used to run into a fixed 60
-seconds every time. Offline, five retries take pip about 7.5 seconds a
-package, so an environment of more than about 10 packages still runs into
-its limit and every package is listed as "could not check" -- after up to
-10 minutes for a large one. A check shows its results only once every
-source has finished checking, so that wait holds back every source's
-updates, Homebrew's and npm's too, not pip's only (the first check since
-launch still lists each source's packages as soon as it has read them).
+more for each package it looks up, at most 3 minutes
+(`PipAdapter::outdated_timeout`). A check shows its results only once
+every source has finished checking, so that wait holds back every
+source's updates, Homebrew's and npm's too, not pip's only (the first
+check since launch still lists each source's packages as soon as it has
+read them); 3 minutes is the longest pip can hold them. An environment
+with more than about 150 such packages can still run into that limit,
+and then every one of them is listed as "could not check". Offline, five
+retries take pip about 7.5 seconds a package, so an environment of more
+than about 10 of them runs into its limit the same way, after at most 3
+minutes.
 Banager makes no network request of its own for
 pip: `pip list --outdated` reaches PyPI itself.
 
@@ -2686,7 +2688,7 @@ case variants such as `/USR/BIN` and links spelled that way are guarded too.
 | List packages (`inventory`) | `<python> -m pip list --format=json` | 60 s |
 | List packages nothing else depends on (`inventory`, to tell dependencies apart) | `<python> -m pip list --format=json --not-required` | 60 s |
 | List packages nothing else depends on, to count them (`check_updates`, before the next row) | `<python> -m pip list --format=json --not-required` | 60 s |
-| List outdated packages nothing else depends on (`check_updates`) | `<python> -m pip list --outdated --not-required --format=json` with `PIP_QUIET=0`, `PIP_VERBOSE=0` and `PIP_RETRIES=5` | 60 s, plus 1.5 s for each package the row above listed, at most 600 s |
+| List outdated packages nothing else depends on (`check_updates`) | `<python> -m pip list --outdated --not-required --format=json` with `PIP_QUIET=0`, `PIP_VERBOSE=0` and `PIP_RETRIES=5` | 60 s, plus 1.5 s for each package the row above listed, at most 180 s |
 
 If `pip list --outdated` exits non-zero, every package that list named is
 listed as "could not check", with the reason; if that list itself failed,
