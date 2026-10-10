@@ -635,12 +635,16 @@ describe("sourceNoticesFor", () => {
         variant: "warning",
         titleKey: "sourceNotice.formulaeNotListed.title",
         descriptionKey: "sourceNotice.formulaeNotListed.description",
-        values: { source: "Homebrew", command: "brew tap", trust: "brew trust --tap" },
+        values: { source: "Homebrew", command: "brew tap", trusted: "brew trust", trust: "brew trust --tap" },
       },
     ]);
+    // `brew tap` lists every tap and says nothing of trust; `brew trust`
+    // alone lists the trusted ones (cmd/trust.rb). Together they show which
+    // taps Homebrew doesn't trust, so none is trusted blindly.
     const description = i18n.getFixedT("en")(notices[0].descriptionKey, notices[0].values);
-    expect(description).toContain("run brew tap in Terminal");
-    expect(description).toContain("run brew trust --tap followed by that name");
+    expect(description).toContain("brew tap lists every place Homebrew gets packages from");
+    expect(description).toContain("brew trust lists the ones it trusts");
+    expect(description).toContain("run brew trust --tap followed by its name");
   });
 
   it("falls back to the whole exe_path as the command when it has no file name", () => {

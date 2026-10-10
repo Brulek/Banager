@@ -213,8 +213,16 @@ mod tests {
             names.sort();
             names
         };
-        assert_eq!(built(ARM_TAHOE), ["speedtest"]);
-        assert_eq!(built(ARM_SONOMA), ["node", "speedtest"]);
+        // A formula Homebrew has no bottle of at all (`{}`) is often a
+        // ready-made program its tap only copies into place: it is not
+        // judged, nor one whose bottle list is empty.
+        let json = json.replace(
+            r#"{"name":"old"}"#,
+            r#"{"name":"empty","bottle":{"stable":{"files":{}}}}"#,
+        );
+        let json = json.as_str();
+        assert!(built(ARM_TAHOE).is_empty(), "got {:?}", built(ARM_TAHOE));
+        assert_eq!(built(ARM_SONOMA), ["node"]);
         assert!(formulae_built_from_source("not json", ARM_TAHOE).is_empty());
     }
 
