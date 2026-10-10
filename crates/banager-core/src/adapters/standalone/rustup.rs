@@ -261,8 +261,8 @@ pub fn toolchain_names(rustup_home: &Path, protected: &Protected) -> Result<Vec<
 /// is `rg`), so the list can be matched to the rows the user knows, and
 /// a crate is named once however many programs it installed; a program
 /// no record lists is named by its file name, in `unrecorded` when the
-/// records were read in full (each one there merged, or none there at
-/// all) -- Cargo did not install it, so reinstalling Rust will not bring
+/// records were read in full (each one there read and merged, or none
+/// there at all) -- Cargo did not install it, so reinstalling Rust will not bring
 /// it back -- and in `recorded` when a record is there but could not be
 /// read or merged, since then that is not known. The listing is what
 /// rustup acts on; the record still names what cargo installed when the
@@ -305,8 +305,10 @@ pub fn bin_programs_rustup_removes(
             .and_then(|json| parse_crates2_bins(&json))
             .ok()
     });
+    // The empty stand-in for a `.crates2.json` that cannot be read still
+    // names what `.crates.toml` lists, but the records were not read in full.
     let (recorded, complete): (Vec<(String, Vec<String>)>, bool) = match merged {
-        Some(recorded) => (recorded, true),
+        Some(recorded) => (recorded, crates2.is_ok()),
         None => {
             let alone = text(&crates2).and_then(|json| parse_crates2_bins(json).ok());
             let complete = crates_toml == Ok(None) && (crates2 == Ok(None) || alone.is_some());
@@ -1426,6 +1428,28 @@ mod tests {
         assert_eq!(
             bin_programs_rustup_removes(&cargo_home, &Protected::of_this_process()).unwrap(),
             programs(&["cargo-binstall", "dust", "hexyl", "rg"], &[])
+        );
+        // A `.crates2.json` there but unreadable (not UTF-8) is no missing
+        // one: what it records is not known, so `uv`, which `.crates.toml`
+        // does not list, may be Cargo's -- on the Cargo line, also beside a
+        // blank `.crates.toml`.
+        std::fs::write(cargo_home.join("bin/uv"), b"x").expect("write uv");
+        std::fs::write(cargo_home.join(".crates2.json"), b"\xff").expect("break .crates2.json");
+        std::fs::write(
+            cargo_home.join(".crates.toml"),
+            r#"[v1]
+"ripgrep 15.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = ["rg"]
+"#,
+        )
+        .expect("write .crates.toml");
+        assert_eq!(
+            bin_programs_rustup_removes(&cargo_home, &Protected::of_this_process()).unwrap(),
+            programs(&["cargo-binstall", "dust", "hexyl", "ripgrep", "uv"], &[])
+        );
+        std::fs::write(cargo_home.join(".crates.toml"), "").expect("blank .crates.toml");
+        assert_eq!(
+            bin_programs_rustup_removes(&cargo_home, &Protected::of_this_process()).unwrap(),
+            programs(&["cargo-binstall", "dust", "hexyl", "rg", "uv"], &[])
         );
     }
 
