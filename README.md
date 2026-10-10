@@ -21,7 +21,10 @@ Banager puts all of it in one window: what you have, what has an update, and a b
 
 ## What it manages
 
-| Source | Reads | Installs / updates / removes |
+Banager updates and uninstalls what you already have; it can't install anything new
+(see "What it deliberately does not do yet").
+
+| Source | Reads | Updates / removes |
 |---|---|---|
 | Homebrew — formulae and casks | yes | yes |
 | npm — global packages | yes | yes, when the prefix is yours to write |
