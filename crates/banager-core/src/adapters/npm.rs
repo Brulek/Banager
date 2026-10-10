@@ -2185,6 +2185,49 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn r45_a_link_npm_reads_no_version_for_is_no_row_with_nothing_else_listed() {
+        // R45-2: an `npm link` whose package.json has no "version" is in
+        // `npm outdated -g` with no `current` (an uncheckable row) and in
+        // `npm ls -g` with `resolved: file:...` (arborist link.js:98). It
+        // got no row while another global had an update, and "Couldn't
+        // check" once it was the only row: the listing was read only for
+        // a checkable row.
+        let runner = ls_global_answering(
+            0,
+            r#"{"name": "lib", "dependencies": {
+              "mytool": {"resolved": "file:../../../../Users/you/dev/mytool"}
+            }}"#,
+            "",
+        );
+        runner.respond(
+            vec![
+                "/opt/homebrew/bin/npm",
+                "outdated",
+                "-g",
+                "--json",
+                "--prefix",
+                "/opt/homebrew",
+            ],
+            CommandOutput {
+                stderr_cause: Default::default(),
+                exit_code: Some(1),
+                stdout: r#"{"mytool": {"wanted": "1.0.0", "latest": "1.0.0", "dependent": "global",
+                                       "location": "/opt/homebrew/lib/node_modules/mytool"}}"#
+                    .to_string(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let candidates = NpmAdapter::new(runner)
+            .check_updates(&test_instance(), &CheckOptions::default())
+            .await
+            .expect("checked")
+            .candidates;
+        assert!(candidates.is_empty(), "{candidates:?}");
+    }
+
+    #[tokio::test]
     async fn r42_with_nothing_to_offer_the_check_lists_no_packages() {
         // The listing is read only for an update the check would offer.
         let runner = Arc::new(MockRunner::new());
