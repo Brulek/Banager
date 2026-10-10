@@ -132,22 +132,24 @@ pub fn current(login_path: bool, instances: &[ManagerInstance]) -> SystemFacts {
 
 /// `path` with the home folder written as `~`, as Finder and Terminal show
 /// one -- also when either spells it through the data volume
-/// (`/System/Volumes/Data/Users/…`, `protected::without_data_volume`), so
-/// the account's name does not show either way. A home that is missing,
+/// (`/System/Volumes/Data/Users/…`, `protected::without_data_volume`), or
+/// in another case, which macOS's disk finds all the same
+/// (`protected::strip_prefix_folded`; r20 R50-2), so the account's name
+/// does not show any way. A home that is missing,
 /// relative or the root folder abbreviates nothing: every path would start
 /// with `/`.
 pub(crate) fn shown_path(path: &Path, home: Option<&Path>) -> String {
     let home = home.filter(|home| home.is_absolute() && home.parent().is_some());
     let rest = home.and_then(|home| {
-        path.strip_prefix(home)
+        crate::protected::strip_prefix_folded(path, home)
             .map(Path::to_path_buf)
-            .ok()
             .or_else(|| {
                 let home = crate::protected::without_data_volume(home);
-                crate::protected::without_data_volume(path)
-                    .strip_prefix(&home)
-                    .map(Path::to_path_buf)
-                    .ok()
+                crate::protected::strip_prefix_folded(
+                    &crate::protected::without_data_volume(path),
+                    &home,
+                )
+                .map(Path::to_path_buf)
             })
     });
     match rest {
@@ -321,6 +323,35 @@ mod tests {
         assert_eq!(
             shown_path(Path::new("/System/Volumes/Data/opt/tools"), Some(home)),
             "/System/Volumes/Data/opt/tools"
+        );
+    }
+
+    // A folder typed in lower case leads home on macOS's disk, so it is
+    // written as `~` too (r20 R50-2); a home outside /Users as well.
+    #[test]
+    fn test_a_home_spelled_in_another_case_is_written_with_a_tilde() {
+        let home = Path::new("/Users/someone");
+        assert_eq!(
+            shown_path(Path::new("/users/someone/.npm-global/bin"), Some(home)),
+            "~/.npm-global/bin"
+        );
+        assert_eq!(
+            shown_path(
+                Path::new("/system/volumes/data/USERS/SOMEONE/bin"),
+                Some(home)
+            ),
+            "~/bin"
+        );
+        assert_eq!(
+            shown_path(Path::new("/users/someoneelse/bin"), Some(home)),
+            "/users/someoneelse/bin"
+        );
+        assert_eq!(
+            shown_path(
+                Path::new("/volumes/data/Jane/bin"),
+                Some(Path::new("/Volumes/Data/jane"))
+            ),
+            "~/bin"
         );
     }
 

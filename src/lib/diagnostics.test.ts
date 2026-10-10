@@ -371,6 +371,10 @@ describe("the text's helpers", () => {
     expect(withoutHomePaths("/opt/homebrew/bin")).toBe("/opt/homebrew/bin");
     expect(withoutHomePaths("/System/Volumes/Data/Users/alice/bin")).toBe("~/bin");
     expect(withoutHomePaths("/System/Volumes/Data/Users/Shared/bin")).toBe("/System/Volumes/Data/Users/Shared/bin");
+    // A folder typed in lower case leads home on macOS's disk (r20 R50-2).
+    expect(withoutHomePaths("/users/jane/.npm-global/bin")).toBe("~/.npm-global/bin");
+    expect(withoutHomePaths("/system/volumes/data/USERS/jane/bin")).toBe("~/bin");
+    expect(withoutHomePaths("/users/shared/bin and /USERS/SHARED")).toBe("/users/shared/bin and /USERS/SHARED");
   });
 });
 

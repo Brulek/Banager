@@ -483,7 +483,8 @@ where the log still has other lines of the operation but none it wrote
 to stderr -- and, for a cause that is not recognised, the sentence under
 the subtitle says to click it and send the details to someone who can
 help. Both Copy Error Details buttons write the home folder in what they
-copy as `~` (`/Users/<name>` becomes `~`; not `/Users/Shared`), as Copy
+copy as `~` (`/Users/<name>`, in any case, becomes `~`; not
+`/Users/Shared`), as Copy
 Diagnostic Info does; the words on screen keep it as the tool wrote it.
 A failure that kept no words gets no such line, as its log may
 never have had one. This fetches no old output and writes no log file.
@@ -5163,7 +5164,11 @@ That reads two strings the kernel keeps,
 `sysctlbyname`; the process's own `PATH` and `HOME`, and no other
 environment variable; and the sources' last known state. No command runs,
 no file is opened, nothing is written to disk, and no connection is made.
-Every path in the text has the home folder written as `~`. The folders on
+Every path in the text has the home folder written as `~`: the folder
+`HOME` names, in any case, in the `PATH` folders and the sources' places,
+and any `/Users/<name>` but `/Users/Shared`, in any case, everywhere --
+only a home outside `/Users` that a source's error details quote stays
+as the tool wrote it, as the window is not told `HOME`. The folders on
 `PATH` are the one environment variable's value Banager puts in the text,
 as its "Command search folders" (「查找命令的文件夹」) lines; apart from a
 source's error details, it never holds any other environment variable's
@@ -5638,7 +5643,8 @@ first line that says what went wrong kept, so that the page can say why,
 and which file or what, after the window that watched it has closed -- at most 160
 characters, its label (`Error:`) taken off (with the line after it where
 it ends with a colon), with any home folder but `/Users/Shared` written
-as `~` and any login, query, fragment or token-like part of the path in
+as `~` -- any `/Users/<name>` and the folder `HOME` names, in any case --
+and any login, query, fragment or token-like part of the path in
 an address masked (`failure_detail`). An operation cancelled before Banager began carrying it out
 (while it waited for its turn, or while Banager read the installed
 version) is not recorded. Each record also carries a random id of the

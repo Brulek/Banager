@@ -83,7 +83,8 @@ export function diagnosticsTime(date: Date): string {
  * Every `/Users/<name>` left in `text` as `~`, but macOS's own shared
  * folder, and the data volume's spelling of it
  * (`/System/Volumes/Data/Users/<name>`) as `~` too, not as
- * `/System/Volumes/Data~`. Rust already writes each path it hands over
+ * `/System/Volumes/Data~` -- in any case, as macOS's disk finds them
+ * (`/users/<name>` leads home too). Rust already writes each path it hands over
  * with the home folder as `~`; this is the last guard, for a path the
  * snapshot carries that the facts did not cover (a source found since
  * they were read), and the only one for a tool's own words, which Copy
@@ -91,7 +92,7 @@ export function diagnosticsTime(date: Date): string {
  * `MissingFailureLog`).
  */
 export function withoutHomePaths(text: string): string {
-  return text.replace(/(?:\/System\/Volumes\/Data)?\/Users\/(?!Shared(?:\/|\s|$))[^/\s]+/g, "~");
+  return text.replace(/(?:\/System\/Volumes\/Data)?\/Users\/(?!Shared(?:\/|\s|$))[^/\s]+/gi, "~");
 }
 
 /**

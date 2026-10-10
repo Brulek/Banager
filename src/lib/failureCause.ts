@@ -368,7 +368,10 @@ const DETAIL_CHARS = 160;
  * bookkeeping (`code`, `errno`, `path`, the log file) -- or, with none, the
  * last line, its label taken off; where it ends with a colon, with the line
  * after it. Masked as the history masks it: the escape codes that colour
- * it, any home folder (`/Users/<name>` as `~`, not `/Users/Shared`), a
+ * it, any home folder (`/Users/<name>` as `~` in any case, also through
+ * the data volume, not `/Users/Shared`; Rust also writes the folder
+ * `HOME` names as `~` where it is outside /Users, which the window does
+ * not know), a
  * login in an address, an address's query and fragment, a part of its
  * path that looks like a token (`looksLikeAToken`); cut to 160
  * characters. Null for words that are all blank. 「最近的更新记录」 says it
@@ -394,7 +397,9 @@ export function failureDetail(summary: string): string | null {
   if (text.endsWith(":") && next !== undefined) text = `${text} ${next}`;
   const masked = text
     // `/Users/Shared` is no one's home (review of r6 y3-batch, finding 8).
-    .replace(/\/Users\/([^/\s'"`]+)/g, (whole: string, name: string) => (name === "Shared" ? whole : "~"))
+    .replace(/(?:\/System\/Volumes\/Data)?\/Users\/([^/\s'"`]+)/gi, (whole: string, name: string) =>
+      name.toLowerCase() === "shared" ? whole : "~",
+    )
     .replace(/([A-Za-z][A-Za-z0-9+.-]*:\/\/)[^/\s@'"`]+@/g, "$1****@")
     .replace(/([A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s?#'"`]*)[?#][^\s'"`]*/g, "$1")
     .replace(

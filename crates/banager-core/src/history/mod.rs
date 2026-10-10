@@ -398,7 +398,7 @@ fn detail_patterns() -> &'static DetailPatterns {
             label: re(
                 r"(?i)^(?:(?:error|fatal)\b\s*(?:\[[^\]]*\])?\s*:?|npm (?:err!|error)\b|E:)\s*",
             ),
-            home: re(r"/Users/([^/\s'\x22`]+)"),
+            home: re(r"(?i)(?:/System/Volumes/Data)?/Users/([^/\s'\x22`]+)"),
             login: re(r"([A-Za-z][A-Za-z0-9+.-]*://)[^/\s@'\x22`]+@"),
             query: re(r"([A-Za-z][A-Za-z0-9+.-]*://[^\s?#'\x22`]*)[?#][^\s'\x22`]*"),
             address_path: re(r"([A-Za-z][A-Za-z0-9+.-]*://[^/\s'\x22`]+)(/[^\s'\x22`]*)"),
@@ -429,12 +429,19 @@ fn looks_like_a_token(part: &str) -> bool {
 /// `errno`, `path`, the log file) -- or, with none, the last line, with
 /// its label taken off; and where it ends with a colon, the line after it
 /// too, which says what the colon announces. Masked: the escape codes
-/// that colour it, any home folder (`/Users/<name>` becomes `~`; not
-/// `/Users/Shared`), any login in an address (one the runner did not
+/// that colour it, any home folder (`/Users/<name>` becomes `~`, in any
+/// case and also through the data volume; not `/Users/Shared`), the
+/// folder `HOME` names wherever it is (`home_as_tilde`), any login in an address (one the runner did not
 /// already mask, `runner::redact`), an address's query and fragment, and a
 /// part of its path that looks like a token (`looks_like_a_token`); then
 /// cut to `DETAIL_CHARS`. `None` for words that are all blank.
 pub(crate) fn failure_detail(summary: &str) -> Option<String> {
+    let home = std::env::var_os("HOME").map(PathBuf::from);
+    failure_detail_in(summary, home.as_deref())
+}
+
+/// `failure_detail`, with `home` for the folder `HOME` names.
+fn failure_detail_in(summary: &str, home: Option<&Path>) -> Option<String> {
     let p = detail_patterns();
     let lines: Vec<String> = summary
         .lines()
@@ -459,9 +466,10 @@ pub(crate) fn failure_detail(summary: &str) -> Option<String> {
             text = format!("{text} {next}");
         }
     }
+    let text = home_as_tilde(&text, home);
     // `/Users/Shared` is no one's home (review of r6 y3-batch, finding 8).
     let text = p.home.replace_all(&text, |c: &regex::Captures<'_>| {
-        if &c[1] == "Shared" {
+        if c[1].eq_ignore_ascii_case("Shared") {
             c[0].to_string()
         } else {
             "~".to_string()
@@ -491,6 +499,27 @@ pub(crate) fn failure_detail(summary: &str) -> Option<String> {
     let mut cut: String = text.chars().take(DETAIL_CHARS - 1).collect();
     cut.push('…');
     Some(cut)
+}
+
+/// `text` with the folder `home` names written as `~` wherever it is --
+/// in any case, as macOS's disk finds it, and not where a longer name only
+/// begins with it -- for a home outside /Users, which `DetailPatterns`'
+/// `home` does not cover (r20 R50-2). A home that is missing, relative or
+/// the root folder writes nothing, as `diagnostics::shown_path`.
+fn home_as_tilde<'a>(text: &'a str, home: Option<&Path>) -> std::borrow::Cow<'a, str> {
+    let home = home
+        .filter(|home| home.is_absolute() && home.parent().is_some())
+        .and_then(Path::to_str)
+        .map(|home| home.trim_end_matches('/'))
+        .filter(|home| !home.is_empty());
+    let Some(home) = home else {
+        return std::borrow::Cow::Borrowed(text);
+    };
+    let pattern = format!(r"(?i){}([^\w.-]|$)", regex::escape(home));
+    match regex::Regex::new(&pattern) {
+        Ok(pattern) => pattern.replace_all(text, "~${1}"),
+        Err(_) => std::borrow::Cow::Borrowed(text),
+    }
 }
 
 /// Where a history with no `Clock` yet starts trusting from: `now`, or
@@ -1870,6 +1899,33 @@ mod tests {
         let detail = detail.expect("a line");
         assert_eq!(detail.chars().count(), DETAIL_CHARS);
         assert!(detail.ends_with('…'));
+    }
+
+    // The folder HOME names, wherever it is and in whatever case the
+    // tool spelled it, goes as `~` too; a folder whose name only begins
+    // with it does not (r20 R50-2).
+    #[test]
+    fn test_a_kept_error_line_writes_the_home_folder_outside_users_as_a_tilde() {
+        let home = Some(Path::new("/Volumes/Data/jane"));
+        assert_eq!(
+            failure_detail_in(
+                "Error: cannot open '/volumes/data/Jane/.npmrc' or /Volumes/Data/jane",
+                home
+            )
+            .as_deref(),
+            Some("cannot open '~/.npmrc' or ~")
+        );
+        assert_eq!(
+            failure_detail_in("Error: cannot open /Volumes/Data/janet/x", home).as_deref(),
+            Some("cannot open /Volumes/Data/janet/x")
+        );
+        for home in [None, Some(Path::new("/")), Some(Path::new("relative"))] {
+            assert_eq!(
+                failure_detail_in("Error: cannot open /Volumes/Data/jane/x", home).as_deref(),
+                Some("cannot open /Volumes/Data/jane/x"),
+                "home {home:?}"
+            );
+        }
     }
 
     #[test]
