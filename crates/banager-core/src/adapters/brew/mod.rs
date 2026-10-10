@@ -5800,7 +5800,7 @@ mod plan_execute_tests {
     /// A Homebrew whose `brew info --installed` lists `node`, with bottles
     /// for Apple silicon on Sequoia and Tahoe only, as Homebrew 7 builds
     /// them, and `jq`, with one bottle for every Mac: the reply names every
-    /// Mac's bottles when homebrew/core is tapped.
+    /// Mac's bottles when `HOMEBREW_NO_INSTALL_FROM_API` is set.
     fn runner_with_node_bottled_for_apple_silicon_only() -> Arc<MockRunner> {
         runner_answering_installed_info(
             r#"{"formulae":[{"name":"node","linked_keg":"25.1.0","installed":[{"version":"25.1.0","installed_on_request":true}],"bottle":{"stable":{"files":{"arm64_tahoe":{},"arm64_sequoia":{}}}}},{"name":"jq","linked_keg":"1.8.2","installed":[{"version":"1.8.2","installed_on_request":true}],"bottle":{"stable":{"files":{"all":{}}}}}],"casks":[]}"#,

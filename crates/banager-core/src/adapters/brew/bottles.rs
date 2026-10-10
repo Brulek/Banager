@@ -145,10 +145,12 @@ struct Stable {
 /// Homebrew 7 reads a homebrew/core formula from its catalogue for this
 /// Mac, which holds only the bottle that fits it, or none
 /// (`api/formula_struct.rb:136-158`, `formulary.rb:313-324`); with none,
-/// the reply's `bottle` is `{}` (`formula.rb:3128`). Every core formula is
-/// bottled for some Mac, so there `{}`, like a list of bottles none of
-/// which fits, means the update compiles. Only with homebrew/core tapped
-/// does the reply name every Mac's bottles.
+/// the reply's `bottle` is `{}` (`formula.rb:3128`). A core formula with
+/// no bottle for any Mac is one for Linux only, which does not install on
+/// a Mac, so there `{}`, like a list of bottles none of which fits, means
+/// the update compiles. Only with `HOMEBREW_NO_INSTALL_FROM_API` set does
+/// Homebrew read homebrew/core from its tap (`formulary.rb:928`) and the
+/// reply name every Mac's bottles; having the tap is not enough.
 ///
 /// A reply that does not parse, a formula whose entry has no `bottle`, and
 /// one from another tap with no bottle give none: nothing is claimed of
@@ -246,8 +248,9 @@ mod tests {
     /// r19 R48-1: Homebrew 7 reads a homebrew/core formula from its per-Mac
     /// catalogue, which holds only the bottle that fits this Mac, or none
     /// (`api/formula_struct.rb:136-158`); with none, `brew info` writes
-    /// `"bottle": {}`. Every core formula is bottled for some Mac, so there
-    /// `{}` means none fits this one.
+    /// `"bottle": {}`. A core formula bottled for no Mac at all is one for
+    /// Linux only, which does not install on a Mac, so there `{}` means
+    /// none fits this one.
     #[test]
     fn reads_a_core_formula_sent_with_no_bottle_as_compiling() {
         let intel = r#"{"formulae":[

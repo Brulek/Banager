@@ -1861,9 +1861,12 @@ a formula's bottles for the version an update installs
 formula, Homebrew 7 reads its catalogue for this Mac, which holds only the
 bottle that fits it, or none (`api/formula_struct.rb:136-158`); with none,
 the reply's `bottle` is `{}` (`formulary.rb:313-324`, `formula.rb:3128`),
-and since every core formula is bottled for some Mac, Banager reads that
-as none fitting (r19 R48-1). Only with homebrew/core tapped does the reply
-name every Mac's bottles. Banager compares them
+and since a core formula with no bottle for any Mac is one for Linux only,
+which does not install on a Mac, Banager reads that as none fitting (r19
+R48-1). Only with `HOMEBREW_NO_INSTALL_FROM_API` set, which makes Homebrew
+read homebrew/core from its tap (`formulary.rb:928`), does the reply name
+every Mac's bottles; having homebrew/core tapped is not enough, as Homebrew
+tries its catalogue first (`formulary.rb:1238-1239`). Banager compares them
 with this Mac's: Apple silicon for a Homebrew in `/opt/homebrew`, Intel for
 one in `/usr/local`, and elsewhere the processor Banager runs on, and the
 macOS version the kernel keeps (`kern.osproductversion`, with
