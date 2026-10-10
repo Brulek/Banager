@@ -436,7 +436,14 @@ impl NpmAdapter {
         &self,
         inst: &ManagerInstance,
     ) -> Result<Vec<InstalledArtifact>, AdapterError> {
-        let mut installed = self.read_ls_global(inst).await?.0;
+        let (mut installed, listing) = self.read_ls_global(inst).await?;
+        // No check lists a row for a global from elsewhere (R42-3), so its
+        // row says nothing of updates (R45-1). A listing that reads as
+        // packages but not as this is one the check fails on as well.
+        let elsewhere = installed_from_elsewhere(&listing).unwrap_or_default();
+        for artifact in &mut installed {
+            artifact.facts.not_looked_up = elsewhere.contains(&artifact.key.name);
+        }
         // corepack that a Homebrew formula linked: `npm uninstall -g
         // corepack` would delete that link and the commands corepack
         // declares (pnpm, pnpx, yarn, yarnpkg), Homebrew's own pnpm's and
@@ -453,7 +460,8 @@ impl NpmAdapter {
     }
 
     /// `npm ls -g --depth=0 --json`, read: the packages, and npm's answer
-    /// they were read from (`installed_from_elsewhere` reads it again).
+    /// they were read from (`installed_from_elsewhere` reads it again, for
+    /// the inventory and the check alike).
     async fn read_ls_global(
         &self,
         inst: &ManagerInstance,

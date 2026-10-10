@@ -87,7 +87,7 @@ import {
   withSnoozed,
   canSkipVersion,
   everySourceChecked,
-  notLookedUpByPip,
+  notLookedUp,
   notHidden,
   updateStateOf,
   withSkippedVersion,
@@ -1122,9 +1122,9 @@ export function UpdatesPage() {
   // Banager *can* check. The rule is `everySourceChecked` in
   // src/lib/updateState.ts, which the Overview's headline reads too: it
   // may call the Mac up to date only when this page would. Beside a pip
-  // package another one requires, which pip's check never looks up
-  // (`notLookedUpByPip`), it says only that what can be updated here is,
-  // as the Overview does.
+  // package another one requires, which pip's check never looks up, or
+  // any other row no check looks up (`notLookedUp`), it says only that
+  // what can be updated here is, as the Overview does.
   if (visibleUpdates.length === 0) {
     const upToDate =
       snapshot.updates.length === 0 && everySourceChecked(snapshot.instances, snapshot.errors);
@@ -1146,7 +1146,7 @@ export function UpdatesPage() {
         <EmptyState
           symbol="check"
           title={
-            snapshot.artifacts.some(notLookedUpByPip) ? t("overviewAllGood.upToDateHere") : t("updates.upToDate")
+            snapshot.artifacts.some(notLookedUp) ? t("overviewAllGood.upToDateHere") : t("updates.upToDate")
           }
           description={
             refreshedAt === null ? undefined : elapsedText(t, CHECKED_KEYS, elapsedSince(refreshedAt, now))

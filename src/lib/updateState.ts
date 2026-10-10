@@ -500,6 +500,17 @@ export function notLookedUpByPip(artifact: InstalledArtifact): boolean {
 }
 
 /**
+ * Whether its source's update check never looks `artifact` up: a pip
+ * package another one requires (`notLookedUpByPip`), or a row its
+ * inventory marks so (`facts.not_looked_up`: a pipx tool not installed
+ * from a package index by name, an npm global from somewhere other than a
+ * registry, R45-1). Read the same way: no update listed for it is no news.
+ */
+export function notLookedUp(artifact: InstalledArtifact): boolean {
+  return notLookedUpByPip(artifact) || artifact.facts.not_looked_up;
+}
+
+/**
  * Whether Homebrew's update check leaves `artifact` out while Settings'
  * "Show Homebrew apps that have their own updater" (`include_self_updating`) is off: a
  * cask that updates itself (`auto_updates`, from `brew info`'s
@@ -513,10 +524,11 @@ export function notLookedUpByPip(artifact: InstalledArtifact): boolean {
  *
  * Nor does pip's check look up a package another one requires: it runs
  * `pip list --outdated --not-required` (`PipAdapter::check_updates`), as
- * pip is view only here and such a package has nothing to offer.
+ * pip is view only here and such a package has nothing to offer. Nor does
+ * any check look up what its inventory marks so (`notLookedUp`).
  */
 export function leftOutOfUpdateCheck(artifact: InstalledArtifact, includeSelfUpdating: boolean): boolean {
-  if (notLookedUpByPip(artifact)) return true;
+  if (notLookedUp(artifact)) return true;
   return (
     !includeSelfUpdating &&
     artifact.key.kind === "Cask" &&
@@ -555,8 +567,9 @@ export function leftOutOfUpdateCheck(artifact: InstalledArtifact, includeSelfUpd
  *   source was checked in full (`everySourceChecked`) -- exactly when the
  *   Updates page says "Everything is up to date". It is false where a
  *   source Banager never checks is there too (Codex's own install), where
- *   pip has a package another one requires, which it never looks up
- *   (`notLookedUpByPip`), and where anything is listed: then the headline says that what can be
+ *   pip has a package another one requires, which it never looks up, or
+ *   another row no check looks up is (`notLookedUp`), and where anything
+ *   is listed: then the headline says that what can be
  *   updated here is up to date, not that everything is.
  * - `nothingToUpdate`: none to install, and a source was not checked in
  *   full this time: `notChecked` names it, for the headline to say
@@ -565,8 +578,8 @@ export function leftOutOfUpdateCheck(artifact: InstalledArtifact, includeSelfUpd
  *   group of problems says why, a row each. `everythingElse` is
  *   `everything` of the sources it does not name: none of them has a row
  *   listed -- hidden, can't be updated here, a copy Terminal does not run
- *   -- each is one Banager checks (not Codex's own install), and none is
- *   a pip package another one requires (`notLookedUpByPip`). Where it
+ *   -- each is one Banager checks (not Codex's own install), and none of
+ *   its rows is one no check looks up (`notLookedUp`). Where it
  *   is false the headline claims of the rest no more than the all good
  *   would of the same rows: 「其余能在这里更新的都已是最新」. The rows of
  *   a source it names (uv's, kept from its last answer) are its own, said
@@ -640,7 +653,7 @@ export function updatesSummary(
     const everythingElse =
       snapshot.updates.every((candidate) => ofNamed(candidate.key.instance_id)) &&
       snapshot.instances.every((instance) => ofNamed(instance.id) || checkedInFull(instance)) &&
-      artifacts.every((artifact) => ofNamed(artifact.key.instance_id) || !notLookedUpByPip(artifact));
+      artifacts.every((artifact) => ofNamed(artifact.key.instance_id) || !notLookedUp(artifact));
     return { kind: "nothingToUpdate", notChecked, everythingElse, ...besides };
   }
   // Not yet the all good: a row whose lookup did not succeed is among
@@ -648,7 +661,7 @@ export function updatesSummary(
   const everything =
     snapshot.updates.length === 0 &&
     everySourceChecked(snapshot.instances, snapshot.errors) &&
-    !artifacts.some(notLookedUpByPip);
+    !artifacts.some(notLookedUp);
   return { kind: "upToDate", everything, ...besides };
 }
 

@@ -592,9 +592,15 @@ impl PipxAdapter {
         };
         let pinned = named(|package| package.pinned);
         let not_from_index = named(|package| !from_index(package));
+        let mut artifacts = artifacts_from_list(root, &inst.id);
+        // No check looks these up, pipx 1.16+'s or the PyPI fallback's, so
+        // their rows say nothing of updates (R45-1).
+        for artifact in &mut artifacts {
+            artifact.facts.not_looked_up = not_from_index.contains(&artifact.key.name);
+        }
         Ok(ListAnswer {
             artifacts: super::block_own_tool(
-                artifacts_from_list(root, &inst.id),
+                artifacts,
                 (self.own_venv_fn)(&inst.exe_path).as_deref(),
             ),
             pinned,

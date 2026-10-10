@@ -2180,7 +2180,12 @@ npm says it installed from somewhere other than a registry
 (`installed_from_elsewhere` in `npm.rs`): `file:` -- what npm always says
 of an `npm link` or a folder -- `git+…`, a URL that is no registry's
 tarball of that name, or a registry tarball of another name (an alias).
-A registry's tarball, a mirror's included, keeps its update. npm 7 and
+A registry's tarball, a mirror's included, keeps its update. The
+inventory reads the same `resolved` from its own `npm ls -g`, so such a
+global's row on the Installed page says nothing about updates rather than
+"Up to date", and while one is installed the Overview and an empty
+Updates page say "Everything you can update here is up to date", as for
+pip's packages another one requires (`not_looked_up`). npm 7 and
 later say where a global came from only for `npm link` and a folder: they
 keep no record for one installed from git, from a tarball or another URL,
 or under an alias (`npm install -g foo@npm:bar`), and say nothing for it.
@@ -2378,7 +2383,12 @@ installed from a package index by name are asked about: one installed
 from a URL, a folder or an archive (`main_package.package_or_url`), or
 with `--editable` (`main_package.pip_args`), gets no row, as pipx 1.16 and
 later skip them, since that pipx's `pipx upgrade` reinstalls from where
-it was installed, never PyPI's latest release. Only a strictly
+it was installed, never PyPI's latest release. On any pipx, such a tool's
+row on the Installed page says nothing about updates rather than "Up to
+date", and while one is installed the Overview and an empty Updates page
+say "Everything you can update here is up to date", as for pip's packages
+another one requires (`not_looked_up`, set from `pipx list --json` in
+`pipx.rs`). Only a strictly
 newer PEP 440 version produces an update: equivalent spellings, older
 stable versions than an installed prerelease, and lower epochs do not.
 An invalid or numerically unrepresentable version is "could not check".
@@ -2642,8 +2652,9 @@ made a large environment's check take minutes. Their rows show no newer
 version, even when there is one, and the Installed page says nothing
 about updates on them, rather than "Up to date". Where pip has any, the
 Overview and an empty Updates page say "Everything you can update here
-is up to date", not "Everything is up to date" (`notLookedUpByPip` in
-`src/lib/updateState.ts`). pip looks packages up one
+is up to date", not "Everything is up to date" (`notLookedUp` in
+`src/lib/updateState.ts`). The same goes for a pipx tool and an npm global
+no check looks up (below and in their sections). pip looks packages up one
 at a time, about a second each, so the check is given 60 seconds and 1.5
 more for each package it looks up, at most 3 minutes
 (`PipAdapter::outdated_timeout`). A check shows its results only once
@@ -2859,7 +2870,9 @@ build metadata alone is not an update, and an older stable release never
 replaces a newer prerelease. Versions that cannot be compared are "could
 not check". A crate crates.io names no stable version for (`null`: only
 prereleases, or every stable release yanked) has nothing to offer and gets
-no row. Cargo has no search command Banager uses.
+no row, so it reads "Up to date" on the Installed page even when it is a
+prerelease with a newer prerelease out: crates.io was asked, and Banager
+offers stable releases only. Cargo has no search command Banager uses.
 
 Upgrade planning also reads the saved `features`, `all_features`,
 `no_default_features`, `profile`, `target` and `rustc`

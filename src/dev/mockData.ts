@@ -27,7 +27,7 @@ import type {
   Warning,
 } from "../lib/types";
 import { NO_FACTS } from "../lib/types";
-import { notLookedUpByPip } from "../lib/updateState";
+import { notLookedUp as noCheckLooksUp } from "../lib/updateState";
 import {
   MANY_CARGO,
   MANY_CASKS,
@@ -793,9 +793,10 @@ function offline(world: World): void {
   const failed = world.artifacts.flatMap((a): UpdateCandidate[] => {
     const adapterId = adapterOf.get(a.key.instance_id) ?? "";
     const reason = OFFLINE_REASONS[adapterId];
-    // pip's check never looks up a package another one requires
-    // (`--not-required`), so offline it fails for none of them.
-    if (reason === undefined || notLookedUpByPip(a) || kept.some((u) => sameKey(u.key, a.key))) return [];
+    // No check looks up a pip package another one requires
+    // (`--not-required`) or another row marked so (`notLookedUp` in
+    // src/lib/updateState.ts), so offline it fails for none of them.
+    if (reason === undefined || noCheckLooksUp(a) || kept.some((u) => sameKey(u.key, a.key))) return [];
     // Every one of these is the network, which Rust marks as a failure a
     // later check can get past (`LookupFailure` in
     // crates/banager-core/src/adapters/mod.rs).
@@ -1133,10 +1134,11 @@ function scenarioWorld(state: ScenarioState): World {
       // Without Codex's own install, whose updates Banager never checks:
       // with it, no update listed is no news, and the pages say so
       // (`everySourceChecked`) instead of "Everything is up to date". Nor
-      // the pip packages another one requires, which pip never looks up
-      // (`notLookedUpByPip`), for the same reason.
+      // the pip packages another one requires, which pip never looks up,
+      // or any other row no check looks up (`notLookedUp` in
+      // updateState.ts), for the same reason.
       world.instances = world.instances.filter((i) => i.id !== IDS.codex);
-      world.artifacts = world.artifacts.filter((a) => a.key.instance_id !== IDS.codex && !notLookedUpByPip(a));
+      world.artifacts = world.artifacts.filter((a) => a.key.instance_id !== IDS.codex && !noCheckLooksUp(a));
       return world;
     case "hidden":
       allAnswering(world);
