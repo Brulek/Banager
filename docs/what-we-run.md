@@ -1793,6 +1793,30 @@ succeeds. When that reading fails, nothing is marked, and an upgrade is
 reported as before: failed, or needing attention when the version did not
 change.
 
+**Formulae Homebrew leaves out** (r18 R46-1). Homebrew 7 lists an
+installed formula only if it can load it, and silently drops one it
+refuses to load -- above all one from a tap it does not trust, which
+Homebrew now requires unless `HOMEBREW_NO_REQUIRE_TAP_TRUST` is set, and
+which tapping a tap does not grant (`Formula.installed`,
+`formula.rb:2784-2790`; `Trust.require_trusted_formula!`). `brew info
+--installed`, `brew outdated` and `brew uses --installed` all leave it
+out, so it has no row and no update is offered for it, and Homebrew's own
+check before an uninstall does not count it either. So after every
+inventory Banager compares the names of the folders in `<prefix>/Cellar`
+(neither a link nor a name starting with a dot, as Homebrew lists them)
+with the formulae `brew info` listed, and for each one it did not list,
+looks at the names in `<prefix>/Cellar/<name>`: one with a version in it
+is a formula Homebrew left out (`BrewAdapter::remember_unlisted_racks`,
+`brew::kegs::read_racks`). While there is any, Homebrew's notice says some
+packages installed with it aren't shown, usually because it doesn't
+trust where they come from, so their updates weren't checked, and to run
+`brew tap` in Terminal and then `brew trust --tap` with the tap's name
+(`InstanceNote::FormulaeNotListed`); Banager runs neither. Until it is
+gone the Overview does not say everything is up to date, and every
+formula's uninstall preview says it couldn't check what else needs it
+(`Warning::DependentsUnknown`), whatever `brew uses` named. Nothing more
+runs for this. A Cellar Banager cannot read in full claims nothing.
+
 `brew uses` names only formulae and casks. The uninstall preview of a
 formula or cask also looks, read-only and running nothing, for the other
 sources that run on it — npm on a `node`, pip and pipx's environments on a
@@ -5074,7 +5098,10 @@ not read (`protected::look`; How Banager runs anything, above):
   `trust.json` in the user's Homebrew config folder; during a formula's
   upgrade and uninstall preview, the names in `<prefix>/Cellar/<name>` and
   whether `<prefix>/var/homebrew/pinned/<name>` is there (Homebrew's
-  section, "Old versions"); for a keg-only formula's upgrade, during its
+  section, "Old versions"); after every inventory, the names in
+  `<prefix>/Cellar` and, of each folder there `brew info` did not list,
+  the names in it (Homebrew's section, "Formulae Homebrew leaves out");
+  for a keg-only formula's upgrade, during its
   preview, right before it, after it and after the `brew link` that
   follows, and for the link a source's notice offers, during its preview
   and after it, where `<prefix>/opt/<name>` leads and its text, the names

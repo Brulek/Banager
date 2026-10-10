@@ -1077,6 +1077,53 @@ impl BrewAdapter {
         }
     }
 
+    /// Keeps which formula folders in `inst`'s Cellar hold a version and
+    /// are missing from `artifacts`, its inventory (r18 R46-1). Homebrew 7
+    /// lists an installed formula only if it can load it from its tap, and
+    /// silently drops one it cannot (`Formula.installed`,
+    /// `formula.rb:2784-2790`) -- one from a tap it does not trust above
+    /// all (`Trust.require_trusted_formula!`). `brew outdated` and `brew
+    /// uses --installed` drop it the same way, so its updates are not
+    /// checked (`InstanceNote::FormulaeNotListed`), and no uninstall
+    /// preview can rule out that it needs the formula being uninstalled
+    /// (`Warning::DependentsUnknown`). Only names are read: the Cellar's,
+    /// and each missing one's versions (`kegs_fn`). A Cellar that cannot be
+    /// read in full keeps nothing, so nothing is claimed.
+    fn remember_unlisted_racks(&self, inst: &ManagerInstance, artifacts: &[InstalledArtifact]) {
+        let listed: HashSet<&str> = artifacts
+            .iter()
+            .filter(|artifact| artifact.key.kind == ArtifactKind::Formula)
+            .map(|artifact| {
+                let name = artifact.key.name.as_str();
+                name.rsplit('/').next().unwrap_or(name)
+            })
+            .collect();
+        let unlisted: Vec<String> = (self.racks_fn)(&inst.prefix)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|rack| !listed.contains(rack.as_str()))
+            .filter(|rack| {
+                (self.kegs_fn)(&inst.prefix, rack).is_some_and(|kegs| !kegs.versions.is_empty())
+            })
+            .collect();
+        if let Ok(mut known) = self.unlisted_racks.lock() {
+            known.insert(inst.id.clone(), unlisted);
+        }
+    }
+
+    /// Whether the last inventory of `instance_id` found formula folders
+    /// Homebrew did not list (`remember_unlisted_racks`).
+    fn has_unlisted_racks(&self, instance_id: &str) -> bool {
+        self.unlisted_racks
+            .lock()
+            .map(|known| {
+                known
+                    .get(instance_id)
+                    .is_some_and(|racks| !racks.is_empty())
+            })
+            .unwrap_or(false)
+    }
+
     /// How the keg-only formula `name` under `prefix` stands in it, when
     /// its link there is recorded (`brew::links`, `KegLinks::recorded`):
     /// the one case in which Homebrew's update unlinks it and links it
@@ -1941,6 +1988,7 @@ impl BrewAdapter {
         }
         let artifacts = parse_info_installed(&output.stdout, &inst.id)?;
         self.remember_keg_only(&inst.id, &artifacts);
+        self.remember_unlisted_racks(inst, &artifacts);
         Ok(artifacts)
     }
 
@@ -2016,6 +2064,12 @@ impl BrewAdapter {
         // last `brew update` that succeeded: after `MayBeStale` this reads
         // the catalogue already on disk, like `brew outdated` above.
         let installed = self.inventory(inst).await.unwrap_or_default();
+        // The same reading finds the formulae Homebrew left out of it
+        // (r18 R46-1): their updates were not checked either.
+        let mut notes = notes;
+        if self.has_unlisted_racks(&inst.id) {
+            notes.push(InstanceNote::FormulaeNotListed);
+        }
         let index = InventoryIndex::new(&installed);
         for candidate in &mut candidates {
             if let Some(artifact) = index.resolve(&candidate.key) {
@@ -2701,6 +2755,17 @@ impl BrewAdapter {
                     warnings.push(Warning::DependentsUnknown);
                     Vec::new()
                 };
+                // r18 R46-1: `brew uses --installed` names none of the
+                // formulae Homebrew left out of its list, which may need
+                // this one, and neither does Homebrew's own check before
+                // it uninstalls (`InstalledDependents`, also
+                // `Formula.installed`).
+                if req.artifact_kind == ArtifactKind::Formula
+                    && self.has_unlisted_racks(&inst.id)
+                    && !warnings.contains(&Warning::DependentsUnknown)
+                {
+                    warnings.push(Warning::DependentsUnknown);
+                }
                 if !affected.is_empty() {
                     warnings.push(Warning::WouldBreak {
                         names: affected.clone(),

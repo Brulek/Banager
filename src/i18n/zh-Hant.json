@@ -726,6 +726,10 @@
       "title": "用{{source}}安裝的部分工具沒有顯示",
       "description": "{{source}}無法讀取這些工具，因此也沒有檢查它們的更新。要查看是哪些工具以及如何修復，請在終端機執行{{command}}，然後重新檢查。"
     },
+    "formulaeNotListed": {
+      "title": "用{{source}}安裝的部分套件沒有顯示",
+      "description": "{{source}}沒有列出它們，通常是因為它不信任它們的來源，所以沒有檢查它們的更新，Banager也無法確定它們還要用哪些套件。要信任某個來源，請在終端機執行{{command}}查看它的名稱，再執行{{trust}}並在後面加上這個名稱，然後重新檢查。"
+    },
     "checksUnfinished": {
       "title": "部分檢查未完成",
       "description_other": "{{sources}}這次未檢查完，更新可能還沒全部列出。"

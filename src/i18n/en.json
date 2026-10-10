@@ -787,6 +787,10 @@
       "title": "Some tools installed with {{source}} aren't shown",
       "description": "{{source}} couldn't read them, so their updates weren't checked either. To see which ones and how to fix them, run {{command}} in Terminal, then check again."
     },
+    "formulaeNotListed": {
+      "title": "Some packages installed with {{source}} aren't shown",
+      "description": "{{source}} didn't list them, usually because it doesn't trust where they come from, so their updates weren't checked and Banager can't tell which other packages they need. To trust where one comes from, run {{command}} in Terminal to see its name, then run {{trust}} followed by that name and check again."
+    },
     "checksUnfinished": {
       "title": "Some checks didn't finish",
       "description_one": "{{sources}} didn't finish checking this time; some updates may not be listed yet.",

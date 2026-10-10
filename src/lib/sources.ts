@@ -231,6 +231,7 @@ const UNINSTALL_HOLD_KEYS: Record<InstanceNote, string | null> = {
   ShadowedByOther: null,
   LauncherOnly: null,
   SomeNotListed: null,
+  FormulaeNotListed: null,
 };
 
 /**
@@ -654,6 +655,25 @@ export function sourceNoticesFor(
         titleKey: "sourceNotice.someNotListed.title",
         descriptionKey: "sourceNotice.someNotListed.description",
         values: { source: sourceLabel, command: `${commandNameOf(instance)} list` },
+      });
+    } else if (note === "FormulaeNotListed") {
+      // Homebrew's Cellar holds formulae its own list left out (r18
+      // R46-1): Homebrew 7 drops one it will not load, above all one from
+      // a tap it does not trust, from `brew info`, `brew outdated` and
+      // `brew uses` alike. So they are neither shown nor checked, and an
+      // uninstall preview can't say whether they need a formula. Trusting
+      // the tap (`brew trust --tap`) is what brings them back; `brew tap`
+      // names the taps.
+      notices.push({
+        id: `${instance.id}:formulae-not-listed`,
+        variant: "warning",
+        titleKey: "sourceNotice.formulaeNotListed.title",
+        descriptionKey: "sourceNotice.formulaeNotListed.description",
+        values: {
+          source: sourceLabel,
+          command: `${commandNameOf(instance)} tap`,
+          trust: `${commandNameOf(instance)} trust --tap`,
+        },
       });
     } else {
       const unhandled: never = note;

@@ -423,7 +423,7 @@ describe("sourceNoticesFor", () => {
       { unavailable: "NoPip", notes: [] },
       {
         unavailable: null,
-        notes: ["IndexUpdating", "IndexMayBeStale", "NotOnPath", "ShadowedByHomebrew", "ShadowedByNpm", "ShadowedByOther", "LauncherOnly", "SomeNotListed"],
+        notes: ["IndexUpdating", "IndexMayBeStale", "NotOnPath", "ShadowedByHomebrew", "ShadowedByNpm", "ShadowedByOther", "LauncherOnly", "SomeNotListed", "FormulaeNotListed"],
       },
     ];
     for (const status of states) {
@@ -622,6 +622,25 @@ describe("sourceNoticesFor", () => {
       },
     ]);
     expect(i18n.getFixedT("en")(notices[0].descriptionKey, notices[0].values)).toContain("run pipx list in Terminal");
+  });
+
+  it("warns when Homebrew left installed formulae out of its list, and names the commands to see and trust their taps", () => {
+    // r18 R46-1: Homebrew 7 drops a formula from a tap it does not trust
+    // from `brew info`, `brew outdated` and `brew uses` alike.
+    const brew = instance({ id: "brew:/opt/homebrew", adapter_id: "brew", exe_path: "/opt/homebrew/bin/brew" });
+    const notices = sourceNoticesFor({ ...brew, status: { unavailable: null, notes: ["FormulaeNotListed"] } }, "Homebrew");
+    expect(notices).toEqual([
+      {
+        id: "brew:/opt/homebrew:formulae-not-listed",
+        variant: "warning",
+        titleKey: "sourceNotice.formulaeNotListed.title",
+        descriptionKey: "sourceNotice.formulaeNotListed.description",
+        values: { source: "Homebrew", command: "brew tap", trust: "brew trust --tap" },
+      },
+    ]);
+    const description = i18n.getFixedT("en")(notices[0].descriptionKey, notices[0].values);
+    expect(description).toContain("run brew tap in Terminal");
+    expect(description).toContain("run brew trust --tap followed by that name");
   });
 
   it("falls back to the whole exe_path as the command when it has no file name", () => {
@@ -839,6 +858,7 @@ describe("uninstallHoldKey", () => {
       "ShadowedByOther",
       "LauncherOnly",
       "SomeNotListed",
+      "FormulaeNotListed",
     ];
     for (const note of others) {
       expect(uninstallHoldKey(instance({ status: { unavailable: null, notes: [note] } })), note).toBeNull();

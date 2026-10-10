@@ -2533,3 +2533,34 @@ fn test_what_we_run_lists_the_kept_data_overlap_reads_with_what_an_uninstall_lea
         "`## Data an uninstall leaves behind` does not say the paths an uninstall removes are looked up for the overlap check"
     );
 }
+
+#[test]
+fn test_what_we_run_says_what_happens_when_homebrew_leaves_formulae_out() {
+    // r18 R46-1: Homebrew 7 drops a formula from a tap it does not trust
+    // from `brew info`, `brew outdated` and `brew uses` alike. The section
+    // says what Banager reads to notice, what it says, and that it runs
+    // neither command it names; the reads are listed with the rest.
+    let doc = read_doc();
+    let homebrew = section_body(&doc, "Homebrew").expect("a `## Homebrew` section");
+    let folded = homebrew.split_whitespace().collect::<Vec<_>>().join(" ");
+    for words in [
+        "**Formulae Homebrew leaves out**",
+        "`formula.rb:2784-2790`",
+        "`InstanceNote::FormulaeNotListed`",
+        "`Warning::DependentsUnknown`",
+        "`brew trust --tap`",
+        "Banager runs neither",
+    ] {
+        assert!(
+            folded.contains(words),
+            "the `## Homebrew` section does not say {words:?} of formulae Homebrew leaves out"
+        );
+    }
+    let reads =
+        section_body(&doc, "Files Banager reads").expect("a `## Files Banager reads` section");
+    let reads = reads.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(
+        reads.contains("after every inventory, the names in `<prefix>/Cellar`"),
+        "`## Files Banager reads` does not list the Cellar the inventory compares"
+    );
+}

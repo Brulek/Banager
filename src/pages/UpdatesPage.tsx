@@ -341,6 +341,7 @@ const NAME_MAY_NOT_RUN_THIS_COPY: Record<InstanceNote, boolean> = {
   ShadowedByOther: true,
   LauncherOnly: true,
   SomeNotListed: false,
+  FormulaeNotListed: false,
 };
 
 export function UpdatesPage() {

@@ -612,7 +612,9 @@ export type Unavailable = "NotRunning" | "NotResponding" | "RefusesAsRoot" | "Ht
  * a branch there fails `tsc`. The five after the first two are a
  * standalone tool's (phase 4): what runs when its name is typed, or that
  * its launcher is left without its program. `SomeNotListed` is pipx's: it
- * left out of its list some tools it could not read.
+ * left out of its list some tools it could not read. `FormulaeNotListed`
+ * is Homebrew's: its Cellar holds formulae its own list left out, usually
+ * because it does not trust their tap.
  */
 export type InstanceNote =
   | "IndexMayBeStale"
@@ -622,7 +624,8 @@ export type InstanceNote =
   | "ShadowedByNpm"
   | "ShadowedByOther"
   | "LauncherOnly"
-  | "SomeNotListed";
+  | "SomeNotListed"
+  | "FormulaeNotListed";
 /**
  * Mirrors `InstanceStatus`, which derives `Default` on the Rust side: this
  * is always an object, never null, and `notes` is `[]` rather than absent
