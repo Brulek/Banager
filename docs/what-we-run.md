@@ -2636,14 +2636,19 @@ applies before it looks anything up). pip is view only here, so a package
 another one requires has nothing to offer, and looking each of those up
 made a large environment's check take minutes. Their rows show no newer
 version, even when there is one, and the Installed page says nothing
-about updates on them, rather than "Up to date". pip looks packages up one
+about updates on them, rather than "Up to date". Where pip has any, the
+Overview and an empty Updates page say "Everything you can update here
+is up to date", not "Everything is up to date" (`notLookedUpByPip` in
+`src/lib/updateState.ts`). pip looks packages up one
 at a time, about a second each, so the check is given 60 seconds and 1.5
 more for each package it looks up, at most 3 minutes
 (`PipAdapter::outdated_timeout`). A check shows its results only once
 every source has finished checking, so that wait holds back every
 source's updates, Homebrew's and npm's too, not pip's only (the first
 check since launch still lists each source's packages as soon as it has
-read them); 3 minutes is the longest pip can hold them. An environment
+read them). With the list that counts the packages first, which has 60
+seconds of its own and normally takes about a second, 4 minutes is the
+longest pip can hold them. An environment
 with more than about 150 such packages can still run into that limit,
 and then every one of them is listed as "could not check". Offline, five
 retries take pip about 7.5 seconds a package, so an environment of more
