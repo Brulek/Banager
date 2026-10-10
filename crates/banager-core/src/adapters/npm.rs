@@ -577,7 +577,10 @@ impl NpmAdapter {
             lookup_failure_reason("npm outdated -g", output.exit_code, &output.stderr),
             &output.stderr,
         );
-        let installed = self.inventory(inst).await?;
+        // A global from elsewhere is none: no check looks it up, offline
+        // or not (R45-1), as pip's required packages.
+        let mut installed = self.inventory(inst).await?;
+        installed.retain(|artifact| !artifact.facts.not_looked_up);
         Ok(uncheckable_from_inventory(&installed, UpdateChannel::Native, &failure).into())
     }
 

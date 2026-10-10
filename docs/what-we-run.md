@@ -2165,8 +2165,8 @@ whose own version it cannot read, such as an `npm link` whose folder is
 gone, with no installed version -- is that package's alone to be unable
 to check; the other rows keep npm's answer (`parse_outdated_result`). Any other
 non-zero exit, or exit 1 with no rows (empty or error output), is reported
-as "could not check" for every package rather than as "everything is up to
-date" — listing every package that way takes one more run of
+as "could not check" for every package but one from elsewhere (below),
+which no check looks up, rather than as "everything is up to date" — listing every package that way takes one more run of
 `<npm> ls -g --depth=0 --json --prefix {prefix}`, so
 a refresh whose `outdated` failed runs the inventory command twice.
 
@@ -2369,7 +2369,9 @@ pipx words itself (`Package backend exited with code …`, say), so the
 backend's own `error: …` lines stay with the tool before them. When pipx
 instead crashed (a Python traceback on stderr, as pipx 1.17 does when a
 left-out environment that uses pip has lost its Python, with nothing on
-stdout), every tool is "could not check", never "up to date".
+stdout), every tool is "could not check", never "up to date". A tool
+pipx skips (one not installed from a package index by name, below) is
+none of these: it gets no row on any of these paths.
 pipx runs `pip list --outdated` in each tool's environment and keeps that
 command's error output to its own debug log, so a lookup pip gave up on
 there (as under pip, below) reaches Banager as no update; Banager cannot

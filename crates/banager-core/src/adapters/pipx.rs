@@ -715,7 +715,7 @@ impl PipxAdapter {
                             .into_iter()
                             .filter(|c| !failures.contains_key(&c.key.name))
                             .collect();
-                    for artifact in &list.artifacts {
+                    for artifact in list.artifacts.iter().filter(|a| !a.facts.not_looked_up) {
                         if let Some(words) = failures.get(&artifact.key.name) {
                             candidates.push(uncheckable_candidate(
                                 artifact.key.clone(),
@@ -737,13 +737,22 @@ impl PipxAdapter {
                         notes: list.notes(),
                     });
                 }
+                // A tool pipx skips (not from an index) is none: no check
+                // looks it up, offline or not (R45-1), as pip's required
+                // packages.
                 let failure = LookupFailure::words(
                     lookup_failure_reason("pipx list --outdated", output.exit_code, &output.stderr),
                     &output.stderr,
                 );
+                let looked_up: Vec<InstalledArtifact> = list
+                    .artifacts
+                    .iter()
+                    .filter(|a| !a.facts.not_looked_up)
+                    .cloned()
+                    .collect();
                 return Ok(CheckOutcome {
                     candidates: uncheckable_from_inventory(
-                        &list.artifacts,
+                        &looked_up,
                         UpdateChannel::Native,
                         &failure,
                     ),
