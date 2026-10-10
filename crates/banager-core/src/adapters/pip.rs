@@ -373,7 +373,19 @@ fn venv_of(python: &Path, protected: &Protected) -> Result<Option<PathBuf>, ()> 
 /// one program in no venv, are one interpreter and asked once; a venv's
 /// link to that program is not. A launcher whose venv marker could not be
 /// looked at is only ever itself.
+///
+/// A version manager's shim (`version_manager_shim`) is keyed by its own
+/// path: mise's shims are all links to the one mise program, and which
+/// Python each runs is mise's to say, so led-to they would be one launcher
+/// and only the first -- perhaps of a version installed but not active --
+/// would be asked. The ones that answer are counted once by the pip they
+/// name (`environment_key`).
 fn launcher_key(python: &Path, program: &Path, protected: &Protected) -> Vec<u8> {
+    if version_manager_shim(python) {
+        let mut key = vec![b's', 0];
+        key.extend(protected::folded(python));
+        return key;
+    }
     let mut key = protected::folded(program);
     match venv_of(python, protected) {
         Ok(None) => {}
@@ -387,6 +399,21 @@ fn launcher_key(python: &Path, program: &Path, protected: &Protected) -> Vec<u8>
         }
     }
     key
+}
+
+/// Whether `python` was found in a folder named `shims`: a version
+/// manager's (mise's `~/.local/share/mise/shims`, pyenv's
+/// `~/.pyenv/shims`, asdf's `~/.asdf/shims`), whose launcher runs
+/// whichever Python the manager has active here. One for a version that is
+/// installed but not active answers with an error (mise: "No version is set
+/// for shim", exit 1; pyenv: "command not found", exit 127) and is no
+/// interpreter of its own, so `detect` skips it. The folder's name is
+/// compared as the disk compares names, as `needed_by`'s shim test does.
+fn version_manager_shim(python: &Path) -> bool {
+    python
+        .parent()
+        .and_then(Path::file_name)
+        .is_some_and(|folder| protected::same_path(Path::new(folder), Path::new("shims")))
 }
 
 #[cfg(not(test))]
@@ -530,6 +557,14 @@ impl PipAdapter {
                     CancellationToken::new(),
                 )
                 .await;
+            // A version manager's shim that did not answer runs no Python
+            // of its own here (`version_manager_shim`): no row, rather than
+            // one that says 「没有响应」 every check.
+            if version_manager_shim(&python_path)
+                && !output.as_ref().is_ok_and(|o| o.exit_code == Some(0))
+            {
+                continue;
+            }
             if let Ok(o) = &output {
                 if o.exit_code == Some(0) {
                     if let Some(key) =
@@ -1698,6 +1733,54 @@ mod tests {
             5,
             "three existing version probes, one inventory pair"
         );
+    }
+
+    #[tokio::test]
+    async fn regression_r43_3_a_mise_shim_of_an_inactive_python_hides_nothing() {
+        // mise: every shim is a link to the one mise program (mise's
+        // `shims.rs`, `make_shim`), so keyed by where it leads they were
+        // one launcher, and only the first, python3.14 -- installed, not
+        // active -- was asked. mise answers it "No version is set for
+        // shim" and exit 1, which was 「没有响应」 for good, and the active
+        // 3.13 was never asked.
+        let root = temp_folder("r43-mise");
+        let mise = root.join(".local/bin/mise");
+        file_at(&mise, 0o755);
+        let shims = root.join(".local/share/mise/shims");
+        std::fs::create_dir_all(&shims).unwrap();
+        let site = root.join(".local/share/mise/installs/python/3.13.7/lib/python3.13/site-packages");
+        std::fs::create_dir_all(site.join("pip")).unwrap();
+        let runner = Arc::new(MockRunner::new());
+        for name in ["python3.14", "python3.13", "python3", "python"] {
+            let shim = shims.join(name);
+            std::os::unix::fs::symlink(&mise, &shim).unwrap();
+            runner.respond(
+                vec![text(&shim), "-m", "pip", "--version"],
+                if name == "python3.14" {
+                    CommandOutput {
+                        stderr: "mise ERROR No version is set for shim: python3.14\n".into(),
+                        ..exited(1, "")
+                    }
+                } else {
+                    exited(
+                        0,
+                        &format!("pip 26.2.1 from {}/pip (python 3.13)\n", site.display()),
+                    )
+                },
+            );
+        }
+        let adapter = PipAdapter {
+            environment_key_fn: environment_key,
+            ..PipAdapter::new(runner.clone())
+        };
+        let instances = adapter.detect(&path_of(&[&shims])).await;
+        std::fs::remove_dir_all(root).unwrap();
+        let found: Vec<_> = instances
+            .iter()
+            .map(|inst| (inst.exe_path.clone(), inst.status.unavailable))
+            .collect();
+        assert_eq!(found, [(shims.join("python3.13"), None)]);
+        assert_eq!(runner.calls().len(), 4, "each shim is asked once");
     }
 
     #[tokio::test]

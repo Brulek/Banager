@@ -2572,7 +2572,12 @@ The existing answer, `pip X from <site-packages>/pip (python 3.13)`, then
 supplies the environment location: Banager resolves that directory with
 protected read-only path lookups and counts it once, including distinct
 pyenv shim files that reach the same pip. The first launcher's original
-path remains the source ID and argv. No extra command is run. The venv
+path remains the source ID and argv. No extra command is run. A launcher
+found in a folder named `shims` (a version manager's: mise's, pyenv's,
+asdf's) is counted by its own path rather than the program it leads to,
+since mise's shims all lead to mise itself; one that does not answer
+`-m pip --version` with exit 0 -- a shim of a version installed but not
+active -- is passed over, not listed as not responding. The venv
 directory is part of that identity too, which keeps venvs separate when
 they inherit the base environment's pip.
 An unavailable or unparseable answer, a location that cannot be resolved,
