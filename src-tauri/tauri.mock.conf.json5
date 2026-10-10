@@ -15,13 +15,13 @@
 //   Dock icon: `@tauri-apps/api/window` is src/dev/mockTauriWindow.ts. Nor
 //   does the Unknown page's Show in Finder reach Finder: the mock
 //   backend's `reveal_in_finder` (src/dev/mockBackend.ts) shows nothing.
-// - The Rust side starts nothing by itself. `run()` in
+// - The Rust side starts no package manager by itself. `run()` in
 //   src-tauri/src/lib.rs builds `AppState` (it reads settings.json and
 //   runs nothing) and spawns `ipc::refresh_on_background_change`, which
 //   refreshes only when `Session::background_change` fires: when a
 //   `brew update` that a refresh left running ends. Only the page starts
 //   a refresh, and this page never reaches the backend, so no refresh
-//   runs here, and no command. It puts up the menu bar too
+//   runs here, and no package manager. It puts up the menu bar too
 //   (src-tauri/src/menu.rs), which runs nothing either: its items are
 //   macOS's own -- Hide, Quit, Copy -- or bring the window back and tell
 //   the page, which does not listen here (src/dev/mockTauriEvent.ts).

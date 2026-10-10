@@ -36,9 +36,15 @@ identifier of its own, `com.brulek.banager.mock`, so it keeps its window's
 size apart from the app's and never reads the app's settings. The Rust
 side is the app's own, but none of Banager's commands reach it:
 `src/lib/api.ts`, the page's only way to them, talks to the mock. And it
-starts nothing by itself -- the one refresh it runs unasked follows a
-`brew update` that a refresh left running, and only the page starts a
-refresh; the config's comments say more. The first run compiles the app.
+runs no package manager by itself -- the one refresh it runs unasked
+follows a `brew update` that a refresh left running, and only the page
+starts a refresh. It does run what every launch of the app runs: the
+login shell read for `PATH`, in the background (`$SHELL -ilc` from your
+home folder, within its time limit; `src-tauri/src/lib.rs`), so your
+shell's startup files -- `~/.zprofile`, `~/.zshrc` and the rest -- run
+as they do when Terminal opens. For a preview with no Rust side at all,
+use `pnpm dev:mock`. The config's comments say more. The first run
+compiles the app.
 Stop it with Ctrl-C in its terminal, or by quitting it (⌘Q): closing the
 window only hides it, as it does in the app. Quitting never asks anything
 here, even while one of the preview's updates runs: that runs in the
