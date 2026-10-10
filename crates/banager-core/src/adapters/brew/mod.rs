@@ -4331,48 +4331,67 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn test_check_updates_passes_greedy_flag_when_include_self_updating_is_true() {
+    /// The `brew outdated` argv and environment of one `check_updates` on
+    /// `test_instance` with `include_self_updating` as given, Homebrew
+    /// answering that nothing is outdated whichever flags it was given.
+    async fn outdated_run(include_self_updating: bool) -> CommandSpec {
         let runner = Arc::new(MockRunner::new());
-        runner.respond(
-            vec!["/opt/homebrew/bin/brew", "update"],
-            CommandOutput {
-                stderr_cause: Default::default(),
-                exit_code: Some(0),
-                stdout: String::new(),
-                stderr: String::new(),
-                timed_out: false,
-                cancelled: false,
-            },
-        );
+        let ok = |stdout: &str| CommandOutput {
+            stderr_cause: Default::default(),
+            exit_code: Some(0),
+            stdout: stdout.to_string(),
+            stderr: String::new(),
+            timed_out: false,
+            cancelled: false,
+        };
+        runner.respond(vec!["/opt/homebrew/bin/brew", "update"], ok(""));
         let empty_outdated = r#"{"formulae":[],"casks":[]}"#;
-        runner.respond(
-            vec![
-                "/opt/homebrew/bin/brew",
-                "outdated",
-                "--json=v2",
-                "--greedy",
-            ],
-            CommandOutput {
-                stderr_cause: Default::default(),
-                exit_code: Some(0),
-                stdout: empty_outdated.to_string(),
-                stderr: String::new(),
-                timed_out: false,
-                cancelled: false,
-            },
-        );
-        let adapter = BrewAdapter::new(runner);
+        for flag in [
+            None,
+            Some("--greedy"),
+            Some("--greedy-auto-updates"),
+            Some("--greedy-latest"),
+        ] {
+            let mut argv = vec!["/opt/homebrew/bin/brew", "outdated", "--json=v2"];
+            argv.extend(flag);
+            runner.respond(argv, ok(empty_outdated));
+        }
+        let adapter = BrewAdapter::new(runner.clone());
         let opts = CheckOptions {
-            include_self_updating: true,
+            include_self_updating,
             ..CheckOptions::default()
         };
         let result = adapter
             .check_updates(&test_instance(), &opts)
             .await
-            .expect("check_updates with --greedy")
+            .expect("check_updates")
             .candidates;
         assert!(result.is_empty());
+        runner
+            .specs()
+            .into_iter()
+            .find(|spec| spec.args.first().map(String::as_str) == Some("outdated"))
+            .expect("brew outdated ran")
+    }
+
+    #[tokio::test]
+    async fn test_check_updates_never_has_brew_download_a_latest_casks_installer() {
+        // R47-2 (r18): with `--greedy` or `--greedy-latest`, Homebrew 7.0.9
+        // downloads the whole installer of each installed `version :latest`
+        // cask to hash it (`cask/cask.rb:392-410`, `:437-438`), inside a
+        // check of 120 s whose timeout fails the whole source. Neither is
+        // passed, with the setting on or off.
+        for include_self_updating in [false, true] {
+            let spec = outdated_run(include_self_updating).await;
+            assert!(
+                !spec
+                    .args
+                    .iter()
+                    .any(|arg| arg == "--greedy" || arg == "--greedy-latest"),
+                "{include_self_updating}: {:?}",
+                spec.args
+            );
+        }
     }
 
     #[tokio::test]
