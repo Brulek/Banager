@@ -619,6 +619,25 @@ fn signalled(value: &Value) -> Option<Vec<String>> {
     Some(flat.into_iter().skip(1).step_by(2).collect())
 }
 
+/// Whether an `uninstall` stanza of `recorded` names `signal` in its
+/// `on_upgrade`, as a symbol or in a list: an update then sends its
+/// signals too, which it skips otherwise (Homebrew 7.0.9
+/// `cask/artifact/uninstall.rb:26-46`).
+pub(crate) fn signals_on_upgrade(recorded: &Recorded) -> bool {
+    let names_signal = |value: &Value| match value {
+        Value::String(one) => one == "signal",
+        Value::Array(list) => list.iter().any(|item| item.as_str() == Some("signal")),
+        _ => false,
+    };
+    recorded
+        .artifacts
+        .iter()
+        .filter_map(|artifact| artifact.get("uninstall")?.as_array())
+        .flatten()
+        .filter_map(|directives| directives.get("on_upgrade"))
+        .any(names_signal)
+}
+
 /// The login items `login_item:` deletes: a name, or `{ "path": … }`
 /// (`uninstall_login_item`, `abstract_uninstall.rb:526-553`).
 fn login_items(value: &Value) -> Option<Vec<String>> {
@@ -907,6 +926,30 @@ mod tests {
             ruby: false,
             tap: receipt["source"]["tap"].as_str().map(str::to_string),
         }
+    }
+
+    #[test]
+    fn an_update_sends_the_recorded_signals_only_where_on_upgrade_names_signal() {
+        // R47-1 (r18): `on_upgrade :signal` or `[:quit, :signal]`, saved
+        // as the strings; anything else leaves `signal` out of an update.
+        let with = |on_upgrade: Value| Recorded {
+            artifacts: vec![serde_json::json!({ "uninstall": [{
+                "signal": ["TERM", "com.example.thing"],
+                "on_upgrade": on_upgrade,
+            }] })],
+            flight_blocks: false,
+            ruby: false,
+            tap: None,
+        };
+        assert!(signals_on_upgrade(&with(Value::from("signal"))));
+        assert!(signals_on_upgrade(&with(serde_json::json!([
+            "quit", "signal"
+        ]))));
+        assert!(!signals_on_upgrade(&with(Value::from("quit"))));
+        assert!(!signals_on_upgrade(&with(Value::Null)));
+        assert!(!signals_on_upgrade(&recorded(include_str!(
+            "../../../../../adapters/fixtures-derived/brew/7.0.6/receipts/dbeaver-community.json"
+        ))));
     }
 
     fn classified(json: &str) -> Classified {

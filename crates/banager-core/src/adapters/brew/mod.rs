@@ -830,16 +830,79 @@ impl BrewAdapter {
         switches: &HomebrewSwitches,
         trust: Option<&TrustList>,
     ) -> (Warning, Vec<Warning>) {
-        let autoremoves = !switches.no_autoremove;
         let scope = |what| Warning::UninstallScope { what };
         if req.artifact_kind != ArtifactKind::Cask {
-            let what = if autoremoves {
-                UninstallScope::HomebrewFormula
-            } else {
+            let what = if switches.no_autoremove {
                 UninstallScope::HomebrewFormulaOnly
+            } else {
+                UninstallScope::HomebrewFormula
             };
             return (scope(what), Vec::new());
         }
+        let read = self.cask_steps(prefix, req, switches, trust);
+        let lines = self.step_warnings(read.steps, read.recorded.as_ref(), read.home.as_deref());
+        (scope(read.what), lines)
+    }
+
+    /// What a cask update of `req` says before its other notes (R47-1,
+    /// r18): `brew upgrade --cask` first runs the uninstall the installed
+    /// version recorded (`cask/installer.rb:666-667`, `:719-746` in
+    /// Homebrew 7.0.9), each directive but `signal` -- unless the record's
+    /// `on_upgrade` names it -- and `rmdir` (`cask/artifact/uninstall.rb:
+    /// 25-53`), quitting each running app its `quit:` names and opening
+    /// again those it quit (`abstract_uninstall.rb:91-127`,
+    /// `cask/upgrade.rb:342-366`). So: `Warning::CaskUpdateRunsOldSteps`,
+    /// then the lines an uninstall says of those steps (`uninstall_scope`).
+    /// Nothing for a record with no such step, one Banager does not read,
+    /// or one from a tap Homebrew may not trust, whose steps it does not
+    /// run (`cask_steps`).
+    fn update_steps(
+        &self,
+        prefix: &Path,
+        req: &OpRequest,
+        switches: &HomebrewSwitches,
+        trust: Option<&TrustList>,
+    ) -> Vec<Warning> {
+        if req.artifact_kind != ArtifactKind::Cask {
+            return Vec::new();
+        }
+        let read = self.cask_steps(prefix, req, switches, trust);
+        if read.untrusted {
+            return Vec::new();
+        }
+        let signals = read
+            .recorded
+            .as_ref()
+            .is_some_and(cask_receipt::signals_on_upgrade);
+        let steps: Vec<_> = read
+            .steps
+            .into_iter()
+            .filter(|(step, _, _)| signals || *step != CaskStep::SignalsApps)
+            .collect();
+        if steps.is_empty() {
+            return Vec::new();
+        }
+        let reopens = steps
+            .iter()
+            .any(|(step, _, _)| *step == CaskStep::QuitsApps);
+        std::iter::once(Warning::CaskUpdateRunsOldSteps { reopens })
+            .chain(self.step_warnings(steps, read.recorded.as_ref(), read.home.as_deref()))
+            .collect()
+    }
+
+    /// A cask's recorded uninstall, as `uninstall_scope` and `update_steps`
+    /// read it: the sentence an uninstall says of it, the steps it takes,
+    /// the record, the home folder read from Banager's environment, as
+    /// Homebrew's is (`env_var_fn`), and whether it is a Ruby record from
+    /// a tap Homebrew may not trust, where trust is required.
+    fn cask_steps(
+        &self,
+        prefix: &Path,
+        req: &OpRequest,
+        switches: &HomebrewSwitches,
+        trust: Option<&TrustList>,
+    ) -> CaskSteps {
+        let autoremoves = !switches.no_autoremove;
         let home = (self.env_var_fn)("HOME")
             .filter(|home| !home.is_empty())
             .map(PathBuf::from);
@@ -907,55 +970,70 @@ impl BrewAdapter {
             }
             Classified::OnlySteps(steps) => (UninstallScope::HomebrewCaskStepsOnly, steps),
         };
+        CaskSteps {
+            what,
+            steps,
+            recorded,
+            home,
+            untrusted: maybe_untrusted,
+        }
+    }
+
+    /// One `Warning::CaskUninstallStep` per step of `recorded`, the apps
+    /// its `quit:` quits named where they were found
+    /// (`quit_app_names`), the rest counted.
+    fn step_warnings(
+        &self,
+        steps: Vec<cask_receipt::StepLine>,
+        recorded: Option<&Recorded>,
+        home: Option<&Path>,
+    ) -> Vec<Warning> {
         // Looked for only when there is an app to quit and a line to say it.
-        let apps = match &recorded {
+        let apps = match recorded {
             Some(recorded)
                 if steps
                     .iter()
                     .any(|(step, _, _)| *step == CaskStep::QuitsApps) =>
             {
-                self.quit_app_names(recorded, home.as_deref())
+                self.quit_app_names(recorded, home)
             }
             _ => Vec::new(),
         };
-        (
-            scope(what),
-            steps
-                .into_iter()
-                .flat_map(|(step, only_if, items)| {
-                    if step != CaskStep::QuitsApps {
-                        return vec![Warning::CaskUninstallStep {
-                            step,
-                            items,
-                            only_if,
-                        }];
-                    }
-                    // The apps it quits that were found, by name, and the
-                    // ids of the rest, which their line counts.
-                    let mut named: Vec<String> = Vec::new();
-                    let mut unfound: Vec<String> = Vec::new();
-                    for id in items {
-                        match apps.iter().find(|(app_id, _)| *app_id == id) {
-                            Some((_, name)) if !named.contains(name) => named.push(name.clone()),
-                            Some(_) => {}
-                            None => unfound.push(id),
-                        }
-                    }
-                    [
-                        (CaskStep::QuitsNamedApps, named),
-                        (CaskStep::QuitsApps, unfound),
-                    ]
-                    .into_iter()
-                    .filter(|(_, items)| !items.is_empty())
-                    .map(|(step, items)| Warning::CaskUninstallStep {
+        steps
+            .into_iter()
+            .flat_map(|(step, only_if, items)| {
+                if step != CaskStep::QuitsApps {
+                    return vec![Warning::CaskUninstallStep {
                         step,
                         items,
-                        only_if: None,
-                    })
-                    .collect()
+                        only_if,
+                    }];
+                }
+                // The apps it quits that were found, by name, and the
+                // ids of the rest, which their line counts.
+                let mut named: Vec<String> = Vec::new();
+                let mut unfound: Vec<String> = Vec::new();
+                for id in items {
+                    match apps.iter().find(|(app_id, _)| *app_id == id) {
+                        Some((_, name)) if !named.contains(name) => named.push(name.clone()),
+                        Some(_) => {}
+                        None => unfound.push(id),
+                    }
+                }
+                [
+                    (CaskStep::QuitsNamedApps, named),
+                    (CaskStep::QuitsApps, unfound),
+                ]
+                .into_iter()
+                .filter(|(_, items)| !items.is_empty())
+                .map(|(step, items)| Warning::CaskUninstallStep {
+                    step,
+                    items,
+                    only_if: None,
                 })
-                .collect(),
-        )
+                .collect()
+            })
+            .collect()
     }
 
     /// `Warning::HomebrewForgetsTrust` for an uninstall of `req`, when
@@ -2272,6 +2350,20 @@ enum UpdateWait {
     GaveUp,
 }
 
+/// A cask's recorded uninstall as `BrewAdapter::cask_steps` read it.
+struct CaskSteps {
+    /// The sentence an uninstall of it says (`Warning::UninstallScope`).
+    what: UninstallScope,
+    /// The steps it takes beside removing what Homebrew placed, in
+    /// `CaskStep`'s order; none where Homebrew would skip them all.
+    steps: Vec<cask_receipt::StepLine>,
+    recorded: Option<Recorded>,
+    home: Option<PathBuf>,
+    /// A Ruby record from a tap Homebrew may not trust, where trust is
+    /// required: Homebrew may run none of its steps.
+    untrusted: bool,
+}
+
 /// What `BrewAdapter::catalogue_stamp` hands a read of the catalogue to
 /// compare with the one it takes after.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2908,7 +3000,16 @@ impl BrewAdapter {
                 if let Some(askpass) = (self.askpass_fn)() {
                     env.push(("SUDO_ASKPASS".to_string(), askpass));
                 }
-                let mut warnings = self.brew_env_warnings(inst, req.kind, &env);
+                let switches = self.homebrew_switches(inst, &env);
+                // R47-1: what the installed version's recorded uninstall
+                // does first, then what the `brew.env` files make Homebrew
+                // do.
+                let trust = switches
+                    .user_config_home
+                    .as_deref()
+                    .and_then(self.trust_list_fn);
+                let mut warnings = self.update_steps(&inst.prefix, req, &switches, trust.as_ref());
+                warnings.extend(Self::switch_warnings(&switches, req.kind));
                 let program = inst.exe_path.clone();
                 let args = vec!["upgrade".to_string(), flag.to_string(), req.name.clone()];
                 let mut then = Vec::new();
@@ -6491,7 +6592,8 @@ mod plan_execute_tests {
     }
 
     #[tokio::test]
-    async fn test_a_cask_update_says_the_old_versions_recorded_uninstall_steps_homebrew_runs_first() {
+    async fn test_a_cask_update_says_the_old_versions_recorded_uninstall_steps_homebrew_runs_first()
+    {
         // R47-1 (r18): `brew upgrade --cask` first runs the uninstall the
         // installed version recorded, every directive but `signal` unless
         // its `on_upgrade` names it (Homebrew 7.0.9
@@ -7322,7 +7424,10 @@ mod plan_execute_tests {
     #[tokio::test]
     async fn test_no_install_or_upgrade_plan_says_what_an_uninstall_would() {
         // The sentence is an uninstall's; a receipt that would give a cask
-        // steps changes nothing about installing or upgrading it.
+        // steps changes nothing about installing it, or a formula of the
+        // same name. A cask's update says the steps it runs, without the
+        // sentence (R47-1, r18:
+        // `test_a_cask_update_says_the_old_versions_recorded_uninstall_steps_homebrew_runs_first`).
         let prefix = CaskroomPrefix::new("no-scope", &[("microsoft-word", WORD_RECEIPT)]);
         let adapter = BrewAdapter::new(Arc::new(MockRunner::new()))
             .with_recorded_uninstall_fn(cask_receipt::read_recorded);
@@ -7340,7 +7445,17 @@ mod plan_execute_tests {
                     name: "microsoft-word".to_string(),
                 };
                 let plan = adapter.plan(&inst, &req).await.expect("plan");
-                assert!(plan.warnings.is_empty(), "{kind:?}: {:?}", plan.warnings);
+                assert!(
+                    !plan
+                        .warnings
+                        .iter()
+                        .any(|warning| matches!(warning, Warning::UninstallScope { .. })),
+                    "{kind:?}: {:?}",
+                    plan.warnings
+                );
+                if kind == OpKind::Install || artifact_kind == ArtifactKind::Formula {
+                    assert!(plan.warnings.is_empty(), "{kind:?}: {:?}", plan.warnings);
+                }
             }
         }
     }

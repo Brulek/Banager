@@ -1041,6 +1041,10 @@ describe("types", () => {
       '{"HomebrewRelinksAfterUpdate":{"name":"node@22","commands":["node","npm"]}}',
     );
     expect(roundTrip(relinks)).toEqual(relinks);
+    // R47-1 (r18): a cask update's lead line before the old version's steps.
+    const oldSteps: Warning = { CaskUpdateRunsOldSteps: { reopens: true } };
+    expect(JSON.stringify(oldSteps)).toBe('{"CaskUpdateRunsOldSteps":{"reopens":true}}');
+    expect(roundTrip(oldSteps)).toEqual(oldSteps);
     const held: Warning = { LinkPlacesHeld: { name: "node@22", paths: ["/opt/homebrew/bin/npm"] } };
     expect(JSON.stringify(held)).toBe('{"LinkPlacesHeld":{"name":"node@22","paths":["/opt/homebrew/bin/npm"]}}');
     expect(roundTrip(held)).toEqual(held);

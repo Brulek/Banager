@@ -328,6 +328,10 @@ export function warningKey(warning: Warning): string | null {
     const { step, items, only_if: onlyIf } = warning.CaskUninstallStep;
     return caskStepKey(step, items, onlyIf);
   }
+  // R47-1 (r18): what a cask's update runs of its old version's uninstall.
+  if ("CaskUpdateRunsOldSteps" in warning) {
+    return warning.CaskUpdateRunsOldSteps.reopens ? "warnings.caskUpdateRunsOldStepsReopens" : "warnings.caskUpdateRunsOldSteps";
+  }
   // Its own group renders it (`KeptDataGroup`, the list of what still needs
   // the package), never a line; the link's commands are in its sentence
   // (`LinkFixSheet`).
@@ -426,7 +430,8 @@ export function warningArgs(warning: Warning, separator = ", "): Record<string, 
     "KeepsData" in warning ||
     "NeededBySource" in warning ||
     "Message" in warning ||
-    "LinkPutsCommands" in warning
+    "LinkPutsCommands" in warning ||
+    "CaskUpdateRunsOldSteps" in warning
   ) {
     return {};
   }
@@ -587,6 +592,7 @@ export function warningDetailKey(warning: Warning): string | null {
     "TakesBackCommand" in warning ||
     "UninstallScope" in warning ||
     "KeepsData" in warning ||
+    "CaskUpdateRunsOldSteps" in warning ||
     "Message" in warning
   ) {
     return null;
@@ -645,6 +651,7 @@ export function warningGroup(warning: Warning): WarningGroup {
     "TakesBackCommand" in warning ||
     "LinkPlacesHeld" in warning ||
     "CaskUninstallStep" in warning ||
+    "CaskUpdateRunsOldSteps" in warning ||
     "Message" in warning
   ) {
     return "note";
@@ -741,6 +748,7 @@ export function deletesForGood(warning: Warning): boolean {
     "LinkPlacesHeld" in warning ||
     "UninstallScope" in warning ||
     "KeepsData" in warning ||
+    "CaskUpdateRunsOldSteps" in warning ||
     "Message" in warning
   ) {
     return false;
@@ -920,6 +928,7 @@ export function isCaution(warning: Warning): boolean {
     // What keeps running after the uninstall (r18 R46-3).
     "HomebrewServiceStays" in warning ||
     "CaskUninstallStep" in warning ||
+    "CaskUpdateRunsOldSteps" in warning ||
     "Message" in warning
   ) {
     return true;

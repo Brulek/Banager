@@ -494,6 +494,8 @@
       "Cargo": "删除cargo为“{{name}}”安装的程序文件；下载缓存、Cargo的设置和此程序自己的设置都保留不动。",
       "Ollama": "删除模型“{{name}}”；其他模型还在用的数据会保留，Ollama本身和其他模型保留不动。"
     },
+    "caskUpdateRunsOldSteps": "更新前，Homebrew会先执行它为现有版本记下的卸载步骤。",
+    "caskUpdateRunsOldStepsReopens": "更新前，Homebrew会先执行它为现有版本记下的卸载步骤；它退出的App会在更新完成后重新打开。",
     "caskStep": {
       "Deletes_other": "还会永久删除：{{items}}。",
       "DeletesUnnamed": "还会永久删除Homebrew执行卸载步骤时才找到的文件。",

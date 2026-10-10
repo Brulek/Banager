@@ -611,6 +611,7 @@ const EVERY_VARIANT: Warning[] = [
   { TakesBackCommand: { path: "~/.local/bin/ruff" } },
   { UninstallScope: { what: "HomebrewCaskPlain" } },
   { CaskUninstallStep: { step: "Deletes", items: ["~/Library/Application Support/Foo"] } },
+  { CaskUpdateRunsOldSteps: { reopens: true } },
   { Message: "boom" },
 ];
 
@@ -1241,6 +1242,38 @@ describe("warningLines", () => {
         'warnings.uninstallScope.HomebrewFormulaOnly({"name":"node@22"})',
       ]);
     }
+  });
+});
+
+describe("R47-1 (r18): a cask's update says the uninstall steps of the old version Homebrew runs first", () => {
+  const zh = i18n.getFixedT("zh-CN");
+  const enT = i18n.getFixedT("en");
+  const zhHant = i18n.getFixedT("zh-Hant");
+  const reopens: Warning = { CaskUpdateRunsOldSteps: { reopens: true } };
+  const steps: Warning = { CaskUpdateRunsOldSteps: { reopens: false } };
+  const quits: Warning = { CaskUninstallStep: { step: "QuitsNamedApps", items: ["Ollama"] } };
+
+  it("says it first, then the uninstall's own lines, as cautions among the notes", () => {
+    expect(warningLines(enT, [reopens, quits]).note).toEqual([
+      {
+        text: "Before updating, Homebrew runs the uninstall steps it recorded for the version installed now, and opens again any app it quits once the update is done.",
+        detail: null,
+        caution: true,
+      },
+      { text: "Also quits Ollama if it is running.", detail: null, caution: true },
+    ]);
+    expect(warningText(zh, reopens)).toBe(
+      "更新前，Homebrew会先执行它为现有版本记下的卸载步骤；它退出的App会在更新完成后重新打开。",
+    );
+    expect(warningText(zhHant, reopens)).toBe(
+      "更新前，Homebrew會先執行它為現有版本記下的解除安裝步驟；它結束的App會在更新完成後重新開啟。",
+    );
+    // No app to quit: nothing is said of opening one again.
+    expect(warningText(enT, steps)).toBe(
+      "Before updating, Homebrew runs the uninstall steps it recorded for the version installed now.",
+    );
+    expect(warningText(zh, steps)).toBe("更新前，Homebrew会先执行它为现有版本记下的卸载步骤。");
+    expect(deletesForGood(reopens)).toBe(false);
   });
 });
 

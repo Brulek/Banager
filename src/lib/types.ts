@@ -528,6 +528,13 @@ export type Warning =
   | { UninstallScope: { what: UninstallScope } }
   | { CaskUninstallStep: { step: CaskStep; items: string[]; only_if?: RemoveCheck } }
   /**
+   * R47-1 (r18): before a cask's update, Homebrew runs the uninstall steps
+   * the installed version recorded (all but `signal`); the `CaskUninstallStep`
+   * lines that follow say which. `reopens`: one of them quits apps, which
+   * Homebrew opens again after the update.
+   */
+  | { CaskUpdateRunsOldSteps: { reopens: boolean } }
+  /**
    * `left_out`: folders inside `path` its size does not count, not being
    * this tool's data (`~/.codex/packages/standalone`, Codex's own install).
    * `others`: what another tool keeps inside `path`, also not counted

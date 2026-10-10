@@ -535,6 +535,8 @@
       "Cargo": "Deletes the program files cargo installed for {{name}}; the download cache, Cargo's settings and the program's own settings stay.",
       "Ollama": "Deletes the model {{name}}; data other models still use is kept, and Ollama itself and your other models stay."
     },
+    "caskUpdateRunsOldSteps": "Before updating, Homebrew runs the uninstall steps it recorded for the version installed now.",
+    "caskUpdateRunsOldStepsReopens": "Before updating, Homebrew runs the uninstall steps it recorded for the version installed now, and opens again any app it quits once the update is done.",
     "caskStep": {
       "Deletes_one": "Also permanently deletes {{items}}.",
       "Deletes_other": "Also permanently deletes these: {{items}}.",

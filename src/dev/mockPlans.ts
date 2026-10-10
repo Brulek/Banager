@@ -105,6 +105,25 @@ const CASK_SCOPES: Record<string, { what: UninstallScope; steps: Warning[] }> = 
   },
 };
 
+/**
+ * What a cask's update says before its other notes (`BrewAdapter::
+ * update_steps`, R47-1): the steps of its recorded uninstall that
+ * `brew upgrade --cask` runs first -- all but `signal` -- after the line
+ * that says so. None for QuickJot, from a tap Homebrew does not trust.
+ */
+function updateSteps(name: string): Warning[] {
+  const steps = (CASK_STEPS[name] ?? (name === "quickjot" ? [] : (CASK_SCOPES[name]?.steps ?? []))).filter(
+    (warning) => !("CaskUninstallStep" in warning && warning.CaskUninstallStep.step === "SignalsApps"),
+  );
+  if (steps.length === 0) return [];
+  const reopens = steps.some(
+    (warning) =>
+      "CaskUninstallStep" in warning &&
+      (warning.CaskUninstallStep.step === "QuitsApps" || warning.CaskUninstallStep.step === "QuitsNamedApps"),
+  );
+  return [{ CaskUpdateRunsOldSteps: { reopens } }, ...steps];
+}
+
 /** The sentence an uninstall says under the tool (`Warning::UninstallScope`). */
 function scope(what: UninstallScope): Warning {
   return { UninstallScope: { what } };
@@ -325,6 +344,7 @@ export function buildPlan(world: World, inst: ManagerInstance, request: OpReques
           action: command(inst.exe_path, ["upgrade", flag, name], BREW_ENV),
           // Every cask may ask for the Mac's password (`needs_password`).
           needs_password: cask,
+          warnings: cask ? updateSteps(name) : [],
           timeout_secs: 1800,
         };
       }

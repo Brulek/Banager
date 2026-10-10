@@ -1755,6 +1755,25 @@ deletion it cannot back: with an empty list Homebrew runs no artifact's
 uninstall at all (`:714-761`), and a record Banager does not read can
 list anything.
 
+**What a cask update says it runs first** (R47-1, r18). `brew upgrade
+--cask {name}` first runs the uninstall the installed version recorded
+(`start_upgrade`, `cask/installer.rb:666-667` and `:719-746` in Homebrew
+7.0.9): every directive of its `uninstall` stanza but `signal` -- unless
+the record's `on_upgrade` names it -- and `rmdir`
+(`cask/artifact/uninstall.rb:10`, `:25-53`), and its uninstall steps and
+Ruby blocks, with `sudo` where an uninstall would. Its `quit:` asks each
+running app it names to quit, waits up to 10 seconds, and carries on if
+the app has not (`abstract_uninstall.rb:91-127`); once the update is in,
+Homebrew opens again each app it quit (`open -b`, `cask/upgrade.rb:342-366`).
+So the update's confirmation reads the same record the uninstall's does
+and, where it holds such a step, says first that Homebrew runs the steps
+recorded for the version installed now -- and, where one quits apps, that
+it opens again any app it quits -- then the uninstall's own line for each
+of those steps (the apps quit named as above), without a line for
+`signal`. Nothing more is said for a record Banager does not read, or
+for a Ruby record from a tap Homebrew may not trust, where trust is
+required (`BrewAdapter::update_steps`).
+
 **Read-only commands** (background checks; never need a password):
 
 | Purpose | Argv | Timeout |
@@ -1941,7 +1960,7 @@ preview):
 | Upgrade one formula no bottle fits this Mac (Formula updates that compile, above; previewed with a "compiles on your Mac" warning) | `<brew> upgrade --formula {name}` | 21600 s (6 hours) | No |
 | Then, once that upgrade has exited 0, link a keg-only formula whose link Homebrew recorded back into the prefix, where Homebrew did not (Keg-only formulae linked into Terminal, above) | `<brew> link --formula --force {name}` | 300 s | No |
 | Then, once that upgrade has exited 0, delete the formula's old versions (Old versions, below) | `<brew> cleanup {name}` | 600 s | No |
-| Upgrade one cask | `<brew> upgrade --cask {name}` | 1800 s | Sometimes — as for install |
+| Upgrade one cask | `<brew> upgrade --cask {name}` | 1800 s | Sometimes — as for install, and as for the uninstall of the installed version, whose recorded steps it runs first (What a cask update says it runs first, above) |
 | Link, on its own, a keg-only formula another source's launcher could not find a program of, once its preview is confirmed (Keg-only formulae linked into Terminal, above) | `<brew> link --formula --force {name}` | 300 s | No |
 
 Every one of these argvs is exactly the verb, the kind flag and the name

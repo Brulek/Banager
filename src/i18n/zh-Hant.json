@@ -494,6 +494,8 @@
       "Cargo": "刪除cargo為「{{name}}」安裝的程式檔案；下載快取、Cargo的設定和此程式自己的設定都保留不動。",
       "Ollama": "刪除模型「{{name}}」；其他模型還在用的資料會保留，Ollama本身和其他模型保留不動。"
     },
+    "caskUpdateRunsOldSteps": "更新前，Homebrew會先執行它為現有版本記下的解除安裝步驟。",
+    "caskUpdateRunsOldStepsReopens": "更新前，Homebrew會先執行它為現有版本記下的解除安裝步驟；它結束的App會在更新完成後重新開啟。",
     "caskStep": {
       "Deletes_other": "還會永久刪除：{{items}}。",
       "DeletesUnnamed": "還會永久刪除Homebrew執行解除安裝步驟時才找到的檔案。",
