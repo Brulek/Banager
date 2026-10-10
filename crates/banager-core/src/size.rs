@@ -494,18 +494,30 @@ fn walk_folder(
             tally.at_least = true;
             return Flow::OutOfBudget;
         }
+        // Where the folder it is opened from is now (`Dir::path`,
+        // `F_GETPATH`), which looks nothing up and reads nothing in it,
+        // not the path the walk met it by: one that another program moved
+        // into `~/Documents` since it was opened still opens what is in
+        // it, which is in `~/Documents` now. Asked before the folder is
+        // opened, as opening one there is itself what asks permission.
+        match parent.path() {
+            Ok(at) if !protected.contains(&at.join(&name)) => {}
+            // No such call off a Mac, where no place asks permission.
+            Err(e) if e.kind() == std::io::ErrorKind::Unsupported => {}
+            _ => {
+                tally.partial = true;
+                continue;
+            }
+        }
         let opened = parent.open_dir_at(&name, Some(&meta), true);
         drop(parent);
         let Ok((dir, _)) = opened else {
             tally.partial = true;
             continue;
         };
-        // Where the folder is now (`Dir::path`, `F_GETPATH`), which looks
-        // nothing up and reads nothing in it, not the path the walk met it
-        // by: one that another program moved into `~/Documents` since a
-        // folder above it was opened is still opened through that one,
-        // and is in `~/Documents` now. Asked once a folder, before
-        // anything in it is listed or looked at.
+        // And where the folder itself is now, before anything in it is
+        // listed or looked at: the folder above may have been moved in
+        // between.
         match dir.path() {
             Ok(at) if !protected.contains(&at) => {}
             // No such call off a Mac, where no place asks permission.
@@ -2002,8 +2014,10 @@ mod tests {
     fn test_a_folder_moved_into_documents_while_open_is_not_listed_further() {
         // The tool's folder is open and `sub` in it queued; before `sub`
         // is listed, another program moves the tool's folder into
-        // `~/Documents`. Its descriptor still opens `sub`, which is now in
-        // `~/Documents`: not listed.
+        // `~/Documents`. Its descriptor would still open `sub`, which is
+        // now in `~/Documents`: neither opened nor listed. Only where the
+        // moved folder is now is asked (`GetPath`, which looks nothing up
+        // in it).
         let scratch = Scratch::new("moved");
         let home = scratch.dir("home");
         scratch.dir("home/Documents");
@@ -2022,18 +2036,28 @@ mod tests {
             true
         };
         let mut budget = Budget::new(SizeBudget::default());
-        let walked = walked(walk(
-            std::slice::from_ref(&tool),
-            &mut budget,
-            &protected,
-            &mut move_it,
-        ));
+        let (end, made) = crate::dirfd::calls::measure(|| {
+            walk(
+                std::slice::from_ref(&tool),
+                &mut budget,
+                &protected,
+                &mut move_it,
+            )
+        });
+        let walked = walked(end);
         assert!(calls >= 5, "the walk got to `sub`");
         assert!(
             walked.measured.bytes < 500_000,
             "~/Documents was listed through the moved folder: {walked:?}"
         );
         assert!(walked.measured.partial, "{walked:?}");
+        for (call, path) in &made.paths {
+            assert!(
+                *call == crate::dirfd::calls::Call::GetPath
+                    || !path.starts_with(home.join("Documents")),
+                "{call:?} {path:?}"
+            );
+        }
     }
 
     #[test]
