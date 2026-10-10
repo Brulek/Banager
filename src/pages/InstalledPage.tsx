@@ -287,12 +287,15 @@ function FoldLine({
 
 /**
  * The version a row shows: the installed one, technical details on or
- * off, as the Updates page's rows show theirs. Not an Ollama model's: its
- * `version` is the local manifest digest /api/tags reports, not a version
- * number, and no hash goes in front of this audience. Nothing where the
- * source reported none.
+ * off, as the Updates page's rows show theirs -- for a Homebrew app that
+ * updates itself, the version the app says it is where that is not
+ * Homebrew's record (`app_version`, R47-3), the record then in the
+ * details. Not an Ollama model's: its `version` is the local manifest
+ * digest /api/tags reports, not a version number, and no hash goes in
+ * front of this audience. Nothing where the source reported none.
  */
 function versionOf(artifact: InstalledArtifact): string | null {
+  if (artifact.facts.app_version !== undefined) return artifact.facts.app_version;
   if (artifact.key.kind === "Model" || artifact.version === "") return null;
   return artifact.version;
 }
@@ -1617,6 +1620,10 @@ export function InstalledPage() {
     // it is, its site, and last its state.
     const facts: InspectorFact[] = [];
     if (version !== null) facts.push({ term: t("installed.version"), value: version, selectable: true });
+    // R47-3: the version Homebrew installed, where the app has moved on.
+    if (artifact.facts.app_version !== undefined && artifact.version !== "") {
+      facts.push({ term: t("installed.homebrewRecord"), value: artifact.version, selectable: true });
+    }
     if (newer !== null) facts.push({ term: t("installed.newVersion"), value: newer, selectable: true });
     const size = sizeFact(t, artifact, sizes);
     if (size !== null) facts.push(size);

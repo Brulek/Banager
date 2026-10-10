@@ -282,6 +282,7 @@
     "unverifiedVersionDetail": "Not tested with this version of {{source}} yet.",
     "version": "Version",
     "newVersion": "New version",
+    "homebrewRecord": "Homebrew's record",
     "location": "Location",
     "status": "Status",
     "blocked": {

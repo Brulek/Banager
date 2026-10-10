@@ -1781,7 +1781,7 @@ required (`BrewAdapter::update_steps`).
 |---|---|---|
 | Detect a Homebrew install | `<brew> --version` | 30 s |
 | List installed formulae + casks (`inventory`) | `<brew> info --installed --json=v2` | 120 s |
-| List outdated formulae + casks (`check_updates`) | `<brew> outdated --json=v2`, plus `--greedy-auto-updates` when the "Show Homebrew apps that have their own updater" setting is on | 120 s |
+| List outdated formulae + casks (`check_updates`) | `<brew> outdated --json=v2`, with no `--greedy` flag whether the "Show Homebrew apps that have their own updater" setting is on or off (below) | 120 s |
 | Qualify the names `outdated` reported, and read which of them Homebrew disabled (once per `check_updates`) | `<brew> info --installed --json=v2` | 120 s |
 | Search by name | `<brew> search {query}` | 30 s |
 | Search by name + description | `<brew> search --desc {query}` | 30 s |
@@ -1792,10 +1792,17 @@ Never `--greedy` or `--greedy-latest` (R47-2, r18): with either, Homebrew
 :latest` to hash it and compare with the one it saved at install
 (`Cask#outdated_download_sha?`, `cask/cask.rb:392-410` and `:437-438`),
 which is no read-only check, and on a slow link outlasts the 120 s and
-fails the whole source. `--greedy-auto-updates` downloads nothing; apps
-declared `version :latest` are not checked, unless the person's own
-`HOMEBREW_UPGRADE_GREEDY` or `HOMEBREW_UPGRADE_GREEDY_CASKS` asks Homebrew
-to check them (`cmd/outdated.rb:40`, `:280-291`).
+fails the whole source. Apps declared `version :latest` are not checked,
+unless the person's own `HOMEBREW_UPGRADE_GREEDY` or
+`HOMEBREW_UPGRADE_GREEDY_CASKS` asks Homebrew to check them
+(`cmd/outdated.rb:40`, `:280-291`). Nor `--greedy-auto-updates` (R47-3):
+with it, as with `--greedy`, Homebrew lists a cask that updates itself
+whenever its record is not the catalogue's version, without looking at
+the app (`Cask#outdated_version`, `:433-452`), so an app that already
+updated itself would be offered the version it has, or an older one.
+Without it, Homebrew 6 and later list such a cask only when the version
+its app says it is (`CFBundleShortVersionString`, `CFBundleVersion`) is
+older than the catalogue's (`auto_updates_bundle_outdated?`, `:819-850`).
 
 The fresh inventory used to qualify outdated names is indexed once per
 check by kind and full/short name, preserving the first installed match
@@ -2119,7 +2126,15 @@ opened only to look up the next name, never into a protected place):
 names and links only, never a file's contents. A keg-only formula's
 links -- for its update, and for the link a source's notice offers --
 are read as Keg-only formulae linked into Terminal, above, says
-(`brew::links`): names and links only, never a file's contents.
+(`brew::links`): names and links only, never a file's contents. Each
+inventory also reads, for every cask that updates itself (`brew info`'s
+`auto_updates: true`) whose app Homebrew says it put at an absolute
+path, that app's `Contents/Info.plist`, as for a cask's quit step
+(`cask_receipt::app_short_version`: a regular file only, never in or
+through a protected place, parsed and nothing run), for its
+`CFBundleShortVersionString`: the version the app says it is, which the
+Installed page shows where it is not Homebrew's record, the record
+beside it in the details (R47-3, r18).
 
 ## Why a source did not answer, and the link that fixes it: nothing runs until a link is confirmed
 

@@ -253,6 +253,7 @@
     "unverifiedVersionDetail": "尚未用{{source}} {{version}}測試過。",
     "version": "版本",
     "newVersion": "新版本",
+    "homebrewRecord": "Homebrew記錄的版本",
     "location": "位置",
     "status": "狀態",
     "blocked": {

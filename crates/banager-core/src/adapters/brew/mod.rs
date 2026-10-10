@@ -2182,11 +2182,38 @@ impl BrewAdapter {
                 stderr: output.stderr,
             });
         }
-        let artifacts = parse_info_installed(&output.stdout, &inst.id)?;
+        let mut artifacts = parse_info_installed(&output.stdout, &inst.id)?;
+        self.read_app_versions(&mut artifacts);
         self.remember_keg_only(&inst.id, &artifacts);
         self.remember_unlisted_racks(inst, &artifacts);
         self.remember_source_builds(inst, &output.stdout);
         Ok(artifacts)
+    }
+
+    /// R47-3 (r18): the version each app of a cask that updates itself
+    /// says it is (`app_version_fn`, its `CFBundleShortVersionString`),
+    /// kept as `ArtifactFacts::app_version` where it is neither Homebrew's
+    /// record nor that record's first comma-separated field (Docker's
+    /// `4.35.0,184744` is the app's `4.35.0`). Only for an `auto_updates`
+    /// cask whose app Homebrew says it put at an absolute `path`: the
+    /// others stay at the version Homebrew installed.
+    fn read_app_versions(&self, artifacts: &mut [InstalledArtifact]) {
+        for artifact in artifacts {
+            if artifact.key.kind != ArtifactKind::Cask || !artifact.auto_updates {
+                continue;
+            }
+            let Some(app) = artifact.path.as_deref() else {
+                continue;
+            };
+            let Some(said) = (self.app_version_fn)(app) else {
+                continue;
+            };
+            let record = artifact.version.as_str();
+            let first = record.split(',').next().unwrap_or(record);
+            if !said.is_empty() && said != record && said != first {
+                artifact.facts.app_version = Some(said);
+            }
+        }
     }
 
     pub async fn check_updates(
@@ -2221,16 +2248,19 @@ impl BrewAdapter {
             IndexFreshness::Updating => return Err(AdapterError::IndexUpdating),
             IndexFreshness::MayBeStale => vec![InstanceNote::IndexMayBeStale],
         };
-        let mut args = vec!["outdated".to_string(), "--json=v2".to_string()];
-        // R47-2 (r18): never `--greedy` or `--greedy-latest`, which have
-        // Homebrew download the whole installer of each installed `version
-        // :latest` cask to hash it (`cask/cask.rb:392-410`, `:437-438` in
-        // 7.0.9) -- a silent download inside a check whose timeout fails
-        // the whole source. `--greedy-auto-updates` lists the apps that
-        // update themselves and downloads nothing.
-        if opts.include_self_updating {
-            args.push("--greedy-auto-updates".to_string());
-        }
+        // No `--greedy` flag of any kind. R47-2 (r18): `--greedy` and
+        // `--greedy-latest` have Homebrew download the whole installer of
+        // each installed `version :latest` cask to hash it
+        // (`cask/cask.rb:392-410`, `:437-438` in 7.0.9) -- a silent download
+        // inside a check whose timeout fails the whole source. R47-3:
+        // `--greedy` and `--greedy-auto-updates` list a cask that updates
+        // itself whenever Homebrew's record is not the catalogue's version,
+        // skipping Homebrew's look at the app's own version (`:433-452`), so
+        // an app that already updated itself would be offered the version
+        // it has, or an older one. Without them Homebrew lists such a cask
+        // only when the app on the disk is older than the catalogue
+        // (`auto_updates_bundle_outdated?`, `:819-850`).
+        let args = vec!["outdated".to_string(), "--json=v2".to_string()];
         let output = self.run_brew(inst, args, Duration::from_secs(120)).await?;
         if output.exit_code != Some(0) {
             return Err(AdapterError::CommandFailed {
@@ -9312,10 +9342,6 @@ mod plan_execute_tests {
         );
         let outdated = include_str!("../../../../../adapters/fixtures/brew/7.0.3/outdated.json");
         runner.respond(vec![BREW, "outdated", "--json=v2"], ok(outdated));
-        runner.respond(
-            vec![BREW, "outdated", "--json=v2", "--greedy-auto-updates"],
-            ok(outdated),
-        );
         let adapter = BrewAdapter::new(runner.clone())
             .with_path_exists_fn(|path| path == Path::new("/opt/homebrew/bin/brew"));
         let env = HostEnv {
@@ -9384,15 +9410,7 @@ mod plan_execute_tests {
                     }
                 }
             }
-            // The `outdated` row adds its flag in words.
-            if line.contains("`<brew> outdated --json=v2`, plus `--greedy-auto-updates`") {
-                reads.push("<brew> outdated --json=v2 --greedy-auto-updates".to_string());
-            }
         }
-        assert!(
-            reads.contains(&"<brew> outdated --json=v2 --greedy-auto-updates".to_string()),
-            "the section says when `--greedy-auto-updates` is added"
-        );
         assert!(
             section.contains("| Update Homebrew and its local package index (`maybe_update`) | `<brew> update` |"),
             "`brew update` has its own row"
@@ -9434,7 +9452,6 @@ mod plan_execute_tests {
             vec!["--version"],
             vec!["info", "--installed", "--json=v2"],
             vec!["outdated", "--json=v2"],
-            vec!["outdated", "--json=v2", "--greedy-auto-updates"],
             vec!["search", "--desc", "jq"],
         ] {
             assert!(

@@ -294,7 +294,8 @@ function casks(): InstalledArtifact[] {
       path: "/Applications/iTerm.app",
     }),
     // The app that updates itself: listed as updatable only while Settings'
-    // Show self-updating apps is on (brew outdated --greedy).
+    // Show Homebrew apps that have their own updater is on, and then only
+    // as Homebrew finds the app itself older than its catalogue (R47-3, R47-4).
     artifact(IDS.brew, "Cask", "visual-studio-code", "1.116.1", {
       display_name: "Microsoft Visual Studio Code",
       description: "Open-source code editor",
