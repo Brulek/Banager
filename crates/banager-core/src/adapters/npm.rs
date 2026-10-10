@@ -505,7 +505,7 @@ impl NpmAdapter {
     /// folder, a fork from git or an alias (R42-3). Read from one more `npm
     /// ls -g`, only when the check found an update to offer. npm 7 and
     /// later name the source of a link or a folder only (no hidden lockfile
-    /// for globals, arborist `reify.js:252`), so git, URL and alias globals
+    /// for globals, arborist `reify.js:253`), so git, URL and alias globals
     /// keep their update there.
     async fn without_updates_from_elsewhere(
         &self,
