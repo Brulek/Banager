@@ -303,3 +303,24 @@ fn test_readme_names_every_state_whose_error_details_diagnostic_info_includes() 
     assert!(squeeze(chinese)
         .contains("无法运行、运行时出错或没有响应的来源会附上它的工具输出的错误详情"));
 }
+
+/// r20 R56-3: a quit cancels only what can be cancelled and waits only for
+/// that (`quit::cancels`, `quit::waits_for` in src-tauri/src/quit.rs): a
+/// running rustup self update or self uninstall (`CancelPolicy::NoCancel`)
+/// is neither, and its command runs on after Banager exits. The README
+/// said the question's reason, "quitting now stops them", and then "it
+/// says so of one that has started and can't be cancelled".
+#[test]
+fn test_readme_says_quit_neither_stops_nor_waits_for_an_operation_that_cannot_be_cancelled() {
+    let readme = read_readme();
+    let (english, chinese) = blocks(&readme);
+    let english = english.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(!english.contains("it says so of one"));
+    assert!(english.contains("quitting now stops the ones it can"));
+    assert!(english.contains(
+        "quitting neither stops nor waits for it, and its command runs on after Banager quits"
+    ));
+    let chinese = squeeze(chinese);
+    assert!(chinese.contains("现在退出会中断能中断的那些"));
+    assert!(chinese.contains("退出既不中断它，也不等它，Banager退出后它的命令照样运行"));
+}
