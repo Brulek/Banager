@@ -223,6 +223,11 @@ const PINNED_MARKER: &str = " [pinned]";
 /// "Succeeded". Left on the name, the marker made the row's key
 /// `cowsay [pinned]`, which matches no installed tool and which
 /// `validate_package_name` refuses.
+///
+/// The name is printed as package and `--suffix` were typed (`black@3.12`,
+/// `outdated.py:226/238`), but the venv, the tool's key in `list --json`,
+/// is that name PEP 503-canonicalized (`black@3-12`, `venv.py:142-144`;
+/// `list` refuses any other, `common.py:269`), so the row is keyed by it.
 pub(crate) fn parse_outdated(text: &str, instance_id: &str) -> Vec<UpdateCandidate> {
     let trimmed = text.trim();
     if trimmed.is_empty() || trimmed == "pipx found no available upgrades." {
@@ -253,7 +258,7 @@ pub(crate) fn parse_outdated(text: &str, instance_id: &str) -> Vec<UpdateCandida
             key: ArtifactKey {
                 instance_id: instance_id.to_string(),
                 kind: ArtifactKind::Tool,
-                name: name.to_string(),
+                name: super::pip::canonical_project(name),
             },
             current: old.to_string(),
             target: new.to_string(),
@@ -727,8 +732,9 @@ mod tests {
     }
 
     /// The recorded `pipx list --json` (`list.json`) with its one tool,
-    /// cowsay, installed a second time as `cowsay_alt` (`pipx install
-    /// cowsay --suffix=_alt`: the venv is named with the suffix, the
+    /// cowsay, installed a second time as `cowsay-alt` (`pipx install
+    /// cowsay --suffix=_alt`: the venv is named with the suffix,
+    /// PEP 503-canonicalized as pipx's `venv.py:142-144` names it, the
     /// package keeps its own name), that copy's pin set to `pinned`. The
     /// field is the one pipx 1.6+ writes (`main_package.pinned`).
     fn recorded_list_with_suffixed_copy(pinned: bool) -> String {
@@ -738,7 +744,7 @@ mod tests {
         let mut copy = root["venvs"]["cowsay"].clone();
         copy["metadata"]["main_package"]["suffix"] = "_alt".into();
         copy["metadata"]["main_package"]["pinned"] = pinned.into();
-        root["venvs"]["cowsay_alt"] = copy;
+        root["venvs"]["cowsay-alt"] = copy;
         root.to_string()
     }
 
@@ -782,7 +788,7 @@ mod tests {
             blocked,
             [
                 ("cowsay", None),
-                ("cowsay_alt", Some(UpdateBlocked::Pinned))
+                ("cowsay-alt", Some(UpdateBlocked::Pinned))
             ],
             "only the pinned copy is held back"
         );
@@ -790,7 +796,7 @@ mod tests {
             kind: OpKind::Upgrade,
             instance_id: inst.id.clone(),
             artifact_kind: ArtifactKind::Tool,
-            name: "cowsay_alt".into(),
+            name: "cowsay-alt".into(),
         };
         assert!(matches!(
             adapter.plan(&inst, &req).await,
@@ -1165,6 +1171,27 @@ mod tests {
         assert_eq!(candidates[0].target, "6.1");
         assert!(candidates[0].checkable);
         assert_eq!(candidates[0].blocked, Some(UpdateBlocked::Pinned));
+    }
+
+    #[test]
+    fn regression_r43_1_parse_outdated_names_a_suffixed_tool_as_its_venv() {
+        // `pipx install --suffix=@3.12 black` names the venv
+        // `canonicalize_name("black@3.12")`, `black@3-12` (pipx's
+        // `venv.py:142-144`), while `list --outdated` prints the package
+        // and suffix as typed (`outdated.py:226/238`). The row's key has to
+        // be the venv's, or Update finds no installed tool and never runs.
+        let text = "black@3.12: 24.1.0 -> 25.1.0\ncowsay_alt [pinned]: 5.0 -> 6.1\n";
+        let rows: Vec<_> = parse_outdated(text, "pipx")
+            .into_iter()
+            .map(|c| (c.key.name, c.blocked))
+            .collect();
+        assert_eq!(
+            rows,
+            [
+                ("black@3-12".to_string(), None),
+                ("cowsay-alt".to_string(), Some(UpdateBlocked::Pinned)),
+            ]
+        );
     }
 
     #[test]

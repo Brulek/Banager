@@ -78,7 +78,7 @@ pub(crate) fn parse_pip_outdated(
 /// `pip list` prints a package as it was published (`PyYAML`,
 /// `typing_extensions`, `zope.interface`), the index's address has it as
 /// `pyyaml`, `typing-extensions`, `zope-interface`.
-fn canonical_project(name: &str) -> String {
+pub(crate) fn canonical_project(name: &str) -> String {
     let mut out = String::with_capacity(name.len());
     let mut in_run = false;
     for c in name.chars() {

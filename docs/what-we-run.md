@@ -2335,6 +2335,11 @@ Verified against pipx 1.17.3 (`adapters/meta/pipx.toml`).
 | List installed tools (`inventory`) | `<pipx> list --json` | 60 s |
 | List outdated tools (`check_updates`, pipx ≥ 1.16) | `<pipx> list --outdated` | 60 s |
 
+`pipx list --outdated` names a tool as its package and `--suffix` were
+typed (`black@3.12`); Banager reads that name the way pipx names the tool's
+environment (`black@3-12`: lower case, each run of `-`, `_` and `.` one
+`-`), which is the name its row, upgrade and uninstall use.
+
 If `pipx list --outdated` exits non-zero, `<pipx> list --json` is run once
 more so every installed tool can be listed as "could not check", with the
 reason — one more process than the table shows, on that path only.
