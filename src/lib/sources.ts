@@ -1151,7 +1151,8 @@ export const UNINSTALL_BLOCKED_KEYS: Record<UninstallBlocked, UninstallBlockedCo
     refused: "installed.blocked.UvToolDirSet.refused",
   },
   SourceProgram: {
-    // npm's own `npm` (`parse_ls_global`): the same word as a row uv will
+    // npm's own `npm` (`parse_ls_global`), and the pipx or uv a source
+    // installed of itself (`own_tool_environment`): the same word as a row uv will
     // not let go of, since nothing the user can run changes it. The
     // sentence says what it is to the rest of the list, with the source's
     // name, and no command.

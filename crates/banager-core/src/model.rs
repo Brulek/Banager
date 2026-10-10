@@ -706,7 +706,9 @@ pub enum UninstallBlocked {
     /// gate refuses it (`blocked_uninstall` in session/plans.rs), and the
     /// Installed page says why where the button would be
     /// (`UNINSTALL_BLOCKED_KEYS` in src/lib/sources.ts). Its update is
-    /// offered as any package's.
+    /// offered as any package's. Likewise pipx's and uv's own tool when
+    /// the source installed itself (`adapters::own_tool_environment`),
+    /// set by their inventories and refused by their plans.
     SourceProgram,
     /// corepack, where the `corepack` in its npm's prefix's `bin` is a
     /// Homebrew formula's link into `<prefix>/Cellar/` -- `node@22` linked

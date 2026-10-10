@@ -736,6 +736,60 @@ pub fn reconcile_from(artifacts: Vec<InstalledArtifact>, key: &ArtifactKey) -> R
 /// Homebrew formula is linked (`brew link --formula --force`, `NoAnswer::link_fixes`).
 /// Asked first in each `plan()`, before anything is read or run, and in
 /// every `match` over the kind after it.
+/// The tool environment a source's own program is in, when the source
+/// installed itself as one of its tools: `program`, every link followed
+/// (`protected::look::real_path`, never into a protected place), is
+/// `<tools>/<name>/bin/<file>` with `<tools>` a folder named
+/// `tools_folder` -- pipx's `venvs` (`pipx install pipx`, pipx 1.17's
+/// `self_install.py`), uv's `tools` (`uv tool install uv`). Removing that
+/// tool removes the program every other tool of the source is updated and
+/// uninstalled with (`UninstallBlocked::SourceProgram`, as npm's own npm).
+/// `None` for a program anywhere else, or one that could not be followed.
+pub(crate) fn own_tool_environment(
+    program: &std::path::Path,
+    tools_folder: &str,
+) -> Option<std::path::PathBuf> {
+    use crate::protected::{self, Protected};
+    let real = protected::look::real_path(program, &Protected::of_this_process()).ok()?;
+    let bin = real.parent()?;
+    let environment = bin.parent()?;
+    let folder = environment.parent()?.file_name()?;
+    let named = |name: &std::ffi::OsStr, as_: &str| {
+        protected::same_path(std::path::Path::new(name), std::path::Path::new(as_))
+    };
+    (named(bin.file_name()?, "bin") && named(folder, tools_folder))
+        .then(|| environment.to_path_buf())
+}
+
+/// `artifacts` with the one whose environment is `own` marked
+/// `UninstallBlocked::SourceProgram`, unless another reason already
+/// blocks it: its `path`, every link followed as `own`'s were, is `own`
+/// as the disk compares names. Only a path whose folder has `own`'s name
+/// is followed.
+pub(crate) fn block_own_tool(
+    mut artifacts: Vec<InstalledArtifact>,
+    own: Option<&std::path::Path>,
+) -> Vec<InstalledArtifact> {
+    use crate::protected::{self, Protected};
+    if let Some(own) = own {
+        let protected = Protected::of_this_process();
+        let is_own = |path: &std::path::Path| {
+            path.file_name().zip(own.file_name()).is_some_and(|(a, b)| {
+                protected::same_path(std::path::Path::new(a), std::path::Path::new(b))
+            }) && protected::look::real_path(path, &protected)
+                .is_ok_and(|real| protected::same_path(&real, own))
+        };
+        for artifact in &mut artifacts {
+            if artifact.path.as_deref().is_some_and(is_own) {
+                artifact
+                    .uninstall_blocked
+                    .get_or_insert(UninstallBlocked::SourceProgram);
+            }
+        }
+    }
+    artifacts
+}
+
 pub(crate) fn links_nothing(adapter_id: &str) -> AdapterError {
     AdapterError::Unsupported(format!(
         "{adapter_id} links nothing: only a Homebrew formula is linked"

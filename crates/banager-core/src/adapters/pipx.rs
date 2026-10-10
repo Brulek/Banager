@@ -9,7 +9,7 @@ use crate::model::{
     ArtifactFacts, ArtifactKey, ArtifactKind, CancelPolicy, CommandInputs, InstallReason, InstanceNote,
     InstalledArtifact, InstanceStatus, ManagerInstance, OpKind, OpRequest, Outcome, Plan,
     PlanAction, ProvidedCommand, Reconciled, ResourceLock, Scope, SearchHit, Unavailable,
-    UninstallScope, UpdateBlocked, UpdateCandidate, UpdateChannel, Warning,
+    UninstallBlocked, UninstallScope, UpdateBlocked, UpdateCandidate, UpdateChannel, Warning,
 };
 use crate::runner::{resolve_exe, CommandOutput, CommandRunner, CommandSpec, HostEnv, OutputUse};
 use async_trait::async_trait;
@@ -238,7 +238,9 @@ fn artifacts_from_list(root: PipxListRoot, instance_id: &str) -> Vec<InstalledAr
                 path,
                 auto_updates: false,
                 // pipx pins, but `pipx uninstall` removes a pinned tool: pipx
-                // 1.17.3's `commands/uninstall.py` never reads `pinned`.
+                // 1.17.3's `commands/uninstall.py` never reads `pinned`. The
+                // pipx Banager runs, installed with itself, is blocked by
+                // `read_list` (`own_venv`).
                 uninstall_blocked: None,
                 facts: ArtifactFacts {
                     command_inputs: CommandInputs {
@@ -400,6 +402,13 @@ fn failures_by_tool(stderr: &str, listed: &HashSet<&str>) -> HashMap<String, Str
     out
 }
 
+/// The venv the pipx Banager runs is in, when pipx installed itself
+/// (`~/.local/bin/pipx` leading into `<PIPX_HOME>/venvs/pipx`, pipx 1.17's
+/// `self_install.py`): that tool is `UninstallBlocked::SourceProgram`.
+fn own_venv(inst: &ManagerInstance) -> Option<PathBuf> {
+    super::own_tool_environment(&inst.exe_path, "venvs")
+}
+
 pub struct PipxAdapter {
     runner: Arc<dyn CommandRunner>,
     http: Arc<dyn HttpClient>,
@@ -526,7 +535,10 @@ impl PipxAdapter {
         let pinned = named(|package| package.pinned);
         let not_from_index = named(|package| !from_index(package));
         Ok(ListAnswer {
-            artifacts: artifacts_from_list(root, &inst.id),
+            artifacts: super::block_own_tool(
+                artifacts_from_list(root, &inst.id),
+                own_venv(inst).as_deref(),
+            ),
             pinned,
             not_from_index,
             left_out: output.exit_code == Some(1),
@@ -710,6 +722,17 @@ impl PipxAdapter {
     ) -> Result<Plan, AdapterError> {
         ensure_instance_match(req, inst)?;
         validate_package_name(&req.name)?;
+        // The pipx this pipx is (`own_venv`): the gate's late twin
+        // (`blocked_uninstall` in session/plans.rs refuses the same row from
+        // the snapshot), so no preview of its uninstall is ever built. Its
+        // update is planned as any tool's.
+        if req.kind == OpKind::Uninstall
+            && own_venv(inst).is_some_and(|venv| venv.file_name() == Some(req.name.as_ref()))
+        {
+            return Err(AdapterError::UninstallBlocked {
+                reason: UninstallBlocked::SourceProgram,
+            });
+        }
         if req.kind == OpKind::Upgrade {
             let pinned = self.read_list(inst).await?.pinned;
             if pinned.contains(&req.name) {
@@ -1109,6 +1132,80 @@ mod tests {
                 "https://pypi.org/pypi/cowsay/json"
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn regression_r43_9_the_pipx_that_pipx_installed_cannot_be_uninstalled_here() {
+        // pipx 1.17's `self_install.py`: `~/.local/bin/pipx` leads into the
+        // `pipx` venv, which `pipx list --json` lists like any tool. Its
+        // uninstall would remove the pipx every other pipx tool is updated
+        // and uninstalled with -- as npm's own npm would.
+        let root = crate::testing::unique_temp_path("r43-9-pipx");
+        let venvs = root.join("pipx/venvs");
+        let mut venv_json = Vec::new();
+        for name in ["pipx", "cowsay"] {
+            let app = venvs.join(name).join("bin").join(name);
+            std::fs::create_dir_all(app.parent().unwrap()).unwrap();
+            std::fs::write(&app, b"#!/bin/sh\n").unwrap();
+            venv_json.push(format!(
+                r#""{name}":{{"metadata":{{"main_package":{{"package":"{name}","package_version":"1.0","app_paths":[{{"__Path__":"{}","__type__":"Path"}}]}}}}}}"#,
+                app.display()
+            ));
+        }
+        let bin = root.join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        std::os::unix::fs::symlink(venvs.join("pipx/bin/pipx"), bin.join("pipx")).unwrap();
+        let runner = Arc::new(MockRunner::new());
+        let exe = bin.join("pipx");
+        runner.respond(
+            vec![exe.to_str().unwrap(), "list", "--json"],
+            CommandOutput {
+                stderr_cause: Default::default(),
+                exit_code: Some(0),
+                stdout: format!(r#"{{"venvs":{{{}}}}}"#, venv_json.join(",")),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let adapter = PipxAdapter::new(runner, Arc::new(MockHttpClient::new()));
+        let inst = ManagerInstance {
+            exe_path: exe.clone(),
+            prefix: bin.clone(),
+            ..test_instance()
+        };
+        let blocked: Vec<_> = adapter
+            .inventory(&inst)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|a| (a.key.name, a.uninstall_blocked))
+            .collect();
+        let request = |kind, name: &str| OpRequest {
+            kind,
+            instance_id: inst.id.clone(),
+            artifact_kind: ArtifactKind::Tool,
+            name: name.to_string(),
+        };
+        let uninstall_pipx = adapter.plan(&inst, &request(OpKind::Uninstall, "pipx")).await;
+        let upgrade_pipx = adapter.plan(&inst, &request(OpKind::Upgrade, "pipx")).await;
+        let uninstall_cowsay = adapter.plan(&inst, &request(OpKind::Uninstall, "cowsay")).await;
+        std::fs::remove_dir_all(&root).unwrap();
+        assert_eq!(
+            blocked,
+            [
+                ("cowsay".to_string(), None),
+                ("pipx".to_string(), Some(UninstallBlocked::SourceProgram))
+            ]
+        );
+        assert!(matches!(
+            uninstall_pipx,
+            Err(AdapterError::UninstallBlocked {
+                reason: UninstallBlocked::SourceProgram
+            })
+        ));
+        assert!(upgrade_pipx.is_ok(), "its update is offered as any tool's");
+        assert!(uninstall_cowsay.is_ok());
     }
 
     // Regressions found by `adapters/robustness.rs`.

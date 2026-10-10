@@ -2390,6 +2390,14 @@ prevent uninstalling. No extra network request is needed for that check.
 If that read fails or runs out of time, the update is not prepared, and
 the page says pipx didn't respond and to try again later.
 
+A pipx that pipx installed (the `pipx` Banager runs leading, every link
+followed, into `<PIPX_HOME>/venvs/<name>/bin/`) is never uninstalled:
+it would remove the pipx every other pipx tool is updated and uninstalled
+with. Its row says so where Uninstall would be
+(`UninstallBlocked::SourceProgram`, as npm's own `npm`), and both the gate
+and `PipxAdapter::plan` refuse it; its update is offered as any tool's.
+Nothing is run to find it: only links and folders are looked at.
+
 A tool pinned in pipx (`pipx pin`) is listed by `pipx list --outdated` as
 `name [pinned]: old -> new`; its row has no Update button and gives the
 command that releases the pin, `<pipx> unpin {name}`, for the user to run
@@ -2489,6 +2497,14 @@ tool-search command Banager uses.
 | Install | `<uv> tool install {name}` | 600 s | No |
 | Uninstall | `<uv> tool uninstall {name}` | 600 s | No |
 | Upgrade | `<uv> tool upgrade {name}` | 600 s | No |
+
+**uv's own uv.** A uv that uv installed as a tool (`uv tool install uv`,
+the `uv` Banager runs leading, every link followed, into
+`<tools>/<name>/bin/` of a folder named `tools`) is never uninstalled: it
+would remove the uv every other uv tool is updated and uninstalled with.
+Its row says so where Uninstall would be (`UninstallBlocked::SourceProgram`,
+as npm's own `npm`), and both the gate and `UvAdapter::plan` refuse it; its
+update is offered as any tool's. Nothing is run to find it.
 
 **No uninstall while `UV_TOOL_DIR` is set.** uv keeps its tools in the
 folder `UV_TOOL_DIR` names when it is set and not empty

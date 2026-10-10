@@ -200,7 +200,8 @@ export type CommandState = "Runs" | { ShadowedBy: { by: ArtifactKey | null } } |
  * inventory for every tool while `UV_TOOL_DIR` is set in Banager's
  * environment, since removing the last one would also delete the folder
  * above that one; `SourceProgram` by npm's inventory for its own `npm`,
- * the program every npm package is updated and uninstalled with;
+ * the program every npm package is updated and uninstalled with, and by
+ * pipx's and uv's for the pipx or uv they installed of themselves;
  * `ComesWithFormula` by npm's inventory for corepack where its command is
  * a Homebrew formula's link, which uninstalling it would delete;
  * `NeededBySource` only by `Session::submit`, for a plan whose preview

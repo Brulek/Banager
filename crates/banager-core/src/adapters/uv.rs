@@ -552,7 +552,7 @@ impl UvAdapter {
                 stderr: output.stderr,
             });
         }
-        self.tools_in(&output.stdout, instance_id)
+        self.tools_in(&output.stdout, instance_id, program)
     }
 
     /// How long an inventory's `uv tool list --show-paths` and a check's
@@ -580,22 +580,28 @@ impl UvAdapter {
         .await
     }
 
-    /// The tools a `uv tool list --show-paths` that exited 0 printed.
+    /// The tools a `uv tool list --show-paths` that exited 0 printed, read
+    /// for the uv at `program`: the tool that uv is in, when it installed
+    /// itself (`own_tool_environment`), is `UninstallBlocked::SourceProgram`.
     fn tools_in(
         &self,
         stdout: &str,
         instance_id: &str,
+        program: &Path,
     ) -> Result<Vec<InstalledArtifact>, AdapterError> {
         let uninstall_blocked = self.uninstall_blocked();
         let artifacts = parse_tool_list_show_paths(stdout, instance_id);
         require_parsed_tools(stdout, artifacts.len())?;
-        Ok(artifacts
-            .into_iter()
-            .map(|artifact| InstalledArtifact {
-                uninstall_blocked,
-                ..artifact
-            })
-            .collect())
+        Ok(super::block_own_tool(
+            artifacts
+                .into_iter()
+                .map(|artifact| InstalledArtifact {
+                    uninstall_blocked,
+                    ..artifact
+                })
+                .collect(),
+            super::own_tool_environment(program, "tools").as_deref(),
+        ))
     }
 
     pub async fn check_updates(
@@ -680,6 +686,17 @@ impl UvAdapter {
             if let Some(reason) = self.uninstall_blocked() {
                 return Err(AdapterError::UninstallBlocked { reason });
             }
+            // The uv Banager runs, installed as a uv tool of its own
+            // (`own_tool_environment`): the gate refuses the same row from
+            // the snapshot; no preview of its uninstall is built either.
+            // Its update is planned as any tool's.
+            if super::own_tool_environment(&inst.exe_path, "tools")
+                .is_some_and(|tool| tool.file_name() == Some(req.name.as_ref()))
+            {
+                return Err(AdapterError::UninstallBlocked {
+                    reason: UninstallBlocked::SourceProgram,
+                });
+            }
             // A command uv recorded that another tool has since taken over
             // would go with this one (`taken_command`): no preview, as a
             // cask's link another source took (`brew/cask_links.rs`).
@@ -697,7 +714,7 @@ impl UvAdapter {
                 .list_tools(&inst.exe_path, Self::LIST_TIMEOUT, CancellationToken::new())
                 .await?;
             if !read.timed_out && !read.cancelled && read.exit_code == Some(0) {
-                let installed = self.tools_in(&read.stdout, &inst.id)?;
+                let installed = self.tools_in(&read.stdout, &inst.id, &inst.exe_path)?;
                 if let Some(path) = taken_of(&installed, &req.name) {
                     return Err(AdapterError::UninstallUnsafe {
                         path: shown(&path),
@@ -800,7 +817,7 @@ impl UvAdapter {
                         super::ReadBeforeRun::Answered(output) => output,
                         super::ReadBeforeRun::Ends(outcome) => return Ok(outcome),
                     };
-                    self.tools_in(&output.stdout, &plan.request.instance_id)
+                    self.tools_in(&output.stdout, &plan.request.instance_id, program)
                         .ok()
                         .and_then(|installed| {
                             let mut matching = installed
@@ -846,7 +863,9 @@ impl UvAdapter {
                     super::ReadBeforeRun::Answered(output) => output,
                     super::ReadBeforeRun::Ends(outcome) => return Ok(outcome),
                 };
-                let Ok(installed) = self.tools_in(&output.stdout, &plan.request.instance_id) else {
+                let Ok(installed) =
+                    self.tools_in(&output.stdout, &plan.request.instance_id, program)
+                else {
                     return Ok(Outcome::BanagerFailed(
                         crate::model::Fault::ChangedSinceShown,
                     ));
@@ -1592,6 +1611,72 @@ ruff v0.15.0 (/Users/someone/.local/share/uv/tools/ruff)
             artifact_kind: ArtifactKind::Tool,
             name: "ruff".to_string(),
         }
+    }
+
+    #[tokio::test]
+    async fn regression_r43_9_the_uv_that_uv_installed_cannot_be_uninstalled_here() {
+        // `uv tool install uv`, with `~/.local/bin/uv` the uv Banager runs:
+        // its uninstall would remove the uv every other uv tool is updated
+        // and uninstalled with, as npm's own npm would.
+        let root = crate::testing::unique_temp_path("r43-9-uv");
+        let tools = root.join("tools");
+        let own = tools.join("uv/bin/uv");
+        std::fs::create_dir_all(own.parent().unwrap()).unwrap();
+        std::fs::write(&own, b"#!/bin/sh\n").unwrap();
+        let bin = root.join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        std::os::unix::fs::symlink(&own, bin.join("uv")).unwrap();
+        let exe = bin.join("uv");
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec![exe.to_str().unwrap(), "tool", "list", "--show-paths"],
+            CommandOutput {
+                stderr_cause: Default::default(),
+                exit_code: Some(0),
+                stdout: format!(
+                    "ruff v0.15.0 ({tools}/ruff)\n- ruff ({bin}/ruff)\nuv v0.12.17 ({tools}/uv)\n- uv ({bin}/uv)\n- uvx ({bin}/uvx)\n",
+                    tools = tools.display(),
+                    bin = bin.display()
+                ),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let adapter = UvAdapter::new(runner);
+        let inst = ManagerInstance {
+            exe_path: exe.clone(),
+            prefix: bin.clone(),
+            ..test_instance()
+        };
+        let blocked: Vec<_> = adapter
+            .inventory(&inst)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|a| (a.key.name, a.uninstall_blocked))
+            .collect();
+        let uninstall = |name: &str| OpRequest {
+            name: name.to_string(),
+            ..request(OpKind::Uninstall)
+        };
+        let uv = adapter.plan(&inst, &uninstall("uv")).await;
+        let ruff = adapter.plan(&inst, &uninstall("ruff")).await;
+        std::fs::remove_dir_all(&root).unwrap();
+        assert_eq!(
+            blocked,
+            [
+                ("ruff".to_string(), None),
+                ("uv".to_string(), Some(UninstallBlocked::SourceProgram))
+            ]
+        );
+        assert!(matches!(
+            uv,
+            Err(AdapterError::UninstallBlocked {
+                reason: UninstallBlocked::SourceProgram
+            })
+        ));
+        assert!(ruff.is_ok(), "{ruff:?}");
     }
 
     #[tokio::test]
