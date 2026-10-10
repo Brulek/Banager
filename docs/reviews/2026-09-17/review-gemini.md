@@ -29,7 +29,7 @@
   - 严禁在主数据库上执行 `pacman -Sy`。
   - 检查更新策略改为：
     1. 若系统存在 `checkupdates` 命令，直接调用 `checkupdates`（返回状态码 0 为有更新，2 为无更新）。
-    2. 若无，使用命令：`fakeroot pacman -Sy --dbpath /tmp/canager-checkup-db && pacman -Qu --dbpath /tmp/canager-checkup-db`。
+    2. 若无，使用命令：`fakeroot pacman -Sy --dbpath /tmp/banager-checkup-db && pacman -Qu --dbpath /tmp/banager-checkup-db`。
 
 ---
 
@@ -43,7 +43,7 @@
     - `cargo`、`uv`、`bun`、`nvm`、`fnm`、`pipx` 安装的工具在 `~/.cargo/bin`、`~/.local/bin`，全军覆没；
     - 执行 `version = ["brew", "--version"]` 会直接抛出 `No such file or directory` (ENOENT)。
 - **建议改法**：
-  - 架构必须在 `canager-core` 初始化最顶层加入**环境变量注水（Env Hydration）机制**。
+  - 架构必须在 `banager-core` 初始化最顶层加入**环境变量注水（Env Hydration）机制**。
   - 在 Unix 平台启动时，探测用户的 `$SHELL`，先在后台非交互执行一次 `$SHELL -l -c 'printenv PATH'`（或使用 Rust 的 `shell-words` / 类似 `fix-path-env` 机制），将解析出的真实用户 PATH 更新注入到当前 Tauri 进程的全局上下文中，否则后续所有适配器一律失效。
 
 ---
@@ -96,7 +96,7 @@
   - 文档设计：后台每隔 N 小时自动静默检查更新，发现后托盘通知。
   - 但在 Linux 上，`apt-get update`、`pacman -Sy`、`dnf check-update` 需要网络刷新。其中：
     - `apt-get update` 必须 root 权限。后台定时器触发时，**系统会每隔几小时无故弹出一个 polkit 密码输入框**，这是流氓软件的行为特征。
-    - Ubuntu 默认启用了 `unattended-upgrades` 和 `packagekitd`。当它们在后台跑时，apt 会锁死 `/var/lib/dpkg/lock-frontend`。Canager 后台检查更新会频繁撞锁报错，向日志抛出海量垃圾。
+    - Ubuntu 默认启用了 `unattended-upgrades` 和 `packagekitd`。当它们在后台跑时，apt 会锁死 `/var/lib/dpkg/lock-frontend`。Banager 后台检查更新会频繁撞锁报错，向日志抛出海量垃圾。
 - **建议改法**：
   - Linux 下**严禁在后台定时器中执行需要 root 的 `update` 命令**。
   - 后台检查更新必须退化为只读缓存探测：例如 apt 只读读取 `/var/lib/apt/lists/` 缓存比对可升级包（模拟 `apt list --upgradable`，不前置 `update`）；

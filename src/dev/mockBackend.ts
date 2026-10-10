@@ -1,0 +1,1070 @@
+/**
+ * The browser preview's backend (docs/ui-preview.md): every command
+ * src/lib/api.ts sends, answered from the machine in ./mockData.ts the way
+ * src-tauri/src/ipc.rs and crates/banager-core answer it -- the same
+ * refusals, the same event sequence for an operation, the same snapshot
+ * generations. Dev-only: ./mockTauri.ts is its one caller, and only
+ * `vite --mode mock` puts that in a page. Deterministic apart from the
+ * clock: timings are fixed, and nothing is random.
+ */
+import type {
+  AlreadyUpdated,
+  ArtifactKey,
+  CommandFact,
+  HistoryView,
+  InstalledArtifact,
+  InstanceNote,
+  IssuedPlan,
+  ManagerInstance,
+  OpRequest,
+  OpStatus,
+  OpSummary,
+  Outcome,
+  Plan,
+  PlanId,
+  Settings,
+  Sizes,
+  Snapshot,
+  UiEvent,
+} from "../lib/types";
+import { NO_SIZES } from "../lib/types";
+import { checkEvery } from "../lib/checkFrequency";
+import { adapterIdOf } from "../lib/sources";
+import {
+  buildWorld,
+  initialSettings,
+  NO_NODE_ANSWERS_AGAIN,
+  sameKey,
+  unknownScan,
+  unverifiedVersion,
+  withNpmPrefixProtected,
+  withUnavailableCommands,
+  type World,
+} from "./mockData";
+import { appIcon } from "./mockIcons";
+import { withFamilies } from "./mockFamilies";
+import { buildPlan, homebrewRefusal, playOutcome, refusal, type LogLine, type Subject } from "./mockPlans";
+import { withMockKeptData } from "./mockKeptData";
+import { namesASource, withMockNeededBy } from "./mockNeededBy";
+import { applyMockCleanup, mockCleanupLines, withMockOldVersions } from "./mockOldVersions";
+import { mockRelinkLines, withMockKegLinks } from "./mockKegLinks";
+import { mockSizes } from "./mockSizes";
+import { mockSystemFacts } from "./mockDiagnostics";
+import { mockHistory, mockRecord } from "./mockHistory";
+import type { Scenario, ScenarioPath } from "./scenario";
+import { operationFailureCause } from "../lib/failureCause";
+import { isUpdatedButStepFailed } from "../lib/format";
+
+/** Every command the backend registers (`generate_handler!` in src-tauri/src/lib.rs). */
+export const MOCK_COMMANDS = [
+  "get_snapshot",
+  "refresh",
+  "plan_operation",
+  "submit_operation",
+  "cancel_operation",
+  "list_operations",
+  "get_settings",
+  "set_settings",
+  "subscribe_events",
+  "open_ollama_app",
+  "scan_unknown",
+  "reveal_in_finder",
+  "open_homepage",
+  "artifact_icon",
+  "get_sizes",
+  "get_system_facts",
+  "get_history",
+  "clear_history",
+  "set_menu_language",
+  "report_update_set",
+  "request_notification_permission",
+  "report_finished_run",
+  "ask_before_quit",
+  "quit_question_shown",
+  "quit_kept_waiting",
+  "quit_anyway",
+] as const;
+type MockCommand = (typeof MOCK_COMMANDS)[number];
+
+/** What `subscribe_events` is handed: a Tauri `Channel`, or the preview's stand-in. */
+export interface EventChannel {
+  onmessage: (event: UiEvent) => void;
+}
+
+export interface MockBackend {
+  /** One IPC call; rejects with a string, as Tauri's `invoke` does. */
+  invoke(cmd: string, args?: unknown): Promise<unknown>;
+}
+
+/** How long things take, in milliseconds. */
+export const TIMING = {
+  refresh: 900,
+  /**
+   * The first refresh's list (`InventoryPreview`), before that refresh
+   * answers at `refresh`: every source has listed what it has, and the
+   * update checks run on.
+   */
+  inventory: 300,
+  plan: 400,
+  /** A Homebrew uninstall preview runs `brew uses --installed` first. */
+  brewUninstallPlan: 1200,
+  scan: 700,
+  openOllama: 300,
+  /** Queued, then Running once its locks are free. */
+  start: 250,
+  /** Running to Verifying: the tool's own work, its log lines spread over it. */
+  run: 4200,
+  /** How long a Homebrew operation waits for a `brew update` still running. */
+  brewUpdateWait: 3500,
+  /** Verifying to Finished. */
+  verify: 550,
+  /** A cancelled command stopping. */
+  cancel: 500,
+  /** Drawing a cask's app icon (the real one remembers each after the first). */
+  icon: 60,
+  /**
+   * Measuring how much each tool takes, after a refresh commits: long
+   * enough to see 「正在计算…」 in the details first. A folder measured
+   * before at the same version is shown at once, as the real one
+   * remembers it.
+   */
+  sizes: 1500,
+} as const;
+
+/** How many operations may run at once (`OperationManager`'s semaphore). */
+const MAX_RUNNING = 3;
+
+/** A preview older than this is refused (`SubmitError::Expired`). */
+const PLAN_LIFETIME_MS = 10 * 60 * 1000;
+
+/** `Snapshot::empty()`: what `get_snapshot` answers before any refresh. */
+const EMPTY_SNAPSHOT: Snapshot = {
+  generation: 0,
+  round: 0,
+  detect: "Missing",
+  instances: [],
+  artifacts: [],
+  updates: [],
+  refreshed_at: null,
+  stale: false,
+  errors: [],
+  next_auto_check_at: null,
+};
+
+/** What the backend says when it is broken (`?state=error`, `?state=refresh-error`). */
+const BROKEN = (cmd: string) => `command ${cmd} failed: the backend is not responding`;
+
+function clone<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** A promise that never settles: a command still running when the screenshot is taken. */
+function never<T>(): Promise<T> {
+  return new Promise<T>(() => {});
+}
+
+/** `auto_check::DUE_AFTER_SECS`: the daily check is due a day after the last check. */
+const DAY_SECONDS = 24 * 60 * 60;
+
+function nowSeconds(): number {
+  return Math.floor(Date.now() / 1000);
+}
+
+function requestKey(request: OpRequest): ArtifactKey {
+  return { instance_id: request.instance_id, kind: request.artifact_kind, name: request.name };
+}
+
+/**
+ * `ops::may_have_moved_others`: whether an update that ended with
+ * `outcome` may have changed what is installed, and so brought a later
+ * update's package along.
+ */
+function mayHaveMovedOthers(outcome: Outcome, already: AlreadyUpdated | null | undefined): boolean {
+  if (outcome === "Succeeded") return !already;
+  if (outcome === "Unconfirmed") return true;
+  if (outcome === "Cancelled") return false;
+  if ("Failed" in outcome) return true;
+  if ("NeedsAttention" in outcome) return outcome.NeedsAttention !== "UnchangedAfterUpgrade";
+  return false;
+}
+
+interface Operation {
+  summary: OpSummary;
+  plan: Plan;
+  timers: ReturnType<typeof setTimeout>[];
+  /** Whether it holds its locks and a slot, from start until it finishes. */
+  started: boolean;
+  /**
+   * `?outcome=already`: whether it played an update whose package was
+   * already at its new version (`playOutcome`'s `already`).
+   */
+  already?: boolean;
+  /** `movedUpgrades` of its source when it was submitted (`OpInternal.upgrades_seen`). */
+  movedSeen: number;
+}
+
+/**
+ * `artifacts` with the verdicts `commands::judge` leaves them for `?path=`:
+ * every one with `read`; none with `default`, where the login shell's
+ * `PATH` was never read; and with `unread`, where a folder at the end of
+ * `PATH` could not be read, none for a command no folder read leads to --
+ * one Terminal would not find were every folder read -- as that folder
+ * might hold a link to it. Check Tool Setup then says how many tools it
+ * could not check.
+ */
+function judgedFor(path: ScenarioPath, artifacts: InstalledArtifact[]): InstalledArtifact[] {
+  if (path === "read") return artifacts;
+  if (path === "unread") artifacts = withUnavailableCommands(artifacts);
+  const unjudged = (state: CommandFact["state"]) =>
+    path === "default" || (typeof state === "object" && state !== null && "NotOnPath" in state);
+  return artifacts.map((artifact) =>
+    artifact.facts.commands.some(({ state }) => unjudged(state))
+      ? {
+          ...artifact,
+          facts: {
+            ...artifact.facts,
+            commands: artifact.facts.commands.map((command) =>
+              unjudged(command.state) ? { ...command, state: null } : command,
+            ),
+          },
+        }
+      : artifact,
+  );
+}
+
+/** The notes that say what typing a tool's name in Terminal runs (`InstanceNote::is_about_terminals_path`). */
+const TERMINAL_PATH_NOTES: readonly InstanceNote[] = [
+  "NotOnPath",
+  "ShadowedByHomebrew",
+  "ShadowedByNpm",
+  "ShadowedByOther",
+];
+
+/**
+ * `instances` as a round's detection leaves them for `?path=`: with
+ * `default`, where the login shell's `PATH` was never read, no tool is said
+ * to be missing from Terminal or behind another program there
+ * (`refresh_round` drops those notes, as `judgedFor` leaves no verdict).
+ */
+function placedFor(path: ScenarioPath, instances: ManagerInstance[]): ManagerInstance[] {
+  if (path !== "default") return instances;
+  return instances.map((instance) =>
+    instance.status.notes.some((note) => TERMINAL_PATH_NOTES.includes(note))
+      ? {
+          ...instance,
+          status: {
+            ...instance.status,
+            notes: instance.status.notes.filter((note) => !TERMINAL_PATH_NOTES.includes(note)),
+          },
+        }
+      : instance,
+  );
+}
+
+export function createMockBackend(scenario: Scenario): MockBackend {
+  const world: World = buildWorld(scenario.state);
+  // The protected places' Mac: npm's folder is in one too.
+  if (scenario.path === "unread") withNpmPrefixProtected(world);
+  let settings: Settings = initialSettings(scenario);
+  let committed: Snapshot | null = null;
+  let generation = 0;
+  let round = 0;
+  let lastContent = JSON.stringify(snapshotContent(buildWorld("empty"), settings));
+  let lastAnnounced = 0;
+  const channels = new Set<EventChannel>();
+  const plans = new Map<PlanId, { issued: IssuedPlan; issuedAtMs: number }>();
+  let planCount = 0;
+  const operations = new Map<number, Operation>();
+  const waiting: number[] = [];
+  const held = new Set<string>();
+  let running = 0;
+  /**
+   * How many updates of each source and kind that may have changed
+   * something have ended (`OperationManager::upgrades_ended`,
+   * `may_have_moved_others`): one that moved its version, failed or was
+   * stopped partway. By kind too: Homebrew brings a formula's dependencies
+   * along, which are formulae.
+   */
+  const movedUpgrades = new Map<string, number>();
+  const movedKey = (request: { instance_id: string; artifact_kind: string }) =>
+    `${request.instance_id}\u0000${request.artifact_kind}`;
+  let nextOpId = 1;
+  /** What `get_sizes` answers: the newest round's sizes so far. */
+  let sizes: Sizes = NO_SIZES;
+  let sizesTimer: ReturnType<typeof setTimeout> | null = null;
+  /** `key|version` of every size measured so far, as the real meter's cache. */
+  const measuredBefore = new Set<string>();
+  /** What `get_history` answers: earlier launches' records, then this one's. */
+  let history: HistoryView = mockHistory(Date.now());
+  if (scenario.outcome === "follow-up") {
+    // Of the Intel Homebrew with `nonode-intel`, where it answers, so that
+    // the command its View Log hands over shows whose brew it names:
+    // /usr/local/bin/brew, not Terminal's (r33 T1). Not with `notices`,
+    // whose Intel Homebrew was never heard from: no update ran in it.
+    const homebrew = scenario.state === "nonode-intel" ? "brew:/usr/local" : "brew:/opt/homebrew";
+    history.records.unshift({
+      run: "mock-earlier-launch", op_id: 100, finished_at: Date.now() - 60_000,
+      key: { instance_id: homebrew, kind: "Formula", name: "node@22" },
+      display_name: "node@22", adapter_id: "brew", kind: "Update", from_version: "22.23.2", to_version: "22.23.3",
+      result: "Succeeded", verified: true,
+      follow_up_warnings: [{ NoLongerLinked: { name: "node@22", commands: ["node", "npm"] } }],
+    });
+  }
+  // What Show in Finder may show (`reveal::Revealable`): the paths the
+  // newest scan resolved.
+  let revealable = new Set<string>();
+
+  /** The part of a snapshot that decides its generation. */
+  function snapshotContent(from: World, current: Settings) {
+    return {
+      detect: from.detect,
+      instances: placedFor(scenario.path, from.instances),
+      // Which AI coding tool each is, set here once, as `families::assign`
+      // does where Rust puts a snapshot together.
+      // With `?path=default` the login shell's `PATH` was never read: no
+      // command has a verdict (`commands::judge`), only its name; with
+      // `?path=unread`, none that a folder not read might lead to.
+      artifacts: judgedFor(scenario.path, withFamilies(from.instances, from.artifacts)),
+      updates: updatesOf(from, current),
+      errors: from.errors,
+    };
+  }
+
+  /** The update rows a snapshot of `from` lists, the greedy ones included when switched on. */
+  function updatesOf(from: World, current: Settings) {
+    return current.include_self_updating ? [...from.updates, ...from.greedyUpdates] : from.updates;
+  }
+
+  /** Events reach the page asynchronously, in order, as over Tauri's IPC. */
+  function emit(event: UiEvent): void {
+    const payload = clone(event);
+    for (const channel of channels) {
+      setTimeout(() => channel.onmessage(payload), 0);
+    }
+  }
+
+  /**
+   * One refresh round's result, committed: numbered one above the last
+   * (`Snapshot::round`), the generation moving only when the content does
+   * (`Snapshot::same_content`), and a new generation announced once
+   * (`announce` in src-tauri/src/ipc.rs).
+   */
+  function commit(): Snapshot {
+    const content = withHeldCarried(snapshotContent(world, settings));
+    const serialized = JSON.stringify(content);
+    if (serialized !== lastContent) {
+      generation += 1;
+      lastContent = serialized;
+    }
+    round += 1;
+    const refreshedAt = nowSeconds();
+    committed = clone({
+      generation,
+      round,
+      ...content,
+      refreshed_at: refreshedAt,
+      stale: content.errors.length > 0,
+      // Every round here is the window's, and counts as a check: the daily
+      // one is due a day after it (`auto_check::next_check_due`), the
+      // weekly one a week, which Settings shows under its popup once it is
+      // on.
+      next_auto_check_at: refreshedAt + (checkEvery(settings) === "Week" ? 7 : 1) * DAY_SECONDS,
+    });
+    if (generation > lastAnnounced) {
+      lastAnnounced = generation;
+      emit({ SnapshotChanged: { generation } });
+    }
+    measureSizes(committed);
+    return clone(committed);
+  }
+
+  /**
+   * `content` with the rows and updates of every source an operation holds
+   * as the last snapshot had them, as `refresh_round` carries them forward
+   * rather than read a source that is being changed
+   * (crates/banager-core/src/session/refresh.rs): a tool a batch has
+   * already uninstalled stays listed until its source's last operation
+   * ends, and the Installed page says 「已卸载」 on it meanwhile.
+   */
+  function withHeldCarried(content: ReturnType<typeof snapshotContent>): ReturnType<typeof snapshotContent> {
+    const previous = committed;
+    if (previous === null) return content;
+    const busy = new Set(content.instances.filter((inst) => held.has(inst.id)).map((inst) => inst.id));
+    if (busy.size === 0) return content;
+    return {
+      ...content,
+      artifacts: [
+        ...content.artifacts.filter((a) => !busy.has(a.key.instance_id)),
+        ...previous.artifacts.filter((a) => busy.has(a.key.instance_id)),
+      ],
+      updates: [
+        ...content.updates.filter((u) => !busy.has(u.key.instance_id)),
+        ...previous.updates.filter((u) => busy.has(u.key.instance_id)),
+      ],
+    };
+  }
+
+  /**
+   * A round of measuring for `snapshot`, as `SizeMeter` runs one after
+   * each commit: what it will measure at once -- remembered ones filled
+   * in, the rest "measuring" -- then, `TIMING.sizes` later, everything;
+   * `SizesChanged` each time. A newer commit stops the older round. With
+   * `?sizes=pending` the round never finishes.
+   */
+  function measureSizes(snapshot: Snapshot): void {
+    if (sizesTimer !== null) clearTimeout(sizesTimer);
+    sizesTimer = null;
+    const remembered = (a: InstalledArtifact) => measuredBefore.has(`${artifactId(a)}|${a.version}`);
+    const round = snapshot.round;
+    sizes = mockSizes(round, snapshot.instances, snapshot.artifacts, remembered);
+    emit({ SizesChanged: { round } });
+    if (sizes.done || scenario.sizes === "pending") return;
+    sizesTimer = setTimeout(() => {
+      sizesTimer = null;
+      sizes = mockSizes(round, snapshot.instances, snapshot.artifacts, () => true);
+      for (const size of sizes.artifacts) {
+        measuredBefore.add(`${size.key.instance_id}|${size.key.kind}|${size.key.name}|${size.version}`);
+      }
+      emit({ SizesChanged: { round } });
+    }, TIMING.sizes);
+  }
+
+  function artifactId(artifact: InstalledArtifact): string {
+    return `${artifact.key.instance_id}|${artifact.key.kind}|${artifact.key.name}`;
+  }
+
+  /** The actionability gate `Session::issue_plan` and `Session::submit` apply. */
+  function gate(request: OpRequest) {
+    const inst = world.instances.find((i) => i.id === request.instance_id);
+    if (inst === undefined) throw refusal({ kind: "source_gone" });
+    if (inst.read_only_reason !== null || inst.status.unavailable !== null) {
+      throw refusal({
+        kind: "not_actionable",
+        read_only: inst.read_only_reason,
+        unavailable: inst.status.unavailable,
+      });
+    }
+    return inst;
+  }
+
+  /**
+   * The first round's list, before its update checks are done
+   * (`refresh_recording`'s `preview` in
+   * crates/banager-core/src/session/refresh.rs): sent at `TIMING.inventory`
+   * while nothing has committed, with every source detected and the rows of
+   * every one that answered -- not one that is not running, which is never
+   * asked for its list. Nothing listed, nothing sent; a round that has
+   * committed by then sends nothing either. Each AI tool's family is set,
+   * as Rust sets it on the preview; which copy of a command runs is not
+   * judged until the round commits, so `commands` is empty.
+   */
+  function previewFirstRound(): void {
+    const previewRound = round + 1;
+    setTimeout(() => {
+      if (committed !== null) return;
+      const answering = new Set(world.instances.filter((i) => i.status.unavailable === null).map((i) => i.id));
+      const artifacts = withFamilies(
+        world.instances,
+        world.artifacts.filter((a) => answering.has(a.key.instance_id)),
+      ).map((a) => ({ ...a, facts: { ...a.facts, commands: [] } }));
+      if (artifacts.length === 0) return;
+      const instances = placedFor(scenario.path, world.instances);
+      emit({ InventoryPreview: { round: previewRound, instances, artifacts } });
+    }, TIMING.inventory);
+  }
+
+  /** The update rows the next refresh reports, the greedy ones included when switched on. */
+  function currentUpdates() {
+    // Not `snapshotContent(...).updates`, which would set every row's family
+    // too: once per plan, a few thousand plans deep with `?state=huge`.
+    return updatesOf(world, settings);
+  }
+
+  // ------------------------------------------------------------ operations
+
+  function schedule(op: Operation, delay: number, run: () => void): void {
+    op.timers.push(setTimeout(run, delay));
+  }
+
+  function stopTimers(op: Operation): void {
+    for (const timer of op.timers) clearTimeout(timer);
+    op.timers = [];
+  }
+
+  function setStatus(op: Operation, status: OpStatus): void {
+    op.summary.status = status;
+    emit({ Operation: { Status: { op_id: op.summary.id, status } } });
+  }
+
+  function writeLine(op: Operation, line: LogLine): void {
+    const op_id = op.summary.id;
+    emit(
+      "note" in line
+        ? { Operation: { Note: { op_id, note: line.note } } }
+        : { Operation: { Log: { op_id, stream: line.stream, line: line.line } } },
+    );
+  }
+
+  /** What a succeeded operation changed, for the next refresh to find. */
+  function apply(plan: Plan): void {
+    const target = requestKey(plan.request);
+    const inst = world.instances.find((i) => i.id === target.instance_id);
+    if (plan.request.kind === "Upgrade") {
+      const candidate = currentUpdates().find((u) => sameKey(u.key, target));
+      const row = world.artifacts.find((a) => sameKey(a.key, target));
+      if (candidate !== undefined && row !== undefined) {
+        const previous = row.version;
+        // A model's version is its local manifest's digest: once pulled,
+        // that of the manifest it was offered (`manifest_digest` in
+        // crates/banager-core/src/adapters/ollama/mod.rs), bare.
+        row.version = target.kind === "Model" ? candidate.target.replace("sha256:", "") : candidate.target;
+        if (row.path !== null && previous !== "") row.path = row.path.split(previous).join(row.version);
+        // A standalone tool is its own source: its version is the tool's.
+        if (inst !== undefined && inst.adapter_id.startsWith("standalone-")) {
+          inst.version = row.version;
+          inst.unverified_version = unverifiedVersion(inst.adapter_id, row.version);
+        }
+      }
+      world.updates = world.updates.filter((u) => !sameKey(u.key, target));
+      world.greedyUpdates = world.greedyUpdates.filter((u) => !sameKey(u.key, target));
+      // Homebrew's cleanup follows only an update that exited 0: not one
+      // whose step after it failed (`?outcome=step-failed`).
+      if (scenario.outcome !== "follow-up" && scenario.outcome !== "step-failed") applyMockCleanup(plan, world);
+      return;
+    }
+    if (plan.request.kind === "Link") {
+      // `node` is back where Terminal looks: the source that needed it
+      // answers the next check, with no fix left to offer.
+      for (const needing of world.instances) {
+        if ((needing.status.no_answer?.link_fixes ?? []).some((fix) => sameKey(fix.key, target))) {
+          needing.status = { unavailable: null, notes: [], no_answer: null };
+          needing.version = NO_NODE_ANSWERS_AGAIN.get(needing.id) ?? needing.version;
+        }
+      }
+      return;
+    }
+    if (plan.request.kind === "Uninstall") {
+      world.artifacts = world.artifacts.filter((a) => !sameKey(a.key, target));
+      world.updates = world.updates.filter((u) => !sameKey(u.key, target));
+      world.greedyUpdates = world.greedyUpdates.filter((u) => !sameKey(u.key, target));
+      // With its launcher gone, detect no longer finds the tool at all.
+      if (inst !== undefined && inst.adapter_id.startsWith("standalone-")) {
+        world.instances = world.instances.filter((i) => i.id !== inst.id);
+      }
+    }
+  }
+
+  function finish(op: Operation, outcome: Outcome): void {
+    stopTimers(op);
+    op.summary.status = "Done";
+    op.summary.outcome = outcome;
+    if (scenario.outcome === "follow-up" && outcome === "Succeeded" && mockCleanupLines(op.plan, world).length > 0) {
+      op.summary.follow_up_warnings = [{ OldVersionsNotCleanedUp: { name: op.summary.name, exit_code: 1 } }];
+    }
+    // Installed though a step after it failed, its confirmation having
+    // said the old versions go: the cleanup never ran, as the core says
+    // (`say_promised_cleanup_did_not_run` in ops/mod.rs).
+    if (isUpdatedButStepFailed(outcome) && mockCleanupLines(op.plan, world).length > 0) {
+      op.summary.follow_up_warnings = [{ OldVersionsNotCleanedUp: { name: op.summary.name, exit_code: null } }];
+    }
+    // `?outcome=already`: done because it was already at its new version
+    // -- by an earlier update on Homebrew, where one update brings others
+    // along, when one of its source that may have changed something ended
+    // since it was submitted -- as `OperationManager::already_at_target`
+    // tells them apart.
+    const moved = movedUpgrades.get(movedKey(op.plan.request)) ?? 0;
+    if (op.already === true && outcome === "Succeeded") {
+      op.summary.already_updated =
+        adapterIdOf(op.summary.instance_id) === "brew" && moved > op.movedSeen ? "ByEarlierUpdate" : "BeforeItsTurn";
+    }
+    if (op.summary.kind === "Upgrade" && op.started && mayHaveMovedOthers(outcome, op.summary.already_updated)) {
+      movedUpgrades.set(movedKey(op.plan.request), moved + 1);
+    }
+    const target = requestKey(op.plan.request);
+    // Read before `apply`, which changes the row in place.
+    const row = world.artifacts.find((a) => sameKey(a.key, target));
+    const before = row === undefined ? null : { name: row.display_name, version: row.version };
+    // Installed though a step after it failed (`?outcome=step-failed`):
+    // the version moved as for a success.
+    if (outcome === "Succeeded" || isUpdatedButStepFailed(outcome)) apply(op.plan);
+    // Kept before `Finished` is sent, as `OnFinish` keeps it.
+    const record = mockRecord({
+      run: history.run,
+      opId: op.summary.id,
+      request: op.plan.request,
+      outcome,
+      started: op.started,
+      displayName: before?.name ?? target.name,
+      adapterId: world.instances.find((i) => i.id === target.instance_id)?.adapter_id ?? adapterIdOf(target.instance_id),
+      before: before?.version ?? null,
+      after: world.artifacts.find((a) => sameKey(a.key, target))?.version ?? null,
+      now: Date.now(),
+      alreadyUpdated: op.summary.already_updated ?? null,
+      followUpWarnings: op.summary.follow_up_warnings,
+    });
+    if (record !== null) history = { ...history, records: [{ ...record, dismissed: false }, ...history.records] };
+    if (op.started) {
+      for (const lock of op.plan.locks) held.delete(lock);
+      running -= 1;
+      op.started = false;
+    }
+    emit({ Operation: { Finished: { op_id: op.summary.id, outcome } } });
+    startWaiting();
+  }
+
+  /** Runs `op` from Queued to Finished: its tool's lines over `TIMING.run`. */
+  function start(op: Operation): void {
+    op.started = true;
+    running += 1;
+    for (const lock of op.plan.locks) held.add(lock);
+    const target = requestKey(op.plan.request);
+    const inst = world.instances.find((i) => i.id === target.instance_id);
+    if (inst === undefined) {
+      // Its source went while it waited (an uninstall of the same tool
+      // ahead of it): the real manager reports that as its own fault.
+      schedule(op, 0, () => finish(op, { BanagerFailed: "Internal" }));
+      return;
+    }
+    const subject: Subject = {
+      inst,
+      artifact: world.artifacts.find((a) => sameKey(a.key, target)),
+      candidate: currentUpdates().find((u) => sameKey(u.key, target)),
+    };
+    // `?outcome=mixed`: the session's 2nd, 4th, … operation fails.
+    let scripted =
+      scenario.outcome !== "mixed" ? scenario.outcome : op.summary.id % 2 === 0 ? "failed" : "succeeded";
+    if (scripted === "follow-up") scripted = "succeeded";
+    // `?outcome=already`: only an update the check offered a newer version
+    // is aimed at one (`offered_version`); a model's digest never is. On
+    // Homebrew the first of a source and kind updates for real, and brings
+    // the later ones along; elsewhere each is new before its turn.
+    if (scripted === "already") {
+      const aimed =
+        op.plan.request.kind === "Upgrade" &&
+        subject.candidate !== undefined &&
+        subject.candidate.checkable &&
+        subject.candidate.channel !== "Digest" &&
+        subject.candidate.current !== subject.candidate.target;
+      const first = inst.adapter_id === "brew" && (movedUpgrades.get(movedKey(op.plan.request)) ?? 0) === 0;
+      if (!aimed || first) scripted = "succeeded";
+      else op.already = true;
+    }
+    // Homebrew refuses to uninstall what something installed still needs,
+    // whatever else would have happened -- once it runs at all.
+    const refused = scripted === "banager" ? null : homebrewRefusal(world, inst, op.plan);
+    const played =
+      refused === null
+        ? // `?outcome=step-failed`: a Homebrew formula's update that is the
+          // session's 2nd, 4th, … operation fails its link step, the
+          // others their post-install step.
+          playOutcome(op.plan, subject, scripted, op.summary.id % 2 === 0)
+        : {
+            lines: refused.map((line): LogLine => ({ stream: "Stderr", line })),
+            outcome: { Failed: { exit_code: 1, summary: refused.join("\n"), cause: operationFailureCause(refused.join("\n")) } } satisfies Outcome,
+          };
+    const { outcome } = played;
+    // An update a `brew cleanup` follows (U9) goes on to it once it
+    // succeeded -- after the link of a keg-only formula linked by hand
+    // (y1-keg), which Homebrew did itself here.
+    const cleanup = mockCleanupLines(op.plan, world);
+    const cleanupLines: LogLine[] = scenario.outcome === "follow-up" && cleanup.length > 0
+      ? [{ note: { OldVersionsNotCleanedUp: { name: op.summary.name, exit_code: 1 } } }]
+      : cleanup;
+    // Installed though a step after it failed: the cleanup its
+    // confirmation promised did not run, said as the core says it.
+    const lines =
+      outcome === "Succeeded"
+        ? [...played.lines, ...mockRelinkLines(op.plan), ...cleanupLines]
+        : isUpdatedButStepFailed(outcome) && cleanup.length > 0
+          ? [...played.lines, { note: { OldVersionsNotCleanedUp: { name: op.summary.name, exit_code: null } } }]
+          : played.lines;
+    let at = TIMING.start;
+    schedule(op, at, () => setStatus(op, "Running"));
+    // A `brew update` a refresh left running: Homebrew operations wait
+    // for it first (`BrewAdapter::wait_for_update`), and say so.
+    if (subject.inst.adapter_id === "brew" && subject.inst.status.notes.includes("IndexUpdating")) {
+      schedule(op, at + 150, () =>
+        writeLine(op, { note: { WaitingForBrewUpdate: { minutes: 10 } } }),
+      );
+      at += TIMING.brewUpdateWait;
+    }
+    const step = TIMING.run / (lines.length + 1);
+    lines.forEach((line, index) => {
+      schedule(op, at + step * (index + 1), () => writeLine(op, line));
+    });
+    at += TIMING.run;
+    schedule(op, at, () => setStatus(op, "Verifying"));
+    schedule(op, at + TIMING.verify, () => finish(op, outcome));
+  }
+
+  /**
+   * Starts every waiting operation whose locks are free, oldest first --
+   * and none before an older one still waiting for one of its locks, as
+   * `OperationManager`'s queue keeps each one's turn
+   * (crates/banager-core/src/ops/mod.rs).
+   */
+  function startWaiting(): void {
+    const claimed = new Set<string>();
+    for (const id of [...waiting]) {
+      if (running >= MAX_RUNNING) return;
+      const op = operations.get(id);
+      if (op === undefined) continue;
+      const blocked = op.plan.locks.some((lock) => held.has(lock) || claimed.has(lock));
+      if (blocked) {
+        for (const lock of op.plan.locks) claimed.add(lock);
+        continue;
+      }
+      const index = waiting.indexOf(id);
+      if (index === -1) continue;
+      waiting.splice(index, 1);
+      start(op);
+    }
+  }
+
+  function submit(planId: PlanId): number {
+    const stored = plans.get(planId);
+    if (stored === undefined) throw refusal({ kind: "unknown" });
+    plans.delete(planId);
+    if (Date.now() - stored.issuedAtMs > PLAN_LIFETIME_MS) throw refusal({ kind: "expired" });
+    const { plan } = stored.issued;
+    // A link whose preview offered no Link, refused as `Session::submit`
+    // refuses it (`in_the_way_of_link`).
+    if (plan.request.kind === "Link") {
+      const paths = plan.warnings.flatMap((warning) => {
+        if (typeof warning === "string") return [];
+        if ("LinkConflicts" in warning) return warning.LinkConflicts.paths;
+        if ("LinkRollbackRisk" in warning) return warning.LinkRollbackRisk.paths;
+        return [];
+      });
+      if (paths.length > 0) throw refusal({ kind: "link_blocked", paths });
+    }
+    // A preview that named a source running on its package is never run.
+    if (namesASource(plan)) throw refusal({ kind: "uninstall_blocked", reason: "NeededBySource" });
+    gate(plan.request);
+    const id = nextOpId;
+    nextOpId += 1;
+    const op: Operation = {
+      summary: {
+        id,
+        kind: plan.request.kind,
+        instance_id: plan.request.instance_id,
+        artifact_kind: plan.request.artifact_kind,
+        name: plan.request.name,
+        status: "Queued",
+        outcome: null,
+        // A plan of two commands previews its first, as `summaries_of` in
+        // crates/banager-core/src/ops/mod.rs does (U9).
+        argv_preview:
+          "Command" in plan.action
+            ? [plan.action.Command.program, ...plan.action.Command.args]
+            : "CommandThen" in plan.action
+              ? [plan.action.CommandThen.program, ...plan.action.CommandThen.args]
+              : [],
+        env_preview:
+          "Command" in plan.action
+            ? plan.action.Command.env
+            : "CommandThen" in plan.action
+              ? plan.action.CommandThen.env
+              : [],
+        cancel_policy: plan.cancel_policy,
+      },
+      plan,
+      timers: [],
+      started: false,
+      movedSeen: movedUpgrades.get(movedKey(plan.request)) ?? 0,
+    };
+    operations.set(id, op);
+    emit({ Operation: { Status: { op_id: id, status: "Queued" } } });
+    waiting.push(id);
+    startWaiting();
+    return id;
+  }
+
+  /** `OperationManager::cancel`, as `cancel_operation_impl` reports it. */
+  function cancel(opId: number): void {
+    const op = operations.get(opId);
+    if (op === undefined) return;
+    if (op.summary.status === "Queued") {
+      // Nothing has run: the cancel is the whole story.
+      stopTimers(op);
+      const index = waiting.indexOf(opId);
+      if (index !== -1) waiting.splice(index, 1);
+      setStatus(op, "CancelRequested");
+      schedule(op, 150, () => finish(op, "Cancelled"));
+      return;
+    }
+    if (op.summary.status !== "Running") return; // Nothing pending to stop: a silent Ok.
+    if (op.plan.cancel_policy === "NoCancel") throw refusal({ kind: "no_cancel" });
+    stopTimers(op);
+    setStatus(op, "CancelRequested");
+    schedule(op, TIMING.cancel, () => setStatus(op, "Cancelling"));
+    schedule(op, TIMING.cancel + 300, () => setStatus(op, "Verifying"));
+    // A stopped upgrade proves nothing either way; a stopped uninstall
+    // that left the package in place is the user's cancel.
+    schedule(op, TIMING.cancel + 300 + TIMING.verify, () =>
+      finish(op, op.plan.request.kind === "Upgrade" ? "Unconfirmed" : "Cancelled"),
+    );
+  }
+
+  // --------------------------------------------------------------- commands
+
+  type Args = Record<string, unknown>;
+  const handlers: Record<MockCommand, (args: Args) => Promise<unknown>> = {
+    async get_snapshot() {
+      if (scenario.state === "error") throw BROKEN("get_snapshot");
+      if (committed === null) return clone(EMPTY_SNAPSHOT);
+      // The next automatic check, for how often it runs as the settings
+      // say now (`with_next_auto_check` in src-tauri/src/ipc.rs): a day,
+      // or a week, after the last round.
+      const days = checkEvery(settings) === "Week" ? 7 : 1;
+      return clone({
+        ...committed,
+        next_auto_check_at: committed.refreshed_at === null ? null : committed.refreshed_at + days * DAY_SECONDS,
+      });
+    },
+    async refresh() {
+      if (scenario.state === "loading") return never();
+      const failing = scenario.state === "error" || scenario.state === "refresh-error";
+      if (committed === null && !failing) previewFirstRound();
+      // Its list on screen, and the update checks never done.
+      if (scenario.state === "preview") return never();
+      await wait(TIMING.refresh);
+      if (scenario.state === "error" || scenario.state === "refresh-error") {
+        throw BROKEN("refresh");
+      }
+      return commit();
+    },
+    async plan_operation(args) {
+      const request = args.request as OpRequest;
+      // Before the gate, as `plan_operation_impl` (src-tauri/src/ipc.rs)
+      // refuses it: no page offers an install.
+      if (request.kind === "Install") throw refusal({ kind: "refused" });
+      const inst = gate(request);
+      await wait(
+        inst.adapter_id === "brew" && request.kind === "Uninstall" ? TIMING.brewUninstallPlan : TIMING.plan,
+      );
+      const target = requestKey(request);
+      if (request.kind === "Upgrade") {
+        const blocked = currentUpdates().find((u) => sameKey(u.key, target))?.blocked ?? null;
+        if (blocked !== null) throw refusal({ kind: "update_blocked", reason: blocked });
+      }
+      if (request.kind === "Uninstall") {
+        const blocked = world.artifacts.find((a) => sameKey(a.key, target))?.uninstall_blocked ?? null;
+        if (blocked !== null) throw refusal({ kind: "uninstall_blocked", reason: blocked });
+      }
+      // Only a formula a source's reason offers (`lists_request`).
+      if (
+        request.kind === "Link" &&
+        !world.instances.some((i) => (i.status.no_answer?.link_fixes ?? []).some((fix) => sameKey(fix.key, target)))
+      ) {
+        throw refusal({ kind: "not_listed" });
+      }
+      planCount += 1;
+      const issued: IssuedPlan = {
+        // 32 hex characters, like the real random token; counted, not random.
+        id: planCount.toString(16).padStart(32, "0"),
+        // What the uninstall leaves behind, named (`mockKeptData.ts`), then
+        // the sources that run on a Homebrew package (`mockNeededBy.ts`).
+        // And U9's old versions of a Homebrew formula (`mockOldVersions.ts`),
+        // and the link back of a keg-only one linked by hand (`mockKegLinks.ts`).
+        plan: withMockKegLinks(
+          withMockOldVersions(
+            withMockNeededBy(
+              withMockKeptData(
+                buildPlan(world, inst, request),
+                inst.adapter_id,
+                request,
+                world.instances.some((instance) => instance.adapter_id === "standalone-codex"),
+              ),
+              world,
+              request,
+              scenario.path !== "default",
+            ),
+            world,
+            request,
+          ),
+          request,
+        ),
+        issued_at: nowSeconds(),
+      };
+      plans.set(issued.id, { issued, issuedAtMs: Date.now() });
+      return clone(issued);
+    },
+    async submit_operation(args) {
+      return submit(args.planId as PlanId);
+    },
+    async cancel_operation(args) {
+      cancel(args.opId as number);
+    },
+    async list_operations() {
+      return [...operations.values()]
+        .map((op) => clone(op.summary))
+        .sort((a, b) => b.id - a.id);
+    },
+    async get_settings() {
+      return clone(settings);
+    },
+    async set_settings(args) {
+      settings = clone(args.settings as Settings);
+    },
+    async subscribe_events(args) {
+      channels.add(args.channel as EventChannel);
+    },
+    async open_ollama_app() {
+      await wait(TIMING.openOllama);
+      // The app starts; the next refresh finds the daemon answering.
+      for (const inst of world.instances) {
+        if (inst.adapter_id === "ollama" && inst.status.unavailable === "NotRunning") {
+          inst.status.unavailable = null;
+        }
+      }
+    },
+    async scan_unknown() {
+      if (scenario.state === "loading") return never();
+      await wait(TIMING.scan);
+      if (scenario.scan === "error") throw 'task 17 panicked with message "failed to read /usr/local/bin"';
+      const scan = unknownScan(scenario.scan);
+      revealable = new Set(scan.entries.flatMap((entry) => (entry.resolved === null ? [] : [entry.resolved])));
+      return scan;
+    },
+    async reveal_in_finder(args) {
+      // `reveal::reveal_impl`: only a path the newest scan resolved. The
+      // browser has no Finder, and the preview never asks this Mac's: it
+      // shows nothing, and says in the console what it was asked to show
+      // (with ./mockTauri.ts's marker, `MOCK_MARKER`).
+      const path = args.path as string;
+      if (!revealable.has(path)) throw JSON.stringify({ kind: "not_revealable" });
+      console.info(`[banager-ui-preview-mock] Show in Finder, not done in the preview: ${path}`);
+    },
+    async open_homepage(args) {
+      // `homepage::open_homepage_impl`: only, exactly, the trimmed homepage
+      // of a tool in the committed snapshot, and an https one with a host.
+      // The preview opens no browser: it says in the console what it was
+      // asked to open (with ./mockTauri.ts's marker, `MOCK_MARKER`).
+      const address = args.address as string;
+      const listed =
+        address !== "" && (committed?.artifacts ?? []).some((a) => a.homepage !== null && a.homepage.trim() === address);
+      if (!listed) throw JSON.stringify({ kind: "not_listed" });
+      let url: URL | null = null;
+      try {
+        url = new URL(address);
+      } catch {
+        url = null;
+      }
+      if (url === null || url.protocol !== "https:" || url.hostname === "") {
+        throw JSON.stringify({ kind: "not_web" });
+      }
+      console.info(`[banager-ui-preview-mock] Open homepage in the default browser, not done in the preview: ${url.href}`);
+    },
+    async artifact_icon(args) {
+      await wait(TIMING.icon);
+      // `Session::artifact_icon`: the key is only matched against the
+      // committed snapshot's rows, never read as a path; before the first
+      // refresh there are none.
+      const key = args.key as ArtifactKey;
+      const row = committed?.artifacts.find((a) => sameKey(a.key, key));
+      return row === undefined ? null : appIcon(row);
+    },
+    async get_sizes() {
+      // `Session::sizes`: what the newest round has said so far.
+      return clone(sizes);
+    },
+    async get_system_facts() {
+      // `diagnostics::current`: the committed snapshot's sources, none
+      // before the first refresh.
+      return mockSystemFacts(committed?.instances ?? [], scenario.path, committed !== null);
+    },
+    async get_history() {
+      // `Session::history`: every record, newest first.
+      return clone(history);
+    },
+    async clear_history() {
+      // `HistoryStore::clear`: dismiss existing records, keep later completions.
+      history = { ...history, cleared_before: Date.now(), records: history.records.map((record) => ({ ...record, dismissed: true })) };
+      return clone(history);
+    },
+    async report_update_set(args) {
+      // No notification to post: the preview has no daily check, and so no
+      // round of one (src-tauri/src/notify.rs posts only after one). It
+      // takes what the real command takes, a round and a list of pairs;
+      // Tauri turns anything else away.
+      if (typeof args.round !== "number" || !Array.isArray(args.updates)) {
+        throw `invalid args for command \`report_update_set\`: ${JSON.stringify(args)}`;
+      }
+    },
+    async report_finished_run(args) {
+      // No notification to post: the preview's window is the browser's
+      // tab, and nothing in it tells focus as macOS does
+      // (src-tauri/src/notify_ops.rs). It takes what the real command
+      // takes, one finished run; Tauri turns anything else away.
+      const run = args.run as Record<string, unknown> | undefined;
+      const counts = ["last_op", "succeeded", "failed", "attention"];
+      if (
+        typeof run !== "object" ||
+        run === null ||
+        !counts.every((field) => typeof run[field] === "number") ||
+        !["Upgrade", "Uninstall", "Other"].includes(run.kind as string)
+      ) {
+        throw `invalid args for command \`report_finished_run\`: ${JSON.stringify(args)}`;
+      }
+    },
+    async request_notification_permission() {
+      // Asks nobody: the preview posts no notification, so the switch
+      // turns on as it does where permission is granted.
+      return true;
+    },
+    async ask_before_quit(args) {
+      // Nothing to ask before: the browser has no Quit of Banager's, and
+      // the one `pnpm tauri:mock` shows is Rust's, which this page never
+      // reaches, so it never hears the question (./mockTauriEvent.ts).
+      // Like the real command, it takes whether the page asks; Tauri turns
+      // anything else away.
+      if (typeof args.ask !== "boolean") {
+        throw `invalid args \`ask\` for command \`ask_before_quit\`: ${JSON.stringify(args.ask)}`;
+      }
+    },
+    async quit_question_shown(args) {
+      // No question is ever asked here (above), so none is on screen; like
+      // the real command, it takes a question's number, a `u64`.
+      const { question } = args;
+      if (typeof question !== "number" || !Number.isSafeInteger(question) || question < 0) {
+        throw `invalid args \`question\` for command \`quit_question_shown\`: ${JSON.stringify(question)}`;
+      }
+    },
+    async quit_kept_waiting(args) {
+      // No question is ever asked here (above), so none is answered; like
+      // the real command, it takes a question's number, a `u64`.
+      const { question } = args;
+      if (typeof question !== "number" || !Number.isSafeInteger(question) || question < 0) {
+        throw `invalid args \`question\` for command \`quit_kept_waiting\`: ${JSON.stringify(question)}`;
+      }
+    },
+    async quit_anyway() {
+      // Nothing to quit: a page cannot quit the browser, nor reach the Rust
+      // of `pnpm tauri:mock`, and the preview never asks (above).
+    },
+    async set_menu_language(args) {
+      // No menu bar to build: the browser has none of Banager's, and the
+      // one `pnpm tauri:mock` shows is Rust's, which this page never
+      // reaches (./mockTauriEvent.ts). Like the real command, it takes
+      // only the window's three languages; Tauri turns any other away.
+      if (args.language !== "en" && args.language !== "zh-CN" && args.language !== "zh-Hant") {
+        throw `invalid args \`language\` for command \`set_menu_language\`: ${JSON.stringify(args.language)}`;
+      }
+    },
+  };
+
+  return {
+    async invoke(cmd, args) {
+      if (!(MOCK_COMMANDS as readonly string[]).includes(cmd)) {
+        throw `Command ${cmd} not found`;
+      }
+      const record = typeof args === "object" && args !== null ? (args as Args) : {};
+      return handlers[cmd as MockCommand](record);
+    },
+  };
+}

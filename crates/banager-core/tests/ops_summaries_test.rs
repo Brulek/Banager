@@ -1,0 +1,555 @@
+use async_trait::async_trait;
+use banager_core::adapters::{Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome};
+use banager_core::events::{EventSink, OpId, VecSink};
+use banager_core::model::{
+    ArtifactKey, ArtifactKind, CancelPolicy, InstalledArtifact, ManagerInstance, OpKind, OpRequest,
+    OpStatus, Outcome, Plan, PlanAction, Reconciled, ResourceLock, SearchHit,
+};
+use banager_core::ops::OperationManager;
+use banager_core::runner::HostEnv;
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::time::Duration;
+use tokio_util::sync::CancellationToken;
+
+struct FakeAdapter {
+    meta: AdapterMeta,
+    /// When `gated` is set, `execute()` waits for `release.notified()`
+    /// before returning instead of completing immediately. Lets a test hold
+    /// an operation in `Running` for as long as it likes — with no reliance
+    /// on real time — so it can register several `wait()` callers before
+    /// choosing the exact moment the operation finishes. Unset by default,
+    /// so every test that does not opt in still completes immediately.
+    gated: std::sync::atomic::AtomicBool,
+    release: Arc<tokio::sync::Notify>,
+}
+
+impl FakeAdapter {
+    fn new() -> FakeAdapter {
+        FakeAdapter {
+            meta: AdapterMeta {
+                id: "fake".to_string(),
+                name: "fake".to_string(),
+                kind: "fake".to_string(),
+                platforms: vec!["macos".to_string()],
+                homepage: "https://example.invalid".to_string(),
+                schema_version: 1,
+                verified_versions: vec![],
+            },
+            gated: std::sync::atomic::AtomicBool::new(false),
+            release: Arc::new(tokio::sync::Notify::new()),
+        }
+    }
+}
+
+#[async_trait]
+impl Adapter for FakeAdapter {
+    fn meta(&self) -> &AdapterMeta {
+        &self.meta
+    }
+
+    async fn detect(&self, _env: &HostEnv) -> Vec<ManagerInstance> {
+        Vec::new()
+    }
+
+    async fn inventory(
+        &self,
+        _inst: &ManagerInstance,
+    ) -> Result<Vec<InstalledArtifact>, AdapterError> {
+        Ok(Vec::new())
+    }
+
+    async fn check_updates(
+        &self,
+        _inst: &ManagerInstance,
+        _opts: &CheckOptions,
+    ) -> Result<CheckOutcome, AdapterError> {
+        Ok(CheckOutcome::default())
+    }
+
+    async fn search(
+        &self,
+        _inst: &ManagerInstance,
+        _query: &str,
+    ) -> Result<Vec<SearchHit>, AdapterError> {
+        Ok(Vec::new())
+    }
+
+    async fn plan(&self, inst: &ManagerInstance, req: &OpRequest) -> Result<Plan, AdapterError> {
+        Ok(Plan {
+            request: req.clone(),
+            action: PlanAction::Command {
+                program: inst.exe_path.clone(),
+                args: vec!["install".to_string(), req.name.clone()],
+                env: vec![],
+            },
+            needs_password: false,
+            locks: vec![ResourceLock(inst.id.clone())],
+            cancel_policy: CancelPolicy::KillThenReconcile,
+            warnings: vec![],
+            affected: vec![],
+            basis: None,
+            timeout_secs: 60,
+        })
+    }
+
+    async fn execute(
+        &self,
+        _plan: &Plan,
+        _sink: Arc<dyn EventSink>,
+        _op_id: OpId,
+        _cancel: CancellationToken,
+    ) -> Result<Outcome, AdapterError> {
+        if self.gated.load(std::sync::atomic::Ordering::SeqCst) {
+            self.release.notified().await;
+        }
+        Ok(Outcome::Succeeded)
+    }
+
+    async fn reconcile(
+        &self,
+        _inst: &ManagerInstance,
+        _key: &ArtifactKey,
+    ) -> Result<Reconciled, AdapterError> {
+        Ok(Reconciled {
+            present: true,
+            version: None,
+        })
+    }
+}
+
+fn make_instance(id: &str) -> ManagerInstance {
+    ManagerInstance {
+        version: None,
+        ..banager_core::testing::manager_instance("fake", id)
+    }
+}
+
+fn make_request(name: &str, instance_id: &str) -> OpRequest {
+    OpRequest {
+        kind: OpKind::Install,
+        instance_id: instance_id.to_string(),
+        artifact_kind: ArtifactKind::Formula,
+        name: name.to_string(),
+    }
+}
+
+#[tokio::test]
+async fn test_summaries_is_empty_before_anything_is_submitted() {
+    let mut manager = OperationManager::new(Arc::new(VecSink::new()));
+    manager.register_adapter(Arc::new(FakeAdapter::new()));
+    let manager = Arc::new(manager);
+    assert!(manager.summaries().is_empty());
+}
+
+#[tokio::test]
+async fn test_summaries_reflects_a_submitted_operation_and_its_argv_preview() {
+    let mut manager = OperationManager::new(Arc::new(VecSink::new()));
+    let adapter = Arc::new(FakeAdapter::new());
+    manager.register_adapter(adapter.clone());
+    let manager = Arc::new(manager);
+    let inst = make_instance("fake:1");
+    manager.register_instance(inst.clone());
+
+    let req = make_request("jq", "fake:1");
+    let plan = adapter.plan(&inst, &req).await.expect("plan");
+    let op_id = manager.submit(plan);
+    let outcome = manager.wait(op_id).await;
+    assert_eq!(outcome, Some(Outcome::Succeeded));
+
+    let summaries = manager.summaries();
+    assert_eq!(summaries.len(), 1);
+    let summary = &summaries[0];
+    assert_eq!(summary.id, op_id);
+    assert_eq!(summary.kind, OpKind::Install);
+    assert_eq!(summary.instance_id, "fake:1");
+    assert_eq!(summary.artifact_kind, ArtifactKind::Formula);
+    assert_eq!(summary.name, "jq");
+    assert_eq!(summary.status, OpStatus::Done);
+    assert_eq!(summary.outcome, Some(Outcome::Succeeded));
+    assert_eq!(
+        summary.argv_preview,
+        vec![
+            "/bin/true".to_string(),
+            "install".to_string(),
+            "jq".to_string()
+        ]
+    );
+}
+
+#[tokio::test]
+async fn test_summaries_are_ordered_newest_first() {
+    let mut manager = OperationManager::new(Arc::new(VecSink::new()));
+    let adapter = Arc::new(FakeAdapter::new());
+    manager.register_adapter(adapter.clone());
+    let manager = Arc::new(manager);
+    let inst = make_instance("fake:1");
+    manager.register_instance(inst.clone());
+
+    let plan_a = adapter
+        .plan(&inst, &make_request("aaa", "fake:1"))
+        .await
+        .unwrap();
+    let id_a = manager.submit(plan_a);
+    manager.wait(id_a).await;
+
+    let plan_b = adapter
+        .plan(&inst, &make_request("bbb", "fake:1"))
+        .await
+        .unwrap();
+    let id_b = manager.submit(plan_b);
+    manager.wait(id_b).await;
+
+    let summaries = manager.summaries();
+    assert_eq!(summaries.len(), 2);
+    assert_eq!(
+        summaries[0].id, id_b,
+        "the more recently submitted op must come first"
+    );
+    assert_eq!(summaries[1].id, id_a);
+}
+
+#[tokio::test]
+async fn test_records_are_capped_so_old_finished_operations_do_not_accumulate_forever() {
+    let mut manager = OperationManager::new(Arc::new(VecSink::new())).with_max_records(2);
+    let adapter = Arc::new(FakeAdapter::new());
+    manager.register_adapter(adapter.clone());
+    let manager = Arc::new(manager);
+    let inst = make_instance("fake:1");
+    manager.register_instance(inst.clone());
+
+    let mut ids = Vec::new();
+    for name in ["aaa", "bbb", "ccc"] {
+        let plan = adapter
+            .plan(&inst, &make_request(name, "fake:1"))
+            .await
+            .unwrap();
+        let id = manager.submit(plan);
+        manager.wait(id).await;
+        ids.push(id);
+    }
+
+    let summaries = manager.summaries();
+    assert_eq!(
+        summaries.len(),
+        2,
+        "the cap of 2 must be enforced once a third operation completes"
+    );
+    assert!(
+        summaries.iter().all(|s| s.id != ids[0]),
+        "the oldest finished operation must be the one evicted"
+    );
+    assert!(summaries.iter().any(|s| s.id == ids[2]));
+}
+
+#[tokio::test]
+async fn test_wait_does_not_hang_after_finish() {
+    // This only guards against an unbounded stall (e.g. a regression to a
+    // dropped notification that never wakes `wait()` at all). It does
+    // *not* prove the 20ms poll loop is gone — the old poll-based
+    // implementation would pass this same assertion, just slower — so it
+    // must not be read as a performance regression test. That property is
+    // covered by `test_multiple_waiters_all_wake_once_the_op_finishes`
+    // below, which uses a controlled synchronization point instead of a
+    // wall-clock bound and so cannot flake under CI load the way tightening
+    // this timeout would.
+    let mut manager = OperationManager::new(Arc::new(VecSink::new()));
+    let adapter = Arc::new(FakeAdapter::new());
+    manager.register_adapter(adapter.clone());
+    let manager = Arc::new(manager);
+    let inst = make_instance("fake:1");
+    manager.register_instance(inst.clone());
+
+    let plan = adapter
+        .plan(&inst, &make_request("jq", "fake:1"))
+        .await
+        .unwrap();
+    let op_id = manager.submit(plan);
+    let outcome = tokio::time::timeout(Duration::from_millis(200), manager.wait(op_id))
+        .await
+        .expect("wait() should not hang");
+    assert_eq!(outcome, Some(Outcome::Succeeded));
+}
+
+#[tokio::test]
+async fn test_multiple_waiters_all_wake_once_the_op_finishes() {
+    // Exercises the actual race `wait()`'s "create `notified()` before
+    // checking status" ordering exists to prevent, with several concurrent
+    // waiters instead of one. The synchronization is entirely deterministic
+    // — a gate on `execute()` plus cooperative yielding, no sleeps or
+    // timing thresholds — so this cannot be flaky under CI load the way a
+    // tightened wall-clock bound would be.
+    let mut manager = OperationManager::new(Arc::new(VecSink::new()));
+    let adapter = Arc::new(FakeAdapter::new());
+    adapter
+        .gated
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    manager.register_adapter(adapter.clone());
+    let manager = Arc::new(manager);
+    let inst = make_instance("fake:1");
+    manager.register_instance(inst.clone());
+
+    let plan = adapter
+        .plan(&inst, &make_request("jq", "fake:1"))
+        .await
+        .unwrap();
+    let op_id = manager.submit(plan);
+
+    // Wait until `execute()` has actually been entered and is blocked on
+    // the gate (status == Running), so there is no window in which the op
+    // could finish before any waiter is spawned.
+    loop {
+        if manager.record(op_id).map(|r| r.status) == Some(OpStatus::Running) {
+            break;
+        }
+        tokio::task::yield_now().await;
+    }
+
+    let waiters: Vec<_> = (0..5)
+        .map(|_| {
+            let manager = manager.clone();
+            tokio::spawn(async move { manager.wait(op_id).await })
+        })
+        .collect();
+
+    // Give every spawned waiter a chance to run up to its `notified().await`
+    // point before the op is allowed to finish, so this test actually
+    // exercises concurrent registered waiters rather than each one simply
+    // observing an already-`Done` status.
+    for _ in 0..50 {
+        tokio::task::yield_now().await;
+    }
+    // `notify_one`, not `notify_waiters`: exactly one `execute()` call is
+    // ever blocked on this gate, and `notify_one` (unlike `notify_waiters`)
+    // stores its permit if `execute()` has not reached the await yet, so
+    // this can never race the gate itself.
+    adapter.release.notify_one();
+
+    for w in waiters {
+        assert_eq!(
+            w.await.expect("waiter task panicked"),
+            Some(Outcome::Succeeded)
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_summaries_gives_a_plan_that_runs_no_command_an_empty_argv_preview() {
+    // A path-list uninstall (`PlanAction::TrashPaths`) spawns nothing, so
+    // there is no argv to preview: an empty list, never an invented one.
+    // (The uninstall dialog shows the paths through the plan's
+    // `WillTrash` warnings instead.) No environment either.
+    let mut manager = OperationManager::new(Arc::new(VecSink::new()));
+    let adapter = Arc::new(FakeAdapter::new());
+    manager.register_adapter(adapter.clone());
+    let manager = Arc::new(manager);
+    let inst = make_instance("fake:1");
+    manager.register_instance(inst.clone());
+
+    let plan = Plan {
+        request: OpRequest {
+            kind: OpKind::Uninstall,
+            instance_id: "fake:1".to_string(),
+            artifact_kind: ArtifactKind::Binary,
+            name: "claude".to_string(),
+        },
+        action: PlanAction::TrashPaths {
+            paths: vec![PathBuf::from("/Users/someone/.local/bin/claude")],
+            previewed: Vec::new(),
+        },
+        needs_password: false,
+        locks: vec![ResourceLock("fake:1".to_string())],
+        cancel_policy: CancelPolicy::KillThenReconcile,
+        warnings: vec![],
+        affected: vec![],
+        basis: None,
+        timeout_secs: 120,
+    };
+    let op_id = manager.submit(plan);
+    manager.wait(op_id).await;
+
+    let summary = manager.summaries().remove(0);
+    assert_eq!(summary.id, op_id);
+    assert_eq!(summary.kind, OpKind::Uninstall);
+    assert!(summary.argv_preview.is_empty());
+    assert!(summary.env_preview.is_empty());
+}
+
+#[tokio::test]
+async fn test_summaries_preview_the_first_command_of_a_plan_of_two() {
+    // A Homebrew upgrade followed by `brew cleanup` (U9,
+    // `PlanAction::CommandThen`): the command an operation hands over for
+    // Terminal (`PasswordCommand.tsx`) is the upgrade, with its variables;
+    // the cleanup that follows it is not what a password failure is about.
+    let mut manager = OperationManager::new(Arc::new(VecSink::new()));
+    let adapter = Arc::new(FakeAdapter::new());
+    manager.register_adapter(adapter.clone());
+    let manager = Arc::new(manager);
+    let inst = make_instance("fake:1");
+    manager.register_instance(inst.clone());
+
+    let env = vec![("HOMEBREW_NO_AUTOREMOVE".to_string(), "1".to_string())];
+    let plan = Plan {
+        request: OpRequest {
+            kind: OpKind::Upgrade,
+            instance_id: "fake:1".to_string(),
+            artifact_kind: ArtifactKind::Formula,
+            name: "wget".to_string(),
+        },
+        action: PlanAction::CommandThen {
+            program: PathBuf::from("/opt/homebrew/bin/brew"),
+            args: vec![
+                "upgrade".to_string(),
+                "--formula".to_string(),
+                "wget".to_string(),
+            ],
+            env: env.clone(),
+            then: vec![vec!["cleanup".to_string(), "wget".to_string()]],
+        },
+        needs_password: false,
+        locks: vec![ResourceLock("fake:1".to_string())],
+        cancel_policy: CancelPolicy::KillThenReconcile,
+        warnings: vec![],
+        affected: vec![],
+        basis: None,
+        timeout_secs: 60,
+    };
+    let op_id = manager.submit(plan);
+    manager.wait(op_id).await;
+
+    let summary = manager.summaries().remove(0);
+    assert_eq!(
+        summary.argv_preview,
+        ["/opt/homebrew/bin/brew", "upgrade", "--formula", "wget"]
+    );
+    assert_eq!(summary.env_preview, env);
+}
+
+#[tokio::test]
+async fn test_summaries_carry_the_plans_environment_in_its_order_and_on_the_wire() {
+    // A failed operation hands its command over for Terminal
+    // (`src/components/PasswordCommand.tsx`): with the variables the plan
+    // set, so `HOMEBREW_NO_AUTOREMOVE=1` and the rest go with it.
+    let mut manager = OperationManager::new(Arc::new(VecSink::new()));
+    let adapter = Arc::new(FakeAdapter::new());
+    manager.register_adapter(adapter.clone());
+    let manager = Arc::new(manager);
+    let inst = make_instance("fake:1");
+    manager.register_instance(inst.clone());
+
+    let req = make_request("example", "fake:1");
+    let mut plan = adapter.plan(&inst, &req).await.expect("plan");
+    let env = vec![
+        ("HOMEBREW_NO_AUTOREMOVE".to_string(), "1".to_string()),
+        ("NO_COLOR".to_string(), "1".to_string()),
+    ];
+    if let PlanAction::Command { env: plan_env, .. } = &mut plan.action {
+        *plan_env = env.clone();
+    }
+    let op_id = manager.submit(plan);
+    manager.wait(op_id).await;
+
+    let summary = manager.summaries().remove(0);
+    assert_eq!(summary.env_preview, env);
+
+    let wire = serde_json::to_value(&summary).expect("serialize");
+    assert_eq!(
+        wire["env_preview"],
+        serde_json::json!([["HOMEBREW_NO_AUTOREMOVE", "1"], ["NO_COLOR", "1"]])
+    );
+    let back: banager_core::ops::OpSummary = serde_json::from_value(wire).expect("deserialize");
+    assert_eq!(back, summary);
+}
+
+/// The completion notification counts a run from the backend's own
+/// records (`ReportedRuns::completed`). Records are capped, and a run
+/// longer than the cap -- or a report that arrives after enough newer
+/// operations -- has its oldest operations evicted before it is told of.
+/// An evicted operation must still be counted, and must never leave the
+/// boundary stuck so that no later run is told of until a restart.
+#[tokio::test]
+async fn regression_an_evicted_operation_never_stops_later_runs_being_told_of() {
+    use banager_core::notify_operations::{report, FinishedRun, ReportedRuns, RunKind, RunNotice};
+    use banager_core::notify_updates::Focus;
+
+    let mut manager = OperationManager::new(Arc::new(VecSink::new())).with_max_records(2);
+    let adapter = Arc::new(FakeAdapter::new());
+    manager.register_adapter(adapter.clone());
+    let manager = Arc::new(manager);
+    let inst = make_instance("fake:1");
+    manager.register_instance(inst.clone());
+    let run_of = |names: &'static [&'static str]| {
+        let (manager, adapter, inst) = (manager.clone(), adapter.clone(), inst.clone());
+        async move {
+            let mut ids = Vec::new();
+            for name in names {
+                let plan = adapter
+                    .plan(&inst, &make_request(name, "fake:1"))
+                    .await
+                    .unwrap();
+                let id = manager.submit(plan);
+                manager.wait(id).await;
+                ids.push(id);
+            }
+            ids
+        }
+    };
+    let ids = run_of(&["aaa", "bbb", "ccc"]).await;
+    assert!(
+        manager.summaries().iter().all(|s| s.id != ids[0]),
+        "the run's first operation is evicted before the run is reported"
+    );
+
+    let mut reported = ReportedRuns::default();
+    let mut posted = Vec::new();
+    let whole = reported
+        .completed(ids[2], &manager.completions_after(reported.through()))
+        .expect("a run whose first operation was evicted is still counted");
+    assert_eq!(
+        whole,
+        FinishedRun {
+            last_op: ids[2],
+            kind: RunKind::Other,
+            succeeded: 3,
+            failed: 0,
+            attention: 0,
+        }
+    );
+    assert_eq!(
+        report(&mut reported, true, Focus::Away, &whole, |run| {
+            posted.push(*run);
+            Ok(())
+        }),
+        Ok(RunNotice::Post)
+    );
+
+    // A new run, whose submission evicts the second operation too.
+    let id = run_of(&["ddd"]).await[0];
+    let next = reported
+        .completed(id, &manager.completions_after(reported.through()))
+        .expect("eviction never stops a later run being told of");
+    assert_eq!(
+        report(&mut reported, true, Focus::Away, &next, |run| {
+            posted.push(*run);
+            Ok(())
+        }),
+        Ok(RunNotice::Post)
+    );
+    assert_eq!(posted.len(), 2);
+    assert_eq!(posted[1].succeeded, 1);
+
+    // A run the page never reported, evicted before the next run ends:
+    // that next report takes it in, and is told of.
+    run_of(&["eee", "fff"]).await;
+    let last = *run_of(&["ggg"]).await.last().unwrap();
+    assert!(manager.summaries().iter().all(|s| s.id > id + 1));
+    let both = reported
+        .completed(last, &manager.completions_after(reported.through()))
+        .expect("an unreported run evicted since is counted with the next");
+    assert_eq!(both.succeeded, 3);
+    assert_eq!(
+        manager.completions_after(both.last_op).evicted.len(),
+        0,
+        "nothing accepted is kept once the boundary passes it"
+    );
+}

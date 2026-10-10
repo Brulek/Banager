@@ -1,6 +1,10 @@
 use crate::events::ChannelSink;
-use canager_core::session::Session;
-use canager_core::settings::{self, Settings};
+use banager_core::auto_check::RoundLog;
+use banager_core::notify_updates::Notified;
+use banager_core::runner::login_path::LoginPath;
+use banager_core::runner::HostEnv;
+use banager_core::session::Session;
+use banager_core::settings::{self, Settings};
 use std::path::PathBuf;
 use std::sync::Mutex;
 
@@ -9,11 +13,43 @@ pub struct AppState {
     pub settings_path: PathBuf,
     pub settings: Mutex<Settings>,
     pub channel_sink: std::sync::Arc<ChannelSink>,
+    /// The last `Snapshot::generation` this process has ever broadcast as a
+    /// `SnapshotChanged` event (Task 13). `refresh_impl` compares against
+    /// this with a compare-and-swap instead of each call's own "before"
+    /// reading of `session.snapshot()`, so that when two `refresh_impl`
+    /// calls coalesce inside `Session::refresh` and both receive the same
+    /// resulting Snapshot, only one of them ever wins the swap and
+    /// broadcasts -- never both. The one exception is `ipc::announce`'s:
+    /// a caller that ran for the daily check broadcasts whether or not it
+    /// won.
+    pub last_broadcast_generation: std::sync::atomic::AtomicU64,
+    /// Who asked for each refresh round: the window or the daily check.
+    /// Written by `ipc::refresh_for` for every round before the round's
+    /// snapshot is committed, and by each call that shares it as it takes
+    /// it (`Session::refresh_recording`) -- for the refresh a finished
+    /// `brew update` sets off (`ipc::refresh_on_background_change`), with
+    /// whose round started that update read then
+    /// (`RoundLog::record_follow_up`), and for the daily check's own, with
+    /// the look that started it (`RoundLog::record_daily`); read by
+    /// `notify::report` for the round the page reports, and by
+    /// `auto_check::tick_at` for when the last round that counts as a check
+    /// ended and the daily checks in which every source failed since. In
+    /// memory only.
+    pub rounds: Mutex<RoundLog>,
+    /// The (row, version) pairs this run has told the user about in the
+    /// update notification, or that the user saw in the window, for the rows
+    /// the snapshot still offers (`notify::report_offered`): what
+    /// `notify::report` goes by. In memory only.
+    pub notified: Mutex<Notified>,
+    /// The login shell's `PATH`, read in the background (`LoginPath`):
+    /// set by `run()` as the app starts, which starts the first read; never
+    /// in a test, whose refreshes then read nothing (`read_login_path`).
+    pub login_path: std::sync::OnceLock<std::sync::Arc<LoginPath>>,
 }
 
 impl AppState {
     /// Loads settings from `settings_path` (falling back to defaults per
-    /// `canager_core::settings::load`'s contract) and builds a `Session`
+    /// `banager_core::settings::load`'s contract) and builds a `Session`
     /// wired to `channel_sink` as its event sink.
     pub fn new(settings_path: PathBuf, channel_sink: std::sync::Arc<ChannelSink>) -> AppState {
         let loaded = settings::load(&settings_path);
@@ -23,6 +59,51 @@ impl AppState {
             settings_path,
             settings: Mutex::new(loaded),
             channel_sink,
+            last_broadcast_generation: std::sync::atomic::AtomicU64::new(0),
+            rounds: Mutex::new(RoundLog::default()),
+            notified: Mutex::new(Notified::default()),
+            login_path: std::sync::OnceLock::new(),
+        }
+    }
+
+    /// Waits for the login shell's `PATH` -- the read the app started as
+    /// it opened, or, when the last read failed or ran out of time, one
+    /// more (`LoginPath::ensure`) -- and tells the session whether `PATH`
+    /// is now the login shell's (`Session::note_login_path`). Every
+    /// refresh does this before it looks for sources (`ipc::refresh_for`),
+    /// so Check Again reads a shell that failed again. Nothing to wait for
+    /// where nothing set one up (a test).
+    pub async fn read_login_path(&self) {
+        let Some(probe) = self.login_path.get() else {
+            return;
+        };
+        probe.ensure().await;
+        // Whether any read has worked, not this call's answer, looked at
+        // and told one caller at a time (`LoginPath::tell`): a caller that
+        // waited on a failed read must not take back a later success.
+        probe.tell(|read| self.session.note_login_path(read));
+    }
+
+    /// What a refresh round looks along and whether that `PATH` is the
+    /// login shell's, as one value, after `read_login_path`: from one look
+    /// at the `PATH` read (`runner::login_path::round_env`), so a read that
+    /// works while the round runs changes neither for it
+    /// (`Session::refresh_recording_on`). Where nothing set a read up, the
+    /// process's own `PATH` and what the session was told -- except in this
+    /// crate's tests, where nothing sets one up and the environment is
+    /// `test_round_env`'s: no `PATH` folder and a home folder that is never
+    /// made, so that no test lists this Mac's `PATH` folders or looks in
+    /// its home.
+    pub async fn round_env(&self) -> (HostEnv, bool) {
+        self.read_login_path().await;
+        if self.login_path.get().is_some() {
+            banager_core::runner::login_path::round_env()
+        } else {
+            #[cfg(not(test))]
+            let env = HostEnv::discover();
+            #[cfg(test)]
+            let env = test_round_env();
+            (env, self.session.login_path_restored())
         }
     }
 
@@ -43,23 +124,45 @@ impl AppState {
     /// actually lands on disk last is also the one left in memory. This
     /// stays synchronous throughout (no `.await` inside), so holding a
     /// `std::sync::Mutex` guard across it is safe.
+    ///
+    /// `welcome_seen` is kept true once it is (`Settings::keep_welcome_seen`):
+    /// a page holding settings read before the welcome sheet closed cannot
+    /// bring the sheet back by saving over them.
     pub fn set_settings(&self, new_settings: Settings) -> std::io::Result<()> {
         let mut settings = self.settings.lock().unwrap();
+        let new_settings = new_settings.keep_welcome_seen(&settings);
         settings::save(&self.settings_path, &new_settings)?;
         *settings = new_settings;
         Ok(())
     }
 }
 
+/// The environment a test's refresh rounds read (`AppState::round_env`):
+/// none of this Mac's -- no `PATH` folder, a home folder under the temp
+/// folder that no test makes, no Cargo, rustup or Ollama setting -- with
+/// the process's own effective user.
+#[cfg(test)]
+pub(crate) fn test_round_env() -> HostEnv {
+    HostEnv {
+        path_dirs: Vec::new(),
+        home: std::env::temp_dir().join(format!("banager-shell-test-home-{}", std::process::id())),
+        euid: HostEnv::discover().euid,
+        cargo_home: None,
+        rustup_home: None,
+        zdotdir: None,
+        ollama_host: None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use canager_core::model::{ArtifactKey, ArtifactKind};
+    use banager_core::model::{ArtifactKey, ArtifactKind};
     use std::sync::Arc;
 
     fn temp_settings_path(tag: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
-            "canager-appstate-{}-{}-{}",
+            "banager-appstate-{}-{}-{}",
             tag,
             std::process::id(),
             std::time::SystemTime::now()
@@ -67,6 +170,78 @@ mod tests {
                 .unwrap()
                 .as_nanos()
         ))
+    }
+
+    /// Opus review finding 2: a read that ran out of time leaves the
+    /// session told so, and the next refresh -- Check Again -- reads again
+    /// and tells it the PATH is the login shell's. Through a mock runner:
+    /// no shell runs, and the read `PATH` goes nowhere but the test.
+    #[tokio::test]
+    async fn test_a_refresh_after_a_failed_read_reads_the_login_shell_again() {
+        use banager_core::runner::{CommandOutput, MockRunner};
+        let state = AppState::new(temp_settings_path("login-path"), ChannelSink::new());
+        // No read set up (a test's state): nothing to wait for.
+        state.read_login_path().await;
+        assert!(state.session.login_path_restored());
+
+        let runner = Arc::new(MockRunner::new());
+        let argv = vec![
+            "/test-shell",
+            "-ilc",
+            "echo -n \"_SHELL_ENV_DELIMITER_\"; env; echo -n \"_SHELL_ENV_DELIMITER_\"; exit",
+        ];
+        runner.respond(
+            argv.clone(),
+            CommandOutput {
+                stderr_cause: Default::default(),
+                exit_code: None,
+                stdout: String::new(),
+                stderr: String::new(),
+                timed_out: true,
+                cancelled: false,
+            },
+        );
+        let published = Arc::new(Mutex::new(Vec::new()));
+        let to = published.clone();
+        let _ = state.login_path.set(Arc::new(LoginPath::new(
+            runner.clone(),
+            "/test-shell".into(),
+            "/tmp".into(),
+            banager_core::runner::login_path::TIMEOUT,
+            move |found: &banager_core::runner::login_path::LoginEnv| {
+                to.lock().unwrap().push(found.path.clone())
+            },
+        )));
+        state.read_login_path().await;
+        assert!(!state.session.login_path_restored());
+        assert!(published.lock().unwrap().is_empty());
+        // A round begun now -- itself a refresh, so it reads once more, and
+        // fails again -- goes along the process's own PATH, taken as not
+        // the login shell's (Astra's j2 review, finding 2).
+        let (_, known) = state.round_env().await;
+        assert!(!known);
+        assert_eq!(runner.calls().len(), 2);
+
+        runner.respond(
+            argv,
+            CommandOutput {
+                stderr_cause: Default::default(),
+                exit_code: Some(0),
+                stdout:
+                    "_SHELL_ENV_DELIMITER_PATH=/opt/homebrew/bin:/usr/bin\n_SHELL_ENV_DELIMITER_"
+                        .to_string(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        state.read_login_path().await;
+        assert!(state.session.login_path_restored());
+        assert_eq!(*published.lock().unwrap(), ["/opt/homebrew/bin:/usr/bin"]);
+        assert_eq!(runner.calls().len(), 3);
+        // Read: no shell runs again.
+        state.read_login_path().await;
+        assert_eq!(runner.calls().len(), 3);
     }
 
     #[test]
@@ -96,6 +271,34 @@ mod tests {
             .expect("set_settings");
         assert_eq!(state.get_settings(), new_settings);
         assert_eq!(settings::load(&path), new_settings);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_set_settings_never_turns_welcome_seen_back_off() {
+        let path = temp_settings_path("welcome");
+        let _ = std::fs::remove_file(&path);
+        let state = AppState::new(path.clone(), ChannelSink::new());
+        assert!(
+            !state.get_settings().welcome_seen,
+            "shown at the first launch"
+        );
+        state
+            .set_settings(Settings {
+                welcome_seen: true,
+                ..Settings::default()
+            })
+            .expect("the sheet closes");
+        // Settings a page read before the sheet closed, saved with a change.
+        state
+            .set_settings(Settings {
+                show_technical_details: true,
+                ..Settings::default()
+            })
+            .expect("a stale save");
+        let saved = settings::load(&path);
+        assert!(saved.welcome_seen && saved.show_technical_details);
+        assert_eq!(state.get_settings(), saved);
         let _ = std::fs::remove_file(&path);
     }
 

@@ -1,13 +1,35 @@
-use canager_core::events::EventSink;
+use banager_core::events::EventSink;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use tauri::ipc::Channel;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum UiEvent {
-    Operation(canager_core::events::OperationEvent),
-    SnapshotChanged { generation: u64 },
+    Operation(banager_core::events::OperationEvent),
+    SnapshotChanged {
+        generation: u64,
+    },
+    /// What the first refresh round since launch found installed, before
+    /// its update checks are done (`Session::refresh_recording`'s
+    /// `preview`). The page shows the Installed list from it, every Update
+    /// and Uninstall off, while it still has only the startup placeholder,
+    /// and drops it when a snapshot arrives. Not a snapshot: nothing was
+    /// committed, so `get_snapshot` still answers with the placeholder.
+    /// Sent by `ipc::refresh_for` alone.
+    InventoryPreview(banager_core::session::InventoryPreview),
+    /// What `get_sizes` answers has moved, for the snapshot of `round`
+    /// (`EventSink::sizes_changed`): the window asks again. A struct
+    /// variant, so it is an object on the wire as the others are --
+    /// `src/lib/events.ts` tells them apart with `in`.
+    SizesChanged {
+        round: u64,
+    },
 }
+
+/// How many Channels `ChannelSink` sends to at most: the newest. Banager
+/// has one window, whose page subscribes once each time it loads
+/// (`subscribeEvents` in src/lib/api.ts).
+pub const MAX_CHANNELS: usize = 8;
 
 /// Fans every core event out to all registered Channels; a Channel whose
 /// send fails (window closed) is dropped from the registry.
@@ -22,8 +44,16 @@ impl ChannelSink {
         })
     }
 
+    /// Adds `channel`, keeping only the newest `MAX_CHANNELS`. A page that
+    /// reloads subscribes again, and a send to the channel of the page it
+    /// replaced need not fail, so that one would be sent every event for
+    /// as long as Banager runs; nor can a page that subscribes over and
+    /// over make each event cost one send per call it made.
     pub fn register(&self, channel: Channel<UiEvent>) {
-        self.channels.lock().unwrap().push(channel);
+        let mut channels = self.channels.lock().unwrap();
+        channels.push(channel);
+        let extra = channels.len().saturating_sub(MAX_CHANNELS);
+        channels.drain(..extra);
     }
 
     pub fn broadcast(&self, event: UiEvent) {
@@ -33,16 +63,20 @@ impl ChannelSink {
 }
 
 impl EventSink for ChannelSink {
-    fn emit(&self, event: canager_core::events::OperationEvent) {
+    fn emit(&self, event: banager_core::events::OperationEvent) {
         self.broadcast(UiEvent::Operation(event));
+    }
+
+    fn sizes_changed(&self, round: u64) {
+        self.broadcast(UiEvent::SizesChanged { round });
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use canager_core::events::OperationEvent;
-    use canager_core::model::OpStatus;
+    use banager_core::events::OperationEvent;
+    use banager_core::model::OpStatus;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[test]
@@ -85,6 +119,25 @@ mod tests {
     }
 
     #[test]
+    fn test_only_the_newest_channels_are_kept_however_often_the_page_subscribes() {
+        let sink = ChannelSink::new();
+        let received: Arc<Mutex<Vec<usize>>> = Arc::new(Mutex::new(Vec::new()));
+        for n in 0..(MAX_CHANNELS * 4) {
+            let r = received.clone();
+            sink.register(Channel::new(move |_body| {
+                r.lock().unwrap().push(n);
+                Ok(())
+            }));
+        }
+        assert_eq!(sink.channels.lock().unwrap().len(), MAX_CHANNELS);
+        sink.broadcast(UiEvent::SnapshotChanged { generation: 1 });
+        let mut got = received.lock().unwrap().clone();
+        got.sort_unstable();
+        let newest: Vec<usize> = (MAX_CHANNELS * 3..MAX_CHANNELS * 4).collect();
+        assert_eq!(got, newest, "the newest subscriptions hear it, once each");
+    }
+
+    #[test]
     fn test_broadcast_removes_a_channel_from_the_registry_after_its_send_fails() {
         // This manufactures the send failure directly; it does not — and,
         // from a unit test with no real webview, cannot — prove anything
@@ -123,6 +176,62 @@ mod tests {
     }
 
     #[test]
+    fn test_inventory_preview_wire_shape_is_what_the_typescript_mirror_expects() {
+        // Byte for byte what `src/lib/types.test.ts` builds as a typed
+        // `UiEvent`: a newtype variant, so a one-key object carrying the
+        // preview, its fields in declaration order.
+        let empty = UiEvent::InventoryPreview(banager_core::session::InventoryPreview {
+            round: 1,
+            instances: vec![],
+            artifacts: vec![],
+        });
+        assert_eq!(
+            serde_json::to_string(&empty).expect("serialize"),
+            r#"{"InventoryPreview":{"round":1,"instances":[],"artifacts":[]}}"#
+        );
+
+        // And a full one comes back whole through a Channel, as the page
+        // receives it.
+        let preview = banager_core::session::InventoryPreview {
+            round: 3,
+            instances: vec![banager_core::testing::manager_instance("brew", "brew:1")],
+            artifacts: vec![banager_core::model::InstalledArtifact {
+                key: banager_core::model::ArtifactKey {
+                    instance_id: "brew:1".to_string(),
+                    kind: banager_core::model::ArtifactKind::Formula,
+                    name: "jq".to_string(),
+                },
+                display_name: "jq".to_string(),
+                version: "1.8.2".to_string(),
+                reason: banager_core::model::InstallReason::Requested,
+                description: None,
+                homepage: None,
+                size_bytes: None,
+                installed_at: None,
+                path: None,
+                auto_updates: false,
+                uninstall_blocked: None,
+                facts: Default::default(),
+            }],
+        };
+        let sink = ChannelSink::new();
+        let received: Arc<Mutex<Vec<UiEvent>>> = Arc::new(Mutex::new(Vec::new()));
+        let r = received.clone();
+        let channel: Channel<UiEvent> = Channel::new(move |body| {
+            let event: UiEvent = body.deserialize().expect("deserialize UiEvent");
+            r.lock().unwrap().push(event);
+            Ok(())
+        });
+        sink.register(channel);
+        sink.broadcast(UiEvent::InventoryPreview(preview.clone()));
+        let events = received.lock().unwrap();
+        match events.as_slice() {
+            [UiEvent::InventoryPreview(back)] => assert_eq!(*back, preview),
+            other => panic!("expected one InventoryPreview, got {other:?}"),
+        };
+    }
+
+    #[test]
     fn test_emit_wraps_operation_events_as_ui_event_operation() {
         let sink = ChannelSink::new();
         let received: Arc<Mutex<Vec<UiEvent>>> = Arc::new(Mutex::new(Vec::new()));
@@ -151,5 +260,30 @@ mod tests {
             }
             other => panic!("expected Operation(Status), got {other:?}"),
         }
+    }
+
+    #[test]
+    fn test_sizes_changed_reaches_the_window_as_an_object_with_its_round() {
+        // `src/lib/types.ts` spells it `{ SizesChanged: { round: number } }`
+        // and `src/lib/events.ts` tells it from the other two by `in`,
+        // which a bare string would make throw.
+        let sink = ChannelSink::new();
+        let received: Arc<Mutex<Vec<serde_json::Value>>> = Arc::new(Mutex::new(Vec::new()));
+        let r = received.clone();
+        let channel: Channel<UiEvent> = Channel::new(move |body| {
+            let event: serde_json::Value = body.deserialize().expect("deserialize");
+            r.lock().unwrap().push(event);
+            Ok(())
+        });
+        sink.register(channel);
+        EventSink::sizes_changed(sink.as_ref(), 12);
+        assert_eq!(
+            received.lock().unwrap().clone(),
+            vec![serde_json::json!({ "SizesChanged": { "round": 12 } })]
+        );
+        assert_eq!(
+            serde_json::to_string(&UiEvent::SizesChanged { round: 12 }).unwrap(),
+            r#"{"SizesChanged":{"round":12}}"#
+        );
     }
 }

@@ -1,0 +1,4131 @@
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
+
+pub type InstanceId = String; // "brew:/opt/homebrew"
+pub type AdapterId = String; // "brew"
+
+/// The one way an adapter builds a `ManagerInstance.id`: its own adapter id,
+/// optionally followed by `:` and whatever tells its instances apart (a
+/// prefix, a Python path, a host). `None` is for an adapter that only ever
+/// has one instance, whose id is then the adapter id itself (`"pipx"`,
+/// `"uv"`).
+///
+/// This is what makes ids unique *across* adapters by construction rather
+/// than by convention: adapter ids are unique (`Session::with_adapters`
+/// refuses a duplicate) and contain no `:`, so an id built here for one
+/// adapter can never equal an id built here for another. Uniqueness
+/// *within* an adapter is still that adapter's job -- a single-instance
+/// adapter that one day returns two instances would repeat its id -- and
+/// `Session::refresh` is what catches that case, loudly.
+///
+/// Every id this produces is byte-for-byte what the adapters wrote by hand
+/// before it existed. That matters: ids are persisted, inside the
+/// `ArtifactKey`s of `Settings.ignored_updates` and
+/// `Settings.skipped_versions`, so changing their shape would silently
+/// bring back every update the user had hidden.
+pub fn instance_id(adapter_id: &str, qualifier: Option<&str>) -> InstanceId {
+    debug_assert!(
+        !adapter_id.contains(':'),
+        "adapter id {adapter_id:?} must not contain ':'"
+    );
+    match qualifier {
+        None => adapter_id.to_string(),
+        Some(q) => format!("{adapter_id}:{q}"),
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Scope {
+    User,
+    System,
+}
+
+/// Why this source can be listed but never changed from Banager.
+///
+/// An enum rather than a string because these reasons are shown to the
+/// user, and an English sentence assembled on the Rust side cannot be
+/// localised -- the existing `UpdateCandidate.warnings` already fell into
+/// that trap (spec §6).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ReadOnlyReason {
+    /// The tool itself offers no install/uninstall path Banager could
+    /// safely drive (pip).
+    ByDesign,
+    /// The tool can install and uninstall, but the directory it writes to
+    /// is not writable by the current user (Node installed from the
+    /// nodejs.org package, whose npm prefix is root-owned).
+    PrefixNotWritable,
+    /// The tool can install and uninstall, but the directory it writes to
+    /// is in, or leads into, a protected place (`protected::look`:
+    /// Documents, Desktop, Downloads, iCloud Drive, another disk), which
+    /// Banager never looks into -- so whether the user could write there is
+    /// not known, and the source is listed only. Not "the account cannot
+    /// change it", which may well be untrue (decision I23).
+    PrefixProtected,
+}
+
+/// Why a source Banager knows about cannot answer right now. The state
+/// axis, orthogonal to `ReadOnlyReason`: an Ollama that is not running is
+/// still perfectly writable, it just has nothing to say until it starts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Unavailable {
+    /// The service is not running and Banager can start it: the notice
+    /// carries a button that does. Today that is only an Ollama whose
+    /// daemon is on this Mac and whose Ollama.app is installed -- see
+    /// `OllamaAdapter::detect`, which gives a silent daemon it cannot start
+    /// `NotResponding` instead.
+    NotRunning,
+    /// The executable is on PATH but would not run, or its version could
+    /// not be recognised, or a service did not answer and Banager has no
+    /// way to start it (an Ollama installed as the command-line tool only,
+    /// or one whose `OLLAMA_HOST` names another machine).
+    NotResponding,
+    /// The tool is installed but refuses to do anything while Banager is
+    /// running as root, so Banager never even asked it (Homebrew).
+    ///
+    /// A third variant rather than a reuse of `NotResponding` because
+    /// these divide by *what the user can do about it*: `NotRunning` means
+    /// "start it", `NotResponding` means "reopen Banager, then consider
+    /// reinstalling", and this one means "quit and open Banager again
+    /// without `sudo`" -- a specific, different, and actually effective
+    /// action, which is exactly what the notice says.
+    RefusesAsRoot,
+    /// Banager never asked: `OLLAMA_HOST` is an `https://` address, and
+    /// `RealHttpClient` connects to no https host off its allowlist
+    /// (`http::real::host_allowed`), so `OllamaAdapter::detect` does not
+    /// send the request at all. Not `NotResponding`, whose notice sends
+    /// the user to check again -- which refuses the same way every time --
+    /// and not `NotRunning`, whose Open Ollama button cannot help either:
+    /// the address is the problem, and only the user can change it.
+    HttpsHostRefused,
+    /// This Python has no pip: `<python> -m pip --version` failed with
+    /// Python's own "No module named pip" (`PipAdapter::detect`). Nothing
+    /// is broken and checking again changes nothing; any other failure of
+    /// that command -- a pip that crashed, timed out, or answered in a
+    /// way Banager does not recognise -- stays `NotResponding`.
+    NoPip,
+}
+
+/// Why a source that is `Unavailable::NotResponding` did not answer: what
+/// the command Banager asked it with did (`runner::no_answer::of`), read
+/// from what it wrote before any login was masked out of it, as an
+/// operation's `Outcome::Failed.cause` is. "Not responding" is only true of
+/// the first: the other two ran, or never could, and a person who reads
+/// "not responding" waits for something that will not come (finding (1) of
+/// the 2026-10-07 run: npm's launcher `#!/usr/bin/env node` found no `node`,
+/// and the window said only 「npm没有响应」). Mirrored by `NoAnswerKind` in
+/// src/lib/types.ts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum NoAnswerKind {
+    /// It started and had not answered when Banager stopped waiting
+    /// (`CommandOutput::timed_out`).
+    TimedOut,
+    /// It never ran: its program is not there or cannot be run
+    /// (`RunnerError::NotFound`, `RunnerError::Spawn`), or it exited 126 or
+    /// 127, a shell's and `env`'s "found but cannot run" and "not found" --
+    /// npm's `#!/usr/bin/env node` with no `node` on `PATH` is 127.
+    CouldNotStart,
+    /// It ran and ended with an error: any other non-zero exit, or a
+    /// signal it did not get from Banager.
+    ExitedWithError,
+}
+
+/// `InstanceStatus::no_answer`: why the source did not answer, and what
+/// Banager can offer about it. Mirrored by `NoAnswer` in src/lib/types.ts.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NoAnswer {
+    /// Last five stderr lines, at most 4096 UTF-8 bytes, already masked by
+    /// runner/redact.rs. No raw output or runner error is retained here.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub diagnostic: Option<String>,
+    /// Read before masking, as Outcome::Failed.cause is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cause: Option<crate::history::FailureCause>,
+    pub kind: NoAnswerKind,
+    /// The program the source's own launcher needed and `env` did not find
+    /// on `PATH`: `node` in "env: node: No such file or directory"
+    /// (`runner::no_answer::missing_program`). Only with `CouldNotStart`.
+    #[serde(default)]
+    pub missing_program: Option<String>,
+    /// Homebrew formulae that would put `missing_program` back: keg-only
+    /// (not because of macOS), installed, not linked, and named for it
+    /// (`node@22` for `node`), newest first. Each is offered as `brew link
+    /// --formula --force <name>`, an
+    /// `OpKind::Link` the window plans and runs like any other operation.
+    /// Worked out over the whole snapshot once a round has read every
+    /// source (`link_fixes::fill`), never by an adapter's `detect`, which
+    /// leaves it empty.
+    #[serde(default)]
+    pub link_fixes: Vec<LinkFix>,
+}
+
+/// One formula `NoAnswer::link_fixes` offers to link: its row's key (the
+/// Homebrew source's instance, `Formula`, the name) and the version the
+/// row shows. Mirrored by `LinkFix` in src/lib/types.ts.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LinkFix {
+    pub key: ArtifactKey,
+    pub version: String,
+}
+
+/// Something a source answered *with*, that changes how its answer should
+/// be read. Deliberately payload-free: a data-carrying variant would turn
+/// a bare-string unit variant into an externally tagged object on the
+/// wire, and the TypeScript mirror is hand-written (spec §2.3's note). The
+/// stderr text such a payload would carry is a known, accepted loss.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum InstanceNote {
+    /// `brew update` failed, so the local catalogue may be behind and
+    /// "no updates" may be wrong.
+    IndexMayBeStale,
+    /// `brew update` is still downloading, so the refresh did not read the
+    /// catalogue it is rewriting (`AdapterError::IndexUpdating`). This
+    /// source's update candidates are the previous snapshot's, and so are
+    /// its installed packages unless the refresh read them before it
+    /// started the update itself; with no previous snapshot, there are
+    /// none. Nothing has failed. When the update ends the shell refreshes
+    /// again (see `Session::background_change`), so this clears by itself.
+    IndexUpdating,
+    /// Typing this tool's name in Terminal would not find this copy: no
+    /// executable of that name on the `PATH` Banager sees is it (usually
+    /// because the directory its launcher lives in is not on that `PATH`).
+    /// The name then finds nothing, or another program with that name;
+    /// either way this is the note, not a `ShadowedBy*` one, which would
+    /// put that program earlier on `PATH` than a copy that is not on it.
+    /// Produced by `StandaloneAdapter::detect` (`route::shadow_note`) for a
+    /// tool installed by its own installer; read by `sourceNoticesFor` in
+    /// src/lib/sources.ts. Never kept from a round whose `PATH` was not
+    /// the login shell's (`is_about_terminals_path`).
+    NotOnPath,
+    /// Typing the name runs another program with that name instead of this
+    /// copy, and this copy is on `PATH` behind it: the first executable of
+    /// that name on `PATH` resolves under a `Cellar` or `Caskroom`
+    /// directory (Homebrew's), and a later one is this copy. Where it
+    /// resolves is all the note says: it may be another copy of the tool
+    /// or a different program with the same name (Homebrew's formula
+    /// `grok` is a regular-expression tool, not Grok Build), so its notice
+    /// never calls it a copy. Same producer and reader as `NotOnPath`.
+    ShadowedByHomebrew,
+    /// As `ShadowedByHomebrew`, for one that resolves into an npm global
+    /// prefix's `lib/node_modules` (npm's; the `grok` of its package
+    /// `grok-cli`, a third-party wrapper, resolves there and is not Grok
+    /// Build). bun's and Yarn's global `node_modules` are not npm's: one
+    /// there is `ShadowedByOther` (`route::shadow_note`).
+    ShadowedByNpm,
+    /// As `ShadowedByHomebrew`, for one that resolves anywhere else, or
+    /// that Banager could not resolve; the Unknown page may show where it
+    /// is.
+    ShadowedByOther,
+    /// The launcher is still there but points at program files that are
+    /// gone: the program directory was removed by hand or by another tool,
+    /// or by a Banager uninstall that stopped after moving it and before
+    /// moving the launcher -- the removal order (`removal::execute_removal`,
+    /// launcher last) makes that the only state a stopped run leaves. The
+    /// row stays, with no version, so the state is visible, and its
+    /// artifact carries no `uninstall_blocked`: the row's Uninstall lists
+    /// the program directory as already gone and moves the link (spec
+    /// Q17). Produced by `StandaloneAdapter::detect` when `route::probe`
+    /// answers `LauncherOnly`.
+    LauncherOnly,
+    /// The source listed what it could read and left some of what it
+    /// installed out: pipx's `list --json` exits 1 having printed every
+    /// environment but one it could not read (its Python gone, its pipx
+    /// data missing), which it names on stderr with how to fix it (pipx
+    /// 1.17's `list_packages.py:143-175`). The tools left out are neither
+    /// shown nor checked; `pipx list` in Terminal says which and why.
+    /// Produced by `PipxAdapter`'s update check, from the list it reads
+    /// when `list --outdated` exits non-zero and from the one the check
+    /// below pipx 1.16 always reads.
+    SomeNotListed,
+    /// Homebrew listed fewer formulae than its `Cellar` holds: a folder
+    /// there with a version in it is missing from `brew info --installed
+    /// --json=v2`. Homebrew 7 loads each installed formula from its tap and
+    /// silently drops one it refuses to load (`Formula.installed`'s bare
+    /// `rescue`, `formula.rb:2784-2790`) -- above all one from a tap it
+    /// does not trust (`Trust.require_trusted_formula!`, the default since
+    /// `HOMEBREW_REQUIRE_TAP_TRUST`). `brew outdated` and `brew uses
+    /// --installed` drop it the same way, so its updates are not checked,
+    /// and an uninstall preview cannot know whether it needs the formula
+    /// being uninstalled (`Warning::DependentsUnknown`). Produced by
+    /// `BrewAdapter::check_updates` from what the inventory found
+    /// (`BrewAdapter::remember_unlisted_racks`).
+    FormulaeNotListed,
+}
+
+impl InstanceNote {
+    /// Whether this note is the round's update check speaking about the
+    /// source -- `CheckOutcome::notes` (brew's `IndexMayBeStale`) or the
+    /// `IndexUpdating` that `Session::refresh_round` adds when a read
+    /// declined -- rather than `detect` (`StandaloneAdapter::detect`'s five
+    /// placement notes). Read by `refresh_round` when it skips an adapter's
+    /// detect because an operation holds one of its instances: the
+    /// instances it carries from last round that are not themselves held
+    /// are still checked this round, so last round's check notes come off
+    /// them first, and detect's stay, since detect did not run to write
+    /// them again. An exhaustive match, so a new variant has to say which
+    /// channel it comes from.
+    pub(crate) fn is_from_update_check(self) -> bool {
+        match self {
+            InstanceNote::IndexMayBeStale
+            | InstanceNote::IndexUpdating
+            | InstanceNote::SomeNotListed
+            | InstanceNote::FormulaeNotListed => true,
+            InstanceNote::NotOnPath
+            | InstanceNote::ShadowedByHomebrew
+            | InstanceNote::ShadowedByNpm
+            | InstanceNote::ShadowedByOther
+            | InstanceNote::LauncherOnly => false,
+        }
+    }
+
+    /// Whether this note says what typing the tool's name in Terminal
+    /// runs (`NotOnPath`, `ShadowedBy*`): a claim about Terminal's `PATH`,
+    /// which `route::shadow_note` judges against the `PATH` the round was
+    /// given. `refresh_round` drops these from what a round's detect
+    /// found when that `PATH` was not the login shell's (`path_known`),
+    /// as the command check then judges no row (`commands::start_reading`).
+    /// Exhaustive, as `is_from_update_check` is.
+    pub(crate) fn is_about_terminals_path(self) -> bool {
+        match self {
+            InstanceNote::NotOnPath
+            | InstanceNote::ShadowedByHomebrew
+            | InstanceNote::ShadowedByNpm
+            | InstanceNote::ShadowedByOther => true,
+            InstanceNote::IndexMayBeStale
+            | InstanceNote::IndexUpdating
+            | InstanceNote::SomeNotListed
+            | InstanceNote::FormulaeNotListed
+            | InstanceNote::LauncherOnly => false,
+        }
+    }
+}
+
+/// The state axis of a source: can Banager talk to it at all, and is there
+/// anything about this answer the user has to know to read it correctly.
+///
+/// When a source last answered is on the instance
+/// (`ManagerInstance::answered_at`), not here.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InstanceStatus {
+    /// `None` means the source answered.
+    pub unavailable: Option<Unavailable>,
+    pub notes: Vec<InstanceNote>,
+    /// Why a `NotResponding` source did not answer, where the command
+    /// Banager asked it with says (`NoAnswer`); `None` for every other
+    /// state, and for an answer Banager did not recognise. Absent in an
+    /// older payload: none.
+    #[serde(default)]
+    pub no_answer: Option<NoAnswer>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ManagerInstance {
+    pub id: InstanceId,
+    pub adapter_id: AdapterId,
+    pub exe_path: PathBuf,
+    pub prefix: PathBuf,
+    pub scope: Scope,
+    pub version: Option<String>,
+    /// When this source last answered, Unix seconds: the time its refresh
+    /// task began asking it (after taking that source's lock), in the
+    /// latest round this session in which both its inventory and its update
+    /// check answered (`Session::refresh`) -- and only while every row of
+    /// the source is still from that answer. Each of them is from that
+    /// moment or later, so a source that does not answer this round, whose
+    /// rows are carried forward, can say when they are from
+    /// (`sourceNoticesFor` in src/lib/sources.ts) -- never newer than they
+    /// are, and never of rows a later answer replaced.
+    ///
+    /// Kept in memory only, like the snapshot it is part of: `None` from
+    /// `detect()` -- no adapter knows it, so every one leaves it `None` --
+    /// until `refresh` carries it over from last round's instance of the
+    /// same id (none of its rows replaced), stamps a new one (all of them
+    /// replaced), or clears it (one half answered and the other did not,
+    /// so its rows are of two answers). So it is `None` on the first round
+    /// after launch, for a source that has not answered in full since, and
+    /// for one whose id was not in last round's snapshot. Not part of
+    /// `same_content`: it is when the data came, not the data.
+    #[serde(default)]
+    pub answered_at: Option<i64>,
+    /// None when the adapter's metadata lists no verified versions, or when
+    /// the detected version is among them. Some(detected) when it is not,
+    /// so the UI can mark the source as running an unverified version (spec
+    /// §4.1).
+    pub unverified_version: Option<String>,
+    /// `None` means writable. The single source of truth for the capability
+    /// axis: there is deliberately no companion `writable: bool` for it to
+    /// disagree with, and no setter -- every `detect()` builds this struct
+    /// as a literal, so the compiler makes each adapter answer the question
+    /// exactly once.
+    pub read_only_reason: Option<ReadOnlyReason>,
+    /// The state axis: whether this source answered, and anything about
+    /// that answer the user has to know. Replaced `healthy: bool`, which
+    /// was exactly `status.unavailable.is_none()` with no room for a
+    /// reason or a note.
+    pub status: InstanceStatus,
+}
+
+impl ManagerInstance {
+    /// Whether `self` and `other` say the same about the source: every field
+    /// but `answered_at`, which says when it was said
+    /// (`Snapshot::same_content`). Destructured, not `..`-ed, so a field
+    /// added to the struct fails to compile here until someone decides
+    /// which side of that line it is on.
+    pub(crate) fn same_content(&self, other: &Self) -> bool {
+        let Self {
+            id,
+            adapter_id,
+            exe_path,
+            prefix,
+            scope,
+            version,
+            answered_at: _,
+            unverified_version,
+            read_only_reason,
+            status,
+        } = self;
+        id == &other.id
+            && adapter_id == &other.adapter_id
+            && exe_path == &other.exe_path
+            && prefix == &other.prefix
+            && scope == &other.scope
+            && version == &other.version
+            && unverified_version == &other.unverified_version
+            && read_only_reason == &other.read_only_reason
+            && status == &other.status
+    }
+
+    /// Whether Banager may offer operations on this source at all.
+    ///
+    /// The capability half of the actionability invariant (spec §2.5);
+    /// `Session::issue_plan` is the single gate that enforces it, and
+    /// `canWrite()` in `src/lib/sources.ts` is its front-end mirror.
+    pub fn writable(&self) -> bool {
+        self.read_only_reason.is_none()
+    }
+
+    /// Whether this source answered the last refresh. The state half of
+    /// the same invariant; `Session::issue_plan` requires both, because a
+    /// carried-forward artifact from a stopped Ollama must offer no
+    /// Uninstall button (spec §2.5).
+    pub fn available(&self) -> bool {
+        self.status.unavailable.is_none()
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ArtifactKind {
+    Formula,
+    Cask,
+    Package,
+    Tool,
+    Model,
+    Binary,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum InstallReason {
+    Requested,
+    Dependency,
+    Unknown,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ArtifactKey {
+    pub instance_id: InstanceId,
+    pub kind: ArtifactKind,
+    pub name: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InstalledArtifact {
+    pub key: ArtifactKey,
+    pub display_name: String,
+    pub version: String,
+    pub reason: InstallReason,
+    pub description: Option<String>,
+    pub homepage: Option<String>,
+    pub size_bytes: Option<u64>,
+    pub installed_at: Option<i64>, // unix seconds
+    pub path: Option<PathBuf>,
+    pub auto_updates: bool,
+    /// `Some` when the tool will refuse to uninstall this package. Read
+    /// from the inventory, not the update check, so it is known for every
+    /// installed package, up to date or not. `Session::issue_plan` and
+    /// `Session::submit` refuse an `Uninstall` of an artifact that carries
+    /// one (`blocked_uninstall` in session/plans.rs), and the Installed
+    /// page hides that row's Uninstall button.
+    pub uninstall_blocked: Option<UninstallBlocked>,
+    /// What Banager knows about this artifact beyond the basics above. Its
+    /// own struct so that a new fact is one field here and one default,
+    /// not a new line in every inventory that builds an artifact.
+    pub facts: ArtifactFacts,
+}
+
+/// Facts about an installed artifact that only some sources report or that
+/// Banager works out itself after the inventory. Every field has an empty
+/// default, which is what an inventory that knows nothing more leaves, and
+/// `#[serde(default)]` keeps a payload without a newer field readable.
+/// Mirrored by `ArtifactFacts` in src/lib/types.ts, whose `NO_FACTS` is
+/// this type's `Default`.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ArtifactFacts {
+    /// The id of the AI coding tool this artifact is a copy of, from the
+    /// bundled table in `families.rs` (for example `"claude-code"` for the
+    /// npm package `@anthropic-ai/claude-code`, the cask `claude-code` and
+    /// the standalone install alike). `None` for everything else.
+    pub family: Option<String>,
+    /// What Homebrew says about this formula or cask beyond its version:
+    /// read by `parse_info_installed` (`adapters/brew/parse.rs`) from the
+    /// `brew info --installed --json=v2` reply the inventory already
+    /// fetches. `None` for every other source, and for a Homebrew package
+    /// with nothing of the kind to say.
+    pub homebrew: Option<HomebrewFacts>,
+    /// The commands this artifact puts on the Mac, by name, and which copy
+    /// runs when the user types each one in Terminal (`CommandFact`).
+    /// Worked out after the inventory, once per refresh round, from the
+    /// whole snapshot and the `PATH` Banager read at launch
+    /// (`commands::judge`, through `Session::refresh`); sorted by name. A
+    /// row carried from an earlier round keeps the ones it had
+    /// (`commands::finish`); an inventory never fills this. Empty when the
+    /// artifact provides no command Banager could find, for the rows of a
+    /// round that could not read the folders (`commands::CommandBudget`),
+    /// and for sources whose commands Banager does not look for (Ollama
+    /// models, pip).
+    pub commands: Vec<CommandFact>,
+    /// Command ownership could not be fully checked, including commands
+    /// omitted because their paths could not be resolved safely.
+    pub commands_unavailable: bool,
+    /// A Homebrew formula Homebrew has not linked: not keg-only, and no
+    /// record of a `brew link` (`CommandInputs::link_recorded`, `brew
+    /// info`'s `linked_keg: null`). Its install stopped at the link step --
+    /// another program's file was where one of its commands goes ("The
+    /// `brew link` step did not complete successfully"; npm's `gemini`
+    /// before `brew install gemini-cli`, r36 V5) -- or someone ran `brew
+    /// unlink`. None of its commands is in `<prefix>/bin`, so typing one
+    /// does not run this copy unless its keg's own folder is on `PATH`.
+    /// Set by `parse_info_installed` (`adapters/brew/parse.rs`); false for
+    /// every other artifact, a keg-only formula included (Homebrew keeps
+    /// that one off `PATH` on purpose). For an AI coding tool's formula,
+    /// `commands::judge` names its commands from its keg, with no verdict,
+    /// so its other copies pair with it; the window says it is not linked
+    /// (src/components/CommandFacts.tsx).
+    pub unlinked: bool,
+    /// Its source's update check never looks this artifact up, so no
+    /// update listed for it is no news (R45-1): a pipx tool not installed
+    /// from a package index by name (`from_index` in `adapters/pipx.rs`;
+    /// pipx 1.16+ skips it too) and an npm global npm installed from
+    /// somewhere other than a registry (`installed_from_elsewhere` in
+    /// `adapters/npm.rs`). Set by those inventories; false for every
+    /// other artifact. The window treats it as pip's required packages
+    /// (`notLookedUp` in src/lib/updateState.ts): no "Up to date" on its
+    /// row, and only what can be updated here is said to be up to date.
+    pub not_looked_up: bool,
+    /// The version the app of a Homebrew cask that updates itself
+    /// (`auto_updates`) says it is -- its `CFBundleShortVersionString` --
+    /// where that is not Homebrew's record (`InstalledArtifact::version`),
+    /// which stays at the version Homebrew installed while the app moves on
+    /// (R47-3, r18). Read by `BrewAdapter::inventory` from the app at the
+    /// cask's `path`; `None` for every other artifact, and off the wire
+    /// then. The Installed page shows it as the version, with Homebrew's
+    /// record beside it in the details.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub app_version: Option<String>,
+    /// A Homebrew cask that updates itself (`auto_updates`) without
+    /// exactly one `app` stanza: installed with a `pkg` (Zoom, Microsoft
+    /// Word), or as several apps. With no greedy flag, which Banager never
+    /// passes, `brew outdated` lists such a cask only by reading its app's
+    /// `Info.plist`, which Homebrew 7.0.9 finds only for a single `app`
+    /// (`cask/cask.rb:793-806`, `:819-821`), so it never lists this one
+    /// and the Installed page does not call it up to date
+    /// (`leftOutOfUpdateCheck` in src/lib/updateState.ts; R47 skeptic P1,
+    /// r18). Set by `parse_info_installed`; false for every other
+    /// artifact, and off the wire then.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub no_single_app: bool,
+    /// What the inventory read about this artifact's commands, for
+    /// `commands::judge`: never on the wire (the window has `commands`,
+    /// which is the answer), so not in the TypeScript mirror either.
+    #[serde(skip)]
+    pub command_inputs: CommandInputs,
+}
+
+/// Homebrew's own state for one installed formula or cask. Every field is
+/// copied from `brew info --installed --json=v2`; Banager adds no judgement
+/// of its own. Mirrored by `HomebrewFacts` in src/lib/types.ts.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct HomebrewFacts {
+    /// `deprecated: true`: Homebrew still installs and updates it but says
+    /// it will go.
+    pub deprecated: Option<HomebrewLifecycle>,
+    /// `disabled: true`: Homebrew no longer installs or updates it. The
+    /// copy already installed stays where it is.
+    pub disabled: Option<HomebrewLifecycle>,
+    /// `caveats`, Homebrew's own English notes, verbatim (they often hold
+    /// shell lines, so the page shows them as text and offers no copy).
+    pub caveats: Option<String>,
+    /// A formula's other installed versions: its `installed` entries other
+    /// than the one Banager shows, in Homebrew's order. Empty for a cask.
+    pub other_versions: Vec<String>,
+}
+
+/// One of Homebrew's lifecycle marks (`deprecate!` / `disable!`), as its
+/// JSON gives it: the date as Homebrew writes it (`"2026-09-01"`), the
+/// reason (a known symbol such as `"fails_gatekeeper_check"` or the
+/// maintainers' own sentence), and the name of the formula or cask
+/// Homebrew suggests instead.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct HomebrewLifecycle {
+    pub date: Option<String>,
+    pub reason: Option<String>,
+    pub replacement: Option<String>,
+}
+
+/// One command an artifact provides: the name typed in Terminal, and what
+/// typing it runs. Payload of `ArtifactFacts.commands`; mirrored by
+/// `CommandFact` in src/lib/types.ts.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CommandFact {
+    /// `claude`, `grok`, `agent`, `ruff`.
+    pub name: String,
+    /// `None`: Banager says nothing about which copy runs -- for a Homebrew
+    /// dependency or keg-only formula, whose commands are left off `PATH`
+    /// on purpose or were never asked for; for a copy nothing on `PATH`
+    /// leads to although its folder is on `PATH` (its link there replaced
+    /// by another tool's), or whose folder Banager does not know (a pipx
+    /// app with no link in `~/.local/bin`); and for every command while
+    /// the `PATH` Banager has is not the login shell's
+    /// (`Session::note_login_path`). The name is still listed, so two
+    /// copies of one tool can be told apart from one. A file that cannot
+    /// run (no execute bit) is no command at all and is not listed.
+    pub state: Option<CommandState>,
+}
+
+/// What typing a command runs, judged against the `PATH` Banager read when
+/// it opened, the way a shell looks a name up: the first folder on `PATH`
+/// holding an executable file of that name wins (`commands::judge`).
+/// Externally tagged on the wire: `"Runs"`, `{"ShadowedBy":{"by":…}}`,
+/// `{"NotOnPath":{"dir":"~/.local/bin"}}`; mirrored by `CommandState` in
+/// src/lib/types.ts.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CommandState {
+    /// The first executable of this name on `PATH` is this copy: a link
+    /// that leads to the same file, or another of this artifact's files.
+    Runs,
+    /// This copy is on `PATH`, behind another executable of the same name
+    /// that comes first. `by` is the artifact that one belongs to, when
+    /// some artifact in the snapshot provides that very file; `None` when
+    /// none does ("another program with this name").
+    ShadowedBy { by: Option<ArtifactKey> },
+    /// Nothing on `PATH` leads to this copy, and the folder its command is
+    /// in is not on `PATH`. `dir` is that folder with the home folder as
+    /// `~` (`scan::display_path`): text the page shows and its Copy Path
+    /// copies, as the Other Programs page's paths are.
+    NotOnPath { dir: String },
+}
+
+/// What an inventory read about an artifact's commands: the input
+/// `commands::judge` turns into `ArtifactFacts.commands`. Not on the wire.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct CommandInputs {
+    /// The commands the source's own answer names: a Homebrew cask's
+    /// `binary` stanzas (`brew/parse.rs`), a pipx tool's `app_paths`, the
+    /// `- name (path)` lines of `uv tool list --show-paths`, the `bins` of
+    /// Cargo's `.crates2.json`. Empty for the sources whose commands
+    /// `commands::judge` finds itself: a Homebrew formula's and an npm
+    /// package's links in their prefix's `bin`, and a tool with its own
+    /// installer's launcher and the commands its recipe names.
+    pub provided: Vec<ProvidedCommand>,
+    /// Homebrew's `keg_only` for a formula: Homebrew keeps it out of its
+    /// `bin` folder on purpose (macOS has its own `curl`), so its commands
+    /// are never said to be "not found"; linked by hand (`brew link
+    /// --force`), which copy runs is said of them as of any formula's.
+    pub keg_only: bool,
+    /// Homebrew's `keg_only_reason` for a keg-only formula is macOS's own
+    /// (`:provided_by_macos`, `:shadowed_by_macos`): `brew link` refuses to
+    /// link such a formula at Homebrew's default prefix ("Refusing to link
+    /// macOS provided/shadowed software", `cmd/link.rb` in Homebrew 7.0.8),
+    /// so Banager never offers to link it back after its update (y1-keg).
+    pub keg_only_by_macos: bool,
+    /// Homebrew's record of a `brew link` of the formula is there:
+    /// `<prefix>/var/homebrew/linked/<name>`, which `brew info`'s
+    /// `linked_keg` reports (`Formula#linked_keg`, `linked_version`,
+    /// `formula.rb:1004-1007`, `1103-1107`, `3146` in Homebrew 7.0.8) --
+    /// the one thing Banager calls "linked": the record `links::read_links`
+    /// reads off the disk at a preview (`KegLinks::recorded`), as the
+    /// snapshot keeps it. Read with `keg_only` by `link_fixes::fill`: a
+    /// keg-only formula with no record has none of its commands where
+    /// Terminal looks by Homebrew's doing, and `brew link --formula
+    /// --force` puts them there.
+    pub link_recorded: bool,
+    /// A Homebrew cask whose every stanza leaves what it installed in its
+    /// folder in `<prefix>/Caskroom` (`brew/parse.rs`,
+    /// `stays_in_caskroom`): `binary` links into that folder, completions
+    /// and manual pages made from it, an installer script, steps before or
+    /// after the install that only change modes or owners, remove files,
+    /// or copy, move or link files within that folder, Homebrew's own
+    /// uninstall and zap steps -- no `app`, `suite`, `pkg`, font,
+    /// `preflight` or `postflight` block of Ruby, step that runs a program
+    /// or puts a file elsewhere (Google Cloud CLI's copy of its SDK to
+    /// `<prefix>/share`), or other stanza that may move or install a file
+    /// elsewhere. Read by `size::roots_of`, which measures that folder for
+    /// such a cask when its `binary` stanzas all link files in it
+    /// (Homebrew's Claude Code, Codex, Grok Build). False for every other
+    /// artifact.
+    pub cask_stays_in_caskroom: bool,
+}
+
+/// One command a source's own answer names (`CommandInputs.provided`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ProvidedCommand {
+    /// The name typed in Terminal.
+    pub name: String,
+    /// The file the source says the command is: a link in a `bin` folder
+    /// (`/opt/homebrew/bin/grok`, `~/.local/bin/ruff`), or, for pipx, the
+    /// program in the tool's own environment (`<venv>/bin/black`).
+    pub path: PathBuf,
+    /// Where `path` has to lead, every link followed, to be this
+    /// artifact's: the uv tool's environment, a cask binary's own file.
+    /// Empty when the source vouches for the file wherever it is. Links
+    /// are followed and compared because two sources can name one path --
+    /// pipx and uv both put `ruff` in `~/.local/bin`, and only one of them
+    /// installed the file that is there now.
+    pub within: Vec<PathBuf>,
+}
+
+/// Why the tool itself will refuse to uninstall this one package, although
+/// its source is writable and answering. The uninstall twin of
+/// `UpdateBlocked`: same rule for what belongs here (the tool reports the
+/// state in the output Banager already reads, here the inventory), and
+/// its own type because the two refusals have different producers. pipx
+/// pins too, but `pipx uninstall` removes a pinned tool (pipx 1.17.3's
+/// `commands/uninstall.py` never reads `pinned`), so pipx is a producer
+/// of `UpdateBlocked::Pinned` and not of this.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum UninstallBlocked {
+    /// `brew pin`, for a formula or a cask. Without `--force`, which
+    /// Banager never passes, `brew uninstall` prints "Error: <name> is
+    /// pinned. You must unpin it to uninstall." and skips it
+    /// (`uninstall.rb:48-49`, `cask/uninstall.rb:40-44` in Homebrew 7.0.6).
+    /// For a formula it still exits 0, because that message goes through
+    /// `onoe`, not `ofail`, so without this Banager ran the command and
+    /// then reported `StillInstalledAfterUninstall`. Read by
+    /// `parse_info_installed` in `adapters/brew/parse.rs`, from the
+    /// `pinned` key `brew info --installed --json=v2` writes for every
+    /// formula (`formula.rb:3140`) and cask (`cask/cask.rb:574`).
+    Pinned,
+    /// The tool has no uninstall command and Banager has no safe way to
+    /// remove its files -- no verified list of them, or no way yet to move
+    /// them to the Trash -- so it does not offer to. Per artifact, not the
+    /// instance's `read_only_reason`: that would hide the upgrade too,
+    /// which works. Produced by `StandaloneAdapter::inventory`
+    /// (`adapters/standalone/mod.rs`) for a recipe whose `uninstall` is
+    /// `None`. No first-batch recipe has one since phase 4 step C gave
+    /// Claude Code its path list; the second batch's Ollama.app will (spec
+    /// §十), and `NO_UNINSTALL` in that module's tests keeps the path
+    /// exercised. The gate refuses it (`blocked_uninstall` in
+    /// session/plans.rs), the Installed page hides the button and says why
+    /// (`UNINSTALL_BLOCKED_KEYS` in src/lib/sources.ts).
+    NoSafeMethod,
+    /// `UV_TOOL_DIR` is set, and not empty, in Banager's environment, which
+    /// every `uv` command inherits, so uv keeps its tools there
+    /// (`InstalledTools::from_settings`, uv 0.12.17
+    /// `crates/uv-tool/src/lib.rs:132-140`). When `uv tool uninstall`
+    /// removes the last tool it deletes that folder, and then its parent,
+    /// with every file in it, when the parent holds no folder but `.tmp*`
+    /// ones (`crates/uv/src/commands/tool/uninstall.rs:40-52`,
+    /// `crates/uv-fs/src/lib.rs:795-815`). In uv's own layout that parent
+    /// is uv's data folder; under `UV_TOOL_DIR` it is whatever folder holds
+    /// the user's, so Banager uninstalls no uv tool then. Produced by
+    /// `UvAdapter::inventory` for every tool, and refused by
+    /// `UvAdapter::plan` as well; the gate refuses it (`blocked_uninstall`
+    /// in session/plans.rs), and the Installed page hides the button and
+    /// says why (`UNINSTALL_BLOCKED_KEYS` in src/lib/sources.ts).
+    UvToolDirSet,
+    /// The package is the program its own source runs: npm's `npm`, as
+    /// `npm ls -g` lists it. `npm uninstall -g npm` removes the npm that
+    /// every npm package Banager lists is updated and uninstalled with --
+    /// the `npm` Banager runs for each of them. Produced by npm's inventory
+    /// (`parse_ls_global`) and refused by `NpmAdapter::plan` as well; the
+    /// gate refuses it (`blocked_uninstall` in session/plans.rs), and the
+    /// Installed page says why where the button would be
+    /// (`UNINSTALL_BLOCKED_KEYS` in src/lib/sources.ts). Its update is
+    /// offered as any package's. Likewise pipx's and uv's own tool when
+    /// the source installed itself (`adapters::own_tool_environment`),
+    /// set by their inventories and refused by their plans.
+    SourceProgram,
+    /// corepack, where the `corepack` in its npm's prefix's `bin` is a
+    /// Homebrew formula's link into `<prefix>/Cellar/` -- `node@22` linked
+    /// by hand puts it there, as it does `npm`
+    /// (`UpdateBlocked::UpdatesWithFormula`). `npm uninstall -g corepack`
+    /// deletes that link and every command corepack declares (`pnpm`,
+    /// `pnpx`, `yarn`, `yarnpkg`), whoever put them there: Homebrew's own
+    /// pnpm and yarn formulas' links too (R42-2). It goes with its formula.
+    /// Produced by npm's inventory (`NpmAdapter::inventory`, from the same
+    /// read as `UpdatesWithFormula`) and refused by `NpmAdapter::plan` as
+    /// well; the gate refuses it (`blocked_uninstall` in
+    /// session/plans.rs), and the Installed page says why where the button
+    /// would be (`UNINSTALL_BLOCKED_KEYS` in src/lib/sources.ts).
+    ComesWithFormula,
+    /// Another source runs on this Homebrew formula or cask: its preview
+    /// said so (`Warning::NeededBySource`), and the confirmation offered no
+    /// Uninstall. Produced only by `Session::submit`, for a plan whose
+    /// preview carries one -- no inventory row carries it -- so only a page
+    /// that asks for what it was not offered reaches it.
+    NeededBySource,
+}
+
+/// Why a path-list uninstall's preview refused one of the paths its
+/// recipe names: which of the checks in `removal::plan_removal`
+/// (`adapters/standalone/removal.rs`; phase 4 spec §6.3) failed. Payload
+/// of `AdapterError::UninstallUnsafe`, beside the path (home folder
+/// abbreviated). Not serialised by serde: `plan_operation_error` in
+/// src-tauri/src/ipc.rs spells each reason by hand, in snake_case, and
+/// `UNINSTALL_UNSAFE_KEYS` in src/lib/sources.ts indexes the copy by that
+/// spelling -- one producer of the wire form, and an exhaustive `match`
+/// there, so a reason added here without a spelling fails to compile. The
+/// user sees one of six sentences (`planRefused.uninstallUnsafe.*`);
+/// nothing was moved.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UninstallUnsafeReason {
+    /// Check 1: the path's parent directory, fully resolved, is not inside
+    /// the home folder (a `~/.local/bin` that is a link to another volume).
+    OutsideHome,
+    /// Check 1's never-list: the path's parent directory, fully resolved,
+    /// is the home folder itself or one of the folders directly inside it
+    /// that many tools share (`recipe::SHARED_FOLDERS`: `~/.local`,
+    /// `~/.config`, `~/.cache`, `~/Library`, `~/.cargo`) -- moving a path
+    /// there, `~/.local/bin` say, could take other tools' files with it. A
+    /// recipe cannot list such a path (`recipes::tests`); the resolved
+    /// check also catches a folder that leads into one through a link.
+    SharedFolder,
+    /// Check 2: the path is not there, and the list needs it -- it is not
+    /// optional, and it is not the already-gone program directory of a
+    /// launcher-only install.
+    Missing,
+    /// Check 3: the path belongs to another user.
+    NotOwnedByYou,
+    /// Check 4: the path is not the kind of thing the tool's uninstall list
+    /// describes (its `Expect`) -- a launcher that is not one link into the
+    /// tool's root, a program directory that is a link, a file where a
+    /// directory is expected -- or a folder on its way from the home folder
+    /// is a link (the ancestry rule, ruling 24 of the step C plan), or it
+    /// could not be examined at all. The name is from step C, when Claude
+    /// Code's list, built from Anthropic's removal steps, was the only one;
+    /// Antigravity CLI and Grok Build publish no removal steps, so their
+    /// lists are Banager's own reading of how each was installed, and the
+    /// sentence the user reads (`notWhatInstructionsExpect`) cites no
+    /// instructions.
+    NotWhatInstructionsExpect,
+    /// Moving the listed paths might take a path the preview says is kept,
+    /// or part of the way to what one leads to: with every link resolved,
+    /// a listed path is a kept path, holds one or what one leads to, is or
+    /// holds a link or folder on the way from one to what it leads to
+    /// (`~/.claude.json -> ~/.local/share/claude/settings-link ->
+    /// ~/settings/claude.json`), or lies inside one other than where the
+    /// recipe lists it (`~/.claude -> ~/.local/share/claude`) -- or a kept
+    /// path that is there could not be placed, or the way from it to what
+    /// it leads to could not be followed. `path` is the kept path (ruling
+    /// 25 of the step C plan). Also an AI tool's data path that is, leads
+    /// into, passes through or holds what another source's uninstall
+    /// removes (`kept_data::check_kept_paths`), `path` the data path as
+    /// the table spells it.
+    OverlapsKept,
+    /// A cask uninstall would remove a link the cask recorded that now
+    /// leads to another tool's file, or that Banager cannot follow or
+    /// place (`brew/cask_links.rs`). `path` is the link. Also a uv tool's
+    /// uninstall that would remove a command its receipt records which is
+    /// no longer uv's -- pipx's `~/.local/bin/ruff` after `pipx
+    /// reinstall-all`, a file another installer wrote -- or that Banager
+    /// cannot look at (`taken_command` in `adapters/uv.rs`); `path` is the
+    /// command, the home folder abbreviated. The name is from the cask's,
+    /// the first; the sentence the user reads (`uninstallLinks.notOwned`)
+    /// names no source.
+    CaskLinkNotOwned,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum UpdateChannel {
+    Native,
+    Registry,
+    Digest,
+}
+
+/// What one path a path-list uninstall moves to the Trash is, for the
+/// sentence that lists it. Payload of `Warning::WillTrash`; produced by
+/// `removal::plan_removal` from the recipe's `RemoveSpec.what`, or from a
+/// `Glob.what` for a backup file (`removal::listed_items`, check 5), read
+/// by `REMOVED_WHAT_KEYS` in src/lib/warnings.ts, a `Record` over the
+/// mirror, so a variant added here without copy fails `tsc`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RemovedWhat {
+    /// The launcher: the command itself (`~/.local/bin/claude`;
+    /// `~/.local/bin/agy`, which is the whole program; grok's
+    /// `~/.grok/bin/grok` and `~/.grok/bin/agent`, two links to one
+    /// download, and its optional fallback links in `~/.local/bin`).
+    Launcher,
+    /// The program's files (`~/.local/share/claude`, `~/.grok/downloads`).
+    Program,
+    /// Downloaded files the tool re-creates (`~/.claude/downloads`).
+    Cache,
+    /// A backup copy the tool's own updater left beside its launcher
+    /// (`~/.local/bin/agy.<time>.old`, agy.md/spec §3.5), found through the
+    /// recipe's `backup_globs`.
+    Backups,
+}
+
+/// What one path a path-list uninstall leaves where it is, for the
+/// sentence that lists it. Payload of `Warning::WillKeep`; produced by
+/// `removal::plan_removal` from the recipe's `KeepSpec.what` (through
+/// `kept_places` and, for `OutsideHome`, `outside_home_keeps`) and from its
+/// optional-path skip (`NotOurs`); read by `KEPT_WHAT_KEYS` in
+/// src/lib/warnings.ts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum KeptWhat {
+    /// A settings file (`~/.claude.json`).
+    Settings,
+    /// Settings, login, history and working files, shared with other
+    /// apps (`~/.claude`, which the tool's editor extensions and desktop
+    /// app use too; `~/.grok`, with `config.toml`, `auth.json`, sessions
+    /// and memory).
+    SettingsAndHistory,
+    /// The tool's own root, where its conversations, history and working
+    /// files sit beside some of the program's own files, with no vendor
+    /// list saying which could go alone (`~/.gemini/antigravity-cli`;
+    /// spec §十三 #24).
+    ToolState,
+    /// A shell startup file the installer added lines to (`~/.zshrc`,
+    /// `~/.zprofile`): Banager never edits one (spec §6.8), and does not
+    /// read it to find the lines, so the sentence says "any lines".
+    ShellConfigLines,
+    /// A link outside the home folder the installer may have made into the
+    /// tool's root (`/usr/local/bin/grok`): never touched, reported so the
+    /// user knows it becomes a dead link. Reported only when it is a link
+    /// into the root that leads nowhere once the uninstall's moves are done
+    /// (`removal::dead_after`): a `/usr/local/bin/grok` that is Homebrew's,
+    /// an `agent` that is another CLI's, or a link to a plugin's program in
+    /// the `~/.grok` the uninstall keeps, gets no sentence. Report-only:
+    /// `kept_places` does not protect it (a link into the program folder
+    /// would otherwise refuse the uninstall it exists for).
+    OutsideHome,
+    /// An optional listed path that is there but Banager could not confirm
+    /// is this install's -- the wrong shape, a link elsewhere, a folder on
+    /// the way that is a link, or a place Banager never moves from
+    /// (`~/.local/bin/agent` when another CLI owns it; spec §十三 #27) --
+    /// so it stays and the uninstall goes on.
+    NotOurs,
+    /// The installer's download staging folder, directly in `~/.cache`
+    /// (`~/.cache/antigravity`): Banager moves nothing that sits directly in
+    /// a shared folder (check 1's never-list), so it stays, usually empty,
+    /// and the user may delete it (phase 4 step D plan, ruling 1).
+    InstallerCache,
+}
+
+/// What a folder an uninstall leaves behind holds, for its line
+/// (`Warning::KeepsData`); read by `KEPT_DATA_KEYS` in src/lib/warnings.ts,
+/// a `Record` over the mirror, so a variant added here without copy fails
+/// `tsc`. Says no more than the vendors' own documents do.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum KeptData {
+    /// The tool's own settings and data (`~/.claude`, `~/.codex`, ...).
+    ToolData,
+    /// The models Ollama downloaded (`~/.ollama/models`).
+    Models,
+}
+
+/// Another tool's data inside a folder an uninstall leaves behind
+/// (`Warning::KeepsData.others`): the path as the table spells it, and the
+/// tool's name, its product name, which no language translates
+/// (`families::Family.name_en`, pinned by `kept_data`'s tests).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OthersData {
+    pub path: String,
+    pub tool: String,
+}
+
+/// A specific warning `Plan` or `UpdateCandidate` carries, so the UI can
+/// render it in the user's language rather than the English sentence Rust
+/// would otherwise have to assemble -- the trap `UpdateCandidate.warnings`
+/// was already in before this type existed (see `ReadOnlyReason`'s doc
+/// comment) and, concretely, the reason the uninstall confirmation screen
+/// used to show a Chinese user an English risk warning right above the
+/// button that acts on it (spec §6).
+///
+/// `Message` is the deliberate escape hatch for warnings this step does
+/// not localise: text built at runtime from something Banager cannot know
+/// ahead of time (a subprocess's stderr, an HTTP error). A warning whose
+/// only unknown is a value -- a registry host, a list of dependents --
+/// does not belong here; it gets a variant with a payload, like
+/// `ThirdPartyRegistry` and `WouldBreak`. Spec §6 backlogs the real fix
+/// for the genuinely unknowable ones -- showing a localised
+/// generic sentence by default and routing the raw text behind
+/// `show_technical_details` -- so `Message` only preserves today's
+/// behaviour (the raw string, unconditionally, in whatever language it
+/// came in) rather than pretending those warnings are localised when they
+/// are not.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Warning {
+    /// `brew link --formula --force <formula>` (`OpKind::Link`) of a formula
+    /// whose link Homebrew has not recorded would put at risk these
+    /// places, which already hold Homebrew's own link to one of its
+    /// commands (`Place::Linked`, `KegLinks::rollback_paths` in
+    /// `adapters/brew/links.rs`) -- npm's `npm` and `npx` left from an
+    /// interrupted link, say. Homebrew skips a link already there, but
+    /// when the link then stops anywhere -- also outside `bin` and `sbin`,
+    /// where the preview does not look -- it takes back every link to the
+    /// formula's files, these among them (`Keg#link`'s `rescue` calls
+    /// `Keg#unlink`, `keg.rb:590-598`, `361-391`), and the commands that
+    /// worked before are gone from Terminal (r11 F2). So, as for
+    /// `LinkConflicts`, the preview offers no Link button and
+    /// `Session::submit` refuses it (`SubmitError::LinkBlocked`); the
+    /// sheet names them and shows the command to run in Terminal instead.
+    /// `paths` are absolute. Built only by `BrewAdapter::plan` for a link.
+    LinkRollbackRisk { paths: Vec<String> },
+    /// `brew link --formula --force <formula>` (`OpKind::Link`) would stop
+    /// at these places: each is already in the prefix's `bin` or `sbin`
+    /// folder under the name of one of the formula's commands, and is not
+    /// Homebrew's own link to it -- a file, a link that leads elsewhere, or
+    /// a person's own link into the formula -- and Homebrew links nothing
+    /// over any of them (`Keg::ConflictError`; `KegLinks::held_paths` in
+    /// `adapters/brew/links.rs`, the places that make an update
+    /// `UpdateBlocked::LinkTaken` too). The link would put nothing where
+    /// Terminal looks, so the preview says so and offers no Link button,
+    /// and `Session::submit` refuses it (`SubmitError::LinkBlocked`).
+    /// `paths` are absolute, as Homebrew names them. Built only by
+    /// `BrewAdapter::plan` for a link.
+    LinkConflicts { paths: Vec<String> },
+    /// The commands `brew link --formula --force <formula>` (`OpKind::Link`)
+    /// puts where Terminal looks: the names of what it links of the
+    /// formula's `bin` and `sbin` folders, sorted (`KegLinks::command_names`
+    /// in `adapters/brew/links.rs`). Once linked, typing any of them in
+    /// Terminal runs the formula's copy -- linking `node@20` changes which
+    /// `node`, `npm` and `npx` run everywhere -- so the preview names them
+    /// in its sentence, not as a line of its own. Built only by
+    /// `BrewAdapter::plan` for a link.
+    LinkPutsCommands { names: Vec<String> },
+    /// brew's `uses --installed` check itself failed or timed out -- or the
+    /// look for the other sources that run on the package
+    /// (`NeededBySource`) did not finish. Not the same thing as "confirmed
+    /// no dependents", and must not read like it. At most one per plan.
+    DependentsUnknown,
+    /// Uninstalling would break these already-installed dependents.
+    WouldBreak { names: Vec<String> },
+    /// Another source runs on the Homebrew formula or cask this `Uninstall`
+    /// removes, which `brew uses --installed` cannot know (it names only
+    /// formulae and casks): its program, or the interpreter it is run with,
+    /// leads into the package's own folder (`program`), or so does the
+    /// Python of some of its tools' own environments (`program` false). So
+    /// uninstalling it would leave `tools` of that source's tools unable to
+    /// run, or with nothing in Banager able to update or uninstall them.
+    /// One per such source, in the snapshot's order of sources, and only
+    /// for a source with any tool that counts (`needed_by`, which says what
+    /// does). Added by `Session::issue_plan` (`session/needed_by.rs`) after
+    /// the adapter's own warnings; read by the uninstall confirmation, which
+    /// lists it with Homebrew's dependents under 「依赖此工具的软件」 and keeps
+    /// Uninstall disabled, and by a batch, which leaves the package out.
+    /// `Session::submit` refuses a plan that carries one
+    /// (`UninstallBlocked::NeededBySource`). `instance_id` is the source's,
+    /// for the window to name it as its sidebar does.
+    NeededBySource {
+        instance_id: InstanceId,
+        program: bool,
+        tools: usize,
+    },
+    /// No `cargo-binstall` on PATH: install/upgrade compiles from source,
+    /// which can take a while.
+    CompilesLocally,
+    /// Installed from a git repository or a local path, not the crates.io
+    /// registry Banager checks for updates against.
+    NonRegistrySource,
+    /// On a `checkable: false` candidate, after the `Message` that says
+    /// why: its lookup failed in a way checking again can get past. The
+    /// request could not connect or broke off (`HttpError::Network`), or
+    /// got no answer in time (`HttpError::Timeout`) -- not a secure
+    /// connection that could not be set up (`SecureConnectionFailed`) nor a
+    /// request the client refuses by its own rules (`HttpError::Refused`),
+    /// the registry answered 408, 429 or a server error (5xx), or the
+    /// words of the tool that looked it up say the network failed
+    /// (`adapters::says_network_failed`). Without it a failed lookup is not
+    /// known to be one a later check can mend, and is taken as one it
+    /// cannot: a model or package the registry does not have (404), an
+    /// answer that would not parse, a tool Banager does not look up on this
+    /// Mac (Antigravity CLI on Intel), an installed version it could not
+    /// read, a command that did not finish. Set only by
+    /// `adapters::uncheckable_candidate` from a `LookupFailure`. Read by
+    /// `isFailedLookup` in src/lib/failedLookups.ts: only such rows are
+    /// counted by the lists' and the Overview's "N tools couldn't be
+    /// checked", whose Check Again can clear it.
+    TransientLookupFailure,
+    /// On a `checkable: false` candidate, after the `Message` that says
+    /// why: its lookup reached `host` but could not set up a secure
+    /// connection there (`HttpError::Tls`) -- rustls did not accept the
+    /// certificate it was shown (or was shown none), as with a proxy or
+    /// security software that reads https traffic, or a clock far off.
+    /// The words for a person, where the `Message` is rustls's own (behind
+    /// "Show technical details"): without it the row said the network had
+    /// failed, which checking the network would not mend. Never with
+    /// `TransientLookupFailure`: the next check meets the same certificate.
+    /// Set only by `adapters::uncheckable_candidate` from a
+    /// `LookupFailure`; read by `warningKey` in src/lib/warnings.ts.
+    SecureConnectionFailed { host: String },
+    /// On a `checkable: false` candidate, after the `Message` that says
+    /// why: Banager does not look this tool up on this Mac, by design, and
+    /// made no request -- not a lookup that did not succeed. An Ollama
+    /// whose models are on another Mac (`OLLAMA_HOST` not this one), an
+    /// Ollama model from another registry (`hf.co/…`) or whose local
+    /// manifest is not where Banager reads it or is in a protected place,
+    /// Antigravity CLI on an Intel Mac or under Rosetta (its manifest URL
+    /// is verified for Apple silicon only), Claude Code whose settings are
+    /// kept in a protected place (which channel it follows is not known).
+    /// The same on every check until something outside Banager changes, so
+    /// never with `TransientLookupFailure`. Set only by
+    /// `adapters::uncheckable_candidate` from a
+    /// `LookupFailure::not_looked_up`. Read by `NEVER_LOOKED_UP` in
+    /// src/lib/failedLookups.ts: such a row, like a crate from git
+    /// (`NonRegistrySource`), does not keep the Overview from its all good
+    /// (independent review r6, F5); and by `warningKey`, for its row's
+    /// words.
+    NotLookedUpHere,
+    /// Installing or upgrading this model downloads it from `host`, a
+    /// registry other than Ollama's own library. Carried only on
+    /// Install/Upgrade plans: where a model came from is a reason to look
+    /// twice before fetching it, and no reason at all to hesitate before
+    /// deleting it.
+    ThirdPartyRegistry { host: String },
+    /// Upgrading this model pulls it again (`ollama pull`), which fetches
+    /// every layer of the model's current manifest that is not already on
+    /// this Mac -- the files that changed since it was pulled, weights of
+    /// several gigabytes when those changed -- so it can take a while. The
+    /// model's note in the update confirmation, as `CompilesLocally` is a
+    /// crate's. Carried only on Upgrade plans, after `ThirdPartyRegistry`
+    /// when there is one: an Install downloads the whole model, which the
+    /// person asked for, and an Uninstall downloads nothing. Produced by
+    /// `OllamaAdapter::plan`; read by `warningKey` in src/lib/warnings.ts.
+    DownloadsModelChanges,
+    /// A path-list uninstall will move this to the Trash: one per path, in
+    /// the order they will be moved (the launcher last). `path` has `$HOME`
+    /// abbreviated to `~` (`scan::display_path`): data for a sentence, not
+    /// a path to act on -- the plan's `PlanAction::TrashPaths.paths` keep
+    /// the absolute ones. Produced by `removal::plan_removal`
+    /// (`StandaloneAdapter::plan`); read by `warningKey`/`warningArgs` in
+    /// src/lib/warnings.ts for the uninstall dialog's list.
+    WillTrash { path: String, what: RemovedWhat },
+    /// A path-list uninstall will leave this where it is. Same producer and
+    /// reader as `WillTrash`; listed only when the path exists.
+    WillKeep { path: String, what: KeptWhat },
+    /// A path the list names is already gone -- an earlier uninstall
+    /// stopped after moving it and before moving the launcher (the
+    /// launcher-only state) -- so there is nothing to move there. Said, so
+    /// the list adds up. Same producer and reader as `WillTrash`.
+    AlreadyGone { path: String },
+    /// After this uninstall, `path` stays where it is: a folder or file a
+    /// tool keeps its own data in, which none of the sources' uninstall
+    /// commands touches -- the data folders of the tool's family in the
+    /// bundled table (`families.rs`, `data_paths`: `~/.claude`,
+    /// `~/.claude.json`, `~/.codex`, `~/.gemini`, … -- every family's but
+    /// Ollama's; docs/what-we-run.md lists them all) and, for the
+    /// Ollama family (formula `ollama`, casks `ollama-app` and
+    /// `ollama-binary`), the models
+    /// folder `~/.ollama/models`. One per path that is there, in the
+    /// table's order, `path` as the table spells it (`~` for the home
+    /// folder): data for a sentence, never a path Banager acts on. `size`
+    /// is how much it takes, measured read-only under a small budget
+    /// (`kept_data::BUDGET`); `None` when that is not known -- it leads
+    /// into a place Banager never looks into, it could not be read, or
+    /// the budget ran out first. Never for a path the plan already names
+    /// (`WillKeep` of a path-list uninstall). Added by
+    /// `Session::issue_plan` to every `Uninstall` plan of an artifact
+    /// with such a family (`kept_data::kept_data`); read by `warningKey`
+    /// and the uninstall dialog's 「卸载后会保留」 group. `left_out`: the
+    /// folders inside it that `size` does not count because they are not
+    /// this tool's data but another copy of its program
+    /// (`kept_data::LEFT_OUT`) -- `~/.codex/packages/standalone`, Codex's
+    /// own install, when npm's copy is the one uninstalled -- spelled as
+    /// `path` is; empty for most.
+    ///
+    /// `others`: what another tool keeps inside this folder, which `size`
+    /// leaves out and the line says is not counted -- `~/.gemini` is
+    /// Gemini CLI's and Antigravity CLI's alike, and Antigravity's
+    /// `~/.gemini/antigravity-cli` can be nearly all of it. Each is
+    /// another family's data path inside `path` that the walk found there
+    /// (`kept_data::others_inside`). Left off the wire when empty, so a
+    /// line without one reads as it always has.
+    KeepsData {
+        path: String,
+        what: KeptData,
+        size: Option<crate::size::Measured>,
+        #[serde(default)]
+        left_out: Vec<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        others: Vec<OthersData>,
+    },
+    /// rustup's `self uninstall` deletes `path` (`$RUSTUP_HOME`, spelled
+    /// `~/.rustup`; the standard layout is the only one Banager offers
+    /// the uninstall for, `rustup::standard_roots`) permanently -- not
+    /// to the Trash -- with every toolchain in it: `names` are the entry
+    /// names of its `toolchains/` directory when the preview was built,
+    /// empty when that directory is missing, empty or unreadable (the
+    /// front end then says "every toolchain" without naming them).
+    /// Produced by the rustup recipe's uninstall warnings
+    /// (`adapters/standalone/rustup.rs`).
+    RemovesToolchains { path: String, names: Vec<String> },
+    /// rustup 1.29.1's `self uninstall` deletes the whole Cargo home,
+    /// `path` (`$CARGO_HOME`, spelled `~/.cargo`), permanently -- not to
+    /// the Trash: the registry and git caches, `.crates2.json` (its
+    /// record of what `cargo install` installed), Cargo's own
+    /// `config.toml` and `credentials.toml` (the crates.io login), `env`,
+    /// and anything else kept there (self_update.rs:977-993, :1029;
+    /// unix.rs:50-53). Always produced.
+    DeletesCargoHome { path: String },
+    /// rustup 1.29.1's `self uninstall` deletes everything in the Cargo
+    /// home's `bin/` whose name is not `rustup` or one of its thirteen
+    /// proxies -- by name, so a program copied there by hand goes too:
+    /// `names` are the crates Cargo's records (`.crates2.json` merged with
+    /// `.crates.toml`) list with a program among those, each by the
+    /// crate's name, as cargo's inventory names its row on the Installed
+    /// page (`ripgrep`, whose program is `rg`)
+    /// (`rustup::bin_programs_rustup_removes`). When a record is there but
+    /// cannot be read, the other programs a read-only listing of `bin/`
+    /// finds, minus those fourteen names, are here too by their file
+    /// names, since whether Cargo installed them is not known; otherwise
+    /// they are `RemovesUnrecordedPrograms`. Only produced when there are
+    /// any. (The research read a newer rustup that keeps them; the tag
+    /// this recipe is verified against does not -- see the recipe's doc.)
+    RemovesCargoInstalled { names: Vec<String> },
+    /// The programs in the Cargo home's `bin/` that rustup 1.29.1's `self
+    /// uninstall` deletes and that Cargo's records, read in full, do not
+    /// list -- by file name: copied there by hand or by another installer
+    /// (uv's before 0.5.0), so reinstalling Rust does not bring them back.
+    /// Only produced when there are any
+    /// (`rustup::bin_programs_rustup_removes`).
+    RemovesUnrecordedPrograms { names: Vec<String> },
+    /// Homebrew's `rustup` formula is installed too (`Cellar/rustup`
+    /// under one of Homebrew's default prefixes,
+    /// `rustup::homebrew_rustup_present`), and rustup's homes depend
+    /// only on `RUSTUP_HOME`/`CARGO_HOME`/`HOME`, never on where the
+    /// binary sits (`home` 0.5.12), so it shares the folders this
+    /// uninstall deletes and loses its toolchains with them. Produced
+    /// only when the Cellar directory is there.
+    HomebrewRustupLosesToolchains,
+    /// rustup's `self uninstall` edits the shell startup files it added
+    /// its `. "$HOME/.cargo/env"` line to. Banager itself never edits one.
+    EditsShellConfig,
+    /// After rustup's own cleanup, `path` (`$HOME` spelled `~`) will still
+    /// hold a line about Cargo's env file, which is then gone. `certain`
+    /// is true when that line is one of the sourcing forms rustup itself
+    /// writes, its target is this Cargo home, and every line above it
+    /// stands alone (`rustup::classify_leftover`), so a shell that reads
+    /// the file *will* print an error until the user removes it (a file
+    /// rustup does not edit, such as `~/.zshrc`, or a second copy of the
+    /// line); false for any other mention rustup will not remove (a
+    /// guarded `[ -f … ] && . …`, an `echo`, another spelling, rustup's
+    /// own form inside an `if` or below any line that does not stand
+    /// alone), which *may*. Which shells read which file is not decided.
+    /// One per startup file name: two names of one file (a link, a hard
+    /// link) share what rustup leaves in it, and each is named
+    /// (`rustup::shell_config_leftovers`).
+    LeavesShellConfigLine { path: String, certain: bool },
+    /// A startup file name (`path`, `$HOME` spelled `~`) that is, or leads
+    /// into, a place Banager never looks into (`protected::look`): its
+    /// lines are not read, so whether it will still speak of Cargo's env
+    /// file after rustup's cleanup is not known -- and rustup itself, which
+    /// Banager runs, reads and may edit it. Said instead of nothing, which
+    /// would read as "nothing is left" (`rustup::shell_config_leftovers`).
+    /// Read by `warningKey`, `warningArgs` and `warningDetailKey` in
+    /// src/lib/warnings.ts.
+    ShellConfigUnread { path: String },
+    /// After this `brew uninstall`, formula or cask, Homebrew also runs its
+    /// autoremove, which uninstalls the formulae that were installed only as
+    /// dependencies and that nothing installed needs any more -- any on the
+    /// system (`cmd/uninstall.rb:129-136`, `cleanup.rb:1038-1077` in
+    /// Homebrew 7.0.6-70). Banager runs every `brew` command with
+    /// `HOMEBREW_NO_AUTOREMOVE=1` (`BrewAdapter::ENV`), so this is produced
+    /// only when a `brew.env` file sets it back to a value Homebrew reads as
+    /// unset -- `0`, `false`, nothing -- which `bin/brew` exports over the
+    /// inherited one (`adapters/brew/brew_env.rs`). Produced by
+    /// `BrewAdapter::plan` for an `Uninstall`; read by `warningKey` and
+    /// `warningDetailKey` in src/lib/warnings.ts.
+    HomebrewAutoremoves,
+    /// After this `brew install` or `brew upgrade`, Homebrew cleans up
+    /// every time (`Install.finish_installation`, `install.rb:325-329`,
+    /// which both commands end in). `Cleanup.install_clean!`
+    /// (`cleanup.rb:361-389`) deletes, for the formula the command names and
+    /// each dependent Homebrew upgraded with it -- not the dependencies it
+    /// installed or upgraded on the way -- its older installed versions that
+    /// are not linked, pinned or still needed and its downloads in
+    /// Homebrew's cache that are outdated or older than
+    /// `HOMEBREW_CLEANUP_MAX_AGE_DAYS`, 120 unless set (`cleanup_formula`,
+    /// `cleanup.rb:564-571`, `:736-773`; `Formula#eligible_kegs_for_cleanup`);
+    /// for the cask the command names, its downloads there that are outdated
+    /// or that old (`cleanup_cask`, `cleanup.rb:581-588`); and every download
+    /// nothing in the cache refers to any more (`cleanup.rb:705-730`). Then,
+    /// whenever a full `brew cleanup` is due -- the last one it recorded is
+    /// more than `HOMEBREW_CLEANUP_PERIODIC_FULL_DAYS` days old, 30 unless
+    /// set (`cleanup.rb:418-445`) -- it runs one, which does the same for
+    /// every installed formula and cask and the whole cache
+    /// (`Cleanup#clean!`, `cleanup.rb:448-465`, `:473`). The variant is named
+    /// for the periodic clean-up; its line says both. Banager's
+    /// `HOMEBREW_NO_INSTALL_CLEANUP=1` keeps both from starting
+    /// (`cleanup.rb:341`, `:363`, `:419`), so this is produced only when a
+    /// `brew.env` file sets that to nothing (`adapters/brew/brew_env.rs`).
+    /// Produced by `BrewAdapter::plan` for an `Install` or an `Upgrade`;
+    /// read by `warningKey` and `warningDetailKey` in src/lib/warnings.ts.
+    HomebrewPeriodicCleanup,
+    /// The periodic clean-up (`HomebrewPeriodicCleanup`) also ends in the
+    /// same autoremove as `HomebrewAutoremoves` (`cleanup.rb:471`) unless
+    /// `HOMEBREW_NO_AUTOREMOVE` is set; the clean-up after every install or
+    /// upgrade does not autoremove. So this is produced only when
+    /// `brew.env` files take back both of Banager's variables -- the first
+    /// set to nothing, the second to a value Homebrew reads as unset
+    /// (`adapters/brew/brew_env.rs`) -- and always right after
+    /// `HomebrewPeriodicCleanup`. Produced by `BrewAdapter::plan` for an
+    /// `Install` or an `Upgrade`; same readers.
+    HomebrewCleanupAutoremoves,
+    /// `HomebrewAutoremoves`, when Banager cannot tell: a `brew.env` file
+    /// `bin/brew` may read is in a place Banager never looks into
+    /// (`brew_env::EnvFile::Unknown`), so whether it takes
+    /// `HOMEBREW_NO_AUTOREMOVE=1` back is not known, and the preview says
+    /// what Homebrew may then do rather than nothing. In its place, from
+    /// the same producer; same readers.
+    HomebrewMayAutoremove,
+    /// `HomebrewPeriodicCleanup`, when whether `HOMEBREW_NO_INSTALL_CLEANUP=1`
+    /// is taken back is not known, for the same cause. In its place.
+    HomebrewMayCleanUp,
+    /// `HomebrewCleanupAutoremoves`, when whether `HOMEBREW_NO_AUTOREMOVE=1`
+    /// or `HOMEBREW_NO_INSTALL_CLEANUP=1` is taken back is not known, for
+    /// the same cause: the line rests on both. In its place, right after
+    /// `HomebrewPeriodicCleanup` or `HomebrewMayCleanUp`.
+    HomebrewCleanupMayAutoremove,
+    /// Homebrew may update itself and its list of software before it
+    /// installs or upgrades (`brew update --auto-update`), for the same
+    /// cause: whether a `brew.env` Banager does not read sets
+    /// `HOMEBREW_NO_AUTO_UPDATE=1` back to nothing is not known. One that
+    /// Banager read and that does is refused instead
+    /// (`BrewAdapter::require_no_auto_update`). Produced by
+    /// `BrewAdapter::plan` for an `Install` or an `Upgrade`, first; read by
+    /// `warningKey` and `warningDetailKey` in src/lib/warnings.ts.
+    HomebrewMayAutoUpdate,
+    /// What the lines before it say Homebrew deletes leaves out the
+    /// formulae `HOMEBREW_NO_CLEANUP_FORMULAE` names (`names`, as
+    /// `brew_env::HomebrewSwitches::no_cleanup_formulae` splits it, in its
+    /// order): `Cleanup.skip_clean_formula?` (`cleanup.rb:409-415` in
+    /// Homebrew 7.0.7-9, by name or alias) keeps their older versions out
+    /// of the clean-up after an install or upgrade (`:339-346`) and of the
+    /// periodic one (`:453-454`) -- `old_versions`, beside
+    /// `HomebrewPeriodicCleanup` -- and `Cleanup.autoremove` keeps them and
+    /// the formulae they need at run time (`:1051-1055`) -- `autoremove`,
+    /// beside `HomebrewAutoremoves` or `HomebrewCleanupAutoremoves`.
+    /// Produced by `BrewAdapter::plan` right after those, only when the
+    /// variable names at least one formula (`brew_env.rs`); read by
+    /// `warningKey` and `warningArgs` in src/lib/warnings.ts.
+    HomebrewNoCleanupFormulae {
+        names: Vec<String>,
+        old_versions: bool,
+        autoremove: bool,
+    },
+    /// After this `brew uninstall`, Homebrew deletes the entry its trust
+    /// list (`trust.json` in the user's Homebrew config folder) holds for
+    /// what it uninstalls -- `name`, a cask's full name or a formula's tap
+    /// and name -- when that entry is there and the tap itself is not on
+    /// the list (`cmd/uninstall.rb:122-127`, `Trust.untrust!`,
+    /// `trust.rb:65-90` in Homebrew 7.0.7-9). Produced by
+    /// `BrewAdapter::plan` for an `Uninstall` only when the list Banager
+    /// read says so for certain (`brew::trust::TrustList::uninstall_forgets`);
+    /// read by `warningKey`, `warningArgs` and `warningDetailKey` in
+    /// src/lib/warnings.ts.
+    HomebrewForgetsTrust { name: String },
+    /// `brew services start` set this formula up to run in the background:
+    /// its service file is in `~/Library/LaunchAgents`, or in
+    /// `/Library/LaunchDaemons` when started with `sudo` (`system`), as
+    /// `sh.brew.<name>.plist` or `homebrew.mxcl.<name>.plist`
+    /// (`Homebrew::Service#plist_names`, `service.rb:86-105`;
+    /// `services/system.rb:68`, `:80`). `brew uninstall` neither stops the
+    /// service nor removes that file (`uninstall.rb:24-110` in Homebrew
+    /// 7.0.9), so the program keeps running from the deleted version, and
+    /// macOS keeps trying to start it at login. `name` is the formula's
+    /// name in the Cellar, for `brew services stop <name>` (r18 R46-3).
+    /// Produced by `BrewAdapter::plan` for a formula's `Uninstall`; read by
+    /// `warningKey` and `warningArgs` in src/lib/warnings.ts.
+    HomebrewServiceStays { name: String, system: bool },
+    /// Once this upgrade of a formula has exited 0, Banager runs
+    /// `brew cleanup <name>` (`PlanAction::CommandThen`), which deletes the
+    /// formula's older versions -- `versions`, every version installed when
+    /// the preview read the Cellar, oldest first, the one the upgrade
+    /// replaces among them (`brew::kegs`) -- and its old downloads, as
+    /// Homebrew does by itself after an upgrade unless
+    /// `HOMEBREW_NO_INSTALL_CLEANUP` is set (`Cleanup.install_clean!`,
+    /// `cleanup.rb:361-389`); no other formula's, no periodic clean-up, no
+    /// autoremove (`Cleanup#clean!` with names, `cleanup.rb:497-517`). The
+    /// author's decision U9 (r6).
+    /// Produced by `BrewAdapter::plan` for a formula's `Upgrade`, first,
+    /// only when that plan runs the cleanup; read by `warningKey`,
+    /// `warningArgs` and `warningDetailKey` in src/lib/warnings.ts.
+    HomebrewCleansUpOldVersions { versions: Vec<String> },
+    /// This uninstall deletes every installed version of the formula --
+    /// `versions`, oldest first, as the preview read the Cellar
+    /// (`brew::kegs`) -- not only the one Banager lists: the plan's
+    /// `brew uninstall` carries `--force`, Homebrew's way to delete all of
+    /// them (`cmd/uninstall.rb:45`, `uninstall.rb:32-44`), so none is left
+    /// to come back on the Installed page. U9 (r6). Produced by
+    /// `BrewAdapter::plan` for a formula's `Uninstall` with more than one
+    /// version installed and no pin, right after its `UninstallScope`;
+    /// read by `warningKey` and `warningArgs` in src/lib/warnings.ts.
+    HomebrewRemovesEveryVersion { versions: Vec<String> },
+    /// The keg-only formula `name` -- one Homebrew leaves out of its `bin`
+    /// on purpose -- is linked into the prefix with Homebrew's record of
+    /// the link (`brew link --force`, or Homebrew's own; who did it is not
+    /// known, and not said), so that `commands` (its commands whose places
+    /// hold Homebrew's link to it, by name) are in Terminal. Its update
+    /// unlinks the version it replaces and links the new one back
+    /// (`brew::links`); once the update has exited 0 Banager reads the
+    /// links again and, where the formula is not linked as `brew link`
+    /// leaves it, runs `brew link --formula --force <name>`
+    /// (`PlanAction::CommandThen`; no `--overwrite`: it stops rather than
+    /// overwrite another program's file). y1-keg (r6), after `node@22`'s
+    /// update took `node` out of Terminal on 2026-10-07. Produced by
+    /// `BrewAdapter::plan` for such a formula's `Upgrade`, first; read by
+    /// `warningKey`, `warningArgs` and `warningDetailKey` in
+    /// src/lib/warnings.ts.
+    HomebrewRelinksAfterUpdate { name: String, commands: Vec<String> },
+    /// A uv tool's command at `path` (home folder abbreviated) now leads to
+    /// another tool's copy -- pipx's, after `pipx reinstall-all` relinked it
+    /// -- and this update points it back to uv's: `uv tool upgrade` removes
+    /// every command its receipt records and links each again with force
+    /// (uv 0.12.17 `commands/tool/upgrade.rs:592-614`, `common.rs:903`).
+    /// The uninstall of such a tool is refused instead, since it would
+    /// remove the other tool's command (`UninstallUnsafeReason::
+    /// CaskLinkNotOwned`). Produced by `UvAdapter::plan` for an `Upgrade`
+    /// (`taken_command`); one taken after the preview that did not say so
+    /// ends the update as `Fault::ChangedSinceShown` before uv runs. A
+    /// caution, read by src/lib/warnings.ts. r15 R43-7.
+    TakesBackCommand { path: String },
+    /// What stops Homebrew linking the keg-only formula `name` back after
+    /// its update: `paths`, the places of its commands in the prefix where
+    /// something else is (`brew::links`, `KegLinks::held_paths`), in the
+    /// order read -- npm's own `bin/npm`, on 2026-10-07. Carried by an
+    /// update candidate blocked as `UpdateBlocked::LinkTaken`, so that its
+    /// row can name the file in the way (y1-keg review); never on a plan.
+    /// Produced by `BrewAdapter::check_updates`; read by
+    /// `UPDATE_BLOCKED_KEYS.LinkTaken`'s note in src/lib/sources.ts and by
+    /// `warningKey` and `warningArgs` in src/lib/warnings.ts.
+    LinkPlacesHeld { name: String, paths: Vec<String> },
+    /// What this uninstall removes and what it leaves, in the one sentence
+    /// the uninstall confirmation shows under the tool: which sentence is
+    /// `what` (`UninstallScope`). At most one per plan, and only on an
+    /// `Uninstall` plan of a source whose sentence holds for the exact argv
+    /// and environment the plan runs -- the sources and conditions are
+    /// `UninstallScope`'s. Read by `warningGroup` in src/lib/warnings.ts,
+    /// which gives it its own group, and rendered by `UninstallDialog` with
+    /// the row's name in it.
+    UninstallScope { what: UninstallScope },
+    /// One kind of extra step a cask's recorded uninstall takes beyond
+    /// deleting what Homebrew installed for it (`CaskStep`), with what the
+    /// record names for it: paths (`~` for the home folder), installer
+    /// package ids, service labels, bundle ids, programs, certificate
+    /// names -- empty only for `CaskStep::RunsOwnSteps` and
+    /// `CaskStep::DeletesUnnamed`, which name nothing. `only_if` is the
+    /// check a `remove` uninstall step makes of each path before it deletes
+    /// it (`RemoveCheck`), set only on a `Deletes` or `DeletesUnnamed` that
+    /// such a step gave; absent, and left out of the JSON, everywhere else.
+    /// One per kind and check, in `CaskStep`'s order -- a kind's line with
+    /// no check before its lines with one -- each name once.
+    /// Produced by `BrewAdapter::plan` for a cask `Uninstall` whose recorded
+    /// uninstall is not plain (`cask_receipt::classify`), beside
+    /// `UninstallScope { what: HomebrewCaskSteps }` or another of the
+    /// sentences for a cask with steps (`HomebrewCaskStepsAutoremoves`,
+    /// `HomebrewCaskStepsUnseen`, `HomebrewCaskStepsOnly`,
+    /// `HomebrewCaskStepsOnlyUnseen`); read by `warningKey` and
+    /// `warningArgs` in src/lib/warnings.ts. Also produced for a cask
+    /// `Upgrade`, after `CaskUpdateRunsOldSteps`, for each step of the
+    /// installed version's recorded uninstall that the update runs.
+    CaskUninstallStep {
+        step: CaskStep,
+        items: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        only_if: Option<RemoveCheck>,
+    },
+    /// Before it installs a cask's new version, `brew upgrade --cask` runs
+    /// the uninstall the installed version recorded -- every directive but
+    /// `signal`, unless that record's `on_upgrade` names it, and `rmdir`
+    /// (Homebrew 7.0.9 `cask/artifact/uninstall.rb:10`, `:25-53`), under
+    /// `sudo` where an uninstall would. Said first, before the
+    /// `CaskUninstallStep` lines of those steps, only when there is one.
+    /// `reopens`: one of them quits apps, which Homebrew opens again once
+    /// the update is in, those it quit (`abstract_uninstall.rb:91-127`,
+    /// `cask/upgrade.rb:342-366`). Produced by `BrewAdapter::plan` for a
+    /// cask `Upgrade` (R47-1, r18); read by `warningKey` in
+    /// src/lib/warnings.ts.
+    CaskUpdateRunsOldSteps { reopens: bool },
+    /// Not yet localised -- see this type's doc comment.
+    Message(String),
+}
+
+/// Which sentence `Warning::UninstallScope` says: what one source's
+/// uninstall removes and what it leaves. Each is true for every package the
+/// plan can name under the argv and environment that source's plan runs,
+/// on the conditions below -- where a condition does not hold, the plan
+/// carries no sentence, or a weaker one. Read by `UNINSTALL_SCOPE_KEYS` in
+/// src/lib/warnings.ts, a `Record` over the mirror, so a variant added here
+/// without copy fails `tsc`. Each variant names the tool's own source it
+/// rests on; `docs/what-we-run.md` says what each plan runs.
+///
+/// No sentence for pip (Banager never uninstalls from pip), for npm older
+/// than 7 or of an unknown version (npm 6 ran a package's uninstall
+/// scripts), for uv while `UV_TOOL_DIR` is set (the plan is refused), or for
+/// the tools with their own installer that Banager can uninstall, whose
+/// uninstall confirmation already lists what goes to the Trash, what stays
+/// and what rustup deletes -- Codex's own install among them since the
+/// author's decision U8 (opencode's, listed only, has no uninstall).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum UninstallScope {
+    /// `brew uninstall --formula` with Homebrew's autoremove off: it removes
+    /// only one installed version -- the one `opt` links to, else the
+    /// linked one, else the only one, else the newest
+    /// (`cli/named_args.rb:567-593` in Homebrew 7.0.6-70) -- and the links
+    /// into it (`keg.rb:325-393`), and leaves its config under `etc`
+    /// (`uninstall.rb:72-80`) and its data under `var`, which is outside
+    /// the keg. Produced when the `brew.env` files leave
+    /// `HOMEBREW_NO_AUTOREMOVE=1` in force (`brew_env::after_brew_env`).
+    HomebrewFormulaOnly,
+    /// The same uninstall with autoremove back on through a `brew.env`
+    /// file: the same sentence without "only", beside
+    /// `Warning::HomebrewAutoremoves`, which says what else goes.
+    HomebrewFormula,
+    /// `brew uninstall --cask` whose recorded uninstall is plain: it deletes
+    /// what Homebrew itself put down and linked -- the record lists at
+    /// least one such artifact -- and otherwise only quits apps, removes
+    /// folders once nothing but empty folders is left in them, and runs
+    /// steps that change a path's owner or permissions or end a process
+    /// (`cask_receipt::classify`). Its settings and data stay: the cask's
+    /// `zap` stanza runs only with `--zap` (`cmd/uninstall.rb:90-117`),
+    /// which Banager never passes.
+    HomebrewCaskPlain,
+    /// `brew uninstall --cask` whose recorded uninstall deletes what
+    /// Homebrew put down and linked and takes extra steps, each kind of
+    /// which the plan names in a `Warning::CaskUninstallStep` that says what
+    /// it does -- none a step whose deletions Banager cannot see, which
+    /// makes it `HomebrewCaskStepsUnseen` -- with Homebrew's autoremove off.
+    /// The sentence says Homebrew deletes the files it placed for the cask
+    /// -- what it moved into place, linked or generated, and its own copy
+    /// and records in the Caskroom (`Cask::Installer#uninstall`,
+    /// `cask/installer.rb:622-640`, `:642-659`, `:814-835`, `:1049-1061`) --
+    /// and not every file the cask's installer put down: a `pkg` or an
+    /// installer beside them is not in the record (`cask/cask.rb:709-732`).
+    /// It runs the recorded steps, and nothing else is deleted: `zap` runs
+    /// only with `--zap`, which Banager never passes, and the autoremove is
+    /// off (`cmd/uninstall.rb:89-136`). When the current definition names
+    /// an old token the cask still has another installation under,
+    /// Homebrew first uninstalls that one -- all but what it shares with
+    /// this one -- and deletes its Caskroom folder
+    /// (`Cask::Migrator.migrate_if_needed` from `cask/installer.rb:988`,
+    /// `cask/migrator.rb:24-66`, `:85-119`): again files Homebrew placed for
+    /// the cask and steps it recorded for it.
+    HomebrewCaskSteps,
+    /// The same uninstall with autoremove back on through a `brew.env`
+    /// file: the same sentence with "the cask's other files stay" in place
+    /// of "nothing else is deleted", beside `Warning::HomebrewAutoremoves`,
+    /// which says what else goes.
+    HomebrewCaskStepsAutoremoves,
+    /// `HomebrewCaskSteps` for a record with at least one step whose
+    /// deletions Banager cannot see (`cask_receipt::runs_unseen`): a program
+    /// the cask names (`early_script:`, `script:`, an uninstall step of type
+    /// `run`; `CaskStep::RunsScript`), or Ruby around the uninstall or an
+    /// uninstall step Banager does not name (`CaskStep::RunsOwnSteps`).
+    /// Banager knows the step is there, and names the program, but not what
+    /// it deletes: a vendor's uninstaller may take the app's settings and
+    /// data with it. So the sentence says Homebrew deletes the files it
+    /// placed for the cask and runs the uninstall steps it recorded, and
+    /// that Banager cannot see what else some of those steps delete -- never
+    /// that anything stays. It claims nothing about other files, so it
+    /// holds with Homebrew's autoremove on as well, beside
+    /// `Warning::HomebrewAutoremoves`.
+    HomebrewCaskStepsUnseen,
+    /// `brew uninstall --cask` whose record lists nothing Homebrew put down
+    /// or linked -- a cask installed with a `pkg` or an installer, neither
+    /// of which the record lists (`cask/cask.rb:709-732`) -- but takes extra
+    /// steps, each kind of which the plan names in a
+    /// `Warning::CaskUninstallStep` that says what it does, none a step
+    /// whose deletions Banager cannot see (`HomebrewCaskStepsOnlyUnseen`):
+    /// nothing else deletes any of what the installer put down
+    /// (little-snitch@4's only step removes its background services).
+    HomebrewCaskStepsOnly,
+    /// `HomebrewCaskStepsOnly` for a record with at least one step whose
+    /// deletions Banager cannot see, as for `HomebrewCaskStepsUnseen`
+    /// (wireshark-chmodbpf's `early_script:` runs its vendor's uninstaller
+    /// package). The sentence says Homebrew runs the uninstall steps it
+    /// recorded, and that Banager cannot see what else some of those steps
+    /// delete -- never that the other files the installer put down stay.
+    HomebrewCaskStepsOnlyUnseen,
+    /// `brew uninstall --cask` whose recorded uninstall Banager could not
+    /// read (`cask_receipt::read_recorded`): no Caskroom folder, no saved
+    /// caskfile, one saved in a form it does not read, a record Homebrew
+    /// would replace with the cask's current definition -- no list of its
+    /// own and an empty one or none in the receipt -- or a kind of artifact
+    /// it does not know; or a record that lists neither anything Homebrew
+    /// put down or linked nor any step -- an empty list, whatever the
+    /// receipt says of Ruby blocks, or `zap` alone -- which cannot tell what
+    /// the install left. The sentence says only that Banager could not read
+    /// from Homebrew's records what the uninstall deletes, and claims no
+    /// deletion it cannot back: with an empty list Homebrew runs no
+    /// artifact's uninstall at all (`cask/installer.rb:714-761`), and a
+    /// record Banager does not read can list anything.
+    HomebrewCask,
+    /// `HomebrewCaskPlain` for a cask from a tap that is not Homebrew's own
+    /// (the receipt's `source.tap`, else the tap in the cask's full name):
+    /// its record cannot show a `pkg` or an installer beside what Homebrew
+    /// placed (`cask/cask.rb:709-732`), and while none of the 7,763 casks
+    /// in Homebrew's own catalogue is plain with one, a tap's cask can be.
+    /// So the sentence says Homebrew deletes the files it placed, and that
+    /// the cask's settings and data stay, as does anything its installer
+    /// put down besides: on a plain record no step deletes those.
+    HomebrewCaskPlainThirdParty,
+    /// A cask whose saved caskfile is Ruby (`cask_receipt::Recorded::ruby`)
+    /// and whose record lists something Homebrew placed, from a tap
+    /// Homebrew trusts or where trust is not required. Homebrew loads the
+    /// Ruby, and when it cannot -- a method the cask used has since been
+    /// removed -- it rebuilds the cask from the receipt, unless the receipt
+    /// or the cask's current definition has Ruby flight blocks, and then
+    /// runs the current definition's uninstall instead
+    /// (`cask/installer.rb:1046-1055`,
+    /// `CaskLoader.recover_from_installed_caskfile`,
+    /// `cask/cask_loader.rb:879-920` in Homebrew 7.0.7-9). So the sentence
+    /// says Homebrew deletes the files it placed and runs the cask's
+    /// uninstall steps, that what some of them delete cannot be seen in
+    /// advance, and that where Homebrew cannot read the recorded steps it
+    /// runs the current definition's -- never that anything stays.
+    HomebrewCaskRuby,
+    /// `HomebrewCaskRuby` for a record that lists nothing Homebrew placed:
+    /// the same, without the files Homebrew placed.
+    HomebrewCaskStepsOnlyRuby,
+    /// `HomebrewCaskRuby` for a plain record (what Homebrew placed, no
+    /// step), as a Homebrew before 7 could save even for one of its own
+    /// casks. The record lists no step, so the sentence says only that
+    /// Homebrew deletes the files it placed, and that where it cannot read
+    /// what it recorded it uses the cask's current definition, whose
+    /// effect cannot be seen in advance -- never that anything stays.
+    HomebrewCaskPlainRuby,
+    /// A cask whose saved caskfile is Ruby, from a tap that is not
+    /// Homebrew's own and that Banager cannot see Homebrew trusts -- its
+    /// trust list names neither the cask nor its tap, or Banager could not
+    /// read it -- while Homebrew requires trust
+    /// (`brew_env::HomebrewSwitches::require_tap_trust`), and whose record
+    /// lists steps beside what Homebrew placed. An untrusted cask's Ruby is
+    /// not loaded: Homebrew runs only the recorded artifacts that are not
+    /// its `uninstall` stanza, `zap` or steps (`cask/installer.rb:1010-1043`).
+    /// So the sentence says Homebrew deletes the files it placed, and runs
+    /// the cask's uninstall steps only if it trusts where the cask comes
+    /// from.
+    HomebrewCaskStepsIfTrusted,
+    /// `HomebrewCaskStepsIfTrusted` for a record that lists nothing
+    /// Homebrew placed: only that the steps run only if Homebrew trusts
+    /// where the cask comes from.
+    HomebrewCaskStepsOnlyIfTrusted,
+    /// `npm uninstall -g`, when the npm Banager detected is 7 or later: npm
+    /// deletes the package's folder, with the dependencies inside it, and
+    /// its command and man-page links, and runs no script of the package's
+    /// (npm 10.9.9 `lib/commands/uninstall.js:38-52`, arborist's
+    /// `reify.js:1308-1341`; npm 12.0.2 the same). npm 6 ran the package's
+    /// `uninstall` scripts (`docs/content/using-npm/scripts.md:216-228`).
+    Npm,
+    /// `pipx uninstall`: pipx deletes the tool's own virtual environment
+    /// and the links into it, and nothing else of the tool's (pipx 1.17.3
+    /// `commands/uninstall.py:67-125`).
+    Pipx,
+    /// `uv tool uninstall`, while `UV_TOOL_DIR` is unset: uv deletes the
+    /// tool's environment and the executables its receipt records (uv
+    /// 0.12.17 `crates/uv/src/commands/tool/uninstall.rs:187-226`).
+    Uv,
+    /// `cargo uninstall`: cargo deletes the binaries its install record
+    /// lists for the crate and rewrites that record, and runs no crate code
+    /// (cargo 1.98.1 `src/cargo/ops/cargo_uninstall.rs`).
+    Cargo,
+    /// `ollama rm`: Ollama deletes the model's manifest and each of its
+    /// layers no other model uses (Ollama 0.34.1
+    /// `server/routes.go:1249-1299`, `manifest/manifest.go:74-115`).
+    Ollama,
+}
+
+/// One kind of extra step a cask's recorded uninstall takes, for the line
+/// `Warning::CaskUninstallStep` puts among the confirmation's notes.
+/// Declared in the order the lines are said. Each maps to directives of
+/// the cask's `uninstall` stanza or its `uninstall_*` steps as Homebrew
+/// 7.0.6 runs them (`cask/artifact/abstract_uninstall.rb`,
+/// `install_steps.rb`); produced by
+/// `cask_receipt::classify`; read by `CASK_STEP_KEYS` in
+/// src/lib/warnings.ts, a `Record` over the mirror.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum CaskStep {
+    /// `delete:` (`sudo rm -r -f`, globs expanded, `~` the home folder), an
+    /// `artifact` Homebrew placed in the home folder, which its uninstall
+    /// deletes again, and each path an uninstall step of type `remove`
+    /// names outright (`FileUtils.rm_f`/`rm_rf`, or a removal with `sudo`,
+    /// globs expanded; `install_steps.rb:1049-1070`): gone for good, not to
+    /// the Trash. A `remove` step that records a check deletes a path only
+    /// where it passes it; its paths are a line of their own, with the
+    /// check (`Warning::CaskUninstallStep`'s `only_if`, `RemoveCheck`).
+    Deletes,
+    /// A `remove` uninstall step's path the record does not spell out: one
+    /// Homebrew resolves against a folder it knows only when it runs the
+    /// step -- the cask's own staged folder, the folders it looks for
+    /// commands in, its working folder -- or through a `{{…}}` template.
+    /// Gone for good like `Deletes`, but named by nothing; like `Deletes`,
+    /// its line carries the step's check when the step records one.
+    DeletesUnnamed,
+    /// `trash:`: moved to the Trash.
+    Trashes,
+    /// `pkgutil:`: every file each matching installer package recorded is
+    /// deleted, whatever else uses it, and the package is forgotten
+    /// (`cask/pkg.rb`). The items are the ids or patterns the cask names.
+    RemovesPackages,
+    /// `early_script:` and `script:`, and an uninstall step of type `run`
+    /// whose program the record names: a program the cask names is run.
+    /// What it deletes Banager cannot see, so the sentence beside it is
+    /// `UninstallScope::HomebrewCaskStepsUnseen` or
+    /// `HomebrewCaskStepsOnlyUnseen`.
+    RunsScript,
+    /// An `uninstall_preflight`/`uninstall_postflight` block of Ruby, or an
+    /// uninstall step Banager does not name (anything but the ones that set
+    /// ownership or permissions or end a process, which stay plain, and the
+    /// ones the other kinds name). Names nothing; what it deletes Banager
+    /// cannot see, as for `RunsScript`.
+    RunsOwnSteps,
+    /// `launchctl:`: each service is removed with `launchctl remove` and
+    /// its plist deleted from the LaunchAgents and LaunchDaemons folders.
+    RemovesServices,
+    /// `kext:`: each kernel extension is unloaded and deleted.
+    RemovesKexts,
+    /// An uninstall step of type `delete_keychain_certificate`, which runs
+    /// `security find-certificate -a -c <name> -Z` with `sudo` and deletes
+    /// each certificate it lists (`install_steps.rb:1179-1210`): every
+    /// certificate in the keychain whose name contains the item, not only
+    /// the cask's own -- `-a` lists all that match, and `-c` matches a
+    /// name that includes it (security(1), `find-certificate`). A step
+    /// that also names a `matching_certificate` file deletes only the one
+    /// certificate with that file's hash, which this line would overstate:
+    /// it is `RunsOwnSteps`.
+    DeletesCertificates,
+    /// `login_item:`: those login items are deleted, and so are the
+    /// cask's own apps' (`uninstall_login_item`).
+    RemovesLoginItems,
+    /// `quit:`: running apps with those bundle ids (`*` a wildcard) are
+    /// asked to quit -- said beside a plain removal's sentence too. The
+    /// items are the bundle ids of the apps Banager could not find on this
+    /// Mac; the line counts them, the ids behind its ⓘ.
+    QuitsApps,
+    /// `QuitsApps`, for the apps it quits that Banager found: an app the
+    /// cask's record puts down whose `CFBundleIdentifier` is one the step
+    /// names, found where Homebrew puts apps
+    /// (`BrewAdapter::quit_app_names`). The items are the apps' names, as
+    /// Finder shows their bundles ("Visual Studio Code"), not their bundle
+    /// ids. Never produced by `cask_receipt::classify`, which reads the
+    /// record alone: the preview turns a `QuitsApps` line into this one,
+    /// and a `QuitsApps` for the rest, once it has looked.
+    QuitsNamedApps,
+    /// `signal:`: the recorded signal (`TERM`, `KILL`...) is sent to
+    /// running apps with those bundle ids (`abstract_uninstall.rb:472-515`).
+    /// Unlike a quit, the app is not asked to save: said as a force quit
+    /// that may lose unsaved work. Counted as `QuitsApps` is, the ids
+    /// behind its ⓘ.
+    SignalsApps,
+}
+
+/// The check an uninstall step of type `remove` makes of each path it
+/// lists, once globs are expanded, before it deletes it: with
+/// `symlink_target_contains`, only a path that is a link whose target, as
+/// the link spells it, contains the text (`path.symlink? &&
+/// path.readlink.to_s.include?`); with `content_contains`, only a path that
+/// is a file -- a link to one counts -- Homebrew can read and whose
+/// contents contain the text (`path.file? && path.readable? &&
+/// path.read.include?`); with both, only a path that passes both
+/// (`install_steps.rb:1051-1060` in Homebrew 7.0.6-70). The text is taken
+/// as the record spells it: Homebrew fills in no `{{…}}` template there
+/// (`step_string`, `:1499-1501`). Set on `Warning::CaskUninstallStep`'s
+/// `only_if` by `cask_receipt::classify`; read by `warningKey` and
+/// `warningArgs` in src/lib/warnings.ts, which pick the line and fill in
+/// the text.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum RemoveCheck {
+    /// `symlink_target_contains`.
+    LinkTargetContains(String),
+    /// `content_contains`.
+    ContentContains(String),
+    /// Both, on one step.
+    LinkTargetAndContentContain {
+        link_target: String,
+        content: String,
+    },
+}
+
+/// Why the tool itself will refuse to update this one package, although
+/// its source is writable and answering. The per-package half of the
+/// actionability gate (spec §8); `ReadOnlyReason` and `Unavailable` are the
+/// per-source halves.
+///
+/// A variant belongs here only when the tool *reports* the state in the
+/// output Banager already reads to list updates, so the row can be marked
+/// before anyone clicks. States a tool only reveals by refusing (a cask
+/// whose installer must be run by hand) do not qualify: `brew outdated
+/// --json=v2` carries no field for them (`cmd/outdated.rb:196-200` in
+/// Homebrew 7.0.7 lists all five keys). A disabled package does qualify,
+/// although `brew outdated` says nothing of it either, because the same
+/// check already reads `brew info --installed --json=v2`, which does
+/// (`Disabled` below).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum UpdateBlocked {
+    /// Someone pinned this package in its tool, which holds it at the
+    /// version it has now. Two tools produce it:
+    /// - Homebrew (`brew pin`), for a formula or a cask. `brew outdated`
+    ///   still lists it, marked `pinned: true`, and a named `brew upgrade`
+    ///   of it exits 1 with "Not upgrading 1 pinned package"
+    ///   (`cmd/upgrade.rb:428-476`, `cask/upgrade.rb:82-90`). Read by
+    ///   `parse_outdated` in `adapters/brew/parse.rs`.
+    /// - pipx (`pipx pin`), for a tool. `pipx list --outdated` still lists
+    ///   it, as `name [pinned]: old -> new` (pipx 1.17.3's
+    ///   `commands/outdated.py:243`), and `pipx upgrade` of it changes
+    ///   nothing but exits 0 (`commands/upgrade.py:408-409` and `:74-81`).
+    ///   Read by `parse_outdated` in `adapters/pipx.rs`.
+    Pinned,
+    /// The tool installs its updates itself and has no update command
+    /// Banager may run for it, so a newer version is listed with no
+    /// button. Produced by `StandaloneAdapter::check_updates`
+    /// (`adapters/standalone/mod.rs`) for a recipe whose `upgrade` is
+    /// `None` -- Antigravity CLI, whose `agy update` is undocumented, takes
+    /// no options and has never been run (agy.md §4; spec §4.4) -- and, for
+    /// the same recipe, by `StandaloneAdapter::plan`'s `Upgrade` arm inside
+    /// `AdapterError::UpdateBlocked`: the gate's late twin for a stale
+    /// snapshot (spec §五). Not "no
+    /// candidate": the Installed row would then say "up to date", which is
+    /// false while 1.2.11 exists; not `checkable: false`: Banager did
+    /// check. Read by the gate (`blocked_upgrade` in session/plans.rs,
+    /// generic over this enum), by `updateStateOf` in
+    /// src/lib/updateState.ts (no button, no checkbox) and by
+    /// `UPDATE_BLOCKED_KEYS.SelfUpdatesOnly` in src/lib/sources.ts, whose
+    /// sentence tells the user to open the tool once and that it checks at
+    /// most every 15 minutes.
+    SelfUpdatesOnly,
+    /// Homebrew disabled this formula or cask (`disable!` in its tap), so
+    /// it installs no newer version of it, although `brew outdated` still
+    /// lists one: neither reader of `outdated` looks at the mark
+    /// (`Formula#outdated?`, `formula.rb:2138-2142`; `Cask#outdated?`,
+    /// `cask/cask.rb:424-427`, Homebrew 7.0.7). A named `brew upgrade` of
+    /// a formula then fails (`FormulaInstaller#prelude_fetch` raises
+    /// `CannotInstallFormulaError` without `--force`,
+    /// `formula_installer.rb:317-331`); of a cask it prints "Not upgrading
+    /// <token>, it is disabled" and exits 0 having changed nothing
+    /// (`cask/upgrade.rb:60-63`). Produced by `BrewAdapter::check_updates`
+    /// (`adapters/brew/mod.rs`) from the `disabled` mark that `brew info
+    /// --installed --json=v2` carries (`ArtifactFacts.homebrew.disabled`),
+    /// for a candidate the inventory of the same check lists as disabled.
+    /// Wins over `Pinned`: unpinning a disabled package would not make it
+    /// updatable. Read by the gate (`blocked_upgrade`), by `updateStateOf`
+    /// (no button, no checkbox) and by `UPDATE_BLOCKED_KEYS.Disabled` in
+    /// src/lib/sources.ts.
+    Disabled,
+    /// A keg-only Homebrew formula linked into its prefix with Homebrew's
+    /// record of the link, where something else is at the place of one of
+    /// its commands now -- most often npm's own copy of itself, put in
+    /// `<prefix>/bin/npm` by an update of npm with npm. The update would
+    /// unlink the formula, and nothing gets past such a file to link it
+    /// back (`Keg::ConflictError`), so its commands would be gone from
+    /// Terminal (y1-keg, r6). Without the record the update unlinks and
+    /// links nothing, and nothing is blocked. Produced by
+    /// `BrewAdapter::check_updates` for a candidate the inventory of the
+    /// same check lists as keg-only (`brew::links`), with the places as
+    /// `Warning::LinkPlacesHeld`, and by `BrewAdapter::plan`'s `Upgrade` arm inside
+    /// `AdapterError::UpdateBlocked`, the gate's late twin. Loses to
+    /// `Disabled` and `Pinned`, which Homebrew refuses before it unlinks
+    /// anything. Read by the gate (`blocked_upgrade`), by `updateStateOf`
+    /// (no button, no checkbox) and by `UPDATE_BLOCKED_KEYS.LinkTaken` in
+    /// src/lib/sources.ts. An update already confirmed when the place is
+    /// taken is refused right before it runs instead (`Fault::LinkTaken`).
+    LinkTaken,
+    /// npm's own package, where the `npm` in its prefix's `bin` is a
+    /// Homebrew formula's: a link that leads, every link followed, into
+    /// `<prefix>/Cellar/` -- `node@22` linked by hand (`brew link --force`)
+    /// puts its own npm there. `npm install -g npm` replaces that
+    /// link with npm's own, and the next `brew upgrade node@22` cannot link
+    /// the new version over it: Homebrew stops at the file ("The `brew
+    /// link` step did not complete successfully"), and leaves no `node`
+    /// where Terminal looks -- what happened on the author's Mac on
+    /// 2026-10-07 (review of track y2-npmwhy, finding 2). Such an npm
+    /// updates with its formula. So does corepack, where `<prefix>/bin/
+    /// corepack` is such a link (R42-2): its update replaces that link
+    /// the same way. Produced by `NpmAdapter::check_updates`
+    /// (`adapters/npm.rs`) from a read of where `<prefix>/bin/npm` or
+    /// `<prefix>/bin/corepack` leads (`real_comes_with_formula`), and, for
+    /// the same read, by
+    /// `NpmAdapter::plan`'s `Upgrade` arm inside `AdapterError::UpdateBlocked`
+    /// (the late twin). Not a state npm reports: the exception to the rule
+    /// above, because the update it would block breaks another source.
+    /// Read by the gate (`blocked_upgrade`), by `updateStateOf` (no button,
+    /// no checkbox) and by `UPDATE_BLOCKED_KEYS.UpdatesWithFormula` in
+    /// src/lib/sources.ts.
+    UpdatesWithFormula,
+    /// Claude Code, whose own `~/.claude/settings.json` turns every update
+    /// of it off: its `env` sets `DISABLE_UPDATES`. `claude update`, the
+    /// command Banager's Update runs, then prints that updates are disabled
+    /// by an administrator and exits 0 having installed nothing (Claude
+    /// Code 2.1.292, read from its binary as bytes: r39 S2, skeptic 2), so
+    /// the button could only end in "same version". Produced by
+    /// `StandaloneAdapter::check_updates` (`adapters/standalone/mod.rs`)
+    /// from `latest::claude_updates_refused`, the same file the check reads
+    /// for the channel; Banager reads no other place the switch can be set.
+    /// No late twin in `plan`: a switch turned on after the check makes
+    /// the update end unchanged (`UnchangedAfterUpgrade`). Read by the gate
+    /// (`blocked_upgrade`), by `updateStateOf` (no button, no checkbox) and
+    /// by `UPDATE_BLOCKED_KEYS.UpdatesTurnedOff` in src/lib/sources.ts.
+    UpdatesTurnedOff,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UpdateCandidate {
+    pub key: ArtifactKey,
+    pub current: String,
+    pub target: String,
+    pub channel: UpdateChannel,
+    pub checkable: bool,
+    pub warnings: Vec<Warning>,
+    /// `Some` when the tool will refuse to update this package even though
+    /// Banager could check it -- `checkable` says nothing about this: a
+    /// pinned formula's newer version is known exactly. `Session::issue_plan`
+    /// refuses an `Upgrade` of a candidate that carries one, and the Updates
+    /// page's `isUpdateActionable` hides the row's button and checkbox for
+    /// it.
+    pub blocked: Option<UpdateBlocked>,
+    /// The most this update can download, in bytes: an Ollama model's
+    /// changed blobs as the registry manifest sizes them
+    /// (`ollama::parse::changed_blob_bytes`), from the two manifests the
+    /// check already read -- an upper bound, since a blob another local
+    /// model shares is already on this Mac. `None` for every other source,
+    /// and for a model whenever the number could be wrong. Read by
+    /// src/lib/modelDownload.ts: 「最多约4.7 GB」 in the model's note in the
+    /// update confirmation, one tool's or Update All's. Always sent
+    /// (`null` when `None`); `serde(default)` so a candidate written
+    /// before it existed still reads.
+    #[serde(default)]
+    pub download_bytes: Option<u64>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SearchHit {
+    pub adapter_id: AdapterId,
+    pub kind: ArtifactKind,
+    pub name: String,
+    pub description: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum OpKind {
+    Install,
+    Uninstall,
+    Upgrade,
+    /// `brew link --formula --force <formula>`: puts a keg-only Homebrew
+    /// formula's commands where Terminal looks, for a source whose launcher could not
+    /// find one of them (`NoAnswer::link_fixes`). Planned only by
+    /// `BrewAdapter::plan`, only for a formula a snapshot offers as a fix
+    /// (`Session::issue_listed_plan`'s `lists_request`); every other adapter
+    /// refuses it. Not kept in the history (`history::record_for`): it
+    /// updates and uninstalls nothing.
+    Link,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OpRequest {
+    pub kind: OpKind,
+    pub instance_id: InstanceId,
+    pub artifact_kind: ArtifactKind,
+    pub name: String,
+}
+
+/// What the user's Cancel does to an operation built from this plan.
+/// `OperationManager::cancel` (ops/mod.rs) reads it, and the front end
+/// reads the copy `OpSummary` carries (`OperationBar.tsx`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CancelPolicy {
+    /// Cancel fires the op's token. A command already running is stopped
+    /// by the runner and `run_operation` reconciles what is installed
+    /// afterwards; one not yet started never starts. Every `Plan` an
+    /// adapter builds today says this (pip's `plan()` builds none).
+    /// A path-list uninstall (`PlanAction::TrashPaths`) has no process to
+    /// stop: `removal::execute_removal` watches the token between items and
+    /// stops there -- a move already handed to the system is waited for --
+    /// and `run_operation` reads the disk the same way.
+    KillThenReconcile,
+    /// Cancel is refused once the op is Running, and its command then ends
+    /// on its own or at `Plan::timeout_secs`, which the runner counts from
+    /// spawn. While the op is still Queued nothing has started and no
+    /// timeout is counting, so Cancel is accepted as under
+    /// `KillThenReconcile` and the command never starts. Produced by the
+    /// rustup recipe (`adapters/standalone/recipes.rs`) for `rustup self
+    /// update`, which unlinks `$CARGO_HOME/bin/rustup` -- the one binary
+    /// its thirteen proxies run -- and copies the new one in, not
+    /// atomically (rustup 1.29.1 `install_bins`), and for `rustup self
+    /// uninstall`, which removes Rust directory by directory; a kill
+    /// partway leaves no working Rust.
+    NoCancel,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ResourceLock(pub String); // "brew:/opt/homebrew"
+
+/// What a `Plan` does when it runs. Every plan an adapter built before
+/// phase 4 was one program and one argv (`Command`), and `run_plan` is
+/// still the only thing that spawns one. The path-list uninstall of a
+/// tool installed by its own installer (`StandaloneAdapter`, phase 4
+/// step C) runs no command at all: `execute` hands each path to the
+/// system's "move to Trash" (`Trasher::trash`) in order -- `TrashPaths`.
+/// Two arms rather than an invented argv, because a preview that names a
+/// command that will not run is a lie about what is about to happen (spec
+/// Q16), and because one `mv` cannot express two paths with the same
+/// basename (`~/.local/bin/claude` and `~/.local/share/claude`: `mv -n`
+/// skips the second and exits 0), and an item a rename puts in the Trash
+/// gets no Finder "Put Back" record (spec §6.2; the Trash spike, which also
+/// found that a rename does reach `~/.Trash` without Full Disk Access).
+///
+/// Readers, each matching every arm: `run_plan` (`adapters/mod.rs`;
+/// `Command` only, it refuses the others), `BrewAdapter::execute`
+/// (`CommandThen`), `OperationManager::summaries`'s `argv_preview` and
+/// `env_preview` (`ops/mod.rs`; the first command of a `CommandThen`,
+/// empty for `TrashPaths`), `CommandPreview.tsx` (every command of a
+/// `CommandThen`, one sentence for `TrashPaths`) and the hand-written
+/// mirror in `src/lib/types.ts`. Externally tagged on the wire like every
+/// other enum here: `{"Command":{"program":…,"args":[…],"env":[…]}}`,
+/// `{"CommandThen":{…,"then":[…]}}` and `{"TrashPaths":{"paths":[…]}}`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PlanAction {
+    /// One program, one argv, one environment: what `run_plan` spawns.
+    /// `args` is the argv without the program; the preview is `program`
+    /// followed by `args`.
+    Command {
+        program: PathBuf,
+        args: Vec<String>,
+        // Only the preview crosses the wire. Session keeps the real plan.
+        #[serde(serialize_with = "crate::runner::redact::serialize_preview_env")]
+        env: Vec<(String, String)>,
+    },
+    /// A command and its follow-ups, all with one program and one
+    /// environment: `program args`, and only once that has exited 0, each
+    /// argv of `then` in turn, `program` before it -- each a follow-up whose
+    /// own end decides nothing about the operation (the first command's
+    /// work is done whatever becomes of it) and is said in the log instead.
+    /// The preview shows every one. Built only by `BrewAdapter::plan`, for
+    /// a formula's upgrade, and carried out only by `BrewAdapter::execute`;
+    /// `run_plan` refuses it. Its follow-ups, in this order:
+    ///
+    /// - `brew link --formula --force <name>`, for a keg-only formula whose
+    ///   link Homebrew recorded (`Warning::HomebrewRelinksAfterUpdate`,
+    ///   y1-keg, r6): run
+    ///   only when, read again after the update, the formula is not linked
+    ///   as `brew link` leaves it (`LogNote::StillLinkedAfterUpdate` when it
+    ///   is, `LogNote::RelinkingAfterUpdate` before it runs,
+    ///   `LogNote::NoLongerLinked` when it is still not linked after);
+    /// - `brew cleanup <name>` (`Warning::HomebrewCleansUpOldVersions`, the
+    ///   author's decision U9, r6): run only when, asked again then, the
+    ///   person's settings still allow it (`LogNote::
+    ///   OldVersionsCleanupSkipped` when they do not;
+    ///   `LogNote::CleaningUpOldVersions`,
+    ///   `LogNote::OldVersionsNotCleanedUp`).
+    ///
+    /// On the wire `then` is a list of argvs:
+    /// `"then":[["link","--formula","--force","node@22"],["cleanup","node@22"]]`.
+    CommandThen {
+        program: PathBuf,
+        args: Vec<String>,
+        // Only the preview crosses the wire. Session keeps the real plan.
+        #[serde(serialize_with = "crate::runner::redact::serialize_preview_env")]
+        env: Vec<(String, String)>,
+        then: Vec<Vec<String>>,
+    },
+    /// No command. `execute` moves each path to the Trash, in this order
+    /// (the tool's launcher last, spec §6.2), after re-checking it. The
+    /// paths are absolute; the same paths, `$HOME` abbreviated to `~`,
+    /// are the plan's `Warning::WillTrash` items, which is what the dialog
+    /// lists. Built only by `StandaloneAdapter::plan` for a recipe whose
+    /// `uninstall` is `Uninstall::Paths`.
+    TrashPaths {
+        paths: Vec<PathBuf>,
+        /// What the preview saw at each of `paths`, in the same order
+        /// (`removal::plan_removal`): `removal::execute_removal` refuses
+        /// with `Fault::PathChanged` when any path is no longer that file,
+        /// before anything moves and again right before each move (spec
+        /// §6.3). Skipped by serde: the `IssuedPlan` the window receives
+        /// carries the paths alone, the TypeScript mirror has no such
+        /// field, and a plan read back from JSON has none -- which
+        /// `execute_removal` refuses rather than moving what nobody looked
+        /// at. It rides in the plan `Session` keeps (`StoredPlan`) and
+        /// hands to `OperationManager::submit`, so `Adapter::execute`
+        /// reads it with no parameter of its own.
+        #[serde(skip)]
+        previewed: Vec<ItemIdentity>,
+    },
+}
+
+/// What kind of file `lstat` found at a path -- a symbolic link is itself,
+/// never what it points at. Produced by the path-list uninstall's checks
+/// (`removal::identity_of`, adapters/standalone/removal.rs) from the item's
+/// last `lstat`; part of an `ItemIdentity`, and what `Trasher::trash` is
+/// told about the item it moves, so `RealTrasher` builds its URL from the
+/// check made immediately before the call instead of looking again
+/// (trash/real.rs). No serde: it never crosses IPC.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ItemKind {
+    File,
+    Dir,
+    Symlink,
+    /// A socket, a pipe, a device: nothing a recipe lists.
+    Other,
+}
+
+/// Which file a path named at one moment: `(st_dev, st_ino)` and the kind,
+/// from `lstat` -- a link's own, never its target's. A link re-pointed (as
+/// `ln -sf` and Claude Code's updater re-point one) or a folder replaced by
+/// another of the same name is a new identity. Recorded by
+/// `removal::plan_removal` for every path it lists; the preview's travel
+/// with the plan (`PlanAction::TrashPaths.previewed`, stage 6e), and
+/// `removal::execute_removal` compares them with what is there at the
+/// confirmation and again immediately before each move. Server-side only:
+/// no serde, and the field that carries it is skipped on the wire.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ItemIdentity {
+    pub dev: u64,
+    pub ino: u64,
+    pub kind: ItemKind,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Plan {
+    pub request: OpRequest,
+    pub action: PlanAction,
+    pub needs_password: bool,
+    pub locks: Vec<ResourceLock>,
+    pub cancel_policy: CancelPolicy,
+    pub warnings: Vec<Warning>,
+    pub affected: Vec<String>, // dependents that would break on uninstall
+    pub timeout_secs: u64,
+    /// Fingerprint of the install record this preview relies on. It travels
+    /// on the wire so a batch re-planning an evicted plan compares the basis
+    /// as well as argv. Receipts and their potentially private settings never
+    /// cross IPC. Only the server-held plan is executable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub basis: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Outcome {
+    Succeeded,
+    /// The user pressed Cancel and the request did not take effect: either
+    /// the command never started, or an install or uninstall was stopped and
+    /// reconcile shows the artifact still absent or still present. An
+    /// upgrade stopped partway is never this but `Unconfirmed`
+    /// (`run_operation`). A cancel that lost the race to the command
+    /// finishing is `Succeeded`, not this.
+    Cancelled,
+    /// The pre-upgrade reading found the tool gone, or the command
+    /// reported success but reconcile disagrees -- or a
+    /// path-list uninstall moved everything on its list and then found part
+    /// of what the list names there (`Attention::BackAfterUninstall`, from
+    /// its own last look), or an upgrade's tool failed after the version
+    /// reconcile reads had moved (`Attention::UpdatedButStepFailed`).
+    /// Carries which disagreement, never a sentence: the front end words it
+    /// in the user's language (the drawer and the operation bar both show
+    /// it).
+    NeedsAttention(Attention),
+    /// Another program failed the operation, and `summary` is that
+    /// program's own words and nothing of Banager's -- but for a proxy's or
+    /// mirror's login, which the runner masks as `****` before anything
+    /// sees it (`runner::redact`) -- and the front end shows it
+    /// as-is but for surrounding whitespace, quoted inside a translated
+    /// sentence, or says the program gave no reason when it is blank
+    /// (`outcomeKey` and `outcomeArgs` in `src/lib/format.ts`).
+    /// Three places build it. A command that ran and exited non-zero:
+    /// `exit_code` is the command's, and `summary` the last five lines of
+    /// its stderr (`run_plan` in `adapters/mod.rs`). The read npm and uv
+    /// take right before a confirmed command (`npm prefix -g`, `uv tool
+    /// list --show-paths`), when it exited non-zero or did not finish: the
+    /// command was not started, `exit_code` is the read's (`None` when it
+    /// did not finish, and `cause` `TimedOut` when its deadline stopped
+    /// it) and `summary` the last five lines of the read's stderr, every
+    /// line of which is in the operation's log -- npm's `env: node: No
+    /// such file or directory`, say (`read_before_run` in
+    /// `adapters/mod.rs`). A path-list uninstall the system refused: no
+    /// command ran, so `exit_code` is `None`, and `summary` is macOS's own
+    /// description of the refusal -- the `NSError`'s localized
+    /// description, `TrashError::Refused` (`removal::execute_removal`,
+    /// which also writes it to the log as a `LogNote::TrashFailed`). A
+    /// failure of Banager's own is `BanagerFailed`, never this. An
+    /// upgrade's command that exited non-zero once the installed version
+    /// had moved is not this either but `NeedsAttention(Attention::
+    /// UpdatedButStepFailed)`: `run_operation` reads the version after it
+    /// and finds the update installed. A command
+    /// a signal or Banager's deadline ended before it could exit reported
+    /// no failure, and may have taken effect: it is `Unconfirmed`, never
+    /// this (`run_plan` in `adapters/mod.rs`). The read before a command
+    /// ended that way is this, with no exit code: no command was started.
+    ///
+    /// `cause` is why it failed, in one of a few words a person knows
+    /// (`history::FailureCause`), read off the summary's lines as the tool
+    /// wrote them, before a login was masked out of them
+    /// (`CommandOutput::failure_cause`): the mask can take the words that
+    /// say it -- a proxy password `pass` turns sudo's "a password is
+    /// required" into "a ****word is required" (re-check 2's N1). The
+    /// history, the completion notification and the window all take the
+    /// cause from here and never read it off `summary`. Absent in an older
+    /// payload: none.
+    Failed {
+        exit_code: Option<i32>,
+        summary: String,
+        #[serde(default)]
+        cause: Option<crate::history::FailureCause>,
+    },
+    /// Banager itself could not carry the operation out -- not the tool.
+    /// Carries which reason, never a sentence: the front end words it in
+    /// the user's language, the same way it does `NeedsAttention`.
+    ///
+    /// These used to be English sentences of Banager's own ("operation
+    /// panicked", "runner: program not found: ...") inside `Failed`'s
+    /// `summary`, sharing one string with a tool's stderr, so neither could
+    /// be shown properly: the front end could not translate the first
+    /// without mangling the second.
+    BanagerFailed(Fault),
+    /// Banager cannot tell what the operation did: the reading after it
+    /// failed, or the command did not reach its exit (a Cancel, the
+    /// timeout, or a signal Banager did not send -- Activity Monitor,
+    /// `kill`, a crash) and what is installed now does not show whether it
+    /// took effect. Every upgrade stopped partway ends here, whatever its
+    /// version reads (`run_operation` in `ops/mod.rs` says why).
+    Unconfirmed,
+}
+
+/// Why Banager itself could not carry an operation out. See
+/// [`Outcome::BanagerFailed`]. Fields carry data, never Banager's prose:
+/// a path, or the operating system's own reason.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Fault {
+    /// Banager crashed partway through. The command may or may not have
+    /// run, so only a fresh look at the list can say what changed.
+    Panicked,
+    /// The program the plan names was not there when Banager went to run
+    /// it. Nothing was started.
+    ProgramMissing { program: String },
+    /// macOS would not start the program; `detail` is the operating
+    /// system's own reason, quoted as-is. Nothing was started.
+    SpawnFailed { detail: String },
+    /// A `brew update` was still running in the background after Banager
+    /// had waited `minutes` minutes for it, so the command was not
+    /// started: installing while Homebrew rewrites its own list of
+    /// software is not something Homebrew guards against. Nothing was
+    /// started.
+    ///
+    /// `minutes` is `BrewAdapter::OP_UPDATE_WAIT` outside tests, carried
+    /// here rather than hard-coded into
+    /// `operations.outcome.BanagerFailed.HomebrewStillUpdating` so the two
+    /// can never disagree: see `BrewAdapter::execute`, the only production
+    /// call site that builds this variant.
+    HomebrewStillUpdating { minutes: u64 },
+    /// A path is not what the preview showed, so Banager stopped and left
+    /// it as it is. For a path-list uninstall, a path it was about to move:
+    /// at the confirmation, or when its turn came after the moves before
+    /// it, it fails one of the preview's checks (a folder on its way became
+    /// a link, say, or a kept path now leads into it), the list itself
+    /// changed (a path that was absent is there now, or one the preview
+    /// listed is gone), or it is no longer the file the preview recorded
+    /// (`st_dev`, `st_ino` and the kind): re-pointed -- as a tool that
+    /// updates itself re-points its launcher -- or replaced by another of
+    /// the same name; or, when the launcher's turn came (the last), another
+    /// listed path was there again -- the program folder recreated during a
+    /// pause by a copy still running, say -- and `path` is that one, the
+    /// launcher left in place so the row stays. Banager stopped without
+    /// moving the item whose turn it was; whatever it moved before is in
+    /// the Trash, one `LogNote::MovedToTrash` each in the log. For a
+    /// standalone tool's upgrade, the launcher the plan
+    /// would run: looked at again right before the spawn, it is no longer
+    /// the native install's -- gone, dangling, a plain file, or a link
+    /// resolving outside the tool's own root (at Homebrew's or npm's copy,
+    /// say) -- so the command was not started; a launcher re-pointed at a
+    /// newer version inside that root is still the native install's, and
+    /// the command runs. For a standalone tool's command uninstall
+    /// (rustup's), the launcher likewise, and a folder the command
+    /// deletes: the recipe's gate that passed at the preview is asked
+    /// again right before the spawn, and a `~/.rustup` or `~/.cargo` that
+    /// is now a link to somewhere else, or otherwise not the real folder
+    /// the gate accepted (a `~/.rustup` that is simply gone still passes:
+    /// rustup finds nothing there), is `path`, the command not started --
+    /// rustup deletes wherever those resolve when it runs. `path` has the home
+    /// folder abbreviated to `~`; it is the kept path when a kept path is
+    /// what changed. Built by
+    /// `removal::execute_removal` (`adapters/standalone/removal.rs`) and
+    /// `StandaloneAdapter::execute` (`adapters/standalone/mod.rs`); read by
+    /// `faultKey`/`faultArgs` in src/lib/format.ts. Also a cask's link, or a
+    /// command a uv tool's receipt records, that another tool took over
+    /// after the preview (`BrewAdapter::execute`, `UvAdapter::execute`): the
+    /// uninstall command was not started.
+    PathChanged { path: String },
+    /// The uninstall of every version of the Homebrew formula `name` (the
+    /// author's decision U9, r6: `brew uninstall --formula --force`) was
+    /// not started, because what the Cellar and the pin record hold of it,
+    /// looked at again right before the command, is not what the preview
+    /// showed: a version is installed that the preview did not name -- an
+    /// update in Terminal since then, say, which `--force` would delete
+    /// too -- or the formula is pinned now, or its Cellar or pin record
+    /// can no longer be looked at. Or the plain uninstall of one version
+    /// (no `--force`) was not started because a second version, with no
+    /// pin, is installed now: Homebrew would delete the one `opt/` points
+    /// to, which may not be the one the preview showed. Nothing was
+    /// started; a new preview names what is there now. Built by
+    /// `BrewAdapter::execute`
+    /// (`BrewAdapter::require_kegs_as_previewed`); read by
+    /// `faultKey`/`faultArgs` in src/lib/format.ts.
+    FormulaChanged { name: String },
+    /// An install, update or uninstall through Homebrew was not started.
+    /// What Homebrew would delete, read again right before
+    /// the command, is more than the preview said: a `brew.env` changed
+    /// since then takes Banager's `HOMEBREW_NO_INSTALL_CLEANUP=1` or
+    /// `HOMEBREW_NO_AUTOREMOVE=1` back, or can no longer be read, or no
+    /// longer names a formula the preview said `HOMEBREW_NO_CLEANUP_FORMULAE`
+    /// leaves out, or a cask's recorded uninstall scope or steps changed.
+    /// Nothing was started; a new preview says what Homebrew deletes now.
+    /// Built by `BrewAdapter::execute`
+    /// (`BrewAdapter::require_cleanup_as_previewed` and
+    /// `BrewAdapter::require_uninstall_as_previewed`); read by `faultKey`
+    /// in src/lib/format.ts.
+    HomebrewSettingsChanged,
+    /// The confirmed operation's basis changed or could not be read again:
+    /// read right before the command, what the preview was worked out from
+    /// answered differently (another npm prefix, a uv receipt or Cargo
+    /// record that changed, a tool missing from uv's list or listed twice)
+    /// or no longer reads as one (a receipt or record gone or unreadable).
+    /// A read whose program did not answer at all is not this: npm's and
+    /// uv's end as the program's own failure would -- missing, failed, or
+    /// taking too long (`read_before_run` in `adapters/mod.rs`). No write
+    /// command ran. Uses the same
+    /// changed-since-shown explanation as a batch whose newly prepared plan
+    /// differs from its preview.
+    ChangedSinceShown,
+    /// The update of the keg-only formula `name`, linked into the prefix
+    /// with Homebrew's record, was not started, because something else is
+    /// at the place of one of its commands there now -- `paths`, each a
+    /// full path such as `/opt/homebrew/bin/npm`: a copy npm put there of
+    /// itself, another formula's link, a file, a person's own link into the
+    /// formula. The update unlinks the version it replaces,
+    /// and neither Homebrew's own link afterwards nor
+    /// `brew link --force` gets past such a file (`Keg::ConflictError`):
+    /// the formula's commands would be gone from Terminal, as `node` went
+    /// on 2026-10-07 (y1-keg, r6). Nothing was started; the formula stays
+    /// linked as it is. Built by `BrewAdapter::execute`
+    /// (`BrewAdapter::require_link_places_free`); read by
+    /// `faultKey`/`faultArgs` in src/lib/format.ts.
+    LinkTaken { name: String, paths: Vec<String> },
+    /// The link of the formula `name` a source's notice offered
+    /// (`OpKind::Link`) was not started, because Homebrew's own links to
+    /// its commands appeared since the preview, its link still not
+    /// recorded (`Warning::LinkRollbackRisk`): read again right before the
+    /// command, after any wait for `brew update`. Had the link stopped,
+    /// Homebrew would have taken them back with its own. Nothing was
+    /// started; they are left as they are. Built by `BrewAdapter::execute`;
+    /// read by `faultKey`/`faultArgs` in src/lib/format.ts.
+    LinkRollbackRisk { name: String },
+    /// Something on Banager's side did not add up (an unregistered
+    /// adapter or instance, a queue that closed, an error `execute` has no
+    /// business returning). A bug in Banager, not a state of the Mac.
+    /// Nothing was started.
+    Internal,
+}
+
+/// What reconcile found before an upgrade or that the command's success did not account
+/// for -- or, for `BackAfterUninstall`, what a path-list uninstall's own
+/// last look found; or, for `UpdatedButStepFailed`, what it found that the
+/// tool's own failure did not account for. See [`Outcome::NeedsAttention`].
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Attention {
+    /// The locked before-reading found the tool absent. Nothing was started.
+    GoneBeforeUpgrade,
+    /// An install exited 0 and the item is not installed.
+    NotInstalledAfterInstall,
+    /// An uninstall ended as if it had succeeded -- its command exited 0,
+    /// or a path-list uninstall moved every listed path to the Trash -- and
+    /// the item is still installed: for a path-list uninstall, its launcher
+    /// or another path on its list is there
+    /// (`StandaloneAdapter::reconcile_after_uninstall`).
+    StillInstalledAfterUninstall,
+    /// An upgrade exited 0 and the item is no longer installed at all.
+    GoneAfterUpgrade,
+    /// An upgrade exited 0 and the item is still installed at the version
+    /// it was at before: the tool skipped it without saying so in its exit
+    /// code. `run_operation` (`crates/banager-core/src/ops/mod.rs`) builds
+    /// this only when two reads of the installed version, one taken before
+    /// the command and one after, both succeeded and are equal.
+    UnchangedAfterUpgrade,
+    /// A path-list uninstall moved every path on its list to the Trash,
+    /// and when it looked once more, after the pause that follows its last
+    /// move (`removal::left_behind`), part of what its list names was
+    /// there: a path it moved, back again -- a copy of the tool still
+    /// running can put its program folder or its download cache back --
+    /// or one it never moved, there now. Nothing is moved again, and each
+    /// such path has its own `LogNote::BackAfterUninstall` line. The
+    /// launcher moved too, so unless it is back as well no row shows what
+    /// came back: this outcome and those lines do. Built by
+    /// `removal::execute_removal` (`adapters/standalone/removal.rs`), which
+    /// `run_operation` passes on unchanged; read by `attentionKey` in
+    /// src/lib/format.ts.
+    BackAfterUninstall,
+    /// `brew link --formula --force` exited 0 and the formula is still not
+    /// linked: no record of the link, or a command of it not linked
+    /// (`KegLinks::fully_linked`, `Adapter::reconcile_link`): it refused
+    /// without an error, as it does
+    /// for software macOS provides or shadows ("Refusing to link macOS
+    /// provided/shadowed software", cmd/link.rb in Homebrew 7.0.8). Built
+    /// by `run_operation` (`crates/banager-core/src/ops/mod.rs`); read by
+    /// `attentionKey` in src/lib/format.ts.
+    NotLinkedAfterLink,
+    /// An upgrade's tool exited non-zero, and the installed version read
+    /// after it had moved from the one read before it: the new version is
+    /// installed, and a step after it failed -- Homebrew's post-install or
+    /// link step after the new keg was poured, its check of the formulae
+    /// that depend on it, a tool's own updater failing after it switched
+    /// versions (r35 U2). Its log says which step. `version` is the one
+    /// read after, the version it was updated to; `None` for a model, whose
+    /// "version" is a digest Banager never shows. `cause` is the tool's
+    /// failure's (`Outcome::Failed`'s), kept as it was read:
+    /// `FailureCause::NotLinked` where Homebrew's link step failed, which
+    /// the window words as the new version not linked
+    /// (`UpdatedButNotLinked` in src/lib/format.ts). `detail` is, for any
+    /// other cause or none, the tool's first error line, masked
+    /// (`history::failure_detail` over the failure's summary): what says
+    /// which step once the log is gone, as the history keeps it; `None`
+    /// for `NotLinked`, whose words say it, and where the tool wrote
+    /// nothing. Built by `run_operation`
+    /// (`crates/banager-core/src/ops/mod.rs`) only when both readings name a
+    /// version and they differ, and only for a command that ran and exited
+    /// non-zero; never for a cask, or for a failure whose cause says the
+    /// command waited on another program (`Busy`, `HomebrewUpdating`);
+    /// read by `attentionKey` in src/lib/format.ts. The one variant with
+    /// data, so `history.json` that holds it is format 3
+    /// (`history::HISTORY_FORMAT`).
+    UpdatedButStepFailed {
+        version: Option<String>,
+        #[serde(default)]
+        cause: Option<crate::history::FailureCause>,
+        #[serde(default)]
+        detail: Option<String>,
+    },
+}
+
+/// How an update that `Succeeded` came to be done when its own command
+/// changed nothing: the version read just before the command was already
+/// at least the one its confirmed plan targeted (`run_operation` in
+/// ops/mod.rs, `OperationManager::submit_toward`), and so was the one read
+/// after. Homebrew upgrades a formula's outdated dependencies before the
+/// formula, so in an Update all an earlier update often does a later one's
+/// work. `OpSummary::already_updated` and `HistoryRecord::already_updated`
+/// carry it; the window words it (`ALREADY_UPDATED_KEYS` in
+/// src/lib/operations.ts).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AlreadyUpdated {
+    /// Another update of the same source ended after this one was
+    /// confirmed and before its turn: 「已由前面的更新一并完成」.
+    ByEarlierUpdate,
+    /// No update of the same source ended in between, so Banager did not
+    /// see what brought it there -- a command in Terminal, say: it says
+    /// only that it was already there when its turn came.
+    BeforeItsTurn,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum OpStatus {
+    Queued,
+    Running,
+    CancelRequested,
+    Cancelling,
+    Verifying,
+    Done,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Reconciled {
+    pub present: bool,
+    /// The installed version, as the adapter's own inventory spells it.
+    /// `run_operation` compares a reading taken before an upgrade with one
+    /// taken after, so this only has to be read the same way twice, not
+    /// to agree with any other spelling of the same version.
+    ///
+    /// `None` when the artifact is not present, and also when the string
+    /// the inventory has cannot tell one install from another: a Homebrew
+    /// `version :latest` cask is installed as "latest" before and after
+    /// every upgrade (`BrewAdapter::reconcile`).
+    pub version: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_instance_id_reproduces_every_shape_already_persisted() {
+        // Ids live on disk inside `Settings.ignored_updates` and
+        // `Settings.skipped_versions`; the shared constructor must not
+        // change a single one of them.
+        assert_eq!(instance_id("pipx", None), "pipx");
+        assert_eq!(instance_id("uv", None), "uv");
+        assert_eq!(
+            instance_id("brew", Some("/opt/homebrew")),
+            "brew:/opt/homebrew"
+        );
+        assert_eq!(
+            instance_id("ollama", Some("127.0.0.1:11434")),
+            "ollama:127.0.0.1:11434"
+        );
+    }
+
+    #[test]
+    fn test_manager_instance_round_trips_through_json() {
+        let instance = ManagerInstance {
+            id: "brew:/opt/homebrew".to_string(),
+            adapter_id: "brew".to_string(),
+            exe_path: PathBuf::from("/opt/homebrew/bin/brew"),
+            prefix: PathBuf::from("/opt/homebrew"),
+            scope: Scope::User,
+            version: Some("7.0.3".to_string()),
+            answered_at: None,
+            unverified_version: None,
+            read_only_reason: None,
+            status: InstanceStatus::default(),
+        };
+        let json = serde_json::to_string(&instance).expect("serialize");
+        let back: ManagerInstance = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(instance, back);
+    }
+
+    #[test]
+    fn test_answered_at_is_seconds_or_null_on_the_wire_and_absent_from_older_payloads() {
+        let mut instance = crate::testing::manager_instance("uv", "uv");
+        for stamp in [None, Some(1_791_000_000)] {
+            instance.answered_at = stamp;
+            let wire = serde_json::to_value(&instance).unwrap();
+            assert_eq!(wire["answered_at"], serde_json::json!(stamp));
+            assert_eq!(
+                serde_json::from_value::<ManagerInstance>(wire).unwrap(),
+                instance
+            );
+        }
+        // A payload from before the field existed reads as "not known".
+        let mut older = serde_json::to_value(&instance).unwrap();
+        older.as_object_mut().unwrap().remove("answered_at");
+        assert_eq!(
+            serde_json::from_value::<ManagerInstance>(older)
+                .unwrap()
+                .answered_at,
+            None
+        );
+    }
+
+    #[test]
+    fn test_same_content_ignores_when_the_source_answered_and_nothing_else() {
+        let instance = crate::testing::manager_instance("uv", "uv");
+        let mut later = instance.clone();
+        later.answered_at = Some(1_791_000_100);
+        assert!(instance.same_content(&later));
+        assert_ne!(
+            instance, later,
+            "the derived PartialEq still tells them apart"
+        );
+        let changes: [fn(&mut ManagerInstance); 9] = [
+            |i| i.id = "uv:elsewhere".into(),
+            |i| i.adapter_id = "pipx".into(),
+            |i| i.exe_path = PathBuf::from("/elsewhere/uv"),
+            |i| i.prefix = PathBuf::from("/elsewhere"),
+            |i| i.scope = Scope::System,
+            |i| i.version = Some("9.9.9".into()),
+            |i| i.unverified_version = Some("9.9.9".into()),
+            |i| i.read_only_reason = Some(ReadOnlyReason::ByDesign),
+            |i| i.status.unavailable = Some(Unavailable::NotResponding),
+        ];
+        for change in changes {
+            let mut other = later.clone();
+            change(&mut other);
+            assert!(!instance.same_content(&other), "{other:?}");
+        }
+    }
+
+    #[test]
+    fn test_manager_instance_with_unverified_version_round_trips_through_json() {
+        let instance = ManagerInstance {
+            id: "brew:/opt/homebrew".to_string(),
+            adapter_id: "brew".to_string(),
+            exe_path: PathBuf::from("/opt/homebrew/bin/brew"),
+            prefix: PathBuf::from("/opt/homebrew"),
+            scope: Scope::User,
+            version: Some("99.9.9".to_string()),
+            answered_at: None,
+            unverified_version: Some("99.9.9".to_string()),
+            read_only_reason: None,
+            status: InstanceStatus::default(),
+        };
+        let json = serde_json::to_string(&instance).expect("serialize");
+        assert!(json.contains("\"unverified_version\":\"99.9.9\""));
+        let back: ManagerInstance = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(instance, back);
+    }
+
+    #[test]
+    fn test_read_only_reason_is_a_bare_string_on_the_wire_and_drives_writable() {
+        // The hand-written TypeScript mirror (`src/lib/types.ts`) spells
+        // these as `"ByDesign" | "PrefixNotWritable" | "PrefixProtected" |
+        // null`, so the wire shape is the contract, not an implementation
+        // detail: a bare string for a reason, `null` for a writable source.
+        let writable = ManagerInstance {
+            id: "brew:/opt/homebrew".to_string(),
+            adapter_id: "brew".to_string(),
+            exe_path: PathBuf::from("/opt/homebrew/bin/brew"),
+            prefix: PathBuf::from("/opt/homebrew"),
+            scope: Scope::User,
+            version: Some("7.0.3".to_string()),
+            answered_at: None,
+            unverified_version: None,
+            read_only_reason: None,
+            status: InstanceStatus::default(),
+        };
+        assert!(writable.writable());
+        let json = serde_json::to_string(&writable).expect("serialize");
+        assert!(
+            json.contains("\"read_only_reason\":null"),
+            "writable instances carry an explicit null, not a missing key: {json}"
+        );
+        assert_eq!(
+            serde_json::from_str::<ManagerInstance>(&json).expect("deserialize"),
+            writable
+        );
+
+        for reason in [
+            ReadOnlyReason::ByDesign,
+            ReadOnlyReason::PrefixNotWritable,
+            ReadOnlyReason::PrefixProtected,
+        ] {
+            let read_only = ManagerInstance {
+                read_only_reason: Some(reason),
+                ..writable.clone()
+            };
+            assert!(
+                !read_only.writable(),
+                "{reason:?} must make the instance non-writable"
+            );
+            let json = serde_json::to_string(&read_only).expect("serialize");
+            assert!(
+                json.contains(&format!("\"read_only_reason\":\"{reason:?}\"")),
+                "a reason is a bare string on the wire: {json}"
+            );
+            assert_eq!(
+                serde_json::from_str::<ManagerInstance>(&json).expect("deserialize"),
+                read_only
+            );
+        }
+    }
+
+    #[test]
+    fn test_update_blocked_is_a_bare_string_on_the_wire_and_null_when_absent() {
+        // `src/lib/types.ts` spells this field `blocked: UpdateBlocked |
+        // null` and the variant as the bare string "Pinned". Nothing checks
+        // that at compile time across the IPC boundary, so the wire shape
+        // is pinned down here.
+        let candidate = UpdateCandidate {
+            key: ArtifactKey {
+                instance_id: "brew:/opt/homebrew".to_string(),
+                kind: ArtifactKind::Formula,
+                name: "glib".to_string(),
+            },
+            current: "2.88.3".to_string(),
+            target: "2.90.0".to_string(),
+            channel: UpdateChannel::Native,
+            checkable: true,
+            warnings: Vec::new(),
+            blocked: None,
+            download_bytes: None,
+        };
+        let json = serde_json::to_string(&candidate).expect("serialize");
+        assert!(
+            json.contains("\"blocked\":null"),
+            "an updatable candidate carries an explicit null, not a missing key: {json}"
+        );
+        assert_eq!(
+            serde_json::from_str::<UpdateCandidate>(&json).expect("deserialize"),
+            candidate
+        );
+
+        let pinned = UpdateCandidate {
+            blocked: Some(UpdateBlocked::Pinned),
+            ..candidate
+        };
+        let json = serde_json::to_string(&pinned).expect("serialize");
+        assert!(
+            json.contains("\"blocked\":\"Pinned\""),
+            "a reason is a bare string on the wire: {json}"
+        );
+        assert_eq!(
+            serde_json::from_str::<UpdateCandidate>(&json).expect("deserialize"),
+            pinned
+        );
+
+        // Phase 4 step D: the second reason, a tool that installs its updates
+        // itself and offers no command Banager may run
+        // (`StandaloneAdapter::check_updates` for a recipe with no `upgrade`).
+        // `UPDATE_BLOCKED_KEYS.SelfUpdatesOnly` in src/lib/sources.ts indexes
+        // this spelling.
+        assert_eq!(
+            serde_json::to_string(&UpdateBlocked::SelfUpdatesOnly).unwrap(),
+            r#""SelfUpdatesOnly""#
+        );
+        // A package Homebrew disabled (`BrewAdapter::check_updates`), read
+        // by `UPDATE_BLOCKED_KEYS.Disabled`.
+        assert_eq!(
+            serde_json::to_string(&UpdateBlocked::Disabled).unwrap(),
+            r#""Disabled""#
+        );
+        assert_eq!(
+            serde_json::from_str::<UpdateBlocked>(r#""Disabled""#).unwrap(),
+            UpdateBlocked::Disabled
+        );
+        // A keg-only formula Homebrew links back whose command's place
+        // something else holds (y1-keg), read by `UPDATE_BLOCKED_KEYS.LinkTaken`.
+        assert_eq!(
+            serde_json::to_string(&UpdateBlocked::LinkTaken).unwrap(),
+            r#""LinkTaken""#
+        );
+        assert_eq!(
+            serde_json::from_str::<UpdateBlocked>(r#""LinkTaken""#).unwrap(),
+            UpdateBlocked::LinkTaken
+        );
+        // npm that a Homebrew formula linked into its prefix
+        // (`NpmAdapter::check_updates`), read by
+        // `UPDATE_BLOCKED_KEYS.UpdatesWithFormula`.
+        assert_eq!(
+            serde_json::to_string(&UpdateBlocked::UpdatesWithFormula).unwrap(),
+            r#""UpdatesWithFormula""#
+        );
+        assert_eq!(
+            serde_json::from_str::<UpdateBlocked>(r#""UpdatesWithFormula""#).unwrap(),
+            UpdateBlocked::UpdatesWithFormula
+        );
+        // Claude Code whose own settings turn every update off
+        // (`StandaloneAdapter::check_updates`), read by
+        // `UPDATE_BLOCKED_KEYS.UpdatesTurnedOff`.
+        assert_eq!(
+            serde_json::to_string(&UpdateBlocked::UpdatesTurnedOff).unwrap(),
+            r#""UpdatesTurnedOff""#
+        );
+        assert_eq!(
+            serde_json::from_str::<UpdateBlocked>(r#""UpdatesTurnedOff""#).unwrap(),
+            UpdateBlocked::UpdatesTurnedOff
+        );
+    }
+
+    #[test]
+    fn test_download_bytes_is_a_number_or_null_on_the_wire_and_optional_when_read() {
+        // `src/lib/types.ts` spells it `download_bytes?: number | null`;
+        // src/lib/modelDownload.ts reads it.
+        let model = UpdateCandidate {
+            key: ArtifactKey {
+                instance_id: "ollama:http://127.0.0.1:11434".to_string(),
+                kind: ArtifactKind::Model,
+                name: "llama3.2:3b".to_string(),
+            },
+            current: "8e4cdead7463ce276b20d4e33341950d7bb40847f70a9882567a188e24ec1f66".to_string(),
+            target: "sha256:25a98d24af806ec8c25c21df601953c6a42f154dfcd8637bc82ec581f1c849aa"
+                .to_string(),
+            channel: UpdateChannel::Digest,
+            checkable: true,
+            warnings: Vec::new(),
+            blocked: None,
+            download_bytes: Some(4_683_087_520),
+        };
+        let json = serde_json::to_string(&model).expect("serialize");
+        assert!(
+            json.contains("\"download_bytes\":4683087520"),
+            "a plain JSON number: {json}"
+        );
+        assert_eq!(
+            serde_json::from_str::<UpdateCandidate>(&json).expect("deserialize"),
+            model
+        );
+
+        let unknown = UpdateCandidate {
+            download_bytes: None,
+            ..model.clone()
+        };
+        let json = serde_json::to_string(&unknown).expect("serialize");
+        assert!(
+            json.contains("\"download_bytes\":null"),
+            "an explicit null, not a missing key: {json}"
+        );
+        assert_eq!(
+            serde_json::from_str::<UpdateCandidate>(&json).expect("deserialize"),
+            unknown
+        );
+
+        // A candidate written before the field existed still reads, as None.
+        let mut value = serde_json::to_value(&model).expect("to value");
+        value
+            .as_object_mut()
+            .expect("an object")
+            .remove("download_bytes");
+        assert_eq!(
+            serde_json::from_value::<UpdateCandidate>(value).expect("deserialize"),
+            unknown
+        );
+    }
+
+    #[test]
+    fn test_facts_is_an_object_with_explicit_nulls_on_the_wire_and_optional_when_read() {
+        // `src/lib/types.ts` spells it `facts: ArtifactFacts` with
+        // `family: string | null`, `homebrew: HomebrewFacts | null` and
+        // `commands: CommandFact[]`, and `NO_FACTS` is this default.
+        let facts = ArtifactFacts::default();
+        assert_eq!(
+            serde_json::to_string(&facts).unwrap(),
+            r#"{"family":null,"homebrew":null,"commands":[],"commands_unavailable":false,"unlinked":false,"not_looked_up":false}"#
+        );
+        // A payload written before a fact existed still reads.
+        assert_eq!(
+            serde_json::from_str::<ArtifactFacts>("{}").unwrap(),
+            ArtifactFacts::default()
+        );
+        let claude = ArtifactFacts {
+            family: Some("claude-code".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(
+            serde_json::to_string(&claude).unwrap(),
+            r#"{"family":"claude-code","homebrew":null,"commands":[],"commands_unavailable":false,"unlinked":false,"not_looked_up":false}"#
+        );
+    }
+
+    #[test]
+    fn test_unavailable_commands_round_trip_even_when_every_claim_was_dropped() {
+        // Same literal as src/lib/types.test.ts; old payloads default to false.
+        let wire = r#"{"family":null,"homebrew":null,"commands":[],"commands_unavailable":true,"unlinked":false,"not_looked_up":false}"#;
+        let facts = ArtifactFacts {
+            commands_unavailable: true,
+            ..Default::default()
+        };
+        assert_eq!(serde_json::to_string(&facts).unwrap(), wire);
+        assert_eq!(serde_json::from_str::<ArtifactFacts>(wire).unwrap(), facts);
+        let old = r#"{"family":null,"homebrew":null,"commands":[]}"#;
+        assert_eq!(
+            serde_json::from_str::<ArtifactFacts>(old).unwrap(),
+            ArtifactFacts::default()
+        );
+    }
+
+    #[test]
+    fn test_an_unlinked_formula_says_so_on_the_wire_and_older_payloads_read_as_linked() {
+        // Same literal as src/lib/types.test.ts (r36 V5).
+        let wire = r#"{"family":"gemini-cli","homebrew":null,"commands":[{"name":"gemini","state":null}],"commands_unavailable":false,"unlinked":true,"not_looked_up":false}"#;
+        let facts = ArtifactFacts {
+            family: Some("gemini-cli".to_string()),
+            commands: vec![CommandFact {
+                name: "gemini".to_string(),
+                state: None,
+            }],
+            unlinked: true,
+            ..Default::default()
+        };
+        assert_eq!(serde_json::to_string(&facts).unwrap(), wire);
+        assert_eq!(serde_json::from_str::<ArtifactFacts>(wire).unwrap(), facts);
+        let old = r#"{"family":null,"homebrew":null,"commands":[],"commands_unavailable":false}"#;
+        assert!(!serde_json::from_str::<ArtifactFacts>(old).unwrap().unlinked);
+    }
+
+    #[test]
+    fn test_an_apps_own_version_is_on_the_wire_only_where_there_is_one() {
+        // R47-3 (r18). Same literal as src/lib/types.test.ts.
+        let wire = r#"{"family":null,"homebrew":null,"commands":[],"commands_unavailable":false,"unlinked":false,"not_looked_up":false,"app_version":"131.0.3"}"#;
+        let facts = ArtifactFacts {
+            app_version: Some("131.0.3".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(serde_json::to_string(&facts).unwrap(), wire);
+        assert_eq!(serde_json::from_str::<ArtifactFacts>(wire).unwrap(), facts);
+        assert!(!serde_json::to_string(&ArtifactFacts::default())
+            .unwrap()
+            .contains("app_version"));
+    }
+
+    #[test]
+    fn test_a_self_updating_cask_with_no_single_app_is_on_the_wire_only_when_marked() {
+        // R47 skeptic P1 (r18). Same literal as src/lib/types.test.ts.
+        let wire = r#"{"family":null,"homebrew":null,"commands":[],"commands_unavailable":false,"unlinked":false,"not_looked_up":false,"no_single_app":true}"#;
+        let facts = ArtifactFacts {
+            no_single_app: true,
+            ..Default::default()
+        };
+        assert_eq!(serde_json::to_string(&facts).unwrap(), wire);
+        assert_eq!(serde_json::from_str::<ArtifactFacts>(wire).unwrap(), facts);
+        assert!(!serde_json::to_string(&ArtifactFacts::default())
+            .unwrap()
+            .contains("no_single_app"));
+    }
+
+    #[test]
+    fn test_homebrew_facts_spell_every_field_on_the_wire_and_read_back() {
+        // `src/lib/types.ts` mirrors this as `HomebrewFacts` /
+        // `HomebrewLifecycle`, every optional field an explicit `null`, and
+        // `other_versions` an array. The same literal is round-tripped in
+        // src/lib/types.test.ts.
+        let facts = ArtifactFacts {
+            homebrew: Some(HomebrewFacts {
+                deprecated: None,
+                disabled: Some(HomebrewLifecycle {
+                    date: Some("2026-09-01".to_string()),
+                    reason: Some("fails_gatekeeper_check".to_string()),
+                    replacement: Some("onyx".to_string()),
+                }),
+                caveats: Some("Turn on \"Launch at login\".\n".to_string()),
+                other_versions: vec!["3.6.3".to_string()],
+            }),
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&facts).unwrap();
+        assert_eq!(
+            json,
+            r#"{"family":null,"homebrew":{"deprecated":null,"disabled":{"date":"2026-09-01","reason":"fails_gatekeeper_check","replacement":"onyx"},"caveats":"Turn on \"Launch at login\".\n","other_versions":["3.6.3"]},"commands":[],"commands_unavailable":false,"unlinked":false,"not_looked_up":false}"#
+        );
+        assert_eq!(serde_json::from_str::<ArtifactFacts>(&json).unwrap(), facts);
+        // Fields a payload leaves out read as empty.
+        assert_eq!(
+            serde_json::from_str::<HomebrewFacts>("{}").unwrap(),
+            HomebrewFacts::default()
+        );
+        assert_eq!(
+            serde_json::from_str::<HomebrewLifecycle>("{}").unwrap(),
+            HomebrewLifecycle::default()
+        );
+    }
+
+    #[test]
+    fn test_command_facts_are_externally_tagged_and_their_inputs_never_reach_the_wire() {
+        // `src/lib/types.ts` spells `CommandState` as the bare string
+        // "Runs" and single-key objects for the two with a payload, and
+        // `CommandFact.state` as `CommandState | null`.
+        let key = ArtifactKey {
+            instance_id: "npm:/opt/homebrew".to_string(),
+            kind: ArtifactKind::Package,
+            name: "@anthropic-ai/claude-code".to_string(),
+        };
+        let facts = ArtifactFacts {
+            family: None,
+            homebrew: None,
+            commands: vec![
+                CommandFact {
+                    name: "agent".to_string(),
+                    state: Some(CommandState::ShadowedBy {
+                        by: Some(key.clone()),
+                    }),
+                },
+                CommandFact {
+                    name: "claude".to_string(),
+                    state: Some(CommandState::Runs),
+                },
+                CommandFact {
+                    name: "grok".to_string(),
+                    state: Some(CommandState::NotOnPath {
+                        dir: "~/.grok/bin".to_string(),
+                    }),
+                },
+                CommandFact {
+                    name: "rg".to_string(),
+                    state: Some(CommandState::ShadowedBy { by: None }),
+                },
+                CommandFact {
+                    name: "curl".to_string(),
+                    state: None,
+                },
+            ],
+            commands_unavailable: false,
+            unlinked: false,
+            not_looked_up: false,
+            app_version: None,
+            no_single_app: false,
+            command_inputs: CommandInputs {
+                provided: vec![ProvidedCommand {
+                    name: "claude".to_string(),
+                    path: PathBuf::from("/opt/homebrew/bin/claude"),
+                    within: Vec::new(),
+                }],
+                keg_only: true,
+                keg_only_by_macos: true,
+                link_recorded: false,
+                cask_stays_in_caskroom: true,
+            },
+        };
+        let json = serde_json::to_string(&facts).unwrap();
+        assert_eq!(
+            json,
+            concat!(
+                r#"{"family":null,"homebrew":null,"commands":["#,
+                r#"{"name":"agent","state":{"ShadowedBy":{"by":{"instance_id":"npm:/opt/homebrew","kind":"Package","name":"@anthropic-ai/claude-code"}}}},"#,
+                r#"{"name":"claude","state":"Runs"},"#,
+                r#"{"name":"grok","state":{"NotOnPath":{"dir":"~/.grok/bin"}}},"#,
+                r#"{"name":"rg","state":{"ShadowedBy":{"by":null}}},"#,
+                r#"{"name":"curl","state":null}"#,
+                "],\"commands_unavailable\":false,\"unlinked\":false,\"not_looked_up\":false}"
+            )
+        );
+        // The inputs stay behind: what comes back is the answer alone.
+        let back: ArtifactFacts = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.commands, facts.commands);
+        assert_eq!(back.command_inputs, CommandInputs::default());
+    }
+
+    #[test]
+    fn test_uninstall_blocked_is_a_bare_string_on_the_wire_and_null_when_absent() {
+        // `src/lib/types.ts` spells this field `uninstall_blocked:
+        // UninstallBlocked | null` and the variant as the bare string
+        // "Pinned".
+        let artifact = InstalledArtifact {
+            key: ArtifactKey {
+                instance_id: "brew:/opt/homebrew".to_string(),
+                kind: ArtifactKind::Formula,
+                name: "glib".to_string(),
+            },
+            display_name: "glib".to_string(),
+            version: "2.88.3".to_string(),
+            reason: InstallReason::Requested,
+            description: None,
+            homepage: None,
+            size_bytes: None,
+            installed_at: None,
+            path: None,
+            auto_updates: false,
+            uninstall_blocked: None,
+            facts: Default::default(),
+        };
+        let json = serde_json::to_string(&artifact).expect("serialize");
+        assert!(
+            json.contains("\"uninstall_blocked\":null"),
+            "a removable artifact carries an explicit null, not a missing key: {json}"
+        );
+        assert_eq!(
+            serde_json::from_str::<InstalledArtifact>(&json).expect("deserialize"),
+            artifact
+        );
+
+        let pinned = InstalledArtifact {
+            uninstall_blocked: Some(UninstallBlocked::Pinned),
+            facts: Default::default(),
+            ..artifact
+        };
+        let json = serde_json::to_string(&pinned).expect("serialize");
+        assert!(
+            json.contains("\"uninstall_blocked\":\"Pinned\""),
+            "a reason is a bare string on the wire: {json}"
+        );
+        assert_eq!(
+            serde_json::from_str::<InstalledArtifact>(&json).expect("deserialize"),
+            pinned
+        );
+
+        // Phase 4: a tool with no uninstall command and no safe way yet
+        // to remove its files (Claude Code until step C). Same wire
+        // shape, a second spelling for `UNINSTALL_BLOCKED_KEYS` in
+        // src/lib/sources.ts.
+        let no_safe_method = InstalledArtifact {
+            uninstall_blocked: Some(UninstallBlocked::NoSafeMethod),
+            facts: Default::default(),
+            ..pinned.clone()
+        };
+        let json = serde_json::to_string(&no_safe_method).expect("serialize");
+        assert!(
+            json.contains("\"uninstall_blocked\":\"NoSafeMethod\""),
+            "a reason is a bare string on the wire: {json}"
+        );
+        assert_eq!(
+            serde_json::from_str::<InstalledArtifact>(&json).expect("deserialize"),
+            no_safe_method
+        );
+
+        // Round 2: a uv tool while `UV_TOOL_DIR` is set. A third spelling.
+        assert_eq!(
+            serde_json::to_string(&UninstallBlocked::UvToolDirSet).unwrap(),
+            r#""UvToolDirSet""#
+        );
+
+        // Round 5: npm's own `npm`, on its row, and the refusal of a plan
+        // whose preview named sources that run on the package. Pinned in
+        // src/lib/types.test.ts, which reads the same strings.
+        for (reason, wire) in [
+            (UninstallBlocked::SourceProgram, r#""SourceProgram""#),
+            (UninstallBlocked::NeededBySource, r#""NeededBySource""#),
+            // R42-2: corepack that a Homebrew formula linked.
+            (UninstallBlocked::ComesWithFormula, r#""ComesWithFormula""#),
+        ] {
+            assert_eq!(serde_json::to_string(&reason).unwrap(), wire);
+            assert_eq!(
+                serde_json::from_str::<UninstallBlocked>(wire).unwrap(),
+                reason
+            );
+        }
+    }
+
+    #[test]
+    fn test_needed_by_source_is_the_json_the_typescript_mirror_reads() {
+        // Pinned in src/lib/types.test.ts, which reads the same string.
+        let warning = Warning::NeededBySource {
+            instance_id: "npm:/opt/homebrew".to_string(),
+            program: true,
+            tools: 4,
+        };
+        let wire =
+            r#"{"NeededBySource":{"instance_id":"npm:/opt/homebrew","program":true,"tools":4}}"#;
+        assert_eq!(serde_json::to_string(&warning).unwrap(), wire);
+        assert_eq!(serde_json::from_str::<Warning>(wire).unwrap(), warning);
+    }
+
+    #[test]
+    fn test_keeps_data_is_the_json_the_typescript_mirror_reads() {
+        // Pinned in src/lib/warnings.test.ts, which reads the same strings.
+        let measured = Warning::KeepsData {
+            path: "~/.claude".to_string(),
+            what: KeptData::ToolData,
+            size: Some(crate::size::Measured {
+                bytes: 432_013_312,
+                partial: false,
+                at_least: true,
+            }),
+            left_out: Vec::new(),
+            others: Vec::new(),
+        };
+        let wire = r#"{"KeepsData":{"path":"~/.claude","what":"ToolData","size":{"bytes":432013312,"partial":false,"at_least":true},"left_out":[]}}"#;
+        assert_eq!(serde_json::to_string(&measured).unwrap(), wire);
+        assert_eq!(serde_json::from_str::<Warning>(wire).unwrap(), measured);
+        let unknown = Warning::KeepsData {
+            path: "~/.ollama/models".to_string(),
+            what: KeptData::Models,
+            size: None,
+            left_out: Vec::new(),
+            others: Vec::new(),
+        };
+        let wire = r#"{"KeepsData":{"path":"~/.ollama/models","what":"Models","size":null,"left_out":[]}}"#;
+        assert_eq!(serde_json::to_string(&unknown).unwrap(), wire);
+        assert_eq!(serde_json::from_str::<Warning>(wire).unwrap(), unknown);
+        // What the size leaves out, and an older line with no such field.
+        let codex = Warning::KeepsData {
+            path: "~/.codex".to_string(),
+            what: KeptData::ToolData,
+            size: None,
+            left_out: vec!["~/.codex/packages/standalone".to_string()],
+            others: Vec::new(),
+        };
+        let wire = r#"{"KeepsData":{"path":"~/.codex","what":"ToolData","size":null,"left_out":["~/.codex/packages/standalone"]}}"#;
+        assert_eq!(serde_json::to_string(&codex).unwrap(), wire);
+        assert_eq!(serde_json::from_str::<Warning>(wire).unwrap(), codex);
+        assert_eq!(
+            serde_json::from_str::<Warning>(
+                r#"{"KeepsData":{"path":"~/.ollama/models","what":"Models","size":null}}"#
+            )
+            .unwrap(),
+            unknown
+        );
+        // Another tool's data inside the folder, left out of its size.
+        let shared = Warning::KeepsData {
+            path: "~/.gemini".to_string(),
+            what: KeptData::ToolData,
+            size: Some(crate::size::Measured {
+                bytes: 7_553_024,
+                partial: false,
+                at_least: false,
+            }),
+            left_out: Vec::new(),
+            others: vec![OthersData {
+                path: "~/.gemini/antigravity-cli".to_string(),
+                tool: "Antigravity CLI".to_string(),
+            }],
+        };
+        let wire = r#"{"KeepsData":{"path":"~/.gemini","what":"ToolData","size":{"bytes":7553024,"partial":false,"at_least":false},"left_out":[],"others":[{"path":"~/.gemini/antigravity-cli","tool":"Antigravity CLI"}]}}"#;
+        assert_eq!(serde_json::to_string(&shared).unwrap(), wire);
+        assert_eq!(serde_json::from_str::<Warning>(wire).unwrap(), shared);
+    }
+
+    #[test]
+    fn test_a_link_and_what_is_in_its_way_are_on_the_wire_as_the_mirror_spells_them() {
+        // `OpKind` and `Warning.LinkConflicts` in src/lib/types.ts, and the
+        // request `linkRequest` (src/components/LinkFixSheet.tsx) sends.
+        let request = OpRequest {
+            kind: OpKind::Link,
+            instance_id: "brew:/opt/homebrew".to_string(),
+            artifact_kind: ArtifactKind::Formula,
+            name: "node@22".to_string(),
+        };
+        let json = serde_json::to_string(&request).expect("serialize");
+        assert_eq!(
+            json,
+            r#"{"kind":"Link","instance_id":"brew:/opt/homebrew","artifact_kind":"Formula","name":"node@22"}"#
+        );
+        assert_eq!(
+            serde_json::from_str::<OpRequest>(&json).expect("deserialize"),
+            request
+        );
+        let risk = Warning::LinkRollbackRisk {
+            paths: vec!["/opt/homebrew/bin/npm".into()],
+        };
+        let wire = r#"{"LinkRollbackRisk":{"paths":["/opt/homebrew/bin/npm"]}}"#;
+        assert_eq!(serde_json::to_string(&risk).unwrap(), wire);
+        assert_eq!(serde_json::from_str::<Warning>(wire).unwrap(), risk);
+        let fault = Fault::LinkRollbackRisk {
+            name: "node@22".into(),
+        };
+        let wire = r#"{"LinkRollbackRisk":{"name":"node@22"}}"#;
+        assert_eq!(serde_json::to_string(&fault).unwrap(), wire);
+        assert_eq!(serde_json::from_str::<Fault>(wire).unwrap(), fault);
+        let conflicts = Warning::LinkConflicts {
+            paths: vec!["/opt/homebrew/bin/npm".to_string()],
+        };
+        let json = serde_json::to_string(&conflicts).expect("serialize");
+        assert_eq!(
+            json,
+            r#"{"LinkConflicts":{"paths":["/opt/homebrew/bin/npm"]}}"#
+        );
+        assert_eq!(
+            serde_json::from_str::<Warning>(&json).expect("deserialize"),
+            conflicts
+        );
+        // What the link puts where Terminal looks.
+        let puts = Warning::LinkPutsCommands {
+            names: vec!["node".to_string(), "npm".to_string()],
+        };
+        let json = serde_json::to_string(&puts).expect("serialize");
+        assert_eq!(json, r#"{"LinkPutsCommands":{"names":["node","npm"]}}"#);
+        assert_eq!(
+            serde_json::from_str::<Warning>(&json).expect("deserialize"),
+            puts
+        );
+    }
+
+    #[test]
+    fn test_warning_wire_shapes_match_the_hand_written_ts_mirror() {
+        // Unit variants are bare strings and the one data variant is
+        // externally tagged, matching every other enum in this module and
+        // the hand-written mirror in `src/lib/types.ts`.
+        assert_eq!(
+            serde_json::to_string(&Warning::DependentsUnknown).unwrap(),
+            r#""DependentsUnknown""#
+        );
+        assert_eq!(
+            serde_json::to_string(&Warning::CompilesLocally).unwrap(),
+            r#""CompilesLocally""#
+        );
+        assert_eq!(
+            serde_json::to_string(&Warning::NonRegistrySource).unwrap(),
+            r#""NonRegistrySource""#
+        );
+        assert_eq!(
+            serde_json::to_string(&Warning::TransientLookupFailure).unwrap(),
+            r#""TransientLookupFailure""#
+        );
+        assert_eq!(
+            serde_json::from_str::<Warning>(r#""TransientLookupFailure""#).unwrap(),
+            Warning::TransientLookupFailure
+        );
+        assert_eq!(
+            serde_json::to_string(&Warning::NotLookedUpHere).unwrap(),
+            r#""NotLookedUpHere""#
+        );
+        assert_eq!(
+            serde_json::from_str::<Warning>(r#""NotLookedUpHere""#).unwrap(),
+            Warning::NotLookedUpHere
+        );
+        assert_eq!(
+            serde_json::to_string(&Warning::SecureConnectionFailed {
+                host: "crates.io".to_string()
+            })
+            .unwrap(),
+            r#"{"SecureConnectionFailed":{"host":"crates.io"}}"#
+        );
+        assert_eq!(
+            serde_json::from_str::<Warning>(r#"{"SecureConnectionFailed":{"host":"crates.io"}}"#)
+                .unwrap(),
+            Warning::SecureConnectionFailed {
+                host: "crates.io".to_string()
+            }
+        );
+        assert_eq!(
+            serde_json::to_string(&Warning::WouldBreak {
+                names: vec!["python@3.13".to_string()]
+            })
+            .unwrap(),
+            r#"{"WouldBreak":{"names":["python@3.13"]}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&Warning::ThirdPartyRegistry {
+                host: "modelscope.cn".to_string()
+            })
+            .unwrap(),
+            r#"{"ThirdPartyRegistry":{"host":"modelscope.cn"}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&Warning::DownloadsModelChanges).unwrap(),
+            r#""DownloadsModelChanges""#
+        );
+        assert_eq!(
+            serde_json::to_string(&Warning::Message("boom".to_string())).unwrap(),
+            r#"{"Message":"boom"}"#
+        );
+        let round_tripped: Warning =
+            serde_json::from_str(r#"{"WouldBreak":{"names":["a","b"]}}"#).unwrap();
+        assert_eq!(
+            round_tripped,
+            Warning::WouldBreak {
+                names: vec!["a".to_string(), "b".to_string()]
+            }
+        );
+
+        // Phase 4 step C: what a path-list uninstall moves, keeps, and
+        // finds already gone. Struct variants carrying a unit enum,
+        // spelled as `REMOVED_WHAT_KEYS`/`KEPT_WHAT_KEYS` in
+        // src/lib/warnings.ts index them.
+        assert_eq!(
+            serde_json::to_string(&Warning::WillTrash {
+                path: "~/.local/bin/claude".to_string(),
+                what: RemovedWhat::Launcher,
+            })
+            .unwrap(),
+            r#"{"WillTrash":{"path":"~/.local/bin/claude","what":"Launcher"}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&Warning::WillKeep {
+                path: "~/.claude".to_string(),
+                what: KeptWhat::SettingsAndHistory,
+            })
+            .unwrap(),
+            r#"{"WillKeep":{"path":"~/.claude","what":"SettingsAndHistory"}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&Warning::AlreadyGone {
+                path: "~/.local/share/claude".to_string(),
+            })
+            .unwrap(),
+            r#"{"AlreadyGone":{"path":"~/.local/share/claude"}}"#
+        );
+        // Every kind, as `REMOVED_WHAT_KEYS`/`KEPT_WHAT_KEYS` in
+        // src/lib/warnings.ts spell them (step C's three and two, step D's
+        // `Backups` and five more).
+        for what in [
+            RemovedWhat::Launcher,
+            RemovedWhat::Program,
+            RemovedWhat::Cache,
+            RemovedWhat::Backups,
+        ] {
+            assert_eq!(
+                serde_json::to_string(&what).unwrap(),
+                format!("\"{what:?}\"")
+            );
+        }
+        for what in [
+            KeptWhat::Settings,
+            KeptWhat::SettingsAndHistory,
+            KeptWhat::ToolState,
+            KeptWhat::ShellConfigLines,
+            KeptWhat::OutsideHome,
+            KeptWhat::NotOurs,
+            KeptWhat::InstallerCache,
+        ] {
+            assert_eq!(
+                serde_json::to_string(&what).unwrap(),
+                format!("\"{what:?}\"")
+            );
+        }
+
+        // Phase 4 step E: what rustup's own uninstall does (adapters/
+        // standalone/rustup.rs). Two payload-free, four with a payload;
+        // the same two spellings as above.
+        assert_eq!(
+            serde_json::to_string(&Warning::RemovesToolchains {
+                path: "~/.rustup".to_string(),
+                names: vec!["stable-aarch64-apple-darwin".to_string()]
+            })
+            .unwrap(),
+            r#"{"RemovesToolchains":{"path":"~/.rustup","names":["stable-aarch64-apple-darwin"]}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&Warning::DeletesCargoHome {
+                path: "~/.cargo".to_string()
+            })
+            .unwrap(),
+            r#"{"DeletesCargoHome":{"path":"~/.cargo"}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&Warning::RemovesCargoInstalled {
+                names: vec!["hexyl".to_string(), "rg".to_string()]
+            })
+            .unwrap(),
+            r#"{"RemovesCargoInstalled":{"names":["hexyl","rg"]}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&Warning::RemovesUnrecordedPrograms {
+                names: vec!["uv".to_string(), "uvx".to_string()]
+            })
+            .unwrap(),
+            r#"{"RemovesUnrecordedPrograms":{"names":["uv","uvx"]}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&Warning::HomebrewRustupLosesToolchains).unwrap(),
+            r#""HomebrewRustupLosesToolchains""#
+        );
+        assert_eq!(
+            serde_json::to_string(&Warning::EditsShellConfig).unwrap(),
+            r#""EditsShellConfig""#
+        );
+        assert_eq!(
+            serde_json::to_string(&Warning::LeavesShellConfigLine {
+                path: "~/.zshrc".to_string(),
+                certain: true
+            })
+            .unwrap(),
+            r#"{"LeavesShellConfigLine":{"path":"~/.zshrc","certain":true}}"#
+        );
+
+        // Round 2: what a brew.env that takes Banager's switches back
+        // makes Homebrew do (adapters/brew/brew_env.rs). Three bare
+        // strings, as `warningKey` in src/lib/warnings.ts spells them.
+        assert_eq!(
+            serde_json::to_string(&Warning::HomebrewAutoremoves).unwrap(),
+            r#""HomebrewAutoremoves""#
+        );
+        assert_eq!(
+            serde_json::to_string(&Warning::HomebrewPeriodicCleanup).unwrap(),
+            r#""HomebrewPeriodicCleanup""#
+        );
+        assert_eq!(
+            serde_json::to_string(&Warning::HomebrewCleanupAutoremoves).unwrap(),
+            r#""HomebrewCleanupAutoremoves""#
+        );
+        // z1's review: the same three when a brew.env Banager does not read
+        // (in a protected place) may take the switches back, and a startup
+        // file rustup's preview could not read for the same cause.
+        for (warning, json) in [
+            (Warning::HomebrewMayAutoremove, r#""HomebrewMayAutoremove""#),
+            (Warning::HomebrewMayCleanUp, r#""HomebrewMayCleanUp""#),
+            (
+                Warning::HomebrewCleanupMayAutoremove,
+                r#""HomebrewCleanupMayAutoremove""#,
+            ),
+            (Warning::HomebrewMayAutoUpdate, r#""HomebrewMayAutoUpdate""#),
+            (
+                Warning::ShellConfigUnread {
+                    path: "~/.zshrc".to_string(),
+                },
+                r#"{"ShellConfigUnread":{"path":"~/.zshrc"}}"#,
+            ),
+        ] {
+            assert_eq!(serde_json::to_string(&warning).unwrap(), json);
+            assert_eq!(serde_json::from_str::<Warning>(json).unwrap(), warning);
+        }
+        // Round 5: what HOMEBREW_NO_CLEANUP_FORMULAE leaves out of them.
+        assert_eq!(
+            serde_json::to_string(&Warning::HomebrewNoCleanupFormulae {
+                names: vec!["python@3.13".to_string()],
+                old_versions: true,
+                autoremove: false
+            })
+            .unwrap(),
+            r#"{"HomebrewNoCleanupFormulae":{"names":["python@3.13"],"old_versions":true,"autoremove":false}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&Warning::HomebrewForgetsTrust {
+                name: "gautham-v/tap/claudebar".to_string()
+            })
+            .unwrap(),
+            r#"{"HomebrewForgetsTrust":{"name":"gautham-v/tap/claudebar"}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&Warning::HomebrewServiceStays {
+                name: "ollama".to_string(),
+                system: false,
+            })
+            .unwrap(),
+            r#"{"HomebrewServiceStays":{"name":"ollama","system":false}}"#
+        );
+
+        // Round 2: an uninstall's one sentence about what goes and what
+        // stays, and a cask's extra steps. Two externally tagged objects
+        // whose `what` and `step` are bare strings, as `UNINSTALL_SCOPE_KEYS`
+        // and `CASK_STEP_KEYS` in src/lib/warnings.ts spell them.
+        assert_eq!(
+            serde_json::to_string(&Warning::UninstallScope {
+                what: UninstallScope::HomebrewCaskPlain
+            })
+            .unwrap(),
+            r#"{"UninstallScope":{"what":"HomebrewCaskPlain"}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&Warning::CaskUninstallStep {
+                step: CaskStep::RemovesPackages,
+                items: vec!["com.microsoft.pkg.licensing".to_string()],
+                only_if: None,
+            })
+            .unwrap(),
+            r#"{"CaskUninstallStep":{"step":"RemovesPackages","items":["com.microsoft.pkg.licensing"]}}"#
+        );
+        // A `remove` step's check: `only_if`, externally tagged, as
+        // `RemoveCheck` in src/lib/types.ts spells it -- and a step read
+        // back without one has none.
+        for (check, json) in [
+            (
+                RemoveCheck::LinkTargetContains("playdate".to_string()),
+                r#"{"LinkTargetContains":"playdate"}"#,
+            ),
+            (
+                RemoveCheck::ContentContains("SocketLock".to_string()),
+                r#"{"ContentContains":"SocketLock"}"#,
+            ),
+            (
+                RemoveCheck::LinkTargetAndContentContain {
+                    link_target: "MacGPG2".to_string(),
+                    content: "gpg".to_string(),
+                },
+                r#"{"LinkTargetAndContentContain":{"link_target":"MacGPG2","content":"gpg"}}"#,
+            ),
+        ] {
+            let warning = Warning::CaskUninstallStep {
+                step: CaskStep::Deletes,
+                items: vec!["/usr/local/bin/arm-*".to_string()],
+                only_if: Some(check),
+            };
+            let wire = serde_json::to_string(&warning).unwrap();
+            assert_eq!(
+                wire,
+                format!(
+                    r#"{{"CaskUninstallStep":{{"step":"Deletes","items":["/usr/local/bin/arm-*"],"only_if":{json}}}}}"#
+                )
+            );
+            assert_eq!(serde_json::from_str::<Warning>(&wire).unwrap(), warning);
+        }
+        assert_eq!(
+            serde_json::from_str::<Warning>(
+                r#"{"CaskUninstallStep":{"step":"Trashes","items":["~/.nvs"]}}"#
+            )
+            .unwrap(),
+            Warning::CaskUninstallStep {
+                step: CaskStep::Trashes,
+                items: vec!["~/.nvs".to_string()],
+                only_if: None,
+            }
+        );
+        for what in [
+            UninstallScope::HomebrewFormulaOnly,
+            UninstallScope::HomebrewFormula,
+            UninstallScope::HomebrewCaskPlain,
+            UninstallScope::HomebrewCaskSteps,
+            UninstallScope::HomebrewCaskStepsAutoremoves,
+            UninstallScope::HomebrewCaskStepsUnseen,
+            UninstallScope::HomebrewCaskStepsOnly,
+            UninstallScope::HomebrewCaskStepsOnlyUnseen,
+            UninstallScope::HomebrewCask,
+            UninstallScope::HomebrewCaskPlainThirdParty,
+            UninstallScope::HomebrewCaskRuby,
+            UninstallScope::HomebrewCaskStepsOnlyRuby,
+            UninstallScope::HomebrewCaskPlainRuby,
+            UninstallScope::HomebrewCaskStepsIfTrusted,
+            UninstallScope::HomebrewCaskStepsOnlyIfTrusted,
+            UninstallScope::Npm,
+            UninstallScope::Pipx,
+            UninstallScope::Uv,
+            UninstallScope::Cargo,
+            UninstallScope::Ollama,
+        ] {
+            assert_eq!(
+                serde_json::to_string(&what).unwrap(),
+                format!("\"{what:?}\"")
+            );
+        }
+        for step in [
+            CaskStep::Deletes,
+            CaskStep::DeletesUnnamed,
+            CaskStep::Trashes,
+            CaskStep::RemovesPackages,
+            CaskStep::RunsScript,
+            CaskStep::RunsOwnSteps,
+            CaskStep::RemovesServices,
+            CaskStep::RemovesKexts,
+            CaskStep::DeletesCertificates,
+            CaskStep::RemovesLoginItems,
+            CaskStep::QuitsApps,
+            CaskStep::QuitsNamedApps,
+            CaskStep::SignalsApps,
+        ] {
+            assert_eq!(
+                serde_json::to_string(&step).unwrap(),
+                format!("\"{step:?}\"")
+            );
+            let warning = Warning::CaskUninstallStep {
+                step,
+                items: vec!["org.example.app".into()],
+                only_if: None,
+            };
+            assert_eq!(
+                serde_json::from_str::<Warning>(&serde_json::to_string(&warning).unwrap()).unwrap(),
+                warning
+            );
+        }
+    }
+
+    #[test]
+    fn test_outcome_failed_round_trips_through_json() {
+        let outcome = Outcome::Failed {
+            exit_code: Some(1),
+            summary: "boom".to_string(),
+            cause: None,
+        };
+        let json = serde_json::to_string(&outcome).expect("serialize");
+        let back: Outcome = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(outcome, back);
+    }
+
+    #[test]
+    fn test_outcome_failed_carries_its_cause_on_the_wire() {
+        // Re-check 2's N1: the cause read before a login was masked out of
+        // the summary, as `FailureCause` names it in src/lib/failureCause.ts
+        // (`Failed.cause` in src/lib/types.ts).
+        let outcome = Outcome::Failed {
+            exit_code: Some(1),
+            summary: "sudo: a ****word is required".to_string(),
+            cause: Some(crate::history::FailureCause::NeedsPassword),
+        };
+        let json = serde_json::to_string(&outcome).unwrap();
+        assert_eq!(
+            json,
+            r#"{"Failed":{"exit_code":1,"summary":"sudo: a ****word is required","cause":"needsPassword"}}"#
+        );
+        assert_eq!(serde_json::from_str::<Outcome>(&json).unwrap(), outcome);
+        assert_eq!(
+            serde_json::to_string(&Outcome::Failed {
+                exit_code: None,
+                summary: String::new(),
+                cause: None,
+            })
+            .unwrap(),
+            r#"{"Failed":{"exit_code":null,"summary":"","cause":null}}"#
+        );
+        // A payload from before the field: no cause.
+        assert_eq!(
+            serde_json::from_str::<Outcome>(r#"{"Failed":{"exit_code":2,"summary":"x"}}"#).unwrap(),
+            Outcome::Failed {
+                exit_code: Some(2),
+                summary: "x".to_string(),
+                cause: None,
+            }
+        );
+    }
+
+    #[test]
+    fn test_banager_failed_is_externally_tagged_on_the_wire() {
+        // `src/lib/types.ts` mirrors `Fault` as a union of bare strings
+        // (unit variants) and single-key objects (data variants), and
+        // `format.ts` builds the locale key from the variant name.
+        assert_eq!(
+            serde_json::to_string(&Outcome::BanagerFailed(Fault::Panicked)).unwrap(),
+            r#"{"BanagerFailed":"Panicked"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&Outcome::BanagerFailed(Fault::ProgramMissing {
+                program: "/opt/homebrew/bin/brew".to_string()
+            }))
+            .unwrap(),
+            r#"{"BanagerFailed":{"ProgramMissing":{"program":"/opt/homebrew/bin/brew"}}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&Outcome::BanagerFailed(Fault::SpawnFailed {
+                detail: "Permission denied (os error 13)".to_string()
+            }))
+            .unwrap(),
+            r#"{"BanagerFailed":{"SpawnFailed":{"detail":"Permission denied (os error 13)"}}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&Outcome::BanagerFailed(Fault::HomebrewStillUpdating {
+                minutes: 10
+            }))
+            .unwrap(),
+            r#"{"BanagerFailed":{"HomebrewStillUpdating":{"minutes":10}}}"#
+        );
+        // Phase 4 step C: a path-list uninstall found a path changed
+        // between the preview and the run. `path` has `$HOME` abbreviated.
+        assert_eq!(
+            serde_json::to_string(&Outcome::BanagerFailed(Fault::PathChanged {
+                path: "~/.local/bin/claude".to_string()
+            }))
+            .unwrap(),
+            r#"{"BanagerFailed":{"PathChanged":{"path":"~/.local/bin/claude"}}}"#
+        );
+        // U9 (r6): an uninstall of every version of a formula found its
+        // versions or its pin changed since the preview, and ran nothing.
+        assert_eq!(
+            serde_json::to_string(&Outcome::BanagerFailed(Fault::FormulaChanged {
+                name: "wget".to_string()
+            }))
+            .unwrap(),
+            r#"{"BanagerFailed":{"FormulaChanged":{"name":"wget"}}}"#
+        );
+        // An install or update found Homebrew would now delete more by
+        // itself than its preview said, and ran nothing (review of
+        // v1-brew's fixes, r6): a unit variant, a bare string.
+        assert_eq!(
+            serde_json::to_string(&Outcome::BanagerFailed(Fault::HomebrewSettingsChanged)).unwrap(),
+            r#"{"BanagerFailed":"HomebrewSettingsChanged"}"#
+        );
+        // y1-keg (r6): a keg-only formula's update found another program
+        // in its commands' places, and ran nothing.
+        assert_eq!(
+            serde_json::to_string(&Outcome::BanagerFailed(Fault::LinkTaken {
+                name: "node@22".to_string(),
+                paths: vec!["/opt/homebrew/bin/npm".to_string()],
+            }))
+            .unwrap(),
+            r#"{"BanagerFailed":{"LinkTaken":{"name":"node@22","paths":["/opt/homebrew/bin/npm"]}}}"#
+        );
+        for fault in [
+            Fault::Panicked,
+            Fault::ChangedSinceShown,
+            Fault::HomebrewStillUpdating { minutes: 10 },
+            Fault::FormulaChanged {
+                name: "wget".to_string(),
+            },
+            Fault::HomebrewSettingsChanged,
+            Fault::LinkTaken {
+                name: "node@22".to_string(),
+                paths: vec![
+                    "/opt/homebrew/bin/npm".to_string(),
+                    "/opt/homebrew/bin/npx".to_string(),
+                ],
+            },
+            Fault::Internal,
+        ] {
+            let json = serde_json::to_string(&Outcome::BanagerFailed(fault.clone())).unwrap();
+            let back: Outcome = serde_json::from_str(&json).unwrap();
+            assert_eq!(back, Outcome::BanagerFailed(fault));
+        }
+    }
+
+    #[test]
+    fn test_needs_attention_is_a_bare_variant_name_on_the_wire() {
+        // `src/lib/types.ts` mirrors this as `{ NeedsAttention: Attention }`
+        // with `Attention` a union of bare strings, and `format.ts` builds
+        // the locale key from that string.
+        assert_eq!(
+            serde_json::to_string(&Outcome::NeedsAttention(Attention::GoneAfterUpgrade)).unwrap(),
+            r#"{"NeedsAttention":"GoneAfterUpgrade"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&Outcome::NeedsAttention(Attention::UnchangedAfterUpgrade))
+                .unwrap(),
+            r#"{"NeedsAttention":"UnchangedAfterUpgrade"}"#
+        );
+        // A path-list uninstall's own last look (`removal::execute_removal`).
+        assert_eq!(
+            serde_json::to_string(&Outcome::NeedsAttention(Attention::BackAfterUninstall)).unwrap(),
+            r#"{"NeedsAttention":"BackAfterUninstall"}"#
+        );
+        // A link Homebrew finished without linking (`reconcile_link`).
+        assert_eq!(
+            serde_json::to_string(&Outcome::NeedsAttention(Attention::NotLinkedAfterLink)).unwrap(),
+            r#"{"NeedsAttention":"NotLinkedAfterLink"}"#
+        );
+    }
+
+    #[test]
+    fn test_an_update_with_a_failed_step_carries_its_version_on_the_wire() {
+        // The one `Attention` with data (r35 U2): the version the update
+        // moved to, `null` for a model's digest; the tool's failure's
+        // cause, camelCase as `FailureCause` is; and its first error line.
+        // `src/lib/types.ts` mirrors it as `{ UpdatedButStepFailed: {
+        // version: string | null; cause: FailureCause | null; detail:
+        // string | null } }`.
+        for (version, cause, detail, json) in [
+            (
+                Some("3.13.8".to_string()),
+                None,
+                Some("Warning: The post-install step did not complete successfully".to_string()),
+                r#"{"NeedsAttention":{"UpdatedButStepFailed":{"version":"3.13.8","cause":null,"detail":"Warning: The post-install step did not complete successfully"}}}"#,
+            ),
+            (
+                Some("22.23.3_1".to_string()),
+                Some(crate::history::FailureCause::NotLinked),
+                None,
+                r#"{"NeedsAttention":{"UpdatedButStepFailed":{"version":"22.23.3_1","cause":"notLinked","detail":null}}}"#,
+            ),
+            (
+                None,
+                None,
+                None,
+                r#"{"NeedsAttention":{"UpdatedButStepFailed":{"version":null,"cause":null,"detail":null}}}"#,
+            ),
+        ] {
+            let outcome = Outcome::NeedsAttention(Attention::UpdatedButStepFailed {
+                version,
+                cause,
+                detail,
+            });
+            assert_eq!(serde_json::to_string(&outcome).unwrap(), json);
+            assert_eq!(serde_json::from_str::<Outcome>(json).unwrap(), outcome);
+        }
+        // Written before the cause and the line were kept (this branch's
+        // first build of format 3): read with neither.
+        assert_eq!(
+            serde_json::from_str::<Outcome>(
+                r#"{"NeedsAttention":{"UpdatedButStepFailed":{"version":"3.13.8"}}}"#
+            )
+            .unwrap(),
+            Outcome::NeedsAttention(Attention::UpdatedButStepFailed {
+                version: Some("3.13.8".to_string()),
+                cause: None,
+                detail: None,
+            })
+        );
+    }
+
+    #[test]
+    fn test_plan_round_trips_through_json() {
+        let plan = Plan {
+            request: OpRequest {
+                kind: OpKind::Install,
+                instance_id: "brew:/opt/homebrew".to_string(),
+                artifact_kind: ArtifactKind::Formula,
+                name: "jq".to_string(),
+            },
+            action: PlanAction::Command {
+                program: PathBuf::from("/opt/homebrew/bin/brew"),
+                args: vec![
+                    "install".to_string(),
+                    "--formula".to_string(),
+                    "jq".to_string(),
+                ],
+                env: vec![("HOMEBREW_NO_AUTO_UPDATE".to_string(), "1".to_string())],
+            },
+            needs_password: false,
+            locks: vec![ResourceLock("brew:/opt/homebrew".to_string())],
+            cancel_policy: CancelPolicy::KillThenReconcile,
+            warnings: vec![],
+            affected: vec![],
+            basis: None,
+            timeout_secs: 1800,
+        };
+        let based = Plan {
+            basis: Some("a".repeat(64)),
+            ..plan.clone()
+        };
+        let based_json = serde_json::to_value(&based).unwrap();
+        assert_eq!(based_json["basis"], "a".repeat(64));
+        assert_eq!(serde_json::from_value::<Plan>(based_json).unwrap(), based);
+        assert!(serde_json::to_value(&plan).unwrap().get("basis").is_none());
+        assert_eq!(
+            serde_json::to_string(&Outcome::BanagerFailed(Fault::ChangedSinceShown)).unwrap(),
+            r#"{"BanagerFailed":"ChangedSinceShown"}"#
+        );
+        let json = serde_json::to_string(&plan).expect("serialize");
+        let back: Plan = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(plan, back);
+
+        let trash = Plan {
+            request: OpRequest {
+                kind: OpKind::Uninstall,
+                instance_id: "standalone-claude".to_string(),
+                artifact_kind: ArtifactKind::Binary,
+                name: "claude".to_string(),
+            },
+            action: PlanAction::TrashPaths {
+                paths: vec![
+                    PathBuf::from("/Users/someone/.local/share/claude"),
+                    PathBuf::from("/Users/someone/.local/bin/claude"),
+                ],
+                previewed: Vec::new(),
+            },
+            needs_password: false,
+            locks: vec![ResourceLock("standalone-claude".to_string())],
+            cancel_policy: CancelPolicy::KillThenReconcile,
+            warnings: vec![],
+            affected: vec![],
+            basis: None,
+            timeout_secs: 120,
+        };
+        let json = serde_json::to_string(&trash).expect("serialize");
+        let back: Plan = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(trash, back);
+    }
+
+    #[test]
+    fn test_plan_action_is_externally_tagged_on_the_wire() {
+        // `src/lib/types.ts` mirrors `PlanAction` as a union of two
+        // single-key objects, and `CommandPreview.tsx` branches on
+        // `"Command" in action`; the spellings below are the contract.
+        assert_eq!(
+            serde_json::to_string(&PlanAction::Command {
+                program: PathBuf::from("/opt/homebrew/bin/brew"),
+                args: vec!["install".to_string()],
+                env: vec![("A".to_string(), "1".to_string())],
+            })
+            .unwrap(),
+            r#"{"Command":{"program":"/opt/homebrew/bin/brew","args":["install"],"env":[["A","1"]]}}"#
+        );
+        // What the preview saw rides in the plan on this side only
+        // (`previewed`, stage 6e of the step C plan): the wire, and so the
+        // TypeScript mirror, carries the paths alone; a plan read back has
+        // none; and a payload that names the field is not read.
+        let trash = PlanAction::TrashPaths {
+            paths: vec![PathBuf::from("/Users/someone/.local/bin/claude")],
+            previewed: vec![ItemIdentity {
+                dev: 1,
+                ino: 2,
+                kind: ItemKind::Symlink,
+            }],
+        };
+        let json = serde_json::to_string(&trash).unwrap();
+        assert_eq!(
+            json,
+            r#"{"TrashPaths":{"paths":["/Users/someone/.local/bin/claude"]}}"#
+        );
+        assert_eq!(
+            serde_json::from_str::<PlanAction>(&json).unwrap(),
+            PlanAction::TrashPaths {
+                paths: vec![PathBuf::from("/Users/someone/.local/bin/claude")],
+                previewed: Vec::new(),
+            }
+        );
+        assert_eq!(
+            serde_json::from_str::<PlanAction>(
+                r#"{"TrashPaths":{"paths":[],"previewed":[{"dev":1,"ino":2}]}}"#
+            )
+            .unwrap(),
+            PlanAction::TrashPaths {
+                paths: Vec::new(),
+                previewed: Vec::new(),
+            }
+        );
+    }
+
+    #[test]
+    fn test_the_homebrew_version_cleanup_is_on_the_wire_as_the_mirror_spells_it() {
+        // U9 (r6): an upgrade of a Homebrew formula followed by
+        // `brew cleanup <name>` once it exits 0 -- one program, one
+        // environment, two argvs -- and the two lines that say which
+        // versions go. `src/lib/types.ts` mirrors all three.
+        let action = PlanAction::CommandThen {
+            program: PathBuf::from("/opt/homebrew/bin/brew"),
+            args: vec![
+                "upgrade".to_string(),
+                "--formula".to_string(),
+                "wget".to_string(),
+            ],
+            env: vec![("HOMEBREW_NO_AUTOREMOVE".to_string(), "1".to_string())],
+            then: vec![vec!["cleanup".to_string(), "wget".to_string()]],
+        };
+        let json = r#"{"CommandThen":{"program":"/opt/homebrew/bin/brew","args":["upgrade","--formula","wget"],"env":[["HOMEBREW_NO_AUTOREMOVE","1"]],"then":[["cleanup","wget"]]}}"#;
+        assert_eq!(serde_json::to_string(&action).unwrap(), json);
+        assert_eq!(serde_json::from_str::<PlanAction>(json).unwrap(), action);
+        // y1-keg (r6): a keg-only formula linked into the prefix gets its
+        // `brew link --formula --force` first, then the cleanup.
+        let action = PlanAction::CommandThen {
+            program: PathBuf::from("/opt/homebrew/bin/brew"),
+            args: vec![
+                "upgrade".to_string(),
+                "--formula".to_string(),
+                "node@22".to_string(),
+            ],
+            env: vec![],
+            then: vec![
+                vec![
+                    "link".to_string(),
+                    "--formula".to_string(),
+                    "--force".to_string(),
+                    "node@22".to_string(),
+                ],
+                vec!["cleanup".to_string(), "node@22".to_string()],
+            ],
+        };
+        let json = r#"{"CommandThen":{"program":"/opt/homebrew/bin/brew","args":["upgrade","--formula","node@22"],"env":[],"then":[["link","--formula","--force","node@22"],["cleanup","node@22"]]}}"#;
+        assert_eq!(serde_json::to_string(&action).unwrap(), json);
+        assert_eq!(serde_json::from_str::<PlanAction>(json).unwrap(), action);
+        for (warning, json) in [
+            (
+                Warning::HomebrewRelinksAfterUpdate {
+                    name: "node@22".to_string(),
+                    commands: vec!["node".to_string(), "npm".to_string()],
+                },
+                r#"{"HomebrewRelinksAfterUpdate":{"name":"node@22","commands":["node","npm"]}}"#,
+            ),
+            (
+                Warning::CaskUpdateRunsOldSteps { reopens: true },
+                r#"{"CaskUpdateRunsOldSteps":{"reopens":true}}"#,
+            ),
+            (
+                Warning::TakesBackCommand {
+                    path: "~/.local/bin/ruff".to_string(),
+                },
+                r#"{"TakesBackCommand":{"path":"~/.local/bin/ruff"}}"#,
+            ),
+            (
+                Warning::LinkPlacesHeld {
+                    name: "node@22".to_string(),
+                    paths: vec!["/opt/homebrew/bin/npm".to_string()],
+                },
+                r#"{"LinkPlacesHeld":{"name":"node@22","paths":["/opt/homebrew/bin/npm"]}}"#,
+            ),
+            (
+                Warning::HomebrewCleansUpOldVersions {
+                    versions: vec!["1.24.0".to_string(), "1.25.0".to_string()],
+                },
+                r#"{"HomebrewCleansUpOldVersions":{"versions":["1.24.0","1.25.0"]}}"#,
+            ),
+            (
+                Warning::HomebrewRemovesEveryVersion {
+                    versions: vec!["1.25.0".to_string(), "1.26.0".to_string()],
+                },
+                r#"{"HomebrewRemovesEveryVersion":{"versions":["1.25.0","1.26.0"]}}"#,
+            ),
+        ] {
+            assert_eq!(serde_json::to_string(&warning).unwrap(), json);
+            assert_eq!(serde_json::from_str::<Warning>(json).unwrap(), warning);
+        }
+    }
+
+    #[test]
+    fn test_why_a_source_did_not_answer_is_on_the_wire_as_the_mirror_spells_it() {
+        // `NoAnswer` in src/lib/types.ts: the kind a bare string, the
+        // program and the fixes always sent, a fix's key as every key is.
+        let status = InstanceStatus {
+            unavailable: Some(Unavailable::NotResponding),
+            notes: Vec::new(),
+            no_answer: Some(NoAnswer {
+                diagnostic: None,
+                cause: None,
+                kind: NoAnswerKind::CouldNotStart,
+                missing_program: Some("node".to_string()),
+                link_fixes: vec![LinkFix {
+                    key: ArtifactKey {
+                        instance_id: "brew:/opt/homebrew".to_string(),
+                        kind: ArtifactKind::Formula,
+                        name: "node@22".to_string(),
+                    },
+                    version: "22.23.3_1".to_string(),
+                }],
+            }),
+        };
+        let json = serde_json::to_string(&status).expect("serialize");
+        assert_eq!(
+            json,
+            r#"{"unavailable":"NotResponding","notes":[],"no_answer":{"kind":"CouldNotStart","missing_program":"node","link_fixes":[{"key":{"instance_id":"brew:/opt/homebrew","kind":"Formula","name":"node@22"},"version":"22.23.3_1"}]}}"#
+        );
+        assert_eq!(
+            serde_json::from_str::<InstanceStatus>(&json).expect("deserialize"),
+            status
+        );
+        for (kind, wire) in [
+            (NoAnswerKind::TimedOut, "TimedOut"),
+            (NoAnswerKind::CouldNotStart, "CouldNotStart"),
+            (NoAnswerKind::ExitedWithError, "ExitedWithError"),
+        ] {
+            assert_eq!(
+                serde_json::to_string(&kind).expect("serialize"),
+                format!("\"{wire}\"")
+            );
+        }
+        // A payload from before it existed reads as no reason; a reason
+        // with neither program nor fixes reads with none.
+        let older: InstanceStatus =
+            serde_json::from_str(r#"{"unavailable":"NotResponding","notes":[]}"#)
+                .expect("an older payload");
+        assert_eq!(older.no_answer, None);
+        let bare: NoAnswer = serde_json::from_str(r#"{"kind":"TimedOut"}"#).expect("bare");
+        assert_eq!(
+            bare,
+            NoAnswer {
+                diagnostic: None,
+                cause: None,
+                kind: NoAnswerKind::TimedOut,
+                missing_program: None,
+                link_fixes: Vec::new(),
+            }
+        );
+    }
+
+    #[test]
+    fn test_instance_status_is_default_empty_and_bare_strings_on_the_wire() {
+        // The hand-written TypeScript mirror (`src/lib/types.ts`) spells
+        // this as `{ unavailable: Unavailable | null; notes: InstanceNote[] }`
+        // with bare-string variants, so the wire shape is the contract:
+        // `null` for an available source, `[]` for no notes, and never a
+        // missing key.
+        let status = InstanceStatus::default();
+        assert_eq!(status.unavailable, None);
+        assert!(status.notes.is_empty());
+        let json = serde_json::to_string(&status).expect("serialize");
+        assert_eq!(json, r#"{"unavailable":null,"notes":[],"no_answer":null}"#);
+
+        for unavailable in [
+            Unavailable::NotRunning,
+            Unavailable::NotResponding,
+            Unavailable::RefusesAsRoot,
+            Unavailable::HttpsHostRefused,
+            Unavailable::NoPip,
+        ] {
+            let status = InstanceStatus {
+                unavailable: Some(unavailable),
+                notes: vec![InstanceNote::IndexMayBeStale],
+                no_answer: None,
+            };
+            let json = serde_json::to_string(&status).expect("serialize");
+            assert_eq!(
+                json,
+                format!(
+                    r#"{{"unavailable":"{unavailable:?}","notes":["IndexMayBeStale"],"no_answer":null}}"#
+                )
+            );
+            assert_eq!(
+                serde_json::from_str::<InstanceStatus>(&json).expect("deserialize"),
+                status
+            );
+        }
+
+        // Each note is a bare string too.
+        let status = InstanceStatus {
+            unavailable: None,
+            notes: vec![InstanceNote::IndexUpdating],
+            no_answer: None,
+        };
+        let json = serde_json::to_string(&status).expect("serialize");
+        assert_eq!(
+            json,
+            r#"{"unavailable":null,"notes":["IndexUpdating"],"no_answer":null}"#
+        );
+        assert_eq!(
+            serde_json::from_str::<InstanceStatus>(&json).expect("deserialize"),
+            status
+        );
+
+        // Phase 4's five standalone-installer notes are bare strings too,
+        // spelled exactly as `src/lib/types.ts` mirrors them: the front
+        // end's `sourceNoticesFor` matches these strings, and a spelling
+        // that drifted would fall through every branch and show nothing.
+        for (note, wire) in [
+            (InstanceNote::NotOnPath, "NotOnPath"),
+            (InstanceNote::ShadowedByHomebrew, "ShadowedByHomebrew"),
+            (InstanceNote::ShadowedByNpm, "ShadowedByNpm"),
+            (InstanceNote::ShadowedByOther, "ShadowedByOther"),
+            (InstanceNote::LauncherOnly, "LauncherOnly"),
+            (InstanceNote::SomeNotListed, "SomeNotListed"),
+        ] {
+            let status = InstanceStatus {
+                unavailable: None,
+                notes: vec![note],
+                no_answer: None,
+            };
+            let json = serde_json::to_string(&status).expect("serialize");
+            assert_eq!(
+                json,
+                format!(r#"{{"unavailable":null,"notes":["{wire}"],"no_answer":null}}"#)
+            );
+            assert_eq!(
+                serde_json::from_str::<InstanceStatus>(&json).expect("deserialize"),
+                status
+            );
+        }
+    }
+}

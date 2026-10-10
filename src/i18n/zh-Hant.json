@@ -1,0 +1,1690 @@
+{
+  "app": {
+    "operationBarRegion": "操作狀態",
+    "failed": "無法顯示此頁面。",
+    "reload": "重新載入"
+  },
+  "welcome": {
+    "title": "歡迎使用{{name}}",
+    "listTitle": "看清裝了什麼",
+    "confirmTitle": "更新、解除安裝都由你確認",
+    "privacyTitle": "不收集資料",
+    "start": "開始使用"
+  },
+  "inventoryPreview": {
+    "subtitle_other": "已找到{{count}}個工具 · 正在檢查更新…",
+    "overviewLine_other": "已找到{{count}}個工具。首次檢查需要連上網路查詢每個工具的新版本，有時要一兩分鐘。",
+    "seeTools": "查看工具",
+    "uninstallHold": "正在檢查更新，完成後才能解除安裝。"
+  },
+  "nav": {
+    "label": "導覽",
+    "overview": "概覽",
+    "updates": "更新",
+    "installed": "已安裝",
+    "unknown": "其他程式",
+    "settings": "設定",
+    "count": {
+      "updates_other": "{{count}}個可更新",
+      "installed_other": "已安裝{{count}}個"
+    },
+    "sources": "來源"
+  },
+  "common": {
+    "loading": "正在載入…",
+    "cancel": "取消",
+    "close": "關閉",
+    "viewLog": "查看記錄",
+    "listSeparator": "、",
+    "listAnd": "{{list}}和{{last}}",
+    "listOr": "{{list}}或{{last}}",
+    "checking": "正在檢查…",
+    "firstCheckDetail": "首次檢查需要連上網路查詢每個工具的新版本，有時要一兩分鐘。",
+    "details": "詳細資訊",
+    "detailsLabel": "詳細資訊：{{title}}",
+    "copyCommand": "拷貝指令",
+    "copied": "已拷貝",
+    "copyFailed": "無法拷貝",
+    "moreActions": "「{{name}}」的更多操作",
+    "sourceWithPlace": "{{source}}（{{place}}）",
+    "place": {
+      "appleSilicon": "Apple晶片",
+      "intel": "Intel"
+    },
+    "done": "完成"
+  },
+  "header": {
+    "checkedJustNow": "上次檢查：剛才",
+    "checkedMinutesAgo_other": "上次檢查：{{count}}分鐘前",
+    "checkedHoursAgo_other": "上次檢查：{{count}}小時前",
+    "checkedDaysAgo_other": "上次檢查：{{count}}天前",
+    "checkFailed": "無法完成檢查",
+    "checkAgain": "重新檢查"
+  },
+  "toolbar": {
+    "checkAgainShortcut": "{{label}}（⌘R）",
+    "checkAgainTip": "{{label}}（⌘R）· {{status}}",
+    "scanAgainTip": "{{label}} · {{status}}",
+    "toolCount_other": "{{count}}個工具",
+    "programCount_other": "{{count}}個程式"
+  },
+  "toolRow": {
+    "fallback": {
+      "homebrewPackage": "Homebrew套件",
+      "homebrewApp": "用Homebrew安裝的App",
+      "npmPackage": "npm套件",
+      "pythonPackage": "Python套件",
+      "pipxTool": "用pipx安裝的Python工具",
+      "uvTool": "用uv安裝的Python工具",
+      "cargoProgram": "用Cargo安裝的程式",
+      "ollamaModel": "Ollama模型",
+      "other": "用{{source}}安裝"
+    }
+  },
+  "families": {
+    "showLabel": "顯示",
+    "showAll": "所有工具",
+    "showAi": "AI工具",
+    "none": "這台Mac上沒有找到常見的AI程式設計工具",
+    "noneInSource": "{{source}}中沒有找到常見的AI程式設計工具",
+    "noUpdates": "這裡沒有AI程式設計工具的更新",
+    "updateTheseCount_other": "更新這{{count}}個",
+    "showNotOnPath": "終端機裡找不到",
+    "showNotOnPathCount": "終端機裡找不到（{{number}}）",
+    "showBrewRetired": "Homebrew已停用或棄用",
+    "showBrewRetiredCount": "Homebrew已停用或棄用（{{number}}）",
+    "notOnPathNone": "沒有發現終端機裡找不到的工具",
+    "notOnPathNoneInSource": "{{source}}中沒有發現終端機裡找不到的工具",
+    "brewRetiredNone": "沒有發現Homebrew已停用或棄用的工具",
+    "brewRetiredNoneInSource": "{{source}}中沒有發現Homebrew已停用或棄用的工具",
+    "notOnPathNotice_other": "{{count}}個工具在終端機裡找不到",
+    "brewRetiredNotice_other": "{{count}}個工具已被Homebrew停用或棄用",
+    "brewRetiredNoticeDetail": "Homebrew不再為停用的工具提供更新，棄用的以後可能會停用。已安裝的不會被刪除。",
+    "view_other": "查看",
+    "viewIn": {
+      "installed": "查看",
+      "unknown": "查看",
+      "updates": "查看",
+      "settings": "查看"
+    }
+  },
+  "notOnPathMore": {
+    "detailOne": "它至少有一個指令在終端機不會尋找的檔案夾裡，所以在終端機裡輸入這個指令不會執行這一份：可能什麼也找不到，或者執行另一個同名程式。請新開一個終端機視窗再試；如果仍然找不到，請按照它的安裝說明操作。",
+    "detailMany": "每個工具至少有一個指令在終端機不會尋找的檔案夾裡，所以在終端機裡輸入這個指令不會執行這一份：可能什麼也找不到，或者執行另一個同名程式。請新開一個終端機視窗再試；如果仍然找不到，請按照那個工具的安裝說明操作。",
+    "notFoundDetail": "終端機只在幾個固定的檔案夾裡尋找指令，這個檔案夾不在其中。請新開一個終端機視窗再試；如果仍然找不到，請按照它的安裝說明操作。"
+  },
+  "otherVersionsShow": {
+    "show": "保留了其他版本",
+    "showCount": "保留了其他版本（{{number}}）",
+    "none": "沒有發現保留了其他版本的工具",
+    "noneInSource": "{{source}}中沒有發現保留了其他版本的工具"
+  },
+  "twinsFilter": {
+    "show": "裝了不止一份",
+    "none": "沒有發現裝了不止一份的工具",
+    "noneInSource": "{{source}}中沒有發現裝了不止一份的工具"
+  },
+  "twinsFilterMore": {
+    "showCount": "裝了不止一份（{{number}}）"
+  },
+  "notUsedCopy": {
+    "count_other": "{{count}}個終端機用不到"
+  },
+  "commandsKnown": {
+    "previewing": "檢查完成後會顯示在這裡",
+    "unjudged": "這次檢查沒有判斷終端機裡的指令",
+    "notFoundUnknown": "終端機找不到：這次沒有判斷",
+    "twinsUnknown": "裝了不止一份的工具：這次沒有判斷"
+  },
+  "overview": {
+    "updatesAvailable_other": "{{count}}個工具可以更新",
+    "reviewUpdates": "查看更新",
+    "upToDate": "所有工具都是最新的",
+    "updating_other": "正在更新{{count}}個工具",
+    "seeProgress": "查看進度",
+    "autoCheckRowLabel": "{{label}}：{{value}}",
+    "autoCheckOpensSettings": "在「設定」中更改",
+    "nothingToUpdateChecked": "已檢查的來源中沒有可更新的工具",
+    "nothingChecked": "所有工具都沒有檢查成功",
+    "hiddenCount_other": "{{count}}個已隱藏",
+    "cantUpdateHereCount_other": "{{count}}個無法在這裡更新",
+    "cantUpdateHereUncheckedCount": "{{number}}個無法在這裡更新，其中{{unchecked}}個沒有檢查成功",
+    "listSeparator": "，",
+    "attentionLabel": "需要查看",
+    "moreNotes_other": "另有{{count}}條提示",
+    "hideNotes_other": "收起{{count}}條提示",
+    "checkFailedTryLater": "請稍後再試。"
+  },
+  "overviewMore": {
+    "toolSetupLine": "終端機是否找得到這些工具，以及各來源是否正常。",
+    "autoCheckLabel": "檢查更新的頻率"
+  },
+  "overviewPassword": {
+    "title_other": "{{count}}個更新需要輸入密碼"
+  },
+  "overviewAllGood": {
+    "upToDateHere": "能在這裡更新的都已是最新",
+    "notCheckedRest_other": "{{sources}}這次沒檢查，其餘都是最新的",
+    "notFinishedRest_other": "{{sources}}這次未檢查完，其餘都是最新的",
+    "notCheckedRestHere_other": "{{sources}}這次沒檢查，其餘能在這裡更新的都已是最新",
+    "notFinishedRestHere_other": "{{sources}}這次未檢查完，其餘能在這裡更新的都已是最新",
+    "notChecked_other": "{{sources}}這次沒檢查",
+    "notFinished_other": "{{sources}}這次未檢查完"
+  },
+  "adapters": {
+    "brew": "Homebrew",
+    "npm": "npm",
+    "pipx": "pipx",
+    "uv": "uv",
+    "pip": "pip",
+    "cargo": "Cargo",
+    "ollama": "Ollama",
+    "standalone-claude": "Claude Code",
+    "standalone-rustup": "rustup",
+    "standalone-agy": "Antigravity CLI",
+    "standalone-grok": "Grok Build",
+    "standalone-codex": "Codex",
+    "standalone-opencode": "opencode"
+  },
+  "brewStatus": {
+    "disabledWord": "已停用",
+    "deprecatedWord": "已棄用",
+    "disabledAria": "已停用：{{name}}",
+    "deprecatedAria": "已棄用：{{name}}",
+    "disabledOn": "Homebrew自{{date}}起停用它，以後不再提供更新。已安裝的這一份不會被刪除；不再需要時可以解除安裝它。",
+    "disabled": "Homebrew已停用它，以後不再提供更新。已安裝的這一份不會被刪除；不再需要時可以解除安裝它。",
+    "deprecatedOn": "Homebrew自{{date}}起將它標為棄用，以後可能會停用。",
+    "deprecated": "Homebrew已將它標為棄用，以後可能會停用。",
+    "reasonThenMark": "{{why}}{{what}}",
+    "reasonQuoted": "Homebrew給出的原因：「{{reason}}」。",
+    "reason": {
+      "does_not_build": "它已經無法編譯。",
+      "no_license": "它沒有聲明授權條款。",
+      "repo_archived": "它的原始碼儲存庫已封存。",
+      "repo_removed": "它的原始碼儲存庫已被刪除。",
+      "unmaintained": "它已無人維護。",
+      "unreachable": "它的下載網址已經無法穩定存取。",
+      "unsupported": "它的開發者已不再支援它。",
+      "deprecated_upstream": "它的開發者已棄用它。",
+      "versioned_formula": "它只對應某一個舊版本。",
+      "checksum_mismatch": "它的原始檔案和最初發佈的不一致，開發者的儲存庫可能被改動過。",
+      "discontinued": "它的開發者已停止開發。",
+      "moved_to_mas": "它已改為只在App Store提供。",
+      "no_longer_available": "它的下載網址已失效。",
+      "no_longer_meets_criteria": "它不再符合Homebrew的收錄要求。",
+      "fails_gatekeeper_check": "它沒有通過macOS的安全性檢查。"
+    },
+    "replacement": "Homebrew建議改用「{{name}}」。",
+    "caveatsTitle": "Homebrew的英文原文說明",
+    "homepage": "首頁",
+    "copyLink": "拷貝連結",
+    "otherVersionsTerm": "其他版本"
+  },
+  "homepageLink": {
+    "openFailed": "無法開啟"
+  },
+  "installed": {
+    "filterLabel": "搜尋已安裝的工具",
+    "filterPlaceholder": "搜尋",
+    "sortLabel": "排序方式",
+    "sortByName": "按名稱",
+    "sortBySource": "按來源",
+    "noMatches": "沒有找到「{{query}}」",
+    "closeDetails": "關閉詳細資訊",
+    "uninstall": "解除安裝…",
+    "uninstallLabel": "解除安裝{{name}}…",
+    "uninstallQueued": "排隊中",
+    "uninstallQueuedLabel": "排隊中：解除安裝{{name}}",
+    "uninstalling": "正在解除安裝…",
+    "uninstallingLabel": "正在解除安裝{{name}}…",
+    "uninstallHold": {
+      "label": "暫時無法移除",
+      "ariaLabel": "暫時無法解除安裝{{name}}",
+      "IndexUpdating": "Homebrew正在連線檢查新版本，完成後才能解除安裝。"
+    },
+    "upToDate": "已是最新",
+    "updateAvailable": "可更新",
+    "updateIgnored": "已關閉提醒",
+    "updateSkipped": "已略過{{version}}",
+    "updateSkippedNewBuild": "已略過新版本",
+    "showDependencies_other": "另有{{count}}個隨其他軟體安裝的元件",
+    "hideDependencies_other": "收起{{count}}個元件",
+    "unverifiedVersion": "{{source}} {{version}}版未經測試",
+    "unverifiedVersionDetail": "尚未用{{source}} {{version}}測試過。",
+    "version": "版本",
+    "newVersion": "新版本",
+    "homebrewRecord": "Homebrew記錄的版本",
+    "location": "位置",
+    "status": "狀態",
+    "blocked": {
+      "Pinned": {
+        "description": "它在{{source}}中固定了版本。要解除安裝，請先在終端機執行{{command}}。",
+        "refused": "無法解除安裝，因為它在{{source}}中固定了版本。請先在終端機執行{{command}}解除固定。"
+      },
+      "NoSafeMethod": {
+        "badge": "手動解除安裝",
+        "description": "{{source}}沒有解除安裝指令，目前也無法在這裡安全地移除它的檔案。請按照{{source}}的官方文件解除安裝。",
+        "refused": "目前無法在這裡解除安裝{{source}}。",
+        "standalone-rustup": {
+          "description": "這台Mac上的Rust不全在~/.cargo和~/.rustup中，而這裡只解除安裝這兩個位置的Rust。請按照rustup的官方文件執行「rustup self uninstall」。",
+          "refused": "無法解除安裝，因為Rust不全在~/.cargo和~/.rustup中。"
+        }
+      },
+      "UvToolDirSet": {
+        "badge": "手動解除安裝",
+        "description": "設定了UV_TOOL_DIR時，uv解除安裝最後一個工具會連帶刪除UV_TOOL_DIR的上一層檔案夾及其中的所有檔案，只要那一層中沒有其他檔案夾。因此這時無法在這裡解除安裝任何uv工具。",
+        "refused": "無法解除安裝，因為設定了UV_TOOL_DIR。"
+      }
+    },
+    "sourceEmpty": {
+      "title": "沒有用{{source}}安裝的工具",
+      "description": "用{{source}}安裝的工具會顯示在這裡。",
+      "unreachable": "這次無法列出用它安裝的工具。請稍後重新檢查。"
+    },
+    "installedOn": "安裝日期",
+    "sortByDate": "按安裝日期",
+    "dateRowName": "安裝於{{date}}",
+    "commandMatch": "指令：{{command}}",
+    "searchHint": "按名稱、說明或指令搜尋"
+  },
+  "updates": {
+    "upToDate": "所有工具都是最新的",
+    "noneCheckable": "已檢查的來源中沒有可更新的工具",
+    "count_other": "{{count}}個可更新",
+    "noneActionable": "這裡沒有可更新的工具",
+    "needPasswordCount_other": "{{count}}個需要輸入密碼",
+    "cantUpdateHere": "另有{{number}}個無法在這裡更新",
+    "selectAll": "全選",
+    "selectAllLabel": "全選可在這裡更新的項目",
+    "updateSelectedCount": "更新所選（{{number}}）",
+    "updateAll": "全部更新",
+    "update": "更新",
+    "updateLabel": "更新{{name}}",
+    "retry": "再試一次",
+    "retryLabel": "再次嘗試更新{{name}}",
+    "selectRow": "選擇要更新的「{{name}}」",
+    "skipVersion": "略過此版本",
+    "skipVersionHint": "下個版本發佈時再提醒你。",
+    "neverRemind": "不再提醒此工具",
+    "neverRemindHint": "以後不再提醒此工具的任何更新。可以在「設定」中還原。",
+    "saveChoiceFailed": "無法儲存此選擇：{{message}}。",
+    "saveChoiceFailedPlain": "無法儲存此選擇。請稍後再試。",
+    "versionChange": "{{current}} → {{target}}",
+    "versionTo": "→ {{target}}",
+    "newVersion": "有新版本",
+    "newBuild": "此模型有新版本",
+    "selfUpdating": "會自行更新",
+    "readOnly": "僅供查看",
+    "cannotCheck": "無法檢查",
+    "cannotCheckShort": "無法查到它的最新版本。",
+    "lookupsFailedTitle_other": "{{count}}個工具沒有檢查成功",
+    "lookupsFailedTitleCause_other": "{{count}}個工具沒有檢查成功：{{cause}}",
+    "lookupsFailedDescription": "可能還有更新沒有列出。{{next}}",
+    "lookupsFailedProblemTitle": "可能還有更新沒有列出",
+    "cannotCheckSummary_other": "其中{{count}}個工具的檢查詳細資訊已隱藏。",
+    "showReasons": "顯示原因",
+    "showReasonsHint": "在設定中開啟「{{setting}}」",
+    "sourceUnavailable": "暫時不能更新",
+    "unavailableDetail": {
+      "NotRunning": "{{source}}沒有執行。請開啟它，然後點按「重新檢查」。",
+      "NotResponding": "{{source}}沒有回應。請稍後點按「重新檢查」。",
+      "RefusesAsRoot": "以管理者身分執行此App時，{{source}}無法使用。請結束，然後連按兩次重新開啟。"
+    },
+    "runInTerminal": "在終端機執行：{{command}}",
+    "progress": {
+      "queued": "排隊中",
+      "running": "正在更新…",
+      "cancelling": "正在取消…",
+      "succeeded": "已更新",
+      "failed": "未能更新",
+      "cancelled": "已取消",
+      "check": "需要查看",
+      "unconfirmed": "結果未確認",
+      "stepFailed": "已更新，有錯誤",
+      "viewLogLabel": "查看記錄：{{name}}"
+    },
+    "justUpdated": {
+      "title": "最近的更新記錄",
+      "clear": "清除記錄",
+      "clearLabel": "清除「最近的更新記錄」清單"
+    },
+    "confirmTitleNamed": "要更新「{{name}}」嗎？",
+    "confirmTitle_other": "要更新{{count}}個工具嗎？",
+    "confirmCount_other": "更新這{{count}}個",
+    "preparing": "正在準備…",
+    "started": "已開始",
+    "planFailed": "無法準備此次更新：{{message}}",
+    "planFailedPlain": "無法準備此次更新。請稍後再試。",
+    "submitFailed": "無法開始更新：{{message}}",
+    "submitFailedPlain": "無法開始更新。請稍後再試。",
+    "blocked": {
+      "Pinned": {
+        "badge": "已固定",
+        "detail": "它在{{source}}中固定了版本。要更新它，請先在終端機執行{{command}}解除固定，然後重新檢查。",
+        "refused": "無法更新，因為它在{{source}}中被固定了。"
+      },
+      "SelfUpdatesOnly": {
+        "badge": "開啟它來更新",
+        "detail": "它會自行更新，無法在這裡更新。開啟它一次就會檢查新版本。",
+        "refused": "{{source}}會自行更新，無法在這裡更新。"
+      },
+      "UpdatesTurnedOff": {
+        "badge": "已關閉更新",
+        "detail": "{{source}}自己的設定關閉了更新，無法在這裡更新。",
+        "refused": "無法更新，因為{{source}}自己的設定關閉了更新。"
+      }
+    },
+    "allHiddenTitle": "沒有要安裝的更新",
+    "allHiddenDescription": "其餘更新已隱藏。",
+    "showHidden": "查看已隱藏的更新",
+    "snooze": "30天內不提醒",
+    "snoozeHint": "此工具的更新30天後會重新列出。可以在「設定」中還原。",
+    "snoozedUntil": "{{date}}起恢復提醒",
+    "selfUpdatesTyped": "它會自行更新，無法在這裡更新。在終端機裡輸入{{command}}開啟它一次，就會檢查新版本。",
+    "disabledBlocked": {
+      "detail": "{{source}}已停用它，以後不再提供更新。已安裝的這一份不會被刪除；不再需要時可以解除安裝。",
+      "refused": "無法更新，因為{{source}}已停用它。"
+    },
+    "pinnedPipxInjected": "這條指令也會讓和它安裝在一起的其他套件不再固定版本。"
+  },
+  "updatesMore": {
+    "updating": "正在更新…"
+  },
+  "history": {
+    "today": "今天{{time}}",
+    "verifiedTitle": "更新前後各讀了一次已安裝的版本，版本已經變了。",
+    "verifiedModelTitle": "更新前後各讀了一次這個模型，模型已經變了。",
+    "more_other": "再顯示{{count}}筆",
+    "showFewer": "收起",
+    "failedBecause": "未能更新：{{cause}}",
+    "unchanged": "沒有更新成功：版本沒有變",
+    "unchangedTitle": "指令顯示已完成，但更新前後讀到的版本相同。",
+    "stepFailedNotLinkedTitle": "新版本已經裝好，但沒有連結到終端機，在終端機裡輸入它的指令可能找不到它；通常是有同名的檔案擋住了。",
+    "stepFailedTitle": "新版本已經裝好，但指令顯示更新之後有一步失敗了。"
+  },
+  "batchResult": {
+    "reason": "原因：{{detail}}",
+    "errorLine": "錯誤訊息：{{detail}}",
+    "already": {
+      "ByEarlierUpdate": "已由前面的更新一併完成",
+      "BeforeItsTurn": "輪到它時已是新版本"
+    },
+    "alreadyWhy": {
+      "ByEarlierUpdate": "輪到這一項時，它已是新版本：前面的一項更新已把它一併更新了。",
+      "BeforeItsTurn": "輪到這一項時，它已是新版本，這次的指令沒有再改動它。"
+    }
+  },
+  "commandPreview": {
+    "show_other": "查看指令",
+    "trashLabel": "移到垃圾桶",
+    "needsPassword": "部分App在這一步會要求輸入Mac密碼，這裡無法輸入；需要時會告訴你在終端機裡怎麼完成。"
+  },
+  "majorVersion": {
+    "tag": "主要版本更新",
+    "tagLabel": "主要版本更新：{{name}}",
+    "detail": "從{{from}}升到{{to}}，用法或設定可能會變。不確定的話，可以點按這一列右邊的「⋯」，選擇「{{skip}}」，下個版本發佈時再提醒你。"
+  },
+  "nextAutoCheck": {
+    "today": "下次自動檢查：今天{{time}}左右",
+    "tomorrow": "下次自動檢查：明天{{time}}左右",
+    "date": "下次自動檢查：{{date}}{{time}}左右",
+    "soon": "下次自動檢查：很快"
+  },
+  "warnings": {
+    "dependentsUnknown": "無法確定還有哪些軟體要用它。解除安裝前請自行確認。",
+    "wouldBreak_other": "還有{{count}}個工具要用它：{{names}}。",
+    "compilesLocally": "需要在這台Mac上編譯，會花一些時間。",
+    "downloadsModelChanges": "需要下載已更改的模型檔案。",
+    "nonRegistrySource": "它不是從crates.io安裝的。",
+    "transientLookupFailure": "可以稍後點按「重新檢查」再試。",
+    "thirdPartyRegistry": "此模型來自{{host}}，不是Ollama官方模型庫。",
+    "willTrash": {
+      "Launcher": "指令本身：{{path}}",
+      "Program": "程式檔案：{{path}}",
+      "Cache": "可重新下載的快取：{{path}}",
+      "Backups": "更新留下的舊副本：{{path}}"
+    },
+    "willKeep": {
+      "Settings": "設定：{{path}}",
+      "SettingsAndHistory": "設定、登入資訊和歷史記錄：{{path}}",
+      "ToolState": "對話和歷史記錄：{{path}}",
+      "ToolStateDetail": "保留整個檔案夾，包括其中的程式檔案。",
+      "ShellConfigLines": "終端機設定檔：{{path}}",
+      "ShellConfigLinesDetail": "不會修改此檔案，安裝程式加入的設定也保留。",
+      "OutsideHome": "會失效的連結：{{path}}",
+      "OutsideHomeDetail": "它在個人專屬檔案夾之外，因此保留不動。解除安裝後可以自行刪除。",
+      "NotOurs": "無法確認歸屬：{{path}}",
+      "NotOursDetail": "無法確認它屬於此工具，因此保留不動。",
+      "InstallerCache": "安裝程式暫存檔案夾：{{path}}",
+      "InstallerCacheDetail": "它在多個工具共用的~/.cache中，因此保留不動。可以自行刪除。"
+    },
+    "alreadyGone": "已不存在：{{path}}",
+    "removesToolchains": "永久刪除{{path}}：工具鏈{{names}}和rustup下載的所有內容。",
+    "removesToolchainsUnlisted": "永久刪除{{path}}：所有工具鏈和rustup下載的內容。",
+    "removesToolchainsDetail": "不會移到垃圾桶。重裝Rust之前，需要Rust的專案無法編譯。",
+    "deletesCargoHome": "永久刪除{{path}}及其中的所有檔案，包括Cargo的快取、設定和登入資訊。不會移到垃圾桶。",
+    "removesCargoInstalled_other": "還會永久刪除Cargo中的{{count}}個程式：{{names}}。",
+    "removesCargoInstalledDetail": "重裝Rust後，用「cargo install」安裝的那些可以再裝回來。",
+    "removesUnrecordedPrograms_other": "還會永久刪除{{count}}個沒有Cargo安裝記錄的程式：{{names}}。",
+    "removesUnrecordedProgramsDetail": "重裝Rust不會裝回不是Cargo安裝的程式。",
+    "homebrewRustupLosesToolchains": "Homebrew安裝的rustup共用這些檔案夾，它的工具鏈也會被刪除。",
+    "editsShellConfig": "rustup會從終端機設定檔中刪除它加入的那一行。",
+    "leavesShellConfigLine": "{{path}}中會留下用來載入Cargo的一行，讀取此檔案的終端機每次啟動都會顯示錯誤訊息。",
+    "leavesShellConfigLineDetail": "刪除那一行即可。",
+    "leavesShellConfigLineMaybe": "{{path}}中有一行提到Cargo，rustup不會刪除它。",
+    "leavesShellConfigLineMaybeDetail": "解除安裝後請檢查這一行；如果終端機啟動時顯示錯誤訊息，就刪除它。",
+    "homebrewAutoremoves": "Homebrew還會刪除為其他軟體安裝、目前已沒有軟體需要的相依套件。",
+    "homebrewAutoremovesDetail": "執行Homebrew時設定了HOMEBREW_NO_AUTOREMOVE=1，但brew.env把它設成了Homebrew視為未設定的值，比如0或false，以brew.env為準。",
+    "homebrewPeriodicCleanup": "安裝或更新後，Homebrew會刪除此軟體及一起更新的軟體的舊版本，以及殘留的舊下載檔案；定期清理到期時，所有Homebrew軟體的舊版本和舊下載檔案也會被刪除。",
+    "homebrewPeriodicCleanupDetail": "執行Homebrew時設定了HOMEBREW_NO_INSTALL_CLEANUP=1，但brew.env把它設成了空值，以brew.env為準。",
+    "homebrewCleanupAutoremoves": "Homebrew定期清理時，還會刪除為其他軟體安裝、目前已沒有軟體需要的相依套件。",
+    "homebrewCleanupAutoremovesDetail": "執行Homebrew時設定了HOMEBREW_NO_INSTALL_CLEANUP=1和HOMEBREW_NO_AUTOREMOVE=1，但brew.env把前者設成了空值，把後者設成了Homebrew視為未設定的值，比如0或false，以brew.env為準。",
+    "uninstallScope": {
+      "HomebrewFormulaOnly": "只刪除Homebrew安裝的這一版「{{name}}」和指向它的連結；別處的設定和資料不刪除。",
+      "HomebrewFormula": "刪除Homebrew安裝的這一版「{{name}}」和指向它的連結；別處的設定和資料不刪除。",
+      "HomebrewCaskPlain": "刪除Homebrew為「{{name}}」安裝的檔案；它的設定和資料保留不動。",
+      "HomebrewCaskSteps": "刪除Homebrew為「{{name}}」放置的檔案，並執行它記下的解除安裝步驟；其他檔案不刪除。",
+      "HomebrewCaskStepsAutoremoves": "刪除Homebrew為「{{name}}」放置的檔案，並執行它記下的解除安裝步驟；「{{name}}」的其他檔案不刪除。",
+      "HomebrewCaskStepsUnseen": "刪除Homebrew為「{{name}}」放置的檔案，並執行它記下的解除安裝步驟；其中部分步驟還會刪除什麼，無法事先得知。",
+      "HomebrewCaskStepsOnly": "執行Homebrew為「{{name}}」記下的解除安裝步驟；安裝程式安裝的其他檔案不刪除。",
+      "HomebrewCaskStepsOnlyUnseen": "執行Homebrew為「{{name}}」記下的解除安裝步驟；其中部分步驟還會刪除什麼，無法事先得知。",
+      "HomebrewCask": "無法從Homebrew的記錄中讀出解除安裝「{{name}}」會刪除什麼。",
+      "Npm": "刪除npm全域檔案夾中的「{{name}}」檔案夾和指令，不執行它的程式碼；它在別處的設定和資料不刪除。",
+      "Pipx": "刪除pipx為「{{name}}」單獨建立的Python環境和指向該環境的指令；它在環境以外的設定和資料不刪除。",
+      "Uv": "刪除uv為「{{name}}」單獨建立的Python環境和uv記下的指令；它在環境以外的設定和資料不刪除。",
+      "Cargo": "刪除cargo為「{{name}}」安裝的程式檔案；下載快取、Cargo的設定和此程式自己的設定都保留不動。",
+      "Ollama": "刪除模型「{{name}}」；其他模型還在用的資料會保留，Ollama本身和其他模型保留不動。"
+    },
+    "caskUpdateRunsOldSteps": "更新前，Homebrew會先執行它為現有版本記下的解除安裝步驟。",
+    "caskUpdateRunsOldStepsReopens": "更新前，Homebrew會先執行它為現有版本記下的解除安裝步驟；它結束的App會在更新完成後重新開啟。",
+    "caskStep": {
+      "Deletes_other": "還會永久刪除：{{items}}。",
+      "DeletesUnnamed": "還會永久刪除Homebrew執行解除安裝步驟時才找到的檔案。",
+      "DeletesLinks_other": "還會永久刪除下列路徑，但只刪除其中指向的路徑含有「{{link}}」的連結：{{items}}。",
+      "DeletesFilesContaining_other": "還會永久刪除下列路徑，但只刪除其中內容含有「{{content}}」的檔案：{{items}}。",
+      "DeletesLinksToFilesContaining_other": "還會永久刪除下列路徑，但只刪除其中指向的路徑含有「{{link}}」、所指檔案的內容又含有「{{content}}」的連結：{{items}}。",
+      "DeletesUnnamedLinks": "還會永久刪除Homebrew執行解除安裝步驟時才找到的連結，但只刪除指向的路徑含有「{{link}}」的。",
+      "DeletesUnnamedFilesContaining": "還會永久刪除Homebrew執行解除安裝步驟時才找到的檔案，但只刪除內容含有「{{content}}」的。",
+      "DeletesUnnamedLinksToFilesContaining": "還會永久刪除Homebrew執行解除安裝步驟時才找到的連結，但只刪除指向的路徑含有「{{link}}」、所指檔案的內容又含有「{{content}}」的。",
+      "Trashes_other": "還會移到垃圾桶：{{items}}。",
+      "RemovesPackages_other": "還會刪除下列安裝套件安裝的全部檔案，不論其他App是否在用：{{items}}。",
+      "RunsScript_other": "還會執行：{{items}}。",
+      "RunsOwnSteps": "解除安裝前後還會執行Homebrew為它記下的其他步驟。",
+      "RemovesServices_other": "還會停止並刪除{{count}}個背景服務。",
+      "RemovesServicesMatching": "還會停止並刪除背景服務，包括名稱符合某個規則、正在執行的全部服務。",
+      "RemovesKexts_other": "還會停用並刪除核心延伸功能：{{items}}。",
+      "DeletesCertificates_other": "還會刪除鑰匙圈中名稱含有下列任一文字的所有憑證：{{items}}。",
+      "RemovesLoginItems_other": "還會刪除登入項目：{{items}}。",
+      "QuitsApps_other": "還會結束{{count}}個正在執行的App。",
+      "QuitsAppsMatching": "還會結束正在執行的相關App，包括名稱符合某個規則的全部App。",
+      "QuitsNamedApps_other": "還會結束正在執行的{{items}}。",
+      "systemNames_other": "在macOS中的名稱：{{items}}"
+    }
+  },
+  "secureConnection": {
+    "failed": "無法與{{host}}建立安全連線。"
+  },
+  "notLookedUp": {
+    "here": "這台Mac上不檢查它的更新。"
+  },
+  "unreadInProtectedPlace": {
+    "homebrewMayAutoremove": "Homebrew可能還會刪除為其他軟體安裝、目前已沒有軟體需要的相依套件。",
+    "homebrewMayAutoremoveDetail": "執行Homebrew時設定了HOMEBREW_NO_AUTOREMOVE=1，但它的某個brew.env檔案在受保護的位置或指向那裡，沒有讀取，無法得知它是否把這個值改成了Homebrew視為未設定的值。",
+    "homebrewMayCleanUp": "安裝或更新後，Homebrew可能會刪除此軟體及一起更新的軟體的舊版本，以及殘留的舊下載檔案；定期清理到期時，可能還會刪除所有Homebrew軟體的舊版本和舊下載檔案。",
+    "homebrewMayCleanUpDetail": "執行Homebrew時設定了HOMEBREW_NO_INSTALL_CLEANUP=1，但它的某個brew.env檔案在受保護的位置或指向那裡，沒有讀取，無法得知它是否把這個值設成了空值。",
+    "homebrewCleanupMayAutoremove": "Homebrew定期清理時，可能還會刪除為其他軟體安裝、目前已沒有軟體需要的相依套件。",
+    "homebrewCleanupMayAutoremoveDetail": "執行Homebrew時設定了HOMEBREW_NO_INSTALL_CLEANUP=1和HOMEBREW_NO_AUTOREMOVE=1，但它的某個brew.env檔案在受保護的位置或指向那裡，沒有讀取，無法得知brew.env是否把這兩個值都改掉了。",
+    "shellConfigUnread": "{{path}}在受保護的位置或指向那裡，沒有讀取，無法得知其中是否有載入Cargo的一行。",
+    "shellConfigUnreadDetail": "解除安裝後，如果終端機啟動時顯示錯誤訊息，請刪除{{path}}中載入Cargo的那一行。"
+  },
+  "unreadBrewEnv": {
+    "homebrewMayAutoUpdate": "開始前，Homebrew可能會先更新它自己，並連線檢查新版本。",
+    "homebrewMayAutoUpdateDetail": "執行Homebrew時設定了HOMEBREW_NO_AUTO_UPDATE=1，但它的某個brew.env檔案在受保護的位置或指向那裡，沒有讀取，無法得知它是否把這個值設成了空值。"
+  },
+  "brewVersions": {
+    "cleansUp_other": "更新後會刪除舊版本{{versions}}。Homebrew還會刪除快取裡已不再使用的下載檔案，包括其他工具的。",
+    "cleansUpDetail": "更新完成後會執行brew cleanup，和Homebrew平常更新後做的一樣：刪除這些舊版本、這個工具過期的下載檔案，以及快取裡Homebrew已不再使用的所有下載檔案，不論是哪個工具的。其他已安裝的軟體和它們的舊版本不刪除。",
+    "removesEvery": "已安裝的所有版本都會刪除：{{versions}}。",
+    "logCleaningUp": "更新已完成，接著執行brew cleanup刪除{{name}}的舊版本。",
+    "logNotCleanedUp": "brew cleanup沒有完成。更新本身已經完成，沒刪掉的舊版本仍列在「其他版本」中。",
+    "logCleanupSkipped": "沒有執行brew cleanup：確認視窗開啟後，Homebrew的設定或已安裝版本有了變化，或無法核對。更新本身已經完成，留下的舊版本仍列在「其他版本」中。",
+    "logKept_other": "brew cleanup保留了{{name}}的舊版本{{versions}}，仍列在「其他版本」中。",
+    "scopeEvery": {
+      "HomebrewFormulaOnly": "只刪除Homebrew安裝的「{{name}}」和指向它的連結；別處的設定和資料不刪除。",
+      "HomebrewFormula": "刪除Homebrew安裝的「{{name}}」和指向它的連結；別處的設定和資料不刪除。"
+    },
+    "scopeEveryWithKept": {
+      "HomebrewFormulaOnly": "只刪除Homebrew安裝的「{{name}}」和指向它的連結。",
+      "HomebrewFormula": "刪除Homebrew安裝的「{{name}}」和指向它的連結。"
+    }
+  },
+  "uvLinks": {
+    "takesBack": "{{path}}現在指向另一個工具裝的那一份。這次更新會把它改回uv裝的這一份。"
+  },
+  "kegLinks": {
+    "relinks": "{{name}}已連結到終端機。更新會先解除連結，再由Homebrew重新連結；更新後會檢查，沒有連結上就再連結一次。",
+    "relinksDetail": "它連結到終端機的指令：{{commands}}。沒有連結上時會執行brew link --formula --force {{name}}；遇到其他程式的檔案，它會停下，不會覆寫。",
+    "relinksDetailNoCommands": "沒有連結上時會執行brew link --formula --force {{name}}；遇到其他程式的檔案，它會停下，不會覆寫。",
+    "logRelinking": "更新已完成，接著執行brew link --formula --force {{name}}，把它重新連結到終端機。",
+    "logStillLinked": "Homebrew已把{{name}}重新連結到終端機，不需要執行brew link。",
+    "logNoLongerLinked": "{{name}}沒有重新連結到終端機，輸入{{commands}}不再執行它。要重新連結，可以在終端機裡執行{{command}}；如果有檔案擋住，它會說出是哪一個。",
+    "logNoLongerLinkedLead": "{{name}}沒有重新連結到終端機，輸入{{commands}}不再執行它。要重新連結，可以在終端機裡執行下面的指令。",
+    "logNoLongerLinkedAfter": "如果有檔案擋住，指令會說出是哪一個。",
+    "blockedBadge": "無法重新連結",
+    "blockedDetail": "它已連結到終端機，但它的指令位置上現在有別的檔案。更新會解除連結，之後連結不上，所以無法在這裡更新。",
+    "held": "擋住它的檔案：{{path}}",
+    "heldMany": "擋住它的檔案：{{path}}等{{number}}個",
+    "blockedRefused": "無法更新：更新後無法把它重新連結到終端機。"
+  },
+  "modelDownload": {
+    "note": "需要下載已更改的模型檔案，最多約{{size}}。"
+  },
+  "commands": {
+    "title": "在終端機裡輸入時",
+    "titleDetail": "按開啟此App時讀到的終端機設定判斷。別名、新開的終端機視窗或編輯器裡的終端機可能不同。",
+    "names_other": "{{names}}等{{count}}個",
+    "runs": "執行的是這一份",
+    "runsCopyFrom": "執行的是{{source}}裝的那一份",
+    "runsNamesakeFrom": "執行的是{{source}}裝的另一個同名程式",
+    "runsNamesake": "執行的是另一個同名程式",
+    "behindDetail": "終端機先找到那一個，這一份排在它後面。",
+    "notFound": "終端機找不到它：它在{{dir}}，終端機不在這個檔案夾裡尋找指令",
+    "copyPath": "拷貝路徑",
+    "copyPathLabel": "拷貝路徑：{{dir}}",
+    "twin": "裝了兩份",
+    "twinMany": "裝了{{number}}份",
+    "twinLabel": "{{word}}：{{name}}",
+    "twinOther": "{{source}}也裝了一份。",
+    "twinOthers": "{{sources}}也各裝了一份。",
+    "twinOtherStandalone": "{{source}}內附的安裝程式也裝了一份。",
+    "twinOthersCount_other": "另外{{count}}份由{{sources}}安裝。",
+    "twinRuns": "在終端機裡輸入「{{command}}」，執行的是這一份。",
+    "twinRunsCopyFrom": "在終端機裡輸入「{{command}}」，執行的是{{source}}裝的那一份。",
+    "twinNotFound": "在終端機裡輸入「{{command}}」，找不到這一份。",
+    "notLinked": "Homebrew沒有把它連結到終端機找得到的地方",
+    "notLinkedDetail": "通常是Homebrew安裝它時有同名的檔案擋住了。在終端機裡輸入時不會執行這一份。",
+    "notLinkedWhy": "通常是Homebrew安裝它時有同名的檔案擋住了。",
+    "twinNotLinked": "Homebrew沒有把這一份連結到終端機找得到的地方。"
+  },
+  "pathLine": {
+    "sentence": "若要讓終端機找到它，可以把這一行加到~/.zshrc等終端機設定檔的結尾，再新開一個終端機視窗。若要在這裡看到變化，請結束並重新開啟此App。",
+    "copy": "拷貝這一行",
+    "copyLabel": "拷貝這一行：{{dir}}"
+  },
+  "standalone": {
+    "summary": {
+      "standalone-claude": "Anthropic的AI程式設計助手",
+      "standalone-rustup": "安裝和更新Rust的工具",
+      "standalone-agy": "Google的AI程式設計助手",
+      "standalone-grok": "xAI的AI程式設計助手",
+      "standalone-opencode": "開放原始碼的AI程式設計助手"
+    },
+    "opencode": {
+      "updatesItselfDetail": "{{source}}預設會在啟動時自己下載新版本。這裡不檢查也不安裝它的更新。",
+      "versionNotRead": "{{source}}的安裝指令稿沒有留下寫著版本的檔案，這裡也不執行{{source}}去查詢，所以不知道它的版本。",
+      "uninstallDescription": "目前這裡只列出{{source}}，還不能在這裡解除安裝它。"
+    }
+  },
+  "codexStandalone": {
+    "summary": "OpenAI的AI程式設計助手",
+    "updatesItself": "會自行更新",
+    "updatesItselfAria": "會自行更新：{{name}}",
+    "updatesItselfDetail": "{{source}}是用它自己的安裝指令稿按最新版本安裝的，可以自己安裝新版本。這裡不檢查也不安裝它的更新。",
+    "notChecked": "不檢查更新",
+    "notCheckedAria": "不檢查更新：{{name}}",
+    "notCheckedDetail": "這裡不檢查也不安裝{{source}}的更新。"
+  },
+  "opencodeUpdates": {
+    "word": "預設會自行更新",
+    "aria": "預設會自行更新：{{name}}"
+  },
+  "sizes": {
+    "term": "佔用空間",
+    "measuring": "正在計算…",
+    "about": "約{{size}}",
+    "atLeast": "{{size}}以上",
+    "partial": "約{{size}}，部分無法讀取",
+    "ollamaModels": "Ollama模型共約{{size}}",
+    "ollamaModelsAtLeast": "Ollama模型共{{size}}以上",
+    "sortBySize": "按大小",
+    "programOnly": "只算程式檔案本身，不含它下載的內容和快取。",
+    "sharedWithCache": "uv會讓工具和它的快取共用一部分檔案，這部分也算在裡面，所以它單獨佔用的空間可能更少。",
+    "otherVersionsTotal": "共約{{size}}",
+    "otherVersionsTotalAtLeast": "共{{size}}以上",
+    "rowName": "佔用空間{{size}}"
+  },
+  "sizeTotals": {
+    "source": "約{{size}}",
+    "sourceAtLeast": "{{size}}以上",
+    "note": "實測大小的合計，含其他版本，不含快取。幾個工具共用的檔案只算一次。"
+  },
+  "sourceNotice": {
+    "pipReadOnly": {
+      "description": "pip安裝的內容只能在這裡查看。如果其中有你在終端機裡使用的命令列工具，可以用pipx或uv重新安裝它，之後就能在這裡更新和解除安裝。"
+    },
+    "prefixNotWritable": {
+      "description": "npm把它們安裝在目前帳號無法修改的檔案夾中，因此只能查看。用Homebrew安裝Node後，再用它安裝的npm套件就能在這裡管理。"
+    },
+    "unreachable": {
+      "title": "{{source}}沒有回應",
+      "description": "{{source}}沒有回應，無法列出它安裝的內容。請稍後重新檢查。",
+      "detail": "這次無法列出用它安裝的工具。請稍後重新檢查。",
+      "detailAt": "這次無法列出用它安裝的工具。它{{when}}回應時，沒有任何工具。請稍後重新檢查。",
+      "descriptionWithRows_other": "有{{count}}個工具是用{{source}}安裝的。{{source}}這次沒有回應，顯示的是它上次回應時的結果，請稍後重新檢查。",
+      "descriptionWithRowsAt_other": "有{{count}}個工具是用{{source}}安裝的。{{source}}這次沒有回應，顯示的是它{{when}}回應時的結果，請稍後重新檢查。",
+      "descriptionWithModels_other": "{{source}}中有{{count}}個模型。{{source}}這次沒有回應，顯示的是它上次回應時的結果，請稍後重新檢查。",
+      "descriptionWithModelsAt_other": "{{source}}中有{{count}}個模型。{{source}}這次沒有回應，顯示的是它{{when}}回應時的結果，請稍後重新檢查。",
+      "descriptionWithOwnRow": "{{source}}這次沒有回應，顯示的是它上次回應時的結果，請稍後重新檢查。",
+      "descriptionWithOwnRowAt": "{{source}}這次沒有回應，顯示的是它{{when}}回應時的結果，請稍後重新檢查。",
+      "detailModels": "這次無法列出它的模型。請稍後重新檢查。",
+      "detailModelsAt": "這次無法列出它的模型。它{{when}}回應時，沒有任何模型。請稍後重新檢查。",
+      "detailOwn": "這次無法列出它。請稍後重新檢查。"
+    },
+    "refusesAsRoot": {
+      "title": "{{source}}無法以管理者身分執行",
+      "description": "以管理者身分執行此App時，{{source}}無法使用。請結束，然後連按兩次重新開啟。"
+    },
+    "notRunning": {
+      "title": "{{source}}沒有執行",
+      "description": "開啟{{source}}後，才能列出它安裝的內容和更新。"
+    },
+    "openOllama": "開啟Ollama",
+    "showTool": "查看",
+    "showCommand": "查看",
+    "openOllamaFailed": {
+      "notInstalled": "「應用程式」中沒有Ollama App。請從ollama.com下載並安裝，然後點按「開啟Ollama」。",
+      "notInstalledDetail": "用Homebrew安裝的ollama指令不包含此App。",
+      "launchFailed": "macOS無法開啟Ollama。請在「應用程式」中手動開啟；如果仍然無法開啟，請從ollama.com重新安裝。",
+      "other": "無法開啟Ollama。請在「應用程式」中手動開啟。"
+    },
+    "indexMayBeStale": {
+      "title": "無法連上Homebrew，用它安裝的工具的更新這次未能完整檢查",
+      "description": "這次是按上次連上時的資訊檢查的。請檢查網路連線，然後重新檢查。"
+    },
+    "indexUpdating": {
+      "title": "Homebrew正在連線檢查新版本",
+      "description": "「更新」頁顯示的是上次的結果。檢查完成後會自動重新檢查。"
+    },
+    "notOnPath": {
+      "title": "{{source}}已安裝，但在終端機輸入「{{command}}」打不開它",
+      "description": "終端機尋找指令的位置裡沒有它。請新開一個終端機視窗再試；如果仍然不行，請按照它的安裝說明操作。"
+    },
+    "shadowedByHomebrew": {
+      "title": "在終端機輸入「{{command}}」，執行的是Homebrew安裝的同名程式",
+      "description": "終端機先找到的是Homebrew安裝的程式，而不是用{{source}}內附的安裝程式安裝的那個。無法確認它是不是另一份{{source}}。"
+    },
+    "shadowedByNpm": {
+      "title": "在終端機輸入「{{command}}」，執行的是npm安裝的同名程式",
+      "description": "終端機先找到的是npm安裝的程式，而不是用{{source}}內附的安裝程式安裝的那個。無法確認它是不是另一份{{source}}。"
+    },
+    "shadowedByOther": {
+      "title": "在終端機輸入「{{command}}」，執行的是另一個同名程式",
+      "description": "終端機先找到的是另一個無法識別的程式，而不是用{{source}}內附的安裝程式安裝的那個。如果它在「其他程式」中，可以在那裡看到它的位置。"
+    },
+    "launcherOnly": {
+      "title": "找不到{{source}}的程式檔案",
+      "description": "「{{command}}」已無法執行，請重新安裝{{source}}；如果程式檔案在垃圾桶中，也可以拖回原處後重新檢查。不再需要時，可在「已安裝」中解除安裝{{source}}。"
+    },
+    "someNotListed": {
+      "title": "用{{source}}安裝的部分工具沒有顯示",
+      "description": "{{source}}無法讀取這些工具，因此也沒有檢查它們的更新。要查看是哪些工具以及如何修復，請在終端機執行{{command}}，然後重新檢查。"
+    },
+    "formulaeNotListed": {
+      "title": "用{{source}}安裝的部分套件沒有顯示",
+      "description": "{{source}}沒有列出它們，通常是因為它不信任它們的來源，所以沒有檢查它們的更新，也無法確定它們還要用哪些套件。在終端機執行{{command}}可列出{{source}}取得套件的所有來源，執行{{trusted}}可列出它信任的來源；要信任只在前一個清單中的某個來源，請執行{{trust}}並在後面加上它的名稱，然後重新檢查。"
+    },
+    "checksUnfinished": {
+      "title": "部分檢查未完成",
+      "description_other": "{{sources}}這次未檢查完，更新可能還沒全部列出。"
+    },
+    "more_other": "還有{{count}}條提示",
+    "showFewer": "收起",
+    "httpsHostRefused": {
+      "title": "不支援透過https連線Ollama",
+      "description": "OLLAMA_HOST設定的是https://開頭的網址，而連線Ollama只支援http，因此無法檢查{{source}}。如果那裡的Ollama也能透過http存取，請把OLLAMA_HOST改為它的http://網址，然後結束並重新開啟此App。",
+      "statusWord": "不支援https"
+    },
+    "noPip": {
+      "title": "「{{command}}」沒有附帶pip",
+      "description": "這個Python沒有附帶pip，所以沒有可列出的內容。",
+      "statusWord": "沒有pip"
+    },
+    "answered": {
+      "today": "今天{{time}}",
+      "yesterday": "昨天{{time}}",
+      "date": "{{date}}{{time}}",
+      "setupLine": "上次回應：{{when}}"
+    }
+  },
+  "sourceNoticeMore": {
+    "prefixProtected": {
+      "description": "npm安裝它們的檔案夾在受保護的位置或指向那裡。受保護的位置不讀取，無法確認能否修改它們，因此只能查看。"
+    }
+  },
+  "noAnswer": {
+    "title": {
+      "CouldNotStart": "{{source}}無法執行",
+      "ExitedWithError": "{{source}}執行時出錯"
+    },
+    "description": {
+      "missing": "找不到它需要的{{program}}，無法列出它安裝的內容。",
+      "missingWithRows_other": "找不到它需要的{{program}}。有{{count}}個工具是用{{source}}安裝的，顯示的是它上次回應時的結果。",
+      "missingFix": "找不到它需要的{{program}}。Homebrew安裝的{{formula}}中有它，但沒有連結到終端機找得到的地方。",
+      "missingFixWithRows_other": "找不到它需要的{{program}}。Homebrew安裝的{{formula}}中有它，但沒有連結到終端機找得到的地方。用{{source}}安裝的{{count}}個工具顯示的是它上次回應時的結果。",
+      "CouldNotStart": "它的程式無法啟動，無法列出它安裝的內容。",
+      "CouldNotStartWithRows_other": "它的程式無法啟動。有{{count}}個工具是用{{source}}安裝的，顯示的是它上次回應時的結果。",
+      "ExitedWithError": "它執行時出錯，無法列出它安裝的內容。原因解決之前，重新檢查也會出錯。",
+      "ExitedWithErrorWithRows_other": "它執行時出錯。有{{count}}個工具是用{{source}}安裝的，顯示的是它上次回應時的結果。原因解決之前，重新檢查也會出錯。"
+    },
+    "row": {
+      "missing": "{{source}}無法執行：找不到它需要的{{program}}。",
+      "CouldNotStart": "{{source}}無法執行：它的程式無法啟動。",
+      "ExitedWithError": "{{source}}執行時出錯。原因解決之前，重新檢查也會出錯。"
+    },
+    "statusWord": {
+      "CouldNotStart": "無法執行",
+      "ExitedWithError": "執行時出錯"
+    },
+    "fix": "修復…",
+    "sheet": {
+      "title": "要連結「{{formula}}」嗎？",
+      "text": "「{{formula}}」中有{{source}}需要的{{program}}，但沒有連結到終端機找得到的地方。",
+      "puts": "連結會在{{prefix}}底下建立它的{{commands}}的連結。只有指令所在的檔案夾在終端機的搜尋範圍內，且沒有其他同名指令排在前面，終端機才會使用這些指令。",
+      "putsUnlisted": "連結會在{{prefix}}底下建立它的指令的連結。只有指令所在的檔案夾在終端機的搜尋範圍內，且沒有其他同名指令排在前面，終端機才會使用這些指令。",
+      "then": "{{first}}{{then}}",
+      "version": "要連結的版本：",
+      "checking": "正在檢查能否連結…",
+      "conflicts_other": "{{paths}}已存在，Homebrew不會自行取代，因此無法連結。",
+      "planError": "無法檢查能否連結：{{message}}",
+      "planErrorPlain": "無法檢查能否連結。",
+      "submitError": "無法開始連結：{{message}}",
+      "submitErrorPlain": "無法開始連結。",
+      "confirm": "連結",
+      "blockedTitle": "無法連結「{{formula}}」",
+      "blockedSaid": "{{title}}：{{lines}}",
+      "blockedText": "要連結它，可以在終端機執行下面的指令。它會刪除擋住連結的檔案，包括上面這些，換成「{{formula}}」中的。",
+      "commandLabel": "要在終端機執行的指令",
+      "after": "完成後，點按「重新檢查」。"
+    },
+    "op": {
+      "kind": "連結",
+      "running": "正在連結…",
+      "succeeded": "已連結",
+      "failed": "未能連結",
+      "cancel": "取消連結",
+      "again": "重新連結",
+      "quitBody_other": "現在結束會中斷操作，正在連結的工具有只連結一半的風險。",
+      "quitNoCancel": "「{{name}}」的連結已開始，無法取消。請等它完成後再結束。",
+      "quitChecking": "正在核對「{{name}}」的連結結果。現在結束會先等它核對完，最多幾秒。"
+    },
+    "withFormula": {
+      "badge": "隨Node更新",
+      "detail": "{{name}}是Homebrew安裝的Node附帶的，會隨Node一起更新。在這裡單獨更新它，Homebrew下次更新Node時會出錯。",
+      "refused": "無法在這裡更新，它會隨Homebrew安裝的Node一起更新。"
+    }
+  },
+  "linkRollback": {
+    "risk_other": "{{paths}}已連結到它。若連結中途停止，Homebrew也會刪除已有的連結，因此無法在這裡連結。",
+    "handoff_other": "要連結它，可以在終端機執行下面的指令。若指令中途停止，Homebrew也會刪除上面的連結。",
+    "handoffConflicts_other": "要連結它，可以在終端機執行下面的指令。它會刪除擋住連結的檔案，換成「{{formula}}」中的。若仍然中途停止，Homebrew也會刪除原本已有的連結。"
+  },
+  "sourceDiagnostic": {
+    "label": "查看錯誤詳細資訊",
+    "next": "可以點按「拷貝錯誤詳細資訊」，傳給懂的人看。",
+    "copy": "拷貝錯誤詳細資訊",
+    "text": "錯誤詳細資訊："
+  },
+  "followUpWarning": {
+    "batch_other": "已更新{{total}}個工具，{{count}}個有警告",
+    "batchSucceeded_other": "{{total}}個都已成功，{{count}}個有警告",
+    "succeeded_other": "已更新，有警告",
+    "saved_other": "這裡只保留了警告，完整記錄已不再保留。"
+  },
+  "loginPathNotice": {
+    "title": "無法讀取終端機的設定",
+    "description": "終端機裡能找到的工具可能沒有列在這裡，例如用npm、pipx、uv或Cargo安裝的。"
+  },
+  "uninstallRunningApps": {
+    "SignalsApps_other": "還會強制結束{{count}}個正在執行的App，未儲存的內容可能遺失。",
+    "SignalsAppsMatching": "還會強制結束正在執行的相關App，包括名稱符合某個規則的全部App，未儲存的內容可能遺失。"
+  },
+  "uninstallLinks": {
+    "notOwned": "無法解除安裝，因為{{path}}現在可能屬於另一個工具，解除安裝這個工具會把它一起刪除。沒有刪除任何檔案。如果不再需要另一個工具，請先將它解除安裝，再重試。"
+  },
+  "planRefused": {
+    "sourceGone": "無法開始，因為找不到管理它的工具。請點按「重新檢查」。",
+    "expired": "確認視窗已開啟超過10分鐘，因此未執行。請重新開啟並確認。",
+    "unknown": "此確認已失效。請關閉後重新開始。",
+    "invalidName": "無法用{{source}}處理「{{name}}」。",
+    "programMissing": "找不到{{program}}。請點按「重新檢查」。",
+    "spawnFailed": "{{source}}無法啟動。系統提示：{{detail}}",
+    "spawnFailedPlain": "{{source}}無法啟動。",
+    "outputTooLarge": "{{source}}傳回的內容過多，無法繼續。",
+    "indexUpdating": "Homebrew正在連線檢查新版本，現在無法準確檢查相依關係。請過一兩分鐘再試。",
+    "refused": "發生內部錯誤，無法繼續。",
+    "notAnswered": "{{source}}沒有回應，無法繼續。請稍後再試。",
+    "notListed": "無法開始，因為它已不在清單中。請點按「重新檢查」。",
+    "uninstallUnsafe": {
+      "outsideHome": "無法移動{{path}}，因為它所在的檔案夾通向個人專屬檔案夾以外。",
+      "sharedFolder": "無法移動{{path}}，因為它在多個App共用的檔案夾中。",
+      "missing": "無法繼續，因為{{path}}已不存在。",
+      "notOwnedByYou": "無法移動{{path}}，因為它屬於另一個使用者。",
+      "notWhatInstructionsExpect": "無法移動{{path}}，因為它和預期的不一樣。",
+      "notWhatInstructionsExpectDetail": "它或它所在的檔案夾連結到了別處，或者類型不對、無法讀取。",
+      "overlapsKept": "無法解除安裝，因為不能確認移走檔案時不會碰到要保留的{{path}}。如果它連結到這個工具自己的檔案夾裡，請先把它連結到的內容移到別處。"
+    }
+  },
+  "planAgain": {
+    "changed": "這項更新在顯示之後有了變動，因此未執行。請重新開啟並確認。",
+    "changedDetail": "一次更新這麼多工具時，有些會在開始前重新準備。這一項重新準備後，與這裡顯示的不一樣。"
+  },
+  "updateConcurrency": {
+    "busy": "這個工具還有操作未完成。請等操作結束後再試。"
+  },
+  "operations": {
+    "current": "{{name}}：{{status}}",
+    "kindStatus": "{{kind}} · {{status}}",
+    "noCancelHint": "開始後無法取消。完成前請勿結束Banager或關機。",
+    "noCancelHintDetail": "等視窗底部顯示結果後，再結束或關機。",
+    "stop": "取消",
+    "logDrawerTitle": "操作記錄",
+    "batch": {
+      "running": "正在處理第{{current}}個，共{{total}}個",
+      "allSucceeded_other": "{{count}}個都已成功",
+      "allUpdated_other": "已更新{{count}}個工具",
+      "needsAttention_other": "{{total}}個中有{{count}}個需要查看",
+      "finished": "{{succeeded}}個已成功，{{cancelled}}個已取消",
+      "cancelAll": "全部取消",
+      "cancelRest": "取消其餘"
+    },
+    "cancelKind": {
+      "Install": "取消安裝",
+      "Uninstall": "取消解除安裝",
+      "Upgrade": "取消更新"
+    },
+    "logNote": {
+      "waitingForBrewUpdate": "Homebrew正在連線檢查新版本，完成後開始，最多等待{{minutes}}分鐘。現在取消不會有任何改動。",
+      "readFailedStdout": "無法讀取後續輸出：{{error}}",
+      "readFailedStderr": "無法讀取後續錯誤訊息：{{error}}",
+      "movedToTrash": "{{path}}已移到垃圾桶：{{trashedTo}}",
+      "trashFailed": "未能將{{path}}移到垃圾桶，解除安裝已停止：{{error}}",
+      "outOfTime": "超過{{seconds}}秒，已在移動{{path}}之前停止。已移走的在垃圾桶中，再解除安裝一次可移走其餘的。",
+      "backAfterUninstall": "最後檢查時發現{{path}}，未移動它。"
+    },
+    "kind": {
+      "Install": "安裝",
+      "Uninstall": "解除安裝",
+      "Upgrade": "更新"
+    },
+    "running": {
+      "Install": "正在安裝…",
+      "Uninstall": "正在解除安裝…"
+    },
+    "succeeded": {
+      "Install": "已安裝",
+      "Uninstall": "已解除安裝"
+    },
+    "failedShort": {
+      "Install": "未能安裝",
+      "Uninstall": "未能解除安裝"
+    },
+    "status": {
+      "Queued": "排隊中",
+      "CancelRequested": "正在取消…",
+      "Cancelling": "正在取消…",
+      "Verifying": "正在核對結果…",
+      "waitingForBrewUpdate": "正在等待Homebrew檢查新版本…"
+    },
+    "outcome": {
+      "Cancelled": "已取消",
+      "Unconfirmed": "結果未確認",
+      "UnconfirmedDetail": "請查看清單，確認是否有變化。",
+      "NeedsAttention": {
+        "NotInstalledAfterInstall": "顯示已安裝，但找不到它",
+        "StillInstalledAfterUninstall": "顯示已解除安裝，但它仍然存在",
+        "GoneBeforeUpgrade": "未開始更新：已找不到它",
+        "GoneAfterUpgrade": "顯示已更新，但它不見了",
+        "UnchangedAfterUpgrade": "顯示已更新，但版本沒有變化",
+        "UnchangedAfterUpgradeDetail": "可以點按「再試一次」；版本還是沒有變化，就點按「拷貝記錄」，傳給懂的人看。",
+        "BackAfterUninstall": "移走後，原處又出現了檔案",
+        "BackAfterUninstallDetail": "請先結束此工具。如果清單中仍有它，請再解除安裝一次；否則請將記錄中列出的檔案手動移到垃圾桶。",
+        "NotLinkedAfterLink": "顯示已完成，但沒有連結",
+        "NotLinkedAfterLinkDetail": "可以再點按「修復…」；還是沒有連結，就點按「拷貝記錄」，傳給懂的人看。",
+        "UpdatedButStepFailed": "已更新到{{version}}，但之後有一步失敗了，請查看記錄",
+        "UpdatedButStepFailedNoVersion": "已更新，但之後有一步失敗了，請查看記錄",
+        "UpdatedButNotLinked": "已更新到{{version}}，但新版本沒有連結到終端機，請查看記錄",
+        "UpdatedButNotLinkedDetail": "在終端機裡輸入它的指令可能找不到它；通常是有同名的檔案擋住了，記錄裡寫著是哪個檔案。不知道怎麼辦，就點按「拷貝記錄」，傳給懂的人看。",
+        "UpdatedButStepFailedDetail": "新版本已經裝好，記錄裡寫著哪一步失敗了。不知道怎麼辦，就點按「拷貝記錄」，傳給懂的人看。"
+      },
+      "Failed": "未能完成：{{summary}}",
+      "FailedSilent": "未能完成，程式沒有給出原因",
+      "FailedSilentDetail": "可以稍後{{again}}；還是失敗，就點按「拷貝記錄」，傳給懂的人看。",
+      "emptyLogDetail": "可以稍後{{again}}。",
+      "BanagerFailed": {
+        "ChangedSinceShown": "未能開始：確認視窗開啟後，它的安裝位置或安裝方式有了變化，或無法讀取",
+        "ChangedSinceShownDetail": "沒有改動。請重新開啟確認視窗，查看它現在會做什麼。",
+        "Panicked": "未能完成：發生內部錯誤",
+        "PanickedDetail": "請查看清單，確認是否有變化。",
+        "ProgramMissing": "未能開始：找不到{{program}}，沒有改動",
+        "SpawnFailed": "未能開始：程式無法啟動，沒有改動。系統提示：{{detail}}",
+        "SpawnFailedShort": "未能開始：程式無法啟動，沒有改動",
+        "HomebrewStillUpdating": "未能開始：Homebrew連線檢查新版本超過了{{minutes}}分鐘",
+        "HomebrewStillUpdatingDetail": "沒有改動。請檢查網路連線，稍後再試。",
+        "PathChanged": "已停止：確認視窗開啟後，{{path}}發生了變化",
+        "PathChangedDetail": "如有已移到垃圾桶的項目，記錄中都已列出。請重新開啟確認視窗。",
+        "FormulaChanged": "未能開始：確認視窗開啟後，Homebrew裡的{{name}}有了變化",
+        "FormulaChangedDetail": "沒有改動。請重新開啟確認視窗，查看會刪除哪些版本。",
+        "HomebrewSettingsChanged": "未能開始：確認視窗開啟後，Homebrew要刪除的內容有了變化，或無法讀取",
+        "HomebrewSettingsChangedDetail": "沒有執行Homebrew。請重新開啟確認視窗，查看它現在會刪除什麼。",
+        "LinkTaken": "未能開始：{{path}}已被另一個程式佔用",
+        "LinkTakenMany": "未能開始：{{path}}等{{number}}個檔案已被另一個程式佔用",
+        "LinkTakenDetail": "更新會先解除這個工具的連結，被佔用的檔案會擋住它重新連結，終端機裡就會找不到它的指令。沒有更新，它仍可在終端機裡使用。",
+        "Internal": "未能完成：發生內部錯誤，沒有改動",
+        "LinkRollbackRisk": "未能開始：連結{{name}}可能刪除已有的連結",
+        "LinkRollbackRiskDetail": "確認視窗開啟後出現了指向它的連結，若連結中途停止，Homebrew也會刪除它們。沒有開始連結，它們維持原樣。"
+      }
+    },
+    "copyLog": "拷貝記錄"
+  },
+  "operationsMore": {
+    "runningSeveral": "正在同時處理{{running}}個",
+    "runningSeveralQueued": "正在同時處理{{running}}個，還有{{queued}}個在排隊"
+  },
+  "quit": {
+    "title_other": "還有{{count}}個操作未完成",
+    "body": {
+      "stops_other": "現在結束會中斷操作。",
+      "Upgrade_other": "現在結束會中斷操作，正在更新的工具有只更新一半的風險。",
+      "Uninstall_other": "現在結束會中斷操作，正在解除安裝的工具有只解除安裝一半的風險。",
+      "Install_other": "現在結束會中斷操作，正在安裝的工具有只安裝一半的風險。",
+      "mixed_other": "現在結束會中斷操作，正在處理的工具有只完成一半的風險。",
+      "othersStop_other": "現在結束會中斷其餘操作。",
+      "othersHalfDone_other": "現在結束會中斷其餘操作，正在處理的工具有只完成一半的風險。"
+    },
+    "checking": {
+      "Install": "正在核對「{{name}}」的安裝結果。現在結束會先等它核對完，最多幾秒。",
+      "Uninstall": "正在核對「{{name}}」的解除安裝結果。現在結束會先等它核對完，最多幾秒。",
+      "Upgrade": "正在核對「{{name}}」的更新結果。現在結束會先等它核對完，最多幾秒。"
+    },
+    "noCancel": {
+      "Install": "「{{name}}」的安裝已開始，無法取消。請等它完成後再結束。",
+      "Uninstall": "「{{name}}」的解除安裝已開始，無法取消。請等它完成後再結束。",
+      "Upgrade": "「{{name}}」的更新已開始，無法取消。請等它完成後再結束。"
+    },
+    "keepWaiting": "繼續等待",
+    "quitAnyway": "結束"
+  },
+  "uninstall": {
+    "title": "要解除安裝「{{name}}」嗎？",
+    "checking": "正在檢查影響…",
+    "planError": "無法檢查影響：{{message}}",
+    "planErrorPlain": "無法檢查影響。請稍後再試。",
+    "submitError": "無法開始解除安裝：{{message}}",
+    "submitErrorPlain": "無法開始解除安裝。",
+    "reissued": "剛才未能開始，已重新檢查。",
+    "reissuedConfirmAgain": "剛才未能開始，已重新檢查。請再確認一次。",
+    "warningsTitle": "說明",
+    "affectedTitle": "使用此工具的軟體",
+    "confirm": "解除安裝",
+    "confirmPermanent": "永久解除安裝",
+    "affectedBlocksConfirm": "要解除安裝「{{name}}」，請先解除安裝上面這些軟體。",
+    "trashPreview_other": "這{{count}}項會移到垃圾桶，可以從那裡拖回來。",
+    "cannotUndo": "此操作無法還原。",
+    "endsCannotUndo": "{{sentence}}此操作無法還原。",
+    "endsSkipsTrash": "{{sentence}}刪除的檔案不會進入垃圾桶。",
+    "noCleanupFormulae": {
+      "oldVersions": "HOMEBREW_NO_CLEANUP_FORMULAE列出的{{names}}除外：Homebrew不會刪除它們的舊版本。",
+      "autoremove": "HOMEBREW_NO_CLEANUP_FORMULAE列出的{{names}}除外：Homebrew不會自動刪除它們，也不會自動刪除它們執行時需要的軟體。",
+      "both": "HOMEBREW_NO_CLEANUP_FORMULAE列出的{{names}}除外：Homebrew不會刪除它們的舊版本，也不會自動刪除它們和它們執行時需要的軟體。"
+    },
+    "forgetsTrust": "Homebrew還會從它的信任清單中刪除「{{name}}」。",
+    "forgetsTrustDetail": "這條記錄只針對它本身，清單裡的其他記錄不受影響。",
+    "serviceStays": "「{{name}}」已用brew services設為在背景執行，解除安裝不會停止它：它會繼續執行，macOS也會繼續嘗試啟動它。要先停止它，請在終端機執行{{command}}。",
+    "scopeMore": {
+      "HomebrewCaskPlainThirdParty": "刪除Homebrew為「{{name}}」放置的檔案；它的設定和資料保留不動，它的安裝程式如果另外裝了檔案，也不刪除。",
+      "HomebrewCaskRuby": "刪除Homebrew為「{{name}}」放置的檔案，並執行它的解除安裝步驟；其中部分步驟還會刪除什麼，無法事先得知。Homebrew讀不出安裝時記下的步驟時，會按它現在的定義執行。",
+      "HomebrewCaskStepsOnlyRuby": "執行「{{name}}」的解除安裝步驟；其中部分步驟還會刪除什麼，無法事先得知。Homebrew讀不出安裝時記下的步驟時，會按它現在的定義執行。",
+      "HomebrewCaskPlainRuby": "刪除Homebrew為「{{name}}」放置的檔案。Homebrew讀不出安裝時記下的內容時，會按它現在的定義執行，那樣還會刪除什麼，無法事先得知。",
+      "HomebrewCaskStepsIfTrusted": "刪除Homebrew為「{{name}}」放置的檔案；它的解除安裝步驟，只在Homebrew信任它的來源時才執行。",
+      "HomebrewCaskStepsOnlyIfTrusted": "「{{name}}」的解除安裝步驟，只在Homebrew信任它的來源時才執行。"
+    }
+  },
+  "runtimeGuard": {
+    "program_other": "{{source}}及其{{count}}個工具",
+    "programModels_other": "{{source}}及其{{count}}個模型",
+    "environments_other": "{{source}}裝的{{count}}個工具",
+    "remove_other": "{{source}}裝的{{count}}個工具",
+    "removeModels_other": "{{source}}的{{count}}個模型",
+    "blocks": "要解除安裝「{{name}}」，請先解除安裝{{tools}}。",
+    "dependentsAbove": "上面的Homebrew軟體",
+    "reason": "還有軟體要用到它：{{names}}。要解除安裝它，請先解除安裝{{tools}}。",
+    "sourceProgram": "這是{{source}}自己。{{source}}裝的工具都要靠它更新和解除安裝，所以不能在這裡解除安裝。",
+    "sourceProgramRefused": "無法解除安裝，因為它是{{source}}自己。",
+    "withFormula": "它是Homebrew安裝的Node附帶的。在這裡解除安裝它，還會刪掉Homebrew連結到終端機的指令，所以不能在這裡解除安裝。",
+    "withFormulaRefused": "無法解除安裝，因為它是Homebrew安裝的Node附帶的。",
+    "neededBy": "還有別的來源要靠它執行，所以不能在這裡解除安裝。",
+    "neededByRefused": "無法解除安裝，因為還有別的來源要靠它執行。",
+    "managedBy": "{{sources}}裝的工具要靠它更新和解除安裝。",
+    "inTerminal": "{{sources}}裝的工具無法在這裡解除安裝，要在終端機裡解除安裝。",
+    "goFirst": "這些工具這次會解除安裝，之後可以再解除安裝它。",
+    "then": "{{first}}{{then}}"
+  },
+  "batchUninstall": {
+    "selectRow": "選擇要解除安裝的「{{name}}」",
+    "selectAll": "全選",
+    "selectAllLabel": "全選這裡可以解除安裝的項目",
+    "selected_other": "已選擇{{count}}個",
+    "selectedSize_other": "已選擇{{count}}個 · {{size}}",
+    "overLimit_other": "已選擇{{count}}個，一次最多解除安裝{{max}}個",
+    "uninstallSelected": "解除安裝所選（{{number}}）…",
+    "title_other": "要解除安裝這{{count}}個工具嗎？",
+    "titleNone": "這些工具無法在這裡一起解除安裝",
+    "checking": "正在檢查影響，已檢查{{done}}個，共{{total}}個…",
+    "willGo_other": "會解除安裝下面{{count}}個工具。",
+    "willGoTakes_other": "會解除安裝下面{{count}}個工具，它們共佔約{{size}}。",
+    "willGoTakesAtLeast_other": "會解除安裝下面{{count}}個工具，它們共佔{{size}}以上。",
+    "willGoTakesPartial_other": "會解除安裝下面{{count}}個工具，它們共佔約{{size}}，部分無法讀取。",
+    "takesLabel": "關於這個大小",
+    "takesUnknown_other": "其中{{count}}個的大小還不知道，沒有算在內。",
+    "takesTrash": "移到垃圾桶的檔案，要清空垃圾桶後才會釋放空間。",
+    "takesKept": "解除安裝後會保留的設定和資料不算在內。",
+    "takesShared": "其中有與其他軟體共用的部分，解除安裝後會留下。",
+    "notIncluded_other": "另有{{count}}個不會解除安裝，原因見下方。",
+    "goTitle": "會解除安裝",
+    "stayTitle": "不會解除安裝",
+    "commandsLost_other": "解除安裝後，終端機裡將找不到以下指令：{{names}}。",
+    "takenOver": "解除安裝後，終端機裡的「{{command}}」會改用{{by}}裝的那一份。",
+    "takenOverAnother": "解除安裝後，終端機裡的「{{command}}」會改用另一份。",
+    "keepsFiles_other": "其中{{count}}個工具會留下一些檔案，列在下方。",
+    "keepsFilesAll": "這些工具都會留下一些檔案，列在下方。",
+    "trashGoes": "刪除的檔案會移到垃圾桶，可以從那裡拖回來。",
+    "keptBy": "來自{{names}}",
+    "keptByCopy": "{{by}}安裝的{{name}}",
+    "after": "在{{names}}解除安裝之後再解除安裝。",
+    "afterDetail_other": "如果{{names}}沒有解除安裝成功，Homebrew不會解除安裝它，因為還有軟體要用到它。",
+    "quoted": "「{{name}}」",
+    "reason": {
+      "noCancel": "它的解除安裝開始後無法取消，請在它的那一列單獨解除安裝。",
+      "permanent": "它的解除安裝會永久刪除檔案，請在它的那一列單獨解除安裝。",
+      "unseen": "解除安裝時會執行它自己的步驟，無法事先知道會刪除什麼，請在它的那一列單獨解除安裝。",
+      "host": "這次選擇的{{source}}工具要用到它。不同來源的解除安裝會同時進行，無法保證它排在那些工具之後，所以請先解除安裝那些工具，再單獨解除安裝它。",
+      "stillNeeded": "還有軟體要用到它：{{names}}。要解除安裝它，請同時選擇這些軟體，或者先解除安裝它們。",
+      "neededByExcluded_other": "要用到它的{{names}}不會解除安裝，所以它也不會解除安裝。",
+      "cycle": "無法確定解除安裝順序，請在它的那一列單獨解除安裝。",
+      "afterOthers": "要等{{names}}解除安裝以後才能解除安裝它。這次先解除安裝{{names}}，之後再單獨解除安裝它。"
+    },
+    "notStartedAfter_other": "沒有開始，因為{{names}}沒有開始解除安裝。",
+    "confirm_other": "解除安裝這{{count}}個",
+    "ok": "好",
+    "showCommandsAndPaths": "查看指令和路徑",
+    "uninstalledHold": "已解除安裝",
+    "uninstalledLabel": "已解除安裝{{name}}",
+    "result_other": "{{count}}個沒有解除安裝",
+    "resultStillNeeded_other": "{{names}}沒有解除安裝。還有軟體要用到它們，Homebrew不會解除安裝。",
+    "resultDismiss": "關閉解除安裝結果",
+    "viewLogOf": "查看「{{name}}」的記錄",
+    "bar": {
+      "allUninstalled_other": "已解除安裝{{count}}個工具",
+      "notUninstalled_other": "{{count}}個沒有解除安裝"
+    },
+    "uninstallSelectedShort": "解除安裝（{{number}}）…"
+  },
+  "batchUninstallMore": {
+    "commandsGo_other": "以下指令也會隨它們那一份一起刪除：{{names}}。",
+    "mixed_other": "已解除安裝{{done}}個，{{count}}個沒有解除安裝"
+  },
+  "reviewFixes": {
+    "cannotUninstallOne": "無法在這裡解除安裝「{{name}}」",
+    "passwordNamed_other": "{{names}}可能會要求輸入Mac密碼，這裡無法輸入；需要時會告訴你在終端機裡怎麼完成。",
+    "selectAgain_other": "重新選擇這些工具",
+    "setupAttention_other": "{{count}}項需要查看",
+    "protectedFoldersIn_other": "有{{count}}個檔案夾在受保護的位置，沒有讀取：{{places}}。",
+    "places": {
+      "documents": "文件",
+      "desktop": "桌面",
+      "downloads": "下載項目",
+      "pictures": "圖片",
+      "movies": "影片",
+      "music": "音樂",
+      "icloud": "iCloud雲碟",
+      "volumes": "其他磁碟"
+    },
+    "selectHint": "選擇要一起解除安裝的工具",
+    "selectHintLimit": "選擇要一起解除安裝的工具，一次最多{{max}}個",
+    "keys": {
+      "page": "Page Up / Page Down",
+      "ends": "Home / End",
+      "space": "空白鍵"
+    }
+  },
+  "keepsData": {
+    "title": "解除安裝後會保留",
+    "what": {
+      "ToolData": "這個工具的設定和資料",
+      "Models": "下載的模型"
+    },
+    "copyPath": "拷貝路徑",
+    "copyPathLabel": "拷貝路徑：{{path}}",
+    "notCounting": "{{path}}是{{tool}}的資料，不算在內",
+    "findInFinder": "要在Finder中查看，可以拷貝路徑，在Finder中按下⇧⌘G，貼上路徑後按下Return鍵。",
+    "findInFinderHome": "路徑開頭的「~」是你的個人專屬檔案夾。要在Finder中查看，可以拷貝路徑，在Finder中按下⇧⌘G，貼上路徑後按下Return鍵。"
+  },
+  "keptTrash": {
+    "data": "不需要這些設定和資料的話，可以在Finder中把它們移到垃圾桶。",
+    "dataButShellFile": "不需要這些設定和資料的話，可以在Finder中把它們移到垃圾桶。終端機設定檔請留在原處。"
+  },
+  "settings": {
+    "groups": {
+      "general": "一般",
+      "updates": "更新",
+      "about": "關於"
+    },
+    "showTechnicalDetails": {
+      "label": "顯示技術細節",
+      "description": "顯示原始錯誤訊息和檔案位置，並在確認視窗中展開指令。"
+    },
+    "includeSelfUpdating": {
+      "label": "顯示內建更新功能的Homebrew App",
+      "description": "當Homebrew有比這台Mac上更新的版本時，在「更新」中也顯示透過Homebrew安裝、內建更新功能的App，例如Chrome。版本標為「latest」的App不檢查；Homebrew讀不到這台Mac上所裝版本的App也不檢查，例如用安裝套件安裝的App。其他來源的工具不受這項影響。"
+    },
+    "autoCheck": {
+      "label": "檢查更新",
+      "description": "Banager按所選頻率檢查更新，關掉視窗也會檢查，查到的更新不會自動安裝。結束Banager或重新啟動Mac後不再檢查，直到再次開啟它。"
+    },
+    "notifyUpdates": {
+      "label": "有更新時通知我",
+      "needsAutoCheck": "請先把上方的「{{setting}}」設為「{{day}}」或「{{week}}」。",
+      "refused": "請在「系統設定」>「通知」中允許Banager傳送通知。"
+    },
+    "language": {
+      "label": "語言",
+      "system": "系統預設值",
+      "english": "English",
+      "chinese": "简体中文",
+      "traditionalChinese": "繁體中文"
+    },
+    "skippedVersions": {
+      "title": "已略過的版本",
+      "newBuild": "新版本",
+      "unskip": "取消略過",
+      "unskipAriaLabel": "取消略過「{{name}}」的{{version}}",
+      "unskipNewBuildAriaLabel": "取消略過「{{name}}」的新版本"
+    },
+    "ignoredUpdates": {
+      "title": "不再提醒的工具",
+      "unignore": "恢復提醒",
+      "unignoreAriaLabel": "恢復「{{name}}」的更新提醒"
+    },
+    "version": "版本",
+    "iconCredits": {
+      "label": "圖像來源",
+      "open": "查看…",
+      "openAriaLabel": "查看圖像來源",
+      "title": "圖像來源",
+      "owners": "各標誌歸其權利人所有，僅用於識別工具。",
+      "simpleIcons": "Banager內建的標誌大多來自Simple Icons，它以CC0發佈。",
+      "ownLicense": "以下標誌註明了各自的授權條款：",
+      "license": "授權",
+      "source": "出處",
+      "avatars": "內建標誌中不來自Simple Icons的，都是各專案GitHub組織的頭像。"
+    },
+    "hiddenNone": "無",
+    "hiddenEntryMeta": "{{source}} · {{version}}",
+    "saveError": "無法儲存：{{message}}。已恢復原來的設定。",
+    "saveErrorPlain": "無法儲存。已恢復原來的設定。",
+    "checkEvery": {
+      "off": "不自動檢查",
+      "day": "每天",
+      "week": "每週"
+    },
+    "notifyOperations": {
+      "label": "操作完成時通知"
+    },
+    "snoozedUpdates": {
+      "title": "30天內不提醒的工具",
+      "until": "{{date}}起恢復提醒"
+    }
+  },
+  "settingsSaveFailed": {
+    "permissionDenied": "沒有權限寫入設定檔案夾",
+    "diskFull": "磁碟已滿",
+    "readOnly": "設定所在的磁碟是唯讀的",
+    "other": "{{detail}}"
+  },
+  "persistence": {
+    "unreadableSettings": "設定檔無法讀取，已原樣保留。要重新儲存設定，請將~/Library/Application Support/com.brulek.banager中的settings.json移到垃圾桶"
+  },
+  "settingsDiagnostics": {
+    "title": "診斷"
+  },
+  "diagnostics": {
+    "label": "診斷資訊",
+    "copy": "拷貝診斷資訊",
+    "includeTools": "包括工具清單",
+    "footnote": "可以貼上給幫你看問題的人。勾選後才包括工具清單；無法執行、執行時出錯或沒有回應的來源會附上錯誤詳細資訊。",
+    "text": {
+      "title": "診斷資訊",
+      "time": "時間：{{time}}",
+      "app": "{{app}}：{{version}}",
+      "macos": "macOS：{{version}}",
+      "macosUnknown": "macOS：無法讀取",
+      "chip": "晶片：{{chip}}",
+      "chipAppleSilicon": "Apple晶片",
+      "chipIntel": "Intel",
+      "language": "介面語言：{{language}}",
+      "sources": "來源：{{number}}個",
+      "version": "版本：{{version}}",
+      "versionUnknown": "版本：未知",
+      "path": "位置：{{path}}",
+      "status": "狀態：{{status}}",
+      "notes": "提示：{{number}}條",
+      "tools": "工具：{{number}}個",
+      "statusWord": {
+        "ok": "正常",
+        "NotRunning": "沒有執行",
+        "NotResponding": "沒有回應",
+        "RefusesAsRoot": "無法以管理者身分執行",
+        "readOnly": "僅供查看",
+        "unverified": "未經測試的版本"
+      },
+      "searchPath": "尋找指令的檔案夾：{{number}}個",
+      "loginRead": "已讀取登入時的設定",
+      "loginNotRead": "無法讀取登入時的設定，用的是預設值，終端機用的可能不同",
+      "lastCheck": "上次檢查：{{time}}",
+      "neverChecked": "上次檢查：從未",
+      "complete": "檢查結果：完整",
+      "incomplete": "檢查結果：不完整，{{sources}}未檢查完",
+      "incompletePlain": "檢查結果：不完整",
+      "notFound": "終端機找不到：{{number}}個",
+      "notLinked": "Homebrew沒有連結：{{number}}個",
+      "twins": "裝了不止一份的工具：{{number}}個",
+      "diskTotal": "佔用空間：{{size}}",
+      "noFacts": "系統資訊：無法讀取"
+    }
+  },
+  "setupCheck": {
+    "menu": "檢查工具環境…",
+    "label": "工具環境",
+    "open": "查看…",
+    "title": "工具環境",
+    "pending": "檢查還沒有完成，下面是目前知道的情況。",
+    "neverChecked": "還沒有檢查過",
+    "viewLabel": "{{action}}：{{line}}",
+    "sections": {
+      "terminal": "在終端機裡尋找指令",
+      "sources": "來源",
+      "commands": "指令",
+      "homebrew": "Homebrew",
+      "disk": "磁碟"
+    },
+    "terminal": {
+      "loginRead": "已讀取終端機登入時的設定",
+      "loginNotRead": "無法讀取終端機登入時的設定，所以這次沒有判斷終端機裡執行的是哪一份",
+      "loginNotReadDetail": "從Finder開啟的App只帶有系統預設的指令尋找位置。用這些位置來判斷，幾乎每個工具都會顯示為終端機裡找不到。",
+      "noFacts": "無法讀取終端機的設定",
+      "allFine_other": "終端機設定讀取正常，尋找指令的{{count}}個檔案夾也都能讀取",
+      "foldersSomeUnread": "終端機尋找指令的檔案夾中，{{read}}個已讀取，{{unread}}個無法讀取",
+      "foldersUnreadDetail": "無法讀取的檔案夾在受保護的位置，或者不允許列出內容。裡面有哪些指令無法得知，所以可能受它影響的指令，這次不判斷終端機是否找得到。",
+      "foldersCount": "終端機尋找指令的檔案夾：{{number}}個",
+      "unreadFolders": "無法讀取：{{folders}}"
+    },
+    "sources": {
+      "allFine": "所有來源都正常回應",
+      "othersFine": "其他來源都正常回應",
+      "pendingFine": "目前沒有發現問題",
+      "state": "{{source}}：{{state}}",
+      "checkUnfinished": "這次沒有檢查完",
+      "none": "沒有找到可以管理的來源",
+      "otherPrograms": "不屬於這些來源的命令列程式，可以在「其他程式」裡找"
+    },
+    "commands": {
+      "allFine": "終端機都能找到已安裝的工具，也沒有裝了不止一份的",
+      "notOnPathFine": "終端機都能找到已安裝的工具",
+      "twins_other": "{{count}}個工具裝了不止一份，共{{copies}}份",
+      "twinsDetail": "同一個工具由不同的來源各裝了一份。在終端機裡輸入它的指令，只會執行其中一份。",
+      "twinsFine": "沒有裝了不止一份的工具",
+      "notLinked_other": "Homebrew沒有把{{count}}個工具連結到終端機找得到的地方",
+      "notLinkedDetailOne": "通常是Homebrew安裝它時有同名的檔案擋住了。在終端機裡輸入它的指令時不會執行它。",
+      "notLinkedDetailMany": "通常是Homebrew安裝它們時有同名的檔案擋住了。在終端機裡輸入它們的指令時不會執行它們。"
+    },
+    "homebrew": {
+      "fine": "沒有Homebrew已停用或棄用的工具，也沒有保留的其他版本",
+      "retiredFine": "沒有Homebrew已停用或棄用的工具",
+      "otherVersions_other": "{{count}}個工具保留了其他版本",
+      "otherVersionsSize_other": "{{count}}個工具保留了其他版本，共{{size}}",
+      "otherVersionsFine": "沒有保留的其他版本"
+    },
+    "disk": {
+      "total": "已安裝的工具共佔用{{size}}",
+      "measuring": "正在計算佔用的空間…"
+    }
+  },
+  "setupCheckCoverage": {
+    "notOnPathFine": "終端機都能找到檢查過的工具",
+    "notChecked_other": "{{count}}個工具無法確認終端機是否找得到",
+    "notCheckedDetail": "無法判斷終端機會執行這些工具的哪一份，例如終端機尋找指令的某個檔案夾無法讀取。",
+    "diagnosticsNotChecked": "終端機裡無法確認：{{number}}個"
+  },
+  "setupCheckPartial": {
+    "twinsFine": "檢查過的工具中沒有裝了不止一份的"
+  },
+  "shortcuts": {
+    "title": "鍵盤快速鍵",
+    "groups": {
+      "window": "一般",
+      "list": "清單",
+      "dialog": "對話框"
+    },
+    "rows": {
+      "settings": "開啟設定",
+      "overview": "前往「概覽」",
+      "updates": "前往「更新」",
+      "installed": "前往「已安裝」",
+      "unknown": "前往「其他程式」",
+      "checkAgain": "重新檢查已安裝的工具和更新",
+      "search": "在「已安裝」中搜尋",
+      "closeWindow": "關閉視窗；進行中的操作會繼續，點按Dock中的圖像可以再次開啟",
+      "quit": "結束；有操作沒有完成時會先詢問",
+      "move": "在清單、側邊欄或選單中移到上一項或下一項",
+      "page": "在清單中向上或向下翻一頁；在MacBook上按fn和↑或↓",
+      "ends": "移到第一項或最後一項；在MacBook上按fn和←或→",
+      "tick": "勾選或取消勾選這一列；在「已安裝」中，沒有註記框的列會顯示或隱藏詳細資訊",
+      "details": "在「已安裝」中顯示這一列的詳細資訊，並移到詳細資訊",
+      "closeDetails": "在「已安裝」中關閉詳細資訊，回到這一列",
+      "tab": "移到下一個或上一個控制項；在清單中只停在目前這一列",
+      "press": "按下有焦點的按鈕；解除安裝前的確認開啟時，焦點在「取消」上",
+      "escape": "關閉對話框或選單；已開啟的ⓘ說明會先關閉"
+    },
+    "keyNames": {
+      "settings": "Command-逗號",
+      "overview": "Command-1",
+      "updates": "Command-2",
+      "installed": "Command-3",
+      "unknown": "Command-4",
+      "checkAgain": "Command-R",
+      "search": "Command-F",
+      "closeWindow": "Command-W",
+      "quit": "Command-Q",
+      "move": "上箭頭和下箭頭",
+      "page": "Page Up和Page Down",
+      "ends": "Home和End",
+      "tick": "空白鍵",
+      "details": "Return鍵",
+      "closeDetails": "Esc鍵",
+      "tab": "Tab和Shift-Tab",
+      "press": "Return鍵",
+      "escape": "Esc鍵"
+    }
+  },
+  "faq": {
+    "title": "常見問題",
+    "viewLabel": "{{action}}：{{question}}",
+    "questions": {
+      "notFound": {
+        "question": "終端機裡說找不到指令，怎麼辦？",
+        "answer": "有的工具把指令放在終端機不搜尋的檔案夾裡，輸入指令時可能找不到，或執行另一個同名程式。請開啟新的終端機視窗再試；如果仍然找不到，請按照那個工具的安裝說明操作。指令名稱不一定和工具名稱相同，可以在「已安裝」中按指令名稱搜尋。這裡是按開啟此App時讀到的終端機設定判斷的。"
+      },
+      "cantUpdate": {
+        "question": "為什麼有的工具不能在這裡更新？",
+        "answer": "在「更新」頁面，可以更新的工具下方有一行寫著另有幾個無法在這裡更新，點按就能看到這些工具。每一列都標出了原因，例如「僅供查看」「已固定」「開啟它來更新」。pip安裝的工具，以及npm安裝在目前帳號無法修改的檔案夾裡的工具，只能查看。固定了版本的，要先在終端機解除固定；標著「開啟它來更新」的工具會自行更新，開啟它一次就會檢查新版本。"
+      },
+      "twins": {
+        "question": "「裝了兩份」是什麼意思，該怎麼辦？",
+        "answer": "同一個AI程式設計工具用兩種方式各安裝了一份，例如npm安裝了一份，它內附的安裝程式又安裝了一份。在終端機裡輸入指令時，最多只會執行其中一份；選取這個工具，在「在終端機裡輸入時」下方可以看到執行的是哪一份。更新終端機用不到的那一份，不會改變終端機裡執行的那一份。解除安裝其中一份，另一份不受影響。"
+      },
+      "password": {
+        "question": "為什麼要輸入Mac的密碼？這裡能代我輸入嗎？",
+        "answer": "Homebrew安裝的App，有些在更新或解除安裝時會要求輸入Mac的登入密碼，確認視窗會事先說明；這裡無法輸入密碼，也不會儲存密碼。如果因此沒有完成，它的「查看步驟」裡會給出一條指令，拷貝到終端機裡執行，按提示輸入密碼；輸入時螢幕上不顯示任何字元，這是正常的。完成後回到這裡，按⌘R重新檢查。結束此App再重新開啟後，更新的「查看步驟」30天內仍在它那一列；沒有點按「清除記錄」的話，「最近的更新記錄」裡也有。"
+      },
+      "leftBehind": {
+        "question": "解除安裝後哪些東西會留下，在哪裡？",
+        "answer": "解除安裝前，確認視窗會說明這次刪除什麼、保留什麼；事先無法知道的，也會寫明。工具在別處的設定和資料通常不刪除；知道位置的，列在「解除安裝後會保留」下方，可以拷貝路徑。Claude Code、Antigravity CLI、Grok Build、Codex內附的安裝程式安裝的那一份，檔案會移到垃圾桶，可以從那裡拖回來；解除安裝rustup則會永久刪除它的檔案夾，不經過垃圾桶。用Homebrew解除安裝時，當初跟著它安裝的其他軟體會留下，除非確認視窗另有說明。"
+      },
+      "changesMac": {
+        "question": "此App會更動我的Mac嗎？",
+        "answer": "在這裡選擇更新或解除安裝時，確認視窗裡可以查看要執行的指令或要移走的檔案，確認後才會開始。此App自己只寫入三個檔案：設定、更新和解除安裝記錄、視窗的大小和位置，都在它自己的檔案夾裡；它不修改終端機的設定檔。尋找指令、計算佔用空間和掃描「其他程式」時，不讀取「文件」「桌面」「下載項目」、iCloud雲碟和其他磁碟等受保護的位置。它執行的工具會更動自己的檔案，有時不止於此：例如檢查更新時，Homebrew可能會先更新它自己，並連線檢查新版本，把你用它安裝的軟體重新命名或換成另一種套件時，還可能未經預覽或確認就自行安裝、移動或解除安裝軟體；解除安裝rustup時，它會從終端機的設定檔中刪除自己加入的那一行，確認視窗會事先說明。"
+      },
+      "otherPrograms": {
+        "question": "「其他程式」裡的是什麼？",
+        "answer": "是在~/.local/bin、/usr/local/bin等常放指令的檔案夾裡找到、但無法確定由哪個來源安裝的程式。這裡只列出它們，不會更動；不認識的，可以在Finder中顯示，或拷貝路徑。清單下方寫著搜尋了哪些檔案夾；受保護的位置不讀取。"
+      },
+      "sizes": {
+        "question": "佔用空間的數字準嗎？",
+        "answer": "這些數字是按磁碟上的檔案算出來的，顯示時取概數，所以寫作「約」。有檔案無法讀取時會寫明「部分無法讀取」，計算中途停止時會寫作「以上」，這兩種情況實際佔用的都更多；受保護的位置不計算。合計時，同一個檔案出現在幾個工具裡只算一次，快取不算在內。uv安裝的工具有些檔案和它的快取佔用同一塊磁碟空間，但仍會算進去，所以單獨佔用的可能更少。"
+      },
+      "majorUpdate": {
+        "question": "為什麼有些更新標著「主要版本更新」？",
+        "answer": "這表示版本號碼的第一個數字變大了，例如從3.x升到4.0，用法或設定可能會變。版本號碼以0開頭的工具、Ollama模型和用日期作版本號碼的工具不標示。不確定時，可以先選「略過此版本」，下個版本發佈時再提醒你。"
+      },
+      "autoCheck": {
+        "question": "自動檢查什麼時候會停止？",
+        "answer": "自動檢查預設關閉，在「設定」的「檢查更新」中選「每天」或「每週」才會進行；改回「不自動檢查」就會停止。結束此App或重新啟動Mac後不再檢查，直到再次開啟它；只關閉視窗還會檢查。正在更新或解除安裝時不會開始檢查，15分鐘後再看一次。所有來源都檢查失敗時，會隔得越來越久再試，最久六小時一次。"
+      }
+    }
+  },
+  "clarity": {
+    "diagnosticsDetail": "其中有macOS版本、各來源的位置和狀態，以及尋找指令的檔案夾，個人專屬檔案夾寫成「~」。來源的錯誤詳細資訊是工具自己輸出的原文，可能引用它的設定檔：網址和代理設定裡能識別出的使用者名稱和密碼會隱藏，其他內容按工具輸出的原樣拷貝。",
+    "keptLeftOut": "不含{{path}}，那裡是另一份單獨安裝的程式。",
+    "keptLeftOutLabel": "大小說明：{{path}}",
+    "ownInstaller": "{{source}}內附的安裝程式",
+    "twinUnused": "在終端機裡輸入「{{command}}」，執行的是{{by}}裝的那一份，版本{{version}}；終端機不會用到這一份。",
+    "twinUnusedNoVersion": "在終端機裡輸入「{{command}}」，執行的是{{by}}裝的那一份；終端機不會用到這一份。",
+    "twinUnusedRemovable": "不需要的話，可以解除安裝這一份。",
+    "twinUsed": "在終端機裡輸入「{{command}}」，執行的是這一份；{{by}}裝的那一份，版本{{version}}，終端機不會用到。",
+    "twinUsedNoVersion": "在終端機裡輸入「{{command}}」，執行的是這一份；{{by}}裝的那一份終端機不會用到。",
+    "twinUsedMany_other": "在終端機裡輸入「{{command}}」，執行的是這一份；另外{{count}}份終端機不會用到。",
+    "twinUninstallStays": "{{by}}裝的那一份不受影響。",
+    "twinUninstallStillRuns": "{{by}}裝的那一份不受影響，終端機裡的「{{command}}」還能用。",
+    "twinUninstallOthersStay_other": "另外{{count}}份不受影響。",
+    "notUsedWord": "終端機用另一份",
+    "notUsedAria": "終端機用另一份：{{name}}",
+    "previewHold": "檢查完成後才能解除安裝",
+    "previewHoldDetail": "首次檢查要連上網路查詢每個工具的新版本，有時要一兩分鐘。",
+    "otherVersionsDetail": "Homebrew還留著的其他版本，不是上面列出的這一版。更新或解除安裝它時通常會一併刪除，確認視窗裡會寫明；目前不能單獨清理。",
+    "notUsedUpdate": "更新這一份不會改變終端機裡執行的那一份。",
+    "selfUpdatingDetail": "它執行時會自行安裝新版本，也可以在這裡更新。",
+    "completeExcept": "檢查結果：完整，不含{{sources}}的更新",
+    "incompleteExcept": "{{check}}；也不含{{sources}}的更新",
+    "headingCount_other": "{{count}}個",
+    "modelCount_other": "{{count}}個模型",
+    "modelsNote": "幾個模型共用的檔案只算一次，所以合計可能比逐個相加小。",
+    "shownOfAll_other": "{{total}}個工具中的{{count}}個",
+    "updatesOfAll_other": "{{count}}個可更新，共{{total}}個",
+    "totalNoteAtLeast": "實測大小的合計，含其他版本，不含快取。幾個工具共用的檔案只算一次。有些工具沒有大小，或部分檔案無法讀取，所以實際佔用的更多。",
+    "willKeepWhat": {
+      "Settings": "設定",
+      "SettingsAndHistory": "設定、登入資訊和歷史記錄",
+      "ToolState": "對話和歷史記錄",
+      "ShellConfigLines": "終端機設定檔",
+      "OutsideHome": "會失效的連結",
+      "NotOurs": "無法確認歸屬",
+      "InstallerCache": "安裝程式暫存檔案夾"
+    },
+    "scopeWithKept": {
+      "HomebrewFormulaOnly": "只刪除Homebrew安裝的這一版「{{name}}」和指向它的連結。",
+      "HomebrewFormula": "刪除Homebrew安裝的這一版「{{name}}」和指向它的連結。",
+      "HomebrewCaskPlain": "刪除Homebrew為「{{name}}」安裝的檔案。",
+      "Npm": "刪除npm全域檔案夾中的「{{name}}」檔案夾和指令，不執行它的程式碼。",
+      "Pipx": "刪除pipx為「{{name}}」單獨建立的Python環境和指向該環境的指令。",
+      "Uv": "刪除uv為「{{name}}」單獨建立的Python環境和uv記下的指令。"
+    },
+    "freesModel": "會騰出約{{size}}，與其他模型共用的部分除外。",
+    "majorNote": "這是主要版本更新，用法可能會變。"
+  },
+  "clarityMore": {
+    "notUsedUpdateNote": "終端機執行的是另一份，更新這一份不會改變終端機裡的「{{command}}」。"
+  },
+  "unknown": {
+    "columns": {
+      "size": "大小",
+      "modified": "修改日期"
+    },
+    "intro": "無法確定以下程式的安裝來源。這裡只列出它們，不會改動；不認識的，可以在Finder中查看。",
+    "lookedIn": "尋找位置：{{folders}}",
+    "attributed_other": "另有{{count}}個程式已確定來源，未在這裡列出。",
+    "stopped": {
+      "FileLimit": "尋找了{{count}}項後停止，其餘的未檢查。",
+      "TimeLimit": "尋找了{{seconds}}秒後停止，其餘的未檢查。"
+    },
+    "kind": {
+      "BrokenSymlink": "找不到原檔案"
+    },
+    "brokenLink": "找不到指向的{{target}}",
+    "linksTo": "指向{{path}}",
+    "partOfApp": "{{app}}的一部分",
+    "adminOwned": "屬於系統或其他帳號",
+    "pointsInto": "指向{{app}}",
+    "showInFinder": "在Finder中顯示",
+    "showsLinkTarget": "顯示此連結指向的檔案。",
+    "targetGone": "找不到此連結指向的檔案。",
+    "showInFinderFailed": "無法在Finder中顯示",
+    "copyPath": "拷貝路徑",
+    "scanAgain": "重新掃描",
+    "scanning": "正在掃描…",
+    "scannedJustNow": "上次掃描：剛才",
+    "scannedMinutesAgo_other": "上次掃描：{{count}}分鐘前",
+    "scannedHoursAgo_other": "上次掃描：{{count}}小時前",
+    "scannedDaysAgo_other": "上次掃描：{{count}}天前",
+    "scanFailed": "無法掃描：{{message}}",
+    "scanFailedPlain": "無法掃描。請稍後重新掃描。",
+    "empty": "沒有其他程式",
+    "emptyChecked": "已檢查的位置中沒有其他程式",
+    "protectedLink": "指向受保護的位置",
+    "protectedLinkWhy": "不讀取「文件」「桌面」「下載項目」、iCloud雲碟、其他磁碟等受保護的位置，所以沒有查看此連結指向哪裡。",
+    "protectedLinkHint": "此連結指向受保護的位置，沒有讀取那裡。",
+    "protectedFolders_other": "有{{count}}個檔案夾在受保護的位置，沒有讀取。"
+  },
+  "unknownReveal": {
+    "changedSinceScan": "它在上次掃描後有變動。請重新掃描。"
+  },
+  "emptyStates": {
+    "loadFailed": {
+      "title": "無法讀取已安裝的工具",
+      "description": "原因：{{message}}",
+      "nextStep": "請重新檢查。如果仍然不行，請結束並重新開啟Banager。"
+    },
+    "noSources": {
+      "title": "沒有找到可管理的工具",
+      "description": "建議先安裝Homebrew。"
+    },
+    "nothingInstalled": {
+      "title": "沒有找到已安裝的工具",
+      "description": "用Homebrew、npm等安裝的工具會顯示在這裡。"
+    },
+    "supportedList": "支援Homebrew、npm、pipx、uv、pip、Cargo、Ollama，以及安裝在預設位置的Claude Code、Antigravity CLI、Grok Build、Codex、opencode和rustup。"
+  },
+  "failure": {
+    "cause": {
+      "network": "網路連線失敗",
+      "diskFull": "磁碟空間不足",
+      "permission": "沒有權限",
+      "busy": "另一個操作正在進行",
+      "homebrewUpdating": "Homebrew正在連線檢查新版本",
+      "needsPassword": "需要輸入密碼",
+      "passwordNotAccepted": "密碼未被接受"
+    },
+    "next": {
+      "network": "請檢查網路連線後再試一次。",
+      "diskFull": "請清理出一些磁碟空間後再試一次。",
+      "permission": "請確認有權限修改它的檔案後再試一次。",
+      "busy": "請等另一個操作完成後再試一次。",
+      "homebrewUpdating": "請稍後再試。",
+      "needsPassword": "這一步需要輸入Mac的登入密碼，無法在這裡輸入。",
+      "passwordNotAccepted": "請在密碼視窗輸入Mac的登入密碼後再試一次。"
+    },
+    "line": {
+      "network": "網路連線失敗，請檢查網路連線後再試一次。",
+      "diskFull": "磁碟空間不足，請清理出一些磁碟空間後再試一次。",
+      "permission": "沒有權限修改它的檔案，請確認權限後再試一次。",
+      "busy": "另一個操作正在進行，請等它完成後再試一次。",
+      "homebrewUpdating": "Homebrew正在連線檢查新版本，請稍後再試。",
+      "needsPassword": "需要輸入Mac的登入密碼，無法在這裡輸入。",
+      "passwordNotAccepted": "密碼未被接受，請在密碼視窗輸入Mac的登入密碼後再試一次。"
+    },
+    "toolWords": {
+      "generic": "上面是{{program}}自己顯示的錯誤訊息。可以稍後{{again}}；還是失敗，就點按「查看記錄」，再點按「拷貝記錄」，傳給懂的人看。",
+      "withCause": "上面是{{program}}自己顯示的錯誤訊息。{{line}}",
+      "inTerminal": "上面是{{program}}自己顯示的錯誤訊息。{{line}}可以點按「{{button}}」，在終端機裡執行那裡給出的指令。",
+      "noLog": "上面是{{program}}自己顯示的錯誤訊息。可以稍後{{again}}；還是失敗，就點按「拷貝錯誤詳細資訊」，傳給懂的人看。"
+    }
+  },
+  "failureMore": {
+    "cause": {
+      "conflict": "與既有的檔案衝突",
+      "notFound": "找不到需要的內容",
+      "appMissing": "App已不在原本的位置",
+      "unsupported": "不支援這台Mac",
+      "timedOut": "執行逾時",
+      "notLinked": "新版本沒有連結到終端機",
+      "changed": "確認後有了變化",
+      "internal": "發生內部錯誤"
+    },
+    "next": {
+      "conflict": "錯誤訊息裡寫著是哪個檔案，處理後再試一次。",
+      "notFound": "錯誤訊息裡寫著缺少什麼。",
+      "appMissing": "它可能已被移到垃圾桶或刪除；還要使用，就把它放回「應用程式」後再試一次，不再需要可以解除安裝它。",
+      "unsupported": "這個版本無法在這台Mac上執行，錯誤訊息裡寫著它的要求。",
+      "timedOut": "請稍後再試。",
+      "notLinked": "新版本已安裝，但在終端機裡輸入它的指令可能找不到它；通常是有同名的檔案擋住了，處理後再試一次。",
+      "changed": "請重新開啟確認視窗後再試一次。",
+      "internal": "請稍後再試。"
+    },
+    "line": {
+      "conflict": "與既有的檔案衝突，錯誤訊息裡寫著是哪個檔案，處理後再試一次。",
+      "notFound": "找不到需要的內容，錯誤訊息裡寫著缺少什麼。",
+      "appMissing": "App已不在原本的位置，可能已被移到垃圾桶或刪除；還要使用，就把它放回「應用程式」後再試一次，不再需要可以解除安裝它。",
+      "unsupported": "這個版本無法在這台Mac上執行，錯誤訊息裡寫著它的要求。",
+      "timedOut": "執行逾時，請稍後再試。",
+      "notLinked": "新版本已安裝，但沒有連結到終端機，在終端機裡輸入它的指令可能找不到它；通常是有同名的檔案擋住了，處理後再試一次。",
+      "changed": "確認後有了變化，請重新開啟確認視窗後再試一次。",
+      "internal": "發生內部錯誤，請稍後再試。"
+    }
+  },
+  "failureRecovery": {
+    "logGone": "這次操作的記錄已不再保留。",
+    "details": "查看錯誤詳細資訊",
+    "copy": "拷貝錯誤詳細資訊",
+    "next": "可以稍後{{again}}；還是失敗，就點按「查看錯誤詳細資訊」，再點按「拷貝錯誤詳細資訊」，傳給懂的人看。"
+  },
+  "failureSteps": {
+    "viewLogs_other": "查看{{count}}個記錄",
+    "position": "第{{current}}個，共{{total}}個",
+    "previous": "上一個",
+    "next": "下一個",
+    "previousLabel": "上一個記錄",
+    "nextLabel": "下一個記錄",
+    "bar": {
+      "updatesFailed_other": "{{count}}個更新失敗",
+      "needPassword_other": "{{count}}個需要輸入密碼",
+      "failed_other": "{{count}}個失敗",
+      "succeeded_other": "{{count}}個已成功",
+      "needsAttention_other": "{{count}}個需要查看",
+      "cancelled_other": "{{count}}個已取消"
+    },
+    "again": {
+      "Upgrade": "點按「再試一次」",
+      "Uninstall": "重新解除安裝",
+      "Install": "重新安裝"
+    },
+    "log": {
+      "generic": "上面是{{program}}自己顯示的錯誤訊息。可以稍後{{again}}；還是失敗，就點按「拷貝記錄」，傳給懂的人看。",
+      "afterStep": "上面是{{program}}自己顯示的錯誤訊息。照上面說的做了還是失敗，就點按「拷貝記錄」，傳給懂的人看。",
+      "inTerminal": "上面是{{program}}自己顯示的錯誤訊息。在終端機裡執行上面那條指令還是失敗，就點按「拷貝記錄」，傳給懂的人看。",
+      "copyOnly": "上面是{{program}}自己顯示的錯誤訊息。可以點按「拷貝記錄」，傳給懂的人看。"
+    }
+  },
+  "passwordRecovery": {
+    "preparing": "正在準備指令…",
+    "unavailable": "無法準備指令。請點按「重新檢查」，再點按「查看步驟」。"
+  },
+  "needsPassword": {
+    "intro": "可以在終端機裡執行下面這條指令，按提示輸入密碼。輸入時螢幕上不顯示任何字元，這是正常的。",
+    "after": "完成後回到這裡，按⌘R重新檢查。",
+    "commandLabel": "要在終端機裡執行的指令",
+    "viewSteps": "查看步驟",
+    "viewStepsLabel": "查看步驟：{{name}}"
+  },
+  "a11y": {
+    "updateList": "要更新的工具"
+  }
+}

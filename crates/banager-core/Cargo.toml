@@ -1,0 +1,164 @@
+[package]
+name = "banager-core"
+version = "0.1.0"
+edition = "2021"
+description = "Pure-Rust core library for Banager: model, adapters, runner, operation engine. Must never depend on tauri."
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+async-trait = "0.1"
+thiserror = "2"
+# `macros` stays here and cannot move to dev-dependencies: the library's own
+# non-test code uses `tokio::select!` in `runner::real`'s read loop and its
+# post-kill drain, and again in `ops`'s cancellation wait, plus `tokio::pin!`
+# in `runner::real`. Dropping it fails the build of the lib itself.
+#
+# `rt-multi-thread` is not here, and was: nothing in the library needs a
+# multi-thread runtime -- it never builds one, and the `rt` that
+# `tokio::spawn` does need arrives with `tokio-util`'s `rt` feature below.
+# The `#[tokio::main]` example and the tests are the only things that want
+# the multi-thread flavour, and both are dev targets, so it is declared
+# under [dev-dependencies].
+tokio = { version = "1", features = ["macros", "process", "io-util", "time", "sync", "net"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+# `socks`: a proxy the login shell names may be `socks5://` (`all_proxy`, as
+# Clash and Surge print it), which Banager's own requests then go through
+# (`http::proxy`, U12). In reqwest 0.13 the feature adds no crate: the SOCKS
+# client is hyper-util's, already built for reqwest's proxy support.
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "socks"] }
+# The proxy this Mac's own network settings name (System Settings > Network
+# > Details > Proxies), which a proxy app in its "system proxy" mode sets,
+# is what Banager's own requests fall back to when no proxy setting names
+# one (`http::proxy::system_proxy`, U12 review). Read with hyper-util's
+# `Matcher::from_system`, the reader reqwest used for Banager until it was
+# given a proxy of its own (giving one turns reqwest's off). Both crates are
+# already in Cargo.lock at these versions as reqwest's own dependencies, and
+# `client-proxy-system` is already on in the app's build (tauri-plugin-updater
+# turns on reqwest's `system-proxy`, which is that feature), so no crate
+# enters the build: named here so this crate does not depend on the app
+# switching it on. `http` is for the `Uri` the matcher is asked about.
+hyper-util = { version = "0.1", default-features = false, features = ["client-proxy", "client-proxy-system"] }
+http = "1"
+# Already in Cargo.lock as a transitive dependency of reqwest/url, so this
+# adds no crate and no version to the build graph; it is declared directly
+# because `adapters::url_path_segment` encodes untrusted names into registry
+# URLs and must not rely on another crate happening to pull it in.
+percent-encoding = "2"
+# Same rationale: already in Cargo.lock at this version as reqwest's TLS
+# backend, with every feature reqwest gives it, so nothing new is compiled
+# and no feature is added (`default-features = false`). Named directly only
+# so `http::real::request_error` can find rustls's own error in a failed
+# request's causes and report a certificate or handshake failure as one
+# (`HttpError::Tls`), rather than as the network.
+rustls = { version = "0.23", default-features = false }
+# Same rationale as percent-encoding: already in Cargo.lock via reqwest, so
+# nothing new is compiled. Used to parse OLLAMA_HOST in runner::path_env,
+# where hand-rolling "is this a usable http url" is exactly the kind of
+# guesswork that let a bare `127.0.0.1:11434` through in the first place.
+url = "2"
+libc = "0.2"
+toml = "1"
+# `Session::issue_plan` mints each `PlanId` from this directly (session/mod.rs)
+# rather than pulling in `rand`: the only thing needed is 16 unpredictable
+# bytes, and `getrandom` is already in Cargo.lock at this version as a
+# transitive dependency (uuid, rand_core, …), so this adds no new crate to
+# the build graph.
+getrandom = "0.4"
+# `icon::AppIcons` hands the window a cask app's icon as a
+# `data:image/png;base64,...` URL. Already in Cargo.lock at this version as a
+# transitive dependency of reqwest (through hyper-util), so this adds no new
+# crate to the build graph; declared directly for the same reason as
+# percent-encoding above.
+base64 = "0.22"
+# `history::failure_cause` reads a failed tool's last lines for the cause
+# in a word, with the phrases src/lib/failureCause.ts has, so the history
+# keeps the word and never the lines. Already in Cargo.lock at this version
+# as a dependency of tauri (through tauri-utils), so no new crate enters
+# the build.
+regex = "1"
+# Already locked transitively; compare Cargo versions by SemVer precedence.
+semver = "1"
+# Already locked transitively; identify the manifest reported by Ollama.
+sha2 = "0.10"
+# Exclusive same-directory staging files for settings and history.
+tempfile = "3"
+
+# `RealTrasher` (src/trash/real.rs) is one call: `NSFileManager
+# trashItemAtURL:resultingItemURL:error:`, the call Finder makes to move an
+# item to the Trash, which needs no Full Disk Access (docs/what-we-run.md,
+# "Moving files to the Trash", says what was observed, Finder's "Put Back"
+# included). `RealIconRenderer` (src/icon/real.rs) asks `NSWorkspace
+# iconForFile:` for the icon Finder shows for a cask's app, draws it into a
+# bitmap and has AppKit encode that as PNG (docs/what-we-run.md, "App
+# icons"); `NSData` and `NSGeometry` are the Foundation types it hands to
+# and gets back from AppKit. All three crates are already in Cargo.lock at
+# these versions as dependencies of tauri, so no new crate enters the build
+# -- only the features named here are switched on. macOS only: there is no
+# Trash or Finder icon to ask for on another target; `RealTrasher::trash`
+# answers `Unsupported` there and `RealIconRenderer` no icon.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = { version = "0.6", default-features = false, features = ["std"] }
+objc2-foundation = { version = "0.3", default-features = false, features = [
+    "std",
+    "objc2-core-foundation",
+    "NSData",
+    "NSDictionary",
+    "NSError",
+    "NSFileManager",
+    "NSGeometry",
+    "NSString",
+    "NSURL",
+] }
+objc2-app-kit = { version = "0.3", default-features = false, features = [
+    "std",
+    "objc2-core-foundation",
+    "NSBitmapImageRep",
+    "NSGraphics",
+    "NSGraphicsContext",
+    "NSImage",
+    "NSImageRep",
+    "NSWorkspace",
+] }
+# `cask_receipt::app_bundle_id` reads the `CFBundleIdentifier` in a cask
+# app's `Contents/Info.plist`, XML or binary, so that the uninstall
+# preview can name the app a `quit:` step quits rather than print its
+# bundle id. Already in Cargo.lock at this version as a macOS dependency
+# of tauri, with the same default features, so no new crate enters the
+# build; macOS only, as there. Read only: the file is parsed, nothing is
+# opened or run.
+plist = "1"
+
+[features]
+# Gates the test code that touches real state rather than building a
+# disconnected fixture: `testing::expire_issued_plans`, which mutates a live
+# `Session`, and `trash::MockTrasher`, which creates a directory, renames
+# into it and deletes it when dropped. Also the test double beside the
+# latter, `icon::MockIconRenderer`, which touches nothing but has no place
+# in the app. Left off by default so a release build of this library
+# contains none of them; `src-tauri`'s own tests enable it
+# via a `[dev-dependencies]` entry on this crate with this feature turned
+# on, and this crate's own integration tests via its `[dev-dependencies]`
+# entry on itself -- resolver v2 keeps both scoped to test targets and out
+# of the release binary's dependency graph. See `testing.rs`,
+# `trash/mod.rs` and `icon/mod.rs` for the items this gates and why.
+test-support = []
+
+[dev-dependencies]
+insta = { version = "1", features = ["json"] }
+# Tests and the `brew_smoke` example run on a multi-thread runtime; the
+# library does not. See the note on the tokio dependency above.
+tokio = { version = "1", features = ["rt-multi-thread"] }
+# The crate itself with `test-support` on, so its own integration tests
+# (`tests/`) can use `trash::MockTrasher`, which that feature keeps out of
+# every release build (see `[features]`). Resolver v2 scopes the feature to
+# test targets.
+banager-core = { path = ".", features = ["test-support"] }
+
+# Decodes the PNG `RealIconRenderer` makes in its one `#[ignore]`d test
+# (src/icon/real.rs), so that test can check the icon was drawn across the
+# whole square and not only that some PNG came back. Already in Cargo.lock
+# at this version as a dependency of tauri (through muda); a dev-dependency,
+# so it never reaches a release build.
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+png = "0.18"

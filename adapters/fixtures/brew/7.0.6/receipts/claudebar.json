@@ -1,0 +1,48 @@
+{
+  "homebrew_version": "7.0.1",
+  "loaded_from_api": false,
+  "loaded_from_internal_api": false,
+  "uninstall_flight_blocks": false,
+  "installed_on_request": true,
+  "time": 1789463402,
+  "runtime_dependencies": {},
+  "source": {
+    "tap": "gautham-v/tap",
+    "tap_git_head": "aadaa9efb9b98159b129a0bf6a09bc79ffe4e2f9",
+    "version": "0.1.1",
+    "path": "/opt/homebrew/Library/Taps/gautham-v/homebrew-tap/Casks/claudebar.rb"
+  },
+  "arch": "arm64",
+  "uninstall_artifacts": [
+    {
+      "uninstall": [
+        {
+          "quit": "com.gauthamv.claudebar"
+        }
+      ]
+    },
+    {
+      "app": [
+        "Claudebar.app"
+      ]
+    },
+    {
+      "zap": [
+        {
+          "trash": [
+            "~/.config/claudebar",
+            "~/Library/Caches/claudebar"
+          ]
+        }
+      ]
+    }
+  ],
+  "built_on": {
+    "os": "Macintosh",
+    "os_version": "macOS 26.6",
+    "cpu_family": "arm_sotra",
+    "xcode": "26.6",
+    "clt": "26.6.0.0.1781586589",
+    "preferred_perl": "5.34"
+  }
+}

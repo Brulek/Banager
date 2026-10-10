@@ -1,0 +1,47 @@
+// `pnpm tauri:mock`: `tauri dev` with this merged over tauri.conf.json.
+// The real window -- its title bar, traffic lights, drag regions, size --
+// around the browser preview's mock front end (docs/ui-preview.md), to
+// look at the window without Banager looking at this Mac.
+//
+// Why nothing real runs:
+//
+// - The page is Vite in mock mode (`vite --mode mock`, as `pnpm dev:mock`
+//   runs it) on a port of its own, 1440: not `pnpm dev`'s 1420, which
+//   serves the real front end, and not the browser preview's 1430, so a
+//   preview left open does not stand in for this one. In that mode
+//   `@tauri-apps/api/core` is src/dev/mockTauri.ts, and src/lib/api.ts,
+//   the one module that talks to the backend, talks to the mock: no
+//   command reaches src-tauri/src/ipc.rs. Nor does the page badge the
+//   Dock icon: `@tauri-apps/api/window` is src/dev/mockTauriWindow.ts. Nor
+//   does the Unknown page's Show in Finder reach Finder: the mock
+//   backend's `reveal_in_finder` (src/dev/mockBackend.ts) shows nothing.
+// - The Rust side starts nothing by itself. `run()` in
+//   src-tauri/src/lib.rs builds `AppState` (it reads settings.json and
+//   runs nothing) and spawns `ipc::refresh_on_background_change`, which
+//   refreshes only when `Session::background_change` fires: when a
+//   `brew update` that a refresh left running ends. Only the page starts
+//   a refresh, and this page never reaches the backend, so no refresh
+//   runs here, and no command. It puts up the menu bar too
+//   (src-tauri/src/menu.rs), which runs nothing either: its items are
+//   macOS's own -- Hide, Quit, Copy -- or bring the window back and tell
+//   the page, which does not listen here (src/dev/mockTauriEvent.ts).
+// - What runs at every launch runs here too: the login shell read for
+//   `PATH`, in the background (`runner::login_path`), which runs no
+//   package manager (docs/what-we-run.md, "How Banager runs anything").
+// - Its own identifier, so its own folder: the mock window never reads
+//   the app's settings.json, and keeps its size and position apart from
+//   the app's.
+//
+// `beforeDevCommand` starts only the server the window loads, and `tauri
+// dev` stops it as the app quits -- closing the window only hides it;
+// `--strictPort` makes it fail rather than move to another port while the
+// window loads whatever answers on 1440.
+// Plain JSON apart from these comments (src/test/windowChrome.test.ts
+// reads it so).
+{
+  "identifier": "com.brulek.banager.mock",
+  "build": {
+    "beforeDevCommand": "pnpm exec vite --mode mock --port 1440 --strictPort",
+    "devUrl": "http://localhost:1440"
+  }
+}

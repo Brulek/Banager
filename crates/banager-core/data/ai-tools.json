@@ -1,0 +1,198 @@
+{
+  "verified": "2026-10-01",
+  "method": "Each member checked on 2026-10-01, except the eight Homebrew members added 2026-10-08, whose check is said below: npm names against registry.npmjs.org/<name> (bin, and for an unscoped name the maintainers and repository; opencode-ai has no repository, author or homepage there, so it is tied to its vendor by the opencode project's own install instructions and the Homebrew opencode formula, which builds from the same project); Homebrew names against formulae.brew.sh/api/{formula,cask}/<name>.json; PyPI names against pypi.org/pypi/<name>/json; standalone names are Banager's own recipe ids (src/adapters/standalone/recipes.rs); the Codex standalone member (added 2026-10-01) against Codex's official install script, read as text and not run (releases.openai.com/codex/install.sh: launcher ~/.local/bin/codex into ~/.codex/packages/standalone); the opencode standalone member (added 2026-10-01) against opencode's official install script, read as text and not run (opencode.ai/install: one executable moved to ~/.opencode/bin/opencode). Data folders from the vendor's own docs or source; Antigravity CLI's (~/.gemini/antigravity-cli, added 2026-10-01) from the Homebrew cask's zap stanza, the only vendor-side source naming it (it trashes only that folder), with this Mac's directory listing and the layout in the 1.2.11 recording's README; Banager's own recipe keeps that folder on uninstall, a keep list .superpowers/phase4/agy.md calls a synthesis, not a vendor list. The install script does not name it (it uses only ~/.local/bin and ~/.cache/antigravity/staging). opencode's two (added 2026-10-01) from its own docs, read as text: opencode.ai/docs/troubleshooting (Storage: session data, auth.json and logs in ~/.local/share/opencode on macOS) and opencode.ai/docs/config (global config in ~/.config/opencode), matching its source (github.com/anomalyco/opencode, where github.com/sst/opencode now leads; packages/core/src/global.ts on the dev branch: xdgData and xdgConfig joined with \"opencode\") and its own uninstall command (packages/opencode/src/cli/cmd/uninstall.ts: --keep-data and --keep-config keep exactly these two; its cache and state folders are always removed, so they are not listed here). The data folders of Kimi Code, iFlow CLI, CodeBuddy Code, Qoder CLI, Crush, Amp, Kilo, GitHub Copilot CLI, Auggie, Factory Droid, Cursor CLI, Aider, Goose, Mistral Vibe, OpenClaw and Grok Build (added 2026-10-02) each come from that vendor's own docs or source, read as text and never run: a docs page, a file in its public repository, or the files of its published npm or PyPI package unpacked and read; Ollama keeps none here (its models folder is named by kept_data.rs). Eight Homebrew members (added 2026-10-08: the casks antigravity-cli, claude-code@latest, copilot-cli@prerelease, droid and ollama-binary, the formulae kimi-code, mistral-vibe and openclaw-cli) were checked against Homebrew's own data on the author's Mac, read and never run, with nothing fetched: the API cache Homebrew 7.0.8 wrote on 2026-10-07 (~/Library/Caches/Homebrew/api/internal/packages.arm64_golden_gate.jws.json), its signature checked against Homebrew's own key (Library/Homebrew/api/homebrew-1.pem); each one's name, homepage, download and command tie it to its family's vendor. See families.rs for each one's source, the folders left out of a size and the folders not named.",
+  "families": [
+    {
+      "id": "claude-code",
+      "name_en": "Claude Code",
+      "members": [
+        { "source": "npm", "name": "@anthropic-ai/claude-code" },
+        { "source": "cask", "name": "claude-code" },
+        { "source": "cask", "name": "claude-code@latest" },
+        { "source": "standalone", "name": "claude" }
+      ],
+      "data_paths": ["~/.claude", "~/.claude.json"]
+    },
+    {
+      "id": "codex",
+      "name_en": "Codex",
+      "members": [
+        { "source": "npm", "name": "@openai/codex" },
+        { "source": "cask", "name": "codex" },
+        { "source": "standalone", "name": "codex" }
+      ],
+      "data_paths": ["~/.codex"]
+    },
+    {
+      "id": "gemini-cli",
+      "name_en": "Gemini CLI",
+      "members": [
+        { "source": "npm", "name": "@google/gemini-cli" },
+        { "source": "formula", "name": "gemini-cli" }
+      ],
+      "data_paths": ["~/.gemini"]
+    },
+    {
+      "id": "qwen-code",
+      "name_en": "Qwen Code",
+      "members": [
+        { "source": "npm", "name": "@qwen-code/qwen-code" },
+        { "source": "formula", "name": "qwen-code" }
+      ],
+      "data_paths": ["~/.qwen"]
+    },
+    {
+      "id": "kimi-code",
+      "name_en": "Kimi Code",
+      "members": [
+        { "source": "npm", "name": "@moonshot-ai/kimi-code" },
+        { "source": "formula", "name": "kimi-code" },
+        { "source": "formula", "name": "kimi-cli" },
+        { "source": "pypi", "name": "kimi-cli" }
+      ],
+      "data_paths": ["~/.kimi-code", "~/.kimi"]
+    },
+    {
+      "id": "iflow-cli",
+      "name_en": "iFlow CLI",
+      "members": [{ "source": "npm", "name": "@iflow-ai/iflow-cli" }],
+      "data_paths": ["~/.iflow"]
+    },
+    {
+      "id": "codebuddy-code",
+      "name_en": "CodeBuddy Code",
+      "members": [{ "source": "npm", "name": "@tencent-ai/codebuddy-code" }],
+      "data_paths": ["~/.codebuddy"]
+    },
+    {
+      "id": "qoder-cli",
+      "name_en": "Qoder CLI",
+      "members": [{ "source": "npm", "name": "@qoder-ai/qodercli" }],
+      "data_paths": ["~/.qoder"]
+    },
+    {
+      "id": "opencode",
+      "name_en": "opencode",
+      "members": [
+        { "source": "npm", "name": "opencode-ai" },
+        { "source": "formula", "name": "opencode" },
+        { "source": "standalone", "name": "opencode" }
+      ],
+      "data_paths": ["~/.local/share/opencode", "~/.config/opencode"]
+    },
+    {
+      "id": "crush",
+      "name_en": "Crush",
+      "members": [{ "source": "npm", "name": "@charmland/crush" }],
+      "data_paths": ["~/.local/share/crush", "~/.config/crush"]
+    },
+    {
+      "id": "amp",
+      "name_en": "Amp",
+      "members": [
+        { "source": "npm", "name": "@ampcode/cli" },
+        { "source": "npm", "name": "@sourcegraph/amp" }
+      ],
+      "data_paths": ["~/.config/amp"]
+    },
+    {
+      "id": "kilo",
+      "name_en": "Kilo",
+      "members": [{ "source": "npm", "name": "@kilocode/cli" }],
+      "data_paths": ["~/.local/share/kilo", "~/.config/kilo"]
+    },
+    {
+      "id": "copilot-cli",
+      "name_en": "GitHub Copilot CLI",
+      "members": [
+        { "source": "npm", "name": "@github/copilot" },
+        { "source": "cask", "name": "copilot-cli" },
+        { "source": "cask", "name": "copilot-cli@prerelease" }
+      ],
+      "data_paths": ["~/.copilot"]
+    },
+    {
+      "id": "auggie",
+      "name_en": "Auggie",
+      "members": [{ "source": "npm", "name": "@augmentcode/auggie" }],
+      "data_paths": ["~/.augment"]
+    },
+    {
+      "id": "droid",
+      "name_en": "Factory Droid",
+      "members": [
+        { "source": "npm", "name": "droid" },
+        { "source": "npm", "name": "@factory/cli" },
+        { "source": "cask", "name": "droid" }
+      ],
+      "data_paths": ["~/.factory"]
+    },
+    {
+      "id": "cursor-cli",
+      "name_en": "Cursor CLI",
+      "members": [{ "source": "cask", "name": "cursor-cli" }],
+      "data_paths": ["~/.cursor/cli-config.json"]
+    },
+    {
+      "id": "aider",
+      "name_en": "Aider",
+      "members": [
+        { "source": "formula", "name": "aider" },
+        { "source": "pypi", "name": "aider-chat" }
+      ],
+      "data_paths": ["~/.aider", "~/.aider.conf.yml", "~/.aider.model.settings.yml", "~/.aider.model.metadata.json"]
+    },
+    {
+      "id": "goose",
+      "name_en": "Goose",
+      "members": [{ "source": "formula", "name": "block-goose-cli" }],
+      "data_paths": ["~/.local/share/goose", "~/.config/goose"]
+    },
+    {
+      "id": "mistral-vibe",
+      "name_en": "Mistral Vibe",
+      "members": [
+        { "source": "formula", "name": "mistral-vibe" },
+        { "source": "pypi", "name": "mistral-vibe" }
+      ],
+      "data_paths": ["~/.vibe"]
+    },
+    {
+      "id": "openclaw",
+      "name_en": "OpenClaw",
+      "members": [
+        { "source": "npm", "name": "openclaw" },
+        { "source": "formula", "name": "openclaw-cli" }
+      ],
+      "data_paths": ["~/.openclaw", "~/.clawdbot"]
+    },
+    {
+      "id": "ollama",
+      "name_en": "Ollama",
+      "members": [
+        { "source": "formula", "name": "ollama" },
+        { "source": "cask", "name": "ollama-app" },
+        { "source": "cask", "name": "ollama-binary" }
+      ],
+      "data_paths": []
+    },
+    {
+      "id": "antigravity-cli",
+      "name_en": "Antigravity CLI",
+      "members": [
+        { "source": "cask", "name": "antigravity-cli" },
+        { "source": "standalone", "name": "agy" }
+      ],
+      "data_paths": ["~/.gemini/antigravity-cli"]
+    },
+    {
+      "id": "grok-build",
+      "name_en": "Grok Build",
+      "members": [
+        { "source": "cask", "name": "grok-build" },
+        { "source": "standalone", "name": "grok" }
+      ],
+      "data_paths": ["~/.grok"]
+    }
+  ]
+}

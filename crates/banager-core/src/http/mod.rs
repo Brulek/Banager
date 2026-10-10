@@ -1,0 +1,109 @@
+//! `HttpClient`: the network seam every adapter that needs the internet
+//! goes through, mirroring how `crate::runner::CommandRunner` makes
+//! subprocess work testable (see `crate::runner`). No adapter is allowed to
+//! call `reqwest` directly — Global Constraints — so every network path in
+//! this crate has a `MockHttpClient` double in tests.
+
+use async_trait::async_trait;
+
+pub mod mock;
+pub use mock::MockHttpClient;
+pub mod proxy;
+pub mod real;
+pub use real::RealHttpClient;
+
+/// `method` is always `"GET"` in this phase — no adapter added in this plan
+/// ever writes over HTTP (Ollama's writes go through its CLI; see the
+/// ruling in the phase 3 plan).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HttpRequest {
+    pub method: &'static str,
+    pub url: String,
+    pub headers: Vec<(String, String)>,
+    pub timeout: std::time::Duration,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HttpResponse {
+    pub status: u16,
+    pub body: String,
+}
+
+/// Why a request got no response. Which variant matters past the words:
+/// `adapters::LookupFailure::request` reads it to tell a failure the next
+/// check can get past (`Network`, `Timeout`) from one it will meet again
+/// (`Tls`, `Refused`, `BodyTooLarge`), and only the former is counted as
+/// "couldn't be checked, check again" (`Warning::TransientLookupFailure`).
+#[derive(Clone, Debug, thiserror::Error)]
+pub enum HttpError {
+    /// The connection could not be made or broke off: a name that would
+    /// not resolve, a refused or reset connection, a network out of reach.
+    #[error("network error: {0}")]
+    Network(String),
+    #[error("timed out after {0:?}")]
+    Timeout(std::time::Duration),
+    /// The connection to `host` was made, but no secure connection could
+    /// be set up on it: rustls did not accept the certificate it was shown
+    /// (one no trusted authority issued, as a proxy or security software
+    /// that reads https presents; expired, or not yet valid by this Mac's
+    /// clock; for another name), or was shown none
+    /// (`real::is_certificate_error`). `detail` is rustls's own words.
+    /// Asking again meets the same certificate, so this is not a network
+    /// that failed for now. A handshake that failed any other way -- plain
+    /// HTTP on the TLS port, an alert, a reset -- is `Network`.
+    #[error("secure connection to {host} failed: {detail}")]
+    Tls { host: String, detail: String },
+    /// This client would not make the request, by its own rules: an https
+    /// host not in `real::ALLOWED_HTTPS_HOSTS`, another scheme, a URL that
+    /// does not parse, a request that could not be built, or a redirect
+    /// the server answered with, which is never followed. The same rules
+    /// refuse it again next time.
+    #[error("refused: {0}")]
+    Refused(String),
+    #[error("response body is larger than the {limit}-byte limit")]
+    BodyTooLarge { limit: usize },
+    #[error("no canned response for {0}")]
+    NoMock(String),
+}
+
+#[async_trait]
+pub trait HttpClient: Send + Sync {
+    async fn send(&self, req: HttpRequest) -> Result<HttpResponse, HttpError>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_http_error_display_messages_match_the_documented_wording() {
+        assert_eq!(
+            HttpError::Network("dns lookup failed".to_string()).to_string(),
+            "network error: dns lookup failed"
+        );
+        assert_eq!(
+            HttpError::Timeout(std::time::Duration::from_secs(30)).to_string(),
+            "timed out after 30s"
+        );
+        assert_eq!(
+            HttpError::NoMock("https://pypi.org/pypi/jq/json".to_string()).to_string(),
+            "no canned response for https://pypi.org/pypi/jq/json"
+        );
+        assert_eq!(
+            HttpError::BodyTooLarge { limit: 8388608 }.to_string(),
+            "response body is larger than the 8388608-byte limit"
+        );
+        assert_eq!(
+            HttpError::Tls {
+                host: "crates.io".to_string(),
+                detail: "invalid peer certificate: UnknownIssuer".to_string()
+            }
+            .to_string(),
+            "secure connection to crates.io failed: invalid peer certificate: UnknownIssuer"
+        );
+        assert_eq!(
+            HttpError::Refused("host not allowed: \"example.com\"".to_string()).to_string(),
+            "refused: host not allowed: \"example.com\""
+        );
+    }
+}

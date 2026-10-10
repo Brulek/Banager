@@ -1,0 +1,6204 @@
+{
+  "note": "Reviewed mapping, 2026-09-28: automatic candidates, each confirmed by two independent reviewers (Simple Icons matches by name/maker; GitHub organization avatars by eye). Standalone tools and sources checked by hand. Glyphs whose own license is non-commercial, no-derivatives, GPL or custom are not used (2026-09-28); those tools fall back to a reviewed organization avatar or to no logo. Round 2 (2026-09-28 night): Homebrew ranks 1001–2500 incl. third-party taps, same two-reviewer process. Round 3 (2026-09-29): npm packages of projects whose Simple Icons logo is shippable -- the npm twin of a Homebrew formula already mapped (typescript, vite, esbuild, bun, deno …) and other widely installed ones -- each checked against its npm registry entry's repository (the project's own), no guesses; framework CLIs as \"maker\", as @angular/cli. Round 5 (2026-10-02): the members of the AI-tool families (crates/banager-core/data/ai-tools.json) that had no logo, each tied to its vendor by the vendor's own registry entry, docs or site: an npm or PyPI twin of a formula already mapped takes the formula's logo (gemini-cli, kimi, mistral-vibe, ampcode); CodeBuddy Code is Simple Icons' CodeBuddy (codebuddy.cn, whose CLI docs install @tencent-ai/codebuddy-code); Qoder's avatar is the GitHub organization qoder.com links (QoderAI); goose's is aaif-goose, where Homebrew's block-goose-cli now builds from; the others are the GitHub organization of the package's repository (iflow-ai, charmbracelet, augmentcode, Factory-AI, openclaw); Ollama's app cask has Ollama's logo and Grok Build's cask xAI's, as their standalone and formula twins do. Round 6 (2026-10-06, decision I9): Claude Code's own installer, as a tool (standalone:claude) and as a source (standalone-claude), takes Claude Code's logo (si:claudecode), as its npm package and its cask do, in place of Claude's (si:claude), which nothing names now; one product, one logo. src/assets/tool-icons/pack.json was edited to match rather than rebuilt (a rebuild downloads every avatar again); src/lib/toolIcons.test.ts holds the two to each other. Round 7 (2026-10-08, review r36 V4): the Homebrew packages that joined the AI-tool families take their family's logo, one product, one logo: the casks copilot-cli@prerelease (GitHub Copilot), droid (Factory-AI, as npm's droid) and ollama-binary (Ollama), the formula openclaw-cli (openclaw, as npm's openclaw), and the cask antigravity-cli, which had Google's (si:google, still used by others), now Antigravity's avatar (gh:google-antigravity), as Antigravity CLI's own install; each tied to its vendor by Homebrew's own record of it (crates/banager-core/src/families.rs, \"Homebrew packages added 2026-10-08\"). pack.json was edited to match, as in round 6.",
+  "tools": {
+    "brew:a2ps": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:aarch64-elf-binutils": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:aarch64-elf-gcc": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:abseil": {
+      "icon": "gh:abseil",
+      "relation": "same"
+    },
+    "brew:ack": {
+      "icon": "gh:beyondgrep",
+      "relation": "same"
+    },
+    "brew:agent-browser": {
+      "icon": "gh:vercel-labs",
+      "relation": "maker"
+    },
+    "brew:aider": {
+      "icon": "gh:aider-ai",
+      "relation": "same"
+    },
+    "brew:air": {
+      "icon": "gh:posit-dev",
+      "relation": "same"
+    },
+    "brew:airbytehq/tap/abctl": {
+      "icon": "gh:airbytehq",
+      "relation": "maker"
+    },
+    "brew:akamai": {
+      "icon": "si:akamai",
+      "relation": "maker"
+    },
+    "brew:amass": {
+      "icon": "gh:owasp-amass",
+      "relation": "same"
+    },
+    "brew:ampcode/tap/ampcode": {
+      "icon": "gh:ampcode",
+      "relation": "same"
+    },
+    "brew:amplitude/ampli/ampli": {
+      "icon": "gh:amplitude",
+      "relation": "maker"
+    },
+    "brew:angular-cli": {
+      "icon": "si:angular",
+      "relation": "maker"
+    },
+    "brew:anomalyco/tap/opencode": {
+      "icon": "si:opencode",
+      "relation": "same"
+    },
+    "brew:ansible": {
+      "icon": "si:ansible",
+      "relation": "same"
+    },
+    "brew:ansible-lint": {
+      "icon": "si:ansible",
+      "relation": "maker"
+    },
+    "brew:anyenv": {
+      "icon": "gh:anyenv",
+      "relation": "same"
+    },
+    "brew:apache-arrow": {
+      "icon": "si:apachearrow",
+      "relation": "same"
+    },
+    "brew:apache-spark": {
+      "icon": "si:apachespark",
+      "relation": "same"
+    },
+    "brew:apkeep": {
+      "icon": "gh:efforg",
+      "relation": "maker"
+    },
+    "brew:apko": {
+      "icon": "gh:chainguard-dev",
+      "relation": "maker"
+    },
+    "brew:appium": {
+      "icon": "si:appium",
+      "relation": "same"
+    },
+    "brew:appwrite": {
+      "icon": "si:appwrite",
+      "relation": "same"
+    },
+    "brew:apr-util": {
+      "icon": "si:apache",
+      "relation": "maker"
+    },
+    "brew:aptos": {
+      "icon": "gh:aptos-labs",
+      "relation": "maker"
+    },
+    "brew:aqua": {
+      "icon": "gh:aquaproj",
+      "relation": "same"
+    },
+    "brew:aquasecurity/trivy/trivy": {
+      "icon": "si:trivy",
+      "relation": "same"
+    },
+    "brew:arduino-cli": {
+      "icon": "si:arduino",
+      "relation": "maker"
+    },
+    "brew:argo": {
+      "icon": "si:argo",
+      "relation": "same"
+    },
+    "brew:argocd": {
+      "icon": "si:argo",
+      "relation": "maker"
+    },
+    "brew:aria2": {
+      "icon": "gh:aria2",
+      "relation": "same"
+    },
+    "brew:arm-none-eabi-gdb": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:asciidoc": {
+      "icon": "gh:asciidoc-py",
+      "relation": "same"
+    },
+    "brew:asciidoctor": {
+      "icon": "si:asciidoctor",
+      "relation": "same"
+    },
+    "brew:asciinema": {
+      "icon": "si:asciinema",
+      "relation": "same"
+    },
+    "brew:asmvik/formulae/yabai": {
+      "icon": "si:yabai",
+      "relation": "same"
+    },
+    "brew:assimp": {
+      "icon": "gh:assimp",
+      "relation": "same"
+    },
+    "brew:astro": {
+      "icon": "gh:astronomer",
+      "relation": "maker"
+    },
+    "brew:asymptotic-code/sui-prover/sui-prover": {
+      "icon": "gh:asymptotic-code",
+      "relation": "same"
+    },
+    "brew:atlas": {
+      "icon": "gh:ariga",
+      "relation": "same"
+    },
+    "brew:atuin": {
+      "icon": "gh:atuinsh",
+      "relation": "same"
+    },
+    "brew:audacious": {
+      "icon": "gh:audacious-media-player",
+      "relation": "same"
+    },
+    "brew:auth0/auth0-cli/auth0": {
+      "icon": "si:auth0",
+      "relation": "same"
+    },
+    "brew:autoconf": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:automake": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:avrdude": {
+      "icon": "gh:avrdudes",
+      "relation": "same"
+    },
+    "brew:avro-tools": {
+      "icon": "si:apacheavro",
+      "relation": "same"
+    },
+    "brew:aws-cdk": {
+      "icon": "gh:aws",
+      "relation": "same"
+    },
+    "brew:aws-iam-authenticator": {
+      "icon": "gh:kubernetes-sigs",
+      "relation": "maker"
+    },
+    "brew:aws-sam-cli": {
+      "icon": "gh:aws",
+      "relation": "same"
+    },
+    "brew:aws-vault": {
+      "icon": "gh:byteness",
+      "relation": "maker"
+    },
+    "brew:awscli": {
+      "icon": "gh:aws",
+      "relation": "same"
+    },
+    "brew:awsume": {
+      "icon": "gh:trek10inc",
+      "relation": "maker"
+    },
+    "brew:axel": {
+      "icon": "gh:axel-download-accelerator",
+      "relation": "same"
+    },
+    "brew:azcopy": {
+      "icon": "gh:azure",
+      "relation": "same"
+    },
+    "brew:aztfexport": {
+      "icon": "gh:azure",
+      "relation": "maker"
+    },
+    "brew:azure-cli": {
+      "icon": "gh:azure",
+      "relation": "same"
+    },
+    "brew:azure-dev": {
+      "icon": "gh:azure",
+      "relation": "maker"
+    },
+    "brew:azure/azure-workload-identity/azwi": {
+      "icon": "gh:azure",
+      "relation": "maker"
+    },
+    "brew:azure/bicep/bicep": {
+      "icon": "gh:azure",
+      "relation": "maker"
+    },
+    "brew:b2-tools": {
+      "icon": "gh:backblaze",
+      "relation": "maker"
+    },
+    "brew:b3sum": {
+      "icon": "gh:blake3-team",
+      "relation": "same"
+    },
+    "brew:baobab": {
+      "icon": "si:gnome",
+      "relation": "maker"
+    },
+    "brew:bash": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:bash-language-server": {
+      "icon": "gh:bash-lsp",
+      "relation": "same"
+    },
+    "brew:bat": {
+      "icon": "si:bat",
+      "relation": "same"
+    },
+    "brew:bats-core": {
+      "icon": "gh:bats-core",
+      "relation": "same"
+    },
+    "brew:bazel": {
+      "icon": "si:bazel",
+      "relation": "same"
+    },
+    "brew:bazelisk": {
+      "icon": "si:bazel",
+      "relation": "maker"
+    },
+    "brew:bc": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:bettercap": {
+      "icon": "gh:bettercap",
+      "relation": "same"
+    },
+    "brew:binaryen": {
+      "icon": "gh:webassembly",
+      "relation": "same"
+    },
+    "brew:binutils": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:binwalk": {
+      "icon": "gh:refirmlabs",
+      "relation": "maker"
+    },
+    "brew:biome": {
+      "icon": "si:biome",
+      "relation": "same"
+    },
+    "brew:bison": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:bitcoin": {
+      "icon": "si:bitcoin",
+      "relation": "same"
+    },
+    "brew:bitrise": {
+      "icon": "si:bitrise",
+      "relation": "same"
+    },
+    "brew:bitwarden-cli": {
+      "icon": "si:bitwarden",
+      "relation": "same"
+    },
+    "brew:black": {
+      "icon": "si:black",
+      "relation": "same"
+    },
+    "brew:block-goose-cli": {
+      "icon": "gh:aaif-goose",
+      "relation": "same"
+    },
+    "brew:block/tap/lhm": {
+      "icon": "gh:block",
+      "relation": "maker"
+    },
+    "brew:boost": {
+      "icon": "si:boost",
+      "relation": "same"
+    },
+    "brew:borgbackup": {
+      "icon": "si:borgbackup",
+      "relation": "same"
+    },
+    "brew:borgbackup/tap/borgbackup-fuse": {
+      "icon": "gh:borgbackup",
+      "relation": "same"
+    },
+    "brew:bpython": {
+      "icon": "gh:bpython",
+      "relation": "same"
+    },
+    "brew:brevdev/brev/brev": {
+      "icon": "gh:brevdev",
+      "relation": "maker"
+    },
+    "brew:brew-gem": {
+      "icon": "gh:sportngin",
+      "relation": "maker"
+    },
+    "brew:brotli": {
+      "icon": "gh:google",
+      "relation": "maker"
+    },
+    "brew:bruno-cli": {
+      "icon": "si:bruno",
+      "relation": "same"
+    },
+    "brew:bubblewrap": {
+      "icon": "gh:containers",
+      "relation": "maker"
+    },
+    "brew:buf": {
+      "icon": "gh:bufbuild",
+      "relation": "same"
+    },
+    "brew:buildifier": {
+      "icon": "gh:bazelbuild",
+      "relation": "same"
+    },
+    "brew:buildkit": {
+      "icon": "gh:moby",
+      "relation": "maker"
+    },
+    "brew:buildkite/buildkite/bk": {
+      "icon": "gh:buildkite",
+      "relation": "maker"
+    },
+    "brew:buildpacks/tap/pack": {
+      "icon": "gh:buildpacks",
+      "relation": "maker"
+    },
+    "brew:bun": {
+      "icon": "si:bun",
+      "relation": "same"
+    },
+    "brew:bundletool": {
+      "icon": "gh:google",
+      "relation": "maker"
+    },
+    "brew:c-ares": {
+      "icon": "gh:c-ares",
+      "relation": "same"
+    },
+    "brew:cabal-install": {
+      "icon": "gh:haskell",
+      "relation": "maker"
+    },
+    "brew:caddy": {
+      "icon": "si:caddy",
+      "relation": "same"
+    },
+    "brew:cairo": {
+      "icon": "si:cairographics",
+      "relation": "same"
+    },
+    "brew:calicoctl": {
+      "icon": "gh:projectcalico",
+      "relation": "maker"
+    },
+    "brew:capnp": {
+      "icon": "gh:capnproto",
+      "relation": "same"
+    },
+    "brew:capstone": {
+      "icon": "gh:capstone-engine",
+      "relation": "same"
+    },
+    "brew:carapace": {
+      "icon": "gh:carapace-sh",
+      "relation": "same"
+    },
+    "brew:cargo-audit": {
+      "icon": "gh:rustsec",
+      "relation": "same"
+    },
+    "brew:cargo-deny": {
+      "icon": "gh:embarkstudios",
+      "relation": "maker"
+    },
+    "brew:cargo-nextest": {
+      "icon": "gh:nextest-rs",
+      "relation": "same"
+    },
+    "brew:carthage": {
+      "icon": "gh:carthage",
+      "relation": "same"
+    },
+    "brew:cask": {
+      "icon": "gh:cask",
+      "relation": "same"
+    },
+    "brew:cassandra": {
+      "icon": "si:apachecassandra",
+      "relation": "same"
+    },
+    "brew:catch2": {
+      "icon": "gh:catchorg",
+      "relation": "same"
+    },
+    "brew:cbc": {
+      "icon": "gh:coin-or",
+      "relation": "maker"
+    },
+    "brew:ccache": {
+      "icon": "gh:ccache",
+      "relation": "same"
+    },
+    "brew:ccusage": {
+      "icon": "gh:ccusage",
+      "relation": "same"
+    },
+    "brew:cdxgen": {
+      "icon": "gh:cyclonedx",
+      "relation": "same"
+    },
+    "brew:certbot": {
+      "icon": "gh:certbot",
+      "relation": "same"
+    },
+    "brew:cfn-lint": {
+      "icon": "gh:aws-cloudformation",
+      "relation": "same"
+    },
+    "brew:cgal": {
+      "icon": "gh:cgal",
+      "relation": "same"
+    },
+    "brew:chainguard-dev/tap/chainctl": {
+      "icon": "gh:chainguard-dev",
+      "relation": "maker"
+    },
+    "brew:chamber": {
+      "icon": "gh:segmentio",
+      "relation": "maker"
+    },
+    "brew:check-jsonschema": {
+      "icon": "gh:python-jsonschema",
+      "relation": "maker"
+    },
+    "brew:chromaprint": {
+      "icon": "gh:acoustid",
+      "relation": "maker"
+    },
+    "brew:chrome-devtools-mcp": {
+      "icon": "gh:chromedevtools",
+      "relation": "same"
+    },
+    "brew:cilium-cli": {
+      "icon": "si:cilium",
+      "relation": "maker"
+    },
+    "brew:circleci": {
+      "icon": "si:circleci",
+      "relation": "maker"
+    },
+    "brew:clamav": {
+      "icon": "gh:cisco-talos",
+      "relation": "maker"
+    },
+    "brew:clang-format": {
+      "icon": "si:llvm",
+      "relation": "maker"
+    },
+    "brew:cline": {
+      "icon": "si:cline",
+      "relation": "same"
+    },
+    "brew:cliproxyapi": {
+      "icon": "gh:router-for-me",
+      "relation": "same"
+    },
+    "brew:clojure": {
+      "icon": "si:clojure",
+      "relation": "same"
+    },
+    "brew:closure-compiler": {
+      "icon": "si:google",
+      "relation": "maker"
+    },
+    "brew:cloud-sql-proxy": {
+      "icon": "gh:googlecloudplatform",
+      "relation": "maker"
+    },
+    "brew:cloudflared": {
+      "icon": "si:cloudflare",
+      "relation": "maker"
+    },
+    "brew:cmake": {
+      "icon": "si:cmake",
+      "relation": "same"
+    },
+    "brew:cmake-docs": {
+      "icon": "si:cmake",
+      "relation": "same"
+    },
+    "brew:cmctl": {
+      "icon": "gh:cert-manager",
+      "relation": "same"
+    },
+    "brew:cockroachdb/tap/cockroach": {
+      "icon": "gh:cockroachdb",
+      "relation": "maker"
+    },
+    "brew:cocoapods": {
+      "icon": null,
+      "relation": "none"
+    },
+    "brew:cocogitto": {
+      "icon": "gh:cocogitto",
+      "relation": "same"
+    },
+    "brew:code-server": {
+      "icon": "si:coder",
+      "relation": "maker"
+    },
+    "brew:codecrafters-io/tap/codecrafters": {
+      "icon": "si:codecrafters",
+      "relation": "same"
+    },
+    "brew:coder": {
+      "icon": "si:coder",
+      "relation": "same"
+    },
+    "brew:coder/coder/coder": {
+      "icon": "si:coder",
+      "relation": "same"
+    },
+    "brew:codex-acp": {
+      "icon": "gh:agentclientprotocol",
+      "relation": "maker"
+    },
+    "brew:commitizen": {
+      "icon": "gh:commitizen-tools",
+      "relation": "same"
+    },
+    "brew:commitlint": {
+      "icon": "si:commitlint",
+      "relation": "same"
+    },
+    "brew:composer": {
+      "icon": "si:composer",
+      "relation": "same"
+    },
+    "brew:conan": {
+      "icon": "si:conan",
+      "relation": "same"
+    },
+    "brew:conftest": {
+      "icon": "gh:open-policy-agent",
+      "relation": "same"
+    },
+    "brew:container": {
+      "icon": "gh:apple",
+      "relation": "same"
+    },
+    "brew:contentful-cli": {
+      "icon": "si:contentful",
+      "relation": "maker"
+    },
+    "brew:cookiecutter": {
+      "icon": "si:cookiecutter",
+      "relation": "same"
+    },
+    "brew:copa": {
+      "icon": "gh:project-copacetic",
+      "relation": "same"
+    },
+    "brew:coreutils": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:cosign": {
+      "icon": "gh:sigstore",
+      "relation": "same"
+    },
+    "brew:coverallsapp/coveralls/coveralls": {
+      "icon": "si:coveralls",
+      "relation": "same"
+    },
+    "brew:cppcheck": {
+      "icon": "gh:cppcheck-opensource",
+      "relation": "same"
+    },
+    "brew:cqlabs/dcm/dcm": {
+      "icon": "gh:cqlabs",
+      "relation": "maker"
+    },
+    "brew:crane": {
+      "icon": "gh:google",
+      "relation": "maker"
+    },
+    "brew:crossplane": {
+      "icon": "gh:crossplane",
+      "relation": "same"
+    },
+    "brew:crowdin": {
+      "icon": "si:crowdin",
+      "relation": "same"
+    },
+    "brew:crystal": {
+      "icon": "si:crystal",
+      "relation": "same"
+    },
+    "brew:ctlptl": {
+      "icon": "gh:tilt-dev",
+      "relation": "same"
+    },
+    "brew:cue": {
+      "icon": "gh:cue-lang",
+      "relation": "same"
+    },
+    "brew:cue-lang/tap/cue": {
+      "icon": "gh:cue-lang",
+      "relation": "same"
+    },
+    "brew:cups": {
+      "icon": "gh:openprinting",
+      "relation": "maker"
+    },
+    "brew:curl": {
+      "icon": "si:curl",
+      "relation": "same"
+    },
+    "brew:cycode": {
+      "icon": "gh:cycodehq",
+      "relation": "same"
+    },
+    "brew:cypher-shell": {
+      "icon": "si:neo4j",
+      "relation": "maker"
+    },
+    "brew:cyrus-sasl": {
+      "icon": "gh:cyrusimap",
+      "relation": "maker"
+    },
+    "brew:cython": {
+      "icon": "gh:cython",
+      "relation": "same"
+    },
+    "brew:czmq": {
+      "icon": "gh:zeromq",
+      "relation": "same"
+    },
+    "brew:d2": {
+      "icon": "gh:d2lang",
+      "relation": "same"
+    },
+    "brew:dagger": {
+      "icon": "gh:dagger",
+      "relation": "same"
+    },
+    "brew:dagger/tap/dagger": {
+      "icon": "gh:dagger",
+      "relation": "same"
+    },
+    "brew:dagu": {
+      "icon": "gh:dagucloud",
+      "relation": "maker"
+    },
+    "brew:danger/tap/danger-js": {
+      "icon": "gh:danger",
+      "relation": "maker"
+    },
+    "brew:dapr/tap/dapr-cli": {
+      "icon": "si:dapr",
+      "relation": "same"
+    },
+    "brew:dart-sdk": {
+      "icon": "si:dart",
+      "relation": "same"
+    },
+    "brew:dashlane/tap/dashlane-cli": {
+      "icon": "si:dashlane",
+      "relation": "same"
+    },
+    "brew:databricks/tap/databricks": {
+      "icon": "si:databricks",
+      "relation": "same"
+    },
+    "brew:daytonaio/cli/daytona": {
+      "icon": "gh:daytonaio",
+      "relation": "maker"
+    },
+    "brew:dcmtk": {
+      "icon": "gh:dcmtk",
+      "relation": "same"
+    },
+    "brew:ddrescue": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:defenseunicorns/tap/zarf": {
+      "icon": "gh:defenseunicorns",
+      "relation": "maker"
+    },
+    "brew:delve": {
+      "icon": "gh:go-delve",
+      "relation": "same"
+    },
+    "brew:deno": {
+      "icon": "si:deno",
+      "relation": "same"
+    },
+    "brew:dependabot": {
+      "icon": "si:dependabot",
+      "relation": "same"
+    },
+    "brew:dependency-check": {
+      "icon": "si:dependencycheck",
+      "relation": "same"
+    },
+    "brew:depot/tap/depot": {
+      "icon": "gh:depot",
+      "relation": "maker"
+    },
+    "brew:devspace": {
+      "icon": "gh:devspace-sh",
+      "relation": "same"
+    },
+    "brew:diff-so-fancy": {
+      "icon": "gh:so-fancy",
+      "relation": "same"
+    },
+    "brew:diffutils": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:direnv": {
+      "icon": "gh:direnv",
+      "relation": "same"
+    },
+    "brew:distrobox": {
+      "icon": "si:distrobox",
+      "relation": "same"
+    },
+    "brew:django-completion": {
+      "icon": "si:django",
+      "relation": "maker"
+    },
+    "brew:dlib": {
+      "icon": "si:dlib",
+      "relation": "same"
+    },
+    "brew:dnscontrol": {
+      "icon": "gh:dnscontrol",
+      "relation": "same"
+    },
+    "brew:dnscrypt-proxy": {
+      "icon": "gh:dnscrypt",
+      "relation": "same"
+    },
+    "brew:docbook-xsl": {
+      "icon": "gh:docbook",
+      "relation": "same"
+    },
+    "brew:docker": {
+      "icon": "si:docker",
+      "relation": "same"
+    },
+    "brew:docker-buildx": {
+      "icon": "si:docker",
+      "relation": "maker"
+    },
+    "brew:docker-completion": {
+      "icon": "si:docker",
+      "relation": "maker"
+    },
+    "brew:docker-compose": {
+      "icon": "si:docker",
+      "relation": "maker"
+    },
+    "brew:docker-credential-helper": {
+      "icon": "gh:docker",
+      "relation": "same"
+    },
+    "brew:docker-credential-helper-ecr": {
+      "icon": "gh:awslabs",
+      "relation": "maker"
+    },
+    "brew:docker-engine": {
+      "icon": "si:docker",
+      "relation": "same"
+    },
+    "brew:doctest": {
+      "icon": "gh:doctest",
+      "relation": "same"
+    },
+    "brew:doctl": {
+      "icon": "gh:digitalocean",
+      "relation": "maker"
+    },
+    "brew:dolt": {
+      "icon": "gh:dolthub",
+      "relation": "maker"
+    },
+    "brew:doppler": {
+      "icon": "gh:dopplerhq",
+      "relation": "same"
+    },
+    "brew:dotenvx/brew/dotenvx": {
+      "icon": "gh:dotenvx",
+      "relation": "same"
+    },
+    "brew:dotnet": {
+      "icon": "si:dotnet",
+      "relation": "same"
+    },
+    "brew:doxygen": {
+      "icon": "si:doxygen",
+      "relation": "same"
+    },
+    "brew:duckdb": {
+      "icon": "si:duckdb",
+      "relation": "same"
+    },
+    "brew:dvc": {
+      "icon": "si:dvc",
+      "relation": "same"
+    },
+    "brew:dyff": {
+      "icon": "gh:homeport",
+      "relation": "same"
+    },
+    "brew:easy-rsa": {
+      "icon": "gh:openvpn",
+      "relation": "maker"
+    },
+    "brew:echidna": {
+      "icon": "gh:crytic",
+      "relation": "maker"
+    },
+    "brew:edencommon": {
+      "icon": "gh:facebookexperimental",
+      "relation": "maker"
+    },
+    "brew:editorconfig-checker": {
+      "icon": "gh:editorconfig-checker",
+      "relation": "same"
+    },
+    "brew:egctl": {
+      "icon": "gh:envoyproxy",
+      "relation": "same"
+    },
+    "brew:eksctl": {
+      "icon": "gh:eksctl-io",
+      "relation": "same"
+    },
+    "brew:elastic/tap/elasticsearch-full": {
+      "icon": "gh:elastic",
+      "relation": "same"
+    },
+    "brew:elixir": {
+      "icon": "si:elixir",
+      "relation": "same"
+    },
+    "brew:emacs": {
+      "icon": null,
+      "relation": "none"
+    },
+    "brew:emscripten": {
+      "icon": "gh:emscripten-core",
+      "relation": "same"
+    },
+    "brew:encoredev/tap/encore": {
+      "icon": "gh:encoredev",
+      "relation": "same"
+    },
+    "brew:endorlabs/tap/endorctl": {
+      "icon": "gh:endorlabs",
+      "relation": "maker"
+    },
+    "brew:env0/terratag/terratag": {
+      "icon": "gh:env0",
+      "relation": "maker"
+    },
+    "brew:envoy": {
+      "icon": "gh:envoyproxy",
+      "relation": "same"
+    },
+    "brew:epubcheck": {
+      "icon": "gh:w3c",
+      "relation": "maker"
+    },
+    "brew:erlang": {
+      "icon": "si:erlang",
+      "relation": "same"
+    },
+    "brew:esbuild": {
+      "icon": "si:esbuild",
+      "relation": "same"
+    },
+    "brew:eslint": {
+      "icon": "si:eslint",
+      "relation": "same"
+    },
+    "brew:esphome": {
+      "icon": "si:esphome",
+      "relation": "same"
+    },
+    "brew:etcd": {
+      "icon": "si:etcd",
+      "relation": "same"
+    },
+    "brew:ethereum": {
+      "icon": "si:ethereum",
+      "relation": "same"
+    },
+    "brew:ettercap": {
+      "icon": "gh:ettercap",
+      "relation": "same"
+    },
+    "brew:evince": {
+      "icon": "si:gnome",
+      "relation": "maker"
+    },
+    "brew:exercism": {
+      "icon": "si:exercism",
+      "relation": "same"
+    },
+    "brew:exiv2": {
+      "icon": "gh:exiv2",
+      "relation": "same"
+    },
+    "brew:extra-cmake-modules": {
+      "icon": "si:kde",
+      "relation": "maker"
+    },
+    "brew:eza": {
+      "icon": "gh:eza-community",
+      "relation": "same"
+    },
+    "brew:faas-cli": {
+      "icon": "gh:openfaas",
+      "relation": "maker"
+    },
+    "brew:facebook/fb/idb-companion": {
+      "icon": "si:facebook",
+      "relation": "maker"
+    },
+    "brew:fairwindsops/tap/pluto": {
+      "icon": "gh:fairwindsops",
+      "relation": "maker"
+    },
+    "brew:fairwindsops/tap/polaris": {
+      "icon": "gh:fairwindsops",
+      "relation": "maker"
+    },
+    "brew:faiss": {
+      "icon": "gh:facebookresearch",
+      "relation": "maker"
+    },
+    "brew:fastapi": {
+      "icon": "si:fastapi",
+      "relation": "same"
+    },
+    "brew:fastfetch": {
+      "icon": "gh:fastfetch-cli",
+      "relation": "same"
+    },
+    "brew:fastlane": {
+      "icon": "si:fastlane",
+      "relation": "same"
+    },
+    "brew:fastly/tap/fastly": {
+      "icon": "si:fastly",
+      "relation": "same"
+    },
+    "brew:fb303": {
+      "icon": "si:facebook",
+      "relation": "maker"
+    },
+    "brew:fbthrift": {
+      "icon": "si:facebook",
+      "relation": "maker"
+    },
+    "brew:ffmpeg": {
+      "icon": "si:ffmpeg",
+      "relation": "same"
+    },
+    "brew:ffmpeg-full": {
+      "icon": "si:ffmpeg",
+      "relation": "same"
+    },
+    "brew:ffuf": {
+      "icon": "gh:ffuf",
+      "relation": "same"
+    },
+    "brew:filebeat": {
+      "icon": "si:elastic",
+      "relation": "maker"
+    },
+    "brew:filebrowser": {
+      "icon": "gh:filebrowser",
+      "relation": "same"
+    },
+    "brew:findutils": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:firebase-cli": {
+      "icon": "si:firebase",
+      "relation": "same"
+    },
+    "brew:fish": {
+      "icon": null,
+      "relation": "none"
+    },
+    "brew:fizz": {
+      "icon": "gh:facebookincubator",
+      "relation": "maker"
+    },
+    "brew:flatbuffers": {
+      "icon": "si:google",
+      "relation": "maker"
+    },
+    "brew:fltk": {
+      "icon": "gh:fltk",
+      "relation": "same"
+    },
+    "brew:fluent-bit": {
+      "icon": "si:fluentbit",
+      "relation": "same"
+    },
+    "brew:flux": {
+      "icon": "gh:influxdata",
+      "relation": "maker"
+    },
+    "brew:fluxcd/tap/flux": {
+      "icon": null,
+      "relation": "none"
+    },
+    "brew:flyctl": {
+      "icon": "si:flydotio",
+      "relation": "maker"
+    },
+    "brew:flyway": {
+      "icon": "si:flyway",
+      "relation": "same"
+    },
+    "brew:fmt": {
+      "icon": "gh:fmtlib",
+      "relation": "same"
+    },
+    "brew:fn": {
+      "icon": "gh:fnproject",
+      "relation": "same"
+    },
+    "brew:folly": {
+      "icon": "si:facebook",
+      "relation": "maker"
+    },
+    "brew:fontforge": {
+      "icon": "si:fontforge",
+      "relation": "same"
+    },
+    "brew:fonttools": {
+      "icon": "gh:fonttools",
+      "relation": "same"
+    },
+    "brew:fossil": {
+      "icon": "si:fossilscm",
+      "relation": "same"
+    },
+    "brew:foundry": {
+      "icon": "gh:foundry-rs",
+      "relation": "same"
+    },
+    "brew:freeciv": {
+      "icon": "gh:freeciv",
+      "relation": "same"
+    },
+    "brew:freeglut": {
+      "icon": "gh:freeglut",
+      "relation": "same"
+    },
+    "brew:freerdp": {
+      "icon": "gh:freerdp",
+      "relation": "same"
+    },
+    "brew:futhark": {
+      "icon": "gh:diku-dk",
+      "relation": "maker"
+    },
+    "brew:fw-ai/firectl/firectl": {
+      "icon": "gh:fw-ai",
+      "relation": "maker"
+    },
+    "brew:gambit-scheme": {
+      "icon": "gh:gambit",
+      "relation": "same"
+    },
+    "brew:gawk": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:gd": {
+      "icon": "gh:libgd",
+      "relation": "same"
+    },
+    "brew:gdal": {
+      "icon": "si:gdal",
+      "relation": "same"
+    },
+    "brew:gdb": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:gdk-pixbuf": {
+      "icon": "si:gtk",
+      "relation": "maker"
+    },
+    "brew:geeqie": {
+      "icon": "gh:bestimageviewer",
+      "relation": "same"
+    },
+    "brew:gemini-cli": {
+      "icon": "si:googlegemini",
+      "relation": "same"
+    },
+    "brew:gentleman-programming/tap/gentleman-dots": {
+      "icon": "gh:gentleman-programming",
+      "relation": "maker"
+    },
+    "brew:getsentry/tools/sentry": {
+      "icon": "si:sentry",
+      "relation": "same"
+    },
+    "brew:getsentry/tools/sentry-cli": {
+      "icon": "si:sentry",
+      "relation": "maker"
+    },
+    "brew:gettext": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:ggshield": {
+      "icon": "gh:gitguardian",
+      "relation": "same"
+    },
+    "brew:gh": {
+      "icon": "si:github",
+      "relation": "maker"
+    },
+    "brew:ghcup": {
+      "icon": "gh:haskell",
+      "relation": "maker"
+    },
+    "brew:ghidra": {
+      "icon": "gh:nationalsecurityagency",
+      "relation": "maker"
+    },
+    "brew:ghostscript": {
+      "icon": "gh:artifexsoftware",
+      "relation": "maker"
+    },
+    "brew:gimme-aws-creds": {
+      "icon": "gh:nike-inc",
+      "relation": "maker"
+    },
+    "brew:git": {
+      "icon": "si:git",
+      "relation": "same"
+    },
+    "brew:git-cola": {
+      "icon": "gh:git-cola",
+      "relation": "same"
+    },
+    "brew:git-gui": {
+      "icon": "si:git",
+      "relation": "same"
+    },
+    "brew:git-lfs": {
+      "icon": "si:gitlfs",
+      "relation": "same"
+    },
+    "brew:git-machete": {
+      "icon": "gh:virtuslab",
+      "relation": "maker"
+    },
+    "brew:git-pkgs": {
+      "icon": "gh:git-pkgs",
+      "relation": "same"
+    },
+    "brew:git-quick-stats": {
+      "icon": "gh:git-quick-stats",
+      "relation": "same"
+    },
+    "brew:git-svn": {
+      "icon": "si:git",
+      "relation": "same"
+    },
+    "brew:git-town": {
+      "icon": "gh:git-town",
+      "relation": "same"
+    },
+    "brew:gitea": {
+      "icon": "si:gitea",
+      "relation": "same"
+    },
+    "brew:gitui": {
+      "icon": "gh:gitui-org",
+      "relation": "same"
+    },
+    "brew:gitversion": {
+      "icon": "gh:gittools",
+      "relation": "maker"
+    },
+    "brew:glab": {
+      "icon": "si:gitlab",
+      "relation": "maker"
+    },
+    "brew:gleam": {
+      "icon": "si:gleam",
+      "relation": "same"
+    },
+    "brew:glib-networking": {
+      "icon": "si:gnome",
+      "relation": "maker"
+    },
+    "brew:glog": {
+      "icon": "si:google",
+      "relation": "maker"
+    },
+    "brew:glow": {
+      "icon": "gh:charmbracelet",
+      "relation": "maker"
+    },
+    "brew:glpk": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:glslang": {
+      "icon": "si:khronosgroup",
+      "relation": "maker"
+    },
+    "brew:gmt": {
+      "icon": "gh:genericmappingtools",
+      "relation": "same"
+    },
+    "brew:gnu-sed": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:gnu-tar": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:gnu-time": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:gnu-which": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:gnupg": {
+      "icon": null,
+      "relation": "none"
+    },
+    "brew:gnuradio": {
+      "icon": "gh:gnuradio",
+      "relation": "same"
+    },
+    "brew:gnutls": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:go": {
+      "icon": "si:go",
+      "relation": "same"
+    },
+    "brew:go-task": {
+      "icon": "si:task",
+      "relation": "same"
+    },
+    "brew:gogcli": {
+      "icon": "gh:openclaw",
+      "relation": "same"
+    },
+    "brew:golangci-lint": {
+      "icon": "gh:golangci",
+      "relation": "same"
+    },
+    "brew:googletest": {
+      "icon": "gh:google",
+      "relation": "maker"
+    },
+    "brew:googleworkspace-cli": {
+      "icon": "si:google",
+      "relation": "maker"
+    },
+    "brew:goose": {
+      "icon": "gh:pressly",
+      "relation": "maker"
+    },
+    "brew:gopass": {
+      "icon": "gh:gopasspw",
+      "relation": "same"
+    },
+    "brew:gopls": {
+      "icon": "gh:golang",
+      "relation": "same"
+    },
+    "brew:goreleaser": {
+      "icon": "gh:goreleaser",
+      "relation": "same"
+    },
+    "brew:gosec": {
+      "icon": "gh:securego",
+      "relation": "maker"
+    },
+    "brew:gost": {
+      "icon": "gh:go-gost",
+      "relation": "same"
+    },
+    "brew:govc": {
+      "icon": "gh:vmware",
+      "relation": "maker"
+    },
+    "brew:gpatch": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:gradle": {
+      "icon": "si:gradle",
+      "relation": "same"
+    },
+    "brew:gradle-completion": {
+      "icon": "gh:gradle",
+      "relation": "maker"
+    },
+    "brew:grafana": {
+      "icon": "si:grafana",
+      "relation": "same"
+    },
+    "brew:grafana-alloy": {
+      "icon": "si:grafana",
+      "relation": "maker"
+    },
+    "brew:graphite2": {
+      "icon": "gh:silnrsi",
+      "relation": "maker"
+    },
+    "brew:grep": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:groff": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:groonga": {
+      "icon": "gh:groonga",
+      "relation": "same"
+    },
+    "brew:grpc": {
+      "icon": "gh:grpc",
+      "relation": "same"
+    },
+    "brew:grpcui": {
+      "icon": "gh:fullstorydev",
+      "relation": "same"
+    },
+    "brew:grpcurl": {
+      "icon": "gh:fullstorydev",
+      "relation": "same"
+    },
+    "brew:grype": {
+      "icon": "gh:anchore",
+      "relation": "maker"
+    },
+    "brew:gsasl": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:gsl": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:gspell": {
+      "icon": "si:gnome",
+      "relation": "maker"
+    },
+    "brew:gstreamer": {
+      "icon": "si:gstreamer",
+      "relation": "same"
+    },
+    "brew:gtk+": {
+      "icon": "si:gtk",
+      "relation": "same"
+    },
+    "brew:gtk+3": {
+      "icon": "si:gtk",
+      "relation": "same"
+    },
+    "brew:gtk4": {
+      "icon": "si:gtk",
+      "relation": "same"
+    },
+    "brew:guile": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:gum": {
+      "icon": "gh:charmbracelet",
+      "relation": "maker"
+    },
+    "brew:gzip": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:hackrf": {
+      "icon": "gh:greatscottgadgets",
+      "relation": "same"
+    },
+    "brew:hadolint": {
+      "icon": "gh:hadolint",
+      "relation": "same"
+    },
+    "brew:hadoop": {
+      "icon": "si:apachehadoop",
+      "relation": "same"
+    },
+    "brew:handbrake": {
+      "icon": "gh:handbrake",
+      "relation": "same"
+    },
+    "brew:harfbuzz": {
+      "icon": "gh:harfbuzz",
+      "relation": "same"
+    },
+    "brew:harper": {
+      "icon": "gh:automattic",
+      "relation": "maker"
+    },
+    "brew:hashcat": {
+      "icon": "si:hashcat",
+      "relation": "same"
+    },
+    "brew:hashicorp/tap/boundary": {
+      "icon": "gh:hashicorp",
+      "relation": "maker"
+    },
+    "brew:hashicorp/tap/consul": {
+      "icon": "si:consul",
+      "relation": "same"
+    },
+    "brew:hashicorp/tap/nomad": {
+      "icon": "si:nomad",
+      "relation": "same"
+    },
+    "brew:hashicorp/tap/terraform": {
+      "icon": "si:terraform",
+      "relation": "same"
+    },
+    "brew:hashicorp/tap/terraform-ls": {
+      "icon": "gh:hashicorp",
+      "relation": "maker"
+    },
+    "brew:hashicorp/tap/vault": {
+      "icon": "si:vault",
+      "relation": "same"
+    },
+    "brew:haskell-stack": {
+      "icon": "gh:commercialhaskell",
+      "relation": "maker"
+    },
+    "brew:hasura-cli": {
+      "icon": "si:hasura",
+      "relation": "maker"
+    },
+    "brew:hcloud": {
+      "icon": "gh:hetznercloud",
+      "relation": "maker"
+    },
+    "brew:hdf5": {
+      "icon": "gh:hdfgroup",
+      "relation": "same"
+    },
+    "brew:helix": {
+      "icon": "si:helix",
+      "relation": "same"
+    },
+    "brew:hello": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:helm": {
+      "icon": "si:helm",
+      "relation": "same"
+    },
+    "brew:help2man": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:hermes-agent": {
+      "icon": "gh:nousresearch",
+      "relation": "maker"
+    },
+    "brew:hf": {
+      "icon": "si:huggingface",
+      "relation": "maker"
+    },
+    "brew:himalaya": {
+      "icon": "gh:pimalaya",
+      "relation": "maker"
+    },
+    "brew:htop": {
+      "icon": "si:htop",
+      "relation": "same"
+    },
+    "brew:httpie": {
+      "icon": "si:httpie",
+      "relation": "same"
+    },
+    "brew:huggingface-cli": {
+      "icon": "si:huggingface",
+      "relation": "same"
+    },
+    "brew:hugo": {
+      "icon": "si:hugo",
+      "relation": "same"
+    },
+    "brew:hurl": {
+      "icon": "gh:orange-opensource",
+      "relation": "maker"
+    },
+    "brew:hysteria": {
+      "icon": "gh:apernet",
+      "relation": "same"
+    },
+    "brew:ideviceinstaller": {
+      "icon": "gh:libimobiledevice",
+      "relation": "same"
+    },
+    "brew:imagemagick": {
+      "icon": "gh:imagemagick",
+      "relation": "same"
+    },
+    "brew:imagemagick-full": {
+      "icon": "gh:imagemagick",
+      "relation": "same"
+    },
+    "brew:immich-cli": {
+      "icon": "si:immich",
+      "relation": "same"
+    },
+    "brew:incus": {
+      "icon": "gh:lxc",
+      "relation": "same"
+    },
+    "brew:inetutils": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:influxdb": {
+      "icon": "si:influxdb",
+      "relation": "same"
+    },
+    "brew:influxdb-cli": {
+      "icon": "si:influxdb",
+      "relation": "maker"
+    },
+    "brew:infracost": {
+      "icon": "si:infracost",
+      "relation": "same"
+    },
+    "brew:iotaledger/tap/iota": {
+      "icon": "si:iota",
+      "relation": "same"
+    },
+    "brew:iperf3": {
+      "icon": "gh:esnet",
+      "relation": "maker"
+    },
+    "brew:ipfs": {
+      "icon": "si:ipfs",
+      "relation": "same"
+    },
+    "brew:ipopt": {
+      "icon": "gh:coin-or",
+      "relation": "maker"
+    },
+    "brew:ipython": {
+      "icon": "gh:ipython",
+      "relation": "same"
+    },
+    "brew:ironclaw": {
+      "icon": "gh:nearai",
+      "relation": "maker"
+    },
+    "brew:istioctl": {
+      "icon": "gh:istio",
+      "relation": "same"
+    },
+    "brew:jackett": {
+      "icon": "gh:jackett",
+      "relation": "same"
+    },
+    "brew:jbang": {
+      "icon": "gh:jbangdev",
+      "relation": "same"
+    },
+    "brew:jenkins": {
+      "icon": "si:jenkins",
+      "relation": "same"
+    },
+    "brew:jetbrains/junie/junie": {
+      "icon": "gh:jetbrains",
+      "relation": "maker"
+    },
+    "brew:jetbrains/utils/kotlin-lsp": {
+      "icon": "gh:jetbrains",
+      "relation": "maker"
+    },
+    "brew:jetbrains/utils/qodana": {
+      "icon": "gh:jetbrains",
+      "relation": "maker"
+    },
+    "brew:jfrog-cli": {
+      "icon": "si:jfrog",
+      "relation": "maker"
+    },
+    "brew:jj": {
+      "icon": "gh:jj-vcs",
+      "relation": "same"
+    },
+    "brew:jpeg-turbo": {
+      "icon": "gh:libjpeg-turbo",
+      "relation": "same"
+    },
+    "brew:jpeg-xl": {
+      "icon": "gh:libjxl",
+      "relation": "same"
+    },
+    "brew:jq": {
+      "icon": "gh:jqlang",
+      "relation": "same"
+    },
+    "brew:json-glib": {
+      "icon": "si:gnome",
+      "relation": "maker"
+    },
+    "brew:jsonnet": {
+      "icon": "gh:google",
+      "relation": "maker"
+    },
+    "brew:julia": {
+      "icon": "si:julia",
+      "relation": "same"
+    },
+    "brew:jupyterlab": {
+      "icon": "si:jupyter",
+      "relation": "maker"
+    },
+    "brew:just": {
+      "icon": "si:just",
+      "relation": "same"
+    },
+    "brew:k0sproject/tap/k0sctl": {
+      "icon": "gh:k0sproject",
+      "relation": "same"
+    },
+    "brew:k3d": {
+      "icon": "gh:k3d-io",
+      "relation": "same"
+    },
+    "brew:k6": {
+      "icon": "si:k6",
+      "relation": "same"
+    },
+    "brew:k8sgpt": {
+      "icon": "gh:k8sgpt-ai",
+      "relation": "same"
+    },
+    "brew:kafkactl": {
+      "icon": "gh:deviceinsight",
+      "relation": "maker"
+    },
+    "brew:kagent": {
+      "icon": "gh:kagent-dev",
+      "relation": "same"
+    },
+    "brew:kayac/tap/ecspresso": {
+      "icon": "gh:kayac",
+      "relation": "maker"
+    },
+    "brew:kcl-lang/tap/kcl": {
+      "icon": "gh:kcl-lang",
+      "relation": "same"
+    },
+    "brew:kdoctor": {
+      "icon": "gh:kotlin",
+      "relation": "maker"
+    },
+    "brew:keeper-commander": {
+      "icon": "si:keeper",
+      "relation": "maker"
+    },
+    "brew:keploy": {
+      "icon": "si:keploy",
+      "relation": "same"
+    },
+    "brew:keystone": {
+      "icon": "gh:keystone-engine",
+      "relation": "same"
+    },
+    "brew:kilo-org/tap/kilo": {
+      "icon": "gh:kilo-org",
+      "relation": "same"
+    },
+    "brew:kimi-cli": {
+      "icon": "si:kimi",
+      "relation": "maker"
+    },
+    "brew:kimi-code": {
+      "icon": "si:kimi",
+      "relation": "maker"
+    },
+    "brew:kind": {
+      "icon": "si:kubernetes",
+      "relation": "maker"
+    },
+    "brew:kong/deck/deck": {
+      "icon": "gh:kong",
+      "relation": "maker"
+    },
+    "brew:kopia": {
+      "icon": "gh:kopia",
+      "relation": "same"
+    },
+    "brew:kotlin": {
+      "icon": "si:kotlin",
+      "relation": "same"
+    },
+    "brew:krew": {
+      "icon": "gh:kubernetes-sigs",
+      "relation": "maker"
+    },
+    "brew:ktfmt": {
+      "icon": "si:facebook",
+      "relation": "maker"
+    },
+    "brew:ktlint": {
+      "icon": "gh:ktlint",
+      "relation": "same"
+    },
+    "brew:kube-linter": {
+      "icon": "gh:stackrox",
+      "relation": "maker"
+    },
+    "brew:kubecolor": {
+      "icon": "gh:kubecolor",
+      "relation": "same"
+    },
+    "brew:kubectl-cnpg": {
+      "icon": "gh:cloudnative-pg",
+      "relation": "maker"
+    },
+    "brew:kubernetes-cli": {
+      "icon": "si:kubernetes",
+      "relation": "maker"
+    },
+    "brew:kubescape": {
+      "icon": "gh:kubescape",
+      "relation": "same"
+    },
+    "brew:kubeseal": {
+      "icon": "gh:bitnami",
+      "relation": "maker"
+    },
+    "brew:kubeshark": {
+      "icon": "gh:kubeshark",
+      "relation": "same"
+    },
+    "brew:kubetail": {
+      "icon": "gh:kubetail-org",
+      "relation": "same"
+    },
+    "brew:kubo": {
+      "icon": "gh:ipfs",
+      "relation": "maker"
+    },
+    "brew:kustomize": {
+      "icon": "gh:kubernetes-sigs",
+      "relation": "maker"
+    },
+    "brew:kyverno": {
+      "icon": "gh:kyverno",
+      "relation": "same"
+    },
+    "brew:lacework/tap/lacework-cli": {
+      "icon": "gh:lacework",
+      "relation": "maker"
+    },
+    "brew:lammps": {
+      "icon": "gh:lammps",
+      "relation": "same"
+    },
+    "brew:langgenius/dify/dify": {
+      "icon": "gh:langgenius",
+      "relation": "maker"
+    },
+    "brew:langgraph-cli": {
+      "icon": "si:langgraph",
+      "relation": "same"
+    },
+    "brew:languagetool": {
+      "icon": "si:languagetool",
+      "relation": "same"
+    },
+    "brew:lapack": {
+      "icon": "gh:reference-lapack",
+      "relation": "same"
+    },
+    "brew:lastpass-cli": {
+      "icon": "si:lastpass",
+      "relation": "same"
+    },
+    "brew:ldcli": {
+      "icon": "gh:launchdarkly",
+      "relation": "maker"
+    },
+    "brew:leancodepl/tools/mobile-tools": {
+      "icon": "gh:leancodepl",
+      "relation": "maker"
+    },
+    "brew:lefthook": {
+      "icon": "si:lefthook",
+      "relation": "same"
+    },
+    "brew:lego": {
+      "icon": "gh:go-acme",
+      "relation": "same"
+    },
+    "brew:libadwaita": {
+      "icon": "si:gnome",
+      "relation": "maker"
+    },
+    "brew:libaec": {
+      "icon": "gh:deutsches-klimarechenzentrum",
+      "relation": "maker"
+    },
+    "brew:libavif": {
+      "icon": "gh:aomediacodec",
+      "relation": "maker"
+    },
+    "brew:libb2": {
+      "icon": "gh:blake2",
+      "relation": "same"
+    },
+    "brew:libfido2": {
+      "icon": "gh:yubico",
+      "relation": "same"
+    },
+    "brew:libgit2": {
+      "icon": "gh:libgit2",
+      "relation": "same"
+    },
+    "brew:libgsf": {
+      "icon": "si:gnome",
+      "relation": "maker"
+    },
+    "brew:libiconv": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:libidn": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:libidn2": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:libimobiledevice": {
+      "icon": "gh:libimobiledevice",
+      "relation": "same"
+    },
+    "brew:libmicrohttpd": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:libnotify": {
+      "icon": "si:gnome",
+      "relation": "maker"
+    },
+    "brew:libomp": {
+      "icon": "si:llvm",
+      "relation": "maker"
+    },
+    "brew:libpcap": {
+      "icon": "gh:the-tcpdump-group",
+      "relation": "same"
+    },
+    "brew:libpq": {
+      "icon": "si:postgresql",
+      "relation": "maker"
+    },
+    "brew:libqalculate": {
+      "icon": "gh:qalculate",
+      "relation": "same"
+    },
+    "brew:librdkafka": {
+      "icon": "gh:confluentinc",
+      "relation": "maker"
+    },
+    "brew:librealsense": {
+      "icon": "gh:realsenseai",
+      "relation": "same"
+    },
+    "brew:librsvg": {
+      "icon": "si:gnome",
+      "relation": "maker"
+    },
+    "brew:libtensorflow": {
+      "icon": "si:tensorflow",
+      "relation": "same"
+    },
+    "brew:libtool": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:libunistring": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:libupnp": {
+      "icon": "gh:pupnp",
+      "relation": "same"
+    },
+    "brew:libusbmuxd": {
+      "icon": "gh:libimobiledevice",
+      "relation": "same"
+    },
+    "brew:libuv": {
+      "icon": "si:libuv",
+      "relation": "same"
+    },
+    "brew:libvmaf": {
+      "icon": "gh:netflix",
+      "relation": "maker"
+    },
+    "brew:libvpx": {
+      "icon": "gh:webmproject",
+      "relation": "maker"
+    },
+    "brew:libwebsockets": {
+      "icon": "gh:warmcat",
+      "relation": "maker"
+    },
+    "brew:libx11": {
+      "icon": "si:xdotorg",
+      "relation": "maker"
+    },
+    "brew:libyaml": {
+      "icon": "gh:yaml",
+      "relation": "same"
+    },
+    "brew:lima": {
+      "icon": "gh:lima-vm",
+      "relation": "same"
+    },
+    "brew:lima-additional-guestagents": {
+      "icon": "gh:lima-vm",
+      "relation": "same"
+    },
+    "brew:linode-cli": {
+      "icon": "gh:linode",
+      "relation": "maker"
+    },
+    "brew:linux-headers": {
+      "icon": "si:linux",
+      "relation": "maker"
+    },
+    "brew:liquibase": {
+      "icon": "si:liquibase",
+      "relation": "same"
+    },
+    "brew:livekit": {
+      "icon": "si:livekit",
+      "relation": "same"
+    },
+    "brew:livekit-cli": {
+      "icon": "si:livekit",
+      "relation": "maker"
+    },
+    "brew:lizardbyte/homebrew/hello_world": {
+      "icon": "gh:lizardbyte",
+      "relation": "maker"
+    },
+    "brew:llama.cpp": {
+      "icon": "gh:ggml-org",
+      "relation": "same"
+    },
+    "brew:lld": {
+      "icon": "si:llvm",
+      "relation": "maker"
+    },
+    "brew:llvm": {
+      "icon": "si:llvm",
+      "relation": "same"
+    },
+    "brew:localazy/tools/localazy": {
+      "icon": "gh:localazy",
+      "relation": "same"
+    },
+    "brew:locust": {
+      "icon": "si:locust",
+      "relation": "same"
+    },
+    "brew:loft-sh/tap/vcluster": {
+      "icon": "gh:loft-sh",
+      "relation": "maker"
+    },
+    "brew:logcli": {
+      "icon": "si:grafana",
+      "relation": "maker"
+    },
+    "brew:logstash": {
+      "icon": "si:logstash",
+      "relation": "same"
+    },
+    "brew:loki": {
+      "icon": "si:grafana",
+      "relation": "maker"
+    },
+    "brew:lsd": {
+      "icon": "gh:lsd-rs",
+      "relation": "same"
+    },
+    "brew:lua": {
+      "icon": "si:lua",
+      "relation": "same"
+    },
+    "brew:luajit": {
+      "icon": "gh:luajit",
+      "relation": "same"
+    },
+    "brew:luajit-openresty": {
+      "icon": "gh:openresty",
+      "relation": "same"
+    },
+    "brew:luarocks": {
+      "icon": "gh:luarocks",
+      "relation": "same"
+    },
+    "brew:luau": {
+      "icon": "si:luau",
+      "relation": "same"
+    },
+    "brew:lume": {
+      "icon": "gh:trycua",
+      "relation": "maker"
+    },
+    "brew:luv": {
+      "icon": "gh:luvit",
+      "relation": "same"
+    },
+    "brew:lychee": {
+      "icon": "gh:lycheeverse",
+      "relation": "same"
+    },
+    "brew:m4": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:mac-cleanup-py": {
+      "icon": "gh:mac-cleanup",
+      "relation": "same"
+    },
+    "brew:macvim": {
+      "icon": "gh:macvim-dev",
+      "relation": "same"
+    },
+    "brew:mage": {
+      "icon": "gh:magefile",
+      "relation": "same"
+    },
+    "brew:magic-wormhole": {
+      "icon": "gh:magic-wormhole",
+      "relation": "same"
+    },
+    "brew:make": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:makensis": {
+      "icon": "si:nsis",
+      "relation": "same"
+    },
+    "brew:mame": {
+      "icon": "gh:mamedev",
+      "relation": "same"
+    },
+    "brew:manim": {
+      "icon": "gh:manimcommunity",
+      "relation": "same"
+    },
+    "brew:mariadb": {
+      "icon": "si:mariadb",
+      "relation": "same"
+    },
+    "brew:mariadb-connector-c": {
+      "icon": "si:mariadb",
+      "relation": "maker"
+    },
+    "brew:markdown": {
+      "icon": "si:markdown",
+      "relation": "same"
+    },
+    "brew:marp-cli": {
+      "icon": "gh:marp-team",
+      "relation": "same"
+    },
+    "brew:mas": {
+      "icon": "gh:mas-cli",
+      "relation": "same"
+    },
+    "brew:maturin": {
+      "icon": "gh:pyo3",
+      "relation": "maker"
+    },
+    "brew:maven": {
+      "icon": "si:apachemaven",
+      "relation": "same"
+    },
+    "brew:mbedtls": {
+      "icon": "gh:mbed-tls",
+      "relation": "same"
+    },
+    "brew:mcap": {
+      "icon": "gh:foxglove",
+      "relation": "maker"
+    },
+    "brew:mcp-inspector": {
+      "icon": "si:modelcontextprotocol",
+      "relation": "maker"
+    },
+    "brew:mcp-publisher": {
+      "icon": "gh:modelcontextprotocol",
+      "relation": "same"
+    },
+    "brew:mcp-toolbox": {
+      "icon": "gh:googleapis",
+      "relation": "maker"
+    },
+    "brew:md2pdf": {
+      "icon": "gh:solworktech",
+      "relation": "maker"
+    },
+    "brew:mdbook": {
+      "icon": "si:mdbook",
+      "relation": "same"
+    },
+    "brew:mdbtools": {
+      "icon": "gh:mdbtools",
+      "relation": "same"
+    },
+    "brew:media-info": {
+      "icon": "gh:mediaarea",
+      "relation": "same"
+    },
+    "brew:mediamtx": {
+      "icon": "gh:bluenviron",
+      "relation": "maker"
+    },
+    "brew:meilisearch": {
+      "icon": "si:meilisearch",
+      "relation": "same"
+    },
+    "brew:melange": {
+      "icon": "gh:chainguard-dev",
+      "relation": "maker"
+    },
+    "brew:memcached": {
+      "icon": "gh:memcached",
+      "relation": "same"
+    },
+    "brew:mercurial": {
+      "icon": null,
+      "relation": "none"
+    },
+    "brew:mermaid-cli": {
+      "icon": "si:mermaid",
+      "relation": "maker"
+    },
+    "brew:mesheryctl": {
+      "icon": "gh:meshery",
+      "relation": "same"
+    },
+    "brew:meson": {
+      "icon": "gh:mesonbuild",
+      "relation": "same"
+    },
+    "brew:metabase": {
+      "icon": "si:metabase",
+      "relation": "same"
+    },
+    "brew:micro": {
+      "icon": "gh:micro-editor",
+      "relation": "same"
+    },
+    "brew:micromamba": {
+      "icon": "gh:mamba-org",
+      "relation": "maker"
+    },
+    "brew:micronaut": {
+      "icon": "gh:micronaut-projects",
+      "relation": "same"
+    },
+    "brew:micropython": {
+      "icon": "si:micropython",
+      "relation": "same"
+    },
+    "brew:midnight-commander": {
+      "icon": "gh:midnightcommander",
+      "relation": "same"
+    },
+    "brew:mihomo": {
+      "icon": "gh:metacubex",
+      "relation": "maker"
+    },
+    "brew:mimirtool": {
+      "icon": "si:grafana",
+      "relation": "maker"
+    },
+    "brew:mingw-w64": {
+      "icon": "si:mingww64",
+      "relation": "same"
+    },
+    "brew:minikube": {
+      "icon": "si:kubernetes",
+      "relation": "maker"
+    },
+    "brew:minimal-racket": {
+      "icon": "si:racket",
+      "relation": "same"
+    },
+    "brew:minio": {
+      "icon": "si:minio",
+      "relation": "same"
+    },
+    "brew:minio-mc": {
+      "icon": "gh:minio",
+      "relation": "same"
+    },
+    "brew:minio/stable/minio": {
+      "icon": "si:minio",
+      "relation": "same"
+    },
+    "brew:mistral-vibe": {
+      "icon": "gh:mistralai",
+      "relation": "maker"
+    },
+    "brew:mit-scheme": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:mkdocs-material": {
+      "icon": "si:materialformkdocs",
+      "relation": "same"
+    },
+    "brew:mlt": {
+      "icon": "gh:mltframework",
+      "relation": "same"
+    },
+    "brew:mlx": {
+      "icon": "gh:ml-explore",
+      "relation": "same"
+    },
+    "brew:mlx-lm": {
+      "icon": "gh:ml-explore",
+      "relation": "same"
+    },
+    "brew:mmctl": {
+      "icon": "gh:mattermost",
+      "relation": "same"
+    },
+    "brew:mockery": {
+      "icon": "gh:vektra",
+      "relation": "maker"
+    },
+    "brew:mockolo": {
+      "icon": "gh:uber",
+      "relation": "maker"
+    },
+    "brew:molten-vk": {
+      "icon": "gh:khronosgroup",
+      "relation": "maker"
+    },
+    "brew:mongocli": {
+      "icon": "si:mongodb",
+      "relation": "maker"
+    },
+    "brew:mongodb-atlas-cli": {
+      "icon": "si:mongodb",
+      "relation": "maker"
+    },
+    "brew:mongodb/brew/mongodb-community": {
+      "icon": "si:mongodb",
+      "relation": "same"
+    },
+    "brew:mongosh": {
+      "icon": "si:mongodb",
+      "relation": "maker"
+    },
+    "brew:moon": {
+      "icon": "si:moonrepo",
+      "relation": "maker"
+    },
+    "brew:mpd": {
+      "icon": "gh:musicplayerdaemon",
+      "relation": "same"
+    },
+    "brew:mpv": {
+      "icon": "si:mpv",
+      "relation": "same"
+    },
+    "brew:mruby": {
+      "icon": "gh:mruby",
+      "relation": "same"
+    },
+    "brew:msitools": {
+      "icon": "si:gnome",
+      "relation": "maker"
+    },
+    "brew:mtools": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:mtr": {
+      "icon": null,
+      "relation": "none"
+    },
+    "brew:mutagen-io/mutagen/mutagen": {
+      "icon": "gh:mutagen-io",
+      "relation": "same"
+    },
+    "brew:mvfst": {
+      "icon": "gh:facebook",
+      "relation": "maker"
+    },
+    "brew:mydumper": {
+      "icon": "gh:mydumper",
+      "relation": "same"
+    },
+    "brew:mypy": {
+      "icon": "gh:python",
+      "relation": "maker"
+    },
+    "brew:mysql": {
+      "icon": "si:mysql",
+      "relation": "same"
+    },
+    "brew:mysql-client": {
+      "icon": "si:mysql",
+      "relation": "same"
+    },
+    "brew:nasm": {
+      "icon": "gh:netwide-assembler",
+      "relation": "same"
+    },
+    "brew:nats-io/nats-tools/nats": {
+      "icon": "gh:nats-io",
+      "relation": "same"
+    },
+    "brew:nats-server": {
+      "icon": "gh:nats-io",
+      "relation": "same"
+    },
+    "brew:nebula": {
+      "icon": "gh:slackhq",
+      "relation": "maker"
+    },
+    "brew:neo4j": {
+      "icon": "si:neo4j",
+      "relation": "same"
+    },
+    "brew:neomutt": {
+      "icon": "gh:neomutt",
+      "relation": "same"
+    },
+    "brew:neovide": {
+      "icon": "gh:neovide",
+      "relation": "same"
+    },
+    "brew:neovim": {
+      "icon": "si:neovim",
+      "relation": "same"
+    },
+    "brew:nerdctl": {
+      "icon": "gh:containerd",
+      "relation": "maker"
+    },
+    "brew:netdata": {
+      "icon": "si:netdata",
+      "relation": "same"
+    },
+    "brew:nethack": {
+      "icon": "gh:nethack",
+      "relation": "same"
+    },
+    "brew:netlify-cli": {
+      "icon": "si:netlify",
+      "relation": "same"
+    },
+    "brew:newman": {
+      "icon": "si:postman",
+      "relation": "maker"
+    },
+    "brew:newrelic-cli": {
+      "icon": "si:newrelic",
+      "relation": "maker"
+    },
+    "brew:newrelic-infra-agent": {
+      "icon": "gh:newrelic",
+      "relation": "same"
+    },
+    "brew:newsboat": {
+      "icon": "gh:newsboat",
+      "relation": "same"
+    },
+    "brew:nexttrace": {
+      "icon": "gh:nxtrace",
+      "relation": "maker"
+    },
+    "brew:nginx": {
+      "icon": "si:nginx",
+      "relation": "same"
+    },
+    "brew:nim": {
+      "icon": "si:nim",
+      "relation": "same"
+    },
+    "brew:node": {
+      "icon": "si:nodedotjs",
+      "relation": "same"
+    },
+    "brew:node_exporter": {
+      "icon": "si:prometheus",
+      "relation": "maker"
+    },
+    "brew:nspr": {
+      "icon": "si:mozilla",
+      "relation": "maker"
+    },
+    "brew:ntfy": {
+      "icon": "si:ntfy",
+      "relation": "same"
+    },
+    "brew:nuclei": {
+      "icon": "gh:projectdiscovery",
+      "relation": "same"
+    },
+    "brew:nuget": {
+      "icon": "si:nuget",
+      "relation": "same"
+    },
+    "brew:numpy": {
+      "icon": "si:numpy",
+      "relation": "same"
+    },
+    "brew:nushell": {
+      "icon": "si:nushell",
+      "relation": "same"
+    },
+    "brew:nut": {
+      "icon": "gh:networkupstools",
+      "relation": "same"
+    },
+    "brew:nvm": {
+      "icon": "si:nvm",
+      "relation": "same"
+    },
+    "brew:nx": {
+      "icon": "si:nx",
+      "relation": "same"
+    },
+    "brew:oasdiff": {
+      "icon": "gh:oasdiff",
+      "relation": "same"
+    },
+    "brew:oci-cli": {
+      "icon": "gh:oracle",
+      "relation": "maker"
+    },
+    "brew:octave": {
+      "icon": "si:octave",
+      "relation": "same"
+    },
+    "brew:octoenergy/tap/kraken-cli": {
+      "icon": "gh:octoenergy",
+      "relation": "maker"
+    },
+    "brew:odin": {
+      "icon": "si:odin",
+      "relation": "same"
+    },
+    "brew:okteto": {
+      "icon": "gh:okteto",
+      "relation": "same"
+    },
+    "brew:ollama": {
+      "icon": "si:ollama",
+      "relation": "same"
+    },
+    "brew:onnx": {
+      "icon": "si:onnx",
+      "relation": "same"
+    },
+    "brew:onnxruntime": {
+      "icon": "gh:microsoft",
+      "relation": "maker"
+    },
+    "brew:opa": {
+      "icon": "gh:open-policy-agent",
+      "relation": "same"
+    },
+    "brew:opam": {
+      "icon": "gh:ocaml",
+      "relation": "maker"
+    },
+    "brew:open-mpi": {
+      "icon": "gh:open-mpi",
+      "relation": "same"
+    },
+    "brew:openai-whisper": {
+      "icon": "gh:openai",
+      "relation": "same"
+    },
+    "brew:openapi": {
+      "icon": "gh:speakeasy-api",
+      "relation": "maker"
+    },
+    "brew:openapi-generator": {
+      "icon": "gh:openapitools",
+      "relation": "same"
+    },
+    "brew:openbao": {
+      "icon": "si:openbao",
+      "relation": "same"
+    },
+    "brew:openblas": {
+      "icon": "gh:openmathlib",
+      "relation": "same"
+    },
+    "brew:opencascade": {
+      "icon": "gh:open-cascade-sas",
+      "relation": "maker"
+    },
+    "brew:openclaw-cli": {
+      "icon": "gh:openclaw",
+      "relation": "same"
+    },
+    "brew:opencode": {
+      "icon": "si:opencode",
+      "relation": "same"
+    },
+    "brew:opencv": {
+      "icon": "si:opencv",
+      "relation": "same"
+    },
+    "brew:opendht": {
+      "icon": "gh:savoirfairelinux",
+      "relation": "maker"
+    },
+    "brew:openfga/tap/fga": {
+      "icon": "gh:openfga",
+      "relation": "maker"
+    },
+    "brew:openjdk": {
+      "icon": "si:openjdk",
+      "relation": "same"
+    },
+    "brew:openjpeg": {
+      "icon": "gh:uclouvain",
+      "relation": "maker"
+    },
+    "brew:openresty/brew/openresty": {
+      "icon": "gh:openresty",
+      "relation": "same"
+    },
+    "brew:opensearch": {
+      "icon": "si:opensearch",
+      "relation": "same"
+    },
+    "brew:openshift-cli": {
+      "icon": "si:redhatopenshift",
+      "relation": "maker"
+    },
+    "brew:openssl": {
+      "icon": "si:openssl",
+      "relation": "same"
+    },
+    "brew:openstackclient": {
+      "icon": "si:openstack",
+      "relation": "maker"
+    },
+    "brew:opentofu": {
+      "icon": "si:opentofu",
+      "relation": "same"
+    },
+    "brew:openvino": {
+      "icon": "gh:openvinotoolkit",
+      "relation": "same"
+    },
+    "brew:openvpn": {
+      "icon": "si:openvpn",
+      "relation": "same"
+    },
+    "brew:operator-sdk": {
+      "icon": "gh:operator-framework",
+      "relation": "maker"
+    },
+    "brew:or-tools": {
+      "icon": "si:google",
+      "relation": "maker"
+    },
+    "brew:oras": {
+      "icon": "gh:oras-project",
+      "relation": "same"
+    },
+    "brew:orcasecurity/orca-cli/orca-cli": {
+      "icon": "gh:orcasecurity",
+      "relation": "maker"
+    },
+    "brew:osmium-tool": {
+      "icon": "gh:osmcode",
+      "relation": "maker"
+    },
+    "brew:osrf/simulation/gz-cmake3": {
+      "icon": "gh:osrf",
+      "relation": "maker"
+    },
+    "brew:osrf/simulation/gz-cmake5": {
+      "icon": "gh:osrf",
+      "relation": "maker"
+    },
+    "brew:osrf/simulation/gz-tools2": {
+      "icon": "gh:osrf",
+      "relation": "maker"
+    },
+    "brew:osv-scanner": {
+      "icon": "gh:google",
+      "relation": "maker"
+    },
+    "brew:otel-cli": {
+      "icon": "gh:equinix-labs",
+      "relation": "maker"
+    },
+    "brew:ouch": {
+      "icon": "gh:ouch-org",
+      "relation": "same"
+    },
+    "brew:oven-sh/bun/bun": {
+      "icon": "si:bun",
+      "relation": "same"
+    },
+    "brew:oxfmt": {
+      "icon": "si:oxc",
+      "relation": "maker"
+    },
+    "brew:oxlint": {
+      "icon": "gh:oxc-project",
+      "relation": "same"
+    },
+    "brew:p11-kit": {
+      "icon": "gh:p11-glue",
+      "relation": "same"
+    },
+    "brew:pandoc": {
+      "icon": "si:pandoc",
+      "relation": "same"
+    },
+    "brew:particle-iot/brew/prtcl": {
+      "icon": "gh:particle-iot",
+      "relation": "maker"
+    },
+    "brew:patchelf": {
+      "icon": "gh:nixos",
+      "relation": "maker"
+    },
+    "brew:pcl": {
+      "icon": "gh:pointcloudlibrary",
+      "relation": "same"
+    },
+    "brew:pcre2": {
+      "icon": "gh:pcre2project",
+      "relation": "same"
+    },
+    "brew:pdal": {
+      "icon": "gh:pdal",
+      "relation": "same"
+    },
+    "brew:pdfcpu": {
+      "icon": "gh:pdfcpu",
+      "relation": "same"
+    },
+    "brew:pdm": {
+      "icon": "si:pdm",
+      "relation": "same"
+    },
+    "brew:peak/tap/s5cmd": {
+      "icon": "gh:peak",
+      "relation": "maker"
+    },
+    "brew:peonping/tap/peon-ping": {
+      "icon": "gh:peonping",
+      "relation": "same"
+    },
+    "brew:percona-toolkit": {
+      "icon": "gh:percona",
+      "relation": "maker"
+    },
+    "brew:periphery": {
+      "icon": "gh:peripheryapp",
+      "relation": "same"
+    },
+    "brew:perl": {
+      "icon": "si:perl",
+      "relation": "same"
+    },
+    "brew:php": {
+      "icon": "si:php",
+      "relation": "same"
+    },
+    "brew:php-intl": {
+      "icon": "si:php",
+      "relation": "maker"
+    },
+    "brew:phpmyadmin": {
+      "icon": "si:phpmyadmin",
+      "relation": "same"
+    },
+    "brew:phpstan": {
+      "icon": "gh:phpstan",
+      "relation": "same"
+    },
+    "brew:phrase-cli": {
+      "icon": "gh:phrase",
+      "relation": "same"
+    },
+    "brew:pi-coding-agent": {
+      "icon": "si:pi",
+      "relation": "same"
+    },
+    "brew:picotool": {
+      "icon": "gh:raspberrypi",
+      "relation": "maker"
+    },
+    "brew:pinentry-mac": {
+      "icon": "gh:gpgtools",
+      "relation": "maker"
+    },
+    "brew:pipes-sh": {
+      "icon": "gh:pipeseroni",
+      "relation": "same"
+    },
+    "brew:pipx": {
+      "icon": "si:pipx",
+      "relation": "same"
+    },
+    "brew:planetscale/tap/pscale": {
+      "icon": "gh:planetscale",
+      "relation": "maker"
+    },
+    "brew:plantuml": {
+      "icon": "gh:plantuml",
+      "relation": "same"
+    },
+    "brew:platformio": {
+      "icon": "si:platformio",
+      "relation": "same"
+    },
+    "brew:pluto": {
+      "icon": "gh:fairwindsops",
+      "relation": "maker"
+    },
+    "brew:pmd": {
+      "icon": "gh:pmd",
+      "relation": "same"
+    },
+    "brew:pmix": {
+      "icon": "gh:openpmix",
+      "relation": "same"
+    },
+    "brew:pmtiles": {
+      "icon": "gh:protomaps",
+      "relation": "maker"
+    },
+    "brew:pnpm": {
+      "icon": "si:pnpm",
+      "relation": "same"
+    },
+    "brew:pocketbase": {
+      "icon": "si:pocketbase",
+      "relation": "same"
+    },
+    "brew:poco": {
+      "icon": "gh:pocoproject",
+      "relation": "same"
+    },
+    "brew:podman": {
+      "icon": "si:podman",
+      "relation": "same"
+    },
+    "brew:podman-compose": {
+      "icon": "gh:containers",
+      "relation": "maker"
+    },
+    "brew:poetry": {
+      "icon": "si:poetry",
+      "relation": "same"
+    },
+    "brew:popt": {
+      "icon": "gh:rpm-software-management",
+      "relation": "same"
+    },
+    "brew:portaudio": {
+      "icon": "gh:portaudio",
+      "relation": "same"
+    },
+    "brew:postgresql": {
+      "icon": "si:postgresql",
+      "relation": "same"
+    },
+    "brew:postgrest": {
+      "icon": "gh:postgrest",
+      "relation": "same"
+    },
+    "brew:powershell": {
+      "icon": "gh:powershell",
+      "relation": "same"
+    },
+    "brew:powershell/tap/powershell": {
+      "icon": "gh:powershell",
+      "relation": "same"
+    },
+    "brew:pre-commit": {
+      "icon": "si:precommit",
+      "relation": "same"
+    },
+    "brew:prek": {
+      "icon": "si:prek",
+      "relation": "same"
+    },
+    "brew:premake": {
+      "icon": "gh:premake",
+      "relation": "same"
+    },
+    "brew:prettier": {
+      "icon": "si:prettier",
+      "relation": "same"
+    },
+    "brew:proj": {
+      "icon": "gh:osgeo",
+      "relation": "maker"
+    },
+    "brew:prometheus": {
+      "icon": "si:prometheus",
+      "relation": "same"
+    },
+    "brew:promtail": {
+      "icon": "si:grafana",
+      "relation": "maker"
+    },
+    "brew:proto": {
+      "icon": "si:moonrepo",
+      "relation": "maker"
+    },
+    "brew:protoc-gen-go-grpc": {
+      "icon": "gh:grpc",
+      "relation": "same"
+    },
+    "brew:protonpass/tap/pass-cli": {
+      "icon": "gh:protonpass",
+      "relation": "maker"
+    },
+    "brew:prowler": {
+      "icon": "gh:prowler-cloud",
+      "relation": "same"
+    },
+    "brew:pscale": {
+      "icon": "si:planetscale",
+      "relation": "maker"
+    },
+    "brew:pulumi": {
+      "icon": "si:pulumi",
+      "relation": "same"
+    },
+    "brew:pup": {
+      "icon": "si:datadog",
+      "relation": "maker"
+    },
+    "brew:pwntools": {
+      "icon": "gh:gallopsled",
+      "relation": "same"
+    },
+    "brew:pydantic": {
+      "icon": "si:pydantic",
+      "relation": "same"
+    },
+    "brew:pygments": {
+      "icon": "gh:pygments",
+      "relation": "same"
+    },
+    "brew:pymol": {
+      "icon": "gh:schrodinger",
+      "relation": "maker"
+    },
+    "brew:pypy": {
+      "icon": "si:pypy",
+      "relation": "same"
+    },
+    "brew:pyright": {
+      "icon": "gh:microsoft",
+      "relation": "maker"
+    },
+    "brew:pyscn": {
+      "icon": "gh:ludo-technologies",
+      "relation": "maker"
+    },
+    "brew:pyside": {
+      "icon": "si:qt",
+      "relation": "maker"
+    },
+    "brew:pytest": {
+      "icon": "si:pytest",
+      "relation": "same"
+    },
+    "brew:python": {
+      "icon": "si:python",
+      "relation": "same"
+    },
+    "brew:python-freethreading": {
+      "icon": "si:python",
+      "relation": "same"
+    },
+    "brew:python-gdbm": {
+      "icon": "si:python",
+      "relation": "maker"
+    },
+    "brew:python-markdown": {
+      "icon": "gh:python-markdown",
+      "relation": "same"
+    },
+    "brew:python-setuptools": {
+      "icon": "si:setuptools",
+      "relation": "same"
+    },
+    "brew:python-tk": {
+      "icon": "si:python",
+      "relation": "maker"
+    },
+    "brew:pytorch": {
+      "icon": "si:pytorch",
+      "relation": "same"
+    },
+    "brew:qalculate-gtk": {
+      "icon": "gh:qalculate",
+      "relation": "same"
+    },
+    "brew:qemu": {
+      "icon": "si:qemu",
+      "relation": "same"
+    },
+    "brew:qlik-oss/taps/qlik-cli": {
+      "icon": "si:qlik",
+      "relation": "maker"
+    },
+    "brew:qmk/qmk/qmk": {
+      "icon": "si:qmk",
+      "relation": "same"
+    },
+    "brew:qpdf": {
+      "icon": "gh:qpdf",
+      "relation": "same"
+    },
+    "brew:qsv": {
+      "icon": "gh:dathere",
+      "relation": "maker"
+    },
+    "brew:qt": {
+      "icon": "si:qt",
+      "relation": "same"
+    },
+    "brew:qtbase": {
+      "icon": "si:qt",
+      "relation": "same"
+    },
+    "brew:qtgrpc": {
+      "icon": "si:qt",
+      "relation": "maker"
+    },
+    "brew:qtsvg": {
+      "icon": "si:qt",
+      "relation": "maker"
+    },
+    "brew:qttools": {
+      "icon": "si:qt",
+      "relation": "same"
+    },
+    "brew:qtwebengine": {
+      "icon": "si:qt",
+      "relation": "maker"
+    },
+    "brew:qwen-code": {
+      "icon": "si:qwen",
+      "relation": "maker"
+    },
+    "brew:r": {
+      "icon": "si:r",
+      "relation": "same"
+    },
+    "brew:rabbitmq": {
+      "icon": "si:rabbitmq",
+      "relation": "same"
+    },
+    "brew:radare2": {
+      "icon": "gh:radareorg",
+      "relation": "same"
+    },
+    "brew:railway": {
+      "icon": "si:railway",
+      "relation": "same"
+    },
+    "brew:rakudo-star": {
+      "icon": "gh:rakudo",
+      "relation": "same"
+    },
+    "brew:rancher-cli": {
+      "icon": "si:rancher",
+      "relation": "same"
+    },
+    "brew:ranger": {
+      "icon": "gh:ranger",
+      "relation": "same"
+    },
+    "brew:raylib": {
+      "icon": "si:raylib",
+      "relation": "same"
+    },
+    "brew:rbenv": {
+      "icon": "gh:rbenv",
+      "relation": "same"
+    },
+    "brew:rbenv/tap/openssl": {
+      "icon": "si:openssl",
+      "relation": "same"
+    },
+    "brew:rbspy": {
+      "icon": "gh:rbspy",
+      "relation": "same"
+    },
+    "brew:rclone": {
+      "icon": "si:rclone",
+      "relation": "same"
+    },
+    "brew:readline": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:redis": {
+      "icon": "si:redis",
+      "relation": "same"
+    },
+    "brew:redpanda-data/tap/redpanda": {
+      "icon": "gh:redpanda-data",
+      "relation": "same"
+    },
+    "brew:regclient": {
+      "icon": "gh:regclient",
+      "relation": "same"
+    },
+    "brew:render": {
+      "icon": "si:render",
+      "relation": "same"
+    },
+    "brew:renovate": {
+      "icon": "si:renovate",
+      "relation": "same"
+    },
+    "brew:replicatedhq/replicated/cli": {
+      "icon": "gh:replicatedhq",
+      "relation": "same"
+    },
+    "brew:resend/cli/resend": {
+      "icon": "si:resend",
+      "relation": "same"
+    },
+    "brew:restic": {
+      "icon": "gh:restic",
+      "relation": "same"
+    },
+    "brew:rfidresearchgroup/proxmark3/proxmark3": {
+      "icon": "gh:rfidresearchgroup",
+      "relation": "maker"
+    },
+    "brew:riscv64-elf-binutils": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:rizin": {
+      "icon": "gh:rizinorg",
+      "relation": "same"
+    },
+    "brew:robusta-dev/holmesgpt/holmesgpt": {
+      "icon": "gh:robusta-dev",
+      "relation": "maker"
+    },
+    "brew:robusta-dev/krr/krr": {
+      "icon": "gh:robusta-dev",
+      "relation": "maker"
+    },
+    "brew:rocksdb": {
+      "icon": "si:rocksdb",
+      "relation": "same"
+    },
+    "brew:rocq": {
+      "icon": "gh:rocq-prover",
+      "relation": "same"
+    },
+    "brew:rojo": {
+      "icon": "gh:rojo-rbx",
+      "relation": "same"
+    },
+    "brew:rom-tools": {
+      "icon": "gh:mamedev",
+      "relation": "same"
+    },
+    "brew:root": {
+      "icon": "si:root",
+      "relation": "same"
+    },
+    "brew:rosa-cli": {
+      "icon": "si:redhatopenshift",
+      "relation": "maker"
+    },
+    "brew:rover": {
+      "icon": "si:apollographql",
+      "relation": "maker"
+    },
+    "brew:rpm": {
+      "icon": "gh:rpm-software-management",
+      "relation": "same"
+    },
+    "brew:rqlite": {
+      "icon": "gh:rqlite",
+      "relation": "same"
+    },
+    "brew:rtk": {
+      "icon": "gh:rtk-ai",
+      "relation": "same"
+    },
+    "brew:ruby": {
+      "icon": "si:ruby",
+      "relation": "same"
+    },
+    "brew:ruby-build": {
+      "icon": "gh:rbenv",
+      "relation": "same"
+    },
+    "brew:ruff": {
+      "icon": "si:ruff",
+      "relation": "same"
+    },
+    "brew:runme": {
+      "icon": "gh:runmedev",
+      "relation": "same"
+    },
+    "brew:runpod/runpodctl/runpodctl": {
+      "icon": "gh:runpod",
+      "relation": "maker"
+    },
+    "brew:rust": {
+      "icon": "si:rust",
+      "relation": "same"
+    },
+    "brew:rust-analyzer": {
+      "icon": "si:rust",
+      "relation": "maker"
+    },
+    "brew:rustls-ffi": {
+      "icon": "gh:rustls",
+      "relation": "same"
+    },
+    "brew:rustup": {
+      "icon": "si:rust",
+      "relation": "maker"
+    },
+    "brew:rv": {
+      "icon": "gh:spinel-coop",
+      "relation": "maker"
+    },
+    "brew:s2n": {
+      "icon": "gh:aws",
+      "relation": "same"
+    },
+    "brew:saml2aws": {
+      "icon": "gh:versent",
+      "relation": "maker"
+    },
+    "brew:sbt": {
+      "icon": "gh:sbt",
+      "relation": "same"
+    },
+    "brew:scala": {
+      "icon": "si:scala",
+      "relation": "same"
+    },
+    "brew:sccache": {
+      "icon": "gh:mozilla",
+      "relation": "same"
+    },
+    "brew:scipy": {
+      "icon": "si:scipy",
+      "relation": "same"
+    },
+    "brew:scrapy": {
+      "icon": "si:scrapy",
+      "relation": "same"
+    },
+    "brew:scrcpy": {
+      "icon": "gh:genymobile",
+      "relation": "same"
+    },
+    "brew:screen": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:scw": {
+      "icon": "gh:scaleway",
+      "relation": "same"
+    },
+    "brew:sdkman/tap/sdkman-cli": {
+      "icon": "gh:sdkman",
+      "relation": "same"
+    },
+    "brew:sdl2-compat": {
+      "icon": "gh:libsdl-org",
+      "relation": "same"
+    },
+    "brew:sdl2_image": {
+      "icon": "gh:libsdl-org",
+      "relation": "same"
+    },
+    "brew:sdl2_mixer": {
+      "icon": "gh:libsdl-org",
+      "relation": "same"
+    },
+    "brew:sdl2_ttf": {
+      "icon": "gh:libsdl-org",
+      "relation": "same"
+    },
+    "brew:sdl3": {
+      "icon": "gh:libsdl-org",
+      "relation": "same"
+    },
+    "brew:seaweedfs": {
+      "icon": "gh:seaweedfs",
+      "relation": "same"
+    },
+    "brew:selenium-server": {
+      "icon": "gh:seleniumhq",
+      "relation": "same"
+    },
+    "brew:semgrep": {
+      "icon": "gh:semgrep",
+      "relation": "same"
+    },
+    "brew:sentry-cli": {
+      "icon": "si:sentry",
+      "relation": "maker"
+    },
+    "brew:sevenzip": {
+      "icon": "si:7zip",
+      "relation": "same"
+    },
+    "brew:sfml": {
+      "icon": "si:sfml",
+      "relation": "same"
+    },
+    "brew:shellspec": {
+      "icon": "gh:shellspec",
+      "relation": "same"
+    },
+    "brew:sherlock": {
+      "icon": "gh:sherlock-project",
+      "relation": "same"
+    },
+    "brew:simdjson": {
+      "icon": "gh:simdjson",
+      "relation": "same"
+    },
+    "brew:simdutf": {
+      "icon": "gh:simdutf",
+      "relation": "same"
+    },
+    "brew:sing-box": {
+      "icon": "gh:sagernet",
+      "relation": "same"
+    },
+    "brew:skaffold": {
+      "icon": "si:skaffold",
+      "relation": "same"
+    },
+    "brew:skip": {
+      "icon": "gh:skiptools",
+      "relation": "same"
+    },
+    "brew:sleuthkit": {
+      "icon": "gh:sleuthkit",
+      "relation": "same"
+    },
+    "brew:smithy-lang/tap/smithy-cli": {
+      "icon": "gh:smithy-lang",
+      "relation": "maker"
+    },
+    "brew:snakemake": {
+      "icon": "gh:snakemake",
+      "relation": "same"
+    },
+    "brew:snapcraft": {
+      "icon": "si:snapcraft",
+      "relation": "same"
+    },
+    "brew:snort": {
+      "icon": "si:snort",
+      "relation": "same"
+    },
+    "brew:snowflake-cli": {
+      "icon": "si:snowflake",
+      "relation": "maker"
+    },
+    "brew:snyk-cli": {
+      "icon": "si:snyk",
+      "relation": "maker"
+    },
+    "brew:solana": {
+      "icon": "si:solana",
+      "relation": "same"
+    },
+    "brew:solidity": {
+      "icon": "si:solidity",
+      "relation": "same"
+    },
+    "brew:sonar-scanner": {
+      "icon": "si:sonar",
+      "relation": "maker"
+    },
+    "brew:sops": {
+      "icon": "gh:getsops",
+      "relation": "same"
+    },
+    "brew:sourcegraph/src-cli/src-cli": {
+      "icon": "gh:sourcegraph",
+      "relation": "maker"
+    },
+    "brew:spacelift-io/spacelift/spacectl": {
+      "icon": "gh:spacelift-io",
+      "relation": "maker"
+    },
+    "brew:spaceship": {
+      "icon": "gh:spaceship-prompt",
+      "relation": "same"
+    },
+    "brew:speakeasy-api/tap/speakeasy": {
+      "icon": "gh:speakeasy-api",
+      "relation": "maker"
+    },
+    "brew:specify": {
+      "icon": "gh:github",
+      "relation": "same"
+    },
+    "brew:specstoryai/tap/specstory": {
+      "icon": "gh:specstoryai",
+      "relation": "maker"
+    },
+    "brew:sphinx-doc": {
+      "icon": "gh:sphinx-doc",
+      "relation": "same"
+    },
+    "brew:spicetify-cli": {
+      "icon": "gh:spicetify",
+      "relation": "same"
+    },
+    "brew:spring-io/tap/spring-boot": {
+      "icon": "si:springboot",
+      "relation": "same"
+    },
+    "brew:sqlc": {
+      "icon": "gh:sqlc-dev",
+      "relation": "same"
+    },
+    "brew:sqlcipher": {
+      "icon": "gh:sqlcipher",
+      "relation": "same"
+    },
+    "brew:sqlcmd": {
+      "icon": "gh:microsoft",
+      "relation": "maker"
+    },
+    "brew:sqlite": {
+      "icon": "si:sqlite",
+      "relation": "same"
+    },
+    "brew:sqruff": {
+      "icon": "gh:quarylabs",
+      "relation": "maker"
+    },
+    "brew:squid": {
+      "icon": "gh:squid-cache",
+      "relation": "same"
+    },
+    "brew:srt": {
+      "icon": "gh:haivision",
+      "relation": "maker"
+    },
+    "brew:ssh-copy-id": {
+      "icon": "gh:openssh",
+      "relation": "maker"
+    },
+    "brew:stacklok/tap/thv": {
+      "icon": "gh:stacklok",
+      "relation": "maker"
+    },
+    "brew:starship": {
+      "icon": "si:starship",
+      "relation": "same"
+    },
+    "brew:steampipe": {
+      "icon": "gh:turbot",
+      "relation": "maker"
+    },
+    "brew:step": {
+      "icon": "gh:smallstep",
+      "relation": "same"
+    },
+    "brew:stern": {
+      "icon": "gh:stern",
+      "relation": "same"
+    },
+    "brew:stow": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:strace": {
+      "icon": "gh:strace",
+      "relation": "same"
+    },
+    "brew:streamlink": {
+      "icon": "gh:streamlink",
+      "relation": "same"
+    },
+    "brew:stripe-cli": {
+      "icon": "si:stripe",
+      "relation": "maker"
+    },
+    "brew:stripe/stripe-cli/stripe": {
+      "icon": "si:stripe",
+      "relation": "maker"
+    },
+    "brew:strongswan": {
+      "icon": "si:strongswan",
+      "relation": "same"
+    },
+    "brew:stylelint": {
+      "icon": "si:stylelint",
+      "relation": "same"
+    },
+    "brew:subfinder": {
+      "icon": "gh:projectdiscovery",
+      "relation": "same"
+    },
+    "brew:subversion": {
+      "icon": "si:subversion",
+      "relation": "same"
+    },
+    "brew:sui": {
+      "icon": "si:sui",
+      "relation": "same"
+    },
+    "brew:supabase": {
+      "icon": "si:supabase",
+      "relation": "same"
+    },
+    "brew:supabase/tap/supabase": {
+      "icon": "si:supabase",
+      "relation": "same"
+    },
+    "brew:supervisor": {
+      "icon": "gh:supervisor",
+      "relation": "same"
+    },
+    "brew:surrealdb/tap/surreal": {
+      "icon": "gh:surrealdb",
+      "relation": "same"
+    },
+    "brew:svgo": {
+      "icon": "si:svgo",
+      "relation": "same"
+    },
+    "brew:swagger-codegen": {
+      "icon": "si:swagger",
+      "relation": "maker"
+    },
+    "brew:swi-prolog": {
+      "icon": "gh:swi-prolog",
+      "relation": "same"
+    },
+    "brew:swift": {
+      "icon": "si:swift",
+      "relation": "same"
+    },
+    "brew:swift-format": {
+      "icon": "gh:swiftlang",
+      "relation": "maker"
+    },
+    "brew:swift-protobuf": {
+      "icon": "gh:apple",
+      "relation": "same"
+    },
+    "brew:swiftgen": {
+      "icon": "gh:swiftgen",
+      "relation": "same"
+    },
+    "brew:swiftlint": {
+      "icon": "gh:realm",
+      "relation": "maker"
+    },
+    "brew:swig": {
+      "icon": "gh:swig",
+      "relation": "same"
+    },
+    "brew:syft": {
+      "icon": "gh:anchore",
+      "relation": "maker"
+    },
+    "brew:symfony-cli": {
+      "icon": "si:symfony",
+      "relation": "maker"
+    },
+    "brew:symfony-cli/tap/symfony-cli": {
+      "icon": "si:symfony",
+      "relation": "maker"
+    },
+    "brew:syncthing": {
+      "icon": "si:syncthing",
+      "relation": "same"
+    },
+    "brew:systemd": {
+      "icon": "gh:systemd",
+      "relation": "same"
+    },
+    "brew:taglib": {
+      "icon": "gh:taglib",
+      "relation": "same"
+    },
+    "brew:tailscale": {
+      "icon": "si:tailscale",
+      "relation": "same"
+    },
+    "brew:tailwindcss": {
+      "icon": "si:tailwindcss",
+      "relation": "same"
+    },
+    "brew:talisman": {
+      "icon": "gh:thoughtworks",
+      "relation": "maker"
+    },
+    "brew:talosctl": {
+      "icon": "gh:siderolabs",
+      "relation": "same"
+    },
+    "brew:tbb": {
+      "icon": "gh:uxlfoundation",
+      "relation": "maker"
+    },
+    "brew:tcpdump": {
+      "icon": "gh:the-tcpdump-group",
+      "relation": "same"
+    },
+    "brew:tealdeer": {
+      "icon": "gh:tealdeer-rs",
+      "relation": "same"
+    },
+    "brew:teamookla/speedtest/speedtest": {
+      "icon": "si:speedtest",
+      "relation": "same"
+    },
+    "brew:tectonic": {
+      "icon": "gh:tectonic-typesetting",
+      "relation": "same"
+    },
+    "brew:telegraf": {
+      "icon": "gh:influxdata",
+      "relation": "maker"
+    },
+    "brew:teleport": {
+      "icon": "gh:gravitational",
+      "relation": "maker"
+    },
+    "brew:telnet": {
+      "icon": "gh:apple-oss-distributions",
+      "relation": "maker"
+    },
+    "brew:temporal": {
+      "icon": "si:temporal",
+      "relation": "same"
+    },
+    "brew:tenv": {
+      "icon": "gh:tofuutils",
+      "relation": "same"
+    },
+    "brew:terminator": {
+      "icon": "gh:gnome-terminator",
+      "relation": "same"
+    },
+    "brew:terraform": {
+      "icon": "si:terraform",
+      "relation": "same"
+    },
+    "brew:terraform-docs": {
+      "icon": "gh:terraform-docs",
+      "relation": "same"
+    },
+    "brew:terraform-ls": {
+      "icon": "gh:hashicorp",
+      "relation": "maker"
+    },
+    "brew:terragrunt": {
+      "icon": "gh:gruntwork-io",
+      "relation": "maker"
+    },
+    "brew:terramate": {
+      "icon": "gh:terramate-io",
+      "relation": "same"
+    },
+    "brew:terratag": {
+      "icon": "gh:env0",
+      "relation": "maker"
+    },
+    "brew:tesseract": {
+      "icon": "gh:tesseract-ocr",
+      "relation": "same"
+    },
+    "brew:tesseract-lang": {
+      "icon": "gh:tesseract-ocr",
+      "relation": "same"
+    },
+    "brew:testkube": {
+      "icon": "gh:kubeshop",
+      "relation": "maker"
+    },
+    "brew:texinfo": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:texlab": {
+      "icon": "gh:latex-lsp",
+      "relation": "same"
+    },
+    "brew:texlive": {
+      "icon": "gh:tex-live",
+      "relation": "same"
+    },
+    "brew:tfsec": {
+      "icon": "gh:aquasecurity",
+      "relation": "maker"
+    },
+    "brew:tgenv": {
+      "icon": "gh:tgenv",
+      "relation": "same"
+    },
+    "brew:tidy-html5": {
+      "icon": "gh:htacg",
+      "relation": "same"
+    },
+    "brew:tiger-vnc": {
+      "icon": "gh:tigervnc",
+      "relation": "same"
+    },
+    "brew:tilt": {
+      "icon": "gh:tilt-dev",
+      "relation": "same"
+    },
+    "brew:timescale/tap/timescaledb": {
+      "icon": "gh:timescale",
+      "relation": "maker"
+    },
+    "brew:tinygo-org/tools/tinygo": {
+      "icon": "gh:tinygo-org",
+      "relation": "same"
+    },
+    "brew:tio": {
+      "icon": "gh:tio",
+      "relation": "same"
+    },
+    "brew:tippecanoe": {
+      "icon": "gh:felt",
+      "relation": "maker"
+    },
+    "brew:tldr": {
+      "icon": "gh:tldr-pages",
+      "relation": "same"
+    },
+    "brew:tlrc": {
+      "icon": "gh:tldr-pages",
+      "relation": "same"
+    },
+    "brew:tmux": {
+      "icon": "si:tmux",
+      "relation": "same"
+    },
+    "brew:tnftp": {
+      "icon": "si:netbsd",
+      "relation": "maker"
+    },
+    "brew:todoist-cli": {
+      "icon": "si:todoist",
+      "relation": "same"
+    },
+    "brew:tombi": {
+      "icon": "gh:tombi-toml",
+      "relation": "same"
+    },
+    "brew:traefik": {
+      "icon": "si:traefikproxy",
+      "relation": "same"
+    },
+    "brew:transmission-cli": {
+      "icon": "si:transmission",
+      "relation": "maker"
+    },
+    "brew:treemd": {
+      "icon": "gh:epistates",
+      "relation": "same"
+    },
+    "brew:trivy": {
+      "icon": "si:trivy",
+      "relation": "same"
+    },
+    "brew:trufflehog": {
+      "icon": "gh:trufflesecurity",
+      "relation": "same"
+    },
+    "brew:turbot/tap/steampipe": {
+      "icon": "gh:turbot",
+      "relation": "maker"
+    },
+    "brew:turso": {
+      "icon": "si:turso",
+      "relation": "same"
+    },
+    "brew:twilio/brew/twilio": {
+      "icon": "gh:twilio",
+      "relation": "same"
+    },
+    "brew:txn2/tap/kubefwd": {
+      "icon": "gh:txn2",
+      "relation": "maker"
+    },
+    "brew:ty": {
+      "icon": "si:ty",
+      "relation": "same"
+    },
+    "brew:typescript": {
+      "icon": "si:typescript",
+      "relation": "same"
+    },
+    "brew:typst": {
+      "icon": "si:typst",
+      "relation": "same"
+    },
+    "brew:ugrep": {
+      "icon": "gh:genivia",
+      "relation": "same"
+    },
+    "brew:uhd": {
+      "icon": "gh:ettusresearch",
+      "relation": "maker"
+    },
+    "brew:unar": {
+      "icon": "gh:macpaw",
+      "relation": "maker"
+    },
+    "brew:unbound": {
+      "icon": "gh:nlnetlabs",
+      "relation": "maker"
+    },
+    "brew:upx": {
+      "icon": "gh:upx",
+      "relation": "same"
+    },
+    "brew:utf8proc": {
+      "icon": "gh:juliastrings",
+      "relation": "same"
+    },
+    "brew:uutils-coreutils": {
+      "icon": "gh:uutils",
+      "relation": "same"
+    },
+    "brew:uutils-findutils": {
+      "icon": "gh:uutils",
+      "relation": "same"
+    },
+    "brew:uv": {
+      "icon": "si:uv",
+      "relation": "same"
+    },
+    "brew:v2ray": {
+      "icon": "gh:v2fly",
+      "relation": "same"
+    },
+    "brew:v2raya/v2raya/v2raya": {
+      "icon": "gh:v2raya",
+      "relation": "same"
+    },
+    "brew:v8": {
+      "icon": "si:v8",
+      "relation": "same"
+    },
+    "brew:vala": {
+      "icon": "si:vala",
+      "relation": "same"
+    },
+    "brew:valkey": {
+      "icon": "gh:valkey-io",
+      "relation": "same"
+    },
+    "brew:vapor": {
+      "icon": "si:vapor",
+      "relation": "same"
+    },
+    "brew:vcluster": {
+      "icon": "gh:loft-sh",
+      "relation": "maker"
+    },
+    "brew:vde": {
+      "icon": "gh:virtualsquare",
+      "relation": "maker"
+    },
+    "brew:vectordotdev/brew/vector": {
+      "icon": "gh:vectordotdev",
+      "relation": "same"
+    },
+    "brew:velero": {
+      "icon": "gh:velero-io",
+      "relation": "same"
+    },
+    "brew:veracode/tap/gen-ir": {
+      "icon": "gh:veracode",
+      "relation": "maker"
+    },
+    "brew:vercel": {
+      "icon": "si:vercel",
+      "relation": "same"
+    },
+    "brew:vercel-cli": {
+      "icon": "si:vercel",
+      "relation": "same"
+    },
+    "brew:verilator": {
+      "icon": "gh:verilator",
+      "relation": "same"
+    },
+    "brew:vespa-cli": {
+      "icon": "gh:vespa-engine",
+      "relation": "maker"
+    },
+    "brew:vfkit": {
+      "icon": "gh:crc-org",
+      "relation": "maker"
+    },
+    "brew:vfox": {
+      "icon": "gh:version-fox",
+      "relation": "same"
+    },
+    "brew:video-compare": {
+      "icon": "gh:pixop",
+      "relation": "maker"
+    },
+    "brew:vim": {
+      "icon": "si:vim",
+      "relation": "same"
+    },
+    "brew:virt-manager": {
+      "icon": "gh:virt-manager",
+      "relation": "same"
+    },
+    "brew:virtctl": {
+      "icon": "gh:kubevirt",
+      "relation": "same"
+    },
+    "brew:virtuslab/scala-cli/scala-cli": {
+      "icon": "gh:virtuslab",
+      "relation": "maker"
+    },
+    "brew:vite": {
+      "icon": "si:vite",
+      "relation": "same"
+    },
+    "brew:volta": {
+      "icon": "gh:volta-cli",
+      "relation": "same"
+    },
+    "brew:vte3": {
+      "icon": "si:gnome",
+      "relation": "maker"
+    },
+    "brew:vulkan-headers": {
+      "icon": "gh:khronosgroup",
+      "relation": "maker"
+    },
+    "brew:vulkan-loader": {
+      "icon": "gh:khronosgroup",
+      "relation": "maker"
+    },
+    "brew:wakatime-cli": {
+      "icon": "si:wakatime",
+      "relation": "same"
+    },
+    "brew:wangle": {
+      "icon": "si:facebook",
+      "relation": "maker"
+    },
+    "brew:wardenenv/warden/warden": {
+      "icon": "gh:wardenenv",
+      "relation": "same"
+    },
+    "brew:wasmer": {
+      "icon": "si:wasmer",
+      "relation": "same"
+    },
+    "brew:wasmtime": {
+      "icon": "gh:bytecodealliance",
+      "relation": "maker"
+    },
+    "brew:watchexec": {
+      "icon": "gh:watchexec",
+      "relation": "same"
+    },
+    "brew:watchman": {
+      "icon": "si:facebook",
+      "relation": "maker"
+    },
+    "brew:wdiff": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:webp": {
+      "icon": "si:google",
+      "relation": "maker"
+    },
+    "brew:weechat": {
+      "icon": "gh:weechat",
+      "relation": "same"
+    },
+    "brew:wget": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:whisperkit-cli": {
+      "icon": "gh:argmaxinc",
+      "relation": "maker"
+    },
+    "brew:wireguard-go": {
+      "icon": "si:wireguard",
+      "relation": "maker"
+    },
+    "brew:wireguard-tools": {
+      "icon": "si:wireguard",
+      "relation": "same"
+    },
+    "brew:wireshark": {
+      "icon": "si:wireshark",
+      "relation": "same"
+    },
+    "brew:wp-cli": {
+      "icon": "gh:wp-cli",
+      "relation": "same"
+    },
+    "brew:wtfutil": {
+      "icon": "gh:wtfutil",
+      "relation": "same"
+    },
+    "brew:wxmaxima": {
+      "icon": "gh:wxmaxima-developers",
+      "relation": "same"
+    },
+    "brew:wxwidgets": {
+      "icon": "gh:wxwidgets",
+      "relation": "same"
+    },
+    "brew:x-cmd": {
+      "icon": "gh:x-cmd",
+      "relation": "same"
+    },
+    "brew:x265": {
+      "icon": "gh:multicorewareinc",
+      "relation": "maker"
+    },
+    "brew:x86_64-elf-gcc": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:x86_64-linux-gnu-binutils": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:xan": {
+      "icon": "gh:medialab",
+      "relation": "maker"
+    },
+    "brew:xctesthtmlreport": {
+      "icon": "gh:xctesthtmlreport",
+      "relation": "same"
+    },
+    "brew:xmake": {
+      "icon": "gh:xmake-io",
+      "relation": "same"
+    },
+    "brew:xo/xo/usql": {
+      "icon": "gh:xo",
+      "relation": "maker"
+    },
+    "brew:xonsh": {
+      "icon": "gh:xonsh",
+      "relation": "same"
+    },
+    "brew:xorg-server": {
+      "icon": "si:xdotorg",
+      "relation": "same"
+    },
+    "brew:xorriso": {
+      "icon": "si:gnu",
+      "relation": "maker"
+    },
+    "brew:xray": {
+      "icon": "gh:xtls",
+      "relation": "same"
+    },
+    "brew:xz": {
+      "icon": "gh:tukaani-project",
+      "relation": "same"
+    },
+    "brew:yadm": {
+      "icon": "gh:yadm-dev",
+      "relation": "same"
+    },
+    "brew:yaml-language-server": {
+      "icon": "gh:redhat-developer",
+      "relation": "same"
+    },
+    "brew:yamlfmt": {
+      "icon": "gh:google",
+      "relation": "maker"
+    },
+    "brew:yara": {
+      "icon": "gh:virustotal",
+      "relation": "maker"
+    },
+    "brew:yarn": {
+      "icon": "si:yarn",
+      "relation": "same"
+    },
+    "brew:yasm": {
+      "icon": "gh:yasm",
+      "relation": "same"
+    },
+    "brew:yewtube": {
+      "icon": "gh:mps-youtube",
+      "relation": "maker"
+    },
+    "brew:ykman": {
+      "icon": "gh:yubico",
+      "relation": "same"
+    },
+    "brew:yosys": {
+      "icon": "gh:yosyshq",
+      "relation": "same"
+    },
+    "brew:yt-dlp": {
+      "icon": "gh:yt-dlp",
+      "relation": "same"
+    },
+    "brew:ytt": {
+      "icon": "gh:carvel-dev",
+      "relation": "maker"
+    },
+    "brew:yubico-piv-tool": {
+      "icon": "si:yubico",
+      "relation": "maker"
+    },
+    "brew:z3": {
+      "icon": "gh:z3prover",
+      "relation": "same"
+    },
+    "brew:zeek": {
+      "icon": "gh:zeek",
+      "relation": "same"
+    },
+    "brew:zellij": {
+      "icon": "gh:zellij-org",
+      "relation": "same"
+    },
+    "brew:zenity": {
+      "icon": "si:gnome",
+      "relation": "maker"
+    },
+    "brew:zeroclaw": {
+      "icon": "gh:zeroclaw-labs",
+      "relation": "same"
+    },
+    "brew:zig": {
+      "icon": "si:zig",
+      "relation": "same"
+    },
+    "brew:zinit": {
+      "icon": "gh:zdharma-continuum",
+      "relation": "maker"
+    },
+    "brew:zizmor": {
+      "icon": "gh:zizmorcore",
+      "relation": "same"
+    },
+    "brew:zk": {
+      "icon": "gh:zk-org",
+      "relation": "same"
+    },
+    "brew:zls": {
+      "icon": "gh:zigtools",
+      "relation": "same"
+    },
+    "brew:zola": {
+      "icon": "si:zola",
+      "relation": "same"
+    },
+    "brew:zplug": {
+      "icon": "gh:zplug",
+      "relation": "same"
+    },
+    "brew:zrok": {
+      "icon": "gh:openziti",
+      "relation": "maker"
+    },
+    "brew:zsh": {
+      "icon": "si:zsh",
+      "relation": "same"
+    },
+    "brew:zsh-autosuggestions": {
+      "icon": "gh:zsh-users",
+      "relation": "same"
+    },
+    "brew:zsh-completions": {
+      "icon": "gh:zsh-users",
+      "relation": "same"
+    },
+    "brew:zsh-fast-syntax-highlighting": {
+      "icon": "gh:zdharma-continuum",
+      "relation": "maker"
+    },
+    "brew:zsh-syntax-highlighting": {
+      "icon": "gh:zsh-users",
+      "relation": "same"
+    },
+    "brew:zstd": {
+      "icon": "gh:facebook",
+      "relation": "maker"
+    },
+    "cargo:a11ywatch_cli": {
+      "icon": "gh:a11ywatch",
+      "relation": "same"
+    },
+    "cargo:any_ascii": {
+      "icon": "gh:anyascii",
+      "relation": "same"
+    },
+    "cargo:async-log": {
+      "icon": "gh:rustasync",
+      "relation": "maker"
+    },
+    "cargo:bat": {
+      "icon": "si:bat",
+      "relation": "same"
+    },
+    "cargo:boa_gc": {
+      "icon": "gh:boa-dev",
+      "relation": "same"
+    },
+    "cargo:bpf-linker": {
+      "icon": "gh:aya-rs",
+      "relation": "same"
+    },
+    "cargo:c2rust-bitfields": {
+      "icon": "gh:immunant",
+      "relation": "maker"
+    },
+    "cargo:c2rust-bitfields-derive": {
+      "icon": "gh:immunant",
+      "relation": "maker"
+    },
+    "cargo:cargo-binutils": {
+      "icon": "gh:rust-embedded",
+      "relation": "same"
+    },
+    "cargo:cargo-cyclonedx": {
+      "icon": "gh:cyclonedx",
+      "relation": "same"
+    },
+    "cargo:cargo-pgrx": {
+      "icon": "gh:pgcentralfoundation",
+      "relation": "maker"
+    },
+    "cargo:cargo-public-api": {
+      "icon": "gh:cargo-public-api",
+      "relation": "same"
+    },
+    "cargo:cargo-watch": {
+      "icon": "gh:watchexec",
+      "relation": "same"
+    },
+    "cargo:crossterm": {
+      "icon": "gh:crossterm-rs",
+      "relation": "same"
+    },
+    "cargo:espflash": {
+      "icon": "gh:esp-rs",
+      "relation": "maker"
+    },
+    "cargo:eza": {
+      "icon": "gh:eza-community",
+      "relation": "same"
+    },
+    "cargo:ferris-says": {
+      "icon": "gh:rust-lang",
+      "relation": "same"
+    },
+    "cargo:flip-link": {
+      "icon": "gh:knurling-rs",
+      "relation": "same"
+    },
+    "cargo:grcov": {
+      "icon": "gh:mozilla",
+      "relation": "same"
+    },
+    "cargo:hayagriva": {
+      "icon": "gh:typst",
+      "relation": "same"
+    },
+    "cargo:holochain_cli": {
+      "icon": "gh:holochain",
+      "relation": "same"
+    },
+    "cargo:holochain_cli_bundle": {
+      "icon": "gh:holochain",
+      "relation": "same"
+    },
+    "cargo:holochain_cli_sandbox": {
+      "icon": "gh:holochain",
+      "relation": "same"
+    },
+    "cargo:honggfuzz": {
+      "icon": "gh:rust-fuzz",
+      "relation": "maker"
+    },
+    "cargo:just": {
+      "icon": "si:just",
+      "relation": "same"
+    },
+    "cargo:magika": {
+      "icon": "gh:google",
+      "relation": "maker"
+    },
+    "cargo:maturin": {
+      "icon": "gh:pyo3",
+      "relation": "maker"
+    },
+    "cargo:mdbook-i18n-helpers": {
+      "icon": "gh:google",
+      "relation": "maker"
+    },
+    "cargo:r3bl_ansi_color": {
+      "icon": "gh:r3bl-org",
+      "relation": "same"
+    },
+    "cargo:r3bl_simple_logger": {
+      "icon": "gh:r3bl-org",
+      "relation": "same"
+    },
+    "cargo:r3bl_tui": {
+      "icon": "gh:r3bl-org",
+      "relation": "same"
+    },
+    "cargo:r3bl_tuify": {
+      "icon": "gh:r3bl-org",
+      "relation": "same"
+    },
+    "cargo:release-plz": {
+      "icon": "gh:release-plz",
+      "relation": "same"
+    },
+    "cargo:sccache": {
+      "icon": "si:mozilla",
+      "relation": "maker"
+    },
+    "cargo:ssstar": {
+      "icon": "gh:elastio",
+      "relation": "maker"
+    },
+    "cargo:starship": {
+      "icon": "si:starship",
+      "relation": "same"
+    },
+    "cargo:tauri-bundler": {
+      "icon": null,
+      "relation": "none"
+    },
+    "cargo:tokio-console": {
+      "icon": "gh:tokio-rs",
+      "relation": "same"
+    },
+    "cargo:uu_cp": {
+      "icon": "gh:uutils",
+      "relation": "same"
+    },
+    "cargo:uu_mkdir": {
+      "icon": "gh:uutils",
+      "relation": "same"
+    },
+    "cargo:uu_mktemp": {
+      "icon": "gh:uutils",
+      "relation": "same"
+    },
+    "cargo:uu_mv": {
+      "icon": "gh:uutils",
+      "relation": "same"
+    },
+    "cargo:uu_touch": {
+      "icon": "gh:uutils",
+      "relation": "same"
+    },
+    "cargo:uu_uname": {
+      "icon": "gh:uutils",
+      "relation": "same"
+    },
+    "cargo:uu_whoami": {
+      "icon": "gh:uutils",
+      "relation": "same"
+    },
+    "cargo:uucore": {
+      "icon": "gh:uutils",
+      "relation": "same"
+    },
+    "cargo:wasm-shrink": {
+      "icon": "gh:bytecodealliance",
+      "relation": "maker"
+    },
+    "cargo:wasm-smith": {
+      "icon": "gh:bytecodealliance",
+      "relation": "maker"
+    },
+    "cargo:watchexec-cli": {
+      "icon": "gh:watchexec",
+      "relation": "same"
+    },
+    "cask:1password-cli": {
+      "icon": "si:1password",
+      "relation": "maker"
+    },
+    "cask:adguard": {
+      "icon": "si:adguard",
+      "relation": "same"
+    },
+    "cask:amneziavpn": {
+      "icon": "gh:amnezia-vpn",
+      "relation": "same"
+    },
+    "cask:anaconda": {
+      "icon": "si:anaconda",
+      "relation": "same"
+    },
+    "cask:android-commandlinetools": {
+      "icon": "si:android",
+      "relation": "maker"
+    },
+    "cask:android-ndk": {
+      "icon": "si:android",
+      "relation": "maker"
+    },
+    "cask:android-platform-tools": {
+      "icon": "si:android",
+      "relation": "maker"
+    },
+    "cask:antigravity-cli": {
+      "icon": "gh:google-antigravity",
+      "relation": "same"
+    },
+    "cask:autodesk-fusion": {
+      "icon": "si:autodesk",
+      "relation": "maker"
+    },
+    "cask:aws-vault-binary": {
+      "icon": "gh:99designs",
+      "relation": "maker"
+    },
+    "cask:battle-net": {
+      "icon": "si:battledotnet",
+      "relation": "same"
+    },
+    "cask:citrix-workspace": {
+      "icon": "si:citrix",
+      "relation": "maker"
+    },
+    "cask:claude-code": {
+      "icon": "si:claudecode",
+      "relation": "same"
+    },
+    "cask:claude-code@latest": {
+      "icon": "si:claudecode",
+      "relation": "same"
+    },
+    "cask:clickhouse": {
+      "icon": "si:clickhouse",
+      "relation": "same"
+    },
+    "cask:cloudflare-warp": {
+      "icon": "si:cloudflare",
+      "relation": "maker"
+    },
+    "cask:codeql": {
+      "icon": "si:github",
+      "relation": "maker"
+    },
+    "cask:coderabbit": {
+      "icon": "si:coderabbit",
+      "relation": "same"
+    },
+    "cask:codex": {
+      "icon": "gh:openai",
+      "relation": "same"
+    },
+    "cask:copilot-cli": {
+      "icon": "si:githubcopilot",
+      "relation": "same"
+    },
+    "cask:copilot-cli@prerelease": {
+      "icon": "si:githubcopilot",
+      "relation": "same"
+    },
+    "cask:cursor-cli": {
+      "icon": "si:cursor",
+      "relation": "maker"
+    },
+    "cask:dotnet-runtime": {
+      "icon": "si:dotnet",
+      "relation": "same"
+    },
+    "cask:dotnet-sdk": {
+      "icon": "si:dotnet",
+      "relation": "same"
+    },
+    "cask:dotnet-sdk@8": {
+      "icon": "si:dotnet",
+      "relation": "same"
+    },
+    "cask:dotnet-sdk@9": {
+      "icon": "si:dotnet",
+      "relation": "same"
+    },
+    "cask:droid": {
+      "icon": "gh:Factory-AI",
+      "relation": "maker"
+    },
+    "cask:elgato-stream-deck": {
+      "icon": "si:elgato",
+      "relation": "maker"
+    },
+    "cask:flutter": {
+      "icon": "si:flutter",
+      "relation": "same"
+    },
+    "cask:font-cascadia-code": {
+      "icon": "gh:microsoft",
+      "relation": "maker"
+    },
+    "cask:font-d2coding": {
+      "icon": "si:naver",
+      "relation": "maker"
+    },
+    "cask:font-ibm-plex-mono": {
+      "icon": "gh:ibm",
+      "relation": "same"
+    },
+    "cask:font-jetbrains-mono": {
+      "icon": "si:jetbrains",
+      "relation": "maker"
+    },
+    "cask:font-monaspace": {
+      "icon": "gh:githubnext",
+      "relation": "same"
+    },
+    "cask:font-noto-sans-cjk": {
+      "icon": "gh:notofonts",
+      "relation": "same"
+    },
+    "cask:font-noto-sans-cjk-sc": {
+      "icon": "gh:notofonts",
+      "relation": "same"
+    },
+    "cask:font-roboto": {
+      "icon": "si:googlefonts",
+      "relation": "maker"
+    },
+    "cask:font-sf-mono": {
+      "icon": "si:apple",
+      "relation": "maker"
+    },
+    "cask:font-sf-pro": {
+      "icon": "si:apple",
+      "relation": "maker"
+    },
+    "cask:font-source-code-pro": {
+      "icon": "gh:google",
+      "relation": "maker"
+    },
+    "cask:gcc-arm-embedded": {
+      "icon": "si:arm",
+      "relation": "maker"
+    },
+    "cask:gcloud-cli": {
+      "icon": "si:googlecloud",
+      "relation": "maker"
+    },
+    "cask:git-credential-manager": {
+      "icon": "gh:git-ecosystem",
+      "relation": "same"
+    },
+    "cask:gitkraken-cli": {
+      "icon": "si:gitkraken",
+      "relation": "maker"
+    },
+    "cask:google-drive": {
+      "icon": "si:googledrive",
+      "relation": "same"
+    },
+    "cask:google-japanese-ime": {
+      "icon": "si:google",
+      "relation": "maker"
+    },
+    "cask:grok-build": {
+      "icon": "gh:xai-org",
+      "relation": "maker"
+    },
+    "cask:gstreamer-development": {
+      "icon": "si:gstreamer",
+      "relation": "same"
+    },
+    "cask:gstreamer-runtime": {
+      "icon": "si:gstreamer",
+      "relation": "same"
+    },
+    "cask:karabiner-elements": {
+      "icon": "gh:pqrs-org",
+      "relation": "maker"
+    },
+    "cask:kicad": {
+      "icon": null,
+      "relation": "none"
+    },
+    "cask:libndi": {
+      "icon": "si:ndi",
+      "relation": "same"
+    },
+    "cask:libreoffice-language-pack": {
+      "icon": "si:libreoffice",
+      "relation": "same"
+    },
+    "cask:macfuse": {
+      "icon": "gh:macfuse",
+      "relation": "same"
+    },
+    "cask:malwarebytes": {
+      "icon": "si:malwarebytes",
+      "relation": "same"
+    },
+    "cask:metasploit": {
+      "icon": "si:metasploit",
+      "relation": "same"
+    },
+    "cask:miniconda": {
+      "icon": "si:anaconda",
+      "relation": "maker"
+    },
+    "cask:miniforge": {
+      "icon": "si:condaforge",
+      "relation": "maker"
+    },
+    "cask:mullvad-vpn": {
+      "icon": "si:mullvad",
+      "relation": "same"
+    },
+    "cask:multipass": {
+      "icon": "si:canonical",
+      "relation": "maker"
+    },
+    "cask:mysql-shell": {
+      "icon": "si:mysql",
+      "relation": "maker"
+    },
+    "cask:nextcloud": {
+      "icon": "si:nextcloud",
+      "relation": "same"
+    },
+    "cask:ngrok": {
+      "icon": "si:ngrok",
+      "relation": "same"
+    },
+    "cask:nordvpn": {
+      "icon": "si:nordvpn",
+      "relation": "same"
+    },
+    "cask:ollama-app": {
+      "icon": "si:ollama",
+      "relation": "same"
+    },
+    "cask:ollama-binary": {
+      "icon": "si:ollama",
+      "relation": "same"
+    },
+    "cask:opensc-app": {
+      "icon": "gh:opensc",
+      "relation": "same"
+    },
+    "cask:openvpn-connect": {
+      "icon": "si:openvpn",
+      "relation": "maker"
+    },
+    "cask:openwebstart": {
+      "icon": "gh:karakun",
+      "relation": "maker"
+    },
+    "cask:powershell@preview": {
+      "icon": "gh:powershell",
+      "relation": "same"
+    },
+    "cask:quarto": {
+      "icon": "si:quarto",
+      "relation": "same"
+    },
+    "cask:r-app": {
+      "icon": "si:r",
+      "relation": "same"
+    },
+    "cask:salesforce-cli": {
+      "icon": "gh:salesforcecli",
+      "relation": "same"
+    },
+    "cask:sf-symbols": {
+      "icon": "si:apple",
+      "relation": "maker"
+    },
+    "cask:sfm": {
+      "icon": "gh:sagernet",
+      "relation": "same"
+    },
+    "cask:snowflake-snowsql": {
+      "icon": "si:snowflake",
+      "relation": "same"
+    },
+    "cask:squirrel-app": {
+      "icon": "gh:rime",
+      "relation": "maker"
+    },
+    "cask:steamcmd": {
+      "icon": "si:steam",
+      "relation": "maker"
+    },
+    "cask:tailscale-app": {
+      "icon": "si:tailscale",
+      "relation": "same"
+    },
+    "cask:teamviewer": {
+      "icon": "si:teamviewer",
+      "relation": "same"
+    },
+    "cask:temurin": {
+      "icon": "si:eclipseadoptium",
+      "relation": "maker"
+    },
+    "cask:temurin@11": {
+      "icon": "si:eclipseadoptium",
+      "relation": "maker"
+    },
+    "cask:temurin@17": {
+      "icon": "si:eclipseadoptium",
+      "relation": "maker"
+    },
+    "cask:temurin@21": {
+      "icon": "si:eclipseadoptium",
+      "relation": "maker"
+    },
+    "cask:temurin@25": {
+      "icon": "si:eclipseadoptium",
+      "relation": "maker"
+    },
+    "cask:temurin@8": {
+      "icon": "si:eclipseadoptium",
+      "relation": "maker"
+    },
+    "cask:thonny": {
+      "icon": "gh:thonny",
+      "relation": "same"
+    },
+    "cask:tuist": {
+      "icon": "gh:tuist",
+      "relation": "same"
+    },
+    "cask:vagrant": {
+      "icon": "si:vagrant",
+      "relation": "same"
+    },
+    "cask:virtualbox": {
+      "icon": "si:virtualbox",
+      "relation": "same"
+    },
+    "cask:wireshark-chmodbpf": {
+      "icon": "si:wireshark",
+      "relation": "same"
+    },
+    "cask:xquartz": {
+      "icon": "gh:xquartz",
+      "relation": "same"
+    },
+    "cask:zerotier-one": {
+      "icon": "si:zerotier",
+      "relation": "same"
+    },
+    "cask:zoom": {
+      "icon": "si:zoom",
+      "relation": "same"
+    },
+    "npm:@11ty/eleventy": {
+      "icon": "si:eleventy",
+      "relation": "same"
+    },
+    "npm:@11ty/eleventy-dev-server": {
+      "icon": "si:eleventy",
+      "relation": "maker"
+    },
+    "npm:@ampcode/cli": {
+      "icon": "gh:ampcode",
+      "relation": "same"
+    },
+    "npm:@angular/cli": {
+      "icon": "si:angular",
+      "relation": "maker"
+    },
+    "npm:@anthropic-ai/claude-code": {
+      "icon": "si:claudecode",
+      "relation": "same"
+    },
+    "npm:@apollo/rover": {
+      "icon": "si:apollographql",
+      "relation": "maker"
+    },
+    "npm:@argos-ci/cli": {
+      "icon": "gh:argos-ci",
+      "relation": "same"
+    },
+    "npm:@astryxdesign/cli": {
+      "icon": "gh:facebook",
+      "relation": "maker"
+    },
+    "npm:@augmentcode/auggie": {
+      "icon": "gh:augmentcode",
+      "relation": "maker"
+    },
+    "npm:@aws-amplify/cli": {
+      "icon": "gh:aws-amplify",
+      "relation": "maker"
+    },
+    "npm:@axe-core/cli": {
+      "icon": "gh:dequelabs",
+      "relation": "maker"
+    },
+    "npm:@babel/cli": {
+      "icon": "si:babel",
+      "relation": "same"
+    },
+    "npm:@biomejs/biome": {
+      "icon": "si:biome",
+      "relation": "same"
+    },
+    "npm:@bitwarden/cli": {
+      "icon": "si:bitwarden",
+      "relation": "maker"
+    },
+    "npm:@capacitor/cli": {
+      "icon": "si:capacitor",
+      "relation": "same"
+    },
+    "npm:@charmland/crush": {
+      "icon": "gh:charmbracelet",
+      "relation": "maker"
+    },
+    "npm:@cloudflare/wrangler": {
+      "icon": "si:cloudflare",
+      "relation": "maker"
+    },
+    "npm:@commitlint/cli": {
+      "icon": "si:commitlint",
+      "relation": "same"
+    },
+    "npm:@compodoc/live-server": {
+      "icon": "gh:compodoc",
+      "relation": "same"
+    },
+    "npm:@docusaurus/core": {
+      "icon": "si:docusaurus",
+      "relation": "same"
+    },
+    "npm:@e2b/cli": {
+      "icon": "gh:e2b-dev",
+      "relation": "maker"
+    },
+    "npm:@expo/cli": {
+      "icon": "si:expo",
+      "relation": "maker"
+    },
+    "npm:@factory/cli": {
+      "icon": "gh:Factory-AI",
+      "relation": "maker"
+    },
+    "npm:@fission-ai/openspec": {
+      "icon": "gh:fission-ai",
+      "relation": "same"
+    },
+    "npm:@formatjs/cli": {
+      "icon": "gh:formatjs",
+      "relation": "same"
+    },
+    "npm:@github/copilot": {
+      "icon": "si:githubcopilot",
+      "relation": "same"
+    },
+    "npm:@githubnext/github-copilot-cli": {
+      "icon": "si:githubcopilot",
+      "relation": "same"
+    },
+    "npm:@google/gemini-cli": {
+      "icon": "si:googlegemini",
+      "relation": "same"
+    },
+    "npm:@iflow-ai/iflow-cli": {
+      "icon": "gh:iflow-ai",
+      "relation": "maker"
+    },
+    "npm:@infisical/cli": {
+      "icon": "gh:infisical",
+      "relation": "same"
+    },
+    "npm:@ionic/cli": {
+      "icon": "si:ionic",
+      "relation": "same"
+    },
+    "npm:@kilocode/cli": {
+      "icon": "gh:kilo-org",
+      "relation": "maker"
+    },
+    "npm:@kubb/cli": {
+      "icon": "gh:kubb-labs",
+      "relation": "same"
+    },
+    "npm:@laravel/multiplex": {
+      "icon": "si:laravel",
+      "relation": "maker"
+    },
+    "npm:@lingui/cli": {
+      "icon": "gh:lingui",
+      "relation": "same"
+    },
+    "npm:@marp-team/marp-cli": {
+      "icon": "gh:marp-team",
+      "relation": "same"
+    },
+    "npm:@memlab/cli": {
+      "icon": "gh:facebook",
+      "relation": "maker"
+    },
+    "npm:@mermaid-js/mermaid-cli": {
+      "icon": "si:mermaid",
+      "relation": "same"
+    },
+    "npm:@microsoft/rush": {
+      "icon": "gh:microsoft",
+      "relation": "maker"
+    },
+    "npm:@mintlify/cli": {
+      "icon": "si:mintlify",
+      "relation": "same"
+    },
+    "npm:@moonrepo/cli": {
+      "icon": "si:moonrepo",
+      "relation": "same"
+    },
+    "npm:@moonshot-ai/kimi-code": {
+      "icon": "si:kimi",
+      "relation": "maker"
+    },
+    "npm:@napi-rs/cli": {
+      "icon": "gh:napi-rs",
+      "relation": "same"
+    },
+    "npm:@nestjs/cli": {
+      "icon": "si:nestjs",
+      "relation": "same"
+    },
+    "npm:@netlify/zip-it-and-ship-it": {
+      "icon": "si:netlify",
+      "relation": "maker"
+    },
+    "npm:@openai/codex": {
+      "icon": "gh:openai",
+      "relation": "same"
+    },
+    "npm:@playwright/test": {
+      "icon": "gh:microsoft",
+      "relation": "maker"
+    },
+    "npm:@prisma/cli": {
+      "icon": "si:prisma",
+      "relation": "same"
+    },
+    "npm:@qoder-ai/qodercli": {
+      "icon": "gh:QoderAI",
+      "relation": "maker"
+    },
+    "npm:@quasar/app-vite": {
+      "icon": null,
+      "relation": "none"
+    },
+    "npm:@qwen-code/qwen-code": {
+      "icon": "si:qwen",
+      "relation": "same"
+    },
+    "npm:@railway/cli": {
+      "icon": "si:railway",
+      "relation": "same"
+    },
+    "npm:@salesforce/cli": {
+      "icon": "gh:salesforcecli",
+      "relation": "same"
+    },
+    "npm:@sanity/cli": {
+      "icon": "si:sanity",
+      "relation": "same"
+    },
+    "npm:@sanity/workflow-cli": {
+      "icon": "si:sanity",
+      "relation": "same"
+    },
+    "npm:@sentry/cli": {
+      "icon": "si:sentry",
+      "relation": "same"
+    },
+    "npm:@sentry/expo-upload-sourcemaps": {
+      "icon": "si:sentry",
+      "relation": "maker"
+    },
+    "npm:@shikijs/cli": {
+      "icon": "gh:shikijs",
+      "relation": "same"
+    },
+    "npm:@shopify/cli": {
+      "icon": "si:shopify",
+      "relation": "same"
+    },
+    "npm:@socketsecurity/socket-patch": {
+      "icon": "si:socket",
+      "relation": "maker"
+    },
+    "npm:@sourcegraph/amp": {
+      "icon": "gh:ampcode",
+      "relation": "same"
+    },
+    "npm:@sourcemeta/jsonschema": {
+      "icon": "gh:sourcemeta",
+      "relation": "same"
+    },
+    "npm:@storybook/cli": {
+      "icon": "si:storybook",
+      "relation": "same"
+    },
+    "npm:@strapi/cloud-cli": {
+      "icon": "si:strapi",
+      "relation": "same"
+    },
+    "npm:@swc/cli": {
+      "icon": "si:swc",
+      "relation": "same"
+    },
+    "npm:@tailwindcss/cli": {
+      "icon": "si:tailwindcss",
+      "relation": "same"
+    },
+    "npm:@tapjs/run": {
+      "icon": "gh:tapjs",
+      "relation": "same"
+    },
+    "npm:@tencent-ai/codebuddy-code": {
+      "icon": "si:codebuddy",
+      "relation": "maker"
+    },
+    "npm:@typespec/compiler": {
+      "icon": "gh:microsoft",
+      "relation": "maker"
+    },
+    "npm:@usebruno/cli": {
+      "icon": "si:bruno",
+      "relation": "maker"
+    },
+    "npm:@vscode/test-cli": {
+      "icon": "gh:microsoft",
+      "relation": "maker"
+    },
+    "npm:@vscode/vsce": {
+      "icon": "gh:microsoft",
+      "relation": "maker"
+    },
+    "npm:@vue/cli": {
+      "icon": null,
+      "relation": "none"
+    },
+    "npm:@vue/cli-service": {
+      "icon": null,
+      "relation": "none"
+    },
+    "npm:@wdio/cli": {
+      "icon": "si:webdriverio",
+      "relation": "maker"
+    },
+    "npm:@web/dev-server": {
+      "icon": "gh:modernweb-dev",
+      "relation": "maker"
+    },
+    "npm:@web/test-runner": {
+      "icon": "gh:modernweb-dev",
+      "relation": "maker"
+    },
+    "npm:@withgraphite/graphite-cli": {
+      "icon": "si:graphite",
+      "relation": "same"
+    },
+    "npm:acpx": {
+      "icon": "gh:openclaw",
+      "relation": "same"
+    },
+    "npm:agent-browser": {
+      "icon": "gh:vercel-labs",
+      "relation": "maker"
+    },
+    "npm:agent-cli-detector": {
+      "icon": "gh:expo",
+      "relation": "same"
+    },
+    "npm:agent-device": {
+      "icon": "gh:callstack",
+      "relation": "maker"
+    },
+    "npm:appcenter-cli": {
+      "icon": "gh:microsoft",
+      "relation": "maker"
+    },
+    "npm:appium": {
+      "icon": "si:appium",
+      "relation": "same"
+    },
+    "npm:astro": {
+      "icon": "si:astro",
+      "relation": "same"
+    },
+    "npm:auth": {
+      "icon": "si:betterauth",
+      "relation": "maker"
+    },
+    "npm:auth0-deploy-cli": {
+      "icon": "si:auth0",
+      "relation": "maker"
+    },
+    "npm:auto": {
+      "icon": "gh:intuit",
+      "relation": "maker"
+    },
+    "npm:ava": {
+      "icon": "gh:avajs",
+      "relation": "same"
+    },
+    "npm:aws-cdk": {
+      "icon": "gh:aws",
+      "relation": "same"
+    },
+    "npm:bower": {
+      "icon": "si:bower",
+      "relation": "same"
+    },
+    "npm:bugsnag-build-reporter": {
+      "icon": "gh:bugsnag",
+      "relation": "maker"
+    },
+    "npm:bump-cli": {
+      "icon": "gh:bump-sh",
+      "relation": "maker"
+    },
+    "npm:bun": {
+      "icon": "si:bun",
+      "relation": "same"
+    },
+    "npm:ccusage": {
+      "icon": "gh:ccusage",
+      "relation": "same"
+    },
+    "npm:cdk8s-cli": {
+      "icon": "gh:cdk8s-team",
+      "relation": "maker"
+    },
+    "npm:clerk": {
+      "icon": "si:clerk",
+      "relation": "same"
+    },
+    "npm:commitlint": {
+      "icon": "si:commitlint",
+      "relation": "same"
+    },
+    "npm:conventional-changelog": {
+      "icon": "gh:conventional-changelog",
+      "relation": "same"
+    },
+    "npm:cordova": {
+      "icon": "si:apachecordova",
+      "relation": "same"
+    },
+    "npm:corepack": {
+      "icon": "si:nodedotjs",
+      "relation": "maker"
+    },
+    "npm:create-react-app": {
+      "icon": "si:createreactapp",
+      "relation": "same"
+    },
+    "npm:create-storybook": {
+      "icon": "si:storybook",
+      "relation": "same"
+    },
+    "npm:cypress": {
+      "icon": "si:cypress",
+      "relation": "same"
+    },
+    "npm:deno": {
+      "icon": "si:deno",
+      "relation": "same"
+    },
+    "npm:depcheck": {
+      "icon": "gh:depcheck",
+      "relation": "same"
+    },
+    "npm:docsify-cli": {
+      "icon": "si:docsify",
+      "relation": "same"
+    },
+    "npm:drizzle-kit": {
+      "icon": "si:drizzle",
+      "relation": "same"
+    },
+    "npm:droid": {
+      "icon": "gh:Factory-AI",
+      "relation": "maker"
+    },
+    "npm:eas-cli": {
+      "icon": "si:expo",
+      "relation": "maker"
+    },
+    "npm:electron": {
+      "icon": "si:electron",
+      "relation": "same"
+    },
+    "npm:electron-builder": {
+      "icon": "si:electronbuilder",
+      "relation": "same"
+    },
+    "npm:ember-cli": {
+      "icon": "si:emberdotjs",
+      "relation": "maker"
+    },
+    "npm:esbuild": {
+      "icon": "si:esbuild",
+      "relation": "same"
+    },
+    "npm:eslint": {
+      "icon": "si:eslint",
+      "relation": "same"
+    },
+    "npm:expo-cli": {
+      "icon": "si:expo",
+      "relation": "same"
+    },
+    "npm:fastify-cli": {
+      "icon": "si:fastify",
+      "relation": "same"
+    },
+    "npm:firebase-tools": {
+      "icon": "si:firebase",
+      "relation": "same"
+    },
+    "npm:flow-bin": {
+      "icon": "gh:facebook",
+      "relation": "maker"
+    },
+    "npm:fx-runner": {
+      "icon": "gh:mozilla",
+      "relation": "same"
+    },
+    "npm:gatsby-cli": {
+      "icon": "si:gatsby",
+      "relation": "same"
+    },
+    "npm:grunt": {
+      "icon": "si:grunt",
+      "relation": "same"
+    },
+    "npm:grunt-cli": {
+      "icon": "si:grunt",
+      "relation": "same"
+    },
+    "npm:gt": {
+      "icon": "gh:generaltranslation",
+      "relation": "same"
+    },
+    "npm:gulp": {
+      "icon": "si:gulp",
+      "relation": "same"
+    },
+    "npm:gulp-cli": {
+      "icon": "si:gulp",
+      "relation": "same"
+    },
+    "npm:heroku": {
+      "icon": "gh:heroku",
+      "relation": "same"
+    },
+    "npm:hexo-cli": {
+      "icon": "si:hexo",
+      "relation": "same"
+    },
+    "npm:homebridge": {
+      "icon": "si:homebridge",
+      "relation": "same"
+    },
+    "npm:html-minifier-terser": {
+      "icon": "gh:terser",
+      "relation": "maker"
+    },
+    "npm:i18next-cli": {
+      "icon": "si:i18next",
+      "relation": "maker"
+    },
+    "npm:idna-uts46-hx": {
+      "icon": "gh:centralnicgroup-opensource",
+      "relation": "maker"
+    },
+    "npm:jest": {
+      "icon": "si:jest",
+      "relation": "same"
+    },
+    "npm:knex": {
+      "icon": "si:knexdotjs",
+      "relation": "same"
+    },
+    "npm:knip": {
+      "icon": "si:knip",
+      "relation": "same"
+    },
+    "npm:kysely-ctl": {
+      "icon": "gh:kysely-org",
+      "relation": "same"
+    },
+    "npm:lerna": {
+      "icon": "si:lerna",
+      "relation": "same"
+    },
+    "npm:less": {
+      "icon": "si:less",
+      "relation": "same"
+    },
+    "npm:lighthouse": {
+      "icon": "si:lighthouse",
+      "relation": "same"
+    },
+    "npm:lint-staged": {
+      "icon": "gh:lint-staged",
+      "relation": "same"
+    },
+    "npm:localtunnel": {
+      "icon": "gh:localtunnel",
+      "relation": "same"
+    },
+    "npm:mastra": {
+      "icon": "gh:mastra-ai",
+      "relation": "same"
+    },
+    "npm:mcporter": {
+      "icon": "gh:openclaw",
+      "relation": "same"
+    },
+    "npm:meteor": {
+      "icon": "si:meteor",
+      "relation": "maker"
+    },
+    "npm:mint": {
+      "icon": "si:mintlify",
+      "relation": "same"
+    },
+    "npm:mintlify": {
+      "icon": "si:mintlify",
+      "relation": "same"
+    },
+    "npm:mocha": {
+      "icon": "si:mocha",
+      "relation": "same"
+    },
+    "npm:momentic": {
+      "icon": "gh:momentic-ai",
+      "relation": "same"
+    },
+    "npm:native-run": {
+      "icon": "gh:ionic-team",
+      "relation": "same"
+    },
+    "npm:neon": {
+      "icon": "si:neon",
+      "relation": "maker"
+    },
+    "npm:neonctl": {
+      "icon": "si:neon",
+      "relation": "maker"
+    },
+    "npm:neovim": {
+      "icon": "si:neovim",
+      "relation": "maker"
+    },
+    "npm:netlify": {
+      "icon": "si:netlify",
+      "relation": "maker"
+    },
+    "npm:netlify-cli": {
+      "icon": "si:netlify",
+      "relation": "maker"
+    },
+    "npm:next": {
+      "icon": "si:nextdotjs",
+      "relation": "same"
+    },
+    "npm:node-gyp": {
+      "icon": "si:nodedotjs",
+      "relation": "maker"
+    },
+    "npm:node-red": {
+      "icon": "si:nodered",
+      "relation": "same"
+    },
+    "npm:nodemon": {
+      "icon": "si:nodemon",
+      "relation": "same"
+    },
+    "npm:now": {
+      "icon": "si:vercel",
+      "relation": "maker"
+    },
+    "npm:npm": {
+      "icon": "si:npm",
+      "relation": "same"
+    },
+    "npm:nuxi": {
+      "icon": "si:nuxt",
+      "relation": "maker"
+    },
+    "npm:nx": {
+      "icon": "si:nx",
+      "relation": "same"
+    },
+    "npm:oauth2-mock-server": {
+      "icon": "gh:axa-group",
+      "relation": "maker"
+    },
+    "npm:oclif": {
+      "icon": "si:oclif",
+      "relation": "same"
+    },
+    "npm:openclaw": {
+      "icon": "gh:openclaw",
+      "relation": "same"
+    },
+    "npm:opencode-ai": {
+      "icon": "si:opencode",
+      "relation": "same"
+    },
+    "npm:ovsx": {
+      "icon": "gh:eclipse-openvsx",
+      "relation": "maker"
+    },
+    "npm:pa11y": {
+      "icon": "gh:pa11y",
+      "relation": "same"
+    },
+    "npm:pa11y-ci": {
+      "icon": "gh:pa11y",
+      "relation": "same"
+    },
+    "npm:pm2": {
+      "icon": "si:pm2",
+      "relation": "same"
+    },
+    "npm:pnpm": {
+      "icon": "si:pnpm",
+      "relation": "same"
+    },
+    "npm:postcss-cli": {
+      "icon": "si:postcss",
+      "relation": "maker"
+    },
+    "npm:prettier": {
+      "icon": "si:prettier",
+      "relation": "same"
+    },
+    "npm:prisma": {
+      "icon": "si:prisma",
+      "relation": "same"
+    },
+    "npm:puppeteer": {
+      "icon": "si:puppeteer",
+      "relation": "same"
+    },
+    "npm:react-native-cli": {
+      "icon": "gh:facebook",
+      "relation": "maker"
+    },
+    "npm:release-it": {
+      "icon": "gh:release-it",
+      "relation": "same"
+    },
+    "npm:remark-cli": {
+      "icon": "si:remark",
+      "relation": "maker"
+    },
+    "npm:renovate": {
+      "icon": "si:renovate",
+      "relation": "same"
+    },
+    "npm:retire": {
+      "icon": "gh:retirejs",
+      "relation": "same"
+    },
+    "npm:rollup": {
+      "icon": "si:rollupdotjs",
+      "relation": "same"
+    },
+    "npm:sandbox": {
+      "icon": "si:vercel",
+      "relation": "maker"
+    },
+    "npm:sass": {
+      "icon": null,
+      "relation": "none"
+    },
+    "npm:secretlint": {
+      "icon": "gh:secretlint",
+      "relation": "same"
+    },
+    "npm:semantic-release": {
+      "icon": "si:semanticrelease",
+      "relation": "same"
+    },
+    "npm:sequelize-cli": {
+      "icon": "si:sequelize",
+      "relation": "maker"
+    },
+    "npm:serve": {
+      "icon": "gh:vercel",
+      "relation": "same"
+    },
+    "npm:serverless": {
+      "icon": "si:serverless",
+      "relation": "same"
+    },
+    "npm:skills": {
+      "icon": "gh:vercel-labs",
+      "relation": "maker"
+    },
+    "npm:snyk": {
+      "icon": "si:snyk",
+      "relation": "same"
+    },
+    "npm:storyblok": {
+      "icon": "si:storyblok",
+      "relation": "same"
+    },
+    "npm:storybook": {
+      "icon": "si:storybook",
+      "relation": "same"
+    },
+    "npm:stylelint": {
+      "icon": "si:stylelint",
+      "relation": "same"
+    },
+    "npm:supabase": {
+      "icon": "si:supabase",
+      "relation": "same"
+    },
+    "npm:sv": {
+      "icon": "si:svelte",
+      "relation": "maker"
+    },
+    "npm:svelte-check": {
+      "icon": "si:svelte",
+      "relation": "maker"
+    },
+    "npm:svgo": {
+      "icon": "si:svgo",
+      "relation": "same"
+    },
+    "npm:swagger-cli": {
+      "icon": "gh:apidevtools",
+      "relation": "same"
+    },
+    "npm:tailwindcss": {
+      "icon": "si:tailwindcss",
+      "relation": "same"
+    },
+    "npm:tap": {
+      "icon": "gh:tapjs",
+      "relation": "same"
+    },
+    "npm:tldr": {
+      "icon": "gh:tldr-pages",
+      "relation": "same"
+    },
+    "npm:ts-node": {
+      "icon": "si:tsnode",
+      "relation": "same"
+    },
+    "npm:turbo": {
+      "icon": "si:turborepo",
+      "relation": "same"
+    },
+    "npm:typeorm": {
+      "icon": "si:typeorm",
+      "relation": "same"
+    },
+    "npm:typescript": {
+      "icon": "si:typescript",
+      "relation": "same"
+    },
+    "npm:vercel": {
+      "icon": "si:vercel",
+      "relation": "same"
+    },
+    "npm:vite": {
+      "icon": "si:vite",
+      "relation": "same"
+    },
+    "npm:vitest": {
+      "icon": "si:vitest",
+      "relation": "same"
+    },
+    "npm:webpack-cli": {
+      "icon": null,
+      "relation": "none"
+    },
+    "npm:wgc": {
+      "icon": "gh:wundergraph",
+      "relation": "maker"
+    },
+    "npm:workbox-cli": {
+      "icon": "gh:googlechrome",
+      "relation": "maker"
+    },
+    "npm:wrangler": {
+      "icon": "si:cloudflare",
+      "relation": "maker"
+    },
+    "npm:xo": {
+      "icon": "si:xo",
+      "relation": "same"
+    },
+    "npm:yarn": {
+      "icon": "si:yarn",
+      "relation": "same"
+    },
+    "npm:yeoman-character": {
+      "icon": "gh:yeoman",
+      "relation": "same"
+    },
+    "npm:yeoman-doctor": {
+      "icon": "gh:yeoman",
+      "relation": "same"
+    },
+    "npm:yeoman-environment": {
+      "icon": "gh:yeoman",
+      "relation": "same"
+    },
+    "npm:yo": {
+      "icon": "gh:yeoman",
+      "relation": "same"
+    },
+    "npm:yosay": {
+      "icon": "gh:yeoman",
+      "relation": "same"
+    },
+    "npm:zx": {
+      "icon": "si:zx",
+      "relation": "same"
+    },
+    "ollama:baichuan": {
+      "icon": "gh:baichuan-inc",
+      "relation": "maker"
+    },
+    "ollama:bge": {
+      "icon": "gh:flagopen",
+      "relation": "maker"
+    },
+    "ollama:codellama": {
+      "icon": "si:meta",
+      "relation": "maker"
+    },
+    "ollama:codestral": {
+      "icon": "si:mistralai",
+      "relation": "maker"
+    },
+    "ollama:command-r": {
+      "icon": "gh:cohere-ai",
+      "relation": "same"
+    },
+    "ollama:deepseek": {
+      "icon": "si:deepseek",
+      "relation": "same"
+    },
+    "ollama:devstral": {
+      "icon": "si:mistralai",
+      "relation": "maker"
+    },
+    "ollama:falcon": {
+      "icon": "gh:tiiuae",
+      "relation": "maker"
+    },
+    "ollama:gemma": {
+      "icon": "si:google",
+      "relation": "maker"
+    },
+    "ollama:glm": {
+      "icon": "si:zdotai",
+      "relation": "maker"
+    },
+    "ollama:gpt-oss": {
+      "icon": "gh:openai",
+      "relation": "same"
+    },
+    "ollama:granite": {
+      "icon": "gh:ibm-granite",
+      "relation": "maker"
+    },
+    "ollama:hermes": {
+      "icon": "gh:nousresearch",
+      "relation": "maker"
+    },
+    "ollama:kimi": {
+      "icon": "si:kimi",
+      "relation": "same"
+    },
+    "ollama:llama": {
+      "icon": "si:meta",
+      "relation": "maker"
+    },
+    "ollama:magistral": {
+      "icon": "si:mistralai",
+      "relation": "maker"
+    },
+    "ollama:minicpm": {
+      "icon": "gh:openbmb",
+      "relation": "maker"
+    },
+    "ollama:mistral": {
+      "icon": "si:mistralai",
+      "relation": "same"
+    },
+    "ollama:mixtral": {
+      "icon": "si:mistralai",
+      "relation": "maker"
+    },
+    "ollama:mxbai-embed-large": {
+      "icon": "gh:mixedbread-ai",
+      "relation": "maker"
+    },
+    "ollama:nomic-embed-text": {
+      "icon": "gh:nomic-ai",
+      "relation": "maker"
+    },
+    "ollama:olmo": {
+      "icon": "gh:allenai",
+      "relation": "maker"
+    },
+    "ollama:orca": {
+      "icon": "gh:microsoft",
+      "relation": "maker"
+    },
+    "ollama:phi": {
+      "icon": "gh:microsoft",
+      "relation": "maker"
+    },
+    "ollama:qwen": {
+      "icon": "si:qwen",
+      "relation": "same"
+    },
+    "ollama:qwq": {
+      "icon": "si:qwen",
+      "relation": "maker"
+    },
+    "ollama:smollm": {
+      "icon": "si:huggingface",
+      "relation": "maker"
+    },
+    "ollama:snowflake-arctic-embed": {
+      "icon": "si:snowflake",
+      "relation": "maker"
+    },
+    "ollama:starcoder": {
+      "icon": "gh:bigcode-project",
+      "relation": "same"
+    },
+    "ollama:yi": {
+      "icon": "gh:01-ai",
+      "relation": "maker"
+    },
+    "pypi:adafruit-ampy": {
+      "icon": "si:adafruit",
+      "relation": "maker"
+    },
+    "pypi:aider-chat": {
+      "icon": "gh:aider-ai",
+      "relation": "same"
+    },
+    "pypi:airflow": {
+      "icon": "si:apacheairflow",
+      "relation": "same"
+    },
+    "pypi:ansible": {
+      "icon": "si:ansible",
+      "relation": "same"
+    },
+    "pypi:ansible-core": {
+      "icon": "si:ansible",
+      "relation": "maker"
+    },
+    "pypi:ansible-lint": {
+      "icon": "si:ansible",
+      "relation": "maker"
+    },
+    "pypi:anthropic": {
+      "icon": "si:anthropic",
+      "relation": "same"
+    },
+    "pypi:apache-airflow": {
+      "icon": "si:apacheairflow",
+      "relation": "same"
+    },
+    "pypi:asciinema": {
+      "icon": "si:asciinema",
+      "relation": "same"
+    },
+    "pypi:aws-sam-cli": {
+      "icon": "gh:aws",
+      "relation": "same"
+    },
+    "pypi:azure-cli": {
+      "icon": "gh:azure",
+      "relation": "same"
+    },
+    "pypi:black": {
+      "icon": "si:black",
+      "relation": "same"
+    },
+    "pypi:bump-my-version": {
+      "icon": "gh:callowayproject",
+      "relation": "maker"
+    },
+    "pypi:celery": {
+      "icon": "si:celery",
+      "relation": "same"
+    },
+    "pypi:certbot": {
+      "icon": "gh:certbot",
+      "relation": "same"
+    },
+    "pypi:checkov": {
+      "icon": "gh:bridgecrewio",
+      "relation": "maker"
+    },
+    "pypi:cmake": {
+      "icon": "si:cmake",
+      "relation": "same"
+    },
+    "pypi:commitizen": {
+      "icon": "gh:commitizen-tools",
+      "relation": "same"
+    },
+    "pypi:conan": {
+      "icon": "si:conan",
+      "relation": "same"
+    },
+    "pypi:cookiecutter": {
+      "icon": "si:cookiecutter",
+      "relation": "same"
+    },
+    "pypi:copier": {
+      "icon": "gh:copier-org",
+      "relation": "same"
+    },
+    "pypi:coverage": {
+      "icon": "gh:coveragepy",
+      "relation": "same"
+    },
+    "pypi:csvkit": {
+      "icon": "gh:wireservice",
+      "relation": "same"
+    },
+    "pypi:dbt-core": {
+      "icon": "gh:dbt-labs",
+      "relation": "maker"
+    },
+    "pypi:detect-secrets": {
+      "icon": "si:yelp",
+      "relation": "maker"
+    },
+    "pypi:django": {
+      "icon": "si:django",
+      "relation": "same"
+    },
+    "pypi:docker-compose": {
+      "icon": "si:docker",
+      "relation": "maker"
+    },
+    "pypi:dvc": {
+      "icon": "si:dvc",
+      "relation": "same"
+    },
+    "pypi:esptool": {
+      "icon": "si:espressif",
+      "relation": "maker"
+    },
+    "pypi:fabric": {
+      "icon": "gh:fabric",
+      "relation": "same"
+    },
+    "pypi:fastapi": {
+      "icon": "si:fastapi",
+      "relation": "same"
+    },
+    "pypi:fastapi-cli": {
+      "icon": "si:fastapi",
+      "relation": "maker"
+    },
+    "pypi:flask": {
+      "icon": "si:flask",
+      "relation": "same"
+    },
+    "pypi:gradio": {
+      "icon": "si:gradio",
+      "relation": "same"
+    },
+    "pypi:gunicorn": {
+      "icon": "si:gunicorn",
+      "relation": "same"
+    },
+    "pypi:httpie": {
+      "icon": "si:httpie",
+      "relation": "same"
+    },
+    "pypi:httpx": {
+      "icon": "gh:encode",
+      "relation": "maker"
+    },
+    "pypi:huggingface-hub": {
+      "icon": "si:huggingface",
+      "relation": "maker"
+    },
+    "pypi:ipython": {
+      "icon": "gh:ipython",
+      "relation": "same"
+    },
+    "pypi:jrnl": {
+      "icon": "gh:jrnl-org",
+      "relation": "same"
+    },
+    "pypi:jupyter": {
+      "icon": "si:jupyter",
+      "relation": "same"
+    },
+    "pypi:jupyterlab": {
+      "icon": "si:jupyter",
+      "relation": "maker"
+    },
+    "pypi:jupytext": {
+      "icon": "gh:jupytext",
+      "relation": "same"
+    },
+    "pypi:kaggle": {
+      "icon": "si:kaggle",
+      "relation": "same"
+    },
+    "pypi:kimi-cli": {
+      "icon": "si:kimi",
+      "relation": "maker"
+    },
+    "pypi:label-studio": {
+      "icon": "gh:humansignal",
+      "relation": "same"
+    },
+    "pypi:localstack": {
+      "icon": "gh:localstack",
+      "relation": "same"
+    },
+    "pypi:manim": {
+      "icon": "gh:manimcommunity",
+      "relation": "same"
+    },
+    "pypi:marker-pdf": {
+      "icon": "gh:datalab-to",
+      "relation": "maker"
+    },
+    "pypi:markitdown": {
+      "icon": "gh:microsoft",
+      "relation": "maker"
+    },
+    "pypi:maturin": {
+      "icon": "gh:pyo3",
+      "relation": "maker"
+    },
+    "pypi:meltano": {
+      "icon": "gh:meltano",
+      "relation": "same"
+    },
+    "pypi:meson": {
+      "icon": "gh:mesonbuild",
+      "relation": "same"
+    },
+    "pypi:mistral-vibe": {
+      "icon": "gh:mistralai",
+      "relation": "maker"
+    },
+    "pypi:mitmproxy": {
+      "icon": "gh:mitmproxy",
+      "relation": "same"
+    },
+    "pypi:mkdocs": {
+      "icon": "gh:mkdocs",
+      "relation": "same"
+    },
+    "pypi:mlflow": {
+      "icon": "si:mlflow",
+      "relation": "same"
+    },
+    "pypi:mpremote": {
+      "icon": "si:micropython",
+      "relation": "maker"
+    },
+    "pypi:mypy": {
+      "icon": "gh:python",
+      "relation": "maker"
+    },
+    "pypi:nbconvert": {
+      "icon": "si:jupyter",
+      "relation": "maker"
+    },
+    "pypi:notebook": {
+      "icon": "si:jupyter",
+      "relation": "maker"
+    },
+    "pypi:nox": {
+      "icon": "gh:wntrblm",
+      "relation": "same"
+    },
+    "pypi:ocrmypdf": {
+      "icon": "gh:ocrmypdf",
+      "relation": "same"
+    },
+    "pypi:openai": {
+      "icon": "gh:openai",
+      "relation": "same"
+    },
+    "pypi:openai-whisper": {
+      "icon": "gh:openai",
+      "relation": "same"
+    },
+    "pypi:papermill": {
+      "icon": "gh:nteract",
+      "relation": "maker"
+    },
+    "pypi:pdm": {
+      "icon": "si:pdm",
+      "relation": "same"
+    },
+    "pypi:platformio": {
+      "icon": "si:platformio",
+      "relation": "same"
+    },
+    "pypi:poetry": {
+      "icon": "si:poetry",
+      "relation": "same"
+    },
+    "pypi:pre-commit": {
+      "icon": "si:precommit",
+      "relation": "same"
+    },
+    "pypi:prefect": {
+      "icon": "si:prefect",
+      "relation": "same"
+    },
+    "pypi:pyinstaller": {
+      "icon": "gh:pyinstaller",
+      "relation": "same"
+    },
+    "pypi:pylint": {
+      "icon": "gh:pylint-dev",
+      "relation": "same"
+    },
+    "pypi:pytest": {
+      "icon": "si:pytest",
+      "relation": "same"
+    },
+    "pypi:rich-cli": {
+      "icon": "si:rich",
+      "relation": "maker"
+    },
+    "pypi:salt": {
+      "icon": "si:saltproject",
+      "relation": "same"
+    },
+    "pypi:scrapy": {
+      "icon": "si:scrapy",
+      "relation": "same"
+    },
+    "pypi:semgrep": {
+      "icon": "gh:semgrep",
+      "relation": "same"
+    },
+    "pypi:sphinx": {
+      "icon": "si:sphinx",
+      "relation": "same"
+    },
+    "pypi:spotdl": {
+      "icon": "gh:spotdl",
+      "relation": "same"
+    },
+    "pypi:sqlfluff": {
+      "icon": "gh:sqlfluff",
+      "relation": "same"
+    },
+    "pypi:streamlink": {
+      "icon": "gh:streamlink",
+      "relation": "same"
+    },
+    "pypi:streamlit": {
+      "icon": "si:streamlit",
+      "relation": "same"
+    },
+    "pypi:textual-dev": {
+      "icon": "si:textual",
+      "relation": "maker"
+    },
+    "pypi:tldr": {
+      "icon": "gh:tldr-pages",
+      "relation": "same"
+    },
+    "pypi:toolong": {
+      "icon": "gh:textualize",
+      "relation": "maker"
+    },
+    "pypi:wandb": {
+      "icon": "si:weightsandbiases",
+      "relation": "same"
+    },
+    "pypi:west": {
+      "icon": "gh:zephyrproject-rtos",
+      "relation": "same"
+    },
+    "pypi:yapf": {
+      "icon": "gh:google",
+      "relation": "maker"
+    },
+    "pypi:yt-dlp": {
+      "icon": "gh:yt-dlp",
+      "relation": "same"
+    },
+    "standalone:agy": {
+      "icon": "gh:google-antigravity",
+      "relation": "same"
+    },
+    "standalone:claude": {
+      "icon": "si:claudecode",
+      "relation": "same"
+    },
+    "standalone:codex": {
+      "icon": "gh:openai",
+      "relation": "same"
+    },
+    "standalone:opencode": {
+      "icon": "si:opencode",
+      "relation": "same"
+    },
+    "standalone:grok": {
+      "icon": "gh:xai-org",
+      "relation": "maker"
+    },
+    "standalone:rustup": {
+      "icon": "si:rust",
+      "relation": "maker"
+    }
+  },
+  "sources": {
+    "brew": "si:homebrew",
+    "npm": "si:npm",
+    "pip": "si:python",
+    "pipx": "si:pipx",
+    "uv": "si:uv",
+    "cargo": "si:rust",
+    "ollama": "si:ollama",
+    "standalone-claude": "si:claudecode",
+    "standalone-rustup": "si:rust",
+    "standalone-agy": "gh:google-antigravity",
+    "standalone-grok": "gh:xai-org",
+    "standalone-codex": "gh:openai",
+    "standalone-opencode": "si:opencode"
+  }
+}

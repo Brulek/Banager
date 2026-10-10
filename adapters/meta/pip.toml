@@ -1,0 +1,7 @@
+schema_version = 1
+id = "pip"
+name = "pip"
+kind = "package_manager"
+platforms = ["macos"]
+homepage = "https://pip.pypa.io"
+verified_versions = ["26.2.1"]

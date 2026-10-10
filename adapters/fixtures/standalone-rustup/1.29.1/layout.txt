@@ -1,0 +1,18 @@
+total 24360
+drwxr-xr-x@ 17 user  staff       544 Sep 20 00:13 .
+drwxr-xr-x@ 12 user  staff       384 Sep 26 04:15 ..
+lrwxr-xr-x@  1 user  staff         6 Sep 17 20:54 cargo -> rustup
+lrwxr-xr-x@  1 user  staff         6 Sep 17 20:54 cargo-clippy -> rustup
+lrwxr-xr-x@  1 user  staff         6 Sep 17 20:54 cargo-fmt -> rustup
+lrwxr-xr-x@  1 user  staff         6 Sep 17 20:54 cargo-miri -> rustup
+lrwxr-xr-x@  1 user  staff         6 Sep 17 20:54 clippy-driver -> rustup
+-rwxr-xr-x@  1 user  staff   1147216 Sep 20 00:13 hexyl
+lrwxr-xr-x@  1 user  staff         6 Sep 17 20:54 rls -> rustup
+lrwxr-xr-x@  1 user  staff         6 Sep 17 20:54 rust-analyzer -> rustup
+lrwxr-xr-x@  1 user  staff         6 Sep 17 20:54 rust-gdb -> rustup
+lrwxr-xr-x@  1 user  staff         6 Sep 17 20:54 rust-gdbgui -> rustup
+lrwxr-xr-x@  1 user  staff         6 Sep 17 20:54 rust-lldb -> rustup
+lrwxr-xr-x@  1 user  staff         6 Sep 17 20:54 rustc -> rustup
+lrwxr-xr-x@  1 user  staff         6 Sep 17 20:54 rustdoc -> rustup
+lrwxr-xr-x@  1 user  staff         6 Sep 17 20:54 rustfmt -> rustup
+-rwxr-xr-x@  1 user  staff  11319056 Sep 18 00:12 rustup

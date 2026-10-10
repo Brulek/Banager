@@ -1,0 +1,96 @@
+---
+source: crates/banager-core/tests/brew_fixtures.rs
+expression: result
+---
+[
+  {
+    "adapter_id": "brew",
+    "kind": "Formula",
+    "name": "gojq",
+    "description": "Pure Go implementation of jq"
+  },
+  {
+    "adapter_id": "brew",
+    "kind": "Formula",
+    "name": "hq",
+    "description": "Jq, but for HTML"
+  },
+  {
+    "adapter_id": "brew",
+    "kind": "Formula",
+    "name": "ijq",
+    "description": "Interactive jq"
+  },
+  {
+    "adapter_id": "brew",
+    "kind": "Formula",
+    "name": "jaq",
+    "description": "JQ clone focussed on correctness, speed, and simplicity"
+  },
+  {
+    "adapter_id": "brew",
+    "kind": "Formula",
+    "name": "jnv",
+    "description": "Interactive JSON filter using jq"
+  },
+  {
+    "adapter_id": "brew",
+    "kind": "Formula",
+    "name": "jq-lsp",
+    "description": "Jq language server"
+  },
+  {
+    "adapter_id": "brew",
+    "kind": "Formula",
+    "name": "jqfmt",
+    "description": "Opinionated formatter for jq"
+  },
+  {
+    "adapter_id": "brew",
+    "kind": "Formula",
+    "name": "jqp",
+    "description": "TUI playground to experiment and play with jq"
+  },
+  {
+    "adapter_id": "brew",
+    "kind": "Formula",
+    "name": "mdq",
+    "description": "Like jq but for Markdown"
+  },
+  {
+    "adapter_id": "brew",
+    "kind": "Formula",
+    "name": "mq",
+    "description": "Jq-like command-line tool for markdown processing"
+  },
+  {
+    "adapter_id": "brew",
+    "kind": "Formula",
+    "name": "oq",
+    "description": "Performant, and portable jq wrapper to support formats other than JSON"
+  },
+  {
+    "adapter_id": "brew",
+    "kind": "Formula",
+    "name": "python-yq",
+    "description": "Command-line YAML and XML processor that wraps jq"
+  },
+  {
+    "adapter_id": "brew",
+    "kind": "Formula",
+    "name": "sq",
+    "description": "Data wrangler with jq-like query language"
+  },
+  {
+    "adapter_id": "brew",
+    "kind": "Formula",
+    "name": "yh",
+    "description": "YAML syntax highlighter to bring colours where only jq could"
+  },
+  {
+    "adapter_id": "brew",
+    "kind": "Cask",
+    "name": "jquake",
+    "description": "(JQuake) Real-time earthquake monitoring software for Japan"
+  }
+]

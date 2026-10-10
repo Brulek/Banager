@@ -1,0 +1,10 @@
+---
+source: crates/banager-core/tests/brew_fixtures.rs
+expression: result
+---
+[
+  "cairo",
+  "glib",
+  "harfbuzz",
+  "poppler"
+]

@@ -1,0 +1,768 @@
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
+import { act, fireEvent, render, waitFor } from "@testing-library/react";
+import { createRef } from "react";
+import { useListWidth, useNarrowerThan, VirtualList, type VirtualListHandle } from "./VirtualList";
+import { useRovingRow } from "./rovingRows";
+
+const ROW = 60;
+const VIEWPORT = 600;
+const TOOLS = Array.from({ length: 100 }, (_, index) => `tool-${index}`);
+
+const keyOf = (item: string) => item;
+const estimate = () => ROW;
+
+beforeEach(() => {
+  // @tanstack/react-virtual measures its box and each slot through
+  // offsetHeight / offsetWidth, which jsdom hardcodes to 0: the slots carry
+  // `data-index`, and the box is the viewport's height.
+  vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (this: HTMLElement) {
+    return this.getAttribute("data-index") === null ? VIEWPORT : ROW;
+  });
+  vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(800);
+});
+
+/** The list's box, scrolled to `top` as a wheel would. */
+function scrollTo(box: HTMLElement, top: number) {
+  Object.defineProperty(box, "scrollTop", { configurable: true, value: top });
+  fireEvent.scroll(box);
+}
+
+/** The items handed to `renderItem`, in order, since the mock was last cleared. */
+function drawnItems(renderItem: ReturnType<typeof vi.fn>): string[] {
+  return renderItem.mock.calls.map(([item]) => item as string);
+}
+
+describe("VirtualList", () => {
+  it("draws the slots in sight, and on a scroll only those that come into sight", () => {
+    const renderItem = vi.fn((item: string) => <p>{item}</p>);
+    const { container, getByText, queryByText } = render(
+      <VirtualList items={TOOLS} itemKey={keyOf} estimateSize={estimate} renderItem={renderItem} />,
+    );
+    const box = container.firstElementChild as HTMLElement;
+
+    // Ten rows fill the box, and one more is drawn below it.
+    expect(drawnItems(renderItem)).toEqual(TOOLS.slice(0, 11));
+    expect(queryByText("tool-11")).not.toBeInTheDocument();
+
+    renderItem.mockClear();
+    scrollTo(box, 2 * ROW);
+
+    // Two rows came into sight; the nine still in it are shown as they were.
+    expect(drawnItems(renderItem)).toEqual(["tool-11", "tool-12"]);
+    expect(getByText("tool-12")).toBeInTheDocument();
+    expect(getByText("tool-5")).toBeInTheDocument();
+    expect((getByText("tool-12").closest("[data-list-slot]") as HTMLElement).style.transform).toBe(
+      `translateY(${12 * ROW}px)`,
+    );
+  });
+
+  it("is a list to a screen reader, each slot saying where it stands in the whole of it", () => {
+    const { getByRole, getByText } = render(
+      <VirtualList items={TOOLS} itemKey={keyOf} estimateSize={estimate} renderItem={(item) => <p>{item}</p>} />,
+    );
+    const list = getByRole("list");
+    const items = Array.from(list.children) as HTMLElement[];
+    // Only the slots in sight are drawn, each an item of the list.
+    expect(items).toHaveLength(11);
+    for (const [index, item] of items.entries()) {
+      expect(item).toHaveAttribute("role", "listitem");
+      expect(item).toHaveAttribute("aria-setsize", "100");
+      expect(item).toHaveAttribute("aria-posinset", String(index + 1));
+    }
+    // Scrolled far down, a slot still counts from the list's start.
+    scrollTo(list.parentElement as HTMLElement, 50 * ROW);
+    const slot = getByText("tool-55").closest("[data-list-slot]");
+    expect(slot).toHaveAttribute("aria-posinset", "56");
+    expect(slot).toHaveAttribute("aria-setsize", "100");
+  });
+
+  it("draws every slot afresh from a new renderItem, and from new items", () => {
+    const first = vi.fn((item: string) => <p>{item}</p>);
+    const { rerender, getByText } = render(
+      <VirtualList items={TOOLS} itemKey={keyOf} estimateSize={estimate} renderItem={first} />,
+    );
+
+    // The page drew again, because something it shows changed.
+    const second = vi.fn((item: string) => <p>{`${item} (updated)`}</p>);
+    rerender(<VirtualList items={TOOLS} itemKey={keyOf} estimateSize={estimate} renderItem={second} />);
+    expect(drawnItems(second)).toEqual(TOOLS.slice(0, 11));
+    expect(getByText("tool-3 (updated)")).toBeInTheDocument();
+
+    // The same renderItem over a new list: a search, a filter.
+    second.mockClear();
+    const found = TOOLS.filter((item) => item.endsWith("7"));
+    rerender(<VirtualList items={found} itemKey={keyOf} estimateSize={estimate} renderItem={second} />);
+    expect(drawnItems(second)).toEqual(found);
+    expect(getByText("tool-97 (updated)")).toBeInTheDocument();
+  });
+
+  it("draws a slot that is not reusable every time the list is drawn", () => {
+    const renderItem = vi.fn((item: string) => <p>{item}</p>);
+    const { container } = render(
+      <VirtualList
+        items={TOOLS}
+        itemKey={keyOf}
+        estimateSize={estimate}
+        renderItem={renderItem}
+        reusable={(item) => item !== "tool-1"}
+      />,
+    );
+
+    renderItem.mockClear();
+    scrollTo(container.firstElementChild as HTMLElement, ROW);
+
+    // tool-1 is still in sight, and drawn again; tool-11 came into sight.
+    expect(drawnItems(renderItem).sort()).toEqual(["tool-1", "tool-11"]);
+  });
+
+  it("shows what it is handed for an empty list, in the list's box", () => {
+    const renderItem = vi.fn((item: string) => <p>{item}</p>);
+    const { container, getByText } = render(
+      <VirtualList
+        items={[]}
+        itemKey={keyOf}
+        estimateSize={estimate}
+        renderItem={renderItem}
+        empty={<p>Nothing installed</p>}
+      />,
+    );
+
+    expect(getByText("Nothing installed").parentElement).toBe(container.firstElementChild);
+    expect(container.querySelector("[data-list-slot]")).toBeNull();
+    expect(renderItem).not.toHaveBeenCalled();
+  });
+
+  it("marks a slot with no hairline under it as a run's end: the last, and one the page parts from the next with none", () => {
+    const items = TOOLS.slice(0, 6);
+    const ends = (container: HTMLElement) =>
+      [...container.querySelectorAll<HTMLElement>("[data-list-slot]")]
+        .filter((slot) => slot.hasAttribute("data-run-end"))
+        .map((slot) => slot.dataset.key);
+    const renderItem = (item: string) => <p>{item}</p>;
+    // Left to itself: every slot keeps its hairline but the last.
+    const { container, rerender } = render(
+      <VirtualList items={items} itemKey={keyOf} estimateSize={estimate} renderItem={renderItem} />,
+    );
+    expect(ends(container)).toEqual(["tool-5"]);
+
+    // No hairline over tool-3 -- a heading, say, or the selected row.
+    rerender(
+      <VirtualList
+        items={items}
+        itemKey={keyOf}
+        estimateSize={estimate}
+        renderItem={renderItem}
+        hairlineBefore={(next) => next !== "tool-3"}
+      />,
+    );
+    expect(ends(container)).toEqual(["tool-2", "tool-5"]);
+    // A new answer -- the selection moved -- moves the mark with it.
+    rerender(
+      <VirtualList
+        items={items}
+        itemKey={keyOf}
+        estimateSize={estimate}
+        renderItem={renderItem}
+        hairlineBefore={(next) => next !== "tool-1"}
+      />,
+    );
+    expect(ends(container)).toEqual(["tool-0", "tool-5"]);
+  });
+
+  it("tells its rows how wide it is, once it has been laid out, and again as the window is resized", () => {
+    // jsdom lays nothing out: a width of 0 is no width, which rows read as
+    // room for everything.
+    const widths: Array<number | null> = [];
+    function Row({ item }: { item: string }) {
+      widths.push(useListWidth());
+      return <p>{item}</p>;
+    }
+    // The observers made, and what each watches: the list's own, and the
+    // virtualizer's.
+    const observers: Array<{ callback: ResizeObserverCallback; targets: Element[] }> = [];
+    const Observer = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = class {
+      private readonly watched: { callback: ResizeObserverCallback; targets: Element[] };
+      constructor(callback: ResizeObserverCallback) {
+        this.watched = { callback, targets: [] };
+        observers.push(this.watched);
+      }
+      observe(target: Element) {
+        this.watched.targets.push(target);
+      }
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+    try {
+      const { container } = render(
+        <VirtualList items={TOOLS.slice(0, 2)} itemKey={keyOf} estimateSize={estimate} renderItem={(item) => <Row item={item} />} />,
+      );
+      expect(widths[widths.length - 1]).toBeNull();
+
+      const box = container.firstElementChild as HTMLElement;
+      const watching = observers.filter((observer) => observer.targets.includes(box));
+      expect(watching.length).toBeGreaterThan(0);
+      act(() => {
+        for (const observer of watching) {
+          observer.callback([{ target: box, contentRect: { width: 591.6 } } as unknown as ResizeObserverEntry], {} as ResizeObserver);
+        }
+      });
+      expect(widths[widths.length - 1]).toBe(592);
+    } finally {
+      globalThis.ResizeObserver = Observer;
+    }
+  });
+});
+
+describe("useNarrowerThan", () => {
+  it("says whether its element is narrower than the limit, drawing its user again only when that changes", () => {
+    // The observers made: what each watches, and its callback.
+    const observers: Array<{ callback: ResizeObserverCallback; targets: Element[]; disconnected: boolean }> = [];
+    const Observer = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = class {
+      private readonly watched: { callback: ResizeObserverCallback; targets: Element[]; disconnected: boolean };
+      constructor(callback: ResizeObserverCallback) {
+        this.watched = { callback, targets: [], disconnected: false };
+        observers.push(this.watched);
+      }
+      observe(target: Element) {
+        this.watched.targets.push(target);
+      }
+      unobserve() {}
+      disconnect() {
+        this.watched.disconnected = true;
+      }
+    } as unknown as typeof ResizeObserver;
+    // Laid out 752 wide as it is handed over.
+    const box = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockReturnValue(new DOMRect(0, 0, 752, 500));
+    const draws: boolean[] = [];
+    function Page() {
+      const [attach, narrower] = useNarrowerThan(692);
+      draws.push(narrower);
+      return <div ref={attach} data-testid="page" />;
+    }
+    const resize = (width: number) =>
+      act(() => {
+        for (const observer of observers.filter((o) => !o.disconnected)) {
+          observer.callback([{ contentRect: { width } } as unknown as ResizeObserverEntry], {} as ResizeObserver);
+        }
+      });
+    try {
+      const { getByTestId, unmount } = render(<Page />);
+      // Wide enough, as it was assumed to be: drawn once, not again for it.
+      expect(draws).toEqual([false]);
+      expect(observers.flatMap((o) => o.targets)).toContain(getByTestId("page"));
+      resize(760);
+      expect(draws).toEqual([false]);
+      // Narrower than the limit: drawn again, once; and back.
+      resize(592);
+      resize(600);
+      expect(draws).toEqual([false, true]);
+      resize(692);
+      expect(draws).toEqual([false, true, false]);
+      unmount();
+      expect(observers.every((o) => o.disconnected)).toBe(true);
+    } finally {
+      box.mockRestore();
+      globalThis.ResizeObserver = Observer;
+    }
+  });
+});
+
+describe("VirtualList's arrow keys", () => {
+  /** A row that takes part in the arrow keys, as `ToolRow` does, with a checkbox inside it. */
+  function KeyRow({ item }: { item: string }) {
+    const roving = useRovingRow();
+    return (
+      <div data-row-focus="" tabIndex={roving?.tabIndex} onFocus={roving?.onFocus} aria-label={item}>
+        <input type="checkbox" aria-label={`Select ${item}`} />
+      </div>
+    );
+  }
+  // Every fifth slot is a heading, which the arrow keys pass over.
+  const heading = (item: string) => Number(item.split("-")[1]) % 5 === 0;
+  const renderItem = (item: string) => (heading(item) ? <h2>{item}</h2> : <KeyRow item={item} />);
+
+  function renderKeyList() {
+    const result = render(
+      <VirtualList
+        items={TOOLS}
+        itemKey={keyOf}
+        estimateSize={estimate}
+        renderItem={renderItem}
+        keyboardRows={(item) => !heading(item)}
+      />,
+    );
+    const row = (item: string) => result.getByLabelText(item, { selector: "[data-row-focus]" });
+    return { ...result, row, box: result.container.firstElementChild as HTMLElement };
+  }
+
+  it("keeps one row in the Tab order, the first to begin with, and none of the rest", () => {
+    const { row, getByText } = renderKeyList();
+    expect(row("tool-1")).toHaveAttribute("tabindex", "0");
+    for (const item of ["tool-2", "tool-3", "tool-4", "tool-6"]) expect(row(item)).toHaveAttribute("tabindex", "-1");
+    // A heading takes no part.
+    expect(getByText("tool-0").closest("[data-list-slot]")?.querySelector("[tabindex]")).toBeNull();
+  });
+
+  it("moves the focus to the next row with ↓ and back with ↑, passing over what is not a row", () => {
+    const { row } = renderKeyList();
+    row("tool-3").focus();
+
+    fireEvent.keyDown(row("tool-3"), { key: "ArrowDown" });
+    expect(document.activeElement).toBe(row("tool-4"));
+    // tool-5 is a heading.
+    fireEvent.keyDown(row("tool-4"), { key: "ArrowDown" });
+    expect(document.activeElement).toBe(row("tool-6"));
+    fireEvent.keyDown(row("tool-6"), { key: "ArrowUp" });
+    expect(document.activeElement).toBe(row("tool-4"));
+
+    // The row the focus is in is the one Tab comes back to.
+    expect(row("tool-4")).toHaveAttribute("tabindex", "0");
+    expect(row("tool-1")).toHaveAttribute("tabindex", "-1");
+  });
+
+  it("makes a row the one in the Tab order when one of its controls is pressed, focused or not", () => {
+    const { row, getByLabelText } = renderKeyList();
+    // WebKit on a Mac leaves a clicked checkbox or button unfocused.
+    fireEvent.pointerDown(getByLabelText("Select tool-4"));
+    expect(row("tool-4")).toHaveAttribute("tabindex", "0");
+    expect(row("tool-1")).toHaveAttribute("tabindex", "-1");
+  });
+
+  it("moves on from a control inside a row, and makes that row the one in the Tab order", () => {
+    const { row, getByLabelText } = renderKeyList();
+    const box = getByLabelText("Select tool-2");
+    act(() => box.focus());
+    expect(row("tool-2")).toHaveAttribute("tabindex", "0");
+
+    const moved = fireEvent.keyDown(box, { key: "ArrowDown" });
+    expect(moved).toBe(false);
+    expect(document.activeElement).toBe(row("tool-3"));
+  });
+
+  it("stops at either end, and leaves the page where it is", () => {
+    const { row } = renderKeyList();
+    row("tool-1").focus();
+    // tool-0 above it is a heading: nothing to move to.
+    expect(fireEvent.keyDown(row("tool-1"), { key: "ArrowUp" })).toBe(false);
+    expect(document.activeElement).toBe(row("tool-1"));
+  });
+
+  it("draws a row out of sight before focusing it", async () => {
+    // jsdom scrolls nothing: a scroll to a row moves the box as a browser would.
+    const scrollTo = vi.fn(function (this: HTMLElement, options?: ScrollToOptions | number) {
+      const top = typeof options === "object" ? (options.top ?? 0) : 0;
+      Object.defineProperty(this, "scrollTop", { configurable: true, value: top });
+      fireEvent.scroll(this);
+    });
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", { configurable: true, value: scrollTo });
+    onTestFinished(() => {
+      delete (HTMLElement.prototype as { scrollTo?: unknown }).scrollTo;
+    });
+    // How far the box can scroll, which the virtualizer keeps a scroll within.
+    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(TOOLS.length * ROW);
+    scrollLikeABrowser();
+    const { row, queryByLabelText } = renderKeyList();
+    // Ten rows fill the box: tool-11 is not drawn yet.
+    expect(queryByLabelText("tool-11", { selector: "[data-row-focus]" })).toBeNull();
+    row("tool-9").focus();
+    fireEvent.keyDown(row("tool-9"), { key: "ArrowDown" });
+    // tool-10 is a heading; tool-11 is next, drawn one below the box.
+    await waitFor(() => expect(document.activeElement).toBe(queryByLabelText("tool-11", { selector: "[data-row-focus]" })));
+  });
+
+  /** jsdom scrolls nothing: a scroll to a row moves the box as a browser would, within the list's height. */
+  function scrollLikeABrowser() {
+    const scrollTo = vi.fn(function (this: HTMLElement, options?: ScrollToOptions | number) {
+      const top = typeof options === "object" ? (options.top ?? 0) : 0;
+      Object.defineProperty(this, "scrollTop", { configurable: true, value: top });
+      fireEvent.scroll(this);
+    });
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", { configurable: true, value: scrollTo });
+    onTestFinished(() => {
+      delete (HTMLElement.prototype as { scrollTo?: unknown }).scrollTo;
+    });
+    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(TOOLS.length * ROW);
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(VIEWPORT);
+  }
+
+  it("goes to the first row with Home and to the last with End, passing over what is not a row", async () => {
+    scrollLikeABrowser();
+    const { row, queryByLabelText } = renderKeyList();
+    row("tool-3").focus();
+    // tool-99 is the last row; it is not drawn until End scrolls to it.
+    expect(fireEvent.keyDown(row("tool-3"), { key: "End" })).toBe(false);
+    await waitFor(() => expect(document.activeElement).toBe(queryByLabelText("tool-99", { selector: "[data-row-focus]" })));
+    // tool-0 is a heading: Home goes to tool-1.
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: "Home" });
+    await waitFor(() => expect(document.activeElement).toBe(row("tool-1")));
+    expect(row("tool-1")).toHaveAttribute("tabindex", "0");
+  });
+
+  it("moves a box's height with Page Down and Page Up, to the last row and the first past either end", async () => {
+    scrollLikeABrowser();
+    const { row, queryByLabelText } = renderKeyList();
+    const drawn = (item: string) => queryByLabelText(item, { selector: "[data-row-focus]" });
+    row("tool-1").focus();
+    // Ten rows of 60 fill the box of 600: from tool-1 to tool-11.
+    expect(fireEvent.keyDown(row("tool-1"), { key: "PageDown" })).toBe(false);
+    await waitFor(() => expect(document.activeElement).toBe(drawn("tool-11")));
+    // And back by as much, over the heading tool-5.
+    fireEvent.keyDown(drawn("tool-11") as HTMLElement, { key: "PageUp" });
+    await waitFor(() => expect(document.activeElement).toBe(row("tool-1")));
+    // Page Up at the top stays on the first row.
+    fireEvent.keyDown(row("tool-1"), { key: "PageUp" });
+    expect(document.activeElement).toBe(row("tool-1"));
+  });
+
+  it("goes to the last row with Page Down within a box's height of the end, passing over a heading", async () => {
+    scrollLikeABrowser();
+    const { queryByLabelText } = renderKeyList();
+    const drawn = (item: string) => queryByLabelText(item, { selector: "[data-row-focus]" });
+    fireEvent.keyDown(drawn("tool-1") as HTMLElement, { key: "End" });
+    await waitFor(() => expect(document.activeElement).toBe(drawn("tool-99")));
+    fireEvent.keyDown(drawn("tool-99") as HTMLElement, { key: "PageUp" });
+    await waitFor(() => expect(document.activeElement).toBe(drawn("tool-89")));
+    fireEvent.keyDown(drawn("tool-89") as HTMLElement, { key: "ArrowUp" });
+    await waitFor(() => expect(document.activeElement).toBe(drawn("tool-88")));
+    fireEvent.keyDown(drawn("tool-88") as HTMLElement, { key: "PageDown" });
+    await waitFor(() => expect(document.activeElement).toBe(drawn("tool-98")));
+    fireEvent.keyDown(drawn("tool-98") as HTMLElement, { key: "PageDown" });
+    await waitFor(() => expect(document.activeElement).toBe(drawn("tool-99")));
+  });
+
+  it("leaves ↑ and ↓ to what handles them first, such as an open menu", () => {
+    const { row } = renderKeyList();
+    row("tool-3").focus();
+    const handled = new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true });
+    handled.preventDefault();
+    row("tool-3").dispatchEvent(handled);
+    expect(document.activeElement).toBe(row("tool-3"));
+  });
+
+  it("does nothing with the arrow keys in a list that has not asked for them", () => {
+    const { container, getByLabelText } = render(
+      <VirtualList items={TOOLS} itemKey={keyOf} estimateSize={estimate} renderItem={(item) => <KeyRow item={item} />} />,
+    );
+    const first = getByLabelText("tool-1", { selector: "[data-row-focus]" });
+    expect(first).not.toHaveAttribute("tabindex");
+    const box = getByLabelText("Select tool-1");
+    box.focus();
+    expect(fireEvent.keyDown(box, { key: "ArrowDown" })).toBe(true);
+    expect(document.activeElement).toBe(box);
+    expect(container.querySelectorAll('[tabindex="0"]')).toHaveLength(0);
+  });
+});
+
+describe("VirtualList's selection helpers", () => {
+  function KeyRow({ item }: { item: string }) {
+    const roving = useRovingRow();
+    return <div data-row-focus="" tabIndex={roving?.tabIndex} onFocus={roving?.onFocus} aria-label={item} />;
+  }
+
+  it("says which row ↑ or ↓ moved to, and only when one did", () => {
+    const moved = vi.fn();
+    const { getByLabelText } = render(
+      <VirtualList
+        items={TOOLS}
+        itemKey={keyOf}
+        estimateSize={estimate}
+        renderItem={(item) => <KeyRow item={item} />}
+        keyboardRows={() => true}
+        onKeyboardMove={moved}
+      />,
+    );
+    const row = (item: string) => getByLabelText(item, { selector: "[data-row-focus]" });
+    act(() => row("tool-3").focus());
+    fireEvent.keyDown(row("tool-3"), { key: "ArrowDown" });
+    expect(moved).toHaveBeenLastCalledWith("tool-4");
+    fireEvent.keyDown(row("tool-4"), { key: "ArrowUp" });
+    expect(moved).toHaveBeenLastCalledWith("tool-3");
+    // Nowhere to go: nothing to say.
+    moved.mockClear();
+    act(() => row("tool-0").focus());
+    fireEvent.keyDown(row("tool-0"), { key: "ArrowUp" });
+    expect(moved).not.toHaveBeenCalled();
+  });
+
+  it("puts the focus on its first row, passing over what is not a row, scrolled into sight", async () => {
+    // jsdom scrolls nothing: a scroll to a row moves the box as a browser would.
+    const scrollBox = vi.fn(function (this: HTMLElement, options?: ScrollToOptions | number) {
+      const top = typeof options === "object" ? (options.top ?? 0) : 0;
+      Object.defineProperty(this, "scrollTop", { configurable: true, value: top });
+      fireEvent.scroll(this);
+    });
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", { configurable: true, value: scrollBox });
+    onTestFinished(() => {
+      delete (HTMLElement.prototype as { scrollTo?: unknown }).scrollTo;
+    });
+    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(TOOLS.length * ROW);
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(VIEWPORT);
+    const handle = createRef<VirtualListHandle>();
+    const { container, getByLabelText, queryByLabelText } = render(
+      <VirtualList
+        items={TOOLS}
+        itemKey={keyOf}
+        estimateSize={estimate}
+        renderItem={(item) => (item === "tool-0" ? <h2>{item}</h2> : <KeyRow item={item} />)}
+        keyboardRows={(item) => item !== "tool-0"}
+        handleRef={handle}
+      />,
+    );
+    const box = container.firstElementChild as HTMLElement;
+    scrollTo(box, 60 * ROW);
+    expect(queryByLabelText("tool-1", { selector: "[data-row-focus]" })).toBeNull();
+    act(() => handle.current?.focusFirst());
+    // tool-0 is a heading: the first row is tool-1, drawn again to be focused.
+    await waitFor(() => expect(document.activeElement).toBe(getByLabelText("tool-1", { selector: "[data-row-focus]" })));
+    expect(document.activeElement).toHaveAttribute("tabindex", "0");
+  });
+
+  it("puts the focus back on a row by its key, and makes it the one in the Tab order", async () => {
+    const handle = createRef<VirtualListHandle>();
+    const { getByLabelText } = render(
+      <VirtualList
+        items={TOOLS}
+        itemKey={keyOf}
+        estimateSize={estimate}
+        renderItem={(item) => <KeyRow item={item} />}
+        keyboardRows={() => true}
+        handleRef={handle}
+      />,
+    );
+    act(() => handle.current?.focusKey("tool-6"));
+    const row = getByLabelText("tool-6", { selector: "[data-row-focus]" });
+    await waitFor(() => expect(document.activeElement).toBe(row));
+    expect(row).toHaveAttribute("tabindex", "0");
+    // A key the list does not have: nothing moves.
+    act(() => handle.current?.focusKey("gone"));
+    expect(document.activeElement).toBe(row);
+  });
+
+  it("keeps its anchor where it was on screen when a new list adds or takes slots above it", () => {
+    const renderItem = (item: string) => <p>{item}</p>;
+    const { container, rerender } = render(
+      <VirtualList items={TOOLS} itemKey={keyOf} estimateSize={estimate} renderItem={renderItem} anchorKey="tool-40" />,
+    );
+    const box = container.firstElementChild as HTMLElement;
+    let top = 30 * ROW;
+    Object.defineProperty(box, "scrollTop", {
+      configurable: true,
+      get: () => top,
+      set: (value: number) => {
+        top = value;
+      },
+    });
+
+    // Two slots above it: the list moves down by two.
+    rerender(
+      <VirtualList
+        items={["new-a", "new-b", ...TOOLS]}
+        itemKey={keyOf}
+        estimateSize={estimate}
+        renderItem={renderItem}
+        anchorKey="tool-40"
+      />,
+    );
+    expect(top).toBe(32 * ROW);
+
+    // One gone above it: back up by one.
+    rerender(
+      <VirtualList
+        items={["new-b", ...TOOLS]}
+        itemKey={keyOf}
+        estimateSize={estimate}
+        renderItem={renderItem}
+        anchorKey="tool-40"
+      />,
+    );
+    expect(top).toBe(31 * ROW);
+
+    // Slots below it change nothing; nor does a new anchor.
+    rerender(
+      <VirtualList
+        items={["new-b", ...TOOLS, "new-z"]}
+        itemKey={keyOf}
+        estimateSize={estimate}
+        renderItem={renderItem}
+        anchorKey="tool-40"
+      />,
+    );
+    expect(top).toBe(31 * ROW);
+    rerender(
+      <VirtualList
+        items={["new-b", ...TOOLS, "new-z"]}
+        itemKey={keyOf}
+        estimateSize={estimate}
+        renderItem={renderItem}
+        anchorKey="tool-3"
+      />,
+    );
+    expect(top).toBe(31 * ROW);
+  });
+
+  it("marks its box as the list, for the selection's colours", () => {
+    const { container } = render(
+      <VirtualList items={TOOLS} itemKey={keyOf} estimateSize={estimate} renderItem={(item) => <p>{item}</p>} />,
+    );
+    expect(container.firstElementChild).toHaveAttribute("data-list");
+  });
+});
+
+describe("VirtualList's Tab", () => {
+  /** A row as `ToolRow` draws one in a list with arrow keys: itself, then its checkbox and its button. */
+  function TabRow({ item }: { item: string }) {
+    const roving = useRovingRow();
+    return (
+      <div data-row-focus="" tabIndex={roving?.tabIndex} onFocus={roving?.onFocus} aria-label={item}>
+        <input type="checkbox" aria-label={`Select ${item}`} />
+        <button type="button">Update {item}</button>
+      </div>
+    );
+  }
+  // Every tenth slot is no row: a line with a button of its own, as the
+  // notices over a list and 最近的更新记录 under it are.
+  const line = (item: string) => Number(item.split("-")[1]) % 10 === 0;
+  const renderItem = (item: string) =>
+    line(item) ? (
+      <p>
+        <button type="button">Show {item}</button>
+      </p>
+    ) : (
+      <TabRow item={item} />
+    );
+
+  function renderTabList() {
+    const result = render(
+      <div>
+        <button type="button">Before</button>
+        <VirtualList
+          items={TOOLS}
+          itemKey={keyOf}
+          estimateSize={estimate}
+          renderItem={renderItem}
+          keyboardRows={(item) => !line(item)}
+        />
+        <button type="button">After</button>
+      </div>,
+    );
+    const row = (item: string) => result.getByLabelText(item, { selector: "[data-row-focus]" });
+    const button = (name: string) => result.getByRole("button", { name });
+    /** Tab (or Shift-Tab) from what has the focus; whether the list took it over from the engine. */
+    const tab = (shift = false) => !fireEvent.keyDown(document.activeElement ?? document.body, { key: "Tab", shiftKey: shift });
+    return { ...result, row, button, tab };
+  }
+
+  it("goes on from the last control of the row in the Tab order past every other row's, and out of the list", () => {
+    const { row, button, tab } = renderTabList();
+    act(() => row("tool-3").focus());
+    act(() => button("Update tool-3").focus());
+
+    // tool-4 to tool-9 are passed over; tool-10, the last slot drawn, is a
+    // line of its own, and after it the list is left.
+    expect(tab()).toBe(true);
+    expect(document.activeElement).toBe(button("Show tool-10"));
+    expect(tab()).toBe(false);
+  });
+
+  it("leaves the engine its own Tab inside the row: from the row to its checkbox", () => {
+    const { row, tab } = renderTabList();
+    act(() => row("tool-3").focus());
+    expect(tab()).toBe(false);
+  });
+
+  it("comes in on the row in the Tab order, and on its last control from below", () => {
+    const { row, button, tab } = renderTabList();
+    act(() => row("tool-7").focus());
+    // From before the list, the engine's own Tab: onto its first slot, a line.
+    act(() => button("Before").focus());
+    expect(tab()).toBe(false);
+    // From the line above the rows, past tool-1 to tool-6, onto tool-7.
+    act(() => button("Show tool-0").focus());
+    expect(tab()).toBe(true);
+    expect(document.activeElement).toBe(row("tool-7"));
+
+    // From below the rows (the line under them), on the last control of it.
+    act(() => button("Show tool-10").focus());
+    expect(tab(true)).toBe(true);
+    expect(document.activeElement).toBe(button("Update tool-7"));
+  });
+
+  it("stops at a slot that is no row, the notices' and 最近的更新记录's buttons", () => {
+    const { row, button, tab } = renderTabList();
+    act(() => row("tool-7").focus());
+    act(() => button("Update tool-7").focus());
+
+    // tool-8 and tool-9 are passed over; tool-10 is a line of its own.
+    expect(tab()).toBe(true);
+    expect(document.activeElement).toBe(button("Show tool-10"));
+    // Back again: past tool-9 and tool-8, onto the row it came from; and
+    // from the row itself, back past tool-6 to tool-1 onto the line above.
+    expect(tab(true)).toBe(true);
+    expect(document.activeElement).toBe(button("Update tool-7"));
+    act(() => row("tool-7").focus());
+    expect(tab(true)).toBe(true);
+    expect(document.activeElement).toBe(button("Show tool-0"));
+  });
+
+  it("brings the row in the Tab order back into sight when Tab comes onto the rows with it scrolled away", async () => {
+    // jsdom scrolls nothing: a scroll to a row moves the box as a browser would.
+    const scroll = vi.fn(function (this: HTMLElement, options?: ScrollToOptions | number) {
+      const top = typeof options === "object" ? (options.top ?? 0) : 0;
+      Object.defineProperty(this, "scrollTop", { configurable: true, value: top });
+      fireEvent.scroll(this);
+    });
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", { configurable: true, value: scroll });
+    onTestFinished(() => {
+      delete (HTMLElement.prototype as { scrollTo?: unknown }).scrollTo;
+    });
+    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(TOOLS.length * ROW);
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(VIEWPORT);
+    const { row, button, tab, container, queryByLabelText } = renderTabList();
+    act(() => row("tool-3").focus());
+    act(() => button("Before").focus());
+    // Scrolled by the wheel far below it: tool-3 is no longer drawn.
+    scrollTo(container.querySelector("[data-list]") as HTMLElement, 50 * ROW);
+    expect(queryByLabelText("tool-3", { selector: "[data-row-focus]" })).toBeNull();
+
+    expect(tab()).toBe(true);
+    await waitFor(() => expect(document.activeElement).toBe(queryByLabelText("tool-3", { selector: "[data-row-focus]" })));
+  });
+
+  it("leaves Tab alone in an open dialog over the page, which keeps the focus to itself", () => {
+    const { getByRole } = render(
+      <div>
+        <VirtualList
+          items={TOOLS}
+          itemKey={keyOf}
+          estimateSize={estimate}
+          renderItem={(item) => <TabRow item={item} />}
+          keyboardRows={() => true}
+        />
+        <div role="dialog" aria-label="Sheet">
+          <button type="button">Cancel</button>
+        </div>
+      </div>,
+    );
+    const cancel = getByRole("button", { name: "Cancel" });
+    act(() => cancel.focus());
+    // Round from the dialog's last button, the page's next stop would be
+    // the first row's checkbox: the dialog's own trap sees to it.
+    expect(fireEvent.keyDown(cancel, { key: "Tab" })).toBe(true);
+  });
+
+  it("does nothing with Tab in a list that has not asked for arrow keys", () => {
+    const { getByRole } = render(
+      <div>
+        <VirtualList items={TOOLS} itemKey={keyOf} estimateSize={estimate} renderItem={(item) => <TabRow item={item} />} />
+        <button type="button">After</button>
+      </div>,
+    );
+    const update = getByRole("button", { name: "Update tool-1" });
+    act(() => update.focus());
+    expect(fireEvent.keyDown(update, { key: "Tab" })).toBe(true);
+  });
+});

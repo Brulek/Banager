@@ -1,0 +1,934 @@
+//! The update notification, Settings → Updates' 「有更新时通知我」
+//! (`Settings::notify_updates`, off by default, and on only with the daily
+//! check it sits under). After each snapshot the page reports the rows its
+//! Update all would take, with the round the snapshot came from
+//! (`report_update_set`), and `banager_core::notify_updates` decides what
+//! that report does. This is the shell's part: where the focus is -- on
+//! the window, on Banager without its window, or on another app -- and the
+//! notification itself, titled with the app's name, Banager, and saying
+//! how many tools can be updated, in the window's language. On a Mac it
+//! carries a handler that would bring the window back on the Updates page
+//! for a click (`OPEN_UPDATES_EVENT`), which notify-rust never hands a
+//! click (`post`). What a click does instead is bring Banager to the
+//! front, and from its hand-off the notification waits on the window
+//! (`window::NotificationPending`), so that Banager coming to the front
+//! with its window closed or in the Dock brings it back on the Updates
+//! page (`window::on_activate`). The Settings page asks for permission to
+//! post as the switch is turned on (`request_notification_permission`).
+
+use crate::menu::{self, MenuBar, MenuLanguage};
+use crate::state::AppState;
+use crate::window::{NotificationPending, MAIN_WINDOW};
+use banager_core::notify_updates::{self, Focus, Notice, ReportedRound, UpdatePair};
+use tauri::plugin::PermissionState;
+use tauri::{AppHandle, Manager, Runtime, State};
+use tauri_plugin_notification::NotificationExt;
+
+/// The event `open_updates` tells the window, once it is back on screen,
+/// for the update notification -- whose click `post` never hears, but
+/// which brings Banager to the front (`window::on_activate`) -- and which
+/// opens the Updates page: src/lib/api.ts's `OPEN_UPDATES_EVENT` spells
+/// the same.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub const OPEN_UPDATES_EVENT: &str = "notification://open-updates";
+
+/// The page's report, after each snapshot, of the updates it offers to
+/// start -- the rows Update all would take, as (row, version) pairs -- and
+/// of `round`, the snapshot's `Snapshot::round`. What it does is
+/// `report_offered`'s, with the focus as it is now (`focus`) and the
+/// notification in the window's language. A notification handed off waits
+/// on the window (`window::NotificationPending`) until the window is next
+/// in front. One that could not be handed off is logged here; the page is
+/// told nothing, having nothing to do about it.
+#[tauri::command]
+pub async fn report_update_set(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    round: u64,
+    updates: Vec<UpdatePair>,
+) -> Result<(), String> {
+    let focus = focus(&app);
+    let language = language(&app, &state);
+    let title = app.package_info().name.clone();
+    let reported = report_offered(&state, round, &updates, focus, |count| {
+        post(&app, &title, &body(language, count), Answer::OpenUpdates)
+    });
+    match reported {
+        Ok(Notice::Post { .. }) => app.state::<NotificationPending>().set(),
+        Ok(_) => {}
+        Err(e) => eprintln!("[banager] could not post the update notification: {e}"),
+    }
+    Ok(())
+}
+
+/// `report`, of the page's `updates`, against the session's snapshot as it
+/// is now. Only the pairs its update candidates offer are reported
+/// (`notify_updates::offered`): the page cannot post news of an update
+/// Banager did not find, nor make what has been told grow past the
+/// snapshot's own candidates. And first, what was told or seen of a row the
+/// snapshot no longer offers -- updated, uninstalled, its source gone -- is
+/// forgotten (`Notified::forget_unoffered`), so that the row's next update
+/// is news, whatever version it names; the rows a source that did not
+/// answer had stay in the snapshot, and stay marked.
+pub(crate) fn report_offered(
+    state: &AppState,
+    round: u64,
+    updates: &[UpdatePair],
+    focus: Focus,
+    post: impl FnOnce(usize) -> Result<(), String>,
+) -> Result<Notice, String> {
+    let snapshot = state.session.snapshot();
+    let updates = notify_updates::offered(updates, &snapshot.updates);
+    state
+        .notified
+        .lock()
+        .unwrap()
+        .forget_unoffered(&snapshot.updates);
+    report(state, round, &updates, focus, post)
+}
+
+/// A report's whole effect: `notify_updates::report` over what the log
+/// knows of `round` (`AppState::rounds`) -- who asked for it, and whether
+/// it awaits a follow-up of the daily check's -- whether notifications are
+/// on as the settings are saved now (`notify_updates::notifications_on`),
+/// `focus`, and what this run has told or the user has seen
+/// (`AppState::notified`), with `post` to post a notification saying how
+/// many tools can be updated. The lock on what has been told is held until
+/// the post has returned, so two reports cannot both post the same news.
+/// `post` returns once the notification is handed off (`hand_off`), and
+/// that is when its pairs are marked as told: nothing confirms a delivery.
+pub(crate) fn report(
+    state: &AppState,
+    round: u64,
+    updates: &[UpdatePair],
+    focus: Focus,
+    post: impl FnOnce(usize) -> Result<(), String>,
+) -> Result<Notice, String> {
+    let round = {
+        let rounds = state.rounds.lock().unwrap();
+        ReportedRound {
+            trigger: rounds.trigger_of(round),
+            awaits_follow_up: rounds.awaits_follow_up(round),
+        }
+    };
+    let on = notify_updates::notifications_on(&state.get_settings());
+    let mut notified = state.notified.lock().unwrap();
+    notify_updates::report(&mut notified, round, on, focus, updates, post)
+}
+
+/// Where the focus is now: `focus_of` over whether the window has the
+/// focus and whether Banager is the active app. The notification when
+/// operations finish asks it too (notify_ops.rs).
+pub(crate) fn focus<R: Runtime>(app: &AppHandle<R>) -> Focus {
+    focus_of(window_focused(app), app_active())
+}
+
+/// `focus`, asked on the main thread, as `notify_ops` looks again at a run
+/// it has withheld: AppKit's own `isActive` for Banager, which AppKit
+/// changes on the main thread, before it posts
+/// `NSApplicationDidResignActiveNotification` there -- so the answer is in
+/// order with `window::observe_activation`'s observers, which
+/// `NSRunningApplication`'s, asked off the main thread, is not.
+#[cfg(target_os = "macos")]
+pub(crate) fn focus_on_main_thread<R: Runtime>(
+    app: &AppHandle<R>,
+    mtm: objc2::MainThreadMarker,
+) -> Focus {
+    let active = objc2_app_kit::NSApplication::sharedApplication(mtm).isActive();
+    focus_of(window_focused(app), active)
+}
+
+/// On the window when it has the focus; else on Banager when it is the
+/// active app -- the app in front, whose notifications macOS shows no
+/// banner for -- with its window closed or in the Dock; else away.
+fn focus_of(window_focused: bool, app_active: bool) -> Focus {
+    if window_focused {
+        Focus::Window
+    } else if app_active {
+        Focus::App
+    } else {
+        Focus::Away
+    }
+}
+
+/// Whether Banager is the active app, the one in front, as macOS says
+/// (`NSRunningApplication`'s `isActive`, for this process; safe to ask
+/// off the main thread, and it runs nothing).
+#[cfg(target_os = "macos")]
+fn app_active() -> bool {
+    objc2_app_kit::NSRunningApplication::currentApplication().isActive()
+}
+
+/// Off a Mac, the focus is only ever the window's or away.
+#[cfg(not(target_os = "macos"))]
+fn app_active() -> bool {
+    false
+}
+
+/// Whether the window has the focus: on screen, and the window the keys go
+/// to. Closed (hidden), in the Dock or behind another app's, it has not.
+/// Not knowing counts as not: at worst a notification the user did not
+/// need, never news kept from them.
+fn window_focused<R: Runtime>(app: &AppHandle<R>) -> bool {
+    let Some(window) = app.get_webview_window(MAIN_WINDOW) else {
+        return false;
+    };
+    window.is_focused().unwrap_or_else(|e| {
+        eprintln!("[banager] could not ask whether the window has the focus: {e}");
+        false
+    })
+}
+
+/// The window's language, which the menu bar follows
+/// (`menu::set_menu_language`); before the page has said which, the one
+/// the menu bar was built in, or would be.
+pub(crate) fn language<R: Runtime>(app: &AppHandle<R>, state: &AppState) -> MenuLanguage {
+    app.state::<MenuBar>().language().unwrap_or_else(|| {
+        menu::initial_language(state.get_settings().language, &menu::preferred_languages())
+    })
+}
+
+/// What the notification says under its title: how many tools can be
+/// updated -- every update the report offers, not only the new ones. The
+/// Chinese is the Overview's sentence, with no space around the number:
+/// macOS spaces Chinese from digits itself, as it does the window's text.
+pub fn body(language: MenuLanguage, count: usize) -> String {
+    match language {
+        MenuLanguage::En if count == 1 => "1 tool can be updated".to_string(),
+        MenuLanguage::En => format!("{count} tools can be updated"),
+        MenuLanguage::ZhCn => format!("{count}个工具可以更新"),
+        MenuLanguage::ZhHant => format!("{count}個工具可以更新"),
+    }
+}
+
+/// What a click on a notification is for: the update notification's
+/// opens the Updates page; the one when operations finish (notify_ops.rs)
+/// brings the window back as it was left, where the operation bar says
+/// how the run went. What `post`'s handler -- never handed a click on a
+/// Mac -- would do, and what the notification left waiting on the window
+/// does when Banager next comes to the front (`window::NotificationPending`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub enum Answer {
+    OpenUpdates,
+    ShowWindow,
+}
+
+/// Starts `deliver` on a thread of its own and returns once the thread
+/// has started, not once `deliver` has run: that is when a notification
+/// is handed off, and when `report` marks its pairs as told. What
+/// `deliver` answers comes after, and is only logged. The error handed
+/// back is the thread's that could not be started, which handed nothing
+/// off: nothing is marked, and the next report that offers the same
+/// updates tries again.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn hand_off(deliver: impl FnOnce() -> Result<(), String> + Send + 'static) -> Result<(), String> {
+    std::thread::Builder::new()
+        .name("update-notification".to_string())
+        .spawn(move || {
+            if let Err(e) = deliver() {
+                eprintln!("[banager] the update notification: {e}");
+            }
+        })
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+/// Posts the notification through notify-rust, the crate
+/// tauri-plugin-notification posts through, on the thread `hand_off`
+/// starts (`deliver`), and returns once that thread has started. Nothing
+/// else happens on the caller's thread, which may be the main thread
+/// (`notify_ops::on_left_front`) or hold a lock (`notify_ops::report`):
+/// the thread is handed the words and the bundle identifier, so one that
+/// cannot be started drops only those, and nothing is delivered.
+///
+/// On a Mac, notify-rust's `show` sends nothing and never fails: it wraps
+/// the notification in a handle, and the handle's `wait_for_response`, on
+/// that thread, is what hands it to Notification Center
+/// (`deliverNotification:`). For a notification without buttons, as this
+/// one is, mac-notification-sys then waits only for macOS to confirm the
+/// delivery (`didDeliverNotification:`), two seconds at most, and answers
+/// that the notification closed whether the confirmation came or not. So
+/// the thread ends within about two seconds, and nothing it is told
+/// confirms a delivery or reports one that failed: the pairs are marked
+/// as told at the hand-off, and a notification macOS does not show is not
+/// posted again. Nor is the handler, which would bring the window back on
+/// the Updates page (`open_updates`), ever handed a click: a click only
+/// brings Banager to the front, and it is Banager coming to the front
+/// while the notification waits on the window that brings the window back
+/// on the Updates page (`window::on_activate`). What `wait_for_response`
+/// reports as an error is logged.
+#[cfg(target_os = "macos")]
+pub(crate) fn post<R: Runtime>(
+    app: &AppHandle<R>,
+    title: &str,
+    body: &str,
+    answer: Answer,
+) -> Result<(), String> {
+    // Which app macOS shows the notification as: Banager, by its bundle
+    // identifier; under `tauri dev`, which runs no app bundle, Terminal.
+    let bundle = if tauri::is_dev() {
+        "com.apple.Terminal".to_string()
+    } else {
+        app.config().identifier.clone()
+    };
+    let (title, body) = (title.to_string(), body.to_string());
+    let app = app.clone();
+    hand_off(move || deliver(&app, &bundle, &title, &body, answer))
+}
+
+/// What `post`'s thread does. First, which app macOS shows the
+/// notification as, set before the first one, as tauri-plugin-notification
+/// sets it. mac-notification-sys sets it once for the life of the process
+/// -- a LaunchServices lookup of `bundle`, then answering that identifier
+/// for the app's own bundle -- behind a `Once`, so a second thread waits
+/// for the first's, and every later call answers `AlreadySet`, which is no
+/// failure. Should LaunchServices not know the identifier, it answers
+/// Terminal's instead, and the notification is still posted, as
+/// Terminal's. Then the notification itself, as `post` tells.
+#[cfg(target_os = "macos")]
+fn deliver<R: Runtime>(
+    app: &AppHandle<R>,
+    bundle: &str,
+    title: &str,
+    body: &str,
+    answer: Answer,
+) -> Result<(), String> {
+    use notify_rust::error::{ApplicationError, MacOsError};
+    match notify_rust::set_application(bundle) {
+        Ok(()) | Err(MacOsError::Application(ApplicationError::AlreadySet(_))) => {}
+        Err(e) => eprintln!("[banager] could not post notifications as {bundle}: {e}"),
+    }
+    notify_rust::Notification::new()
+        .summary(title)
+        .body(body)
+        .show()
+        .map_err(|e| e.to_string())?
+        .wait_for_response(|response: &notify_rust::NotificationResponse| {
+            if response.is_default_action() {
+                match answer {
+                    Answer::OpenUpdates => open_updates(app),
+                    Answer::ShowWindow => crate::window::show(app),
+                }
+            }
+        })
+        .map_err(|e| e.to_string())
+}
+
+/// Posts the notification through tauri-plugin-notification, whose `show`
+/// hands it to a task of its own and returns: what becomes of it is not
+/// reported. No click is heard: the plugin reports none on a desktop.
+#[cfg(not(target_os = "macos"))]
+pub(crate) fn post<R: Runtime>(
+    app: &AppHandle<R>,
+    title: &str,
+    body: &str,
+    _answer: Answer,
+) -> Result<(), String> {
+    app.notification()
+        .builder()
+        .title(title)
+        .body(body)
+        .show()
+        .map_err(|e| e.to_string())
+}
+
+/// The notification answered: the window back on screen and the page told
+/// to open Updates, as the menu bar's items that act in the page are
+/// carried out (`window::show_and_tell`). Called when Banager comes to the
+/// front, or its Dock icon is clicked, with its window closed or in the
+/// Dock while the notification waits on the window (`window::on_activate`)
+/// -- which is how a click on the notification arrives -- and from
+/// `post`'s handler, which notify-rust never hands a click (see there).
+#[cfg(target_os = "macos")]
+pub(crate) fn open_updates<R: Runtime>(app: &AppHandle<R>) {
+    if let Err(e) = crate::window::show_and_tell(app, OPEN_UPDATES_EVENT) {
+        eprintln!("[banager] could not open Updates for the update notification: {e}");
+    }
+}
+
+/// Asks for permission to post notifications, as the Settings page turns
+/// 「有更新时通知我」 on: yes when tauri-plugin-notification's
+/// `request_permission` answers `Granted`, and the page turns the switch
+/// back off otherwise. On a Mac the plugin answers `Granted` without
+/// asking macOS; whether macOS shows what Banager posts is then up to
+/// System Settings → Notifications.
+#[tauri::command]
+pub async fn request_notification_permission(app: AppHandle) -> Result<bool, String> {
+    app.notification()
+        .request_permission()
+        .map(permission_granted)
+        .map_err(|e| e.to_string())
+}
+
+/// Whether `state`, the plugin's answer, grants permission: only
+/// `Granted` does. `Denied`, and a prompt still to be answered, do not.
+fn permission_granted(state: PermissionState) -> bool {
+    matches!(state, PermissionState::Granted)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::events::ChannelSink;
+    use banager_core::auto_check::RoundTrigger;
+    use banager_core::model::InstanceNote;
+    use banager_core::session::{DetectOutcome, Session, Snapshot};
+    use banager_core::settings::Settings;
+    use std::cell::RefCell;
+    use std::sync::Mutex;
+
+    fn pair(name: &str, target: &str) -> UpdatePair {
+        UpdatePair {
+            key_id: format!("brew:/opt/homebrew|Formula|{name}"),
+            target: target.to_string(),
+        }
+    }
+
+    fn snapshot(round: u64) -> Snapshot {
+        Snapshot {
+            generation: 1,
+            round,
+            detect: DetectOutcome::Found,
+            instances: Vec::new(),
+            artifacts: Vec::new(),
+            updates: Vec::new(),
+            refreshed_at: Some(1_790_586_000),
+            stale: false,
+            errors: Vec::new(),
+            next_auto_check_at: None,
+        }
+    }
+
+    /// Round `round`'s snapshot, reporting a `brew update` Banager started
+    /// as still running when `brew_updating`.
+    fn snapshot_with_homebrew(round: u64, brew_updating: bool) -> Snapshot {
+        let mut brew = banager_core::testing::manager_instance("brew", "brew:/opt/homebrew");
+        if brew_updating {
+            brew.status.notes.push(InstanceNote::IndexUpdating);
+        }
+        Snapshot {
+            instances: vec![brew],
+            ..snapshot(round)
+        }
+    }
+
+    /// A state whose settings are `settings`, and whose round 1 the daily
+    /// check asked for and round 2 the window. Nothing is ever saved: the
+    /// tests only read the settings.
+    fn state(settings: Settings) -> AppState {
+        let sink = ChannelSink::new();
+        let state = AppState {
+            session: Session::with_adapters(sink.clone(), Vec::new(), None),
+            settings_path: std::env::temp_dir().join("banager-notify-never-written"),
+            settings: Mutex::new(settings),
+            channel_sink: sink,
+            last_broadcast_generation: std::sync::atomic::AtomicU64::new(0),
+            rounds: Mutex::new(Default::default()),
+            notified: Mutex::new(Default::default()),
+            login_path: std::sync::OnceLock::new(),
+        };
+        {
+            let mut rounds = state.rounds.lock().unwrap();
+            rounds.record(1, RoundTrigger::Automatic, &snapshot(1));
+            rounds.record(2, RoundTrigger::Window, &snapshot(2));
+        }
+        state
+    }
+
+    fn notifications_on() -> Settings {
+        Settings {
+            auto_check: true,
+            notify_updates: true,
+            ..Settings::default()
+        }
+    }
+
+    const DAILY: u64 = 1;
+    const WINDOW: u64 = 2;
+
+    /// A poster that records each count it is handed, and succeeds.
+    fn recording(posted: &RefCell<Vec<usize>>) -> impl FnOnce(usize) -> Result<(), String> + '_ {
+        move |count| {
+            posted.borrow_mut().push(count);
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn test_a_report_of_the_daily_checks_round_posts_once_with_the_whole_count() {
+        let state = state(notifications_on());
+        let posted = RefCell::new(Vec::new());
+        let updates = [pair("jq", "1.8.1"), pair("gh", "2.102.0")];
+        assert_eq!(
+            report(&state, DAILY, &updates, Focus::Away, recording(&posted)),
+            Ok(Notice::Post { count: 2 })
+        );
+        // Reported again -- a page loaded again, the next day's check
+        // finding the same two: nothing new, nothing posted.
+        assert_eq!(
+            report(&state, DAILY, &updates, Focus::Away, recording(&posted)),
+            Ok(Notice::Nothing)
+        );
+        assert_eq!(*posted.borrow(), [2]);
+    }
+
+    #[test]
+    fn test_a_daily_check_whose_brew_update_outlasts_it_posts_once_for_it_and_its_follow_up() {
+        let state = state(notifications_on());
+        // Round 3, the daily check's, leaves its `brew update` running;
+        // the refresh its end sets off, round 4, is the daily check's too
+        // (`ipc::refresh_on_background_change`).
+        state.rounds.lock().unwrap().record(
+            3,
+            RoundTrigger::Automatic,
+            &snapshot_with_homebrew(3, true),
+        );
+        let posted = RefCell::new(Vec::new());
+        assert_eq!(
+            report(
+                &state,
+                3,
+                &[pair("jq", "1.8.1")],
+                Focus::Away,
+                recording(&posted)
+            ),
+            Ok(Notice::Deferred)
+        );
+        let follow_up = state
+            .rounds
+            .lock()
+            .unwrap()
+            .record_follow_up(4, &snapshot_with_homebrew(4, false));
+        assert_eq!(follow_up, RoundTrigger::Automatic);
+        let offered = [pair("jq", "1.8.1"), pair("gh", "2.102.0")];
+        assert_eq!(
+            report(&state, 4, &offered, Focus::Away, recording(&posted)),
+            Ok(Notice::Post { count: 2 })
+        );
+        assert_eq!(
+            *posted.borrow(),
+            [2],
+            "one notification, counting what both rounds found"
+        );
+    }
+
+    #[test]
+    fn test_the_round_is_looked_up_so_a_round_of_the_windows_posts_nothing() {
+        let state = state(notifications_on());
+        let updates = [pair("jq", "1.8.1")];
+        let never = |_| -> Result<(), String> { panic!("posted for the window's round") };
+        assert_eq!(
+            report(&state, WINDOW, &updates, Focus::Away, never),
+            Ok(Notice::Nothing)
+        );
+        let never = |_| -> Result<(), String> { panic!("posted for a round never recorded") };
+        assert_eq!(
+            report(&state, 99, &updates, Focus::Away, never),
+            Ok(Notice::Nothing)
+        );
+        // Neither marked anything: the daily check's round still posts.
+        let posted = RefCell::new(Vec::new());
+        assert_eq!(
+            report(&state, DAILY, &updates, Focus::Away, recording(&posted)),
+            Ok(Notice::Post { count: 1 })
+        );
+    }
+
+    #[test]
+    fn test_the_settings_are_read_as_saved_and_notifications_need_the_daily_check_too() {
+        let updates = [pair("jq", "1.8.1")];
+        for settings in [
+            Settings::default(),
+            Settings {
+                notify_updates: true,
+                ..Settings::default()
+            },
+            Settings {
+                auto_check: true,
+                ..Settings::default()
+            },
+        ] {
+            let state = state(settings.clone());
+            let never = |_| -> Result<(), String> { panic!("posted with {settings:?}") };
+            assert_eq!(
+                report(&state, DAILY, &updates, Focus::Away, never),
+                Ok(Notice::Nothing)
+            );
+        }
+    }
+
+    #[test]
+    fn test_with_the_window_focused_nothing_is_posted_and_what_it_offers_is_seen() {
+        let state = state(notifications_on());
+        let updates = [pair("jq", "1.8.1")];
+        let never = |_| -> Result<(), String> { panic!("posted while the window had the focus") };
+        assert_eq!(
+            report(&state, DAILY, &updates, Focus::Window, never),
+            Ok(Notice::Seen)
+        );
+        let never = |_| -> Result<(), String> { panic!("posted what the user saw") };
+        assert_eq!(
+            report(&state, DAILY, &updates, Focus::Away, never),
+            Ok(Notice::Nothing)
+        );
+    }
+
+    #[test]
+    fn test_with_banager_in_front_and_its_window_closed_nothing_is_posted_and_nothing_seen() {
+        let state = state(notifications_on());
+        let updates = [pair("jq", "1.8.1")];
+        let never = |_| -> Result<(), String> { panic!("posted while Banager was in front") };
+        assert_eq!(
+            report(&state, DAILY, &updates, Focus::App, never),
+            Ok(Notice::Withheld)
+        );
+        assert!(!state.notified.lock().unwrap().contains(&updates[0]));
+        // The same updates, offered again with another app in front.
+        let posted = RefCell::new(Vec::new());
+        assert_eq!(
+            report(&state, DAILY, &updates, Focus::Away, recording(&posted)),
+            Ok(Notice::Post { count: 1 })
+        );
+        assert_eq!(*posted.borrow(), [1]);
+    }
+
+    #[test]
+    fn test_the_focus_is_the_windows_else_banagers_when_it_is_in_front_else_away() {
+        assert_eq!(focus_of(true, true), Focus::Window);
+        assert_eq!(
+            focus_of(true, false),
+            Focus::Window,
+            "a focused window is enough"
+        );
+        assert_eq!(
+            focus_of(false, true),
+            Focus::App,
+            "in front, the window closed or in the Dock"
+        );
+        assert_eq!(focus_of(false, false), Focus::Away);
+    }
+
+    #[test]
+    fn test_a_post_that_failed_is_handed_back_and_tried_again_at_the_next_report() {
+        // A hand-off that failed: the thread that delivers could not be
+        // started (`hand_off`'s error), so nothing was handed to macOS.
+        let state = state(notifications_on());
+        let updates = [pair("jq", "1.8.1")];
+        assert_eq!(
+            report(&state, DAILY, &updates, Focus::Away, |_| Err(
+                "no".to_string()
+            )),
+            Err("no".to_string())
+        );
+        let posted = RefCell::new(Vec::new());
+        assert_eq!(
+            report(&state, DAILY, &updates, Focus::Away, recording(&posted)),
+            Ok(Notice::Post { count: 1 })
+        );
+        assert_eq!(*posted.borrow(), [1]);
+    }
+
+    #[test]
+    fn test_a_notification_counts_as_told_once_handed_off_whatever_its_delivery_does_after() {
+        // `post` on a Mac: `hand_off` returns once the thread that delivers
+        // has started, and nothing that thread learns reaches `report`. So
+        // the pairs are marked at the hand-off, before the delivery has
+        // run, and one that then fails is not posted again.
+        let state = state(notifications_on());
+        let updates = [pair("jq", "1.8.1")];
+        let (release, released) = std::sync::mpsc::channel::<()>();
+        let (finish, finished) = std::sync::mpsc::channel::<()>();
+        let notice = report(&state, DAILY, &updates, Focus::Away, |_| {
+            hand_off(move || {
+                released.recv().ok();
+                finish.send(()).ok();
+                Err("macOS never confirmed the delivery".to_string())
+            })
+        });
+        assert_eq!(notice, Ok(Notice::Post { count: 1 }));
+        assert!(
+            state.notified.lock().unwrap().contains(&updates[0]),
+            "marked at the hand-off, while the delivery has not run"
+        );
+
+        release.send(()).expect("the delivery is waiting");
+        finished
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .expect("the delivery ran, and failed");
+        let never = |_| -> Result<(), String> { panic!("posted again after the hand-off") };
+        assert_eq!(
+            report(&state, DAILY, &updates, Focus::Away, never),
+            Ok(Notice::Nothing)
+        );
+    }
+
+    #[test]
+    fn test_the_notification_says_how_many_tools_can_be_updated_in_the_windows_language() {
+        assert_eq!(body(MenuLanguage::En, 1), "1 tool can be updated");
+        assert_eq!(body(MenuLanguage::En, 3), "3 tools can be updated");
+        assert_eq!(body(MenuLanguage::ZhCn, 1), "1个工具可以更新");
+        assert_eq!(body(MenuLanguage::ZhCn, 12), "12个工具可以更新");
+        assert_eq!(body(MenuLanguage::ZhHant, 1), "1個工具可以更新");
+        assert_eq!(body(MenuLanguage::ZhHant, 12), "12個工具可以更新");
+    }
+
+    #[test]
+    fn test_what_we_run_quotes_what_the_notification_says_in_every_language() {
+        // docs/what-we-run.md, "The daily check": what `body` writes, its
+        // count as N, in all three languages, and the title. Hard-wrapped
+        // prose: compared with the line breaks folded away.
+        let doc = include_str!("../../docs/what-we-run.md");
+        let folded = doc.split_whitespace().collect::<Vec<_>>().join(" ");
+        for language in [MenuLanguage::En, MenuLanguage::ZhCn, MenuLanguage::ZhHant] {
+            let quoted = body(language, 7).replace('7', "N");
+            assert!(
+                folded.contains(&quoted),
+                "docs/what-we-run.md does not quote {quoted:?}, which a notification says"
+            );
+        }
+        assert!(
+            folded.contains("The notification is titled Banager"),
+            "docs/what-we-run.md does not say the notification's title"
+        );
+    }
+
+    #[test]
+    fn test_the_notification_is_titled_with_the_apps_name_banager() {
+        // `report_update_set` titles it with `package_info().name`, which
+        // tauri takes from tauri.conf.json's productName.
+        let config: tauri::utils::config::Config =
+            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        assert_eq!(config.product_name.as_deref(), Some("Banager"));
+    }
+
+    #[test]
+    fn test_only_a_granted_permission_turns_notifications_on() {
+        assert!(permission_granted(PermissionState::Granted));
+        assert!(!permission_granted(PermissionState::Denied));
+        assert!(!permission_granted(PermissionState::Prompt));
+        assert!(!permission_granted(PermissionState::PromptWithRationale));
+    }
+
+    #[test]
+    fn test_the_click_event_is_the_one_the_page_listens_for() {
+        // `OPEN_UPDATES_EVENT` in src/lib/api.ts, which api.test.ts pins
+        // to the same string.
+        assert_eq!(OPEN_UPDATES_EVENT, "notification://open-updates");
+    }
+}
+
+/// The update notification over a real `Session`, refreshed from a fake
+/// source, through `report_offered` -- what `report_update_set` runs: what
+/// was told of a row is kept while the snapshot offers the row, and
+/// forgotten once it does not (r38 S4). Nothing runs, nothing is read of
+/// this Mac, and no notification is posted.
+#[cfg(test)]
+mod forget_unoffered_tests {
+    use super::*;
+    use crate::events::ChannelSink;
+    use async_trait::async_trait;
+    use banager_core::adapters::{Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome};
+    use banager_core::auto_check::RoundTrigger;
+    use banager_core::events::{EventSink, OpId};
+    use banager_core::model::{
+        ArtifactKey, ArtifactKind, InstalledArtifact, ManagerInstance, OpRequest, Outcome, Plan,
+        Reconciled, SearchHit, UpdateCandidate, UpdateChannel,
+    };
+    use banager_core::notify_updates::pair_of;
+    use banager_core::runner::HostEnv;
+    use banager_core::session::Session;
+    use banager_core::settings::Settings;
+    use std::cell::RefCell;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Mutex};
+    use tokio_util::sync::CancellationToken;
+
+    /// A Homebrew with one app installed, declared `version :latest`:
+    /// a greedy `brew outdated` offers it as "latest" while `offers` is
+    /// set, whatever the release. Its update check fails while `fails` is.
+    struct LatestCask {
+        meta: AdapterMeta,
+        offers: AtomicBool,
+        fails: AtomicBool,
+    }
+
+    const INSTANCE: &str = "brew:/test-homebrew";
+
+    #[async_trait]
+    impl Adapter for LatestCask {
+        fn meta(&self) -> &AdapterMeta {
+            &self.meta
+        }
+
+        async fn detect(&self, _env: &HostEnv) -> Vec<ManagerInstance> {
+            vec![banager_core::testing::manager_instance("brew", INSTANCE)]
+        }
+
+        async fn inventory(
+            &self,
+            inst: &ManagerInstance,
+        ) -> Result<Vec<InstalledArtifact>, AdapterError> {
+            Ok(vec![banager_core::testing::installed_artifact(
+                &inst.id,
+                ArtifactKind::Cask,
+                "google-chrome",
+            )])
+        }
+
+        async fn check_updates(
+            &self,
+            inst: &ManagerInstance,
+            _opts: &CheckOptions,
+        ) -> Result<CheckOutcome, AdapterError> {
+            if self.fails.load(Ordering::SeqCst) {
+                return Err(AdapterError::Parse("no network".to_string()));
+            }
+            let mut outcome = CheckOutcome::default();
+            if self.offers.load(Ordering::SeqCst) {
+                outcome.candidates.push(UpdateCandidate {
+                    key: ArtifactKey {
+                        instance_id: inst.id.clone(),
+                        kind: ArtifactKind::Cask,
+                        name: "google-chrome".to_string(),
+                    },
+                    current: "1.0".to_string(),
+                    target: "latest".to_string(),
+                    channel: UpdateChannel::Native,
+                    checkable: true,
+                    warnings: Vec::new(),
+                    blocked: None,
+                    download_bytes: None,
+                });
+            }
+            Ok(outcome)
+        }
+
+        async fn search(
+            &self,
+            _inst: &ManagerInstance,
+            _query: &str,
+        ) -> Result<Vec<SearchHit>, AdapterError> {
+            Ok(Vec::new())
+        }
+
+        async fn plan(
+            &self,
+            _inst: &ManagerInstance,
+            _req: &OpRequest,
+        ) -> Result<Plan, AdapterError> {
+            Err(AdapterError::Refused("not in this test".to_string()))
+        }
+
+        async fn execute(
+            &self,
+            _plan: &Plan,
+            _sink: Arc<dyn EventSink>,
+            _op_id: OpId,
+            _cancel: CancellationToken,
+        ) -> Result<Outcome, AdapterError> {
+            Err(AdapterError::Refused("not in this test".to_string()))
+        }
+
+        async fn reconcile(
+            &self,
+            _inst: &ManagerInstance,
+            _key: &ArtifactKey,
+        ) -> Result<Reconciled, AdapterError> {
+            Err(AdapterError::Refused("not in this test".to_string()))
+        }
+    }
+
+    /// One round of the daily check, recorded as `ipc::refresh_for` records
+    /// it, then the page's report of what Update All would take then -- every
+    /// update of the snapshot -- with another app in front.
+    async fn daily_check(state: &AppState, posted: &RefCell<Vec<usize>>) -> Notice {
+        let (round, snapshot) = state
+            .session
+            .refresh_recording(
+                &crate::state::test_round_env(),
+                &CheckOptions::default(),
+                |round, snapshot| {
+                    state
+                        .rounds
+                        .lock()
+                        .unwrap()
+                        .record(round, RoundTrigger::Automatic, snapshot)
+                },
+                |_| {},
+            )
+            .await;
+        let page: Vec<UpdatePair> = snapshot.updates.iter().map(pair_of).collect();
+        report_offered(state, round, &page, Focus::Away, |count| {
+            posted.borrow_mut().push(count);
+            Ok(())
+        })
+        .expect("posted")
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_a_latest_cask_updated_then_offered_again_is_posted_again() {
+        let source = Arc::new(LatestCask {
+            meta: AdapterMeta {
+                id: "brew".to_string(),
+                name: "Homebrew".to_string(),
+                kind: "fake".to_string(),
+                platforms: vec!["macos".to_string()],
+                homepage: "https://example.invalid".to_string(),
+                schema_version: 1,
+                verified_versions: vec![],
+            },
+            offers: AtomicBool::new(true),
+            fails: AtomicBool::new(false),
+        });
+        let sink = ChannelSink::new();
+        let state = AppState {
+            session: Session::with_adapters(
+                sink.clone(),
+                vec![source.clone() as Arc<dyn Adapter>],
+                None,
+            ),
+            settings_path: std::env::temp_dir().join("banager-notify-forget-never-written"),
+            settings: Mutex::new(Settings {
+                auto_check: true,
+                notify_updates: true,
+                ..Settings::default()
+            }),
+            channel_sink: sink,
+            last_broadcast_generation: std::sync::atomic::AtomicU64::new(0),
+            rounds: Mutex::new(Default::default()),
+            notified: Mutex::new(Default::default()),
+            login_path: std::sync::OnceLock::new(),
+        };
+        let chrome = UpdatePair {
+            key_id: format!("{INSTANCE}|Cask|google-chrome"),
+            target: "latest".to_string(),
+        };
+        let posted = RefCell::new(Vec::new());
+
+        // Monday: a new download.
+        assert_eq!(
+            daily_check(&state, &posted).await,
+            Notice::Post { count: 1 }
+        );
+        // The next day, not updated yet: told already.
+        assert_eq!(daily_check(&state, &posted).await, Notice::Nothing);
+        // A day Homebrew does not answer: the snapshot keeps the row, and
+        // it stays told.
+        source.fails.store(true, Ordering::SeqCst);
+        assert_eq!(daily_check(&state, &posted).await, Notice::Nothing);
+        assert!(state.notified.lock().unwrap().contains(&chrome));
+        source.fails.store(false, Ordering::SeqCst);
+        // Updated: no update offered, and the row is forgotten.
+        source.offers.store(false, Ordering::SeqCst);
+        assert_eq!(daily_check(&state, &posted).await, Notice::Nothing);
+        assert!(!state.notified.lock().unwrap().contains(&chrome));
+        // Next week's release, offered as "latest" again: news.
+        source.offers.store(true, Ordering::SeqCst);
+        assert_eq!(
+            daily_check(&state, &posted).await,
+            Notice::Post { count: 1 }
+        );
+        assert_eq!(*posted.borrow(), [1, 1]);
+    }
+}

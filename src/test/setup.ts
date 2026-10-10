@@ -6,6 +6,14 @@ import { render, cleanup } from "@testing-library/react";
 import { afterEach, beforeEach, vi } from "vitest";
 import { I18nextProvider } from "react-i18next";
 import i18n from "../i18n";
+import { loadToolIcons, type ToolIcons } from "../lib/toolIcons";
+import { ToolIconsContext } from "../lib/toolIconsContext";
+import {
+  DescriptionTablesContext,
+  lazyDescriptionTable,
+  type DescriptionTable,
+  type DescriptionTables,
+} from "../lib/toolDescriptions";
 import { useUiStore } from "../store/ui";
 
 beforeEach(() => {
@@ -43,7 +51,60 @@ vi.mock("@tauri-apps/api/core", () => {
   };
 });
 
-export function renderWithProviders(ui: ReactElement) {
+// The menu bar's events (`onMenuCommand` in src/lib/api.ts): listened for
+// and never heard, unless a test fakes the menu bar (./menuBar.ts).
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn(async () => () => {}),
+}));
+
+// The Dock's badge (`setDockBadge` in src/lib/api.ts): one window, whose
+// badge is set on nothing -- jsdom has no Tauri for the real one to reach
+// -- and read back by a test that watches the Dock (./dock.ts).
+vi.mock("@tauri-apps/api/window", () => {
+  const currentWindow = { setBadgeCount: vi.fn(async () => {}) };
+  return { getCurrentWindow: () => currentWindow };
+});
+
+/**
+ * A logo pack with no logos: what the avatars draw from under
+ * `renderWithProviders` unless a test hands it a pack of its own, so that
+ * every tool's avatar is the neutral tile with its source's coloured
+ * initial on its corner (and a source's own avatar, the initial alone),
+ * whatever the built-in pack lists: the reviewed mapping's hundreds of
+ * logos, which the next review may change.
+ */
+const NO_TOOL_ICONS: ToolIcons = loadToolIcons(
+  { version: 1, generated: "", glyphs: {}, rasters: {}, tools: {}, sources: {} },
+  new Map(),
+);
+
+/**
+ * A table with no lines: what the rows read under `renderWithProviders`,
+ * in either language, unless a test hands them a table of its own, so
+ * that a row says what its source says, whatever lines the built-in
+ * tables hold.
+ */
+const NO_DESCRIPTIONS: DescriptionTable = lazyDescriptionTable(async () => ({}));
+
+export interface RenderOptions {
+  /** The logos the avatars draw (`loadToolIcons` over a test's own pack); none unless given. */
+  toolIcons?: ToolIcons;
+  /**
+   * The lines the rows read in each language (`lazyDescriptionTable` over
+   * a test's own); none in a language not given.
+   */
+  toolDescriptions?: Partial<DescriptionTables>;
+}
+
+export function renderWithProviders(
+  ui: ReactElement,
+  { toolIcons = NO_TOOL_ICONS, toolDescriptions = {} }: RenderOptions = {},
+) {
+  const descriptionTables: DescriptionTables = {
+    en: toolDescriptions.en ?? NO_DESCRIPTIONS,
+    "zh-CN": toolDescriptions["zh-CN"] ?? NO_DESCRIPTIONS,
+    "zh-Hant": toolDescriptions["zh-Hant"] ?? NO_DESCRIPTIONS,
+  };
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
@@ -55,7 +116,15 @@ export function renderWithProviders(ui: ReactElement) {
     return React.createElement(
       QueryClientProvider,
       { client: queryClient },
-      React.createElement(I18nextProvider, { i18n }, children),
+      React.createElement(
+        I18nextProvider,
+        { i18n },
+        React.createElement(
+          ToolIconsContext.Provider,
+          { value: toolIcons },
+          React.createElement(DescriptionTablesContext.Provider, { value: descriptionTables }, children),
+        ),
+      ),
     );
   }
 

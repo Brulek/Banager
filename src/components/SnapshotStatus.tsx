@@ -1,35 +1,90 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { useRefresh, useSnapshot } from "../lib/queries";
+import { useCheckAgain, useSettings, useSnapshot } from "../lib/queries";
+import { isStartupSnapshot } from "../lib/events";
+import { useInventoryPreview } from "../lib/inventoryPreview";
+import { NOTHING_FOUND_KEYS, nothingFound } from "../lib/sources";
 import { useUiStore } from "../store/ui";
-import { EmptyState } from "./EmptyState";
+import { FAILURE_CAUSE_KEYS, failureCause } from "../lib/failureCause";
+import { EmptyState, type EmptyStateDetail } from "./EmptyState";
+import { FirstCheck } from "./StatusRing";
 
 export interface SnapshotStatusProps {
   children: ReactNode;
+  /**
+   * The page shows the first check itself while it runs -- the Overview,
+   * which shows `FirstCheck` from before `get_snapshot` answers until its
+   * settings are in too -- so `children` are rendered then in its place.
+   * Every other branch below applies to it as to any page.
+   */
+  showsFirstCheck?: boolean;
+  /**
+   * The page says itself that the check found nothing to show
+   * (`nothingFound`) -- the Overview, in its status row, where every other
+   * state of it is said (spec R1) -- so `children` are rendered then, not
+   * the empty state a list's area gets.
+   */
+  showsNothingFound?: boolean;
+  /**
+   * The page lists what the first check found installed while that check
+   * is still checking for updates (`useInventoryPreview`) -- the Installed
+   * page -- so `children` are rendered then, not `FirstCheck`, once that
+   * list is in. Every other page waits for the check's own answer.
+   */
+  showsInventoryPreview?: boolean;
 }
 
-export function SnapshotStatus({ children }: SnapshotStatusProps) {
+export function SnapshotStatus({
+  children,
+  showsFirstCheck = false,
+  showsNothingFound = false,
+  showsInventoryPreview = false,
+}: SnapshotStatusProps) {
   const { t } = useTranslation();
   const snapshotQuery = useSnapshot();
-  const refreshMutation = useRefresh();
+  const inventoryPreview = useInventoryPreview();
+  // Both load-failed states' button is the header's Check again, and off
+  // when it is: pressed while a check runs, it would queue a second one.
+  const { checkAgain, checking, error: checkError } = useCheckAgain();
   const startupRefreshError = useUiStore((s) => s.startupRefreshError);
   const snapshot = snapshotQuery.data;
+  const { data: settings } = useSettings();
+  const technical = settings?.show_technical_details ?? false;
+
+  // What Banager works with, and where it looks, behind "Details" on the
+  // two states that found nothing. "Not found", never "not installed": a
+  // tool with its own installer is looked for in its default location
+  // only, so one somewhere else is not found although it is there.
+  // Why loading failed: in a person's words where the message says
+  // (`failureCause`, spec R10); else the message itself with "Show
+  // technical details" on, as every other raw error is, and without it
+  // what to do next.
+  const whyFailed = (message: string): string => {
+    const cause = failureCause(message);
+    if (cause !== null) return t(FAILURE_CAUSE_KEYS[cause].line);
+    return technical
+      ? t("emptyStates.loadFailed.description", { message })
+      : t("emptyStates.loadFailed.nextStep");
+  };
+
+  const supportedList = (title: string): EmptyStateDetail => ({
+    label: t("common.details"),
+    ariaLabel: t("common.detailsLabel", { title }),
+    content: t("emptyStates.supportedList"),
+  });
 
   if (snapshotQuery.isError) {
     // get_snapshot itself failed. InstalledPage renders null without data,
     // so without this branch the user would face a blank page and no way
     // out. The message is the backend's own text (Task 10's call()); a
-    // failed retry replaces it with the retry's message.
+    // failed check from here replaces it with that check's message. Its
+    // button runs the check the header's does, is called what that one
+    // is, and is off while a check runs, as that one is.
     return (
       <EmptyState
         title={t("emptyStates.loadFailed.title")}
-        description={t("emptyStates.loadFailed.description", {
-          message: (refreshMutation.error ?? snapshotQuery.error).message,
-        })}
-        action={{
-          label: t("emptyStates.refreshFailed.retry"),
-          onClick: () => refreshMutation.mutate(),
-        }}
+        description={whyFailed((checkError ?? snapshotQuery.error).message)}
+        action={{ label: t("header.checkAgain"), onClick: checkAgain, disabled: checking }}
       />
     );
   }
@@ -38,149 +93,57 @@ export function SnapshotStatus({ children }: SnapshotStatusProps) {
     return <>{children}</>;
   }
 
-  if (snapshot.refreshed_at === null && startupRefreshError) {
+  if (snapshot.generation === 0 && startupRefreshError) {
     // The startup refresh (Task 10's useStartupRefresh) resolved to a
-    // rejection rather than a Snapshot, so refreshed_at will never be set by
-    // it. Without this branch the app would sit on the loading branch below
-    // forever, with no error and no way out.
+    // rejection rather than a Snapshot, so the cached snapshot is still
+    // whatever `get_snapshot` returned. Without this branch the app would
+    // sit on the loading branch below forever, with no error and no way out.
+    //
+    // `generation === 0`, not `refreshed_at === null`: only `generation`
+    // says whether anything has ever been *committed*, and data in hand
+    // beats a full-page error. A Mac with no package manager at all
+    // refreshes successfully and commits nothing new, so it sits at
+    // generation 0 with a stamped timestamp; a Mac that has committed real
+    // data and then fails a refresh keeps showing that data, the toolbar
+    // saying the check could not finish. Generation 0 is the one case where a
+    // failed refresh leaves nothing at all to show.
     return (
       <EmptyState
         title={t("emptyStates.loadFailed.title")}
-        description={t("emptyStates.loadFailed.description", { message: startupRefreshError })}
-        action={{
-          label: t("emptyStates.refreshFailed.retry"),
-          onClick: () => refreshMutation.mutate(),
-        }}
+        description={whyFailed(startupRefreshError)}
+        action={{ label: t("header.checkAgain"), onClick: checkAgain, disabled: checking }}
       />
     );
   }
 
-  if (
-    snapshot.detect === "Missing" &&
-    snapshot.refreshed_at === null &&
-    snapshot.errors.length === 0
-  ) {
+  if (isStartupSnapshot(snapshot)) {
     // The startup snapshot: Task 10's useStartupRefresh has not resolved
-    // yet, so this is still Snapshot::empty() — generation 0, no
-    // `refreshed_at`, no errors, and `detect` at its placeholder `Missing`.
-    // Judging it here would flash "Homebrew isn't installed yet" at every
-    // launch.
-    //
-    // All three conditions are load-bearing. `detect === "Missing"` is what
-    // makes this the *placeholder* rather than a real answer: only a
-    // completed refresh can report `Found` or `RefusedAsRoot`, so those are
-    // never "still loading" no matter what the timestamp says. Matching on
-    // the timestamp alone used to swallow the root refusal entirely, and
-    // because a process's euid never changes, no later refresh could undo
-    // it — the app sat on "Loading…" forever.
-    //
-    // The timestamp and error conditions then bound how long this can last.
-    // Task 5's `refresh()` (crates/canager-core/src/session/mod.rs) leaves
-    // `refreshed_at` null only when it carries the previous value forward,
-    // which happens on a per-instance failure — i.e. exactly when `errors`
-    // is non-empty. So with `errors.length === 0` a completed refresh always
-    // sets `refreshed_at` and this branch ends on its own. A refresh that
-    // completes with per-instance errors on the very first attempt
-    // (`errors.length > 0`, still no prior `refreshed_at`) is handled by the
-    // dedicated branch below instead, rather than falling through to here or
-    // to the generic stale banner.
-    return <p className="p-4 text-sm text-[var(--color-muted)]">{t("common.loading")}</p>;
+    // yet, so this is still Snapshot::empty() (`isStartupSnapshot` says
+    // why its three fields, and only they, mean that). Judging it here
+    // would flash "Banager found nothing it can manage" at every launch.
+    // The first check's spinner and why it takes a while (`FirstCheck`) are
+    // shown instead, by the page itself where it draws them. The Updates
+    // and Installed pages said a small grey "Loading…" in a corner here,
+    // for as long as the first check took. Once the check's list is in,
+    // the Installed page lists it meanwhile.
+    if (showsInventoryPreview && inventoryPreview !== null) return <>{children}</>;
+    return showsFirstCheck ? <>{children}</> : <FirstCheck />;
   }
 
-  if (snapshot.refreshed_at === null && snapshot.errors.length > 0) {
-    // First-ever refresh (previous.refreshed_at was None from
-    // Snapshot::empty()) that hit a per-instance error. The refresh promise
-    // resolved (so this isn't a load-failed case) and `detect` may well be
-    // "Found" (so this isn't the no-Homebrew case either), but there is no
-    // prior successful refresh — unlike the generic stale-banner case below,
-    // nothing here is actually "out of date"; the first check itself simply
-    // didn't finish. Distinguishing the copy avoids implying stale prior
-    // data exists on what is, in fact, a first launch. Laid out the same
-    // way as the generic stale banner below (a local `h-full` flex column,
-    // not plain siblings under `<main>`) so this banner-above-content
-    // combination doesn't overflow `<main>` either — see that branch's
-    // comment for why.
-    return (
-      <div className="flex h-full flex-col overflow-hidden">
-        <EmptyState
-          variant="banner"
-          title={t("emptyStates.firstRefreshFailed.title")}
-          description={
-            refreshMutation.isError
-              ? t("emptyStates.refreshFailed.retryFailed", {
-                  message: refreshMutation.error.message,
-                })
-              : t("emptyStates.firstRefreshFailed.description", {
-                  count: snapshot.errors.length,
-                })
-          }
-          action={{
-            label: t("emptyStates.refreshFailed.retry"),
-            onClick: () => refreshMutation.mutate(),
-          }}
-        />
-        <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
-      </div>
-    );
-  }
-
-  if (snapshot.detect === "Missing") {
+  // Found nothing: no source at all -- *every* adapter's detect() came
+  // back with no instances, not Homebrew's alone, which is what the old
+  // `noHomebrew` copy claimed -- or nothing installed and nothing any
+  // source, or a check that did not finish, wants to say (`nothingFound`,
+  // which says why that second half is load-bearing). In the list's
+  // place; the Overview says it in its status row instead.
+  const found = nothingFound(t, snapshot);
+  if (found !== null && !showsNothingFound) {
+    const title = t(NOTHING_FOUND_KEYS[found].title);
     return (
       <EmptyState
-        title={t("emptyStates.noHomebrew.title")}
-        description={t("emptyStates.noHomebrew.description")}
-      />
-    );
-  }
-
-  if (snapshot.detect === "RefusedAsRoot") {
-    return (
-      <EmptyState
-        title={t("emptyStates.refusedAsRoot.title")}
-        description={t("emptyStates.refusedAsRoot.description")}
-      />
-    );
-  }
-
-  if (snapshot.stale && snapshot.errors.length > 0) {
-    // The banner variant is meant to "sit above still-visible content"
-    // without hiding any of it, but `children` (e.g. InstalledPage) sizes
-    // itself with `h-full` — 100% of the nearest positioned ancestor with a
-    // definite height, which is `<main>` in App.tsx, not this banner's
-    // sibling slot. Stacked as plain siblings under `<main>`, the banner's
-    // own height plus `children`'s 100%-of-`<main>` height would overflow
-    // `<main>`'s box, forcing an extra scroll to reach content that would
-    // otherwise be fully visible. Constraining both to a local `h-full` flex
-    // column — banner sized to its own content, `children` wrapped in the
-    // remaining `flex-1 min-h-0` space with its own scroll — keeps the
-    // total height exactly at `<main>`'s height, so nothing overflows.
-    return (
-      <div className="flex h-full flex-col overflow-hidden">
-        <EmptyState
-          variant="banner"
-          title={t("emptyStates.refreshFailed.title")}
-          description={
-            refreshMutation.isError
-              ? t("emptyStates.refreshFailed.retryFailed", {
-                  message: refreshMutation.error.message,
-                })
-              : t("emptyStates.refreshFailed.description", { count: snapshot.errors.length })
-          }
-          action={{
-            label: t("emptyStates.refreshFailed.retry"),
-            onClick: () => refreshMutation.mutate(),
-          }}
-        />
-        <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
-      </div>
-    );
-  }
-
-  if (snapshot.artifacts.length === 0) {
-    return (
-      <EmptyState
-        title={t("emptyStates.nothingInstalled.title")}
-        description={t("emptyStates.nothingInstalled.description")}
+        title={title}
+        description={t(NOTHING_FOUND_KEYS[found].description)}
+        detail={supportedList(title)}
       />
     );
   }

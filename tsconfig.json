@@ -13,7 +13,10 @@
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx",
-    "types": ["node"],
+    /* The WebView has no Node: no ambient @types package, so `process`,
+       `Buffer` and `node:` modules are type errors in production code.
+       tsconfig.test.json re-enables @types/node for the test files. */
+    "types": [],
 
     /* Linting */
     "strict": true,
@@ -22,5 +25,6 @@
     "noFallthroughCasesInSwitch": true
   },
   "include": ["src"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/test"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

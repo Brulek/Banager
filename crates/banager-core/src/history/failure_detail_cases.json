@@ -1,0 +1,62 @@
+[
+  {
+    "name": "the first error line, its label off, the rest dropped",
+    "summary": "==> Purging files for version 0.2.0 of Cask claudebar\nError: SHA256 mismatch\nExpected: 1f2e\n  Actual: 3a4b",
+    "detail": "SHA256 mismatch"
+  },
+  {
+    "name": "npm's bookkeeping lines are not what went wrong",
+    "summary": "npm error code ETARGET\nnpm error notarget No matching version found for typescript@99.\nnpm error A complete log of this run can be found in: /Users/me/.npm/_logs/x.log",
+    "detail": "notarget No matching version found for typescript@99."
+  },
+  {
+    "name": "with no error line, the last line",
+    "summary": "Building wheel\nsomething odd happened",
+    "detail": "something odd happened"
+  },
+  {
+    "name": "words that are all blank keep nothing",
+    "summary": "  \n",
+    "detail": null
+  },
+  {
+    "name": "a Homebrew build failure: the line that ends with a colon says the reason on the next (review of r6 y3-batch, finding 5)",
+    "summary": "Error: An exception occurred within a child process:\n  BuildError: Failed executing: make install\n",
+    "detail": "An exception occurred within a child process: BuildError: Failed executing: make install"
+  },
+  {
+    "name": "Homebrew passing on another command's output",
+    "summary": "Error: Failure while executing; `/usr/bin/sudo -u root -- /bin/rm -f /Library/LaunchDaemons/x.plist` exited with 1. Here's the output:\nsudo: unable to resolve host\n",
+    "detail": "Failure while executing; `/usr/bin/sudo -u root -- /bin/rm -f /Library/LaunchDaemons/x.plist` exited with 1. Here's the output: sudo: unable to resolve host"
+  },
+  {
+    "name": "a bare label with the reason on the next line",
+    "summary": "error:\n  could not compile `foo` (bin \"foo\") due to 2 previous errors",
+    "detail": "error: could not compile `foo` (bin \"foo\") due to 2 previous errors"
+  },
+  {
+    "name": "a line that ends with a colon and nothing after it stays as it is",
+    "summary": "Building\nError: An exception occurred within a child process:",
+    "detail": "An exception occurred within a child process:"
+  },
+  {
+    "name": "the home folder, a login, a query and a fragment masked",
+    "summary": "Error: \u001b[31mcannot read\u001b[0m /Users/brulek/Library/Caches/x and /Users/other/y via https://me:secret@mirror.example/simple/?token=abc#frag",
+    "detail": "cannot read ~/Library/Caches/x and ~/y via https://****@mirror.example/simple/"
+  },
+  {
+    "name": "the shared folder is no one's home: /Users/Shared stays as it is (review of r6 y3-batch, finding 8)",
+    "summary": "Error: cannot open /Users/Shared/Banager/x.log and /Users/me/y",
+    "detail": "cannot open /Users/Shared/Banager/x.log and ~/y"
+  },
+  {
+    "name": "a token in an address's path is masked, as a login is",
+    "summary": "Error: 403 Forbidden - GET https://pkgs.example.com/AbCdEf0123456789XyZ0123456/simple/foo/",
+    "detail": "403 Forbidden - GET https://pkgs.example.com/****/simple/foo/"
+  },
+  {
+    "name": "an address's ordinary path stays as it is",
+    "summary": "npm error 404 Not Found - GET https://registry.npmjs.org/@scope%2fsome-long-package-name-here - Not found",
+    "detail": "404 Not Found - GET https://registry.npmjs.org/@scope%2fsome-long-package-name-here - Not found"
+  }
+]

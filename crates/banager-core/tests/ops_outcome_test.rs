@@ -1,0 +1,1176 @@
+//! (F2) Contract tests for how `OperationManager::run_operation` combines a
+//! `Succeeded` `execute()` result with the post-execution `reconcile()`
+//! check into a final `Outcome`.
+//!
+//! Before this fix, `reconcile`'s result was only consulted when `execute`
+//! returned `Unconfirmed` — a `Succeeded` exit code was always taken at face
+//! value, so `brew install` exiting 0 without the package actually present
+//! (or `brew uninstall` exiting 0 with the package still present) was
+//! reported as a silent `Succeeded`, even though `Verifying` had just proven
+//! otherwise.
+
+use async_trait::async_trait;
+use banager_core::adapters::{Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome};
+use banager_core::events::{EventSink, LogNote, OpId, OperationEvent, VecSink};
+use banager_core::follow_up::FollowUpWarning;
+use banager_core::history::FailureCause;
+use banager_core::model::{
+    ArtifactKey, ArtifactKind, Attention, CancelPolicy, InstalledArtifact, ManagerInstance, OpKind,
+    OpRequest, Outcome, Plan, PlanAction, Reconciled, ResourceLock, SearchHit, Warning,
+};
+use banager_core::ops::OperationManager;
+use banager_core::runner::HostEnv;
+use std::sync::{Arc, Mutex};
+use tokio_util::sync::CancellationToken;
+
+/// What `FakeAdapter::reconcile` should report for a given scenario.
+#[derive(Clone)]
+enum ReconcileBehavior {
+    Present(bool),
+    Err,
+    /// One reading per call, in order; the last one repeats. An upgrade
+    /// reconciles twice -- before `execute` and after -- so a two-entry
+    /// script is "what was installed before, what is installed after".
+    Readings(Vec<Option<Reconciled>>),
+    /// What `reconcile_link` reads after a link: `None`, not installed;
+    /// `Some(linked)` otherwise.
+    Linked(Option<bool>),
+}
+
+struct FakeAdapter {
+    meta: AdapterMeta,
+    reconcile_behavior: ReconcileBehavior,
+    /// What `execute` answers: `Succeeded` but in the cases of a tool's
+    /// own failure (`run_failed_case`).
+    executed: Outcome,
+    /// Every `reconcile` and `execute` call, in the order they happened.
+    calls: Mutex<Vec<&'static str>>,
+}
+
+impl FakeAdapter {
+    fn new(reconcile_behavior: ReconcileBehavior) -> FakeAdapter {
+        FakeAdapter {
+            meta: AdapterMeta {
+                id: "fake".to_string(),
+                name: "fake".to_string(),
+                kind: "fake".to_string(),
+                platforms: vec!["macos".to_string()],
+                homepage: "https://example.invalid".to_string(),
+                schema_version: 1,
+                verified_versions: vec![],
+            },
+            reconcile_behavior,
+            executed: Outcome::Succeeded,
+            calls: Mutex::new(Vec::new()),
+        }
+    }
+
+    fn calls(&self) -> Vec<&'static str> {
+        self.calls.lock().unwrap().clone()
+    }
+}
+
+#[async_trait]
+impl Adapter for FakeAdapter {
+    fn meta(&self) -> &AdapterMeta {
+        &self.meta
+    }
+
+    async fn detect(&self, _env: &HostEnv) -> Vec<ManagerInstance> {
+        Vec::new()
+    }
+
+    async fn inventory(
+        &self,
+        _inst: &ManagerInstance,
+    ) -> Result<Vec<InstalledArtifact>, AdapterError> {
+        Ok(Vec::new())
+    }
+
+    async fn check_updates(
+        &self,
+        _inst: &ManagerInstance,
+        _opts: &CheckOptions,
+    ) -> Result<CheckOutcome, AdapterError> {
+        Ok(CheckOutcome::default())
+    }
+
+    async fn search(
+        &self,
+        _inst: &ManagerInstance,
+        _query: &str,
+    ) -> Result<Vec<SearchHit>, AdapterError> {
+        Ok(Vec::new())
+    }
+
+    async fn plan(&self, inst: &ManagerInstance, req: &OpRequest) -> Result<Plan, AdapterError> {
+        Ok(Plan {
+            request: req.clone(),
+            action: PlanAction::Command {
+                program: inst.exe_path.clone(),
+                args: vec![],
+                env: vec![],
+            },
+            needs_password: false,
+            locks: vec![ResourceLock(inst.id.clone())],
+            cancel_policy: CancelPolicy::KillThenReconcile,
+            warnings: vec![],
+            affected: vec![],
+            basis: None,
+            timeout_secs: 60,
+        })
+    }
+
+    async fn execute(
+        &self,
+        _plan: &Plan,
+        _sink: Arc<dyn EventSink>,
+        _op_id: OpId,
+        _cancel: CancellationToken,
+    ) -> Result<Outcome, AdapterError> {
+        self.calls.lock().unwrap().push("execute");
+        // Nearly every scenario in this file models a command that
+        // reported success; the interesting variable is what `reconcile`
+        // finds afterward. The others are a tool's own failure
+        // (`run_failed_case`).
+        Ok(self.executed.clone())
+    }
+
+    async fn reconcile(
+        &self,
+        _inst: &ManagerInstance,
+        _key: &ArtifactKey,
+    ) -> Result<Reconciled, AdapterError> {
+        let nth = {
+            let mut calls = self.calls.lock().unwrap();
+            let nth = calls.iter().filter(|c| **c == "reconcile").count();
+            calls.push("reconcile");
+            nth
+        };
+        match &self.reconcile_behavior {
+            ReconcileBehavior::Present(present) => Ok(Reconciled {
+                present: *present,
+                version: None,
+            }),
+            ReconcileBehavior::Linked(linked) => Ok(Reconciled {
+                present: linked.is_some(),
+                version: None,
+            }),
+            ReconcileBehavior::Err => Err(AdapterError::Refused("reconcile failed".to_string())),
+            ReconcileBehavior::Readings(readings) => readings[nth.min(readings.len() - 1)]
+                .clone()
+                .ok_or_else(|| AdapterError::Refused("reconcile failed".to_string())),
+        }
+    }
+
+    async fn reconcile_link(
+        &self,
+        _inst: &ManagerInstance,
+        _key: &ArtifactKey,
+    ) -> Result<Option<bool>, AdapterError> {
+        self.calls.lock().unwrap().push("reconcile");
+        match &self.reconcile_behavior {
+            ReconcileBehavior::Linked(linked) => Ok(*linked),
+            ReconcileBehavior::Present(present) => Ok(present.then_some(true)),
+            ReconcileBehavior::Err | ReconcileBehavior::Readings(_) => {
+                Err(AdapterError::Refused("reconcile failed".to_string()))
+            }
+        }
+    }
+}
+
+fn make_instance(id: &str) -> ManagerInstance {
+    ManagerInstance {
+        version: None,
+        ..banager_core::testing::manager_instance("fake", id)
+    }
+}
+
+/// Submits one op of `kind` against a fresh manager/adapter/instance whose
+/// `execute` reports `Succeeded` and whose `reconcile` behaves as given,
+/// then returns the final outcome.
+async fn run_case(kind: OpKind, reconcile_behavior: ReconcileBehavior) -> Outcome {
+    run_case_with_calls(kind, reconcile_behavior).await.0
+}
+
+/// `run_case`, also returning the order `reconcile` and `execute` ran in.
+async fn run_case_with_calls(
+    kind: OpKind,
+    reconcile_behavior: ReconcileBehavior,
+) -> (Outcome, Vec<&'static str>) {
+    run_case_as(
+        kind,
+        ArtifactKind::Formula,
+        Outcome::Succeeded,
+        reconcile_behavior,
+    )
+    .await
+}
+
+/// `run_case`, with `execute` answering `executed` -- a tool's own failure
+/// -- for a package of `artifact_kind`.
+async fn run_failed_case(
+    kind: OpKind,
+    artifact_kind: ArtifactKind,
+    executed: Outcome,
+    reconcile_behavior: ReconcileBehavior,
+) -> Outcome {
+    run_case_as(kind, artifact_kind, executed, reconcile_behavior)
+        .await
+        .0
+}
+
+async fn run_case_as(
+    kind: OpKind,
+    artifact_kind: ArtifactKind,
+    executed: Outcome,
+    reconcile_behavior: ReconcileBehavior,
+) -> (Outcome, Vec<&'static str>) {
+    let sink = Arc::new(VecSink::new());
+    let mut manager = OperationManager::new(sink);
+    let adapter = Arc::new(FakeAdapter {
+        executed,
+        ..FakeAdapter::new(reconcile_behavior)
+    });
+    manager.register_adapter(adapter.clone());
+    let manager = Arc::new(manager);
+
+    let inst = make_instance("fake:/outcome-matrix");
+    manager.register_instance(inst.clone());
+    let req = OpRequest {
+        kind,
+        instance_id: inst.id.clone(),
+        artifact_kind,
+        name: "pkg".to_string(),
+    };
+    let plan = adapter.plan(&inst, &req).await.expect("plan");
+    let op_id = manager.submit(plan);
+    let outcome = manager
+        .wait(op_id)
+        .await
+        .expect("op must reach Done and report an outcome");
+    (outcome, adapter.calls())
+}
+
+fn at(version: &str) -> Option<Reconciled> {
+    Some(Reconciled {
+        present: true,
+        version: Some(version.to_string()),
+    })
+}
+
+#[tokio::test]
+async fn test_succeeded_install_present_is_succeeded() {
+    let outcome = run_case(OpKind::Install, ReconcileBehavior::Present(true)).await;
+    assert_eq!(outcome, Outcome::Succeeded);
+}
+
+#[tokio::test]
+async fn test_succeeded_install_absent_needs_attention() {
+    let outcome = run_case(OpKind::Install, ReconcileBehavior::Present(false)).await;
+    assert_eq!(
+        outcome,
+        Outcome::NeedsAttention(Attention::NotInstalledAfterInstall)
+    );
+}
+
+#[tokio::test]
+async fn test_succeeded_install_reconcile_err_is_unconfirmed() {
+    let outcome = run_case(OpKind::Install, ReconcileBehavior::Err).await;
+    assert_eq!(outcome, Outcome::Unconfirmed);
+}
+
+#[tokio::test]
+async fn test_succeeded_uninstall_absent_is_succeeded() {
+    let outcome = run_case(OpKind::Uninstall, ReconcileBehavior::Present(false)).await;
+    assert_eq!(outcome, Outcome::Succeeded);
+}
+
+#[tokio::test]
+async fn test_succeeded_uninstall_present_needs_attention() {
+    let outcome = run_case(OpKind::Uninstall, ReconcileBehavior::Present(true)).await;
+    assert_eq!(
+        outcome,
+        Outcome::NeedsAttention(Attention::StillInstalledAfterUninstall)
+    );
+}
+
+#[tokio::test]
+async fn test_succeeded_uninstall_reconcile_err_is_unconfirmed() {
+    let outcome = run_case(OpKind::Uninstall, ReconcileBehavior::Err).await;
+    assert_eq!(outcome, Outcome::Unconfirmed);
+}
+
+#[tokio::test]
+async fn test_a_link_that_exited_0_is_succeeded_only_once_the_formula_is_linked() {
+    // `brew link --formula --force` (`OpKind::Link`) exits 0 having linked nothing
+    // too: "Refusing to link macOS provided/shadowed software"
+    // (cmd/link.rb in Homebrew 7.0.8). What decides is whether Homebrew
+    // says it is linked afterwards (`Adapter::reconcile_link`); gone, or
+    // not read, nothing is known.
+    let outcome = run_case(OpKind::Link, ReconcileBehavior::Linked(Some(true))).await;
+    assert_eq!(outcome, Outcome::Succeeded);
+    let outcome = run_case(OpKind::Link, ReconcileBehavior::Linked(Some(false))).await;
+    assert_eq!(
+        outcome,
+        Outcome::NeedsAttention(Attention::NotLinkedAfterLink)
+    );
+    let outcome = run_case(OpKind::Link, ReconcileBehavior::Linked(None)).await;
+    assert_eq!(outcome, Outcome::Unconfirmed);
+    let outcome = run_case(OpKind::Link, ReconcileBehavior::Err).await;
+    assert_eq!(outcome, Outcome::Unconfirmed);
+}
+
+#[tokio::test]
+async fn test_succeeded_upgrade_present_is_succeeded() {
+    let outcome = run_case(OpKind::Upgrade, ReconcileBehavior::Present(true)).await;
+    assert_eq!(outcome, Outcome::Succeeded);
+}
+
+#[tokio::test]
+async fn test_queued_absent_upgrades_release_the_lock_and_finish_without_starting() {
+    let adapter = Arc::new(FakeAdapter::new(ReconcileBehavior::Present(false)));
+    let mut manager = OperationManager::new(Arc::new(VecSink::new()));
+    manager.register_adapter(adapter.clone());
+    let manager = Arc::new(manager);
+    let inst = make_instance("fake:/queued-absence");
+    manager.register_instance(inst.clone());
+    let plan = adapter
+        .plan(
+            &inst,
+            &OpRequest {
+                kind: OpKind::Upgrade,
+                instance_id: inst.id.clone(),
+                artifact_kind: ArtifactKind::Package,
+                name: "pkg".into(),
+            },
+        )
+        .await
+        .unwrap();
+    let lock = manager
+        .acquire_resource_lock(ResourceLock(inst.id.clone()))
+        .await;
+    let ended = Arc::new(Mutex::new(Vec::new()));
+    let mut ids = Vec::new();
+    for _ in 0..2 {
+        let ended = ended.clone();
+        ids.push(manager.submit_with(
+            plan.clone(),
+            Some(Box::new(move |end| {
+                ended
+                    .lock()
+                    .unwrap()
+                    .push((end.started, end.outcome.clone()));
+            })),
+        ));
+    }
+    tokio::task::yield_now().await;
+    assert!(
+        adapter.calls().is_empty(),
+        "before-reading waits for the lock"
+    );
+    drop(lock);
+    for id in ids {
+        let outcome = tokio::time::timeout(std::time::Duration::from_secs(2), manager.wait(id))
+            .await
+            .expect("both ops finish and release their locks")
+            .unwrap();
+        assert_eq!(
+            outcome,
+            Outcome::NeedsAttention(Attention::GoneBeforeUpgrade)
+        );
+    }
+    assert_eq!(adapter.calls(), vec!["reconcile", "reconcile"]);
+    assert_eq!(
+        *ended.lock().unwrap(),
+        vec![(false, Outcome::NeedsAttention(Attention::GoneBeforeUpgrade)); 2]
+    );
+}
+
+#[tokio::test]
+async fn test_upgrade_absent_before_execution_never_reinstalls() {
+    let (outcome, calls) = run_case_with_calls(
+        OpKind::Upgrade,
+        ReconcileBehavior::Readings(vec![
+            Some(Reconciled {
+                present: false,
+                version: None,
+            }),
+            at("2.0"),
+        ]),
+    )
+    .await;
+    assert_eq!(calls, vec!["reconcile"], "no execute or after-reading");
+    let wire = r#"{"NeedsAttention":"GoneBeforeUpgrade"}"#;
+    assert_eq!(serde_json::to_string(&outcome).unwrap(), wire);
+    assert_eq!(serde_json::from_str::<Outcome>(wire).unwrap(), outcome);
+}
+
+#[tokio::test]
+async fn test_succeeded_upgrade_absent_needs_attention() {
+    let outcome = run_case(
+        OpKind::Upgrade,
+        ReconcileBehavior::Readings(vec![
+            at("1.0"),
+            Some(Reconciled {
+                present: false,
+                version: None,
+            }),
+        ]),
+    )
+    .await;
+    assert_eq!(
+        outcome,
+        Outcome::NeedsAttention(Attention::GoneAfterUpgrade)
+    );
+}
+
+#[tokio::test]
+async fn test_succeeded_upgrade_reconcile_err_is_unconfirmed() {
+    let outcome = run_case(OpKind::Upgrade, ReconcileBehavior::Err).await;
+    assert_eq!(outcome, Outcome::Unconfirmed);
+}
+
+// An upgrade whose tool exits 0 used to be `Succeeded` whenever the package
+// was still there afterwards -- which it always is, since it was there
+// before. These compare the version read before the command with the one
+// read after.
+
+#[tokio::test]
+async fn test_succeeded_upgrade_whose_version_moved_is_succeeded() {
+    let (outcome, calls) = run_case_with_calls(
+        OpKind::Upgrade,
+        ReconcileBehavior::Readings(vec![at("1.7.1"), at("1.8.0")]),
+    )
+    .await;
+    assert_eq!(outcome, Outcome::Succeeded);
+    // The first reading has to be taken before the command runs, or it is
+    // not a "before".
+    assert_eq!(calls, vec!["reconcile", "execute", "reconcile"]);
+}
+
+#[tokio::test]
+async fn test_succeeded_upgrade_whose_version_did_not_move_needs_attention() {
+    // The tool reported success and nothing changed: a locked pipx tool, a
+    // uv tool installed with `==`, a disabled Homebrew cask. It must not be
+    // reported as `Succeeded`.
+    let outcome = run_case(
+        OpKind::Upgrade,
+        ReconcileBehavior::Readings(vec![at("1.7.1"), at("1.7.1")]),
+    )
+    .await;
+    assert_eq!(
+        outcome,
+        Outcome::NeedsAttention(Attention::UnchangedAfterUpgrade)
+    );
+}
+
+#[tokio::test]
+async fn test_succeeded_upgrade_with_no_before_reading_falls_back_to_presence() {
+    // The before-reading failed: there is nothing to compare, so the
+    // outcome is exactly what it was before that reading existed --
+    // never a stronger claim than the evidence.
+    let outcome = run_case(
+        OpKind::Upgrade,
+        ReconcileBehavior::Readings(vec![None, at("1.7.1")]),
+    )
+    .await;
+    assert_eq!(outcome, Outcome::Succeeded);
+}
+
+#[tokio::test]
+async fn test_succeeded_upgrade_whose_versions_are_unknown_or_empty_falls_back_to_presence() {
+    // `None` is how an adapter says its version string cannot tell one
+    // install from another (a Homebrew `version :latest` cask); `""` is
+    // what brew's and npm's parsers fall back to when there is no version
+    // to read. Two equal non-versions prove nothing.
+    for version in [None, Some(String::new())] {
+        let reading = Some(Reconciled {
+            present: true,
+            version: version.clone(),
+        });
+        let outcome = run_case(
+            OpKind::Upgrade,
+            ReconcileBehavior::Readings(vec![reading.clone(), reading]),
+        )
+        .await;
+        assert_eq!(outcome, Outcome::Succeeded, "version {version:?}");
+    }
+}
+
+#[tokio::test]
+async fn test_succeeded_upgrade_that_removed_the_package_is_still_gone_after_upgrade() {
+    let outcome = run_case(
+        OpKind::Upgrade,
+        ReconcileBehavior::Readings(vec![
+            at("1.7.1"),
+            Some(Reconciled {
+                present: false,
+                version: None,
+            }),
+        ]),
+    )
+    .await;
+    assert_eq!(
+        outcome,
+        Outcome::NeedsAttention(Attention::GoneAfterUpgrade)
+    );
+}
+
+// r35 U2: a tool that exited non-zero after the version it reads had
+// moved -- Homebrew's post-install or link step failing after the new keg
+// was poured. The update is installed; a step after it failed. Only the
+// two readings can say so, and only when both name a version and they
+// differ: anything less keeps the tool's own `Failed`.
+
+fn tool_failed(exit_code: Option<i32>) -> Outcome {
+    Outcome::Failed {
+        exit_code,
+        summary: "Warning: The post-install step did not complete successfully".to_string(),
+        cause: None,
+    }
+}
+
+#[tokio::test]
+async fn test_an_upgrade_whose_tool_failed_after_its_version_moved_was_updated_with_a_step_that_failed(
+) {
+    let outcome = run_failed_case(
+        OpKind::Upgrade,
+        ArtifactKind::Formula,
+        tool_failed(Some(1)),
+        ReconcileBehavior::Readings(vec![at("1.6.58"), at("1.6.59")]),
+    )
+    .await;
+    // The tool's first error line says which step, once the log is gone.
+    assert_eq!(
+        outcome,
+        Outcome::NeedsAttention(Attention::UpdatedButStepFailed {
+            version: Some("1.6.59".to_string()),
+            cause: None,
+            detail: Some(
+                "Warning: The post-install step did not complete successfully".to_string()
+            ),
+        })
+    );
+}
+
+/// The tool's failure with its cause, as `run_plan` reads it off the
+/// summary's lines (`CommandOutput::failure_cause`).
+fn tool_failed_saying(summary: &str) -> Outcome {
+    Outcome::Failed {
+        exit_code: Some(1),
+        summary: summary.to_string(),
+        cause: banager_core::history::operation_failure_cause(summary),
+    }
+}
+
+#[tokio::test]
+async fn test_an_upgrade_whose_link_step_failed_after_its_version_moved_keeps_that_it_is_not_linked(
+) {
+    // Skeptic of r35 U2, 1: Homebrew's link step fails only after the new
+    // keg is poured (formula_installer.rb:1313/1321 in Homebrew 7.0.8), so
+    // its version always reads as moved. The cause the tool's line named
+    // stays with it, for the window's words on it; the line itself adds
+    // nothing to them.
+    let outcome = run_failed_case(
+        OpKind::Upgrade,
+        ArtifactKind::Formula,
+        tool_failed_saying("Error: The `brew link` step did not complete successfully"),
+        ReconcileBehavior::Readings(vec![at("22.23.2"), at("22.23.3_1")]),
+    )
+    .await;
+    assert_eq!(
+        outcome,
+        Outcome::NeedsAttention(Attention::UpdatedButStepFailed {
+            version: Some("22.23.3_1".to_string()),
+            cause: Some(FailureCause::NotLinked),
+            detail: None,
+        })
+    );
+}
+
+#[tokio::test]
+async fn test_an_upgrade_whose_step_failed_for_a_named_cause_keeps_the_cause_and_its_line() {
+    // Any cause but `NotLinked`: the window has words for none of them on
+    // an update that is installed (theirs end "then try again"), so the
+    // tool's own line is what says which step.
+    let line = "Error: Permission denied @ rb_sysopen - /opt/homebrew/var/fontconfig/cache";
+    let outcome = run_failed_case(
+        OpKind::Upgrade,
+        ArtifactKind::Formula,
+        tool_failed_saying(line),
+        ReconcileBehavior::Readings(vec![at("2.18.3"), at("2.18.4")]),
+    )
+    .await;
+    assert_eq!(
+        outcome,
+        Outcome::NeedsAttention(Attention::UpdatedButStepFailed {
+            version: Some("2.18.4".to_string()),
+            cause: Some(FailureCause::Permission),
+            detail: Some(
+                "Permission denied @ rb_sysopen - /opt/homebrew/var/fontconfig/cache".to_string()
+            ),
+        })
+    );
+}
+
+#[tokio::test]
+async fn test_a_casks_upgrade_that_failed_though_its_version_moved_keeps_its_failure() {
+    // Skeptic of r35 U2, 4.1: Homebrew rolls a cask's failed upgrade back
+    // (cask/upgrade.rb:504-516 in Homebrew 7.0.8). A version that moved
+    // anyway is one whose rollback failed too, which leaves the new
+    // version's record with no word on whether its app is in place:
+    // "The new version is installed" would not be known.
+    let summary = "Warning: Rolling back the failed upgrade of onyx also failed: Errno::EACCES: Permission denied\n\
+                   Error: It seems there is already an App at '/Applications/OnyX.app'.";
+    let outcome = run_failed_case(
+        OpKind::Upgrade,
+        ArtifactKind::Cask,
+        tool_failed_saying(summary),
+        ReconcileBehavior::Readings(vec![at("5.0.2"), at("5.1.0")]),
+    )
+    .await;
+    assert_eq!(outcome, tool_failed_saying(summary));
+}
+
+#[tokio::test]
+async fn test_an_upgrade_that_waited_on_another_program_keeps_its_failure_though_its_version_moved()
+{
+    // Skeptic of r35 U2, 4.2: a command another program's lock stopped
+    // before it changed anything -- or that Homebrew's own list update
+    // held up -- did not move the version; whatever did (a `brew upgrade`
+    // in Terminal) is not this update with a failed step.
+    for line in [
+        "Error: A `brew upgrade aria2` process has already locked /opt/homebrew/Cellar/aria2.\n\
+         Please wait for it to finish or terminate it to continue.",
+        "Error: brew update timed out after 600 seconds",
+    ] {
+        let outcome = run_failed_case(
+            OpKind::Upgrade,
+            ArtifactKind::Formula,
+            tool_failed_saying(line),
+            ReconcileBehavior::Readings(vec![at("1.37.0_2"), at("1.37.0_3")]),
+        )
+        .await;
+        assert!(
+            matches!(
+                &outcome,
+                Outcome::Failed {
+                    cause: Some(FailureCause::Busy | FailureCause::HomebrewUpdating),
+                    ..
+                }
+            ),
+            "{line}: {outcome:?}"
+        );
+        assert_eq!(outcome, tool_failed_saying(line), "{line}");
+    }
+}
+
+/// `run_failed_case` for an upgrade whose confirmation said it deletes the
+/// old versions (`Warning::HomebrewCleansUpOldVersions`, a formula's
+/// update that a `brew cleanup` follows, U9): its outcome, its summary's
+/// follow-up warnings, and the notes its log got.
+async fn run_failed_case_promising_cleanup(
+    executed: Outcome,
+    readings: Vec<Option<Reconciled>>,
+) -> (Outcome, Vec<FollowUpWarning>, Vec<LogNote>) {
+    let sink = Arc::new(VecSink::new());
+    let mut manager = OperationManager::new(sink.clone());
+    let adapter = Arc::new(FakeAdapter {
+        executed,
+        ..FakeAdapter::new(ReconcileBehavior::Readings(readings))
+    });
+    manager.register_adapter(adapter.clone());
+    let manager = Arc::new(manager);
+    let inst = make_instance("fake:/cleanup-promised");
+    manager.register_instance(inst.clone());
+    let req = OpRequest {
+        kind: OpKind::Upgrade,
+        instance_id: inst.id.clone(),
+        artifact_kind: ArtifactKind::Formula,
+        name: "git".to_string(),
+    };
+    let mut plan = adapter.plan(&inst, &req).await.expect("plan");
+    plan.warnings.push(Warning::HomebrewCleansUpOldVersions {
+        versions: vec!["2.54.0".to_string(), "2.55.0".to_string()],
+    });
+    let op_id = manager.submit(plan);
+    let outcome = manager.wait(op_id).await.expect("an outcome");
+    let warnings = manager
+        .summaries()
+        .into_iter()
+        .find(|s| s.id == op_id)
+        .expect("its summary")
+        .follow_up_warnings;
+    let notes = sink
+        .snapshot()
+        .into_iter()
+        .filter_map(|event| match event {
+            OperationEvent::Note { op_id: id, note } if id == op_id => Some(note),
+            _ => None,
+        })
+        .collect();
+    (outcome, warnings, notes)
+}
+
+#[tokio::test]
+async fn test_an_update_installed_with_a_failed_step_says_the_promised_cleanup_did_not_run() {
+    // Skeptic of r35 U2, 3: the confirmation said the old versions go
+    // once the update is done, and `brew cleanup` follows only an update
+    // that exited 0 (`BrewAdapter::execute`). Said as an update installed,
+    // the old versions staying is said too -- in the log and in what the
+    // history keeps -- as a cleanup that did not finish is.
+    let (outcome, warnings, notes) =
+        run_failed_case_promising_cleanup(tool_failed(Some(1)), vec![at("2.55.0"), at("2.55.1")])
+            .await;
+    assert!(
+        matches!(
+            outcome,
+            Outcome::NeedsAttention(Attention::UpdatedButStepFailed { .. })
+        ),
+        "{outcome:?}"
+    );
+    let not_cleaned_up = LogNote::OldVersionsNotCleanedUp {
+        name: "git".to_string(),
+        exit_code: None,
+    };
+    assert_eq!(notes, vec![not_cleaned_up]);
+    assert_eq!(
+        warnings,
+        vec![FollowUpWarning::OldVersionsNotCleanedUp {
+            name: "git".to_string(),
+            exit_code: None,
+        }]
+    );
+}
+
+#[tokio::test]
+async fn test_an_update_that_failed_says_nothing_of_the_cleanup_it_never_reached() {
+    // Not updated: 「未能更新」 already says the update, and so its
+    // cleanup, did not happen; "the update itself is done" would be false.
+    let (outcome, warnings, notes) =
+        run_failed_case_promising_cleanup(tool_failed(Some(1)), vec![at("2.55.0"), at("2.55.0")])
+            .await;
+    assert_eq!(outcome, tool_failed(Some(1)));
+    assert_eq!(notes, Vec::<LogNote>::new());
+    assert_eq!(warnings, Vec::<FollowUpWarning>::new());
+}
+
+#[tokio::test]
+async fn test_a_models_update_that_failed_after_its_digest_moved_names_no_version() {
+    // A model's "version" is its digest, which Banager never shows (the
+    // history keeps none for a model either, `history::record_for`).
+    let outcome = run_failed_case(
+        OpKind::Upgrade,
+        ArtifactKind::Model,
+        tool_failed(Some(1)),
+        ReconcileBehavior::Readings(vec![at("sha256:aaa"), at("sha256:bbb")]),
+    )
+    .await;
+    assert_eq!(
+        outcome,
+        Outcome::NeedsAttention(Attention::UpdatedButStepFailed {
+            version: None,
+            cause: None,
+            detail: Some(
+                "Warning: The post-install step did not complete successfully".to_string()
+            ),
+        })
+    );
+}
+
+#[tokio::test]
+async fn test_an_upgrade_whose_tool_failed_without_a_moved_version_keeps_its_failure() {
+    let gone = Some(Reconciled {
+        present: false,
+        version: None,
+    });
+    let empty = Some(Reconciled {
+        present: true,
+        version: Some(String::new()),
+    });
+    for (readings, what) in [
+        (vec![at("1.6.58"), at("1.6.58")], "the same version"),
+        (vec![None, at("1.6.59")], "no reading before"),
+        (vec![at("1.6.58"), None], "no reading after"),
+        (vec![at("1.6.58"), gone], "gone after"),
+        (vec![empty.clone(), empty], "no version to compare"),
+    ] {
+        let outcome = run_failed_case(
+            OpKind::Upgrade,
+            ArtifactKind::Formula,
+            tool_failed(Some(1)),
+            ReconcileBehavior::Readings(readings),
+        )
+        .await;
+        assert_eq!(outcome, tool_failed(Some(1)), "{what}");
+    }
+}
+
+#[tokio::test]
+async fn test_an_upgrade_whose_command_never_ran_keeps_its_failure_whatever_the_readings() {
+    // npm's and uv's read right before the command, when it did not
+    // finish, is a `Failed` with no exit code: the command was not
+    // started, so a version that moved meanwhile is not its doing
+    // (`read_before_run` in adapters/mod.rs).
+    let outcome = run_failed_case(
+        OpKind::Upgrade,
+        ArtifactKind::Package,
+        tool_failed(None),
+        ReconcileBehavior::Readings(vec![at("5.9.2"), at("5.9.3")]),
+    )
+    .await;
+    assert_eq!(outcome, tool_failed(None));
+}
+
+#[tokio::test]
+async fn test_an_install_or_uninstall_whose_tool_failed_keeps_its_failure() {
+    for kind in [OpKind::Install, OpKind::Uninstall] {
+        let outcome = run_failed_case(
+            kind,
+            ArtifactKind::Formula,
+            tool_failed(Some(1)),
+            ReconcileBehavior::Readings(vec![at("1.6.58"), at("1.6.59")]),
+        )
+        .await;
+        assert_eq!(outcome, tool_failed(Some(1)), "{kind:?}");
+    }
+}
+
+#[tokio::test]
+async fn test_install_and_uninstall_take_no_before_reading() {
+    // The before-reading is for upgrades only: presence already decides
+    // an install or an uninstall, so they cost no extra inventory read.
+    for kind in [OpKind::Install, OpKind::Uninstall] {
+        let (_, calls) = run_case_with_calls(kind, ReconcileBehavior::Present(true)).await;
+        assert_eq!(calls, vec!["execute", "reconcile"], "{kind:?}");
+    }
+}
+
+// --- The reading after an uninstall (phase 4 step C) -----------------------
+
+/// An adapter whose `reconcile` never answers -- the way
+/// `StandaloneAdapter`'s refuses a launcher it cannot read a version from
+/// -- while its `reconcile_after_uninstall` answers presence, which is all
+/// an uninstall's verification reads: `Some(present)`, or `None` for a
+/// reading that cannot tell (an `Err`, as a permission error on the
+/// launcher's folder is for the standalone adapter). `execute` reports
+/// `outcome`, first firing the operation's own token when
+/// `cancel_in_execute` is set: a user's Cancel landing while the uninstall
+/// ran. Every plan `execute` and `reconcile_after_uninstall` are handed is
+/// kept, in `handed`, in the order they were handed.
+struct SplitReadingAdapter {
+    meta: AdapterMeta,
+    still_there: Option<bool>,
+    outcome: Outcome,
+    cancel_in_execute: bool,
+    calls: Mutex<Vec<&'static str>>,
+    handed: Mutex<Vec<Plan>>,
+}
+
+impl SplitReadingAdapter {
+    fn new(
+        still_there: Option<bool>,
+        outcome: Outcome,
+        cancel_in_execute: bool,
+    ) -> SplitReadingAdapter {
+        SplitReadingAdapter {
+            meta: AdapterMeta {
+                id: "fake".to_string(),
+                name: "fake".to_string(),
+                kind: "fake".to_string(),
+                platforms: vec!["macos".to_string()],
+                homepage: "https://example.invalid".to_string(),
+                schema_version: 1,
+                verified_versions: vec![],
+            },
+            still_there,
+            outcome,
+            cancel_in_execute,
+            calls: Mutex::new(Vec::new()),
+            handed: Mutex::new(Vec::new()),
+        }
+    }
+}
+
+#[async_trait]
+impl Adapter for SplitReadingAdapter {
+    fn meta(&self) -> &AdapterMeta {
+        &self.meta
+    }
+
+    async fn detect(&self, _env: &HostEnv) -> Vec<ManagerInstance> {
+        Vec::new()
+    }
+
+    async fn inventory(
+        &self,
+        _inst: &ManagerInstance,
+    ) -> Result<Vec<InstalledArtifact>, AdapterError> {
+        Ok(Vec::new())
+    }
+
+    async fn check_updates(
+        &self,
+        _inst: &ManagerInstance,
+        _opts: &CheckOptions,
+    ) -> Result<CheckOutcome, AdapterError> {
+        Ok(CheckOutcome::default())
+    }
+
+    async fn search(
+        &self,
+        _inst: &ManagerInstance,
+        _query: &str,
+    ) -> Result<Vec<SearchHit>, AdapterError> {
+        Ok(Vec::new())
+    }
+
+    async fn plan(&self, inst: &ManagerInstance, req: &OpRequest) -> Result<Plan, AdapterError> {
+        Ok(Plan {
+            request: req.clone(),
+            action: PlanAction::Command {
+                program: inst.exe_path.clone(),
+                args: vec![],
+                env: vec![],
+            },
+            needs_password: false,
+            locks: vec![ResourceLock(inst.id.clone())],
+            cancel_policy: CancelPolicy::KillThenReconcile,
+            warnings: vec![],
+            affected: vec![],
+            basis: None,
+            timeout_secs: 60,
+        })
+    }
+
+    async fn execute(
+        &self,
+        plan: &Plan,
+        _sink: Arc<dyn EventSink>,
+        _op_id: OpId,
+        cancel: CancellationToken,
+    ) -> Result<Outcome, AdapterError> {
+        self.calls.lock().unwrap().push("execute");
+        self.handed.lock().unwrap().push(plan.clone());
+        if self.cancel_in_execute {
+            cancel.cancel();
+        }
+        Ok(self.outcome.clone())
+    }
+
+    async fn reconcile(
+        &self,
+        _inst: &ManagerInstance,
+        _key: &ArtifactKey,
+    ) -> Result<Reconciled, AdapterError> {
+        self.calls.lock().unwrap().push("reconcile");
+        Err(AdapterError::Parse("no version to read".to_string()))
+    }
+
+    async fn reconcile_after_uninstall(
+        &self,
+        _inst: &ManagerInstance,
+        _key: &ArtifactKey,
+        plan: &Plan,
+    ) -> Result<Reconciled, AdapterError> {
+        self.calls.lock().unwrap().push("reconcile_after_uninstall");
+        self.handed.lock().unwrap().push(plan.clone());
+        match self.still_there {
+            Some(present) => Ok(Reconciled {
+                present,
+                version: None,
+            }),
+            None => Err(AdapterError::Parse(
+                "cannot tell whether it is still there".to_string(),
+            )),
+        }
+    }
+}
+
+/// Submits one op of `kind` to a fresh manager over `adapter` and returns
+/// the outcome and the order the adapter was called in.
+async fn run_split(kind: OpKind, adapter: SplitReadingAdapter) -> (Outcome, Vec<&'static str>) {
+    let mut manager = OperationManager::new(Arc::new(VecSink::new()));
+    let adapter = Arc::new(adapter);
+    manager.register_adapter(adapter.clone());
+    let manager = Arc::new(manager);
+    let inst = make_instance("fake:/split-reading");
+    manager.register_instance(inst.clone());
+    let req = OpRequest {
+        kind,
+        instance_id: inst.id.clone(),
+        artifact_kind: ArtifactKind::Binary,
+        name: "tool".to_string(),
+    };
+    let plan = adapter.plan(&inst, &req).await.expect("plan");
+    let op_id = manager.submit(plan);
+    let outcome = manager.wait(op_id).await.expect("an outcome");
+    let calls = adapter.calls.lock().unwrap().clone();
+    (outcome, calls)
+}
+
+#[tokio::test]
+async fn test_an_uninstall_is_verified_by_reconcile_after_uninstall_alone() {
+    // After an uninstall the only question is "is it still there?". An
+    // adapter whose version reading cannot answer must still be able to
+    // say "yes, the launcher is there". That proves presence, not that
+    // an interrupted uninstall left every program file intact.
+    let (outcome, calls) = run_split(
+        OpKind::Uninstall,
+        SplitReadingAdapter::new(Some(true), Outcome::Succeeded, false),
+    )
+    .await;
+    assert_eq!(
+        outcome,
+        Outcome::NeedsAttention(Attention::StillInstalledAfterUninstall)
+    );
+    assert_eq!(calls, vec!["execute", "reconcile_after_uninstall"]);
+
+    let (outcome, _) = run_split(
+        OpKind::Uninstall,
+        SplitReadingAdapter::new(Some(false), Outcome::Succeeded, false),
+    )
+    .await;
+    assert_eq!(outcome, Outcome::Succeeded);
+
+    // Stopped partway: presence cannot rule out partial removal; gone
+    // means the work finished anyway.
+    let (outcome, _) = run_split(
+        OpKind::Uninstall,
+        SplitReadingAdapter::new(Some(true), Outcome::Unconfirmed, true),
+    )
+    .await;
+    assert_eq!(outcome, Outcome::Unconfirmed);
+    let (outcome, _) = run_split(
+        OpKind::Uninstall,
+        SplitReadingAdapter::new(Some(false), Outcome::Unconfirmed, true),
+    )
+    .await;
+    assert_eq!(outcome, Outcome::Succeeded);
+}
+
+#[tokio::test]
+async fn test_an_uninstall_whose_reading_cannot_tell_is_unconfirmed_never_succeeded() {
+    // "Could not tell" is not "gone" (phase 4 step C, Astra finding 6): a
+    // reading that fails -- a permission error hiding the launcher, say --
+    // leaves an uninstall `Unconfirmed` whatever `execute` reported, and
+    // whether or not the user pressed Cancel. Never `Succeeded`, never
+    // `Cancelled`: either would claim to know what is on the disk.
+    let (outcome, calls) = run_split(
+        OpKind::Uninstall,
+        SplitReadingAdapter::new(None, Outcome::Succeeded, false),
+    )
+    .await;
+    assert_eq!(outcome, Outcome::Unconfirmed);
+    assert_eq!(calls, vec!["execute", "reconcile_after_uninstall"]);
+
+    let (outcome, _) = run_split(
+        OpKind::Uninstall,
+        SplitReadingAdapter::new(None, Outcome::Unconfirmed, true),
+    )
+    .await;
+    assert_eq!(outcome, Outcome::Unconfirmed);
+}
+
+#[tokio::test]
+async fn test_an_upgrade_and_an_install_keep_the_strict_reading() {
+    // B's rule for a standalone upgrade stands: a reading that cannot say
+    // what is installed makes an exit-0 upgrade `Unconfirmed`, never
+    // success. The uninstall reading is never asked for them.
+    let (outcome, calls) = run_split(
+        OpKind::Upgrade,
+        SplitReadingAdapter::new(Some(true), Outcome::Succeeded, false),
+    )
+    .await;
+    assert_eq!(outcome, Outcome::Unconfirmed);
+    assert_eq!(calls, vec!["reconcile", "execute", "reconcile"]);
+
+    let (outcome, calls) = run_split(
+        OpKind::Install,
+        SplitReadingAdapter::new(Some(true), Outcome::Succeeded, false),
+    )
+    .await;
+    assert_eq!(outcome, Outcome::Unconfirmed);
+    assert_eq!(calls, vec!["execute", "reconcile"]);
+}
+
+#[tokio::test]
+async fn test_the_reading_after_an_uninstall_is_handed_the_plan_the_uninstall_carried_out() {
+    // A path-list uninstall's reading asks which paths the run moved
+    // (`StandaloneAdapter::reconcile_after_uninstall`), so it must be handed
+    // the plan `execute` was handed -- the one submitted, never one built
+    // afresh. The submitted plan's budget (7 s) is not the one the
+    // adapter's own `plan` builds (60 s), so a plan built afresh would not
+    // compare equal.
+    let mut manager = OperationManager::new(Arc::new(VecSink::new()));
+    let adapter = Arc::new(SplitReadingAdapter::new(
+        Some(false),
+        Outcome::Succeeded,
+        false,
+    ));
+    manager.register_adapter(adapter.clone());
+    let manager = Arc::new(manager);
+    let inst = make_instance("fake:/handed-the-plan");
+    manager.register_instance(inst.clone());
+    let req = OpRequest {
+        kind: OpKind::Uninstall,
+        instance_id: inst.id.clone(),
+        artifact_kind: ArtifactKind::Binary,
+        name: "tool".to_string(),
+    };
+    let submitted = Plan {
+        timeout_secs: 7,
+        ..adapter.plan(&inst, &req).await.expect("plan")
+    };
+
+    let op_id = manager.submit(submitted.clone());
+
+    assert_eq!(manager.wait(op_id).await, Some(Outcome::Succeeded));
+    assert_eq!(
+        adapter.calls.lock().unwrap().clone(),
+        vec!["execute", "reconcile_after_uninstall"]
+    );
+    assert_eq!(
+        adapter.handed.lock().unwrap().clone(),
+        vec![submitted.clone(), submitted],
+        "execute and the reading after it are handed the one submitted plan"
+    );
+}
+
+#[tokio::test]
+async fn test_a_path_list_uninstalls_own_needs_attention_passes_the_reading_after_unchanged() {
+    // A path-list uninstall that moved everything and then found part of
+    // what its list names there reports that itself, from its own look
+    // after its last pause (`removal::execute_removal`). `run_operation`
+    // still takes the reading after, and passes an `execute` answer that
+    // is neither `Succeeded` nor `Unconfirmed` on as it is -- whether that
+    // reading says gone, still there, or cannot tell.
+    for still_there in [Some(false), Some(true), None] {
+        let (outcome, calls) = run_split(
+            OpKind::Uninstall,
+            SplitReadingAdapter::new(
+                still_there,
+                Outcome::NeedsAttention(Attention::BackAfterUninstall),
+                false,
+            ),
+        )
+        .await;
+        assert_eq!(
+            outcome,
+            Outcome::NeedsAttention(Attention::BackAfterUninstall),
+            "{still_there:?}"
+        );
+        assert_eq!(calls, vec!["execute", "reconcile_after_uninstall"]);
+    }
+}
+
+#[tokio::test]
+async fn test_an_adapter_that_does_not_override_it_verifies_an_uninstall_with_reconcile() {
+    // The trait's default: every source but the standalone one keeps
+    // verifying an uninstall exactly as before this method existed.
+    let (outcome, calls) =
+        run_case_with_calls(OpKind::Uninstall, ReconcileBehavior::Present(false)).await;
+    assert_eq!(outcome, Outcome::Succeeded);
+    assert_eq!(calls, vec!["execute", "reconcile"]);
+}

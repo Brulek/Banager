@@ -1,20 +1,154 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
-import { act, fireEvent, waitFor, within } from "@testing-library/react";
-import { invoke } from "@tauri-apps/api/core";
-import { renderWithProviders } from "../test/setup";
+import { afterEach, describe, expect, it, onTestFinished, vi, beforeEach } from "vitest";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import type { QueryClient } from "@tanstack/react-query";
+import { invoke, type InvokeArgs } from "@tauri-apps/api/core";
+import { renderWithProviders, type RenderOptions } from "../test/setup";
+import { command } from "../test/command";
+import { UpdatesToolbar } from "../test/updatesToolbar";
 import { UpdatesPage } from "./UpdatesPage";
-import { useUiStore } from "../store/ui";
-import type { ArtifactKey, OpRequest, Settings, Snapshot } from "../lib/types";
+import { PageHeader } from "../components/PageHeader";
+import { BUTTON } from "../components/ui/controls";
+import { artifactKeyId, useUiStore } from "../store/ui";
+import { queryKeys } from "../lib/queries";
+import { loadToolIcons } from "../lib/toolIcons";
+import { lazyDescriptionTable } from "../lib/toolDescriptions";
+import i18n from "../i18n";
+import en from "../i18n/en.json";
+import zhCN from "../i18n/zh-CN.json";
+import type {
+  HistoryRecord,
+  HistoryView,
+  ArtifactKey,
+  InstanceNote,
+  OpRequest,
+  OpSummary,
+  Settings,
+  Snapshot,
+  UpdateCandidate,
+  Warning,
+} from "../lib/types";
+import { NO_FACTS } from "../lib/types";
+import { failureCause } from "../lib/failureCause";
 
+/** The confirm sheet's Update for several tools, counted: "Update 2 Tools" (walk-3 W3-18). */
+const UPDATE_SEVERAL = /^Update \d+ Tools$/;
 const mockInvoke = vi.mocked(invoke);
+
+/**
+ * A row's own Update and Retry, named with their tool's name after their
+ * words ("Update glib"): not the toolbar's Update All or Update Selected,
+ * nor the confirmation's Update.
+ */
+const ROW_UPDATE = /^Update (?!All$|Selected )/;
+const ROW_RETRY = /^Retry /;
+
+// The pretend Mac's two models (`MODELS` in src/dev/mockData.ts, which no
+// test outside src/dev may import): one from another registry, one from
+// Ollama's own.
+const MODELS = {
+  coder: "modelscope.cn/Qwen/Qwen2.5-Coder-7B-Instruct-GGUF:Q4_K_M",
+  llama: "llama3.2:3b",
+} as const;
+
+// The page as the window draws it: under the toolbar's subtitle, which
+// says how many can be updated, and with its Update all / Update selected
+// in the toolbar (`UpdatesToolbar`).
+function renderPage(options?: RenderOptions) {
+  return renderWithProviders(
+    <UpdatesToolbar>
+      <UpdatesPage />
+    </UpdatesToolbar>,
+    options,
+  );
+}
 
 const glibKey: ArtifactKey = { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "glib" };
 const onyxKey: ArtifactKey = { instance_id: "brew:/opt/homebrew", kind: "Cask", name: "onyx" };
+const myForkKey: ArtifactKey = {
+  instance_id: "cargo:/Users/brulek/.cargo",
+  kind: "Binary",
+  name: "my-fork",
+};
+const qwenKey: ArtifactKey = {
+  instance_id: "ollama:http://127.0.0.1:11434",
+  kind: "Model",
+  name: "qwen3:8b",
+};
+const urllib3Key: ArtifactKey = {
+  instance_id: "pip:/usr/bin/python3",
+  kind: "Package",
+  name: "urllib3",
+};
+// An npm whose global prefix this account cannot write -- Node installed
+// from nodejs.org's package. Read-only like pip, for an entirely different
+// reason, and the advice that fixes one is nonsense for the other.
+const typescriptKey: ArtifactKey = {
+  instance_id: "npm:/usr/local",
+  kind: "Package",
+  name: "typescript",
+};
 
 const snapshot: Snapshot = {
   generation: 2,
+  round: 2,
   detect: "Found",
-  instances: [],
+  // A candidate's adapter is only reachable by joining its key's
+  // `instance_id` back to the snapshot's instances, so the page needs real
+  // ones: pip's candidates are genuinely checkable but can never be acted
+  // on.
+  instances: [
+    {
+      id: "brew:/opt/homebrew",
+      adapter_id: "brew",
+      exe_path: "/opt/homebrew/bin/brew",
+      prefix: "/opt/homebrew",
+      scope: "User",
+      version: "7.0.3",
+      status: { unavailable: null, notes: [] },
+      answered_at: null,
+      unverified_version: null,
+      read_only_reason: null,
+    },
+    {
+      id: "pip:/usr/bin/python3",
+      adapter_id: "pip",
+      exe_path: "/usr/bin/python3",
+      prefix: "/usr",
+      scope: "User",
+      version: "26.2.1",
+      status: { unavailable: null, notes: [] },
+      answered_at: null,
+      unverified_version: null,
+      read_only_reason: "ByDesign",
+    },
+    {
+      id: "npm:/usr/local",
+      adapter_id: "npm",
+      exe_path: "/usr/local/bin/npm",
+      prefix: "/usr/local",
+      scope: "User",
+      version: "12.0.2",
+      status: { unavailable: null, notes: [] },
+      answered_at: null,
+      unverified_version: null,
+      read_only_reason: "PrefixNotWritable",
+    },
+    // Writable and answering, so the cargo candidates below have a source
+    // `refresh` could have produced them from.
+    {
+      id: "cargo:/Users/brulek/.cargo",
+      adapter_id: "cargo",
+      exe_path: "/Users/brulek/.cargo/bin/cargo",
+      prefix: "/Users/brulek/.cargo",
+      scope: "User",
+      version: "1.92.0",
+      status: { unavailable: null, notes: [] },
+      answered_at: null,
+      unverified_version: null,
+      read_only_reason: null,
+    },
+  ],
   artifacts: [],
   updates: [
     {
@@ -24,6 +158,7 @@ const snapshot: Snapshot = {
       channel: "Native",
       checkable: true,
       warnings: [],
+      blocked: null,
     },
     {
       key: onyxKey,
@@ -32,6 +167,7 @@ const snapshot: Snapshot = {
       channel: "Native",
       checkable: true,
       warnings: [],
+      blocked: null,
     },
   ],
   refreshed_at: 1789700000,
@@ -39,8 +175,29 @@ const snapshot: Snapshot = {
   errors: [],
 };
 
+const stoppedOllama: Snapshot["instances"][number] = {
+  id: "ollama:http://127.0.0.1:11434",
+  adapter_id: "ollama",
+  exe_path: "/usr/local/bin/ollama",
+  prefix: "/usr/local",
+  scope: "User",
+  version: "0.34.1",
+  status: { unavailable: "NotRunning", notes: [] },
+  answered_at: null,
+  unverified_version: null,
+  read_only_reason: null,
+};
+
 let settings: Settings;
 let updates: Snapshot["updates"];
+let instances: Snapshot["instances"];
+// A row's name and its one line of description come from `artifacts`, so
+// a test about what a row says needs them.
+let artifacts: Snapshot["artifacts"];
+// This round's failed calls; `stale` follows them, as `refresh` sets it.
+let errors: Snapshot["errors"];
+// What `list_operations` answers: the backend lists operations newest first.
+let operations: OpSummary[];
 // Every plan_operation answer carries a fresh server-issued id: a PlanId is
 // single-use, so the multi-select tests below must prove that each submit
 // sent a *different* id, not the same one twice.
@@ -53,30 +210,42 @@ let nextPlanId: number;
 // Rejections are bare strings, exactly as a `Result<_, String>` command
 // rejects; Task 10's `call()` turns them into Errors.
 let planFailures: Record<string, string>;
-let submitFailures: Record<number, string>;
+let submitFailures: Record<string, string>;
 let saveFailure: string | null;
 let holdPlans: Set<string>;
-let holdSubmits: Set<number>;
+let holdSubmits: Set<string>;
 let holdSaves: boolean;
 // Names whose plan comes back with `needs_password: true`, mirroring the
 // brew adapter, which sets it for every Cask upgrade.
 let needsPassword: Set<string>;
+// Names whose plan comes back `NoCancel`, mirroring the rustup recipe's
+// `self update` (crates/banager-core/src/adapters/standalone/recipes.rs).
+let noCancel: Set<string>;
+let planWarnings: Record<string, Warning[]>;
 let releasePlan: Record<string, () => void>;
-let releaseSubmit: Record<number, () => void>;
+let releaseSubmit: Record<string, () => void>;
 let releaseSave: Array<() => void>;
 
+// `id` stays a number here purely so the tests can order plans ("the first
+// issued", "the second issued"); the wire type is a string (a random
+// 128-bit token, not a sequential counter -- see PlanId in
+// crates/banager-core/src/session/mod.rs), so it is stringified going out.
 function issuedPlanFor(request: OpRequest, id: number) {
   return {
-    id,
+    id: String(id),
     plan: {
       request,
-      program: "/opt/homebrew/bin/brew",
-      args: ["upgrade", request.artifact_kind === "Cask" ? "--cask" : "--formula", request.name],
-      env: [],
+      action: {
+        Command: {
+          program: "/opt/homebrew/bin/brew",
+          args: ["upgrade", request.artifact_kind === "Cask" ? "--cask" : "--formula", request.name],
+          env: [],
+        },
+      },
       needs_password: needsPassword.has(request.name),
       locks: ["brew:/opt/homebrew"],
-      cancel_policy: "KillThenReconcile",
-      warnings: [],
+      cancel_policy: noCancel.has(request.name) ? "NoCancel" : "KillThenReconcile",
+      warnings: planWarnings[request.name] ?? [],
       affected: [],
       timeout_secs: 1800,
     },
@@ -92,13 +261,157 @@ function submittedPlanIds() {
   return calls("submit_operation").map(([, args]) => args);
 }
 
+function plannedNames(): string[] {
+  return calls("plan_operation").map(([, args]) => (args as { request: OpRequest }).request.name);
+}
+
+// A row's checkbox, by its name ("Select glib for update"): not the list
+// header's, which ticks them all.
+const ROW_CHECKBOX = /^Select .+ for update$/;
+// The list header's box, which ticks every row that has a checkbox; its
+// accessible name goes on to say which rows it acts on.
+const SELECT_ALL = "Select all items that can be updated here";
+
+// The height every virtualized row reports back in jsdom.
+const ROW_HEIGHT = 56;
+
+// Which slot of the virtualized list `element` was drawn in, or null for
+// something outside the list. The list is flat in the DOM -- every row and
+// the "Can't update here" toggle is a sibling carrying its position as
+// `data-index`.
+function slotOf(element: HTMLElement): number | null {
+  const slot = element.closest("[data-index]");
+  return slot === null ? null : Number(slot.getAttribute("data-index"));
+}
+
+// A paragraph whose whole text, across the `<code>` the Updates page sets a
+// command in, is `text`. `getByText` alone matches an element's own text
+// nodes, which no longer hold the whole sentence.
+function wholeSentence(text: string) {
+  return (_content: string, element: Element | null) =>
+    (element?.tagName === "P" || element?.hasAttribute("data-detail-line") === true) && element.textContent === text;
+}
+
+// A sheet's note by its whole sentence: its last word is held on one line
+// with its ⓘ, in a span of their own (`TextWithInfo`), so no one text node
+// holds the sentence.
+function noteLine(text: string) {
+  return (_content: string, element: Element | null) =>
+    element?.tagName === "SPAN" && element.parentElement?.tagName === "LI" && element.textContent?.trim() === text;
+}
+
+// The list's row for `name` -- the name as the row shows it.
+function rowOf(name: string): HTMLElement {
+  const rows = screen
+    .getAllByText(name, { selector: "[data-tool-row] p" })
+    .map((element) => element.closest("[data-tool-row]"));
+  if (rows.length !== 1 || !(rows[0] instanceof HTMLElement)) {
+    throw new Error(`expected one row named ${name}, found ${rows.length}`);
+  }
+  return rows[0];
+}
+
+async function findRow(name: string): Promise<HTMLElement> {
+  await screen.findByText(name, { selector: "[data-tool-row] p" });
+  return rowOf(name);
+}
+
+// Unfolds "N more can't be updated here".
+async function showCantUpdate() {
+  const toggle = await screen.findByRole("button", { name: /^\d+ more can't be updated here$/ });
+  expect(toggle).toHaveAttribute("aria-expanded", "false");
+  fireEvent.click(toggle);
+}
+
+// Opens the chip called `label` on `row`, and returns what it shows.
+function chipDetail(row: HTMLElement, label: string): HTMLElement {
+  const chip = within(row).getByRole("button", { name: label });
+  fireEvent.click(chip);
+  const panel = document.getElementById(chip.getAttribute("aria-controls") ?? "");
+  if (panel === null) throw new Error(`the ${label} chip opened nothing`);
+  return panel;
+}
+
+// Opens `row`'s ⋯ menu.
+function openMenu(row: HTMLElement): HTMLElement {
+  fireEvent.click(within(row).getByRole("button", { name: /^More actions for / }));
+  return screen.getByRole("menu");
+}
+
+// Opens the confirmation's "Show the command(s)": the commands are one
+// press away, not on the sheet.
+function showCommands(dialog: HTMLElement) {
+  const disclosure = within(dialog).getByRole("button", { name: /^Show Command/ });
+  if (disclosure.getAttribute("aria-expanded") !== "true") fireEvent.click(disclosure);
+}
+
+// The names of the rows, top to bottom.
+function rowNames(): string[] {
+  return [...document.querySelectorAll("[data-tool-row]")].map(
+    (row) => row.querySelector("p")?.textContent ?? "",
+  );
+}
+
+function brewCandidate(name: string): Snapshot["updates"][number] {
+  return {
+    key: { instance_id: "brew:/opt/homebrew", kind: "Formula", name },
+    current: "1.0.0",
+    target: "1.1.0",
+    channel: "Native",
+    checkable: true,
+    warnings: [],
+    blocked: null,
+  };
+}
+
+/** A row of `artifacts`: what a source has installed, whatever its updates. */
+function installedRow(key: ArtifactKey): Snapshot["artifacts"][number] {
+  return {
+    key,
+    display_name: key.name,
+    version: "1.0.0",
+    reason: "Requested",
+    description: null,
+    homepage: null,
+    size_bytes: null,
+    installed_at: null,
+    path: null,
+    auto_updates: false,
+    uninstall_blocked: null,
+    facts: NO_FACTS,
+  };
+}
+
+function operation(key: ArtifactKey, fields: Partial<OpSummary> = {}): OpSummary {
+  return {
+    id: 7,
+    kind: "Upgrade",
+    instance_id: key.instance_id,
+    artifact_kind: key.kind,
+    name: key.name,
+    status: "Running",
+    outcome: null,
+    argv_preview: ["/opt/homebrew/bin/brew", "upgrade", key.name],
+    cancel_policy: "KillThenReconcile",
+    ...fields,
+  };
+}
+
 beforeEach(() => {
   settings = {
     language: "System",
     show_technical_details: false,
     ignored_updates: [],
+    skipped_versions: [],
+    include_self_updating: false,
+    auto_check: false,
+    notify_updates: false,
   };
   updates = snapshot.updates;
+  instances = snapshot.instances;
+  artifacts = snapshot.artifacts;
+  errors = snapshot.errors;
+  operations = [];
   nextPlanId = 1;
   planFailures = {};
   submitFailures = {};
@@ -107,13 +420,35 @@ beforeEach(() => {
   holdSubmits = new Set();
   holdSaves = false;
   needsPassword = new Set();
+  noCancel = new Set();
+  planWarnings = {};
   releasePlan = {};
   releaseSubmit = {};
   releaseSave = [];
   mockInvoke.mockReset();
+  // @tanstack/react-virtual measures its scroll container and every row
+  // through offsetWidth / offsetHeight, which jsdom hardcodes to 0 with no
+  // layout engine behind them. Without these the virtualizer sees a
+  // zero-height viewport and renders no rows at all. Same stubs as
+  // InstalledPage.test.tsx, which virtualized first.
+  vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (
+    this: HTMLElement,
+  ) {
+    return this.getAttribute("data-index") === null ? 600 : ROW_HEIGHT;
+  });
+  vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(800);
   mockInvoke.mockImplementation((cmd: string, args?: unknown) => {
-    if (cmd === "get_snapshot") return Promise.resolve({ ...snapshot, updates });
+    if (cmd === "get_snapshot")
+      return Promise.resolve({
+        ...snapshot,
+        updates,
+        instances,
+        artifacts,
+        errors,
+        stale: errors.length > 0,
+      });
     if (cmd === "get_settings") return Promise.resolve(settings);
+    if (cmd === "list_operations") return Promise.resolve(operations);
     if (cmd === "set_settings") {
       if (saveFailure !== null) return Promise.reject(saveFailure);
       const next = (args as { settings: Settings }).settings;
@@ -131,7 +466,12 @@ beforeEach(() => {
     if (cmd === "plan_operation") {
       const request = (args as { request: OpRequest }).request;
       const failure = planFailures[request.name];
-      if (failure !== undefined) return Promise.reject(failure);
+      if (failure !== undefined) {
+        if (!holdPlans.has(request.name)) return Promise.reject(failure);
+        return new Promise((_resolve, reject) => {
+          releasePlan[request.name] = () => reject(failure);
+        });
+      }
       const issued = issuedPlanFor(request, nextPlanId);
       nextPlanId += 1;
       if (holdPlans.has(request.name)) {
@@ -142,7 +482,7 @@ beforeEach(() => {
       return Promise.resolve(issued);
     }
     if (cmd === "submit_operation") {
-      const { planId } = args as { planId: number };
+      const { planId } = args as { planId: string };
       const failure = submitFailures[planId];
       if (failure !== undefined) return Promise.reject(failure);
       if (holdSubmits.has(planId)) {
@@ -156,30 +496,148 @@ beforeEach(() => {
   });
 });
 
-describe("UpdatesPage", () => {
-  it("lists each update with its version change when technical details are on", async () => {
-    settings.show_technical_details = true;
-    const { findByText } = renderWithProviders(<UpdatesPage />);
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
-    await findByText("2.88.3 → 2.90.0");
-    await findByText("5.0.2 → 5.1.0");
+/**
+ * What the ⓘ after an Update History line's ending says, once pressed:
+ * its why, reached by a keyboard and a screen reader as by a pointer
+ * (decision I21e), never a tooltip only.
+ */
+function endingWhy(words: HTMLElement): string {
+  expect(words).not.toHaveAttribute("title");
+  const info = within(words).getByRole("button");
+  fireEvent.click(info);
+  return document.getElementById(info.getAttribute("aria-controls") ?? "")?.textContent ?? "";
+}
+
+describe("UpdatesPage", () => {
+  it("shows the first check's spinner and why it takes a while until the backend has answered, not Loading…", async () => {
+    // At launch `get_snapshot` has not answered yet: the first check is
+    // under way, as the Overview says in the same words.
+    const answer = mockInvoke.getMockImplementation();
+    mockInvoke.mockImplementation((cmd: string, args?: InvokeArgs) =>
+      cmd === "get_snapshot" ? new Promise(() => {}) : answer!(cmd, args),
+    );
+    const { findByRole, getByText, queryByText, container } = renderPage();
+
+    expect(await findByRole("heading", { level: 2, name: "Checking…" })).toBeInTheDocument();
+    expect(
+      getByText("The first check looks up every tool's newest version online, and sometimes takes a minute or two."),
+    ).toBeInTheDocument();
+    expect(container.querySelector("[data-first-check] svg")).toHaveAttribute("width", "32");
+    expect(queryByText("Loading…")).not.toBeInTheDocument();
   });
 
-  it("hides version numbers under the default settings", async () => {
-    const { findByText, queryByText } = renderWithProviders(<UpdatesPage />);
+  it("shows each update's version change in its version column, in tabular numerals, with technical details off", async () => {
+    // The redesign's rule for a row: what it is, which version, what can
+    // be done (docs/superpowers/2026-09-27-ui-redesign.md, 原则 1). The
+    // version jump is on every row now; "Show technical details" keeps
+    // paths, commands and the tools' own error text.
+    expect(settings.show_technical_details).toBe(false);
+    const { findByText } = renderPage();
 
-    await findByText("glib");
-    expect(queryByText("2.88.3 → 2.90.0")).not.toBeInTheDocument();
+    const glib = await findByText("2.88.3 → 2.90.0");
+    expect(glib.className).toContain("tabular-nums");
+    expect(await findByText("5.0.2 → 5.1.0")).toBeInTheDocument();
+  });
+
+  it("lists the rows it can update by name, whatever order the sources gave them in", async () => {
+    updates = [brewCandidate("wget"), brewCandidate("aria2"), ...snapshot.updates, brewCandidate("Zstd")];
+    renderPage();
+
+    await findRow("aria2");
+    expect(rowNames()).toEqual(["aria2", "glib", "onyx", "wget", "Zstd"]);
+  });
+
+  it("names each row the way the Installed page does, with its source in a chip beside it", async () => {
+    // A cask's row reads "OnyX", its display name, not the token `onyx`;
+    // a package with no entry in `artifacts` keeps its own name. Every row
+    // shows its source, since the list is no longer grouped by source --
+    // except a tool with its own installer, which is its own source.
+    const claudeKey: ArtifactKey = { instance_id: "standalone-claude", kind: "Binary", name: "claude" };
+    instances = [
+      ...snapshot.instances,
+      {
+        id: "standalone-claude",
+        adapter_id: "standalone-claude",
+        exe_path: "/Users/someone/.local/bin/claude",
+        prefix: "/Users/someone/.local/share/claude",
+        scope: "User",
+        version: "2.1.281",
+        status: { unavailable: null, notes: [] },
+        answered_at: null,
+        unverified_version: null,
+        read_only_reason: null,
+      },
+    ];
+    artifacts = [
+      {
+        key: onyxKey,
+        display_name: "OnyX",
+        version: "5.0.2",
+        reason: "Requested",
+        description: "Verify system files structure",
+        homepage: null,
+        size_bytes: null,
+        installed_at: null,
+        path: null,
+        auto_updates: false,
+        uninstall_blocked: null,
+        facts: NO_FACTS,
+      },
+      {
+        key: claudeKey,
+        display_name: "Claude Code",
+        version: "2.1.281",
+        reason: "Requested",
+        description: null,
+        homepage: null,
+        size_bytes: null,
+        installed_at: null,
+        path: null,
+        auto_updates: false,
+        uninstall_blocked: null,
+        facts: NO_FACTS,
+      },
+    ];
+    updates = [
+      ...snapshot.updates,
+      {
+        key: claudeKey,
+        current: "2.1.281",
+        target: "2.1.290",
+        channel: "Registry",
+        checkable: true,
+        warnings: [],
+        blocked: null,
+      },
+    ];
+    renderPage();
+
+    const onyx = await findRow("OnyX");
+    expect(within(onyx).getByText("Homebrew")).toBeInTheDocument();
+    expect(within(onyx).getByText("Verify system files structure")).toBeInTheDocument();
+    expect(within(onyx).getByRole("checkbox")).toHaveAccessibleName("Select OnyX for update");
+    expect(within(rowOf("glib")).getByText("Homebrew")).toBeInTheDocument();
+    // A package the snapshot has no description for says what its source
+    // says it is, never "No description".
+    expect(within(rowOf("glib")).getByText("Homebrew package")).toBeInTheDocument();
+    const claude = rowOf("Claude Code");
+    expect(within(claude).getAllByText("Claude Code")).toHaveLength(1);
+    expect(rowNames()).toEqual(["Claude Code", "glib", "OnyX"]);
   });
 
   it("previews the command, submits nothing until Confirm, then submits the single update", async () => {
-    const { findAllByRole, findByRole, queryByRole } = renderWithProviders(<UpdatesPage />);
+    const { findAllByRole, findByRole, queryByRole } = renderPage();
 
-    const updateButtons = await findAllByRole("button", { name: "Update" });
+    const updateButtons = await findAllByRole("button", { name: ROW_UPDATE });
     fireEvent.click(updateButtons[0]);
 
-    const dialog = await findByRole("dialog");
-    await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
+    const dialog = await findByRole("alertdialog");
+    showCommands(dialog);
+    await within(dialog).findByText(command("/opt/homebrew/bin/brew upgrade --formula glib"));
     expect(mockInvoke).toHaveBeenCalledWith("plan_operation", {
       request: {
         kind: "Upgrade",
@@ -191,165 +649,1742 @@ describe("UpdatesPage", () => {
     // Seeing the command comes first; opening the dialog submits nothing.
     expect(submittedPlanIds()).toEqual([]);
 
-    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Update" }));
 
-    await waitFor(() => expect(submittedPlanIds()).toEqual([{ planId: 1 }]));
+    await waitFor(() => expect(submittedPlanIds()).toEqual([{ planId: "1" }]));
     // Every item started, so the dialog closes on its own.
-    await waitFor(() => expect(queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() => expect(queryByRole("alertdialog")).not.toBeInTheDocument());
   });
 
   it("previews every selected command, then submits one operation per item, each with its own plan id", async () => {
-    const { findAllByRole, getByRole, findByRole, queryByRole } = renderWithProviders(<UpdatesPage />);
+    const { findAllByRole, getByRole, findByRole, queryByRole } = renderPage();
 
-    const checkboxes = await findAllByRole("checkbox");
+    const checkboxes = await findAllByRole("checkbox", { name: ROW_CHECKBOX });
     fireEvent.click(checkboxes[0]);
     fireEvent.click(checkboxes[1]);
 
-    fireEvent.click(getByRole("button", { name: "Update selected" }));
-    const dialog = await findByRole("dialog");
-    await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
-    await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --cask onyx");
+    // The button counts what it will update.
+    fireEvent.click(getByRole("button", { name: "Update Selected (2)" }));
+    const dialog = await findByRole("alertdialog");
+    showCommands(dialog);
+    await within(dialog).findByText(command("/opt/homebrew/bin/brew upgrade --formula glib"));
+    await within(dialog).findByText(command("/opt/homebrew/bin/brew upgrade --cask onyx"));
     expect(submittedPlanIds()).toEqual([]);
 
-    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: UPDATE_SEVERAL }));
 
-    await waitFor(() => expect(submittedPlanIds()).toEqual([{ planId: 1 }, { planId: 2 }]));
-    await waitFor(() => expect(queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() => expect(submittedPlanIds()).toEqual([{ planId: "1" }, { planId: "2" }]));
+    await waitFor(() => expect(queryByRole("alertdialog")).not.toBeInTheDocument());
     expect(useUiStore.getState().selectedUpdates).toEqual([]);
   });
 
   it("warns per item, before the sudo prompt, about the one update that needs a password", async () => {
     // A batch can mix Casks and formulae, and the brew adapter only sets
-    // `needs_password` for Casks (crates/canager-core/src/adapters/brew/
+    // `needs_password` for Casks (crates/banager-core/src/adapters/brew/
     // mod.rs). Spec §6: whatever will ask for a password says so in the
     // preview, next to the command it belongs to.
     needsPassword.add("onyx");
-    const { findAllByRole, getByRole, findByRole } = renderWithProviders(<UpdatesPage />);
+    const { findAllByRole, getByRole, findByRole } = renderPage();
 
-    const checkboxes = await findAllByRole("checkbox");
+    const checkboxes = await findAllByRole("checkbox", { name: ROW_CHECKBOX });
     fireEvent.click(checkboxes[0]);
     fireEvent.click(checkboxes[1]);
 
-    fireEvent.click(getByRole("button", { name: "Update selected" }));
-    const dialog = await findByRole("dialog");
-    await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
-    await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --cask onyx");
+    fireEvent.click(getByRole("button", { name: /^Update Selected/ }));
+    const dialog = await findByRole("alertdialog");
+    showCommands(dialog);
+    await within(dialog).findByText(command("/opt/homebrew/bin/brew upgrade --formula glib"));
+    await within(dialog).findByText(command("/opt/homebrew/bin/brew upgrade --cask onyx"));
 
-    const notices = within(dialog).getAllByText("This will ask for your Mac password.");
+    const notices = within(dialog).getAllByText("You can't enter your Mac password here. If an app asks for it at this step, you'll see how to finish in Terminal.");
     expect(notices).toHaveLength(1);
-    expect(notices[0].closest("div")?.textContent).toContain("onyx");
-    expect(notices[0].closest("div")?.textContent).not.toContain("glib");
+    // Under onyx's own row of the list, and no other's.
+    expect(notices[0].closest("[data-sheet-tool]")?.querySelector("[data-sheet-name]")).toHaveTextContent("onyx");
+  });
+
+  it("shows a warning carried on the plan, such as cargo's compile-locally notice", async () => {
+    planWarnings.glib = ["CompilesLocally"];
+    const { findAllByRole, findByRole } = renderPage();
+
+    fireEvent.click((await findAllByRole("button", { name: ROW_UPDATE }))[0]);
+    const dialog = await findByRole("alertdialog");
+    await within(dialog).findByText(
+      "This compiles on your Mac and takes a while.",
+    );
+  });
+
+  it("says an update ends in Homebrew's clean-up when brew.env turns it back on, with the why behind its ⓘ", async () => {
+    // `Warning::HomebrewPeriodicCleanup`, once a brew.env takes back
+    // Banager's HOMEBREW_NO_INSTALL_CLEANUP=1
+    // (crates/banager-core/src/adapters/brew/brew_env.rs): after every
+    // `brew upgrade`, Homebrew deletes the older versions and old downloads
+    // of the package it upgrades (`Cleanup.install_clean!`), and, when its
+    // periodic clean-up is due, those of all its software (`Cleanup#clean!`).
+    planWarnings.glib = ["HomebrewPeriodicCleanup"];
+    const { findAllByRole, findByRole } = renderPage();
+
+    fireEvent.click((await findAllByRole("button", { name: ROW_UPDATE }))[0]);
+    const dialog = await findByRole("alertdialog");
+    const line =
+      "After installing or updating, Homebrew deletes the older versions of this software and of any it updates along with it, and stray old downloads; when its periodic clean-up is due, those of all Homebrew software.";
+    await within(dialog).findByText(noteLine(line));
+    const why =
+      "Homebrew is run with HOMEBREW_NO_INSTALL_CLEANUP=1, but your brew.env sets it to nothing, and brew.env wins.";
+    expect(within(dialog).queryByText(why)).toBeNull();
+    fireEvent.click(within(dialog).getByRole("button", { name: `Details: ${line}` }));
+    expect(screen.getByText(why)).toBeInTheDocument();
+    expect(
+      within(dialog).queryByText(/installed only as dependencies/),
+    ).not.toBeInTheDocument();
+  });
+
+  it("says in Chinese that Homebrew cleans up after every update, and more when its periodic clean-up is due", async () => {
+    planWarnings.glib = ["HomebrewPeriodicCleanup"];
+    await i18n.changeLanguage("zh-CN");
+    try {
+      const { findAllByRole, findByRole } = renderPage();
+
+      fireEvent.click((await findAllByRole("button", { name: /^更新(?!所选)/ }))[0]);
+      const dialog = await findByRole("alertdialog");
+      await within(dialog).findByText(
+        noteLine(
+          "安装或更新后，Homebrew会删除此软件及一起更新的软件的旧版本，以及残留的旧下载文件；定期清理到期时，所有Homebrew软件的旧版本和旧下载文件也会被删除。",
+        ),
+      );
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+
+  it("says an update ends in Homebrew's clean-up and its autoremove when brew.env turns both back on", async () => {
+    // `Warning::HomebrewCleanupAutoremoves` follows it when a brew.env
+    // takes back HOMEBREW_NO_AUTOREMOVE=1 as well: the periodic clean-up
+    // then also autoremoves.
+    planWarnings.glib = ["HomebrewPeriodicCleanup", "HomebrewCleanupAutoremoves"];
+    const { findAllByRole, findByRole } = renderPage();
+
+    fireEvent.click((await findAllByRole("button", { name: ROW_UPDATE }))[0]);
+    const dialog = await findByRole("alertdialog");
+    await within(dialog).findByText(
+      noteLine(
+        "After installing or updating, Homebrew deletes the older versions of this software and of any it updates along with it, and stray old downloads; when its periodic clean-up is due, those of all Homebrew software.",
+      ),
+    );
+    await within(dialog).findByText(
+      noteLine(
+        "Homebrew's periodic clean-up also removes other Homebrew packages that were installed only as dependencies and that nothing needs anymore.",
+      ),
+    );
+  });
+
+  it("offers no Update button and no checkbox for a candidate the adapter could not check, and says why behind its chip", async () => {
+    // The whole point of UpdateCandidate.checkable. A git-sourced cargo
+    // crate reports checkable:false because crates.io knows nothing about
+    // it -- and "Update" on such a row would run `cargo install --force
+    // my-fork` against the crates.io crate of the same name, a different
+    // package entirely. The same flag covers an Ollama model whose manifest
+    // could not be read and a pipx tool whose PyPI lookup failed.
+    updates = [
+      {
+        key: myForkKey,
+        current: "0.1.0",
+        target: "0.1.0",
+        channel: "Registry",
+        checkable: false,
+        warnings: ["NonRegistrySource"],
+        blocked: null,
+      },
+    ];
+    const { queryByRole, getByRole } = renderPage();
+
+    await showCantUpdate();
+    const myFork = await findRow("my-fork");
+    expect(queryByRole("button", { name: ROW_UPDATE })).not.toBeInTheDocument();
+    expect(queryByRole("checkbox", { name: ROW_CHECKBOX })).not.toBeInTheDocument();
+    // Nothing to tick either in the list's header.
+    expect(getByRole("checkbox", { name: "Select all items that can be updated here" })).toBeDisabled();
+    // A row that can't be updated here has its name, its line, its word
+    // and its ⋯: no version column -- it has no version to move to.
+    expect(within(myFork).queryByText("0.1.0")).not.toBeInTheDocument();
+    const detail = chipDetail(myFork, "Can't check");
+    expect(within(detail).getByText("Couldn't find its latest version.")).toBeInTheDocument();
+    expect(within(detail).getByText("It wasn't installed from crates.io.")).toBeInTheDocument();
+    // No check will find it, so no "check again later" (walk-2 W2-13).
+    expect(detail).not.toHaveTextContent(/Check Again/);
+  });
+
+  it("says what to do on a row that could not be checked: check again later, the cause's own step, or nothing", async () => {
+    // Walk-2 W2-13: a row's why should end on what the person can do. A
+    // lookup a later check can get past (`TransientLookupFailure`) says to
+    // check again later -- once, however many words it has -- unless the
+    // words name the network, whose own line says what to do. One no check
+    // will mend (a 404) says no such thing (walk-2 review 1.1).
+    const row = (name: string, warnings: Warning[]): Snapshot["updates"][number] => ({
+      key: { ...myForkKey, name },
+      current: "0.1.0",
+      target: "0.1.0",
+      channel: "Registry",
+      checkable: false,
+      warnings,
+      blocked: null,
+    });
+    updates = [
+      row("my-fork", [
+        { Message: "crates.io returned status 500" },
+        { Message: "crates.io: status 503" },
+        "TransientLookupFailure",
+      ]),
+      row("other", [
+        { Message: "crates.io request failed: network error: dns error: failed to lookup address information" },
+        "TransientLookupFailure",
+      ]),
+      row("gone", [{ Message: "crates.io returned status 404" }]),
+    ];
+    renderPage();
+
+    await showCantUpdate();
+    const unknown = chipDetail(await findRow("my-fork"), "Can't check");
+    expect([...unknown.querySelectorAll("[data-detail-line]")].map((line) => line.textContent)).toEqual([
+      "Couldn't find its latest version.",
+      "You can click “Check Again” later.",
+    ]);
+    const offline = chipDetail(rowOf("other"), "Can't check");
+    expect([...offline.querySelectorAll("[data-detail-line]")].map((line) => line.textContent)).toEqual([
+      "Couldn't find its latest version.",
+      "The connection failed. Check your internet connection, then try again.",
+    ]);
+    const gone = chipDetail(rowOf("gone"), "Can't check");
+    expect([...gone.querySelectorAll("[data-detail-line]")].map((line) => line.textContent)).toEqual([
+      "Couldn't find its latest version.",
+    ]);
+  });
+
+  it("says a secure connection could not be set up, and neither the network nor to check again, and counts neither it nor a refused redirect", async () => {
+    // Round-5 review finding 6: a certificate rustls would not accept (a
+    // proxy that reads https) and a redirect the client will not follow
+    // were the network, so every check said "check again" for good -- and
+    // reqwest's "error sending request" made the row say the connection
+    // had failed. Rust now sends rustls's words, the host, and no mark.
+    const row = (name: string, warnings: Warning[]): Snapshot["updates"][number] => ({
+      key: { ...myForkKey, name },
+      current: "0.1.0",
+      target: "0.1.0",
+      channel: "Registry",
+      checkable: false,
+      warnings,
+      blocked: null,
+    });
+    updates = [
+      row("proxied", [
+        {
+          Message:
+            "crates.io request failed: secure connection to crates.io failed: invalid peer certificate: UnknownIssuer",
+        },
+        { SecureConnectionFailed: { host: "crates.io" } },
+      ]),
+      row("moved", [
+        {
+          Message:
+            "crates.io request failed: refused: refusing to follow a redirect: https://crates.io/api/v1/crates/moved answered 301 Moved Permanently pointing at /api/v1/crates/renamed",
+        },
+      ]),
+    ];
+    const { queryByText } = renderPage();
+
+    await showCantUpdate();
+    const proxied = chipDetail(await findRow("proxied"), "Can't check");
+    expect([...proxied.querySelectorAll("[data-detail-line]")].map((line) => line.textContent)).toEqual([
+      "Couldn't find its latest version.",
+      "Couldn't establish a secure connection to crates.io.",
+    ]);
+    const moved = chipDetail(rowOf("moved"), "Can't check");
+    expect([...moved.querySelectorAll("[data-detail-line]")].map((line) => line.textContent)).toEqual([
+      "Couldn't find its latest version.",
+    ]);
+    // Not counted as tools a later check could get to: no notice up front
+    // (the line over the rows, "Check details are hidden for 2 of these tools.",
+    // counts every row whose why is in the tools' words).
+    expect(queryByText(/^\d+ tools? couldn't be checked(: .*)?$/)).not.toBeInTheDocument();
+  });
+
+  it("says a tool Banager does not look up on this Mac is not checked here, and never to check again", async () => {
+    // Independent review r6, F5: Antigravity CLI on an Intel Mac, an
+    // Ollama whose models are on another Mac -- no request was made, and
+    // the row says so in a person's words (`NotLookedUpHere`).
+    updates = [
+      {
+        key: { ...myForkKey, name: "intel" },
+        current: "0.1.0",
+        target: "0.1.0",
+        channel: "Registry",
+        checkable: false,
+        warnings: [
+          { Message: "Antigravity CLI's update manifest is not yet verified on Intel Macs (x86_64)" },
+          "NotLookedUpHere",
+        ],
+        blocked: null,
+      },
+    ];
+    const { queryByText } = renderPage();
+
+    await showCantUpdate();
+    const intel = chipDetail(await findRow("intel"), "Can't check");
+    // Not first "Couldn't find its latest version.": no lookup was tried
+    // (F5 review).
+    expect([...intel.querySelectorAll("[data-detail-line]")].map((line) => line.textContent)).toEqual([
+      "It isn't checked for updates on this Mac.",
+    ]);
+    expect(queryByText(/^\d+ tools? couldn't be checked(: .*)?$/)).not.toBeInTheDocument();
+  });
+
+  it("puts a person's words before the tool's own on a row that could not be checked, with technical details on", async () => {
+    // a2 review 5: a secure connection's sentence follows its `Message` on
+    // the wire, and came after rustls's words; a network row already had
+    // its sentence first.
+    settings = { ...settings, show_technical_details: true };
+    const certificate =
+      "crates.io request failed: secure connection to crates.io failed: invalid peer certificate: UnknownIssuer";
+    const offline = "crates.io request failed: network error: dns error: failed to lookup address information";
+    const row = (name: string, warnings: Warning[]): Snapshot["updates"][number] => ({
+      key: { ...myForkKey, name },
+      current: "0.1.0",
+      target: "0.1.0",
+      channel: "Registry",
+      checkable: false,
+      warnings,
+      blocked: null,
+    });
+    updates = [
+      row("proxied", [{ Message: certificate }, { SecureConnectionFailed: { host: "crates.io" } }]),
+      row("other", [{ Message: offline }, "TransientLookupFailure"]),
+    ];
+    renderPage();
+
+    await showCantUpdate();
+    const lines = (name: string) =>
+      [...chipDetail(rowOf(name), "Can't check").querySelectorAll("[data-detail-line]")].map(
+        (line) => line.textContent,
+      );
+    await findRow("proxied");
+    expect(lines("proxied")).toEqual([
+      "Couldn't find its latest version.",
+      "Couldn't establish a secure connection to crates.io.",
+      certificate,
+    ]);
+    expect(lines("other")).toEqual([
+      "Couldn't find its latest version.",
+      "The connection failed. Check your internet connection, then try again.",
+      offline,
+    ]);
+  });
+
+  it("keeps an uncheckable candidate out of Update selected even when it was selected earlier", async () => {
+    // Hiding the checkbox is not enough on its own. A selection lives in
+    // the UI store and outlives the row that made it, so a candidate
+    // selected while it was checkable stays selected after a refresh flips
+    // `checkable` to false (cargo's crates.io lookup failing is enough to
+    // do that). Without this, "Update Selected" would still plan the row
+    // whose Update button was just taken away -- `cargo install --force
+    // my-fork` against the same-named crates.io crate, the exact hazard
+    // `checkable` exists for.
+    updates = [
+      snapshot.updates[0],
+      {
+        key: myForkKey,
+        current: "0.1.0",
+        target: "0.1.0",
+        channel: "Registry",
+        checkable: false,
+        warnings: ["NonRegistrySource"],
+        blocked: null,
+      },
+    ];
+    act(() => {
+      useUiStore.getState().toggleUpdate(glibKey);
+      useUiStore.getState().toggleUpdate(myForkKey);
+    });
+
+    const { getByRole, findByRole } = renderPage();
+
+    await findRow("glib");
+    // One, not two: my-fork's selection counts for nothing.
+    fireEvent.click(getByRole("button", { name: "Update Selected (1)" }));
+
+    const dialog = await findByRole("alertdialog");
+    showCommands(dialog);
+    await within(dialog).findByText(command("/opt/homebrew/bin/brew upgrade --formula glib"));
+    expect(plannedNames()).toEqual(["glib"]);
+  });
+
+  it("draws no hairline over the line that discloses what can't be updated here, nor under the list's last row", async () => {
+    updates = [{ ...snapshot.updates[0], blocked: "Pinned" }, snapshot.updates[1]];
+    renderPage();
+    // A slot with no hairline under it is marked for index.css, from the
+    // list's items (`hairlineBefore`), not found by the stylesheet.
+    const onyx = await findRow("onyx");
+    expect(onyx.closest("[data-list-slot]")).toHaveAttribute("data-run-end");
+    await showCantUpdate();
+    const line = screen.getByRole("button", { name: "1 more can't be updated here" });
+    expect(line.closest("[data-list-slot]")).not.toHaveAttribute("data-run-end");
+    expect((await findRow("glib")).closest("[data-list-slot]")).toHaveAttribute("data-run-end");
+  });
+
+  it("names each row for a screen reader by its tool, its word and its versions, and its Update with the tool's name", async () => {
+    updates = [{ ...snapshot.updates[0], blocked: "Pinned" }, snapshot.updates[1]];
+    renderPage();
+
+    const onyx = await findRow("onyx");
+    expect(onyx).toHaveAttribute("role", "group");
+    expect(onyx).toHaveAccessibleName("onyx, 5.0.2 → 5.1.0");
+    // The words first, then whose (label in name).
+    const update = within(onyx).getByRole("button", { name: "Update onyx" });
+    expect(update).toHaveTextContent(/^Update$/);
+    // The one that can't be updated here: its word, and no versions.
+    await showCantUpdate();
+    expect(await findRow("glib")).toHaveAccessibleName("glib, Pinned");
+    // Each an item of the list, counted from its start.
+    const slot = onyx.closest("[data-list-slot]") as HTMLElement;
+    expect(slot).toHaveAttribute("role", "listitem");
+    expect(slot.parentElement).toHaveAttribute("role", "list");
+    // onyx, the line over what can't be updated here, and glib under it.
+    expect(slot).toHaveAttribute("aria-posinset", "1");
+    expect(slot).toHaveAttribute("aria-setsize", "3");
+    expect(rowOf("glib").closest("[data-list-slot]")).toHaveAttribute("aria-posinset", "3");
+  });
+
+  it("names a row's Update and Retry with the tool's name in Chinese too", async () => {
+    operations = [operation(glibKey, { id: 9, status: "Done", outcome: "Cancelled" })];
+    // Started for the version the row offers, so the row still shows how it ended.
+    useUiStore.setState({ updateTargets: { 9: "2.90.0" } });
+    await i18n.changeLanguage("zh-CN");
+    try {
+      renderPage();
+      const glib = await findRow("glib");
+      expect(within(glib).getByRole("button", { name: "重试glib" })).toHaveTextContent(/^重试$/);
+      expect(glib).toHaveAccessibleName("glib, 已取消, 2.88.3 → 2.90.0");
+      expect(within(rowOf("onyx")).getByRole("button", { name: "更新onyx" })).toHaveTextContent(/^更新$/);
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+
+  it("offers no Update button and no checkbox for a pinned formula, and says how to release it", async () => {
+    // `brew outdated` lists a pinned formula like any other, and `brew
+    // upgrade glib` then exits 1 with "Not upgrading 1 pinned package".
+    // The row stays -- the newer version is real -- but it offers nothing
+    // Homebrew will refuse, and says why and what the user can do.
+    updates = [{ ...snapshot.updates[0], blocked: "Pinned" }, snapshot.updates[1]];
+    const { findByText, getAllByRole, getByText } = renderPage();
+
+    await findRow("onyx");
+    // Only onyx's.
+    expect(getAllByRole("button", { name: ROW_UPDATE })).toHaveLength(1);
+    expect(getAllByRole("checkbox", { name: ROW_CHECKBOX })).toHaveLength(1);
+    expect(getAllByRole("checkbox", { name: ROW_CHECKBOX })[0]).toHaveAccessibleName("Select onyx for update");
+    // Counted apart from what can be updated: "1 update available", and one under
+    // "Can't update here".
+    await findByText("1 update available");
+    await showCantUpdate();
+    expect(getByText("1 more can't be updated here")).toBeInTheDocument();
+    const glib = await findRow("glib");
+    // Its name, its line, its word and its ⋯: no version and no button.
+    expect(within(glib).queryByText("2.88.3 → 2.90.0")).not.toBeInTheDocument();
+    expect(within(glib).queryByRole("button", { name: ROW_UPDATE })).not.toBeInTheDocument();
+    // Their columns are there all the same, empty, so its word stands in
+    // the status column the rows above it have: one column down the list.
+    const onyx = await findRow("onyx");
+    const columns = (row: HTMLElement) =>
+      [...row.children].map((child) =>
+        child.hasAttribute("data-status-column") ? "status" : child.hasAttribute("data-version") ? "version" : null,
+      );
+    expect(columns(glib)).toEqual(columns(onyx));
+    expect((glib.querySelector("[data-version]") as HTMLElement).textContent).toBe("");
+    expect(glib.querySelector("[data-status]")).toHaveTextContent("Pinned");
+    expect(onyx.children.length).toBe(glib.children.length);
+    const detail = chipDetail(glib, "Pinned");
+    expect(
+      within(detail).getByText(
+        wholeSentence(
+          "It's pinned in Homebrew. To update it, first run /opt/homebrew/bin/brew unpin glib in Terminal to unpin it, then check again.",
+        ),
+      ),
+    ).toBeInTheDocument();
+    // Set apart as code, so it is visibly a command and nothing around it
+    // gets copied with it.
+    expect(within(detail).getByText("/opt/homebrew/bin/brew unpin glib").tagName).toBe("CODE");
+  });
+
+  it("names the cask form of the unpin command for a pinned cask", async () => {
+    // `brew unpin <name>` resolves a formula first; `--cask` makes it
+    // release the cask even when a formula shares the name.
+    updates = [snapshot.updates[0], { ...snapshot.updates[1], blocked: "Pinned" }];
+    renderPage();
+
+    await showCantUpdate();
+    const detail = chipDetail(await findRow("onyx"), "Pinned");
+    expect(within(detail).getByText("/opt/homebrew/bin/brew unpin --cask onyx").tagName).toBe("CODE");
+  });
+
+  it("does not promise a pinned app that updates itself will stay at its version", async () => {
+    // `brew pin` warns that a cask with `auto_updates true` "may update
+    // itself outside Homebrew despite being pinned". Such a row reaches
+    // the page mostly with include_self_updating.
+    // Its detail says only what the pin stops and how to lift it, which is
+    // true of it too.
+    settings = { ...settings, include_self_updating: true };
+    updates = [snapshot.updates[0], { ...snapshot.updates[1], blocked: "Pinned" }];
+    artifacts = [
+      {
+        key: onyxKey,
+        display_name: "OnyX",
+        version: "5.0.2",
+        reason: "Requested",
+        description: "Verify system files structure",
+        homepage: null,
+        size_bytes: null,
+        installed_at: null,
+        path: null,
+        auto_updates: true,
+        uninstall_blocked: null,
+        facts: NO_FACTS,
+      },
+    ];
+    const { queryByText } = renderPage();
+
+    await showCantUpdate();
+    const detail = chipDetail(await findRow("OnyX"), "Pinned");
+    expect(
+      within(detail).getByText(
+        wholeSentence(
+          "It's pinned in Homebrew. To update it, first run /opt/homebrew/bin/brew unpin --cask onyx in Terminal to unpin it, then check again.",
+        ),
+      ),
+    ).toBeInTheDocument();
+    expect(queryByText(/version it has now|keeping this/)).toBeNull();
+  });
+
+  it("promises a silent source's pinned row nothing about when its update will come", async () => {
+    // `updateStateOf` checks `blocked` before `sourceUnavailable`, so a
+    // pinned candidate under a Homebrew that did not answer is still
+    // chipped Pinned, not Unavailable -- but the row gets no Update button
+    // either way until Homebrew answers a check again (`isUpdateActionable`
+    // needs `isAvailable`), so its detail may not promise the update at
+    // any "next time".
+    instances = [
+      { ...snapshot.instances[0], status: { unavailable: "NotResponding", notes: [] } },
+      ...snapshot.instances.slice(1),
+    ];
+    updates = [{ ...snapshot.updates[0], blocked: "Pinned" }, snapshot.updates[1]];
+    const { queryAllByRole, queryByText } = renderPage();
+
+    await showCantUpdate();
+    const glib = await findRow("glib");
+    expect(queryAllByRole("button", { name: ROW_UPDATE })).toHaveLength(0);
+    const detail = chipDetail(glib, "Pinned");
+    expect(
+      within(detail).getByText(
+        wholeSentence(
+          "It's pinned in Homebrew. To update it, first run /opt/homebrew/bin/brew unpin glib in Terminal to unpin it, then check again.",
+        ),
+      ),
+    ).toBeInTheDocument();
+    expect(queryByText(/next time/)).toBeNull();
+    // onyx, not pinned, is Unavailable, and says so of Homebrew.
+    expect(
+      within(chipDetail(rowOf("onyx"), "Can't update now")).getByText(
+        "Homebrew isn't responding. Click Check Again later.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("names the brew that owns a pinned package when a Mac has two, not whichever PATH finds", async () => {
+    // A Mac migrated from Intel keeps /usr/local beside /opt/homebrew,
+    // and Terminal's `brew` is /opt/homebrew/bin/brew. glib pinned in
+    // /usr/local has to be released by /usr/local/bin/brew: the other one
+    // answers "glib not pinned" and the row would stay Pinned for good.
+    const intelBrew: Snapshot["instances"][number] = {
+      ...snapshot.instances[0],
+      id: "brew:/usr/local",
+      exe_path: "/usr/local/bin/brew",
+      prefix: "/usr/local",
+    };
+    instances = [snapshot.instances[0], intelBrew];
+    updates = [
+      snapshot.updates[1],
+      {
+        ...snapshot.updates[0],
+        key: { ...glibKey, instance_id: "brew:/usr/local" },
+        blocked: "Pinned",
+      },
+    ];
+    const { queryByText } = renderPage();
+
+    await showCantUpdate();
+    const detail = chipDetail(await findRow("glib"), "Pinned");
+    expect(within(detail).getByText("/usr/local/bin/brew unpin glib").tagName).toBe("CODE");
+    expect(queryByText(/\/opt\/homebrew\/bin\/brew unpin/)).toBeNull();
+  });
+
+  it("names each of two Homebrews by the Mac it is for, on the rows and in the confirmation", async () => {
+    // A Mac migrated from Intel: a Homebrew in /usr/local beside the one
+    // in /opt/homebrew. Each is named as the sidebar names it, so that
+    // 「Homebrew」 never stands for either.
+    const intelBrew: Snapshot["instances"][number] = {
+      ...snapshot.instances[0],
+      id: "brew:/usr/local",
+      exe_path: "/usr/local/bin/brew",
+      prefix: "/usr/local",
+    };
+    instances = [snapshot.instances[0], intelBrew];
+    const intelGlib: ArtifactKey = { ...glibKey, instance_id: "brew:/usr/local" };
+    updates = [
+      { ...snapshot.updates[0], key: intelGlib },
+      brewCandidate("wget"),
+      { ...brewCandidate("wget"), key: { instance_id: "brew:/usr/local", kind: "Formula", name: "wget" } },
+    ];
+    const { findByRole, getByRole } = renderPage();
+
+    // The row's source, for a screen reader and in the avatar's tooltip.
+    const glib = await findRow("glib");
+    expect(within(glib).getByText("Homebrew (Intel)")).toHaveClass("sr-only");
+    expect(glib.querySelector('[title="Homebrew (Intel)"]')).not.toBeNull();
+    expect(within(glib).queryByText("Homebrew")).toBeNull();
+    // A name both have says in sight which is which.
+    const wgets = screen
+      .getAllByText("wget", { selector: "[data-tool-row] p" })
+      .map((element) => element.closest("[data-tool-row]") as HTMLElement);
+    expect(wgets.map((row) => within(row).getByText(/^Homebrew \(/).textContent).sort()).toEqual([
+      "Homebrew (Apple silicon)",
+      "Homebrew (Intel)",
+    ]);
+
+    // The update's confirmation, under its question.
+    fireEvent.click(within(glib).getByRole("button", { name: ROW_UPDATE }));
+    const dialog = await findByRole("alertdialog", { name: "Update “glib”?" });
+    const jump = await within(dialog).findByText("2.88.3 → 2.90.0");
+    expect(jump.closest("[data-dialog-subtitle]")).toHaveTextContent("Homebrew (Intel) · 2.88.3 → 2.90.0");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+
+    // Several: the two wgets' rows say in sight whose each is, and glib's
+    // for a screen reader.
+    fireEvent.click(getByRole("button", { name: "Update All" }));
+    const several = await findByRole("alertdialog", { name: "Update 3 tools?" });
+    const sources = within(several).getAllByText(/^Homebrew/);
+    expect(sources.filter((source) => !source.classList.contains("sr-only")).map((source) => source.textContent)).toEqual(
+      ["Homebrew (Apple silicon)", "Homebrew (Intel)"],
+    );
+    expect(sources.filter((source) => source.classList.contains("sr-only")).map((source) => source.textContent)).toEqual(
+      ["Homebrew (Intel)"],
+    );
+  });
+
+  it("lists every tool of a long Update All on its dialog, the first few with it and the rest just after", async () => {
+    updates = Array.from({ length: 20 }, (_, index) => ({
+      ...snapshot.updates[1],
+      key: { ...snapshot.updates[1].key, name: `tool-${String(index).padStart(2, "0")}` },
+    }));
+    const { getByRole, findByRole } = renderPage();
+    await findRow("tool-00");
+    fireEvent.click(getByRole("button", { name: "Update All" }));
+    const dialog = await findByRole("alertdialog", { name: "Update 20 tools?" });
+    await waitFor(() => expect(dialog.querySelectorAll("[data-sheet-tool]")).toHaveLength(20));
+    expect([...dialog.querySelectorAll("[data-sheet-name]")].map((name) => name.textContent)).toEqual(
+      updates.map((update) => update.key.name),
+    );
+  });
+
+  it("names pipx and pipx's own unpin command on a pinned pipx tool", async () => {
+    // `pipx list --outdated` lists a pinned tool as `cowsay [pinned]: 5.0
+    // -> 6.1`, and `pipx upgrade cowsay` then changes nothing and exits 0.
+    // The row must say pipx, not Homebrew, and give the command pipx
+    // itself names ("Run `pipx unpin cowsay` to unpin it"), from the pipx
+    // Banager found.
+    const pipx: Snapshot["instances"][number] = {
+      id: "pipx",
+      adapter_id: "pipx",
+      exe_path: "/opt/homebrew/bin/pipx",
+      prefix: "/opt/homebrew/bin",
+      scope: "User",
+      version: "1.17.3",
+      status: { unavailable: null, notes: [] },
+      answered_at: null,
+      unverified_version: null,
+      read_only_reason: null,
+    };
+    instances = [snapshot.instances[0], pipx];
+    updates = [
+      snapshot.updates[0],
+      {
+        key: { instance_id: "pipx", kind: "Tool", name: "cowsay" },
+        current: "5.0",
+        target: "6.1",
+        channel: "Native",
+        checkable: true,
+        warnings: [],
+        blocked: "Pinned",
+      },
+    ];
+    const { getAllByRole, queryByText } = renderPage();
+
+    await findRow("glib");
+    // Only glib's.
+    expect(getAllByRole("button", { name: ROW_UPDATE })).toHaveLength(1);
+    expect(getAllByRole("checkbox", { name: ROW_CHECKBOX })).toHaveLength(1);
+    expect(getAllByRole("checkbox", { name: ROW_CHECKBOX })[0]).toHaveAccessibleName("Select glib for update");
+    await showCantUpdate();
+    const detail = chipDetail(await findRow("cowsay"), "Pinned");
+    expect(
+      within(detail).getByText(
+        wholeSentence(
+          "It's pinned in pipx. To update it, first run /opt/homebrew/bin/pipx unpin cowsay in Terminal to unpin it, then check again.",
+        ),
+      ),
+    ).toBeInTheDocument();
+    expect(within(detail).getByText("/opt/homebrew/bin/pipx unpin cowsay").tagName).toBe("CODE");
+    expect(queryByText(/brew unpin/)).toBeNull();
+    expect(queryByText(/pinned in Homebrew/)).toBeNull();
+    // pipx's unpin releases what was injected into the environment too
+    // (pipx 1.17.3 `commands/pin.py`), which Banager cannot list: said on
+    // every pinned pipx row, as what the command does.
+    expect(detail).toHaveTextContent("This command also unpins the other packages installed alongside it.");
+  });
+
+  it("says nothing of injected packages on a row pinned in Homebrew", async () => {
+    updates = [{ ...snapshot.updates[0], blocked: "Pinned" }, snapshot.updates[1]];
+    renderPage();
+    await showCantUpdate();
+    const detail = chipDetail(await findRow("glib"), "Pinned");
+    expect(detail).toHaveTextContent("brew unpin glib");
+    expect(detail).not.toHaveTextContent(/inject/);
+  });
+
+  it("holds back a package Homebrew disabled: no button, why, Homebrew's suggestion, and nothing to run or copy", async () => {
+    // `brew outdated` lists a disabled cask like any other; `brew upgrade`
+    // of it would change nothing (`UpdateBlocked::Disabled`).
+    settings.show_technical_details = true;
+    updates = [snapshot.updates[0], { ...snapshot.updates[1], blocked: "Disabled" }];
+    artifacts = [
+      {
+        key: onyxKey,
+        display_name: "OnyX",
+        version: "5.0.2",
+        reason: "Requested",
+        description: null,
+        homepage: null,
+        size_bytes: null,
+        installed_at: null,
+        path: null,
+        auto_updates: false,
+        uninstall_blocked: null,
+        facts: {
+          ...NO_FACTS,
+          homebrew: {
+            deprecated: null,
+            disabled: { date: "2026-09-01", reason: "fails_gatekeeper_check", replacement: "onyx-ng" },
+            caveats: null,
+            other_versions: [],
+          },
+        },
+      },
+    ];
+    const { getAllByRole } = renderPage();
+
+    await findRow("glib");
+    // Only glib's.
+    expect(getAllByRole("button", { name: ROW_UPDATE })).toHaveLength(1);
+    await showCantUpdate();
+    const onyx = await findRow("OnyX");
+    const detail = chipDetail(onyx, "Disabled");
+    expect(detail).toHaveTextContent("Homebrew has disabled it and won't provide more updates.");
+    expect(detail).toHaveTextContent("Homebrew suggests “onyx-ng” instead.");
+    // Nothing to run: no "In Terminal" line even with technical details on,
+    // and no Copy Command.
+    expect(detail).not.toHaveTextContent("In Terminal");
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+    expect(within(openMenu(onyx)).queryByRole("menuitem", { name: "Copy Command" })).toBeNull();
+  });
+
+  it("names the file in the way of a keg-only formula's link back under its blocked row (y1-keg review)", async () => {
+    updates = [
+      {
+        ...snapshot.updates[0],
+        blocked: "LinkTaken",
+        warnings: [
+          { LinkPlacesHeld: { name: "glib", paths: ["/opt/homebrew/bin/npm", "/opt/homebrew/bin/npx"] } },
+        ],
+      },
+      snapshot.updates[1],
+    ];
+    renderPage();
+    await showCantUpdate();
+    const detail = chipDetail(await findRow("glib"), "Can't link back");
+    expect(detail).toHaveTextContent("In the way: /opt/homebrew/bin/npm and 1 more");
+  });
+
+  it("keeps a pinned candidate out of Update selected even when it was selected earlier", async () => {
+    // Selected while it was not pinned; a refresh since says it is. The
+    // selection outlives the row's checkbox, so `isActionable` has to be
+    // what filters the batch, or `brew upgrade --formula glib` would be
+    // planned anyway (and refused by `Session::issue_plan`).
+    updates = [{ ...snapshot.updates[0], blocked: "Pinned" }, snapshot.updates[1]];
+    act(() => {
+      useUiStore.getState().toggleUpdate(glibKey);
+      useUiStore.getState().toggleUpdate(onyxKey);
+    });
+
+    const { getByRole, findByRole } = renderPage();
+
+    await findRow("onyx");
+    fireEvent.click(getByRole("button", { name: "Update Selected (1)" }));
+
+    await findByRole("alertdialog");
+    expect(plannedNames()).toEqual(["onyx"]);
+  });
+
+  it("offers no Update button and no checkbox for a pip package, and points at pipx or uv instead", async () => {
+    // pip is read-only by design: its plan() refuses every operation with
+    // "unsupported: pip is read-only in Banager; use pipx or uv to manage
+    // {name}". Its candidates are still built with checkable: true, because
+    // pip genuinely can check -- so gating the Update button on `checkable`
+    // alone offered a button whose only possible outcome is a raw Rust error
+    // string in a dialog.
+    updates = [
+      snapshot.updates[0],
+      {
+        key: urllib3Key,
+        current: "2.2.1",
+        target: "2.3.0",
+        channel: "Registry",
+        checkable: true,
+        warnings: [],
+        blocked: null,
+      },
+    ];
+    const { findByText, findAllByRole } = renderPage();
+
+    // glib's button and checkbox, and only glib's.
+    expect(await findAllByRole("button", { name: ROW_UPDATE })).toHaveLength(1);
+    expect(await findAllByRole("checkbox", { name: ROW_CHECKBOX })).toHaveLength(1);
+    // One update the user can act on, and one they cannot -- both said out
+    // loud. Counting only the first left "0 updates available" above six
+    // listed rows on a machine whose only outdated packages were pip's.
+    await findByText("1 update available");
+    await findByText("1 more can't be updated here");
+    await showCantUpdate();
+    const detail = chipDetail(await findRow("urllib3"), "View only");
+    expect(detail).toHaveTextContent(
+      "You can only view pip installs here. If one of them is a command-line tool you use in Terminal, reinstall it with pipx or uv to update and uninstall it here.",
+    );
+  });
+
+  it("marks each pip row View only in a word, keeps the why behind the chip, and leaves every row its own description", async () => {
+    // Six outdated pip packages used to mean six copies of a
+    // ~200-character paragraph, and the packages' own blurbs were displaced
+    // by it, so the six rows read identically. Each row now says it in one
+    // word, the explanation is one click away, and the blurbs stay.
+    const pipPackages = ["urllib3", "requests", "certifi", "idna", "charset-normalizer", "six"];
+    updates = pipPackages.map((name) => ({
+      key: { instance_id: "pip:/usr/bin/python3", kind: "Package" as const, name },
+      current: "1.0.0",
+      target: "1.1.0",
+      channel: "Registry" as const,
+      checkable: true,
+      warnings: [],
+      blocked: null,
+    }));
+    artifacts = pipPackages.map((name) => ({
+      key: { instance_id: "pip:/usr/bin/python3", kind: "Package" as const, name },
+      display_name: name,
+      version: "1.0.0",
+      reason: "Requested" as const,
+      description: `what ${name} is for`,
+      homepage: null,
+      size_bytes: null,
+      installed_at: null,
+      path: null,
+      auto_updates: false,
+      uninstall_blocked: null,
+      facts: NO_FACTS,
+    }));
+    const { findByText, queryAllByText, getAllByRole } = renderPage();
+
+    await showCantUpdate();
+    await findRow("urllib3");
+    expect(getAllByRole("button", { name: "View only" })).toHaveLength(6);
+    expect(queryAllByText(/with pipx or uv/)).toHaveLength(0);
+    // And each row can be told from the next again.
+    for (const name of pipPackages) {
+      expect(await findByText(`what ${name} is for`)).toBeInTheDocument();
+    }
+    chipDetail(rowOf("idna"), "View only");
+    expect(queryAllByText(/with pipx or uv/)).toHaveLength(1);
+  });
+
+  it("says nothing about a read-only source that has no rows on this page", async () => {
+    // pip being read-only is not news on a page listing two Homebrew
+    // updates.
+    const { queryByText, queryByRole } = renderPage();
+
+    await findRow("glib");
+    expect(queryByText("View only")).not.toBeInTheDocument();
+    expect(queryByRole("button", { name: "View only" })).not.toBeInTheDocument();
+  });
+
+  it("does not count a row it could not check as an available update", async () => {
+    // The headline counts what Banager can act on, and `checkable` is one
+    // of the things that decides that. A writable, answering source whose
+    // registry lookup failed produced six rows with no buttons under the
+    // words "6 updates available". The two numbers now come from exactly
+    // the predicate that draws the buttons.
+    updates = [
+      snapshot.updates[0],
+      {
+        key: myForkKey,
+        current: "0.1.0",
+        target: "0.1.0",
+        channel: "Registry",
+        checkable: false,
+        warnings: ["NonRegistrySource"],
+        blocked: null,
+      },
+    ];
+    const { findByText, queryByText } = renderPage();
+
+    await findByText("1 update available");
+    await findByText("1 more can't be updated here");
+    expect(queryByText("2 updates available")).not.toBeInTheDocument();
+  });
+
+  it("says why a row can't be checked even when its source is also read-only", async () => {
+    // pip is read-only *and* reaches PyPI, so a failed lookup produces
+    // rows where both facts are true at once -- and the read-only advice
+    // used to win outright, leaving no trace that Banager had not managed
+    // to check anything. A row has one word (spec §3.4): "Can't check",
+    // this check's news, the words the page's line over these rows counts;
+    // its why says both -- that this check found nothing, then that no
+    // button will ever appear here.
+    updates = [
+      {
+        key: urllib3Key,
+        current: "2.2.1",
+        target: "2.2.1",
+        channel: "Native",
+        checkable: false,
+        warnings: [{ Message: "pip list --outdated: ERROR: Could not fetch URL https://pypi.org/simple/" }],
+        blocked: null,
+      },
+    ];
+    renderPage();
+
+    await showCantUpdate();
+    const urllib3 = await findRow("urllib3");
+    expect(within(urllib3).queryByRole("button", { name: "View only" })).not.toBeInTheDocument();
+    const reason = chipDetail(urllib3, "Can't check");
+    expect([...reason.querySelectorAll("p, [data-detail-line]")].map((line) => line.textContent)).toEqual([
+      "Couldn't find its latest version.",
+      "You can only view pip installs here. If one of them is a command-line tool you use in Terminal, reinstall it with pipx or uv to update and uninstall it here.",
+    ]);
+  });
+
+  it("keeps the tool's own error text behind Show technical details", async () => {
+    // Going offline used to paper every row with the same line of English
+    // stderr: every installed package gets a row, and every row got "pip
+    // list --outdated: ERROR: Could not fetch URL https://pypi.org/simple/"
+    // as its description. `show_technical_details` promises to hide "the
+    // commands Banager actually runs", which is exactly what that line is
+    // (spec §6).
+    const names = ["urllib3", "requests", "certifi"];
+    updates = names.map((name) => ({
+      key: { instance_id: "pip:/usr/bin/python3", kind: "Package" as const, name },
+      current: "1.0.0",
+      target: "1.0.0",
+      channel: "Registry" as const,
+      checkable: false,
+      warnings: [
+        { Message: "pip list --outdated: ERROR: Could not fetch URL https://pypi.org/simple/" },
+      ],
+      blocked: null,
+    }));
+    const { queryAllByText } = renderPage();
+
+    await showCantUpdate();
+    const detail = chipDetail(await findRow("certifi"), "Can't check");
+    // What a person who does not write code is told instead: that it could
+    // not be checked, in one short sentence -- then pip's way out.
+    expect([...detail.querySelectorAll("p, [data-detail-line]")].map((line) => line.textContent)).toEqual([
+      "Couldn't find its latest version.",
+      "You can only view pip installs here. If one of them is a command-line tool you use in Terminal, reinstall it with pipx or uv to update and uninstall it here.",
+    ]);
+    expect(queryAllByText(/Could not fetch URL/)).toHaveLength(0);
+    expect(queryAllByText(/pip list --outdated/)).toHaveLength(0);
+    // ...and, once for the page, a button that shows the rest.
+    const summary = queryAllByText(/Check details are hidden for 3 of these tools/);
+    expect(summary).toHaveLength(1);
+    expect(within(summary[0].parentElement as HTMLElement).getByRole("button", { name: "Show Reasons" })).toBeEnabled();
+  });
+
+  it("says where to see why rows could not be checked once for the page, not once per row", async () => {
+    // Offline, one failed `npm outdated -g` turns every global package into
+    // an uncheckable row. The explanation used to be a 180-character
+    // paragraph on each of them -- seventy globals, seventy copies. The
+    // tool's own words are hidden; the cause they give is said, in a
+    // person's words, where every row gives the same one
+    // (`sharedCannotCheckCause`): ENOTFOUND is no network.
+    updates = Array.from({ length: 70 }, (_, index) => ({
+      key: { instance_id: "npm:/usr/local", kind: "Package" as const, name: `global-${index}` },
+      current: "1.0.0",
+      target: "1.0.0",
+      channel: "Native" as const,
+      checkable: false,
+      warnings: [{ Message: "npm outdated -g: npm error code ENOTFOUND" }],
+      blocked: null,
+    }));
+    const { findByText, queryAllByText } = renderPage();
+
+    await findByText("70 more can't be updated here");
+    await showCantUpdate();
+    const summary = queryAllByText(/Check details are hidden for 70 of these tools/);
+    expect(summary).toHaveLength(1);
+    // The sentence says what happened, and a button next to it shows why,
+    // rather than a sentence saying which setting to find where.
+    expect(summary[0].textContent).toBe(
+      "Check details are hidden for 70 of these tools. The connection failed. Check your internet connection, then try again.",
+    );
+    expect(queryAllByText(/ENOTFOUND/)).toHaveLength(0);
+  });
+
+  it("puts no space after 「。」 when it says in Chinese why the rows could not be checked", async () => {
+    updates = Array.from({ length: 2 }, (_, index) => ({
+      key: { instance_id: "npm:/usr/local", kind: "Package" as const, name: `global-${index}` },
+      current: "1.0.0",
+      target: "1.0.0",
+      channel: "Native" as const,
+      checkable: false,
+      warnings: [{ Message: "npm outdated -g: npm error code ENOTFOUND" }],
+      blocked: null,
+    }));
+    await i18n.changeLanguage("zh-CN");
+    try {
+      const { findByText } = renderPage();
+      fireEvent.click(await findByText("另有2个无法在这里更新"));
+      expect((await findByText(/^其中2个工具的检查详情已隐藏。/)).textContent).toBe(
+        "其中2个工具的检查详情已隐藏。网络连接失败，请检查网络连接后重试。",
+      );
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+
+  it("names no cause over the rows when their words give none, or give different ones", async () => {
+    // A registry that answered 500 says nothing a person can act on, and
+    // one row offline beside one with a full disk is not "no network" for
+    // both: the line then says only that they could not be checked.
+    const row = (name: string, message: string) => ({
+      key: { instance_id: "npm:/usr/local", kind: "Package" as const, name },
+      current: "1.0.0",
+      target: "1.0.0",
+      channel: "Native" as const,
+      checkable: false,
+      warnings: [{ Message: message }],
+      blocked: null,
+    });
+    updates = [
+      row("left-pad", "npm outdated -g: npm error code ENOTFOUND"),
+      row("is-odd", "npm outdated -g: npm error code E500 Internal Server Error"),
+    ];
+    const first = renderPage();
+    await showCantUpdate();
+    expect((await first.findByText(/Check details are hidden for 2 of these tools/)).textContent).toBe(
+      "Check details are hidden for 2 of these tools.",
+    );
+    first.unmount();
+
+    updates = [
+      row("left-pad", "npm outdated -g: npm error code ENOTFOUND"),
+      row("is-odd", "npm outdated -g: npm error code ENOSPC: no space left on device"),
+    ];
+    const second = renderPage();
+    await showCantUpdate();
+    expect((await second.findByText(/Check details are hidden for 2 of these tools/)).textContent).toBe(
+      "Check details are hidden for 2 of these tools.",
+    );
+  });
+
+  it("says a row's cause in its Can't check chip with technical details off, and the tool's words only with them on", async () => {
+    updates = [
+      {
+        key: { instance_id: "npm:/usr/local", kind: "Package" as const, name: "left-pad" },
+        current: "1.0.0",
+        target: "1.0.0",
+        channel: "Native" as const,
+        checkable: false,
+        warnings: [{ Message: "npm outdated -g: npm error code ENOTFOUND" }],
+        blocked: null,
+      },
+    ];
+    renderPage();
+    await showCantUpdate();
+    const detail = chipDetail(await findRow("left-pad"), "Can't check");
+    expect(detail).toHaveTextContent("Couldn't find its latest version.");
+    expect(detail).toHaveTextContent("The connection failed. Check your internet connection, then try again.");
+    expect(detail).not.toHaveTextContent("ENOTFOUND");
+  });
+
+  it("shows why with one press: Show Reasons turns on Show technical details, and the tools' words take the line's place", async () => {
+    updates = ["urllib3", "requests"].map((name) => ({
+      key: { instance_id: "npm:/usr/local", kind: "Package" as const, name },
+      current: "1.0.0",
+      target: "1.0.0",
+      channel: "Native" as const,
+      checkable: false,
+      warnings: [{ Message: "npm outdated -g: npm error code ENOTFOUND" }],
+      blocked: null,
+    }));
+    const before = { ...settings };
+    const { findByText, getByRole, queryByText } = renderPage();
+
+    await showCantUpdate();
+    await findByText(/^Check details are hidden for 2 of these tools\./);
+    const showReasons = getByRole("button", { name: "Show Reasons" });
+    // Where it goes, in its tooltip: the setting it turns on.
+    expect(showReasons).toHaveAttribute("title", "Turns on “Show technical details” in Settings");
+    fireEvent.click(showReasons);
+
+    await waitFor(() =>
+      expect(calls("set_settings").map(([, args]) => (args as { settings: Settings }).settings.show_technical_details)).toEqual([true]),
+    );
+    // The rest of the settings as they were.
+    expect((calls("set_settings")[0][1] as { settings: Settings }).settings).toEqual({
+      ...before,
+      show_technical_details: true,
+    });
+    await waitFor(() => expect(queryByText(/Check details are hidden/)).not.toBeInTheDocument());
+    const detail = chipDetail(await findRow("requests"), "Can't check");
+    expect(detail).toHaveTextContent("npm outdated -g: npm error code ENOTFOUND");
+    // The cause in a person's words stays, before the tool's own.
+    expect(detail).toHaveTextContent("The connection failed.");
+  });
+
+  it.each(["en", "zh-CN"])("counts hidden check details, not every Can't check row, in %s", async (lang) => {
+    updates = [
+      { key: myForkKey, current: "1", target: "1", channel: "Registry", checkable: false, warnings: ["NonRegistrySource"], blocked: null },
+      ...["rustup", "tokei"].map((name): UpdateCandidate => ({
+        key: { ...myForkKey, name }, current: "1", target: "1", channel: "Registry", checkable: false,
+        warnings: [{ Message: "TLS certificate refused" }], blocked: null,
+      })),
+    ];
+    await i18n.changeLanguage(lang);
+    try {
+      const { findByText, getAllByText, getByRole } = renderPage();
+      fireEvent.click(await findByText(lang === "en" ? "3 more can't be updated here" : "另有3个无法在这里更新"));
+      expect(await findByText(lang === "en"
+        ? "Check details are hidden for 2 of these tools."
+        : "其中2个工具的检查详情已隐藏。")).toBeInTheDocument();
+      expect(getAllByText(lang === "en" ? "Can't check" : "无法检查")).toHaveLength(3);
+      fireEvent.click(getByRole("button", { name: lang === "en" ? "Show Reasons" : "显示原因" }));
+      await waitFor(() => expect(calls("set_settings")).toHaveLength(1));
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+
+  it("does not count a row with its own reason in the page's cannot-check line", async () => {
+    // A git-installed crate says its own, different, reason behind its
+    // chip; "turn on technical details to see why" is not about it. With
+    // only such rows there is nothing for the page to add.
+    updates = [
+      {
+        key: myForkKey,
+        current: "0.1.0",
+        target: "0.1.0",
+        channel: "Registry",
+        checkable: false,
+        warnings: ["NonRegistrySource"],
+        blocked: null,
+      },
+    ];
+    const { queryByText } = renderPage();
+
+    await showCantUpdate();
+    await findRow("my-fork");
+    expect(queryByText(/Check details are hidden/)).not.toBeInTheDocument();
+  });
+
+  it("shows the tool's own error text once Show technical details is on, under the plain sentence", async () => {
+    settings.show_technical_details = true;
+    updates = [
+      {
+        key: urllib3Key,
+        current: "2.2.1",
+        target: "2.2.1",
+        channel: "Registry",
+        checkable: false,
+        warnings: [
+          { Message: "pip list --outdated: ERROR: Could not fetch URL https://pypi.org/simple/" },
+        ],
+        blocked: null,
+      },
+    ];
+    const { queryByText } = renderPage();
+
+    await showCantUpdate();
+    const detail = chipDetail(await findRow("urllib3"), "Can't check");
+    const lines = [...detail.querySelectorAll("p, [data-detail-line]")].map((line) => line.textContent);
+    expect(lines).toEqual([
+      "Couldn't find its latest version.",
+      "pip list --outdated: ERROR: Could not fetch URL https://pypi.org/simple/",
+      "You can only view pip installs here. If one of them is a command-line tool you use in Terminal, reinstall it with pipx or uv to update and uninstall it here.",
+    ]);
+    // The rows already carry the tools' words, so the page's line --
+    // which exists to point at this switch -- has nothing to add.
+    expect(queryByText(/Check details are hidden/)).not.toBeInTheDocument();
+  });
+
+  it("gives a reason that was written for this audience with technical details off", async () => {
+    // Two kinds of text end up behind an uncheckable row's chip.
+    // `NonRegistrySource` is written for this audience already; a `Message`
+    // is whatever the tool printed, in whatever language it printed it.
+    updates = [
+      {
+        key: myForkKey,
+        current: "0.1.0",
+        target: "0.1.0",
+        channel: "Registry",
+        checkable: false,
+        warnings: ["NonRegistrySource"],
+        blocked: null,
+      },
+    ];
+    renderPage();
+
+    await showCantUpdate();
+    const detail = chipDetail(await findRow("my-fork"), "Can't check");
+    expect([...detail.querySelectorAll("p, [data-detail-line]")].map((line) => line.textContent)).toEqual([
+      "Couldn't find its latest version.",
+      "It wasn't installed from crates.io.",
+    ]);
+  });
+
+  it("tells an npm user to install Node with Homebrew, not to use pipx or uv", async () => {
+    // Both sources are read-only, for different reasons, and the wire says
+    // which. Before `read_only_reason` the page hardcoded pip's advice for
+    // every read-only row, so a user whose npm prefix is root-owned was
+    // told to install their JavaScript tooling with a Python tool.
+    updates = [
+      {
+        key: typescriptKey,
+        current: "5.6.2",
+        target: "5.7.0",
+        channel: "Registry",
+        checkable: true,
+        warnings: [],
+        blocked: null,
+      },
+      {
+        key: urllib3Key,
+        current: "2.2.1",
+        target: "2.3.0",
+        channel: "Registry",
+        checkable: true,
+        warnings: [],
+        blocked: null,
+      },
+    ];
+    const { queryAllByRole } = renderPage();
+
+    await showCantUpdate();
+    const npm = chipDetail(await findRow("typescript"), "View only");
+    // Only the packages installed with a Node from Homebrew: the ones in
+    // this folder do not move over (T5).
+    expect(npm).toHaveTextContent(
+      "npm keeps these in a folder your account can't change, so you can only view them. After you install Node with Homebrew, you can manage the npm packages you install with it here.",
+    );
+    expect(npm.textContent).not.toMatch(/pipx|uv/);
+    // pip's row keeps pip's advice, right next to it.
+    const pip = chipDetail(rowOf("urllib3"), "View only");
+    expect(pip).toHaveTextContent(/with pipx or uv/);
+    expect(queryAllByRole("button", { name: ROW_UPDATE })).toHaveLength(0);
+  });
+
+  it("says nothing here can be updated, rather than 0 updates, when every row is read-only", async () => {
+    updates = [
+      {
+        key: urllib3Key,
+        current: "2.2.1",
+        target: "2.3.0",
+        channel: "Registry",
+        checkable: true,
+        warnings: [],
+        blocked: null,
+      },
+      {
+        key: typescriptKey,
+        current: "5.6.2",
+        target: "5.7.0",
+        channel: "Registry",
+        checkable: true,
+        warnings: [],
+        blocked: null,
+      },
+    ];
+    const { findByText, queryByText } = renderPage();
+
+    expect(await findByText("Nothing to update here")).toBeInTheDocument();
+    expect(queryByText("0 updates available")).not.toBeInTheDocument();
+    // The headline switching to "nothing here" does not excuse dropping the
+    // number: two listed rows the user cannot act on are still counted.
+    expect(await findByText("2 more can't be updated here")).toBeInTheDocument();
+  });
+
+  it("keeps a read-only source's candidate out of Update selected even when it was selected earlier", async () => {
+    // Same hazard as the uncheckable case above: a selection lives in the UI
+    // store and outlives the row that made it, so hiding the checkbox is not
+    // enough on its own.
+    updates = [
+      snapshot.updates[0],
+      {
+        key: urllib3Key,
+        current: "2.2.1",
+        target: "2.3.0",
+        channel: "Registry",
+        checkable: true,
+        warnings: [],
+        blocked: null,
+      },
+    ];
+    act(() => {
+      useUiStore.getState().toggleUpdate(glibKey);
+      useUiStore.getState().toggleUpdate(urllib3Key);
+    });
+
+    const { getByRole, findByRole } = renderPage();
+
+    await findRow("glib");
+    fireEvent.click(getByRole("button", { name: "Update Selected (1)" }));
+
+    const dialog = await findByRole("alertdialog");
+    showCommands(dialog);
+    await within(dialog).findByText(command("/opt/homebrew/bin/brew upgrade --formula glib"));
+    expect(plannedNames()).toEqual(["glib"]);
+  });
+
+  it("says an Ollama model has a new version instead of printing two digests", async () => {
+    // `current` is the local manifest digest /api/tags reported; `target` is
+    // the registry manifest's own. Hashes of two manifests, not versions --
+    // the adapter's own comment
+    // (crates/banager-core/src/adapters/ollama/mod.rs) forbids rendering
+    // them as a version jump, and neither is anything to show a person who
+    // does not write code. `channel: "Digest"` is the discriminator, with
+    // technical details on as well.
+    settings.show_technical_details = true;
+    instances = [...snapshot.instances, { ...stoppedOllama, status: { unavailable: null, notes: [] } }];
+    updates = [
+      {
+        key: qwenKey,
+        current: "5642e97495e1a0888838ee1b3b1a0b1c6a0f0f5e6c2d4a8b9e7c3d1f0a2b4c6d",
+        target: "sha256:9f1c0b6d2e4a7c5b3d1f8a6e4c2b0d9f7e5c3a1b8d6f4e2c0a9b7d5f3e1c8a6b",
+        channel: "Digest",
+        checkable: true,
+        warnings: [],
+        blocked: null,
+      },
+    ];
+    const { queryByText, container } = renderPage();
+
+    const qwen = await findRow("qwen3:8b");
+    expect(within(qwen).getByText("New version")).toBeInTheDocument();
+    expect(queryByText(/5642e97495e1a0888838/)).not.toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/sha256|→/);
+  });
+
+  it("names a model pulled from another registry by the model itself, with where it is from on its line", async () => {
+    const coderKey: ArtifactKey = { ...qwenKey, name: MODELS.coder };
+    instances = [...snapshot.instances, { ...stoppedOllama, status: { unavailable: null, notes: [] } }];
+    updates = [
+      {
+        key: coderKey,
+        current: "52e05d4a30959ae2542932b2c473f476dca0ce371aaf9a2227badf4e3eeec4f4",
+        target: "sha256:9f1c0b6d2e4a7c5b3d1f8a6e4c2b0d9f7e5c3a1b8d6f4e2c0a9b7d5f3e1c8a6b",
+        channel: "Digest",
+        checkable: true,
+        warnings: [{ ThirdPartyRegistry: { host: "modelscope.cn" } }],
+        blocked: null,
+      },
+      snapshot.updates[0],
+    ];
+    const { findByTitle, getByRole, findByRole } = renderPage();
+
+    const name = await findByTitle(MODELS.coder);
+    expect(name.matches("[data-tool-row] p")).toBe(true);
+    expect(name.firstElementChild?.textContent).toBe("Qwen2.5-Coder-7B-Instruct-GGUF:Q4_K_M");
+    expect(name.querySelector(".sr-only")?.textContent).toBe(MODELS.coder);
+    const row = name.closest("[data-tool-row]") as HTMLElement;
+    expect(row.querySelector("[data-description]")?.textContent).toMatch(/^modelscope\.cn\/Qwen · /);
+    // The row's checkbox and its details say it whole.
+    expect(within(row).getByRole("checkbox", { name: `Select ${MODELS.coder} for update` })).toBeInTheDocument();
+
+    // Update All's list names it as the row does, so its tag is not what
+    // is cut short; whole in its tooltip and for a screen reader.
+    fireEvent.click(getByRole("button", { name: "Update All" }));
+    const dialog = await findByRole("alertdialog");
+    const inSheet = within(dialog).getByTitle(MODELS.coder);
+    expect(inSheet).toHaveAttribute("data-sheet-name");
+    expect(inSheet.firstElementChild?.textContent).toBe("Qwen2.5-Coder-7B-Instruct-GGUF:Q4_K_M");
+    expect(inSheet.querySelector(".sr-only")?.textContent).toBe(MODELS.coder);
+  });
+
+  it("says under an Ollama model's row that its update downloads what changed, after where the model is from, in either language", async () => {
+    // `Warning::DownloadsModelChanges`, the model's note as
+    // `CompilesLocally` is a crate's, after the registry's caution
+    // (crates/banager-core/src/adapters/ollama/mod.rs).
+    const coderKey: ArtifactKey = { ...qwenKey, name: MODELS.coder };
+    instances = [...snapshot.instances, { ...stoppedOllama, status: { unavailable: null, notes: [] } }];
+    updates = [
+      {
+        key: coderKey,
+        current: "52e05d4a30959ae2542932b2c473f476dca0ce371aaf9a2227badf4e3eeec4f4",
+        target: "sha256:9f1c0b6d2e4a7c5b3d1f8a6e4c2b0d9f7e5c3a1b8d6f4e2c0a9b7d5f3e1c8a6b",
+        channel: "Digest",
+        checkable: true,
+        warnings: [{ ThirdPartyRegistry: { host: "modelscope.cn" } }],
+        blocked: null,
+      },
+    ];
+    planWarnings[MODELS.coder] = [{ ThirdPartyRegistry: { host: "modelscope.cn" } }, "DownloadsModelChanges"];
+    const linesUnder = async (update: RegExp) => {
+      const row = (await screen.findByTitle(MODELS.coder)).closest("[data-tool-row]") as HTMLElement;
+      fireEvent.click(within(row).getByRole("button", { name: update }));
+      const dialog = await screen.findByRole("alertdialog");
+      // One tool: its lines are the dialog's own, under its name.
+      await waitFor(() => expect(dialog.querySelectorAll("li")).toHaveLength(2));
+      return [...dialog.querySelectorAll("li")].map((item) => ({
+        text: item.textContent?.trim(),
+        caution: item.hasAttribute("data-caution"),
+      }));
+    };
+
+    const en = renderPage();
+    expect(await linesUnder(ROW_UPDATE)).toEqual([
+      { text: "This model comes from modelscope.cn, not Ollama's own library.", caution: true },
+      { text: "Downloads the model files that changed.", caution: false },
+    ]);
+    en.unmount();
+
+    await i18n.changeLanguage("zh-CN");
+    try {
+      renderPage();
+      expect(await linesUnder(/^更新(?!所选|全部)/)).toEqual([
+        { text: "此模型来自modelscope.cn，不是Ollama官方模型库。", caution: true },
+        { text: "需要下载已更改的模型文件。", caution: false },
+      ]);
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+
+  it("says the most a model's update downloads under it alone and in Update All, the plain sentence where it is not known, and not on its row, in either language", async () => {
+    // `UpdateCandidate.download_bytes` (crates/banager-core/src/adapters/
+    // ollama/parse.rs `changed_blob_bytes`): an upper bound, worded as one
+    // (src/lib/modelDownload.ts). `qwen3:8b`'s is not known. The row keeps
+    // 「有新版本」, which leaves a long model name its room.
+    const coderKey: ArtifactKey = { ...qwenKey, name: MODELS.coder };
+    instances = [...snapshot.instances, { ...stoppedOllama, status: { unavailable: null, notes: [] } }];
+    updates = [
+      {
+        key: coderKey,
+        current: "52e05d4a30959ae2542932b2c473f476dca0ce371aaf9a2227badf4e3eeec4f4",
+        target: "sha256:9f1c0b6d2e4a7c5b3d1f8a6e4c2b0d9f7e5c3a1b8d6f4e2c0a9b7d5f3e1c8a6b",
+        channel: "Digest",
+        checkable: true,
+        warnings: [{ ThirdPartyRegistry: { host: "modelscope.cn" } }],
+        blocked: null,
+        download_bytes: 4_683_087_520,
+      },
+      {
+        key: qwenKey,
+        current: "5642e97495e1a0888838ee1b3b1a0b1c6a0f0f5e6c2d4a8b9e7c3d1f0a2b4c6d",
+        target: "sha256:7a3e5c1b9d0f2e4a6c8b0d1f3e5a7c9b2d4f6e8a0c1b3d5f7e9a2c4b6d8f0e1a",
+        channel: "Digest",
+        checkable: true,
+        warnings: [],
+        blocked: null,
+        download_bytes: null,
+      },
+    ];
+    planWarnings[MODELS.coder] = [{ ThirdPartyRegistry: { host: "modelscope.cn" } }, "DownloadsModelChanges"];
+    planWarnings["qwen3:8b"] = ["DownloadsModelChanges"];
+
+    // Looked up while no sheet is open: a sheet names the model too.
+    const modelRow = async (key: string) => (await screen.findByTitle(key)).closest("[data-tool-row]") as HTMLElement;
+    const versionColumn = async (key: string) => (await modelRow(key)).querySelector("[data-version]")?.textContent;
+    const linesUnderOne = async (update: RegExp) => {
+      fireEvent.click(within(await modelRow(MODELS.coder)).getByRole("button", { name: update }));
+      const dialog = await screen.findByRole("alertdialog");
+      await waitFor(() => expect(dialog.querySelectorAll("li")).toHaveLength(2));
+      return [...dialog.querySelectorAll("li")].map((item) => item.textContent?.trim());
+    };
+    const notesInUpdateAll = async (updateAll: string) => {
+      await modelRow(MODELS.coder);
+      fireEvent.click(screen.getByRole("button", { name: updateAll }));
+      const dialog = await screen.findByRole("alertdialog");
+      const notesOf = (key: string) => {
+        const tool = within(dialog).getByTitle(key).closest("[data-sheet-tool]") as HTMLElement;
+        return [...tool.querySelectorAll("li")].map((item) => item.textContent?.trim());
+      };
+      await waitFor(() => expect(notesOf("qwen3:8b")).toHaveLength(1));
+      return { coder: notesOf(MODELS.coder), qwen: notesOf("qwen3:8b") };
+    };
+
+    let page = renderPage();
+    expect(await versionColumn(MODELS.coder)).toBe("New version");
+    expect(await versionColumn("qwen3:8b")).toBe("New version");
+    expect(await linesUnderOne(ROW_UPDATE)).toEqual([
+      "This model comes from modelscope.cn, not Ollama's own library.",
+      "Downloads the model files that changed, up to about\u00a04.7 GB.",
+    ]);
+    page.unmount();
+    page = renderPage();
+    expect(await notesInUpdateAll("Update All")).toEqual({
+      coder: [
+        "This model comes from modelscope.cn, not Ollama's own library.",
+        "Downloads the model files that changed, up to about\u00a04.7 GB.",
+      ],
+      qwen: ["Downloads the model files that changed."],
+    });
+    page.unmount();
+    // Update All ticked every row while its sheet asked; that sheet was
+    // never answered.
+    useUiStore.setState({ selectedUpdates: [] });
+
+    await i18n.changeLanguage("zh-CN");
+    try {
+      page = renderPage();
+      expect(await versionColumn(MODELS.coder)).toBe("有新版本");
+      expect(await versionColumn("qwen3:8b")).toBe("有新版本");
+      expect(await linesUnderOne(/^更新(?!所选|全部)/)).toEqual([
+        "此模型来自modelscope.cn，不是Ollama官方模型库。",
+        "需要下载已更改的模型文件，最多约4.7 GB。",
+      ]);
+      page.unmount();
+      renderPage();
+      expect(await notesInUpdateAll("全部更新")).toEqual({
+        coder: ["此模型来自modelscope.cn，不是Ollama官方模型库。", "需要下载已更改的模型文件，最多约4.7 GB。"],
+        qwen: ["需要下载已更改的模型文件。"],
+      });
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+
+  it("shows no version and no digest for an Ollama model Banager could not check", async () => {
+    // Its `target` is the digest it has, not a newer one: "New version"
+    // would be false, and the digest is never shown.
+    instances = [...snapshot.instances, { ...stoppedOllama, status: { unavailable: null, notes: [] } }];
+    updates = [
+      {
+        key: qwenKey,
+        current: "5642e97495e1a0888838ee1b3b1a0b1c6a0f0f5e6c2d4a8b9e7c3d1f0a2b4c6d",
+        target: "5642e97495e1a0888838ee1b3b1a0b1c6a0f0f5e6c2d4a8b9e7c3d1f0a2b4c6d",
+        channel: "Digest",
+        checkable: false,
+        warnings: [{ Message: "registry request failed" }],
+        blocked: null,
+      },
+    ];
+    const { container } = renderPage();
+
+    await showCantUpdate();
+    const qwen = await findRow("qwen3:8b");
+    expect(within(qwen).queryByText("New version")).toBeNull();
+    expect(container.textContent).not.toMatch(/5642e974/);
   });
 
   it("submits nothing when the confirmation is cancelled", async () => {
-    const { findAllByRole, findByRole, queryByRole } = renderWithProviders(<UpdatesPage />);
+    const { findAllByRole, findByRole, queryByRole } = renderPage();
 
-    fireEvent.click((await findAllByRole("button", { name: "Update" }))[0]);
-    const dialog = await findByRole("dialog");
-    await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
+    fireEvent.click((await findAllByRole("button", { name: ROW_UPDATE }))[0]);
+    const dialog = await findByRole("alertdialog");
+    showCommands(dialog);
+    await within(dialog).findByText(command("/opt/homebrew/bin/brew upgrade --formula glib"));
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
 
-    await waitFor(() => expect(queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() => expect(queryByRole("alertdialog")).not.toBeInTheDocument());
     expect(submittedPlanIds()).toEqual([]);
   });
 
-  it("shows the backend's rejection verbatim and submits a fresh plan id only after a second Confirm", async () => {
-    // The dialog sat open past the PlanId's 10-minute lifetime (or the id
-    // was already consumed): the backend rejects with a bare string.
-    submitFailures[1] = "this plan is older than 10 minutes; preview it again";
-    const { findAllByRole, findByRole, queryByRole } = renderWithProviders(<UpdatesPage />);
+  it("localises an expired plan and submits a fresh plan id only after a second Confirm", async () => {
+    // The dialog sat open past the PlanId's 10-minute lifetime: the backend
+    // rejects with `{"kind":"expired"}` (see `submit_operation_error` in
+    // src-tauri/src/ipc.rs), which `planErrorMessage` renders as
+    // `planRefused.expired` rather than showing the JSON or this project's
+    // own hardcoded English.
+    submitFailures["1"] = '{"kind":"expired"}';
+    const { findAllByRole, findByRole, queryByRole } = renderPage();
 
-    fireEvent.click((await findAllByRole("button", { name: "Update" }))[0]);
-    let dialog = await findByRole("dialog");
-    await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
-    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
+    fireEvent.click((await findAllByRole("button", { name: ROW_UPDATE }))[0]);
+    let dialog = await findByRole("alertdialog");
+    showCommands(dialog);
+    await within(dialog).findByText(command("/opt/homebrew/bin/brew upgrade --formula glib"));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Update" }));
 
     expect(await within(dialog).findByRole("alert")).toHaveTextContent(
-      "Could not start the update: this plan is older than 10 minutes; preview it again",
+      "Couldn't start the update: This confirmation is more than 10 minutes old, so nothing ran. Open it again and confirm.",
     );
     // The dead id is not retried on its own, and the dialog stays open so
     // the failure can be read rather than blinking away.
-    expect(submittedPlanIds()).toEqual([{ planId: 1 }]);
+    expect(submittedPlanIds()).toEqual([{ planId: "1" }]);
     expect(calls("plan_operation")).toHaveLength(1);
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
-    await waitFor(() => expect(queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() => expect(queryByRole("alertdialog")).not.toBeInTheDocument());
 
     // Asking again plans again: a new id and a new preview, and still no
     // submit until the user confirms that preview.
-    fireEvent.click((await findAllByRole("button", { name: "Update" }))[0]);
-    dialog = await findByRole("dialog");
-    await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
+    fireEvent.click((await findAllByRole("button", { name: ROW_UPDATE }))[0]);
+    dialog = await findByRole("alertdialog");
+    showCommands(dialog);
+    await within(dialog).findByText(command("/opt/homebrew/bin/brew upgrade --formula glib"));
     expect(calls("plan_operation")).toHaveLength(2);
-    expect(submittedPlanIds()).toEqual([{ planId: 1 }]);
+    expect(submittedPlanIds()).toEqual([{ planId: "1" }]);
 
-    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Update" }));
 
-    await waitFor(() => expect(submittedPlanIds()).toEqual([{ planId: 1 }, { planId: 2 }]));
+    await waitFor(() => expect(submittedPlanIds()).toEqual([{ planId: "1" }, { planId: "2" }]));
   });
 
   it("shows one item's planning failure in the dialog while the other stays submittable", async () => {
+    // The backend's own words, with "Show technical details" on.
+    settings = { ...settings, show_technical_details: true };
     planFailures.glib = "glib is pinned";
-    const { findAllByRole, getByRole, findByRole, queryByRole } = renderWithProviders(<UpdatesPage />);
+    const { findAllByRole, getByRole, findByRole, queryByRole } = renderPage();
 
-    const checkboxes = await findAllByRole("checkbox");
+    const checkboxes = await findAllByRole("checkbox", { name: ROW_CHECKBOX });
     fireEvent.click(checkboxes[0]);
     fireEvent.click(checkboxes[1]);
-    fireEvent.click(getByRole("button", { name: "Update selected" }));
+    fireEvent.click(getByRole("button", { name: /^Update Selected/ }));
 
-    const dialog = await findByRole("dialog");
+    const dialog = await findByRole("alertdialog");
     expect(await within(dialog).findByRole("alert")).toHaveTextContent(
       "Couldn't prepare the update: glib is pinned",
     );
-    await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --cask onyx");
+    // One tool can still be updated: the sheet asks about it by name.
+    expect(dialog).toHaveAccessibleName("Update “onyx”?");
+    showCommands(dialog);
+    await within(dialog).findByText(command("/opt/homebrew/bin/brew upgrade --cask onyx"));
     expect(
-      within(dialog).queryByText("/opt/homebrew/bin/brew upgrade --formula glib"),
+      within(dialog).queryByText(command("/opt/homebrew/bin/brew upgrade --formula glib")),
     ).not.toBeInTheDocument();
 
-    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Update" }));
 
     // onyx holds the only issued plan (glib never received an id). The batch
     // had a failure, so the dialog stays open with the outcome per item, and
     // only the item that started leaves the selection.
-    await waitFor(() => expect(submittedPlanIds()).toEqual([{ planId: 1 }]));
+    await waitFor(() => expect(submittedPlanIds()).toEqual([{ planId: "1" }]));
     await within(dialog).findByText("Started");
     expect(useUiStore.getState().selectedUpdates).toEqual(["brew:/opt/homebrew|Formula|glib"]);
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
-    await waitFor(() => expect(queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() => expect(queryByRole("alertdialog")).not.toBeInTheDocument());
+  });
+
+  it("says an item's planning failure in the dialog without the backend's words while technical details are off", async () => {
+    planFailures.glib = "glib is pinned";
+    const { findAllByRole, getByRole, findByRole } = renderPage();
+
+    const checkboxes = await findAllByRole("checkbox", { name: ROW_CHECKBOX });
+    fireEvent.click(checkboxes[0]);
+    fireEvent.click(checkboxes[1]);
+    fireEvent.click(getByRole("button", { name: /^Update Selected/ }));
+
+    const dialog = await findByRole("alertdialog");
+    const alert = await within(dialog).findByRole("alert");
+    expect(alert).toHaveTextContent("Couldn't prepare the update. Try again later.");
+    expect(within(dialog).queryByText(/glib is pinned/)).toBeNull();
+    expect(dialog).toHaveAccessibleName("Update “onyx”?");
+  });
+
+  it("says a tool's update did not start in the backend's words only with technical details on", async () => {
+    submitFailures["1"] = "operation queue is closed";
+    const plain = renderPage();
+
+    fireEvent.click((await plain.findAllByRole("button", { name: ROW_UPDATE }))[0]);
+    let dialog = await plain.findByRole("alertdialog");
+    showCommands(dialog);
+    await within(dialog).findByText(command("/opt/homebrew/bin/brew upgrade --formula glib"));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Update" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("Couldn't start the update. Try again later.");
+    expect(within(dialog).queryByText(/operation queue is closed/)).toBeNull();
+    plain.unmount();
+
+    settings = { ...settings, show_technical_details: true };
+    nextPlanId = 1;
+    const technical = renderPage();
+    fireEvent.click((await technical.findAllByRole("button", { name: ROW_UPDATE }))[0]);
+    dialog = await technical.findByRole("alertdialog");
+    await within(dialog).findByText(command("/opt/homebrew/bin/brew upgrade --formula glib"));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Update" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+      "Couldn't start the update: operation queue is closed",
+    );
+  });
+
+  it("localises a stale-snapshot NotActionable refusal instead of showing the backend's JSON", async () => {
+    // glib's row is actionable in this snapshot (brew is writable and
+    // answering), but a genuine TOCTOU or a stale snapshot can still make
+    // `Session::issue_plan`'s gate refuse it between the click and the
+    // reply. The backend's rejection is JSON, not English -- see
+    // `plan_operation_error` in src-tauri/src/ipc.rs -- and it must never
+    // reach the page verbatim. A single item whose only plan fails never
+    // gets a dialog (nothing issued to preview): the reason goes straight
+    // to the page as an alert.
+    planFailures.glib = '{"kind":"not_actionable","read_only":null,"unavailable":"NotRunning"}';
+    const { findAllByRole, findByRole, queryByRole } = renderPage();
+
+    fireEvent.click((await findAllByRole("button", { name: ROW_UPDATE }))[0]);
+
+    const alert = await findByRole("alert");
+    expect(alert).toHaveTextContent(
+      "Couldn't prepare the update: Open Homebrew to see what it has and check for updates.",
+    );
+    expect(alert.textContent).not.toMatch(/not_actionable/);
+    expect(queryByRole("alertdialog")).not.toBeInTheDocument();
   });
 
   it("after one item starts and the next fails, a retry re-plans and submits only the failed one", async () => {
-    submitFailures[2] = "this plan is older than 10 minutes; preview it again";
-    const { findAllByRole, getByRole, findByRole, queryByRole } = renderWithProviders(<UpdatesPage />);
+    submitFailures["2"] = '{"kind":"expired"}';
+    const { findAllByRole, getByRole, findByRole, queryByRole } = renderPage();
 
-    const checkboxes = await findAllByRole("checkbox");
+    const checkboxes = await findAllByRole("checkbox", { name: ROW_CHECKBOX });
     fireEvent.click(checkboxes[0]);
     fireEvent.click(checkboxes[1]);
-    fireEvent.click(getByRole("button", { name: "Update selected" }));
+    fireEvent.click(getByRole("button", { name: /^Update Selected/ }));
 
-    let dialog = await findByRole("dialog");
-    await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --cask onyx");
-    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
+    let dialog = await findByRole("alertdialog");
+    showCommands(dialog);
+    await within(dialog).findByText(command("/opt/homebrew/bin/brew upgrade --cask onyx"));
+    fireEvent.click(within(dialog).getByRole("button", { name: UPDATE_SEVERAL }));
 
     // glib started, onyx did not, and the dialog says which is which.
     await within(dialog).findByText("Started");
     expect(await within(dialog).findByRole("alert")).toHaveTextContent(
-      "Could not start the update: this plan is older than 10 minutes; preview it again",
+      "Couldn't start the update: This confirmation is more than 10 minutes old, so nothing ran. Open it again and confirm.",
     );
-    expect(submittedPlanIds()).toEqual([{ planId: 1 }, { planId: 2 }]);
+    expect(submittedPlanIds()).toEqual([{ planId: "1" }, { planId: "2" }]);
     // A started item leaves the selection at once; the failed one stays.
     expect(useUiStore.getState().selectedUpdates).toEqual(["brew:/opt/homebrew|Cask|onyx"]);
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
-    await waitFor(() => expect(queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() => expect(queryByRole("alertdialog")).not.toBeInTheDocument());
 
     // Retry: plan_operation is asked exactly once more, for onyx only — a
     // fresh id must never re-queue the item that already started.
-    fireEvent.click(getByRole("button", { name: "Update selected" }));
-    dialog = await findByRole("dialog");
-    await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --cask onyx");
+    fireEvent.click(getByRole("button", { name: "Update Selected (1)" }));
+    dialog = await findByRole("alertdialog");
+    showCommands(dialog);
+    await within(dialog).findByText(command("/opt/homebrew/bin/brew upgrade --cask onyx"));
     const secondRound = calls("plan_operation").slice(2);
     expect(secondRound).toHaveLength(1);
     expect(secondRound[0][1]).toEqual({
@@ -361,31 +2396,38 @@ describe("UpdatesPage", () => {
       },
     });
 
-    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
+    // One tool: the plain Update.
+    fireEvent.click(within(dialog).getByRole("button", { name: "Update" }));
 
     await waitFor(() =>
-      expect(submittedPlanIds()).toEqual([{ planId: 1 }, { planId: 2 }, { planId: 3 }]),
+      expect(submittedPlanIds()).toEqual([{ planId: "1" }, { planId: "2" }, { planId: "3" }]),
     );
   });
 
   it("locks the dialog while submitting and drops a superseded batch's late reply", async () => {
     holdPlans.add("glib");
-    holdSubmits.add(2);
-    const { findAllByRole, findByRole, getByRole, queryByRole } = renderWithProviders(<UpdatesPage />);
+    holdSubmits.add("2");
+    const { findAllByRole, findByRole, getByRole, queryByRole } = renderPage();
 
-    // glib is selected so "Update selected" has something to do: the lock
-    // below is what disables it, not an empty selection.
-    fireEvent.click((await findAllByRole("checkbox"))[0]);
-    const updateSelected = getByRole("button", { name: "Update selected" });
-    const updateButtons = await findAllByRole("button", { name: "Update" });
+    // Nothing is ticked, so the toolbar's one action is Update all, which
+    // has two rows to update: the lock below is what disables it, not an
+    // empty list.
+    const updateButtons = await findAllByRole("button", { name: ROW_UPDATE });
+    const updateAll = getByRole("button", { name: "Update All" });
 
-    // Batch 1 (glib) is still planning when batch 2 (onyx) opens the dialog.
-    // Planning has no side effect beyond issuing a PlanId that expires on
-    // its own, so the newer click supersedes the older batch.
+    // Batch 1 (glib) is still planning when it is closed and batch 2 (onyx)
+    // opens the dialog. Planning has no side effect beyond issuing a PlanId
+    // that expires on its own, so the newer batch supersedes the older one.
+    // The sheet is up from the first press, over the page, so the second
+    // press comes after Cancel.
     fireEvent.click(updateButtons[0]);
+    const first = await findByRole("alertdialog", { name: "Update “glib”?" });
+    fireEvent.click(within(first).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(queryByRole("alertdialog")).not.toBeInTheDocument());
     fireEvent.click(updateButtons[1]);
-    const dialog = await findByRole("dialog");
-    await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --cask onyx");
+    const dialog = await findByRole("alertdialog", { name: "Update “onyx”?" });
+    showCommands(dialog);
+    await within(dialog).findByText(command("/opt/homebrew/bin/brew upgrade --cask onyx"));
     await waitFor(() => expect(releasePlan.glib).toBeDefined());
 
     // Batch 1's plan lands late. It must neither replace nor add to the
@@ -394,90 +2436,4854 @@ describe("UpdatesPage", () => {
       releasePlan.glib();
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
-    expect(queryByRole("dialog")).toBe(dialog);
+    expect(queryByRole("alertdialog")).toBe(dialog);
     expect(
-      within(dialog).queryByText("/opt/homebrew/bin/brew upgrade --formula glib"),
+      within(dialog).queryByText(command("/opt/homebrew/bin/brew upgrade --formula glib")),
     ).not.toBeInTheDocument();
-    expect(within(dialog).getByText("/opt/homebrew/bin/brew upgrade --cask onyx")).toBeInTheDocument();
+    expect(within(dialog).getByText(command("/opt/homebrew/bin/brew upgrade --cask onyx"))).toBeInTheDocument();
 
-    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Update" }));
 
     // Submitting: nothing closes the dialog or starts another batch until
-    // this one has settled — not Cancel, not Escape, not "Update selected".
+    // this one has settled — not Cancel, not Escape, not the toolbar's
+    // Update all, not a row's Update.
     await waitFor(() =>
       expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeDisabled(),
     );
-    expect(within(dialog).getByRole("button", { name: "Confirm" })).toBeDisabled();
-    expect(updateSelected).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "Update" })).toBeDisabled();
+    expect(updateAll).toBeDisabled();
+    expect(updateButtons[0]).toBeDisabled();
     fireEvent.keyDown(dialog, { key: "Escape" });
-    expect(queryByRole("dialog")).toBe(dialog);
+    expect(queryByRole("alertdialog")).toBe(dialog);
 
-    await waitFor(() => expect(releaseSubmit[2]).toBeDefined());
-    releaseSubmit[2]();
-    await waitFor(() => expect(queryByRole("dialog")).not.toBeInTheDocument());
-    expect(submittedPlanIds()).toEqual([{ planId: 2 }]);
-    expect(updateSelected).not.toBeDisabled();
+    await waitFor(() => expect(releaseSubmit["2"]).toBeDefined());
+    releaseSubmit["2"]();
+    await waitFor(() => expect(queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(submittedPlanIds()).toEqual([{ planId: "2" }]);
+    expect(updateAll).not.toBeDisabled();
+    // Ticked, glib is what the one button updates, and that is not locked either.
+    fireEvent.click(getByRole("checkbox", { name: "Select glib for update" }));
+    expect(getByRole("button", { name: "Update Selected (1)" })).not.toBeDisabled();
   });
 
-  it("removes an item from the list when Ignore is clicked", async () => {
-    const { findByText, queryByText, findAllByRole } = renderWithProviders(<UpdatesPage />);
+  describe("the toolbar", () => {
+    it("counts the rows it can update, and its one button turns from Update all to Update selected with the ticked ones", async () => {
+      updates = [...snapshot.updates, brewCandidate("jq"), { ...brewCandidate("wget"), blocked: "Pinned" }];
+      const { findByText, getByRole, getAllByRole, queryByRole, container } = renderPage();
 
-    await findByText("glib");
-    const ignoreButtons = await findAllByRole("button", { name: "Ignore" });
-    fireEvent.click(ignoreButtons[0]);
+      await findByText("3 updates available");
+      // In the toolbar, not on the page, and the only button there.
+      const toolbar = container.querySelector("[data-toolbar-slot]") as HTMLElement;
+      const labels = () =>
+        within(toolbar)
+          .getAllByRole("button")
+          .map((button) => button.textContent);
+      expect(labels()).toEqual(["Update All"]);
+      expect(queryByRole("button", { name: /^Update Selected/ })).not.toBeInTheDocument();
+      // Nor does the page say how many again: the toolbar's subtitle does.
+      expect(screen.getAllByText("3 updates available")).toHaveLength(1);
+
+      fireEvent.click(getAllByRole("checkbox", { name: ROW_CHECKBOX })[0]);
+      expect(labels()).toEqual(["Update Selected (1)"]);
+      fireEvent.click(getAllByRole("checkbox", { name: ROW_CHECKBOX })[2]);
+      expect(getByRole("button", { name: "Update Selected (2)" })).toBeEnabled();
+      // The accent, as Update all's: the one thing the screen asks for.
+      expect(getByRole("button", { name: "Update Selected (2)" }).className).toBe(BUTTON.regular.default);
+      expect(queryByRole("button", { name: "Update All" })).not.toBeInTheDocument();
+
+      // Unticked again, back to Update all.
+      fireEvent.click(getAllByRole("checkbox", { name: ROW_CHECKBOX })[0]);
+      fireEvent.click(getAllByRole("checkbox", { name: ROW_CHECKBOX })[2]);
+      expect(labels()).toEqual(["Update All"]);
+    });
+
+    it("sizes its one button to the words it says now, with nothing laid under them to hold it wider", async () => {
+      updates = [...snapshot.updates, brewCandidate("jq")];
+      const { findByText, getByRole, getAllByRole, container } = renderPage();
+
+      await findByText("3 updates available");
+      const toolbar = container.querySelector("[data-toolbar-slot]") as HTMLElement;
+      // Its words and nothing else: no unseen widest label to size it by,
+      // which drew Update All as wide as Update Selected (3), a web page's
+      // call to action. The ⟳ after it keeps the toolbar's end still instead.
+      const all = getByRole("button", { name: "Update All" });
+      expect(all.childElementCount).toBe(0);
+      expect(all.textContent).toBe("Update All");
+      expect(all.className).toBe(BUTTON.regular.default);
+      // (The 「显示」 popup beside it draws its value and ⌄ hidden from a
+      // screen reader inside its own box; nothing is laid in the toolbar.)
+      expect(toolbar.querySelector(":scope > [aria-hidden]")).toBeNull();
+
+      fireEvent.click(getAllByRole("checkbox", { name: ROW_CHECKBOX })[0]);
+      const selected = getByRole("button", { name: "Update Selected (1)" });
+      expect(selected.childElementCount).toBe(0);
+      expect(selected.textContent).toBe("Update Selected (1)");
+      expect(toolbar.querySelector(":scope > [aria-hidden]")).toBeNull();
+    });
+
+    it("says how many in the toolbar as Latest does in English, one or several", async () => {
+      updates = [snapshot.updates[0]];
+      const { findByText, unmount } = renderPage();
+      await findByText("1 update available");
+      unmount();
+
+      updates = [...snapshot.updates, brewCandidate("jq")];
+      const again = renderPage();
+      await again.findByText("3 updates available");
+    });
+
+    it("says 更新所选（N） in Chinese once rows are ticked", async () => {
+      await i18n.changeLanguage("zh-CN");
+      try {
+        const { findAllByRole, getByRole } = renderPage();
+        for (const box of await findAllByRole("checkbox", { name: /^选择要更新的/ })) fireEvent.click(box);
+        expect(getByRole("button", { name: "更新所选（2）" })).toBeEnabled();
+      } finally {
+        await i18n.changeLanguage("en");
+      }
+    });
+
+    it("Update all ticks every row it can update and opens the same confirmation with exactly those", async () => {
+      // 360's 全部更新: one press for everything Banager can update here,
+      // into the one confirmation Update selected uses -- the command for
+      // each, then one operation per item on Confirm.
+      updates = [
+        ...snapshot.updates,
+        brewCandidate("jq"),
+        { ...brewCandidate("wget"), blocked: "Pinned" },
+        {
+          key: urllib3Key,
+          current: "2.2.1",
+          target: "2.3.0",
+          channel: "Registry",
+          checkable: true,
+          warnings: [],
+          blocked: null,
+        },
+      ];
+      const { getByRole, findByRole, queryByRole, findByText } = renderPage();
+
+      await findByText("3 updates available");
+      fireEvent.click(getByRole("button", { name: "Update All" }));
+
+      const dialog = await findByRole("alertdialog");
+      showCommands(dialog);
+      await within(dialog).findByText(command("/opt/homebrew/bin/brew upgrade --formula jq"));
+      expect([...plannedNames()].sort()).toEqual(["glib", "jq", "onyx"]);
+      // In the list's order.
+      expect(within(dialog).getAllByText(command(/brew upgrade/)).map((code) => code.textContent)).toEqual([
+        "/opt/homebrew/bin/brew upgrade --formula glib",
+        "/opt/homebrew/bin/brew upgrade --formula jq",
+        "/opt/homebrew/bin/brew upgrade --cask onyx",
+      ]);
+      expect([...useUiStore.getState().selectedUpdates].sort()).toEqual(
+        [glibKey, { ...glibKey, name: "jq" }, onyxKey].map(artifactKeyId).sort(),
+      );
+      expect(submittedPlanIds()).toEqual([]);
+
+      fireEvent.click(within(dialog).getByRole("button", { name: UPDATE_SEVERAL }));
+      await waitFor(() => expect(submittedPlanIds()).toHaveLength(3));
+      await waitFor(() => expect(queryByRole("alertdialog")).not.toBeInTheDocument());
+      expect(useUiStore.getState().selectedUpdates).toEqual([]);
+    });
+
+    it("unticks what Update all ticked when its sheet is cancelled, and keeps a tick from before", async () => {
+      updates = [...snapshot.updates, brewCandidate("jq")];
+      const { getByRole, findByRole, findByText, queryByRole } = renderPage();
+      await findByText("3 updates available");
+      fireEvent.click(getByRole("button", { name: "Update All" }));
+      const dialog = await findByRole("alertdialog");
+      expect(useUiStore.getState().selectedUpdates).toHaveLength(3);
+      fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+      await waitFor(() => expect(queryByRole("alertdialog")).not.toBeInTheDocument());
+      expect(useUiStore.getState().selectedUpdates).toEqual([]);
+      expect(getByRole("button", { name: "Update All" })).toBeInTheDocument();
+      expect(submittedPlanIds()).toEqual([]);
+    });
+
+    it("says it is updating, and never that nothing can be updated, while every row it could update is", async () => {
+      operations = [
+        operation(onyxKey, { id: 8, status: "Queued" }),
+        operation(glibKey, { id: 7, status: "Running" }),
+      ];
+      const { findByText, getByRole, queryByText } = renderPage();
+
+      // Only that, with no count: the operation bar, a live region of its
+      // own, says how many -- one count heard at a time (decision I21d).
+      expect(await findByText("Updating…", { selector: "[data-toolbar-subtitle]" })).toBeInTheDocument();
+      expect(queryByText(/Updating 2 tools/)).toBeNull();
+      expect(queryByText("Nothing to update here")).toBeNull();
+      expect(getByRole("button", { name: "Update All" })).toBeDisabled();
+    });
+
+    it("says it in Chinese, and not how many more can be updated, which a screen reader would hear over the bar", async () => {
+      await i18n.changeLanguage("zh-CN");
+      try {
+        updates = [...snapshot.updates, brewCandidate("jq")];
+        operations = [operation(glibKey, { id: 7, status: "Running" })];
+        const { findByText, queryByText } = renderPage();
+
+        expect(await findByText("正在更新…", { selector: "[data-toolbar-subtitle]" })).toBeInTheDocument();
+        expect(queryByText(/另有2个可更新/)).toBeNull();
+      } finally {
+        await i18n.changeLanguage("en");
+      }
+    });
+
+    it("offers Update all only when there is something it could update", async () => {
+      updates = [{ ...snapshot.updates[0], blocked: "Pinned" }];
+      const { findByText, getByRole } = renderPage();
+
+      await findByText("Nothing to update here");
+      expect(getByRole("button", { name: "Update All" })).toBeDisabled();
+    });
+
+    it("calls them 全部更新 and 更新所选 in Chinese, as they were asked for", () => {
+      expect(zhCN.updates.updateAll).toBe("全部更新");
+      expect(zhCN.updates.updateSelectedCount).toBe("更新所选（{{number}}）");
+      expect(zhCN.updates.count_other).toBe("{{count}}个可更新");
+      expect(zhCN.updates.cantUpdateHere).toBe("另有{{number}}个无法在这里更新");
+    });
+  });
+
+  describe("Can't update here", () => {
+    it("folds the rows it cannot update into one line at the bottom, and unfolds them on a press", async () => {
+      updates = [
+        { ...snapshot.updates[0], blocked: "Pinned" },
+        snapshot.updates[1],
+        {
+          key: urllib3Key,
+          current: "2.2.1",
+          target: "2.3.0",
+          channel: "Registry",
+          checkable: true,
+          warnings: [],
+          blocked: null,
+        },
+      ];
+      const { findByRole, queryByText } = renderPage();
+
+      const toggle = await findByRole("button", { name: "2 more can't be updated here" });
+      expect(toggle).toHaveAttribute("aria-expanded", "false");
+      expect(queryByText("glib", { selector: "[data-tool-row] p" })).toBeNull();
+      expect(queryByText("urllib3", { selector: "[data-tool-row] p" })).toBeNull();
+      // Below the rows it can update.
+      expect(slotOf(toggle)).toBeGreaterThan(slotOf(rowOf("onyx")) ?? Infinity);
+
+      fireEvent.click(toggle);
+
+      expect(toggle).toHaveAttribute("aria-expanded", "true");
+      const glib = await findRow("glib");
+      expect(slotOf(glib)).toBeGreaterThan(slotOf(toggle) ?? Infinity);
+      expect(slotOf(rowOf("urllib3"))).toBeGreaterThan(slotOf(toggle) ?? Infinity);
+      // Sorted by name there too.
+      expect(rowNames()).toEqual(["onyx", "glib", "urllib3"]);
+
+      fireEvent.click(toggle);
+      expect(queryByText("glib", { selector: "[data-tool-row] p" })).toBeNull();
+    });
+
+    it("is a 32pt line with a 10pt triangle and muted words, and its rows have only a name, a line, a word and a ⋯", async () => {
+      updates = [{ ...snapshot.updates[0], blocked: "Pinned" }, snapshot.updates[1]];
+      const { findByRole } = renderPage();
+
+      const toggle = await findByRole("button", { name: "1 more can't be updated here" });
+      expect(toggle.className.split(" ")).toEqual(expect.arrayContaining(["h-8", "px-5", "text-body", "text-muted"]));
+      // Not the semibold heading it was.
+      expect(toggle.className).not.toContain("font-semibold");
+      // On the rows' grid, as the notices over it: the triangle centred in
+      // the avatars' 32 column past a checkbox's room, the words where the
+      // names start.
+      const [slot, words] = [...toggle.children] as HTMLElement[];
+      expect(slot.className.split(" ")).toEqual(expect.arrayContaining(["ml-7", "w-8", "justify-center", "shrink-0"]));
+      expect(words.className.split(" ")).toContain("ml-3");
+      expect(words.textContent).toBe("1 more can't be updated here");
+      const triangle = slot.firstElementChild as SVGElement;
+      expect(triangle.getAttribute("width")).toBe("10");
+      expect(triangle.querySelector("path")?.getAttribute("fill")).toBe("currentColor");
+      expect(triangle.getAttribute("class")).not.toContain("rotate-90");
+      // It turns, but at once with Reduce motion on.
+      expect(triangle.getAttribute("class")?.split(" ")).toEqual(
+        expect.arrayContaining(["transition-transform", "motion-reduce:transition-none"]),
+      );
+
+      fireEvent.click(toggle);
+      expect(triangle.getAttribute("class")).toContain("rotate-90");
+      const glib = await findRow("glib");
+      const onyx = rowOf("onyx");
+      // The row it can update: a box, a version, a button and a ⋯.
+      expect(within(onyx).getByRole("checkbox")).toBeInTheDocument();
+      expect(within(onyx).getByText("5.0.2 → 5.1.0")).toBeInTheDocument();
+      expect(within(onyx).getByRole("button", { name: ROW_UPDATE })).toBeInTheDocument();
+      // The row it can't: the word and the ⋯, and nothing else to press.
+      expect(within(glib).queryByRole("checkbox")).toBeNull();
+      expect(within(glib).queryByText(/→/)).toBeNull();
+      expect(within(glib).getAllByRole("button").map((button) => button.getAttribute("aria-label") ?? button.textContent)).toEqual([
+        "Pinned",
+        "More actions for glib",
+      ]);
+      // Its avatar in the same column as the rows above: a checkbox's room, empty.
+      expect(glib.querySelector(".w-4")?.childElementCount).toBe(0);
+    });
+
+    it("has nothing to fold when every row can be updated", async () => {
+      const { queryByRole } = renderPage();
+
+      await findRow("glib");
+      expect(queryByRole("button", { name: /^\d+ more can't be updated here$/ })).toBeNull();
+    });
+  });
+
+  describe("status chips", () => {
+    it("says a row's source is not running, not responding, or will not run as root, and what to do", async () => {
+      const ollama = { ...stoppedOllama };
+      const brewAsRoot = {
+        ...snapshot.instances[0],
+        status: { unavailable: "RefusesAsRoot" as const, notes: [] },
+      };
+      const cargoSilent = {
+        ...snapshot.instances[3],
+        status: { unavailable: "NotResponding" as const, notes: [] },
+      };
+      instances = [brewAsRoot, snapshot.instances[1], snapshot.instances[2], cargoSilent, ollama];
+      updates = [
+        snapshot.updates[0],
+        { key: qwenKey, current: "a", target: "b", channel: "Digest", checkable: true, warnings: [], blocked: null },
+        {
+          key: { ...myForkKey, name: "tokei" },
+          current: "12.1.2",
+          target: "13.0.1",
+          channel: "Registry",
+          checkable: true,
+          warnings: [],
+          blocked: null,
+        },
+      ];
+      renderPage();
+
+      await showCantUpdate();
+      expect(chipDetail(await findRow("qwen3:8b"), "Can't update now")).toHaveTextContent(
+        "Ollama isn't running. Open it, then click Check Again.",
+      );
+      expect(chipDetail(rowOf("tokei"), "Can't update now")).toHaveTextContent(
+        "Cargo isn't responding. Click Check Again later.",
+      );
+      expect(chipDetail(rowOf("glib"), "Can't update now")).toHaveTextContent(
+        "Homebrew doesn't work when this app runs as administrator. Quit, then open Banager again with a double-click.",
+      );
+    });
+
+    it("keeps the chips' words and details in Chinese as the author asked", async () => {
+      await i18n.changeLanguage("zh-CN");
+      try {
+        updates = [
+          { ...snapshot.updates[0], blocked: "Pinned" },
+          {
+            key: urllib3Key,
+            current: "2.2.1",
+            target: "2.3.0",
+            channel: "Registry",
+            checkable: true,
+            warnings: [],
+            blocked: null,
+          },
+        ];
+        const { findByRole } = renderPage();
+
+        fireEvent.click(await findByRole("button", { name: "另有2个无法在这里更新" }));
+        expect(
+          within(chipDetail(await findRow("glib"), "已固定")).getByText(
+            wholeSentence("它在Homebrew中固定了版本。要更新它，请先在终端运行/opt/homebrew/bin/brew unpin glib解除固定，然后重新检查。"),
+          ),
+        ).toBeInTheDocument();
+        expect(chipDetail(rowOf("urllib3"), "仅供查看")).toHaveTextContent(
+          "pip安装的内容只能在这里查看。如果其中有你在终端里使用的命令行工具，可以用pipx或uv重新安装它，之后就能在这里更新和卸载。",
+        );
+      } finally {
+        await i18n.changeLanguage("en");
+      }
+    });
+  });
+
+  // The saved settings of the one `set_settings` call a test expects.
+  function savedSettings(): Settings {
+    const saves = calls("set_settings");
+    expect(saves).toHaveLength(1);
+    return (saves[0][1] as { settings: Settings }).settings;
+  }
+
+  function chooseFromMenu(row: HTMLElement, item: string) {
+    const menu = openMenu(row);
+    fireEvent.click(within(menu).getByRole("menuitem", { name: item }));
+  }
+
+  it("hides the row when Never remind me is chosen from its menu, and saves its package, not a version", async () => {
+    const { queryByText } = renderPage();
+
+    chooseFromMenu(await findRow("glib"), "Don't Remind Me About This Tool");
 
     await waitFor(() => expect(queryByText("glib")).not.toBeInTheDocument());
+    expect(savedSettings().ignored_updates).toEqual([glibKey]);
+    expect(savedSettings().skipped_versions).toEqual([]);
+    expect(queryByText("onyx")).toBeInTheDocument();
   });
 
-  it("disables every Ignore while a save is pending so a second click cannot overwrite the first", async () => {
+  it("hides the row when Skip this version is chosen from its menu, and saves the version it offers", async () => {
+    const { queryByText } = renderPage();
+
+    chooseFromMenu(await findRow("glib"), "Skip This Version");
+
+    await waitFor(() => expect(queryByText("glib")).not.toBeInTheDocument());
+    expect(savedSettings().skipped_versions).toEqual([{ key: glibKey, version: "2.90.0" }]);
+    expect(savedSettings().ignored_updates).toEqual([]);
+    expect(queryByText("onyx")).toBeInTheDocument();
+  });
+
+  it("puts the focus on the next row once a row's ⋯ has hidden it, not on the page's title", async () => {
+    const { queryByText } = renderPage();
+    const glib = await findRow("glib");
+    const names = Array.from(document.querySelectorAll("[data-tool-row] p[title]")).map((p) => p.getAttribute("title"));
+    const next = names[names.indexOf("glib") + 1];
+    expect(next).toBeTruthy();
+    const more = within(glib).getByRole("button", { name: /^More actions for / });
+    act(() => more.focus());
+
+    chooseFromMenu(glib, "Skip This Version");
+
+    await waitFor(() => expect(queryByText("glib")).not.toBeInTheDocument());
+    await waitFor(() => expect(document.activeElement).toBe(rowOf(next as string)));
+  });
+
+  it("hides the row for 30 days when Remind Me in 30 Days is chosen, between the other two, and saves the date", async () => {
+    const { queryByText } = renderPage();
+    const before = Math.floor(Date.now() / 1000);
+
+    const menu = openMenu(await findRow("glib"));
+    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(
+      expect.arrayContaining(["Skip This Version", "Remind Me in 30 Days", "Don't Remind Me About This Tool"]),
+    );
+    const names = within(menu)
+      .getAllByRole("menuitem")
+      .map((item) => item.textContent);
+    expect(names.indexOf("Remind Me in 30 Days")).toBe(names.indexOf("Skip This Version") + 1);
+    expect(within(menu).getByRole("menuitem", { name: "Remind Me in 30 Days" })).toHaveAccessibleDescription(
+      "This tool's updates will be listed again in 30 days. Undo it in Settings.",
+    );
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Remind Me in 30 Days" }));
+
+    await waitFor(() => expect(queryByText("glib")).not.toBeInTheDocument());
+    const [snooze] = savedSettings().snoozed_updates ?? [];
+    expect(snooze.key).toEqual(glibKey);
+    const thirtyDays = 30 * 24 * 60 * 60;
+    expect(snooze.until).toBeGreaterThanOrEqual(before + thirtyDays);
+    expect(snooze.until).toBeLessThanOrEqual(Math.floor(Date.now() / 1000) + thirtyDays);
+    expect(savedSettings().skipped_versions).toEqual([]);
+    expect(savedSettings().ignored_updates).toEqual([]);
+    expect(queryByText("onyx")).toBeInTheDocument();
+  });
+
+  it("lists a snoozed package again once its date has passed", async () => {
+    settings.snoozed_updates = [{ key: glibKey, until: Math.floor(Date.now() / 1000) - 60 }];
+    renderPage();
+    expect(await findRow("glib")).toBeInTheDocument();
+  });
+
+  it("replaces a package's earlier skip when its next version is skipped", async () => {
+    // glib 2.89.0 was skipped; the source now offers 2.90.0, so the row is
+    // back. Skipping it again records 2.90.0 in place of 2.89.0, which
+    // could never hide anything again; onyx's skip is left as it was.
+    settings.skipped_versions = [
+      { key: glibKey, version: "2.89.0" },
+      { key: onyxKey, version: "5.0.9" },
+    ];
+    renderPage();
+
+    chooseFromMenu(await findRow("glib"), "Skip This Version");
+
+    await waitFor(() => expect(calls("set_settings")).toHaveLength(1));
+    expect(savedSettings().skipped_versions).toEqual([
+      { key: onyxKey, version: "5.0.9" },
+      { key: glibKey, version: "2.90.0" },
+    ]);
+  });
+
+  it("lists a skipped package again once its source offers another version", async () => {
+    settings.skipped_versions = [{ key: glibKey, version: "2.89.0" }];
+    const { findByText, findAllByRole } = renderPage();
+
+    await findRow("glib");
+    await findByText("2 updates available");
+    expect(await findAllByRole("button", { name: ROW_UPDATE })).toHaveLength(2);
+  });
+
+  it("leaves a skipped row out of the headline, Select all and Update selected, even one selected before", async () => {
+    settings.skipped_versions = [{ key: glibKey, version: "2.90.0" }];
+    act(() => {
+      useUiStore.getState().toggleUpdate(glibKey);
+    });
+    const { findByText, queryByText, getByRole, queryByRole, findByRole } = renderPage();
+
+    await findRow("onyx");
+    expect(queryByText("glib")).not.toBeInTheDocument();
+    expect(await findByText("1 update available")).toBeInTheDocument();
+    // glib's selection outlived its row, and counts for nothing: nothing is
+    // ticked, as far as the toolbar and the list's header are concerned.
+    expect(queryByRole("button", { name: /^Update Selected/ })).not.toBeInTheDocument();
+    expect(getByRole("button", { name: "Update All" })).toBeEnabled();
+    const selectAll = getByRole("checkbox", { name: SELECT_ALL }) as HTMLInputElement;
+    expect(selectAll).not.toBeChecked();
+    expect(selectAll.indeterminate).toBe(false);
+
+    fireEvent.click(selectAll);
+    fireEvent.click(getByRole("button", { name: "Update Selected (1)" }));
+    await findByRole("alertdialog");
+    expect(plannedNames()).toEqual(["onyx"]);
+  });
+
+  it("offers Never remind me but no Skip this version on a row Banager could not check", async () => {
+    // An uncheckable row's `target` is its installed version, not one the
+    // source offered, so there is no version to skip.
+    updates = [
+      snapshot.updates[0],
+      {
+        key: myForkKey,
+        current: "0.1.0",
+        target: "0.1.0",
+        channel: "Registry",
+        checkable: false,
+        warnings: ["NonRegistrySource"],
+        blocked: null,
+      },
+    ];
+    renderPage();
+
+    await showCantUpdate();
+    const myForkMenu = openMenu(await findRow("my-fork"));
+    expect(
+      within(myForkMenu).getByRole("menuitem", { name: "Don't Remind Me About This Tool" }),
+    ).toBeInTheDocument();
+    expect(within(myForkMenu).queryByRole("menuitem", { name: "Skip This Version" })).toBeNull();
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+
+    const glibMenu = openMenu(rowOf("glib"));
+    expect(within(glibMenu).getByRole("menuitem", { name: "Skip This Version" })).toBeInTheDocument();
+  });
+
+  // A Homebrew cask declared `version :latest`, as `brew outdated --json=v2`
+  // lists one when it is greedy -- Banager no longer passes `--greedy`
+  // (R47-2), but a person's own HOMEBREW_UPGRADE_GREEDY still makes it so --
+  // whenever it takes its download to have changed: `latest -> latest`,
+  // for every release.
+  const chromiumKey: ArtifactKey = {
+    instance_id: "brew:/opt/homebrew",
+    kind: "Cask",
+    name: "chromium",
+  };
+  const latestCask: Snapshot["updates"][number] = {
+    key: chromiumKey,
+    current: "latest",
+    target: "latest",
+    channel: "Native",
+    checkable: true,
+    warnings: [],
+    blocked: null,
+  };
+
+  it("offers Never remind me but no Skip this version on a Homebrew cask declared version :latest", async () => {
+    // A skip of "latest" would hide each later release as well and never
+    // end: Never remind me, behind a hint that promises a reminder when the
+    // next version is out.
+    settings.include_self_updating = true;
+    updates = [snapshot.updates[0], latestCask];
+    renderPage();
+
+    const chromium = await findRow("chromium");
+    expect(within(chromium).getByRole("button", { name: ROW_UPDATE })).toBeInTheDocument();
+    const menu = openMenu(chromium);
+    expect(
+      within(menu).getByRole("menuitem", { name: "Don't Remind Me About This Tool" }),
+    ).toBeInTheDocument();
+    expect(within(menu).queryByRole("menuitem", { name: "Skip This Version" })).toBeNull();
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+
+    const glibMenu = openMenu(rowOf("glib"));
+    expect(within(glibMenu).getByRole("menuitem", { name: "Skip This Version" })).toBeInTheDocument();
+  });
+
+  it("lists a Homebrew cask declared version :latest even with a skip of latest in its settings", async () => {
+    settings.include_self_updating = true;
+    settings.skipped_versions = [{ key: chromiumKey, version: "latest" }];
+    updates = [snapshot.updates[0], latestCask];
+    const { findByText, findAllByRole } = renderPage();
+
+    await findRow("chromium");
+    await findByText("2 updates available");
+    expect(await findAllByRole("button", { name: ROW_UPDATE })).toHaveLength(2);
+  });
+
+  it("skips an Ollama model's new version by its digest without ever printing the digest", async () => {
+    settings.show_technical_details = true;
+    instances = [...snapshot.instances, { ...stoppedOllama, status: { unavailable: null, notes: [] } }];
+    const digest = "sha256:9f1c0b6d2e4a7c5b3d1f8a6e4c2b0d9f7e5c3a1b8d6f4e2c0a9b7d5f3e1c8a6b";
+    updates = [
+      {
+        key: qwenKey,
+        current: "5642e97495e1a0888838ee1b3b1a0b1c6a0f0f5e6c2d4a8b9e7c3d1f0a2b4c6d",
+        target: digest,
+        channel: "Digest",
+        checkable: true,
+        warnings: [],
+        blocked: null,
+      },
+    ];
+    const { findByText, container } = renderPage();
+
+    chooseFromMenu(await findRow("qwen3:8b"), "Skip This Version");
+
+    await findByText("No updates to install");
+    expect(savedSettings().skipped_versions).toEqual([{ key: qwenKey, version: digest }]);
+    expect(container.textContent).not.toMatch(/sha256|5642e974/);
+  });
+
+  it("says on each menu item what it will do", async () => {
+    renderPage();
+
+    const menu = openMenu(await findRow("glib"));
+    expect(within(menu).getByRole("menuitem", { name: "Skip This Version" })).toHaveAccessibleDescription(
+      "You'll be reminded when the next version comes out.",
+    );
+    expect(
+      within(menu).getByRole("menuitem", { name: "Don't Remind Me About This Tool" }),
+    ).toHaveAccessibleDescription(
+      "You won't be reminded about any update to this tool. Undo it in Settings.",
+    );
+  });
+
+  it("names each row's menu after the row", async () => {
+    const { getByRole } = renderPage();
+
+    await findRow("glib");
+    expect(getByRole("button", { name: "More actions for glib" })).toHaveAttribute(
+      "aria-haspopup",
+      "menu",
+    );
+    expect(getByRole("button", { name: "More actions for onyx" })).toBeInTheDocument();
+  });
+
+  it("calls them 跳过此版本 and 不再提醒此工具 in Chinese, and says what each does", () => {
+    expect(zhCN.updates.skipVersion).toBe("跳过此版本");
+    expect(zhCN.updates.skipVersionHint).toBe("下个版本发布时再提醒你。");
+    // An action on this tool, not a state: the status word the row then
+    // shows is 「已关闭提醒」 (`installed.updateIgnored`).
+    expect(zhCN.updates.neverRemind).toBe("不再提醒此工具");
+    expect(zhCN.installed.updateIgnored).toBe("已关闭提醒");
+    expect(zhCN.updates.neverRemindHint).toBe("以后不再提醒此工具的任何更新。可以在“设置”中撤销。");
+    expect(zhCN.common.copyCommand).toBe("拷贝命令");
+  });
+
+  it("disables both hiding items on every row while a save is pending so a second choice cannot overwrite the first", async () => {
     holdSaves = true;
-    const { findByText, queryByText, findAllByRole } = renderWithProviders(<UpdatesPage />);
+    const { findByText, queryByText } = renderPage();
 
-    await findByText("glib");
-    const ignoreButtons = await findAllByRole("button", { name: "Ignore" });
-    fireEvent.click(ignoreButtons[0]);
+    chooseFromMenu(await findRow("glib"), "Skip This Version");
+    await waitFor(() => expect(calls("set_settings")).toHaveLength(1));
 
-    // Both buttons lock until the first save settles. A second Ignore now
+    // Every item locks until the first save settles. A second choice now
     // would build its settings from the same stale base, and the later save
     // would drop the earlier one.
-    await waitFor(() => expect(ignoreButtons[1]).toBeDisabled());
-    expect(ignoreButtons[0]).toBeDisabled();
-    fireEvent.click(ignoreButtons[1]);
+    const menu = openMenu(rowOf("onyx"));
+    const skip = within(menu).getByRole("menuitem", { name: "Skip This Version" });
+    const never = within(menu).getByRole("menuitem", { name: "Don't Remind Me About This Tool" });
+    expect(skip).toHaveAttribute("aria-disabled", "true");
+    expect(never).toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(skip);
+    fireEvent.click(never);
     expect(calls("set_settings")).toHaveLength(1);
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
 
     releaseSave[0]();
     await waitFor(() => expect(queryByText("glib")).not.toBeInTheDocument());
     await findByText("onyx");
-    await waitFor(() => expect(ignoreButtons[1]).not.toBeDisabled());
+    const after = openMenu(rowOf("onyx"));
+    await waitFor(() =>
+      expect(within(after).getByRole("menuitem", { name: "Skip This Version" })).not.toHaveAttribute(
+        "aria-disabled",
+      ),
+    );
+    expect(
+      within(after).getByRole("menuitem", { name: "Don't Remind Me About This Tool" }),
+    ).not.toHaveAttribute("aria-disabled");
     expect(calls("set_settings")).toHaveLength(1);
   });
 
-  it("shows the backend's message when saving the ignore list fails", async () => {
+  it("shows the backend's message when saving the choice fails, with technical details on", async () => {
+    settings = { ...settings, show_technical_details: true };
     saveFailure = "settings.json is read-only";
-    const { findByText, findAllByRole, findByRole } = renderWithProviders(<UpdatesPage />);
+    const { findByRole } = renderPage();
 
-    await findByText("glib");
-    fireEvent.click((await findAllByRole("button", { name: "Ignore" }))[0]);
+    chooseFromMenu(await findRow("glib"), "Skip This Version");
 
     expect(await findByRole("alert")).toHaveTextContent(
-      "Couldn't save the ignored updates: settings.json is read-only",
+      "Couldn't save that choice: settings.json is read-only.",
     );
     // Nothing was saved, so nothing disappears.
-    expect(await findByText("glib")).toBeInTheDocument();
+    expect(rowOf("glib")).toBeInTheDocument();
   });
 
-  it("says every update is ignored — not that everything is up to date — once all are ignored", async () => {
-    settings.ignored_updates = [glibKey, onyxKey];
-    const { findByText, queryByText } = renderWithProviders(<UpdatesPage />);
+  it("says a choice could not be saved, and what to do, without the backend's message while technical details are off", async () => {
+    saveFailure = "settings.json is read-only";
+    const { findByRole, queryByText } = renderPage();
 
-    await findByText("No pending updates — everything else is ignored.");
+    chooseFromMenu(await findRow("glib"), "Skip This Version");
+
+    expect(await findByRole("alert")).toHaveTextContent("Couldn't save that choice. Try again later.");
+    expect(queryByText(/settings\.json is read-only/)).toBeNull();
+    expect(rowOf("glib")).toBeInTheDocument();
+  });
+
+  describe("Copy Command", () => {
+    let writeText: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+      writeText = vi.fn().mockResolvedValue(undefined);
+      Object.defineProperty(navigator, "clipboard", {
+        value: { writeText },
+        configurable: true,
+      });
+    });
+
+    afterEach(() => {
+      Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+    });
+
+    it("copies a pinned row's unpin command, with technical details on, and says it did", async () => {
+      settings.show_technical_details = true;
+      updates = [{ ...snapshot.updates[0], blocked: "Pinned" }, snapshot.updates[1]];
+      const { findByRole } = renderPage();
+
+      await showCantUpdate();
+      chooseFromMenu(await findRow("glib"), "Copy Command");
+
+      expect(writeText).toHaveBeenCalledWith("/opt/homebrew/bin/brew unpin glib");
+      expect(await findByRole("status")).toHaveTextContent("Copied");
+    });
+
+    it("copies a pinned row's unpin command from the button under its why, technical details or not", async () => {
+      // Walk-2 W2-13: the why asks the person to run a command in
+      // Terminal; selecting it by hand out of a popover is no way to ask.
+      updates = [{ ...snapshot.updates[0], blocked: "Pinned" }, snapshot.updates[1]];
+      renderPage();
+
+      await showCantUpdate();
+      const detail = chipDetail(await findRow("glib"), "Pinned");
+      fireEvent.click(within(detail).getByRole("button", { name: "Copy Command" }));
+
+      expect(writeText).toHaveBeenCalledWith("/opt/homebrew/bin/brew unpin glib");
+      expect(await within(detail).findByText("Copied")).toBeInTheDocument();
+      // Still open: the click was inside it.
+      expect(detail).toBeInTheDocument();
+    });
+
+    it("stands in a group of its own, under a hairline, apart from the choices about the update", async () => {
+      settings.show_technical_details = true;
+      updates = [{ ...snapshot.updates[0], blocked: "Pinned" }];
+      renderPage();
+
+      await showCantUpdate();
+      const menu = openMenu(await findRow("glib"));
+      const separator = within(menu).getByRole("separator");
+      expect(separator.nextElementSibling).toHaveTextContent("Copy Command");
+      expect(separator.previousElementSibling).toHaveAttribute("role", "menuitem");
+    });
+
+    it("says so when the clipboard refuses", async () => {
+      settings.show_technical_details = true;
+      writeText.mockRejectedValue(new Error("denied"));
+      updates = [{ ...snapshot.updates[0], blocked: "Pinned" }];
+      const { findByText } = renderPage();
+
+      await showCantUpdate();
+      chooseFromMenu(await findRow("glib"), "Copy Command");
+
+      expect(await findByText("Couldn't copy")).toBeInTheDocument();
+    });
+
+    it("is not offered with technical details off, nor where the command would need a preview", async () => {
+      updates = [{ ...snapshot.updates[0], blocked: "Pinned" }, snapshot.updates[1]];
+      const view = renderPage();
+
+      await showCantUpdate();
+      expect(within(openMenu(await findRow("glib"))).queryByRole("menuitem", { name: "Copy Command" })).toBeNull();
+      view.unmount();
+
+      // With the switch on, an updatable row's command is only known from
+      // its plan, which the menu does not ask for.
+      settings.show_technical_details = true;
+      renderPage();
+      expect(within(openMenu(await findRow("onyx"))).queryByRole("menuitem", { name: "Copy Command" })).toBeNull();
+      expect(calls("plan_operation")).toHaveLength(0);
+    });
+  });
+
+  describe("an update's progress, in its row", () => {
+    // `list_operations` newest first, as the backend sends it. The page
+    // remembers the version each update it started was for.
+    function started(opId: number, target: string) {
+      useUiStore.setState({ updateTargets: { ...useUiStore.getState().updateTargets, [opId]: target } });
+    }
+
+    const cases: Array<[string, Partial<OpSummary>, string]> = [
+      ["waiting its turn", { status: "Queued" }, "Queued"],
+      ["running", { status: "Running" }, "Updating…"],
+      ["being checked afterwards", { status: "Verifying" }, "Updating…"],
+      ["being cancelled", { status: "CancelRequested" }, "Cancelling…"],
+    ];
+
+    it.each(cases)("says an update %s in place of the Update button", async (_name, fields, text) => {
+      operations = [operation(glibKey, fields)];
+      renderPage();
+
+      const glib = await findRow("glib");
+      expect(await within(glib).findByText(text)).toBeInTheDocument();
+      expect(within(glib).queryByRole("button", { name: ROW_UPDATE })).toBeNull();
+      // onyx's row is untouched.
+      expect(within(rowOf("onyx")).getByRole("button", { name: ROW_UPDATE })).toBeInTheDocument();
+    });
+
+    // What the header says: a row an update is installing is said in
+    // words, never counted as one more that can be updated.
+    const takesRow: Array<[string, Partial<OpSummary>, string]> = [
+      ["under way", { status: "Running" }, "Updating…"],
+      ["that worked", { status: "Done", outcome: "Succeeded" }, "1 update available"],
+    ];
+
+    it.each(takesRow)("leaves a row with an update %s out of its checkbox, the count, the header's box and Update all", async (_name, fields, header) => {
+      operations = [operation(glibKey, fields)];
+      started(7, "2.90.0");
+      // Ticked before its update started.
+      useUiStore.setState({ selectedUpdates: [artifactKeyId(glibKey)] });
+      const { findByText, getByRole, queryByRole } = renderPage();
+
+      const glib = await findRow("glib");
+      expect(await findByText(header, { selector: "[data-toolbar-subtitle]" })).toBeInTheDocument();
+      expect(within(glib).queryByRole("checkbox")).toBeNull();
+      expect(within(rowOf("onyx")).getByRole("checkbox")).toBeInTheDocument();
+      // glib's tick counts for nothing.
+      expect(queryByRole("button", { name: /^Update Selected/ })).not.toBeInTheDocument();
+      const selectAll = getByRole("checkbox", { name: SELECT_ALL }) as HTMLInputElement;
+      expect(selectAll).not.toBeChecked();
+      expect(selectAll.indeterminate).toBe(false);
+
+      // Ticks onyx, the one row with a checkbox, and leaves glib's own as it was.
+      fireEvent.click(selectAll);
+      expect(useUiStore.getState().selectedUpdates).toEqual([artifactKeyId(glibKey), artifactKeyId(onyxKey)]);
+      expect(selectAll).toBeChecked();
+      expect(getByRole("button", { name: "Update Selected (1)" })).toBeEnabled();
+      // And unticks onyx alone.
+      fireEvent.click(selectAll);
+      expect(useUiStore.getState().selectedUpdates).toEqual([artifactKeyId(glibKey)]);
+
+      fireEvent.click(getByRole("button", { name: "Update All" }));
+      await waitFor(() => expect(plannedNames()).toEqual(["onyx"]));
+    });
+
+    it("keeps the checkbox of a row whose update failed, for Retry", async () => {
+      operations = [
+        operation(glibKey, { status: "Done", outcome: { Failed: { exit_code: 1, summary: "Error: no bottle", cause: failureCause("Error: no bottle") } } }),
+      ];
+      started(7, "2.90.0");
+      const { findByText, getByRole } = renderPage();
+
+      const glib = await findRow("glib");
+      const word = await within(glib).findByText("Couldn't update");
+      // An ⓘ after it, as every status word with a why has: it opens the
+      // log, which says what to do (walk-2 W2-4).
+      const button = within(glib).getByRole("button", { name: "View log: glib" });
+      expect(button).toContainElement(word);
+      expect(button.querySelectorAll("svg")).toHaveLength(1);
+      expect(await findByText("2 updates available")).toBeInTheDocument();
+      expect(within(glib).getByRole("checkbox")).toBeInTheDocument();
+      fireEvent.click(getByRole("checkbox", { name: SELECT_ALL }));
+      expect(useUiStore.getState().selectedUpdates).toEqual([artifactKeyId(glibKey), artifactKeyId(onyxKey)]);
+    });
+
+    it("offers no Retry and no checkbox where sudo wanted a password Banager cannot ask for, only how it ended and its log", async () => {
+      operations = [
+        operation(glibKey, {
+          id: 9,
+          status: "Done",
+          outcome: {
+            Failed: {
+              exit_code: 1,
+              summary:
+                "sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper\nsudo: a password is required", cause: failureCause("sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper\nsudo: a password is required"),
+            },
+          },
+        }),
+      ];
+      started(9, "2.90.0");
+      const { findByText, getByRole } = renderPage();
+
+      const glib = await findRow("glib");
+      const word = await within(glib).findByText("Needs your password");
+      expect(getByRole("button", { name: "View log: glib" })).toContainElement(word);
+      // The word stands in the status column, and the way on is a button
+      // in the Update button's place, 「查看步骤」, which opens that log
+      // (walk-2 W2-5).
+      expect(glib.querySelector("[data-status-column]")).toContainElement(word);
+      // And it is the list's only status word: the other rows keep the
+      // column's room too, so the words line up (walk-2 review 3.1).
+      expect(rowOf("onyx").querySelector("[data-status-column]")).not.toBeNull();
+      const steps = within(glib).getByRole("button", { name: "View steps: glib" });
+      expect(steps).toHaveTextContent("View Steps");
+      fireEvent.click(steps);
+      expect(useUiStore.getState()).toMatchObject({ focusedOpId: 9, drawerOpen: true, logRun: [] });
+      expect(within(glib).queryByRole("button", { name: ROW_RETRY })).toBeNull();
+      expect(within(glib).queryByRole("button", { name: ROW_UPDATE })).toBeNull();
+      expect(within(glib).queryByRole("checkbox")).toBeNull();
+      // Out of the count, Select all and Update all: a retry could only
+      // stop at sudo again. Said after the count, as still to be done.
+      expect(await findByText("1 update available, 1 needs your password")).toBeInTheDocument();
+      fireEvent.click(getByRole("checkbox", { name: SELECT_ALL }));
+      expect(useUiStore.getState().selectedUpdates).toEqual([artifactKeyId(onyxKey)]);
+    });
+
+    it("names that button View Log where the log has no command for Terminal: a source other than Homebrew (r26 W6 skeptic)", async () => {
+      // An npm package whose install script ran sudo: the same stop, no
+      // Retry, but `PasswordCommand` hands over only Homebrew's command, so
+      // its log has the cause and Copy Log and no steps (`copyOnly`) -- the
+      // operation bar's name for it too (`viewLogKey`).
+      const prettierKey: ArtifactKey = { instance_id: "npm:/opt/homebrew", kind: "Package", name: "prettier" };
+      instances = [
+        ...snapshot.instances,
+        {
+          id: "npm:/opt/homebrew",
+          adapter_id: "npm",
+          exe_path: "/opt/homebrew/bin/npm",
+          prefix: "/opt/homebrew",
+          scope: "User",
+          version: "12.0.2",
+          status: { unavailable: null, notes: [] },
+          answered_at: null,
+          unverified_version: null,
+          read_only_reason: null,
+        },
+      ];
+      updates = [
+        ...snapshot.updates,
+        { key: prettierKey, current: "3.6.2", target: "3.7.0", channel: "Registry", checkable: true, warnings: [], blocked: null },
+      ];
+      const sudo = "sudo: a terminal is required to read the password\nsudo: a password is required";
+      operations = [
+        operation(prettierKey, {
+          id: 12,
+          status: "Done",
+          outcome: { Failed: { exit_code: 1, summary: sudo, cause: failureCause(sudo) } },
+          argv_preview: ["/opt/homebrew/bin/npm", "install", "-g", "prettier@3.7.0"],
+        }),
+      ];
+      started(12, "3.7.0");
+      renderPage();
+
+      const prettier = await findRow("prettier");
+      await within(prettier).findByText("Needs your password");
+      expect(within(prettier).queryByRole("button", { name: "View steps: prettier" })).toBeNull();
+      expect(within(prettier).queryByText("View Steps")).toBeNull();
+      const log = within(prettier).getByText("View Log").closest("button") as HTMLButtonElement;
+      fireEvent.click(log);
+      expect(useUiStore.getState()).toMatchObject({ focusedOpId: 12, drawerOpen: true, logRun: [] });
+      expect(within(prettier).queryByRole("button", { name: ROW_RETRY })).toBeNull();
+    });
+
+    // walk-4 W4-1: after Update All, every update stopped at sudo's
+    // password. The rows still offer their updates; the header said
+    // "Nothing to update here" over them.
+    const SUDO_NO_TERMINAL =
+      "sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper\nsudo: a password is required";
+    function everyUpdateStoppedAtThePassword() {
+      operations = [
+        operation(onyxKey, { id: 10, status: "Done", outcome: { Failed: { exit_code: 1, summary: SUDO_NO_TERMINAL, cause: failureCause(SUDO_NO_TERMINAL) } } }),
+        operation(glibKey, { id: 9, status: "Done", outcome: { Failed: { exit_code: 1, summary: SUDO_NO_TERMINAL, cause: failureCause(SUDO_NO_TERMINAL) } } }),
+      ];
+      started(9, "2.90.0");
+      started(10, "5.1.0");
+    }
+
+    it("says how many need the password, never that nothing is left to update, when every update stopped there", async () => {
+      everyUpdateStoppedAtThePassword();
+      const { findByText, queryByText, getByRole } = renderPage();
+
+      expect(await findByText("2 need your password")).toBeInTheDocument();
+      expect(queryByText("Nothing to update here")).toBeNull();
+      expect(within(rowOf("glib")).getByText("Needs your password")).toBeInTheDocument();
+      expect(within(rowOf("onyx")).getByText("Needs your password")).toBeInTheDocument();
+      // Still nothing Update All could start: Terminal has to finish them.
+      expect(getByRole("button", { name: "Update All" })).toBeDisabled();
+    });
+
+    it("says it in Chinese too", async () => {
+      await i18n.changeLanguage("zh-CN");
+      try {
+        everyUpdateStoppedAtThePassword();
+        const { findByText, queryByText } = renderPage();
+
+        expect(await findByText("2个需要输入密码")).toBeInTheDocument();
+        expect(queryByText("这里没有可更新的工具")).toBeNull();
+      } finally {
+        await i18n.changeLanguage("en");
+      }
+    });
+
+    it("keeps Retry where a password window asked and got no password: it can ask again", async () => {
+      operations = [
+        operation(glibKey, {
+          id: 9,
+          status: "Done",
+          outcome: { Failed: { exit_code: 1, summary: "sudo: no password was provided\nsudo: a password is required", cause: failureCause("sudo: no password was provided\nsudo: a password is required") } },
+        }),
+      ];
+      started(9, "2.90.0");
+      renderPage();
+
+      const glib = await findRow("glib");
+      expect(await within(glib).findByText("Password not accepted")).toBeInTheDocument();
+      expect(within(glib).getByRole("button", { name: ROW_RETRY })).toBeInTheDocument();
+      expect(within(glib).getByRole("checkbox")).toBeInTheDocument();
+    });
+
+    it("ticks a finished update Updated, while its row still offers the version it was for", async () => {
+      operations = [operation(glibKey, { status: "Done", outcome: "Succeeded" })];
+      started(7, "2.90.0");
+      renderPage();
+
+      const glib = await findRow("glib");
+      expect(await within(glib).findByText("Updated")).toBeInTheDocument();
+      expect(glib.querySelector("svg")).not.toBeNull();
+      expect(within(glib).queryByRole("button", { name: ROW_UPDATE })).toBeNull();
+    });
+
+    it("gives the Update button back once the row offers a newer version than a finished update was for", async () => {
+      // glib was updated to 2.90.0; the source offers 2.91.0 now. "Updated"
+      // would be about a version that is not the one offered.
+      // onyx's running update is there to show the list has arrived.
+      operations = [
+        operation(onyxKey, { id: 8, status: "Running" }),
+        operation(glibKey, { status: "Done", outcome: "Succeeded" }),
+      ];
+      started(7, "2.89.0");
+      renderPage();
+
+      const glib = await findRow("glib");
+      expect(await within(rowOf("onyx")).findByText("Updating…")).toBeInTheDocument();
+      expect(within(glib).getByRole("button", { name: ROW_UPDATE })).toBeInTheDocument();
+      expect(within(glib).queryByText("Updated")).toBeNull();
+    });
+
+    it("does not show a finished update it has no record of starting", async () => {
+      operations = [
+        operation(onyxKey, { id: 8, status: "Running" }),
+        operation(glibKey, { status: "Done", outcome: "Succeeded" }),
+      ];
+      renderPage();
+
+      const glib = await findRow("glib");
+      expect(await within(rowOf("onyx")).findByText("Updating…")).toBeInTheDocument();
+      expect(within(glib).getByRole("button", { name: ROW_UPDATE })).toBeInTheDocument();
+      expect(within(glib).queryByText("Updated")).toBeNull();
+    });
+
+    it("says a failed update failed, with a way to its log", async () => {
+      operations = [
+        operation(glibKey, {
+          id: 9,
+          status: "Done",
+          outcome: { Failed: { exit_code: 1, summary: "Error: glib: no bottle", cause: failureCause("Error: glib: no bottle") } },
+        }),
+      ];
+      started(9, "2.90.0");
+      const { getByRole } = renderPage();
+
+      const glib = await findRow("glib");
+      expect(await within(glib).findByText("Couldn't update")).toBeInTheDocument();
+      fireEvent.click(getByRole("button", { name: "View log: glib" }));
+      expect(useUiStore.getState().focusedOpId).toBe(9);
+      expect(useUiStore.getState().drawerOpen).toBe(true);
+    });
+
+    it("says why an update failed, where the tool's own words say, in the red for text, beside Retry", async () => {
+      operations = [
+        operation(glibKey, {
+          id: 9,
+          status: "Done",
+          outcome: {
+            Failed: {
+              exit_code: 1,
+              summary: 'curl: (6) Could not resolve host: ghcr.io\nError: glib: Failed to download resource "glib (2.90.0)"', cause: failureCause('curl: (6) Could not resolve host: ghcr.io\nError: glib: Failed to download resource "glib (2.90.0)"'),
+            },
+          },
+        }),
+      ];
+      started(9, "2.90.0");
+      const { getByRole } = renderPage();
+
+      const glib = await findRow("glib");
+      const word = await within(glib).findByText("Connection failed");
+      expect(within(glib).queryByText("Couldn't update")).toBeNull();
+      // The tool's raw words stay in its log, not in the row.
+      expect(within(glib).queryByText(/Could not resolve host/)).toBeNull();
+      const toLog = getByRole("button", { name: "View log: glib" });
+      expect(toLog).toContainElement(word);
+      expect(toLog).toHaveAccessibleDescription("Connection failed");
+      expect(toLog.className).toContain("text-danger-text");
+      expect(toLog.className).toContain("text-small");
+      expect(within(glib).getByRole("button", { name: ROW_RETRY })).toBeInTheDocument();
+      fireEvent.click(toLog);
+      expect(useUiStore.getState().focusedOpId).toBe(9);
+    });
+
+    it("draws its progress as a Mac list does: a 16 spinner in muted words, and a 12 green tick beside Updated", async () => {
+      operations = [operation(glibKey, { status: "Running" })];
+      const view = renderPage();
+      const running = await within(await findRow("glib")).findByText("Updating…");
+      expect(running.className).toContain("text-muted");
+      expect(running.querySelector("svg")).toHaveAttribute("width", "16");
+      view.unmount();
+
+      operations = [operation(glibKey, { id: 3, status: "Done", outcome: "Succeeded" })];
+      started(3, "2.90.0");
+      renderPage();
+      const done = await within(await findRow("glib")).findByText("Updated");
+      expect(done.className).toContain("text-foreground");
+      const tick = done.querySelector("svg");
+      expect(tick).toHaveAttribute("width", "12");
+      expect(tick?.getAttribute("class")).toContain("text-success");
+    });
+
+    it("says a cancelled update was cancelled", async () => {
+      operations = [operation(glibKey, { status: "Done", outcome: "Cancelled" })];
+      started(7, "2.90.0");
+      renderPage();
+
+      expect(await within(await findRow("glib")).findByText("Cancelled")).toBeInTheDocument();
+    });
+
+    // Two words, as they are two things (r24 W4): found not to be what the
+    // tool said -- the operation bar's 「需要查看」 -- and not known either
+    // way, as a Cancel All leaves the ones running -- the log's 「结果未确认」.
+    it.each<[string, OpSummary["outcome"], string]>([
+      ["could not be confirmed", "Unconfirmed", "Result unconfirmed"],
+      ["needs attention", { NeedsAttention: "UnchangedAfterUpgrade" }, "Needs attention"],
+    ])("asks to check an update whose result %s, with a way to its log", async (_name, outcome, text) => {
+      operations = [operation(glibKey, { id: 11, status: "Done", outcome })];
+      started(11, "2.90.0");
+      const { getByRole } = renderPage();
+
+      const word = await within(await findRow("glib")).findByText(text);
+      // 12 orange ⚠︎ and the word in the label colour.
+      const toLog = getByRole("button", { name: "View log: glib" });
+      expect(toLog.className).toContain("text-foreground");
+      expect(word.previousElementSibling?.getAttribute("class")).toContain("text-warning");
+      expect(word.previousElementSibling).toHaveAttribute("width", "12");
+      fireEvent.click(toLog);
+      expect(useUiStore.getState().focusedOpId).toBe(11);
+    });
+
+    const endings: Array<[string, OpSummary["outcome"], string]> = [
+      ["failed", { Failed: { exit_code: 1, summary: "Error: glib: no bottle", cause: failureCause("Error: glib: no bottle") } }, "Couldn't update"],
+      ["was cancelled", "Cancelled", "Cancelled"],
+      ["asks to be checked", { NeedsAttention: "UnchangedAfterUpgrade" }, "Needs attention"],
+      ["could not be confirmed", "Unconfirmed", "Result unconfirmed"],
+    ];
+
+    it.each(endings)(
+      "offers Retry where Update was once an update %s, with how it ended still in the row",
+      async (_name, outcome, text) => {
+        operations = [operation(glibKey, { id: 9, status: "Done", outcome })];
+        started(9, "2.90.0");
+        renderPage();
+
+        const glib = await findRow("glib");
+        expect(await within(glib).findByText(text)).toBeInTheDocument();
+        const retry = within(glib).getByRole("button", { name: ROW_RETRY });
+        // The look Update had: a row's regular grey button (`RowAction`).
+        expect(retry.className).toBe(BUTTON.regular.grey);
+        expect(within(glib).queryByRole("button", { name: ROW_UPDATE })).toBeNull();
+        // Still a row it can update: its checkbox stays.
+        expect(within(glib).getByRole("checkbox")).toBeInTheDocument();
+        expect(within(rowOf("onyx")).queryByRole("button", { name: ROW_RETRY })).toBeNull();
+      },
+    );
+
+    it("opens the confirmation for that row alone on Retry, and keeps the way to the failure's log", async () => {
+      operations = [
+        operation(glibKey, {
+          id: 9,
+          status: "Done",
+          outcome: { Failed: { exit_code: 1, summary: "Error: glib: no bottle", cause: failureCause("Error: glib: no bottle") } },
+        }),
+      ];
+      started(9, "2.90.0");
+      const { findByRole, getByRole } = renderPage();
+
+      const glib = await findRow("glib");
+      fireEvent.click(await within(glib).findByRole("button", { name: ROW_RETRY }));
+      const dialog = await findByRole("alertdialog", { name: "Update “glib”?" });
+      await waitFor(() => expect(plannedNames()).toEqual(["glib"]));
+      fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+      fireEvent.click(getByRole("button", { name: "View log: glib" }));
+      expect(useUiStore.getState().focusedOpId).toBe(9);
+      expect(useUiStore.getState().drawerOpen).toBe(true);
+    });
+
+    it("offers no Retry beside a tick", async () => {
+      operations = [operation(glibKey, { status: "Done", outcome: "Succeeded" })];
+      started(7, "2.90.0");
+      renderPage();
+
+      const glib = await findRow("glib");
+      expect(await within(glib).findByText("Updated")).toBeInTheDocument();
+      expect(within(glib).queryByRole("button", { name: ROW_RETRY })).toBeNull();
+      expect(within(glib).queryByRole("button", { name: ROW_UPDATE })).toBeNull();
+    });
+
+    it("offers no Retry on a failed row it can no longer update, only how it ended and its log", async () => {
+      // Pinned since the update failed: Homebrew would refuse a second try.
+      updates = [{ ...snapshot.updates[0], blocked: "Pinned" }, snapshot.updates[1]];
+      operations = [
+        operation(glibKey, {
+          id: 9,
+          status: "Done",
+          outcome: { Failed: { exit_code: 1, summary: "Error: glib is pinned", cause: failureCause("Error: glib is pinned") } },
+        }),
+      ];
+      started(9, "2.90.0");
+      renderPage();
+
+      await showCantUpdate();
+      const glib = await findRow("glib");
+      expect(await within(glib).findByText("Couldn't update")).toBeInTheDocument();
+      expect(within(glib).getByRole("button", { name: "View log: glib" })).toBeInTheDocument();
+      expect(within(glib).queryByRole("button", { name: ROW_RETRY })).toBeNull();
+      expect(within(glib).queryByRole("button", { name: ROW_UPDATE })).toBeNull();
+    });
+
+    it("shows the newest update and holds another row for its pending uninstall", async () => {
+      operations = [
+        operation(onyxKey, { id: 14, kind: "Uninstall", status: "Running" }),
+        operation(glibKey, { id: 13, status: "Running" }),
+        operation(glibKey, { id: 12, status: "Done", outcome: "Cancelled" }),
+      ];
+      started(12, "2.90.0");
+      renderPage();
+
+      expect(await within(await findRow("glib")).findByText("Updating…")).toBeInTheDocument();
+      expect(within(rowOf("glib")).queryByText("Cancelled")).toBeNull();
+      expect(within(rowOf("onyx")).getByText("Uninstalling…")).toBeInTheDocument();
+      expect(within(rowOf("onyx")).queryByRole("button", { name: ROW_UPDATE })).toBeNull();
+      expect(within(rowOf("onyx")).queryByRole("checkbox")).toBeNull();
+    });
+
+    it("remembers which version an update it started was for", async () => {
+      const { findAllByRole, findByRole } = renderPage();
+
+      fireEvent.click((await findAllByRole("button", { name: ROW_UPDATE }))[0]);
+      const dialog = await findByRole("alertdialog");
+      showCommands(dialog);
+      await within(dialog).findByText(command("/opt/homebrew/bin/brew upgrade --formula glib"));
+      fireEvent.click(within(dialog).getByRole("button", { name: "Update" }));
+
+      await waitFor(() => expect(useUiStore.getState().updateTargets).toEqual({ 7: "2.90.0" }));
+    });
+  });
+
+  describe("Update History", () => {
+    // As `useUpdateConfirm` records it when it submits one.
+    function started(opId: number, target: string) {
+      useUiStore.setState({ updateTargets: { ...useUiStore.getState().updateTargets, [opId]: target } });
+    }
+
+    function installed(key: ArtifactKey, version: string): Snapshot["artifacts"][number] {
+      return {
+        key,
+        display_name: key.name === "onyx" ? "OnyX" : key.name,
+        version,
+        reason: "Requested",
+        description: null,
+        homepage: null,
+        size_bytes: null,
+        installed_at: null,
+        path: null,
+        auto_updates: false,
+        uninstall_blocked: null,
+        facts: NO_FACTS,
+      };
+    }
+
+    function justUpdated(): HTMLElement | null {
+      return screen.queryByRole("region", { name: "Update History" });
+    }
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("takes over a finished update's tick once its row is gone, with the version it has now and when it finished", async () => {
+      // Only the clock is fake: 14:40, and glib's update finished at 14:32.
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date(2026, 8, 28, 14, 40));
+      const finishedAt = new Date(2026, 8, 28, 14, 32).getTime();
+      operations = [operation(glibKey, { status: "Done", outcome: "Succeeded" })];
+      started(7, "2.90.0");
+      useUiStore.setState({ opFinishedAt: { 7: finishedAt } });
+      artifacts = [installed(glibKey, "2.88.3"), installed(onyxKey, "5.0.2")];
+      const { queryClient } = renderPage();
+
+      // Until the check after it lands, the tick is the row's, and only the row's.
+      expect(await within(await findRow("glib")).findByText("Updated")).toBeInTheDocument();
+      expect(justUpdated()).toBeNull();
+
+      // The check after it: glib is at 2.90.0, with nothing left to update.
+      act(() => {
+        queryClient.setQueryData(queryKeys.snapshot, {
+          ...snapshot,
+          generation: snapshot.generation + 1,
+          instances,
+          artifacts: [installed(glibKey, "2.90.0"), installed(onyxKey, "5.0.2")],
+          updates: [snapshot.updates[1]],
+        });
+      });
+
+      const section = await screen.findByRole("region", { name: "Update History" });
+      await waitFor(() => expect(rowNames()).toEqual(["OnyX"]));
+      const [line, ...more] = within(section).getAllByRole("listitem");
+      expect(more).toEqual([]);
+      expect(within(line).getByText("glib")).toBeInTheDocument();
+      expect(within(line).getByText("2.90.0")).toBeInTheDocument();
+      expect(within(line).getByText("Updated")).toBeInTheDocument();
+      expect(line.querySelector("svg")).not.toBeNull();
+      const time = within(line).getByText(`Today ${new Intl.DateTimeFormat("en", { timeStyle: "short" }).format(finishedAt)}`);
+      expect(time.tagName).toBe("TIME");
+      expect(time).toHaveAttribute("dateTime", new Date(finishedAt).toISOString());
+      // Under the updates still to install, as the App Store's Recently
+      // Updated is under Pending, and no row of the list.
+      expect(section.compareDocumentPosition(rowOf("OnyX")) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+      expect(section.closest("[data-tool-row]")).toBeNull();
+    });
+
+    it("stays at the top when nothing is left to install, and moves under the rows when something is", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date(2026, 8, 28, 14, 40));
+      operations = [operation(glibKey, { status: "Done", outcome: "Succeeded" })];
+      started(7, "2.90.0");
+      useUiStore.setState({ opFinishedAt: { 7: new Date(2026, 8, 28, 14, 32).getTime() } });
+      artifacts = [installed(glibKey, "2.88.3"), installed(onyxKey, "5.0.2")];
+      const { queryClient } = renderPage();
+      await findRow("glib");
+      // Every update done: 「最近的更新记录」 is the list, first in it.
+      act(() => {
+        queryClient.setQueryData(queryKeys.snapshot, {
+          ...snapshot,
+          generation: snapshot.generation + 1,
+          instances,
+          artifacts: [installed(glibKey, "2.90.0"), installed(onyxKey, "5.0.2")],
+          updates: [],
+        });
+      });
+      const section = await screen.findByRole("region", { name: "Update History" });
+      await waitFor(() => expect(rowNames()).toEqual([]));
+      // Over the page's empty sentence, which says there is nothing to install.
+      expect(section.closest("[data-index]")).toBeNull();
+      const sentence = screen.getByText(/^(Everything is up to date|No updates in the sources checked)$/);
+      expect(section.compareDocumentPosition(sentence) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      // A new update to install: the rows come first, the section after.
+      act(() => {
+        queryClient.setQueryData(queryKeys.snapshot, {
+          ...snapshot,
+          generation: snapshot.generation + 2,
+          instances,
+          artifacts: [installed(glibKey, "2.90.0"), installed(onyxKey, "5.0.2")],
+          updates: [snapshot.updates[1]],
+        });
+      });
+      await waitFor(() => expect(rowNames()).toEqual(["OnyX"]));
+      const moved = screen.getByRole("region", { name: "Update History" });
+      expect(moved.compareDocumentPosition(rowOf("OnyX")) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+    });
+
+    it("lists the newest first, one line a tool, and says the date of one that finished on another day", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date(2026, 8, 28, 9, 0));
+      const yesterday = new Date(2026, 8, 27, 18, 5).getTime();
+      const thisMorning = new Date(2026, 8, 28, 8, 55).getTime();
+      operations = [
+        operation(onyxKey, { id: 9, status: "Done", outcome: "Succeeded" }),
+        operation(glibKey, { id: 8, status: "Done", outcome: "Succeeded" }),
+        // glib's earlier update: the newer one stands for it.
+        operation(glibKey, { id: 3, status: "Done", outcome: "Succeeded" }),
+      ];
+      started(9, "5.1.0");
+      started(8, "2.90.0");
+      started(3, "2.89.0");
+      useUiStore.setState({ opFinishedAt: { 9: yesterday, 8: thisMorning, 3: yesterday - 60_000 } });
+      updates = [];
+      artifacts = [installed(glibKey, "2.90.0"), installed(onyxKey, "5.1.0")];
+      renderPage();
+
+      const section = await screen.findByRole("region", { name: "Update History" });
+      const lines = within(section).getAllByRole("listitem");
+      expect(lines.map((line) => line.querySelector("span[title]")?.textContent)).toEqual(["glib", "OnyX"]);
+      expect(
+        within(lines[0]).getByText(`Today ${new Intl.DateTimeFormat("en", { timeStyle: "short" }).format(thisMorning)}`),
+      ).toBeInTheDocument();
+      expect(within(lines[1]).getByText("Sep 27")).toBeInTheDocument();
+      // Nothing is left to update: the section stands over the sentence that says so.
+      expect(await screen.findByText("Everything is up to date")).toBeInTheDocument();
+    });
+
+    it("lists an update that failed or asks to be checked once its row has gone, and never one cancelled", async () => {
+      operations = [
+        // Their rows still show how they ended, with the log and Retry: not listed.
+        operation(glibKey, { id: 9, status: "Done", outcome: { Failed: { exit_code: 1, summary: "Error: no bottle", cause: failureCause("Error: no bottle") } } }),
+        operation(onyxKey, { id: 10, status: "Done", outcome: { NeedsAttention: "UnchangedAfterUpgrade" } }),
+        // Three whose rows are gone: the two that did not update are listed.
+        operation({ ...glibKey, name: "wget" }, { id: 11, status: "Done", outcome: "Cancelled" }),
+        operation({ ...glibKey, name: "jq" }, { id: 12, status: "Done", outcome: "Unconfirmed" }),
+        operation(
+          { ...glibKey, name: "gh" },
+          { id: 13, status: "Done", outcome: { Failed: { exit_code: 1, summary: "curl: (6) Could not resolve host: ghcr.io", cause: failureCause("curl: (6) Could not resolve host: ghcr.io") } } },
+        ),
+      ];
+      started(9, "2.90.0");
+      started(10, "5.1.0");
+      started(11, "1.1.0");
+      started(12, "1.1.0");
+      started(13, "2.80.0");
+      useUiStore.setState({ opFinishedAt: { 12: Date.now() - 60_000, 13: Date.now() } });
+      renderPage();
+
+      expect(await within(await findRow("glib")).findByText("Couldn't update")).toBeInTheDocument();
+      expect(within(rowOf("onyx")).getByText("Needs attention")).toBeInTheDocument();
+      const section = await screen.findByRole("region", { name: "Update History" });
+      const lines = within(section).getAllByRole("listitem");
+      expect(lines.map((line) => line.querySelector("span[title]")?.textContent)).toEqual(["gh", "jq"]);
+      expect(within(lines[0]).getByText("Couldn't update: Connection failed")).toBeInTheDocument();
+      expect(within(lines[1]).getByText("Result unconfirmed")).toBeInTheDocument();
+      // No version beside them: it would read as the one they were updated to.
+      expect(within(section).queryByText(/^\d+\.\d+/)).toBeNull();
+      expect(within(section).queryByText("wget")).toBeNull();
+    });
+
+    it("says an update installed though a step after it failed as updated with an error: in its row, the count and the list (r35 U2)", async () => {
+      // Homebrew linked glib 2.90.0, then its post-install step failed and
+      // brew exited 1 (`UpdatedButStepFailed`).
+      operations = [
+        operation(glibKey, {
+          status: "Done",
+          outcome: { NeedsAttention: { UpdatedButStepFailed: { version: "2.90.0", cause: null, detail: null } } },
+        }),
+      ];
+      started(7, "2.90.0");
+      useUiStore.setState({ opFinishedAt: { 7: Date.now() } });
+      artifacts = [installed(glibKey, "2.88.3"), installed(onyxKey, "5.0.2")];
+      const { queryClient } = renderPage();
+
+      // The row says it is updated, opens its log, and holds the row as one
+      // that worked does: no checkbox, no Retry, out of the count.
+      const row = await findRow("glib");
+      expect(await within(row).findByText("Updated with an error")).toBeInTheDocument();
+      expect(within(row).queryByText("Couldn't update")).toBeNull();
+      expect(within(row).queryByRole("checkbox")).toBeNull();
+      expect(within(row).queryByRole("button", { name: /^Retry/ })).toBeNull();
+      expect(within(row).getByRole("button", { name: "View log: glib" })).toBeInTheDocument();
+      expect(await screen.findByText("1 update available")).toBeInTheDocument();
+
+      // The check after it no longer offers glib: the line takes over, with
+      // the version it has now, and its log.
+      act(() => {
+        queryClient.setQueryData(queryKeys.snapshot, {
+          ...snapshot,
+          generation: snapshot.generation + 1,
+          instances,
+          artifacts: [installed(glibKey, "2.90.0"), installed(onyxKey, "5.0.2")],
+          updates: [snapshot.updates[1]],
+        });
+      });
+      const section = await screen.findByRole("region", { name: "Update History" });
+      const [line] = within(section).getAllByRole("listitem");
+      expect(within(line).getByText("glib")).toBeInTheDocument();
+      expect(within(line).getByText("2.90.0")).toBeInTheDocument();
+      expect(within(line).getByText("Updated with an error")).toBeInTheDocument();
+      fireEvent.click(within(line).getByRole("button", { name: "View log: glib" }));
+      expect(useUiStore.getState().focusedOpId).toBe(7);
+    });
+
+    it("lists no tool uninstalled since its update, and no update still under way", async () => {
+      operations = [
+        operation(glibKey, { id: 9, kind: "Uninstall", status: "Done", outcome: "Succeeded" }),
+        operation(glibKey, { id: 8, status: "Done", outcome: "Succeeded" }),
+        operation(onyxKey, { id: 10, status: "Running" }),
+      ];
+      started(8, "2.90.0");
+      started(10, "5.1.0");
+      updates = [snapshot.updates[1]];
+      renderPage();
+
+      expect(await within(await findRow("onyx")).findByText("Updating…")).toBeInTheDocument();
+      expect(justUpdated()).toBeNull();
+    });
+
+    it("stays out of the count, the header's box and Update all", async () => {
+      operations = [operation(glibKey, { status: "Done", outcome: "Succeeded" })];
+      started(7, "2.90.0");
+      updates = [snapshot.updates[1]];
+      artifacts = [installed(glibKey, "2.90.0"), installed(onyxKey, "5.0.2")];
+      const { findByText, getByRole, findByRole } = renderPage();
+
+      const section = await screen.findByRole("region", { name: "Update History" });
+      expect(await findByText("1 update available")).toBeInTheDocument();
+      expect(within(section).queryByRole("checkbox")).toBeNull();
+      expect(within(section).getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual([
+        "Clear the Update History list",
+      ]);
+
+      fireEvent.click(getByRole("checkbox", { name: SELECT_ALL }));
+      expect(useUiStore.getState().selectedUpdates).toEqual([artifactKeyId(onyxKey)]);
+      expect(getByRole("button", { name: "Update Selected (1)" })).toBeEnabled();
+      fireEvent.click(getByRole("checkbox", { name: SELECT_ALL }));
+      expect(useUiStore.getState().selectedUpdates).toEqual([]);
+
+      fireEvent.click(getByRole("button", { name: "Update All" }));
+      await findByRole("alertdialog", { name: "Update “OnyX”?" });
+      expect(plannedNames()).toEqual(["onyx"]);
+    });
+
+    it("puts the focus on the list's first row once Clear has taken the section away", async () => {
+      operations = [operation(glibKey, { status: "Done", outcome: "Succeeded" })];
+      started(7, "2.90.0");
+      updates = [snapshot.updates[1]];
+      artifacts = [installed(glibKey, "2.90.0"), installed(onyxKey, "5.0.2")];
+      renderPage();
+
+      const section = await screen.findByRole("region", { name: "Update History" });
+      const clear = within(section).getByRole("button", { name: "Clear the Update History list" });
+      clear.focus();
+      fireEvent.click(clear);
+      await waitFor(() => expect(justUpdated()).toBeNull());
+      await waitFor(() => expect(document.activeElement?.closest("[data-tool-row]")).not.toBeNull());
+      expect(document.activeElement?.closest("[data-tool-row]")).toHaveTextContent("OnyX");
+    });
+
+    // r24 W2: the row a finished update leaves the focus on goes once the
+    // check after it lands, and the focus with it to the window's body,
+    // where ↑ and ↓ move nothing and VoiceOver's cursor is lost.
+    describe("once the row the focus is on has gone", () => {
+      const zstd = brewCandidate("zstd");
+
+      /** Thirty more rows: more than the list's 600 shows at once. */
+      const more = Array.from({ length: 30 }, (_, index) => brewCandidate(`tool-${String(index).padStart(2, "0")}`));
+      const moreInstalled = () => more.map((candidate) => installed(candidate.key, "1.0.0"));
+
+      /** The check after onyx's update: onyx at 5.1.0, its row gone; `rest` still to install. */
+      function checkAfterOnyx(queryClient: QueryClient, rest: Snapshot["updates"]) {
+        act(() => {
+          queryClient.setQueryData(queryKeys.snapshot, {
+            ...snapshot,
+            generation: snapshot.generation + 1,
+            instances,
+            artifacts: [
+              installed(glibKey, "2.88.3"),
+              installed(onyxKey, "5.1.0"),
+              installed(zstd.key, "1.0.0"),
+              ...moreInstalled(),
+            ],
+            updates: rest,
+          });
+        });
+      }
+
+      /**
+       * jsdom scrolls nothing: a scroll the list asks for moves its box as a
+       * browser would, and is noted.
+       */
+      function scrollLikeABrowser() {
+        const scrollTo = vi.fn(function (this: HTMLElement, options?: ScrollToOptions | number) {
+          const top = typeof options === "object" ? (options.top ?? 0) : 0;
+          Object.defineProperty(this, "scrollTop", { configurable: true, value: top });
+          fireEvent.scroll(this);
+        });
+        Object.defineProperty(HTMLElement.prototype, "scrollTo", { configurable: true, value: scrollTo });
+        const scrollHeight = vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(40 * ROW_HEIGHT);
+        const clientHeight = vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(600);
+        onTestFinished(() => {
+          delete (HTMLElement.prototype as { scrollTo?: unknown }).scrollTo;
+          scrollHeight.mockRestore();
+          clientHeight.mockRestore();
+        });
+        return scrollTo;
+      }
+
+      /** The list's box, scrolled to `top` by the wheel or the trackpad. */
+      function wheelTo(top: number): HTMLElement {
+        const box = document.querySelector<HTMLElement>("[data-list]");
+        if (box === null) throw new Error("no list");
+        Object.defineProperty(box, "scrollTop", { configurable: true, value: top });
+        fireEvent.scroll(box);
+        return box;
+      }
+
+      /** Lets the check's draw, its effects and anything they queued run out. */
+      async function settle() {
+        for (let turn = 0; turn < 5; turn += 1) {
+          await act(async () => {
+            await new Promise((resolve) => setTimeout(resolve, 0));
+          });
+        }
+      }
+
+      beforeEach(() => {
+        operations = [operation(onyxKey, { status: "Done", outcome: "Succeeded" })];
+        started(7, "5.1.0");
+        artifacts = [
+          installed(glibKey, "2.88.3"),
+          installed(onyxKey, "5.0.2"),
+          installed(zstd.key, "1.0.0"),
+          ...moreInstalled(),
+        ];
+      });
+
+      it("puts it on the row after it, as a Mac list's selection does", async () => {
+        updates = [...snapshot.updates, zstd];
+        const { queryClient } = renderPage();
+        const onyx = await findRow("OnyX");
+        expect(rowNames()).toEqual(["glib", "OnyX", "zstd"]);
+        act(() => onyx.focus());
+        expect(document.activeElement).toBe(onyx);
+
+        checkAfterOnyx(queryClient, [snapshot.updates[0], zstd]);
+
+        await screen.findByRole("region", { name: "Update History" });
+        await waitFor(() => expect(rowNames()).toEqual(["glib", "zstd"]));
+        await waitFor(() => expect(document.activeElement).toBe(rowOf("zstd")));
+      });
+
+      it("puts it on the row before it when it was the list's last", async () => {
+        const { queryClient } = renderPage();
+        const onyx = await findRow("OnyX");
+        expect(rowNames()).toEqual(["glib", "OnyX"]);
+        act(() => onyx.focus());
+
+        checkAfterOnyx(queryClient, [snapshot.updates[0]]);
+
+        await waitFor(() => expect(rowNames()).toEqual(["glib"]));
+        await waitFor(() => expect(document.activeElement).toBe(rowOf("glib")));
+      });
+
+      it("puts it on the page's title when no row is left", async () => {
+        updates = [snapshot.updates[1]];
+        const { queryClient } = renderWithProviders(
+          <>
+            <PageHeader title="Updates" actions={null} />
+            <UpdatesToolbar>
+              <UpdatesPage />
+            </UpdatesToolbar>
+          </>,
+        );
+        const onyx = await findRow("OnyX");
+        act(() => onyx.focus());
+
+        checkAfterOnyx(queryClient, []);
+
+        await waitFor(() => expect(rowNames()).toEqual([]));
+        await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Updates" })));
+        expect(document.activeElement).not.toBe(document.body);
+      });
+
+      it("puts it on the next row after a row's own Update, keyboard all the way", async () => {
+        operations = [];
+        updates = [...snapshot.updates, zstd];
+        const user = userEvent.setup();
+        const { queryClient } = renderPage();
+        const onyx = await findRow("OnyX");
+        act(() => within(onyx).getByRole("button", { name: "Update OnyX" }).focus());
+
+        await user.keyboard("{Enter}");
+        const dialog = await screen.findByRole("alertdialog");
+        await waitFor(() => expect(within(dialog).getByRole("button", { name: "Update" })).toBeEnabled());
+        await user.keyboard("{Enter}");
+        await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+        // The row's own Update gave way to its progress: the focus is on its row.
+        await waitFor(() => expect(document.activeElement).toBe(rowOf("OnyX")));
+
+        operations = [operation(onyxKey, { status: "Done", outcome: "Succeeded" })];
+        checkAfterOnyx(queryClient, [snapshot.updates[0], zstd]);
+
+        await waitFor(() => expect(rowNames()).toEqual(["glib", "zstd"]));
+        await waitFor(() => expect(document.activeElement).toBe(rowOf("zstd")));
+        // ↓ and ↑ go on from there, as before the row went.
+        await user.keyboard("{ArrowUp}");
+        await waitFor(() => expect(document.activeElement).toBe(rowOf("glib")));
+      });
+
+      it("leaves the focus where the user has moved it meanwhile", async () => {
+        updates = [...snapshot.updates, zstd];
+        const { queryClient } = renderPage();
+        const onyx = await findRow("OnyX");
+        act(() => onyx.focus());
+        const selectAll = screen.getByRole("checkbox", { name: "Select all items that can be updated here" });
+        act(() => selectAll.focus());
+
+        checkAfterOnyx(queryClient, [snapshot.updates[0], zstd]);
+
+        await waitFor(() => expect(rowNames()).toEqual(["glib", "zstd"]));
+        expect(document.activeElement).toBe(selectAll);
+      });
+
+      // r24 W2's skeptic: a row's own Update, or Update All, puts the focus
+      // on a row by script, for the mouse as for the keyboard. Scrolled out
+      // of the DOM, the row took the focus to the body with it; once its
+      // update was done, the focus was sent on to its neighbour, and the
+      // list scrolled back to it from wherever the user had taken it.
+      it("leaves the list where the user has scrolled it once a row scrolled out of the DOM goes", async () => {
+        const scrollTo = scrollLikeABrowser();
+        updates = [...snapshot.updates, zstd, ...more];
+        const { queryClient } = renderPage();
+        const onyx = await findRow("OnyX");
+        act(() => onyx.focus());
+
+        // The wheel, far down the list: OnyX's row is drawn no more, and
+        // the focus is the body's.
+        const box = wheelTo(20 * ROW_HEIGHT);
+        await waitFor(() => expect(onyx.isConnected).toBe(false));
+        expect(document.activeElement).toBe(document.body);
+        // What the list asked for as it was laid out, its box at the top.
+        scrollTo.mockClear();
+
+        checkAfterOnyx(queryClient, [snapshot.updates[0], zstd, ...more]);
+        await settle();
+
+        expect(scrollTo).not.toHaveBeenCalled();
+        expect(box.scrollTop).toBe(20 * ROW_HEIGHT);
+        expect(document.activeElement).toBe(document.body);
+      });
+
+      it("leaves the list where the user has scrolled it once a row out of sight goes, though still drawn", async () => {
+        const scrollTo = scrollLikeABrowser();
+        // Laid out as a browser would: the box 600 high, each slot where
+        // the list puts it, less how far the box is scrolled.
+        const layout = vi
+          .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+          .mockImplementation(function (this: HTMLElement) {
+            const rect = (top: number, height: number) =>
+              ({ top, bottom: top + height, left: 0, right: 800, width: 800, height, x: 0, y: top }) as DOMRect;
+            const box = this.closest<HTMLElement>("[data-list]");
+            if (this.hasAttribute("data-list")) return rect(0, 600);
+            if (this.hasAttribute("data-list-slot") && box !== null) {
+              const start = Number(/translateY\((-?[\d.]+)px\)/.exec(this.style.transform)?.[1] ?? 0);
+              return rect(start - box.scrollTop, ROW_HEIGHT);
+            }
+            return rect(0, 0);
+          });
+        onTestFinished(() => layout.mockRestore());
+        updates = [...snapshot.updates, zstd, ...more];
+        const { queryClient } = renderPage();
+        const onyx = await findRow("OnyX");
+        expect(slotOf(onyx)).toBe(1);
+        act(() => onyx.focus());
+
+        // Two rows and a little down: OnyX's row is above the box, drawn
+        // still (the list keeps one either side), and the focus on it.
+        const box = wheelTo(2 * ROW_HEIGHT + 10);
+        await settle();
+        expect(onyx.isConnected).toBe(true);
+        expect(document.activeElement).toBe(onyx);
+        scrollTo.mockClear();
+
+        checkAfterOnyx(queryClient, [snapshot.updates[0], zstd, ...more]);
+        await settle();
+
+        expect(onyx.isConnected).toBe(false);
+        expect(scrollTo).not.toHaveBeenCalled();
+        expect(box.scrollTop).toBe(2 * ROW_HEIGHT + 10);
+      });
+
+      it("moves no focus once a row goes that the focus had left for nothing, as a click on what takes none leaves it", async () => {
+        updates = [...snapshot.updates, zstd];
+        const { queryClient } = renderPage();
+        const onyx = await findRow("OnyX");
+        act(() => onyx.focus());
+        // WebKit focuses no button that is clicked: a click on one, or on
+        // the list's empty space, leaves the focus with the body.
+        act(() => onyx.blur());
+        expect(document.activeElement).toBe(document.body);
+
+        checkAfterOnyx(queryClient, [snapshot.updates[0], zstd]);
+        await waitFor(() => expect(rowNames()).toEqual(["glib", "zstd"]));
+        await settle();
+
+        expect(document.activeElement).toBe(document.body);
+      });
+    });
+
+    it("hides itself on Clear, until the next update ends", async () => {
+      operations = [operation(glibKey, { status: "Done", outcome: "Succeeded" })];
+      started(7, "2.90.0");
+      updates = [snapshot.updates[1]];
+      artifacts = [installed(glibKey, "2.90.0"), installed(onyxKey, "5.0.2")];
+      const { queryClient } = renderPage();
+
+      const section = await screen.findByRole("region", { name: "Update History" });
+      fireEvent.click(within(section).getByRole("button", { name: "Clear the Update History list" }));
+      await waitFor(() => expect(justUpdated()).toBeNull());
+      expect(useUiStore.getState().clearedJustUpdated).toEqual([7]);
+      expect(rowNames()).toEqual(["OnyX"]);
+
+      // onyx's update succeeds and its row goes: the section is back, with onyx alone.
+      operations = [operation(onyxKey, { id: 8, status: "Done", outcome: "Succeeded" }), ...operations];
+      started(8, "5.1.0");
+      updates = [];
+      artifacts = [installed(glibKey, "2.90.0"), installed(onyxKey, "5.1.0")];
+      await act(async () => {
+        await queryClient.invalidateQueries({ queryKey: queryKeys.operations });
+        await queryClient.invalidateQueries({ queryKey: queryKeys.snapshot });
+      });
+
+      const again = await screen.findByRole("region", { name: "Update History" });
+      const lines = within(again).getAllByRole("listitem");
+      expect(lines).toHaveLength(1);
+      expect(within(lines[0]).getByText("OnyX")).toBeInTheDocument();
+      expect(within(lines[0]).getByText("5.1.0")).toBeInTheDocument();
+    });
+
+    it("never shows a model's digest as its new version", async () => {
+      instances = [...snapshot.instances, { ...stoppedOllama, status: { unavailable: null, notes: [] } }];
+      operations = [operation(qwenKey, { status: "Done", outcome: "Succeeded" })];
+      started(7, "sha256:9f1c0b6d2e4a7c5b3d1f8a6e4c2b0d9f7e5c3a1b8d6f4e2c0a9b7d5f3e1c8a6b");
+      artifacts = [installed(qwenKey, "5642e97495e1")];
+      const { container } = renderPage();
+
+      const section = await screen.findByRole("region", { name: "Update History" });
+      expect(within(section).getByText("qwen3:8b")).toBeInTheDocument();
+      expect(container.textContent).not.toMatch(/sha256|5642e974/);
+    });
+
+    // r35 U4: a later operation of the same tool that is not an uninstall
+    // that worked -- a Fix… link, an uninstall cancelled while it waited
+    // its turn or one that failed -- leaves its update listed, in this
+    // launch as after a restart.
+    describe("an update, then another operation of the same tool", () => {
+      const nodeKey: ArtifactKey = { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "node@22" };
+      const wgetKey: ArtifactKey = { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "wget" };
+      const unlinked = { NoLongerLinked: { name: "node@22", commands: ["node", "npm"] } };
+
+      function record(key: ArtifactKey, run: string, opId: number, fields: Partial<HistoryRecord> = {}): HistoryRecord {
+        return {
+          run,
+          op_id: opId,
+          finished_at: Date.now() - (opId === 7 ? 120_000 : 60_000),
+          key,
+          display_name: key.name,
+          adapter_id: "brew",
+          kind: "Update",
+          from_version: "1.0",
+          to_version: "1.1",
+          result: "Succeeded",
+          verified: true,
+          dismissed: false,
+          ...fields,
+        };
+      }
+
+      function answerHistory(view: HistoryView): void {
+        const answer = mockInvoke.getMockImplementation()!;
+        mockInvoke.mockImplementation((cmd: string, args?: InvokeArgs) =>
+          cmd === "get_history" ? Promise.resolve(view) : answer(cmd, args),
+        );
+      }
+
+      /** Each line of Update History: its tool, how it ended, and its button, if any. */
+      async function lines(): Promise<string[][]> {
+        await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("get_history"));
+        await findRow("glib");
+        await act(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        });
+        const section = justUpdated();
+        return section === null
+          ? []
+          : within(section).getAllByRole("listitem").map((line) => [
+              line.querySelector("span[title]")?.textContent ?? "",
+              line.querySelector("[data-just-updated-ending]")?.textContent ?? "",
+              // Its buttons with words: not the ⓘ after the ending.
+              ...within(line).queryAllByRole("button").map((button) => button.textContent ?? "").filter((words) => words !== ""),
+            ]);
+      }
+
+      const nodeLine = ["node@22", "Updated with a warning", "View Log"];
+
+      it("keeps node@22's update after a Fix… link of it, in this launch and after a restart", async () => {
+        artifacts = [...artifacts, installed(nodeKey, "22.23.3")];
+        answerHistory({ run: "now", cleared_before: null, records: [record(nodeKey, "now", 7, { follow_up_warnings: [unlinked] })] });
+        operations = [
+          operation(nodeKey, { id: 8, kind: "Link", status: "Done", outcome: "Succeeded" }),
+          operation(nodeKey, { id: 7, status: "Done", outcome: "Succeeded", follow_up_warnings: [unlinked] }),
+        ];
+        const launch = renderPage();
+        expect(await lines()).toEqual([nodeLine]);
+        // This window's own line: View Log opens op 7's log.
+        fireEvent.click(within(justUpdated()!).getByRole("button", { name: "View log: node@22" }));
+        expect(useUiStore.getState().focusedOpId).toBe(7);
+        launch.unmount();
+
+        // After a restart: no operations, the same record, the same line.
+        useUiStore.setState(useUiStore.getInitialState());
+        operations = [];
+        renderPage();
+        expect(await lines()).toEqual([nodeLine]);
+      });
+
+      it.each([
+        ["cancelled while it waited its turn", { status: "Done", outcome: "Cancelled" }, null],
+        [
+          "that failed",
+          { status: "Done", outcome: { Failed: { exit_code: 1, summary: "Error: Permission denied", cause: failureCause("Error: Permission denied") } } },
+          { Failed: { cause: "permission", detail: null } },
+        ],
+        ["still under way", { status: "Running", outcome: null }, null],
+      ] as const)("keeps wget's update after an uninstall of it %s", async (_how, uninstall, kept) => {
+        artifacts = [...artifacts, installed(wgetKey, "1.1")];
+        const records = [record(wgetKey, "now", 7)];
+        // The history keeps an uninstall that started; not one cancelled before it did.
+        if (kept !== null) records.push(record(wgetKey, "now", 8, { kind: "Uninstall", result: kept as HistoryRecord["result"], to_version: null, verified: false }));
+        answerHistory({ run: "now", cleared_before: null, records });
+        operations = [
+          operation(wgetKey, { id: 8, kind: "Uninstall", ...(uninstall as Partial<OpSummary>) }),
+          operation(wgetKey, { id: 7, status: "Done", outcome: "Succeeded" }),
+        ];
+        const launch = renderPage();
+        expect(await lines()).toEqual([["wget", "Updated"]]);
+        launch.unmount();
+
+        // After a restart.
+        useUiStore.setState(useUiStore.getInitialState());
+        operations = [];
+        renderPage();
+        expect(await lines()).toEqual([["wget", "Updated"]]);
+      });
+
+      it("takes wget's update off the list once an uninstall of it worked, in this launch and after a restart", async () => {
+        const records = [record(wgetKey, "now", 7), record(wgetKey, "now", 8, { kind: "Uninstall", to_version: null })];
+        answerHistory({ run: "now", cleared_before: null, records });
+        operations = [
+          operation(wgetKey, { id: 8, kind: "Uninstall", status: "Done", outcome: "Succeeded" }),
+          operation(wgetKey, { id: 7, status: "Done", outcome: "Succeeded" }),
+        ];
+        const launch = renderPage();
+        expect(await lines()).toEqual([]);
+        launch.unmount();
+
+        useUiStore.setState(useUiStore.getInitialState());
+        operations = [];
+        renderPage();
+        expect(await lines()).toEqual([]);
+      });
+    });
+
+    describe("after a restart: what the history kept", () => {
+      // A launch before this one kept these (`get_history`); this window
+      // has run nothing yet. Each carries `dismissed`, as Rust sends it.
+      function kept(name: string, finishedAt: number, fields: Partial<HistoryRecord> = {}): HistoryRecord {
+        return {
+          run: "earlier",
+          op_id: 3,
+          finished_at: finishedAt,
+          key: { ...glibKey, name },
+          display_name: name,
+          adapter_id: "brew",
+          kind: "Update",
+          from_version: "1.0",
+          to_version: "2.0",
+          result: "Succeeded",
+          verified: true,
+          dismissed: false,
+          ...fields,
+        };
+      }
+
+      function answerHistory(view: HistoryView): void {
+        const answer = mockInvoke.getMockImplementation()!;
+        mockInvoke.mockImplementation((cmd: string, args?: InvokeArgs) => {
+          if (cmd === "get_history") return Promise.resolve(view);
+          if (cmd === "clear_history") {
+            // Rust's `HistoryStore::clear`: every kept record is dismissed.
+            view = { ...view, cleared_before: Date.now(), records: view.records.map((record) => ({ ...record, dismissed: true })) };
+            return Promise.resolve(view);
+          }
+          return answer(cmd, args);
+        });
+      }
+
+      it("lists the last 30 days' updates, newest first, with the version, the date and Updated -- what was read in its tooltip -- and one that failed", async () => {
+        vi.useFakeTimers({ toFake: ["Date"] });
+        vi.setSystemTime(new Date(2026, 8, 28, 15, 0));
+        answerHistory({
+          run: "this-launch",
+          cleared_before: null,
+          records: [
+            kept("cmake", new Date(2026, 8, 28, 14, 2).getTime(), { to_version: "4.0.0" }),
+            kept("wget", new Date(2026, 8, 20, 9, 0).getTime(), { to_version: "1.25.0", verified: false }),
+            kept("old", new Date(2026, 7, 20, 9, 0).getTime()),
+            kept("broken", new Date(2026, 8, 27, 9, 0).getTime(), { result: { Failed: { cause: "network" } } }),
+          ],
+        });
+        // The last check still offers broken an update: its last try is news.
+        updates = [...snapshot.updates, brewCandidate("broken")];
+        const { container } = renderPage();
+
+        const section = await screen.findByRole("region", { name: "Update History" });
+        const lines = within(section).getAllByRole("listitem");
+        expect(lines.map((line) => line.querySelector("span[title]")?.textContent)).toEqual(["cmake", "broken", "wget"]);
+        expect(within(lines[0]).getByText("4.0.0")).toBeInTheDocument();
+        expect(endingWhy(within(lines[0]).getByText("Updated"))).toMatch(/read before and after/);
+        expect(within(lines[0]).getByText(`Today ${new Intl.DateTimeFormat("en", { timeStyle: "short" }).format(new Date(2026, 8, 28, 14, 2))}`)).toBeInTheDocument();
+        expect(within(lines[1]).getByText("Couldn't update: Connection failed")).toBeInTheDocument();
+        expect(within(lines[1]).getByText("Sep 27")).toBeInTheDocument();
+        expect(within(lines[1]).queryByText("2.0")).toBeNull();
+        expect(within(lines[2]).getByText("1.25.0")).toBeInTheDocument();
+        expect(within(lines[2]).getByText("Updated")).toBeInTheDocument();
+        expect(within(lines[2]).getByText("Sep 20")).toBeInTheDocument();
+        // No instance id, and so no home folder, is ever shown.
+        expect(section.textContent).not.toMatch(/opt\/homebrew/);
+        expect(container.textContent).not.toMatch(/brew:\//);
+      });
+
+      it("says 今天 and 9月20日 in Chinese, the time right after 今天 (text-autospace draws the gap)", async () => {
+        vi.useFakeTimers({ toFake: ["Date"] });
+        vi.setSystemTime(new Date(2026, 8, 28, 15, 0));
+        answerHistory({
+          run: "this-launch",
+          cleared_before: null,
+          records: [
+            kept("cmake", new Date(2026, 8, 28, 14, 2).getTime()),
+            kept("wget", new Date(2026, 8, 20, 9, 0).getTime(), { verified: false }),
+          ],
+        });
+        await i18n.changeLanguage("zh-CN");
+        try {
+          renderPage();
+          const section = await screen.findByRole("region", { name: "最近的更新记录" });
+          const lines = within(section).getAllByRole("listitem");
+          expect(within(lines[0]).getByText(`今天${new Intl.DateTimeFormat("zh-CN", { timeStyle: "short" }).format(new Date(2026, 8, 28, 14, 2))}`)).toBeInTheDocument();
+          expect(endingWhy(within(lines[0]).getByText("已更新"))).toMatch(/更新前后各读了一次/);
+          expect(within(lines[1]).getByText("9月20日")).toBeInTheDocument();
+          expect(within(lines[1]).getByText("已更新")).toBeInTheDocument();
+        } finally {
+          await i18n.changeLanguage("en");
+        }
+      });
+
+      it("says what did not update in Chinese: 未能更新：需要输入密码 and what did not add up, and leaves out a failure updated since", async () => {
+        vi.useFakeTimers({ toFake: ["Date"] });
+        vi.setSystemTime(new Date(2026, 8, 28, 15, 0));
+        answerHistory({
+          run: "this-launch",
+          cleared_before: null,
+          records: [
+            kept("cmake", new Date(2026, 8, 28, 14, 2).getTime(), {
+              to_version: null,
+              verified: false,
+              result: { Failed: { cause: "needsPassword" } },
+            }),
+            kept("wget", new Date(2026, 8, 26, 9, 0).getTime(), {
+              verified: false,
+              result: { NeedsAttention: "UnchangedAfterUpgrade" },
+            }),
+            // Updated since it failed: the newer success is what is listed.
+            kept("git", new Date(2026, 8, 25, 9, 0).getTime(), { to_version: "2.55.0" }),
+            kept("git", new Date(2026, 8, 24, 9, 0).getTime(), {
+              to_version: null,
+              verified: false,
+              result: { Failed: { cause: "network" } },
+            }),
+          ],
+        });
+        updates = [...snapshot.updates, brewCandidate("cmake"), brewCandidate("wget"), brewCandidate("git")];
+        await i18n.changeLanguage("zh-CN");
+        try {
+          renderPage();
+          const section = await screen.findByRole("region", { name: "最近的更新记录" });
+          const lines = within(section).getAllByRole("listitem");
+          expect(lines.map((line) => line.querySelector("span[title]")?.textContent)).toEqual(["cmake", "wget", "git"]);
+          expect(endingWhy(within(lines[0]).getByText("未能更新：需要输入密码"))).toBe(
+            "需要输入Mac的登录密码，无法在这里输入。",
+          );
+          expect(within(lines[1]).getByText("没有更新成功：版本没有变")).toBeInTheDocument();
+          expect(within(lines[1]).getByRole("img", { name: "需要查看" })).toBeInTheDocument();
+          expect(endingWhy(within(lines[2]).getByText("已更新"))).toMatch(/更新前后各读了一次/);
+          expect(within(lines[2]).getByText("2.55.0")).toBeInTheDocument();
+          expect(section.textContent).not.toMatch(/网络连接失败/);
+        } finally {
+          await i18n.changeLanguage("en");
+        }
+      });
+
+      it.each(["en", "zh-CN", "zh-Hant"])("opens fresh Terminal steps from a persisted password stop (%s)", async (language) => {
+        await i18n.changeLanguage(language);
+        answerHistory({ run: "this-launch", cleared_before: null, records: [
+          kept("onyx", Date.now() - 1000, { key: onyxKey, from_version: "5.0.2", to_version: null,
+            verified: false, result: { Failed: { cause: "needsPassword" } } }),
+        ] });
+        const view = renderPage();
+        const label = i18n.t("needsPassword.viewStepsLabel", { name: "onyx" });
+        const buttons = await screen.findAllByRole("button", { name: label });
+        expect(buttons).toHaveLength(2);
+        expect(calls("plan_operation")).toHaveLength(0);
+        expect(screen.queryByRole("button", { name: i18n.t("updates.updateLabel", { name: "onyx" }) })).toBeNull();
+        fireEvent.click(buttons[0]);
+        const dialog = await screen.findByRole("dialog");
+        const copy = await within(dialog).findByRole("button", { name: i18n.t("common.copyCommand") });
+        expect(copy).toBeEnabled();
+        expect(dialog.querySelector("code")?.textContent).toBe("/opt/homebrew/bin/brew upgrade --cask onyx");
+        expect(calls("plan_operation")[0][1]).toEqual({ request: { kind: "Upgrade", instance_id: onyxKey.instance_id, artifact_kind: "Cask", name: "onyx" } });
+        expect(calls("submit_operation")).toHaveLength(0);
+        fireEvent.click(within(dialog).getByRole("button", { name: i18n.t("common.done") }));
+        fireEvent.click(screen.getAllByRole("button", { name: label })[1]);
+        await waitFor(() => expect(calls("plan_operation")).toHaveLength(2));
+        view.unmount();
+        await i18n.changeLanguage("en");
+      });
+
+      // r22 W1: Clear marks every record `dismissed` (f17); that tidies
+      // the list but does not resolve the stop (docs/what-we-run.md).
+      it.each([
+        ["pressed in this window", false],
+        ["read back after a restart", true],
+      ] as const)("keeps the recorded password row's View Steps, out of selection, the count and Update All, after Clear %s", async (_when, clearedEarlier) => {
+        answerHistory({ run: "this-launch", cleared_before: clearedEarlier ? Date.now() : null, records: [
+          kept("onyx", Date.now() - 1000, { key: onyxKey, to_version: null,
+            verified: false, result: { Failed: { cause: "needsPassword" } }, dismissed: clearedEarlier }),
+        ] });
+        renderPage();
+        if (!clearedEarlier) {
+          const section = await screen.findByRole("region", { name: "Update History" });
+          await within(section).findByRole("button", { name: "View steps: onyx" });
+          fireEvent.click(within(section).getByRole("button", { name: "Clear the Update History list" }));
+          await waitFor(() => expect(justUpdated()).toBeNull());
+          expect(mockInvoke).toHaveBeenCalledWith("clear_history");
+        }
+        const row = await findRow("onyx");
+        expect(await within(row).findByRole("button", { name: "View steps: onyx" })).toBeInTheDocument();
+        expect(within(row).queryByRole("checkbox")).toBeNull();
+        expect(within(row).queryByRole("button", { name: ROW_UPDATE })).toBeNull();
+        expect(await screen.findByText("1 update available, 1 needs your password")).toBeInTheDocument();
+        fireEvent.click(screen.getByRole("button", { name: "Update All" }));
+        const confirm = await screen.findByRole("alertdialog");
+        await waitFor(() => expect(calls("plan_operation").length).toBeGreaterThan(0));
+        expect(calls("plan_operation").map(([, args]) => (args as { request: OpRequest }).request.name)).not.toContain("onyx");
+        fireEvent.click(within(confirm).getByRole("button", { name: "Cancel" }));
+        await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+        fireEvent.click(screen.getByRole("checkbox", { name: SELECT_ALL }));
+        expect(useUiStore.getState().selectedUpdates).toEqual([artifactKeyId(glibKey)]);
+      });
+
+      it.each(["Succeeded", "Cancelled"] as const)("a later recorded %s supersedes a password stop", async (result) => {
+        answerHistory({ run: "this-launch", cleared_before: null, records: [
+          kept("onyx", Date.now() - 2000, { key: onyxKey, result: { Failed: { cause: "needsPassword" } } }),
+          kept("onyx", Date.now() - 1000, { key: onyxKey, result }),
+        ] });
+        renderPage();
+        await screen.findByRole("button", { name: "Update onyx" });
+        expect(screen.queryByRole("button", { name: "View steps: onyx" })).toBeNull();
+      });
+
+      // r35 U3: a password stop of this launch, then the page reloads (the
+      // error screen's Reload): the window forgets which version op 7 was
+      // for (`updateTargets`), and the backend still lists op 7.
+      describe("a password stop of this launch, before and after the page reloads", () => {
+        const stopped = () =>
+          operation(onyxKey, {
+            id: 7,
+            status: "Done",
+            outcome: {
+              Failed: {
+                exit_code: 1,
+                summary: "sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper",
+                cause: "needsPassword",
+              },
+            },
+          });
+        const thisLaunch = () =>
+          kept("onyx", Date.now() - 1000, {
+            run: "this-launch",
+            op_id: 7,
+            key: onyxKey,
+            from_version: "5.0.2",
+            to_version: null,
+            verified: false,
+            result: { Failed: { cause: "needsPassword" } },
+          });
+
+        async function expectHeldWithSteps() {
+          const row = await findRow("onyx");
+          expect(await within(row).findByRole("button", { name: "View steps: onyx" })).toBeInTheDocument();
+          expect(within(row).queryByRole("checkbox")).toBeNull();
+          expect(within(row).queryByRole("button", { name: ROW_UPDATE })).toBeNull();
+          expect(await screen.findByText("1 update available, 1 needs your password")).toBeInTheDocument();
+          // Update All leaves it out: it would stop at the password again.
+          fireEvent.click(screen.getByRole("button", { name: "Update All" }));
+          const confirm = await screen.findByRole("alertdialog");
+          await waitFor(() => expect(calls("plan_operation").length).toBeGreaterThan(0));
+          expect(plannedNames()).not.toContain("onyx");
+          fireEvent.click(within(confirm).getByRole("button", { name: "Cancel" }));
+          await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+        }
+
+        it("holds its row with View Steps before the reload, from its own operation", async () => {
+          operations = [stopped()];
+          started(7, "5.1.0");
+          answerHistory({ run: "this-launch", cleared_before: null, records: [thisLaunch()] });
+          renderPage();
+          await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("get_history"));
+          await expectHeldWithSteps();
+        });
+
+        it("still holds it with View Steps after the reload, from this launch's record, not a checkbox and Update", async () => {
+          operations = [stopped()];
+          answerHistory({ run: "this-launch", cleared_before: null, records: [thisLaunch()] });
+          renderPage();
+          await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("get_history"));
+          await expectHeldWithSteps();
+        });
+
+        /** Update History's line of the stop, once it is listed. */
+        async function stopLine(): Promise<HTMLElement> {
+          const section = await screen.findByRole("region", { name: "Update History" });
+          const ending = await within(section).findByText("Couldn't update: Needs your password");
+          // One line for it: this window's own, not the history's beside it.
+          expect(within(section).getAllByText("Couldn't update: Needs your password")).toHaveLength(1);
+          return ending.closest("li")!;
+        }
+
+        // o3 skeptic 4: the row has View Steps back after the reload, and
+        // so does the stop's line in Update History -- this window's own
+        // (op 7), listed once the row no longer shows it -- as the
+        // history's line of it has them after a restart.
+        it("gives the stop's line in Update History View Steps after the reload too, as after a restart", async () => {
+          operations = [stopped()];
+          answerHistory({ run: "this-launch", cleared_before: null, records: [thisLaunch()] });
+          renderPage();
+          await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("get_history"));
+          const line = await stopLine();
+          expect(await within(line).findByRole("button", { name: "View steps: onyx" })).toBeInTheDocument();
+        });
+
+        it("lists no line of the stop before the reload: its row still shows it", async () => {
+          operations = [stopped()];
+          started(7, "5.1.0");
+          answerHistory({ run: "this-launch", cleared_before: null, records: [thisLaunch()] });
+          renderPage();
+          await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("get_history"));
+          await expectHeldWithSteps();
+          expect(screen.queryByText("Couldn't update: Needs your password")).toBeNull();
+        });
+
+        it("gives the line no View Steps once onyx is offered no update: there is nothing to plan", async () => {
+          // Updated in Terminal since: the last check offers onyx nothing.
+          updates = updates.filter((candidate) => candidate.key.name !== "onyx");
+          operations = [stopped()];
+          answerHistory({ run: "this-launch", cleared_before: null, records: [thisLaunch()] });
+          renderPage();
+          await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("get_history"));
+          const line = await stopLine();
+          await act(async () => {
+            await new Promise((resolve) => setTimeout(resolve, 50));
+          });
+          expect(within(line).queryByRole("button", { name: "View steps: onyx" })).toBeNull();
+        });
+
+        it("lets an update the row shows say how it stands, over an earlier stop's View Steps", async () => {
+          // Started again after the reload: the row shows that one.
+          operations = [operation(onyxKey, { id: 8, status: "Running" }), stopped()];
+          started(8, "5.1.0");
+          answerHistory({ run: "this-launch", cleared_before: null, records: [thisLaunch()] });
+          renderPage();
+          await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("get_history"));
+          const row = await findRow("onyx");
+          expect(await within(row).findByText("Updating…")).toBeInTheDocument();
+          expect(within(row).queryByRole("button", { name: "View steps: onyx" })).toBeNull();
+        });
+      });
+
+      it("keeps Clear: the history notes the time, and what was shown stays hidden", async () => {
+        answerHistory({
+          run: "this-launch",
+          cleared_before: null,
+          records: [
+            kept("cmake", Date.now() - 60_000),
+            // One that failed and one to check go with it.
+            kept("git", Date.now() - 120_000, { to_version: null, result: { Failed: { cause: "busy" } } }),
+            kept("wget", Date.now() - 180_000, { result: "Unconfirmed" }),
+          ],
+        });
+        updates = [snapshot.updates[1], brewCandidate("git"), brewCandidate("wget")];
+        renderPage();
+
+        const section = await screen.findByRole("region", { name: "Update History" });
+        expect(within(section).getAllByRole("listitem")).toHaveLength(3);
+        fireEvent.click(within(section).getByRole("button", { name: "Clear the Update History list" }));
+        await waitFor(() => expect(justUpdated()).toBeNull());
+        expect(mockInvoke).toHaveBeenCalledWith("clear_history");
+      });
+
+      it("leaves out a failure or one to check once no update is offered for the tool: updated in Terminal, or uninstalled", async () => {
+        answerHistory({
+          run: "this-launch",
+          cleared_before: null,
+          records: [
+            kept("cmake", Date.now() - 60_000),
+            kept("jq", Date.now() - 120_000, { to_version: null, result: { Failed: { cause: "network" } } }),
+            kept("wget", Date.now() - 180_000, { result: { NeedsAttention: "UnchangedAfterUpgrade" } }),
+          ],
+        });
+        // Neither jq nor wget is offered an update any more.
+        updates = [snapshot.updates[1]];
+        renderPage();
+
+        const section = await screen.findByRole("region", { name: "Update History" });
+        const lines = within(section).getAllByRole("listitem");
+        expect(lines.map((line) => line.querySelector("span[title]")?.textContent)).toEqual(["cmake"]);
+        expect(section.textContent).not.toMatch(/Couldn't update|Needs attention|Result unconfirmed/);
+      });
+
+      it("lists an update installed though a step after it failed though nothing offers it any more, with its version and what it kept (r35 U2)", async () => {
+        answerHistory({
+          run: "this-launch",
+          cleared_before: null,
+          records: [
+            kept("python@3.13", Date.now() - 60_000, {
+              from_version: "3.13.7",
+              to_version: "3.13.8",
+              result: { NeedsAttention: { UpdatedButStepFailed: { version: "3.13.8", cause: null, detail: null } } },
+              follow_up_warnings: [{ NoLongerLinked: { name: "python@3.13", commands: ["python3"] } }],
+            }),
+            kept("fontconfig", Date.now() - 120_000, {
+              to_version: "2.18.4",
+              result: { NeedsAttention: { UpdatedButStepFailed: { version: "2.18.4", cause: null, detail: null } } },
+            }),
+          ],
+        });
+        // Installed: the check offers neither any more.
+        updates = [snapshot.updates[1]];
+        renderPage();
+
+        const section = await screen.findByRole("region", { name: "Update History" });
+        const [python, fontconfig] = within(section).getAllByRole("listitem");
+        for (const [line, version] of [[python, "3.13.8"], [fontconfig, "2.18.4"]] as const) {
+          expect(within(line).getByText("Updated with an error")).toBeInTheDocument();
+          expect(within(line).getByText(version)).toBeInTheDocument();
+        }
+        expect(endingWhy(within(fontconfig).getByText("Updated with an error"))).toBe(
+          "The new version was installed, but the command said a step after the update failed.",
+        );
+        // The log is gone; what it kept of the steps after it is not.
+        expect(within(fontconfig).queryByRole("button", { name: "View log: fontconfig" })).toBeNull();
+        fireEvent.click(within(python).getByRole("button", { name: "View log: python@3.13" }));
+        const dialog = await screen.findByRole("dialog");
+        expect(dialog).toHaveTextContent("Updated with an error");
+        expect(dialog).toHaveTextContent("brew link --formula --force python@3.13");
+        // In no count: nothing to update.
+        expect(await screen.findByText("1 update available")).toBeInTheDocument();
+      });
+
+      it("lists a kept failure beside the tool's row on purpose: the row is a plain update, the line says the last try did not work", async () => {
+        answerHistory({
+          run: "this-launch",
+          cleared_before: null,
+          records: [kept("jq", Date.now() - 120_000, { to_version: null, result: { Failed: { cause: "network" } } })],
+        });
+        updates = [snapshot.updates[1], brewCandidate("jq")];
+        renderPage();
+
+        const section = await screen.findByRole("region", { name: "Update History" });
+        const lines = within(section).getAllByRole("listitem");
+        expect(lines).toHaveLength(1);
+        expect(within(lines[0]).getByText("Couldn't update: Connection failed")).toBeInTheDocument();
+        // Its row offers the update as any other, and says nothing of the failure.
+        const row = rowOf("jq");
+        expect(within(row).getByRole("button", { name: /Update/ })).toBeInTheDocument();
+        expect(row.textContent).not.toMatch(/Couldn't update/);
+      });
+
+      it("lists an update this window saw finish once, with what its record read in the tooltip of its Updated", async () => {
+        operations = [operation(glibKey, { status: "Done", outcome: "Succeeded" })];
+        started(7, "2.90.0");
+        updates = [snapshot.updates[1]];
+        artifacts = [installed(glibKey, "2.90.0"), installed(onyxKey, "5.0.2")];
+        answerHistory({
+          run: "this-launch",
+          cleared_before: null,
+          records: [
+            // This launch's record of op 7, and an older one of glib's.
+            kept("glib", Date.now() - 1_000, { run: "this-launch", op_id: 7, to_version: "2.90.0" }),
+            kept("glib", Date.now() - 9 * 86_400_000, { op_id: 2, to_version: "2.88.3" }),
+          ],
+        });
+        renderPage();
+
+        const section = await screen.findByRole("region", { name: "Update History" });
+        await waitFor(() => expect(within(within(section).getByText("Updated")).queryByRole("button")).not.toBeNull());
+        expect(endingWhy(within(section).getByText("Updated"))).toMatch(/read before and after/);
+        const lines = within(section).getAllByRole("listitem");
+        expect(lines).toHaveLength(1);
+        expect(within(lines[0]).getByText("2.90.0")).toBeInTheDocument();
+      });
+    });
+
+    // As Rust sends it since f17 (`dismissed: true`), and the legacy
+    // shape whose cutoff alone says so.
+    it.each([
+      ["dismissed", { dismissed: true }],
+      ["legacy cutoff", {}],
+    ] as const)("keeps an update this window saw hidden after a kept Clear, when the web view has reloaded since (%s)", async (_shape, wire) => {
+      // A reload forgets `clearedJustUpdated`; the backend still lists
+      // op 7, and the history says Clear came after it finished.
+      operations = [operation(glibKey, { status: "Done", outcome: "Succeeded" })];
+      started(7, "2.90.0");
+      updates = [snapshot.updates[1]];
+      artifacts = [installed(glibKey, "2.90.0"), installed(onyxKey, "5.0.2")];
+      const answer = mockInvoke.getMockImplementation()!;
+      const history: HistoryView = {
+        run: "this-launch",
+        cleared_before: Date.now() - 1_000,
+        records: [
+          {
+            run: "this-launch",
+            op_id: 7,
+            finished_at: Date.now() - 2_000,
+            key: glibKey,
+            display_name: "glib",
+            adapter_id: "brew",
+            kind: "Update",
+            from_version: "2.88.3",
+            to_version: "2.90.0",
+            result: "Succeeded",
+            verified: true,
+            ...wire,
+          },
+        ],
+      };
+      mockInvoke.mockImplementation((cmd: string, args?: InvokeArgs) =>
+        cmd === "get_history" ? Promise.resolve(history) : answer(cmd, args),
+      );
+      renderPage();
+
+      // The page has its rows and the history its answer; then nothing
+      // is listed, and stays so.
+      await screen.findByText("OnyX");
+      await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("get_history"));
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      });
+      expect(justUpdated()).toBeNull();
+    });
+
+    it("calls itself 最近的更新记录 in Chinese, with 清除记录 and 已更新, and Clear by the same name", () => {
+      expect(zhCN.updates.justUpdated.title).toBe("最近的更新记录");
+      expect(zhCN.updates.justUpdated.clear).toBe("清除记录");
+      expect(zhCN.updates.justUpdated.clearLabel).toBe("清除“最近的更新记录”列表");
+      expect(zhCN.updates.progress.succeeded).toBe("已更新");
+    });
+  });
+
+  it("says every update is hidden — not that everything is up to date — once each is skipped or never reminded about", async () => {
+    settings.ignored_updates = [glibKey];
+    settings.skipped_versions = [{ key: onyxKey, version: "5.1.0" }];
+    const { findByText, queryByText, getByRole } = renderPage();
+
+    await findByText("No updates to install");
     expect(queryByText("Everything is up to date")).not.toBeInTheDocument();
+    // Where they are, one press away: Settings' hidden updates.
+    expect(getByRole("button", { name: "Show Hidden Updates" }).className).toBe(`mt-4 ${BUTTON.regular.grey}`);
+    fireEvent.click(getByRole("button", { name: "Show Hidden Updates" }));
+    expect(useUiStore.getState().page).toBe("settings");
+  });
+
+  it("says only what can be updated here is up to date beside a pip package another one requires (r16)", async () => {
+    // pip list --outdated --not-required never looks certifi up, so an
+    // empty list says nothing of it.
+    updates = [];
+    const certifi = installedRow({ instance_id: "pip:/opt/homebrew/bin/python3", kind: "Package", name: "certifi" });
+    artifacts = [{ ...certifi, reason: "Dependency" }];
+    const { findByText, queryByText, getByRole } = renderPage();
+
+    await findByText("Everything you can update here is up to date");
+    expect(queryByText("Everything is up to date")).not.toBeInTheDocument();
+    expect(getByRole("button", { name: "Check Again" })).toBeInTheDocument();
+  });
+
+  it("says the same beside an npm global its check never looks up (R45-1)", async () => {
+    updates = [];
+    const link = installedRow({ instance_id: "npm:/opt/homebrew", kind: "Package", name: "mytool" });
+    artifacts = [{ ...link, facts: { ...link.facts, not_looked_up: true } }];
+    const { findByText, queryByText } = renderPage();
+
+    await findByText("Everything you can update here is up to date");
+    expect(queryByText("Everything is up to date")).not.toBeInTheDocument();
+  });
+
+  it("says an empty list as macOS does: a 36 tertiary symbol, the title, when it was checked, one grey button", async () => {
+    updates = [];
+    const { findByText, getByRole } = renderPage();
+
+    const title = await findByText("Everything is up to date");
+    const empty = title.closest("[data-empty-state]") as HTMLElement;
+    const symbol = empty.querySelector("svg") as SVGElement;
+    expect(symbol).toHaveAttribute("width", "36");
+    // Never green: nothing to do is not news to celebrate.
+    expect(symbol.getAttribute("class")).toContain("text-tertiary");
+    expect(symbol.getAttribute("class")).not.toContain("text-success");
+    expect(title).toHaveClass("text-section", "mt-6");
+    // When it was checked is a label, as the toolbar's tooltip says it:
+    // no full stop.
+    const checked = title.nextElementSibling as HTMLElement;
+    expect(checked.textContent).toMatch(/^Checked (just now|\d+ (min|hours?|days?) ago)$/);
+    expect(checked).toHaveClass("text-section", "font-normal", "text-muted", "mt-2", "max-w-90");
+    const again = within(empty).getByRole("button", { name: "Check Again" });
+    expect(again.className).toBe(`mt-4 ${BUTTON.regular.grey}`);
+    fireEvent.click(again);
+    await waitFor(() => expect(calls("refresh").length).toBeGreaterThan(0));
+    expect(getByRole("button", { name: "Check Again" })).toBe(again);
+  });
+
+  it("says in Chinese when it was checked with no full stop, as a label", async () => {
+    updates = [];
+    await i18n.changeLanguage("zh-CN");
+    try {
+      const { findByText } = renderPage();
+      const title = await findByText("所有工具都是最新的");
+      const checked = title.nextElementSibling as HTMLElement;
+      expect(checked.textContent).toMatch(/^上次检查：(刚才|\d+(分钟|小时|天)前)$/);
+    } finally {
+      await i18n.changeLanguage("en");
+    }
   });
 
   it("says everything is up to date only when the backend reports no updates at all", async () => {
     updates = [];
-    const { findByText } = renderWithProviders(<UpdatesPage />);
+    const { findByText } = renderPage();
 
     await findByText("Everything is up to date");
+  });
+
+  // r24 W2's skeptic: the list's first line, a source's notice, goes once
+  // its own button has fixed what it said -- Open Ollama once Ollama
+  // answers -- and with it the button the focus was on: to the window's
+  // body, from where the next Tab starts over at the sidebar.
+  it("puts the focus on the page's title once a notice's Open Ollama has done its work, not on the window's body", async () => {
+    instances = [...snapshot.instances, stoppedOllama];
+    const { findByRole, getByRole, queryClient } = renderWithProviders(
+      <>
+        <PageHeader title="Updates" actions={null} />
+        <UpdatesToolbar>
+          <UpdatesPage />
+        </UpdatesToolbar>
+      </>,
+    );
+    const open = await findByRole("button", { name: "Open Ollama" });
+    expect(open.closest("[data-list-slot]")).not.toBeNull();
+    act(() => open.focus());
+    fireEvent.click(open);
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("open_ollama_app"));
+    expect(document.activeElement).toBe(open);
+
+    // The check after it: Ollama answers, and its line goes.
+    act(() => {
+      queryClient.setQueryData(queryKeys.snapshot, {
+        ...snapshot,
+        generation: snapshot.generation + 1,
+        updates,
+        artifacts,
+        errors,
+        instances: [...snapshot.instances, { ...stoppedOllama, status: { unavailable: null, notes: [] } }],
+      });
+    });
+
+    await waitFor(() => expect(open.isConnected).toBe(false));
+    await waitFor(() => expect(document.activeElement).toBe(getByRole("heading", { name: "Updates" })));
+  });
+
+  it("does not say everything is up to date when a source never answered", async () => {
+    // The lie this page used to tell. No candidates is exactly what an
+    // unreachable source produces, and the page read that silence as good
+    // news: a Mac with Ollama stopped was told, in so many words, that
+    // everything was up to date -- about a source Banager had not managed
+    // to ask.
+    updates = [];
+    instances = [...snapshot.instances, stoppedOllama];
+    const { findByText, queryByText, getByRole } = renderPage();
+
+    await findByText("Ollama isn't running");
+    expect(await findByText("No updates in the sources checked")).toBeInTheDocument();
+    expect(queryByText("Everything is up to date")).not.toBeInTheDocument();
+    // And the notice is the working one, not a copy of its words: the
+    // button that starts the daemon comes with it.
+    fireEvent.click(getByRole("button", { name: "Open Ollama" }));
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("open_ollama_app"));
+  });
+
+  it("warns that Homebrew's catalogue may be behind, with the header's Check again", async () => {
+    // A note, not an unavailability: brew answered, and what it said may
+    // simply be out of date. "Everything is up to date" is the one
+    // sentence that must not appear over it.
+    updates = [];
+    instances = [
+      { ...snapshot.instances[0], status: { unavailable: null, notes: ["IndexMayBeStale"] } },
+      ...snapshot.instances.slice(1),
+    ];
+    const { findByText, queryByText, getByRole } = renderPage();
+
+    await findByText("Couldn't reach Homebrew, so updates for its tools weren't fully checked");
+    expect(queryByText("Everything is up to date")).not.toBeInTheDocument();
+    fireEvent.click(getByRole("button", { name: "Check Again" }));
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("refresh"));
+  });
+
+  it("does not say everything is up to date while Homebrew is still downloading its list of software", async () => {
+    // Nothing has failed, so the notice is information rather than a
+    // warning -- but this refresh did not check Homebrew for updates: its
+    // candidates are the previous refresh's (`InstanceNote::IndexUpdating`
+    // in crates/banager-core/src/model.rs), so none from it is not news
+    // that there are none.
+    updates = [];
+    instances = [
+      { ...snapshot.instances[0], status: { unavailable: null, notes: ["IndexUpdating"] } },
+      ...snapshot.instances.slice(1),
+    ];
+    const { findByText, queryByText } = renderPage();
+
+    await findByText("Homebrew is checking online for new versions");
+    expect(await findByText("No updates in the sources checked")).toBeInTheDocument();
+    expect(queryByText("Everything is up to date")).not.toBeInTheDocument();
+  });
+
+  it("does not say everything is up to date when a check failed this round", async () => {
+    // Every source still reads as answering, with no note: `refresh` keeps
+    // a source whose inventory or update check failed as it was, carries
+    // its last rows and candidates forward, and says so only in
+    // `errors`. None listed is then no news that there are none.
+    updates = [];
+    errors = [{ instance_id: "brew:/opt/homebrew", message: "brew outdated exited with code 1" }];
+    const { findByText, queryByText } = renderPage();
+
+    expect(await findByText("No updates in the sources checked")).toBeInTheDocument();
+    expect(queryByText("Everything is up to date")).not.toBeInTheDocument();
+  });
+
+  describe("source notices", () => {
+    it("puts a silent source's notice in the list's first row, at least 32 high, with its button in the line", async () => {
+      instances = [...snapshot.instances, stoppedOllama];
+      const { findByText, getByRole, queryByText } = renderPage();
+
+      const notice = await findByText("Ollama isn't running");
+      // The list's first row, which scrolls away with it (spec §3.8), over
+      // the rows, and under the list's header.
+      expect(slotOf(notice)).toBe(0);
+      expect(slotOf(await findRow("glib"))).toBe(1);
+      const header = getByRole("checkbox", { name: SELECT_ALL });
+      expect(header.compareDocumentPosition(notice) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      // A line of the list: at least 32 high, 20 in from the edge as the rows are,
+      // on their grid -- the ⚠︎ in the avatars' column, the title where
+      // the names start -- over a hairline as a row's.
+      const line = notice.closest("[data-notice-line]") as HTMLElement;
+      expect(line.className.split(" ")).toContain("min-h-8");
+      expect((line.closest("[data-list-slot] > div") as HTMLElement).className.split(" ")).toContain("px-5");
+      expect((line.querySelector("[data-notice-symbol]") as HTMLElement).className.split(" ")).toEqual(
+        expect.arrayContaining(["ml-7", "w-8"]),
+      );
+      expect(notice.className.split(" ")).toContain("ml-3");
+      const hairline = line.closest("[data-list-slot]")?.querySelector("[data-row-separator]") as HTMLElement;
+      expect(hairline.className.split(" ")).toEqual(expect.arrayContaining(["left-18", "right-0", "h-px"]));
+      // Its ⓘ and its one button, and no link.
+      expect(line.innerHTML).not.toContain("text-accent-text");
+      // Not one of the rows ↑ and ↓ move between.
+      expect(line.closest("[data-list-slot]")?.querySelector("[data-row-focus]")).toBeNull();
+      expect(getByRole("button", { name: "Open Ollama" })).toBeInTheDocument();
+      // Its explanation is behind Details, not spread over the page.
+      expect(queryByText("Open Ollama to see what it has and check for updates.")).toBeNull();
+      const details = getByRole("button", { name: "Details: Ollama isn't running" });
+      fireEvent.click(details);
+      expect(
+        document.getElementById(details.getAttribute("aria-controls") ?? ""),
+      ).toHaveTextContent("Open Ollama to see what it has and check for updates.");
+    });
+
+    it("says a check that did not finish as the list's first line, like a source's notice, and folds it with the others", async () => {
+      // It was a band of its own over the list's header, the web's way:
+      // 「部分检查未完成」 and the sentence beside it, and no button.
+      errors = [
+        { instance_id: "pipx:/Users/you/.local/pipx", message: "pipx list --json timed out after 60 s" },
+        { instance_id: "cargo:/Users/brulek/.cargo", message: "could not read .crates2.json" },
+      ];
+      instances = [...snapshot.instances, stoppedOllama];
+      const { container, getByRole, queryByText } = renderPage();
+
+      const notice = await screen.findByText("Some checks didn't finish");
+      // The list's first row, under its header, on the rows' grid.
+      expect(slotOf(notice)).toBe(0);
+      const header = getByRole("checkbox", { name: SELECT_ALL });
+      expect(header.compareDocumentPosition(notice) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      const line = notice.closest("[data-notice-line]") as HTMLElement;
+      expect(line.className.split(" ")).toContain("min-h-8");
+      expect((line.querySelector("[data-notice-symbol]") as HTMLElement).className.split(" ")).toEqual(
+        expect.arrayContaining(["ml-7", "w-8"]),
+      );
+      expect(line.querySelector("[data-notice-symbol] svg")?.getAttribute("class")).toContain("text-warning");
+      // Its sentence behind its ⓘ, not beside it.
+      expect(queryByText("pipx and Cargo didn't finish checking this time; some updates may not be listed yet.")).toBeNull();
+      const details = within(line).getByRole("button", { name: "Details: Some checks didn't finish" });
+      fireEvent.click(details);
+      expect(document.getElementById(details.getAttribute("aria-controls") ?? "")).toHaveTextContent(
+        "pipx and Cargo didn't finish checking this time; some updates may not be listed yet.",
+      );
+      // The toolbar's Check Again, small and grey, as a silent source's line has.
+      const again = within(line).getByRole("button", { name: "Check Again" });
+      expect(again.className).toContain(BUTTON.small.grey);
+      mockInvoke.mockClear();
+      fireEvent.click(again);
+      await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("refresh"));
+      // With Ollama's, one line: the rest behind 「还有N条提示」.
+      expect(queryByText("Ollama isn't running")).toBeNull();
+      fireEvent.click(getByRole("button", { name: "1 more note" }));
+      expect(screen.getByText("Ollama isn't running")).toBeInTheDocument();
+      // Said once, in the line: no band over the page.
+      // (Unfolding draws the lines anew: the same words, not the same node.)
+      expect(within(container).getAllByText("Some checks didn't finish")).toHaveLength(1);
+    });
+
+    it("says up front how many tools could not be checked and why, with Check Again, as the list's first line", async () => {
+      // Walk-2 W2-1: offline, the rows that could not be checked sat under
+      // the folded 「另有N个无法在这里更新」, read as tools Banager can't
+      // manage, while the page looked like a check that had worked. A git
+      // crate no check will find is not one of them, nor one the user hid,
+      // nor a 404 no later check will mend (walk-2 review 1.1); and nothing
+      // changes what can be updated.
+      const offline = (name: string, warnings: Warning[] = [
+        { Message: "npm outdated -g: npm error code ENOTFOUND" },
+        "TransientLookupFailure",
+      ]): Snapshot["updates"][number] => ({
+        key: { instance_id: "npm:/usr/local", kind: "Package" as const, name },
+        current: "1.0.0",
+        target: "1.0.0",
+        channel: "Native" as const,
+        checkable: false,
+        warnings,
+        blocked: null,
+      });
+      settings.ignored_updates = [offline("hidden").key];
+      updates = [
+        snapshot.updates[0],
+        offline("typescript"),
+        offline("prettier"),
+        offline("hidden"),
+        offline("left-pad", [{ Message: "npm error code E404 Not Found" }]),
+        { key: myForkKey, current: "0.1.0", target: "0.1.0", channel: "Registry", checkable: false, warnings: ["NonRegistrySource"], blocked: null },
+      ];
+      const { getByRole, findByText } = renderPage();
+
+      const title = await findByText("2 tools couldn't be checked: Connection failed");
+      const line = title.closest("[data-notice-line]") as HTMLElement;
+      // The list's first row, folded or not.
+      expect(slotOf(title)).toBe(0);
+      expect(line.querySelector("[data-notice-symbol] svg")?.getAttribute("class")).toContain("text-warning");
+      const details = within(line).getByRole("button", {
+        name: "Details: 2 tools couldn't be checked: Connection failed",
+      });
+      fireEvent.click(details);
+      expect(document.getElementById(details.getAttribute("aria-controls") ?? "")).toHaveTextContent(
+        "Some updates may not be listed. Check your internet connection, then try again.",
+      );
+      mockInvoke.mockClear();
+      fireEvent.click(within(line).getByRole("button", { name: "Check Again" }));
+      await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("refresh"));
+
+      // Said once: the fold over the rows says only how many it holds
+      // (walk-2 review 1.4).
+      expect(getByRole("button", { name: "4 more can't be updated here" })).toHaveAttribute(
+        "aria-expanded",
+        "false",
+      );
+      // What can be updated is what it was.
+      expect(await findByText("1 update available")).toBeInTheDocument();
+      expect(getByRole("button", { name: "Update All" })).toBeEnabled();
+    });
+
+    it("names no cause in the line when the tools' words give none, and says to check again later", async () => {
+      updates = [
+        {
+          key: myForkKey,
+          current: "0.1.0",
+          target: "0.1.0",
+          channel: "Registry",
+          checkable: false,
+          warnings: [{ Message: "crates.io returned status 500" }, "TransientLookupFailure"],
+          blocked: null,
+        },
+      ];
+      await i18n.changeLanguage("zh-CN");
+      try {
+        const { findByText, getByRole } = renderPage();
+        const title = await findByText("1个工具没有检查成功");
+        const line = title.closest("[data-notice-line]") as HTMLElement;
+        const details = within(line).getByRole("button", { name: /1个工具没有检查成功/ });
+        fireEvent.click(details);
+        expect(document.getElementById(details.getAttribute("aria-controls") ?? "")).toHaveTextContent(
+          "可能还有更新没有列出。可以稍后点按“重新检查”再试。",
+        );
+        expect(getByRole("button", { name: "另有1个无法在这里更新" })).toBeInTheDocument();
+      } finally {
+        await i18n.changeLanguage("en");
+      }
+    });
+
+    it("does not say a silent source's check did not finish: its own line says it did not answer", async () => {
+      // `refresh` carries a silent source's errors forward while an
+      // operation holds it.
+      errors = [{ instance_id: "ollama:http://127.0.0.1:11434", message: "connection refused" }];
+      instances = [...snapshot.instances, stoppedOllama];
+      const { queryByText, queryByRole } = renderPage();
+
+      await screen.findByText("Ollama isn't running");
+      expect(queryByText("Some checks didn't finish")).toBeNull();
+      expect(queryByRole("button", { name: /more note/ })).toBeNull();
+    });
+
+    it("folds two lines into one, the warning first, and keeps them unfolded while the page changes under them, until their number does", async () => {
+      const brewUpdating = {
+        ...snapshot.instances[0],
+        status: { unavailable: null, notes: ["IndexUpdating" as const] },
+      };
+      instances = [brewUpdating, ...snapshot.instances.slice(1), stoppedOllama];
+      const { queryClient } = renderPage();
+
+      // Ollama's line, with its button, though Homebrew's comes first.
+      await screen.findByText("Ollama isn't running");
+      expect(screen.getByRole("button", { name: "Open Ollama" })).toBeInTheDocument();
+      expect(screen.queryByText("Homebrew is checking online for new versions")).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "1 more note" }));
+      expect(screen.getByText("Homebrew is checking online for new versions")).toBeInTheDocument();
+
+      // The updates go, and the page says so under the same two lines.
+      updates = [];
+      await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.snapshot }));
+      await screen.findByText("No updates in the sources checked");
+      expect(screen.getByText("Homebrew is checking online for new versions")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Show Fewer" })).toBeInTheDocument();
+
+      // One line, then two again: folded.
+      instances = [...snapshot.instances, stoppedOllama];
+      await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.snapshot }));
+      await waitFor(() => expect(screen.queryByText("Homebrew is checking online for new versions")).toBeNull());
+      expect(screen.queryByRole("button", { name: "Show Fewer" })).toBeNull();
+      instances = [brewUpdating, ...snapshot.instances.slice(1), stoppedOllama];
+      await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.snapshot }));
+      expect(await screen.findByRole("button", { name: "1 more note" })).toHaveAttribute("aria-expanded", "false");
+      expect(screen.queryByText("Homebrew is checking online for new versions")).toBeNull();
+    });
+
+    it("names the silent source in its notice, and every row names its own, so the notice is never read as another source's", async () => {
+      // The critical case, now that the list is not grouped by source.
+      // Homebrew answered with three updates; Ollama did not answer and its
+      // two candidates were carried forward from last time. The notice says
+      // which source it is about, each Ollama row says Ollama and that its
+      // source is unavailable, and no Homebrew row says either.
+      const llamaKey: ArtifactKey = { ...qwenKey, name: "llama3.2:3b" };
+      instances = [
+        ...snapshot.instances,
+        { ...stoppedOllama, status: { unavailable: "NotResponding", notes: [] } },
+      ];
+      // Three models carried forward, two of them with an update: the
+      // notice counts what Ollama has, as every page does, not the rows
+      // this page lists (W2-10 review).
+      artifacts = [qwenKey, llamaKey, { ...qwenKey, name: "gemma3:4b" }].map(installedRow);
+      updates = [
+        ...snapshot.updates,
+        brewCandidate("jq"),
+        ...[qwenKey, llamaKey].map((key) => ({
+          key,
+          current: "5642e97495e1",
+          target: "a1b2c3d4e5f6",
+          channel: "Digest" as const,
+          checkable: true,
+          warnings: [],
+          blocked: null,
+        })),
+      ];
+      const { findByText, getByRole } = renderPage();
+
+      await findByText("Ollama isn't responding");
+      const details = getByRole("button", { name: "Details: Ollama isn't responding" });
+      fireEvent.click(details);
+      // Its rows, by source: in a list that mixes sources, "what's listed
+      // here" alone would take in Homebrew's fresh rows too.
+      expect(
+        document.getElementById(details.getAttribute("aria-controls") ?? ""),
+      ).toHaveTextContent(
+        "Ollama has 3 models. It didn't respond this time, so they're shown as they were when it last responded. Check again later.",
+      );
+      for (const name of ["glib", "onyx", "jq"]) {
+        const row = rowOf(name);
+        expect(within(row).getByText("Homebrew")).toBeInTheDocument();
+        expect(within(row).queryByText("Ollama")).toBeNull();
+        expect(within(row).getByRole("button", { name: ROW_UPDATE })).toBeInTheDocument();
+      }
+      await showCantUpdate();
+      for (const name of ["qwen3:8b", "llama3.2:3b"]) {
+        const row = await findRow(name);
+        expect(within(row).getByText("Ollama")).toBeInTheDocument();
+        expect(chipDetail(row, "Can't update now")).toHaveTextContent(
+          "Ollama isn't responding. Click Check Again later.",
+        );
+      }
+    });
+
+    it("marks every row of a read-only source View only, and no row of another source", async () => {
+      // "Banager can only show what's installed with pip" used to sit
+      // above nine rows, three of which were Homebrew's and perfectly
+      // updatable.
+      const pipPackages = ["urllib3", "requests", "certifi", "idna", "charset-normalizer", "six"];
+      updates = [
+        ...snapshot.updates,
+        brewCandidate("jq"),
+        ...pipPackages.map((name) => ({
+          key: { instance_id: "pip:/usr/bin/python3", kind: "Package" as const, name },
+          current: "1.0.0",
+          target: "1.1.0",
+          channel: "Registry" as const,
+          checkable: true,
+          warnings: [],
+          blocked: null,
+        })),
+      ];
+      const { queryAllByText } = renderPage();
+
+      await showCantUpdate();
+      await findRow("urllib3");
+      for (const name of ["glib", "onyx", "jq"]) {
+        expect(within(rowOf(name)).queryByRole("button", { name: "View only" })).toBeNull();
+      }
+      for (const name of pipPackages) {
+        expect(within(rowOf(name)).getByRole("button", { name: "View only" })).toBeInTheDocument();
+        expect(within(rowOf(name)).getByText("pip")).toBeInTheDocument();
+      }
+      // Not a notice line of its own: the rows say it, on their chips and
+      // nowhere else.
+      expect(queryAllByText("View only").filter((text) => text.closest("button") === null)).toEqual([]);
+    });
+
+    it("tells the truth about carried-forward rows on this page, both ways round", async () => {
+      // What a silent source's notice says about its rows has to match
+      // them. Homebrew is silent and its two candidates were carried
+      // forward, so they are last time's answer and the user needs telling.
+      instances = [
+        { ...snapshot.instances[0], status: { unavailable: "NotResponding", notes: [] } },
+        ...snapshot.instances.slice(1),
+      ];
+      // Three installed, two of them with an update listed here: the
+      // notice says three, the number every page says (W2-10 review).
+      artifacts = [glibKey, onyxKey, { ...glibKey, name: "jq" }].map(installedRow);
+      const withRows = renderPage();
+
+      const details = await withRows.findByRole("button", {
+        name: "Details: Homebrew isn't responding",
+      });
+      fireEvent.click(details);
+      expect(
+        document.getElementById(details.getAttribute("aria-controls") ?? ""),
+      ).toHaveTextContent(
+        "3 tools were installed with Homebrew. It didn't respond this time, so they're shown as they were when it last responded. Check again later.",
+      );
+      // The next step it names, as its line's own button, which checks again.
+      const line = details.closest("[data-notice-line]") as HTMLElement;
+      const again = within(line).getByRole("button", { name: "Check Again" });
+      expect(again.className).toContain(BUTTON.small.grey);
+      mockInvoke.mockClear();
+      fireEvent.click(again);
+      await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("refresh"));
+      withRows.unmount();
+
+      // Its tools carried forward but none with an update: they are still
+      // its last answer, on the Installed page, and the notice says so
+      // here too -- not that they cannot be listed.
+      updates = snapshot.updates.filter((update) => update.key.instance_id !== glibKey.instance_id);
+      const noUpdates = renderPage();
+      const quietDetails = await noUpdates.findByRole("button", {
+        name: "Details: Homebrew isn't responding",
+      });
+      fireEvent.click(quietDetails);
+      expect(document.getElementById(quietDetails.getAttribute("aria-controls") ?? "")).toHaveTextContent(
+        "3 tools were installed with Homebrew.",
+      );
+      noUpdates.unmount();
+
+      // And the cold start, which is every launch: the snapshot is in
+      // memory only, so the first refresh has nothing to carry forward and
+      // the same notice promised rows that were not there.
+      artifacts = [];
+      updates = [
+        {
+          key: urllib3Key,
+          current: "2.2.1",
+          target: "2.3.0",
+          channel: "Registry",
+          checkable: true,
+          warnings: [],
+          blocked: null,
+        },
+      ];
+      const coldStart = renderPage();
+
+      const coldDetails = await coldStart.findByRole("button", {
+        name: "Details: Homebrew isn't responding",
+      });
+      fireEvent.click(coldDetails);
+      const text = document.getElementById(coldDetails.getAttribute("aria-controls") ?? "");
+      expect(text).toHaveTextContent(
+        "The tools installed with it can't be listed this time.",
+      );
+      expect(text?.textContent).not.toMatch(/What's listed/);
+    });
+  });
+
+  it("offers no Update button for a row carried forward from a source that isn't answering", async () => {
+    // `refresh` keeps an unavailable source's last known candidates rather
+    // than dropping them, so this row is on screen -- and `ollama pull`
+    // against a daemon that is not listening cannot succeed. Offering the
+    // button and then refusing the click is the pattern this phase exists
+    // to remove; the count says what is really on offer instead.
+    instances = [...snapshot.instances, stoppedOllama];
+    updates = [
+      ...snapshot.updates,
+      {
+        key: qwenKey,
+        current: "5642e97495e1",
+        target: "a1b2c3d4e5f6",
+        channel: "Digest",
+        checkable: true,
+        warnings: [],
+        blocked: null,
+      },
+    ];
+    const { findByText, findAllByRole } = renderPage();
+
+    expect(await findByText("2 updates available")).toBeInTheDocument();
+    expect(await findByText("1 more can't be updated here")).toBeInTheDocument();
+    await showCantUpdate();
+    const row = await findRow("qwen3:8b");
+    expect(within(row).queryByRole("button", { name: ROW_UPDATE })).toBeNull();
+    expect(within(row).queryByRole("checkbox")).toBeNull();
+    // The two brew rows still have their buttons: one silent source does
+    // not disarm the page.
+    expect(await findAllByRole("button", { name: ROW_UPDATE })).toHaveLength(2);
+  });
+
+  it("draws only the rows on screen when a failed lookup turns every package into a row", async () => {
+    // Offline, a source cannot establish any remote version, so it reports
+    // one `checkable: false` candidate per installed package instead of
+    // none -- the page that already has to explain "we could not check"
+    // is also the page asked to draw several hundred rows.
+    updates = Array.from({ length: 400 }, (_, index) => ({
+      key: {
+        instance_id: "pip:/usr/bin/python3",
+        kind: "Package" as const,
+        name: `pkg-${String(index).padStart(3, "0")}`,
+      },
+      current: "1.0.0",
+      target: "1.0.0",
+      channel: "Registry" as const,
+      checkable: false,
+      warnings: [{ Message: "Could not reach pypi.org" }],
+      blocked: null,
+    }));
+
+    const { findByText, container } = renderPage();
+
+    // The list still knows how long it is.
+    expect(await findByText("400 more can't be updated here")).toBeInTheDocument();
+    await showCantUpdate();
+    await findRow("pkg-000");
+    const drawn = container.querySelectorAll("[data-index]").length;
+    expect(drawn).toBeGreaterThan(0);
+    // 600px of viewport over 56px rows is about eleven rows plus the
+    // virtualizer's overscan; anything near 400 means the whole list is in
+    // the DOM.
+    expect(drawn).toBeLessThan(40);
+    expect(container.textContent).not.toContain("pkg-399");
+  });
+
+  it("says which version you are moving to, with technical details off", async () => {
+    // Spec §6: the one screen whose job is "look before you act". A
+    // confirmation that hides what changes is not a confirmation.
+    expect(settings.show_technical_details).toBe(false);
+
+    const { findAllByRole, findByRole } = renderPage();
+
+    fireEvent.click((await findAllByRole("button", { name: ROW_UPDATE }))[0]);
+    const dialog = await findByRole("alertdialog");
+
+    // Under the question, with where it comes from.
+    const jump = await within(dialog).findByText("2.88.3 → 2.90.0");
+    expect(jump.closest("[data-dialog-subtitle]")).toHaveTextContent("Homebrew · 2.88.3 → 2.90.0");
+  });
+
+  describe("the confirmation sheet", () => {
+    it("asks about one tool by its name, and about several by how many, each with its avatar and new version", async () => {
+      const { findAllByRole, findByRole, getByRole, queryByRole } = renderPage();
+
+      fireEvent.click((await findAllByRole("button", { name: ROW_UPDATE }))[0]);
+      let dialog = await findByRole("alertdialog", { name: "Update “glib”?" });
+      // One tool: an alert, 360 wide, its 48 icon over the question.
+      expect(dialog).toHaveAttribute("data-dialog-width", "360");
+      expect(dialog.querySelector("[data-dialog-icon]")).not.toBeNull();
+      expect(dialog.querySelector("[data-sheet-tools]")).toBeNull();
+      // Described by where it comes from and the version it moves to, then
+      // what there is to know about it, as it opens.
+      const about = dialog.querySelector("[data-sheet-about]") as HTMLElement;
+      expect(dialog.getAttribute("aria-describedby")?.split(" ")).toEqual([
+        dialog.querySelector("[data-dialog-subtitle]")?.id,
+        about.id,
+      ]);
+      expect(dialog).toHaveAccessibleDescription(/^Homebrew · 2\.88\.3 → 2\.90\.0/);
+      fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+      await waitFor(() => expect(queryByRole("alertdialog")).toBeNull());
+
+      const checkboxes = await findAllByRole("checkbox", { name: ROW_CHECKBOX });
+      fireEvent.click(checkboxes[0]);
+      fireEvent.click(checkboxes[1]);
+      fireEvent.click(getByRole("button", { name: /^Update Selected/ }));
+      dialog = await findByRole("alertdialog", { name: "Update 2 tools?" });
+      // Several: 480 wide, no icon, the tools in a grouped list.
+      expect(dialog).toHaveAttribute("data-dialog-width", "480");
+      expect(dialog.querySelector("[data-dialog-icon]")).toBeNull();
+      const tools = [...dialog.querySelectorAll("[data-sheet-tools] > [data-sheet-tool]")] as HTMLElement[];
+      expect(tools.map((tool) => tool.querySelector("[data-sheet-name]")?.textContent)).toEqual(["glib", "onyx"]);
+      // The row's own avatar, at 24 -- glib has no logo in this test's
+      // pack: the program tile (I8), its source's initial on the corner;
+      // its source for a screen reader; the version it moves to, on the right.
+      const tile = tools[0].querySelector("[data-program-tile]") as HTMLElement;
+      expect(tile).toHaveAttribute("aria-hidden", "true");
+      expect(tile.className).toMatch(/\bh-6 w-6\b/);
+      expect(within(tools[0]).getByText("H").closest("[data-source-badge]")).not.toBeNull();
+      expect(within(tools[0]).getByText("Homebrew")).toHaveClass("sr-only");
+      expect(within(tools[0]).getByText("2.88.3 → 2.90.0")).toBeInTheDocument();
+      expect(within(tools[1]).getByText("5.0.2 → 5.1.0")).toBeInTheDocument();
+    });
+
+    it("shows a tool's logo, with its source's on the corner, on its row and on its line in the sheet", async () => {
+      // A pack of this test's own: glib's logo and Homebrew's.
+      const GLIB = "M1 1h22v22H1z";
+      const HOMEBREW = "M3 3h18v18H3z";
+      const toolIcons = loadToolIcons(
+        {
+          version: 1,
+          generated: "2026-09-28",
+          glyphs: {
+            "si-glib": { path: GLIB, hex: "4A86CF", title: "GLib" },
+            "si-homebrew": { path: HOMEBREW, hex: "FBB040", title: "Homebrew" },
+          },
+          rasters: {},
+          tools: { "brew:glib": "si-glib" },
+          sources: { brew: "si-homebrew" },
+        },
+        new Map(),
+      );
+      const { findByRole } = renderPage({ toolIcons });
+      // The tool's logo, not on the corner, and its source's, on it.
+      const expectLogos = (avatarHolder: Element | null) => {
+        const logo = avatarHolder?.querySelector(`path[d="${GLIB}"]`);
+        expect(logo).toBeInstanceOf(Element);
+        expect(logo?.closest("[data-source-badge]")).toBeNull();
+        expect(avatarHolder?.querySelector(`[data-source-badge] path[d="${HOMEBREW}"]`)).toBeInstanceOf(Element);
+      };
+
+      const row = await findRow("glib");
+      expectLogos(row);
+
+      fireEvent.click(within(row).getByRole("button", { name: ROW_UPDATE }));
+      expectLogos((await findByRole("alertdialog", { name: "Update “glib”?" })).querySelector("[data-dialog-icon]"));
+    });
+
+    it("keeps the commands one press away while Show technical details is off", async () => {
+      const { findAllByRole, getByRole, findByRole } = renderPage();
+
+      const checkboxes = await findAllByRole("checkbox", { name: ROW_CHECKBOX });
+      fireEvent.click(checkboxes[0]);
+      fireEvent.click(checkboxes[1]);
+      fireEvent.click(getByRole("button", { name: /^Update Selected/ }));
+      const dialog = await findByRole("alertdialog");
+
+      const disclosure = within(dialog).getByRole("button", { name: "Show Commands" });
+      expect(disclosure).toHaveAttribute("aria-expanded", "false");
+      expect(within(dialog).queryByText(/brew upgrade/)).toBeNull();
+      fireEvent.click(disclosure);
+      // Each under its tool's name.
+      expect(
+        within(dialog).getByText(command("/opt/homebrew/bin/brew upgrade --cask onyx")).previousElementSibling,
+      ).toHaveTextContent("onyx");
+    });
+
+    it("shows the commands from the start with Show technical details on", async () => {
+      settings.show_technical_details = true;
+      const { findAllByRole, findByRole } = renderPage();
+
+      fireEvent.click((await findAllByRole("button", { name: ROW_UPDATE }))[0]);
+      const dialog = await findByRole("alertdialog");
+
+      expect(await within(dialog).findByText(command("/opt/homebrew/bin/brew upgrade --formula glib"))).toBeInTheDocument();
+      expect(within(dialog).getByRole("button", { name: "Show Command" })).toHaveAttribute(
+        "aria-expanded",
+        "true",
+      );
+    });
+
+    it("keeps each tool's notes under its own row, in the label colour at 11, a caution marked", async () => {
+      needsPassword.add("onyx");
+      noCancel.add("glib");
+      planWarnings.glib = ["CompilesLocally"];
+      const { findAllByRole, getByRole, findByRole } = renderPage();
+
+      const checkboxes = await findAllByRole("checkbox", { name: ROW_CHECKBOX });
+      fireEvent.click(checkboxes[0]);
+      fireEvent.click(checkboxes[1]);
+      fireEvent.click(getByRole("button", { name: /^Update Selected/ }));
+      const dialog = await findByRole("alertdialog");
+      await waitFor(() => expect(within(dialog).getByRole("button", { name: UPDATE_SEVERAL })).toBeEnabled());
+
+      const tools = [...dialog.querySelectorAll("[data-sheet-tool]")].map((tool) => ({
+        tool: tool.querySelector("[data-sheet-name]")?.textContent,
+        lines: [...tool.querySelectorAll("li")].map((item) => ({
+          text: item.textContent?.trim(),
+          caution: item.hasAttribute("data-caution"),
+        })),
+      }));
+      expect(tools).toEqual([
+        {
+          tool: "glib",
+          lines: [
+            { text: "This compiles on your Mac and takes a while.", caution: false },
+            {
+              text: "This can't be cancelled once it starts. Don't quit Banager or shut down your Mac until it finishes.",
+              caution: true,
+            },
+          ],
+        },
+        { tool: "onyx", lines: [{ text: "You can't enter your Mac password here. If an app asks for it at this step, you'll see how to finish in Terminal.", caution: false }] },
+      ]);
+      // Text to read, not a caption: the label colour, at 11.
+      for (const line of dialog.querySelectorAll("[data-sheet-tool] li")) {
+        expect(line.className).toMatch(/\btext-foreground\b/);
+        expect(line.className).toMatch(/\btext-small\b/);
+      }
+      // A caution's ⚠︎, before its words.
+      const caution = dialog.querySelector("[data-sheet-tool] li[data-caution]") as HTMLElement;
+      expect(caution.firstElementChild?.tagName.toLowerCase()).toBe("svg");
+      expect(caution.firstElementChild).toHaveClass("text-warning");
+      // No 「请注意」 block, and no count of the notes beside Update.
+      expect(within(dialog).queryByRole("region", { name: "Notes" })).toBeNull();
+      expect(within(dialog).queryByRole("button", { name: /notes?$/ })).toBeNull();
+    });
+
+    it("lists the tools with notes first, so that the first note is in sight without scrolling", async () => {
+      // onyx comes after glib on the page; its note puts it first.
+      needsPassword.add("onyx");
+      const { findByRole, findByText, getByRole } = renderPage();
+
+      await findByText("2 updates available");
+      fireEvent.click(getByRole("button", { name: "Update All" }));
+      const dialog = await findByRole("alertdialog", { name: "Update 2 tools?" });
+      const names = () =>
+        [...dialog.querySelectorAll("[data-sheet-tool]")].map((tool) => tool.querySelector("[data-sheet-name]")?.textContent);
+
+      // (Before the plans are back, the list's own order: see "while its
+      // plans are on their way" below.)
+      await waitFor(() => expect(within(dialog).getByRole("button", { name: UPDATE_SEVERAL })).toBeEnabled());
+      expect(names()).toEqual(["onyx", "glib"]);
+      const first = dialog.querySelector("[data-sheet-tool]") as HTMLElement;
+      expect(within(first).getByText("You can't enter your Mac password here. If an app asks for it at this step, you'll see how to finish in Terminal.")).toBeInTheDocument();
+    });
+
+    it("does not count Homebrew's routine cleanup line as a note to put first (U9)", async () => {
+      // Every formula's update now says which old versions go after it; a
+      // tool whose only line is that ranks with the tools that say nothing,
+      // so a caution or a major update stays in sight above them.
+      const cleansUp = (versions: string[]): Warning => ({ HomebrewCleansUpOldVersions: { versions } });
+      updates = [
+        brewCandidate("gemini-cli"),
+        brewCandidate("git"),
+        brewCandidate("rustup"),
+        { ...brewCandidate("tokei"), current: "12.1.2", target: "13.0.0" },
+      ];
+      planWarnings["gemini-cli"] = [cleansUp(["0.9.0", "1.0.0"])];
+      planWarnings.git = [cleansUp(["2.54.0", "2.55.0"])];
+      noCancel.add("rustup");
+      const { findByRole, findByText, getByRole } = renderPage();
+
+      await findByText("4 updates available");
+      fireEvent.click(getByRole("button", { name: "Update All" }));
+      const dialog = await findByRole("alertdialog", { name: "Update 4 tools?" });
+      const names = () =>
+        [...dialog.querySelectorAll("[data-sheet-tool]")].map((tool) => tool.querySelector("[data-sheet-name]")?.textContent);
+
+      await waitFor(() => expect(within(dialog).getByRole("button", { name: UPDATE_SEVERAL })).toBeEnabled());
+      expect(names()).toEqual(["rustup", "tokei", "gemini-cli", "git"]);
+      // The cleanup lines are still said, each under its own tool.
+      const git = [...dialog.querySelectorAll("[data-sheet-tool]")].find(
+        (tool) => tool.querySelector("[data-sheet-name]")?.textContent === "git",
+      ) as HTMLElement;
+      expect(within(git).getByText(/2\.54\.0/)).toBeInTheDocument();
+    });
+
+    it("says nothing about notes beside Update when there are none", async () => {
+      const { findByRole, findByText, getByRole } = renderPage();
+
+      await findByText("2 updates available");
+      fireEvent.click(getByRole("button", { name: "Update All" }));
+      const dialog = await findByRole("alertdialog", { name: "Update 2 tools?" });
+
+      await waitFor(() => expect(within(dialog).getByRole("button", { name: UPDATE_SEVERAL })).toBeEnabled());
+      expect(within(dialog).queryByRole("region", { name: "Notes" })).toBeNull();
+      expect(within(dialog).queryByRole("button", { name: /to note$/ })).toBeNull();
+    });
+
+    it("names the source after a name the list has from two sources, and only there (R3)", async () => {
+      const pipx: Snapshot["instances"][number] = {
+        id: "pipx",
+        adapter_id: "pipx",
+        exe_path: "/opt/homebrew/bin/pipx",
+        prefix: "/opt/homebrew/bin",
+        scope: "User",
+        version: "1.17.3",
+        status: { unavailable: null, notes: [] },
+        answered_at: null,
+        unverified_version: null,
+        read_only_reason: null,
+      };
+      instances = [snapshot.instances[0], pipx];
+      updates = [
+        brewCandidate("httpie"),
+        { ...brewCandidate("httpie"), key: { instance_id: "pipx", kind: "Package", name: "httpie" } },
+        brewCandidate("jq"),
+      ];
+      const { findByRole, findByText, getByRole } = renderPage();
+
+      await findByText("3 updates available");
+      fireEvent.click(getByRole("button", { name: "Update All" }));
+      const dialog = await findByRole("alertdialog", { name: "Update 3 tools?" });
+      const rows = [...dialog.querySelectorAll("[data-sheet-tool]")] as HTMLElement[];
+      const shown = (row: HTMLElement) =>
+        [...row.querySelectorAll("[data-sheet-name] ~ span")].map((span) => [span.textContent, span.className]);
+      const byName = (name: string) => rows.filter((row) => row.querySelector("[data-sheet-name]")?.textContent === name);
+      // Both httpies say which they are, in 11 muted beside the name --
+      // the first words to give way, cut short, never the name.
+      expect(byName("httpie").map(shown)).toEqual([
+        [["Homebrew", "min-w-0 truncate text-small text-muted"]],
+        [["pipx", "min-w-0 truncate text-small text-muted"]],
+      ]);
+      // jq says it to a screen reader only.
+      expect(shown(byName("jq")[0])).toEqual([["Homebrew", "sr-only"]]);
+    });
+
+    it("lists every tool of a long batch in a grouped list that scrolls inside past 320", async () => {
+      updates = Array.from({ length: 10 }, (_, i) => brewCandidate(`tool-${i}`));
+      const { findByRole, findByText, getByRole } = renderPage();
+
+      await findByText("10 updates available");
+      fireEvent.click(getByRole("button", { name: "Update All" }));
+      const dialog = await findByRole("alertdialog", { name: "Update 10 tools?" });
+
+      const list = dialog.querySelector("[data-sheet-tools]") as HTMLElement;
+      expect([...list.querySelectorAll("[data-sheet-name]")].map((name) => name.textContent)).toEqual(
+        Array.from({ length: 10 }, (_, i) => `tool-${i}`),
+      );
+      // The group's fill and corners, no taller than 320, scrolling inside
+      // -- and reachable by the keyboard to scroll it.
+      for (const look of ["bg-group", "rounded-group", "max-h-80", "overflow-y-auto"]) {
+        expect(list).toHaveClass(look);
+      }
+      expect(list).toHaveAttribute("tabindex", "0");
+      // Nothing folded behind a press.
+      expect(within(dialog).queryByRole("button", { name: /more$/ })).toBeNull();
+    });
+
+    it("lists every tool of a long batch when one of them was refused, with its why", async () => {
+      // Its why in the backend's words: "Show technical details" is on.
+      settings = { ...settings, show_technical_details: true };
+      updates = Array.from({ length: 10 }, (_, i) => brewCandidate(`tool-${i}`));
+      planFailures["tool-8"] = "tool-8 is pinned";
+      const { findByRole, findByText, getByRole } = renderPage();
+
+      await findByText("10 updates available");
+      fireEvent.click(getByRole("button", { name: "Update All" }));
+      const dialog = await findByRole("alertdialog", { name: "Update 9 tools?" });
+
+      expect(dialog.querySelectorAll("[data-sheet-tool]")).toHaveLength(10);
+      expect(within(dialog).getByRole("alert")).toHaveTextContent("Couldn't prepare the update: tool-8 is pinned");
+      expect(within(dialog).queryByRole("button", { name: /more$/ })).toBeNull();
+    });
+
+    it("gives a row's Update the regular grey look, and the accent to Update all alone", async () => {
+      // One accent button on the page: what it asks for as a whole. Every
+      // row offers its own the same way, grey.
+      renderPage();
+
+      const update = within(await findRow("glib")).getByRole("button", { name: ROW_UPDATE });
+      expect(update.className).toBe(BUTTON.regular.grey);
+      expect(screen.getByRole("button", { name: "Update All" }).className).toBe(BUTTON.regular.default);
+      expect(document.querySelectorAll("button.bg-accent")).toHaveLength(1);
+    });
+
+    it("puts the focus on Update as it opens, and gives it back to the row's Update when cancelled", async () => {
+      const { findAllByRole, findByRole, queryByRole } = renderPage();
+
+      const rowUpdate = within(await findRow("glib")).getByRole("button", { name: ROW_UPDATE });
+      fireEvent.click(rowUpdate);
+      const dialog = await findByRole("alertdialog");
+      await waitFor(() =>
+        expect(document.activeElement).toBe(within(dialog).getByRole("button", { name: "Update" })),
+      );
+
+      fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+      await waitFor(() => expect(queryByRole("alertdialog")).toBeNull());
+      await waitFor(() => expect(document.activeElement).toBe(rowUpdate));
+      expect(await findAllByRole("button", { name: ROW_UPDATE })).toContain(rowUpdate);
+    });
+
+    it("puts the focus on the list's first row once the updates Update all confirmed have started", async () => {
+      // Update all has nothing left to start and turns off: the focus goes
+      // to the list, not with the button to the window's body.
+      const { getByRole, findByRole, queryByRole, findByText } = renderPage();
+
+      await findByText("2 updates available");
+      const updateAll = getByRole("button", { name: "Update All" });
+      fireEvent.click(updateAll);
+      const dialog = await findByRole("alertdialog");
+      fireEvent.click(within(dialog).getByRole("button", { name: UPDATE_SEVERAL }));
+
+      await waitFor(() => expect(submittedPlanIds()).toHaveLength(2));
+      await waitFor(() => expect(queryByRole("alertdialog")).toBeNull());
+      await waitFor(() => expect(document.activeElement).toBe(rowOf("glib")));
+    });
+
+    it("gives the focus back to Update all when its confirmation is cancelled", async () => {
+      const { getByRole, findByRole, queryByRole, findByText } = renderPage();
+
+      await findByText("2 updates available");
+      const updateAll = getByRole("button", { name: "Update All" });
+      fireEvent.click(updateAll);
+      const dialog = await findByRole("alertdialog");
+      fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+      await waitFor(() => expect(queryByRole("alertdialog")).toBeNull());
+      await waitFor(() => expect(document.activeElement).toBe(updateAll));
+    });
+
+    it("puts the focus on a row once the update its own Update confirmed has started, as the button gives way to its progress", async () => {
+      const { findByRole, queryByRole } = renderPage();
+
+      const onyx = await findRow("onyx");
+      fireEvent.click(within(onyx).getByRole("button", { name: "Update onyx" }));
+      const dialog = await findByRole("alertdialog");
+      await waitFor(() => expect(within(dialog).getByRole("button", { name: "Update" })).toBeEnabled());
+      fireEvent.click(within(dialog).getByRole("button", { name: "Update" }));
+
+      await waitFor(() => expect(submittedPlanIds()).toHaveLength(1));
+      await waitFor(() => expect(queryByRole("alertdialog")).toBeNull());
+      await waitFor(() => expect(document.activeElement).toBe(rowOf("onyx")));
+      expect(document.activeElement).not.toBe(document.body);
+    });
+
+    it("puts the focus on Close when a batch did not all start, and back on Update all after it", async () => {
+      submitFailures["2"] = '{"kind":"expired"}';
+      const { getByRole, findByRole, queryByRole, findByText } = renderPage();
+
+      await findByText("2 updates available");
+      const updateAll = getByRole("button", { name: "Update All" });
+      fireEvent.click(updateAll);
+      const dialog = await findByRole("alertdialog");
+      fireEvent.click(within(dialog).getByRole("button", { name: UPDATE_SEVERAL }));
+
+      const close = await within(dialog).findByRole("button", { name: "Close" });
+      await waitFor(() => expect(document.activeElement).toBe(close));
+      fireEvent.click(close);
+      await waitFor(() => expect(queryByRole("alertdialog")).toBeNull());
+      await waitFor(() => expect(document.activeElement).toBe(updateAll));
+    });
+
+    it("gives the focus back to Update selected when Escape closes it", async () => {
+      const { findAllByRole, getByRole, findByRole, queryByRole } = renderPage();
+
+      fireEvent.click((await findAllByRole("checkbox", { name: ROW_CHECKBOX }))[0]);
+      const updateSelected = getByRole("button", { name: /^Update Selected/ });
+      fireEvent.click(updateSelected);
+      await findByRole("alertdialog");
+      fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+
+      await waitFor(() => expect(queryByRole("alertdialog")).toBeNull());
+      await waitFor(() => expect(document.activeElement).toBe(updateSelected));
+    });
+  });
+
+  describe("the confirmation sheet, while its plans are on their way", () => {
+    // Hands `name`'s held plan back, and lets what it sets off settle.
+    async function release(name: string) {
+      await waitFor(() => expect(releasePlan[name]).toBeDefined());
+      await act(async () => {
+        releasePlan[name]();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+    }
+
+    it("is up the moment Update selected is pressed, preparing, and offers Update once every plan is back", async () => {
+      holdPlans.add("glib");
+      holdPlans.add("onyx");
+      needsPassword.add("onyx");
+      const { findAllByRole, getByRole, findByRole } = renderPage();
+
+      const checkboxes = await findAllByRole("checkbox", { name: ROW_CHECKBOX });
+      fireEvent.click(checkboxes[0]);
+      fireEvent.click(checkboxes[1]);
+      fireEvent.click(getByRole("button", { name: "Update Selected (2)" }));
+
+      // No plan is back yet: the tools, with their avatars and versions,
+      // are the rows'.
+      const dialog = await findByRole("alertdialog", { name: "Update 2 tools?" });
+      expect(plannedNames().sort()).toEqual(["glib", "onyx"]);
+      const tools = [...dialog.querySelectorAll("[data-sheet-tool]")] as HTMLElement[];
+      expect(tools.map((tool) => tool.querySelector("[data-sheet-name]")?.textContent)).toEqual(["glib", "onyx"]);
+      expect(within(tools[0]).getByText("H")).toHaveAttribute("aria-hidden", "true");
+      expect(within(tools[0]).getByText("2.88.3 → 2.90.0")).toBeInTheDocument();
+      expect(within(tools[1]).getByText("5.0.2 → 5.1.0")).toBeInTheDocument();
+      // Preparing, where the notes and the commands will go, and Update off.
+      expect(within(dialog).getByText("Preparing…")).toBeInTheDocument();
+      expect(within(dialog).queryByText("You can't enter your Mac password here. If an app asks for it at this step, you'll see how to finish in Terminal.")).toBeNull();
+      expect(within(dialog).queryByRole("button", { name: /^Show Command/ })).toBeNull();
+      // Counted, as the batch uninstall's "Uninstall 3 Tools" is (walk-3 W3-18).
+      const update = within(dialog).getByRole("button", { name: "Update 2 Tools" });
+      expect(update).toBeDisabled();
+      expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeEnabled();
+
+      // One plan back is not the batch: still preparing, still off.
+      await release("glib");
+      expect(within(dialog).getByText("Preparing…")).toBeInTheDocument();
+      expect(update).toBeDisabled();
+      expect(within(dialog).queryByText("You can't enter your Mac password here. If an app asks for it at this step, you'll see how to finish in Terminal.")).toBeNull();
+
+      // Every plan back: the notes and the commands, and Update on.
+      await release("onyx");
+      await waitFor(() => expect(update).toBeEnabled());
+      expect(within(dialog).queryByText("Preparing…")).toBeNull();
+      // onyx's note, under onyx, which it brings to the top of the list.
+      const first = dialog.querySelector("[data-sheet-tool]") as HTMLElement;
+      expect(first.querySelector("[data-sheet-name]")).toHaveTextContent("onyx");
+      expect(first).toHaveTextContent("You can't enter your Mac password here. If an app asks for it at this step, you'll see how to finish in Terminal.");
+      showCommands(dialog);
+      expect(within(dialog).getByText(command("/opt/homebrew/bin/brew upgrade --formula glib"))).toBeInTheDocument();
+      expect(within(dialog).getByText(command("/opt/homebrew/bin/brew upgrade --cask onyx"))).toBeInTheDocument();
+      expect(submittedPlanIds()).toEqual([]);
+
+      fireEvent.click(update);
+      await waitFor(() => expect(submittedPlanIds()).toEqual([{ planId: "1" }, { planId: "2" }]));
+    });
+
+    it("is up at once for a row's own Update too, holding the focus itself until Update can take it", async () => {
+      holdPlans.add("glib");
+      const { findByRole } = renderPage();
+
+      const rowUpdate = within(await findRow("glib")).getByRole("button", { name: ROW_UPDATE });
+      fireEvent.click(rowUpdate);
+      const dialog = await findByRole("alertdialog", { name: "Update “glib”?" });
+      expect(within(dialog).getByText("2.88.3 → 2.90.0")).toBeInTheDocument();
+      expect(within(dialog).getByText("Preparing…")).toBeInTheDocument();
+      const update = within(dialog).getByRole("button", { name: "Update" });
+      expect(update).toBeDisabled();
+      // One confirmation at a time: the row's Update is off behind it.
+      expect(rowUpdate).toBeDisabled();
+      // Not the disabled Update, and not the button under the dimmed page.
+      await waitFor(() => expect(document.activeElement).toBe(dialog));
+
+      await release("glib");
+      await waitFor(() => expect(update).toBeEnabled());
+      expect(document.activeElement).toBe(update);
+      expect(within(dialog).queryByText("Preparing…")).toBeNull();
+    });
+
+    it("leaves the focus where the user put it while it was preparing", async () => {
+      holdPlans.add("glib");
+      const { findByRole } = renderPage();
+
+      fireEvent.click(within(await findRow("glib")).getByRole("button", { name: ROW_UPDATE }));
+      const dialog = await findByRole("alertdialog", { name: "Update “glib”?" });
+      const cancel = within(dialog).getByRole("button", { name: "Cancel" });
+      cancel.focus();
+
+      await release("glib");
+      await waitFor(() => expect(within(dialog).getByRole("button", { name: "Update" })).toBeEnabled());
+      // A key meant for Cancel is never taken by Update.
+      expect(document.activeElement).toBe(cancel);
+    });
+
+    it("stays shut when the plans of a sheet closed while preparing arrive, and says nothing on the page", async () => {
+      holdPlans.add("glib");
+      const { findByRole, queryByRole } = renderPage();
+
+      const rowUpdate = within(await findRow("glib")).getByRole("button", { name: ROW_UPDATE });
+      fireEvent.click(rowUpdate);
+      const dialog = await findByRole("alertdialog", { name: "Update “glib”?" });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+      await waitFor(() => expect(queryByRole("alertdialog")).toBeNull());
+      await waitFor(() => expect(document.activeElement).toBe(rowUpdate));
+
+      await release("glib");
+      expect(queryByRole("alertdialog")).toBeNull();
+      expect(queryByRole("alert")).toBeNull();
+      expect(rowUpdate).toBeEnabled();
+      expect(submittedPlanIds()).toEqual([]);
+    });
+
+    it("shuts when every plan is refused, and says why on the page, with the focus back on the row's Update", async () => {
+      // Why in the backend's words: "Show technical details" is on.
+      settings = { ...settings, show_technical_details: true };
+      planFailures.glib = "glib is pinned";
+      holdPlans.add("glib");
+      const { findByRole, queryByRole } = renderPage();
+
+      const rowUpdate = within(await findRow("glib")).getByRole("button", { name: ROW_UPDATE });
+      fireEvent.click(rowUpdate);
+      const dialog = await findByRole("alertdialog", { name: "Update “glib”?" });
+      expect(within(dialog).getByText("Preparing…")).toBeInTheDocument();
+
+      await release("glib");
+      expect(await findByRole("alert")).toHaveTextContent("Couldn't prepare the update: glib is pinned");
+      expect(queryByRole("alertdialog")).toBeNull();
+      await waitFor(() => expect(document.activeElement).toBe(rowUpdate));
+    });
+
+    it("says on the page that no update could be prepared, without the backend's words while technical details are off", async () => {
+      planFailures.glib = "glib is pinned";
+      const { findByRole, queryByRole, queryByText } = renderPage();
+
+      fireEvent.click(within(await findRow("glib")).getByRole("button", { name: ROW_UPDATE }));
+
+      expect(await findByRole("alert")).toHaveTextContent("Couldn't prepare the update. Try again later.");
+      expect(queryByText(/glib is pinned/)).toBeNull();
+      await waitFor(() => expect(queryByRole("alertdialog")).toBeNull());
+    });
+
+    it("shows the words on the page's refusal as soon as technical details are turned on", async () => {
+      // A refusal is worded where it is drawn (`refusalOf`), so the
+      // setting changing under it -- the page's own Show reasons, say --
+      // shows the words without pressing Update again.
+      planFailures.glib = "glib is pinned";
+      const { findByRole, findByText, queryClient } = renderPage();
+
+      fireEvent.click(within(await findRow("glib")).getByRole("button", { name: ROW_UPDATE }));
+      expect(await findByRole("alert")).toHaveTextContent("Couldn't prepare the update. Try again later.");
+
+      act(() => queryClient.setQueryData(queryKeys.settings, { ...settings, show_technical_details: true }));
+      expect(await findByText("Couldn't prepare the update: glib is pinned")).toBeInTheDocument();
+    });
+  });
+
+  it("never shows an Ollama model's two digests as a version jump in the confirmation", async () => {
+    // `current` is the local manifest digest and `target` is the registry
+    // manifest's: hashes, not versions, and not something to put in front
+    // of this audience either way. The row already knows this; the dialog has to as well.
+    instances = [...snapshot.instances, { ...stoppedOllama, status: { unavailable: null, notes: [] } }];
+    updates = [
+      {
+        key: qwenKey,
+        current: "5642e97495e1a0888838ee1b3b1a0b1c6a0f0f5e6c2d4a8b9e7c3d1f0a2b4c6d",
+        target: "sha256:9f1c0b6d2e4a7c5b3d1f8a6e4c2b0d9f7e5c3a1b8d6f4e2c0a9b7d5f3e1c8a6b",
+        channel: "Digest",
+        checkable: true,
+        warnings: [],
+        blocked: null,
+      },
+    ];
+
+    const { findAllByRole, findByRole } = renderPage();
+
+    fireEvent.click((await findAllByRole("button", { name: ROW_UPDATE }))[0]);
+    const dialog = await findByRole("alertdialog");
+
+    expect(
+      await within(dialog).findByText("This model has a new version"),
+    ).toBeInTheDocument();
+    expect(within(dialog).queryByText(/sha256:/)).toBeNull();
+    expect(within(dialog).queryByText(/→/)).toBeNull();
+  });
+
+  const claudeKey: ArtifactKey = { instance_id: "standalone-claude", kind: "Binary", name: "claude" };
+  const claudeInstance: Snapshot["instances"][number] = {
+    id: "standalone-claude",
+    adapter_id: "standalone-claude",
+    exe_path: "/Users/someone/.local/bin/claude",
+    prefix: "/Users/someone/.local/share/claude",
+    scope: "User",
+    version: "2.1.281",
+    status: { unavailable: null, notes: [] },
+    answered_at: null,
+    unverified_version: null,
+    read_only_reason: null,
+  };
+  const claudeArtifact: Snapshot["artifacts"][number] = {
+    key: claudeKey,
+    display_name: "Claude Code",
+    version: "2.1.281",
+    reason: "Requested",
+    description: null,
+    homepage: "https://code.claude.com/docs/en/setup",
+    size_bytes: null,
+    installed_at: null,
+    path: "/Users/someone/.local/share/claude/versions/2.1.281",
+    auto_updates: true,
+    uninstall_blocked: "NoSafeMethod",
+    facts: NO_FACTS,
+  };
+  const claudeUpdate: Snapshot["updates"][number] = {
+    key: claudeKey,
+    current: "2.1.281",
+    target: "2.1.290",
+    channel: "Registry",
+    checkable: true,
+    warnings: [],
+    blocked: null,
+  };
+
+  it("says a self-updating standalone tool usually updates itself, and still offers the button", async () => {
+    // Spec D5: the update is real (read from the launcher's live version),
+    // so the row keeps its Update button; the chip says the tool usually
+    // does this itself.
+    instances = [...snapshot.instances, claudeInstance];
+    updates = [claudeUpdate];
+    artifacts = [claudeArtifact];
+    const { getAllByRole } = renderPage();
+
+    const claude = await findRow("Claude Code");
+    expect(within(claude).getByText("2.1.281 → 2.1.290")).toBeInTheDocument();
+    // One term for it across the app, 「会自行更新」, with an ⓘ that says
+    // more than the label: when it updates itself, and that Update here
+    // works too.
+    const word = within(claude).getByRole("button", { name: "Updates itself" });
+    fireEvent.click(word);
+    expect(document.body).toHaveTextContent("It installs new versions itself when it runs. You can also update it here.");
+    fireEvent.click(word);
+    expect(getAllByRole("button", { name: ROW_UPDATE })).toHaveLength(1);
+    expect(within(claude).getByRole("button", { name: ROW_UPDATE })).toBeInTheDocument();
+  });
+
+  it("makes Claude Code a plain row when its settings turn its own updater off (r39 S2)", async () => {
+    // `auto_updates: false`: the backend read `DISABLE_AUTOUPDATER` (or
+    // another switch Claude Code checks) in ~/.claude/settings.json, so
+    // Claude Code never installs a new version by itself. No 「会自行更新」,
+    // no ⓘ saying it does; the update and its button stay.
+    instances = [...snapshot.instances, claudeInstance];
+    updates = [claudeUpdate];
+    artifacts = [{ ...claudeArtifact, auto_updates: false }];
+    renderPage();
+
+    const claude = await findRow("Claude Code");
+    expect(within(claude).getByText("2.1.281 → 2.1.290")).toBeInTheDocument();
+    expect(within(claude).queryByText("Updates itself")).toBeNull();
+    expect(document.body).not.toHaveTextContent("It installs new versions itself when it runs.");
+    expect(within(claude).getByRole("button", { name: ROW_UPDATE })).toBeInTheDocument();
+  });
+
+  it("holds Claude Code's update back, with no button, when its settings turn every update off (r39 S2, skeptic 2)", async () => {
+    // `DISABLE_UPDATES` in ~/.claude/settings.json: `claude update` refuses
+    // too, so the backend lists the update blocked (`UpdatesTurnedOff`).
+    // No button, no checkbox, not counted; the chip's detail says whose
+    // settings did it, and there is no command to show or copy.
+    settings.show_technical_details = true;
+    instances = [...snapshot.instances, claudeInstance];
+    updates = [{ ...claudeUpdate, blocked: "UpdatesTurnedOff" }, snapshot.updates[1]];
+    artifacts = [...snapshot.artifacts, { ...claudeArtifact, auto_updates: false }];
+    const { findByText, getAllByRole } = renderPage();
+
+    await findRow("onyx");
+    expect(getAllByRole("button", { name: ROW_UPDATE })).toHaveLength(1);
+    expect(getAllByRole("checkbox", { name: ROW_CHECKBOX })).toHaveLength(1);
+    await findByText("1 update available");
+    await findByText("1 more can't be updated here");
+    await showCantUpdate();
+    const claude = await findRow("Claude Code");
+    expect(within(claude).queryByText("Updates itself")).toBeNull();
+    const detail = chipDetail(claude, "Updates turned off");
+    expect(detail.textContent).toBe("Claude Code's own settings turn off its updates, so it can't be updated here.");
+    expect(within(detail).queryByText(/In Terminal/)).toBeNull();
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+    expect(within(openMenu(claude)).queryByRole("menuitem", { name: "Copy Command" })).toBeNull();
+  });
+
+  it("keeps a status column on every row while any row shown has a word, and gives its room to the names where none has", async () => {
+    // glib pinned, under the folded "can't be updated here": the rows
+    // shown -- onyx alone -- have no word, and no column for one.
+    updates = [{ ...snapshot.updates[0], blocked: "Pinned" }, snapshot.updates[1]];
+    const first = renderPage();
+    await findRow("onyx");
+    expect(document.querySelectorAll("[data-status-column]")).toHaveLength(0);
+    // Unfolded, glib's Pinned is shown: the column is back on every row,
+    // onyx's empty, so the words line up.
+    await showCantUpdate();
+    await findRow("glib");
+    expect(rowOf("onyx").querySelector("[data-status-column]")).not.toBeNull();
+    expect(rowOf("glib").querySelector("[data-status-column]")).toHaveTextContent("Pinned");
+    first.unmount();
+
+    // One row that updates itself keeps the column on the plain rows too.
+    instances = [...snapshot.instances, claudeInstance];
+    updates = [...snapshot.updates, claudeUpdate];
+    artifacts = [...snapshot.artifacts, claudeArtifact];
+    renderPage();
+    await findRow("Claude Code");
+    expect(rowOf("Claude Code").querySelector("[data-status-column]")).toHaveTextContent("Updates itself");
+    for (const name of ["glib", "onyx"]) {
+      const slot = rowOf(name).querySelector("[data-status-column]");
+      expect(slot).not.toBeNull();
+      expect(slot?.childElementCount).toBe(0);
+    }
+  });
+
+  const claudeEndings: Array<[string, OpSummary["outcome"], string, boolean]> = [
+    ["failed", { Failed: { exit_code: 1, summary: "Error: download failed", cause: failureCause("Error: download failed") } }, "Couldn't update", true],
+    ["was cancelled", "Cancelled", "Cancelled", false],
+    ["asks to be checked", { NeedsAttention: "UnchangedAfterUpgrade" }, "Needs attention", true],
+  ];
+
+  it.each(claudeEndings)(
+    "gives its chip's place to how its update ended when it %s, and takes it back once a Retry runs",
+    async (_name, outcome, words, logged) => {
+      // Beside the chip, how it ended left the name a few letters at the
+      // window's default width: 「Clau…」.
+      instances = [...snapshot.instances, claudeInstance];
+      updates = [claudeUpdate];
+      artifacts = [claudeArtifact];
+      operations = [operation(claudeKey, { id: 9, status: "Done", outcome })];
+      useUiStore.setState({ updateTargets: { 9: claudeUpdate.target } });
+      const { queryClient } = renderPage();
+
+      const claude = await findRow("Claude Code");
+      const chips = claude.querySelector<HTMLElement>("[data-status]");
+      if (chips === null) throw new Error("the row has no chips' column");
+      expect(await within(chips).findByText(words)).toBeInTheDocument();
+      expect(within(chips).queryByRole("button", { name: "View log: Claude Code" }) !== null).toBe(logged);
+      expect(within(claude).queryByText("Updates itself")).toBeNull();
+      expect(within(claude).getByRole("button", { name: ROW_RETRY })).toBeInTheDocument();
+
+      // Retried: the update under way stands where the button was, and
+      // the chip is back.
+      operations = [operation(claudeKey, { id: 10, status: "Running" }), ...operations];
+      await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.operations }));
+      expect(await within(rowOf("Claude Code")).findByText("Updating…")).toBeInTheDocument();
+      expect(within(rowOf("Claude Code")).getByText("Updates itself")).toBeInTheDocument();
+      expect(within(rowOf("Claude Code")).queryByText(words)).toBeNull();
+    },
+  );
+
+  it("takes the chip back from a failed update once the source offers a newer version", async () => {
+    instances = [...snapshot.instances, claudeInstance];
+    updates = [claudeUpdate];
+    artifacts = [claudeArtifact];
+    operations = [
+      operation(claudeKey, {
+        id: 9,
+        status: "Done",
+        outcome: { Failed: { exit_code: 1, summary: "Error: download failed", cause: failureCause("Error: download failed") } },
+      }),
+    ];
+    useUiStore.setState({ updateTargets: { 9: claudeUpdate.target } });
+    const { queryClient } = renderPage();
+
+    const claude = await findRow("Claude Code");
+    expect(await within(claude).findByText("Couldn't update")).toBeInTheDocument();
+    expect(within(claude).queryByText("Updates itself")).toBeNull();
+
+    // "Couldn't update" was about 2.1.290; 2.1.291 gets the button, and the chip, back.
+    updates = [{ ...claudeUpdate, target: "2.1.291" }];
+    await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.snapshot }));
+    await waitFor(() => expect(within(rowOf("Claude Code")).queryByText("Couldn't update")).toBeNull());
+    expect(within(rowOf("Claude Code")).getByText("Updates itself")).toBeInTheDocument();
+    expect(within(rowOf("Claude Code")).getByRole("button", { name: ROW_UPDATE })).toBeInTheDocument();
+  });
+
+  it("keeps a self-updating Homebrew cask a plain row: the chip is for tools that update themselves, not for Show Homebrew apps that have their own updater", async () => {
+    // A cask listed through `include_self_updating` carries
+    // `auto_updates: true` too, but Homebrew, not the app, is what the
+    // button drives; its row keeps its description and no chip.
+    settings = { ...settings, include_self_updating: true };
+    updates = [snapshot.updates[1]];
+    artifacts = [
+      {
+        key: onyxKey,
+        display_name: "OnyX",
+        version: "5.0.2",
+        reason: "Requested",
+        description: "Verify system files structure",
+        homepage: null,
+        size_bytes: null,
+        installed_at: null,
+        path: null,
+        auto_updates: true,
+        uninstall_blocked: null,
+        facts: NO_FACTS,
+      },
+    ];
+    renderPage();
+
+    const onyx = await findRow("OnyX");
+    expect(within(onyx).getByText("Verify system files structure")).toBeInTheDocument();
+    expect(within(onyx).queryByText("Updates itself")).toBeNull();
+  });
+
+  it("gives a standalone tool's row the summary its Installed row shows, not 'No description'", async () => {
+    // A standalone artifact's `description` is `null` on the wire (a bare
+    // string cannot be localised), so its line is looked up by adapter
+    // id, on this page as on the Installed page (`toolDescription`). Grok
+    // Build is not called self-updating (`auto_updates: false`: whether it
+    // installs updates on its own is unverified), so its row gets no chip.
+    const grokKey: ArtifactKey = { instance_id: "standalone-grok", kind: "Binary", name: "grok" };
+    instances = [
+      ...snapshot.instances,
+      {
+        id: "standalone-grok",
+        adapter_id: "standalone-grok",
+        exe_path: "/Users/someone/.grok/bin/grok",
+        prefix: "/Users/someone/.grok",
+        scope: "User",
+        version: "1.0.41",
+        status: { unavailable: null, notes: [] },
+        answered_at: null,
+        unverified_version: null,
+        read_only_reason: null,
+      },
+    ];
+    updates = [
+      {
+        key: grokKey,
+        current: "1.0.41",
+        target: "1.0.42",
+        channel: "Native",
+        checkable: true,
+        warnings: [],
+        blocked: null,
+      },
+    ];
+    artifacts = [
+      {
+        key: grokKey,
+        display_name: "Grok Build",
+        version: "1.0.41",
+        reason: "Requested",
+        description: null,
+        homepage: null,
+        size_bytes: null,
+        installed_at: null,
+        path: "/Users/someone/.grok/downloads/grok-1.0.41-macos-aarch64",
+        auto_updates: false,
+        uninstall_blocked: null,
+        facts: NO_FACTS,
+      },
+    ];
+    const { queryByText, getAllByRole } = renderPage();
+
+    const grok = await findRow("Grok Build");
+    expect(within(grok).getByText("xAI's AI coding assistant")).toBeInTheDocument();
+    expect(queryByText("No description")).toBeNull();
+    expect(within(grok).queryByText("Updates itself")).toBeNull();
+    expect(getAllByRole("button", { name: ROW_UPDATE })).toHaveLength(1);
+  });
+
+  it("says what each row's source says it is when the source gave no description, in both languages", async () => {
+    // Cargo's inventory never carries a description, and some of
+    // Homebrew's casks have none: each such row says what its source says
+    // it is -- an app's cask is an app, a font's is not called one -- and
+    // never "No description".
+    const fontKey: ArtifactKey = { instance_id: "brew:/opt/homebrew", kind: "Cask", name: "font-jetbrains-mono" };
+    const tokeiKey: ArtifactKey = { instance_id: "cargo:/Users/brulek/.cargo", kind: "Binary", name: "tokei" };
+    const bare = (key: ArtifactKey, displayName: string, path: string | null): Snapshot["artifacts"][number] => ({
+      key,
+      display_name: displayName,
+      version: "1.0.0",
+      reason: "Requested",
+      description: null,
+      homepage: null,
+      size_bytes: null,
+      installed_at: null,
+      path,
+      auto_updates: false,
+      uninstall_blocked: null,
+      facts: NO_FACTS,
+    });
+    artifacts = [
+      bare(onyxKey, "OnyX", "/Applications/OnyX.app"),
+      bare(fontKey, "JetBrains Mono", null),
+      bare(tokeiKey, "tokei", "/Users/brulek/.cargo/bin/tokei"),
+    ];
+    updates = [
+      ...snapshot.updates,
+      { ...brewCandidate("font-jetbrains-mono"), key: fontKey },
+      { ...brewCandidate("tokei"), key: tokeiKey, channel: "Registry" },
+    ];
+    const { queryByText } = renderPage();
+
+    expect(within(await findRow("OnyX")).getByText("App installed with Homebrew")).toBeInTheDocument();
+    expect(within(rowOf("JetBrains Mono")).getByText("Homebrew package")).toBeInTheDocument();
+    expect(within(rowOf("tokei")).getByText("Program installed with Cargo")).toBeInTheDocument();
+    expect(within(rowOf("glib")).getByText("Homebrew package")).toBeInTheDocument();
+    expect(queryByText("No description")).toBeNull();
+
+    await act(async () => {
+      await i18n.changeLanguage("zh-CN");
+    });
+    try {
+      expect(within(rowOf("OnyX")).getByText("用Homebrew安装的App")).toBeInTheDocument();
+      expect(within(rowOf("JetBrains Mono")).getByText("Homebrew软件包")).toBeInTheDocument();
+      expect(within(rowOf("tokei")).getByText("用Cargo安装的程序")).toBeInTheDocument();
+      expect(queryByText("暂无简介")).toBeNull();
+    } finally {
+      await act(async () => {
+        await i18n.changeLanguage("en");
+      });
+    }
+  });
+
+  it("says a row's line in Chinese where the table has one, and what the row said where it has none", async () => {
+    // A table of this test's own: glib's line and tokei's -- Cargo's
+    // inventory gives no description -- and none for OnyX.
+    const toolDescriptions = lazyDescriptionTable(async () => ({
+      "brew:glib": "C 语言核心应用库",
+      "cargo:tokei": "代码行数统计工具",
+    }));
+    const tokeiKey: ArtifactKey = { instance_id: "cargo:/Users/brulek/.cargo", kind: "Binary", name: "tokei" };
+    const described = (key: ArtifactKey, displayName: string, description: string | null) => ({
+      key,
+      display_name: displayName,
+      version: "1.0.0",
+      reason: "Requested" as const,
+      description,
+      homepage: null,
+      size_bytes: null,
+      installed_at: null,
+      path: null,
+      auto_updates: false,
+      uninstall_blocked: null,
+      facts: NO_FACTS,
+    });
+    artifacts = [
+      described(glibKey, "glib", "Core application library for C"),
+      described(onyxKey, "OnyX", "Verify system files structure"),
+      described(tokeiKey, "tokei", null),
+    ];
+    updates = [...snapshot.updates, { ...brewCandidate("tokei"), key: tokeiKey, channel: "Registry" }];
+    renderPage({ toolDescriptions: { "zh-CN": toolDescriptions } });
+
+    expect(within(await findRow("glib")).getByText("Core application library for C")).toBeInTheDocument();
+    expect(within(rowOf("tokei")).getByText("Program installed with Cargo")).toBeInTheDocument();
+
+    await act(async () => {
+      await i18n.changeLanguage("zh-CN");
+    });
+    try {
+      expect(await within(rowOf("glib")).findByText("C 语言核心应用库")).toBeInTheDocument();
+      expect(within(rowOf("glib")).queryByText("Core application library for C")).toBeNull();
+      expect(within(rowOf("tokei")).getByText("代码行数统计工具")).toBeInTheDocument();
+      expect(within(rowOf("OnyX")).getByText("Verify system files structure")).toBeInTheDocument();
+    } finally {
+      await act(async () => {
+        await i18n.changeLanguage("en");
+      });
+    }
+    expect(within(rowOf("glib")).getByText("Core application library for C")).toBeInTheDocument();
+    expect(within(rowOf("tokei")).getByText("Program installed with Cargo")).toBeInTheDocument();
+  });
+
+  it("says a crate's line in English where the English table has one, and switches it with the language", async () => {
+    // Tables of this test's own: tokei's line in each language -- Cargo's
+    // inventory gives no description -- and none for my-fork in either.
+    const toolDescriptions = {
+      en: lazyDescriptionTable(async () => ({ "cargo:tokei": "Code line counter" })),
+      "zh-CN": lazyDescriptionTable(async () => ({ "cargo:tokei": "代码行数统计工具" })),
+    };
+    const tokeiKey: ArtifactKey = { instance_id: "cargo:/Users/brulek/.cargo", kind: "Binary", name: "tokei" };
+    const crate = (key: ArtifactKey) => ({
+      key,
+      display_name: key.name,
+      version: "1.0.0",
+      reason: "Requested" as const,
+      description: null,
+      homepage: null,
+      size_bytes: null,
+      installed_at: null,
+      path: null,
+      auto_updates: false,
+      uninstall_blocked: null,
+      facts: NO_FACTS,
+    });
+    artifacts = [crate(tokeiKey), crate(myForkKey)];
+    updates = [
+      { ...brewCandidate("tokei"), key: tokeiKey, channel: "Registry" },
+      { ...brewCandidate("my-fork"), key: myForkKey, channel: "Registry" },
+    ];
+    renderPage({ toolDescriptions });
+
+    expect(await within(await findRow("tokei")).findByText("Code line counter")).toBeInTheDocument();
+    expect(within(rowOf("tokei")).queryByText("Program installed with Cargo")).toBeNull();
+    expect(within(rowOf("my-fork")).getByText("Program installed with Cargo")).toBeInTheDocument();
+
+    await act(async () => {
+      await i18n.changeLanguage("zh-CN");
+    });
+    try {
+      expect(await within(rowOf("tokei")).findByText("代码行数统计工具")).toBeInTheDocument();
+      expect(within(rowOf("tokei")).queryByText("Code line counter")).toBeNull();
+      expect(within(rowOf("my-fork")).getByText("用Cargo安装的程序")).toBeInTheDocument();
+    } finally {
+      await act(async () => {
+        await i18n.changeLanguage("en");
+      });
+    }
+    // English again: its line, at once.
+    expect(within(rowOf("tokei")).getByText("Code line counter")).toBeInTheDocument();
+    expect(within(rowOf("my-fork")).getByText("Program installed with Cargo")).toBeInTheDocument();
+  });
+
+  it("gives a standalone row that cannot be checked its reason, not the self-updating chip", async () => {
+    instances = [...snapshot.instances, claudeInstance];
+    updates = [
+      {
+        ...claudeUpdate,
+        target: "2.1.281",
+        checkable: false,
+        warnings: [{ Message: "downloads.claude.ai request failed: network error: offline" }],
+      },
+    ];
+    artifacts = [claudeArtifact];
+    const { queryAllByRole } = renderPage();
+
+    await showCantUpdate();
+    const claude = await findRow("Claude Code");
+    expect(chipDetail(claude, "Can't check").textContent).toBe("Couldn't find its latest version.");
+    expect(within(claude).queryByText("Updates itself")).toBeNull();
+    expect(queryAllByRole("button", { name: ROW_UPDATE })).toHaveLength(0);
+  });
+
+  it("gives no self-updating chip to a standalone row whose source did not answer: it has no button to offer", async () => {
+    // A candidate carried forward from a Claude Code that did not answer
+    // the last refresh has no Update button (`isUpdateActionable` needs
+    // `isAvailable`), so "you can also update it now" would point at a
+    // button that is not there.
+    instances = [
+      ...snapshot.instances,
+      { ...claudeInstance, status: { unavailable: "NotResponding", notes: [] } },
+    ];
+    updates = [claudeUpdate];
+    artifacts = [claudeArtifact];
+    const { queryAllByRole } = renderPage();
+
+    await showCantUpdate();
+    const claude = await findRow("Claude Code");
+    expect(within(claude).queryByText("Updates itself")).toBeNull();
+    expect(within(claude).getByRole("button", { name: "Can't update now" })).toBeInTheDocument();
+    expect(queryAllByRole("button", { name: ROW_UPDATE })).toHaveLength(0);
+  });
+
+  it("offers no Update button for a tool that updates itself, and says to open it once", async () => {
+    // Spec §4.4, D5 item 4: the newer version is real (read from the
+    // launcher's live version), so the row stays and is counted with what
+    // Banager cannot update; the tool has no update command Banager could
+    // run, so there is no button and no checkbox, and the detail says what
+    // does work: opening it. The launcher is a path, shown only with
+    // technical details on. The claude fixtures stand in for agy here: the
+    // copy record is per reason, not per tool.
+    instances = [...snapshot.instances, claudeInstance];
+    updates = [{ ...claudeUpdate, blocked: "SelfUpdatesOnly" }, snapshot.updates[1]];
+    artifacts = [...snapshot.artifacts, claudeArtifact];
+    const { findByText, getAllByRole, queryByText } = renderPage();
+
+    await findRow("onyx");
+    // Only onyx's.
+    expect(getAllByRole("button", { name: ROW_UPDATE })).toHaveLength(1);
+    expect(getAllByRole("checkbox", { name: ROW_CHECKBOX })).toHaveLength(1);
+    expect(getAllByRole("checkbox", { name: ROW_CHECKBOX })[0]).toHaveAccessibleName("Select onyx for update");
+    await findByText("1 update available");
+    await findByText("1 more can't be updated here");
+    await showCantUpdate();
+    const claude = await findRow("Claude Code");
+    // Under "can't be updated here": no version to move to here.
+    expect(within(claude).queryByText("2.1.281 → 2.1.290")).toBeNull();
+    const detail = chipDetail(claude, "Updates when run");
+    expect(detail.textContent).toBe("It updates itself and can't be updated here. Open it once and it checks for a new version.");
+    expect(queryByText(/\.local\/bin\/claude/)).toBeNull();
+    // Not the updatable row's chip: this row has no button to point at.
+    expect(queryByText(/also update it now/)).toBeNull();
+  });
+
+  it("says which name to type in Terminal to open a tool that updates itself, where typing it runs this copy", async () => {
+    // Backlog L451-452 (Astra 7): "open it once" did not say how. The name,
+    // not the path; only while the artifact's command of the launcher's
+    // name is the one Terminal runs.
+    instances = [...snapshot.instances, claudeInstance];
+    updates = [{ ...claudeUpdate, blocked: "SelfUpdatesOnly" }];
+    artifacts = [{ ...claudeArtifact, facts: { ...NO_FACTS, commands: [{ name: "claude", state: "Runs" }] } }];
+    renderPage();
+
+    await showCantUpdate();
+    const detail = chipDetail(await findRow("Claude Code"), "Updates when run");
+    expect(detail.textContent).toBe(
+      "It updates itself and can't be updated here. Type claude in Terminal to open it once, and it checks for a new version.",
+    );
+    expect(within(detail).getByText("claude").tagName).toBe("CODE");
+  });
+
+  it("does not tell anyone to type a name that runs another copy", async () => {
+    instances = [...snapshot.instances, claudeInstance];
+    updates = [{ ...claudeUpdate, blocked: "SelfUpdatesOnly" }];
+    artifacts = [
+      {
+        ...claudeArtifact,
+        facts: { ...NO_FACTS, commands: [{ name: "claude", state: { ShadowedBy: { by: null } } }] },
+      },
+    ];
+    renderPage();
+
+    await showCantUpdate();
+    const detail = chipDetail(await findRow("Claude Code"), "Updates when run");
+    expect(detail.textContent).toBe("It updates itself and can't be updated here. Open it once and it checks for a new version.");
+  });
+
+  it("shows the command that opens a tool that updates itself, and offers to copy it, with technical details on", async () => {
+    settings.show_technical_details = true;
+    instances = [...snapshot.instances, claudeInstance];
+    updates = [{ ...claudeUpdate, blocked: "SelfUpdatesOnly" }];
+    artifacts = [claudeArtifact];
+    renderPage();
+
+    await showCantUpdate();
+    const claude = await findRow("Claude Code");
+    const detail = chipDetail(claude, "Updates when run");
+    expect(
+      within(detail).getByText(wholeSentence("In Terminal: /Users/someone/.local/bin/claude")),
+    ).toBeInTheDocument();
+    expect(within(detail).getByText(command("/Users/someone/.local/bin/claude")).tagName).toBe("CODE");
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+    expect(
+      within(openMenu(claude)).getByRole("menuitem", { name: "Copy Command" }),
+    ).toBeInTheDocument();
+  });
+
+  // The four PATH notes (spec §七), each with the title of the notice it
+  // puts at the top of the page.
+  const pathNotes: [InstanceNote, string][] = [
+    ["NotOnPath", "Claude Code is installed, but typing claude in Terminal doesn't run it"],
+    ["ShadowedByHomebrew", "Typing claude in Terminal runs a program with that name from Homebrew"],
+    ["ShadowedByNpm", "Typing claude in Terminal runs a program with that name from npm"],
+    ["ShadowedByOther", "Typing claude in Terminal runs another program with that name"],
+  ];
+
+  it.each(pathNotes)(
+    "does not say a self-updating standalone copy under a %s notice updates itself, and keeps its button",
+    async (note, noticeTitle) => {
+      // Typing `claude` in Terminal probably does not run this copy: it
+      // is not on PATH, so nothing or another program named `claude` runs
+      // (`NotOnPath`), or another program with that name is found on PATH
+      // before it (`ShadowedBy*`) -- the notice says which. This copy
+      // updates itself only when it runs (spec §4.4), so "it usually
+      // updates itself" would leave it behind with its update up. The row
+      // is a plain one: behind, with its version and its button.
+      instances = [
+        ...snapshot.instances,
+        { ...claudeInstance, status: { unavailable: null, notes: [note] } },
+      ];
+      updates = [claudeUpdate];
+      artifacts = [claudeArtifact];
+      const { findByText, queryByText, getAllByRole } = renderPage();
+
+      expect(await findByText(noticeTitle)).toBeInTheDocument();
+      const claude = await findRow("Claude Code");
+      expect(within(claude).queryByText("Updates itself")).toBeNull();
+      expect(queryByText(/usually updates itself|just run it/i)).toBeNull();
+      expect(within(claude).getByText("2.1.281 → 2.1.290")).toBeInTheDocument();
+      expect(getAllByRole("button", { name: ROW_UPDATE })).toHaveLength(1);
+    },
+  );
+
+  it.each(pathNotes)(
+    "says everything is up to date under a %s notice: what typing the name runs is not whether Banager could check it",
+    async (note, noticeTitle) => {
+      // One source, Claude Code, which answered: with no updates listed,
+      // Banager read this copy's version and the published one, and the
+      // published one is not newer. The note is only about what typing
+      // `claude` in Terminal runs, so its notice goes above the sentence
+      // and leaves the sentence alone.
+      instances = [{ ...claudeInstance, status: { unavailable: null, notes: [note] } }];
+      updates = [];
+      artifacts = [claudeArtifact];
+      const { findByText, queryByText } = renderPage();
+
+      expect(await findByText(noticeTitle)).toBeInTheDocument();
+      expect(await findByText("Everything is up to date")).toBeInTheDocument();
+      expect(queryByText("No updates in the sources checked")).toBeNull();
+    },
+  );
+
+  it("leaves out the npm note on Claude Code's command where its row says Terminal uses npm's copy (r24 W8)", async () => {
+    // npm's @anthropic-ai/claude-code is a copy of Claude Code: the row says
+    // 「终端用另一份」, so the notice's "Couldn't confirm whether it's another
+    // copy of Claude Code" is not said over it.
+    const npmKey: ArtifactKey = { instance_id: "npm:/usr/local", kind: "Package", name: "@anthropic-ai/claude-code" };
+    instances = [...snapshot.instances, { ...claudeInstance, status: { unavailable: null, notes: ["ShadowedByNpm"] } }];
+    updates = [claudeUpdate];
+    artifacts = [
+      {
+        ...claudeArtifact,
+        facts: { ...NO_FACTS, family: "claude-code", commands: [{ name: "claude", state: { ShadowedBy: { by: npmKey } } }] },
+      },
+      {
+        ...claudeArtifact,
+        key: npmKey,
+        display_name: "@anthropic-ai/claude-code",
+        uninstall_blocked: null,
+        facts: { ...NO_FACTS, family: "claude-code", commands: [{ name: "claude", state: "Runs" }] },
+      },
+    ];
+    const { queryByText } = renderPage();
+
+    const claude = await findRow("Claude Code");
+    expect(within(claude).getByText("Not used in Terminal")).toBeInTheDocument();
+    expect(queryByText("Typing claude in Terminal runs a program with that name from npm")).toBeNull();
+    expect(queryByText(/Couldn't confirm whether it's another copy/)).toBeNull();
+  });
+
+  it("keeps the npm note on Claude Code's command where no row of this page says which copy runs (r24 W8, skeptic)", async () => {
+    // The same two copies, but this page lists no update of the one Terminal
+    // does not run: no 「终端用另一份」 here, so the notice is all this page
+    // says of which program typing `claude` runs -- first with no update
+    // listed at all, then with npm's copy's alone, whose row has no word.
+    const npmKey: ArtifactKey = { instance_id: "npm:/usr/local", kind: "Package", name: "@anthropic-ai/claude-code" };
+    instances = [...snapshot.instances, { ...claudeInstance, status: { unavailable: null, notes: ["ShadowedByNpm"] } }];
+    artifacts = [
+      {
+        ...claudeArtifact,
+        facts: { ...NO_FACTS, family: "claude-code", commands: [{ name: "claude", state: { ShadowedBy: { by: npmKey } } }] },
+      },
+      {
+        ...claudeArtifact,
+        key: npmKey,
+        display_name: "@anthropic-ai/claude-code",
+        uninstall_blocked: null,
+        facts: { ...NO_FACTS, family: "claude-code", commands: [{ name: "claude", state: "Runs" }] },
+      },
+    ];
+    updates = [];
+    const none = renderPage();
+    expect(await none.findByText("Typing claude in Terminal runs a program with that name from npm")).toBeInTheDocument();
+    expect(none.queryByText("Not used in Terminal")).toBeNull();
+    none.unmount();
+
+    // npm's prefix writable here, so its row has its update and its word.
+    instances = instances.map((instance) =>
+      instance.id === "npm:/usr/local" ? { ...instance, read_only_reason: null } : instance,
+    );
+    updates = [{ ...claudeUpdate, key: npmKey }];
+    const npmOnly = renderPage();
+    const npmRow = await findRow("@anthropic-ai/claude-code");
+    expect(within(npmRow).queryByText("Not used in Terminal")).toBeNull();
+    expect(npmOnly.getByText("Typing claude in Terminal runs a program with that name from npm")).toBeInTheDocument();
+  });
+
+  it("does not say everything is up to date when Claude Code's launcher is left without its program: there was no installed version to check", async () => {
+    // Its program files are gone, so `StandaloneAdapter::check_updates`
+    // returns before reading either version: there is no installed one to
+    // compare with the published one. No updates from it means it was not
+    // checked.
+    instances = [
+      { ...claudeInstance, version: null, status: { unavailable: null, notes: ["LauncherOnly"] } },
+    ];
+    updates = [];
+    artifacts = [{ ...claudeArtifact, version: "", path: null }];
+    const { findByText, queryByText } = renderPage();
+
+    expect(await findByText("Claude Code's program files are missing")).toBeInTheDocument();
+    expect(await findByText("No updates in the sources checked")).toBeInTheDocument();
+    expect(queryByText("Everything is up to date")).toBeNull();
+  });
+
+  it("calls the two self-updating chips by what each leaves the user, in both languages", () => {
+    // 会自行更新: a tool with an Update button here, which also updates
+    // itself (its ⓘ says both) -- the one term the Installed page uses
+    // too, for Codex's own install. 打开它来更新: one only it can update, so
+    // its row has no button, and the way to update it is to open it. They
+    // once read 会自行更新 and 只能自行更新, which looked alike and meant
+    // opposite things to someone deciding whether to press Update -- and
+    // before that 会自动更新 and 自动更新, and one English word for both;
+    // then 也会自行更新, a second wording of one idea.
+    expect(zhCN.updates.selfUpdating).toBe("会自行更新");
+    expect(zhCN.codexStandalone.updatesItself).toBe(zhCN.updates.selfUpdating);
+    expect(zhCN.updates.blocked.SelfUpdatesOnly.badge).toBe("打开它来更新");
+    expect(en.updates.selfUpdating).toBe("Updates itself");
+    expect(en.updates.blocked.SelfUpdatesOnly.badge).toBe("Updates when run");
+    // Status words: six characters at most, and neither one the other's
+    // echo -- no shared tail for the eye to take them as one word by.
+    for (const word of [zhCN.updates.selfUpdating, zhCN.updates.blocked.SelfUpdatesOnly.badge]) {
+      expect([...word].length).toBeLessThanOrEqual(6);
+    }
+    expect(zhCN.updates.blocked.SelfUpdatesOnly.badge).not.toContain("自行更新");
+    expect(en.updates.blocked.SelfUpdatesOnly.badge).not.toMatch(/itself/i);
+  });
+
+  it("says per item, under its command, that a NoCancel update cannot be stopped once it starts", async () => {
+    // A batch can mix a rustup self update (NoCancel) with a Homebrew
+    // upgrade (cancellable); the sentence belongs next to the command it
+    // is true of. This page is one of the two readers spec §五 gives
+    // operations.noCancelHint; UninstallDialog is the other.
+    noCancel.add("onyx");
+    const { findAllByRole, getByRole, findByRole } = renderPage();
+
+    const checkboxes = await findAllByRole("checkbox", { name: ROW_CHECKBOX });
+    fireEvent.click(checkboxes[0]);
+    fireEvent.click(checkboxes[1]);
+
+    fireEvent.click(getByRole("button", { name: /^Update Selected/ }));
+    const dialog = await findByRole("alertdialog");
+    showCommands(dialog);
+    await within(dialog).findByText(command("/opt/homebrew/bin/brew upgrade --formula glib"));
+    await within(dialog).findByText(command("/opt/homebrew/bin/brew upgrade --cask onyx"));
+
+    const hints = within(dialog).getAllByText(
+      noteLine("This can't be cancelled once it starts. Don't quit Banager or shut down your Mac until it finishes."),
+    );
+    expect(hints).toHaveLength(1);
+    const row = hints[0].closest("[data-sheet-tool]");
+    expect(row?.querySelector("[data-sheet-name]")).toHaveTextContent("onyx");
+    // A caution: marked ⚠︎ before its words.
+    expect(hints[0].closest("li")).toHaveAttribute("data-caution");
+  });
+
+  describe("a major version (versionJump)", () => {
+    const runningOllama = { ...stoppedOllama, status: { unavailable: null, notes: [] } };
+    // glib 2 → 3 is a major version; onyx 5.0 → 5.1 is not; a model's
+    // digests, which here start with digits, are never read as versions.
+    const majorUpdates = (): Snapshot["updates"] => [
+      { ...snapshot.updates[0], current: "2.88.3", target: "3.0.0" },
+      snapshot.updates[1],
+      {
+        key: qwenKey,
+        current: "1a2b3c4d5e6f",
+        target: "9f8e7d6c5b4a",
+        channel: "Digest",
+        checkable: true,
+        warnings: [],
+        blocked: null,
+      },
+    ];
+
+    it("marks the row with 「Major update」, says so to a screen reader, and points at Skip This Version", async () => {
+      instances = [...snapshot.instances, runningOllama];
+      updates = majorUpdates();
+      renderPage();
+
+      const glib = await findRow("glib");
+      expect(glib.querySelector("[data-status-column]")).toHaveTextContent("Major update");
+      expect(glib).toHaveAccessibleName("glib, Major update, 2.88.3 → 3.0.0");
+      const detail = chipDetail(glib, "Major update: glib");
+      // What may change, then where the way to wait is and what it does --
+      // and nothing about the tools it never marks (walk-2 W2-14).
+      expect(detail).toHaveTextContent(
+        "Going from version 2 to 3 may change how it works or how it's set up. If you're not sure, choose “Skip This Version” from the “⋯” menu on this row, and you'll be reminded when the next version comes out.",
+      );
+      expect(detail).not.toHaveTextContent(/starts with 0/);
+      // The menu item it points at is the row's own.
+      expect(within(openMenu(glib)).getByRole("menuitem", { name: /Skip This Version/ })).toBeInTheDocument();
+
+      for (const name of ["onyx", "qwen3:8b"]) {
+        expect(within(rowOf(name)).queryByText("Major update")).toBeNull();
+      }
+
+      // Said again where the update is confirmed, as one quiet line.
+      fireEvent.click(within(glib).getByRole("button", { name: ROW_UPDATE }));
+      const dialog = await screen.findByRole("alertdialog");
+      expect(await within(dialog).findByText("This is a major update, so how it works may change.")).toBeInTheDocument();
+    });
+
+    it("lets an app that updates itself keep its own word, across a major version too", async () => {
+      // One word a row: 「Updates itself」 wins over 「Major update」,
+      // on purpose -- the app moves on by itself whatever the row says.
+      instances = [...snapshot.instances, claudeInstance];
+      updates = [{ ...claudeUpdate, current: "2.1.290", target: "3.0.0" }];
+      artifacts = [claudeArtifact];
+      renderPage();
+
+      const claude = await findRow("Claude Code");
+      expect(claude.querySelector("[data-status-column]")).toHaveTextContent("Updates itself");
+      expect(within(claude).queryByText("Major update")).toBeNull();
+    });
+
+    it("leaves what is ticked, and the order of the rows, as they were", async () => {
+      updates = majorUpdates().slice(0, 2);
+      renderPage();
+      const glib = await findRow("glib");
+      expect(within(glib).getByRole("checkbox", { name: ROW_CHECKBOX })).not.toBeChecked();
+      expect(within(rowOf("onyx")).getByRole("checkbox", { name: ROW_CHECKBOX })).not.toBeChecked();
+      expect(useUiStore.getState().selectedUpdates).toEqual([]);
+      expect(slotOf(glib)).toBeLessThan(slotOf(rowOf("onyx")) ?? -1);
+    });
+
+    it("says the same in Chinese", async () => {
+      updates = majorUpdates().slice(0, 2);
+      await i18n.changeLanguage("zh-CN");
+      try {
+        renderPage();
+        const glib = await findRow("glib");
+        expect(glib).toHaveAccessibleName("glib, 大版本更新, 2.88.3 → 3.0.0");
+        const detail = chipDetail(glib, "大版本更新：glib");
+        expect(detail).toHaveTextContent(
+          "从2升到3，用法或设置可能会变。不确定的话，可以点按这一行右边的“⋯”，选择“跳过此版本”，下个版本发布时再提醒你。",
+        );
+        expect(detail).not.toHaveTextContent(/版本号以0开头/);
+      } finally {
+        await i18n.changeLanguage("en");
+      }
+    });
+  });
+
+  describe("the keyboard (R11)", () => {
+    it("moves between the rows with ↑ and ↓, ticks the focused one with Space, and does nothing on Enter", async () => {
+      updates = [...snapshot.updates, brewCandidate("jq"), { ...brewCandidate("wget"), blocked: "Pinned" }];
+      instances = [...snapshot.instances, stoppedOllama];
+      const { findByRole, getByRole, queryByRole } = renderPage();
+
+      await findRow("jq");
+      // The notice's line is the list's first row, and not one the arrows
+      // stop at: the first row is the one in the Tab order.
+      await findByRole("button", { name: "Open Ollama" });
+      const [glib, jq, onyx] = ["glib", "jq", "onyx"].map(rowOf);
+      expect(glib).toHaveAttribute("tabindex", "0");
+      expect(jq).toHaveAttribute("tabindex", "-1");
+      expect(onyx).toHaveAttribute("tabindex", "-1");
+
+      act(() => glib.focus());
+      fireEvent.keyDown(glib, { key: "ArrowDown" });
+      expect(document.activeElement).toBe(jq);
+      expect(jq).toHaveAttribute("tabindex", "0");
+      expect(glib).toHaveAttribute("tabindex", "-1");
+
+      // Space ticks the focused row, as its box would.
+      fireEvent.keyDown(jq, { key: " " });
+      expect(getByRole("checkbox", { name: "Select jq for update" })).toBeChecked();
+      expect(getByRole("button", { name: "Update Selected (1)" })).toBeEnabled();
+      expect((getByRole("checkbox", { name: SELECT_ALL }) as HTMLInputElement).indeterminate).toBe(true);
+      fireEvent.keyDown(jq, { key: " " });
+      expect(getByRole("checkbox", { name: "Select jq for update" })).not.toBeChecked();
+
+      // Enter opens nothing and starts nothing.
+      fireEvent.keyDown(jq, { key: "Enter" });
+      expect(queryByRole("alertdialog")).toBeNull();
+      expect(calls("plan_operation")).toEqual([]);
+
+      // On to the last row it can update, then the line that discloses
+      // the rest, which Space opens as the button it is.
+      fireEvent.keyDown(jq, { key: "ArrowDown" });
+      expect(document.activeElement).toBe(onyx);
+      fireEvent.keyDown(onyx, { key: "ArrowDown" });
+      const disclosure = getByRole("button", { name: "1 more can't be updated here" });
+      expect(document.activeElement).toBe(disclosure);
+      fireEvent.click(disclosure);
+      const wget = await findRow("wget");
+      fireEvent.keyDown(disclosure, { key: "ArrowDown" });
+      expect(document.activeElement).toBe(wget);
+      // A row with no checkbox: Space does nothing to the selection.
+      fireEvent.keyDown(wget, { key: " " });
+      expect(useUiStore.getState().selectedUpdates).toEqual([]);
+
+      // And back up.
+      fireEvent.keyDown(wget, { key: "ArrowUp" });
+      expect(document.activeElement).toBe(disclosure);
+      fireEvent.keyDown(disclosure, { key: "ArrowUp" });
+      expect(document.activeElement).toBe(onyx);
+    });
+
+    it("leaves ↑ and ↓ to an open ⋯ menu", async () => {
+      renderPage();
+      const glib = await findRow("glib");
+      const menu = openMenu(glib);
+      const [first, second] = within(menu).getAllByRole("menuitem");
+      expect(document.activeElement).toBe(first);
+      fireEvent.keyDown(first, { key: "ArrowDown" });
+      expect(document.activeElement).toBe(second);
+    });
+  });
+
+  describe("the list header's box", () => {
+    // 「全选」: a box in the rows' checkbox column, over the list, that
+    // ticks every row with a checkbox -- ticked for all, a dash for some.
+    // Its accessible name starts with the words beside it ("Select All")
+    // and goes on to say which rows it acts on (SELECT_ALL).
+    /** The header's box, and whether it shows the dash. */
+    function headerBox(): HTMLInputElement {
+      return screen.getByRole("checkbox", { name: SELECT_ALL }) as HTMLInputElement;
+    }
+
+    const jq = brewCandidate("jq");
+    const wget: Snapshot["updates"][number] = { ...brewCandidate("wget"), blocked: "Pinned" };
+    const tree = brewCandidate("tree");
+    const curl = brewCandidate("curl");
+
+    // A row in each of the five `UpdateState`s, and two rows the page does
+    // not list. Only glib, onyx and jq have a checkbox: wget is pinned,
+    // my-fork could not be checked, urllib3 is pip's (read-only), qwen3:8b's
+    // Ollama is not running, tree is never reminded about, and the version
+    // curl offers was skipped.
+    function listEveryKindOfRow() {
+      instances = [...snapshot.instances, stoppedOllama];
+      updates = [
+        ...snapshot.updates,
+        jq,
+        wget,
+        tree,
+        curl,
+        {
+          key: myForkKey,
+          current: "0.1.0",
+          target: "0.1.0",
+          channel: "Registry",
+          checkable: false,
+          warnings: ["NonRegistrySource"],
+          blocked: null,
+        },
+        {
+          key: urllib3Key,
+          current: "2.2.1",
+          target: "2.3.0",
+          channel: "Registry",
+          checkable: true,
+          warnings: [],
+          blocked: null,
+        },
+        {
+          key: qwenKey,
+          current: "5642e97495e1",
+          target: "a1b2c3d4e5f6",
+          channel: "Digest",
+          checkable: true,
+          warnings: [],
+          blocked: null,
+        },
+      ];
+      settings.ignored_updates = [tree.key];
+      settings.skipped_versions = [{ key: curl.key, version: curl.target }];
+    }
+
+    // The selection as a sorted list of ids: these tests are about which
+    // rows are ticked, not the order the store keeps them in.
+    function selectIdsOf(): string[] {
+      return [...useUiStore.getState().selectedUpdates].sort();
+    }
+
+    function ids(...keys: ArtifactKey[]): string[] {
+      return keys.map(artifactKeyId).sort();
+    }
+
+    function sortedPlannedNames(): string[] {
+      return [...plannedNames()].sort();
+    }
+
+    it("ticks every row that has a checkbox and nothing else, and Update selected plans exactly those", async () => {
+      listEveryKindOfRow();
+      const { findAllByRole, getByRole, findByRole, queryAllByRole, queryByRole } = renderPage();
+
+      // Unfolded, so every listed row is on the page: still three boxes.
+      await showCantUpdate();
+      await findRow("my-fork");
+      const checkboxes = await findAllByRole("checkbox", { name: ROW_CHECKBOX });
+      expect(checkboxes).toHaveLength(3);
+      expect(queryAllByRole("checkbox", { name: ROW_CHECKBOX })).toHaveLength(3);
+      const selectAll = headerBox();
+      // Its words beside it, which pressing also ticks it by (a <label>).
+      expect(selectAll.closest("label")?.textContent).toBe("Select All");
+      expect(selectAll).not.toBeChecked();
+      expect(queryByRole("button", { name: /^Update Selected/ })).not.toBeInTheDocument();
+
+      fireEvent.click(selectAll);
+
+      for (const checkbox of checkboxes) expect(checkbox).toBeChecked();
+      expect(selectIdsOf()).toEqual(ids(glibKey, onyxKey, jq.key));
+      expect(selectAll).toBeChecked();
+      expect(selectAll.indeterminate).toBe(false);
+
+      fireEvent.click(getByRole("button", { name: "Update Selected (3)" }));
+      await findByRole("alertdialog");
+      expect(sortedPlannedNames()).toEqual(["glib", "jq", "onyx"]);
+    });
+
+    it("shows a dash for some rows ticked, ticks the rest from there, and unticks them all once all are", async () => {
+      listEveryKindOfRow();
+      const { findByRole, getByRole, queryByRole } = renderPage();
+
+      const glib = await findByRole("checkbox", { name: "Select glib for update" });
+      const onyx = getByRole("checkbox", { name: "Select onyx for update" });
+      const jqBox = getByRole("checkbox", { name: "Select jq for update" });
+      expect(headerBox().indeterminate).toBe(false);
+
+      fireEvent.click(glib);
+      // Some, not all: the dash, and not ticked.
+      expect(headerBox().indeterminate).toBe(true);
+      expect(headerBox()).not.toBeChecked();
+
+      // From some, pressed: all.
+      fireEvent.click(headerBox());
+      expect([glib, onyx, jqBox].every((box) => (box as HTMLInputElement).checked)).toBe(true);
+      expect(headerBox()).toBeChecked();
+      expect(headerBox().indeterminate).toBe(false);
+      expect(getByRole("button", { name: "Update Selected (3)" })).toBeEnabled();
+
+      // From all, pressed: none, and the toolbar's button is Update all again.
+      fireEvent.click(headerBox());
+      expect(selectIdsOf()).toEqual([]);
+      expect([glib, onyx, jqBox].some((box) => (box as HTMLInputElement).checked)).toBe(false);
+      expect(headerBox()).not.toBeChecked();
+      expect(queryByRole("button", { name: /^Update Selected/ })).not.toBeInTheDocument();
+      expect(getByRole("button", { name: "Update All" })).toBeEnabled();
+
+      // Ticking every row by hand ticks it too.
+      for (const box of [glib, onyx, jqBox]) fireEvent.click(box);
+      expect(headerBox()).toBeChecked();
+    });
+
+    it("never selects a row the page does not list, and leaves a pinned row's earlier selection as it was", async () => {
+      // wget was selected while it could still be updated; a refresh since
+      // says it is pinned, so it has no checkbox. The box may neither take
+      // it out of the selection nor put tree (never reminded about) or curl
+      // (skipped) into it: it acts on the rows with a checkbox and nothing
+      // else. Update selected still leaves wget out of the batch
+      // (`isActionable`).
+      listEveryKindOfRow();
+      act(() => {
+        useUiStore.getState().toggleUpdate(wget.key);
+      });
+      const { findAllByRole, getByRole, findByRole } = renderPage();
+      await findAllByRole("checkbox", { name: ROW_CHECKBOX });
+      // wget's tick is not one the list shows.
+      expect(headerBox().indeterminate).toBe(false);
+      expect(headerBox()).not.toBeChecked();
+
+      fireEvent.click(headerBox());
+      expect(selectIdsOf()).toEqual(ids(wget.key, glibKey, onyxKey, jq.key));
+
+      fireEvent.click(headerBox());
+      expect(selectIdsOf()).toEqual(ids(wget.key));
+      // A row with no checkbox is all that is left selected: nothing to update.
+      expect(getByRole("button", { name: "Update All" })).toBeEnabled();
+
+      fireEvent.click(headerBox());
+      expect(selectIdsOf()).toEqual(ids(wget.key, glibKey, onyxKey, jq.key));
+
+      fireEvent.click(getByRole("button", { name: "Update Selected (3)" }));
+      await findByRole("alertdialog");
+      expect(sortedPlannedNames()).toEqual(["glib", "jq", "onyx"]);
+    });
+
+    it("is off, and so is Update all, when no listed row has a checkbox", async () => {
+      // tree and curl could be updated but are hidden, so they are not
+      // listed; every row that is listed is one Banager cannot update.
+      listEveryKindOfRow();
+      const withCheckbox = ids(glibKey, onyxKey, jq.key);
+      updates = updates.filter((u) => !withCheckbox.includes(artifactKeyId(u.key)));
+      const { findByText, getByRole, queryByRole } = renderPage();
+
+      await findByText("Nothing to update here");
+      await showCantUpdate();
+      await findRow("my-fork");
+      expect(queryByRole("checkbox", { name: ROW_CHECKBOX })).toBeNull();
+      const selectAll = headerBox();
+      expect(selectAll).toBeDisabled();
+      // Its words in the colour of text that is off.
+      expect(selectAll.closest("label")?.querySelector("span")?.className).toContain("text-tertiary");
+      expect(getByRole("button", { name: "Update All" })).toBeDisabled();
+
+      fireEvent.click(selectAll);
+      expect(useUiStore.getState().selectedUpdates).toEqual([]);
+    });
+
+    it("sits over the list, 28 high, the box in the rows' checkbox column, and stays put while the list scrolls", async () => {
+      const { container } = renderPage();
+      await findRow("glib");
+
+      const header = headerBox().closest("label")?.parentElement as HTMLElement;
+      expect(header.className.split(" ")).toEqual(expect.arrayContaining(["h-7", "px-5", "border-b", "border-separator"]));
+      // Outside the list's scroller, so it does not scroll with it.
+      expect(slotOf(headerBox())).toBeNull();
+      const scroller = container.querySelector("[data-list-slot]")?.parentElement?.parentElement as HTMLElement;
+      expect(scroller.contains(header)).toBe(false);
+      expect(header.compareDocumentPosition(scroller) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      // The rows' checkboxes are 20 in too: the row's own edge, then the box.
+      expect((rowOf("glib") as HTMLElement).className.split(" ")).toContain("px-5");
+      expect(within(rowOf("glib")).getByRole("checkbox").parentElement?.className).toContain("w-4");
+    });
+
+    it("calls it 全选 in Chinese, as it was asked for", () => {
+      expect(zhCN.updates.selectAll).toBe("全选");
+      // Invert selection is gone with its button: the box does both.
+      expect("invertSelection" in zhCN.updates).toBe(false);
+      expect("invertSelection" in en.updates).toBe(false);
+    });
+  });
+});
+
+describe("UpdatesPage's virtualized list", () => {
+  it("keeps each slot's measured height with that slot when an update removes the row above it", async () => {
+    // Heights by what a slot holds, as a browser would measure them: a row
+    // is 56px, the "Can't update here" toggle 40px.
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      if (this.getAttribute("data-index") === null) return 600;
+      if (this.textContent?.endsWith("more can't be updated here")) return 40;
+      return ROW_HEIGHT;
+    });
+    const urllib3 = {
+      key: urllib3Key,
+      current: "2.5.0",
+      target: "2.6.0",
+      channel: "Registry" as const,
+      checkable: true,
+      warnings: [],
+      blocked: null,
+    };
+    updates = [snapshot.updates[0], urllib3];
+    const { getByText, queryByText, queryClient } = renderPage();
+    const slotTop = (element: HTMLElement) =>
+      (element.closest("[data-index]") as HTMLElement).style.transform;
+
+    await showCantUpdate();
+    const urllib3Row = await findRow("urllib3");
+    // glib's row, the toggle, urllib3.
+    expect(slotTop(urllib3Row)).toBe(`translateY(${ROW_HEIGHT + 40}px)`);
+
+    // glib finishes updating: the refresh after it leaves nothing to update,
+    // so the toggle moves to the top.
+    act(() => {
+      queryClient.setQueryData(queryKeys.snapshot, {
+        ...snapshot,
+        generation: snapshot.generation + 1,
+        updates: [urllib3],
+        instances,
+        artifacts,
+      });
+    });
+    await waitFor(() => expect(queryByText("glib")).not.toBeInTheDocument());
+
+    // The toggle keeps its own 40px. Keyed by position, the slot at the top
+    // kept glib's 56px, and urllib3 would be drawn 16px too low.
+    expect(slotTop(getByText("1 more can't be updated here"))).toBe("translateY(0px)");
+    expect(slotTop(rowOf("urllib3"))).toBe("translateY(40px)");
   });
 });

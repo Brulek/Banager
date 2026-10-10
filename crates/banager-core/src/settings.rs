@@ -1,0 +1,1075 @@
+pub use crate::atomic_file::lock_directory;
+use crate::model::ArtifactKey;
+use serde::{Deserialize, Serialize};
+use std::path::Path;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Language {
+    System,
+    En,
+    ZhCn,
+    ZhHant,
+}
+
+/// One update the user chose to skip with the Updates page's "Skip this
+/// version": `key`'s update to `version`, the `UpdateCandidate.target` the
+/// source offered when they did. It hides that update only while the source
+/// still offers `version`; once it offers another, the row is listed again.
+/// So the page offers the button, and lets a stored skip hide a row, only
+/// where the target names one release (`canSkipVersion` in
+/// src/lib/updateState.ts): not on a row Banager could not check, whose
+/// target is its installed version, and not on a Homebrew cask declared
+/// `version :latest`, every release of which is offered as "latest", so
+/// that a skip of it would never end.
+/// For an Ollama model `version` is a registry manifest's digest (an
+/// `UpdateChannel::Digest` candidate's target, one per republish of the
+/// model), which the front end never shows. One saved before r40 R40-4
+/// names the manifest's config digest instead; it matches no target now
+/// and is kept, like any skip of a version the source has moved past.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SkippedVersion {
+    pub key: ArtifactKey,
+    pub version: String,
+}
+
+/// One update the user put off with the Updates page's 「30天内不提醒」
+/// ("Remind Me in 30 Days"): every update of `key` is hidden until
+/// `until`, Unix seconds on the wall clock -- 30 days after they chose it --
+/// and listed again from then on, whatever version it offers. Like
+/// `SkippedVersion` it decides only what the page lists (`hidingRule` in
+/// src/lib/updateState.ts, which compares `until` with the clock, so one
+/// that runs out while Banager runs comes back at the page's next look);
+/// `load` drops every entry that has run out.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SnoozedUpdate {
+    pub key: ArtifactKey,
+    pub until: i64,
+}
+
+/// How often the automatic check runs while it is on, Settings → Updates'
+/// 「检查更新」 popup: 「每天」 or 「每周」 (`Settings::auto_check_every`).
+/// Its third choice, 「不自动检查」, is `Settings::auto_check` off, so a
+/// settings.json written before this existed, with `auto_check` on, reads
+/// as 「每天」 -- the check it ran -- and one written by this version reads
+/// in an older one as the daily check, on or off as it was saved. A bare
+/// string on the wire, `"Day"` or `"Week"`, as `Language` is.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CheckEvery {
+    #[default]
+    Day,
+    Week,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Settings {
+    pub language: Language,
+    pub show_technical_details: bool,
+    /// The packages the user asked, with "Never remind me", never to be
+    /// reminded about: every update of each is hidden, whatever its version.
+    pub ignored_updates: Vec<ArtifactKey>,
+    /// The single versions the user skipped with "Skip this version"
+    /// (`SkippedVersion`). `#[serde(default)]` so a settings.json written
+    /// before this field existed still loads with its other fields, instead
+    /// of `load()` falling back to `Settings::default()`.
+    ///
+    /// Neither this nor `ignored_updates` is read anywhere in Rust, and
+    /// neither needs to be: both decide only what the Updates page lists
+    /// (`hidingRule` in src/lib/updateState.ts, which the Installed page's
+    /// badge reads too). `refresh` keeps reporting every candidate, which
+    /// is what lets the Installed page's badge say that an update was
+    /// skipped or its reminders turned off; and `Session::issue_plan` does
+    /// not refuse to upgrade a hidden package, because hiding a reminder is
+    /// not a refusal to update (a pin is one, carried by
+    /// `UpdateCandidate.blocked`) and no page offers the button for one.
+    #[serde(default)]
+    pub skipped_versions: Vec<SkippedVersion>,
+    /// Feeds CheckOptions.include_self_updating. Default false: most people
+    /// do not want Chrome and Docker listed as updatable when those apps
+    /// update themselves. `#[serde(default)]` so a settings.json written by
+    /// an older Banager version (or a front end not yet sending this field)
+    /// still deserializes instead of losing every other field to
+    /// `Settings::default()` in `load()`.
+    #[serde(default)]
+    pub include_self_updating: bool,
+    /// The automatic check, on when Settings → Updates' 「检查更新」 is
+    /// 「每天」 or 「每周」 (`auto_check_every`) and off at 「不自动检查」
+    /// -- it was the 「每天自动检查」 switch before there was a choice of
+    /// how often: whether Banager, while it runs, refreshes by itself
+    /// once a day or a week -- the same
+    /// refresh as Check again, which runs no install, upgrade or uninstall
+    /// of Banager's; the `brew update` in it can install, move or uninstall
+    /// Homebrew packages Homebrew has moved or renamed (docs/what-we-run.md,
+    /// Homebrew). Read at every tick
+    /// of the shell's task (`check_automatically` in
+    /// src-tauri/src/auto_check.rs), which hands it to `auto_check::tick`.
+    /// Off by default. `#[serde(default)]` so a settings.json written
+    /// before this field existed still loads with its other fields,
+    /// instead of `load()` falling back to `Settings::default()`.
+    #[serde(default)]
+    pub auto_check: bool,
+    /// Settings → Updates' 「有更新时通知我」, under the daily check: the
+    /// Settings page offers it only while `auto_check` is on, and turning
+    /// the daily check off turns this off with it. Read, with `auto_check`,
+    /// each time the page reports the updates it offers
+    /// (`notify_updates::notifications_on`), which decides whether a round
+    /// of the daily check posts a notification. Off by default, and
+    /// `#[serde(default)]` for the same reason as `auto_check`.
+    #[serde(default)]
+    pub notify_updates: bool,
+    /// How often the automatic check runs while `auto_check` is on: every
+    /// day or every week (`CheckEvery`), the popup's 「每天」 and 「每周」;
+    /// `auto_check` off is its 「不自动检查」. Read with it at every tick
+    /// (`auto_check_schedule`), and for when the next check is due
+    /// (`RoundLog::next_check_due`). `#[serde(default)]`, `Day`: a
+    /// settings.json written before the choice existed, its daily check
+    /// on, keeps checking every day.
+    #[serde(default)]
+    pub auto_check_every: CheckEvery,
+    /// Settings → Updates' 「操作完成时通知」: one notification when a run
+    /// of operations finishes while the window does not have the focus
+    /// (`notify_operations::decide`). Independent of the automatic check.
+    /// Off by default, and `#[serde(default)]` for the same reason as
+    /// `auto_check`.
+    #[serde(default)]
+    pub notify_operations: bool,
+    /// The updates put off for 30 days (`SnoozedUpdate`), one entry a
+    /// package. `#[serde(default)]` for the same reason as
+    /// `skipped_versions`; those that have run out are dropped on `load`.
+    #[serde(default)]
+    pub snoozed_updates: Vec<SnoozedUpdate>,
+    /// Whether the welcome sheet (`WelcomeSheet` in
+    /// src/components/WelcomeSheet.tsx) has been shown: false until it is
+    /// closed the first time, by its button, Escape or a click beside it,
+    /// and true from then on, so it shows once. `#[serde(default)]`, false,
+    /// for the same reason as `auto_check`: a settings.json written before
+    /// the sheet existed loads with its other fields, and shows it once.
+    /// Never goes back to false (`keep_welcome_seen`).
+    #[serde(default)]
+    pub welcome_seen: bool,
+}
+
+impl Settings {
+    /// The automatic check as the popup shows it: `None` for
+    /// 「不自动检查」 (`auto_check` off), else how often it runs.
+    pub fn auto_check_schedule(&self) -> Option<CheckEvery> {
+        self.auto_check.then_some(self.auto_check_every)
+    }
+
+    /// `self`, about to replace `previous`, with `welcome_seen` kept true
+    /// once it was: a page that read the settings before the welcome sheet
+    /// closed, and saves them afterwards, cannot bring the sheet back at
+    /// the next launch.
+    pub fn keep_welcome_seen(mut self, previous: &Settings) -> Settings {
+        self.welcome_seen |= previous.welcome_seen;
+        self
+    }
+}
+
+impl Default for Settings {
+    fn default() -> Settings {
+        Settings {
+            language: Language::System,
+            show_technical_details: false,
+            ignored_updates: Vec::new(),
+            skipped_versions: Vec::new(),
+            include_self_updating: false,
+            auto_check: false,
+            notify_updates: false,
+            auto_check_every: CheckEvery::Day,
+            notify_operations: false,
+            snoozed_updates: Vec::new(),
+            welcome_seen: false,
+        }
+    }
+}
+
+/// Missing or unreadable JSON uses defaults without preventing startup.
+/// Valid objects recover each field and each collection entry independently.
+/// `save` refuses to replace unreadable JSON, including automatic welcome saves.
+///
+/// Snoozed updates whose `until` has come are dropped (`load_at`, at the
+/// wall clock's now): they hide nothing any more.
+pub fn load(path: &Path) -> Settings {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    load_at(path, now)
+}
+
+/// `load`, with the snoozed updates whose `until` is at or before `now`
+/// (Unix seconds) dropped.
+pub fn load_at(path: &Path, now: i64) -> Settings {
+    let mut settings = read_saved(path).unwrap_or_default();
+    // Check even keys about to expire, so a legacy login left on disk
+    // still triggers the rewrite after those keys have been dropped.
+    let redacted = redact_ollama_logins(&mut settings);
+    settings.snoozed_updates.retain(|snoozed| {
+        snoozed.until > now
+            && snoozed
+                .until
+                .checked_mul(1_000)
+                .is_some_and(crate::history::valid_timestamp_ms)
+    });
+    if redacted {
+        // Best effort, as for ordinary settings writes. Never hand the
+        // old login back to the window even when the disk is read-only.
+        let _ = save(path, &settings);
+    }
+    settings
+}
+
+/// Shared by startup and the save guard: a load failure stays distinguishable.
+fn read_saved(path: &Path) -> std::io::Result<Settings> {
+    match std::fs::read(path) {
+        Ok(bytes) => recover(&bytes).ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "saved settings could not be read; original file preserved",
+            )
+        }),
+        Err(error) => Err(error),
+    }
+}
+
+/// Validate with the actual Settings serde types, isolating a bad scalar or
+/// collection entry. Starting from defaults also keeps older field sets readable.
+/// Each field and each entry is tried alone in the defaults, never beside the
+/// lists already read, so one check costs the same however long they are.
+fn recover(bytes: &[u8]) -> Option<Settings> {
+    let value: serde_json::Value = serde_json::from_slice(bytes).ok()?;
+    let object = value.as_object()?;
+    let defaults = serde_json::to_value(Settings::default()).ok()?;
+    let accepts = |name: &str, value: serde_json::Value| {
+        let mut candidate = defaults.clone();
+        candidate[name] = value;
+        serde_json::from_value::<Settings>(candidate).is_ok()
+    };
+    let mut recovered = defaults.clone();
+    for (name, value) in object {
+        let Some(default) = defaults.get(name) else {
+            continue;
+        };
+        if default.is_array() {
+            if let Some(items) = value.as_array() {
+                let valid = items
+                    .iter()
+                    .filter(|item| accepts(name, serde_json::json!([item])))
+                    .cloned()
+                    .collect();
+                recovered[name] = serde_json::Value::Array(valid);
+            }
+        } else if accepts(name, value.clone()) {
+            recovered[name] = value.clone();
+        }
+    }
+    serde_json::from_value(recovered).ok()
+}
+
+/// Strip logins from every stored key, without touching the live adapter.
+fn redact_ollama_logins(settings: &mut Settings) -> bool {
+    let mut changed = false;
+    for key in settings
+        .ignored_updates
+        .iter_mut()
+        .chain(
+            settings
+                .skipped_versions
+                .iter_mut()
+                .map(|item| &mut item.key),
+        )
+        .chain(
+            settings
+                .snoozed_updates
+                .iter_mut()
+                .map(|item| &mut item.key),
+        )
+    {
+        if let std::borrow::Cow::Owned(id) =
+            crate::runner::redact::without_ollama_login(&key.instance_id)
+        {
+            key.instance_id = id;
+            changed = true;
+        }
+    }
+    changed
+}
+
+/// Writes through an exclusively created staging file beside `path`, then
+/// atomically replaces it. Concurrent processes cannot share a staging file.
+pub fn save(path: &Path, settings: &Settings) -> std::io::Result<()> {
+    // Do not turn a failed load into silent destruction through an automatic save.
+    // Check at save time too: the file may have become unreadable since startup.
+    if let Err(error) = read_saved(path) {
+        if error.kind() != std::io::ErrorKind::NotFound {
+            return Err(error);
+        }
+    }
+    let mut settings = settings.clone();
+    redact_ollama_logins(&mut settings);
+    let json = serde_json::to_vec_pretty(&settings)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    crate::atomic_file::write(path, &json)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::ArtifactKind;
+    use std::path::PathBuf;
+
+    fn temp_settings_path(tag: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "banager-settings-{}-{}-{}",
+            tag,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ))
+    }
+
+    fn key(name: &str) -> ArtifactKey {
+        ArtifactKey {
+            instance_id: "brew:/opt/homebrew".to_string(),
+            kind: ArtifactKind::Formula,
+            name: name.to_string(),
+        }
+    }
+
+    #[test]
+    fn test_f4_invalid_snooze_date_drops_only_that_entry() {
+        let path = temp_settings_path("f4-snooze");
+        let settings = Settings {
+            language: Language::En,
+            snoozed_updates: vec![
+                SnoozedUpdate {
+                    key: key("bad"),
+                    until: i64::MAX,
+                },
+                SnoozedUpdate {
+                    key: key("good"),
+                    until: 8_640_000_000_000,
+                },
+            ],
+            ..Settings::default()
+        };
+        std::fs::write(&path, serde_json::to_vec(&settings).unwrap()).unwrap();
+        let loaded = load_at(&path, 0);
+        assert_eq!(loaded.language, Language::En);
+        assert_eq!(loaded.snoozed_updates.len(), 1);
+        assert_eq!(loaded.snoozed_updates[0].key.name, "good");
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn test_f3_invalid_fields_and_items_preserve_all_valid_choices() {
+        let path = temp_settings_path("f3-partial");
+        let mut wire = serde_json::to_value(Settings {
+            language: Language::ZhHant,
+            welcome_seen: true,
+            auto_check: true,
+            notify_updates: true,
+            notify_operations: true,
+            show_technical_details: true,
+            ignored_updates: vec![key("git")],
+            skipped_versions: vec![SkippedVersion {
+                key: key("cmake"),
+                version: "4.0".into(),
+            }],
+            ..Settings::default()
+        })
+        .unwrap();
+        wire["auto_check_every"] = serde_json::json!("week");
+        wire["skipped_versions"]
+            .as_array_mut()
+            .unwrap()
+            .push(serde_json::json!({"key": false}));
+        std::fs::write(&path, serde_json::to_vec(&wire).unwrap()).unwrap();
+        let loaded = load_at(&path, 0);
+        assert_eq!(loaded.language, Language::ZhHant);
+        assert!(
+            loaded.welcome_seen
+                && loaded.auto_check
+                && loaded.notify_updates
+                && loaded.notify_operations
+        );
+        assert!(loaded.show_technical_details);
+        assert_eq!(loaded.ignored_updates, vec![key("git")]);
+        assert_eq!(loaded.skipped_versions.len(), 1);
+        assert_eq!(loaded.auto_check_every, CheckEvery::Day);
+        save(&path, &loaded).unwrap();
+        assert_eq!(load_at(&path, 0), loaded);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    /// `settings.json` as the build before field recovery (e2e6abe6) saved
+    /// it: `to_vec_pretty` of `Settings`, every field set.
+    const SAVED_BY_THE_PREVIOUS_BUILD: &str = r#"{
+  "language": "ZhHant",
+  "show_technical_details": true,
+  "ignored_updates": [
+    {
+      "instance_id": "brew:/opt/homebrew",
+      "kind": "Formula",
+      "name": "git"
+    }
+  ],
+  "skipped_versions": [
+    {
+      "key": {
+        "instance_id": "brew:/opt/homebrew",
+        "kind": "Cask",
+        "name": "visual-studio-code"
+      },
+      "version": "1.105.0"
+    },
+    {
+      "key": {
+        "instance_id": "ollama:http://127.0.0.1:11434",
+        "kind": "Model",
+        "name": "llama3:latest"
+      },
+      "version": "sha256:365c0bd3c000a25d28ddbf732fe1c6add414de7275464c4e4d1c3b5fcb5d8ad1"
+    }
+  ],
+  "include_self_updating": true,
+  "auto_check": true,
+  "notify_updates": true,
+  "auto_check_every": "Week",
+  "notify_operations": true,
+  "snoozed_updates": [
+    {
+      "key": {
+        "instance_id": "npm:/opt/homebrew",
+        "kind": "Package",
+        "name": "typescript"
+      },
+      "until": 1792592000
+    }
+  ],
+  "welcome_seen": true
+}"#;
+
+    #[test]
+    fn test_a_file_the_previous_build_saved_reads_whole_and_saves_back_unchanged() {
+        let path = temp_settings_path("previous-build");
+        std::fs::write(&path, SAVED_BY_THE_PREVIOUS_BUILD).unwrap();
+        let loaded = load_at(&path, 1_790_000_000);
+        // Read field by field, it is what one typed read of it gives.
+        let typed: Settings = serde_json::from_str(SAVED_BY_THE_PREVIOUS_BUILD).unwrap();
+        assert_eq!(loaded, typed);
+        assert_eq!(loaded.language, Language::ZhHant);
+        assert_eq!(loaded.auto_check_schedule(), Some(CheckEvery::Week));
+        assert_eq!(loaded.skipped_versions.len(), 2);
+        assert_eq!(loaded.snoozed_updates.len(), 1);
+        // Saved again, the bytes are the ones the previous build wrote: the
+        // shape has not changed, so that build still reads every choice.
+        save(&path, &loaded).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            SAVED_BY_THE_PREVIOUS_BUILD
+        );
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn test_f3_recovery_cost_does_not_grow_with_the_other_lists() {
+        // Each entry is checked on its own: one long list must not make
+        // every entry of the next one cost a copy of it. Checked by
+        // `load` as Banager starts and by every `save`. 2,000 entries a
+        // list took about ten seconds each way when every check copied
+        // the lists already read; checked alone, well under a second.
+        let path = temp_settings_path("f3-cost");
+        let n = 2_000;
+        let settings = Settings {
+            language: Language::ZhCn,
+            ignored_updates: (0..n).map(|i| key(&format!("ignored-{i}"))).collect(),
+            skipped_versions: (0..n)
+                .map(|i| SkippedVersion {
+                    key: key(&format!("skipped-{i}")),
+                    version: "1.0".into(),
+                })
+                .collect(),
+            snoozed_updates: (0..n)
+                .map(|i| SnoozedUpdate {
+                    key: key(&format!("snoozed-{i}")),
+                    until: 4_000_000_000,
+                })
+                .collect(),
+            ..Settings::default()
+        };
+        std::fs::write(&path, serde_json::to_vec_pretty(&settings).unwrap()).unwrap();
+        let started = std::time::Instant::now();
+        let loaded = load_at(&path, 0);
+        save(&path, &loaded).unwrap();
+        let took = started.elapsed();
+        assert_eq!(loaded, settings);
+        assert!(took < std::time::Duration::from_secs(3), "{took:?}");
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn test_f3_unreadable_json_is_not_overwritten_by_a_welcome_save() {
+        let path = temp_settings_path("f3-corrupt");
+        let bytes = b"{truncated";
+        std::fs::write(&path, bytes).unwrap();
+        let settings = load_at(&path, 0);
+        assert!(save(
+            &path,
+            &Settings {
+                welcome_seen: true,
+                ..settings.clone()
+            }
+        )
+        .is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        // What the message says to do: with the file moved away (to the
+        // Trash), the next save writes the settings again.
+        let moved = path.with_extension("trashed");
+        std::fs::rename(&path, &moved).unwrap();
+        let chosen = Settings {
+            welcome_seen: true,
+            language: Language::ZhCn,
+            ..settings
+        };
+        save(&path, &chosen).unwrap();
+        assert_eq!(load_at(&path, 0), chosen);
+        assert_eq!(std::fs::read(&moved).unwrap(), bytes);
+        std::fs::remove_file(path).unwrap();
+        std::fs::remove_file(moved).unwrap();
+    }
+
+    #[test]
+    fn test_ollama_logins_are_removed_from_saved_and_legacy_settings() {
+        let path = temp_settings_path("ollama-login");
+        let k = ArtifactKey {
+            instance_id: "ollama:http://alice:secret@server:11434".to_string(),
+            kind: ArtifactKind::Model,
+            name: "llama3:latest".to_string(),
+        };
+        let settings = Settings {
+            ignored_updates: vec![k.clone()],
+            skipped_versions: vec![SkippedVersion {
+                key: k.clone(),
+                version: "digest".to_string(),
+            }],
+            snoozed_updates: vec![SnoozedUpdate {
+                key: k,
+                until: 8_640_000_000_000,
+            }],
+            ..Settings::default()
+        };
+        save(&path, &settings).unwrap();
+        assert!(!std::fs::read_to_string(&path).unwrap().contains("secret"));
+        // An older file is scrubbed before it reaches the window and rewritten.
+        std::fs::write(&path, serde_json::to_vec(&settings).unwrap()).unwrap();
+        let loaded = load_at(&path, 0);
+        for key in [
+            &loaded.ignored_updates[0],
+            &loaded.skipped_versions[0].key,
+            &loaded.snoozed_updates[0].key,
+        ] {
+            assert_eq!(key.instance_id, "ollama:http://server:11434");
+        }
+        assert!(!std::fs::read_to_string(&path).unwrap().contains("secret"));
+        assert!(settings.ignored_updates[0].instance_id.contains("secret"));
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn test_expired_ollama_snooze_still_scrubs_the_legacy_file() {
+        let path = temp_settings_path("expired-ollama-login");
+        let settings = Settings {
+            snoozed_updates: vec![SnoozedUpdate {
+                key: ArtifactKey {
+                    instance_id: "ollama:http://alice:secret@server:11434".to_string(),
+                    kind: ArtifactKind::Model,
+                    name: "llama3:latest".to_string(),
+                },
+                until: 1,
+            }],
+            ..Settings::default()
+        };
+        std::fs::write(&path, serde_json::to_vec(&settings).unwrap()).unwrap();
+        assert!(load_at(&path, 2).snoozed_updates.is_empty());
+        assert!(!std::fs::read_to_string(&path).unwrap().contains("secret"));
+        let _ = std::fs::remove_file(path);
+    }
+
+    /// Loading writes nothing when there is no login to take out: an `@`
+    /// elsewhere in a key, or an Ollama id with no login, leaves the file's
+    /// bytes as they were (compact here, where a write would be pretty).
+    #[test]
+    fn test_settings_without_an_ollama_login_are_not_rewritten_on_load() {
+        let path = temp_settings_path("no-ollama-login");
+        let key = |instance_id: &str, kind, name: &str| ArtifactKey {
+            instance_id: instance_id.to_string(),
+            kind,
+            name: name.to_string(),
+        };
+        let settings = Settings {
+            ignored_updates: vec![key(
+                "pip:/opt/homebrew/opt/python@3.13/bin/python3.13",
+                ArtifactKind::Package,
+                "requests",
+            )],
+            skipped_versions: vec![SkippedVersion {
+                key: key(
+                    "npm:/opt/homebrew",
+                    ArtifactKind::Package,
+                    "@anthropic-ai/claude-code",
+                ),
+                version: "2.1.0".to_string(),
+            }],
+            snoozed_updates: vec![SnoozedUpdate {
+                key: key(
+                    "ollama:http://127.0.0.1:11434",
+                    ArtifactKind::Model,
+                    "llama3:latest",
+                ),
+                until: 8_640_000_000_000,
+            }],
+            ..Settings::default()
+        };
+        let bytes = serde_json::to_vec(&settings).unwrap();
+        std::fs::write(&path, &bytes).unwrap();
+        assert_eq!(load_at(&path, 0), settings);
+        assert_eq!(std::fs::read(&path).unwrap(), bytes, "not written again");
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn test_traditional_chinese_settings_round_trip() {
+        let settings = Settings {
+            language: Language::ZhHant,
+            ..Settings::default()
+        };
+        let wire = serde_json::to_value(&settings).unwrap();
+        assert_eq!(wire["language"], "ZhHant");
+        assert_eq!(serde_json::from_value::<Settings>(wire).unwrap(), settings);
+        let path = temp_settings_path("zh-hant");
+        save(&path, &settings).unwrap();
+        assert_eq!(load(&path), settings);
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn test_default_settings_are_the_documented_safe_defaults() {
+        let settings = Settings::default();
+        assert_eq!(settings.language, Language::System);
+        assert!(!settings.show_technical_details);
+        assert!(settings.ignored_updates.is_empty());
+        assert!(settings.skipped_versions.is_empty());
+        assert!(!settings.auto_check, "the daily check is off by default");
+        assert!(!settings.notify_updates, "and so are its notifications");
+        assert_eq!(settings.auto_check_every, CheckEvery::Day);
+        assert_eq!(settings.auto_check_schedule(), None, "不自动检查");
+        assert!(
+            !settings.notify_operations,
+            "no notification when operations finish"
+        );
+        assert!(!settings.welcome_seen, "the welcome sheet is still to show");
+    }
+
+    #[test]
+    fn test_default_settings_serialize_with_no_renames() {
+        // Guards the JSON wire-format contract the TypeScript mirror in
+        // docs/superpowers/plans/2026-09-19-phase-2-ui-shell.md depends on:
+        // plain snake_case field names, bare-string unit variants. A
+        // `#[serde(rename_all = ...)]` added later would still round-trip
+        // inside Rust but would silently break the front end.
+        let json = serde_json::to_string(&Settings::default()).expect("serialize");
+        assert!(json.contains("\"language\":\"System\""));
+        assert!(json.contains("\"show_technical_details\":false"));
+        assert!(json.contains("\"ignored_updates\":[]"));
+        assert!(json.contains("\"skipped_versions\":[]"));
+        assert!(json.contains("\"include_self_updating\":false"));
+        assert!(json.contains("\"auto_check\":false"));
+        assert!(json.contains("\"notify_updates\":false"));
+        assert!(json.contains("\"auto_check_every\":\"Day\""));
+        assert!(json.contains("\"notify_operations\":false"));
+        assert!(json.contains("\"snoozed_updates\":[]"));
+        assert!(json.contains("\"welcome_seen\":false"));
+    }
+
+    #[test]
+    fn test_default_settings_wire_shape_matches_the_hand_written_ts_mirror() {
+        // `Settings` in src/lib/types.ts; the shape test in
+        // src/lib/types.test.ts expects exactly this string, every field in
+        // this order, the daily check's two last.
+        assert_eq!(
+            serde_json::to_string(&Settings::default()).expect("serialize"),
+            r#"{"language":"System","show_technical_details":false,"ignored_updates":[],"skipped_versions":[],"include_self_updating":false,"auto_check":false,"notify_updates":false,"auto_check_every":"Day","notify_operations":false,"snoozed_updates":[],"welcome_seen":false}"#
+        );
+    }
+
+    #[test]
+    fn test_skipped_versions_wire_shape_matches_the_hand_written_ts_mirror() {
+        // `SkippedVersion` in src/lib/types.ts; the shape test in
+        // src/lib/types.test.ts expects exactly this string: snake_case
+        // fields, the key as the same object `ignored_updates` holds, and
+        // the skipped version as a bare string.
+        let skipped = vec![SkippedVersion {
+            key: key("glib"),
+            version: "2.90.0".to_string(),
+        }];
+        assert_eq!(
+            serde_json::to_string(&skipped).expect("serialize"),
+            r#"[{"key":{"instance_id":"brew:/opt/homebrew","kind":"Formula","name":"glib"},"version":"2.90.0"}]"#
+        );
+    }
+
+    #[test]
+    fn test_load_of_json_missing_skipped_versions_defaults_it_to_empty_and_keeps_the_rest() {
+        // Every settings.json written before Skip this version existed
+        // lacks this field. Without `#[serde(default)]` on it, `load` would
+        // fall back to Settings::default() and silently drop the user's
+        // language, the updates they asked never to be reminded about, and
+        // include_self_updating.
+        let path = temp_settings_path("no-skipped-versions");
+        std::fs::write(
+            &path,
+            br#"{"language":"ZhCn","show_technical_details":true,"ignored_updates":[{"instance_id":"brew:/opt/homebrew","kind":"Formula","name":"jq"}],"include_self_updating":true}"#,
+        )
+        .expect("write settings.json without skipped_versions");
+        let loaded = load(&path);
+        assert_eq!(loaded.language, Language::ZhCn);
+        assert!(loaded.show_technical_details);
+        assert_eq!(loaded.ignored_updates, vec![key("jq")]);
+        assert!(loaded.include_self_updating);
+        assert!(loaded.skipped_versions.is_empty());
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_load_of_a_missing_file_returns_defaults() {
+        let path = temp_settings_path("missing");
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(load(&path), Settings::default());
+    }
+
+    #[test]
+    fn test_load_of_malformed_json_returns_defaults() {
+        let path = temp_settings_path("malformed");
+        std::fs::write(&path, b"{ not json").expect("write garbage");
+        assert_eq!(load(&path), Settings::default());
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_load_of_json_missing_include_self_updating_defaults_it_to_false_and_keeps_the_rest() {
+        // A settings.json written before this field existed (or sent by a
+        // not-yet-updated front end) must still load its other fields
+        // rather than falling back to Settings::default() entirely — that
+        // would silently discard a user's language and ignored_updates.
+        let path = temp_settings_path("no-include-self-updating");
+        std::fs::write(
+            &path,
+            br#"{"language":"ZhCn","show_technical_details":true,"ignored_updates":[]}"#,
+        )
+        .expect("write settings.json without include_self_updating");
+        let loaded = load(&path);
+        assert_eq!(loaded.language, Language::ZhCn);
+        assert!(loaded.show_technical_details);
+        assert!(!loaded.include_self_updating);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_load_of_json_written_before_the_daily_check_turns_it_off_and_keeps_the_rest() {
+        // Every settings.json written before the daily check existed: all
+        // of today's other fields, set, and neither `auto_check` nor
+        // `notify_updates`. Without `#[serde(default)]` on both `load`
+        // would fall back to Settings::default() and drop every one of
+        // them.
+        let path = temp_settings_path("no-auto-check");
+        std::fs::write(
+            &path,
+            br#"{"language":"ZhCn","show_technical_details":true,"ignored_updates":[{"instance_id":"brew:/opt/homebrew","kind":"Formula","name":"jq"}],"skipped_versions":[{"key":{"instance_id":"brew:/opt/homebrew","kind":"Formula","name":"glib"},"version":"2.90.0"}],"include_self_updating":true}"#,
+        )
+        .expect("write settings.json without auto_check");
+        let loaded = load(&path);
+        assert_eq!(
+            loaded,
+            Settings {
+                language: Language::ZhCn,
+                show_technical_details: true,
+                ignored_updates: vec![key("jq")],
+                skipped_versions: vec![SkippedVersion {
+                    key: key("glib"),
+                    version: "2.90.0".to_string(),
+                }],
+                include_self_updating: true,
+                auto_check: false,
+                notify_updates: false,
+                auto_check_every: CheckEvery::Day,
+                notify_operations: false,
+                snoozed_updates: Vec::new(),
+                welcome_seen: false,
+            }
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_load_of_json_with_the_daily_check_but_no_notify_updates_keeps_the_daily_check() {
+        // Written by a Banager with the daily check and nothing after it:
+        // `notify_updates` alone is missing, and alone defaults.
+        let path = temp_settings_path("no-notify-updates");
+        std::fs::write(
+            &path,
+            br#"{"language":"En","show_technical_details":false,"ignored_updates":[],"skipped_versions":[],"include_self_updating":false,"auto_check":true}"#,
+        )
+        .expect("write settings.json without notify_updates");
+        let loaded = load(&path);
+        assert_eq!(loaded.language, Language::En);
+        assert!(loaded.auto_check);
+        assert!(!loaded.notify_updates);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_a_daily_check_saved_before_the_choice_of_how_often_reads_as_every_day() {
+        // Written by a Banager whose Settings had the 「每天自动检查」
+        // switch, on: no `auto_check_every`. It reads as 「每天」, and the
+        // rest is kept.
+        let path = temp_settings_path("no-auto-check-every");
+        std::fs::write(
+            &path,
+            br#"{"language":"ZhCn","show_technical_details":false,"ignored_updates":[],"skipped_versions":[],"include_self_updating":false,"auto_check":true,"notify_updates":true}"#,
+        )
+        .expect("write settings.json without auto_check_every");
+        let loaded = load(&path);
+        assert_eq!(loaded.language, Language::ZhCn);
+        assert!(loaded.auto_check && loaded.notify_updates);
+        assert_eq!(loaded.auto_check_every, CheckEvery::Day);
+        assert_eq!(loaded.auto_check_schedule(), Some(CheckEvery::Day));
+        assert!(
+            !loaded.notify_operations,
+            "nor was there a notification when operations finish"
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_the_three_choices_of_how_often_to_check() {
+        let with = |auto_check, auto_check_every| Settings {
+            auto_check,
+            auto_check_every,
+            ..Settings::default()
+        };
+        assert_eq!(with(false, CheckEvery::Day).auto_check_schedule(), None);
+        assert_eq!(
+            with(false, CheckEvery::Week).auto_check_schedule(),
+            None,
+            "off is off, whichever choice it keeps for when it is on again"
+        );
+        assert_eq!(
+            with(true, CheckEvery::Day).auto_check_schedule(),
+            Some(CheckEvery::Day)
+        );
+        assert_eq!(
+            with(true, CheckEvery::Week).auto_check_schedule(),
+            Some(CheckEvery::Week)
+        );
+    }
+
+    #[test]
+    fn test_how_often_is_a_bare_string_on_the_wire() {
+        // `CheckEvery` in src/lib/types.ts.
+        assert_eq!(serde_json::to_string(&CheckEvery::Day).unwrap(), r#""Day""#);
+        assert_eq!(
+            serde_json::to_string(&CheckEvery::Week).unwrap(),
+            r#""Week""#
+        );
+        let weekly: Settings = serde_json::from_str(
+            r#"{"language":"En","show_technical_details":false,"ignored_updates":[],"include_self_updating":false,"auto_check":true,"auto_check_every":"Week"}"#,
+        )
+        .expect("a weekly check");
+        assert_eq!(weekly.auto_check_schedule(), Some(CheckEvery::Week));
+    }
+
+    #[test]
+    fn test_snoozed_updates_wire_shape_matches_the_hand_written_ts_mirror() {
+        // `SnoozedUpdate` in src/lib/types.ts; the shape test in
+        // src/lib/types.test.ts expects exactly this string.
+        let snoozed = vec![SnoozedUpdate {
+            key: key("wget"),
+            until: 1_793_178_000,
+        }];
+        assert_eq!(
+            serde_json::to_string(&snoozed).expect("serialize"),
+            r#"[{"key":{"instance_id":"brew:/opt/homebrew","kind":"Formula","name":"wget"},"until":1793178000}]"#
+        );
+    }
+
+    #[test]
+    fn test_load_drops_the_snoozed_updates_whose_time_has_come_and_keeps_the_rest() {
+        let path = temp_settings_path("snoozed");
+        let now = 1_790_586_000;
+        let settings = Settings {
+            language: Language::ZhCn,
+            snoozed_updates: vec![
+                SnoozedUpdate {
+                    key: key("wget"),
+                    until: now - 1,
+                },
+                SnoozedUpdate {
+                    key: key("git"),
+                    until: now,
+                },
+                SnoozedUpdate {
+                    key: key("gh"),
+                    until: now + 1,
+                },
+            ],
+            ..Settings::default()
+        };
+        save(&path, &settings).expect("save");
+        let loaded = load_at(&path, now);
+        assert_eq!(loaded.language, Language::ZhCn);
+        assert_eq!(
+            loaded.snoozed_updates,
+            vec![SnoozedUpdate {
+                key: key("gh"),
+                until: now + 1,
+            }],
+            "ran out a second ago, and now: dropped; a second to go: kept"
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_load_of_json_written_before_snoozing_keeps_the_rest() {
+        let path = temp_settings_path("no-snoozed");
+        std::fs::write(
+            &path,
+            br#"{"language":"En","show_technical_details":true,"ignored_updates":[],"skipped_versions":[],"include_self_updating":false,"auto_check":true,"notify_updates":false,"auto_check_every":"Week","notify_operations":true}"#,
+        )
+        .expect("write settings.json without snoozed_updates");
+        let loaded = load(&path);
+        assert!(loaded.show_technical_details && loaded.notify_operations);
+        assert_eq!(loaded.auto_check_schedule(), Some(CheckEvery::Week));
+        assert!(loaded.snoozed_updates.is_empty());
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_save_then_load_round_trips_a_non_default_settings() {
+        let path = temp_settings_path("roundtrip");
+        let settings = Settings {
+            language: Language::ZhCn,
+            show_technical_details: true,
+            ignored_updates: vec![key("jq")],
+            skipped_versions: vec![SkippedVersion {
+                key: key("glib"),
+                version: "2.90.0".to_string(),
+            }],
+            include_self_updating: true,
+            auto_check: true,
+            notify_updates: true,
+            auto_check_every: CheckEvery::Week,
+            notify_operations: true,
+            snoozed_updates: vec![SnoozedUpdate {
+                key: key("wget"),
+                until: 4_102_444_800,
+            }],
+            welcome_seen: true,
+        };
+        save(&path, &settings).expect("save");
+        let loaded = load(&path);
+        assert_eq!(loaded, settings);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_load_of_json_written_before_the_welcome_sheet_shows_it_and_keeps_the_rest() {
+        // Every settings.json written before the welcome sheet existed:
+        // all of today's other fields, set, and no `welcome_seen`.
+        let path = temp_settings_path("no-welcome-seen");
+        std::fs::write(
+            &path,
+            br#"{"language":"ZhCn","show_technical_details":true,"ignored_updates":[],"skipped_versions":[],"include_self_updating":false,"auto_check":true,"notify_updates":true,"auto_check_every":"Week","notify_operations":true,"snoozed_updates":[]}"#,
+        )
+        .expect("write settings.json without welcome_seen");
+        let loaded = load(&path);
+        assert_eq!(loaded.language, Language::ZhCn);
+        assert!(loaded.show_technical_details && loaded.notify_operations);
+        assert_eq!(loaded.auto_check_schedule(), Some(CheckEvery::Week));
+        assert!(!loaded.welcome_seen, "shown once, at the next launch");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_welcome_seen_saved_true_loads_true() {
+        let path = temp_settings_path("welcome-seen");
+        save(
+            &path,
+            &Settings {
+                welcome_seen: true,
+                ..Settings::default()
+            },
+        )
+        .expect("save");
+        assert!(load(&path).welcome_seen, "never shown again");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_keep_welcome_seen_never_turns_it_back_off() {
+        let seen = Settings {
+            welcome_seen: true,
+            ..Settings::default()
+        };
+        let unseen = Settings::default();
+        // A page that read the settings before the sheet closed saves its
+        // change over them: the change is kept, and so is welcome_seen.
+        let stale = Settings {
+            language: Language::En,
+            ..Settings::default()
+        };
+        let kept = stale.clone().keep_welcome_seen(&seen);
+        assert!(kept.welcome_seen);
+        assert_eq!(kept.language, Language::En);
+        assert!(unseen.clone().keep_welcome_seen(&seen).welcome_seen);
+        assert!(seen.clone().keep_welcome_seen(&unseen).welcome_seen);
+        assert!(!unseen.clone().keep_welcome_seen(&unseen).welcome_seen);
+    }
+
+    #[test]
+    fn test_save_writes_atomically_and_leaves_no_tmp_file_behind() {
+        let path = temp_settings_path("atomic");
+        save(&path, &Settings::default()).expect("save");
+        // The staging file is named `<path>.tmp.<n>` (`n` a process-local
+        // counter, so concurrent saves never collide on one fixed name) —
+        // scan for any leftover `<file-name>.tmp.*` sibling rather than
+        // checking one fixed `.tmp` path.
+        let dir = path.parent().expect("path has a parent");
+        let file_name = path.file_name().unwrap().to_string_lossy().into_owned();
+        let leftover = std::fs::read_dir(dir)
+            .expect("read temp dir")
+            .filter_map(|e| e.ok())
+            .any(|e| {
+                let name = e.file_name().to_string_lossy().into_owned();
+                name.starts_with(&format!("{file_name}.tmp."))
+            });
+        assert!(
+            !leftover,
+            "no <path>.tmp.<n> staging file may be left behind"
+        );
+        assert!(path.exists());
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_save_creates_missing_parent_directory() {
+        let dir = temp_settings_path("parent-dir");
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("settings.json");
+        save(&path, &Settings::default()).expect("save should create the parent dir");
+        assert!(path.exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}

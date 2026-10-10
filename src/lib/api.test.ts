@@ -1,5 +1,8 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type EventCallback } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import capability from "../../src-tauri/capabilities/default.json";
 import {
   getSnapshot,
   refresh,
@@ -10,8 +13,28 @@ import {
   getSettings,
   setSettings,
   subscribeEvents,
+  scanUnknown,
+  artifactIcon,
+  getSizes,
+  setMenuLanguage,
+  onMenuCommand,
+  type MenuCommand,
+  setDockBadge,
+  revealInFinder,
+  openHomepage,
+  reportUpdateSet,
+  requestNotificationPermission,
+  OPEN_UPDATES_EVENT,
+  onOpenUpdates,
+  QUIT_REQUESTED_EVENT,
+  onQuitRequested,
+  askBeforeQuit,
+  quitQuestionShown,
+  quitAnyway,
 } from "./api";
-import type { IssuedPlan, OpRequest, Settings, UiEvent } from "./types";
+import type { ArtifactKey, IssuedPlan, OpRequest, OpSummary, Settings, Sizes, UiEvent, UnknownScan } from "./types";
+import { useUiStore } from "../store/ui";
+import { watchDock } from "../test/dock";
 
 const mockInvoke = vi.mocked(invoke);
 
@@ -47,12 +70,16 @@ describe("api", () => {
       name: "jq",
     };
     const issued: IssuedPlan = {
-      id: 1,
+      id: "a1b2c3",
       plan: {
         request,
-        program: "/opt/homebrew/bin/brew",
-        args: ["uninstall", "--formula", "jq"],
-        env: [],
+        action: {
+          Command: {
+            program: "/opt/homebrew/bin/brew",
+            args: ["uninstall", "--formula", "jq"],
+            env: [],
+          },
+        },
         needs_password: false,
         locks: ["brew:/opt/homebrew"],
         cancel_policy: "KillThenReconcile",
@@ -70,8 +97,8 @@ describe("api", () => {
 
   it("submitOperation invokes submit_operation with only the plan id", async () => {
     mockInvoke.mockResolvedValueOnce(7 as never);
-    await submitOperation(1);
-    expect(mockInvoke).toHaveBeenCalledWith("submit_operation", { planId: 1 });
+    await submitOperation("a1b2c3");
+    expect(mockInvoke).toHaveBeenCalledWith("submit_operation", { planId: "a1b2c3" });
   });
 
   it("cancelOperation invokes cancel_operation with opId", async () => {
@@ -97,6 +124,10 @@ describe("api", () => {
       language: "System",
       show_technical_details: false,
       ignored_updates: [],
+      skipped_versions: [],
+      include_self_updating: false,
+      auto_check: false,
+      notify_updates: false,
     };
     mockInvoke.mockResolvedValueOnce(undefined as never);
     await setSettings(settings);
@@ -120,5 +151,435 @@ describe("api", () => {
     channelArg.channel.onmessage({ SnapshotChanged: { generation: 3 } });
 
     expect(received).toEqual([{ SnapshotChanged: { generation: 3 } }]);
+  });
+
+  it("scanUnknown invokes scan_unknown with no args and returns the scan", async () => {
+    const scan: UnknownScan = { scanned: [], entries: [], attributed: 0, stopped: null };
+    mockInvoke.mockResolvedValueOnce(scan as never);
+    const result = await scanUnknown();
+    expect(mockInvoke).toHaveBeenCalledWith("scan_unknown");
+    expect(result).toEqual(scan);
+  });
+
+  it("getSizes invokes get_sizes with no args and returns the sizes", async () => {
+    const sizes: Sizes = { round: 2, done: true, artifacts: [], models: [], total: null, sources: [] };
+    mockInvoke.mockResolvedValueOnce(sizes as never);
+    expect(await getSizes()).toEqual(sizes);
+    expect(mockInvoke.mock.calls).toEqual([["get_sizes"]]);
+  });
+
+  it("artifactIcon invokes artifact_icon with the key and nothing else, and returns its answer", async () => {
+    // The trust boundary: a key the Rust side looks up in its own
+    // snapshot, never a path -- not even the row's own `path`.
+    const key: ArtifactKey = { instance_id: "brew:/opt/homebrew", kind: "Cask", name: "iterm2" };
+    mockInvoke.mockResolvedValueOnce("data:image/png;base64,iVBORw0KGgo=" as never);
+    expect(await artifactIcon(key)).toBe("data:image/png;base64,iVBORw0KGgo=");
+    expect(mockInvoke).toHaveBeenCalledTimes(1);
+    expect(mockInvoke.mock.calls[0]).toEqual(["artifact_icon", { key }]);
+    expect(Object.keys(mockInvoke.mock.calls[0][1] as object)).toEqual(["key"]);
+
+    mockInvoke.mockResolvedValueOnce(null as never);
+    expect(await artifactIcon({ ...key, kind: "Formula", name: "git" })).toBeNull();
+  });
+
+  it("setMenuLanguage invokes set_menu_language with the language and nothing else", async () => {
+    mockInvoke.mockResolvedValueOnce(undefined as never);
+    await setMenuLanguage("zh-CN");
+    expect(mockInvoke.mock.calls).toEqual([["set_menu_language", { language: "zh-CN" }]]);
+  });
+
+  it("reportUpdateSet invokes report_update_set with the round and the pairs, and nothing else", async () => {
+    // `report_update_set(round, updates)` in src-tauri/src/notify.rs.
+    mockInvoke.mockResolvedValueOnce(undefined as never);
+    const updates = [{ key_id: "brew:/opt/homebrew|Formula|jq", target: "1.8.1" }];
+    await reportUpdateSet(7, updates);
+    expect(mockInvoke.mock.calls).toEqual([["report_update_set", { round: 7, updates }]]);
+  });
+
+  it("requestNotificationPermission invokes request_notification_permission and answers its yes or no", async () => {
+    mockInvoke.mockResolvedValueOnce(true as never);
+    expect(await requestNotificationPermission()).toBe(true);
+    mockInvoke.mockResolvedValueOnce(false as never);
+    expect(await requestNotificationPermission()).toBe(false);
+    expect(mockInvoke.mock.calls).toEqual([["request_notification_permission"], ["request_notification_permission"]]);
+  });
+});
+
+describe("the update notification's click", () => {
+  const mockListen = vi.mocked(listen);
+
+  beforeEach(() => {
+    mockListen.mockReset();
+  });
+
+  it("is the event Rust sends, and calls back each time it comes", async () => {
+    // `OPEN_UPDATES_EVENT` in src-tauri/src/notify.rs, whose test pins the
+    // same string.
+    expect(OPEN_UPDATES_EVENT).toBe("notification://open-updates");
+    let heard: EventCallback<unknown> | undefined;
+    let stopped = false;
+    mockListen.mockImplementation(async (event, handler) => {
+      expect(event).toBe(OPEN_UPDATES_EVENT);
+      heard = handler as EventCallback<unknown>;
+      return () => {
+        stopped = true;
+      };
+    });
+    let clicks = 0;
+    const stop = await onOpenUpdates(() => {
+      clicks += 1;
+    });
+    heard?.({ event: OPEN_UPDATES_EVENT, id: 1, payload: null });
+    heard?.({ event: OPEN_UPDATES_EVENT, id: 2, payload: null });
+    expect(clicks).toBe(2);
+    stop();
+    expect(stopped).toBe(true);
+  });
+
+  it("reports a failure to listen as an Error carrying Tauri's text", async () => {
+    mockListen.mockRejectedValueOnce("event.listen not allowed");
+    await expect(onOpenUpdates(() => {})).rejects.toThrow("event.listen not allowed");
+  });
+});
+
+describe("the question before a quit", () => {
+  const mockListen = vi.mocked(listen);
+
+  beforeEach(() => {
+    mockListen.mockReset();
+  });
+
+  it("is the event Rust sends, and calls back each time it comes, with the question's number", async () => {
+    // `QUIT_REQUESTED_EVENT` in src-tauri/src/quit.rs, whose test pins the
+    // same string; its payload is the number `QuitGuard::ask` gave.
+    expect(QUIT_REQUESTED_EVENT).toBe("quit://requested");
+    let heard: EventCallback<unknown> | undefined;
+    let stopped = false;
+    mockListen.mockImplementation(async (event, handler) => {
+      expect(event).toBe(QUIT_REQUESTED_EVENT);
+      heard = handler as EventCallback<unknown>;
+      return () => {
+        stopped = true;
+      };
+    });
+    const asked: number[] = [];
+    const stop = await onQuitRequested((question) => {
+      asked.push(question);
+    });
+    heard?.({ event: QUIT_REQUESTED_EVENT, id: 1, payload: 1 });
+    heard?.({ event: QUIT_REQUESTED_EVENT, id: 2, payload: 2 });
+    expect(asked).toEqual([1, 2]);
+    stop();
+    expect(stopped).toBe(true);
+  });
+
+  it("reports a failure to listen as an Error carrying Tauri's text", async () => {
+    mockListen.mockRejectedValueOnce("event.listen not allowed");
+    await expect(onQuitRequested(() => {})).rejects.toThrow("event.listen not allowed");
+  });
+
+  it("askBeforeQuit invokes ask_before_quit with whether the page asks", async () => {
+    // `ask_before_quit` in src-tauri/src/quit.rs, whose argument is `ask`.
+    mockInvoke.mockResolvedValue(undefined as never);
+    await askBeforeQuit(true);
+    await askBeforeQuit(false);
+    expect(mockInvoke.mock.calls).toEqual([
+      ["ask_before_quit", { ask: true }],
+      ["ask_before_quit", { ask: false }],
+    ]);
+  });
+
+  it("quitQuestionShown invokes quit_question_shown with the question's number", async () => {
+    // `quit_question_shown` in src-tauri/src/quit.rs, whose argument is
+    // `question`.
+    mockInvoke.mockResolvedValueOnce(undefined as never);
+    await quitQuestionShown(3);
+    expect(mockInvoke.mock.calls).toEqual([["quit_question_shown", { question: 3 }]]);
+  });
+
+  it("quitAnyway invokes quit_anyway with no args", async () => {
+    // `quit_anyway` in src-tauri/src/quit.rs.
+    mockInvoke.mockResolvedValueOnce(undefined as never);
+    await quitAnyway();
+    expect(mockInvoke.mock.calls).toEqual([["quit_anyway"]]);
+  });
+});
+
+describe("the menu bar's events", () => {
+  const mockListen = vi.mocked(listen);
+  // Every event `PageCommand::event` in src-tauri/src/menu.rs sends, sorted:
+  // spelled out, not read from MENU_EVENTS, so a name changed there alone fails.
+  const ALL_MENU_EVENTS = [
+    "menu://check-again",
+    "menu://check-tool-setup",
+    "menu://common-questions",
+    "menu://copy-diagnostics",
+    "menu://installed",
+    "menu://keyboard-shortcuts",
+    "menu://overview",
+    "menu://search",
+    "menu://settings",
+    "menu://unknown",
+    "menu://updates",
+    "menu://welcome",
+  ];
+  // What is listened for, and what stopped listening, by event name.
+  let handlers: Map<string, EventCallback<unknown>>;
+  let stopped: string[];
+
+  beforeEach(() => {
+    handlers = new Map();
+    stopped = [];
+    mockListen.mockReset();
+    mockListen.mockImplementation(async (event, handler) => {
+      handlers.set(event, handler as EventCallback<unknown>);
+      return () => {
+        stopped.push(event);
+      };
+    });
+  });
+
+  it("are the twelve Rust sends, one per item acting in the page, each calling back with its item", async () => {
+    const chosen: MenuCommand[] = [];
+    await onMenuCommand((command) => chosen.push(command));
+
+    // `PageCommand::event` in src-tauri/src/menu.rs.
+    expect([...handlers.keys()].sort()).toEqual(ALL_MENU_EVENTS);
+    for (const event of [
+      "menu://search",
+      "menu://settings",
+      "menu://overview",
+      "menu://updates",
+      "menu://installed",
+      "menu://unknown",
+      "menu://check-again",
+      "menu://welcome",
+      "menu://common-questions",
+      "menu://keyboard-shortcuts",
+      "menu://check-tool-setup",
+      "menu://copy-diagnostics",
+      "menu://search",
+    ]) {
+      handlers.get(event)?.({ event, id: 1, payload: null });
+    }
+    expect(chosen).toEqual([
+      "search",
+      "settings",
+      "overview",
+      "updates",
+      "installed",
+      "unknown",
+      "checkAgain",
+      "welcome",
+      "commonQuestions",
+      "keyboardShortcuts",
+      "checkToolSetup",
+      "copyDiagnostics",
+      "search",
+    ]);
+  });
+
+  it("stop being listened for, all twelve, through what onMenuCommand resolves to", async () => {
+    const stop = await onMenuCommand(() => {});
+    expect(stopped).toEqual([]);
+
+    stop();
+
+    expect(stopped.sort()).toEqual(ALL_MENU_EVENTS);
+  });
+
+  it("are not left half listened for: when one cannot be, the others stop and the error says why", async () => {
+    mockListen.mockImplementation(async (event, handler) => {
+      if (event === "menu://search") throw "event.listen not allowed";
+      handlers.set(event, handler as EventCallback<unknown>);
+      return () => {
+        stopped.push(event);
+      };
+    });
+
+    await expect(onMenuCommand(() => {})).rejects.toThrow("event.listen not allowed");
+    expect(stopped.sort()).toEqual(ALL_MENU_EVENTS.filter((event) => event !== "menu://search"));
+  });
+});
+
+describe("the Dock's badge", () => {
+  it("is the count setDockBadge is given, set on the window, not through a command of Banager's", async () => {
+    const dock = watchDock();
+    await setDockBadge(12);
+    expect(dock.counts()).toEqual([12]);
+    expect(mockInvoke).not.toHaveBeenCalled();
+  });
+
+  it("is taken away at 0, not shown as a 0", async () => {
+    // Tauri writes a count into the Dock tile's badge label as text, a 0
+    // included; no count at all is what clears the label.
+    const dock = watchDock();
+    await setDockBadge(3);
+    await setDockBadge(0);
+    expect(dock.counts()).toEqual([3, undefined]);
+    expect(dock.badge()).toBeUndefined();
+  });
+
+  it("reports a failure as an Error carrying Tauri's text", async () => {
+    watchDock();
+    vi.mocked(getCurrentWindow().setBadgeCount).mockRejectedValueOnce(
+      "window.set_badge_count not allowed",
+    );
+    await expect(setDockBadge(2)).rejects.toThrow("window.set_badge_count not allowed");
+  });
+});
+
+describe("Show in Finder", () => {
+  beforeEach(() => {
+    mockInvoke.mockReset();
+  });
+
+  it("hands Banager's own command the path and nothing else", async () => {
+    mockInvoke.mockResolvedValueOnce(undefined);
+    await revealInFinder("/Applications/Helper.app/Contents/Helpers/helper-cli");
+    expect(mockInvoke).toHaveBeenCalledTimes(1);
+    expect(mockInvoke).toHaveBeenCalledWith("reveal_in_finder", {
+      path: "/Applications/Helper.app/Contents/Helpers/helper-cli",
+    });
+  });
+
+  it("reports a refusal as an Error carrying the backend's text", async () => {
+    mockInvoke.mockRejectedValueOnce('{"kind":"not_revealable"}');
+    await expect(revealInFinder("/Users/someone/Documents")).rejects.toThrow('{"kind":"not_revealable"}');
+  });
+
+  it("gives the window no command of the updater plugin's, which nothing calls yet", () => {
+    // `updater:default` would let the page check for, download and install
+    // an update of Banager itself (docs/what-we-run.md, Network).
+    expect(capability.permissions.filter((p) => p.startsWith("updater:"))).toEqual([]);
+  });
+
+  it("gives the window no command of the opener plugin's, which would show any path", () => {
+    // `reveal_item_in_dir` has no scope to narrow it to some paths, and
+    // `opener:default` would also let the page open a web address or a
+    // mail link: src-tauri/src/reveal.rs shows only what the scan found.
+    expect(capability.permissions.filter((p) => p.startsWith("opener:"))).toEqual([]);
+  });
+});
+
+describe("a tool's homepage", () => {
+  beforeEach(() => {
+    mockInvoke.mockReset();
+  });
+
+  it("hands Banager's own command the address and nothing else", async () => {
+    mockInvoke.mockResolvedValueOnce(undefined);
+    await openHomepage("https://jqlang.org");
+    expect(mockInvoke).toHaveBeenCalledTimes(1);
+    expect(mockInvoke).toHaveBeenCalledWith("open_homepage", { address: "https://jqlang.org" });
+  });
+
+  it("reports a refusal as an Error carrying the backend's text", async () => {
+    mockInvoke.mockRejectedValueOnce('{"kind":"not_listed"}');
+    await expect(openHomepage("https://example.com")).rejects.toThrow('{"kind":"not_listed"}');
+  });
+});
+
+describe("the notification plugin", () => {
+  it("gives the page one command, the one the plugin's own script calls as the page loads", () => {
+    // tauri-plugin-notification's script asks whether notifications are
+    // allowed as the page loads; refused, the call would end in an
+    // unhandled rejection. Asking for permission and posting are
+    // Banager's own commands (src-tauri/src/notify.rs), so the page can
+    // post nothing itself: not `notification:default`, which would let it.
+    expect(capability.permissions.filter((p) => p.startsWith("notification:"))).toEqual([
+      "notification:allow-is-permission-granted",
+    ]);
+  });
+});
+
+
+describe("operation metadata retention", () => {
+  beforeEach(() => useUiStore.setState(useUiStore.getInitialState()));
+  function running(id: number): OpSummary {
+    return { id, status: "Running", instance_id: "cargo", artifact_kind: "Binary", name: "rg", kind: "Upgrade", outcome: null, argv_preview: ["cargo", "install", "ripgrep"], cancel_policy: "KillThenReconcile" };
+  }
+  function remember(id: number) {
+    const s = useUiStore.getState();
+    s.rememberUpdateTarget(id, "2.0");
+    s.rememberOpNames({ [id]: `tool-${id}` });
+    s.rememberOpFinished(id, 1000);
+    s.clearJustUpdated([id]);
+  }
+  it("retires all four maps after an authoritative list, preserving open logs and results", async () => {
+    for (let i = 1; i <= 2000; i++) remember(i);
+    useUiStore.getState().openLogRun([2, 3], 2);
+    useUiStore.getState().setUninstallBatch({ id: 1, items: [{ key: { instance_id: "cargo", kind: "Binary", name: "rg" }, name: "rg", opId: 4, after: [] }] });
+    mockInvoke.mockResolvedValueOnce([running(2000)]);
+    await listOperations();
+    const s = useUiStore.getState();
+    for (const map of [s.updateTargets, s.opNames, s.opFinishedAt]) expect(Object.keys(map)).toEqual(["2", "3", "4", "2000"]);
+    expect(s.clearedJustUpdated).toEqual([2, 3, 4, 2000]);
+    s.setDrawerOpen(false);
+    s.dismissUninstallBatch();
+    mockInvoke.mockResolvedValueOnce([]);
+    await listOperations();
+    expect(useUiStore.getState().updateTargets).toEqual({});
+  });
+  it("keeps metadata added while a list was in flight, then retires it on a fresh list", async () => {
+    let answer!: (ops: unknown[]) => void;
+    mockInvoke.mockImplementationOnce(() => new Promise(resolve => { answer = resolve; }));
+    const pending = listOperations();
+    remember(3000);
+    answer([]);
+    await pending;
+    expect(useUiStore.getState().updateTargets[3000]).toBe("2.0");
+    mockInvoke.mockResolvedValueOnce([]);
+    await listOperations();
+    expect(useUiStore.getState().updateTargets).toEqual({});
+  });
+  it("ignores an older list that answers after a newer list", async () => {
+    remember(4000);
+    let answer!: (ops: unknown[]) => void;
+    mockInvoke.mockImplementationOnce(() => new Promise(resolve => { answer = resolve; }));
+    const older = listOperations();
+    mockInvoke.mockResolvedValueOnce([running(4000)]);
+    await listOperations();
+    answer([]);
+    await older;
+    expect(useUiStore.getState().updateTargets[4000]).toBe("2.0");
+  });
+  it("keeps metadata on list failure and releases protection on submission failure", async () => {
+    remember(4001);
+    mockInvoke.mockRejectedValueOnce("list unavailable");
+    await expect(listOperations()).rejects.toThrow("list unavailable");
+    expect(useUiStore.getState().updateTargets[4001]).toBe("2.0");
+    mockInvoke.mockRejectedValueOnce("plan expired");
+    await expect(submitOperation("expired")).rejects.toThrow("plan expired");
+    mockInvoke.mockResolvedValueOnce([]);
+    await listOperations();
+    expect(useUiStore.getState().updateTargets).toEqual({});
+  });
+  it("leaves the store untouched when a list retires nothing", async () => {
+    remember(5000);
+    const before = useUiStore.getState();
+    const notified = vi.fn();
+    const unsubscribe = useUiStore.subscribe(notified);
+    mockInvoke.mockResolvedValueOnce([running(5000)]);
+    await listOperations();
+    unsubscribe();
+    // Every operations refetch lands here: a fresh `clearedJustUpdated`
+    // array each time re-rendered the Updates page for nothing.
+    expect(notified).not.toHaveBeenCalled();
+    expect(useUiStore.getState().clearedJustUpdated).toBe(before.clearedJustUpdated);
+  });
+  it("does not retire metadata while a submission response is pending", async () => {
+    let answer!: (id: number) => void;
+    mockInvoke.mockImplementationOnce(() => new Promise(resolve => { answer = resolve; }));
+    const pending = submitOperation("pending-plan");
+    remember(3001); // An event may arrive before submit_operation answers.
+    mockInvoke.mockResolvedValueOnce([]);
+    await listOperations();
+    expect(useUiStore.getState().opFinishedAt[3001]).toBe(1000);
+    answer(3001);
+    await pending;
+    mockInvoke.mockResolvedValueOnce([]);
+    await listOperations();
+    expect(useUiStore.getState().opFinishedAt).toEqual({});
   });
 });

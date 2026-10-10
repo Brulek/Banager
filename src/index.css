@@ -1,37 +1,493 @@
 @import "tailwindcss";
 
-:root {
-  --color-background: #ffffff;
-  --color-foreground: #1d1d1f;
-  --color-sidebar-bg: #f5f5f7;
-  --color-border: #d2d2d7;
-  --color-accent: #0071e3;
+/*
+ * Design tokens (polish 3: .superpowers/polish3/aesthetics-spec.md in the
+ * main checkout, §2). The values are macOS's own, read off AppKit on macOS
+ * 27 -- windowBackgroundColor, labelColor, separatorColor and the rest --
+ * written out as literal colours so the headless previews and the window
+ * show the same thing. Only the accent follows the user's choice in
+ * System Settings, where the engine knows it (`AccentColor`, below).
+ * Neutrals are pure greys, R = G = B.
+ *
+ * `static`: Tailwind v4 emits a theme variable only when one of its own
+ * utilities uses it, and some components read these as `var(--color-…)`
+ * inside arbitrary values, which it does not count.
+ */
+@theme static {
+  /* The system font: SF Pro for Latin, and for Chinese whatever the system
+     falls back to (PingFang's UI cut, 13/16 as AppKit sets it). Naming
+     "PingFang SC" would pick its document cut instead, taller and wider. */
+  --font-sans: -apple-system, system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* Three sizes, as macOS's text styles: 15 (Title 3: an empty state's
+     title), 13 (Body and Headline) and 11 (Subheadline: a row's
+     description, a count). The Overview's 22 sentence went with its
+     centred status (spec R1): its status is a row with a 13 title. */
+  --text-title: 13px;
+  --text-title--line-height: 16px;
+  --text-title--font-weight: 700;
+  --text-section: 15px;
+  --text-section--line-height: 20px;
+  --text-section--font-weight: 600;
+  /* A tool's name on its row (`ToolRow`), set in 600 there. */
+  --text-name: 13px;
+  --text-name--line-height: 16px;
+  --text-body: 13px;
+  --text-body--line-height: 16px;
+  /* Chinese running to three lines or more: a dialog's text, a detail. */
+  --text-body-long: 13px;
+  --text-body-long--line-height: 18px;
+  --text-small: 11px;
+  --text-small--line-height: 14px;
+
+  /* Radii: a control (button, field, menu item, the sidebar's selection)
+     and a group (a grouped container, a menu, a popover, a dialog). The
+     older names stay as the same values until every component is moved. */
+  --radius-control: 6px;
+  --radius-group: 10px;
+  --radius-button: 6px;
+  --radius-panel: 10px;
+  --radius-row: 6px;
+
+  /* The window and what sits on it: a dialog, a popover, a menu. */
+  --color-content: #ffffff;
+  --color-surface: #ffffff;
+  --color-background: var(--color-surface);
+  /* A popover's fill: the surface's, but a step lighter over a dialog in
+     the dark (below), where the surface's own would be a hole in it. */
+  --color-popover: #ffffff;
+  --color-sidebar: #f0f0f0;
+  --color-sidebar-active: rgb(0 0 0 / 0.1);
+
+  /* Text: labelColor, secondaryLabelColor (a little darker than AppKit's
+     .498, so an 11pt word still reads at 4.5:1 on the sidebar's grey),
+     tertiaryLabelColor (disabled text and quiet symbols, never
+     information). */
+  --color-foreground: rgb(0 0 0 / 0.847);
+  --color-muted: rgb(0 0 0 / 0.58);
+  --color-muted-foreground: var(--color-muted);
+  --color-tertiary: rgb(0 0 0 / 0.259);
+  /* A row's ⋯ at rest: quieter than the muted grey, which it turns to
+     under the pointer, but at 3:1 on white -- it is the one way to Skip
+     this version and Don't remind me, which the tertiary's 1.9:1 hid. */
+  --color-glyph-rest: rgb(0 0 0 / 0.42);
+
+  /* Lines and fills: separatorColor; a grey button's fill and a pressed
+     one; the quietest fill, a search field's. `border` and `hover` are the
+     older names of `separator` and `fill`. */
+  --color-separator: rgb(0 0 0 / 0.098);
+  --color-border: var(--color-separator);
+  --color-fill: rgb(0 0 0 / 0.078);
+  --color-hover: var(--color-fill);
+  --color-fill-pressed: rgb(0 0 0 / 0.16);
+  --color-fill-subtle: rgb(0 0 0 / 0.047);
+  /* A grouped container (Settings' groups), and the lines inside it. */
+  --color-group: #f7f7f7;
+  --color-group-separator: #ebebeb;
+  /* A selected row while the list is not the focus of the keyboard. */
+  --color-row-selected: #dcdcdc;
+  /* A switch's track while off, and its knob: white here, and a light
+     grey in the dark (below), where white would be the brightest thing
+     on the page. */
+  --color-switch-off: rgb(0 0 0 / 0.11);
+  --color-switch-knob: #ffffff;
+
+  /* controlAccentColor's default; the user's own accent below. Pressed,
+     a default button darkens by 15% (`BUTTON` in
+     src/components/ui/controls.ts); nothing changes under the pointer. */
+  --color-accent: #007aff;
+  --color-accent-pressed: color-mix(in srgb, var(--color-accent) 85%, black);
+  /* White, as macOS draws words on its accent; black on a light one
+     (`:root[data-accent-ink="dark"]`, below). */
   --color-accent-foreground: #ffffff;
-  --color-hover: #e8e8ed;
-  --color-muted: #6e6e73;
-  --color-muted-foreground: #6b7280;
-  --color-danger: #d70015;
-  --color-overlay: rgb(0 0 0 / 0.4);
+  /* The accent as the colour of text (linkColor): blue at 5.3:1 on white,
+     where the accent itself would read at 4:1. */
+  --color-accent-text: #0068da;
+  --color-selection: #b3d7ff;
+  --color-focus: rgb(0 103 244 / 0.5);
+
+  /* systemGreen for a ✓, systemOrange for a filled ⚠︎, systemRed for a
+     symbol; neither green nor orange is ever the colour of text, and red
+     text is the darker `danger-text`. */
+  --color-success: #34c759;
+  --color-warning: #ff8d28;
+  --color-danger: #ff383c;
+  --color-danger-text: #d70015;
+  /* systemGray: the square of something with no source of its own; in the
+     dark systemGray3's #48484A (below), so that a list of them is not the
+     brightest thing on a dark page. */
+  --color-neutral-avatar: #8e8e93;
+
+  /* Each source's colour, for its small avatar and nowhere else, and the
+     colour of the initial on it where white would not read. */
+  --color-source-homebrew: #f2a93b;
+  --color-source-homebrew-ink: rgb(0 0 0 / 0.847);
+  --color-source-npm: #cb3837;
+  --color-source-python: #3776ab;
+  --color-source-rust: #ce422b;
+  --color-source-ollama: #2a2a2a;
+  --color-source-ollama-ink: #ffffff;
+  --color-source-claude: #c96442;
+  --color-source-grok: #2b2b2b;
+  --color-source-agy: #6b5bff;
+
+  /* A confirmation sheet (`Dialog`) settles into place as it opens, over a
+     page that dims in under it. `transform`, not `translate`: the sheet's
+     own centring is a `translate`, which this leaves alone. */
+  --animate-sheet-in: sheet-in 160ms ease-out;
+  @keyframes sheet-in {
+    from {
+      transform: translateY(-8px);
+      opacity: 0;
+    }
+  }
+  --animate-fade-in: fade-in 160ms ease-out;
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+  /* The spinner (`SpinnerIcon`) turns as the Mac's does: in eight steps
+     of an eighth of a turn, each spoke to where the next one was, a turn
+     in 0.8s -- not smoothly round, as a web page's does. */
+  --animate-spinner: spinner 0.8s steps(8) infinite;
+  @keyframes spinner {
+    to {
+      transform: rotate(360deg);
+    }
+  }
 }
 
+:root {
+  color-scheme: light dark;
+  /* A little space where Chinese meets Latin letters or digits, as AppKit
+     draws it (1/8 em), so the strings carry no spaces of their own. */
+  text-autospace: normal;
+  /* Floating things only: a menu or a popover, and a dialog -- a 0.5px
+     ring, then the shadow. Not theme variables: Tailwind's own `shadow-*`
+     utility would copy the light values into its class, and the dark ones
+     below would never apply (a black ring, lost on a dark window). The
+     `shadow-menu` and `shadow-dialog` classes read them instead (below). */
+  --shadow-menu: 0 0 0 0.5px rgb(0 0 0 / 0.15), 0 6px 20px rgb(0 0 0 / 0.15);
+  --shadow-dialog: 0 0 0 0.5px rgb(0 0 0 / 0.2), 0 16px 48px rgb(0 0 0 / 0.25);
+}
+
+@utility shadow-menu {
+  box-shadow: var(--shadow-menu);
+}
+@utility shadow-dialog {
+  box-shadow: var(--shadow-dialog);
+}
+
+/* Unlayered, so these win over the `@layer theme` block Tailwind emits
+   for the light values above. A dialog, a menu and a popover are #2C2C2C,
+   a step lighter than the sidebar's #282828 as well as the window's
+   #1E1E1E, so a sheet that reaches over the sidebar still stands apart
+   from it. */
 @media (prefers-color-scheme: dark) {
   :root {
-    --color-background: #1e1e1e;
-    --color-foreground: #f5f5f7;
-    --color-sidebar-bg: #252526;
-    --color-border: #3a3a3c;
-    --color-accent: #0a84ff;
-    --color-accent-foreground: #ffffff;
-    --color-hover: #3a3a3c;
-    --color-muted: #98989d;
-    --color-muted-foreground: #9ca3af;
-    --color-danger: #ff453a;
-    --color-overlay: rgb(0 0 0 / 0.6);
+    --color-content: #1e1e1e;
+    --color-surface: #2c2c2c;
+    --color-popover: #2c2c2c;
+    --color-sidebar: #282828;
+    --color-sidebar-active: rgb(255 255 255 / 0.1);
+    --color-foreground: rgb(255 255 255 / 0.847);
+    --color-muted: rgb(255 255 255 / 0.549);
+    --color-tertiary: rgb(255 255 255 / 0.247);
+    --color-glyph-rest: rgb(255 255 255 / 0.45);
+    --color-separator: rgb(255 255 255 / 0.098);
+    --color-fill: rgb(255 255 255 / 0.078);
+    --color-fill-pressed: rgb(255 255 255 / 0.16);
+    --color-fill-subtle: rgb(255 255 255 / 0.047);
+    --color-group: #252525;
+    --color-group-separator: #2f2f2f;
+    --color-row-selected: #464646;
+    --color-switch-off: rgb(255 255 255 / 0.1);
+    --color-switch-knob: #e2e2e2;
+    --color-neutral-avatar: #48484a;
+    --color-accent-text: #419cff;
+    --color-selection: #3f638b;
+    --color-focus: rgb(26 169 255 / 0.5);
+    --color-success: #30d158;
+    --color-warning: #ff9230;
+    --color-danger: #ff4245;
+    --color-danger-text: #ff6961;
+    --shadow-menu: 0 0 0 0.5px rgb(255 255 255 / 0.15), 0 6px 20px rgb(0 0 0 / 0.5);
+    --shadow-dialog: 0 0 0 0.5px rgb(255 255 255 / 0.15), 0 16px 48px rgb(0 0 0 / 0.6);
+    --color-source-ollama: #e5e5e5;
+    --color-source-ollama-ink: rgb(0 0 0 / 0.847);
+  }
+}
+
+/* A dialog is lighter than the window in the dark (#2C2C2C over #1E1E1E),
+   so a group inside one -- a list of tools, a log, a command -- is lighter
+   again, as a sheet's grouped form is, rather than the window's #252525,
+   which would sink into it. */
+@media (prefers-color-scheme: dark) {
+  [data-dialog-width] {
+    --color-group: #323232;
+    --color-group-separator: #3d3d3d;
+    --color-popover: #383838;
+  }
+}
+
+/* The accent the user picked in System Settings, where the web view knows
+   it (WebKit does; the headless previews keep the default blue). */
+@supports (color: AccentColor) {
+  :root {
+    --color-accent: AccentColor;
+  }
+}
+
+/* Increase contrast (System Settings > Accessibility > Display): the
+   secondary text darkens to 70%, and the keyboard's focus ring is drawn
+   solid rather than at half strength. The accent a filled button, a menu's
+   highlighted item and the focused list's selection are drawn in darkens
+   too, so their white words read at 4.5:1 or more rather than about 4:1:
+   in the light appearance the default blue to #0060DF (5.5:1), in the
+   dark to #0068D9 (5.3:1, and still 3:1 against the dark window round a
+   button), and the user's own by 15% in either. Where white still reads
+   under 4.5:1 on the darkened accent -- yellow, green, orange, graphite,
+   pink -- the words are black (`data-accent-ink`, above). After the
+   user's accent (above), which this darkens rather than replaces; nothing
+   here applies without the setting. */
+/* Black words on a light accent -- a default button, a menu's highlighted
+   item, the focused list's selection -- where white would read under
+   3.5:1, as on yellow, green, orange, graphite or pink (about 1.5:1 to
+   3.4:1), or under 4.5:1 with Increase Contrast on; black reads at 4.5:1
+   or more on each (decision I21b). src/lib/accentInk.ts works it out from
+   the accent the page computes and marks <html>; without the mark, white,
+   which the Mac's own blue keeps at about 4:1 (decision I21a). */
+:root[data-accent-ink="dark"] {
+  --color-accent-foreground: #000000;
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --color-muted: rgb(0 0 0 / 0.7);
+    --color-focus: rgb(0 103 244);
+  }
+}
+@media (prefers-contrast: more) and (prefers-color-scheme: light) {
+  :root {
+    --color-accent: #0060df;
+  }
+  @supports (color: AccentColor) {
+    :root {
+      --color-accent: color-mix(in srgb, AccentColor 85%, black);
+    }
+  }
+}
+@media (prefers-contrast: more) and (prefers-color-scheme: dark) {
+  :root {
+    --color-muted: rgb(255 255 255 / 0.7);
+    --color-focus: rgb(26 169 255);
+    --color-accent: #0068d9;
+  }
+  @supports (color: AccentColor) {
+    :root {
+      --color-accent: color-mix(in srgb, AccentColor 85%, black);
+    }
   }
 }
 
 body {
   margin: 0;
-  font-family:
-    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  line-height: var(--text-body--line-height);
+  color: var(--color-foreground);
+  background: var(--color-content);
+  accent-color: var(--color-accent);
+  /* A paragraph's last line is not left with a word or two -- 「分钟。」 --
+     where moving one more onto it would even the lines out. */
+  text-wrap: pretty;
+  /* Text does not select, as a Mac app's labels do not: a click or a drag
+     across a row, a button or a heading highlights nothing. What a user
+     copies is marked `select-text`: an operation's log, a command
+     preview's command, the Unknown page's paths, the version and the
+     location in a tool's details, and Banager's own version in Settings'
+     About. A command set into a sentence is
+     `select-all` (src/components/withCommand.tsx), and text fields have a
+     rule of their own below. */
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* The body's `none` reaches a text field too; a field says `text` for
+   itself, so its text selects whatever the engine makes of `none` on
+   editable text. */
+input,
+textarea {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/*
+ * The keyboard's focus, the one way for everything: a 3px ring in
+ * keyboardFocusIndicatorColor, drawn around the edge of what has it and
+ * following its corners -- a button's 6, a large button's round ends --
+ * as AppKit draws it. Only for the keyboard (`:focus-visible`): a click
+ * draws nothing. In the base layer, so that `outline-none` still turns it
+ * off where something takes the focus only to hand it on: a page's title
+ * (`focusOrFallback`), a dialog's own box.
+ */
+@layer base {
+  :focus-visible {
+    outline: 3px solid var(--color-focus);
+    outline-offset: 0;
+  }
+}
+
+/* Selected text is highlighted as a Mac highlights it
+   (selectedTextBackgroundColor), the text keeping its own colour. */
+::selection {
+  background-color: var(--color-selection);
+}
+
+/* No image or link can be dragged out of the window, as a web page's can. */
+img,
+a {
+  -webkit-user-drag: none;
+}
+
+/*
+ * A dialog's body while more of it is below what is in sight
+ * (`data-more-below`, src/components/ui/moreBelow.ts): its bottom 24 fade
+ * out, as the edge of a Mac's scroll view does, so the last line in sight
+ * reads as cut by the edge rather than as the end of what it says. The end
+ * in sight, nothing fades.
+ */
+[data-dialog-body][data-more-below] {
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 24px), transparent);
+}
+
+/* Scrolling past the top or the bottom does not pull the whole window's
+   contents after it, as it would a web page's; the lists inside scroll
+   in their own boxes as before (`overscroll-behavior` is not handed
+   down). */
+html,
+body {
+  overscroll-behavior: none;
+}
+
+/*
+ * A virtualized list gives every row a slot of its own, placed with a
+ * transform, and a transform makes each slot its own stacking context: a
+ * later slot is painted over an earlier one, whatever z-index a panel
+ * inside the earlier one has. The slot holding an open chip detail or ⋯
+ * menu (`data-popup-open`, src/components/ui/floating.ts) is lifted above
+ * its neighbours instead.
+ */
+[data-list-slot]:has([data-popup-open]) {
+  z-index: 10;
+}
+
+/*
+ * A row's hairline (`ToolRow`) separates it from the next row, as a Mac
+ * list's does: none under the last row of the list, nor under the last
+ * of a run that a line of another kind follows -- a heading, a
+ * disclosure -- which a slot holds in place of a row, nor over the
+ * selected row (below). A virtualized list marks such a slot itself
+ * (`VirtualList`'s `data-run-end`), from its items: a rule here that
+ * looked at a slot's next sibling (`:has(+ …)`) had the browser restyle
+ * every slot in sight at every step of a scroll. A list that is not
+ * virtualized (the Unknown page's) has its last slot's hairline hidden
+ * as its last child.
+ */
+[data-list-slot]:last-child [data-row-separator],
+[data-list-slot][data-run-end] [data-row-separator] {
+  display: none;
+}
+
+/*
+ * The selected row (`ToolRow`'s `selected`, the Installed page's
+ * inspector): filled as a Mac list fills its selection -- the grey
+ * unemphasized fill while the list is not the keyboard's focus, and the
+ * accent with every word on the row white while it is, as the focused
+ * list's selection is drawn -- black on a light accent
+ * (`--color-accent-foreground`). The words of a panel opened from the row
+ * (a status word's ⓘ, the ⋯ menu) keep their own colours. No hairline
+ * under the selection, nor over it -- the row before's, whose slot the
+ * page marks as a run's end (`VirtualList`'s `hairlineBefore`) -- and no
+ * focus ring round it (below): the fill is where the focus is.
+ */
+[data-row-selection] {
+  background-color: var(--color-row-selected);
+}
+[data-list]:focus-within [data-row-selection] {
+  background-color: var(--color-accent);
+}
+[data-list]:focus-within [data-tool-row][data-selected]
+  :is(.text-foreground, .text-muted, .text-tertiary, .text-glyph-rest):not([data-popup-open] > :not(button), [data-popup-open] > :not(button) *) {
+  color: var(--color-accent-foreground);
+}
+/*
+ * The row's own buttons on its selection: a grey button's fill of 7.8%
+ * black is lost on the grey selection and on the accent alike, so it is
+ * darker on the one (14% black) and white on the other (22%, the words
+ * white), as a control on a Mac list's selection is drawn. One that is
+ * off keeps its words at half white there, not the full white of the
+ * words around it.
+ */
+[data-tool-row][data-selected] {
+  --color-fill: rgb(0 0 0 / 0.14);
+  --color-fill-pressed: rgb(0 0 0 / 0.22);
+}
+[data-list]:focus-within [data-tool-row][data-selected] {
+  --color-fill: rgb(255 255 255 / 0.22);
+  --color-fill-pressed: rgb(255 255 255 / 0.32);
+}
+[data-list]:focus-within [data-tool-row][data-selected] button:disabled:is(.text-foreground) {
+  color: color-mix(in srgb, var(--color-accent-foreground) 50%, transparent);
+}
+/*
+ * A grey button that is on, on the accent selection: white with the
+ * accent's words, as a control on a selected row of a Mac list is drawn.
+ * White words on 22% white over the accent were too faint to read. The
+ * words are the accent darkened by 15%, as Increase Contrast darkens it:
+ * the default blue on white is 4:1, under the 4.5:1 a 13 point word
+ * needs; darkened, 5.3:1 -- in the dark appearance too, whose selection
+ * is the same accent. The row's other words, white on that same blue,
+ * are 4:1 as well: the focused selection is drawn as a Mac list's, and
+ * only Increase Contrast's darker accent (#0060df) takes them over 4.5:1.
+ */
+[data-list]:focus-within [data-tool-row][data-selected] button.bg-fill:enabled {
+  background-color: #fff;
+  color: color-mix(in srgb, var(--color-accent) 85%, black);
+}
+[data-list]:focus-within [data-tool-row][data-selected] button.bg-fill:enabled:active {
+  background-color: rgb(255 255 255 / 0.85);
+}
+/* On a light accent the darkened accent does not read on white (yellow's
+   is about 2:1): the accent's own words, black. */
+:root[data-accent-ink="dark"] [data-list]:focus-within [data-tool-row][data-selected] button.bg-fill:enabled {
+  color: var(--color-accent-foreground);
+}
+[data-tool-row][data-selected] [data-row-separator] {
+  display: none;
+}
+/*
+ * A list line's keyboard focus (a row, a disclosure line: `data-row-focus`,
+ * or a row's own button that opens it): not the square ring round the
+ * line's box, flush with the window's edges as a web page's would be, but
+ * the ring drawn inset as the selection is -- 10 in from either side, 2
+ * from the top and the bottom, with corners of 8 -- in the focus colour,
+ * 3 wide. Drawn over the line (its own layer) and never in the way of the
+ * pointer. None round a selected row, whose fill is where the focus is.
+ */
+[data-row-focus]:focus-visible,
+[data-row-open]:focus-visible {
+  outline: none;
+}
+[data-row-focus]:not([data-selected]):focus-visible::after,
+[data-tool-row]:not([data-selected]):has(> [data-row-open]:focus-visible)::after {
+  content: "";
+  position: absolute;
+  inset: 2px 10px;
+  z-index: 20;
+  border-radius: 8px;
+  box-shadow: inset 0 0 0 3px var(--color-focus);
+  pointer-events: none;
 }

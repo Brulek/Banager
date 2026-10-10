@@ -1,9 +1,120 @@
-import { useEffect } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { refresh, subscribeEvents } from "./api";
-import { queryKeys } from "./queries";
+import { queryKeys } from "./queryKeys";
+import { refetchOperations } from "./operationsRefetch";
 import { useUiStore } from "../store/ui";
-import type { UiEvent } from "./types";
+import type { InventoryPreview, Snapshot, UiEvent } from "./types";
+
+/**
+ * Whether `incoming` is at least as recent as what is already cached, and
+ * so may replace it.
+ *
+ * Two things write the snapshot cache and neither can see the other's
+ * request in flight: `refreshIntoCache` below, with what its own
+ * `refresh` returned, and the `useSnapshot` query, refetching because a
+ * `SnapshotChanged` event invalidated it. A refresh whose reply is slow
+ * can therefore land *after* a newer snapshot has already been cached and
+ * overwrite it — packages the user just removed reappear, with no further
+ * event coming to correct it, because as far as the backend is concerned
+ * nothing has changed since.
+ *
+ * `round` is what says which is newer. Each snapshot carries the number
+ * of the refresh round that committed it (`Snapshot::round`), and rounds
+ * commit one at a time in the order they are numbered:
+ * `Session::refresh_round` (crates/banager-core/src/session/refresh.rs)
+ * numbers a round and commits it under one hold of the refresh gate. So
+ * the higher round is the later answer, whether or not it moved
+ * `generation` -- which a refresh that found nothing new deliberately
+ * keeps (`Snapshot::same_content`) -- and whatever the clock said.
+ *
+ * Between two snapshots of one generation this used to compare
+ * `refreshed_at`, and that is the Mac's clock, which can be set back, by
+ * hand or by a time sync. A round that found nothing new, stamped after
+ * the clock went back, read as older than the round before it and was
+ * dropped: the header's "Checked … ago" stayed on the old round, and the
+ * update notification (`useUpdateNotification`), which reports each
+ * round the cache takes, never heard of the new one -- a daily check's
+ * round went unreported, and its notification with it. Two rounds
+ * stamped within the same second were no better told apart: the older
+ * one, arriving last, took the cache back.
+ *
+ * Round 0 is `Snapshot::empty()`, the backend's placeholder before any
+ * round has committed: older than every round, so it never replaces an
+ * answer. Two snapshots of one round are one commit -- nothing else
+ * writes the backend's snapshot (`Session::commit`) -- and so the same
+ * data. `generation` is compared only then, as a guard that never lets an
+ * earlier generation back in; an equal one is let in, since the same
+ * snapshot fetched again is not stale.
+ */
+export function isNewerSnapshot(incoming: Snapshot, cached: Snapshot | undefined): boolean {
+  if (!cached) return true;
+  if (incoming.round !== cached.round) return incoming.round > cached.round;
+  return incoming.generation >= cached.generation;
+}
+
+/**
+ * Whether `snapshot` is the placeholder the backend starts from,
+ * `Snapshot::empty()`, before the startup refresh (`useStartupRefresh`)
+ * has answered: not an answer, and never to be judged as one --
+ * `SnapshotStatus` would flash "Banager found nothing it can manage" at
+ * every launch, and the Overview would say there is nothing to update.
+ *
+ * `detect === "Missing"` is what makes this the *placeholder* rather than
+ * a real answer: only a completed refresh can report `Found`, so that is
+ * never "still loading" no matter what the timestamp says.
+ *
+ * `generation === 0` and `refreshed_at === null` are both needed.
+ * `commit()` (crates/banager-core/src/session/refresh.rs) bumps
+ * `generation` only when the refresh's *content* differs from the
+ * previous snapshot, so a Mac with no package manager at all refreshes
+ * successfully and stays at generation 0 forever -- only the stamped
+ * `refreshed_at` separates "checked, found nothing" from "not checked
+ * yet". `refresh()` stamps that timestamp whenever it ran, whatever the
+ * sources said, so `Snapshot::empty()` is the only snapshot that can
+ * carry a null one: together the two mean nothing committed *and*
+ * nothing checked.
+ */
+export function isStartupSnapshot(snapshot: Snapshot): boolean {
+  return (
+    snapshot.generation === 0 && snapshot.detect === "Missing" && snapshot.refreshed_at === null
+  );
+}
+
+/**
+ * The only way anything writes the snapshot cache: `isNewerSnapshot`
+ * decides, inside the updater so that the read and the write cannot be
+ * split by a reply arriving in between.
+ */
+export function writeSnapshotIfNewer(queryClient: QueryClient, snapshot: Snapshot): void {
+  queryClient.setQueryData<Snapshot>(queryKeys.snapshot, (cached) =>
+    isNewerSnapshot(snapshot, cached) ? snapshot : cached,
+  );
+}
+
+/**
+ * Keeps `preview`, the first refresh's list before its update checks are
+ * done (`UiEvent.InventoryPreview`), for the Installed page to show
+ * meanwhile (`useInventoryPreview` in src/lib/inventoryPreview.ts) -- only
+ * while the snapshot cache has nothing but the startup placeholder
+ * (`isStartupSnapshot`), or nothing at all yet. The event and the
+ * refresh's own reply travel apart, so the reply can come first: a
+ * preview arriving after a real snapshot is dropped, never shown over
+ * it. A later round's preview (one after a round that never committed)
+ * replaces an earlier one; an earlier one never comes back.
+ *
+ * Held under its own key, never the snapshot's: what reads the snapshot
+ * -- the Updates page, the Overview's verdict, the Dock's badge, the
+ * update notification -- must not take a list with no updates in it for
+ * an answer that there are none.
+ */
+export function writeInventoryPreview(queryClient: QueryClient, preview: InventoryPreview): void {
+  const snapshot = queryClient.getQueryData<Snapshot>(queryKeys.snapshot);
+  if (snapshot !== undefined && !isStartupSnapshot(snapshot)) return;
+  queryClient.setQueryData<InventoryPreview | null>(queryKeys.inventoryPreview, (held) =>
+    held && held.round > preview.round ? held : preview,
+  );
+}
 
 /**
  * Runs a backend `refresh` and writes the returned Snapshot straight into the
@@ -31,29 +142,93 @@ import type { UiEvent } from "./types";
 let refreshInFlight: Promise<void> | null = null;
 let refreshAgain = false;
 
-function refreshIntoCache(queryClient: QueryClient, why: string): void {
-  // refreshIntoCache is a plain function, not a hook, so useUiStore.getState()
-  // — rather than the useUiStore() hook — is the correct way to reach the store here.
+/**
+ * Who wants to know when `refreshInFlight` starts or stops being null: the
+ * page header's "Checking…" and its Check again button, through
+ * `useRefreshInFlight`. Module-level for the same reason the coordinator
+ * is: a refresh started by the startup hook, by a finished operation or
+ * by any button is the same one refresh, and "is one running" has one
+ * answer.
+ */
+const refreshListeners = new Set<() => void>();
+
+function notifyRefreshListeners(): void {
+  for (const listener of refreshListeners) listener();
+}
+
+function subscribeToRefresh(listener: () => void): () => void {
+  refreshListeners.add(listener);
+  return () => {
+    refreshListeners.delete(listener);
+  };
+}
+
+/**
+ * Whether a refresh is running right now, as of the moment it is asked:
+ * what Check again asks before it starts one (`useCheckAgain`), a click
+ * or the menu bar's ⌘R. `useRefreshInFlight` is the same answer for a
+ * component to draw.
+ */
+export function isRefreshInFlight(): boolean {
+  return refreshInFlight !== null;
+}
+
+/**
+ * Whether a refresh is running right now, whoever started it -- the one at
+ * startup, the one after an operation, or a click. A follow-up refresh
+ * (`refreshAgain` below) starts as the one before it settles, so this
+ * stays true across the pair.
+ */
+export function useRefreshInFlight(): boolean {
+  return useSyncExternalStore(subscribeToRefresh, isRefreshInFlight);
+}
+
+/**
+ * Exported (Task 13) so `useRefresh` (src/lib/queries.ts) shares this same
+ * single-flight coordinator instead of calling `refresh()` directly --
+ * previously a manual "Try again" click could run fully concurrently with
+ * an in-flight startup/event-driven refresh, exactly the race this module
+ * exists to prevent. A call that arrives while one is already in flight
+ * gets back *that* run's own promise rather than starting a second one; it
+ * still schedules the one-more-follow-up this module has always used to
+ * make sure whatever changed after the in-flight run started is not lost.
+ * Every internal side effect (cache write, `startupRefreshError`) is
+ * unchanged; the only new thing is that a failure is now also re-thrown, so
+ * a caller like `useRefresh` can `await` this and see `isError` — existing
+ * fire-and-forget callers below append their own `.catch(() => {})`.
+ */
+export function refreshIntoCache(queryClient: QueryClient, why: string): Promise<void> {
   if (refreshInFlight) {
     refreshAgain = true;
-    return;
+    return refreshInFlight;
   }
-  refreshInFlight = refresh()
+  const run: Promise<void> = refresh()
     .then((snapshot) => {
-      queryClient.setQueryData(queryKeys.snapshot, snapshot);
+      // Not `setQueryData` outright: this reply can be older than what a
+      // `SnapshotChanged`-driven refetch has already cached. See
+      // `isNewerSnapshot`.
+      writeSnapshotIfNewer(queryClient, snapshot);
       useUiStore.getState().setStartupRefreshError(null);
     })
     .catch((e: unknown) => {
       console.error(`${why} refresh failed`, e);
       useUiStore.getState().setStartupRefreshError(e instanceof Error ? e.message : String(e));
+      throw e;
     })
     .finally(() => {
       refreshInFlight = null;
       if (refreshAgain) {
         refreshAgain = false;
-        refreshIntoCache(queryClient, `${why} (follow-up)`);
+        // Starts the follow-up, which sets `refreshInFlight` again and
+        // tells the listeners itself: to them the two are one refresh.
+        refreshIntoCache(queryClient, `${why} (follow-up)`).catch(() => {});
+      } else {
+        notifyRefreshListeners();
       }
     });
+  refreshInFlight = run;
+  notifyRefreshListeners();
+  return run;
 }
 
 /**
@@ -67,16 +242,20 @@ export function useStartupRefresh(): void {
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    refreshIntoCache(queryClient, "initial");
+    refreshIntoCache(queryClient, "initial").catch(() => {});
   }, [queryClient]);
 }
 
 /**
  * Mounted once (by `App`, in Task 13) to bridge the backend's Channel into
- * React state: `Operation.Log` events are appended to the Zustand log ring
- * buffer, `Operation.Status`/`Operation.Finished` invalidate the operations
- * query, and `SnapshotChanged` invalidates the snapshot query. A `Finished`
- * event additionally triggers a `refresh`: that is the only way the
+ * React state: `Operation.Log` and `Operation.Note` events are appended to
+ * the Zustand log ring buffer, `Operation.Status`/`Operation.Finished`
+ * have the operations fetched again (within a frame, one fetch for all of
+ * them: `refetchOperations`), `SnapshotChanged` invalidates the snapshot query,
+ * `InventoryPreview` is kept apart from it (`writeInventoryPreview`), and
+ * `SizesChanged` invalidates the sizes query. A `Finished`
+ * event is also when the operation finished (`rememberOpFinished`), and
+ * triggers a `refresh`: that is the only way the
  * installed/updates lists learn that an uninstall or update changed
  * anything, because nothing on the backend refreshes on its own. Not part of
  * the skeleton's Core Interfaces — introduced here because `events.ts` needs
@@ -103,12 +282,30 @@ export function useOperationEvents(): void {
             stream: opEvent.Log.stream,
             line: opEvent.Log.line,
           });
+        } else if ("Note" in opEvent) {
+          useUiStore.getState().appendLog({
+            opId: opEvent.Note.op_id,
+            note: opEvent.Note.note,
+          });
         } else {
-          queryClient.invalidateQueries({ queryKey: queryKeys.operations });
+          refetchOperations(queryClient);
           if ("Finished" in opEvent) {
-            refreshIntoCache(queryClient, "post-operation");
+            // When it finished, which the operation itself does not carry:
+            // the Updates page's "Just updated" says it.
+            useUiStore.getState().rememberOpFinished(opEvent.Finished.op_id, Date.now());
+            // Kept before the event was sent (`OnFinish`): its record --
+            // whether Banager read the version change -- is there now.
+            queryClient.invalidateQueries({ queryKey: queryKeys.history });
+            refreshIntoCache(queryClient, "post-operation").catch(() => {});
           }
         }
+      } else if ("InventoryPreview" in event) {
+        // No snapshot changed: nothing to fetch.
+        writeInventoryPreview(queryClient, event.InventoryPreview);
+      } else if ("SizesChanged" in event) {
+        // Measured after a refresh, outside the snapshot: only the sizes
+        // are asked for again.
+        queryClient.invalidateQueries({ queryKey: queryKeys.sizes });
       } else {
         queryClient.invalidateQueries({ queryKey: queryKeys.snapshot });
       }
@@ -131,8 +328,9 @@ export function useOperationEvents(): void {
 
     // Under React StrictMode the effect mounts, unmounts and mounts again.
     // The first Channel is detached client-side but stays in the backend's
-    // ChannelSink registry as a ghost until a send to it fails; it receives
-    // events and drops them. There is no other side effect.
+    // ChannelSink registry as a ghost until a send to it fails or newer
+    // subscriptions push it out (`MAX_CHANNELS`); it receives events and
+    // drops them. There is no other side effect.
     return () => {
       cancelled = true;
       detach?.();

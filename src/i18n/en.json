@@ -1,145 +1,1833 @@
 {
   "app": {
-    "title": "Canager",
-    "operationBarRegion": "Operation status"
+    "operationBarRegion": "Operation status",
+    "failed": "Couldn't show this page.",
+    "reload": "Reload"
+  },
+  "welcome": {
+    "title": "Welcome to {{name}}",
+    "listTitle": "See What's Installed",
+    "confirmTitle": "You Confirm Every Update and Uninstall",
+    "privacyTitle": "No Data Collected",
+    "start": "Get Started"
+  },
+  "inventoryPreview": {
+    "subtitle_one": "Found {{count}} tool · Checking for updates…",
+    "subtitle_other": "Found {{count}} tools · Checking for updates…",
+    "overviewLine_one": "Found {{count}} tool. The first check looks up its newest version online, and sometimes takes a minute or two.",
+    "overviewLine_other": "Found {{count}} tools. The first check looks up every tool's newest version online, and sometimes takes a minute or two.",
+    "seeTools": "See Tools",
+    "uninstallHold": "Checking for updates. You can uninstall once it's done."
   },
   "nav": {
-    "label": "Sections",
-    "installed": "Installed",
+    "label": "Navigation",
+    "overview": "Overview",
     "updates": "Updates",
-    "settings": "Settings"
+    "installed": "Installed",
+    "unknown": "Other Programs",
+    "settings": "Settings",
+    "count": {
+      "updates_one": "{{count}} can be updated",
+      "updates_other": "{{count}} can be updated",
+      "installed_one": "{{count}} installed",
+      "installed_other": "{{count}} installed"
+    },
+    "sources": "Sources"
   },
   "common": {
     "loading": "Loading…",
     "cancel": "Cancel",
-    "close": "Close"
+    "close": "Close",
+    "viewLog": "View Log",
+    "listSeparator": ", ",
+    "listAnd": "{{list}} and {{last}}",
+    "listOr": "{{list}} or {{last}}",
+    "checking": "Checking…",
+    "firstCheckDetail": "The first check looks up every tool's newest version online, and sometimes takes a minute or two.",
+    "details": "Details",
+    "detailsLabel": "Details: {{title}}",
+    "copyCommand": "Copy Command",
+    "copied": "Copied",
+    "copyFailed": "Couldn't copy",
+    "moreActions": "More actions for {{name}}",
+    "sourceWithPlace": "{{source}} ({{place}})",
+    "place": {
+      "appleSilicon": "Apple silicon",
+      "intel": "Intel"
+    },
+    "done": "Done"
+  },
+  "header": {
+    "checkedJustNow": "Checked just now",
+    "checkedMinutesAgo_one": "Checked {{count}} min ago",
+    "checkedMinutesAgo_other": "Checked {{count}} min ago",
+    "checkedHoursAgo_one": "Checked {{count}} hour ago",
+    "checkedHoursAgo_other": "Checked {{count}} hours ago",
+    "checkedDaysAgo_one": "Checked {{count}} day ago",
+    "checkedDaysAgo_other": "Checked {{count}} days ago",
+    "checkFailed": "Couldn't check",
+    "checkAgain": "Check Again"
+  },
+  "toolbar": {
+    "checkAgainShortcut": "{{label}} (⌘R)",
+    "checkAgainTip": "{{label}} (⌘R) · {{status}}",
+    "scanAgainTip": "{{label}} · {{status}}",
+    "toolCount_one": "{{count}} tool",
+    "toolCount_other": "{{count}} tools",
+    "programCount_one": "{{count}} program",
+    "programCount_other": "{{count}} programs"
+  },
+  "toolRow": {
+    "fallback": {
+      "homebrewPackage": "Homebrew package",
+      "homebrewApp": "App installed with Homebrew",
+      "npmPackage": "npm package",
+      "pythonPackage": "Python package",
+      "pipxTool": "Python tool installed with pipx",
+      "uvTool": "Python tool installed with uv",
+      "cargoProgram": "Program installed with Cargo",
+      "ollamaModel": "Ollama model",
+      "other": "Installed with {{source}}"
+    }
+  },
+  "families": {
+    "showLabel": "Show",
+    "showAll": "All Tools",
+    "showAi": "AI Tools",
+    "none": "No common AI coding tools were found on this Mac",
+    "noneInSource": "No common AI coding tools were found in {{source}}",
+    "noUpdates": "No AI coding tool updates here",
+    "updateTheseCount_one": "Update {{count}} Tool",
+    "updateTheseCount_other": "Update {{count}} Tools",
+    "showNotOnPath": "Not Found in Terminal",
+    "showNotOnPathCount": "Not Found in Terminal ({{number}})",
+    "showBrewRetired": "Disabled or Deprecated by Homebrew",
+    "showBrewRetiredCount": "Disabled or Deprecated by Homebrew ({{number}})",
+    "notOnPathNone": "Found no tools missing from Terminal",
+    "notOnPathNoneInSource": "Found no tools in {{source}} missing from Terminal",
+    "brewRetiredNone": "Homebrew hasn't disabled or deprecated any of your tools",
+    "brewRetiredNoneInSource": "Nothing in {{source}} is disabled or deprecated by Homebrew",
+    "notOnPathNotice_one": "{{count}} tool can't be found in Terminal",
+    "notOnPathNotice_other": "{{count}} tools can't be found in Terminal",
+    "brewRetiredNotice_one": "{{count}} tool was disabled or deprecated by Homebrew",
+    "brewRetiredNotice_other": "{{count}} tools were disabled or deprecated by Homebrew",
+    "brewRetiredNoticeDetail": "Homebrew no longer updates a disabled tool, and may disable a deprecated one later. What's installed isn't removed.",
+    "view_one": "Show Tool",
+    "view_other": "Show Tools",
+    "viewIn": {
+      "installed": "Show in Installed",
+      "unknown": "Show in Other Programs",
+      "updates": "Show in Updates",
+      "settings": "Show in Settings"
+    }
+  },
+  "notOnPathMore": {
+    "detailOne": "One of its commands is in a folder Terminal doesn't search, so typing it in Terminal doesn't run this copy: it may find nothing, or another program with the same name. Open a new Terminal window and try again. If it still isn't found, follow the tool's installation instructions.",
+    "detailMany": "Each has at least one command in a folder Terminal doesn't search, so typing that command in Terminal doesn't run that copy: it may find nothing, or another program with the same name. Open a new Terminal window and try again. If a command still isn't found, follow that tool's installation instructions.",
+    "notFoundDetail": "Terminal looks for commands only in certain folders, and this isn't one of them. Open a new Terminal window and try again. If it still isn't found, follow the tool's installation instructions."
+  },
+  "otherVersionsShow": {
+    "show": "Other Versions Kept",
+    "showCount": "Other Versions Kept ({{number}})",
+    "none": "Homebrew keeps no other versions of your tools",
+    "noneInSource": "Nothing in {{source}} has other versions kept by Homebrew"
+  },
+  "twinsFilter": {
+    "show": "Installed More Than Once",
+    "none": "Nothing is installed more than once",
+    "noneInSource": "Nothing in {{source}} is installed more than once"
+  },
+  "twinsFilterMore": {
+    "showCount": "Installed More Than Once ({{number}})"
+  },
+  "notUsedCopy": {
+    "count_one": "{{count}} not used in Terminal",
+    "count_other": "{{count}} not used in Terminal"
+  },
+  "commandsKnown": {
+    "previewing": "These appear here when the check finishes",
+    "unjudged": "This check didn't look at the commands in Terminal",
+    "notFoundUnknown": "Not found in Terminal: not looked at this time",
+    "twinsUnknown": "Tools installed more than once: not looked at this time"
+  },
+  "overview": {
+    "updatesAvailable_one": "{{count}} tool can be updated",
+    "updatesAvailable_other": "{{count}} tools can be updated",
+    "reviewUpdates": "Review Updates",
+    "upToDate": "Everything is up to date",
+    "updating_one": "Updating {{count}} tool",
+    "updating_other": "Updating {{count}} tools",
+    "seeProgress": "See Progress",
+    "autoCheckRowLabel": "{{label}}: {{value}}",
+    "autoCheckOpensSettings": "Opens Settings",
+    "nothingToUpdateChecked": "No updates in the sources checked",
+    "nothingChecked": "No tools could be checked",
+    "hiddenCount_one": "{{count}} hidden",
+    "hiddenCount_other": "{{count}} hidden",
+    "cantUpdateHereCount_one": "{{count}} can't be updated here",
+    "cantUpdateHereCount_other": "{{count}} can't be updated here",
+    "cantUpdateHereUncheckedCount": "{{number}} can't be updated here, including {{unchecked}} that couldn't be checked",
+    "listSeparator": ", ",
+    "attentionLabel": "Needs attention",
+    "moreNotes_one": "{{count}} more note",
+    "moreNotes_other": "{{count}} more notes",
+    "hideNotes_one": "Hide {{count}} note",
+    "hideNotes_other": "Hide {{count}} notes",
+    "checkFailedTryLater": "Try again later."
+  },
+  "overviewMore": {
+    "toolSetupLine": "Whether Terminal finds your tools, and how each source is doing.",
+    "autoCheckLabel": "Check for updates"
+  },
+  "overviewPassword": {
+    "title_one": "{{count}} update needs your password",
+    "title_other": "{{count}} updates need your password"
+  },
+  "overviewAllGood": {
+    "upToDateHere": "Everything you can update here is up to date",
+    "notCheckedRest_one": "{{sources}} wasn't checked this time; everything else is up to date",
+    "notCheckedRest_other": "{{sources}} weren't checked this time; everything else is up to date",
+    "notFinishedRest_one": "{{sources}} wasn't fully checked this time; everything else is up to date",
+    "notFinishedRest_other": "{{sources}} weren't fully checked this time; everything else is up to date",
+    "notCheckedRestHere_one": "{{sources}} wasn't checked this time; everything else you can update here is up to date",
+    "notCheckedRestHere_other": "{{sources}} weren't checked this time; everything else you can update here is up to date",
+    "notFinishedRestHere_one": "{{sources}} wasn't fully checked this time; everything else you can update here is up to date",
+    "notFinishedRestHere_other": "{{sources}} weren't fully checked this time; everything else you can update here is up to date",
+    "notChecked_one": "{{sources}} wasn't checked this time",
+    "notChecked_other": "{{sources}} weren't checked this time",
+    "notFinished_one": "{{sources}} wasn't fully checked this time",
+    "notFinished_other": "{{sources}} weren't fully checked this time"
   },
   "adapters": {
-    "brew": "Homebrew"
+    "brew": "Homebrew",
+    "npm": "npm",
+    "pipx": "pipx",
+    "uv": "uv",
+    "pip": "pip",
+    "cargo": "Cargo",
+    "ollama": "Ollama",
+    "standalone-claude": "Claude Code",
+    "standalone-rustup": "rustup",
+    "standalone-agy": "Antigravity CLI",
+    "standalone-grok": "Grok Build",
+    "standalone-codex": "Codex",
+    "standalone-opencode": "opencode"
+  },
+  "brewStatus": {
+    "disabledWord": "Disabled",
+    "deprecatedWord": "Deprecated",
+    "disabledAria": "Disabled: {{name}}",
+    "deprecatedAria": "Deprecated: {{name}}",
+    "disabledOn": "Homebrew disabled it on {{date}} and won't provide more updates. The installed copy isn't removed; uninstall it when you no longer need it.",
+    "disabled": "Homebrew has disabled it and won't provide more updates. The installed copy isn't removed; uninstall it when you no longer need it.",
+    "deprecatedOn": "Homebrew deprecated it on {{date}} and may disable it later.",
+    "deprecated": "Homebrew has deprecated it and may disable it later.",
+    "reasonThenMark": "{{why}} {{what}}",
+    "reasonQuoted": "Homebrew's reason: “{{reason}}”.",
+    "reason": {
+      "does_not_build": "It no longer builds.",
+      "no_license": "It doesn't declare a license.",
+      "repo_archived": "Its source repository has been archived.",
+      "repo_removed": "Its source repository has been removed.",
+      "unmaintained": "It is no longer maintained.",
+      "unreachable": "Its download can no longer be reached reliably.",
+      "unsupported": "Its developer no longer supports it.",
+      "deprecated_upstream": "Its developer has deprecated it.",
+      "versioned_formula": "It is a package for one older version only.",
+      "checksum_mismatch": "Its source file no longer matches the one first released, so the developer's repository may have been changed.",
+      "discontinued": "Its developer has discontinued it.",
+      "moved_to_mas": "It is now offered only in the App Store.",
+      "no_longer_available": "Its download is no longer available.",
+      "no_longer_meets_criteria": "It no longer meets Homebrew's criteria.",
+      "fails_gatekeeper_check": "It doesn't pass the macOS security check."
+    },
+    "replacement": "Homebrew suggests “{{name}}” instead.",
+    "caveatsTitle": "Homebrew's notes",
+    "homepage": "Homepage",
+    "copyLink": "Copy Link",
+    "otherVersionsTerm": "Other versions"
+  },
+  "homepageLink": {
+    "openFailed": "Couldn't open"
   },
   "installed": {
-    "filterLabel": "Filter installed items",
-    "filterPlaceholder": "Search installed items",
-    "uninstall": "Uninstall",
+    "filterLabel": "Search installed tools",
+    "filterPlaceholder": "Search",
+    "sortLabel": "Sort Order",
+    "sortByName": "By Name",
+    "sortBySource": "By Source",
+    "noMatches": "Nothing matches “{{query}}”",
+    "closeDetails": "Close Details",
+    "uninstall": "Uninstall…",
+    "uninstallLabel": "Uninstall {{name}}…",
+    "uninstallQueued": "Queued",
+    "uninstallQueuedLabel": "Queued: uninstall {{name}}",
+    "uninstalling": "Uninstalling…",
+    "uninstallingLabel": "Uninstalling {{name}}…",
+    "uninstallHold": {
+      "label": "Can't uninstall now",
+      "ariaLabel": "Can't uninstall {{name}} now",
+      "IndexUpdating": "Homebrew is checking online for new versions. You can uninstall once it's done."
+    },
     "upToDate": "Up to date",
     "updateAvailable": "Update available",
-    "noDescription": "No description available",
-    "nameWithVersion": "{{name}} · {{version}}",
-    "showDependencies_one": "{{count}} component installed by other software",
-    "showDependencies_other": "{{count}} components installed by other software"
+    "updateIgnored": "Reminders off",
+    "updateSkipped": "Skipped {{version}}",
+    "updateSkippedNewBuild": "Skipped the new version",
+    "showDependencies_one": "{{count}} more package was installed for other software to use",
+    "showDependencies_other": "{{count}} more packages were installed for other software to use",
+    "hideDependencies_one": "Hide {{count}} package",
+    "hideDependencies_other": "Hide {{count}} packages",
+    "unverifiedVersion": "{{source}} {{version}} not tested",
+    "unverifiedVersionDetail": "Not tested with this version of {{source}} yet.",
+    "version": "Version",
+    "newVersion": "New version",
+    "homebrewRecord": "Homebrew's record",
+    "location": "Location",
+    "status": "Status",
+    "blocked": {
+      "Pinned": {
+        "description": "It's pinned in {{source}}. To uninstall it, first run {{command}} in Terminal.",
+        "refused": "Couldn't uninstall it because it's pinned in {{source}}. Run {{command}} in Terminal to unpin it first."
+      },
+      "NoSafeMethod": {
+        "badge": "Manual uninstall",
+        "description": "{{source}} has no uninstall command, and its files can't yet be removed safely from here. Follow {{source}}'s official documentation to uninstall it.",
+        "refused": "{{source}} can't be uninstalled from here yet.",
+        "standalone-rustup": {
+          "description": "Rust on this Mac isn't entirely in ~/.cargo and ~/.rustup, and only Rust in those folders can be uninstalled here. Follow rustup's official documentation and run “rustup self uninstall”.",
+          "refused": "Couldn't uninstall because Rust isn't entirely in ~/.cargo and ~/.rustup."
+        }
+      },
+      "UvToolDirSet": {
+        "badge": "Can't uninstall here",
+        "description": "With UV_TOOL_DIR set, when uv uninstalls its last tool it also deletes the folder above UV_TOOL_DIR and everything in it, if that folder holds no other folder. So no uv tool can be uninstalled here while it's set.",
+        "refused": "Couldn't uninstall because UV_TOOL_DIR is set."
+      }
+    },
+    "sourceEmpty": {
+      "title": "Nothing installed with {{source}}",
+      "description": "Tools you install with {{source}} show up here.",
+      "unreachable": "The tools installed with it can't be listed this time. Check again later."
+    },
+    "installedOn": "Date installed",
+    "sortByDate": "By Date Installed",
+    "dateRowName": "Date installed: {{date}}",
+    "commandMatch": "Command: {{command}}",
+    "searchHint": "Search by name, description or command"
   },
   "updates": {
     "upToDate": "Everything is up to date",
-    "allIgnored": "No pending updates — everything else is ignored.",
+    "noneCheckable": "No updates in the sources checked",
     "count_one": "{{count}} update available",
     "count_other": "{{count}} updates available",
-    "updateSelected": "Update selected",
+    "noneActionable": "Nothing to update here",
+    "needPasswordCount_one": "{{count}} needs your password",
+    "needPasswordCount_other": "{{count}} need your password",
+    "cantUpdateHere": "{{number}} more can't be updated here",
+    "selectAll": "Select All",
+    "selectAllLabel": "Select all items that can be updated here",
+    "updateSelectedCount": "Update Selected ({{number}})",
+    "updateAll": "Update All",
     "update": "Update",
-    "ignore": "Ignore",
-    "ignoreFailed": "Couldn't save the ignored updates: {{message}}",
-    "available": "Update",
-    "warnings_one": "{{count}} warning",
-    "warnings_other": "{{count}} warnings",
-    "versionChange": "{{current}} → {{target}}",
+    "updateLabel": "Update {{name}}",
+    "retry": "Retry",
+    "retryLabel": "Retry {{name}}",
     "selectRow": "Select {{name}} for update",
-    "confirmTitle": "Confirm update",
-    "confirmUpdate": "Confirm",
+    "skipVersion": "Skip This Version",
+    "skipVersionHint": "You'll be reminded when the next version comes out.",
+    "neverRemind": "Don't Remind Me About This Tool",
+    "neverRemindHint": "You won't be reminded about any update to this tool. Undo it in Settings.",
+    "saveChoiceFailed": "Couldn't save that choice: {{message}}.",
+    "saveChoiceFailedPlain": "Couldn't save that choice. Try again later.",
+    "versionChange": "{{current}} → {{target}}",
+    "versionTo": "→ {{target}}",
+    "newVersion": "New version",
+    "newBuild": "This model has a new version",
+    "selfUpdating": "Updates itself",
+    "readOnly": "View only",
+    "cannotCheck": "Can't check",
+    "cannotCheckShort": "Couldn't find its latest version.",
+    "lookupsFailedTitle_one": "{{count}} tool couldn't be checked",
+    "lookupsFailedTitle_other": "{{count}} tools couldn't be checked",
+    "lookupsFailedTitleCause_one": "{{count}} tool couldn't be checked: {{cause}}",
+    "lookupsFailedTitleCause_other": "{{count}} tools couldn't be checked: {{cause}}",
+    "lookupsFailedDescription": "Some updates may not be listed. {{next}}",
+    "lookupsFailedProblemTitle": "Some updates may not be listed",
+    "cannotCheckSummary_one": "Check details are hidden for {{count}} of these tools.",
+    "cannotCheckSummary_other": "Check details are hidden for {{count}} of these tools.",
+    "showReasons": "Show Reasons",
+    "showReasonsHint": "Turns on “{{setting}}” in Settings",
+    "sourceUnavailable": "Can't update now",
+    "unavailableDetail": {
+      "NotRunning": "{{source}} isn't running. Open it, then click Check Again.",
+      "NotResponding": "{{source}} isn't responding. Click Check Again later.",
+      "RefusesAsRoot": "{{source}} doesn't work when this app runs as administrator. Quit, then open Banager again with a double-click."
+    },
+    "runInTerminal": "In Terminal: {{command}}",
+    "progress": {
+      "queued": "Queued",
+      "running": "Updating…",
+      "cancelling": "Cancelling…",
+      "succeeded": "Updated",
+      "failed": "Couldn't update",
+      "cancelled": "Cancelled",
+      "check": "Needs attention",
+      "unconfirmed": "Result unconfirmed",
+      "stepFailed": "Updated with an error",
+      "viewLogLabel": "View log: {{name}}"
+    },
+    "justUpdated": {
+      "title": "Update History",
+      "clear": "Clear History",
+      "clearLabel": "Clear the Update History list"
+    },
+    "confirmTitleNamed": "Update “{{name}}”?",
+    "confirmTitle_one": "Update {{count}} tool?",
+    "confirmTitle_other": "Update {{count}} tools?",
+    "confirmCount_one": "Update {{count}} Tool",
+    "confirmCount_other": "Update {{count}} Tools",
+    "preparing": "Preparing…",
     "started": "Started",
     "planFailed": "Couldn't prepare the update: {{message}}",
-    "submitFailed": "Could not start the update: {{message}}"
-  },
-  "commandPreview": {
-    "label": "This will run:",
-    "needsPassword": "This will ask for your Mac password."
-  },
-  "operations": {
-    "idle": "No operation running",
-    "current": "{{kind}} {{name}} — {{status}}",
-    "cancel": "Cancel",
-    "logDrawerTitle": "Operation log",
-    "kind": {
-      "Install": "Installing",
-      "Uninstall": "Uninstalling",
-      "Upgrade": "Updating"
+    "planFailedPlain": "Couldn't prepare the update. Try again later.",
+    "submitFailed": "Couldn't start the update: {{message}}",
+    "submitFailedPlain": "Couldn't start the update. Try again later.",
+    "blocked": {
+      "Pinned": {
+        "badge": "Pinned",
+        "detail": "It's pinned in {{source}}. To update it, first run {{command}} in Terminal to unpin it, then check again.",
+        "refused": "Couldn't update it because it's pinned in {{source}}."
+      },
+      "SelfUpdatesOnly": {
+        "badge": "Updates when run",
+        "detail": "It updates itself and can't be updated here. Open it once and it checks for a new version.",
+        "refused": "{{source}} updates itself and can't be updated here."
+      },
+      "UpdatesTurnedOff": {
+        "badge": "Updates turned off",
+        "detail": "{{source}}'s own settings turn off its updates, so it can't be updated here.",
+        "refused": "Couldn't update it because {{source}}'s own settings turn off its updates."
+      }
     },
-    "status": {
-      "Queued": "queued",
-      "Running": "running",
-      "CancelRequested": "cancelling",
-      "Cancelling": "cancelling",
-      "Verifying": "verifying",
-      "Done": "done"
+    "allHiddenTitle": "No updates to install",
+    "allHiddenDescription": "The rest are hidden.",
+    "showHidden": "Show Hidden Updates",
+    "snooze": "Remind Me in 30 Days",
+    "snoozeHint": "This tool's updates will be listed again in 30 days. Undo it in Settings.",
+    "snoozedUntil": "No reminders until {{date}}",
+    "selfUpdatesTyped": "It updates itself and can't be updated here. Type {{command}} in Terminal to open it once, and it checks for a new version.",
+    "disabledBlocked": {
+      "detail": "{{source}} has disabled it and won't provide more updates. The installed copy isn't removed; uninstall it when you no longer need it.",
+      "refused": "Couldn't update it because {{source}} has disabled it."
     },
-    "outcome": {
-      "Succeeded": "Succeeded",
-      "NoChange": "No change needed",
-      "PartialSuccess": "Partially succeeded",
-      "Unconfirmed": "Result unconfirmed",
-      "NeedsAttention": "Needs attention: {{message}}",
-      "Failed": "Failed: {{summary}}"
+    "pinnedPipxInjected": "This command also unpins the other packages installed alongside it."
+  },
+  "updatesMore": {
+    "updating": "Updating…"
+  },
+  "history": {
+    "today": "Today {{time}}",
+    "verifiedTitle": "The installed version was read before and after the update, and it had changed.",
+    "verifiedModelTitle": "The model was read before and after the update, and it had changed.",
+    "more_one": "Show {{count}} More",
+    "more_other": "Show {{count}} More",
+    "showFewer": "Show Fewer",
+    "failedBecause": "Couldn't update: {{cause}}",
+    "unchanged": "Didn't update: same version",
+    "unchangedTitle": "The command said it finished, but the version read before and after the update is the same.",
+    "stepFailedNotLinkedTitle": "The new version was installed but isn't linked, so its commands may not be found in Terminal, usually because a file of the same name is in the way.",
+    "stepFailedTitle": "The new version was installed, but the command said a step after the update failed."
+  },
+  "batchResult": {
+    "reason": "Reason: {{detail}}",
+    "errorLine": "The error: {{detail}}",
+    "already": {
+      "ByEarlierUpdate": "Done by an earlier update",
+      "BeforeItsTurn": "Already up to date"
+    },
+    "alreadyWhy": {
+      "ByEarlierUpdate": "When its turn came it was already up to date: an earlier update had updated it as well.",
+      "BeforeItsTurn": "When its turn came it was already up to date, so its own command changed nothing."
     }
   },
+  "commandPreview": {
+    "show_one": "Show Command",
+    "show_other": "Show Commands",
+    "trashLabel": "Moves to the Trash",
+    "needsPassword": "You can't enter your Mac password here. If an app asks for it at this step, you'll see how to finish in Terminal."
+  },
+  "majorVersion": {
+    "tag": "Major update",
+    "tagLabel": "Major update: {{name}}",
+    "detail": "Going from version {{from}} to {{to}} may change how it works or how it's set up. If you're not sure, choose “{{skip}}” from the “⋯” menu on this row, and you'll be reminded when the next version comes out."
+  },
+  "nextAutoCheck": {
+    "today": "Next automatic check: about {{time}} today",
+    "tomorrow": "Next automatic check: about {{time}} tomorrow",
+    "date": "Next automatic check: about {{time}} on {{date}}",
+    "soon": "Next automatic check: soon"
+  },
+  "warnings": {
+    "dependentsUnknown": "Couldn't check what else needs this. Check yourself before you uninstall.",
+    "wouldBreak_one": "{{names}} still needs this.",
+    "wouldBreak_other": "{{count}} other tools still need this: {{names}}.",
+    "compilesLocally": "This compiles on your Mac and takes a while.",
+    "downloadsModelChanges": "Downloads the model files that changed.",
+    "nonRegistrySource": "It wasn't installed from crates.io.",
+    "transientLookupFailure": "You can click “Check Again” later.",
+    "thirdPartyRegistry": "This model comes from {{host}}, not Ollama's own library.",
+    "willTrash": {
+      "Launcher": "The command: {{path}}",
+      "Program": "Program files: {{path}}",
+      "Cache": "Cache it can download again: {{path}}",
+      "Backups": "Old copy left by an update: {{path}}"
+    },
+    "willKeep": {
+      "Settings": "Settings: {{path}}",
+      "SettingsAndHistory": "Settings, login and history: {{path}}",
+      "ToolState": "Conversations and history: {{path}}",
+      "ToolStateDetail": "Keeps the whole folder, including the program files in it.",
+      "ShellConfigLines": "Terminal settings file: {{path}}",
+      "ShellConfigLinesDetail": "This file and the lines the installer added stay as they are.",
+      "OutsideHome": "Link that will stop working: {{path}}",
+      "OutsideHomeDetail": "It's outside your home folder, so it stays. You can delete it after uninstalling.",
+      "NotOurs": "Not confirmed as this tool's: {{path}}",
+      "NotOursDetail": "It couldn't be confirmed as this tool's, so it stays.",
+      "InstallerCache": "Installer's staging folder: {{path}}",
+      "InstallerCacheDetail": "It's in ~/.cache, which many tools share, so it stays. You can delete it yourself."
+    },
+    "alreadyGone": "Already gone: {{path}}",
+    "removesToolchains": "Permanently deletes {{path}}: toolchains {{names}} and everything rustup downloaded.",
+    "removesToolchainsUnlisted": "Permanently deletes {{path}}: every toolchain and everything rustup downloaded.",
+    "removesToolchainsDetail": "Nothing goes to the Trash. Projects that need Rust won't build until you reinstall it.",
+    "deletesCargoHome": "Permanently deletes {{path}} and everything in it, including Cargo's cache, settings and saved login. Nothing goes to the Trash.",
+    "removesCargoInstalled_one": "Also permanently deletes {{names}} from the Cargo folder.",
+    "removesCargoInstalled_other": "Also permanently deletes {{count}} programs from the Cargo folder: {{names}}.",
+    "removesCargoInstalledDetail": "After you reinstall Rust, cargo install can put back the ones it installed.",
+    "removesUnrecordedPrograms_one": "Also permanently deletes {{names}}, which Cargo has no record of installing.",
+    "removesUnrecordedPrograms_other": "Also permanently deletes {{count}} programs that Cargo has no record of installing: {{names}}.",
+    "removesUnrecordedProgramsDetail": "Reinstalling Rust won't bring back what Cargo didn't install.",
+    "homebrewRustupLosesToolchains": "Homebrew's rustup shares these folders, so its toolchains go too.",
+    "editsShellConfig": "rustup removes the line it added to your Terminal settings files.",
+    "leavesShellConfigLine": "{{path}} keeps a line that loads Cargo, so a terminal that reads this file shows an error each time it starts.",
+    "leavesShellConfigLineDetail": "Delete that line to fix it.",
+    "leavesShellConfigLineMaybe": "{{path}} has a line that mentions Cargo, which rustup won't remove.",
+    "leavesShellConfigLineMaybeDetail": "Check that line after uninstalling; if your terminal shows an error when it starts, delete it.",
+    "homebrewAutoremoves": "Homebrew will also remove other Homebrew packages that were installed only as dependencies and that nothing needs anymore.",
+    "homebrewAutoremovesDetail": "Homebrew is run with HOMEBREW_NO_AUTOREMOVE=1, but your brew.env sets it to a value Homebrew reads as unset, such as 0 or false, and brew.env wins.",
+    "homebrewPeriodicCleanup": "After installing or updating, Homebrew deletes the older versions of this software and of any it updates along with it, and stray old downloads; when its periodic clean-up is due, those of all Homebrew software.",
+    "homebrewPeriodicCleanupDetail": "Homebrew is run with HOMEBREW_NO_INSTALL_CLEANUP=1, but your brew.env sets it to nothing, and brew.env wins.",
+    "homebrewCleanupAutoremoves": "Homebrew's periodic clean-up also removes other Homebrew packages that were installed only as dependencies and that nothing needs anymore.",
+    "homebrewCleanupAutoremovesDetail": "Homebrew is run with HOMEBREW_NO_INSTALL_CLEANUP=1 and HOMEBREW_NO_AUTOREMOVE=1, but your brew.env sets the first to nothing and the second to a value Homebrew reads as unset, such as 0 or false, and brew.env wins.",
+    "uninstallScope": {
+      "HomebrewFormulaOnly": "Removes only the Homebrew version of {{name}} and the links to it. Settings and data stored elsewhere are kept.",
+      "HomebrewFormula": "Removes the Homebrew version of {{name}} and the links to it. Settings and data stored elsewhere are kept.",
+      "HomebrewCaskPlain": "Deletes what Homebrew installed for {{name}}; its settings and data stay.",
+      "HomebrewCaskSteps": "Deletes the files Homebrew placed for {{name}} and runs the uninstall steps it recorded; nothing else is deleted.",
+      "HomebrewCaskStepsAutoremoves": "Deletes the files Homebrew placed for {{name}} and runs the uninstall steps it recorded; {{name}}'s other files stay.",
+      "HomebrewCaskStepsUnseen": "Deletes the files Homebrew placed for {{name}} and runs the uninstall steps it recorded; what else some of those steps delete can't be seen in advance.",
+      "HomebrewCaskStepsOnly": "Runs the uninstall steps Homebrew recorded for {{name}}; other files its installer put on this Mac stay.",
+      "HomebrewCaskStepsOnlyUnseen": "Runs the uninstall steps Homebrew recorded for {{name}}; what else some of those steps delete can't be seen in advance.",
+      "HomebrewCask": "Couldn't tell from Homebrew's records what uninstalling {{name}} deletes.",
+      "Npm": "Deletes {{name}}'s folder from npm's global folder, along with its commands. None of {{name}}'s code is run, so its settings and data outside that folder stay.",
+      "Pipx": "Deletes the Python environment pipx made just for {{name}} and the commands that point into it; its settings and data outside that environment are not deleted.",
+      "Uv": "Deletes the Python environment uv made just for {{name}} and the commands it recorded; its settings and data outside that environment are not deleted.",
+      "Cargo": "Deletes the program files cargo installed for {{name}}; the download cache, Cargo's settings and the program's own settings stay.",
+      "Ollama": "Deletes the model {{name}}; data other models still use is kept, and Ollama itself and your other models stay."
+    },
+    "caskUpdateRunsOldSteps": "Before updating, Homebrew runs the uninstall steps it recorded for the version installed now.",
+    "caskUpdateRunsOldStepsReopens": "Before updating, Homebrew runs the uninstall steps it recorded for the version installed now, and opens again any app it quits once the update is done.",
+    "caskStep": {
+      "Deletes_one": "Also permanently deletes {{items}}.",
+      "Deletes_other": "Also permanently deletes these: {{items}}.",
+      "DeletesUnnamed": "Also permanently deletes files Homebrew finds only as it runs the uninstall steps.",
+      "DeletesLinks_one": "Also permanently deletes {{items}}, but only where it is a link whose target contains “{{link}}”.",
+      "DeletesLinks_other": "Also permanently deletes these, but only where they are links whose target contains “{{link}}”: {{items}}.",
+      "DeletesFilesContaining_one": "Also permanently deletes {{items}}, but only where it is a file whose contents contain “{{content}}”.",
+      "DeletesFilesContaining_other": "Also permanently deletes these, but only where they are files whose contents contain “{{content}}”: {{items}}.",
+      "DeletesLinksToFilesContaining_one": "Also permanently deletes {{items}}, but only where it is a link whose target contains “{{link}}” and that leads to a file whose contents contain “{{content}}”.",
+      "DeletesLinksToFilesContaining_other": "Also permanently deletes these, but only where they are links whose target contains “{{link}}” and that lead to a file whose contents contain “{{content}}”: {{items}}.",
+      "DeletesUnnamedLinks": "Also permanently deletes links Homebrew finds only as it runs the uninstall steps, but only those whose target contains “{{link}}”.",
+      "DeletesUnnamedFilesContaining": "Also permanently deletes files Homebrew finds only as it runs the uninstall steps, but only those whose contents contain “{{content}}”.",
+      "DeletesUnnamedLinksToFilesContaining": "Also permanently deletes links Homebrew finds only as it runs the uninstall steps, but only those whose target contains “{{link}}” and that lead to a file whose contents contain “{{content}}”.",
+      "Trashes_one": "Also moves {{items}} to the Trash.",
+      "Trashes_other": "Also moves these to the Trash: {{items}}.",
+      "RemovesPackages_one": "Also deletes every file the installer package {{items}} put on this Mac, whether or not other apps use them.",
+      "RemovesPackages_other": "Also deletes every file these installer packages put on this Mac, whether or not other apps use them: {{items}}.",
+      "RunsScript_one": "Also runs {{items}}.",
+      "RunsScript_other": "Also runs these programs: {{items}}.",
+      "RunsOwnSteps": "Before or after uninstalling, it also runs other steps Homebrew recorded for it.",
+      "RemovesServices_one": "Also stops and removes a background service.",
+      "RemovesServices_other": "Also stops and removes {{count}} background services.",
+      "RemovesServicesMatching": "Also stops and removes background services, including every running one whose name matches a pattern.",
+      "RemovesKexts_one": "Also unloads and deletes the kernel extension {{items}}.",
+      "RemovesKexts_other": "Also unloads and deletes these kernel extensions: {{items}}.",
+      "DeletesCertificates_one": "Also deletes every certificate in the keychain whose name contains {{items}}.",
+      "DeletesCertificates_other": "Also deletes every certificate in the keychain whose name contains any of these: {{items}}.",
+      "RemovesLoginItems_one": "Also removes the login item {{items}}.",
+      "RemovesLoginItems_other": "Also removes these login items: {{items}}.",
+      "QuitsApps_one": "Also quits an app if it is running.",
+      "QuitsApps_other": "Also quits {{count}} apps if they are running.",
+      "QuitsAppsMatching": "Also quits apps if they are running, including every app whose name matches a pattern.",
+      "QuitsNamedApps_one": "Also quits {{items}} if it is running.",
+      "QuitsNamedApps_other": "Also quits {{items}} if they are running.",
+      "systemNames_one": "As macOS names it: {{items}}",
+      "systemNames_other": "As macOS names them: {{items}}"
+    }
+  },
+  "secureConnection": {
+    "failed": "Couldn't establish a secure connection to {{host}}."
+  },
+  "notLookedUp": {
+    "here": "It isn't checked for updates on this Mac."
+  },
+  "unreadInProtectedPlace": {
+    "homebrewMayAutoremove": "Homebrew may also remove other Homebrew packages that were installed only as dependencies and that nothing needs anymore.",
+    "homebrewMayAutoremoveDetail": "Homebrew is run with HOMEBREW_NO_AUTOREMOVE=1, but one of its brew.env files is in, or points to, a protected location and wasn't read, so whether it sets that back to a value Homebrew reads as unset isn't known.",
+    "homebrewMayCleanUp": "After installing or updating, Homebrew may delete the older versions of this software and of any it updates along with it, and stray old downloads; when its periodic clean-up is due, those of all Homebrew software.",
+    "homebrewMayCleanUpDetail": "Homebrew is run with HOMEBREW_NO_INSTALL_CLEANUP=1, but one of its brew.env files is in, or points to, a protected location and wasn't read, so whether it sets that to nothing isn't known.",
+    "homebrewCleanupMayAutoremove": "Homebrew's periodic clean-up may also remove other Homebrew packages that were installed only as dependencies and that nothing needs anymore.",
+    "homebrewCleanupMayAutoremoveDetail": "Homebrew is run with HOMEBREW_NO_INSTALL_CLEANUP=1 and HOMEBREW_NO_AUTOREMOVE=1, but one of its brew.env files is in, or points to, a protected location and wasn't read, so whether brew.env takes both back isn't known.",
+    "shellConfigUnread": "{{path}} is in, or points to, a protected location and wasn't read, so whether it keeps a line that loads Cargo isn't known.",
+    "shellConfigUnreadDetail": "If a terminal shows an error when it starts after uninstalling, delete the line in {{path}} that loads Cargo."
+  },
+  "unreadBrewEnv": {
+    "homebrewMayAutoUpdate": "Before it starts, Homebrew may first update itself and check online for new versions.",
+    "homebrewMayAutoUpdateDetail": "Homebrew is run with HOMEBREW_NO_AUTO_UPDATE=1, but one of its brew.env files is in, or points to, a protected location and wasn't read, so whether it sets that to nothing isn't known."
+  },
+  "brewVersions": {
+    "cleansUp_one": "After updating, removes the old version {{versions}}. Homebrew also deletes downloads in its cache that it no longer uses, other tools' included.",
+    "cleansUp_other": "After updating, removes the old versions {{versions}}. Homebrew also deletes downloads in its cache that it no longer uses, other tools' included.",
+    "cleansUpDetail": "Once the update is done, brew cleanup runs, as Homebrew does after an update by default: it deletes these old versions, this tool's outdated downloads and every download in Homebrew's cache it no longer uses, whichever tool it was for. Other installed software and its old versions are kept.",
+    "removesEvery": "Removes every installed version: {{versions}}.",
+    "logCleaningUp": "The update is done. Now running brew cleanup to delete the old versions of {{name}}.",
+    "logNotCleanedUp": "brew cleanup didn't finish. The update itself is done; the old versions it didn't delete are still listed under Other versions.",
+    "logCleanupSkipped": "brew cleanup didn't run: Homebrew's settings or installed versions changed after the confirmation opened, or couldn't be checked. The update itself is done; any old versions left are still listed under Other versions.",
+    "logKept_one": "brew cleanup kept the old version {{versions}} of {{name}}. It's still listed under Other versions.",
+    "logKept_other": "brew cleanup kept the old versions {{versions}} of {{name}}. They're still listed under Other versions.",
+    "scopeEvery": {
+      "HomebrewFormulaOnly": "Removes only what Homebrew installed of {{name}} and the links to it. Settings and data stored elsewhere are kept.",
+      "HomebrewFormula": "Removes what Homebrew installed of {{name}} and the links to it. Settings and data stored elsewhere are kept."
+    },
+    "scopeEveryWithKept": {
+      "HomebrewFormulaOnly": "Removes only what Homebrew installed of {{name}} and the links to it.",
+      "HomebrewFormula": "Removes what Homebrew installed of {{name}} and the links to it."
+    }
+  },
+  "uvLinks": {
+    "takesBack": "{{path}} now leads to the copy another tool installed. This update points it back to uv's copy."
+  },
+  "kegLinks": {
+    "relinks": "{{name}} is linked into Terminal. The update unlinks it first and Homebrew links it back; Banager checks afterwards and links it if it isn't.",
+    "relinksDetail": "Its commands in Terminal: {{commands}}. If they aren't back, Banager runs brew link --formula --force {{name}}, which stops rather than overwrite another program's file.",
+    "relinksDetailNoCommands": "If it isn't back, Banager runs brew link --formula --force {{name}}, which stops rather than overwrite another program's file.",
+    "logRelinking": "The update is done. Running brew link --formula --force {{name}} to link it back into Terminal.",
+    "logStillLinked": "Homebrew linked {{name}} back into Terminal itself, so brew link wasn't needed.",
+    "logNoLongerLinked": "{{name}} isn't linked back into Terminal, so typing {{commands}} no longer runs it. To link it back, run {{command}} in Terminal; if a file is in the way, it says which.",
+    "logNoLongerLinkedLead": "{{name}} isn't linked back into Terminal, so typing {{commands}} no longer runs it. To link it back, you can run this command in Terminal.",
+    "logNoLongerLinkedAfter": "If a file is in the way, the command says which.",
+    "blockedBadge": "Can't link back",
+    "blockedDetail": "It's linked into Terminal, but another file is now where one of its commands goes. An update would unlink it with no way to link it back, so it can't be updated here.",
+    "held": "In the way: {{path}}",
+    "heldMany": "In the way: {{path}} and {{others}} more",
+    "blockedRefused": "Couldn't update it: it couldn't be linked back into Terminal afterwards."
+  },
+  "modelDownload": {
+    "note": "Downloads the model files that changed, up to about\u00a0{{size}}."
+  },
+  "commands": {
+    "title": "In Terminal",
+    "titleDetail": "Based on the Terminal settings read when this app opened. An alias, a new Terminal window or an editor's terminal may differ.",
+    "names_other": "{{names}} and {{rest}} more",
+    "runs": "Runs this copy",
+    "runsCopyFrom": "Runs the copy from {{source}}",
+    "runsNamesakeFrom": "Runs another program with this name, from {{source}}",
+    "runsNamesake": "Runs another program with this name",
+    "behindDetail": "Terminal finds that one first. This copy comes after it.",
+    "notFound": "Terminal can't find it: it's in {{dir}}, a folder Terminal doesn't search",
+    "copyPath": "Copy Path",
+    "copyPathLabel": "Copy path: {{dir}}",
+    "twin": "Installed twice",
+    "twinMany": "Installed {{number}} times",
+    "twinLabel": "{{word}}: {{name}}",
+    "twinOther": "{{source}} has a copy too.",
+    "twinOthers": "{{sources}} each have a copy too.",
+    "twinOtherStandalone": "{{source}}'s own installer installed a copy too.",
+    "twinOthersCount_other": "The other {{count}} copies were installed by {{sources}}.",
+    "twinRuns": "Typing {{command}} in Terminal runs this copy.",
+    "twinRunsCopyFrom": "Typing {{command}} in Terminal runs the copy from {{source}}.",
+    "twinNotFound": "Typing {{command}} in Terminal doesn't find this copy.",
+    "notLinked": "Homebrew didn't link it where Terminal looks",
+    "notLinkedDetail": "Usually a file of the same name was in the way when Homebrew installed it. Typing it in Terminal doesn't run this copy.",
+    "notLinkedWhy": "Usually a file of the same name was in the way when Homebrew installed it.",
+    "twinNotLinked": "Homebrew didn't link this copy where Terminal looks."
+  },
+  "pathLine": {
+    "sentence": "To let Terminal find it, add this line to the end of a shell startup file such as ~/.zshrc, then open a new Terminal window. To see the change here, quit and reopen this app.",
+    "copy": "Copy Line",
+    "copyLabel": "Copy line for {{dir}}"
+  },
+  "standalone": {
+    "summary": {
+      "standalone-claude": "Anthropic's AI coding assistant",
+      "standalone-rustup": "Installs and updates Rust",
+      "standalone-agy": "Google's AI coding assistant",
+      "standalone-grok": "xAI's AI coding assistant",
+      "standalone-opencode": "An open-source AI coding assistant"
+    },
+    "opencode": {
+      "updatesItselfDetail": "By default, {{source}} downloads new versions itself when it starts. Its updates aren't checked or installed here.",
+      "versionNotRead": "{{source}}'s install script leaves no file that names its version, and {{source}} isn't run here to ask, so its version isn't known.",
+      "uninstallDescription": "{{source}} is only listed here for now and can't be uninstalled here."
+    }
+  },
+  "codexStandalone": {
+    "summary": "OpenAI's AI coding assistant",
+    "updatesItself": "Updates itself",
+    "updatesItselfAria": "Updates itself: {{name}}",
+    "updatesItselfDetail": "{{source}} was installed by its own script as the latest release, not a pinned one, so it can install new versions itself. Its updates aren't checked or installed here.",
+    "notChecked": "Updates not checked",
+    "notCheckedAria": "Not checked for updates: {{name}}",
+    "notCheckedDetail": "{{source}}'s updates aren't checked or installed here."
+  },
+  "opencodeUpdates": {
+    "word": "Updates itself by default",
+    "aria": "Updates itself by default: {{name}}"
+  },
+  "sizes": {
+    "term": "Space used",
+    "measuring": "Calculating…",
+    "about": "About\u00a0{{size}}",
+    "atLeast": "{{size}} or more",
+    "partial": "About\u00a0{{size}}; some of it couldn't be read",
+    "ollamaModels": "Ollama models: about\u00a0{{size}} in all",
+    "ollamaModelsAtLeast": "Ollama models: {{size}} or more in all",
+    "sortBySize": "By Size",
+    "programOnly": "Counts only its program files, not what it downloads or caches.",
+    "sharedWithCache": "uv lets a tool share some files with its cache. Those count here too, so the tool alone may take less.",
+    "otherVersionsTotal": "About\u00a0{{size}} in all",
+    "otherVersionsTotalAtLeast": "{{size}} or more in all",
+    "rowName": "Space used: {{size}}"
+  },
+  "sizeTotals": {
+    "source": "about\u00a0{{size}}",
+    "sourceAtLeast": "{{size}} or more",
+    "note": "Measured sizes added up, including other versions but not caches. A file shared by several tools counts once."
+  },
+  "sourceNotice": {
+    "pipReadOnly": {
+      "description": "You can only view pip installs here. If one of them is a command-line tool you use in Terminal, reinstall it with pipx or uv to update and uninstall it here."
+    },
+    "prefixNotWritable": {
+      "description": "npm keeps these in a folder your account can't change, so you can only view them. After you install Node with Homebrew, you can manage the npm packages you install with it here."
+    },
+    "unreachable": {
+      "title": "{{source}} isn't responding",
+      "description": "{{source}} didn't respond, so what it has installed can't be shown. Check again later.",
+      "detail": "The tools installed with it can't be listed this time. Check again later.",
+      "detailAt": "The tools installed with it can't be listed this time. When it last responded {{when}}, it had no tools. Check again later.",
+      "descriptionWithRows_one": "One tool was installed with {{source}}. It didn't respond this time, so that tool is shown as it was when {{source}} last responded. Check again later.",
+      "descriptionWithRows_other": "{{count}} tools were installed with {{source}}. It didn't respond this time, so they're shown as they were when it last responded. Check again later.",
+      "descriptionWithRowsAt_one": "One tool was installed with {{source}}. It didn't respond this time, so that tool is shown as it was when {{source}} last responded {{when}}. Check again later.",
+      "descriptionWithRowsAt_other": "{{count}} tools were installed with {{source}}. It didn't respond this time, so they're shown as they were when it last responded {{when}}. Check again later.",
+      "descriptionWithModels_one": "{{source}} has one model. It didn't respond this time, so that model is shown as it was when {{source}} last responded. Check again later.",
+      "descriptionWithModels_other": "{{source}} has {{count}} models. It didn't respond this time, so they're shown as they were when it last responded. Check again later.",
+      "descriptionWithModelsAt_one": "{{source}} has one model. It didn't respond this time, so that model is shown as it was when {{source}} last responded {{when}}. Check again later.",
+      "descriptionWithModelsAt_other": "{{source}} has {{count}} models. It didn't respond this time, so they're shown as they were when it last responded {{when}}. Check again later.",
+      "descriptionWithOwnRow": "{{source}} didn't respond this time, so what's shown is from when it last responded. Check again later.",
+      "descriptionWithOwnRowAt": "{{source}} didn't respond this time, so what's shown is from when it last responded {{when}}. Check again later.",
+      "detailModels": "Its models can't be listed this time. Check again later.",
+      "detailModelsAt": "Its models can't be listed this time. When it last responded {{when}}, it had no models. Check again later.",
+      "detailOwn": "It can't be listed this time. Check again later."
+    },
+    "refusesAsRoot": {
+      "title": "{{source}} doesn't run as administrator",
+      "description": "{{source}} doesn't work when this app runs as administrator. Quit, then open Banager again with a double-click."
+    },
+    "notRunning": {
+      "title": "{{source}} isn't running",
+      "description": "Open {{source}} to see what it has and check for updates."
+    },
+    "openOllama": "Open Ollama",
+    "showTool": "Show Tool",
+    "showCommand": "Show “{{command}}”",
+    "openOllamaFailed": {
+      "notInstalled": "There's no Ollama app in Applications. Download it from ollama.com, install it, then click Open Ollama again.",
+      "notInstalledDetail": "The ollama command from Homebrew doesn't include the app.",
+      "launchFailed": "macOS couldn't open Ollama. Open it yourself from Applications; if that fails too, reinstall it from ollama.com.",
+      "other": "Couldn't open Ollama. Open it yourself from Applications."
+    },
+    "indexMayBeStale": {
+      "title": "Couldn't reach Homebrew, so updates for its tools weren't fully checked",
+      "description": "This check used what Homebrew knew the last time it could be reached. Check your internet connection, then check again."
+    },
+    "indexUpdating": {
+      "title": "Homebrew is checking online for new versions",
+      "description": "The Updates page shows the previous check's results. A new check starts by itself when Homebrew is done."
+    },
+    "notOnPath": {
+      "title": "{{source}} is installed, but typing {{command}} in Terminal doesn't run it",
+      "description": "It isn't in any of the places Terminal looks for commands. Open a new Terminal window and try again; if it still doesn't work, follow its installation instructions."
+    },
+    "shadowedByHomebrew": {
+      "title": "Typing {{command}} in Terminal runs a program with that name from Homebrew",
+      "description": "Terminal finds the one from Homebrew first, not the one {{source}}'s own installer installed. Couldn't confirm whether it's another copy of {{source}}."
+    },
+    "shadowedByNpm": {
+      "title": "Typing {{command}} in Terminal runs a program with that name from npm",
+      "description": "Terminal finds the one from npm first, not the one {{source}}'s own installer installed. Couldn't confirm whether it's another copy of {{source}}."
+    },
+    "shadowedByOther": {
+      "title": "Typing {{command}} in Terminal runs another program with that name",
+      "description": "Terminal first finds a program that couldn't be identified, not the one {{source}}'s own installer installed. If it's in Other Programs, you can see where it is there."
+    },
+    "launcherOnly": {
+      "title": "{{source}}'s program files are missing",
+      "description": "The {{command}} command can't run anymore, so reinstall {{source}} or put its files back from the Trash if they're there, then check again. If you no longer need {{source}}, uninstall it from the Installed page."
+    },
+    "someNotListed": {
+      "title": "Some tools installed with {{source}} aren't shown",
+      "description": "{{source}} couldn't read them, so their updates weren't checked either. To see which ones and how to fix them, run {{command}} in Terminal, then check again."
+    },
+    "formulaeNotListed": {
+      "title": "Some packages installed with {{source}} aren't shown",
+      "description": "{{source}} didn't list them, usually because it doesn't trust where they come from, so their updates weren't checked and Banager can't tell which other packages they need. In Terminal, {{command}} lists every place {{source}} gets packages from and {{trusted}} lists the ones it trusts; to trust one that's only in the first list, run {{trust}} followed by its name, then check again."
+    },
+    "checksUnfinished": {
+      "title": "Some checks didn't finish",
+      "description_one": "{{sources}} didn't finish checking this time; some updates may not be listed yet.",
+      "description_other": "{{sources}} didn't finish checking this time; some updates may not be listed yet."
+    },
+    "more_one": "{{count}} more note",
+    "more_other": "{{count}} more notes",
+    "showFewer": "Show Fewer",
+    "httpsHostRefused": {
+      "title": "Connecting to Ollama over https isn't supported",
+      "description": "OLLAMA_HOST is set to an https:// address, and only http connections to Ollama are supported, so {{source}} can't be checked. If that Ollama also answers over http, change OLLAMA_HOST to its http:// address, then quit and reopen this app.",
+      "statusWord": "https not supported"
+    },
+    "noPip": {
+      "title": "{{command}} doesn't include pip",
+      "description": "This Python doesn't include pip, so there's nothing to list.",
+      "statusWord": "No pip"
+    },
+    "answered": {
+      "today": "at {{time}} today",
+      "yesterday": "at {{time}} yesterday",
+      "date": "on {{date}} at {{time}}",
+      "setupLine": "Last responded {{when}}"
+    }
+  },
+  "sourceNoticeMore": {
+    "prefixProtected": {
+      "description": "npm keeps these in a folder that's in, or points to, a protected location. Protected locations aren't read, so whether these can be changed isn't known, and you can only view them."
+    }
+  },
+  "noAnswer": {
+    "title": {
+      "CouldNotStart": "{{source}} can't run",
+      "ExitedWithError": "{{source}} ran into an error"
+    },
+    "description": {
+      "missing": "It can't find the {{program}} it needs, so what it has installed can't be shown.",
+      "missingWithRows_one": "It can't find the {{program}} it needs. One tool was installed with {{source}}, and it's shown as it was when {{source}} last responded.",
+      "missingWithRows_other": "It can't find the {{program}} it needs. {{count}} tools were installed with {{source}}, and they're shown as they were when {{source}} last responded.",
+      "missingFix": "It can't find the {{program}} it needs. {{formula}} from Homebrew has it, but it isn't linked where Terminal looks.",
+      "missingFixWithRows_one": "It can't find the {{program}} it needs. {{formula}} from Homebrew has it, but it isn't linked where Terminal looks. The one tool installed with {{source}} is shown as it was when {{source}} last responded.",
+      "missingFixWithRows_other": "It can't find the {{program}} it needs. {{formula}} from Homebrew has it, but it isn't linked where Terminal looks. The {{count}} tools installed with {{source}} are shown as they were when {{source}} last responded.",
+      "CouldNotStart": "Its program couldn't start, so what it has installed can't be shown.",
+      "CouldNotStartWithRows_one": "Its program couldn't start. One tool was installed with {{source}}, and it's shown as it was when {{source}} last responded.",
+      "CouldNotStartWithRows_other": "Its program couldn't start. {{count}} tools were installed with {{source}}, and they're shown as they were when {{source}} last responded.",
+      "ExitedWithError": "It ran into an error, so what it has installed can't be shown. Checking again won't help until the cause is fixed.",
+      "ExitedWithErrorWithRows_one": "It ran into an error. One tool was installed with {{source}}, and it's shown as it was when {{source}} last responded. Checking again won't help until the cause is fixed.",
+      "ExitedWithErrorWithRows_other": "It ran into an error. {{count}} tools were installed with {{source}}, and they're shown as they were when {{source}} last responded. Checking again won't help until the cause is fixed."
+    },
+    "row": {
+      "missing": "{{source}} can't run: it can't find the {{program}} it needs.",
+      "CouldNotStart": "{{source}} can't run: its program couldn't start.",
+      "ExitedWithError": "{{source}} ran into an error. Checking again won't help until the cause is fixed."
+    },
+    "statusWord": {
+      "CouldNotStart": "Can't run",
+      "ExitedWithError": "Ran into an error"
+    },
+    "fix": "Fix…",
+    "sheet": {
+      "title": "Link “{{formula}}”?",
+      "text": "“{{formula}}” has the {{program}} that {{source}} needs, but it isn't linked where Terminal looks.",
+      "puts": "Linking adds links for its {{commands}} under {{prefix}}. Terminal uses these commands only if their folder is among those Terminal searches and no command with the same name comes before them.",
+      "putsUnlisted": "Linking adds links for its commands under {{prefix}}. Terminal uses these commands only if their folder is among those Terminal searches and no command with the same name comes before them.",
+      "then": "{{first}} {{then}}",
+      "version": "Version to link:",
+      "checking": "Checking whether it can be linked…",
+      "conflicts_one": "{{paths}} is already there, and Homebrew won't replace it on its own, so it can't be linked.",
+      "conflicts_other": "{{paths}} are already there, and Homebrew won't replace them on its own, so it can't be linked.",
+      "planError": "Couldn't check whether it can be linked: {{message}}",
+      "planErrorPlain": "Couldn't check whether it can be linked.",
+      "submitError": "Couldn't start the link: {{message}}",
+      "submitErrorPlain": "Couldn't start the link.",
+      "confirm": "Link",
+      "blockedTitle": "Can't link “{{formula}}”",
+      "blockedSaid": "{{title}}: {{lines}}",
+      "blockedText": "To link it, you can run this command in Terminal. It deletes the files in the way, the ones above among them, and links the ones in “{{formula}}” in their place.",
+      "commandLabel": "Command to run in Terminal",
+      "after": "When it's done, click Check Again."
+    },
+    "op": {
+      "kind": "Link",
+      "running": "Linking…",
+      "succeeded": "Linked",
+      "failed": "Couldn't link",
+      "cancel": "Cancel Link",
+      "again": "link it again",
+      "quitBody_one": "Quitting now stops it, and the tool it's linking can be left half-linked.",
+      "quitBody_other": "Quitting now stops them, and a tool that's being linked can be left half-linked.",
+      "quitNoCancel": "{{name}}'s link has started and can't be cancelled. Wait for it to finish before you quit.",
+      "quitChecking": "The result of {{name}}'s link is being checked. Quitting now waits up to a few seconds for that."
+    },
+    "withFormula": {
+      "badge": "Updates with Node",
+      "detail": "{{name}} comes with the Node that Homebrew installed and updates along with it. Updating it on its own here would make Homebrew's next update of that Node fail.",
+      "refused": "It can't be updated here: it updates along with the Node that Homebrew installed."
+    }
+  },
+  "linkRollback": {
+    "risk_one": "{{paths}} is already linked to it. If linking stops partway, Homebrew removes that link too, so it can't be linked here.",
+    "risk_other": "{{paths}} are already linked to it. If linking stops partway, Homebrew removes those links too, so it can't be linked here.",
+    "handoff_one": "To link it, you can run this command in Terminal. If it stops partway, Homebrew removes the link above too.",
+    "handoff_other": "To link it, you can run this command in Terminal. If it stops partway, Homebrew removes the links above too.",
+    "handoffConflicts_one": "To link it, you can run this command in Terminal. It deletes the files in the way and links the ones in “{{formula}}” in their place. If it still stops partway, Homebrew also removes the link that was already there.",
+    "handoffConflicts_other": "To link it, you can run this command in Terminal. It deletes the files in the way and links the ones in “{{formula}}” in their place. If it still stops partway, Homebrew also removes the links that were already there."
+  },
+  "sourceDiagnostic": {
+    "label": "Show Error Details",
+    "next": "You can click Copy Error Details and send them to someone who can help.",
+    "copy": "Copy Error Details",
+    "text": "Error details:"
+  },
+  "followUpWarning": {
+    "batch_one": "Updated {{total}} tools · {{count}} with a warning",
+    "batch_other": "Updated {{total}} tools · {{count}} with warnings",
+    "batchSucceeded_one": "All {{total}} succeeded · {{count}} with a warning",
+    "batchSucceeded_other": "All {{total}} succeeded · {{count}} with warnings",
+    "succeeded_one": "Updated with a warning",
+    "succeeded_other": "Updated with warnings",
+    "saved_one": "Only its warning was saved; the full log is no longer available.",
+    "saved_other": "Only its warnings were saved; the full log is no longer available."
+  },
+  "loginPathNotice": {
+    "title": "Couldn't read Terminal's settings",
+    "description": "Tools that Terminal finds may be missing here, such as those installed with npm, pipx, uv or Cargo."
+  },
+  "uninstallRunningApps": {
+    "SignalsApps_one": "Also force-quits an app if it is running. Unsaved work may be lost.",
+    "SignalsApps_other": "Also force-quits {{count}} apps if they are running. Unsaved work may be lost.",
+    "SignalsAppsMatching": "Also force-quits apps if they are running, including every app whose name matches a pattern. Unsaved work may be lost."
+  },
+  "uninstallLinks": {
+    "notOwned": "Couldn't uninstall because {{path}} may now belong to another tool, and uninstalling this one would remove it too. Nothing was removed. If you no longer need the other tool, uninstall it first, then try again."
+  },
+  "planRefused": {
+    "sourceGone": "Couldn't start because the tool that manages this can't be found. Click Check Again.",
+    "expired": "This confirmation is more than 10 minutes old, so nothing ran. Open it again and confirm.",
+    "unknown": "This confirmation is no longer valid. Close it and start again.",
+    "invalidName": "Couldn't pass “{{name}}” to {{source}}.",
+    "programMissing": "Couldn't find {{program}}. Click Check Again.",
+    "spawnFailed": "{{source}} couldn't start. macOS said: {{detail}}",
+    "spawnFailedPlain": "{{source}} couldn't start.",
+    "outputTooLarge": "{{source}} returned too much output, so this couldn't continue.",
+    "indexUpdating": "Homebrew is checking online for new versions, so dependencies can't be checked reliably now. Try again in a minute or two.",
+    "refused": "Couldn't continue because of an internal error.",
+    "notAnswered": "Couldn't continue because {{source}} didn't respond. Try again later.",
+    "notListed": "Couldn't start because it's no longer in the list. Click Check Again.",
+    "uninstallUnsafe": {
+      "outsideHome": "Couldn't move {{path}} because the folder holding it leads outside your home folder.",
+      "sharedFolder": "Couldn't move {{path}} because it's in a folder other apps share.",
+      "missing": "Couldn't continue because {{path}} is gone.",
+      "notOwnedByYou": "Couldn't move {{path}} because it belongs to another user.",
+      "notWhatInstructionsExpect": "Couldn't move {{path}} because it isn't what was expected.",
+      "notWhatInstructionsExpectDetail": "It, or a folder it's in, links somewhere else, or it's the wrong kind of file or can't be read.",
+      "overlapsKept": "Couldn't uninstall because there's no way to confirm that removing the files leaves {{path}}, which is kept, untouched. If it links into the tool's own folder, move what it links to somewhere else first."
+    }
+  },
+  "planAgain": {
+    "changed": "This update changed after it was shown, so it didn't run. Open it again and confirm.",
+    "changedDetail": "With this many updates at once, some are prepared again just before they start. This one came out different from what was shown here."
+  },
+  "updateConcurrency": {
+    "busy": "Another operation for this tool hasn't finished. Wait for it to finish, then try again."
+  },
+  "operations": {
+    "current": "{{name}}: {{status}}",
+    "kindStatus": "{{kind}} · {{status}}",
+    "noCancelHint": "This can't be cancelled once it starts. Don't quit Banager or shut down your Mac until it finishes.",
+    "noCancelHintDetail": "Wait until the bottom of the window shows the result before you quit or shut down.",
+    "stop": "Cancel",
+    "logDrawerTitle": "Operation log",
+    "batch": {
+      "running": "Working on {{current}} of {{total}}",
+      "allSucceeded_one": "{{count}} succeeded",
+      "allSucceeded_other": "All {{count}} succeeded",
+      "allUpdated_one": "Updated {{count}} tool",
+      "allUpdated_other": "Updated {{count}} tools",
+      "needsAttention_one": "{{count}} of {{total}} needs attention",
+      "needsAttention_other": "{{count}} of {{total}} need attention",
+      "finished": "{{succeeded}} succeeded, {{cancelled}} cancelled",
+      "cancelAll": "Cancel All",
+      "cancelRest": "Cancel the Rest"
+    },
+    "cancelKind": {
+      "Install": "Cancel Install",
+      "Uninstall": "Cancel Uninstall",
+      "Upgrade": "Cancel Update"
+    },
+    "logNote": {
+      "waitingForBrewUpdate": "Homebrew is checking online for new versions; this starts when it's done, waiting up to {{minutes}} minutes. Cancelling now changes nothing.",
+      "readFailedStdout": "Couldn't read any more output: {{error}}",
+      "readFailedStderr": "Couldn't read any more error messages: {{error}}",
+      "movedToTrash": "Moved {{path}} to the Trash: {{trashedTo}}",
+      "trashFailed": "Couldn't move {{path}} to the Trash, so the uninstall stopped: {{error}}",
+      "outOfTime": "Time ran out after {{seconds}} seconds, so the uninstall stopped before moving {{path}}. What was moved is in the Trash; uninstall again to move the rest.",
+      "backAfterUninstall": "Found {{path}} at the final check and left it where it is."
+    },
+    "kind": {
+      "Install": "Install",
+      "Uninstall": "Uninstall",
+      "Upgrade": "Update"
+    },
+    "running": {
+      "Install": "Installing…",
+      "Uninstall": "Uninstalling…"
+    },
+    "succeeded": {
+      "Install": "Installed",
+      "Uninstall": "Uninstalled"
+    },
+    "failedShort": {
+      "Install": "Couldn't install",
+      "Uninstall": "Couldn't uninstall"
+    },
+    "status": {
+      "Queued": "Queued",
+      "CancelRequested": "Cancelling…",
+      "Cancelling": "Cancelling…",
+      "Verifying": "Checking the result…",
+      "waitingForBrewUpdate": "Waiting for Homebrew to check for new versions…"
+    },
+    "outcome": {
+      "Cancelled": "Cancelled",
+      "Unconfirmed": "Result unconfirmed",
+      "UnconfirmedDetail": "Check the list to see whether anything changed.",
+      "NeedsAttention": {
+        "NotInstalledAfterInstall": "Reported installed, but it isn't there",
+        "StillInstalledAfterUninstall": "Reported removed, but it's still there",
+        "GoneBeforeUpgrade": "Update didn't start: it's no longer installed",
+        "GoneAfterUpgrade": "Update reported success, but it's gone",
+        "UnchangedAfterUpgrade": "Update reported success, but the version didn't change",
+        "UnchangedAfterUpgradeDetail": "You can click Retry. If the version still doesn't change, click Copy Log and send the log to someone who can help.",
+        "BackAfterUninstall": "Files showed up again after the uninstall",
+        "BackAfterUninstallDetail": "Quit the tool first. If it's still listed, uninstall it again; otherwise move the files named in the log to the Trash yourself.",
+        "NotLinkedAfterLink": "Reported done, but it isn't linked",
+        "NotLinkedAfterLinkDetail": "You can click Fix… again. If it still isn't linked, click Copy Log and send the log to someone who can help.",
+        "UpdatedButStepFailed": "Updated to {{version}}, but a step after it failed; see the log",
+        "UpdatedButStepFailedNoVersion": "Updated, but a step after it failed; see the log",
+        "UpdatedButNotLinked": "Updated to {{version}}, but the new version isn't linked; see the log",
+        "UpdatedButNotLinkedDetail": "Its commands may not be found in Terminal, usually because a file of the same name is in the way; the log says which file. If you're not sure what to do, click Copy Log and send the log to someone who can help.",
+        "UpdatedButStepFailedDetail": "The new version is installed, and the log says which step failed. If you're not sure what to do, click Copy Log and send the log to someone who can help."
+      },
+      "Failed": "Couldn't finish: {{summary}}",
+      "FailedSilent": "Couldn't finish, and the program didn't say why",
+      "FailedSilentDetail": "You can {{again}} later. If it still fails, click Copy Log and send the log to someone who can help.",
+      "emptyLogDetail": "You can {{again}} later.",
+      "BanagerFailed": {
+        "ChangedSinceShown": "Couldn't start: where or how it's installed changed after the confirmation opened, or couldn't be read",
+        "ChangedSinceShownDetail": "Nothing was changed. Open the confirmation again to see what it does now.",
+        "Panicked": "Couldn't finish because of an internal error",
+        "PanickedDetail": "Check the list to see whether anything changed.",
+        "ProgramMissing": "Couldn't start: {{program}} wasn't found. Nothing changed",
+        "SpawnFailed": "Couldn't start the program. Nothing changed. macOS said: {{detail}}",
+        "SpawnFailedShort": "Couldn't start the program. Nothing changed",
+        "HomebrewStillUpdating": "Couldn't start: Homebrew was still checking online for new versions after {{minutes}} minutes",
+        "HomebrewStillUpdatingDetail": "Nothing changed. Check your connection and try again later.",
+        "PathChanged": "Stopped: {{path}} changed after the confirmation opened",
+        "PathChangedDetail": "The log lists anything already moved to the Trash. Open the confirmation again.",
+        "FormulaChanged": "Couldn't start: {{name}} changed in Homebrew after the confirmation opened",
+        "FormulaChangedDetail": "Nothing was removed. Open the confirmation again to see which versions it removes.",
+        "HomebrewSettingsChanged": "Couldn't start: what Homebrew would delete changed after the confirmation opened, or couldn't be read",
+        "HomebrewSettingsChangedDetail": "Homebrew wasn't run. Open the confirmation again to see what it deletes now.",
+        "LinkTaken": "Couldn't start: another program is using {{path}}",
+        "LinkTakenMany": "Couldn't start: another program is using {{path}} and {{others}} more",
+        "LinkTakenDetail": "The update unlinks this tool first, and the files in use would stop it being linked back, leaving its commands missing from Terminal. Nothing was updated; it still works in Terminal.",
+        "Internal": "Couldn't finish because of an internal error. Nothing changed",
+        "LinkRollbackRisk": "Couldn't start: linking {{name}} could remove links already there",
+        "LinkRollbackRiskDetail": "Links to it appeared after the confirmation opened, and Homebrew removes them too if linking stops partway. Nothing was linked; they're as they were."
+      }
+    },
+    "copyLog": "Copy Log"
+  },
+  "operationsMore": {
+    "runningSeveral": "Working on {{running}} at once",
+    "runningSeveralQueued": "Working on {{running}} at once, {{queued}} waiting"
+  },
+  "quit": {
+    "title_one": "{{count}} operation hasn't finished",
+    "title_other": "{{count}} operations haven't finished",
+    "body": {
+      "stops_one": "Quitting now stops it.",
+      "stops_other": "Quitting now stops them.",
+      "Upgrade_one": "Quitting now stops it, and the tool it's updating can be left half-updated.",
+      "Upgrade_other": "Quitting now stops them, and a tool that's being updated can be left half-updated.",
+      "Uninstall_one": "Quitting now stops it, and the tool it's uninstalling can be left half-removed.",
+      "Uninstall_other": "Quitting now stops them, and a tool that's being uninstalled can be left half-removed.",
+      "Install_one": "Quitting now stops it, and the tool it's installing can be left half-installed.",
+      "Install_other": "Quitting now stops them, and a tool that's being installed can be left half-installed.",
+      "mixed_other": "Quitting now stops them, and the tools they're working on can be left half-done.",
+      "othersStop_one": "Quitting now stops the other one.",
+      "othersStop_other": "Quitting now stops the others.",
+      "othersHalfDone_one": "Quitting now stops the other one, and the tool it's working on can be left half-done.",
+      "othersHalfDone_other": "Quitting now stops the others, and the tools they're working on can be left half-done."
+    },
+    "checking": {
+      "Install": "The result of {{name}}'s install is being checked. Quitting now waits up to a few seconds for that.",
+      "Uninstall": "The result of {{name}}'s uninstall is being checked. Quitting now waits up to a few seconds for that.",
+      "Upgrade": "The result of {{name}}'s update is being checked. Quitting now waits up to a few seconds for that."
+    },
+    "noCancel": {
+      "Install": "{{name}}'s install has started and can't be cancelled. Wait for it to finish before you quit.",
+      "Uninstall": "{{name}}'s uninstall has started and can't be cancelled. Wait for it to finish before you quit.",
+      "Upgrade": "{{name}}'s update has started and can't be cancelled. Wait for it to finish before you quit."
+    },
+    "keepWaiting": "Keep Waiting",
+    "quitAnyway": "Quit"
+  },
   "uninstall": {
-    "title": "Uninstall {{name}}?",
-    "description": "Review what this will do before you continue.",
-    "checking": "Checking what this would affect…",
-    "planError": "Couldn't check what this would affect: {{message}}",
+    "title": "Uninstall “{{name}}”?",
+    "checking": "Checking what this affects…",
+    "planError": "Couldn't check what this affects: {{message}}",
+    "planErrorPlain": "Couldn't check what this affects. Try again later.",
     "submitError": "Couldn't start the uninstall: {{message}}",
-    "warningsTitle": "Before you continue:",
-    "affectedTitle": "These will stop working if you remove it:",
+    "submitErrorPlain": "Couldn't start the uninstall.",
+    "reissued": "That didn't start, so it was checked again.",
+    "reissuedConfirmAgain": "That didn't start, so it was checked again. Confirm once more.",
+    "warningsTitle": "Notes",
+    "affectedTitle": "Software that uses it",
     "confirm": "Uninstall",
-    "cancel": "Cancel",
-    "confirmDisabledHint": "Resolve the items above before uninstalling."
+    "confirmPermanent": "Uninstall Permanently",
+    "affectedBlocksConfirm": "Uninstall these first to remove {{name}}.",
+    "trashPreview_one": "This item goes to the Trash, where you can drag it back out.",
+    "trashPreview_other": "These {{count}} items go to the Trash, where you can drag them back out.",
+    "cannotUndo": "You can't undo this action.",
+    "endsCannotUndo": "{{sentence}} You can't undo this action.",
+    "endsSkipsTrash": "{{sentence}} Removed files don't go to the Trash.",
+    "noCleanupFormulae": {
+      "oldVersions": "Homebrew leaves out {{names}}, which HOMEBREW_NO_CLEANUP_FORMULAE lists: it won't delete their older versions.",
+      "autoremove": "Homebrew leaves out {{names}}, which HOMEBREW_NO_CLEANUP_FORMULAE lists: it won't autoremove them or what they need to run.",
+      "both": "Homebrew leaves out {{names}}, which HOMEBREW_NO_CLEANUP_FORMULAE lists: it won't delete their older versions, or autoremove them or what they need to run."
+    },
+    "forgetsTrust": "Homebrew also removes {{name}} from its trust list.",
+    "forgetsTrustDetail": "That entry names this package alone. The other entries on the list stay as they are.",
+    "serviceStays": "{{name}} is set to run in the background with brew services, and uninstalling doesn't stop it: it keeps running, and macOS keeps trying to start it. To stop it first, run {{command}} in Terminal.",
+    "scopeMore": {
+      "HomebrewCaskPlainThirdParty": "Deletes the files Homebrew placed for {{name}}; its settings and data stay, and so does anything its installer put on this Mac separately.",
+      "HomebrewCaskRuby": "Deletes the files Homebrew placed for {{name}} and runs its uninstall steps; what else some of those steps delete can't be seen in advance. If Homebrew can't read the steps it recorded at install, it uses the cask's current definition.",
+      "HomebrewCaskStepsOnlyRuby": "Runs the uninstall steps for {{name}}; what else some of those steps delete can't be seen in advance. If Homebrew can't read the steps it recorded at install, it uses the cask's current definition.",
+      "HomebrewCaskPlainRuby": "Deletes the files Homebrew placed for {{name}}. If Homebrew can't read what it recorded at install, it uses the cask's current definition, and what that deletes can't be seen in advance.",
+      "HomebrewCaskStepsIfTrusted": "Deletes the files Homebrew placed for {{name}}; its uninstall steps run only if Homebrew trusts where it comes from.",
+      "HomebrewCaskStepsOnlyIfTrusted": "The uninstall steps for {{name}} run only if Homebrew trusts where it comes from."
+    }
+  },
+  "runtimeGuard": {
+    "program_one": "{{source}} with its {{count}} tool",
+    "program_other": "{{source}} with its {{count}} tools",
+    "programModels_one": "{{source}} with its {{count}} model",
+    "programModels_other": "{{source}} with its {{count}} models",
+    "environments_one": "{{count}} tool installed with {{source}}",
+    "environments_other": "{{count}} tools installed with {{source}}",
+    "remove_one": "the tool installed with {{source}}",
+    "remove_other": "the {{count}} tools installed with {{source}}",
+    "removeModels_one": "{{source}}'s model",
+    "removeModels_other": "{{source}}'s {{count}} models",
+    "blocks": "Uninstall {{tools}} first to remove {{name}}.",
+    "dependentsAbove": "the Homebrew software above",
+    "reason": "Still used by {{names}}. To uninstall it, first uninstall {{tools}}.",
+    "sourceProgram": "This is {{source}} itself. Every tool installed with {{source}} is updated and uninstalled with it, so it can't be uninstalled here.",
+    "sourceProgramRefused": "Couldn't uninstall it because it's {{source}} itself.",
+    "withFormula": "It comes with the Node that Homebrew installed. Uninstalling it here would also remove commands that Homebrew linked into Terminal, so it can't be uninstalled here.",
+    "withFormulaRefused": "Couldn't uninstall it because it comes with the Node that Homebrew installed.",
+    "neededBy": "Another source runs on it, so it can't be uninstalled here.",
+    "neededByRefused": "Couldn't uninstall it because another source runs on it.",
+    "managedBy": "Tools installed with {{sources}} are updated and uninstalled with it.",
+    "inTerminal": "Tools installed with {{sources}} can't be uninstalled here. Uninstall them in Terminal.",
+    "goFirst": "Those tools are uninstalled in this batch. Uninstall it afterward.",
+    "then": "{{first}} {{then}}"
+  },
+  "batchUninstall": {
+    "selectRow": "Select {{name}} to uninstall",
+    "selectAll": "Select All",
+    "selectAllLabel": "Select all items that can be uninstalled here",
+    "selected_one": "{{count}} selected",
+    "selected_other": "{{count}} selected",
+    "selectedSize_one": "{{count}} selected · {{size}}",
+    "selectedSize_other": "{{count}} selected · {{size}}",
+    "overLimit_one": "{{count}} selected. Up to {{max}} can be uninstalled at a time",
+    "overLimit_other": "{{count}} selected. Up to {{max}} can be uninstalled at a time",
+    "uninstallSelected": "Uninstall Selected ({{number}})…",
+    "title_one": "Uninstall {{count}} tool?",
+    "title_other": "Uninstall these {{count}} tools?",
+    "titleNone": "These tools can't be uninstalled together here",
+    "checking": "Checking what this affects: {{done}} of {{total}} checked…",
+    "willGo_one": "This tool will be uninstalled.",
+    "willGo_other": "These {{count}} tools will be uninstalled.",
+    "willGoTakes_one": "This tool will be uninstalled. It takes up about\u00a0{{size}}.",
+    "willGoTakes_other": "These {{count}} tools will be uninstalled. Together they take up about\u00a0{{size}}.",
+    "willGoTakesAtLeast_one": "This tool will be uninstalled. It takes up {{size}} or more.",
+    "willGoTakesAtLeast_other": "These {{count}} tools will be uninstalled. Together they take up {{size}} or more.",
+    "willGoTakesPartial_one": "This tool will be uninstalled. It takes up about\u00a0{{size}}; some of it couldn't be read.",
+    "willGoTakesPartial_other": "These {{count}} tools will be uninstalled. Together they take up about\u00a0{{size}}; some of it couldn't be read.",
+    "takesLabel": "About this size",
+    "takesUnknown_one": "{{count}} of them has no size yet and isn't counted.",
+    "takesUnknown_other": "{{count}} of them have no size yet and aren't counted.",
+    "takesTrash": "What goes to the Trash frees space only once the Trash is emptied.",
+    "takesKept": "Settings and data that stay after uninstalling aren't counted.",
+    "takesShared": "Some of it is shared with other software and stays.",
+    "notIncluded_one": "{{count}} more won't be uninstalled; see why below.",
+    "notIncluded_other": "{{count}} more won't be uninstalled; see why below.",
+    "goTitle": "Will be uninstalled",
+    "stayTitle": "Won't be uninstalled",
+    "commandsLost_one": "After this, Terminal won't find this command: {{names}}.",
+    "commandsLost_other": "After this, Terminal won't find these commands: {{names}}.",
+    "takenOver": "After this, {{command}} in Terminal runs the copy from {{by}}.",
+    "takenOverAnother": "After this, {{command}} in Terminal runs another copy.",
+    "keepsFiles_one": "One of them leaves some files behind, listed below.",
+    "keepsFiles_other": "{{count}} of them leave some files behind, listed below.",
+    "keepsFilesAll": "Each of them leaves some files behind, listed below.",
+    "trashGoes": "Removed files go to the Trash, where you can drag them back out.",
+    "keptBy": "From {{names}}",
+    "keptByCopy": "{{name}} installed with {{by}}",
+    "after": "Will be uninstalled after {{names}}.",
+    "afterDetail_one": "If {{names}} isn't uninstalled, Homebrew won't uninstall this one, because it's still needed.",
+    "afterDetail_other": "If {{names}} aren't uninstalled, Homebrew won't uninstall this one, because it's still needed.",
+    "quoted": "{{name}}",
+    "reason": {
+      "noCancel": "This uninstall can't be cancelled once it starts. Uninstall it on its own, from its row.",
+      "permanent": "This uninstall permanently deletes files. Uninstall it on its own, from its row.",
+      "unseen": "Its uninstall runs steps of its own, and what they delete can't be known in advance. Uninstall it on its own, from its row.",
+      "host": "The {{source}} tools you selected need it. Uninstalls from different sources run at the same time, so it can't be put after them. Uninstall those first, then this one on its own.",
+      "stillNeeded": "Still used by {{names}}. To uninstall it, select those too, or uninstall them first.",
+      "neededByExcluded_one": "{{names}} still uses it and won't be uninstalled, so it won't be either.",
+      "neededByExcluded_other": "{{names}} still use it and won't be uninstalled, so it won't be either.",
+      "cycle": "The order to uninstall these in couldn't be determined. Uninstall it on its own, from its row.",
+      "afterOthers": "It can be uninstalled only after {{names}}. Uninstall {{names}} this time, then this one on its own."
+    },
+    "notStartedAfter_one": "Didn't start, because {{names}} didn't start uninstalling.",
+    "notStartedAfter_other": "Didn't start, because {{names}} didn't start uninstalling.",
+    "confirm_one": "Uninstall {{count}} Tool",
+    "confirm_other": "Uninstall {{count}} Tools",
+    "ok": "OK",
+    "showCommandsAndPaths": "Show Commands and Paths",
+    "uninstalledHold": "Uninstalled",
+    "uninstalledLabel": "{{name}} uninstalled",
+    "result_one": "{{count}} wasn't uninstalled",
+    "result_other": "{{count}} weren't uninstalled",
+    "resultStillNeeded_one": "{{names}} wasn't uninstalled, and Homebrew doesn't uninstall software that's still needed.",
+    "resultStillNeeded_other": "{{names}} weren't uninstalled, and Homebrew doesn't uninstall software that's still needed.",
+    "resultDismiss": "Close uninstall results",
+    "viewLogOf": "View the log of {{name}}",
+    "bar": {
+      "allUninstalled_one": "Uninstalled {{count}} tool",
+      "allUninstalled_other": "Uninstalled {{count}} tools",
+      "notUninstalled_one": "{{count}} wasn't uninstalled",
+      "notUninstalled_other": "{{count}} weren't uninstalled"
+    },
+    "uninstallSelectedShort": "Uninstall ({{number}})…"
+  },
+  "batchUninstallMore": {
+    "commandsGo_one": "This command is removed along with its copy: {{names}}.",
+    "commandsGo_other": "These commands are removed along with their copies: {{names}}.",
+    "mixed_one": "Uninstalled {{done}}; {{count}} wasn't uninstalled",
+    "mixed_other": "Uninstalled {{done}}; {{count}} weren't uninstalled"
+  },
+  "reviewFixes": {
+    "cannotUninstallOne": "“{{name}}” can't be uninstalled here",
+    "passwordNamed_one": "{{names}} may ask for your Mac password, which can't be entered here. If it does, you'll see how to finish in Terminal.",
+    "passwordNamed_other": "{{names}} may ask for your Mac password, which can't be entered here. If one does, you'll see how to finish in Terminal.",
+    "selectAgain_one": "Select It Again",
+    "selectAgain_other": "Select Them Again",
+    "setupAttention_one": "{{count}} item needs attention",
+    "setupAttention_other": "{{count}} items need attention",
+    "protectedFoldersIn_one": "{{count}} folder in a protected location wasn't read: {{places}}.",
+    "protectedFoldersIn_other": "{{count}} folders in protected locations weren't read: {{places}}.",
+    "places": {
+      "documents": "Documents",
+      "desktop": "Desktop",
+      "downloads": "Downloads",
+      "pictures": "Pictures",
+      "movies": "Movies",
+      "music": "Music",
+      "icloud": "iCloud Drive",
+      "volumes": "other disks"
+    },
+    "selectHint": "Select tools to uninstall together",
+    "selectHintLimit": "Select tools to uninstall together, up to {{max}} at a time",
+    "keys": {
+      "page": "Page Up / Page Down",
+      "ends": "Home / End",
+      "space": "Space"
+    }
+  },
+  "keepsData": {
+    "title": "Stays after uninstalling",
+    "what": {
+      "ToolData": "This tool's settings and data",
+      "Models": "Downloaded models"
+    },
+    "copyPath": "Copy Path",
+    "copyPathLabel": "Copy path: {{path}}",
+    "notCounting": "{{path}} is {{tool}}'s data and isn't counted here",
+    "findInFinder": "To see one in Finder, copy its path, press ⇧⌘G in Finder, paste the path and press Return.",
+    "findInFinderHome": "“~” at the start of a path is your home folder. To see one in Finder, copy its path, press ⇧⌘G in Finder, paste the path and press Return."
+  },
+  "keptTrash": {
+    "data": "If you don't need these settings and data, you can move them to the Trash in Finder.",
+    "dataButShellFile": "If you don't need these settings and data, you can move them to the Trash in Finder. Leave Terminal settings files where they are."
   },
   "settings": {
-    "title": "Settings",
-    "loading": "Loading settings…",
+    "groups": {
+      "general": "General",
+      "updates": "Updates",
+      "about": "About"
+    },
     "showTechnicalDetails": {
       "label": "Show technical details",
-      "description": "Reveal version numbers, file paths, and the exact commands Canager runs."
+      "description": "Show error messages, file locations and commands from the tools themselves, with commands expanded in confirmations."
+    },
+    "includeSelfUpdating": {
+      "label": "Show Homebrew apps that have their own updater",
+      "description": "Also list apps installed with Homebrew that have their own updater, like Chrome, under Updates when Homebrew has a newer version than the one on this Mac. Apps marked “latest” aren't checked, nor are apps whose version on this Mac Homebrew can't read, like those installed with an installer package. Tools from other sources aren't affected."
+    },
+    "autoCheck": {
+      "label": "Check for updates",
+      "description": "Banager checks on this schedule even with its window closed, and doesn't install what it finds. Checks stop when you quit Banager or restart your Mac, until you open it again."
+    },
+    "notifyUpdates": {
+      "label": "Notify me when there are updates",
+      "needsAutoCheck": "Requires “{{setting}}” set to {{day}} or {{week}}.",
+      "refused": "Allow Banager to send notifications in System Settings > Notifications."
     },
     "language": {
       "label": "Language",
-      "system": "System",
+      "system": "System Default",
       "english": "English",
-      "chinese": "简体中文"
+      "chinese": "简体中文",
+      "traditionalChinese": "繁體中文"
+    },
+    "skippedVersions": {
+      "title": "Skipped versions",
+      "newBuild": "New version",
+      "unskip": "Stop Skipping",
+      "unskipAriaLabel": "Stop skipping {{version}} of {{name}}",
+      "unskipNewBuildAriaLabel": "Stop skipping the new version of {{name}}"
     },
     "ignoredUpdates": {
-      "title": "Ignored updates",
-      "empty": "You haven't ignored any updates.",
-      "unignore": "Stop ignoring",
-      "unignoreAriaLabel": "Stop ignoring {{name}}"
+      "title": "Tools with reminders off",
+      "unignore": "Remind Me Again",
+      "unignoreAriaLabel": "Remind me again about {{name}}"
     },
-    "saveError": "Couldn't save that change ({{message}}). It's been reverted."
+    "version": "Version",
+    "iconCredits": {
+      "label": "Icon credits",
+      "open": "View Icon Credits…",
+      "openAriaLabel": "View icon credits",
+      "title": "Icon credits",
+      "owners": "Each logo belongs to its owner and is shown only to identify the tool.",
+      "simpleIcons": "Most of the logos built into Banager come from Simple Icons, which is released under CC0.",
+      "ownLicense": "These logos come with a license of their own:",
+      "license": "License",
+      "source": "Source",
+      "avatars": "Built-in logos that do not come from Simple Icons are the avatars of the projects' GitHub organizations."
+    },
+    "hiddenNone": "None",
+    "hiddenEntryMeta": "{{source}} · {{version}}",
+    "saveError": "Couldn't save: {{message}}. Your previous setting is back.",
+    "saveErrorPlain": "Couldn't save. Your previous setting is back.",
+    "checkEvery": {
+      "off": "Manually",
+      "day": "Daily",
+      "week": "Weekly"
+    },
+    "notifyOperations": {
+      "label": "Notify me when operations finish"
+    },
+    "snoozedUpdates": {
+      "title": "Tools with reminders paused",
+      "until": "Until {{date}}"
+    }
+  },
+  "settingsSaveFailed": {
+    "permissionDenied": "no permission to write to the settings folder",
+    "diskFull": "the disk is full",
+    "readOnly": "the settings disk is read-only",
+    "other": "{{detail}}"
+  },
+  "persistence": {
+    "unreadableSettings": "the settings file couldn't be read and was left as it is. To save settings again, move settings.json in ~/Library/Application Support/com.brulek.banager to the Trash"
+  },
+  "settingsDiagnostics": {
+    "title": "Diagnostics"
+  },
+  "diagnostics": {
+    "label": "Diagnostic info",
+    "copy": "Copy Diagnostic Info",
+    "includeTools": "Include the list of tools",
+    "footnote": "Paste it to whoever is helping you. It lists your tools only when the checkbox is selected, and includes the error details of any source that can't run, ran into an error or isn't responding.",
+    "text": {
+      "title": "Diagnostic info",
+      "time": "Time: {{time}}",
+      "app": "{{app}}: {{version}}",
+      "macos": "macOS: {{version}}",
+      "macosUnknown": "macOS: couldn't read",
+      "chip": "Chip: {{chip}}",
+      "chipAppleSilicon": "Apple silicon",
+      "chipIntel": "Intel",
+      "language": "Language: {{language}}",
+      "sources": "Sources: {{number}}",
+      "version": "Version: {{version}}",
+      "versionUnknown": "Version: unknown",
+      "path": "Location: {{path}}",
+      "status": "Status: {{status}}",
+      "notes": "Notes: {{number}}",
+      "tools": "Tools: {{number}}",
+      "statusWord": {
+        "ok": "OK",
+        "NotRunning": "Not running",
+        "NotResponding": "Not responding",
+        "RefusesAsRoot": "Can't run as administrator",
+        "readOnly": "View only",
+        "unverified": "Version not tested"
+      },
+      "searchPath": "Command search folders: {{number}}",
+      "loginRead": "Read from the login settings",
+      "loginNotRead": "Couldn't read the login settings, so defaults were used, which Terminal may not use",
+      "lastCheck": "Last check: {{time}}",
+      "neverChecked": "Last check: never",
+      "complete": "Check: complete",
+      "incomplete": "Check: incomplete, {{sources}} didn't finish",
+      "incompletePlain": "Check: incomplete",
+      "notFound": "Not found in Terminal: {{number}}",
+      "notLinked": "Not linked by Homebrew: {{number}}",
+      "twins": "Tools installed more than once: {{number}}",
+      "diskTotal": "Space used: {{size}}",
+      "noFacts": "System info: couldn't read"
+    }
+  },
+  "setupCheck": {
+    "menu": "Check Tool Setup…",
+    "label": "Tool setup",
+    "open": "Check Tool Setup…",
+    "title": "Tool Setup",
+    "pending": "The check hasn't finished. Here's what's known so far.",
+    "neverChecked": "Not checked yet",
+    "viewLabel": "{{action}}: {{line}}",
+    "sections": {
+      "terminal": "Finding Commands in Terminal",
+      "sources": "Sources",
+      "commands": "Commands",
+      "homebrew": "Homebrew",
+      "disk": "Disk"
+    },
+    "terminal": {
+      "loginRead": "Terminal's login settings were read",
+      "loginNotRead": "Couldn't read Terminal's login settings, so which copy runs in Terminal wasn't checked this time",
+      "loginNotReadDetail": "An app opened from Finder gets only the system's default places to look for commands. Going by those, nearly every tool would seem to be missing from Terminal.",
+      "noFacts": "Couldn't read Terminal's settings",
+      "allFine_one": "Terminal's settings were read normally, and so was the {{count}} folder it looks in for commands",
+      "allFine_other": "Terminal's settings were read normally, and so were all {{count}} folders it looks in for commands",
+      "foldersSomeUnread": "Folders Terminal looks in for commands: {{read}} read, {{unread}} couldn't be read",
+      "foldersUnreadDetail": "A folder that couldn't be read is in a protected location, or doesn't allow its contents to be listed. What commands it holds isn't known, so for commands it could affect, whether Terminal finds them isn't checked this time.",
+      "foldersCount": "Folders Terminal looks in for commands: {{number}}",
+      "unreadFolders": "Couldn't read: {{folders}}"
+    },
+    "sources": {
+      "allFine": "Every source answered normally",
+      "othersFine": "The other sources answered normally",
+      "pendingFine": "No problems found so far",
+      "state": "{{source}}: {{state}}",
+      "checkUnfinished": "Check didn't finish",
+      "none": "No sources to manage were found",
+      "otherPrograms": "Command-line programs from other sources are listed separately"
+    },
+    "commands": {
+      "allFine": "Terminal finds every installed tool, and none is installed more than once",
+      "notOnPathFine": "Terminal finds every installed tool",
+      "twins_one": "{{count}} tool is installed more than once, {{copies}} copies in all",
+      "twins_other": "{{count}} tools are installed more than once, {{copies}} copies in all",
+      "twinsDetail": "Different sources each installed a copy of the same tool. Typing its command in Terminal runs only one of them.",
+      "twinsFine": "No tool is installed more than once",
+      "notLinked_one": "Homebrew didn't link {{count}} tool where Terminal looks",
+      "notLinked_other": "Homebrew didn't link {{count}} tools where Terminal looks",
+      "notLinkedDetailOne": "Usually a file of the same name was in the way when Homebrew installed it. Typing its commands in Terminal doesn't run it.",
+      "notLinkedDetailMany": "Usually a file of the same name was in the way when Homebrew installed them. Typing their commands in Terminal doesn't run them."
+    },
+    "homebrew": {
+      "fine": "Homebrew hasn't disabled or deprecated any tool, and keeps no other versions",
+      "retiredFine": "Homebrew hasn't disabled or deprecated any tool",
+      "otherVersions_one": "Homebrew keeps other versions of {{count}} tool",
+      "otherVersions_other": "Homebrew keeps other versions of {{count}} tools",
+      "otherVersionsSize_one": "Homebrew keeps other versions of {{count}} tool, {{size}} in all",
+      "otherVersionsSize_other": "Homebrew keeps other versions of {{count}} tools, {{size}} in all",
+      "otherVersionsFine": "No other versions are kept"
+    },
+    "disk": {
+      "total": "Installed tools take {{size}} in all",
+      "measuring": "Measuring the space used…"
+    }
+  },
+  "setupCheckCoverage": {
+    "notOnPathFine": "Terminal finds every tool that was checked",
+    "notChecked_one": "Couldn't check whether Terminal finds {{count}} tool",
+    "notChecked_other": "Couldn't check whether Terminal finds {{count}} tools",
+    "notCheckedDetail": "Couldn't tell which copy of these tools Terminal runs, for example because a folder Terminal looks in for commands couldn't be read.",
+    "diagnosticsNotChecked": "Not checked in Terminal: {{number}}"
+  },
+  "setupCheckPartial": {
+    "twinsFine": "No tool that was checked is installed more than once"
+  },
+  "shortcuts": {
+    "title": "Keyboard Shortcuts",
+    "groups": {
+      "window": "General",
+      "list": "Lists",
+      "dialog": "Dialogs"
+    },
+    "rows": {
+      "settings": "Open Settings",
+      "overview": "Go to Overview",
+      "updates": "Go to Updates",
+      "installed": "Go to Installed",
+      "unknown": "Go to Other Programs",
+      "checkAgain": "Check installed tools and updates again",
+      "search": "Search Installed",
+      "closeWindow": "Close the window; operations keep running, and clicking the Dock icon brings it back",
+      "quit": "Quit, asking first if an operation hasn't finished",
+      "move": "Move to the previous or next item in a list, the sidebar or a menu",
+      "page": "Move up or down a page in a list. On a MacBook, press fn with ↑ or ↓.",
+      "ends": "Move to the first or last item. On a MacBook, press fn with ← or →.",
+      "tick": "Select or deselect the row's checkbox. On Installed, a row without a checkbox shows or hides its details instead.",
+      "details": "On Installed, show the row's details and move to them",
+      "closeDetails": "On Installed, close the details and go back to the row",
+      "tab": "Move to the next or previous control. In a list, Tab stops only at the current row.",
+      "press": "Press the focused button. An uninstall confirmation opens with the focus on Cancel.",
+      "escape": "Close a dialog or menu. An open ⓘ note closes first."
+    },
+    "keyNames": {
+      "settings": "Command-Comma",
+      "overview": "Command-1",
+      "updates": "Command-2",
+      "installed": "Command-3",
+      "unknown": "Command-4",
+      "checkAgain": "Command-R",
+      "search": "Command-F",
+      "closeWindow": "Command-W",
+      "quit": "Command-Q",
+      "move": "Up Arrow and Down Arrow",
+      "page": "Page Up and Page Down",
+      "ends": "Home and End",
+      "tick": "Space",
+      "details": "Return",
+      "closeDetails": "Escape",
+      "tab": "Tab and Shift-Tab",
+      "press": "Return",
+      "escape": "Escape"
+    }
+  },
+  "faq": {
+    "title": "Common Questions",
+    "viewLabel": "{{action}}: {{question}}",
+    "questions": {
+      "notFound": {
+        "question": "Terminal says a command isn't found. What can I do?",
+        "answer": "Some tools put their commands in a folder Terminal doesn't search, so typing one may find nothing, or run another program with the same name. Open a new Terminal window and try again; if it still isn't found, follow the tool's installation instructions. A command's name isn't always the tool's name, and you can search Installed by command. This is judged from the Terminal settings read when this app opened."
+      },
+      "cantUpdate": {
+        "question": "Why can't some tools be updated here?",
+        "answer": "On Updates, under the tools that can be updated, a line says how many more can't be updated here; click it to see them. Each of their rows says why, for example “View only”, “Pinned” or “Updates when run”. Tools installed with pip, and npm packages in a folder this account can't change, can only be viewed. A pinned tool has to be unpinned in Terminal first; one marked “Updates when run” updates itself, and opening it once checks for a new version."
+      },
+      "twins": {
+        "question": "What does “Installed twice” mean, and what should I do?",
+        "answer": "The same AI coding tool was installed in two ways, say once with npm and once by its own installer. Typing its command in Terminal runs one of them at most; select the tool, and “In Terminal” can show which one. Updating the copy Terminal doesn't use doesn't change the one it runs. Uninstalling one copy leaves the other as it is."
+      },
+      "password": {
+        "question": "Why is my Mac password needed? Can it be typed for me here?",
+        "answer": "Some apps installed with Homebrew ask for your Mac's login password when they're updated or uninstalled, and the confirmation says so beforehand; the password can't be typed here, and it isn't saved. If that stops one, its View Steps gives a command to copy into Terminal, where you type the password when asked; nothing appears on screen as you type, and that's normal. When it's done, come back here and press ⌘R to check again. After Banager is quit and reopened, an update's View Steps is still on its row for 30 days, and in Update History unless you click Clear History."
+      },
+      "leftBehind": {
+        "question": "What stays behind after uninstalling, and where?",
+        "answer": "Before uninstalling, the confirmation says what goes and what stays; where that can't be known beforehand, it says so. A tool's settings and data elsewhere are usually kept; where their place is known, it's listed under “Stays after uninstalling” with Copy Path. For the copies Claude Code, Antigravity CLI, Grok Build and Codex installed themselves, the files are moved to the Trash, and you can drag them back; uninstalling rustup deletes its folders for good, without the Trash. Uninstalling with Homebrew leaves the other software installed along with it, unless the confirmation says otherwise."
+      },
+      "changesMac": {
+        "question": "Does this app change my Mac?",
+        "answer": "For an update or uninstall you choose here, the confirmation lets you see the command it will run or the files it will move, and nothing starts until you confirm. The app itself writes only three files, all in its own folder: its settings, its record of updates and uninstalls, and the window's size and position; it doesn't edit Terminal's settings files. Looking for commands, measuring disk use and scanning for other programs, it doesn't read protected places such as Documents, Desktop, Downloads, iCloud Drive and other disks. The tools it runs change their own files, and sometimes more: checking for updates, Homebrew may first update itself and check online for new versions, and when Homebrew renames something you installed with it, or moves it to another kind of package, it can install, move or uninstall software by itself, without a preview or confirmation; uninstalling rustup removes the line it added to Terminal's settings files, which the confirmation says beforehand."
+      },
+      "otherPrograms": {
+        "question": "What's in Other Programs?",
+        "answer": "Programs found in folders where commands are usually kept, such as ~/.local/bin and /usr/local/bin, that couldn't be traced to any source here. They're only listed, never changed; to find out what one is, show it in Finder or copy its path. Under the list it says which folders were looked in; protected places aren't read."
+      },
+      "sizes": {
+        "question": "How accurate are the sizes?",
+        "answer": "They're worked out from the files on disk and rounded, hence “About”. Where some files couldn't be read it says so, and where measuring stopped part-way it says “or more”; either way the real total is larger, and protected places aren't measured. In a total, a file that appears in several tools counts once, and caches aren't included. Some of a uv tool's files take the same disk space as its cache but are still counted, so the tool alone may take less."
+      },
+      "majorUpdate": {
+        "question": "Why are some updates marked “Major update”?",
+        "answer": "It means the first number of the version goes up, say from 3.x to 4.0, and how the tool is used or set up may change. Tools whose version starts with 0, Ollama models and tools versioned by date aren't marked. If you're not sure, choose “Skip This Version”; you'll be reminded when the next version comes out."
+      },
+      "autoCheck": {
+        "question": "When does the automatic check stop?",
+        "answer": "It's off unless you choose Daily or Weekly for “Check for updates” in Settings; choosing Manually stops it. Checks stop when you quit the app or restart your Mac, until you open it again; closing the window doesn't stop them. While an update or uninstall is under way, no check starts, and it looks again 15 minutes later. When every source fails, it waits longer before each try, up to six hours."
+      }
+    }
+  },
+  "clarity": {
+    "diagnosticsDetail": "It lists the macOS version, the location and status of each source, and the folders searched for commands, with your home folder written as “~”. A source's error details are the tool's own words and can quote its settings files: user names and passwords that Banager recognizes in web addresses and proxy settings are hidden, and everything else is copied as the tool wrote it.",
+    "keptLeftOut": "Not counting {{path}}, which holds another copy installed on its own.",
+    "keptLeftOutLabel": "About the size: {{path}}",
+    "ownInstaller": "{{source}}'s own installer",
+    "twinUnused": "Typing {{command}} in Terminal runs the copy from {{by}}, version {{version}}, so Terminal doesn't use this one.",
+    "twinUnusedNoVersion": "Typing {{command}} in Terminal runs the copy from {{by}}, so Terminal doesn't use this one.",
+    "twinUnusedRemovable": "If you don't need it, you can uninstall this copy.",
+    "twinUsed": "Typing {{command}} in Terminal runs this copy; Terminal doesn't use the one from {{by}}, version {{version}}.",
+    "twinUsedNoVersion": "Typing {{command}} in Terminal runs this copy; Terminal doesn't use the one from {{by}}.",
+    "twinUsedMany_one": "Typing {{command}} in Terminal runs this copy; Terminal doesn't use the other {{count}}.",
+    "twinUsedMany_other": "Typing {{command}} in Terminal runs this copy; Terminal doesn't use the other {{count}}.",
+    "twinUninstallStays": "The copy from {{by}} stays.",
+    "twinUninstallStillRuns": "The copy from {{by}} stays, and {{command}} still works in Terminal.",
+    "twinUninstallOthersStay_one": "The other {{count}} copy stays.",
+    "twinUninstallOthersStay_other": "The other {{count}} copies stay.",
+    "notUsedWord": "Not used in Terminal",
+    "notUsedAria": "Not used in Terminal: {{name}}",
+    "previewHold": "You can uninstall once the check is done",
+    "previewHoldDetail": "The first check looks up every tool's newest version online, and sometimes takes a minute or two.",
+    "otherVersionsDetail": "Other versions Homebrew still keeps, besides the one listed above. Updating or uninstalling it usually removes them too, as its confirmation says. They can't be cleaned up on their own here yet.",
+    "notUsedUpdate": "Updating this copy doesn't change the one Terminal runs.",
+    "selfUpdatingDetail": "It installs new versions itself when it runs. You can also update it here.",
+    "completeExcept": "Check: complete, except for updates to {{sources}}",
+    "incompleteExcept": "{{check}}; updates to {{sources}} aren't checked either",
+    "headingCount_one": "{{count}} tool",
+    "headingCount_other": "{{count}} tools",
+    "modelCount_one": "{{count}} model",
+    "modelCount_other": "{{count}} models",
+    "modelsNote": "Files several models share count once, so the total can be less than the models' sizes added up.",
+    "shownOfAll_one": "{{count}} of {{total}} tools",
+    "shownOfAll_other": "{{count}} of {{total}} tools",
+    "updatesOfAll_one": "{{count}} of {{total}} updates",
+    "updatesOfAll_other": "{{count}} of {{total}} updates",
+    "totalNoteAtLeast": "Measured sizes added up, including other versions but not caches. A file shared by several tools counts once. Some tools have no size, or some of their files couldn't be read, so they take more than this.",
+    "willKeepWhat": {
+      "Settings": "Settings",
+      "SettingsAndHistory": "Settings, login and history",
+      "ToolState": "Conversations and history",
+      "ShellConfigLines": "Terminal settings file",
+      "OutsideHome": "Link that will stop working",
+      "NotOurs": "Not confirmed as this tool's",
+      "InstallerCache": "Installer's staging folder"
+    },
+    "scopeWithKept": {
+      "HomebrewFormulaOnly": "Removes only the Homebrew version of {{name}} and the links to it.",
+      "HomebrewFormula": "Removes the Homebrew version of {{name}} and the links to it.",
+      "HomebrewCaskPlain": "Deletes what Homebrew installed for {{name}}.",
+      "Npm": "Deletes {{name}}'s folder from npm's global folder, along with its commands. None of {{name}}'s code is run.",
+      "Pipx": "Deletes the Python environment pipx made just for {{name}} and the commands that point into it.",
+      "Uv": "Deletes the Python environment uv made just for {{name}} and the commands it recorded."
+    },
+    "freesModel": "Frees about {{size}}, less any part other models share.",
+    "majorNote": "This is a major update, so how it works may change."
+  },
+  "clarityMore": {
+    "notUsedUpdateNote": "Terminal runs another copy. Updating this one doesn't change what {{command}} runs in Terminal."
+  },
+  "unknown": {
+    "columns": {
+      "size": "Size",
+      "modified": "Date Modified"
+    },
+    "intro": "Couldn't determine how these programs were installed. They're only listed here, never changed. To find out what one is, show it in Finder.",
+    "lookedIn": "Looked in: {{folders}}",
+    "attributed_one": "{{count}} more program has a known source and isn't listed here.",
+    "attributed_other": "{{count}} more programs have a known source and aren't listed here.",
+    "stopped": {
+      "FileLimit": "Stopped after {{count}} items; the rest weren't checked.",
+      "TimeLimit": "Stopped after {{seconds}} seconds; the rest weren't checked."
+    },
+    "kind": {
+      "BrokenSymlink": "Original missing"
+    },
+    "brokenLink": "Points to {{target}}, which can't be found",
+    "linksTo": "Links to {{path}}",
+    "partOfApp": "Part of {{app}}",
+    "adminOwned": "Not owned by your account",
+    "pointsInto": "Points into {{app}}",
+    "showInFinder": "Show in Finder",
+    "showsLinkTarget": "Shows the file this link points to.",
+    "targetGone": "The file this link points to can't be found.",
+    "showInFinderFailed": "Couldn't show it in Finder",
+    "copyPath": "Copy Path",
+    "scanAgain": "Scan Again",
+    "scanning": "Scanning…",
+    "scannedJustNow": "Scanned just now",
+    "scannedMinutesAgo_one": "Scanned {{count}} min ago",
+    "scannedMinutesAgo_other": "Scanned {{count}} min ago",
+    "scannedHoursAgo_one": "Scanned {{count}} hour ago",
+    "scannedHoursAgo_other": "Scanned {{count}} hours ago",
+    "scannedDaysAgo_one": "Scanned {{count}} day ago",
+    "scannedDaysAgo_other": "Scanned {{count}} days ago",
+    "scanFailed": "Couldn't scan: {{message}}",
+    "scanFailedPlain": "Couldn't scan. Try scanning again later.",
+    "empty": "No other programs",
+    "emptyChecked": "No other programs in the places checked",
+    "protectedLink": "Points to a protected location",
+    "protectedLinkWhy": "Documents, Desktop, Downloads, iCloud Drive, other disks and other protected locations aren't read, so where this link leads wasn't checked.",
+    "protectedLinkHint": "This link points to a protected location, which isn't read.",
+    "protectedFolders_one": "{{count}} folder is in a protected location and wasn't read.",
+    "protectedFolders_other": "{{count}} folders are in protected locations and weren't read."
+  },
+  "unknownReveal": {
+    "changedSinceScan": "It changed after the last scan. Scan again."
   },
   "emptyStates": {
     "loadFailed": {
-      "title": "Couldn't load what's installed",
-      "description": "The last attempt failed with: {{message}}"
+      "title": "Couldn't load installed tools",
+      "description": "Reason: {{message}}",
+      "nextStep": "Check again. If that doesn't help, quit and reopen Banager."
     },
-    "noHomebrew": {
-      "title": "Homebrew isn't installed yet",
-      "description": "Canager manages tools installed through Homebrew. Install Homebrew first, then come back here."
-    },
-    "refusedAsRoot": {
-      "title": "Canager can't run as an administrator",
-      "description": "Homebrew refuses to run under the root user for safety. Quit Canager, then open it again from your normal user account."
-    },
-    "refreshFailed": {
-      "title": "Some data might be out of date",
-      "description_one": "The last refresh couldn't finish for {{count}} source, so what you see below may be stale.",
-      "description_other": "The last refresh couldn't finish for {{count}} sources, so what you see below may be stale.",
-      "retryFailed": "Trying again didn't work: {{message}}",
-      "retry": "Try again"
-    },
-    "firstRefreshFailed": {
-      "title": "Couldn't finish the first check",
-      "description_one": "The first check couldn't finish for {{count}} source, so what you see below may be incomplete.",
-      "description_other": "The first check couldn't finish for {{count}} sources, so what you see below may be incomplete."
+    "noSources": {
+      "title": "No tools to manage",
+      "description": "Install Homebrew first."
     },
     "nothingInstalled": {
-      "title": "Nothing installed yet",
-      "description": "Once you install something with Homebrew, it will show up here."
+      "title": "No installed tools found",
+      "description": "Tools you install with Homebrew, npm and the like show up here."
+    },
+    "supportedList": "Supports Homebrew, npm, pipx, uv, pip, Cargo and Ollama, and Claude Code, Antigravity CLI, Grok Build, Codex, opencode and rustup in their default locations."
+  },
+  "failure": {
+    "cause": {
+      "network": "Connection failed",
+      "diskFull": "Disk is full",
+      "permission": "No permission",
+      "busy": "Another operation is running",
+      "homebrewUpdating": "Homebrew is checking online for new versions",
+      "needsPassword": "Needs your password",
+      "passwordNotAccepted": "Password not accepted"
+    },
+    "next": {
+      "network": "Check your internet connection, then try again.",
+      "diskFull": "Free up some disk space, then try again.",
+      "permission": "Make sure you can change its files, then try again.",
+      "busy": "Wait for the other operation to finish, then try again.",
+      "homebrewUpdating": "Try again later.",
+      "needsPassword": "This step needs your Mac login password, which can't be entered here.",
+      "passwordNotAccepted": "Enter your Mac login password in the password window, then try again."
+    },
+    "line": {
+      "network": "The connection failed. Check your internet connection, then try again.",
+      "diskFull": "The disk is full. Free up some space, then try again.",
+      "permission": "There's no permission to change its files. Check the permissions, then try again.",
+      "busy": "Another operation is running. Wait for it to finish, then try again.",
+      "homebrewUpdating": "Homebrew is checking online for new versions. Try again later.",
+      "needsPassword": "This needs your Mac login password, which can't be entered here.",
+      "passwordNotAccepted": "The password wasn't accepted. Enter your Mac login password in the password window, then try again."
+    },
+    "toolWords": {
+      "generic": "The words above are the error message from {{program}} itself. You can {{again}} later. If it still fails, click View Log, then Copy Log, and send the log to someone who can help.",
+      "withCause": "The words above are the error message from {{program}} itself. {{line}}",
+      "inTerminal": "The words above are the error message from {{program}} itself. {{line}} You can click {{button}} and run the command it gives in Terminal.",
+      "noLog": "The words above are the error message from {{program}} itself. You can {{again}} later. If it still fails, click Copy Error Details and send them to someone who can help."
     }
+  },
+  "failureMore": {
+    "cause": {
+      "conflict": "Conflicts with existing files",
+      "notFound": "Something it needs is missing",
+      "appMissing": "The app isn't where it was installed",
+      "unsupported": "Doesn't support this Mac",
+      "timedOut": "Took too long",
+      "notLinked": "The new version isn't linked",
+      "changed": "Changed after you confirmed",
+      "internal": "An internal error occurred"
+    },
+    "next": {
+      "conflict": "The error says which file; deal with it, then try again.",
+      "notFound": "The error says what's missing.",
+      "appMissing": "It may have been moved to the Trash or deleted; to keep using it, put it back in Applications and try again, or uninstall it if you no longer need it.",
+      "unsupported": "This version can't run on this Mac; the error says what it needs.",
+      "timedOut": "Try again later.",
+      "notLinked": "The new version is installed, but its commands may not be found in Terminal, usually because a file of the same name is in the way; deal with it, then try again.",
+      "changed": "Open the confirmation again, then try again.",
+      "internal": "Try again later."
+    },
+    "line": {
+      "conflict": "It conflicts with files already there. The error says which one; deal with it, then try again.",
+      "notFound": "Something it needs is missing. The error says what.",
+      "appMissing": "The app isn't where it was installed; it may have been moved to the Trash or deleted. To keep using it, put it back in Applications and try again, or uninstall it if you no longer need it.",
+      "unsupported": "This version can't run on this Mac. The error says what it needs.",
+      "timedOut": "It took too long. Try again later.",
+      "notLinked": "The new version is installed but isn't linked, so its commands may not be found in Terminal, usually because a file of the same name is in the way. Deal with it, then try again.",
+      "changed": "Something changed after you confirmed. Open the confirmation again, then try again.",
+      "internal": "An internal error occurred. Try again later."
+    }
+  },
+  "failureRecovery": {
+    "logGone": "The log for this operation is no longer available.",
+    "details": "Show Error Details",
+    "copy": "Copy Error Details",
+    "next": "You can {{again}} later. If it still fails, click Show Error Details, then Copy Error Details, and send them to someone who can help."
+  },
+  "failureSteps": {
+    "viewLogs_one": "View {{count}} Log",
+    "viewLogs_other": "View {{count}} Logs",
+    "position": "{{current}} of {{total}}",
+    "previous": "Previous",
+    "next": "Next",
+    "previousLabel": "Previous Log",
+    "nextLabel": "Next Log",
+    "bar": {
+      "updatesFailed_one": "{{count}} update failed",
+      "updatesFailed_other": "{{count}} updates failed",
+      "needPassword_one": "{{count}} needs your password",
+      "needPassword_other": "{{count}} need your password",
+      "failed_one": "{{count}} failed",
+      "failed_other": "{{count}} failed",
+      "succeeded_one": "{{count}} succeeded",
+      "succeeded_other": "{{count}} succeeded",
+      "needsAttention_one": "{{count}} needs attention",
+      "needsAttention_other": "{{count}} need attention",
+      "cancelled_one": "{{count}} cancelled",
+      "cancelled_other": "{{count}} cancelled"
+    },
+    "again": {
+      "Upgrade": "click Retry",
+      "Uninstall": "uninstall it again",
+      "Install": "install it again"
+    },
+    "log": {
+      "generic": "The lines above are the error message from {{program}} itself. You can {{again}} later. If it still fails, click Copy Log and send the log to someone who can help.",
+      "afterStep": "The lines above are the error message from {{program}} itself. If it still fails after the step above, click Copy Log and send the log to someone who can help.",
+      "inTerminal": "The lines above are the error message from {{program}} itself. If the command above still fails in Terminal, click Copy Log and send the log to someone who can help.",
+      "copyOnly": "The lines above are the error message from {{program}} itself. You can click Copy Log and send the log to someone who can help."
+    }
+  },
+  "passwordRecovery": {
+    "preparing": "Preparing the command…",
+    "unavailable": "Couldn't prepare the command. Click Check Again, then click View Steps."
+  },
+  "needsPassword": {
+    "intro": "You can run the command below in Terminal and type your password when asked. Nothing appears on screen as you type. That's normal.",
+    "after": "When it's done, come back here and press ⌘R to check again.",
+    "commandLabel": "Command to run in Terminal",
+    "viewSteps": "View Steps",
+    "viewStepsLabel": "View steps: {{name}}"
+  },
+  "a11y": {
+    "updateList": "Tools to update"
   }
 }

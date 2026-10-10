@@ -1,0 +1,435 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, render, waitFor, within } from "@testing-library/react";
+import i18n from "../i18n";
+import { renderWithProviders } from "../test/setup";
+import { twinsByArtifact } from "../lib/commands";
+import type { ArtifactKey, CommandFact, InstalledArtifact } from "../lib/types";
+import { NO_FACTS } from "../lib/types";
+import { CommandsGroup, mainCommandFirst, twinChip } from "./CommandFacts";
+import { BUTTON } from "./ui/controls";
+
+const npmKey: ArtifactKey = { instance_id: "npm:/opt/homebrew", kind: "Package", name: "@anthropic-ai/claude-code" };
+const nativeKey: ArtifactKey = { instance_id: "standalone-claude", kind: "Binary", name: "claude" };
+const formulaKey: ArtifactKey = { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "grok" };
+
+const LABELS: Record<string, string> = {
+  "npm:/opt/homebrew": "npm",
+  "standalone-claude": "Claude Code",
+  "brew:/opt/homebrew": "Homebrew",
+};
+const sourceLabelFor = (instanceId: string) => LABELS[instanceId] ?? instanceId;
+
+function artifact(key: ArtifactKey, family: string | null, commands: CommandFact[], name = key.name): InstalledArtifact {
+  return {
+    key,
+    display_name: name,
+    version: "1.0",
+    reason: "Requested",
+    description: null,
+    homepage: null,
+    size_bytes: null,
+    installed_at: null,
+    path: null,
+    auto_updates: false,
+    uninstall_blocked: null,
+    facts: { ...NO_FACTS, family, commands },
+  };
+}
+
+function group(subject: InstalledArtifact, others: InstalledArtifact[] = []) {
+  return renderWithProviders(
+    <CommandsGroup artifact={subject} artifacts={[subject, ...others]} sourceLabelFor={sourceLabelFor} />,
+  );
+}
+
+/** Each line of the group: its commands, then what typing them runs (less the space before an ⓘ). */
+function lines(container: HTMLElement): string[][] {
+  return [...container.querySelectorAll("[data-command-line]")].map((line) =>
+    [...line.querySelectorAll("p")].map((p) => (p.textContent ?? "").trim()),
+  );
+}
+
+describe("CommandsGroup", () => {
+  it("says nothing for a tool with no verdict about any of its commands", () => {
+    const { container } = group(artifact(formulaKey, null, [{ name: "curl", state: null }]));
+    expect(container).toBeEmptyDOMElement();
+    const { container: none } = group(artifact(formulaKey, null, []));
+    expect(none).toBeEmptyDOMElement();
+  });
+
+  // r36 V5: npm's `gemini`, then `brew install gemini-cli`, whose link
+  // step stops at npm's file. Its commands come from its keg, with no
+  // verdict; the group says Homebrew didn't link it, the why behind its ⓘ.
+  it("says a formula Homebrew didn't link is not where Terminal looks, in every language", async () => {
+    const geminiKey: ArtifactKey = { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "gemini-cli" };
+    const unlinked: InstalledArtifact = {
+      ...artifact(geminiKey, "gemini-cli", [{ name: "gemini", state: null }]),
+      facts: { ...NO_FACTS, family: "gemini-cli", commands: [{ name: "gemini", state: null }], unlinked: true },
+    };
+    // npm's `gemini`, judged: the login shell's PATH was read.
+    const npmGemini = artifact(
+      { instance_id: "npm:/opt/homebrew", kind: "Package", name: "@google/gemini-cli" },
+      "gemini-cli",
+      [{ name: "gemini", state: "Runs" }],
+    );
+    const { container, getByRole, getByText, unmount } = group(unlinked, [npmGemini]);
+    expect(lines(container)).toEqual([["gemini", "Homebrew didn't link it where Terminal looks"]]);
+    fireEvent.click(getByRole("button", { name: "Details: gemini" }));
+    expect(
+      getByText(
+        "Usually a file of the same name was in the way when Homebrew installed it. Typing it in Terminal doesn't run this copy.",
+      ),
+    ).toBeInTheDocument();
+    unmount();
+    // The login shell's PATH was not read (no verdict anywhere): which copy
+    // typing it runs is not said, only why it isn't linked (q1b skeptic 5).
+    const npmUnjudged = { ...npmGemini, facts: { ...npmGemini.facts, commands: [{ name: "gemini", state: null }] } };
+    const unread = group(unlinked, [npmUnjudged]);
+    expect(lines(unread.container)).toEqual([["gemini", "Homebrew didn't link it where Terminal looks"]]);
+    fireEvent.click(unread.getByRole("button", { name: "Details: gemini" }));
+    expect(
+      unread.getByText("Usually a file of the same name was in the way when Homebrew installed it."),
+    ).toBeInTheDocument();
+    expect(unread.queryByText(/doesn't run this copy/)).toBeNull();
+    unread.unmount();
+    // The same commands with no verdict, linked: nothing to say, as before.
+    const { container: linked } = group({ ...unlinked, facts: { ...unlinked.facts, unlinked: false } });
+    expect(linked).toBeEmptyDOMElement();
+    for (const [language, text] of [
+      ["zh-CN", "Homebrew没有把它链接到终端能找到的地方"],
+      ["zh-Hant", "Homebrew沒有把它連結到終端機找得到的地方"],
+    ] as const) {
+      await i18n.changeLanguage(language);
+      try {
+        const { container: zh, unmount: done } = group(unlinked);
+        expect(lines(zh)).toEqual([["gemini", text]]);
+        done();
+      } finally {
+        await i18n.changeLanguage("en");
+      }
+    }
+  });
+
+  it("titles the group with what the verdicts are judged against behind its ⓘ", () => {
+    const { getByRole, getByText } = group(artifact(nativeKey, "claude-code", [{ name: "claude", state: "Runs" }]));
+    expect(getByRole("heading", { name: /In Terminal/ })).toBeInTheDocument();
+    // The heading and the group are named by the title alone: the ⓘ is
+    // not in the heading, where a browser would add its own name,
+    // "Details: In Terminal", to both (jsdom's names leave it out).
+    const heading = getByRole("heading", { name: "In Terminal" });
+    expect(heading.querySelector("button")).toBeNull();
+    expect(getByRole("region", { name: "In Terminal" })).toBeInTheDocument();
+    fireEvent.click(getByRole("button", { name: "Details: In Terminal" }));
+    expect(
+      getByText(
+        "Based on the Terminal settings read when this app opened. An alias, a new Terminal window or an editor's terminal may differ.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("says which copy runs: this one, the other copy of the tool, or another program", () => {
+    const npm = artifact(npmKey, "claude-code", [{ name: "claude", state: "Runs" }]);
+    const native = artifact(nativeKey, "claude-code", [
+      { name: "agent", state: { ShadowedBy: { by: formulaKey } } },
+      { name: "claude", state: { ShadowedBy: { by: npmKey } } },
+      { name: "claw", state: { ShadowedBy: { by: null } } },
+    ]);
+    const formula = artifact(formulaKey, null, [{ name: "agent", state: "Runs" }]);
+    const { container, getByRole } = group(native, [npm, formula]);
+    expect(lines(container)).toEqual([
+      ["agent", "Runs another program with this name, from Homebrew"],
+      ["claude", "Runs the copy from npm"],
+      ["claw", "Runs another program with this name"],
+    ]);
+    // Why behind an ⓘ: the other one is found first.
+    fireEvent.click(getByRole("button", { name: "Details: claude" }));
+    expect(container.ownerDocument.body).toHaveTextContent("Terminal finds that one first. This copy comes after it.");
+    expect(within(container).queryByRole("button", { name: /Copy path/ })).toBeNull();
+  });
+
+  it("says this copy runs, once for commands with one verdict, counting the names past three", () => {
+    const names = ["cargo", "cargo-clippy", "cargo-fmt", "rustc", "rustup"];
+    const { container } = group(
+      artifact(
+        { instance_id: "standalone-rustup", kind: "Binary", name: "rustup" },
+        null,
+        names.map((name) => ({ name, state: "Runs" as const })),
+      ),
+    );
+    // The tool's own command first, then the rest in order.
+    expect(lines(container)).toEqual([["rustup, cargo, cargo-clippy and 2 more", "Runs this copy"]]);
+    // The last name and the count held on one line.
+    expect(container.querySelector("[data-command-line] .whitespace-nowrap")?.textContent).toBe(
+      "cargo-clippy and 2 more",
+    );
+  });
+
+  it("puts a versioned formula's own command first: python3.13 for python@3.13", () => {
+    expect(
+      mainCommandFirst(
+        ["idle3.13", "pip3.13", "pydoc3.13", "python3.13", "python3.13-config"],
+        artifact(formulaKey, null, []),
+      ),
+    ).toEqual(["idle3.13", "pip3.13", "pydoc3.13", "python3.13", "python3.13-config"]);
+    const python = { instance_id: "brew:/opt/homebrew", kind: "Formula" as const, name: "python@3.13" };
+    expect(
+      mainCommandFirst(["idle3.13", "pip3.13", "pydoc3.13", "python3.13", "python3.13-config"], artifact(python, null, [])),
+    ).toEqual(["python3.13", "idle3.13", "pip3.13", "pydoc3.13", "python3.13-config"]);
+  });
+
+  describe("a folder Terminal does not search", () => {
+    let writeText: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+      writeText = vi.fn().mockResolvedValue(undefined);
+      Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    });
+
+    afterEach(() => {
+      Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+    });
+
+    it("names the folder and copies it as shown", async () => {
+      const { container, getByRole } = group(
+        artifact(nativeKey, "claude-code", [{ name: "claude", state: { NotOnPath: { dir: "~/.local/bin" } } }]),
+      );
+      expect(lines(container)).toEqual([
+        ["claude", "Terminal can't find it: it's in ~/.local/bin, a folder Terminal doesn't search"],
+      ]);
+      const copy = getByRole("button", { name: "Copy path: ~/.local/bin" });
+      expect(copy).toHaveTextContent(/^Copy Path$/);
+      expect(copy.className).toBe(BUTTON.small.grey);
+      // The heading's ⓘ, the line's ⓘ -- what to try -- Copy Path, and
+      // Copy Line on the row under it (U15 a).
+      expect(container.querySelectorAll("button")).toHaveLength(4);
+      expect(getByRole("button", { name: "Details: claude" })).toBeInTheDocument();
+      fireEvent.click(copy);
+      expect(writeText).toHaveBeenCalledWith("~/.local/bin");
+      const line = container.querySelector("[data-command-line]") as HTMLElement;
+      await waitFor(() => expect(within(line).getByRole("status")).toHaveTextContent(/^Copied$/));
+      // Beside the button it is about, as the homepage's Copy Link says it.
+      expect(within(line).getByRole("status").parentElement).toBe(copy.parentElement);
+    });
+
+    it("gives the line to add to a shell startup file under it, and copies it whole (U15 a)", async () => {
+      const { container } = group(
+        artifact(formulaKey, null, [
+          { name: "grok", state: { NotOnPath: { dir: "~/.grok/bin" } } },
+          { name: "agent", state: { NotOnPath: { dir: "~/.grok/bin" } } },
+        ]),
+      );
+      const rows = container.querySelectorAll("[data-path-line]");
+      expect(rows).toHaveLength(1);
+      const row = rows[0] as HTMLElement;
+      // A row of its own, right under the folder's.
+      expect(row.previousElementSibling?.hasAttribute("data-command-line")).toBe(true);
+      expect(row.querySelector("[data-path-line-text]")).toHaveTextContent(
+        // The PATH Banager goes by is read once each time it opens: a line
+        // added now shows here only after it is reopened.
+        "To let Terminal find it, add this line to the end of a shell startup file such as ~/.zshrc, then open a new Terminal window. To see the change here, quit and reopen this app.",
+      );
+      const code = row.querySelector("code") as HTMLElement;
+      expect(code.textContent).toBe('export PATH="$HOME/.grok/bin:$PATH"');
+      // In a narrow pane it breaks only after a "/", never at the space
+      // after export, which would read as two lines to type.
+      expect(code.querySelector(".whitespace-nowrap")?.textContent).toBe('export PATH="');
+      expect(code.querySelectorAll("wbr")).toHaveLength(2);
+      const copy = within(row).getByRole("button", { name: "Copy line for ~/.grok/bin" });
+      expect(copy).toHaveTextContent(/^Copy Line$/);
+      expect(copy.className).toBe(BUTTON.small.grey);
+      fireEvent.click(copy);
+      expect(writeText).toHaveBeenCalledWith('export PATH="$HOME/.grok/bin:$PATH"');
+      await waitFor(() => expect(within(row).getByRole("status")).toHaveTextContent(/^Copied$/));
+      // Nothing edits the file: the one button copies.
+      expect(within(row).getAllByRole("button")).toEqual([copy]);
+    });
+
+    it("gives no line where every command runs, or where the folder cannot go on the search path", () => {
+      const runs = group(artifact(nativeKey, "claude-code", [{ name: "claude", state: "Runs" }]));
+      expect(runs.container.querySelector("[data-path-line]")).toBeNull();
+      runs.unmount();
+      const colon = group(artifact(nativeKey, "claude-code", [{ name: "claude", state: { NotOnPath: { dir: "~/a:b" } } }]));
+      expect(colon.container.querySelector("[data-path-line]")).toBeNull();
+      // Copy Path is still there.
+      expect(colon.getByRole("button", { name: "Copy path: ~/a:b" })).toBeInTheDocument();
+    });
+
+    it("says it in Chinese as Apple's strings do", async () => {
+      await i18n.changeLanguage("zh-CN");
+      try {
+        const { container, getByRole } = group(
+          artifact(nativeKey, "claude-code", [
+            { name: "claude", state: { NotOnPath: { dir: "~/.local/bin" } } },
+            { name: "claude-helper", state: "Runs" },
+          ]),
+        );
+        expect(getByRole("heading", { name: /^在终端里输入时/ })).toBeInTheDocument();
+        expect(lines(container)).toEqual([
+          ["claude", "终端找不到它：它在~/.local/bin，终端不在这个文件夹里查找命令"],
+          ["claude-helper", "运行的是这一份"],
+        ]);
+        expect(getByRole("button", { name: "拷贝路径：~/.local/bin" })).toHaveTextContent(/^拷贝路径$/);
+        const row = container.querySelector("[data-path-line]") as HTMLElement;
+        expect(row.querySelector("[data-path-line-text]")).toHaveTextContent(
+          "要让终端找到它，可以把这一行加到~/.zshrc等终端配置文件的末尾，再新开一个终端窗口。要在这里看到变化，请退出并重新打开此App。",
+        );
+        expect(within(row).getByRole("button", { name: "拷贝这一行：~/.local/bin" })).toHaveTextContent(/^拷贝这一行$/);
+        await i18n.changeLanguage("zh-Hant");
+        expect(await within(row).findByText(/^若要讓終端機找到它/)).toHaveTextContent(
+          "若要讓終端機找到它，可以把這一行加到~/.zshrc等終端機設定檔的結尾，再新開一個終端機視窗。若要在這裡看到變化，請結束並重新開啟此App。",
+        );
+      } finally {
+        await i18n.changeLanguage("en");
+      }
+    });
+  });
+});
+
+describe("twinChip", () => {
+  const t = i18n.getFixedT("en");
+
+  /** The chip's detail as text, a line each. */
+  function detailText(detail: React.ReactNode): string[] {
+    const { container } = render(<>{detail}</>);
+    return [...container.querySelectorAll("[data-detail-line]")].map((p) => p.textContent ?? "");
+  }
+
+  it("marks a tool another source installed too, and says which copy typing it runs", () => {
+    const npm = artifact(npmKey, "claude-code", [{ name: "claude", state: "Runs" }], "@anthropic-ai/claude-code");
+    const native = artifact(
+      nativeKey,
+      "claude-code",
+      [{ name: "claude", state: { ShadowedBy: { by: npmKey } } }],
+      "Claude Code",
+    );
+    const twins = twinsByArtifact([npm, native]);
+
+    const onNative = twinChip(t, native, twins.get("standalone-claude|Binary|claude"), sourceLabelFor);
+    expect(onNative?.label).toBe("Installed twice");
+    expect(onNative?.ariaLabel).toBe("Installed twice: Claude Code");
+    expect(onNative?.tone).toBe("neutral");
+    expect(detailText(onNative?.detail)).toEqual([
+      "npm has a copy too.",
+      "Typing claude in Terminal runs the copy from npm.",
+    ]);
+
+    const onNpm = twinChip(t, npm, twins.get("npm:/opt/homebrew|Package|@anthropic-ai/claude-code"), sourceLabelFor);
+    expect(detailText(onNpm?.detail)).toEqual([
+      "Claude Code's own installer installed a copy too.",
+      "Typing claude in Terminal runs this copy.",
+    ]);
+  });
+
+  it("counts a third copy, and says only where the others are when nothing was judged", () => {
+    const caskKey: ArtifactKey = { instance_id: "brew:/opt/homebrew", kind: "Cask", name: "claude-code" };
+    const npm = artifact(npmKey, "claude-code", [{ name: "claude", state: null }]);
+    const native = artifact(nativeKey, "claude-code", [{ name: "claude", state: null }], "Claude Code");
+    const cask = artifact(caskKey, "claude-code", [{ name: "claude", state: null }]);
+    const twins = twinsByArtifact([npm, native, cask]);
+    const chip = twinChip(t, native, twins.get("standalone-claude|Binary|claude"), sourceLabelFor);
+    expect(chip?.label).toBe("Installed 3 times");
+    expect(detailText(chip?.detail)).toEqual(["npm and Homebrew each have a copy too."]);
+  });
+
+  it("says this copy cannot be found where its folder is off the search path", async () => {
+    await i18n.changeLanguage("zh-CN");
+    try {
+      const zh = i18n.getFixedT("zh-CN");
+      const npm = artifact(npmKey, "claude-code", [{ name: "claude", state: "Runs" }]);
+      const native = artifact(
+        nativeKey,
+        "claude-code",
+        [{ name: "claude", state: { NotOnPath: { dir: "~/.local/bin" } } }],
+        "Claude Code",
+      );
+      const twins = twinsByArtifact([npm, native]);
+      const chip = twinChip(zh, native, twins.get("standalone-claude|Binary|claude"), sourceLabelFor);
+      expect(chip?.label).toBe("装了两份");
+      expect(chip?.ariaLabel).toBe("装了两份：Claude Code");
+      expect(detailText(chip?.detail)).toEqual(["npm也装了一份。", "在终端里输入“claude”，找不到这一份。"]);
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+
+  it("counts copies, not sources, where one source has two", async () => {
+    const otherNpmKey: ArtifactKey = { ...npmKey, instance_id: "npm:/Users/a/.npm-global" };
+    const native = artifact(nativeKey, "claude-code", [{ name: "claude", state: "Runs" }], "Claude Code");
+    const npm = artifact(npmKey, "claude-code", [{ name: "claude", state: null }]);
+    const otherNpm = artifact(otherNpmKey, "claude-code", [{ name: "claude", state: null }]);
+    const labels = (id: string) => (id.startsWith("npm:") ? "npm" : sourceLabelFor(id));
+    const twins = twinsByArtifact([native, npm, otherNpm]);
+    const chip = twinChip(t, native, twins.get("standalone-claude|Binary|claude"), labels);
+    expect(chip?.label).toBe("Installed 3 times");
+    expect(detailText(chip?.detail)).toEqual([
+      "The other 2 copies were installed by npm.",
+      "Typing claude in Terminal runs this copy.",
+    ]);
+    await i18n.changeLanguage("zh-CN");
+    try {
+      const zh = i18n.getFixedT("zh-CN");
+      const zhChip = twinChip(zh, native, twins.get("standalone-claude|Binary|claude"), labels);
+      expect(detailText(zhChip?.detail)).toEqual(["另外2份由npm安装。", "在终端里输入“claude”，运行的是这一份。"]);
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+
+  it("names no command when the shared commands do not all run the same copy", () => {
+    const rustupKey: ArtifactKey = { instance_id: "standalone-rustup", kind: "Binary", name: "rustup" };
+    const rustKey: ArtifactKey = { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "rust" };
+    const rustup = artifact(rustupKey, "rust", [
+      { name: "cargo", state: { ShadowedBy: { by: rustKey } } },
+      { name: "rustc", state: "Runs" },
+    ]);
+    const rust = artifact(rustKey, "rust", [
+      { name: "cargo", state: "Runs" },
+      { name: "rustc", state: null },
+    ]);
+    const twins = twinsByArtifact([rustup, rust]);
+    const chip = twinChip(t, rustup, twins.get("standalone-rustup|Binary|rustup"), sourceLabelFor);
+    expect(detailText(chip?.detail)).toEqual(["Homebrew has a copy too."]);
+  });
+
+  it("says Homebrew didn't link the formula's copy where npm's runs (r36 V5)", async () => {
+    const geminiNpmKey: ArtifactKey = { instance_id: "npm:/opt/homebrew", kind: "Package", name: "@google/gemini-cli" };
+    const geminiKey: ArtifactKey = { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "gemini-cli" };
+    const npm = artifact(geminiNpmKey, "gemini-cli", [{ name: "gemini", state: "Runs" }]);
+    const formula: InstalledArtifact = {
+      ...artifact(geminiKey, "gemini-cli", []),
+      facts: { ...NO_FACTS, family: "gemini-cli", commands: [{ name: "gemini", state: null }], unlinked: true },
+    };
+    const twins = twinsByArtifact([npm, formula]);
+    const onFormula = twinChip(t, formula, twins.get("brew:/opt/homebrew|Formula|gemini-cli"), sourceLabelFor);
+    expect(onFormula?.label).toBe("Installed twice");
+    expect(detailText(onFormula?.detail)).toEqual([
+      "npm has a copy too.",
+      "Homebrew didn't link this copy where Terminal looks.",
+    ]);
+    // The inspector's 「状态」 says where the other copy is, and no more:
+    // 「在终端里输入时」 says the rest.
+    expect(detailText(onFormula?.inspectorDetail)).toEqual(["npm has a copy too."]);
+    const onNpm = twinChip(t, npm, twins.get("npm:/opt/homebrew|Package|@google/gemini-cli"), sourceLabelFor);
+    expect(detailText(onNpm?.detail)).toEqual([
+      "Homebrew has a copy too.",
+      "Typing gemini in Terminal runs this copy.",
+    ]);
+    await i18n.changeLanguage("zh-Hant");
+    try {
+      const zh = i18n.getFixedT("zh-Hant");
+      const chip = twinChip(zh, formula, twins.get("brew:/opt/homebrew|Formula|gemini-cli"), sourceLabelFor);
+      expect(detailText(chip?.detail)).toEqual([
+        "npm也裝了一份。",
+        "Homebrew沒有把這一份連結到終端機找得到的地方。",
+      ]);
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+
+  it("is no word at all for a tool with no other copy", () => {
+    const native = artifact(nativeKey, "claude-code", [{ name: "claude", state: "Runs" }]);
+    expect(twinChip(t, native, undefined, sourceLabelFor)).toBeNull();
+    expect(twinChip(t, native, [], sourceLabelFor)).toBeNull();
+  });
+});

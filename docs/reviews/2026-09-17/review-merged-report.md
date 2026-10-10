@@ -1,4 +1,4 @@
-# Canager 设计草案 v0.1 · 四家 AI 评审合并报告
+# Banager 设计草案 v0.1 · 四家 AI 评审合并报告
 
 日期：2026-09-17　评审对象：`design-draft.md`（草案 v0.1）
 
@@ -33,7 +33,7 @@ Grok 引用的 10 个 GitHub issue/PR 编号我全部打开核对，9 个真实�
 
 ### 2.2 `pacman -Sy` 后 `-Qu` 制造 Arch 部分升级（4/4，致命）
 
-草案 §4.3 写"`pacman -Qu`（需先 `-Sy`）"。`-Sy` 刷新同步库不升级系统，之后任何安装（含 Canager 商店装新包）都是 Arch 官方明令不支持的 partial upgrade；配合 §8 后台定时检查，等于定时把用户 DB 拉到未来。**改法**：查更新只用 `checkupdates`（pacman-contrib，独立临时 DB，退出码 0 有更新 / 2 无更新 / 1 错误），装新包用 `-Syu {id}` 整体事务并在预览里写明"会升级整个系统"，禁止 `-Sy`。
+草案 §4.3 写"`pacman -Qu`（需先 `-Sy`）"。`-Sy` 刷新同步库不升级系统，之后任何安装（含 Banager 商店装新包）都是 Arch 官方明令不支持的 partial upgrade；配合 §8 后台定时检查，等于定时把用户 DB 拉到未来。**改法**：查更新只用 `checkupdates`（pacman-contrib，独立临时 DB，退出码 0 有更新 / 2 无更新 / 1 错误），装新包用 `-Syu {id}` 整体事务并在预览里写明"会升级整个系统"，禁止 `-Sy`。
 
 ### 2.3 "适配器是数据不是代码"站不住（4/4，致命）
 

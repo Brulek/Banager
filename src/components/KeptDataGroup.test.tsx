@@ -1,0 +1,526 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { invoke } from "@tauri-apps/api/core";
+import { renderWithProviders } from "../test/setup";
+import i18n from "../i18n";
+import { UninstallDialog } from "./UninstallDialog";
+import { KeptDataGroup } from "./KeptDataGroup";
+import { keptDataOf } from "../lib/keptData";
+import { deletesForGood, isCaution, warningDetailKey, warningGroup, warningKey, warningArgs, warningLines } from "../lib/warnings";
+import type { InstalledArtifact, IssuedPlan, ManagerInstance, OpRequest, Snapshot, Warning } from "../lib/types";
+import { NO_FACTS } from "../lib/types";
+
+// The same strings `test_keeps_data_is_the_json_the_typescript_mirror_reads`
+// pins in crates/banager-core/src/model.rs.
+const MEASURED_WIRE =
+  '{"KeepsData":{"path":"~/.claude","what":"ToolData","size":{"bytes":432013312,"partial":false,"at_least":true},"left_out":[]}}';
+const UNKNOWN_WIRE = '{"KeepsData":{"path":"~/.ollama/models","what":"Models","size":null,"left_out":[]}}';
+const LEFT_OUT_WIRE =
+  '{"KeepsData":{"path":"~/.codex","what":"ToolData","size":{"bytes":38400000,"partial":false,"at_least":false},"left_out":["~/.codex/packages/standalone"]}}';
+const SHARED_WIRE =
+  '{"KeepsData":{"path":"~/.gemini","what":"ToolData","size":{"bytes":7553024,"partial":false,"at_least":false},"left_out":[],"others":[{"path":"~/.gemini/antigravity-cli","tool":"Antigravity CLI"}]}}';
+
+const npmClaude: OpRequest = {
+  kind: "Uninstall",
+  instance_id: "npm:/opt/homebrew",
+  artifact_kind: "Package",
+  name: "@anthropic-ai/claude-code",
+};
+
+function issued(warnings: Warning[], request: OpRequest = npmClaude): IssuedPlan {
+  return {
+    id: "1",
+    plan: {
+      request,
+      action: {
+        Command: { program: "/opt/homebrew/bin/npm", args: ["uninstall", "-g", request.name], env: [] },
+      },
+      needs_password: false,
+      locks: [request.instance_id],
+      cancel_policy: "KillThenReconcile",
+      warnings,
+      affected: [],
+      timeout_secs: 1800,
+    },
+    issued_at: 1758000000,
+  };
+}
+
+const base = (key: InstalledArtifact["key"], over: Partial<InstalledArtifact>): InstalledArtifact => ({
+  key,
+  display_name: key.name,
+  version: "1.0",
+  reason: "Requested",
+  description: null,
+  homepage: null,
+  size_bytes: null,
+  installed_at: null,
+  path: null,
+  auto_updates: false,
+  uninstall_blocked: null,
+  facts: NO_FACTS,
+  ...over,
+});
+const instance = (id: string, adapter: string): ManagerInstance => ({
+  id,
+  adapter_id: adapter,
+  exe_path: "/x",
+  prefix: "/x",
+  scope: "User",
+  version: "1",
+  answered_at: null,
+  unverified_version: null,
+  read_only_reason: null,
+  status: { unavailable: null, notes: [] },
+});
+
+const snapshotOf = (instances: ManagerInstance[], artifacts: InstalledArtifact[]): Snapshot => ({
+  generation: 1,
+  round: 1,
+  detect: "Found",
+  instances,
+  artifacts,
+  updates: [],
+  refreshed_at: 1,
+  stale: false,
+  errors: [],
+});
+
+/** The uninstall dialog for `request`, its preview saying `warnings`, against `snapshot` where one is given. */
+function openWith(snapshot: Snapshot | null, request: OpRequest, name: string, warnings: Warning[] = []) {
+  vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+    if (cmd === "plan_operation") return issued(warnings, request);
+    if (cmd === "get_snapshot") return snapshot;
+    return null;
+  });
+  renderWithProviders(<UninstallDialog open onOpenChange={() => {}} request={request} displayName={name} />);
+}
+
+/** npm's Claude Code, alone of its family on the Mac. */
+const npmClaudeCode = base(
+  { instance_id: npmClaude.instance_id, kind: "Package", name: npmClaude.name },
+  { facts: { ...NO_FACTS, family: "claude-code", commands: [{ name: "claude", state: "Runs" }] } },
+);
+const npmOnly = snapshotOf([instance("npm:/opt/homebrew", "npm")], [npmClaudeCode]);
+
+/** Codex installed twice: by its own installer, which Terminal runs, and by npm. */
+const ownCodex = base(
+  { instance_id: "standalone-codex", kind: "Binary", name: "codex" },
+  { facts: { ...NO_FACTS, family: "codex", commands: [{ name: "codex", state: "Runs" }] } },
+);
+const npmCodexKey = { instance_id: "npm:/opt/homebrew", kind: "Package" as const, name: "@openai/codex" };
+const npmCodex = base(npmCodexKey, {
+  facts: { ...NO_FACTS, family: "codex", commands: [{ name: "codex", state: { ShadowedBy: { by: ownCodex.key } } }] },
+});
+const codexTwice = snapshotOf(
+  [instance("standalone-codex", "standalone-codex"), instance("npm:/opt/homebrew", "npm")],
+  [ownCodex, npmCodex],
+);
+
+const claudeKept: Warning[] = [
+  { UninstallScope: { what: "Npm" } },
+  {
+    KeepsData: {
+      path: "~/.claude",
+      what: "ToolData",
+      size: { bytes: 432_013_312, partial: false, at_least: false },
+      left_out: [],
+    },
+  },
+  { KeepsData: { path: "~/.claude.json", what: "ToolData", size: null, left_out: [] } },
+];
+
+describe("KeepsData on the wire", () => {
+  it("reads what Rust sends and sends it back the same", () => {
+    for (const wire of [MEASURED_WIRE, UNKNOWN_WIRE, LEFT_OUT_WIRE, SHARED_WIRE]) {
+      const warning = JSON.parse(wire) as Warning;
+      expect(JSON.stringify(warning)).toBe(wire);
+    }
+    expect(
+      keptDataOf([
+        JSON.parse(MEASURED_WIRE) as Warning,
+        JSON.parse(UNKNOWN_WIRE) as Warning,
+        JSON.parse(LEFT_OUT_WIRE) as Warning,
+        JSON.parse(SHARED_WIRE) as Warning,
+        // An older line, before `left_out` and `others`.
+        JSON.parse('{"KeepsData":{"path":"~/.gemini","what":"ToolData","size":null}}') as Warning,
+      ]),
+    ).toEqual([
+      {
+        path: "~/.claude",
+        what: "ToolData",
+        size: { bytes: 432013312, partial: false, at_least: true },
+        leftOut: [],
+        others: [],
+      },
+      { path: "~/.ollama/models", what: "Models", size: null, leftOut: [], others: [] },
+      {
+        path: "~/.codex",
+        what: "ToolData",
+        size: { bytes: 38400000, partial: false, at_least: false },
+        leftOut: ["~/.codex/packages/standalone"],
+        others: [],
+      },
+      {
+        path: "~/.gemini",
+        what: "ToolData",
+        size: { bytes: 7553024, partial: false, at_least: false },
+        leftOut: [],
+        others: [{ path: "~/.gemini/antigravity-cli", tool: "Antigravity CLI" }],
+      },
+      { path: "~/.gemini", what: "ToolData", size: null, leftOut: [], others: [] },
+    ]);
+  });
+
+  it("says what it leaves out behind the ⓘ of what it holds when its size is not known", () => {
+    const unsized = '{"KeepsData":{"path":"~/.codex","what":"ToolData","size":null,"left_out":["~/.codex/packages/standalone"]}}';
+    const { container } = renderWithProviders(<KeptDataGroup warnings={[JSON.parse(unsized) as Warning]} familyStays={false} />);
+    expect(container.querySelector("[data-kept-size]")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Details: ~/.codex" }));
+    expect(
+      screen.getByText("Not counting ~/.codex/packages/standalone, which holds another copy installed on its own."),
+    ).toBeInTheDocument();
+  });
+
+  it("says behind an ⓘ by the size what it leaves out: Codex's own install inside ~/.codex", () => {
+    renderWithProviders(<KeptDataGroup warnings={[JSON.parse(LEFT_OUT_WIRE) as Warning]} familyStays={false} />);
+    const info = screen.getByRole("button", { name: "About the size: ~/.codex" });
+    fireEvent.click(info);
+    expect(
+      screen.getByText("Not counting ~/.codex/packages/standalone, which holds another copy installed on its own."),
+    ).toBeInTheDocument();
+  });
+
+  it("is its own group, plain, never a deletion", () => {
+    const warning = JSON.parse(UNKNOWN_WIRE) as Warning;
+    expect(warningGroup(warning)).toBe("data");
+    // No line: only its own group shows it (`KeptDataGroup`).
+    expect(warningKey(warning)).toBeNull();
+    expect(warningArgs(warning)).toEqual({});
+    expect(warningLines((key) => key, [warning]).data).toEqual([]);
+    expect(warningDetailKey(warning)).toBeNull();
+    expect(isCaution(warning)).toBe(false);
+    expect(deletesForGood(warning)).toBe(false);
+  });
+});
+
+describe("the uninstall dialog's 「卸载后会保留」 group", () => {
+  let writeText: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.mocked(invoke).mockReset();
+    writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+  });
+
+  afterEach(async () => {
+    Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+    await i18n.changeLanguage("en");
+  });
+
+  function open(warnings: Warning[], request: OpRequest = npmClaude, name = "Claude Code") {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "plan_operation") return issued(warnings, request);
+      return null;
+    });
+    renderWithProviders(<UninstallDialog open onOpenChange={() => {}} request={request} displayName={name} />);
+  }
+
+  it("lists each path that stays, about how big where known, what it holds, and Copy Path", async () => {
+    open(claudeKept);
+    const group = await screen.findByRole("region", { name: "Stays after uninstalling" });
+    const rows = within(group).getAllByRole("listitem");
+    expect(rows.map((row) => row.textContent)).toEqual([
+      "~/.claude · About 432 MBThis tool's settings and dataCopy Path",
+      // Size unknown: the path alone.
+      "~/.claude.jsonThis tool's settings and dataCopy Path",
+    ]);
+    const copy = within(group).getByRole("button", { name: "Copy path: ~/.claude" });
+    fireEvent.click(copy);
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("~/.claude"));
+    // Beside the button that was pressed, as the details' copy buttons say it; the other row says nothing.
+    expect(await within(rows[0]).findByRole("status")).toHaveTextContent(/^Copied$/);
+    expect(within(rows[0]).getByRole("status").parentElement).toBe(copy.parentElement);
+    expect(within(rows[1]).getByRole("status")).toBeEmptyDOMElement();
+  });
+
+  it("offers no button that deletes what stays, and nothing that deletes for good", async () => {
+    open(claudeKept);
+    const group = await screen.findByRole("region", { name: "Stays after uninstalling" });
+    const buttons = within(group).getAllByRole("button");
+    expect(buttons.map((button) => button.textContent)).toEqual(["Copy Path", "Copy Path"]);
+    expect(group.textContent).not.toMatch(/delete|remove|删除|移除/i);
+    // Nor does it make the uninstall a permanent one.
+    expect(screen.getByRole("button", { name: "Uninstall" })).toBeInTheDocument();
+  });
+
+  it("says under the list how to reach a path in Finder, what ~ is, and that the data can go to the Trash there (U15 e)", async () => {
+    // npm's Claude Code, the only one of its family on the Mac.
+    openWith(npmOnly, npmClaude, "Claude Code", claudeKept);
+    const group = await screen.findByRole("region", { name: "Stays after uninstalling" });
+    const find = group.querySelector("[data-kept-find]");
+    expect(find).toHaveTextContent(
+      "“~” at the start of a path is your home folder. To see one in Finder, copy its path, press ⇧⌘G in Finder, paste the path and press Return.",
+    );
+    // After the list, not in a row.
+    expect(find?.closest("li")).toBeNull();
+    // One sentence, no button: the person moves it, in Finder, where it
+    // can be dragged back out of the Trash.
+    const trash = group.querySelector("[data-kept-trash]");
+    expect(trash).toHaveTextContent(/^If you don't need these settings and data, you can move them to the Trash in Finder\.$/);
+    expect(trash?.closest("li")).toBeNull();
+    expect(trash?.previousElementSibling).toBe(find);
+
+    await i18n.changeLanguage("zh-CN");
+    expect(await within(group).findByText(/个人文件夹/)).toHaveTextContent(
+      "路径开头的“~”是你的个人文件夹。要在访达中查看，可以拷贝路径，在访达中按下⇧⌘G，粘贴路径后按下Return键。",
+    );
+    expect(group.querySelector("[data-kept-trash]")).toHaveTextContent(
+      /^不需要这些设置和数据的话，可以在访达中把它们移到废纸篓。$/,
+    );
+    expect(group.textContent).not.toMatch(/删除|移除/);
+  });
+
+  it("tells to leave a Terminal settings file where it is, and says nothing of the Trash with no settings or data listed (U15 e)", () => {
+    const { container, unmount } = renderWithProviders(
+      <KeptDataGroup
+        warnings={[
+          { WillKeep: { path: "~/.codex", what: "SettingsAndHistory" } },
+          { WillKeep: { path: "~/.zprofile", what: "ShellConfigLines" } },
+        ]}
+        familyStays={false}
+      />,
+    );
+    expect(container.querySelector("[data-kept-trash]")).toHaveTextContent(
+      /^If you don't need these settings and data, you can move them to the Trash in Finder\. Leave Terminal settings files where they are\.$/,
+    );
+    unmount();
+    // A dead link, a folder that may not be the tool's, an installer's
+    // staging folder or a shell file: none is the tool's settings or data.
+    const others = renderWithProviders(
+      <KeptDataGroup
+        warnings={[
+          { WillKeep: { path: "/usr/local/bin/grok", what: "OutsideHome" } },
+          { WillKeep: { path: "~/.local/bin/agent", what: "NotOurs" } },
+          { WillKeep: { path: "~/.cache/antigravity", what: "InstallerCache" } },
+          { WillKeep: { path: "~/.zshrc", what: "ShellConfigLines" } },
+        ]}
+        familyStays={false}
+      />,
+    );
+    expect(others.container.querySelector("[data-kept-trash]")).toBeNull();
+    others.unmount();
+    // Ollama's models are data too.
+    const models = renderWithProviders(<KeptDataGroup warnings={[JSON.parse(UNKNOWN_WIRE) as Warning]} familyStays={false} />);
+    expect(models.container.querySelector("[data-kept-trash]")).not.toBeNull();
+  });
+
+  describe("says nothing of the Trash where a folder it lists may still be in use (U15 e)", () => {
+    const trashLine = () => document.querySelector("[data-kept-trash]");
+
+    it("not where a folder holds another copy's program: Codex's own install in ~/.codex", () => {
+      renderWithProviders(<KeptDataGroup warnings={[JSON.parse(LEFT_OUT_WIRE) as Warning]} familyStays={false} />);
+      expect(screen.getByRole("region", { name: "Stays after uninstalling" })).toBeInTheDocument();
+      expect(trashLine()).toBeNull();
+    });
+
+    it("not where a folder holds another tool's data: Antigravity CLI's inside ~/.gemini", () => {
+      renderWithProviders(<KeptDataGroup warnings={[JSON.parse(SHARED_WIRE) as Warning]} familyStays={false} />);
+      expect(trashLine()).toBeNull();
+    });
+
+    it("not for any of the list where one folder in it holds another copy", () => {
+      renderWithProviders(
+        <KeptDataGroup
+          warnings={[JSON.parse(MEASURED_WIRE) as Warning, JSON.parse(LEFT_OUT_WIRE) as Warning]}
+          familyStays={false}
+        />,
+      );
+      expect(trashLine()).toBeNull();
+    });
+
+    it("not while another tool of the family stays installed", () => {
+      renderWithProviders(<KeptDataGroup warnings={claudeKept} familyStays />);
+      expect(screen.getByRole("region", { name: "Stays after uninstalling" })).toBeInTheDocument();
+      expect(trashLine()).toBeNull();
+    });
+
+    it("not for npm's Codex while Codex's own install stays, which runs from and signs in with ~/.codex", async () => {
+      openWith(
+        codexTwice,
+        { kind: "Uninstall", instance_id: npmCodexKey.instance_id, artifact_kind: "Package", name: npmCodexKey.name },
+        "@openai/codex",
+        [
+          { UninstallScope: { what: "Npm" } },
+          { KeepsData: { path: "~/.codex", what: "ToolData", size: { bytes: 38_400_000, partial: false, at_least: false }, left_out: [] } },
+        ],
+      );
+      expect(
+        await screen.findByText("The copy from Codex's own installer stays, and codex still works in Terminal."),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("region", { name: "Stays after uninstalling" })).toBeInTheDocument();
+      expect(trashLine()).toBeNull();
+    });
+
+    it("not for Codex's own install while npm's stays, which uses the ~/.codex it keeps", async () => {
+      openWith(
+        codexTwice,
+        { kind: "Uninstall", instance_id: "standalone-codex", artifact_kind: "Binary", name: "codex" },
+        "Codex",
+        [
+          { WillKeep: { path: "~/.codex", what: "SettingsAndHistory" } },
+          { WillKeep: { path: "~/.zprofile", what: "ShellConfigLines" } },
+        ],
+      );
+      expect(await screen.findByRole("region", { name: "Stays after uninstalling" })).toBeInTheDocument();
+      expect(trashLine()).toBeNull();
+    });
+
+    it("not before the dialog knows what else is installed", async () => {
+      openWith(null, npmClaude, "Claude Code", claudeKept);
+      expect(await screen.findByRole("region", { name: "Stays after uninstalling" })).toBeInTheDocument();
+      expect(trashLine()).toBeNull();
+    });
+  });
+
+  it("says nothing of ~ where no path starts with it", () => {
+    renderWithProviders(
+      <KeptDataGroup warnings={[{ WillKeep: { path: "/usr/local/bin/claude", what: "OutsideHome" } }]} familyStays={false} />,
+    );
+    expect(document.querySelector("[data-kept-find]")).toHaveTextContent(
+      /^To see one in Finder, copy its path, press ⇧⌘G in Finder, paste the path and press Return\.$/,
+    );
+  });
+
+  it("says a budget cut short as at least, and the models as models, in Chinese", async () => {
+    await i18n.changeLanguage("zh-CN");
+    const ollama: OpRequest = {
+      kind: "Uninstall",
+      instance_id: "brew:/opt/homebrew",
+      artifact_kind: "Formula",
+      name: "ollama",
+    };
+    open(
+      [
+        {
+          KeepsData: {
+            path: "~/.ollama/models",
+            what: "Models",
+            size: { bytes: 6_600_000_000, partial: false, at_least: true },
+            left_out: [],
+          },
+        },
+      ],
+      ollama,
+      "ollama",
+    );
+    const group = await screen.findByRole("region", { name: "卸载后会保留" });
+    const [row] = within(group).getAllByRole("listitem");
+    expect(row.textContent).toContain("~/.ollama/models");
+    expect(row.textContent).toContain("6.6 GB以上");
+    expect(row.textContent).toContain("下载的模型");
+    expect(within(group).getByRole("button", { name: "拷贝路径：~/.ollama/models" })).toHaveTextContent("拷贝路径");
+  });
+
+  it("drops the scope sentence's general \"settings and data elsewhere\" where the group names what stays", async () => {
+    open([{ UninstallScope: { what: "Npm" } }, ...claudeKept]);
+    await screen.findByRole("region", { name: "Stays after uninstalling" });
+    expect(
+      screen.getByText("Deletes Claude Code's folder from npm's global folder, along with its commands. None of Claude Code's code is run."),
+    ).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/settings and data outside that folder stay/);
+  });
+
+  it("keeps the general sentence where nothing is named", async () => {
+    open([{ UninstallScope: { what: "Npm" } }]);
+    expect(await screen.findByText(/its settings and data outside that folder stay/)).toBeInTheDocument();
+  });
+
+  it("says which other tool's data a shared folder's size leaves out, in both languages", async () => {
+    const gemini: OpRequest = {
+      kind: "Uninstall",
+      instance_id: "npm:/opt/homebrew",
+      artifact_kind: "Package",
+      name: "@google/gemini-cli",
+    };
+    open([JSON.parse(SHARED_WIRE) as Warning], gemini, "Gemini CLI");
+    let group = await screen.findByRole("region", { name: "Stays after uninstalling" });
+    let [row] = within(group).getAllByRole("listitem");
+    expect(row.textContent?.replace(/\u00a0/g, " ")).toBe(
+      "~/.gemini · About 7.6 MBThis tool's settings and data~/.gemini/antigravity-cli is Antigravity CLI's data and isn't counted hereCopy Path",
+    );
+    // One Copy Path, for the folder that stays: the other tool's is named, not offered.
+    expect(within(group).getAllByRole("button").map((button) => button.textContent)).toEqual(["Copy Path"]);
+
+    await i18n.changeLanguage("zh-CN");
+    group = await screen.findByRole("region", { name: "卸载后会保留" });
+    [row] = within(group).getAllByRole("listitem");
+    expect(row.querySelector("[data-kept-others]")?.textContent).toBe("~/.gemini/antigravity-cli是Antigravity CLI的数据，不算在内");
+  });
+
+  it("names a path that measured 0 with no size, never 「约0 B」", async () => {
+    open([
+      {
+        KeepsData: { path: "~/.claude.json", what: "ToolData", size: { bytes: 0, partial: false, at_least: false }, left_out: [] },
+      },
+    ]);
+    const group = await screen.findByRole("region", { name: "Stays after uninstalling" });
+    const [row] = within(group).getAllByRole("listitem");
+    expect(row.textContent).toBe("~/.claude.jsonThis tool's settings and dataCopy Path");
+    expect(row.querySelector("[data-kept-size]")).toBeNull();
+  });
+
+  it("has no group when nothing stays", async () => {
+    open([{ UninstallScope: { what: "Npm" } }]);
+    await screen.findByRole("button", { name: "Show Command" });
+    expect(screen.queryByRole("region", { name: "Stays after uninstalling" })).toBeNull();
+  });
+});
+
+describe("the uninstall dialog's notes on what else stays", () => {
+  it("says that Codex's own copy stays and codex still works, for the npm copy Terminal does not run", async () => {
+    openWith(
+      codexTwice,
+      { kind: "Uninstall", instance_id: npmCodexKey.instance_id, artifact_kind: "Package", name: npmCodexKey.name },
+      "@openai/codex",
+    );
+    expect(
+      await screen.findByText("The copy from Codex's own installer stays, and codex still works in Terminal."),
+    ).toBeInTheDocument();
+  });
+
+  it("says about how much removing a model frees, less what another model shares", async () => {
+    const key = { instance_id: "ollama:/opt/homebrew", kind: "Model" as const, name: "llama3.2:3b" };
+    openWith(
+      snapshotOf([instance("ollama:/opt/homebrew", "ollama")], [base(key, { size_bytes: 2_019_393_189 })]),
+      { kind: "Uninstall", instance_id: key.instance_id, artifact_kind: "Model", name: key.name },
+      "llama3.2:3b",
+    );
+    expect(await screen.findByText("Frees about 2 GB, less any part other models share.")).toBeInTheDocument();
+  });
+});
+
+describe("the kept data of several tools at once", () => {
+  it("says under each path whose it is, only where it is told", async () => {
+    const warnings: Warning[] = [
+      { WillKeep: { path: "~/.claude.json", what: "Settings" } },
+      JSON.parse(MEASURED_WIRE) as Warning,
+    ];
+    const owners: Record<string, string[]> = {
+      "~/.claude": ["Claude Code", "@anthropic-ai/claude-code"],
+      "~/.claude.json": ["Claude Code"],
+    };
+    const { rerender } = renderWithProviders(
+      <KeptDataGroup warnings={warnings} ownersOf={(path) => owners[path] ?? []} familyStays={false} />,
+    );
+    const lines = screen.getAllByText(/^From /).map((line) => line.textContent);
+    expect(lines).toEqual(["From Claude Code", "From Claude Code and @anthropic-ai/claude-code"]);
+    expect(document.querySelectorAll("[data-kept-owners]")).toHaveLength(2);
+    rerender(<KeptDataGroup warnings={warnings} familyStays={false} />);
+    expect(document.querySelector("[data-kept-owners]")).toBeNull();
+    await i18n.changeLanguage("zh-CN");
+    rerender(<KeptDataGroup warnings={warnings} ownersOf={(path) => owners[path] ?? []} familyStays={false} />);
+    expect(screen.getByText("来自Claude Code和@anthropic-ai/claude-code")).toBeInTheDocument();
+    await i18n.changeLanguage("en");
+  });
+});
