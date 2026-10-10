@@ -1769,8 +1769,9 @@ fn test_what_we_run_has_the_diagnostic_info_section_saying_what_it_reads_and_nev
         "No command runs, no file is opened, nothing is written to disk, and no connection is made",
         "the home folder written as `~`",
         // r20 R50-2: in any case, and where the window cannot.
-        "any `/Users/<name>` but `/Users/Shared`, in any case, everywhere",
-        "only a home outside `/Users` that a source's error details quote stays as the tool wrote it",
+        "any `/Users/<name>` but `/Users/Shared`, in any case, everywhere (not a web address's `/users/<id>`)",
+        // r20 R50 skeptic 3: a source found after the facts were read too.
+        "only a home outside `/Users` that the window alone sees stays as it was written, as the window is not told `HOME`: in a source's error details, and in the place of a source found after the facts were read, or of every source when they could not be read",
         "The folders on `PATH` are the one environment variable's value Banager puts in the text",
         "apart from a source's error details, it never holds any other environment variable's value",
         // r26's D2: what f13b's diagnostic adds, what it can quote, and
@@ -1816,7 +1817,7 @@ fn test_what_we_run_names_the_history_file_what_it_keeps_its_bounds_and_how_to_r
         "`history.json`, Banager's record of the updates and uninstalls it ran".to_string(),
         "Never a line of a log, a command line or any other path, and of an error message one line at most".to_string(),
         format!(
-            "at most {} characters, its label (`Error:`) taken off (with the line after it where it ends with a colon), with any home folder but `/Users/Shared` written as `~` -- any `/Users/<name>` and the folder `HOME` names, in any case -- and any login, query, fragment or token-like part of the path in an address masked",
+            "at most {} characters, its label (`Error:`) taken off (with the line after it where it ends with a colon), with any home folder but `/Users/Shared` written as `~` -- any `/Users/<name>` (not a web address's `/users/<id>`) and the folder `HOME` names, in any case -- and any login, query, fragment or token-like part of the path in an address masked",
             banager_core::history::DETAIL_CHARS
         ),
         "An operation cancelled before Banager began carrying it out (while it waited for its turn, or while Banager read the installed version) is not recorded.".to_string(),
