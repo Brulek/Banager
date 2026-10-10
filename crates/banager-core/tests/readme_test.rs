@@ -307,9 +307,12 @@ fn test_readme_names_every_state_whose_error_details_diagnostic_info_includes() 
 /// r20 R56-3: a quit cancels only what can be cancelled and waits only for
 /// that (`quit::cancels`, `quit::waits_for` in src-tauri/src/quit.rs): a
 /// running rustup self update or self uninstall (`CancelPolicy::NoCancel`)
-/// is neither, and its command runs on after Banager exits. The README
-/// said the question's reason, "quitting now stops them", and then "it
-/// says so of one that has started and can't be cancelled".
+/// is neither, and its command runs on after Banager exits, with nowhere
+/// to write its output (docs/what-we-run.md: a write to its closed pipes
+/// fails), so it can fail partway. The README said the question's reason,
+/// "quitting now stops them", and then "it says so of one that has started
+/// and can't be cancelled"; then (r20 R56 skeptic 2) that its command
+/// "runs on after Banager quits", as if it would finish by itself.
 #[test]
 fn test_readme_says_quit_neither_stops_nor_waits_for_an_operation_that_cannot_be_cancelled() {
     let readme = read_readme();
@@ -317,12 +320,17 @@ fn test_readme_says_quit_neither_stops_nor_waits_for_an_operation_that_cannot_be
     let english = english.split_whitespace().collect::<Vec<_>>().join(" ");
     assert!(!english.contains("it says so of one"));
     assert!(english.contains("quitting now stops the ones it can"));
+    assert!(!english.contains("runs on after Banager quits"));
     assert!(english.contains(
-        "quitting neither stops nor waits for it, and its command runs on after Banager quits"
+        "quitting neither stops nor waits for it, and its command is left running with nowhere \
+         to write its output, so it can fail partway"
     ));
     let chinese = squeeze(chinese);
     assert!(chinese.contains("现在退出会中断能中断的那些"));
-    assert!(chinese.contains("退出既不中断它，也不等它，Banager退出后它的命令照样运行"));
+    assert!(!chinese.contains("照样运行"));
+    assert!(chinese.contains(
+        "退出既不中断它，也不等它，Banager退出后它的命令还在运行，输出却无处可写，可能中途失败"
+    ));
 }
 
 /// r20 R56-5: the window cannot install anything new -- `ipc.rs` refuses

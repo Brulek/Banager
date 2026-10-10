@@ -1410,7 +1410,14 @@ describe("the preview's URL switches", () => {
     expect(native).toContain("runs no package manager by itself");
     expect(native).toContain("startup files");
     expect(native).toContain("`pnpm dev:mock`");
-    expect(flat("../../src-tauri/tauri.mock.conf.json5")).not.toMatch(/starts nothing by itself/);
+    const config = flat("../../src-tauri/tauri.mock.conf.json5");
+    expect(config).not.toMatch(/starts nothing by itself/);
+    // r20 R56 skeptic 3: the config's comment said only that this read
+    // "runs no package manager", while ~/.zprofile commonly runs
+    // `brew shellenv` in it.
+    const read = config.slice(config.indexOf("the login shell read for"), config.indexOf("Its own identifier"));
+    expect(read).toContain("startup files");
+    expect(read).toContain("`brew shellenv`");
   });
 });
 
