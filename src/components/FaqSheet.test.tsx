@@ -79,6 +79,18 @@ describe("FaqSheet", () => {
     }
   });
 
+  it.each([
+    // r20 R56-4: a uv update takes back a command in ~/.local/bin that
+    // pipx linked last (`Warning::TakesBackCommand`, uv.rs), so updating
+    // the copy Terminal doesn't use can change the one it runs -- and the
+    // confirmation says so first (`uvLinks.takesBack`).
+    ["en", en, "Updating the copy Terminal doesn't use doesn't change the one it runs, unless the confirmation says the update points the command back to the copy being updated."],
+    ["zh-CN", zhCN, "更新终端用不到的那一份，不会改变终端里运行的那一份，除非确认时说明这次更新会把命令改回要更新的这一份。"],
+    ["zh-Hant", zhHant, "更新終端機用不到的那一份，不會改變終端機裡執行的那一份，除非確認時說明這次更新會把指令改回要更新的這一份。"],
+  ] as const)("says in %s an update can point a shared command back to the copy it updates", (_language, locale, sentence) => {
+    expect(locale.faq.questions.twins.answer).toContain(sentence);
+  });
+
   it("answers all ten questions in English, each under its question, Done focused", async () => {
     renderWithProviders(<FaqSheet />);
     expect(screen.queryByRole("dialog")).toBeNull();
