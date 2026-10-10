@@ -2363,7 +2363,12 @@ On a pipx older than 1.16, which has no `list --outdated`, Banager
 instead asks PyPI about each installed tool: `GET
 https://pypi.org/pypi/{name}/json` (30 s each), the name percent-encoded.
 This is the recorded main-package name, not a suffixed environment alias;
-upgrade and uninstall still address that environment alias. Only a strictly
+upgrade and uninstall still address that environment alias. Only tools
+installed from a package index by name are asked about: one installed
+from a URL, a folder or an archive (`main_package.package_or_url`), or
+with `--editable` (`main_package.pip_args`), gets no row, as pipx 1.16 and
+later skip them, since that pipx's `pipx upgrade` reinstalls from where
+it was installed, never PyPI's latest release. Only a strictly
 newer PEP 440 version produces an update: equivalent spellings, older
 stable versions than an installed prerelease, and lower epochs do not.
 An invalid or numerically unrepresentable version is "could not check".

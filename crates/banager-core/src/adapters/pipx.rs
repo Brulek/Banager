@@ -91,6 +91,60 @@ struct PipxMainPackage {
     /// read as none rather than failing the list.
     #[serde(default)]
     suffix: Option<serde_json::Value>,
+    /// What was handed to `pipx install`: a requirement (`black`,
+    /// `black==24.1`) or a URL or path (`git+https://…`, `/Users/…/tool`).
+    /// Read loosely, as `suffix` is (`from_index`).
+    #[serde(default)]
+    package_or_url: Option<serde_json::Value>,
+    /// The `--pip-args` it was installed with; `--editable` among them for
+    /// `pipx install --editable`. Read loosely (`from_index`).
+    #[serde(default)]
+    pip_args: Option<serde_json::Value>,
+}
+
+/// Whether pipx installed `package` from a package index by its name, so
+/// that PyPI's latest release is what `pipx upgrade` would install: not
+/// editable, and `package_or_url` a plain requirement -- a name, perhaps
+/// with extras or a version, not a URL, a path or an archive. pipx 1.16+'s
+/// own `list --outdated` skips the rest as "editable" and "non-index"
+/// (`outdated.py:186-189`, `valid_pypi_name`); below 1.16, `pipx upgrade`
+/// reinstalls from `package_or_url`, so a git or folder install offered
+/// PyPI's release would be "updated" to the same version every time, and a
+/// folder's name PyPI does not know was "could not check" for good. A
+/// metadata without `package_or_url` (pipx before it wrote one) is read as
+/// the name it was looked up by before.
+fn from_index(package: &PipxMainPackage) -> bool {
+    let editable = match &package.pip_args {
+        Some(serde_json::Value::Array(args)) => args
+            .iter()
+            .filter_map(serde_json::Value::as_str)
+            .any(|arg| matches!(arg, "--editable" | "-e") || arg.starts_with("--editable=")),
+        _ => false,
+    };
+    let spec = match &package.package_or_url {
+        None | Some(serde_json::Value::Null) => return !editable,
+        Some(serde_json::Value::String(spec)) => spec,
+        Some(_) => return false,
+    };
+    // The requirement before any environment marker (`; python_version …`).
+    let requirement = spec.split(';').next().unwrap_or("").trim();
+    let name_end = requirement
+        .find(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.')))
+        .unwrap_or(requirement.len());
+    let (name, rest) = requirement.split_at(name_end);
+    const ARCHIVES: [&str; 7] = [".whl", ".zip", ".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tar.xz"];
+    !editable
+        && name.starts_with(|c: char| c.is_ascii_alphanumeric())
+        && name.ends_with(|c: char| c.is_ascii_alphanumeric())
+        && !ARCHIVES.iter().any(|archive| name.ends_with(archive))
+        && rest
+            .chars()
+            .all(|c| !matches!(c, '@' | '/' | '\\' | ':'))
+        && rest
+            .trim_start()
+            .chars()
+            .next()
+            .is_none_or(|c| matches!(c, '[' | '(' | '<' | '>' | '=' | '!' | '~'))
 }
 
 /// The commands pipx exposed for a package (`CommandInputs.provided`):
@@ -303,6 +357,9 @@ struct ListAnswer {
     artifacts: Vec<InstalledArtifact>,
     /// The environments whose `main_package.pinned` is true.
     pinned: HashSet<String>,
+    /// The environments of tools not installed from a package index by
+    /// name (`from_index`), which the PyPI fallback does not look up.
+    not_from_index: HashSet<String>,
     /// pipx left some environment out of the list (exit 1): the source's
     /// `InstanceNote::SomeNotListed`.
     left_out: bool,
@@ -459,15 +516,19 @@ impl PipxAdapter {
             Some(1) => serde_json::from_str(&output.stdout).map_err(|_| failed())?,
             _ => return Err(failed()),
         };
-        let pinned = root
-            .venvs
-            .iter()
-            .filter(|(_, venv)| venv.metadata.main_package.pinned)
-            .map(|(name, _)| name.clone())
-            .collect();
+        let named = |keep: fn(&PipxMainPackage) -> bool| {
+            root.venvs
+                .iter()
+                .filter(|(_, venv)| keep(&venv.metadata.main_package))
+                .map(|(name, _)| name.clone())
+                .collect::<HashSet<String>>()
+        };
+        let pinned = named(|package| package.pinned);
+        let not_from_index = named(|package| !from_index(package));
         Ok(ListAnswer {
             artifacts: artifacts_from_list(root, &inst.id),
             pinned,
+            not_from_index,
             left_out: output.exit_code == Some(1),
         })
     }
@@ -492,6 +553,8 @@ impl PipxAdapter {
     /// tool is looked up individually on PyPI. A per-package failure (network
     /// down, package removed from PyPI) becomes a `checkable: false`
     /// candidate for just that tool, never a hard error for the whole check.
+    /// Handed only the tools installed from an index by name
+    /// (`from_index`): the rest get no row, as pipx 1.16+ gives them none.
     async fn check_outdated_via_pypi(
         &self,
         installed: &[InstalledArtifact],
@@ -617,10 +680,14 @@ impl PipxAdapter {
             Ok(parse_outdated(&output.stdout, &inst.id).into())
         } else {
             let list = self.read_list(inst).await?;
+            let from_index: Vec<InstalledArtifact> = list
+                .artifacts
+                .iter()
+                .filter(|a| !list.not_from_index.contains(&a.key.name))
+                .cloned()
+                .collect();
             Ok(CheckOutcome {
-                candidates: self
-                    .check_outdated_via_pypi(&list.artifacts, &list.pinned)
-                    .await,
+                candidates: self.check_outdated_via_pypi(&from_index, &list.pinned).await,
                 notes: list.notes(),
             })
         }
@@ -973,6 +1040,75 @@ mod tests {
             let plan = adapter.plan(&inst, &req).await.unwrap();
             assert_eq!(command_args(&plan).last().unwrap(), "ruff-alt");
         }
+    }
+
+    #[tokio::test]
+    async fn regression_r43_4_legacy_pipx_asks_pypi_only_about_tools_installed_from_it() {
+        // pipx 1.7.1 `pipx upgrade` reinstalls from `package_or_url`, so a
+        // git, folder or editable install is never PyPI's latest release:
+        // offered it, the update "succeeded" at the same version every
+        // time, and a folder's name PyPI did not know was "could not
+        // check" for good. pipx 1.16+ skips them itself.
+        let venv = |package: &str, spec: &str, pip_args: &str| {
+            format!(
+                r#""{package}":{{"metadata":{{"main_package":{{"package":"{package}","package_version":"1.0"{spec}{pip_args}}}}}}}"#
+            )
+        };
+        let list = format!(
+            r#"{{"venvs":{{{},{},{},{},{},{}}}}}"#,
+            venv("llm", r#","package_or_url":"git+https://github.com/simonw/llm""#, ""),
+            venv("mytool", r#","package_or_url":"/Users/someone/src/mytool""#, ""),
+            venv("devtool", r#","package_or_url":"devtool""#, r#","pip_args":["--editable"]"#),
+            venv("wheel-tool", r#","package_or_url":"wheel_tool-1.0-py3-none-any.whl""#, ""),
+            venv("black", r#","package_or_url":"black[d] >=24""#, r#","pip_args":[]"#),
+            venv("cowsay", "", ""),
+        );
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec!["/opt/homebrew/bin/pipx", "list", "--json"],
+            CommandOutput {
+                stderr_cause: Default::default(),
+                exit_code: Some(0),
+                stdout: list,
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let http = Arc::new(MockHttpClient::new());
+        for name in ["black", "cowsay"] {
+            http.respond(
+                &format!("https://pypi.org/pypi/{name}/json"),
+                HttpResponse {
+                    status: 200,
+                    body: r#"{"info":{"version":"2.0"}}"#.into(),
+                },
+            );
+        }
+        let adapter = PipxAdapter::new(runner, http.clone());
+        let mut inst = test_instance();
+        inst.version = Some("1.7.1".into());
+        let rows: Vec<_> = adapter
+            .check_updates(&inst, &CheckOptions::default())
+            .await
+            .unwrap()
+            .candidates
+            .into_iter()
+            .map(|c| (c.key.name, c.checkable))
+            .collect();
+        assert_eq!(
+            rows,
+            [("black".to_string(), true), ("cowsay".to_string(), true)]
+        );
+        let mut asked = http.calls();
+        asked.sort();
+        assert_eq!(
+            asked,
+            [
+                "https://pypi.org/pypi/black/json",
+                "https://pypi.org/pypi/cowsay/json"
+            ]
+        );
     }
 
     // Regressions found by `adapters/robustness.rs`.
