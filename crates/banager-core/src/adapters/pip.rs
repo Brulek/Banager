@@ -1343,14 +1343,28 @@ mod tests {
         // 60 s, and every package read "could not check" every round. At
         // most 3 minutes (r16, the author's choice of 2026-10-10): this
         // wait holds back every source's results.
-        for (packages, secs) in [(0, 60), (10, 75), (79, 179), (80, 180), (300, 180), (1000, 180)] {
+        for (packages, secs) in [
+            (0, 60),
+            (10, 75),
+            (79, 179),
+            (80, 180),
+            (300, 180),
+            (1000, 180),
+        ] {
             let list: Vec<String> = (0..packages)
                 .map(|i| format!(r#"{{"name":"p{i}","version":"1.0"}}"#))
                 .collect();
             let runner = Arc::new(MockRunner::new());
             let python = "/opt/homebrew/bin/python3.13";
             runner.respond(
-                vec![python, "-m", "pip", "list", "--format=json", "--not-required"],
+                vec![
+                    python,
+                    "-m",
+                    "pip",
+                    "list",
+                    "--format=json",
+                    "--not-required",
+                ],
                 exited(0, &format!("[{}]", list.join(","))),
             );
             runner.respond(
@@ -1403,7 +1417,14 @@ mod tests {
         let specs = &specs[1..];
         assert_eq!(
             specs[0].args,
-            ["-m", "pip", "list", "--outdated", "--not-required", "--format=json"]
+            [
+                "-m",
+                "pip",
+                "list",
+                "--outdated",
+                "--not-required",
+                "--format=json"
+            ]
         );
         assert!(!specs[0].args.iter().any(|a| a.starts_with("-v")));
         assert_eq!(
@@ -2725,7 +2746,10 @@ mod tests {
             );
         }
         // The list read for the deadline names the packages: not read again.
-        assert_eq!(runner.calls(), vec![argv(&NOT_REQUIRED_ARGV), argv(&OUTDATED_ARGV)]);
+        assert_eq!(
+            runner.calls(),
+            vec![argv(&NOT_REQUIRED_ARGV), argv(&OUTDATED_ARGV)]
+        );
     }
 
     #[tokio::test]
@@ -2879,7 +2903,11 @@ mod tests {
         // Failed before the check too, which then had its 60 s.
         assert_eq!(
             runner.calls(),
-            vec![argv(&NOT_REQUIRED_ARGV), argv(&OUTDATED_ARGV), argv(&NOT_REQUIRED_ARGV)]
+            vec![
+                argv(&NOT_REQUIRED_ARGV),
+                argv(&OUTDATED_ARGV),
+                argv(&NOT_REQUIRED_ARGV)
+            ]
         );
     }
 
@@ -2899,7 +2927,10 @@ mod tests {
             .expect("check_updates")
             .candidates;
         assert!(candidates.is_empty());
-        assert_eq!(runner.calls(), vec![argv(&NOT_REQUIRED_ARGV), argv(&OUTDATED_ARGV)]);
+        assert_eq!(
+            runner.calls(),
+            vec![argv(&NOT_REQUIRED_ARGV), argv(&OUTDATED_ARGV)]
+        );
     }
 
     #[tokio::test]
