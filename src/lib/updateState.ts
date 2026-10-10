@@ -528,7 +528,10 @@ export function notLookedUp(artifact: InstalledArtifact): boolean {
  * (`auto_updates`, from `brew info`'s `auto_updates: true`): while that
  * switch is off Banager runs `brew outdated --json=v2` with
  * `HOMEBREW_NO_UPGRADE_AUTO_UPDATES_CASKS=1` (R47-4,
- * crates/banager-core/src/adapters/brew/mod.rs). No update
+ * crates/banager-core/src/adapters/brew/mod.rs). With the switch on, Homebrew
+ * still never lists a cask that updates itself whose app it cannot read
+ * (`no_single_app`: one installed with a `pkg`, like Zoom, or as several
+ * apps; R47 skeptic P1). No update
  * listed for one left out is no news: the Installed page's row says nothing
  * about updates rather than 「已是最新」.
  *
@@ -540,7 +543,8 @@ export function notLookedUp(artifact: InstalledArtifact): boolean {
 export function leftOutOfUpdateCheck(artifact: InstalledArtifact, includeSelfUpdating: boolean): boolean {
   if (notLookedUp(artifact)) return true;
   if (artifact.key.kind !== "Cask") return false;
-  return artifact.version === "latest" || (!includeSelfUpdating && artifact.auto_updates);
+  if (artifact.version === "latest") return true;
+  return artifact.auto_updates && (!includeSelfUpdating || artifact.facts.no_single_app === true);
 }
 
 /**

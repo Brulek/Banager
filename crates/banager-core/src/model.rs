@@ -532,6 +532,18 @@ pub struct ArtifactFacts {
     /// record beside it in the details.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub app_version: Option<String>,
+    /// A Homebrew cask that updates itself (`auto_updates`) without
+    /// exactly one `app` stanza: installed with a `pkg` (Zoom, Microsoft
+    /// Word), or as several apps. With no greedy flag, which Banager never
+    /// passes, `brew outdated` lists such a cask only by reading its app's
+    /// `Info.plist`, which Homebrew 7.0.9 finds only for a single `app`
+    /// (`cask/cask.rb:793-806`, `:819-821`), so it never lists this one
+    /// and the Installed page does not call it up to date
+    /// (`leftOutOfUpdateCheck` in src/lib/updateState.ts; R47 skeptic P1,
+    /// r18). Set by `parse_info_installed`; false for every other
+    /// artifact, and off the wire then.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub no_single_app: bool,
     /// What the inventory read about this artifact's commands, for
     /// `commands::judge`: never on the wire (the window has `commands`,
     /// which is the answer), so not in the TypeScript mirror either.
@@ -2933,6 +2945,7 @@ mod tests {
             unlinked: false,
             not_looked_up: false,
             app_version: None,
+            no_single_app: false,
             command_inputs: CommandInputs {
                 provided: vec![ProvidedCommand {
                     name: "claude".to_string(),

@@ -502,6 +502,11 @@ fn keg_only_by_macos(reason: Option<&serde_json::Value>) -> bool {
 /// stays on the Unknown page. A formula's `path` stays `None`: its keg is
 /// under `Cellar`, which the scan gives Homebrew outright.
 ///
+/// A cask that updates itself without exactly one `app` stanza gets
+/// `ArtifactFacts::no_single_app`: Homebrew reads no app of it to see
+/// whether it is behind, so `brew outdated` with no greedy flag never
+/// lists it (R47 skeptic P1, r18).
+///
 /// `ArtifactKey.name` always uses the *fully qualified* name — a formula's
 /// `full_name` (e.g. a core formula's own `name` if it has no tap prefix) or
 /// a cask's `full_token` (e.g. `gautham-v/tap/claudebar`) when brew reports
@@ -605,6 +610,12 @@ pub fn parse_info_installed(
             .and_then(|artifact| artifact.target.as_deref())
             .map(PathBuf::from)
             .filter(|target| target.is_absolute());
+        let auto_updates = c.auto_updates.unwrap_or(false);
+        let apps = c
+            .artifacts
+            .iter()
+            .filter(|artifact| artifact.app.is_some())
+            .count();
         out.push(InstalledArtifact {
             key: ArtifactKey {
                 instance_id: instance_id.to_string(),
@@ -624,10 +635,11 @@ pub fn parse_info_installed(
                 .and_then(Value::as_i64)
                 .filter(|t| *t > 0),
             path,
-            auto_updates: c.auto_updates.unwrap_or(false),
+            auto_updates,
             uninstall_blocked: c.pinned.then_some(UninstallBlocked::Pinned),
             facts: ArtifactFacts {
                 homebrew: homebrew_facts(&c.status, Vec::new()),
+                no_single_app: auto_updates && apps != 1,
                 command_inputs: CommandInputs {
                     provided: cask_commands(&c.artifacts),
                     cask_stays_in_caskroom: stays_in_caskroom(&c.artifacts),

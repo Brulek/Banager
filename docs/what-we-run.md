@@ -1061,7 +1061,8 @@ The update check's `brew outdated` additionally carries
 `HOMEBREW_NO_UPGRADE_AUTO_UPDATES_CASKS=1` while the "Show Homebrew apps that have their own updater"
 setting is off (R47-4, r18): Homebrew 6 and later otherwise list an app
 that updates itself whenever the copy on the Mac is older than the
-catalogue's (`env_config.rb:661-665` and `:764-773`, `cask/cask.rb:445-449`
+catalogue's and Homebrew can read the app's version (below)
+(`env_config.rb:661-665` and `:764-773`, `cask/cask.rb:445-449`
 in Homebrew 7.0.9), and the setting says such apps are listed only while
 it is on. A Homebrew that does not know the variable ignores it, and lists
 none of them without a `--greedy` flag anyway.
@@ -1812,6 +1813,13 @@ updated itself would be offered the version it has, or an older one.
 Without it, Homebrew 6 and later list such a cask only when the version
 its app says it is (`CFBundleShortVersionString`, `CFBundleVersion`) is
 older than the catalogue's (`auto_updates_bundle_outdated?`, `:819-850`).
+Homebrew finds that version only for a cask with exactly one `app`
+stanza (`single_app_artifact`, `:793-806`), so it never lists one that
+updates itself and installs with an installer package (`pkg`: Zoom,
+Microsoft Word) or as several apps, whichever setting is on. The
+inventory marks such a cask (`no_single_app`, `parse_info_installed`),
+and the Installed page does not call it up to date
+(`leftOutOfUpdateCheck`, R47 skeptic P1).
 
 The fresh inventory used to qualify outdated names is indexed once per
 check by kind and full/short name, preserving the first installed match

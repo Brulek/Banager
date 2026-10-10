@@ -1304,7 +1304,7 @@
     },
     "includeSelfUpdating": {
       "label": "Show Homebrew apps that have their own updater",
-      "description": "Also list apps installed with Homebrew that have their own updater, like Chrome, under Updates when Homebrew has a newer version than the one on this Mac. Apps marked “latest” aren't checked. Tools from other sources aren't affected."
+      "description": "Also list apps installed with Homebrew that have their own updater, like Chrome, under Updates when Homebrew has a newer version than the one on this Mac. Apps marked “latest” aren't checked, nor are apps whose version on this Mac Homebrew can't read, like those installed with an installer package. Tools from other sources aren't affected."
     },
     "autoCheck": {
       "label": "Check for updates",

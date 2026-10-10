@@ -151,6 +151,13 @@ export interface ArtifactFacts {
    * (R47-3, r18). Absent for everything else.
    */
   app_version?: string;
+  /**
+   * A Homebrew cask that updates itself without exactly one `app` (one
+   * installed with a `pkg`, like Zoom, or as several apps): Homebrew cannot
+   * read its app's version, so `brew outdated` never lists it (R47 skeptic
+   * P1, r18). Absent for everything else.
+   */
+  no_single_app?: boolean;
 }
 /** Shared by every artifact with nothing more to say: never mutate it. */
 export const NO_FACTS: ArtifactFacts = {
