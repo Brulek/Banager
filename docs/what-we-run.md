@@ -2192,9 +2192,10 @@ or under an alias (`npm install -g foo@npm:bar`), and say nothing for it.
 Such a global, like any npm says nothing about, keeps its update; for an
 alias that update would put the registry's `foo` in place of `bar`. The
 `git+…`, URL and alias answers above come only from npm 6. An `npm link`
-whose package.json has no version is such a row with no installed version,
-so it gets no row, whatever else the check lists; one whose folder is gone
-has no `resolved` and stays "could not check". A refresh whose check listed any row runs the
+whose package.json has no version is a row with no installed version in
+`npm outdated` and `file:` in `npm ls -g`, so it gets no row, whatever
+else the check lists; one whose folder is gone has no `resolved` and
+stays "could not check". A refresh whose check listed any row runs the
 inventory command twice; one whose listing then fails is a check that did
 not finish. The search query passes `validate_search_query`.
 
