@@ -111,7 +111,8 @@ a protected place**, and the link is not followed.
   environments use, Ollama with its models under `ollama` — keeps Uninstall off and says which tools to
   uninstall first; a batch leaves the package out with the same words. The preview finds them by following
   links, read-only, and runs no command (`docs/what-we-run.md`, "What runs on a Homebrew package"). npm's own
-  `npm` row offers no Uninstall. Nor does `corepack` where it came with a Node from Homebrew linked by hand
+  `npm` row offers no Uninstall, nor does the row of a pipx or uv that installed itself as one of its own
+  tools. Nor does `corepack` where it came with a Node from Homebrew linked by hand
   (`node@22`): uninstalling it would delete that Node's `corepack` command and, where Homebrew installed them,
   its `pnpm` and `yarn` ones. Like that npm, it updates with its Node.
 - On the Installed page, each row whose **Uninstall…** is available has a checkbox. Tick up to 20 and
@@ -558,7 +559,8 @@ formula 与 cask，以及 npm、PyPI、crates.io 上的包，每条都译自该�
   后面，列在“依赖此工具的软件”下——npm 靠着运行的 `node@22` 下是“npm及其4个工具”，pipx 工具环境所用的
   `python@3.13` 下是“pipx装的2个工具”，`ollama` 下是 Ollama 及其模型——“卸载”保持不可点，并写明要先卸载哪些工具；
   批量卸载也用同样的话把它留下。预览只顺着链接读取，不运行任何命令（`docs/what-we-run.md` 的
-  “What runs on a Homebrew package”）。npm 自己那一行不提供“卸载”。随手动链接的 Homebrew Node（`node@22`）
+  “What runs on a Homebrew package”）。npm 自己那一行不提供“卸载”；pipx 或 uv 把自己装成了自己的工具时，那一行也一样。
+  随手动链接的 Homebrew Node（`node@22`）
   一起来的 `corepack` 也不提供：卸载它会删掉那个 Node 的 `corepack` 命令，装了 Homebrew 的 `pnpm`、`yarn` 时，还有它们的命令。
   它和那样的 npm 一样，随 Node 一起更新。
 - “已安装”页里，“卸载…”可用的行前面有复选框。最多勾 20 个，点“卸载所选”，一个预览里列出全部：按实际执行的
