@@ -230,6 +230,7 @@ const UNINSTALL_HOLD_KEYS: Record<InstanceNote, string | null> = {
   ShadowedByNpm: null,
   ShadowedByOther: null,
   LauncherOnly: null,
+  SomeNotListed: null,
 };
 
 /**
@@ -640,6 +641,19 @@ export function sourceNoticesFor(
         descriptionKey: "sourceNotice.launcherOnly.description",
         values: { source: sourceLabel, command: commandNameOf(instance) },
         action: { id: "showTool", labelKey: "sourceNotice.showTool", instanceId: instance.id },
+      });
+    } else if (note === "SomeNotListed") {
+      // pipx listed what it could read and left out a tool environment it
+      // could not (its Python gone, its pipx data missing). Those tools are
+      // neither shown nor checked; `pipx list` in Terminal names them and
+      // says how to fix each (pipx 1.17's `list_packages.py:143-175`). Only
+      // pipx gives this note, so the command is its own name and `list`.
+      notices.push({
+        id: `${instance.id}:some-not-listed`,
+        variant: "warning",
+        titleKey: "sourceNotice.someNotListed.title",
+        descriptionKey: "sourceNotice.someNotListed.description",
+        values: { source: sourceLabel, command: `${commandNameOf(instance)} list` },
       });
     } else {
       const unhandled: never = note;
@@ -1626,11 +1640,14 @@ export function planErrorDetail(t: Translate, raw: string): string | null {
  * crates/banager-core/src/adapters/brew/mod.rs). `not_listed` is an
  * upgrade or an uninstall of what the snapshot no longer lists
  * (`Session::issue_listed_plan`): a row a refresh has just replaced.
+ * `not_answered` is a read the plan makes first -- pipx's pin read, uv's
+ * look at the tool it updates -- that failed or ran out of time.
  */
 const PLAN_FAILURE_KEYS: Record<string, string> = {
   output_too_large: "planRefused.outputTooLarge",
   index_updating: "planRefused.indexUpdating",
   not_listed: "planRefused.notListed",
+  not_answered: "planRefused.notAnswered",
   refused: "planRefused.refused",
 };
 

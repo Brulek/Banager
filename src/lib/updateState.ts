@@ -279,8 +279,10 @@ export function countedUpdatesOf(
  * list that may be out of date; it is still downloading (`IndexUpdating`),
  * so they were not checked this time at all; or the launcher is left
  * without its program (`LauncherOnly`), so there is no installed version
- * to check. The four PATH notes are about what runs when the tool's name
- * is typed in Terminal, not about the check. Read by
+ * to check; or pipx left some tools it could not read out of its list
+ * (`SomeNotListed`), so those were not checked. The four PATH notes are
+ * about what runs when the tool's name is typed in Terminal, not about
+ * the check. Read by
  * `everySourceChecked`. A `Record`, so a note added to `InstanceNote`
  * without an answer here fails `tsc`.
  */
@@ -292,6 +294,7 @@ const NOTE_LEAVES_UPDATES_UNCHECKED: Record<InstanceNote, boolean> = {
   ShadowedByNpm: false,
   ShadowedByOther: false,
   LauncherOnly: true,
+  SomeNotListed: true,
 };
 
 /**
@@ -351,7 +354,8 @@ export function upToDateIsKnown(instance: ManagerInstance, errors: SourceError[]
  * Of the notes that leave a source's updates unchecked
  * (`NOTE_LEAVES_UPDATES_UNCHECKED`), those after which it was still
  * checked in part: against a copy of Homebrew's list of software that may
- * be out of date (`IndexMayBeStale`). A list still downloading
+ * be out of date (`IndexMayBeStale`), and every tool pipx could read
+ * (`SomeNotListed`). A list still downloading
  * (`IndexUpdating`) and a launcher without its program (`LauncherOnly`)
  * leave nothing checked. A `Record`, so a note added to `InstanceNote`
  * without an answer here fails `tsc`.
@@ -364,6 +368,7 @@ const NOTE_LEAVES_UPDATES_CHECKED_IN_PART: Record<InstanceNote, boolean> = {
   ShadowedByNpm: false,
   ShadowedByOther: false,
   LauncherOnly: false,
+  SomeNotListed: true,
 };
 
 /**
@@ -387,7 +392,8 @@ const UNAVAILABLE_EVERY_TIME: Record<Unavailable, boolean> = {
 /**
  * Of the notes that leave a source's updates unchecked, those the next
  * check finds the same way: a launcher left without its program
- * (`LauncherOnly`), until the user reinstalls or uninstalls it. A list
+ * (`LauncherOnly`), until the user reinstalls or uninstalls it, and tools
+ * pipx could not read (`SomeNotListed`), until the user fixes them. A list
  * still downloading or out of date is news of this check.
  */
 const NOTE_UNCHECKED_EVERY_TIME: Record<InstanceNote, boolean> = {
@@ -398,6 +404,7 @@ const NOTE_UNCHECKED_EVERY_TIME: Record<InstanceNote, boolean> = {
   ShadowedByNpm: false,
   ShadowedByOther: false,
   LauncherOnly: true,
+  SomeNotListed: true,
 };
 
 /**

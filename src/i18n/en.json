@@ -777,6 +777,10 @@
       "title": "{{source}}'s program files are missing",
       "description": "The {{command}} command can't run anymore, so reinstall {{source}} or put its files back from the Trash if they're there, then check again. If you no longer need {{source}}, uninstall it from the Installed page."
     },
+    "someNotListed": {
+      "title": "Some tools installed with {{source}} aren't shown",
+      "description": "{{source}} couldn't read them, so their updates weren't checked either. To see which ones and how to fix them, run {{command}} in Terminal, then check again."
+    },
     "checksUnfinished": {
       "title": "Some checks didn't finish",
       "description_one": "{{sources}} didn't finish checking this time; some updates may not be listed yet.",
@@ -922,6 +926,7 @@
     "outputTooLarge": "{{source}} returned too much output, so this couldn't continue.",
     "indexUpdating": "Homebrew is checking online for new versions, so dependencies can't be checked reliably now. Try again in a minute or two.",
     "refused": "Couldn't continue because of an internal error.",
+    "notAnswered": "Couldn't continue because {{source}} didn't respond. Try again later.",
     "notListed": "Couldn't start because it's no longer in the list. Click Check Again.",
     "uninstallUnsafe": {
       "outsideHome": "Couldn't move {{path}} because the folder holding it leads outside your home folder.",

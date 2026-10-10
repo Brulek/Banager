@@ -294,13 +294,14 @@ pub(crate) async fn refresh_on_background_change(state: &AppState) {
 ///   `spawn_failed` carries the operating system's reason it could not
 ///   start the tool.
 ///
-/// `Parse`, `CommandFailed` and `Unsupported` have no kind of their own
-/// because no `plan()` returns them: brew's is the only one that runs a
-/// command (`brew uses`), and it turns that command's failure into
-/// `Warning::DependentsUnknown` rather than an error; the others run
-/// nothing. pip's `plan()` does refuse with `Unsupported`, but every pip
-/// instance is read-only by design, so `issue_plan`'s gate refuses first
-/// with `not_actionable`. They go out as `refused` -- if one ever arrives,
+/// `CommandFailed` is a read a `plan()` makes before it -- pipx's pin
+/// read, uv's look at the tool it updates -- that did not answer:
+/// `not_answered`, the source's state rather than Banager's error. brew's
+/// `brew uses` is turned into `Warning::DependentsUnknown` instead.
+/// `Parse` and `Unsupported` have no kind of their own because no
+/// `plan()` returns them. pip's `plan()` does refuse with `Unsupported`,
+/// but every pip instance is read-only by design, so `issue_plan`'s gate
+/// refuses first with `not_actionable`. They go out as `refused` -- if one ever arrives,
 /// an adapter broke that contract, which is Banager's bug. A kind of their
 /// own would be copy in two locales that nothing can make appear.
 /// `IndexUpdating` is not one of them: brew's uninstall `plan()` returns it
@@ -358,10 +359,16 @@ fn plan_operation_error(e: banager_core::adapters::AdapterError) -> String {
             serde_json::json!({ "kind": "output_too_large" }).to_string()
         }
         AdapterError::IndexUpdating => serde_json::json!({ "kind": "index_updating" }).to_string(),
+        // A read the plan makes before it -- pipx's pin read (`pipx list
+        // --json`), uv's look at the tool it updates (`uv tool list`) --
+        // that timed out or failed: the source did not answer, which the
+        // next try may change. Its stderr is for logs.
+        AdapterError::CommandFailed { .. } => {
+            serde_json::json!({ "kind": "not_answered" }).to_string()
+        }
         AdapterError::Runner(RunnerError::NoMock(_))
         | AdapterError::Refused(_)
         | AdapterError::Parse(_)
-        | AdapterError::CommandFailed { .. }
         | AdapterError::Unsupported(_) => serde_json::json!({ "kind": "refused" }).to_string(),
     }
 }
@@ -2264,14 +2271,19 @@ mod tests {
             })
         );
 
+        // A read the plan made did not answer (pipx's pin read, uv's
+        // look at its tool before an update; r15 R43-2): the source's own
+        // state, not Banager's error, and none of its text on the wire.
+        let v = parse(AdapterError::CommandFailed {
+            code: None,
+            stderr: "pipx list --json did not finish".to_string(),
+        });
+        assert_eq!(v, serde_json::json!({ "kind": "not_answered" }));
+
         // Errors no `plan()` returns: a broken adapter contract, so
         // Banager's own bug, and none of their text reaches the wire.
         for e in [
             AdapterError::Parse("unexpected token".to_string()),
-            AdapterError::CommandFailed {
-                code: Some(1),
-                stderr: "Error: No such keg".to_string(),
-            },
             AdapterError::Unsupported("pip is read-only in Banager".to_string()),
         ] {
             assert_eq!(parse(e), serde_json::json!({ "kind": "refused" }));

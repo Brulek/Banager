@@ -597,9 +597,10 @@ export type Unavailable = "NotRunning" | "NotResponding" | "RefusesAsRoot" | "Ht
  * Mirrors `InstanceNote` in crates/banager-core/src/model.rs; payload-free
  * on purpose, so a bare string. `sourceNoticesFor` in src/lib/sources.ts
  * ends its loop over these in a `never`, so a variant added here without
- * a branch there fails `tsc`. The last five are a standalone tool's
- * (phase 4): what runs when its name is typed, or that its launcher is
- * left without its program.
+ * a branch there fails `tsc`. The five after the first two are a
+ * standalone tool's (phase 4): what runs when its name is typed, or that
+ * its launcher is left without its program. `SomeNotListed` is pipx's: it
+ * left out of its list some tools it could not read.
  */
 export type InstanceNote =
   | "IndexMayBeStale"
@@ -608,7 +609,8 @@ export type InstanceNote =
   | "ShadowedByHomebrew"
   | "ShadowedByNpm"
   | "ShadowedByOther"
-  | "LauncherOnly";
+  | "LauncherOnly"
+  | "SomeNotListed";
 /**
  * Mirrors `InstanceStatus`, which derives `Default` on the Rust side: this
  * is always an object, never null, and `notes` is `[]` rather than absent

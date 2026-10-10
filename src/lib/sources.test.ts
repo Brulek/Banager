@@ -423,7 +423,7 @@ describe("sourceNoticesFor", () => {
       { unavailable: "NoPip", notes: [] },
       {
         unavailable: null,
-        notes: ["IndexUpdating", "IndexMayBeStale", "NotOnPath", "ShadowedByHomebrew", "ShadowedByNpm", "ShadowedByOther", "LauncherOnly"],
+        notes: ["IndexUpdating", "IndexMayBeStale", "NotOnPath", "ShadowedByHomebrew", "ShadowedByNpm", "ShadowedByOther", "LauncherOnly", "SomeNotListed"],
       },
     ];
     for (const status of states) {
@@ -529,6 +529,7 @@ describe("sourceNoticesFor", () => {
       instance({ status: { unavailable: null, notes: ["ShadowedByNpm"] } }),
       instance({ status: { unavailable: null, notes: ["ShadowedByOther"] } }),
       instance({ status: { unavailable: null, notes: ["LauncherOnly"] } }),
+      instance({ status: { unavailable: null, notes: ["SomeNotListed"] } }),
     ]) {
       expect(hasSourceNotice(inst)).toBe(sourceNoticesFor(inst, "Homebrew").length > 0);
     }
@@ -603,6 +604,24 @@ describe("sourceNoticesFor", () => {
     // Named for what it shows, never a bare "Show" (walk-3 W3-5).
     expect(en.sourceNotice.showTool).toBe("Show Tool");
     expect(zhCN.sourceNotice.showTool).toBe("查看");
+  });
+
+  it("warns when pipx left tools it could not read out of its list, and names the command that says which", () => {
+    // r15 R43-2: one tool environment whose Python is gone no longer fails
+    // the whole source; the rest is listed and checked, and this says some
+    // are not, with the Terminal command pipx itself explains them in.
+    const pipx = instance({ id: "pipx", adapter_id: "pipx", exe_path: "/opt/homebrew/bin/pipx" });
+    const notices = sourceNoticesFor({ ...pipx, status: { unavailable: null, notes: ["SomeNotListed"] } }, "pipx");
+    expect(notices).toEqual([
+      {
+        id: "pipx:some-not-listed",
+        variant: "warning",
+        titleKey: "sourceNotice.someNotListed.title",
+        descriptionKey: "sourceNotice.someNotListed.description",
+        values: { source: "pipx", command: "pipx list" },
+      },
+    ]);
+    expect(i18n.getFixedT("en")(notices[0].descriptionKey, notices[0].values)).toContain("run pipx list in Terminal");
   });
 
   it("falls back to the whole exe_path as the command when it has no file name", () => {
@@ -819,6 +838,7 @@ describe("uninstallHoldKey", () => {
       "ShadowedByNpm",
       "ShadowedByOther",
       "LauncherOnly",
+      "SomeNotListed",
     ];
     for (const note of others) {
       expect(uninstallHoldKey(instance({ status: { unavailable: null, notes: [note] } })), note).toBeNull();
@@ -957,6 +977,7 @@ describe("planErrorMessage", () => {
       ["output_too_large", "planRefused.outputTooLarge"],
       ["index_updating", "planRefused.indexUpdating"],
       ["not_listed", "planRefused.notListed"],
+      ["not_answered", "planRefused.notAnswered"],
       ["refused", "planRefused.refused"],
     ]) {
       expect(planErrorMessage(fakeT, JSON.stringify({ kind }), "Homebrew", false)).toBe(

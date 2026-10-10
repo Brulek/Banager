@@ -2340,9 +2340,20 @@ typed (`black@3.12`); Banager reads that name the way pipx names the tool's
 environment (`black@3-12`: lower case, each run of `-`, `_` and `.` one
 `-`), which is the name its row, upgrade and uninstall use.
 
+`pipx list --json` that exits 1 with its list on stdout is still read:
+pipx prints every tool environment it could read and leaves out one whose
+Python is gone or whose pipx data is missing, which it names on stderr.
+The tools it listed are shown, checked and updated as usual, and pipx's
+notice says some tools are not shown, and to run `pipx list` in Terminal to
+see which and how to fix them. Any other exit, or a stdout that is not
+the list, is still a failure of the source.
+
 If `pipx list --outdated` exits non-zero, `<pipx> list --json` is run once
 more so every installed tool can be listed as "could not check", with the
-reason — one more process than the table shows, on that path only.
+reason — one more process than the table shows, on that path only. When it
+exits 1 having named on stderr the environments it could not check (each
+as `name: error`), only those tools are "could not check", each with its
+own words, and the lines it printed for the others stand.
 pipx runs `pip list --outdated` in each tool's environment and keeps that
 command's error output to its own debug log, so a lookup pip gave up on
 there (as under pip, below) reaches Banager as no update; Banager cannot
@@ -2371,6 +2382,8 @@ Before planning any upgrade, Banager repeats the existing `<pipx> list --json`
 read and refuses a tool whose `main_package.pinned` is true. On older pipx,
 the same metadata marks PyPI fallback candidates as pinned; pins do not
 prevent uninstalling. No extra network request is needed for that check.
+If that read fails or runs out of time, the update is not prepared, and
+the page says pipx didn't respond and to try again later.
 
 A tool pinned in pipx (`pipx pin`) is listed by `pipx list --outdated` as
 `name [pinned]: old -> new`; its row has no Update button and gives the

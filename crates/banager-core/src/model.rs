@@ -227,6 +227,16 @@ pub enum InstanceNote {
     /// Q17). Produced by `StandaloneAdapter::detect` when `route::probe`
     /// answers `LauncherOnly`.
     LauncherOnly,
+    /// The source listed what it could read and left some of what it
+    /// installed out: pipx's `list --json` exits 1 having printed every
+    /// environment but one it could not read (its Python gone, its pipx
+    /// data missing), which it names on stderr with how to fix it (pipx
+    /// 1.17's `list_packages.py:143-175`). The tools left out are neither
+    /// shown nor checked; `pipx list` in Terminal says which and why.
+    /// Produced by `PipxAdapter`'s update check, from the list it reads
+    /// when `list --outdated` exits non-zero and from the one the check
+    /// below pipx 1.16 always reads.
+    SomeNotListed,
 }
 
 impl InstanceNote {
@@ -243,7 +253,9 @@ impl InstanceNote {
     /// channel it comes from.
     pub(crate) fn is_from_update_check(self) -> bool {
         match self {
-            InstanceNote::IndexMayBeStale | InstanceNote::IndexUpdating => true,
+            InstanceNote::IndexMayBeStale
+            | InstanceNote::IndexUpdating
+            | InstanceNote::SomeNotListed => true,
             InstanceNote::NotOnPath
             | InstanceNote::ShadowedByHomebrew
             | InstanceNote::ShadowedByNpm
@@ -267,6 +279,7 @@ impl InstanceNote {
             | InstanceNote::ShadowedByOther => true,
             InstanceNote::IndexMayBeStale
             | InstanceNote::IndexUpdating
+            | InstanceNote::SomeNotListed
             | InstanceNote::LauncherOnly => false,
         }
     }
@@ -3942,6 +3955,7 @@ mod tests {
             (InstanceNote::ShadowedByNpm, "ShadowedByNpm"),
             (InstanceNote::ShadowedByOther, "ShadowedByOther"),
             (InstanceNote::LauncherOnly, "LauncherOnly"),
+            (InstanceNote::SomeNotListed, "SomeNotListed"),
         ] {
             let status = InstanceStatus {
                 unavailable: None,

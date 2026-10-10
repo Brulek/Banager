@@ -720,6 +720,9 @@ function withNotices(world: World): void {
     grokRow.path = null;
   }
   world.updates = world.updates.filter((u) => u.key.instance_id !== IDS.grok);
+  // pipx left a tool it could not read out of its list (its Python gone):
+  // the rest is listed and checked, and its notice says some are not.
+  findInstance(world, IDS.pipx).status.notes = ["SomeNotListed"];
   // A second Homebrew, in /usr/local, left by Migration Assistant from an
   // Intel Mac, which did not answer and has nothing carried over from an
   // earlier check: two sources of one kind, which the sidebar tells apart

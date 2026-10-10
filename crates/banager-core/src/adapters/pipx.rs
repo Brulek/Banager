@@ -6,7 +6,7 @@ use crate::adapters::{
 use crate::events::{EventSink, OpId};
 use crate::http::HttpClient;
 use crate::model::{
-    ArtifactFacts, ArtifactKey, ArtifactKind, CancelPolicy, CommandInputs, InstallReason,
+    ArtifactFacts, ArtifactKey, ArtifactKind, CancelPolicy, CommandInputs, InstallReason, InstanceNote,
     InstalledArtifact, InstanceStatus, ManagerInstance, OpKind, OpRequest, Outcome, Plan,
     PlanAction, ProvidedCommand, Reconciled, ResourceLock, Scope, SearchHit, Unavailable,
     UninstallScope, UpdateBlocked, UpdateCandidate, UpdateChannel, Warning,
@@ -298,6 +298,51 @@ pub(crate) fn parse_pypi_body(body: &str) -> Result<String, String> {
     }
 }
 
+/// What one `pipx list --json` answered (`PipxAdapter::read_list`).
+struct ListAnswer {
+    artifacts: Vec<InstalledArtifact>,
+    /// The environments whose `main_package.pinned` is true.
+    pinned: HashSet<String>,
+    /// pipx left some environment out of the list (exit 1): the source's
+    /// `InstanceNote::SomeNotListed`.
+    left_out: bool,
+}
+
+impl ListAnswer {
+    fn notes(&self) -> Vec<InstanceNote> {
+        if self.left_out {
+            vec![InstanceNote::SomeNotListed]
+        } else {
+            Vec::new()
+        }
+    }
+}
+
+/// `pipx list --outdated`'s failures that name a listed tool: pipx prints
+/// each environment it could not check on stderr as `{environment}:
+/// {error}` (`outdated.py:36-43`), the error running on until the next
+/// such line, and the healthy environments' lines on stdout, then exits 1.
+/// Each listed tool named gets the words from its line to the next line
+/// that names one; a name that is no listed tool (an environment `list
+/// --json` left out) gets none.
+fn failures_by_tool(stderr: &str, listed: &HashSet<&str>) -> HashMap<String, String> {
+    let mut out: HashMap<String, String> = HashMap::new();
+    let mut current: Option<String> = None;
+    for line in stderr.lines() {
+        if let Some((name, _)) = line.split_once(": ") {
+            if listed.contains(name) {
+                current = Some(name.to_string());
+            }
+        }
+        if let Some(name) = &current {
+            let words = out.entry(name.clone()).or_default();
+            words.push_str(line);
+            words.push('\n');
+        }
+    }
+    out
+}
+
 pub struct PipxAdapter {
     runner: Arc<dyn CommandRunner>,
     http: Arc<dyn HttpClient>,
@@ -386,13 +431,17 @@ impl PipxAdapter {
         &self,
         inst: &ManagerInstance,
     ) -> Result<Vec<InstalledArtifact>, AdapterError> {
-        Ok(self.inventory_with_pins(inst).await?.0)
+        Ok(self.read_list(inst).await?.artifacts)
     }
 
-    async fn inventory_with_pins(
-        &self,
-        inst: &ManagerInstance,
-    ) -> Result<(Vec<InstalledArtifact>, HashSet<String>), AdapterError> {
+    /// `pipx list --json`. Exit 1 with a list on stdout is an answer: pipx
+    /// 1.17 prints every environment it could read and leaves out, naming
+    /// it on stderr, one whose Python is gone or whose pipx data is
+    /// missing, then exits 1 (`list_packages.py:69-90, 151-175`,
+    /// `EXIT_CODE_LIST_PROBLEM`). One such environment used to fail the
+    /// whole source, and every pipx Update's pin read with it. Any other
+    /// exit, or a stdout that is not pipx's list, is still a failure.
+    async fn read_list(&self, inst: &ManagerInstance) -> Result<ListAnswer, AdapterError> {
         let output = self
             .run_pipx(
                 inst,
@@ -400,21 +449,27 @@ impl PipxAdapter {
                 Duration::from_secs(60),
             )
             .await?;
-        if output.exit_code != Some(0) {
-            return Err(AdapterError::CommandFailed {
-                code: output.exit_code,
-                stderr: output.stderr,
-            });
-        }
-        let root: PipxListRoot =
-            serde_json::from_str(&output.stdout).map_err(|e| AdapterError::Parse(e.to_string()))?;
+        let failed = || AdapterError::CommandFailed {
+            code: output.exit_code,
+            stderr: output.stderr.clone(),
+        };
+        let root: PipxListRoot = match output.exit_code {
+            Some(0) => serde_json::from_str(&output.stdout)
+                .map_err(|e| AdapterError::Parse(e.to_string()))?,
+            Some(1) => serde_json::from_str(&output.stdout).map_err(|_| failed())?,
+            _ => return Err(failed()),
+        };
         let pinned = root
             .venvs
             .iter()
             .filter(|(_, venv)| venv.metadata.main_package.pinned)
             .map(|(name, _)| name.clone())
             .collect();
-        Ok((artifacts_from_list(root, &inst.id), pinned))
+        Ok(ListAnswer {
+            artifacts: artifacts_from_list(root, &inst.id),
+            pinned,
+            left_out: output.exit_code == Some(1),
+        })
     }
 
     async fn latest_pypi_version(&self, name: &str) -> Result<String, LookupFailure> {
@@ -505,22 +560,69 @@ impl PipxAdapter {
             // question with `Err`, so which of the two a user got depended
             // only on which pipx they happened to have installed.
             if output.exit_code != Some(0) {
+                let list = self.read_list(inst).await?;
+                let listed: HashSet<&str> = list
+                    .artifacts
+                    .iter()
+                    .map(|a| a.key.name.as_str())
+                    .collect();
+                let failures = failures_by_tool(&output.stderr, &listed);
+                // pipx checked each environment on its own and said which
+                // it could not: those listed tools are "could not check",
+                // in pipx's words for each, and the lines it printed for
+                // the rest stand. Without such an answer -- another exit,
+                // or nothing that names an environment while the list left
+                // none out -- every tool is, with pipx's first words.
+                if output.exit_code == Some(1) && (list.left_out || !failures.is_empty()) {
+                    let mut candidates: Vec<UpdateCandidate> =
+                        parse_outdated(&output.stdout, &inst.id)
+                            .into_iter()
+                            .filter(|c| !failures.contains_key(&c.key.name))
+                            .collect();
+                    for artifact in &list.artifacts {
+                        if let Some(words) = failures.get(&artifact.key.name) {
+                            candidates.push(uncheckable_candidate(
+                                artifact.key.clone(),
+                                artifact.version.clone(),
+                                UpdateChannel::Native,
+                                LookupFailure::words(
+                                    lookup_failure_reason(
+                                        "pipx list --outdated",
+                                        output.exit_code,
+                                        words,
+                                    ),
+                                    words,
+                                ),
+                            ));
+                        }
+                    }
+                    return Ok(CheckOutcome {
+                        candidates,
+                        notes: list.notes(),
+                    });
+                }
                 let failure = LookupFailure::words(
                     lookup_failure_reason("pipx list --outdated", output.exit_code, &output.stderr),
                     &output.stderr,
                 );
-                let installed = self.inventory(inst).await?;
-                return Ok(
-                    uncheckable_from_inventory(&installed, UpdateChannel::Native, &failure).into(),
-                );
+                return Ok(CheckOutcome {
+                    candidates: uncheckable_from_inventory(
+                        &list.artifacts,
+                        UpdateChannel::Native,
+                        &failure,
+                    ),
+                    notes: list.notes(),
+                });
             }
             Ok(parse_outdated(&output.stdout, &inst.id).into())
         } else {
-            let (installed, pinned) = self.inventory_with_pins(inst).await?;
-            Ok(self
-                .check_outdated_via_pypi(&installed, &pinned)
-                .await
-                .into())
+            let list = self.read_list(inst).await?;
+            Ok(CheckOutcome {
+                candidates: self
+                    .check_outdated_via_pypi(&list.artifacts, &list.pinned)
+                    .await,
+                notes: list.notes(),
+            })
         }
     }
 
@@ -542,7 +644,7 @@ impl PipxAdapter {
         ensure_instance_match(req, inst)?;
         validate_package_name(&req.name)?;
         if req.kind == OpKind::Upgrade {
-            let (_, pinned) = self.inventory_with_pins(inst).await?;
+            let pinned = self.read_list(inst).await?.pinned;
             if pinned.contains(&req.name) {
                 return Err(AdapterError::UpdateBlocked {
                     reason: UpdateBlocked::Pinned,
@@ -1431,6 +1533,124 @@ mod tests {
             .warnings
             .iter()
             .any(|w| matches!(w, Warning::Message(m) if m.contains("Could not reach pypi.org"))));
+    }
+
+    /// `pipx list --json` as pipx 1.17 answers it with one environment,
+    /// `black`, whose Python is gone: every other environment on stdout,
+    /// the broken one left out and named on stderr, exit 1
+    /// (`list_packages.py:69-90`, `EXIT_CODE_LIST_PROBLEM`).
+    fn list_without_a_broken_venv() -> CommandOutput {
+        CommandOutput {
+            stderr_cause: Default::default(),
+            exit_code: Some(1),
+            stdout: r#"{"pipx_spec_version":"0.1","venvs":{
+                "cowsay":{"metadata":{"main_package":{"package":"cowsay","package_version":"5.0"}}},
+                "ruff":{"metadata":{"main_package":{"package":"ruff","package_version":"0.5.0"}}}
+            }}"#
+            .to_string(),
+            stderr: "   package black has invalid interpreter /opt/homebrew/opt/python@3.12/bin/python3.12\n\nOne or more packages have a missing python interpreter.\n    To fix, execute: pipx reinstall-all\n\n".to_string(),
+            timed_out: false,
+            cancelled: false,
+        }
+    }
+
+    #[tokio::test]
+    async fn regression_r43_2_one_broken_venv_leaves_the_others_listed_checked_and_planned() {
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec!["/opt/homebrew/bin/pipx", "list", "--json"],
+            list_without_a_broken_venv(),
+        );
+        // pipx 1.17's `list --outdated`: the healthy environments' lines on
+        // stdout, the broken one's failure on stderr as
+        // `{environment}: {error}`, exit 1 (`outdated.py:25-66`).
+        runner.respond(
+            vec!["/opt/homebrew/bin/pipx", "list", "--outdated"],
+            CommandOutput {
+                stderr_cause: Default::default(),
+                exit_code: Some(1),
+                stdout: "cowsay: 5.0 -> 6.1\n".to_string(),
+                stderr: "black: Package backend exited with code 1.\nstderr: No such file\n"
+                    .to_string(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let adapter = PipxAdapter::new(runner.clone(), Arc::new(MockHttpClient::new()));
+        let inst = test_instance();
+        let names: Vec<String> = adapter
+            .inventory(&inst)
+            .await
+            .expect("a list that left one environment out still lists the rest")
+            .into_iter()
+            .map(|a| a.key.name)
+            .collect();
+        assert_eq!(names, ["cowsay", "ruff"]);
+        let outcome = adapter
+            .check_updates(&inst, &CheckOptions::default())
+            .await
+            .expect("one broken environment is not a failed source");
+        let rows: Vec<_> = outcome
+            .candidates
+            .iter()
+            .map(|c| (c.key.name.as_str(), c.checkable, c.target.as_str()))
+            .collect();
+        assert_eq!(rows, [("cowsay", true, "6.1")], "ruff is up to date");
+        assert_eq!(outcome.notes, [InstanceNote::SomeNotListed]);
+        let upgrade = OpRequest {
+            kind: OpKind::Upgrade,
+            instance_id: inst.id.clone(),
+            artifact_kind: ArtifactKind::Tool,
+            name: "cowsay".to_string(),
+        };
+        let plan = adapter.plan(&inst, &upgrade).await.expect("the pin read answered");
+        assert_eq!(command_args(&plan), ["upgrade", "cowsay"]);
+
+        // A listed environment pipx could not check is that tool's own
+        // "could not check", with pipx's words; the others stand.
+        runner.respond(
+            vec!["/opt/homebrew/bin/pipx", "list", "--outdated"],
+            CommandOutput {
+                stderr_cause: Default::default(),
+                exit_code: Some(1),
+                stdout: "cowsay: 5.0 -> 6.1\n".to_string(),
+                stderr: "black: Package backend exited with code 1.\nruff: Could not reach pypi.org\n"
+                    .to_string(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let outcome = adapter
+            .check_updates(&inst, &CheckOptions::default())
+            .await
+            .unwrap();
+        let rows: Vec<_> = outcome
+            .candidates
+            .iter()
+            .map(|c| (c.key.name.as_str(), c.checkable))
+            .collect();
+        assert_eq!(rows, [("cowsay", true), ("ruff", false)]);
+        assert!(outcome.candidates[1]
+            .warnings
+            .iter()
+            .any(|w| matches!(w, Warning::Message(m) if m.contains("Could not reach pypi.org") && !m.contains("black"))));
+    }
+
+    #[tokio::test]
+    async fn regression_r43_2_a_list_that_did_not_parse_still_fails() {
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec!["/opt/homebrew/bin/pipx", "list", "--json"],
+            CommandOutput {
+                stdout: String::new(),
+                ..list_without_a_broken_venv()
+            },
+        );
+        let adapter = PipxAdapter::new(runner, Arc::new(MockHttpClient::new()));
+        assert!(matches!(
+            adapter.inventory(&test_instance()).await,
+            Err(AdapterError::CommandFailed { code: Some(1), .. })
+        ));
     }
 
     #[tokio::test]

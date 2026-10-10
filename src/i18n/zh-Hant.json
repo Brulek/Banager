@@ -717,6 +717,10 @@
       "title": "找不到{{source}}的程式檔案",
       "description": "「{{command}}」已無法執行，請重新安裝{{source}}；如果程式檔案在垃圾桶中，也可以拖回原處後重新檢查。不再需要時，可在「已安裝」中解除安裝{{source}}。"
     },
+    "someNotListed": {
+      "title": "用{{source}}安裝的部分工具沒有顯示",
+      "description": "{{source}}無法讀取這些工具，因此也沒有檢查它們的更新。要查看是哪些工具以及如何修復，請在終端機執行{{command}}，然後重新檢查。"
+    },
     "checksUnfinished": {
       "title": "部分檢查未完成",
       "description_other": "{{sources}}這次未檢查完，更新可能還沒全部列出。"
@@ -846,6 +850,7 @@
     "outputTooLarge": "{{source}}傳回的內容過多，無法繼續。",
     "indexUpdating": "Homebrew正在連線檢查新版本，現在無法準確檢查相依關係。請過一兩分鐘再試。",
     "refused": "發生內部錯誤，無法繼續。",
+    "notAnswered": "{{source}}沒有回應，無法繼續。請稍後再試。",
     "notListed": "無法開始，因為它已不在清單中。請點按「重新檢查」。",
     "uninstallUnsafe": {
       "outsideHome": "無法移動{{path}}，因為它所在的檔案夾通向個人專屬檔案夾以外。",

@@ -349,7 +349,7 @@ describe("everySourceChecked", () => {
     expect(
       everySourceChecked([brew, { ...brew, status: { unavailable: "NotRunning", notes: [] } }], []),
     ).toBe(false);
-    for (const note of ["IndexMayBeStale", "IndexUpdating", "LauncherOnly"] as const) {
+    for (const note of ["IndexMayBeStale", "IndexUpdating", "LauncherOnly", "SomeNotListed"] as const) {
       expect(
         everySourceChecked([{ ...brew, status: { unavailable: null, notes: [note] } }], []),
       ).toBe(false);

@@ -717,6 +717,10 @@
       "title": "找不到{{source}}的程序文件",
       "description": "“{{command}}”已无法运行，请重新安装{{source}}；如果程序文件在废纸篓中，也可以拖回原处后重新检查。不再需要时，可在“已安装”中卸载{{source}}。"
     },
+    "someNotListed": {
+      "title": "用{{source}}安装的部分工具没有显示",
+      "description": "{{source}}无法读取这些工具，因此也没有检查它们的更新。要查看是哪些工具以及如何修复，请在终端运行{{command}}，然后重新检查。"
+    },
     "checksUnfinished": {
       "title": "部分检查未完成",
       "description_other": "{{sources}}这次未检查完，更新可能还没全部列出。"
@@ -846,6 +850,7 @@
     "outputTooLarge": "{{source}}返回的内容过多，无法继续。",
     "indexUpdating": "Homebrew正在联网查找新版本，现在无法准确检查依赖。请过一两分钟再试。",
     "refused": "发生内部错误，无法继续。",
+    "notAnswered": "{{source}}没有响应，无法继续。请稍后再试。",
     "notListed": "无法开始，因为它已不在列表中。请点按“重新检查”。",
     "uninstallUnsafe": {
       "outsideHome": "无法移动{{path}}，因为它所在的文件夹通向个人文件夹以外。",
