@@ -714,7 +714,7 @@ describe("warningGroup", () => {
           "UninstallScope" in warning
         ),
     );
-    expect(notes).toHaveLength(31);
+    expect(notes).toHaveLength(32);
     for (const warning of notes) expect(warningGroup(warning)).toBe("note");
     // Every kind of a cask's extra steps.
     for (const step of EVERY_STEP) {
