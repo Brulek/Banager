@@ -246,7 +246,7 @@ impl Session {
     /// tool it was shown installed -- refused as `AdapterError::NotListed`
     /// otherwise, after the gates `issue_plan` keeps and before any adapter
     /// is asked. Without it an `Upgrade` of a name no source lists is
-    /// planned as any upgrade is -- `npm install -g <name>`, `cargo
+    /// planned as any upgrade is -- `npm install -g <name>@*`, `cargo
     /// install --force <name>`, `ollama pull <name>` -- which installs
     /// whatever that name is: the install the window may not ask for, by
     /// another name.

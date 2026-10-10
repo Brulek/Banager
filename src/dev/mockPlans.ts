@@ -368,7 +368,7 @@ export function buildPlan(world: World, inst: ManagerInstance, request: OpReques
         // At the prefix the row came from, as every global npm command is.
         action: command(
           inst.exe_path,
-          [...(upgrade ? ["install", "-g", name] : ["uninstall", "-g", name]), "--prefix", inst.prefix],
+          [...(upgrade ? ["install", "-g", `${name}@*`] : ["uninstall", "-g", name]), "--prefix", inst.prefix],
           NPM_ENV,
         ),
         warnings: !upgrade && major >= 7 ? [scope("Npm")] : [],

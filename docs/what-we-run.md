@@ -2180,9 +2180,12 @@ a global npm says it installed from somewhere other than a registry
 of an `npm link` or a folder -- `git+…`, a URL that is no registry's
 tarball of that name, or a registry tarball of another name (an alias).
 A registry's tarball, a mirror's included, keeps its update. npm 7 and
-later keep no record of where a global from git or a tarball came from,
-and say nothing for it; such a global, like any npm says nothing about,
-keeps its update. A refresh that found updates to offer runs the
+later say where a global came from only for `npm link` and a folder: they
+keep no record for one installed from git, from a tarball or another URL,
+or under an alias (`npm install -g foo@npm:bar`), and say nothing for it.
+Such a global, like any npm says nothing about, keeps its update; for an
+alias that update would put the registry's `foo` in place of `bar`. The
+`git+…`, URL and alias answers above come only from npm 6. A refresh that found updates to offer runs the
 inventory command twice; one whose listing then fails is a check that did
 not finish. The search query passes `validate_search_query`.
 
@@ -2192,14 +2195,15 @@ not finish. The search query passes `validate_search_query`.
 |---|---|---|---|
 | Install | `<npm> install -g {name} --prefix {prefix}` | 600 s | No |
 | Uninstall | `<npm> uninstall -g {name} --prefix {prefix}` | 600 s | No |
-| Upgrade | `<npm> install -g {name} --prefix {prefix}` | 600 s | No |
+| Upgrade | `<npm> install -g {name}@* --prefix {prefix}` | 600 s | No |
 
-An update names the package as an install does, with no tag. npm reads a
-bare name as any version and picks from it as `npm outdated -g` picked the
-version the row and the confirmation show: the newest that runs on this
-Node and is not deprecated. `{name}@latest` would take the `latest` tag
-whatever Node it needs, so on an older Node it installed a version nobody
-was shown, and npm's own update failed every time (`NpmAdapter::plan`).
+An update asks for any version, `{name}@*`, and npm picks from it as
+`npm outdated -g` picked the version the row and the confirmation show: the
+newest that runs on this Node and is not deprecated. `{name}@latest` would
+take the `latest` tag whatever Node it needs, so on an older Node it
+installed a version nobody was shown, and npm's own update failed every
+time. So would the bare name on npm 7 and 8, which read it as `latest`;
+from npm 9 a bare name means `*` too (`NpmAdapter::plan`).
 
 All global reads and saved write commands carry `--prefix {prefix}`, the
 answer `<npm> prefix -g` gave when the source was found (`NpmAdapter::run_npm`

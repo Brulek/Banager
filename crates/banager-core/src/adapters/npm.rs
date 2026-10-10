@@ -503,7 +503,10 @@ impl NpmAdapter {
     /// (npm 10.9.9 `outdated.js:122`, `:179`), and `npm install -g <name>`
     /// would put the registry's package in place of an `npm link`, a
     /// folder, a fork from git or an alias (R42-3). Read from one more `npm
-    /// ls -g`, only when the check found an update to offer.
+    /// ls -g`, only when the check found an update to offer. npm 7 and
+    /// later name the source of a link or a folder only (no hidden lockfile
+    /// for globals, arborist `reify.js:252`), so git, URL and alias globals
+    /// keep their update there.
     async fn without_updates_from_elsewhere(
         &self,
         inst: &ManagerInstance,
@@ -650,16 +653,25 @@ impl NpmAdapter {
             OpKind::Install | OpKind::Upgrade => Vec::new(),
             OpKind::Link => return Err(super::links_nothing(&self.meta.id)),
         };
-        // An update names the package bare, as an install does: npm reads
-        // that as the range `*` and picks from it as `npm outdated -g` did
-        // for the row (the newest version that runs on this Node and is
-        // not deprecated; npm 10.9.9 `outdated.js:186-187`), and installs
-        // it over the older one asked for by name (arborist
+        // An update asks for `<name>@*`: npm picks from the range `*` as
+        // `npm outdated -g` did for the row (the newest version that runs
+        // on this Node and is not deprecated; npm 10.9.9
+        // `outdated.js:186-187`, npm 8.19.4 `outdated.js` the same), and
+        // installs it over the older one asked for by name (arborist
         // `can-place-dep.js:166-176`). `<name>@latest` would take the
-        // `latest` tag whatever Node it needs (R42-1).
+        // `latest` tag whatever Node it needs (R42-1), and so would the
+        // bare name on npm 7 and 8, which read it as `latest`; from npm 9
+        // the bare name is `*` (npm-package-arg `npa.js:51`).
         let mut args = match req.kind {
-            OpKind::Install | OpKind::Upgrade => {
+            OpKind::Install => {
                 vec!["install".to_string(), "-g".to_string(), req.name.clone()]
+            }
+            OpKind::Upgrade => {
+                vec![
+                    "install".to_string(),
+                    "-g".to_string(),
+                    format!("{}@*", req.name),
+                ]
             }
             OpKind::Uninstall => vec!["uninstall".to_string(), "-g".to_string(), req.name.clone()],
             OpKind::Link => return Err(super::links_nothing(&self.meta.id)),
@@ -848,7 +860,10 @@ struct LsGlobalDependency {
 /// mirrors included (a scope's slash may be spelled `%2f`); anything else
 /// npm says -- `file:`, `git+…`, another URL, a registry tarball of
 /// another name (an alias) -- is from elsewhere. A global with no
-/// `resolved` is not known to be, and keeps its update.
+/// `resolved` is not known to be, and keeps its update: on npm 7 and later
+/// that is every global but a link or a folder (`node.js:140-158` takes it
+/// from a lockfile or `_resolved`, and a global has neither), so the
+/// `git+…`, URL and alias answers come from npm 6 only.
 fn installed_from_elsewhere(json: &str) -> Result<HashSet<String>, AdapterError> {
     let root: LsGlobalRoot =
         serde_json::from_str(json).map_err(|e| AdapterError::Parse(e.to_string()))?;
@@ -2095,6 +2110,8 @@ mod tests {
         // tarball, a fork from git, or an alias of another package. What
         // each came from is `resolved` in `npm ls -g` (npm 10.9.9 ls.js:
         // 358-360; a link's is always `file:`, arborist link.js:94-98).
+        // npm 7 and later give it for a link or a folder only; the `git+`,
+        // URL and alias answers below are npm 6's.
         let runner = ls_global_answering(
             0,
             r#"{"name": "lib", "dependencies": {
@@ -2741,7 +2758,7 @@ mod tests {
             .expect("an update of npm is planned");
         assert_eq!(
             command_args(&upgrade),
-            vec!["install", "-g", "npm", "--prefix", "/opt/homebrew"]
+            vec!["install", "-g", "npm@*", "--prefix", "/opt/homebrew"]
         );
         // Nor is a package merely named like it, or npm's other bundled one.
         for name in ["npm-check-updates", "@scope/npm", "corepack"] {
@@ -2848,8 +2865,11 @@ mod tests {
         // 10.9.9 outdated.js:186-187); `<name>@latest` takes the `latest`
         // tag whatever it needs, so on an older Node it installed a
         // version the row never showed, and npm's own update failed with
-        // EBADENGINE every time. The bare name is `*`, resolved as the
-        // check resolved it.
+        // EBADENGINE every time. `<name>@*` is resolved as the check
+        // resolved it. A bare name is `*` only from npm 9 (npm-package-arg
+        // 10); npm 7 and 8 read it as the `latest` tag, though their
+        // `outdated` picks with `*` too (npm 8.19.4 outdated.js), so the
+        // range is spelled out (skeptic's problem 1).
         let adapter =
             NpmAdapter::new(Arc::new(MockRunner::new())).with_prefix_read_only_fn(|_| None);
         let inst = test_instance();
@@ -2863,7 +2883,13 @@ mod tests {
             let plan = adapter.plan(&inst, &req).await.expect("plan");
             assert_eq!(
                 command_args(&plan),
-                vec!["install", "-g", name, "--prefix", "/opt/homebrew"]
+                vec![
+                    "install",
+                    "-g",
+                    &format!("{name}@*"),
+                    "--prefix",
+                    "/opt/homebrew"
+                ]
             );
         }
     }
