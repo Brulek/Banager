@@ -484,16 +484,20 @@ impl Protected {
 /// entry in the password database (`getpwuid_r(getuid())`) -- when it
 /// has one and it is absolute. Asked once a process: the entry does not
 /// change while Banager runs, and asking can mean a round trip to the
-/// directory service.
+/// directory service. In a test, the test's own stand-in
+/// (`as_if_account`), or none: no test asks the password database or
+/// looks at the tester's own home folder (r22 R53-2; Astra R20-A1-2).
 pub fn account_home() -> Option<PathBuf> {
     #[cfg(any(test, feature = "test-support"))]
-    if let Some(account) = ACCOUNT_HOME_FOR_TESTS.with(|account| account.borrow().clone()) {
-        return account;
+    return ACCOUNT_HOME_FOR_TESTS.with(|account| account.borrow().clone());
+    #[cfg(not(any(test, feature = "test-support")))]
+    {
+        static ACCOUNT_HOME: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
+        ACCOUNT_HOME.get_or_init(password_database_home).clone()
     }
-    static ACCOUNT_HOME: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
-    ACCOUNT_HOME.get_or_init(password_database_home).clone()
 }
 
+#[cfg_attr(any(test, feature = "test-support"), allow(dead_code))]
 fn password_database_home() -> Option<PathBuf> {
     // SAFETY: `getuid` has no preconditions and cannot fail.
     let uid = unsafe { libc::getuid() };
@@ -542,17 +546,17 @@ thread_local! {
 #[cfg(any(test, feature = "test-support"))]
 thread_local! {
     /// What `account_home` answers on this thread instead of the password
-    /// database, when a test sets it (`as_if_account`).
-    static ACCOUNT_HOME_FOR_TESTS: std::cell::RefCell<Option<Option<PathBuf>>> = const { std::cell::RefCell::new(None) };
+    /// database: what a test sets (`as_if_account`), or no account.
+    static ACCOUNT_HOME_FOR_TESTS: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
 }
 
 /// A test's stand-in for the account's own home folder, on its own thread
-/// only, until the guard is dropped (`account_home`): `Protected::new`
-/// then neither asks the password database nor looks at this Mac's own
-/// home folder to find where it leads.
+/// only, until the guard is dropped (`account_home`); a test that sets
+/// none has no account, so `Protected::new` then keeps out its `home`'s
+/// places alone.
 #[cfg(any(test, feature = "test-support"))]
 pub fn as_if_account(account: &Path) -> AsIfAccount {
-    ACCOUNT_HOME_FOR_TESTS.with(|slot| *slot.borrow_mut() = Some(Some(account.to_path_buf())));
+    ACCOUNT_HOME_FOR_TESTS.with(|slot| *slot.borrow_mut() = Some(account.to_path_buf()));
     AsIfAccount
 }
 
@@ -750,6 +754,20 @@ mod tests {
             PathBuf::from("/Users/you"),
             PathBuf::from("/System/Volumes/Data/Users/you"),
         ]
+    }
+
+    // A test that sets no account of its own has none: no test asks the
+    // password database or looks at the tester's own home folder (r22
+    // R53-2; Astra R20-A1-2).
+    #[test]
+    fn test_a_test_that_sets_no_account_has_none() {
+        assert_eq!(account_home(), None);
+        let home = tempfile::tempdir().expect("tempdir");
+        {
+            let _account = as_if_account(home.path());
+            assert_eq!(account_home().as_deref(), Some(home.path()));
+        }
+        assert_eq!(account_home(), None);
     }
 
     #[test]
