@@ -30,8 +30,7 @@ use cask_receipt::{Classified, Recorded};
 use kegs::{Kegs, Service};
 use links::KegLinks;
 use parse::{
-    parse_info_installed, parse_info_named, parse_outdated, parse_search, parse_uses,
-    parse_version,
+    parse_info_installed, parse_info_named, parse_outdated, parse_search, parse_uses, parse_version,
 };
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
