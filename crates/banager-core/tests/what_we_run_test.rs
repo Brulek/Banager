@@ -1789,6 +1789,8 @@ fn test_what_we_run_has_the_diagnostic_info_section_saying_what_it_reads_and_nev
         "a source that can't run, ran into an error or isn't responding (「无法运行、运行时出错或没有响应」",
         "`diagnostics.footnote`",
         "`clarity.diagnosticsDetail`",
+        // Astra R20-A1-5: the ⓘ says what the window cannot write as `~`.
+        "and that a home folder outside the Users folder may still appear in full (`clarity.diagnosticsDetail`)",
         "the Help menu's Copy Diagnostic Info… (「拷贝诊断信息…」) only opens Settings on that button, focused, so the copy is always the button's click",
     ] {
         assert!(

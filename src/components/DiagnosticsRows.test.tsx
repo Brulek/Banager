@@ -214,6 +214,19 @@ describe("Settings' Diagnostics group", () => {
     }
   });
 
+  it("says in each language that a home folder outside /Users may still appear in full (Astra R20-A1-5)", () => {
+    // The window is not told `HOME`: a home outside /Users stays as written
+    // in a source's error details, and in a source's place the facts did
+    // not cover (docs/what-we-run.md, "Diagnostic info").
+    for (const [language, hedge] of [
+      ["en", "with your home folder written as “~”, though a home folder outside the Users folder may still appear in full"],
+      ["zh-CN", "个人文件夹写成“~”，但不在“用户”文件夹里的个人文件夹可能仍会写出完整路径"],
+      ["zh-Hant", "個人專屬檔案夾寫成「~」，但不在「使用者」檔案夾裡的個人專屬檔案夾可能仍會寫出完整路徑"],
+    ]) {
+      expect(i18n.getFixedT(language)("clarity.diagnosticsDetail")).toContain(hedge);
+    }
+  });
+
   it("names, in each language, every state of a source whose error details the text includes (r31 E4)", () => {
     // `NoAnswer.diagnostic` is kept for all three ways a source gives no
     // answer (crates/banager-core/src/runner/no_answer.rs), and

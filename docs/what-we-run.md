@@ -5197,7 +5197,8 @@ Banager does not read) -- is copied as the tool wrote it. Settings' footnote und
 says the text includes the error details of a source that can't run, ran
 into an error or isn't responding (「无法运行、运行时出错或没有响应」, the
 window's three names for a source that did not answer;
-`diagnostics.footnote`), and its ⓘ what they can quote and what is hidden
+`diagnostics.footnote`), and its ⓘ what they can quote and what is hidden,
+and that a home folder outside the Users folder may still appear in full
 (`clarity.diagnosticsDetail`).
 
 Check Tool Setup (「检查工具环境」), in the Help menu, on the Overview and beside Copy
