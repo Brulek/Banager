@@ -424,12 +424,17 @@ impl Protected {
     /// The places for the home folder this process's `HOME` names --
     /// what `HostEnv::discover` reads for every refresh -- and for the
     /// account's own: for a look made where no `HostEnv` is at hand (a
-    /// file a tool wrote, read by an adapter that keeps none).
+    /// file a tool wrote, read by an adapter that keeps none). In a unit
+    /// test, the test's own stand-in (`as_if_home`), or no home, so none
+    /// looks at the tester's own home folder (r22 R53 skeptic 1).
     pub fn of_this_process() -> Protected {
         #[cfg(test)]
-        if let Some(home) = PROCESS_HOME.with(|home| home.borrow().clone()) {
-            return Protected::new(&home);
-        }
+        return Protected::new(
+            &PROCESS_HOME
+                .with(|home| home.borrow().clone())
+                .unwrap_or_default(),
+        );
+        #[cfg(not(test))]
         Protected::new(
             &std::env::var_os("HOME")
                 .map(PathBuf::from)
@@ -485,8 +490,8 @@ impl Protected {
 /// has one and it is absolute. Asked once a process: the entry does not
 /// change while Banager runs, and asking can mean a round trip to the
 /// directory service. In a test, the test's own stand-in
-/// (`as_if_account`), or none: no test asks the password database or
-/// looks at the tester's own home folder (r22 R53-2; Astra R20-A1-2).
+/// (`as_if_account`), or none: no test asks the password database
+/// (r22 R53-2; Astra R20-A1-2).
 pub fn account_home() -> Option<PathBuf> {
     #[cfg(any(test, feature = "test-support"))]
     return ACCOUNT_HOME_FOR_TESTS.with(|account| account.borrow().clone());
@@ -1129,11 +1134,11 @@ mod tests {
     fn test_the_accounts_own_home_is_protected_whatever_home_names() {
         // `HOME` set to another folder, emptied or made relative from a
         // terminal: the account's own folders are still kept out, and
-        // only by `contains` here -- nothing under the real home folder
-        // is looked at by this test.
-        let Some(account) = account_home() else {
-            return;
-        };
+        // only by `contains` here (the account's home a folder of the
+        // test's own; r22 R53 skeptic 1).
+        let account = Temp::new("own-account");
+        let _account = as_if_account(&account.0);
+        let account = account.0.clone();
         let other = Temp::new("other-home");
         for home in [
             other.0.as_path(),
@@ -1249,10 +1254,11 @@ mod tests {
     #[test]
     fn test_the_accounts_home_adds_no_place_when_home_names_it() {
         // The usual case: `HOME` is the account's own folder, spelled in
-        // any case, and the list is what it was with one home folder.
-        let Some(account) = account_home() else {
-            return;
-        };
+        // any case, and the list is what it was with one home folder (the
+        // account's home a folder of the test's own; r22 R53 skeptic 1).
+        let account = Temp::new("home-is-account");
+        let _account = as_if_account(&account.0);
+        let account = account.0.clone();
         let one = Protected::new(&account);
         let upper = PathBuf::from(account.as_os_str().to_ascii_uppercase());
         for protected in [&one, &Protected::new(&upper)] {
@@ -1272,16 +1278,33 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_stops_at_the_data_volume_spelling_of_the_real_home() {
+    fn test_a_unit_test_that_sets_no_home_has_none_for_this_process() {
+        // `Protected::of_this_process` with no stand-in (`as_if_home`)
+        // looks at nothing of the tester's own home folder: it has no
+        // home, as it has no account (r22 R53 skeptic 1).
+        let (protected, made) = crate::dirfd::calls::measure(Protected::of_this_process);
+        if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
+            assert!(!protected.contains(&home.join("Documents")));
+            for (call, path) in &made.paths {
+                assert!(!path.starts_with(&home), "{call:?} looked at {path:?}");
+            }
+        }
+        let home = Temp::new("process-home");
+        let _home = as_if_home(&home.0);
+        assert!(Protected::of_this_process().contains(&home.0.join("Documents")));
+    }
+
+    #[test]
+    fn test_resolve_stops_at_the_data_volume_spelling_of_the_home() {
         // On a Mac, `/System/Volumes/Data<home>` is the home folder itself;
         // `resolve` must stop before `Documents` there, as it does under
-        // `<home>`. Only folders above it are `lstat`ed.
-        let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else {
-            return;
-        };
-        let Ok(below_root) = home.strip_prefix("/") else {
-            return;
-        };
+        // `<home>`. Only folders above it are `lstat`ed. The home is a
+        // folder of the test's own, on the data volume as /private/var is
+        // (r22 R53 skeptic 1).
+        let temp = Temp::new("data-volume-home");
+        let home = temp.0.clone();
+        let _account = as_if_account(&home);
+        let below_root = home.strip_prefix("/").unwrap();
         let aliased = Path::new(DATA_VOLUME).join(below_root);
         if !aliased.is_dir() {
             return;
