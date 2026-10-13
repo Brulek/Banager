@@ -4869,6 +4869,11 @@ their own there, which are left out and named the same way:
 `~/.gemini/antigravity` (Google Antigravity) and
 `~/.gemini/antigravity-ide` (Google Antigravity IDE) -- the folders
 their Homebrew casks' `zap` trashes (`kept_data::APPS_INSIDE`).
+A measurement that stopped before it met every such folder -- out of
+budget, something in it unreadable, or none at all because the folder
+leads into a protected place -- cannot rule out the ones it did not meet:
+the line names none of them, and the preview does not say the list can go
+to the Trash (`Warning::KeepsData.inside_unknown`).
 
 `~/.codex` and `~/.copilot` are shared too, but not in a folder of their
 own: the ChatGPT and Codex apps keep their own settings, login and
@@ -4980,7 +4985,12 @@ within the budget, counts for nothing. While such an Ollama stays, or
 Banager's own Ollama leads outside the package, the preview says under
 `~/.ollama/models` that another copy of Ollama still uses those models,
 and does not say they can be moved to the Trash
-(`NeededBy::ollama_stays`, `Warning::KeepsData.in_use`).
+(`NeededBy::ollama_stays`, `Warning::KeepsData.in_use`). A batch keeps
+one such copy while the models need one: a copy of Ollama whose preview
+says this is left out while another copy of Ollama goes in the same batch,
+since the copy it counted on may be that one -- Homebrew's formula and
+its `ollama-app` cask each count on the other (`otherOllamaGoes` in
+`src/lib/batchUninstall.ts`).
 
 Each source with any tool that needs the package is listed under 「依赖此
 工具的软件」 ("Software that uses it"), after what Homebrew names --

@@ -351,12 +351,17 @@ pub fn kept_data(
                     }
                 })
                 .collect();
+            // A walk that did not finish, or never began, may not have met
+            // what it would leave out: not met is then not ruled out.
+            let finished = size.is_some_and(|size| !size.partial && !size.at_least);
+            let inside_unknown = !finished && met.len() < leave_out.len();
             warnings.push(Warning::KeepsData {
                 path: path.to_string(),
                 what,
                 size,
                 left_out,
                 others,
+                inside_unknown,
                 in_use: false,
             });
         }
@@ -915,6 +920,56 @@ mod tests {
             }
             other => panic!("{other:?}"),
         }
+    }
+
+    #[test]
+    fn test_a_look_that_ends_before_it_can_rule_out_another_tools_folder_says_so() {
+        let inside_unknown = |warnings: &[Warning]| match warnings {
+            [Warning::KeepsData { inside_unknown, .. }] => *inside_unknown,
+            other => panic!("{other:?}"),
+        };
+        // Looked at in full, with Google Antigravity's folder not there:
+        // nothing else is inside.
+        let home = Home::new("gemini-unknown");
+        home.file(".gemini/settings.json", 1_000);
+        assert!(!inside_unknown(&kept_data(
+            &home.0,
+            "gemini-cli",
+            &[],
+            BUDGET
+        )));
+        // The budget gone before the walk reached what is inside: whether
+        // Antigravity's folders are there is not known.
+        home.file(".gemini/antigravity/conversations/a.pb", 900_000);
+        let tight = SizeBudget {
+            max_entries: 1,
+            max_duration: Duration::from_secs(1),
+        };
+        assert!(inside_unknown(&kept_data(
+            &home.0,
+            "gemini-cli",
+            &[],
+            tight
+        )));
+        // `~/.gemini` a link into ~/Documents, never looked into: no size,
+        // and nothing ruled out.
+        let linked = Home::new("gemini-protected");
+        linked.file("Documents/gemini/antigravity/a.pb", 9_000);
+        symlink(linked.0.join("Documents/gemini"), linked.0.join(".gemini")).unwrap();
+        let warnings = kept_data(&linked.0, "gemini-cli", &[], BUDGET);
+        assert_eq!(size_of(&warnings[0]), None);
+        assert!(inside_unknown(&warnings));
+        // A folder with nothing another tool keeps inside it has nothing
+        // to rule out.
+        let claude = Home::new("claude-protected");
+        claude.file("Documents/claude-data/big.bin", 90_000);
+        symlink(
+            claude.0.join("Documents/claude-data"),
+            claude.0.join(".claude"),
+        )
+        .unwrap();
+        let warnings = kept_data(&claude.0, "claude-code", &[], BUDGET);
+        assert!(!inside_unknown(&warnings));
     }
 
     #[test]

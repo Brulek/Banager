@@ -63,7 +63,7 @@ describe("the preview's uninstall previews name what stays", () => {
     ]);
     const gemini = await uninstallPlanOf("Formula", "gemini-cli");
     expect(gemini.filter((w) => typeof w !== "string" && "KeepsData" in w)).toEqual([
-      { KeepsData: { path: "~/.gemini", what: "ToolData", size: null, left_out: [] } },
+      { KeepsData: { path: "~/.gemini", what: "ToolData", size: null, inside_unknown: true, left_out: [] } },
     ]);
   });
 

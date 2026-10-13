@@ -64,7 +64,8 @@ interface KeptLine {
  * That line is not said where a tool installed on the Mac may still use
  * what the list names: where a folder holds another copy's program
  * (`left_out`: Codex's own install in `~/.codex`) or another tool's data
- * (`others`: Antigravity CLI's in `~/.gemini`), or where a tool of the
+ * (`others`: Antigravity CLI's in `~/.gemini`), or may hold one, its look
+ * having stopped before it could tell (`inside_unknown`), or where a tool of the
  * family stays installed (`familyStays`) -- the other copy of Codex runs
  * from and signs in with the `~/.codex` the list names.
  * There is no button, menu or command here that deletes or moves one.
@@ -131,7 +132,8 @@ export function KeptDataGroup({
   for (const item of keptDataOf(warnings)) {
     settingsOrData = true;
     const apps = sharedWith(item.path);
-    holdsAnother ||= item.leftOut.length > 0 || item.others.length > 0 || apps.length > 0 || item.inUse;
+    holdsAnother ||=
+      item.leftOut.length > 0 || item.others.length > 0 || item.insideUnknown || apps.length > 0 || item.inUse;
     // What the size does not count: another copy's program inside the
     // folder (Codex's own install in ~/.codex).
     const leftOut =

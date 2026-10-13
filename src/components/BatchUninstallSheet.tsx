@@ -654,6 +654,8 @@ export function BatchUninstallSheet({ uninstall }: { uninstall: BatchUninstall }
             count: reason.ids.length,
           }),
         );
+      case "otherOllamaGoes":
+        return plainRefusal(t("batchUninstall.reason.otherOllamaGoes", { names: quotedNames(t, reason.ids.map(nameOf)) }));
       case "afterOthers":
         return plainRefusal(t("batchUninstall.reason.afterOthers", { names: quotedNames(t, reason.ids.map(nameOf)) }));
     }

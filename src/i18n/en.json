@@ -1217,6 +1217,7 @@
       "stillNeeded": "Still used by {{names}}. To uninstall it, select those too, or uninstall them first.",
       "neededByExcluded_one": "{{names}} still uses it and won't be uninstalled, so it won't be either.",
       "neededByExcluded_other": "{{names}} still use it and won't be uninstalled, so it won't be either.",
+      "otherOllamaGoes": "Ollama's models need one copy of Ollama to stay installed, and {{names}} will be uninstalled this time. To uninstall this one too, first uninstall the models, then this one on its own.",
       "cycle": "The order to uninstall these in couldn't be determined. Uninstall it on its own, from its row.",
       "afterOthers": "It can be uninstalled only after {{names}}. Uninstall {{names}} this time, then this one on its own."
     },

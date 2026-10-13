@@ -17,6 +17,8 @@ export interface KeptDataItem {
   leftOut: string[];
   /** Another tool's data inside it, not counted in `size` (`~/.gemini/antigravity-cli` in `~/.gemini`). */
   others: OthersData[];
+  /** The look stopped before it could tell whether another copy's program or another tool's data is inside (`Warning.KeepsData`'s `inside_unknown`). */
+  insideUnknown: boolean;
   /** Another copy of the tool stays and still uses it (`Warning.KeepsData`'s `in_use`). */
   inUse: boolean;
 }
@@ -45,9 +47,9 @@ export function keptDataOf(warnings: readonly Warning[]): KeptDataItem[] {
   const items: KeptDataItem[] = [];
   for (const warning of warnings) {
     if (typeof warning !== "string" && "KeepsData" in warning) {
-      const { path, what, size, left_out, others, in_use } = warning.KeepsData;
+      const { path, what, size, left_out, others, inside_unknown, in_use } = warning.KeepsData;
       // An older line may have none of them.
-      items.push({ path, what, size, leftOut: left_out ?? [], others: others ?? [], inUse: in_use ?? false });
+      items.push({ path, what, size, leftOut: left_out ?? [], others: others ?? [], insideUnknown: inside_unknown ?? false, inUse: in_use ?? false });
     }
   }
   return items;

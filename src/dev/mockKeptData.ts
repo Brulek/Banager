@@ -19,14 +19,18 @@ function about(bytes: number): Measured {
 }
 
 /** What the pretend Mac has, by family, in the table's order. Exported for its test. */
-export const KEPT: Record<string, { path: string; what: "ToolData" | "Models"; size: Measured | null }[]> = {
+export const KEPT: Record<
+  string,
+  { path: string; what: "ToolData" | "Models"; size: Measured | null; inside_unknown?: boolean }[]
+> = {
   "claude-code": [
     { path: "~/.claude", what: "ToolData", size: about(412.3 * MB) },
     { path: "~/.claude.json", what: "ToolData", size: about(0.05 * MB) },
   ],
   codex: [{ path: "~/.codex", what: "ToolData", size: about(38.4 * MB) }],
-  // Its folder leads into ~/Documents, which is never measured: the path alone.
-  "gemini-cli": [{ path: "~/.gemini", what: "ToolData", size: null }],
+  // Its folder leads into ~/Documents, which is never measured: the path
+  // alone, and whether Antigravity's folders are in it is not known.
+  "gemini-cli": [{ path: "~/.gemini", what: "ToolData", size: null, inside_unknown: true }],
   // The models folder: the layers Ollama's own sizes count (./mockSizes.ts) and their manifests.
   ollama: [{ path: "~/.ollama/models", what: "Models", size: about(11.3 * GB + 0.2 * MB) }],
   // Its sessions, logins and logs, then its settings (opencode's own docs).

@@ -557,6 +557,37 @@ describe("the batch uninstall's sheet", () => {
     await waitFor(() => expect(submitted).toEqual(["wget"]));
   });
 
+  it("keeps one copy of Ollama while the models need one, and says why in each language", async () => {
+    // Homebrew's formula and its `ollama-app` cask, each preview saying an
+    // Ollama that stays still uses the models: each counted on the other.
+    const inUse: Warning = { KeepsData: { path: "~/.ollama/models", what: "Models", size: null, left_out: [], in_use: true } };
+    const family = { ...NO_FACTS, family: "ollama" };
+    const formulaCopy = formula("ollama", { facts: { ...family, commands: runs("ollama") } });
+    const app = artifact(brew, "Cask", "ollama-app", { display_name: "Ollama", facts: family });
+    neededByOf.ollama = [inUse];
+    neededByOf["ollama-app"] = [inUse];
+    const dialog = await openSheet([formulaCopy, app]);
+    expect(listOf(dialog, "Will be uninstalled")).toEqual(["Ollama"]);
+    expect(listOf(dialog, "Won't be uninstalled")).toEqual(["ollama"]);
+    const reason = () => toolItem(dialog, "ollama").querySelector<HTMLElement>("[data-sheet-reason]");
+    expect(reason()).toHaveTextContent(
+      /^Ollama's models need one copy of Ollama to stay installed, and Ollama will be uninstalled this time\. To uninstall this one too, first uninstall the models, then this one on its own\.$/,
+    );
+    await act(async () => {
+      await i18n.changeLanguage("zh-CN");
+    });
+    expect(reason()).toHaveTextContent("Ollama的模型需要保留一份Ollama，而这次会卸载“Ollama”。要卸载这一份，请先卸载这些模型，再单独卸载它。");
+    await act(async () => {
+      await i18n.changeLanguage("zh-Hant");
+    });
+    expect(reason()).toHaveTextContent("Ollama的模型需要保留一份Ollama，而這次會解除安裝「Ollama」。要解除安裝這一份，請先解除安裝這些模型，再單獨解除安裝它。");
+    await act(async () => {
+      await i18n.changeLanguage("en");
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Uninstall" }));
+    await waitFor(() => expect(submitted).toEqual(["ollama-app"]));
+  });
+
   it("says what each one deletes, where its files go, what it takes, and what they take together", async () => {
     const dialog = await openSheet([wget, claudeCode, llama, git]);
     expect(within(toolItem(dialog, "wget")).getByText(

@@ -154,15 +154,17 @@ describe("KeepsData on the wire", () => {
         size: { bytes: 432013312, partial: false, at_least: true },
         leftOut: [],
         others: [],
+        insideUnknown: false,
         inUse: false,
       },
-      { path: "~/.ollama/models", what: "Models", size: null, leftOut: [], others: [], inUse: false },
+      { path: "~/.ollama/models", what: "Models", size: null, leftOut: [], others: [], insideUnknown: false, inUse: false },
       {
         path: "~/.codex",
         what: "ToolData",
         size: { bytes: 38400000, partial: false, at_least: false },
         leftOut: ["~/.codex/packages/standalone"],
         others: [],
+        insideUnknown: false,
         inUse: false,
       },
       {
@@ -171,10 +173,11 @@ describe("KeepsData on the wire", () => {
         size: { bytes: 7553024, partial: false, at_least: false },
         leftOut: [],
         others: [{ path: "~/.gemini/antigravity-cli", tool: "Antigravity CLI" }],
+        insideUnknown: false,
         inUse: false,
       },
-      { path: "~/.ollama/models", what: "Models", size: null, leftOut: [], others: [], inUse: true },
-      { path: "~/.gemini", what: "ToolData", size: null, leftOut: [], others: [], inUse: false },
+      { path: "~/.ollama/models", what: "Models", size: null, leftOut: [], others: [], insideUnknown: false, inUse: true },
+      { path: "~/.gemini", what: "ToolData", size: null, leftOut: [], others: [], insideUnknown: false, inUse: false },
     ]);
   });
 
@@ -399,6 +402,30 @@ describe("the uninstall dialog's 「卸载后会保留」 group", () => {
       renderWithProviders(<KeptDataGroup warnings={[JSON.parse(wire) as Warning]} familyStays={false} />);
       expect(document.querySelector("[data-kept-others]")).toHaveTextContent("另一份Ollama仍會保留，並繼續使用這些模型。");
       await i18n.changeLanguage("en");
+    });
+
+    it("not for ~/.gemini when its look stopped before it could tell whether Antigravity's folders are inside", () => {
+      // No size, or one the look did not finish: whether another tool's
+      // data is inside is not known, and nothing more is said.
+      for (const size of [null, { bytes: 4_096, partial: false, at_least: true }, { bytes: 4_096, partial: true, at_least: false }]) {
+        const view = renderWithProviders(
+          <KeptDataGroup
+            warnings={[{ KeepsData: { path: "~/.gemini", what: "ToolData", size, left_out: [], inside_unknown: true } }]}
+            familyStays={false}
+          />,
+        );
+        expect(trashLine()).toBeNull();
+        expect(document.querySelector("[data-kept-others]")).toBeNull();
+        view.unmount();
+      }
+      // One looked at in full, with nothing inside, still says it.
+      renderWithProviders(
+        <KeptDataGroup
+          warnings={[{ KeepsData: { path: "~/.gemini", what: "ToolData", size: { bytes: 4_096, partial: false, at_least: false }, left_out: [] } }]}
+          familyStays={false}
+        />,
+      );
+      expect(trashLine()).not.toBeNull();
     });
 
     it("for Ollama's models when no other copy of Ollama uses them", () => {

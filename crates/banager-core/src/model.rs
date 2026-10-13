@@ -1155,6 +1155,14 @@ pub enum Warning {
     /// (`kept_data::others_inside`). Left off the wire when empty, so a
     /// line without one reads as it always has.
     ///
+    /// `inside_unknown`: the walk ended -- out of budget, something in it
+    /// unreadable, or never begun (a link into a protected place) --
+    /// before it met every folder `left_out` and `others` would name, so
+    /// another copy's program or another tool's data may be inside
+    /// unnamed: Antigravity's in a `~/.gemini` whose look stopped short.
+    /// The group then does not say it can go to the Trash. Left off the
+    /// wire when false.
+    ///
     /// `in_use`: another copy of the tool stays and still uses this folder
     /// -- Ollama.app, or another `ollama`, beside Homebrew's `ollama`
     /// formula runs the same models from `~/.ollama/models`
@@ -1169,6 +1177,8 @@ pub enum Warning {
         left_out: Vec<String>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         others: Vec<OthersData>,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        inside_unknown: bool,
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         in_use: bool,
     },
@@ -3104,6 +3114,7 @@ mod tests {
             }),
             left_out: Vec::new(),
             others: Vec::new(),
+            inside_unknown: false,
             in_use: false,
         };
         let wire = r#"{"KeepsData":{"path":"~/.claude","what":"ToolData","size":{"bytes":432013312,"partial":false,"at_least":true},"left_out":[]}}"#;
@@ -3115,6 +3126,7 @@ mod tests {
             size: None,
             left_out: Vec::new(),
             others: Vec::new(),
+            inside_unknown: false,
             in_use: false,
         };
         let wire = r#"{"KeepsData":{"path":"~/.ollama/models","what":"Models","size":null,"left_out":[]}}"#;
@@ -3127,6 +3139,7 @@ mod tests {
             size: None,
             left_out: vec!["~/.codex/packages/standalone".to_string()],
             others: Vec::new(),
+            inside_unknown: false,
             in_use: false,
         };
         let wire = r#"{"KeepsData":{"path":"~/.codex","what":"ToolData","size":null,"left_out":["~/.codex/packages/standalone"]}}"#;
@@ -3153,6 +3166,7 @@ mod tests {
                 path: "~/.gemini/antigravity-cli".to_string(),
                 tool: "Antigravity CLI".to_string(),
             }],
+            inside_unknown: false,
             in_use: false,
         };
         let wire = r#"{"KeepsData":{"path":"~/.gemini","what":"ToolData","size":{"bytes":7553024,"partial":false,"at_least":false},"left_out":[],"others":[{"path":"~/.gemini/antigravity-cli","tool":"Antigravity CLI"}]}}"#;
@@ -3165,11 +3179,28 @@ mod tests {
             size: None,
             left_out: Vec::new(),
             others: Vec::new(),
+            inside_unknown: false,
             in_use: true,
         };
         let wire = r#"{"KeepsData":{"path":"~/.ollama/models","what":"Models","size":null,"left_out":[],"in_use":true}}"#;
         assert_eq!(serde_json::to_string(&in_use).unwrap(), wire);
         assert_eq!(serde_json::from_str::<Warning>(wire).unwrap(), in_use);
+        // A look that stopped before it could rule out what is inside.
+        let unknown_inside = Warning::KeepsData {
+            path: "~/.gemini".to_string(),
+            what: KeptData::ToolData,
+            size: None,
+            left_out: Vec::new(),
+            others: Vec::new(),
+            inside_unknown: true,
+            in_use: false,
+        };
+        let wire = r#"{"KeepsData":{"path":"~/.gemini","what":"ToolData","size":null,"left_out":[],"inside_unknown":true}}"#;
+        assert_eq!(serde_json::to_string(&unknown_inside).unwrap(), wire);
+        assert_eq!(
+            serde_json::from_str::<Warning>(wire).unwrap(),
+            unknown_inside
+        );
     }
 
     #[test]

@@ -307,8 +307,9 @@ Paths are under a generic home folder, `/Users/you`.
   leads into `~/Documents`; Homebrew's ollama `~/.ollama/models`, about
   11.3 GB; and, with `?state=many`, Claude Code from npm `~/.claude` and
   `~/.claude.json`. Each has Copy Path and nothing that deletes. Under
-  Gemini CLI's and ollama's list one line says what isn't needed can go to
-  the Trash in Finder; not under npm's Codex's, nor under Claude Code's
+  ollama's list one line says what isn't needed can go to the Trash in
+  Finder; not under Gemini CLI's, whose `~/.gemini` was never looked into
+  and may hold Antigravity's folders, nor under npm's Codex's, nor under Claude Code's
   with `?state=many`, nor under Codex's own install's: another copy of the
   tool stays installed and still uses that folder, and under `~/.codex` a
   line says the ChatGPT and Codex apps keep their own data there too. The

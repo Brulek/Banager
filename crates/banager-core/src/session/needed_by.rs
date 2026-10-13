@@ -1521,6 +1521,7 @@ mod tests {
             size: None,
             left_out: Vec::new(),
             others: Vec::new(),
+            inside_unknown: false,
             in_use: false,
         };
         let plan = || {

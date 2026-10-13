@@ -409,6 +409,45 @@ describe("which ticked tools a batch uninstalls", () => {
     ]);
   });
 
+  it("keeps one copy of Ollama while its models need one, when the others' previews counted on another staying", () => {
+    // Homebrew's formula and its `ollama-app` cask, each preview saying an
+    // Ollama that stays still uses the models (`in_use`): each counted on
+    // the other.
+    const inUse: Warning = { KeepsData: { path: "~/.ollama/models", what: "Models", size: null, left_out: [], in_use: true } };
+    const family = { ...NO_FACTS, family: "ollama" };
+    const formulaCopy = formula("ollama", { facts: { ...family, commands: runs("ollama") } });
+    const app = artifact(brew, "Cask", "ollama-app", { display_name: "Ollama", facts: family });
+    const binary = artifact(brew, "Cask", "ollama-binary", { facts: family });
+    const snapshot = [formulaCopy, app, binary, llama];
+    const result = classify([candidate(formulaCopy, { warnings: [inUse] }), candidate(app, { warnings: [inUse] })], snapshot);
+    expect(ids(result.included)).toEqual(["Ollama"]);
+    expect(result.excluded.map((item) => [item.candidate.name, item.reason])).toEqual([
+      ["ollama", { kind: "otherOllamaGoes", ids: [artifactKeyId(app.key)] }],
+    ]);
+    // Three copies: the last one stays in the batch, and each other one
+    // names every copy that goes.
+    const three = classify(
+      [candidate(formulaCopy, { warnings: [inUse] }), candidate(app, { warnings: [inUse] }), candidate(binary, { warnings: [inUse] })],
+      snapshot,
+    );
+    expect(ids(three.included)).toEqual(["ollama-binary"]);
+    expect(three.excluded.map((item) => item.reason)).toEqual([
+      { kind: "otherOllamaGoes", ids: [artifactKeyId(binary.key)] },
+      { kind: "otherOllamaGoes", ids: [artifactKeyId(binary.key)] },
+    ]);
+    // One that counted on another stays out beside a copy whose own
+    // preview counted on none: that copy may be the one it counted on.
+    const either = classify([candidate(formulaCopy), candidate(app, { warnings: [inUse] })], snapshot);
+    expect(ids(either.included)).toEqual(["ollama"]);
+    expect(either.excluded.map((item) => item.reason)).toEqual([{ kind: "otherOllamaGoes", ids: [artifactKeyId(formulaCopy.key)] }]);
+    // Copies that counted on none go together.
+    const free = classify([candidate(formulaCopy), candidate(app)], snapshot);
+    expect(ids(free.included).sort()).toEqual(["Ollama", "ollama"]);
+    // And a copy that counted on another goes beside tools of no Ollama.
+    const alone = classify([candidate(formulaCopy, { warnings: [inUse] }), candidate(wget)], snapshot);
+    expect(ids(alone.included).sort()).toEqual(["ollama", "wget"]);
+  });
+
   it("does not take one copy of a tool for the other's program", () => {
     const npmClaude = artifact(npm, "Package", "@anthropic-ai/claude-code", { facts: { ...NO_FACTS, commands: runs("claude") } });
     const own = { ...claudeCode, facts: { ...NO_FACTS, commands: runs("claude") } };

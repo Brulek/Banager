@@ -12,9 +12,9 @@ Removing them needs a third. Most people never do either, and the tools quietly 
 
 Banager puts all of it in one window: what you have, what has an update, and a button for each.
 
-> **Status: pre-release.** The core and the UI work and are covered by 2284 Rust tests (plus 11 more
+> **Status: pre-release.** The core and the UI work and are covered by 2285 Rust tests (plus 11 more
 > that only run with `--ignored`: they touch a real Homebrew, the real Trash, AppKit or this Mac's
-> disk, or time a large run) and 3117 front-end tests, but there is no downloadable build yet — v0.1 is being prepared. Nothing here is
+> disk, or time a large run) and 3120 front-end tests, but there is no downloadable build yet — v0.1 is being prepared. Nothing here is
 > ready to rely on.
 
 <!-- A screenshot belongs here before the first release. -->
@@ -104,7 +104,8 @@ a protected place**, and the link is not followed.
   deletes them. One line under the list says that settings and data you don't need can be moved to the Trash in Finder
   (and, where a Terminal settings file is listed too, to leave that file where it is) — but not while another copy of
   the tool, or another tool of its family, stays installed, nor where a folder holds another copy's program or another
-  tool's or app's data, since what stays installed may still use it. `~/.codex` and `~/.copilot` are always such folders:
+  tool's or app's data, or may hold some that its measurement stopped short of ruling out, since what stays installed
+  may still use it. `~/.codex` and `~/.copilot` are always such folders:
   the ChatGPT, Codex and GitHub Copilot apps keep their own settings and data there too, which a line under them says.
   So is `~/.ollama/models` while Ollama.app or another `ollama` stays beside the Homebrew `ollama` being uninstalled:
   a line under it says another copy of Ollama still uses those models.
@@ -123,7 +124,8 @@ a protected place**, and the link is not followed.
   **Uninstall Selected** opens one preview of them all: what each one removes, in the order they will
   run; the ones it leaves to their own row, each with why — such as an uninstall that can't be cancelled
   once it starts, one that deletes files permanently, one whose steps can't be known in advance, one still
-  used by software you didn't select; what stays afterwards, each path once; and the exact commands
+  used by software you didn't select, one copy of Ollama while another goes in the same batch and the models still need
+  one to stay; what stays afterwards, each path once; and the exact commands
   under **Show Commands** (**Show Commands and Paths** when an uninstall moves files to the Trash).
   Confirming queues each tool's own uninstall, the same one its row runs — a tool whose dependent in
   the batch could not be started is left for later; on one source they start in the order listed.
@@ -558,7 +560,7 @@ formula 与 cask，以及 npm、PyPI、crates.io 上的包，每条都译自该�
 - 卸载前的预览会列出卸载后会保留的东西——AI 工具的设置和数据文件夹（内置表格里写了的）、Ollama 的模型——能算出大小的
   写出大小，并可以拷贝路径；预览里没有任何删除它们的按钮，只在列表下面用一句话说明不需要的设置和数据可以在访达中移到
   废纸篓（同时列出终端配置文件时，提醒它留在原处）。这个工具的另一份、或同一类的其他工具还装着，或者文件夹里有另一份
-  的程序、别的工具或 App 的数据时，不说这句话：还装着的那一份可能还在用。`~/.codex` 和 `~/.copilot` 总是这样的文件夹：
+  的程序、别的工具或 App 的数据，或者量大小时没量完、排除不了这些时，不说这句话：还装着的那一份可能还在用。`~/.codex` 和 `~/.copilot` 总是这样的文件夹：
   ChatGPT、Codex 和 GitHub Copilot App 也把自己的设置和数据放在那里，它们下面会有一行说明。卸载 Homebrew 的 `ollama`
   而 Ollama App 或另一个 `ollama` 还在时，`~/.ollama/models` 也是这样：它下面会有一行说明另一份 Ollama 还在用这些模型。
 - 别的来源要靠它运行的 Homebrew 软件，在那个来源还有自己的工具时不能卸载：预览把那个来源接在 Homebrew 自己的依赖者
@@ -572,7 +574,7 @@ formula 与 cask，以及 npm、PyPI、crates.io 上的包，每条都译自该�
   它和那样的 npm 一样，随 Node 一起更新。
 - “已安装”页里，“卸载…”可用的行前面有复选框。最多勾 20 个，点“卸载所选”，一个预览里列出全部：按实际执行的
   顺序写出每个会删什么；留给它自己那一行单独卸载的，逐个写明原因，例如开始后无法取消的、会永久删除文件的、
-  卸载步骤删什么无法事先得知的、还有没选上的软件要用到的；卸载后会保留的东西，每条路径只列一次；确切的命令收在“查看命令”
+  卸载步骤删什么无法事先得知的、还有没选上的软件要用到的、模型还需要留一份 Ollama 而另一份已在同一批里卸载的；卸载后会保留的东西，每条路径只列一次；确切的命令收在“查看命令”
   里（有工具的卸载会把文件移到废纸篓时是“查看命令和路径”）。确认后，每个工具运行的就是它那一行单独卸载时的那一次
   卸载——批量里依赖它的工具没能开始的，它先不卸载；同一个来源上的按列出的顺序开始。
 - “其他程序”页的扫描不读 macOS 在应用读取前会先问你的那些位置——桌面、文稿、下载、图片、影片、音乐、iCloud

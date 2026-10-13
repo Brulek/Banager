@@ -562,6 +562,8 @@ export type Warning =
         size: Measured | null;
         left_out: string[];
         others?: OthersData[];
+        /** The look stopped before it could tell whether another copy's program or another tool's data is inside; absent when not. */
+        inside_unknown?: boolean;
         /** Another copy of the tool stays and still uses it (Ollama.app beside Homebrew's `ollama`); absent when not. */
         in_use?: boolean;
       };

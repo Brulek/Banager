@@ -14,6 +14,7 @@
 import { canWrite, isAvailable, uninstallHoldKey } from "./sources";
 import { deletesForGood } from "./warnings";
 import { countsAsTool, neededBy, type NeededBy } from "./neededBy";
+import { keptDataOf } from "./keptData";
 import { saysSize, sizeNoteOf, sizeViewOf } from "./sizes";
 import { artifactKeyId } from "../store/ui";
 import type {
@@ -241,6 +242,12 @@ export type Exclusion =
   | { kind: "stillNeeded"; names: string[] }
   /** X6: still used by ticked tools (ids) that are left out themselves. */
   | { kind: "neededByExcluded"; ids: string[] }
+  /**
+   * X5b: a copy of Ollama whose preview counted on another copy staying to
+   * run the models (`countsOnAnotherOllama`), while these included copies
+   * (ids) go in this batch.
+   */
+  | { kind: "otherOllamaGoes"; ids: string[] }
   /** With `DEPENDENTS_FIRST` off: it could go only after these ticked tools (ids). */
   | { kind: "afterOthers"; ids: string[] }
   /** X7: an order its dependencies allow cannot be found. */
@@ -367,6 +374,25 @@ export function hosting(
   return manages || runs ? { manages, runs } : null;
 }
 
+/** The family whose copies run Ollama's models (`facts.family`): Homebrew's `ollama`, `ollama-app` and `ollama-binary`. */
+const OLLAMA_FAMILY = "ollama";
+
+/**
+ * Whether a copy of Ollama's preview counted on another Ollama staying to
+ * run the models: its models folder is one an Ollama that stays still uses
+ * (`Warning.KeepsData`'s `in_use`, `NeededBy::ollama_stays` in
+ * crates/banager-core/src/needed_by.rs), which is why it names no source
+ * that runs on it. The other may be a copy in the same batch -- Homebrew's
+ * formula and its `ollama-app` cask each count on the other -- and
+ * `Session::submit` does not look again once the first has gone.
+ */
+function countsOnAnotherOllama(candidate: BatchCandidate): boolean {
+  return (
+    candidate.artifact.facts.family === OLLAMA_FAMILY &&
+    keptDataOf(candidate.plan?.warnings ?? []).some((item) => item.what === "Models" && item.inUse)
+  );
+}
+
 /** The last part of a Homebrew name: `claudebar` of `gautham-v/tap/claudebar`. */
 function lastSegment(name: string): string {
   return name.slice(name.lastIndexOf("/") + 1);
@@ -459,6 +485,10 @@ function cycleMembers(ids: readonly string[], edges: ReadonlyMap<string, readonl
  * X6 are applied until nothing changes, since leaving one tool out can
  * leave out another: Homebrew's `pipx`, the program of a ticked pipx tool,
  * is left out, and with it `python@3.13`, which that `pipx` still needs.
+ * X5b, once the rest has settled, keeps one copy of Ollama of those ticked
+ * while the models need one: a copy whose preview counted on another
+ * staying (`countsOnAnotherOllama`) is left out while another copy is
+ * included, so the last such copy goes.
  *
  * `DependentsUnknown` is no reason: such a tool is included with its line,
  * and runs after the rest of its source, where Homebrew's own refusal
@@ -490,6 +520,12 @@ export function classify(candidates: readonly BatchCandidate[], artifacts: reado
     );
   }
   const included = () => candidates.filter((candidate) => !reasons.has(candidate.id));
+  // The other copies of Ollama included: those a copy that counted on
+  // another staying may have counted on.
+  const otherOllamas = (id: string): string[] =>
+    included()
+      .filter((other) => other.id !== id && other.artifact.facts.family === OLLAMA_FAMILY)
+      .map((other) => other.id);
   // The included tools each one runs after: its dependents, every one
   // ticked and included (it is covered, or it would be left out).
   const afterOf = (id: string): string[] =>
@@ -551,12 +587,27 @@ export function classify(candidates: readonly BatchCandidate[], artifacts: reado
     const looped = cycleMembers(ids, new Map(ids.map((id) => [id, afterOf(id)])));
     for (const id of looped) reasons.set(id, { kind: "cycle" });
     changed = looped.length > 0;
+    if (changed) continue;
+    // X5b, once the rest has settled: a copy of Ollama that counted on
+    // another, while another goes.
+    for (const candidate of included()) {
+      if (!countsOnAnotherOllama(candidate)) continue;
+      const ids = otherOllamas(candidate.id);
+      if (ids.length === 0) continue;
+      reasons.set(candidate.id, { kind: "otherOllamaGoes", ids });
+      changed = true;
+    }
   }
   // Said with every exclusion known: a dependent left out later in the
   // same pass is named too. (Exclusions only grow, so the kind holds.)
   for (const [id, reason] of reasons) {
     if (reason.kind === "stillNeeded" || reason.kind === "neededByExcluded") {
       reasons.set(id, dependentsVerdict(id) ?? reason);
+    }
+    // The copies that go after all, a later copy left out too.
+    if (reason.kind === "otherOllamaGoes") {
+      const ids = otherOllamas(id);
+      if (ids.length > 0) reasons.set(id, { kind: "otherOllamaGoes", ids });
     }
   }
 
