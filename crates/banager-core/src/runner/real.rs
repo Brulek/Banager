@@ -1244,12 +1244,16 @@ mod tests {
     #[tokio::test]
     async fn test_full_transcript_reassembles_multibyte_utf8_split_across_reads() {
         // U+4E03 ('七') encodes as the 3 UTF-8 bytes 0xE4 0xB8 0x83 (octal
-        // \344 \270 \203). Write the first two bytes, then sleep long enough
-        // that the runner's `read()` returns just those two bytes as their
-        // own chunk, then write the final byte in a second chunk — forcing
-        // the character to straddle a `read()` boundary. Decoding each raw
-        // chunk independently would turn this into two U+FFFD replacement
-        // characters instead of the original character.
+        // \344 \270 \203). Write the first two bytes, sleep, then write the
+        // final byte, so the character usually straddles a `read()`
+        // boundary: decoding each raw chunk independently would then turn
+        // it into two U+FFFD replacement characters. Usually, not always --
+        // a runner not polled during the sleep finds both writes in the
+        // pipe and reads them as one chunk, and nothing here can tell. The
+        // split itself is pinned by
+        // `test_a_character_split_across_pushes_reaches_the_line_and_the_transcript_whole`,
+        // which hands `StreamBuffer::push` the pieces directly; this test
+        // is the same bytes through a real pipe.
         let runner = RealRunner::new();
         let spec = CommandSpec {
             program: sh(),
@@ -2724,6 +2728,40 @@ mod tests {
         let mut buf = StreamBuffer::new(CapPolicy::ElideMiddle);
         buf.push(b"before\xffafter\n", Stream::Stdout, &None);
         assert_eq!(buf.into_transcript(), "before\u{fffd}after\n");
+    }
+
+    #[test]
+    fn test_a_character_split_across_pushes_reaches_the_line_and_the_transcript_whole() {
+        // '七' is the 3 UTF-8 bytes E4 B8 83. Each chunk below is one
+        // `push`, so the character straddles a read at every place it can
+        // be cut, whatever the scheduler does -- which the end-to-end test
+        // (`test_full_transcript_reassembles_multibyte_utf8_split_across_reads`)
+        // cannot promise: both of its writes may be waiting in the pipe by
+        // the first read. Decoding chunk by chunk would leave U+FFFD here.
+        let splits: [&[&[u8]]; 3] = [
+            &[b"\xe4", b"\xb8\x83\n"],
+            &[b"\xe4\xb8", b"\x83\n"],
+            &[b"\xe4", b"\xb8", b"\x83", b"\n"],
+        ];
+        for chunks in splits {
+            for policy in [CapPolicy::ElideMiddle, CapPolicy::Refuse] {
+                let lines: Arc<Mutex<Vec<(Stream, String)>>> = Arc::new(Mutex::new(Vec::new()));
+                let lines_cb = lines.clone();
+                let on_line: Option<LineCallback> = Some(output_lines(move |stream, line| {
+                    lines_cb.lock().unwrap().push((stream, line));
+                }));
+                let mut buf = StreamBuffer::new(policy);
+                for chunk in chunks {
+                    buf.push(chunk, Stream::Stdout, &on_line);
+                }
+                assert_eq!(
+                    *lines.lock().unwrap(),
+                    vec![(Stream::Stdout, "\u{4e03}".to_string())],
+                    "{chunks:?} {policy:?}"
+                );
+                assert_eq!(buf.into_transcript(), "\u{4e03}\n", "{chunks:?} {policy:?}");
+            }
+        }
     }
 
     // F2 of the decisions-round review: the proxy and mirror settings every
