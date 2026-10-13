@@ -83,5 +83,10 @@
     "name": "a home folder right after a compiler's flag is written as ~ too, not only after a space, a quote or a sign (r22 R53-1)",
     "summary": "error: command 'clang' failed: clang -I/Users/jane/include -L/Users/jane/lib CFLAGS=-I/Users/jane/inc file:///Users/jane/x via https://host/users/jane",
     "detail": "command 'clang' failed: clang -I~/include -L~/lib CFLAGS=-I~/inc file://~/x via https://host/users/jane"
+  },
+  {
+    "name": "a web address with no scheme keeps its /users/<id>, and a home right after a flag that follows another path (after , or :) is written as ~ too (r22 R53 skeptic 2)",
+    "summary": "error: see gitlab.com/users/jane/projects: cc -Wl,-L/opt/homebrew/lib,-L/Users/jane/lib -I/opt/x:-I/Users/jane/inc -isystem/Users/jane/sys",
+    "detail": "see gitlab.com/users/jane/projects: cc -Wl,-L/opt/homebrew/lib,-L~/lib -I/opt/x:-I~/inc -isystem~/sys"
   }
 ]

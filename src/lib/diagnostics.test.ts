@@ -401,6 +401,11 @@ describe("the text's helpers", () => {
     );
     expect(withoutHomePaths("CFLAGS=-I/Users/jane/inc -Wl,-rpath,/Users/bob/lib")).toBe("CFLAGS=-I~/inc -Wl,-rpath,~/lib");
     expect(withoutHomePaths("/Volumes/Backup/Users/jane/x")).toBe("/Volumes/Backup/Users/jane/x");
+    // A flag after another path still, and a web address with no scheme
+    // keeps its /users/<id> (r22 R53 skeptic 2).
+    expect(withoutHomePaths("-Wl,-L/opt/lib,-L/Users/jane/lib -I/opt/x:-I/Users/jane/inc gitlab.com/users/jane")).toBe(
+      "-Wl,-L/opt/lib,-L~/lib -I/opt/x:-I~/inc gitlab.com/users/jane",
+    );
   });
 });
 

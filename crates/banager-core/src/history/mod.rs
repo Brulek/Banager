@@ -381,6 +381,7 @@ struct DetailPatterns {
     label: regex::Regex,
     home: regex::Regex,
     name_char: regex::Regex,
+    flag: regex::Regex,
     login: regex::Regex,
     query: regex::Regex,
     address_path: regex::Regex,
@@ -406,6 +407,7 @@ fn detail_patterns() -> &'static DetailPatterns {
             // R20-A1-4).
             home: re(r"(?i)(?:/System/Volumes/Data)?/Users/([\p{L}\p{M}\p{N}_.\-]+)"),
             name_char: re(r"^[\p{L}\p{M}\p{N}_.\-]$"),
+            flag: re(r"^--?[A-Za-z][A-Za-z0-9_\-]*$"),
             login: re(r"([A-Za-z][A-Za-z0-9+.-]*://)[^/\s@'\x22`]+@"),
             query: re(r"([A-Za-z][A-Za-z0-9+.-]*://[^\s?#'\x22`]*)[?#][^\s'\x22`]*"),
             address_path: re(r"([A-Za-z][A-Za-z0-9+.-]*://[^/\s'\x22`]+)(/[^\s'\x22`]*)"),
@@ -560,17 +562,19 @@ fn is_name_char(c: Option<char>) -> bool {
 }
 
 /// Whether `text` at `at` comes right after a folder's or a host's name:
-/// a name's character just before, and a `/` earlier in the same word
-/// (back to a space or a quote) -- not a compiler's `-I` or `CFLAGS=-L`,
-/// after which a home is still one (r22 R53-1).
+/// a name's character just before, and the name's characters and `/`s
+/// just before it not a compiler's flag (`-I`, `-isystem`; `flag`) --
+/// after which a home is still one, also behind `CFLAGS=`, a `,` or a
+/// `:` (r22 R53-1, skeptic 2). So `gitlab.com/users/<id>` stays.
 fn after_a_name(text: &str, at: usize) -> bool {
     let before = &text[..at];
-    is_name_char(before.chars().next_back())
-        && before
-            .chars()
-            .rev()
-            .take_while(|c| !c.is_whitespace() && !matches!(c, '\'' | '"' | '`'))
-            .any(|c| c == '/')
+    let start = before
+        .char_indices()
+        .rev()
+        .take_while(|&(_, c)| c == '/' || is_name_char(Some(c)))
+        .last()
+        .map_or(at, |(i, _)| i);
+    is_name_char(before.chars().next_back()) && !detail_patterns().flag.is_match(&before[start..])
 }
 
 /// Where a history with no `Clock` yet starts trusting from: `now`, or

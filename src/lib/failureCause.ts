@@ -380,18 +380,14 @@ export function homesAsTilde(text: string): string {
 
 /**
  * Whether `text` at `at` comes right after a folder's or a host's name:
- * a letter, a digit, `_`, `.` or `-` just before, and a `/` earlier in
- * the same word (back to a space or a quote) -- not `-I` or `CFLAGS=-L`.
+ * a letter, a digit, `_`, `.` or `-` just before, and those and the `/`s
+ * just before it not a compiler's flag (`-I`, `-isystem`) -- after which a
+ * home is still one, also behind `CFLAGS=`, a `,` or a `:` (r22 R53-1,
+ * skeptic 2). So `gitlab.com/users/<id>` stays. Rust `after_a_name`.
  */
 function afterAName(text: string, at: number): boolean {
-  const last = Array.from(text.slice(Math.max(0, at - 2), at)).pop();
-  if (last === undefined || !/^[\p{L}\p{M}\p{N}_.\-]$/u.test(last)) return false;
-  for (let i = at - 1; i >= 0; i--) {
-    const c = text[i];
-    if (c === "/") return true;
-    if (c === undefined || /[\s'"`]/.test(c)) return false;
-  }
-  return false;
+  const before = /[\p{L}\p{M}\p{N}_.\-/]+$/u.exec(text.slice(0, at))?.[0];
+  return before !== undefined && !before.endsWith("/") && !/^--?[A-Za-z][A-Za-z0-9_-]*$/.test(before);
 }
 
 /**
