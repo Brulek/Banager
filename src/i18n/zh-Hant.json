@@ -1358,7 +1358,8 @@
       "retiredFine": "沒有Homebrew已停用或棄用的工具",
       "otherVersions_other": "{{count}}個工具保留了其他版本",
       "otherVersionsSize_other": "{{count}}個工具保留了其他版本，共{{size}}",
-      "otherVersionsFine": "沒有保留的其他版本"
+      "otherVersionsFine": "沒有保留的其他版本",
+      "unfinished": "{{source}}這次沒有檢查完，這裡關於它的結果可能不完整"
     },
     "disk": {
       "total": "已安裝的工具共佔用{{size}}",

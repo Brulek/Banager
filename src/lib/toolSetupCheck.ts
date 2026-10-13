@@ -419,18 +419,40 @@ function homebrewLines(t: Translate, input: ToolSetupInput): SetupLine[] | null 
   const artifacts = snapshot.artifacts.filter((artifact) => brews.has(artifact.key.instance_id));
   const retired = discoverCounts(artifacts).brewRetired;
   const keeping = artifacts.filter((artifact) => keepsOtherVersions(artifact));
-  if (retired === 0 && keeping.length === 0) return [line("fine", "fine", t("setupCheck.homebrew.fine"))];
+  // A Homebrew that didn't answer, or whose check didn't finish, has no
+  // list read this time -- none at all on a first launch -- so nothing is
+  // said to be fine of it, nor of every Homebrew because another one's
+  // list is clean (R59-3). What is counted is still said, under a line
+  // saying it may be incomplete; the Sources section has its ⚠︎.
+  const failed = new Set(snapshot.errors.map((error) => error.instance_id));
+  const unfinished = snapshot.instances.filter((instance) => brews.has(instance.id) && sourceWarns(instance, failed));
+  const known = unfinished.length === 0;
+  if (known && retired === 0 && keeping.length === 0) return [line("fine", "fine", t("setupCheck.homebrew.fine"))];
   const lines: SetupLine[] = [];
-  lines.push(
-    retired > 0
-      ? line("retired", "note", t("families.brewRetiredNotice", { count: retired }), {
-          detail: t("families.brewRetiredNoticeDetail"),
-          view: { kind: "installed", show: "brewRetired" },
-        })
-      : line("retired", "fine", t("setupCheck.homebrew.retiredFine")),
-  );
+  if (!known) {
+    const labels = instanceLabels(t, snapshot.instances);
+    for (const instance of unfinished) {
+      lines.push(
+        line(
+          `unfinished:${instance.id}`,
+          "note",
+          t("setupCheck.homebrew.unfinished", { source: labels.get(instance.id) ?? instance.adapter_id }),
+        ),
+      );
+    }
+  }
+  if (retired > 0) {
+    lines.push(
+      line("retired", "note", t("families.brewRetiredNotice", { count: retired }), {
+        detail: t("families.brewRetiredNoticeDetail"),
+        view: { kind: "installed", show: "brewRetired" },
+      }),
+    );
+  } else if (known) {
+    lines.push(line("retired", "fine", t("setupCheck.homebrew.retiredFine")));
+  }
   if (keeping.length === 0) {
-    lines.push(line("otherVersions", "fine", t("setupCheck.homebrew.otherVersionsFine")));
+    if (known) lines.push(line("otherVersions", "fine", t("setupCheck.homebrew.otherVersionsFine")));
   } else {
     const total = otherVersionsTotal(keeping, input.sizes, snapshot);
     lines.push(

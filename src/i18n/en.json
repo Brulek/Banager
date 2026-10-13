@@ -1483,7 +1483,8 @@
       "otherVersions_other": "Homebrew keeps other versions of {{count}} tools",
       "otherVersionsSize_one": "Homebrew keeps other versions of {{count}} tool, {{size}} in all",
       "otherVersionsSize_other": "Homebrew keeps other versions of {{count}} tools, {{size}} in all",
-      "otherVersionsFine": "No other versions are kept"
+      "otherVersionsFine": "No other versions are kept",
+      "unfinished": "Couldn't fully check {{source}} this time, so what's here about it may be incomplete"
     },
     "disk": {
       "total": "Installed tools take {{size}} in all",

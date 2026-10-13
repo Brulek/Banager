@@ -711,6 +711,54 @@ describe("toolSetupCheck's Homebrew lines", () => {
   });
 });
 
+describe("toolSetupCheck's Homebrew lines when a Homebrew wasn't fully checked (R59-3)", () => {
+  it("claims nothing is disabled or kept when the only Homebrew didn't answer the first check", () => {
+    // First launch, a Homebrew that doesn't answer: no list was read, and
+    // there is no earlier one to carry, so "nothing disabled, no other
+    // versions" would be said of nothing at all.
+    const snapshot = fineSnapshot();
+    snapshot.instances = snapshot.instances.map((i) =>
+      i.id === BREW ? { ...i, status: { unavailable: "NotResponding", notes: [] } } : i,
+    );
+    snapshot.artifacts = snapshot.artifacts.filter((a) => a.key.instance_id !== BREW);
+    expect(shape(toolSetupCheck(en, input({ snapshot })))["Homebrew"]).toEqual([
+      "note Couldn't fully check Homebrew this time, so what's here about it may be incomplete",
+    ]);
+    expect(shape(toolSetupCheck(zh, input({ snapshot })))["Homebrew"]).toEqual([
+      "note Homebrew这次没有检查完，这里关于它的结果可能不完整",
+    ]);
+    expect(shape(toolSetupCheck(zhHant, input({ snapshot })))["Homebrew"]).toEqual([
+      "note Homebrew這次沒有檢查完，這裡關於它的結果可能不完整",
+    ]);
+  });
+
+  it("says the same when its check didn't finish, and keeps what was counted", () => {
+    const snapshot = fineSnapshot();
+    snapshot.errors = [{ instance_id: BREW, message: "timed out" }];
+    expect(shape(toolSetupCheck(en, input({ snapshot })))["Homebrew"]).toEqual([
+      "note Couldn't fully check Homebrew this time, so what's here about it may be incomplete",
+    ]);
+    snapshot.artifacts.push(
+      artifact(
+        { instance_id: BREW, kind: "Formula", name: "node@22" },
+        { version: "22.23.3", homebrew: brewFacts({ other_versions: ["22.22.0"] }) },
+      ),
+    );
+    expect(shape(toolSetupCheck(en, input({ snapshot, sizes: null })))["Homebrew"]).toEqual([
+      "note Couldn't fully check Homebrew this time, so what's here about it may be incomplete",
+      "note Homebrew keeps other versions of 1 tool → installed:otherVersions",
+    ]);
+  });
+
+  it("doesn't let one Homebrew's clean list speak for another that didn't answer", () => {
+    const snapshot = fineSnapshot();
+    snapshot.instances.push(instance(INTEL, { status: { unavailable: "NotResponding", notes: [] } }));
+    expect(shape(toolSetupCheck(en, input({ snapshot })))["Homebrew"]).toEqual([
+      "note Couldn't fully check Homebrew (Intel) this time, so what's here about it may be incomplete",
+    ]);
+  });
+});
+
 describe("toolSetupCheck's disk lines", () => {
   it("says the toolbar's total with its hedge, and each Ollama's models", () => {
     const snapshot = fineSnapshot();
