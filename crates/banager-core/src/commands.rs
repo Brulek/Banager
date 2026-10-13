@@ -242,7 +242,9 @@ struct Stopped;
 /// Reads each folder once: the names in every `PATH` entry, in order, and
 /// in every `bin_dirs` folder not already on `PATH`. Skips an empty or a
 /// relative `PATH` entry (a shell would look it up from its own current
-/// folder, which is not Banager's: an app opened from Finder has `/`), one
+/// folder, which is not Banager's: an app opened from Finder has `/`; a
+/// `~` or `~/...` that bash, the login shell, looks for in the home folder
+/// comes here as that folder, `path_env::path_dirs_of`), one
 /// that does not exist or that no shell could reach, and one naming a
 /// folder an earlier one did. A folder in a protected place (`protected`),
 /// as named or where it leads, is not read, nor is anything in it looked

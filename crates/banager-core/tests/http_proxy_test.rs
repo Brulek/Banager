@@ -106,6 +106,7 @@ async fn test_own_requests_go_through_the_login_shells_proxy_but_never_for_this_
                 "straight.invalid,192.0.2.1".to_string(),
             ),
         ],
+        tilde_is_home: false,
     });
     let client = RealHttpClient::new();
 
@@ -187,6 +188,7 @@ async fn test_own_requests_go_through_the_login_shells_proxy_but_never_for_this_
             ("all_proxy".to_string(), socks),
             ("no_proxy".to_string(), "straight.invalid".to_string()),
         ],
+        tilde_is_home: false,
     });
     let client = RealHttpClient::new();
     assert!(client.send(get("http://192.0.2.1:9/")).await.is_err());

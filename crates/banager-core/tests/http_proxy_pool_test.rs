@@ -85,6 +85,7 @@ fn read_login_shell(http_proxy: &str) {
             ("http_proxy".to_string(), http_proxy.to_string()),
             ("no_proxy".to_string(), "straight.invalid".to_string()),
         ],
+        tilde_is_home: false,
     });
 }
 

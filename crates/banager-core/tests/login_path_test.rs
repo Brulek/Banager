@@ -25,7 +25,7 @@ async fn test_an_accepted_login_path_reaches_commands_and_discovery_but_not_the_
     // and knows it is not the login shell's -- one value, one look.
     let (env, known) = login_path::round_env();
     assert!(!known);
-    assert_eq!(env, HostEnv::discover_along(before.clone()));
+    assert_eq!(env, HostEnv::discover_along(before.clone(), false));
     let proxy = "http://someone:u12-secret@127.0.0.1:7890";
     let mirror = "https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles";
     login_path::accept(&login_path::LoginEnv {
@@ -38,6 +38,7 @@ async fn test_an_accepted_login_path_reaches_commands_and_discovery_but_not_the_
                 "https://pypi.example/simple".to_string(),
             ),
         ],
+        tilde_is_home: false,
     });
     let (env, known) = login_path::round_env();
     assert!(known);
@@ -115,4 +116,27 @@ async fn test_an_accepted_login_path_reaches_commands_and_discovery_but_not_the_
     assert_eq!(std::env::var_os("PATH"), before);
     assert_eq!(std::env::var_os("https_proxy"), proxy_before);
     assert_eq!(std::env::var_os("HOMEBREW_BOTTLE_DOMAIN"), mirror_before);
+
+    // Read from bash, a `~` starting an entry is the home folder, which
+    // bash searches (R54-1 of the round-11 review); commands still get the
+    // `PATH` as the shell printed it.
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/"));
+    login_path::accept(&login_path::LoginEnv {
+        path: "~/.local/bin:/usr/bin:/bin".to_string(),
+        imported: Vec::new(),
+        tilde_is_home: true,
+    });
+    let (env, known) = login_path::round_env();
+    assert!(known);
+    assert_eq!(
+        env.path_dirs,
+        [home.join(".local/bin"), "/usr/bin".into(), "/bin".into()]
+    );
+    assert_eq!(HostEnv::discover().path_dirs, env.path_dirs);
+    assert_eq!(
+        login_path::path().as_deref(),
+        Some(std::ffi::OsStr::new("~/.local/bin:/usr/bin:/bin"))
+    );
 }

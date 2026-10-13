@@ -75,6 +75,7 @@ fn accept_settings_with_logins() {
             ("HOMEBREW_BOTTLE_DOMAIN".to_string(), MIRROR.to_string()),
             ("HOMEBREW_BREW_GIT_REMOTE".to_string(), REMOTE.to_string()),
         ],
+        tilde_is_home: false,
     });
 }
 

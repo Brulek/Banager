@@ -77,6 +77,7 @@ fn accept_the_settings() {
             ),
             ("PIP_INDEX_URL".to_string(), R3_MIRROR.to_string()),
         ],
+        tilde_is_home: false,
     });
 }
 

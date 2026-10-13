@@ -114,6 +114,14 @@ pub struct LoginEnv {
     /// Those of `IMPORTED` it set, as `(name, value)`, in `IMPORTED`'s
     /// order.
     pub imported: Vec<(String, String)>,
+    /// Whether the shell it was read from runs a command from a `PATH`
+    /// entry `~` or `~/...` in the home folder: bash does -- macOS's,
+    /// Homebrew's, and macOS's `/bin/sh`, which is bash -- since its
+    /// `find_in_path_element` expands a `~` that starts an entry; zsh,
+    /// dash, ksh and tcsh look for a folder named `~` in their current
+    /// one (R54-1 of the round-11 review). Taken from the shell's file
+    /// name (`read`); `path_env::path_dirs_of` reads it.
+    pub tilde_is_home: bool,
 }
 
 impl LoginEnv {
@@ -182,16 +190,22 @@ pub fn path() -> Option<OsString> {
 }
 
 /// What a refresh round looks along, and whether its `PATH` is the login
-/// shell's, from one look at what was accepted (`accepted`), so the two can
-/// never disagree: a read that works while an older round runs changes
-/// neither for that round (`Session::refresh_recording_on`).
+/// shell's, from one look at what was accepted (`accepted_env`), so the two
+/// can never disagree: a read that works while an older round runs changes
+/// neither for that round (`Session::refresh_recording_on`). A `~` that
+/// starts one of its entries is the home folder when that shell says so
+/// (`LoginEnv::tilde_is_home`); the process's own `PATH` was read by no
+/// shell, and is taken as written.
 pub fn round_env() -> (super::HostEnv, bool) {
-    let accepted = accepted();
+    let accepted = accepted_env();
     let known = accepted.is_some();
-    (
-        super::HostEnv::discover_along(accepted.or_else(|| std::env::var_os("PATH"))),
-        known,
-    )
+    let env = match accepted {
+        Some(found) => {
+            super::HostEnv::discover_along(Some(OsString::from(found.path)), found.tilde_is_home)
+        }
+        None => super::HostEnv::discover_along(std::env::var_os("PATH"), false),
+    };
+    (env, known)
 }
 
 /// What became of the reads so far.
@@ -320,6 +334,10 @@ pub async fn read(
     home: PathBuf,
     timeout: Duration,
 ) -> Option<LoginEnv> {
+    let tilde_is_home = matches!(
+        shell.file_name().and_then(|name| name.to_str()),
+        Some("bash" | "sh")
+    );
     let output = runner
         .run(
             CommandSpec {
@@ -363,6 +381,7 @@ pub async fn read(
     Some(LoginEnv {
         path: path.to_owned(),
         imported,
+        tilde_is_home,
     })
 }
 
@@ -441,6 +460,45 @@ mod tests {
             Duration::from_millis(20),
         )
         .await
+    }
+
+    /// R54-1 of the round-11 review: bash -- macOS's, Homebrew's, and
+    /// macOS's `/bin/sh`, which is bash -- runs a command from a `PATH`
+    /// entry `~/bin` in the home folder; zsh, dash, ksh and tcsh do not.
+    #[tokio::test]
+    async fn test_a_read_says_whether_its_shell_searches_a_tilde_in_the_home_folder() {
+        for (shell, tilde_is_home) in [
+            ("/bin/bash", true),
+            ("/opt/homebrew/bin/bash", true),
+            ("/bin/sh", true),
+            ("/bin/zsh", false),
+            ("/bin/dash", false),
+            ("/bin/ksh", false),
+            ("/opt/homebrew/bin/fish", false),
+        ] {
+            let runner = MockRunner::new();
+            runner.respond(
+                vec![shell, "-ilc", COMMAND],
+                CommandOutput {
+                    stderr_cause: Default::default(),
+                    exit_code: Some(0),
+                    stdout: format!("{DELIMITER}PATH=~/bin:/usr/bin\n{DELIMITER}"),
+                    stderr: String::new(),
+                    timed_out: false,
+                    cancelled: false,
+                },
+            );
+            let found = read(
+                &runner,
+                shell.into(),
+                "/tmp".into(),
+                Duration::from_millis(20),
+            )
+            .await
+            .unwrap();
+            assert_eq!(found.path, "~/bin:/usr/bin", "{shell}");
+            assert_eq!(found.tilde_is_home, tilde_is_home, "{shell}");
+        }
     }
 
     fn pairs(of: &[(&str, &str)]) -> Vec<(String, String)> {

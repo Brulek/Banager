@@ -50,6 +50,7 @@ fn accept_the_settings() {
             .iter()
             .map(|(name, value)| (name.to_string(), value.to_string()))
             .collect(),
+        tilde_is_home: false,
     });
 }
 

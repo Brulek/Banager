@@ -1951,6 +1951,7 @@ mod tests {
         let found = LoginEnv {
             path: "/usr/bin:/bin".into(),
             imported: vec![("https_proxy".into(), CURL_PROXY.into())],
+            tilde_is_home: false,
         };
         let said = Redactor::for_commands(Some(&found))
             .redact(CURL_SAID_NO_SCHEME)

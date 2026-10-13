@@ -177,19 +177,20 @@ impl HostEnv {
     /// login shell's `PATH` to be read (`LoginPath::ensure`), so it sees
     /// the one read, or the inherited one when no read has worked.
     pub fn discover() -> HostEnv {
-        HostEnv::discover_along(super::login_path::path())
+        super::login_path::round_env().0
     }
 
-    /// `discover`, with the `PATH` given (`path`) rather than looked up:
-    /// `login_path::round_env` reads it with whether it is the login
-    /// shell's, in one look.
-    pub fn discover_along(path: Option<std::ffi::OsString>) -> HostEnv {
-        let path_dirs = path
-            .map(|v| std::env::split_paths(&v).collect())
-            .unwrap_or_default();
+    /// `discover`, with the `PATH` given (`path`) rather than looked up,
+    /// split as `path_dirs_of` splits it: `login_path::round_env` reads it
+    /// with whether it is the login shell's, and whether that shell takes
+    /// a `~` starting an entry for the home folder, in one look.
+    pub fn discover_along(path: Option<std::ffi::OsString>, tilde_is_home: bool) -> HostEnv {
         let home = std::env::var_os("HOME")
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from("/"));
+        let path_dirs = path
+            .map(|v| path_dirs_of(&v, &home, tilde_is_home))
+            .unwrap_or_default();
         let euid = unsafe { libc::geteuid() };
         let cargo_home = std::env::var_os("CARGO_HOME").map(PathBuf::from);
         let rustup_home = std::env::var_os("RUSTUP_HOME").map(PathBuf::from);
@@ -208,6 +209,27 @@ impl HostEnv {
             ollama_host,
         }
     }
+}
+
+/// `path`'s entries, in order, as the login shell searches them: when
+/// `tilde_is_home` (`LoginEnv::tilde_is_home`: bash), one of exactly `~`
+/// is `home`, and one starting with `~/` a folder in it -- bash expands
+/// the `~` an entry starts with when it looks for a command, so a profile's
+/// `export PATH="~/.local/bin:$PATH"`, whose quotes keep the `~`, works
+/// in Terminal (R54-1 of the round-11 review). Every other entry, and
+/// every entry when not, as written: a relative one, which another shell
+/// looks up from its own current folder, is passed over by whatever reads
+/// the folders (`commands::read_folders`). `~name/...`, another account's
+/// home to bash, stays as written: finding it would mean looking that
+/// account up.
+pub fn path_dirs_of(path: &std::ffi::OsStr, home: &Path, tilde_is_home: bool) -> Vec<PathBuf> {
+    std::env::split_paths(path)
+        .map(|dir| match dir.strip_prefix("~") {
+            Ok(rest) if tilde_is_home && rest.as_os_str().is_empty() => home.to_path_buf(),
+            Ok(rest) if tilde_is_home => home.join(rest),
+            _ => dir,
+        })
+        .collect()
 }
 
 /// Where a tool that reads its home through the `home` crate will look --
@@ -258,6 +280,7 @@ pub fn resolve_exe(name: &str, env: &HostEnv) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ffi::OsString;
     use std::path::Path;
 
     #[test]
@@ -448,6 +471,33 @@ mod tests {
         ] {
             assert_eq!(split_host_port(hostport), None, "{hostport:?}");
         }
+    }
+
+    /// R54-1 of the round-11 review: an entry of exactly `~`, or one
+    /// starting with `~/`, is the home folder or a folder in it to bash;
+    /// any other entry, and every entry to another shell, as written.
+    #[test]
+    fn test_path_dirs_of_puts_the_home_folder_for_a_tilde_where_bash_does() {
+        let home = Path::new("/Users/someone");
+        let path = OsString::from("~/.local/bin:~:/usr/bin:~other/bin:a~/x:~bin::/bin");
+        assert_eq!(
+            path_dirs_of(&path, home, true),
+            [
+                "/Users/someone/.local/bin",
+                "/Users/someone",
+                "/usr/bin",
+                "~other/bin",
+                "a~/x",
+                "~bin",
+                "",
+                "/bin",
+            ]
+            .map(PathBuf::from)
+        );
+        assert_eq!(
+            path_dirs_of(&path, home, false),
+            std::env::split_paths(&path).collect::<Vec<_>>()
+        );
     }
 
     #[test]

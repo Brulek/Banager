@@ -492,6 +492,50 @@ fn test_a_new_judgement_sees_what_changed_since_the_last() {
     assert_nothing_protected_looked_at(&made, &Protected::new(&tree.root));
 }
 
+/// A `PATH` entry written `~/...` in a bash user's profile, which bash
+/// searches in the home folder (R54-1 of the round-11 review): the copy
+/// there is the one that runs, and the one behind it waits. To zsh it is
+/// a folder named `~` in its current one: the copy there is not found.
+#[test]
+fn test_a_path_entry_under_a_tilde_is_the_home_folder_to_bash_alone() {
+    let tree = Tree::new("tilde");
+    tree.file("cargo/bin/tool", 0o755);
+    tree.file(".local/bin/tool", 0o755);
+    let instances = vec![
+        instance("cargo", tree.at("cargo")),
+        instance("pipx", tree.at(".local/pipx")),
+    ];
+    let mut cargo = artifact("cargo", "tool", ArtifactKind::Binary);
+    cargo.facts.command_inputs.provided = vec![provided("tool", tree.at("cargo/bin/tool"), vec![])];
+    let mut pipx = artifact("pipx", "tool", ArtifactKind::Tool);
+    pipx.facts.command_inputs.provided = vec![provided("tool", tree.at(".local/bin/tool"), vec![])];
+    let rows = [cargo, pipx];
+    let path = OsString::from(format!("~/.local/bin:{}", tree.at("cargo/bin").display()));
+    for (tilde_is_home, runs, other) in [(true, 1, 0), (false, 0, 1)] {
+        let path_dirs = crate::runner::path_dirs_of(&path, &tree.root, tilde_is_home);
+        let folders = read_folders(&path_dirs, &[], &tree.root, CommandBudget::default());
+        let facts = judged(false, &tree.root, &folders, &instances, &rows, true).unwrap();
+        assert_eq!(
+            facts[runs][0].state,
+            Some(CommandState::Runs),
+            "{tilde_is_home}"
+        );
+        if tilde_is_home {
+            assert!(
+                matches!(facts[other][0].state, Some(CommandState::ShadowedBy { .. })),
+                "{:?}",
+                facts[other][0].state
+            );
+        } else {
+            assert!(
+                matches!(facts[other][0].state, Some(CommandState::NotOnPath { .. })),
+                "{:?}",
+                facts[other][0].state
+            );
+        }
+    }
+}
+
 /// A Mac shaped like the one the p1 probe judged (about 500 commands, a
 /// third of them a dependency's, 14 folders on `PATH`): Homebrew's
 /// formulae in `bin` and `sbin`, a few whose file in the keg is itself a
