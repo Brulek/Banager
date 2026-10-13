@@ -18,6 +18,7 @@
 use banager_core::adapters::standalone::recipe::{Latest, Recipe};
 use banager_core::adapters::standalone::recipes::RECIPES;
 use banager_core::adapters::AdapterMeta;
+use banager_core::runner::RealRunner;
 use std::path::Path;
 
 /// The README, read the way every other repo path in this crate's tests
@@ -347,4 +348,36 @@ fn test_readme_source_table_offers_no_install() {
         .expect("README.md has no source table");
     assert_eq!(header, "| Source | Reads | Updates / removes |");
     assert!(english.contains("no way to install something new"));
+}
+
+#[test]
+fn test_readme_preview_sentence_names_every_variable_the_runner_sets_on_every_command() {
+    // R58-1: the preview shows the plan's own variables only
+    // (`redact::preview_env`), and the README says it shows all Banager
+    // sets but the ones it names as never shown. `RealRunner::EVERY_COMMAND_ENV`
+    // goes on every command too (real.rs, R63-1), so each entry has to be
+    // among those named, in both blocks.
+    let readme = read_readme();
+    let (english, chinese) = blocks(&readme);
+    let english = english.split_whitespace().collect::<Vec<_>>().join(" ");
+    let start = english
+        .find("the confirmation lets you see the exact command before it runs")
+        .expect("README.md's English block has no preview sentence");
+    let english = &english[start..(start + 700).min(english.len())];
+    let chinese = squeeze(chinese);
+    let start = chinese
+        .find("都能在它运行之前看到确切的命令")
+        .expect("README.md's Chinese block has no preview sentence");
+    let chinese: String = chinese[start..].chars().take(260).collect();
+    for (name, value) in RealRunner::EVERY_COMMAND_ENV {
+        let shown = format!("`{name}={value}`");
+        assert!(
+            english.contains(&shown),
+            "README.md's English preview sentence does not name {shown}: {english}"
+        );
+        assert!(
+            chinese.contains(&shown),
+            "README.md's Chinese preview sentence does not name {shown}: {chinese}"
+        );
+    }
 }
