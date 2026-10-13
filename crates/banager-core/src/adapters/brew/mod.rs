@@ -273,8 +273,10 @@ pub struct BrewAdapter {
     /// How to read the formula folders in a prefix's `Cellar`, which the
     /// inventory compares with what `brew info` listed
     /// (`kegs::read_racks`, `remember_unlisted_racks`): the real Cellar
-    /// outside this crate's unit tests; inside them nothing is read unless
-    /// a test installs a reader (`with_racks_fn`).
+    /// outside this crate's unit tests; inside them nothing is read, and
+    /// the Cellar is empty, unless a test installs a reader
+    /// (`with_racks_fn`). `None` is a Cellar that could not be listed in
+    /// full.
     racks_fn: fn(&Path) -> Option<Vec<String>>,
     /// How to read the bottle tag Homebrew looks for on this Mac, for the
     /// Homebrew at a prefix (`bottles::this_mac`, r18 R46-2): the real
@@ -314,10 +316,10 @@ pub struct BrewAdapter {
     keg_only: Mutex<HashMap<InstanceId, HashSet<String>>>,
     /// The formula folders in each instance's `Cellar` that hold a version
     /// and that its last inventory's `brew info --installed --json=v2` did
-    /// not list (`remember_unlisted_racks`), by name in the Cellar. Empty
-    /// until an inventory has run, and when the Cellar could not be read
-    /// in full.
-    unlisted_racks: Mutex<HashMap<InstanceId, Vec<String>>>,
+    /// not list (`remember_unlisted_racks`), by name in the Cellar, and
+    /// whether the last listing of the Cellar failed. Nothing until an
+    /// inventory has run.
+    unlisted_racks: Mutex<HashMap<InstanceId, UnlistedRacks>>,
     /// The formulae of each instance, by name in the Cellar, that no
     /// bottle fits this Mac as its last inventory read them
     /// (`bottles::formulae_built_from_source`), whose update compiles.
@@ -412,11 +414,12 @@ const DEFAULT_MAC_TAG_FN: fn(&Path) -> Option<MacTag> = bottles::this_mac;
 const DEFAULT_MAC_TAG_FN: fn(&Path) -> Option<MacTag> = |_| None;
 
 /// `BrewAdapter::racks_fn` as `BrewAdapter::new` sets it: the real Cellar
-/// in every build but this crate's unit tests, where nothing is read.
+/// in every build but this crate's unit tests, where nothing is read and
+/// the Cellar is empty.
 #[cfg(not(test))]
 const DEFAULT_RACKS_FN: fn(&Path) -> Option<Vec<String>> = kegs::read_racks;
 #[cfg(test)]
-const DEFAULT_RACKS_FN: fn(&Path) -> Option<Vec<String>> = |_| None;
+const DEFAULT_RACKS_FN: fn(&Path) -> Option<Vec<String>> = |_| Some(Vec::new());
 
 /// `BrewAdapter::links_fn` as `BrewAdapter::new` sets it: the real prefix
 /// in every build but this crate's unit tests, where nothing is read.
@@ -798,7 +801,7 @@ impl BrewAdapter {
         self.app_version_fn = |_| None;
         self.trust_list_fn = |_| Some(TrustList::default());
         self.kegs_fn = |_, _| None;
-        self.racks_fn = |_| None;
+        self.racks_fn = |_| Some(Vec::new());
         self.mac_tag_fn = |_| None;
         self.service_fn = |_, _| None;
         self.links_fn = |_, _| None;
@@ -1285,8 +1288,14 @@ impl BrewAdapter {
     /// checked (`InstanceNote::FormulaeNotListed`), and no uninstall
     /// preview can rule out that it needs the formula being uninstalled
     /// (`Warning::DependentsUnknown`). Only names are read: the Cellar's,
-    /// and each missing one's versions (`kegs_fn`). A Cellar that cannot be
-    /// read in full keeps nothing, so nothing is claimed.
+    /// and each missing one's versions (`kegs_fn`).
+    ///
+    /// R60-1 (r24): a Cellar that cannot be listed in full (`read_racks`:
+    /// more names than one directory budget, or slower than its two
+    /// seconds) is not one with nothing left out. It keeps the formulae
+    /// the last listing found that this inventory still leaves out, claims
+    /// no others, and is remembered as not read, so an uninstall preview
+    /// cannot rule anything out (`may_have_unlisted_racks`).
     fn remember_unlisted_racks(&self, inst: &ManagerInstance, artifacts: &[InstalledArtifact]) {
         let listed: HashSet<&str> = artifacts
             .iter()
@@ -1296,17 +1305,33 @@ impl BrewAdapter {
                 name.rsplit('/').next().unwrap_or(name)
             })
             .collect();
-        let unlisted: Vec<String> = (self.racks_fn)(&inst.prefix)
-            .unwrap_or_default()
-            .into_iter()
-            .filter(|rack| !listed.contains(rack.as_str()))
-            .filter(|rack| {
-                (self.kegs_fn)(&inst.prefix, rack).is_some_and(|kegs| !kegs.versions.is_empty())
-            })
-            .collect();
-        if let Ok(mut known) = self.unlisted_racks.lock() {
-            known.insert(inst.id.clone(), unlisted);
-        }
+        let Ok(mut known) = self.unlisted_racks.lock() else {
+            return;
+        };
+        let reading = match (self.racks_fn)(&inst.prefix) {
+            Some(racks) => UnlistedRacks {
+                names: racks
+                    .into_iter()
+                    .filter(|rack| !listed.contains(rack.as_str()))
+                    .filter(|rack| {
+                        (self.kegs_fn)(&inst.prefix, rack)
+                            .is_some_and(|kegs| !kegs.versions.is_empty())
+                    })
+                    .collect(),
+                cellar_unread: false,
+            },
+            None => UnlistedRacks {
+                names: known
+                    .get(&inst.id)
+                    .map(|last| last.names.clone())
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|rack| !listed.contains(rack.as_str()))
+                    .collect(),
+                cellar_unread: true,
+            },
+        };
+        known.insert(inst.id.clone(), reading);
     }
 
     /// Keeps which formulae of `json`, `inst`'s inventory reply, no bottle
@@ -1343,7 +1368,21 @@ impl BrewAdapter {
             .map(|known| {
                 known
                     .get(instance_id)
-                    .is_some_and(|racks| !racks.is_empty())
+                    .is_some_and(|racks| !racks.names.is_empty())
+            })
+            .unwrap_or(false)
+    }
+
+    /// Whether the last inventory of `instance_id` could not rule out
+    /// formula folders Homebrew did not list: it found some, or its Cellar
+    /// could not be listed in full (R60-1).
+    fn may_have_unlisted_racks(&self, instance_id: &str) -> bool {
+        self.unlisted_racks
+            .lock()
+            .map(|known| {
+                known
+                    .get(instance_id)
+                    .is_some_and(|racks| racks.cellar_unread || !racks.names.is_empty())
             })
             .unwrap_or(false)
     }
@@ -2874,6 +2913,16 @@ fn qualified_key(artifacts: &[InstalledArtifact], key: &ArtifactKey) -> Artifact
 /// Round-local full and short names share a lookup. Insert in inventory
 /// order so a short name keeps the old first-match rule, even when an
 /// exact unqualified name occurs after a tapped package of that name.
+/// What an inventory found of the formula folders Homebrew did not list
+/// (`BrewAdapter::remember_unlisted_racks`).
+#[derive(Clone, Debug, Default)]
+struct UnlistedRacks {
+    /// By name in the Cellar.
+    names: Vec<String>,
+    /// The Cellar could not be listed in full, so others may be there.
+    cellar_unread: bool,
+}
+
 struct InventoryIndex<'a> {
     names: HashMap<(ArtifactKind, &'a str), &'a InstalledArtifact>,
 }
@@ -3111,7 +3160,7 @@ impl BrewAdapter {
                 // it uninstalls (`InstalledDependents`, also
                 // `Formula.installed`).
                 if req.artifact_kind == ArtifactKind::Formula
-                    && self.has_unlisted_racks(&inst.id)
+                    && self.may_have_unlisted_racks(&inst.id)
                     && !warnings.contains(&Warning::DependentsUnknown)
                 {
                     warnings.push(Warning::DependentsUnknown);
@@ -5790,39 +5839,92 @@ mod plan_execute_tests {
 
     /// A Cellar whose every formula folder with a version Homebrew listed
     /// -- a folder with none it does not list either (`Formula.racks`) --
-    /// or that could not be read, gives no note, and the preview trusts
-    /// `brew uses --installed` as before.
+    /// gives no note, and the preview trusts `brew uses --installed` as
+    /// before.
     #[tokio::test]
-    async fn a_cellar_homebrew_listed_in_full_or_could_not_be_read_changes_nothing() {
-        for racks in [
-            (|_: &Path| {
+    async fn a_cellar_homebrew_listed_in_full_changes_nothing() {
+        let adapter = BrewAdapter::new(runner_listing_jq_alone())
+            .with_racks_fn(|_| {
                 Some(vec![
                     "jq".to_string(),
                     "oniguruma".to_string(),
                     "empty".to_string(),
                 ])
-            }) as fn(&Path) -> Option<Vec<String>>,
-            |_: &Path| None,
-        ] {
-            let adapter = BrewAdapter::new(runner_listing_jq_alone())
-                .with_racks_fn(racks)
-                .with_kegs_fn(kegs_but_in_empty);
-            let inst = test_instance();
-            let outcome = adapter
+            })
+            .with_kegs_fn(kegs_but_in_empty);
+        let inst = test_instance();
+        let outcome = adapter
+            .check_updates(&inst, &CheckOptions::default())
+            .await
+            .expect("check_updates");
+        assert!(outcome.notes.is_empty(), "got {:?}", outcome.notes);
+        let plan = adapter
+            .plan(&inst, &uninstall_oniguruma(&inst))
+            .await
+            .expect("plan");
+        assert!(
+            !plan.warnings.contains(&Warning::DependentsUnknown),
+            "got {:?}",
+            plan.warnings
+        );
+    }
+
+    /// R60-1 (r24): a Cellar that could not be listed in full (more names
+    /// than the directory budget, or slower than its two seconds) is not
+    /// a Cellar with nothing left out. A formula uninstall preview cannot
+    /// rule out that a formula Homebrew dropped needs it, and says so; the
+    /// check claims nothing it did not see, but keeps the formulae the
+    /// last listing found left out, while the inventory still leaves them
+    /// out.
+    #[tokio::test]
+    async fn a_cellar_that_could_not_be_listed_leaves_dependents_unknown_and_keeps_what_was_found()
+    {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        static READABLE: AtomicBool = AtomicBool::new(true);
+        let adapter = BrewAdapter::new(runner_listing_jq_alone())
+            .with_racks_fn(|_| {
+                READABLE.load(Ordering::SeqCst).then(|| {
+                    vec![
+                        "jq".to_string(),
+                        "oniguruma".to_string(),
+                        "speedtest".to_string(),
+                    ]
+                })
+            })
+            .with_kegs_fn(kegs_but_in_empty);
+        let inst = test_instance();
+        let check = || async {
+            adapter
                 .check_updates(&inst, &CheckOptions::default())
                 .await
-                .expect("check_updates");
-            assert!(outcome.notes.is_empty(), "got {:?}", outcome.notes);
-            let plan = adapter
-                .plan(&inst, &uninstall_oniguruma(&inst))
-                .await
-                .expect("plan");
-            assert!(
-                !plan.warnings.contains(&Warning::DependentsUnknown),
-                "got {:?}",
-                plan.warnings
-            );
-        }
+                .expect("check_updates")
+                .notes
+        };
+        assert_eq!(check().await, [InstanceNote::FormulaeNotListed]);
+        READABLE.store(false, Ordering::SeqCst);
+        assert_eq!(
+            check().await,
+            [InstanceNote::FormulaeNotListed],
+            "what the last listing found stays"
+        );
+
+        let never_read = BrewAdapter::new(runner_listing_jq_alone())
+            .with_racks_fn(|_| None)
+            .with_kegs_fn(kegs_but_in_empty);
+        let outcome = never_read
+            .check_updates(&inst, &CheckOptions::default())
+            .await
+            .expect("check_updates");
+        assert!(outcome.notes.is_empty(), "got {:?}", outcome.notes);
+        let plan = never_read
+            .plan(&inst, &uninstall_oniguruma(&inst))
+            .await
+            .expect("plan");
+        assert!(
+            plan.warnings.contains(&Warning::DependentsUnknown),
+            "got {:?}",
+            plan.warnings
+        );
     }
 
     /// r18 R46-3: a formula `brew services start` set up to run in the

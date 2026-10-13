@@ -56,14 +56,20 @@ pub(crate) fn read_kegs(prefix: &Path, name: &str) -> Option<Kegs> {
 
 /// The formula folders in `<prefix>/Cellar` -- its racks, as Homebrew
 /// lists them (`Formula.racks`, `formula.rb:2766-2774`: neither a link nor
-/// a name starting with a dot) -- by name, or `None` when the Cellar
-/// cannot be listed in full: not there, in or through a protected place,
-/// or more names than one directory budget. Whether a rack holds a version
+/// a name starting with a dot) -- by name, none when there is no Cellar,
+/// or `None` when the Cellar cannot be listed in full: in or through a
+/// protected place, or more names or time than one directory budget
+/// (R60-1, r24: `BrewAdapter::remember_unlisted_racks` then rules nothing
+/// out). Whether a rack holds a version
 /// is `read_kegs`'s to say, and is asked only of the racks the inventory
 /// did not list (`BrewAdapter::remember_unlisted_racks`).
 pub(crate) fn read_racks(prefix: &Path) -> Option<Vec<String>> {
     let protected = Protected::of_this_process();
-    let listing = look::list(&prefix.join("Cellar"), &protected).ok()?;
+    let listing = match look::list(&prefix.join("Cellar"), &protected) {
+        Ok(listing) => listing,
+        Err(error) if error.kind() == ErrorKind::NotFound => return Some(Vec::new()),
+        Err(_) => return None,
+    };
     let racks = listing
         .names(&mut look::ListingBudget::default())
         .ok()?
@@ -237,7 +243,7 @@ mod tests {
     #[test]
     fn lists_the_cellars_formula_folders_as_homebrew_does() {
         let prefix = temp_dir("racks");
-        assert_eq!(read_racks(&prefix), None);
+        assert_eq!(read_racks(&prefix), Some(Vec::new()), "no Cellar, no racks");
         let cellar = prefix.join("Cellar");
         std::fs::create_dir_all(cellar.join("jq/1.8.2")).unwrap();
         std::fs::create_dir_all(cellar.join("speedtest")).unwrap();
@@ -248,6 +254,20 @@ mod tests {
         let mut racks = read_racks(&prefix).expect("listed");
         racks.sort();
         assert_eq!(racks, ["jq", "speedtest"]);
+        std::fs::remove_dir_all(&prefix).unwrap();
+    }
+
+    /// R60-1 (r24): a Cellar with more names than one directory budget
+    /// (`look::ListingBudget`, 4,096) is not listed in part, nor as empty.
+    #[test]
+    fn a_cellar_over_the_directory_budget_is_not_listed() {
+        let prefix = temp_dir("racks-over-budget");
+        let cellar = prefix.join("Cellar");
+        std::fs::create_dir_all(&cellar).unwrap();
+        for i in 0..4097 {
+            std::fs::write(cellar.join(format!("f{i}")), b"").unwrap();
+        }
+        assert_eq!(read_racks(&prefix), None);
         std::fs::remove_dir_all(&prefix).unwrap();
     }
 

@@ -1979,7 +1979,15 @@ src/lib/sources.ts). Banager runs none of them. Until it is
 gone the Overview does not say everything is up to date, and every
 formula's uninstall preview says it couldn't check what else needs it
 (`Warning::DependentsUnknown`), whatever `brew uses` named. Nothing more
-runs for this. A Cellar Banager cannot read in full claims nothing.
+runs for this. A Cellar that is not there has no formula left out. One
+Banager cannot list in full -- in or through a protected place, more
+than 4,096 names, or slower than two seconds (`look::ListingBudget`) --
+is not taken for one with nothing left out (R60-1, r24): Homebrew's
+notice stays while the formulae the last listing found are still left
+out of `brew info`, no others are claimed, and every formula's uninstall
+preview says it couldn't check what else needs it
+(`Warning::DependentsUnknown`), since none of Homebrew's own checks would
+count a formula it dropped (`BrewAdapter::may_have_unlisted_racks`).
 
 **A formula's background service** (r18 R46-3). `brew services start
 <name>` puts the formula's service file in `~/Library/LaunchAgents`, or in
