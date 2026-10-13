@@ -138,7 +138,9 @@ export interface JustUpdatedEntry {
   /** The name its row had. */
   name: string;
   /**
-   * The version it has now, or null where there is none to show honestly:
+   * The version Banager read back after it (`HistoryRecord.to_version`),
+   * or the one it was for until the history has that, or null where there
+   * is none to show honestly:
    * a model's is a digest, and beside 「未能更新」 or what did not add up
    * a version would read as the one it was updated to.
    */
@@ -427,7 +429,7 @@ export interface JustUpdatedProps {
  * not simply vanish from the list once it has ended -- nor after a
  * restart: one that worked, and one that did not or asks to be checked. A grouped container (spec §3.10) under its title -- 13 bold, with
  * a small grey Clear beside it -- of quiet lines, not rows: 28 high, the
- * 20 icon, the name in 13, the version it has now in 11 muted, how it
+ * 20 icon, the name in 13, the version it was updated to in 11 muted, how it
  * ended in 11 (`EndingWords`: 「已更新」 or 「已确认更新」, 「未能更新」 with
  * its cause, 「没有更新成功：版本没有变」, 「已更新，有错误」, or what else did
  * not add up) with

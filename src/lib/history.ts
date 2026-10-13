@@ -201,6 +201,14 @@ export function clearedHere(view: HistoryView, opId: number): boolean {
 }
 
 /**
+ * The record of this launch the history kept of operation `opId`, once
+ * it has it.
+ */
+export function recordHere(view: HistoryView, opId: number): HistoryRecord | undefined {
+  return view.records.find((record) => record.run === view.run && record.op_id === opId);
+}
+
+/**
  * Whether Banager read the version change of an operation this window ran
  * (`HistoryRecord.verified`): the record of this launch with its id, once
  * the history has it; false until then and for one it never kept.

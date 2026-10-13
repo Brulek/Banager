@@ -3728,7 +3728,7 @@ describe("UpdatesPage", () => {
       vi.useRealTimers();
     });
 
-    it("takes over a finished update's tick once its row is gone, with the version it has now and when it finished", async () => {
+    it("takes over a finished update's tick once its row is gone, with the version it was updated to and when it finished", async () => {
       // Only the clock is fake: 14:40, and glib's update finished at 14:32.
       vi.useFakeTimers({ toFake: ["Date"] });
       vi.setSystemTime(new Date(2026, 8, 28, 14, 40));
@@ -3769,6 +3769,48 @@ describe("UpdatesPage", () => {
       // Updated is under Pending, and no row of the list.
       expect(section.compareDocumentPosition(rowOf("OnyX")) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
       expect(section.closest("[data-tool-row]")).toBeNull();
+    });
+
+    it("keeps the version the update read back, not one Terminal moved the tool to since, as after a restart (r23 R55-4)", async () => {
+      operations = [operation(glibKey, { status: "Done", outcome: "Succeeded" })];
+      started(7, "2.90.0");
+      useUiStore.setState({ opFinishedAt: { 7: Date.now() - 60_000 } });
+      artifacts = [installed(glibKey, "2.88.3"), installed(onyxKey, "5.0.2")];
+      const kept: HistoryRecord = {
+        run: "this-launch",
+        op_id: 7,
+        finished_at: Date.now() - 60_000,
+        key: glibKey,
+        display_name: "glib",
+        adapter_id: "brew",
+        kind: "Update",
+        from_version: "2.88.3",
+        to_version: "2.90.1",
+        result: "Succeeded",
+        verified: true,
+        dismissed: false,
+      };
+      const answer = mockInvoke.getMockImplementation()!;
+      mockInvoke.mockImplementation((cmd: string, args?: InvokeArgs) =>
+        cmd === "get_history" ? Promise.resolve({ run: "this-launch", cleared_before: null, records: [kept] }) : answer(cmd, args),
+      );
+      const { queryClient } = renderPage();
+      await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("get_history"));
+
+      // glib updated to 2.91.0 in Terminal since, and Check Again.
+      act(() => {
+        queryClient.setQueryData(queryKeys.snapshot, {
+          ...snapshot,
+          generation: snapshot.generation + 1,
+          instances,
+          artifacts: [installed(glibKey, "2.91.0"), installed(onyxKey, "5.0.2")],
+          updates: [snapshot.updates[1]],
+        });
+      });
+      const section = await screen.findByRole("region", { name: "Update History" });
+      const [line] = within(section).getAllByRole("listitem");
+      expect(await within(line).findByText("2.90.1")).toBeInTheDocument();
+      expect(within(line).queryByText("2.91.0")).toBeNull();
     });
 
     it("stays at the top when nothing is left to install, and moves under the rows when something is", async () => {
@@ -3926,7 +3968,7 @@ describe("UpdatesPage", () => {
       expect(await screen.findByText("1 update available")).toBeInTheDocument();
 
       // The check after it no longer offers glib: the line takes over, with
-      // the version it has now, and its log.
+      // the version it moved to, and its log.
       act(() => {
         queryClient.setQueryData(queryKeys.snapshot, {
           ...snapshot,

@@ -29,7 +29,7 @@ import {
   justUpdatedOps,
   type JustUpdatedEntry,
 } from "../components/JustUpdated";
-import { clearedHere, recentUpdates, toolsSeenHere, useClearHistory, useHistory, verifiedHere } from "../lib/history";
+import { clearedHere, recentUpdates, recordHere, toolsSeenHere, useClearHistory, useHistory, verifiedHere } from "../lib/history";
 import { NO_HISTORY } from "../lib/types";
 import { RowAction, ToolRow } from "../components/ToolRow";
 import { StatusChip, type StatusChipProps } from "../components/StatusChip";
@@ -589,10 +589,12 @@ export function UpdatesPage() {
   // history's below. Out of every count, and of Select all:
   // nothing in it has a checkbox or a button.
   //
-  // The version is the one the snapshot now lists for the tool -- what is
-  // installed, read back after the update -- or, where it lists none, the
-  // one the update was for: of one installed though a step after it
-  // failed, the one Banager read after it (its outcome's). A model's is a
+  // The version is the one Banager read back after the update, as the
+  // history kept it (`recordHere`) and lists it after a restart -- never
+  // the one the snapshot lists now, which Terminal can have moved since
+  // (r23 R55-4) -- or, until the history has it, the one the update was
+  // for: of one installed though a step after it failed, the one Banager
+  // read after it (its outcome's). A model's is a
   // digest, and is not shown; nor is one beside 「未能更新」 or what did not
   // add up, where it would read as the version the tool was updated to.
   //
@@ -626,7 +628,7 @@ export function UpdatesPage() {
       if (ending === null) return [];
       const key = { instance_id: op.instance_id, kind: op.artifact_kind, name: op.name };
       const adapterId = instancesById.get(op.instance_id)?.adapter_id ?? adapterIdOf(op.instance_id);
-      const installed = artifactsById.get(artifactKeyId(key))?.version;
+      const readBack = recordHere(history, op.id)?.to_version;
       return [
         {
           id: `op:${op.id}`,
@@ -639,9 +641,9 @@ export function UpdatesPage() {
             op.artifact_kind === "Model"
               ? null
               : ending.kind === "succeeded"
-                ? installed || updateTargets[op.id] || null
+                ? readBack || updateTargets[op.id] || null
                 : ending.kind === "updatedButStepFailed"
-                  ? installed || stepFailedVersion(op.outcome)
+                  ? readBack || stepFailedVersion(op.outcome)
                   : null,
           finishedAt: opFinishedAt[op.id] ?? null,
           verified: verifiedHere(history, op.id),
@@ -688,7 +690,6 @@ export function UpdatesPage() {
     clearedJustUpdated,
     opFinishedAt,
     instancesById,
-    artifactsById,
     opName,
     updateTargets,
     passwordRecoveryKeys,
