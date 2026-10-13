@@ -27,6 +27,7 @@ pub(super) fn non_root_env() -> HostEnv {
         rustup_home: None,
         zdotdir: None,
         ollama_host: None,
+        tilde_entries: Vec::new(),
     }
 }
 
@@ -43,6 +44,7 @@ pub(super) fn root_env(home: &Path) -> HostEnv {
         rustup_home: None,
         zdotdir: None,
         ollama_host: None,
+        tilde_entries: Vec::new(),
     }
 }
 

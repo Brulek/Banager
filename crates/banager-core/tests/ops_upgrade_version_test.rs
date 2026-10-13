@@ -1109,6 +1109,7 @@ async fn claude_upgrade_outputs(
             rustup_home: None,
             zdotdir: None,
             ollama_host: None,
+            tilde_entries: Vec::new(),
         })
         .await;
     assert_eq!(detected.len(), 1, "detect sees the native layout");
@@ -1153,6 +1154,7 @@ async fn claude_upgrade_outputs(
                 rustup_home: None,
                 zdotdir: None,
                 ollama_host: None,
+                tilde_entries: Vec::new(),
             })
             .await;
         assert_eq!(
@@ -1388,6 +1390,7 @@ async fn rustup_home_and_instance(
         rustup_home: None,
         zdotdir: None,
         ollama_host: None,
+        tilde_entries: Vec::new(),
     };
     let inst = adapter.detect(&env).await.remove(0);
     (home, adapter, inst)
@@ -1596,6 +1599,7 @@ async fn cargo_binstall_upgrade_ending(
         rustup_home: None,
         zdotdir: None,
         ollama_host: None,
+        tilde_entries: Vec::new(),
     };
     let inst = adapter.detect(&env).await.remove(0);
     let outcome = upgrade(&runner, adapter, inst, ArtifactKind::Binary, "hexyl").await;

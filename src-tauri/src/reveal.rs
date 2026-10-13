@@ -238,6 +238,7 @@ mod tests {
                 rustup_home: None,
                 zdotdir: None,
                 ollama_host: None,
+                tilde_entries: Vec::new(),
             };
             banager_core::scan::scan_dirs(
                 &[self.path(bin)],

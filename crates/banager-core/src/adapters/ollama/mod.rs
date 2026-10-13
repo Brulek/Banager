@@ -995,6 +995,7 @@ mod tests {
                 rustup_home: None,
                 zdotdir: None,
                 ollama_host: Some(host.into()),
+                tilde_entries: Vec::new(),
             };
             let inst = adapter.detect(&env).await.remove(0);
             assert_eq!(inst.id, public_id);
@@ -2013,6 +2014,7 @@ mod tests {
                 rustup_home: None,
                 zdotdir: None,
                 ollama_host: ollama_host.map(str::to_string),
+                tilde_entries: Vec::new(),
             };
             let inst = adapter.detect(&env).await.remove(0);
             assert_eq!(inst.version.as_deref(), Some("0.34.1"));
@@ -2142,6 +2144,7 @@ mod tests {
             rustup_home: None,
             zdotdir: None,
             ollama_host: None,
+            tilde_entries: Vec::new(),
         };
         assert_eq!(host_for(&env), DEFAULT_HOST);
         env.ollama_host = Some("http://10.0.0.5:11434".to_string());
@@ -2197,6 +2200,7 @@ mod tests {
             rustup_home: None,
             zdotdir: None,
             ollama_host: None,
+            tilde_entries: Vec::new(),
         };
         let adapter = OllamaAdapter::new(runner.clone(), http);
         let instances = adapter.detect(&env).await;
@@ -2250,6 +2254,7 @@ mod tests {
             // A non-default port on this Mac, so the id assertion below
             // still proves the instance is keyed by the configured host.
             ollama_host: Some("http://localhost:11500".to_string()),
+            tilde_entries: Vec::new(),
         };
         let adapter = OllamaAdapter::new(runner, Arc::new(MockHttpClient::new()))
             .with_app_present_fn(|_| true);
@@ -2302,6 +2307,7 @@ mod tests {
             rustup_home: None,
             zdotdir: None,
             ollama_host: None,
+            tilde_entries: Vec::new(),
         };
         let adapter = OllamaAdapter::new(runner, Arc::new(MockHttpClient::new()))
             .with_app_present_fn(|_| false);
@@ -2346,6 +2352,7 @@ mod tests {
             rustup_home: None,
             zdotdir: None,
             ollama_host: Some("http://10.0.0.5:11434".to_string()),
+            tilde_entries: Vec::new(),
         };
         let adapter = OllamaAdapter::new(runner, Arc::new(MockHttpClient::new()))
             .with_app_present_fn(|_| true);
@@ -2402,6 +2409,7 @@ mod tests {
                 rustup_home: None,
                 zdotdir: None,
                 ollama_host: Some(host.to_string()),
+                tilde_entries: Vec::new(),
             };
             let adapter = OllamaAdapter::new(runner.clone(), http.clone())
                 // Ollama.app is here: without the refusal, a localhost
@@ -2561,6 +2569,7 @@ mod tests {
             rustup_home: None,
             zdotdir: None,
             ollama_host: None,
+            tilde_entries: Vec::new(),
         };
         let adapter =
             OllamaAdapter::new(Arc::new(MockRunner::new()), Arc::new(MockHttpClient::new()));

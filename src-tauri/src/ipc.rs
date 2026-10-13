@@ -1240,6 +1240,7 @@ mod tests {
             rustup_home: None,
             zdotdir: None,
             ollama_host: None,
+            tilde_entries: Vec::new(),
         };
         let system_bin =
             std::env::temp_dir().join(format!("banager-ipc-scan-bin-{}", std::process::id()));
@@ -3372,6 +3373,7 @@ mod tests {
                     rustup_home: None,
                     zdotdir: None,
                     ollama_host: None,
+                    tilde_entries: Vec::new(),
                 },
                 &CheckOptions::default(),
             )

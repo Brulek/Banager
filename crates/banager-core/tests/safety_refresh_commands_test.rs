@@ -420,6 +420,7 @@ async fn test_a_refresh_runs_only_the_read_only_commands_each_sources_section_sh
         rustup_home: Some(home.0.join(".rustup")),
         zdotdir: None,
         ollama_host: None,
+        tilde_entries: Vec::new(),
     };
     // `/usr/local/bin`, the one folder the scan reads outside the home
     // folder, stood in for by one that is never made: never this Mac's.

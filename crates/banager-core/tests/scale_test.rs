@@ -474,6 +474,7 @@ fn session_over(mac: &Mac, fail_later_checks: bool) -> (Arc<Session>, HostEnv) {
         rustup_home: None,
         zdotdir: None,
         ollama_host: None,
+        tilde_entries: Vec::new(),
     };
     (session, env)
 }

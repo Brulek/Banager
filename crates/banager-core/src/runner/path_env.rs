@@ -40,6 +40,13 @@ pub struct HostEnv {
     /// `http` from `ALLOWED_HTTPS_HOSTS` and refuses it (the Ollama
     /// section of `docs/what-we-run.md` says so).
     pub ollama_host: Option<String>,
+    /// Where in `path_dirs` the entries written `~` or `~/...` are that
+    /// bash, the login shell, looks in as the home folder or a folder in
+    /// it (`path_dirs_of`). A program that searches `PATH` itself --
+    /// `env`, as a `#!/usr/bin/env node` script runs it -- takes them as
+    /// written, relative, and passes them over (`needed_by`'s
+    /// `Look::on_path`). Empty when none is.
+    pub tilde_entries: Vec<usize>,
 }
 
 /// Turns a raw `OLLAMA_HOST` into a url the Ollama adapter can prefix onto
@@ -188,7 +195,7 @@ impl HostEnv {
         let home = std::env::var_os("HOME")
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from("/"));
-        let path_dirs = path
+        let (path_dirs, tilde_entries) = path
             .map(|v| path_dirs_of(&v, &home, tilde_is_home))
             .unwrap_or_default();
         let euid = unsafe { libc::geteuid() };
@@ -207,6 +214,7 @@ impl HostEnv {
             rustup_home,
             zdotdir,
             ollama_host,
+            tilde_entries,
         }
     }
 }
@@ -221,15 +229,29 @@ impl HostEnv {
 /// looks up from its own current folder, is passed over by whatever reads
 /// the folders (`commands::read_folders`). `~name/...`, another account's
 /// home to bash, stays as written: finding it would mean looking that
-/// account up.
-pub fn path_dirs_of(path: &std::ffi::OsStr, home: &Path, tilde_is_home: bool) -> Vec<PathBuf> {
-    std::env::split_paths(path)
-        .map(|dir| match dir.strip_prefix("~") {
-            Ok(rest) if tilde_is_home && rest.as_os_str().is_empty() => home.to_path_buf(),
-            Ok(rest) if tilde_is_home => home.join(rest),
+/// account up. With them, where the ones bash expanded are
+/// (`HostEnv::tilde_entries`).
+pub fn path_dirs_of(
+    path: &std::ffi::OsStr,
+    home: &Path,
+    tilde_is_home: bool,
+) -> (Vec<PathBuf>, Vec<usize>) {
+    let mut tilde_entries = Vec::new();
+    let dirs = std::env::split_paths(path)
+        .enumerate()
+        .map(|(at, dir)| match dir.strip_prefix("~") {
+            Ok(rest) if tilde_is_home => {
+                tilde_entries.push(at);
+                if rest.as_os_str().is_empty() {
+                    home.to_path_buf()
+                } else {
+                    home.join(rest)
+                }
+            }
             _ => dir,
         })
-        .collect()
+        .collect();
+    (dirs, tilde_entries)
 }
 
 /// Where a tool that reads its home through the `home` crate will look --
@@ -481,7 +503,7 @@ mod tests {
         let home = Path::new("/Users/someone");
         let path = OsString::from("~/.local/bin:~:/usr/bin:~other/bin:a~/x:~bin::/bin");
         assert_eq!(
-            path_dirs_of(&path, home, true),
+            path_dirs_of(&path, home, true).0,
             [
                 "/Users/someone/.local/bin",
                 "/Users/someone",
@@ -494,9 +516,10 @@ mod tests {
             ]
             .map(PathBuf::from)
         );
+        assert_eq!(path_dirs_of(&path, home, true).1, [0, 1]);
         assert_eq!(
             path_dirs_of(&path, home, false),
-            std::env::split_paths(&path).collect::<Vec<_>>()
+            (std::env::split_paths(&path).collect::<Vec<_>>(), Vec::new())
         );
     }
 
@@ -516,6 +539,7 @@ mod tests {
             rustup_home: None,
             zdotdir: None,
             ollama_host: None,
+            tilde_entries: Vec::new(),
         };
         assert_eq!(resolve_exe("sh", &env), Some(PathBuf::from("/bin/sh")));
     }
@@ -568,6 +592,7 @@ mod tests {
             rustup_home: None,
             zdotdir: None,
             ollama_host: None,
+            tilde_entries: Vec::new(),
         };
         let found = resolve_exe("npm", &env);
         std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
@@ -585,6 +610,7 @@ mod tests {
             rustup_home: None,
             zdotdir: None,
             ollama_host: None,
+            tilde_entries: Vec::new(),
         };
         assert_eq!(resolve_exe("definitely-not-a-real-binary-xyz", &env), None);
     }

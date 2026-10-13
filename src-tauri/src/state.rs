@@ -151,6 +151,7 @@ pub(crate) fn test_round_env() -> HostEnv {
         rustup_home: None,
         zdotdir: None,
         ollama_host: None,
+        tilde_entries: Vec::new(),
     }
 }
 

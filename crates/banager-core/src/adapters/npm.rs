@@ -1484,6 +1484,7 @@ mod tests {
             rustup_home: None,
             zdotdir: None,
             ollama_host: None,
+            tilde_entries: Vec::new(),
         };
         let instances = adapter.detect(&env).await;
         let _ = std::fs::remove_dir_all(&dir);
@@ -1537,6 +1538,7 @@ mod tests {
             rustup_home: None,
             zdotdir: None,
             ollama_host: None,
+            tilde_entries: Vec::new(),
         };
         let instances = adapter.detect(&env).await;
         let _ = std::fs::remove_dir_all(&dir);
@@ -1569,6 +1571,7 @@ mod tests {
             rustup_home: None,
             zdotdir: None,
             ollama_host: None,
+            tilde_entries: Vec::new(),
         };
         (dir, npm_path, env)
     }
@@ -1697,6 +1700,7 @@ mod tests {
             rustup_home: None,
             zdotdir: None,
             ollama_host: None,
+            tilde_entries: Vec::new(),
         };
         let instances = adapter.detect(&env).await;
         assert!(instances.is_empty());
@@ -3471,6 +3475,7 @@ mod tests {
             rustup_home: None,
             zdotdir: None,
             ollama_host: None,
+            tilde_entries: Vec::new(),
         };
         let initial = session.refresh(&env, &CheckOptions::default()).await;
         assert_eq!(
@@ -3585,6 +3590,7 @@ mod tests {
             rustup_home: None,
             zdotdir: None,
             ollama_host: None,
+            tilde_entries: Vec::new(),
         };
         let instances = adapter.detect(&env).await;
         assert_eq!(instances.len(), 1);

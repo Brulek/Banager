@@ -1549,6 +1549,7 @@ mod tests {
             rustup_home: None,
             zdotdir: None,
             ollama_host: None,
+            tilde_entries: Vec::new(),
         };
         let instances = adapter.detect(&env).await;
         let _ = std::fs::remove_dir_all(&dir);
@@ -1603,6 +1604,7 @@ mod tests {
             rustup_home: None,
             zdotdir: None,
             ollama_host: None,
+            tilde_entries: Vec::new(),
         };
         let instances = adapter.detect(&env).await;
         let _ = std::fs::remove_dir_all(&dir);
@@ -1652,6 +1654,7 @@ mod tests {
             rustup_home: None,
             zdotdir: None,
             ollama_host: None,
+            tilde_entries: Vec::new(),
         };
         let instances = PipAdapter::new(runner).detect(&env).await;
         let _ = std::fs::remove_dir_all(&dir);
@@ -1715,6 +1718,7 @@ mod tests {
             rustup_home: None,
             zdotdir: None,
             ollama_host: None,
+            tilde_entries: Vec::new(),
         }
     }
 

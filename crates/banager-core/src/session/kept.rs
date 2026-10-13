@@ -312,6 +312,7 @@ mod tests {
             rustup_home: None,
             zdotdir: None,
             ollama_host: None,
+            tilde_entries: Vec::new(),
         };
         session.refresh(&env, &CheckOptions::default()).await;
         session

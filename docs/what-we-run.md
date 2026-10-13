@@ -4986,7 +4986,9 @@ What it looks at, during the uninstall preview of a formula or cask only:
 - for npm, the `node` first on the `PATH` of the last refresh, found as
   Banager finds every program it runs (`resolve_exe`), every link
   followed: npm's `bin/npm-cli.js` begins `#!/usr/bin/env node`, so that
-  `node` is what npm and its packages run on;
+  `node` is what npm and its packages run on. A `PATH` entry `~` or
+  `~/...` that bash looks in as the home folder (above) is passed over
+  here, as `env` passes it over;
 - for pipx and uv, `bin/python` in the environment each tool has of its
   own (the folder pipx's `app_paths` -- or, for a package whose only apps
   are its dependencies', `app_paths_of_dependencies` -- and uv's

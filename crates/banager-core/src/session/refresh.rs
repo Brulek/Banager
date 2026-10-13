@@ -3280,6 +3280,7 @@ mod tests {
             rustup_home: None,
             zdotdir: None,
             ollama_host: None,
+            tilde_entries: Vec::new(),
         };
         let sink = Arc::new(VecSink::new());
         let session = Session::with_adapters(
@@ -3399,6 +3400,7 @@ mod tests {
             rustup_home: None,
             zdotdir: None,
             ollama_host: None,
+            tilde_entries: Vec::new(),
         };
         let session = Session::with_adapters(
             Arc::new(VecSink::new()),
@@ -3642,6 +3644,7 @@ mod tests {
             rustup_home: None,
             zdotdir: None,
             ollama_host: None,
+            tilde_entries: Vec::new(),
         };
         (home, env)
     }
@@ -3820,6 +3823,7 @@ mod tests {
             rustup_home: None,
             zdotdir: None,
             ollama_host: None,
+            tilde_entries: Vec::new(),
         };
         let runner = Arc::new(MockRunner::new());
         runner.respond(

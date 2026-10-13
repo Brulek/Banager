@@ -571,6 +571,7 @@ mod tests {
             rustup_home: None,
             zdotdir: None,
             ollama_host: None,
+            tilde_entries: Vec::new(),
         };
         session.refresh(&env, &CheckOptions::default()).await;
         session
@@ -655,6 +656,7 @@ mod tests {
                     rustup_home: None,
                     zdotdir: None,
                     ollama_host: None,
+                    tilde_entries: Vec::new(),
                 };
                 session.refresh(&env, &CheckOptions::default()).await;
                 let known = session.issue_plan(&uninstall(package)).await.unwrap();
@@ -750,6 +752,7 @@ mod tests {
             rustup_home: None,
             zdotdir: None,
             ollama_host: None,
+            tilde_entries: Vec::new(),
         };
         session.refresh(&env, &CheckOptions::default()).await;
         (session, brew, npm, env)
@@ -1116,6 +1119,7 @@ mod tests {
             rustup_home: None,
             zdotdir: None,
             ollama_host: None,
+            tilde_entries: Vec::new(),
         };
         let before = session.refresh(&env, &CheckOptions::default()).await;
         let old = session
@@ -1283,6 +1287,7 @@ mod tests {
             rustup_home: None,
             zdotdir: None,
             ollama_host: None,
+            tilde_entries: Vec::new(),
         };
         let finder = env(vec![root.path("usr/bin")]);
         let login = env(vec![prefix.join("bin"), root.path("usr/bin")]);
@@ -1401,6 +1406,7 @@ mod tests {
             rustup_home: None,
             zdotdir: None,
             ollama_host: None,
+            tilde_entries: Vec::new(),
         };
         let finder = env(vec![root.path("usr/bin")]);
         let login = env(vec![prefix.join("bin"), root.path("usr/bin")]);

@@ -95,6 +95,7 @@ impl Home {
             rustup_home: None,
             zdotdir: None,
             ollama_host: None,
+            tilde_entries: Vec::new(),
         }
     }
 }

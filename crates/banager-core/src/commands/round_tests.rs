@@ -512,7 +512,7 @@ fn test_a_path_entry_under_a_tilde_is_the_home_folder_to_bash_alone() {
     let rows = [cargo, pipx];
     let path = OsString::from(format!("~/.local/bin:{}", tree.at("cargo/bin").display()));
     for (tilde_is_home, runs, other) in [(true, 1, 0), (false, 0, 1)] {
-        let path_dirs = crate::runner::path_dirs_of(&path, &tree.root, tilde_is_home);
+        let (path_dirs, _) = crate::runner::path_dirs_of(&path, &tree.root, tilde_is_home);
         let folders = read_folders(&path_dirs, &[], &tree.root, CommandBudget::default());
         let facts = judged(false, &tree.root, &folders, &instances, &rows, true).unwrap();
         assert_eq!(
@@ -750,6 +750,7 @@ async fn test_finish_carries_dropped_command_coverage_to_the_window() {
         rustup_home: None,
         zdotdir: None,
         ollama_host: None,
+        tilde_entries: Vec::new(),
     };
     let in_flight = Arc::new(AtomicBool::new(false));
     let budget = CommandBudget::default();

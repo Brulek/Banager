@@ -1264,6 +1264,7 @@ mod tests {
             rustup_home: None,
             zdotdir: None,
             ollama_host: None,
+            tilde_entries: Vec::new(),
         };
         let (scan, made) = crate::dirfd::calls::measure(|| {
             scan_dirs(
@@ -1399,6 +1400,7 @@ mod tests {
             rustup_home: None,
             zdotdir: None,
             ollama_host: None,
+            tilde_entries: Vec::new(),
         }
     }
 

@@ -3831,6 +3831,7 @@ mod tests {
             rustup_home: None,
             zdotdir: None,
             ollama_host: None,
+            tilde_entries: Vec::new(),
         }
     }
 
@@ -3893,6 +3894,7 @@ mod tests {
             rustup_home: None,
             zdotdir: None,
             ollama_host: None,
+            tilde_entries: Vec::new(),
         };
         let user = HostEnv {
             path_dirs: vec![],
@@ -3902,6 +3904,7 @@ mod tests {
             rustup_home: None,
             zdotdir: None,
             ollama_host: None,
+            tilde_entries: Vec::new(),
         };
         assert!(BrewAdapter::refuses_as_root(&root));
         assert!(!BrewAdapter::refuses_as_root(&user));
@@ -9486,6 +9489,7 @@ mod plan_execute_tests {
             rustup_home: None,
             zdotdir: None,
             ollama_host: None,
+            tilde_entries: Vec::new(),
         };
 
         let instances = adapter.detect(&env).await;

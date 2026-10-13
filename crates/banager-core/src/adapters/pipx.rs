@@ -1710,6 +1710,7 @@ mod tests {
             rustup_home: None,
             zdotdir: None,
             ollama_host: None,
+            tilde_entries: Vec::new(),
         };
         let adapter = PipxAdapter::new(runner, Arc::new(MockHttpClient::new()));
         let instances = adapter.detect(&env).await;
@@ -2423,6 +2424,7 @@ mod tests {
             rustup_home: None,
             zdotdir: None,
             ollama_host: None,
+            tilde_entries: Vec::new(),
         };
         let adapter: Arc<dyn Adapter> =
             Arc::new(PipxAdapter::new(runner, Arc::new(MockHttpClient::new())));

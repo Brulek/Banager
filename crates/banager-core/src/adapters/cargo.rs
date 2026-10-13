@@ -2161,6 +2161,7 @@ mod tests {
             rustup_home: None,
             zdotdir: None,
             ollama_host: None,
+            tilde_entries: Vec::new(),
         };
         assert_eq!(
             cargo_home_of(&env),
@@ -2263,6 +2264,7 @@ mod tests {
             rustup_home: None,
             zdotdir: None,
             ollama_host: None,
+            tilde_entries: Vec::new(),
         };
         let instances = adapter.detect(&env).await;
         assert_eq!(instances.len(), 1);
@@ -2299,6 +2301,7 @@ mod tests {
             rustup_home: None,
             zdotdir: None,
             ollama_host: None,
+            tilde_entries: Vec::new(),
         };
         assert!(adapter.detect(&env).await.is_empty());
         assert!(
@@ -2342,6 +2345,7 @@ mod tests {
             rustup_home: None,
             zdotdir: None,
             ollama_host: None,
+            tilde_entries: Vec::new(),
         };
         assert_eq!(default_binstall_check(&env), None);
 
@@ -3077,6 +3081,7 @@ mod tests {
             rustup_home: None,
             zdotdir: None,
             ollama_host: None,
+            tilde_entries: Vec::new(),
         };
         let instances = CargoAdapter::detect(&adapter, &env).await;
 
@@ -3123,6 +3128,7 @@ mod tests {
             rustup_home: None,
             zdotdir: None,
             ollama_host: None,
+            tilde_entries: Vec::new(),
         };
         let instances = CargoAdapter::detect(&adapter, &env).await;
         let _ = std::fs::remove_dir_all(&dir);
@@ -3148,6 +3154,7 @@ mod tests {
             rustup_home: None,
             zdotdir: None,
             ollama_host: None,
+            tilde_entries: Vec::new(),
         };
         assert!(CargoAdapter::detect(&adapter, &env).await.is_empty());
     }

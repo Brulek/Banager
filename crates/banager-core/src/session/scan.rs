@@ -189,6 +189,7 @@ mod tests {
             rustup_home: None,
             zdotdir: None,
             ollama_host: None,
+            tilde_entries: Vec::new(),
         };
         let tool = Path::new("~/.local/bin/tool");
         let stray = Path::new("~/.local/bin/stray");

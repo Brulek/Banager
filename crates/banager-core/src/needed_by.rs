@@ -869,17 +869,25 @@ impl Look {
         false
     }
 
-    /// The first `name` on `env`'s `PATH`, as `env` would find it: what
-    /// `resolve_exe` answers, each `PATH` folder looked at the same way
+    /// The first `name` on `env`'s `PATH`, as `env` would find it: as
+    /// `resolve_exe` finds it, each `PATH` folder looked at the same way
     /// (`protected::resolve`) and one look each; and whether a folder was
     /// passed over on the way that is, or leads into, a protected place,
     /// or could not be searched, and so may hold the `name` `env` would
     /// run. The one after it is still the one returned, as `resolve_exe`'s.
     /// A relative folder is passed over as `resolve_exe` passes it over: it
-    /// names a folder only from wherever the program is run.
+    /// names a folder only from wherever the program is run. So is one
+    /// written `~` or `~/...`, which bash looks in as the home folder's
+    /// (`HostEnv::tilde_entries`) but `env` takes as written.
     fn on_path(&mut self, name: &str, env: &HostEnv) -> (Option<PathBuf>, bool) {
         let mut passed_over = false;
-        for dir in env.path_dirs.iter().filter(|dir| dir.is_absolute()) {
+        let as_env_reads = env
+            .path_dirs
+            .iter()
+            .enumerate()
+            .filter(|(at, dir)| dir.is_absolute() && !env.tilde_entries.contains(at))
+            .map(|(_, dir)| dir);
+        for dir in as_env_reads {
             let candidate = dir.join(name);
             if !self.one_more() {
                 return (None, passed_over);
@@ -1049,6 +1057,7 @@ mod tests {
                 rustup_home: None,
                 zdotdir: None,
                 ollama_host: None,
+                tilde_entries: Vec::new(),
             }
         }
 
@@ -1263,6 +1272,42 @@ mod tests {
             BUDGET,
         );
         assert_eq!(needed(&node.warnings), vec![(NPM.to_string(), true, 4)]);
+    }
+
+    /// The skeptic's answer to R54-1 of the round-11 review: bash looks in
+    /// a `PATH` entry `~/.local/bin` as the home folder's, but `env`, as
+    /// npm's `#!/usr/bin/env node` runs it, takes it as written and passes
+    /// it over, so the `node` npm runs on is Homebrew's, after it.
+    #[test]
+    fn test_a_node_in_a_path_entry_bash_expands_from_a_tilde_is_not_the_one_npm_runs_on() {
+        let root = Root::new("tilde");
+        root.node_22();
+        root.node_linked();
+        root.program("home/.local/bin/node");
+        let npm = instance("npm", NPM, root.path("opt/homebrew/bin/npm"), root.prefix());
+        let instances = vec![brew(&root), npm];
+        let mut env = root.env(&["home/.local/bin", "opt/homebrew/bin"]);
+        env.tilde_entries = vec![0];
+        let node = needed_by(
+            &formula("node"),
+            &instances[0],
+            &instances,
+            &npm_rows(),
+            &env,
+            BUDGET,
+        );
+        assert_eq!(needed(&node.warnings), vec![(NPM.to_string(), true, 4)]);
+        // Written as the folder itself, `env` finds the `node` in it first.
+        env.tilde_entries.clear();
+        let node = needed_by(
+            &formula("node"),
+            &instances[0],
+            &instances,
+            &npm_rows(),
+            &env,
+            BUDGET,
+        );
+        assert_eq!(needed(&node.warnings), Vec::new());
     }
 
     #[test]
