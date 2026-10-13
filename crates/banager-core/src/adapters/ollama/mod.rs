@@ -335,6 +335,8 @@ pub struct OllamaAdapter {
     /// of this would pass or fail depending on whether the machine
     /// running it happens to have Ollama installed.
     app_present_fn: fn(&HostEnv) -> bool,
+    /// Where the next registry check starts (`registry_checks`, R60-2).
+    resume: super::ResumePoints,
 }
 
 impl OllamaAdapter {
@@ -347,6 +349,7 @@ impl OllamaAdapter {
             meta,
             hosts: Mutex::new(HashMap::new()),
             app_present_fn: real_ollama_app_present,
+            resume: super::ResumePoints::default(),
         }
     }
 
@@ -743,9 +746,15 @@ impl OllamaAdapter {
         }
         let models_root = inst.prefix.join("models");
         let answers = super::registry_checks(
+            &self.resume,
+            &inst.id,
             installed
                 .iter()
-                .map(|artifact| async { Ok(self.check_one_model(&models_root, artifact).await) })
+                .map(|artifact| {
+                    (artifact.key.name.clone(), async {
+                        Ok(self.check_one_model(&models_root, artifact).await)
+                    })
+                })
                 .collect(),
         )
         .await;

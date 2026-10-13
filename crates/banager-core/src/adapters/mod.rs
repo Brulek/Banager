@@ -468,29 +468,107 @@ impl LookupFailure {
 /// `get_ok` says so: crates.io takes one), with a two-minute budget for
 /// this registry phase. Completed answers survive a deadline; unfinished and
 /// unstarted lookups are transient failures, never up-to-date answers.
-/// Batches preserve inventory order without spawning detached tasks.
-pub(crate) async fn registry_checks<F, T>(lookups: Vec<F>) -> Vec<Result<T, LookupFailure>>
+/// Batches run without spawning detached tasks, and the answers come back
+/// in inventory order.
+///
+/// R60-2 (r24): each lookup is named (the package it asks about), and a
+/// check starts at the package where the last check of this source ran out
+/// of budget (`ResumePoints`), going round to the ones before it. Without
+/// that, a source whose lookups never fit in two minutes asked about the
+/// same first packages at every refresh, and never about the rest.
+pub(crate) async fn registry_checks<F, T>(
+    resume: &ResumePoints,
+    instance_id: &str,
+    lookups: Vec<(String, F)>,
+) -> Vec<Result<T, LookupFailure>>
 where
     F: std::future::Future<Output = Result<T, LookupFailure>>,
 {
     registry_checks_until(
+        resume,
+        instance_id,
         lookups,
         tokio::time::Instant::now() + Duration::from_secs(120),
     )
     .await
 }
 
+/// Where the next registry check of each source starts (`registry_checks`):
+/// by instance, the name of the first package the last check had no time
+/// for, other than the one it started with. None when the last one reached
+/// every package. Kept in memory only.
+#[derive(Default)]
+pub(crate) struct ResumePoints(std::sync::Mutex<std::collections::HashMap<String, String>>);
+
 async fn registry_checks_until<F, T>(
-    lookups: Vec<F>,
+    resume: &ResumePoints,
+    instance_id: &str,
+    lookups: Vec<(String, F)>,
     deadline: tokio::time::Instant,
 ) -> Vec<Result<T, LookupFailure>>
+where
+    F: std::future::Future<Output = Result<T, LookupFailure>>,
+{
+    let (names, mut futures): (Vec<String>, Vec<Option<F>>) = lookups
+        .into_iter()
+        .map(|(name, future)| (name, Some(future)))
+        .unzip();
+    let from = resume
+        .0
+        .lock()
+        .ok()
+        .and_then(|points| points.get(instance_id).cloned());
+    // The package it stopped at, or, if that one has gone, the first after
+    // it by name (every caller's list is sorted by name or nearly so).
+    let start = from
+        .and_then(|from| {
+            names
+                .iter()
+                .position(|name| *name == from)
+                .or_else(|| names.iter().position(|name| *name > from))
+        })
+        .unwrap_or(0);
+    let order: Vec<usize> = (start..names.len()).chain(0..start).collect();
+    let ran = registry_checks_in_order(
+        order.iter().filter_map(|&i| futures[i].take()).collect(),
+        deadline,
+    )
+    .await;
+    // Not the first one it started with: a check that ran out of time on
+    // its first package moves on all the same, so the next one gets further.
+    let next = order
+        .iter()
+        .zip(&ran)
+        .skip(1)
+        .find(|(_, (_, cut_off))| *cut_off)
+        .map(|(&i, _)| names[i].clone());
+    if let Ok(mut points) = resume.0.lock() {
+        match next {
+            Some(name) => points.insert(instance_id.to_string(), name),
+            None => points.remove(instance_id),
+        };
+    }
+    let mut answers: Vec<Option<Result<T, LookupFailure>>> =
+        std::iter::repeat_with(|| None).take(names.len()).collect();
+    for (&i, (answer, _)) in order.iter().zip(ran) {
+        answers[i] = Some(answer);
+    }
+    answers.into_iter().flatten().collect()
+}
+
+/// The lookups in the order given, four at a time, each with whether the
+/// deadline cut it off: unstarted, or started and unanswered.
+async fn registry_checks_in_order<F, T>(
+    lookups: Vec<F>,
+    deadline: tokio::time::Instant,
+) -> Vec<(Result<T, LookupFailure>, bool)>
 where
     F: std::future::Future<Output = Result<T, LookupFailure>>,
 {
     async fn one<F, T>(
         future: Option<F>,
         deadline: tokio::time::Instant,
-    ) -> Option<Result<T, LookupFailure>>
+    ) -> Option<(Result<T, LookupFailure>, bool)>
     where
         F: std::future::Future<Output = Result<T, LookupFailure>>,
     {
@@ -502,12 +580,13 @@ where
             )
         };
         if tokio::time::Instant::now() >= deadline {
-            return Some(Err(timed_out()));
+            return Some((Err(timed_out()), true));
         }
         Some(
             tokio::time::timeout_at(deadline, future)
                 .await
-                .unwrap_or_else(|_| Err(timed_out())),
+                .map(|answer| (answer, false))
+                .unwrap_or_else(|_| (Err(timed_out()), true)),
         )
     }
     let mut iter = lookups.into_iter();
@@ -1276,18 +1355,20 @@ mod tests {
             }
         }
         let answers = registry_checks_until(
+            &ResumePoints::default(),
+            "pipx:/opt/homebrew",
             (0..12)
                 .map(|i| {
                     let started = &started;
                     let dropped = &dropped;
-                    async move {
+                    (format!("tool-{i:02}"), async move {
                         let _guard = Guard(dropped);
                         started.fetch_add(1, Ordering::SeqCst);
                         if i == 1 {
                             std::future::pending::<()>().await;
                         }
                         Ok(i)
-                    }
+                    })
                 })
                 .collect(),
             // Long enough that a loaded machine cannot pass it before the
@@ -1304,6 +1385,53 @@ mod tests {
         for i in [1, 4, 5, 6, 7, 8, 9, 10, 11] {
             assert!(answers[i].as_ref().unwrap_err().transient);
         }
+    }
+
+    /// R60-2 (r24): a check whose budget runs out before its last lookups
+    /// starts the next check where this one stopped, so repeated checks
+    /// reach every package, and each answer still comes back in inventory
+    /// order. Each round here answers the first four lookups it starts and
+    /// leaves the rest unanswered until the deadline.
+    #[tokio::test]
+    async fn test_registry_checks_resume_where_the_last_budget_ran_out() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let resume = ResumePoints::default();
+        let names: Vec<String> = (0..10).map(|i| format!("crate-{i}")).collect();
+        let mut reached = std::collections::BTreeSet::new();
+        for _round in 0..3 {
+            let answered = AtomicUsize::new(0);
+            let answers = registry_checks_until(
+                &resume,
+                "cargo:/Users/me/.cargo",
+                names
+                    .iter()
+                    .enumerate()
+                    .map(|(i, name)| {
+                        let answered = &answered;
+                        (name.clone(), async move {
+                            if answered.fetch_add(1, Ordering::SeqCst) >= 4 {
+                                std::future::pending::<()>().await;
+                            }
+                            Ok(i)
+                        })
+                    })
+                    .collect(),
+                tokio::time::Instant::now() + Duration::from_millis(150),
+            )
+            .await;
+            assert_eq!(answers.len(), 10);
+            for (i, answer) in answers.iter().enumerate() {
+                if let Ok(said) = answer {
+                    assert_eq!(*said, i, "answers stay in inventory order");
+                    reached.insert(i);
+                }
+            }
+        }
+        assert_eq!(
+            reached,
+            (0..10).collect(),
+            "three checks of four answers reach all ten"
+        );
     }
 
     #[test]

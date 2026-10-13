@@ -6041,7 +6041,12 @@ place. Each source's registry phase has a 120-second total budget,
 including waits for a host permit; inventory and detection are outside
 that budget. Completed answers are kept in inventory order. Requests
 still waiting or not yet started at the deadline become transient
-uncheckable rows, never claims that those tools are up to date. Dropping
+uncheckable rows, never claims that those tools are up to date. The next
+check of that source starts with the first of them, other than the one
+the check started with, and goes round to the ones before it (R60-2,
+`ResumePoints`), so repeated checks reach every package even when one
+check has time for only some; where to start is kept in memory only,
+by source, and nothing more is requested. Dropping
 a check cancels its pending requests; no background lookup tasks remain.
 
 Every HTTPS request uses TLS through rustls; plain HTTP Ollama requests

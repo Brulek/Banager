@@ -457,6 +457,8 @@ pub struct PipxAdapter {
     /// integration tests set it to nothing (`with_own_venv_fn`), so that no
     /// test follows a link on the Mac running it.
     own_venv_fn: fn(&Path) -> Option<PathBuf>,
+    /// Where the next PyPI check starts (`registry_checks`, R60-2).
+    resume: super::ResumePoints,
 }
 
 impl PipxAdapter {
@@ -468,6 +470,7 @@ impl PipxAdapter {
             http,
             meta,
             own_venv_fn: DEFAULT_OWN_VENV_FN,
+            resume: super::ResumePoints::default(),
         }
     }
 
@@ -637,10 +640,21 @@ impl PipxAdapter {
         pinned: &HashSet<String>,
     ) -> Vec<UpdateCandidate> {
         let mut out = Vec::new();
+        let instance_id = installed
+            .first()
+            .map(|artifact| artifact.key.instance_id.as_str())
+            .unwrap_or_default();
         let answers = super::registry_checks(
+            &self.resume,
+            instance_id,
             installed
                 .iter()
-                .map(|artifact| self.latest_pypi_version(&artifact.display_name))
+                .map(|artifact| {
+                    (
+                        artifact.key.name.clone(),
+                        self.latest_pypi_version(&artifact.display_name),
+                    )
+                })
                 .collect(),
         )
         .await;

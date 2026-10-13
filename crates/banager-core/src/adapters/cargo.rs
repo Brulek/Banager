@@ -539,6 +539,8 @@ pub struct CargoAdapter {
     /// reading the cached answer here is what makes the previewed
     /// `Plan::program` the exact path that will run.
     binstall: Mutex<Option<PathBuf>>,
+    /// Where the next crates.io check starts (`registry_checks`, R60-2).
+    resume: super::ResumePoints,
 }
 
 impl CargoAdapter {
@@ -560,6 +562,7 @@ impl CargoAdapter {
             meta,
             binstall_check: default_binstall_check,
             binstall: Mutex::new(None),
+            resume: super::ResumePoints::default(),
         }
     }
 
@@ -801,14 +804,18 @@ impl CargoAdapter {
         let json = self.read_installs(inst)?;
         let entries = parse_crates2_entries(&json)?;
         let answers = super::registry_checks(
+            &self.resume,
+            &inst.id,
             entries
                 .iter()
-                .map(|(name, _, source)| async move {
-                    if crate::adapters::sanity::is_name(name) && is_crates_io(source) {
-                        self.latest_stable_version(name).await.map(Some)
-                    } else {
-                        Ok(None)
-                    }
+                .map(|(name, _, source)| {
+                    (name.clone(), async move {
+                        if crate::adapters::sanity::is_name(name) && is_crates_io(source) {
+                            self.latest_stable_version(name).await.map(Some)
+                        } else {
+                            Ok(None)
+                        }
+                    })
                 })
                 .collect(),
         )
