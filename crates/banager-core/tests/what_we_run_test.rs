@@ -1872,7 +1872,7 @@ fn test_what_we_run_names_the_history_file_what_it_keeps_its_bounds_and_how_to_r
         "An operation cancelled before Banager began carrying it out (while it waited for its turn, or while Banager read the installed version) is not recorded.".to_string(),
         "or cancelled once Banager had handed it to the tool's adapter, which can be before the tool's own command started".to_string(),
         format!(
-            "The file keeps the newest {} records and nothing older than {} days: as Banager starts it drops the rest and, if it dropped any, writes the file again straight away;",
+            "The records stay in the order they were kept, never sorted by their times, so that which of a tool's records came later -- the one 「最近的更新记录」 lists -- is not decided by a clock that was put right in between (`bound`; the page reads two of one launch by the operation's number: `keptLater` in `src/lib/history.ts`). The file keeps the last {} records kept and nothing older than {} days: as Banager starts it drops the rest and, if it dropped any, writes the file again straight away;",
             with_commas(MAX_RECORDS as u64),
             MAX_AGE_MS / 86_400_000
         ),
