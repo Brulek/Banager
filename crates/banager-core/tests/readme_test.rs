@@ -363,7 +363,7 @@ fn test_readme_preview_sentence_names_every_variable_the_runner_sets_on_every_co
     let start = english
         .find("the confirmation lets you see the exact command before it runs")
         .expect("README.md's English block has no preview sentence");
-    let english = &english[start..(start + 700).min(english.len())];
+    let english: String = english[start..].chars().take(700).collect();
     let chinese = squeeze(chinese);
     let start = chinese
         .find("都能在它运行之前看到确切的命令")
@@ -378,6 +378,21 @@ fn test_readme_preview_sentence_names_every_variable_the_runner_sets_on_every_co
         assert!(
             chinese.contains(&shown),
             "README.md's Chinese preview sentence does not name {shown}: {chinese}"
+        );
+    }
+    // A tool mise was told to install on first use ("lazy") it still
+    // installs (real.rs's EVERY_COMMAND_ENV, docs/what-we-run.md), so the
+    // sentence says what the variable turns off, not that nothing installs.
+    for overclaim in ["installs nothing", "install nothing", "nothing installs"] {
+        assert!(
+            !english.contains(overclaim),
+            "README.md's English preview sentence says {overclaim:?}: {english}"
+        );
+    }
+    for overclaim in ["什么都不装", "什么也不装", "不装任何"] {
+        assert!(
+            !chinese.contains(overclaim),
+            "README.md's Chinese preview sentence says {overclaim:?}: {chinese}"
         );
     }
 }
