@@ -3437,7 +3437,11 @@ listed under Files Banager reads); that is a notice, not a command. A
 `PATH` folder in one of the places Banager never reads (Which copy a
 command runs, below) -- `~/Documents`, iCloud Drive, `/Volumes` and the
 rest -- or a `claude` that leads into one, is not looked into: when it
-comes before this copy, or could be this copy, there is no notice. When
+comes before this copy, or could be this copy, there is no notice. Nor
+when the first `claude` is a version manager's shim (in a folder named
+`shims`, as mise's are, or a link to a file in one): it runs whichever
+copy the manager has active, and with none, mise's shim runs the next
+`claude` on `PATH`, which may be this copy. When
 the login shell's `PATH` could not be read (How Banager runs anything,
 above), the `PATH` Banager has is the few folders an app opened from
 Finder starts with, which says nothing of Terminal's: that refresh gives
@@ -4597,7 +4601,13 @@ installer, that typing its name does not run it (Claude Code's section
 says how that notice is made, and that it is then left out). An alias, a shell function, or a `PATH` that
 only a new terminal window or an editor's terminal sets is not seen; the
 details say that an alias, a new window or an editor's terminal may
-differ. Nothing is said about a Homebrew formula installed as a
+differ. Where the first of a name on `PATH` is a version manager's
+shim -- in a folder named `shims`, as mise's, pyenv's and asdf's are, or
+a link to a file in one -- nothing is said about which copy runs, unless
+it is that very copy: the shim runs whichever copy the manager has
+active, perhaps this one from a folder `PATH` lacks (mise's `tsc` runs
+the TypeScript of its Node), and where it leads (mise's shims all lead to
+mise) does not tell which. Nothing is said about a Homebrew formula installed as a
 dependency, and neither a keg-only one (Homebrew keeps it off `PATH` on
 purpose) nor one Homebrew has not linked (above) is ever said to be
 missing from Terminal; a keg-only one linked by hand (`brew link

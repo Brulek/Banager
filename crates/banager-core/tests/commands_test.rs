@@ -704,6 +704,80 @@ fn test_homebrews_node_owns_the_commands_its_corepack_links_lead_to_through_npms
 }
 
 #[test]
+fn regression_r63_2_a_command_behind_a_version_managers_shim_gets_no_verdict() {
+    // R63-2: mise's Node, in mise's own folder, with TypeScript installed
+    // by its npm; on `PATH` only mise's shims, each a link to mise, which
+    // runs the `tsc` of the Node it has active. The shim leads to mise,
+    // not to TypeScript, yet it may be what runs it: neither "not found"
+    // nor another program with the name. A copy of npm's further down
+    // `PATH` is no proof the shim is another program either.
+    let home = Home::new("mise-shim");
+    let mise = home.exe(".local/bin/mise");
+    let prefix = home.dir(".local/share/mise/installs/node/22.23.3");
+    home.exe(".local/share/mise/installs/node/22.23.3/lib/node_modules/typescript/bin/tsc");
+    home.link(
+        ".local/share/mise/installs/node/22.23.3/bin/tsc",
+        Path::new("../lib/node_modules/typescript/bin/tsc"),
+    );
+    let shims = home.dir(".local/share/mise/shims");
+    home.link(".local/share/mise/shims/tsc", &mise);
+    let npm_id = format!("npm:{}", prefix.display());
+    let instances = vec![instance("npm", &npm_id, &prefix, &shims.join("npm"))];
+    let artifacts = vec![artifact(&npm_id, ArtifactKind::Package, "typescript")];
+    for path in [vec![shims.clone()], vec![shims.clone(), prefix.join("bin")]] {
+        assert_eq!(
+            verdicts(&home, &path, &instances, &artifacts),
+            vec![vec![unjudged("tsc")]],
+            "PATH {path:?}"
+        );
+    }
+    // Where npm's own copy comes first, it runs, as before.
+    assert_eq!(
+        verdicts(&home, &[prefix.join("bin"), shims], &instances, &artifacts),
+        vec![vec![runs("tsc")]]
+    );
+}
+
+#[test]
+fn regression_r63_2_a_version_managers_shim_first_gives_claude_code_no_notice() {
+    // The notice on a tool with its own installer answers the same
+    // question for its launcher (`shadow_note`), and a shim first says no
+    // more there: mise's `claude` runs mise's npm-installed Claude Code, or,
+    // with none active, the next `claude` on `PATH` -- this copy.
+    let home = Home::new("mise-shim-claude");
+    let setup = two_claudes(&home);
+    let mise = home.exe(".local/bin/mise");
+    let shims = home.dir(".local/share/mise/shims");
+    home.link(".local/share/mise/shims/claude", &mise);
+    let real = home.at(".local/share/claude/versions/2.1.281");
+    for path in [
+        vec![shims.clone()],
+        vec![shims.clone(), setup.local_bin.clone()],
+        vec![
+            shims.clone(),
+            setup.npm_bin.clone(),
+            setup.local_bin.clone(),
+        ],
+    ] {
+        assert_eq!(
+            shadow_note("claude", &home.env(path.clone()), &real),
+            None,
+            "PATH {path:?}"
+        );
+    }
+    let found = verdicts(
+        &home,
+        &[shims, setup.local_bin.clone()],
+        &setup.instances,
+        &setup.artifacts,
+    );
+    assert_eq!(
+        found,
+        vec![vec![unjudged("claude")], vec![unjudged("claude")]]
+    );
+}
+
+#[test]
 fn test_an_ai_tools_formula_homebrew_did_not_link_is_named_from_its_keg_with_no_verdict() {
     // r36 V5: `npm i -g @google/gemini-cli` under Homebrew's node, then
     // `brew install gemini-cli`. The keg installs as Homebrew's npm-based

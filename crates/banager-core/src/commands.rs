@@ -5,7 +5,9 @@
 //! that comes first while this one waits behind it (`ShadowedBy`, with
 //! the artifact that file belongs to when one does), or nothing of this
 //! copy's because the folder its command is in is not on `PATH`
-//! (`NotOnPath`). The generalisation of `standalone::route::shadow_note`,
+//! (`NotOnPath`) -- or no verdict, where the first is a version manager's
+//! shim, which runs whichever copy the manager has active (`in_shims`).
+//! The generalisation of `standalone::route::shadow_note`,
 //! which answers the same question for one tool's own launcher, to every
 //! source.
 //!
@@ -511,11 +513,24 @@ fn executable(meta: &Stat) -> bool {
 /// What one `PATH` folder holds of a name: an executable file, by where it
 /// leads (`None`: it does not resolve), or nobody knows -- a folder left
 /// unread, which may hold one, or a name there that leads
-/// into a protected place, which may be one.
+/// into a protected place, which may be one. Or a version manager's shim
+/// (`in_shims`), by where it leads: it runs whichever copy the manager
+/// has active when it runs, which no link tells.
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Seen {
     Executable(Option<PathBuf>),
+    Dispatcher(PathBuf),
     Unread,
+}
+
+/// Whether `path` is a folder named `shims`: a version manager's --
+/// mise's `~/.local/share/mise/shims`, whose shims are all links to mise
+/// itself, pyenv's `~/.pyenv/shims`, asdf's `~/.asdf/shims` -- told by
+/// its name as the disk compares names, as pip's `version_manager_shim`
+/// and `needed_by`'s shim test tell it.
+pub(crate) fn in_shims(path: &Path) -> bool {
+    path.file_name()
+        .is_some_and(|folder| protected::same_path(Path::new(folder), Path::new("shims")))
 }
 
 /// One command an artifact provides: the file it is, every link followed,
@@ -615,9 +630,18 @@ fn judge_with(
                             return None;
                         }
                         match look.resolve(&folder.canonical.join(&claim.name)) {
-                            Resolution::Found(real, meta) => {
-                                executable(&meta).then_some(Seen::Executable(Some(real)))
-                            }
+                            Resolution::Found(real, meta) => executable(&meta).then(|| {
+                                // In a shims folder, or a link to a shim
+                                // in one.
+                                let shim = in_shims(&folder.given)
+                                    || in_shims(&folder.canonical)
+                                    || real.parent().is_some_and(in_shims);
+                                if shim {
+                                    Seen::Dispatcher(real)
+                                } else {
+                                    Seen::Executable(Some(real))
+                                }
+                            }),
                             // Where it ends is not looked at: it may be
                             // the file that runs.
                             Resolution::Protected(_) => Some(Seen::Unread),
@@ -633,7 +657,7 @@ fn judge_with(
                     .copied()
             };
             let is_this = |seen: &Seen| {
-                matches!(seen, Seen::Executable(Some(found))
+                matches!(seen, Seen::Executable(Some(found)) | Seen::Dispatcher(found)
                     if protected::same_path(found, &claim.target))
             };
             match matches.first() {
@@ -644,6 +668,13 @@ fn judge_with(
                 {
                     Some(CommandState::Runs)
                 }
+                Some(seen @ Seen::Dispatcher(_)) if is_this(seen) => Some(CommandState::Runs),
+                // A version manager's shim first (R63-2): it may run this
+                // copy -- mise's `tsc` runs the TypeScript of the Node it
+                // has active, from a folder `PATH` lacks -- or another,
+                // and where it leads (mise itself) tells neither. Not "not
+                // found", and not another program: no verdict.
+                Some(Seen::Dispatcher(_)) => None,
                 Some(Seen::Executable(first)) if matches.iter().skip(1).any(is_this) => {
                     Some(CommandState::ShadowedBy {
                         by: owner_of(first).map(|i| artifacts[i].key.clone()),
