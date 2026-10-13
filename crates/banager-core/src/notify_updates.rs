@@ -9,8 +9,8 @@
 //! (`report_update_set` in `src-tauri/src/notify.rs`), and posts.
 
 use crate::auto_check::RoundTrigger;
-use crate::model::UpdateCandidate;
-use crate::settings::Settings;
+use crate::model::{ArtifactKey, UpdateCandidate};
+use crate::settings::{Settings, SnoozedUpdate};
 use serde::Deserialize;
 use std::collections::BTreeSet;
 
@@ -35,7 +35,8 @@ pub struct UpdatePair {
 
 /// The pairs this run of Banager has told the user about in a
 /// notification, or that the user saw in the window, for the rows still
-/// offered (`forget_unoffered`). In memory only: after Banager is quit and
+/// offered (`forget_unoffered`) and not put off for 30 days since
+/// (`forget_snoozed`). In memory only: after Banager is quit and
 /// opened again, none has been.
 #[derive(Debug, Default)]
 pub struct Notified {
@@ -68,6 +69,24 @@ impl Notified {
             .map(|candidate| pair_of(candidate).key_id)
             .collect();
         self.pairs.retain(|pair| rows.contains(&pair.key_id));
+    }
+
+    /// Forgets every pair of a row `after` puts off for 30 days and
+    /// `before` did not (「30天内不提醒」, `SnoozedUpdate`, by key and
+    /// date): `AppState::set_settings` (src-tauri/src/state.rs) calls this
+    /// as it saves. A snoozed row is not reported while it is put off, so
+    /// nothing marks it again, and the first daily check that offers it
+    /// once its 30 days are over posts it -- the reminder the action names
+    /// -- as it does when Banager was opened again in between (r23 R55-1).
+    /// A save that keeps a snooze forgets nothing; nor does one that ends
+    /// it, so an update undone in Settings is news again too.
+    pub fn forget_snoozed(&mut self, before: &[SnoozedUpdate], after: &[SnoozedUpdate]) {
+        let rows: BTreeSet<String> = after
+            .iter()
+            .filter(|snoozed| !before.contains(snoozed))
+            .map(|snoozed| key_id_of(&snoozed.key))
+            .collect();
+        self.pairs.retain(|pair| !rows.contains(&pair.key_id));
     }
 
     /// Marks every pair of `updates` as told or seen.
@@ -189,17 +208,19 @@ pub fn decide(
 /// src/store/ui.ts spells it, `instance_id|kind|name`, the kind as its
 /// serde name, and the version it offers.
 pub fn pair_of(candidate: &UpdateCandidate) -> UpdatePair {
-    let kind = serde_json::to_value(candidate.key.kind)
+    UpdatePair {
+        key_id: key_id_of(&candidate.key),
+        target: candidate.target.clone(),
+    }
+}
+
+/// `key` as `artifactKeyId` in src/store/ui.ts spells it.
+fn key_id_of(key: &ArtifactKey) -> String {
+    let kind = serde_json::to_value(key.kind)
         .ok()
         .and_then(|kind| kind.as_str().map(str::to_string))
         .unwrap_or_default();
-    UpdatePair {
-        key_id: format!(
-            "{}|{}|{}",
-            candidate.key.instance_id, kind, candidate.key.name
-        ),
-        target: candidate.target.clone(),
-    }
+    format!("{}|{}|{}", key.instance_id, kind, key.name)
 }
 
 /// The pairs of `updates` -- as the page reports them -- that `candidates`,
@@ -665,6 +686,35 @@ mod tests {
         notified.mark(&[gh()]);
         notified.forget_unoffered(&[]);
         assert!(!notified.contains(&jq()) && !notified.contains(&gh()));
+    }
+
+    #[test]
+    fn test_only_the_pairs_of_a_row_newly_put_off_for_30_days_are_forgotten() {
+        use crate::model::ArtifactKind;
+        let snooze = |kind, name: &str, until| SnoozedUpdate {
+            key: ArtifactKey {
+                instance_id: "brew:/opt/homebrew".to_string(),
+                kind,
+                name: name.to_string(),
+            },
+            until,
+        };
+        let jq_snoozed = snooze(ArtifactKind::Formula, "jq", 100);
+        let mut notified = Notified::default();
+        notified.mark(&[jq(), gh()]);
+        notified.forget_snoozed(&[], &[snooze(ArtifactKind::Cask, "jq", 100)]);
+        assert!(notified.contains(&jq()), "another kind's row");
+        notified.forget_snoozed(
+            std::slice::from_ref(&jq_snoozed),
+            std::slice::from_ref(&jq_snoozed),
+        );
+        assert!(notified.contains(&jq()), "kept, not new");
+        notified.forget_snoozed(&[], std::slice::from_ref(&jq_snoozed));
+        assert!(!notified.contains(&jq()) && notified.contains(&gh()));
+        // Put off again once the last ran out: a new date.
+        notified.mark(&[jq()]);
+        notified.forget_snoozed(&[jq_snoozed], &[snooze(ArtifactKind::Formula, "jq", 200)]);
+        assert!(!notified.contains(&jq()));
     }
 
     #[test]

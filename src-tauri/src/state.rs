@@ -128,11 +128,22 @@ impl AppState {
     /// `welcome_seen` is kept true once it is (`Settings::keep_welcome_seen`):
     /// a page holding settings read before the welcome sheet closed cannot
     /// bring the sheet back by saving over them.
+    ///
+    /// What was told or seen of a row it puts off for 30 days is forgotten
+    /// (`Notified::forget_snoozed`), so the daily check reminds of it once
+    /// it is offered again (r23 R55-1).
     pub fn set_settings(&self, new_settings: Settings) -> std::io::Result<()> {
         let mut settings = self.settings.lock().unwrap();
         let new_settings = new_settings.keep_welcome_seen(&settings);
         settings::save(&self.settings_path, &new_settings)?;
-        *settings = new_settings;
+        let before = std::mem::replace(&mut *settings, new_settings);
+        let after = settings.snoozed_updates.clone();
+        // Not under the settings' lock: a report reads the settings first.
+        drop(settings);
+        self.notified
+            .lock()
+            .unwrap()
+            .forget_snoozed(&before.snoozed_updates, &after);
         Ok(())
     }
 }
@@ -300,6 +311,61 @@ mod tests {
         let saved = settings::load(&path);
         assert!(saved.welcome_seen && saved.show_technical_details);
         assert_eq!(state.get_settings(), saved);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_a_snoozed_update_seen_before_is_news_again_after_its_30_days() {
+        // r23 R55-1: seen in the window, then put off with "Remind Me in 30
+        // Days" while Banager stays open. The daily check after the 30 days
+        // reminds, as it does when Banager was opened again in between.
+        use banager_core::auto_check::RoundTrigger;
+        use banager_core::notify_updates::{self, Focus, Notice, ReportedRound, UpdatePair};
+        use banager_core::settings::SnoozedUpdate;
+        let path = temp_settings_path("snooze");
+        let _ = std::fs::remove_file(&path);
+        let state = AppState::new(path.clone(), ChannelSink::new());
+        let jq = UpdatePair {
+            key_id: "brew:/opt/homebrew|Formula|jq".to_string(),
+            target: "1.8.1".to_string(),
+        };
+        let gh = UpdatePair {
+            key_id: "brew:/opt/homebrew|Formula|gh".to_string(),
+            target: "2.102.0".to_string(),
+        };
+        let automatic = ReportedRound {
+            trigger: Some(RoundTrigger::Automatic),
+            awaits_follow_up: false,
+        };
+        let report = |focus, updates: &[UpdatePair]| {
+            let mut notified = state.notified.lock().unwrap();
+            notify_updates::report(&mut notified, automatic, true, focus, updates, |_| Ok(()))
+        };
+        let both = [jq.clone(), gh.clone()];
+        assert_eq!(report(Focus::Window, &both), Ok(Notice::Seen));
+        let snoozed = SnoozedUpdate {
+            key: ArtifactKey {
+                instance_id: "brew:/opt/homebrew".to_string(),
+                kind: ArtifactKind::Formula,
+                name: "jq".to_string(),
+            },
+            until: 4_000_000_000,
+        };
+        let snoozing = Settings {
+            snoozed_updates: vec![snoozed],
+            ..Settings::default()
+        };
+        state.set_settings(snoozing.clone()).expect("snoozed");
+        // Another save that keeps the snooze forgets nothing more.
+        report(Focus::Window, std::slice::from_ref(&gh)).unwrap();
+        state.set_settings(snoozing).expect("saved again");
+        assert!(state.notified.lock().unwrap().contains(&gh));
+        // Its 30 days over, the page offers jq again.
+        assert_eq!(
+            report(Focus::Away, &both),
+            Ok(Notice::Post { count: 2 }),
+            "reminded of jq, with gh counted"
+        );
         let _ = std::fs::remove_file(&path);
     }
 

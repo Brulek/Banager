@@ -907,8 +907,9 @@ switches are on; another app is in front, not Banager — macOS shows no
 banner for a notification of the app in front, and Rust asks macOS
 whether Banager is (`app_active` in `src-tauri/src/notify.rs`); and one of
 the pairs has been neither in a notification nor before the user in the
-focused window since Banager was opened, or since a check last found no
-update for that tool (`notify_updates::decide` in
+focused window since Banager was opened, since a check last found no
+update for that tool, or since the user put that tool off with *Remind Me
+in 30 Days* (`notify_updates::decide` in
 `crates/banager-core/src/notify_updates.rs`). A daily check that stopped
 waiting for its `brew update` (Homebrew's section) posts nothing itself:
 the refresh that update's end sets off is the daily check's too, and its
@@ -951,7 +952,13 @@ release (listed only where the person's own `HOMEBREW_UPGRADE_GREEDY` or
 `--greedy`, below). A source that did not answer a check keeps its updates in the list,
 and they stay told (`Notified::forget_unoffered` in
 `crates/banager-core/src/notify_updates.rs`, before each report:
-`report_offered` in `src-tauri/src/notify.rs`).
+`report_offered` in `src-tauri/src/notify.rs`). Nor is it kept for a
+tool put off with *Remind Me in 30 Days*: saving that forgets it
+(`Notified::forget_snoozed`, from `AppState::set_settings` in
+`src-tauri/src/state.rs`), and the page leaves the tool out of its reports
+until the 30 days are over, so the first daily check that finds its update
+after that reminds of it, as it does when Banager was opened again in
+between; so does one after the snooze is undone in Settings.
 
 **A click on the notification** brings Banager to the front. Banager is
 told only that it has come to the front, not what brought it there: it
