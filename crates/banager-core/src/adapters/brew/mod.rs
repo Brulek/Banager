@@ -18,8 +18,8 @@ use crate::events::{EventSink, LogNote, OpId, OperationEvent};
 use crate::model::{
     ArtifactKey, ArtifactKind, CancelPolicy, CaskStep, Fault, InstalledArtifact, InstanceId,
     InstanceNote, InstanceStatus, ManagerInstance, OpKind, OpRequest, Outcome, Plan, PlanAction,
-    Reconciled, ResourceLock, Scope, SearchHit, Unavailable, UninstallScope, UpdateBlocked,
-    Warning,
+    ReadOnlyReason, Reconciled, ResourceLock, Scope, SearchHit, Unavailable, UninstallScope,
+    UpdateBlocked, Warning,
 };
 use crate::protected::{look, Protected};
 use crate::runner::{CommandOutput, CommandRunner, CommandSpec, HostEnv, OutputUse};
@@ -203,6 +203,13 @@ pub struct BrewAdapter {
     /// test here answers differently because the Mac running it happens to
     /// be in the middle of a `brew update`.
     update_lock_fn: fn(&Path) -> HomebrewUpdateLock,
+    /// How `detect` asks whether this account can change the Homebrew whose
+    /// `brew` (the first argument) is in the prefix (the second):
+    /// `real_folders_read_only` in every build but this crate's unit tests,
+    /// where every Homebrew is this account's unless a test says otherwise
+    /// (`with_folders_read_only_fn`), so that no test asks about the Mac's
+    /// own `/opt/homebrew`.
+    folders_read_only_fn: fn(&Path, &Path) -> Option<ReadOnlyReason>,
     /// How to read one variable of Banager's own environment, which every
     /// `brew` command inherits under its plan's own: `HOME`,
     /// `XDG_CONFIG_HOME`, `HOMEBREW_XDG_CONFIG_HOME` and
@@ -330,6 +337,13 @@ const DEFAULT_UPDATE_LOCK_FN: fn(&Path) -> HomebrewUpdateLock = |_| {
         file: None,
     })
 };
+
+/// `BrewAdapter::folders_read_only_fn` as `BrewAdapter::new` sets it.
+#[cfg(not(test))]
+const DEFAULT_FOLDERS_READ_ONLY_FN: fn(&Path, &Path) -> Option<ReadOnlyReason> =
+    real_folders_read_only;
+#[cfg(test)]
+const DEFAULT_FOLDERS_READ_ONLY_FN: fn(&Path, &Path) -> Option<ReadOnlyReason> = |_, _| None;
 
 /// `BrewAdapter::env_var_fn` and `brew_env_fn` as `BrewAdapter::new` sets
 /// them: Banager's real environment and the real files in every build but
@@ -531,6 +545,7 @@ impl BrewAdapter {
             #[cfg(test)]
             discovery_root: None,
             update_lock_fn: DEFAULT_UPDATE_LOCK_FN,
+            folders_read_only_fn: DEFAULT_FOLDERS_READ_ONLY_FN,
             env_var_fn: DEFAULT_ENV_VAR_FN,
             brew_env_fn: DEFAULT_BREW_ENV_FN,
             recorded_uninstall_fn: DEFAULT_RECORDED_UNINSTALL_FN,
@@ -615,6 +630,17 @@ impl BrewAdapter {
     #[cfg(test)]
     pub(crate) fn with_path_exists_fn(mut self, path_exists_fn: fn(&Path) -> bool) -> BrewAdapter {
         self.path_exists_fn = path_exists_fn;
+        self
+    }
+
+    /// Test-only hook to say whether this account can change a Homebrew
+    /// (see `folders_read_only_fn`).
+    #[cfg(test)]
+    fn with_folders_read_only_fn(
+        mut self,
+        folders_read_only_fn: fn(&Path, &Path) -> Option<ReadOnlyReason>,
+    ) -> BrewAdapter {
+        self.folders_read_only_fn = folders_read_only_fn;
         self
     }
 
@@ -2132,6 +2158,16 @@ impl BrewAdapter {
             };
             let unverified_version = self.meta.unverified_version(&version);
             let prefix = Self::prefix_for(&path);
+            // Asked here, before the user clicks anything, as npm's prefix
+            // is (R59-2, r24): a Homebrew another account on this Mac
+            // installed lists what it has, but nothing here could change
+            // it. Not under root, which asks Homebrew nothing and may
+            // write anywhere.
+            let read_only_reason = if as_root {
+                None
+            } else {
+                (self.folders_read_only_fn)(&path, &prefix)
+            };
             found.push(ManagerInstance {
                 id: self.instance_id_for(&prefix),
                 adapter_id: self.meta.id.clone(),
@@ -2157,7 +2193,7 @@ impl BrewAdapter {
                 version,
                 answered_at: None,
                 unverified_version,
-                read_only_reason: None,
+                read_only_reason,
             });
         }
         found
@@ -2256,10 +2292,21 @@ impl BrewAdapter {
         // `brew info` below would read the catalogue while it is being
         // rewritten, so neither runs, and the caller keeps last round's
         // candidates (see `AdapterError::IndexUpdating`).
-        let notes = match self.maybe_update(inst, opts).await {
-            IndexFreshness::Current => Vec::new(),
-            IndexFreshness::Updating => return Err(AdapterError::IndexUpdating),
-            IndexFreshness::MayBeStale => vec![InstanceNote::IndexMayBeStale],
+        //
+        // A Homebrew this account cannot change gets no `brew update` at
+        // all (R59-2, r24): it would only refuse ("is not writable",
+        // `cmd/update.sh`), and the note that refusal used to become sends
+        // the user to check an internet connection that is fine. Its
+        // view-only line says why, and that its updates may not be the
+        // latest.
+        let notes = if inst.read_only_reason == Some(ReadOnlyReason::HomebrewNotWritable) {
+            Vec::new()
+        } else {
+            match self.maybe_update(inst, opts).await {
+                IndexFreshness::Current => Vec::new(),
+                IndexFreshness::Updating => return Err(AdapterError::IndexUpdating),
+                IndexFreshness::MayBeStale => vec![InstanceNote::IndexMayBeStale],
+            }
         };
         // No `--greedy` flag of any kind. R47-2 (r18): `--greedy` and
         // `--greedy-latest` have Homebrew download the whole installer of
@@ -2539,6 +2586,34 @@ impl FileId {
 /// passes over a `PATH` folder there, and never run.
 fn brew_is_there(path: &Path) -> bool {
     look::target(path, &Protected::of_this_process()).is_ok()
+}
+
+/// Whether this account can change the Homebrew whose `brew` is `exe` in
+/// `prefix`: `None` where it can, `HomebrewNotWritable` where not. The two
+/// folders `brew update` itself asks about before it refuses
+/// (`cmd/update.sh`, "is not writable"): Homebrew's own folder
+/// (`HOMEBREW_REPOSITORY`, the folder above the `bin` that `brew` leads
+/// into: `/opt/homebrew`, or `/usr/local/Homebrew` behind
+/// `/usr/local/bin/brew`) and, when it exists, the Cellar, which is in that
+/// folder when there is one there and otherwise in the prefix (`brew.sh`).
+/// Each is asked as `access(2)` answers, through `look::writable_folder`;
+/// a folder that cannot be looked at counts as one that cannot be
+/// changed. A `brew` that leads nowhere is left to `--version`, which
+/// then does not answer either.
+fn real_folders_read_only(exe: &Path, prefix: &Path) -> Option<ReadOnlyReason> {
+    let protected = Protected::of_this_process();
+    let (real, _) = look::target(exe, &protected).ok()?;
+    let repository = real.parent()?.parent()?;
+    let own_cellar = repository.join("Cellar");
+    let cellar = if look::target(&own_cellar, &protected).is_ok_and(|(_, stat)| stat.is_dir()) {
+        own_cellar
+    } else {
+        prefix.join("Cellar")
+    };
+    let cellar_there = look::target(&cellar, &protected).is_ok();
+    let writable = look::writable_folder(repository, &protected)
+        && (!cellar_there || look::writable_folder(&cellar, &protected));
+    (!writable).then_some(ReadOnlyReason::HomebrewNotWritable)
 }
 
 /// Looks at Homebrew's update lock under `prefix` without taking it.
@@ -3942,6 +4017,147 @@ mod tests {
         assert_eq!(instances[0].prefix, PathBuf::from("/usr/local"));
         assert_eq!(instances[0].version, Some("7.0.3".to_string()));
         assert!(instances[0].available());
+    }
+
+    #[tokio::test]
+    async fn test_detect_marks_a_homebrew_this_account_cannot_change_as_view_only() {
+        // R59-2 (r24): another account's Homebrew answers `--version` and
+        // lists what it has, but `brew update` refuses outright when its
+        // Cellar or its own folder is not writable (`cmd/update.sh`,
+        // "is not writable"), and an install, upgrade or uninstall would
+        // have to write there too. Offered anyway, every one of them fails.
+        let runner = version_runner("/opt/homebrew/bin/brew", "Homebrew 7.0.3\n");
+        let adapter = BrewAdapter::new(runner)
+            .with_path_exists_fn(apple_silicon_layout)
+            .with_folders_read_only_fn(|exe, prefix| {
+                assert_eq!(exe, Path::new("/opt/homebrew/bin/brew"));
+                assert_eq!(prefix, Path::new("/opt/homebrew"));
+                Some(ReadOnlyReason::HomebrewNotWritable)
+            });
+        let instances = adapter.detect(&detect_env(501)).await;
+        assert_eq!(instances.len(), 1, "got {instances:?}");
+        assert_eq!(
+            instances[0].read_only_reason,
+            Some(ReadOnlyReason::HomebrewNotWritable)
+        );
+        assert!(instances[0].available(), "it answers; it is only view only");
+        assert!(!instances[0].writable());
+    }
+
+    #[tokio::test]
+    async fn test_detect_does_not_ask_about_homebrews_folders_as_root() {
+        // Under root nothing is asked of Homebrew at all, and root may
+        // write anywhere: the state axis (`RefusesAsRoot`) says it all.
+        let adapter = BrewAdapter::new(Arc::new(MockRunner::new()))
+            .with_path_exists_fn(apple_silicon_layout)
+            .with_folders_read_only_fn(|_, _| panic!("asked about the folders as root"));
+        let instances = adapter.detect(&detect_env(0)).await;
+        assert_eq!(instances[0].read_only_reason, None);
+    }
+
+    #[test]
+    fn test_homebrews_folders_are_the_ones_brew_update_asks_about() {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = |path: &Path, mode: u32| {
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)).unwrap()
+        };
+        let scratch_prefix = |label: &str| {
+            let dir = std::env::temp_dir().join(format!(
+                "banager-brew-{label}-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
+            std::fs::create_dir_all(&dir).unwrap();
+            dir
+        };
+        // Apple silicon: `bin/brew` is a file in the prefix, which is
+        // Homebrew's own folder (`HOMEBREW_REPOSITORY`).
+        let prefix = scratch_prefix("folders-arm");
+        std::fs::create_dir_all(prefix.join("bin")).unwrap();
+        std::fs::write(prefix.join("bin/brew"), "").unwrap();
+        std::fs::create_dir_all(prefix.join("Cellar")).unwrap();
+        let brew = prefix.join("bin/brew");
+        assert_eq!(real_folders_read_only(&brew, &prefix), None);
+        mode(&prefix.join("Cellar"), 0o555);
+        assert_eq!(
+            real_folders_read_only(&brew, &prefix),
+            Some(ReadOnlyReason::HomebrewNotWritable)
+        );
+        mode(&prefix.join("Cellar"), 0o755);
+        mode(&prefix, 0o555);
+        assert_eq!(
+            real_folders_read_only(&brew, &prefix),
+            Some(ReadOnlyReason::HomebrewNotWritable)
+        );
+        mode(&prefix, 0o755);
+        // No Cellar yet: Homebrew makes it at the first install, as
+        // `update.sh` only asks about one that exists.
+        std::fs::remove_dir(prefix.join("Cellar")).unwrap();
+        assert_eq!(real_folders_read_only(&brew, &prefix), None);
+        std::fs::remove_dir_all(&prefix).unwrap();
+
+        // Intel: `bin/brew` leads into `Homebrew/bin/brew`, so Homebrew's
+        // own folder is `<prefix>/Homebrew`, and the prefix itself -- a
+        // `/usr/local` macOS gives to root -- is not asked about.
+        let prefix = scratch_prefix("folders-intel");
+        std::fs::create_dir_all(prefix.join("Homebrew/bin")).unwrap();
+        std::fs::write(prefix.join("Homebrew/bin/brew"), "").unwrap();
+        std::fs::create_dir_all(prefix.join("bin")).unwrap();
+        std::os::unix::fs::symlink("../Homebrew/bin/brew", prefix.join("bin/brew")).unwrap();
+        std::fs::create_dir_all(prefix.join("Cellar")).unwrap();
+        let brew = prefix.join("bin/brew");
+        mode(&prefix, 0o555);
+        assert_eq!(real_folders_read_only(&brew, &prefix), None);
+        mode(&prefix, 0o755);
+        mode(&prefix.join("Homebrew"), 0o555);
+        assert_eq!(
+            real_folders_read_only(&brew, &prefix),
+            Some(ReadOnlyReason::HomebrewNotWritable)
+        );
+        mode(&prefix.join("Homebrew"), 0o755);
+        std::fs::remove_dir_all(&prefix).unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_check_updates_runs_no_brew_update_in_a_homebrew_this_account_cannot_change() {
+        // R59-2 (r24): `brew update` there can only refuse ("is not
+        // writable"), and that refusal used to become `IndexMayBeStale`,
+        // whose notice tells the user to check the internet connection --
+        // which no connection fixes. So it is not run, and nothing about
+        // the network is said: the view-only line says why.
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec!["/opt/homebrew/bin/brew", "outdated", "--json=v2"],
+            CommandOutput {
+                stderr_cause: Default::default(),
+                exit_code: Some(0),
+                stdout: r#"{"formulae":[],"casks":[]}"#.to_string(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let adapter = BrewAdapter::new(runner.clone());
+        let inst = ManagerInstance {
+            read_only_reason: Some(ReadOnlyReason::HomebrewNotWritable),
+            ..test_instance()
+        };
+        let outcome = adapter
+            .check_updates(&inst, &CheckOptions::default())
+            .await
+            .expect("check_updates");
+        assert!(outcome.notes.is_empty(), "got {:?}", outcome.notes);
+        assert!(
+            !runner
+                .calls()
+                .iter()
+                .any(|c| c.get(1).map(String::as_str) == Some("update")),
+            "got {:?}",
+            runner.calls()
+        );
     }
 
     #[tokio::test]

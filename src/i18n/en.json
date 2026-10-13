@@ -722,6 +722,9 @@
     "prefixNotWritable": {
       "description": "npm keeps these in a folder your account can't change, so you can only view them. After you install Node with Homebrew, you can manage the npm packages you install with it here."
     },
+    "homebrewNotWritable": {
+      "description": "Homebrew keeps these in folders your account can't change, so you can only view them, and their updates may not be the latest. To update or uninstall them, log in to this Mac with the account those folders belong to."
+    },
     "unreachable": {
       "title": "{{source}} isn't responding",
       "description": "{{source}} didn't respond, so what it has installed can't be shown. Check again later.",

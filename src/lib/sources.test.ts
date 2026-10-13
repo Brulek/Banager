@@ -2200,6 +2200,7 @@ describe("the Updates page's chip details", () => {
       ByDesign: "sourceNotice.pipReadOnly.description",
       PrefixNotWritable: "sourceNotice.prefixNotWritable.description",
       PrefixProtected: "sourceNoticeMore.prefixProtected.description",
+      HomebrewNotWritable: "sourceNotice.homebrewNotWritable.description",
     });
     expect(notActionableMessage(fakeT, { read_only: "ByDesign", unavailable: null }, "pip")).toBe(
       READ_ONLY_DETAIL_KEYS.ByDesign,
@@ -2220,6 +2221,23 @@ describe("the Updates page's chip details", () => {
     );
     expect(en.sourceNotice.pipReadOnly.description).toBe(
       "You can only view pip installs here. If one of them is a command-line tool you use in Terminal, reinstall it with pipx or uv to update and uninstall it here.",
+    );
+  });
+
+  it("says a Homebrew this account can't change is view only, with no npm, network or ownership advice (R59-2)", () => {
+    // Another account's Homebrew: `brew update` there refuses because its
+    // folders aren't writable, which no internet connection fixes, and
+    // taking someone else's Homebrew over is not this app's advice.
+    expect(notActionableMessage(fakeT, { read_only: "HomebrewNotWritable", unavailable: null }, "Homebrew")).toBe(
+      "sourceNotice.homebrewNotWritable.description",
+    );
+    for (const locale of [en, zhCN, zhHant]) {
+      const said = locale.sourceNotice.homebrewNotWritable.description;
+      expect(said).toContain("Homebrew");
+      expect(said).not.toMatch(/npm|Node|internet|网络|網路|chown|sudo/);
+    }
+    expect(en.sourceNotice.homebrewNotWritable.description).toBe(
+      "Homebrew keeps these in folders your account can't change, so you can only view them, and their updates may not be the latest. To update or uninstall them, log in to this Mac with the account those folders belong to.",
     );
   });
 

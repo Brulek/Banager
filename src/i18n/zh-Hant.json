@@ -665,6 +665,9 @@
     "prefixNotWritable": {
       "description": "npm把它們安裝在目前帳號無法修改的檔案夾中，因此只能查看。用Homebrew安裝Node後，再用它安裝的npm套件就能在這裡管理。"
     },
+    "homebrewNotWritable": {
+      "description": "Homebrew把它們安裝在目前帳號無法修改的檔案夾中，因此只能查看，顯示的更新不一定是最新的。要更新或解除安裝，請用這些檔案夾所屬的帳號登入這台Mac。"
+    },
     "unreachable": {
       "title": "{{source}}沒有回應",
       "description": "{{source}}沒有回應，無法列出它安裝的內容。請稍後重新檢查。",

@@ -1077,6 +1077,10 @@ export const READ_ONLY_DETAIL_KEYS: Record<ReadOnlyReason, string> = {
   ByDesign: "sourceNotice.pipReadOnly.description",
   PrefixNotWritable: "sourceNotice.prefixNotWritable.description",
   PrefixProtected: "sourceNoticeMore.prefixProtected.description",
+  // Another account's Homebrew: view only, its updates possibly not the
+  // latest (no `brew update` runs there), and the account those folders
+  // belong to as the way out -- never taking them over (R59-2).
+  HomebrewNotWritable: "sourceNotice.homebrewNotWritable.description",
 };
 
 /**

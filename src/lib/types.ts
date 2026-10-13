@@ -628,8 +628,10 @@ export interface UpdateCandidate {
  * keeps a shape test over every spelling. `PrefixProtected`: npm's folder
  * is in, or leads into, a protected place, which is not looked into, so
  * whether it could be changed is not known (decision I23).
+ * `HomebrewNotWritable`: Homebrew's own folder or its Cellar is not
+ * writable by this account (another account's Homebrew), R59-2.
  */
-export type ReadOnlyReason = "ByDesign" | "PrefixNotWritable" | "PrefixProtected";
+export type ReadOnlyReason = "ByDesign" | "PrefixNotWritable" | "PrefixProtected" | "HomebrewNotWritable";
 /**
  * Why a source Banager knows about cannot answer right now. Mirrors
  * `Unavailable` in crates/banager-core/src/model.rs, same bare-string rule

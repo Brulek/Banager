@@ -1070,6 +1070,7 @@ mod tests {
             ReadOnlyReason::ByDesign,
             ReadOnlyReason::PrefixNotWritable,
             ReadOnlyReason::PrefixProtected,
+            ReadOnlyReason::HomebrewNotWritable,
         ] {
             let adapter = FakeAdapter::new(vec![test_support::make_read_only_instance(
                 "fake", "fake:1", reason,

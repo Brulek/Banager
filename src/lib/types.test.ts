@@ -253,8 +253,8 @@ describe("types", () => {
     // `crates/banager-core/src/model.rs` exactly -- nothing checks this at
     // compile time, and a typo would silently land every npm row in the
     // wrong branch of the notice copy.
-    const reasons: ReadOnlyReason[] = ["ByDesign", "PrefixNotWritable", "PrefixProtected"];
-    expect(roundTrip(reasons)).toEqual(["ByDesign", "PrefixNotWritable", "PrefixProtected"]);
+    const reasons: ReadOnlyReason[] = ["ByDesign", "PrefixNotWritable", "PrefixProtected", "HomebrewNotWritable"];
+    expect(roundTrip(reasons)).toEqual(["ByDesign", "PrefixNotWritable", "PrefixProtected", "HomebrewNotWritable"]);
     const writable: ReadOnlyReason | null = null;
     expect(roundTrip(writable)).toBeNull();
   });

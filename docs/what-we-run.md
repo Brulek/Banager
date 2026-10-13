@@ -1076,6 +1076,19 @@ Verified against Homebrew 7.0.3 (`adapters/meta/brew.toml`).
 (`BrewAdapter::CANDIDATE_PATHS`) — never a `brew` resolved through `PATH`
 — and runs `<brew> --version` (30 s) for each that does. Each is its own
 instance, with the prefix two directories up from the executable.
+Unless Banager runs as root, it also asks, by `access(2)`, whether this
+account can change the two folders `brew update` itself asks about before
+it refuses (`cmd/update.sh`, "is not writable"): Homebrew's own folder,
+the one above the `bin` that `brew` leads into (`/opt/homebrew`, or
+`/usr/local/Homebrew` behind `/usr/local/bin/brew`), and its `Cellar`
+when there is one. Where either is not writable — a Homebrew another
+account on this Mac installed — the instance is view only
+(`ReadOnlyReason::HomebrewNotWritable`, `real_folders_read_only`): its
+packages are listed and checked, `Session::issue_plan` refuses every
+operation on it, and no `brew update` runs there (The index update,
+below); its rows say it can only be viewed, that its updates may not be
+the latest, and that the account those folders belong to can update and
+uninstall them.
 
 **Environment applied to every invocation** (`BrewAdapter::ENV`),
 including `--version`, `update` and every plan:
@@ -2012,7 +2025,9 @@ install, upgrade or uninstall of its own from it. That refresh read the
 installed packages before `brew update` ran (`inventory` comes first), so
 the next refresh is the first to show all it changed.
 
-A refresh runs `brew update` for a prefix only when none is running there
+A refresh runs `brew update` for a prefix only when this account can
+change that Homebrew (Detect, above: elsewhere it could only refuse, and
+nothing about the network would be true), when none is running there
 and none has succeeded there in the last six hours on the clock
 (`UPDATE_TTL`, counted from when that one ended,
 `UpdateRecord::succeeded_at`, by `update_is_fresh`). Time the Mac spends
@@ -5399,6 +5414,11 @@ not read (`protected::look`; How Banager runs anything, above):
   `{prefix}/Cellar` and `{prefix}/bin/corepack` lead, when a listing
   or a check lists corepack or its update is planned, or its uninstall
   is, to tell a Homebrew formula's corepack (npm's section).
+- Homebrew, at each detection but under root: where its `brew` leads,
+  and whether Homebrew's own folder and its `Cellar` are writable, via
+  `access(2)` (`faccessat` of the folder held open; one that cannot be
+  looked at is taken as not writable), to tell a Homebrew this account
+  cannot change (Homebrew's section, Detect).
   Planning also compares the prefix directory's device/inode with Homebrew's
   fixed discovery prefixes to share one lock across symbolic-link aliases.
 - pip: the canonical path of each interpreter found, to count it once, and

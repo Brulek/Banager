@@ -62,6 +62,12 @@ pub enum ReadOnlyReason {
     /// not known, and the source is listed only. Not "the account cannot
     /// change it", which may well be untrue (decision I23).
     PrefixProtected,
+    /// Homebrew's own folder or its Cellar is not writable by the current
+    /// user (a Homebrew another account on this Mac installed), so
+    /// `brew update` refuses, and so would an install, upgrade or
+    /// uninstall. Not `PrefixNotWritable`, whose words are about npm and a
+    /// Node from Homebrew (R59-2, r24).
+    HomebrewNotWritable,
 }
 
 /// Why a source Banager knows about cannot answer right now. The state
@@ -2622,6 +2628,7 @@ mod tests {
             ReadOnlyReason::ByDesign,
             ReadOnlyReason::PrefixNotWritable,
             ReadOnlyReason::PrefixProtected,
+            ReadOnlyReason::HomebrewNotWritable,
         ] {
             let read_only = ManagerInstance {
                 read_only_reason: Some(reason),
