@@ -357,6 +357,7 @@ pub fn kept_data(
                 size,
                 left_out,
                 others,
+                in_use: false,
             });
         }
     }
@@ -1039,6 +1040,7 @@ mod tests {
                 size,
                 left_out,
                 others,
+                ..
             }] => {
                 assert_eq!(path, "~/.grok");
                 assert_eq!(*what, KeptData::ToolData);

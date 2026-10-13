@@ -19,6 +19,7 @@ const LEFT_OUT_WIRE =
   '{"KeepsData":{"path":"~/.codex","what":"ToolData","size":{"bytes":38400000,"partial":false,"at_least":false},"left_out":["~/.codex/packages/standalone"]}}';
 const SHARED_WIRE =
   '{"KeepsData":{"path":"~/.gemini","what":"ToolData","size":{"bytes":7553024,"partial":false,"at_least":false},"left_out":[],"others":[{"path":"~/.gemini/antigravity-cli","tool":"Antigravity CLI"}]}}';
+const IN_USE_WIRE = '{"KeepsData":{"path":"~/.ollama/models","what":"Models","size":null,"left_out":[],"in_use":true}}';
 
 const npmClaude: OpRequest = {
   kind: "Uninstall",
@@ -132,7 +133,7 @@ const claudeKept: Warning[] = [
 
 describe("KeepsData on the wire", () => {
   it("reads what Rust sends and sends it back the same", () => {
-    for (const wire of [MEASURED_WIRE, UNKNOWN_WIRE, LEFT_OUT_WIRE, SHARED_WIRE]) {
+    for (const wire of [MEASURED_WIRE, UNKNOWN_WIRE, LEFT_OUT_WIRE, SHARED_WIRE, IN_USE_WIRE]) {
       const warning = JSON.parse(wire) as Warning;
       expect(JSON.stringify(warning)).toBe(wire);
     }
@@ -142,7 +143,8 @@ describe("KeepsData on the wire", () => {
         JSON.parse(UNKNOWN_WIRE) as Warning,
         JSON.parse(LEFT_OUT_WIRE) as Warning,
         JSON.parse(SHARED_WIRE) as Warning,
-        // An older line, before `left_out` and `others`.
+        JSON.parse(IN_USE_WIRE) as Warning,
+        // An older line, before `left_out`, `others` and `in_use`.
         JSON.parse('{"KeepsData":{"path":"~/.gemini","what":"ToolData","size":null}}') as Warning,
       ]),
     ).toEqual([
@@ -152,14 +154,16 @@ describe("KeepsData on the wire", () => {
         size: { bytes: 432013312, partial: false, at_least: true },
         leftOut: [],
         others: [],
+        inUse: false,
       },
-      { path: "~/.ollama/models", what: "Models", size: null, leftOut: [], others: [] },
+      { path: "~/.ollama/models", what: "Models", size: null, leftOut: [], others: [], inUse: false },
       {
         path: "~/.codex",
         what: "ToolData",
         size: { bytes: 38400000, partial: false, at_least: false },
         leftOut: ["~/.codex/packages/standalone"],
         others: [],
+        inUse: false,
       },
       {
         path: "~/.gemini",
@@ -167,8 +171,10 @@ describe("KeepsData on the wire", () => {
         size: { bytes: 7553024, partial: false, at_least: false },
         leftOut: [],
         others: [{ path: "~/.gemini/antigravity-cli", tool: "Antigravity CLI" }],
+        inUse: false,
       },
-      { path: "~/.gemini", what: "ToolData", size: null, leftOut: [], others: [] },
+      { path: "~/.ollama/models", what: "Models", size: null, leftOut: [], others: [], inUse: true },
+      { path: "~/.gemini", what: "ToolData", size: null, leftOut: [], others: [], inUse: false },
     ]);
   });
 
@@ -375,6 +381,35 @@ describe("the uninstall dialog's 「卸载后会保留」 group", () => {
       );
       expect(document.querySelector("[data-kept-others]")).toHaveTextContent("GitHub Copilot App如已安裝，也會把自己的設定和資料放在這裡。");
       await i18n.changeLanguage("en");
+    });
+
+    it("not for Ollama's models while another copy of Ollama stays and still uses them, and says so", async () => {
+      const wire = IN_USE_WIRE;
+      const view = renderWithProviders(<KeptDataGroup warnings={[JSON.parse(wire) as Warning]} familyStays={false} />);
+      expect(trashLine()).toBeNull();
+      expect(document.querySelector("[data-kept-others]")).toHaveTextContent(
+        /^Another copy of Ollama stays installed and still uses these models\.$/,
+      );
+      view.unmount();
+      await i18n.changeLanguage("zh-CN");
+      const cn = renderWithProviders(<KeptDataGroup warnings={[JSON.parse(wire) as Warning]} familyStays={false} />);
+      expect(document.querySelector("[data-kept-others]")).toHaveTextContent("另一份Ollama仍会保留，并继续使用这些模型。");
+      cn.unmount();
+      await i18n.changeLanguage("zh-Hant");
+      renderWithProviders(<KeptDataGroup warnings={[JSON.parse(wire) as Warning]} familyStays={false} />);
+      expect(document.querySelector("[data-kept-others]")).toHaveTextContent("另一份Ollama仍會保留，並繼續使用這些模型。");
+      await i18n.changeLanguage("en");
+    });
+
+    it("for Ollama's models when no other copy of Ollama uses them", () => {
+      renderWithProviders(
+        <KeptDataGroup
+          warnings={[{ KeepsData: { path: "~/.ollama/models", what: "Models", size: null, left_out: [] } }]}
+          familyStays={false}
+        />,
+      );
+      expect(trashLine()).not.toBeNull();
+      expect(document.querySelector("[data-kept-others]")).toBeNull();
     });
 
     it("not for any of the list where one folder in it holds another copy", () => {

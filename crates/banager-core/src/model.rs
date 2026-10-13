@@ -1154,6 +1154,13 @@ pub enum Warning {
     /// another family's data path inside `path` that the walk found there
     /// (`kept_data::others_inside`). Left off the wire when empty, so a
     /// line without one reads as it always has.
+    ///
+    /// `in_use`: another copy of the tool stays and still uses this folder
+    /// -- Ollama.app, or another `ollama`, beside Homebrew's `ollama`
+    /// formula runs the same models from `~/.ollama/models`
+    /// (`needed_by::NeededBy::ollama_stays`, set by
+    /// `Session::with_needed_by`). The line then says so, and the group
+    /// does not say it can go to the Trash. Left off the wire when false.
     KeepsData {
         path: String,
         what: KeptData,
@@ -1162,6 +1169,8 @@ pub enum Warning {
         left_out: Vec<String>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         others: Vec<OthersData>,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        in_use: bool,
     },
     /// rustup's `self uninstall` deletes `path` (`$RUSTUP_HOME`, spelled
     /// `~/.rustup`; the standard layout is the only one Banager offers
@@ -3095,6 +3104,7 @@ mod tests {
             }),
             left_out: Vec::new(),
             others: Vec::new(),
+            in_use: false,
         };
         let wire = r#"{"KeepsData":{"path":"~/.claude","what":"ToolData","size":{"bytes":432013312,"partial":false,"at_least":true},"left_out":[]}}"#;
         assert_eq!(serde_json::to_string(&measured).unwrap(), wire);
@@ -3105,6 +3115,7 @@ mod tests {
             size: None,
             left_out: Vec::new(),
             others: Vec::new(),
+            in_use: false,
         };
         let wire = r#"{"KeepsData":{"path":"~/.ollama/models","what":"Models","size":null,"left_out":[]}}"#;
         assert_eq!(serde_json::to_string(&unknown).unwrap(), wire);
@@ -3116,6 +3127,7 @@ mod tests {
             size: None,
             left_out: vec!["~/.codex/packages/standalone".to_string()],
             others: Vec::new(),
+            in_use: false,
         };
         let wire = r#"{"KeepsData":{"path":"~/.codex","what":"ToolData","size":null,"left_out":["~/.codex/packages/standalone"]}}"#;
         assert_eq!(serde_json::to_string(&codex).unwrap(), wire);
@@ -3141,10 +3153,23 @@ mod tests {
                 path: "~/.gemini/antigravity-cli".to_string(),
                 tool: "Antigravity CLI".to_string(),
             }],
+            in_use: false,
         };
         let wire = r#"{"KeepsData":{"path":"~/.gemini","what":"ToolData","size":{"bytes":7553024,"partial":false,"at_least":false},"left_out":[],"others":[{"path":"~/.gemini/antigravity-cli","tool":"Antigravity CLI"}]}}"#;
         assert_eq!(serde_json::to_string(&shared).unwrap(), wire);
         assert_eq!(serde_json::from_str::<Warning>(wire).unwrap(), shared);
+        // Another copy that stays still uses the folder.
+        let in_use = Warning::KeepsData {
+            path: "~/.ollama/models".to_string(),
+            what: KeptData::Models,
+            size: None,
+            left_out: Vec::new(),
+            others: Vec::new(),
+            in_use: true,
+        };
+        let wire = r#"{"KeepsData":{"path":"~/.ollama/models","what":"Models","size":null,"left_out":[],"in_use":true}}"#;
+        assert_eq!(serde_json::to_string(&in_use).unwrap(), wire);
+        assert_eq!(serde_json::from_str::<Warning>(wire).unwrap(), in_use);
     }
 
     #[test]

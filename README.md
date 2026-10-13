@@ -12,9 +12,9 @@ Removing them needs a third. Most people never do either, and the tools quietly 
 
 Banager puts all of it in one window: what you have, what has an update, and a button for each.
 
-> **Status: pre-release.** The core and the UI work and are covered by 2283 Rust tests (plus 11 more
+> **Status: pre-release.** The core and the UI work and are covered by 2284 Rust tests (plus 11 more
 > that only run with `--ignored`: they touch a real Homebrew, the real Trash, AppKit or this Mac's
-> disk, or time a large run) and 3115 front-end tests, but there is no downloadable build yet — v0.1 is being prepared. Nothing here is
+> disk, or time a large run) and 3117 front-end tests, but there is no downloadable build yet — v0.1 is being prepared. Nothing here is
 > ready to rely on.
 
 <!-- A screenshot belongs here before the first release. -->
@@ -106,6 +106,8 @@ a protected place**, and the link is not followed.
   the tool, or another tool of its family, stays installed, nor where a folder holds another copy's program or another
   tool's or app's data, since what stays installed may still use it. `~/.codex` and `~/.copilot` are always such folders:
   the ChatGPT, Codex and GitHub Copilot apps keep their own settings and data there too, which a line under them says.
+  So is `~/.ollama/models` while Ollama.app or another `ollama` stays beside the Homebrew `ollama` being uninstalled:
+  a line under it says another copy of Ollama still uses those models.
 - A Homebrew package another source runs on can't be uninstalled while that source has tools of its own:
   its preview lists the source under **Software that uses it**, after Homebrew's own dependents — "npm with
   its 4 tools" under the `node@22` npm runs on, "2 tools installed with pipx" under the `python@3.13` their
@@ -557,7 +559,8 @@ formula 与 cask，以及 npm、PyPI、crates.io 上的包，每条都译自该�
   写出大小，并可以拷贝路径；预览里没有任何删除它们的按钮，只在列表下面用一句话说明不需要的设置和数据可以在访达中移到
   废纸篓（同时列出终端配置文件时，提醒它留在原处）。这个工具的另一份、或同一类的其他工具还装着，或者文件夹里有另一份
   的程序、别的工具或 App 的数据时，不说这句话：还装着的那一份可能还在用。`~/.codex` 和 `~/.copilot` 总是这样的文件夹：
-  ChatGPT、Codex 和 GitHub Copilot App 也把自己的设置和数据放在那里，它们下面会有一行说明。
+  ChatGPT、Codex 和 GitHub Copilot App 也把自己的设置和数据放在那里，它们下面会有一行说明。卸载 Homebrew 的 `ollama`
+  而 Ollama App 或另一个 `ollama` 还在时，`~/.ollama/models` 也是这样：它下面会有一行说明另一份 Ollama 还在用这些模型。
 - 别的来源要靠它运行的 Homebrew 软件，在那个来源还有自己的工具时不能卸载：预览把那个来源接在 Homebrew 自己的依赖者
   后面，列在“依赖此工具的软件”下——npm 靠着运行的 `node@22` 下是“npm及其4个工具”，pipx 工具环境所用的
   `python@3.13` 下是“pipx装的2个工具”，`ollama` 下是 Ollama 及其模型（Ollama App 或另一个 `ollama` 还在、能接着运行

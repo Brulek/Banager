@@ -5,8 +5,8 @@
 
 use super::Session;
 use crate::model::{
-    ArtifactKey, ArtifactKind, InstalledArtifact, InstanceId, ManagerInstance, OpKind, OpRequest,
-    Plan, Warning,
+    ArtifactKey, ArtifactKind, InstalledArtifact, InstanceId, KeptData, ManagerInstance, OpKind,
+    OpRequest, Plan, Warning,
 };
 use crate::needed_by::{self, HOSTED};
 use crate::runner::HostEnv;
@@ -242,17 +242,39 @@ impl Session {
             budget.max_duration + GRACE,
         )
         .await;
-        let complete = match found {
-            Some(found) => {
-                plan.warnings.extend(found.warnings);
-                found.complete
-            }
-            None => false,
-        };
-        if !complete && !plan.warnings.contains(&Warning::DependentsUnknown) {
-            plan.warnings.push(Warning::DependentsUnknown);
-        }
+        with_found(&mut plan.warnings, found);
         plan
+    }
+}
+
+/// `warnings` with what a look found (`None`: it did not come back): its
+/// own warnings, the models folder (`kept_data::OLLAMA_MODELS`) marked as
+/// one an Ollama that stays still uses (`NeededBy::ollama_stays`), and
+/// `Warning::DependentsUnknown` when it did not finish and they do not say
+/// it already.
+fn with_found(warnings: &mut Vec<Warning>, found: Option<needed_by::NeededBy>) {
+    let complete = match found {
+        Some(found) => {
+            if found.ollama_stays {
+                for warning in warnings.iter_mut() {
+                    if let Warning::KeepsData {
+                        path,
+                        what: KeptData::Models,
+                        in_use,
+                        ..
+                    } = warning
+                    {
+                        *in_use |= path == crate::kept_data::OLLAMA_MODELS;
+                    }
+                }
+            }
+            warnings.extend(found.warnings);
+            found.complete
+        }
+        None => false,
+    };
+    if !complete && !warnings.contains(&Warning::DependentsUnknown) {
+        warnings.push(Warning::DependentsUnknown);
     }
 }
 
@@ -282,8 +304,9 @@ mod tests {
     use crate::adapters::{Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome};
     use crate::events::{EventSink, OpId, VecSink};
     use crate::model::{
-        ArtifactKey, ArtifactKind, InstallReason, InstalledArtifact, ManagerInstance, OpKind,
-        OpRequest, Outcome, Plan, Reconciled, ResourceLock, SearchHit, UninstallBlocked, Warning,
+        ArtifactKey, ArtifactKind, InstallReason, InstalledArtifact, KeptData, ManagerInstance,
+        OpKind, OpRequest, Outcome, Plan, Reconciled, ResourceLock, SearchHit, UninstallBlocked,
+        Warning,
     };
     use crate::runner::{CommandOutput, HostEnv, MockRunner};
     use crate::session::{Session, SubmitError};
@@ -1490,6 +1513,52 @@ mod tests {
         assert_eq!(needed(&issued.plan), Vec::new());
     }
 
+    #[test]
+    fn test_only_the_models_folder_is_marked_as_one_an_ollama_that_stays_uses() {
+        let kept = |path: &str, what: KeptData| Warning::KeepsData {
+            path: path.to_string(),
+            what,
+            size: None,
+            left_out: Vec::new(),
+            others: Vec::new(),
+            in_use: false,
+        };
+        let plan = || {
+            vec![
+                kept("~/.ollama/models", KeptData::Models),
+                kept("~/.claude", KeptData::ToolData),
+            ]
+        };
+        let in_use = |warnings: &[Warning]| -> Vec<bool> {
+            warnings
+                .iter()
+                .filter_map(|w| match w {
+                    Warning::KeepsData { in_use, .. } => Some(*in_use),
+                    _ => None,
+                })
+                .collect()
+        };
+        let found = |ollama_stays| {
+            Some(crate::needed_by::NeededBy {
+                warnings: Vec::new(),
+                complete: true,
+                ollama_stays,
+            })
+        };
+        let mut stays = plan();
+        super::with_found(&mut stays, found(true));
+        assert_eq!(in_use(&stays), vec![true, false]);
+        assert_eq!(stays.len(), 2);
+        let mut alone = plan();
+        super::with_found(&mut alone, found(false));
+        assert_eq!(in_use(&alone), vec![false, false]);
+        // A look that did not come back says nothing of the models.
+        let mut lost = plan();
+        super::with_found(&mut lost, None);
+        assert_eq!(in_use(&lost), vec![false, false]);
+        assert_eq!(lost.last(), Some(&Warning::DependentsUnknown));
+    }
+
     #[tokio::test]
     async fn test_a_look_that_does_not_come_back_in_time_or_panics_is_not_waited_for() {
         // A step stuck in the kernel never returns to check the budget: the
@@ -1497,6 +1566,7 @@ mod tests {
         let done = crate::needed_by::NeededBy {
             warnings: Vec::new(),
             complete: true,
+            ollama_stays: false,
         };
         let quick = done.clone();
         assert_eq!(

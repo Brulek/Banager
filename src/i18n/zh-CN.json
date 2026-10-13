@@ -1167,6 +1167,7 @@
     "copyPathLabel": "拷贝路径：{{path}}",
     "notCounting": "{{path}}是{{tool}}的数据，不算在内",
     "sharedWith_other": "{{apps}} App如已安装，也会把自己的设置和数据放在这里。",
+    "modelsInUse": "另一份Ollama仍会保留，并继续使用这些模型。",
     "findInFinder": "要在访达中查看，可以拷贝路径，在访达中按下⇧⌘G，粘贴路径后按下Return键。",
     "findInFinderHome": "路径开头的“~”是你的个人文件夹。要在访达中查看，可以拷贝路径，在访达中按下⇧⌘G，粘贴路径后按下Return键。"
   },

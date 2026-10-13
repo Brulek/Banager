@@ -170,6 +170,13 @@ pub const BUDGET: Budget = Budget {
 pub struct NeededBy {
     pub warnings: Vec<Warning>,
     pub complete: bool,
+    /// Whether an Ollama that stays runs the models from
+    /// `~/.ollama/models` without the package: Banager's Ollama, whose
+    /// program leads outside it, or another `ollama` while that one leads
+    /// in (`Look::another_ollama`). The preview then says so of that
+    /// folder, and not that it can go to the Trash
+    /// (`Warning::KeepsData.in_use`, `Session::with_needed_by`).
+    pub ollama_stays: bool,
 }
 
 /// The sources of `instances` that run on `package`, a formula or cask of
@@ -249,13 +256,16 @@ pub fn needed_by_on_path(
         return NeededBy {
             warnings: Vec::new(),
             complete: false,
+            ollama_stays: false,
         };
     };
     let mut warnings = Vec::new();
+    let mut ollama_stays = false;
     if roots.is_empty() {
         return NeededBy {
             warnings,
             complete: true,
+            ollama_stays: false,
         };
     }
     for source in instances {
@@ -310,14 +320,17 @@ pub fn needed_by_on_path(
                 }
             }
         }
-        // An Ollama that stays -- Ollama.app outside the package, or
-        // another `ollama` on `PATH` -- runs the same models from the same
-        // folder (`~/.ollama/models`): they need nothing of this one.
-        if program
-            && source.adapter_id == "ollama"
-            && look.another_ollama(env, &refreshed.applications, &roots)
-        {
-            continue;
+        // An Ollama that stays -- Banager's own, outside the package, or
+        // Ollama.app or another `ollama` on `PATH` while Banager's leads
+        // in -- runs the same models from the same folder
+        // (`~/.ollama/models`): they need nothing of this one.
+        if source.adapter_id == "ollama" {
+            if into == Some(false) {
+                ollama_stays = true;
+            } else if program && look.another_ollama(env, &refreshed.applications, &roots) {
+                ollama_stays = true;
+                continue;
+            }
         }
         if program {
             warnings.push(Warning::NeededBySource {
@@ -356,6 +369,7 @@ pub fn needed_by_on_path(
     NeededBy {
         warnings,
         complete: !look.over && !doubted,
+        ollama_stays,
     }
 }
 
@@ -812,14 +826,6 @@ impl Look {
         }
     }
 
-    /// The first `name` on `env`'s `PATH`, as `env` would find it: what
-    /// `resolve_exe` answers, each `PATH` folder looked at the same way
-    /// (`protected::resolve`) and one look each; and whether a folder was
-    /// passed over on the way that is, or leads into, a protected place,
-    /// or could not be searched, and so may hold the `name` `env` would
-    /// run. The one after it is still the one returned, as `resolve_exe`'s.
-    /// A relative folder is passed over as `resolve_exe` passes it over: it
-    /// names a folder only from wherever the program is run.
     /// Whether an `ollama` other than the package's stays: the one in
     /// Ollama.app's `Contents/Resources`, in `applications` or
     /// `~/Applications` (`ollama::ollama_app_roots`), or one in a folder on
@@ -856,6 +862,14 @@ impl Look {
         false
     }
 
+    /// The first `name` on `env`'s `PATH`, as `env` would find it: what
+    /// `resolve_exe` answers, each `PATH` folder looked at the same way
+    /// (`protected::resolve`) and one look each; and whether a folder was
+    /// passed over on the way that is, or leads into, a protected place,
+    /// or could not be searched, and so may hold the `name` `env` would
+    /// run. The one after it is still the one returned, as `resolve_exe`'s.
+    /// A relative folder is passed over as `resolve_exe` passes it over: it
+    /// names a folder only from wherever the program is run.
     fn on_path(&mut self, name: &str, env: &HostEnv) -> (Option<PathBuf>, bool) {
         let mut passed_over = false;
         for dir in env.path_dirs.iter().filter(|dir| dir.is_absolute()) {
@@ -1199,7 +1213,8 @@ mod tests {
             near,
             NeededBy {
                 warnings: Vec::new(),
-                complete: true
+                complete: true,
+                ollama_stays: false,
             }
         );
     }
@@ -1226,7 +1241,8 @@ mod tests {
             node_22,
             NeededBy {
                 warnings: Vec::new(),
-                complete: true
+                complete: true,
+                ollama_stays: false,
             }
         );
         // `node` itself is: npm's `npm` is a copy outside its keg, but the
@@ -1281,7 +1297,8 @@ mod tests {
             found,
             NeededBy {
                 warnings: Vec::new(),
-                complete: true
+                complete: true,
+                ollama_stays: false,
             }
         );
     }
@@ -1309,7 +1326,8 @@ mod tests {
             found,
             NeededBy {
                 warnings: Vec::new(),
-                complete: true
+                complete: true,
+                ollama_stays: false,
             }
         );
     }
@@ -1762,32 +1780,36 @@ mod tests {
             )
         };
         // No other Ollama: the models need the formula.
-        assert_eq!(
-            needed(&look("Applications").warnings),
-            vec![(ollama.id.clone(), true, 2)]
-        );
+        let alone = look("Applications");
+        assert_eq!(needed(&alone.warnings), vec![(ollama.id.clone(), true, 2)]);
+        assert!(!alone.ollama_stays);
         // Ollama.app in /Applications, or in ~/Applications, runs the same
-        // models from the same folder: they need nothing of the formula.
+        // models from the same folder: they need nothing of the formula,
+        // and the preview says the app still uses them.
         root.program("Applications/Ollama.app/Contents/Resources/ollama");
         let found = look("Applications");
         assert!(found.warnings.is_empty(), "{:?}", found.warnings);
         assert!(found.complete);
+        assert!(found.ollama_stays);
         root.program("home/Applications/Ollama.app/Contents/Resources/ollama");
-        assert!(look("no-system-apps").warnings.is_empty());
+        let found = look("no-system-apps");
+        assert!(found.warnings.is_empty());
+        assert!(found.ollama_stays);
         std::fs::remove_dir_all(root.path("Applications")).unwrap();
         std::fs::remove_dir_all(root.path("home/Applications")).unwrap();
         // An `Ollama.app` that is no app holds no `ollama`, and counts for
         // nothing.
         root.dir("Applications/Ollama.app");
-        assert_eq!(
-            needed(&look("Applications").warnings),
-            vec![(ollama.id.clone(), true, 2)]
-        );
+        let none = look("Applications");
+        assert_eq!(needed(&none.warnings), vec![(ollama.id.clone(), true, 2)]);
+        assert!(!none.ollama_stays);
         // Another `ollama` further along `PATH` that leads outside the
         // formula stays too.
         let own = root.program("opt/ollama-download/ollama");
         root.link("usr/local/bin/ollama", own.to_str().unwrap());
-        assert!(look("Applications").warnings.is_empty());
+        let found = look("Applications");
+        assert!(found.warnings.is_empty());
+        assert!(found.ollama_stays);
         // One that leads into the formula as well is no other Ollama.
         std::fs::remove_file(root.path("usr/local/bin/ollama")).unwrap();
         root.link(
@@ -1800,6 +1822,30 @@ mod tests {
             needed(&look("Applications").warnings),
             vec![(ollama.id.clone(), true, 2)]
         );
+        // Banager's own Ollama outside the formula stays and runs them.
+        let elsewhere = instance(
+            "ollama",
+            "ollama:http://127.0.0.1:11434",
+            own.clone(),
+            root.path("home/.ollama"),
+        );
+        let instances = vec![brew(&root), elsewhere.clone()];
+        let found = needed_by_on_path(
+            &formula("ollama"),
+            &instances[0],
+            &instances,
+            &[row(&elsewhere.id, ArtifactKind::Model, "llama3.2:3b")],
+            &env,
+            &Refreshed {
+                path_known: true,
+                unlisted: Vec::new(),
+                applications: root.path("Applications"),
+            },
+            BUDGET,
+        );
+        assert!(found.warnings.is_empty());
+        assert!(found.complete);
+        assert!(found.ollama_stays);
     }
 
     #[test]
@@ -1886,7 +1932,8 @@ mod tests {
             found,
             NeededBy {
                 warnings: Vec::new(),
-                complete: false
+                complete: false,
+                ollama_stays: false,
             }
         );
     }
@@ -1990,7 +2037,8 @@ mod tests {
             ),
             NeededBy {
                 warnings: Vec::new(),
-                complete: true
+                complete: true,
+                ollama_stays: false,
             }
         );
         // A name that names no single folder.
@@ -2006,7 +2054,8 @@ mod tests {
                 ),
                 NeededBy {
                     warnings: Vec::new(),
-                    complete: true
+                    complete: true,
+                    ollama_stays: false,
                 },
                 "{name:?}"
             );
@@ -2040,7 +2089,8 @@ mod tests {
             ),
             NeededBy {
                 warnings: Vec::new(),
-                complete: false
+                complete: false,
+                ollama_stays: false,
             }
         );
     }
@@ -2064,6 +2114,7 @@ mod tests {
         NeededBy {
             warnings: Vec::new(),
             complete: false,
+            ollama_stays: false,
         }
     }
 
@@ -2071,6 +2122,7 @@ mod tests {
         NeededBy {
             warnings: Vec::new(),
             complete: true,
+            ollama_stays: false,
         }
     }
 

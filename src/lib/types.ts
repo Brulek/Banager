@@ -562,6 +562,8 @@ export type Warning =
         size: Measured | null;
         left_out: string[];
         others?: OthersData[];
+        /** Another copy of the tool stays and still uses it (Ollama.app beside Homebrew's `ollama`); absent when not. */
+        in_use?: boolean;
       };
     }
   | { Message: string };

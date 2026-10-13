@@ -105,7 +105,8 @@ export function KeptDataGroup({
   // Whether the list holds the tool's settings or data, and a Terminal
   // settings file: what the last line says (`keptTrash`); and whether a
   // folder in it holds another copy's program or another tool's or app's
-  // data, which no line may invite moving to the Trash.
+  // data, or is still used by another copy that stays, which no line may
+  // invite moving to the Trash.
   let settingsOrData = false;
   let shellFile = false;
   let holdsAnother = false;
@@ -130,7 +131,7 @@ export function KeptDataGroup({
   for (const item of keptDataOf(warnings)) {
     settingsOrData = true;
     const apps = sharedWith(item.path);
-    holdsAnother ||= item.leftOut.length > 0 || item.others.length > 0 || apps.length > 0;
+    holdsAnother ||= item.leftOut.length > 0 || item.others.length > 0 || apps.length > 0 || item.inUse;
     // What the size does not count: another copy's program inside the
     // folder (Codex's own install in ~/.codex).
     const leftOut =
@@ -148,10 +149,12 @@ export function KeptDataGroup({
     // With no size to hang it on, it goes behind the ⓘ of what it holds.
     const why = measured === null ? leftOut : null;
     // Another tool's data inside it, which the size leaves out, then the
-    // apps that keep theirs in it too: said under it.
+    // apps that keep theirs in it too, then another copy that still uses
+    // it: said under it.
     const others = [
       ...item.others.map((other) => t("keepsData.notCounting", { tool: other.tool, path: other.path })),
       ...apps,
+      ...(item.inUse ? [t("keepsData.modelsInUse")] : []),
     ];
     lines.push({ path: item.path, size, what: t(KEPT_DATA_KEYS[item.what]), why, others, owners: ownersText(item.path) });
   }
