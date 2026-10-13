@@ -552,7 +552,11 @@ fn home_as_tilde<'a>(text: &'a str, home: Option<&Path>) -> std::borrow::Cow<'a,
 /// Whether `c` can be part of a folder's name as `DetailPatterns`'
 /// `name_char` reads it.
 fn is_name_char(c: Option<char>) -> bool {
-    c.is_some_and(|c| detail_patterns().name_char.is_match(c.encode_utf8(&mut [0; 4])))
+    c.is_some_and(|c| {
+        detail_patterns()
+            .name_char
+            .is_match(c.encode_utf8(&mut [0; 4]))
+    })
 }
 
 /// Whether `text` at `at` comes right after a folder's or a host's name:
