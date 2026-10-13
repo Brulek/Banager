@@ -635,16 +635,58 @@ describe("sourceNoticesFor", () => {
         variant: "warning",
         titleKey: "sourceNotice.formulaeNotListed.title",
         descriptionKey: "sourceNotice.formulaeNotListed.description",
-        values: { source: "Homebrew", command: "brew tap", trusted: "brew trust", trust: "brew trust --tap" },
+        values: {
+          source: "Homebrew",
+          command: "/opt/homebrew/bin/brew tap",
+          trusted: "/opt/homebrew/bin/brew trust",
+          trust: "/opt/homebrew/bin/brew trust --tap",
+        },
       },
     ]);
     // `brew tap` lists every tap and says nothing of trust; `brew trust`
     // alone lists the trusted ones (cmd/trust.rb). Together they show which
     // taps Homebrew doesn't trust, so none is trusted blindly.
     const description = i18n.getFixedT("en")(notices[0].descriptionKey, notices[0].values);
-    expect(description).toContain("brew tap lists every place Homebrew gets packages from");
-    expect(description).toContain("brew trust lists the ones it trusts");
-    expect(description).toContain("run brew trust --tap followed by its name");
+    expect(description).toContain("/opt/homebrew/bin/brew tap lists every place Homebrew gets packages from");
+    expect(description).toContain("/opt/homebrew/bin/brew trust lists the ones it trusts");
+    expect(description).toContain("run /opt/homebrew/bin/brew trust --tap followed by its name");
+  });
+
+  it("names the Homebrew that left formulae out by its own brew, not Terminal's, with Homebrews in both prefixes", () => {
+    // r22 R64-1: Terminal's bare `brew` on Apple silicon is usually
+    // /opt/homebrew's, whose `brew tap` would not list the tap of a
+    // formula /usr/local's left out -- the same reason `unpinCommand`
+    // names the full path.
+    const arm = instance({ id: "brew:/opt/homebrew", adapter_id: "brew", exe_path: "/opt/homebrew/bin/brew" });
+    const intel = instance({ id: "brew:/usr/local", adapter_id: "brew", exe_path: "/usr/local/bin/brew" });
+    const armNotices = sourceNoticesFor({ ...arm, status: { unavailable: null, notes: [] } }, "Homebrew");
+    const intelNotices = sourceNoticesFor(
+      { ...intel, status: { unavailable: null, notes: ["FormulaeNotListed"] } },
+      "Homebrew (/usr/local)",
+    );
+    expect(armNotices).toEqual([]);
+    expect(intelNotices[0].values).toEqual({
+      source: "Homebrew (/usr/local)",
+      command: "/usr/local/bin/brew tap",
+      trusted: "/usr/local/bin/brew trust",
+      trust: "/usr/local/bin/brew trust --tap",
+    });
+    for (const lng of ["en", "zh-CN", "zh-Hant"]) {
+      const description = i18n.getFixedT(lng)(intelNotices[0].descriptionKey, intelNotices[0].values);
+      expect(description).toContain("/usr/local/bin/brew tap");
+      expect(description).toContain("/usr/local/bin/brew trust --tap");
+      expect(description).not.toMatch(/(^|[^/])brew (tap|trust)/);
+    }
+  });
+
+  it("quotes a Homebrew path with a space in the commands its formulae-not-listed notice names", () => {
+    const brew = instance({ id: "brew:/Users/a/My Brew", adapter_id: "brew", exe_path: "/Users/a/My Brew/bin/brew" });
+    const notices = sourceNoticesFor({ ...brew, status: { unavailable: null, notes: ["FormulaeNotListed"] } }, "Homebrew");
+    expect(notices[0].values).toMatchObject({
+      command: "'/Users/a/My Brew/bin/brew' tap",
+      trusted: "'/Users/a/My Brew/bin/brew' trust",
+      trust: "'/Users/a/My Brew/bin/brew' trust --tap",
+    });
   });
 
   it("falls back to the whole exe_path as the command when it has no file name", () => {

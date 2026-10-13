@@ -664,7 +664,11 @@ export function sourceNoticesFor(
       // uninstall preview can't say whether they need a formula. Trusting
       // the tap (`brew trust --tap`) is what brings them back; `brew tap`
       // names every tap and `brew trust` alone the trusted ones, so the two
-      // together show which taps it doesn't trust.
+      // together show which taps it doesn't trust. Each names this
+      // Homebrew's own brew by path, as `unpinCommand` does: Terminal's
+      // bare `brew` may be the other Homebrew's, whose `brew tap` would not
+      // list the tap of a formula this one left out (r22 R64-1).
+      const brew = (...args: string[]) => [instance.exe_path, ...args].map(displayToken).join(" ");
       notices.push({
         id: `${instance.id}:formulae-not-listed`,
         variant: "warning",
@@ -672,9 +676,9 @@ export function sourceNoticesFor(
         descriptionKey: "sourceNotice.formulaeNotListed.description",
         values: {
           source: sourceLabel,
-          command: `${commandNameOf(instance)} tap`,
-          trusted: `${commandNameOf(instance)} trust`,
-          trust: `${commandNameOf(instance)} trust --tap`,
+          command: brew("tap"),
+          trusted: brew("trust"),
+          trust: brew("trust", "--tap"),
         },
       });
     } else {

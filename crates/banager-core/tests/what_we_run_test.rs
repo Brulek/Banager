@@ -2594,7 +2594,8 @@ fn test_what_we_run_says_what_happens_when_homebrew_leaves_formulae_out() {
     // r18 R46-1: Homebrew 7 drops a formula from a tap it does not trust
     // from `brew info`, `brew outdated` and `brew uses` alike. The section
     // says what Banager reads to notice, what it says, and that it runs
-    // neither command it names; the reads are listed with the rest.
+    // neither command it names, each named by its Homebrew's full path
+    // (r22 R64-1); the reads are listed with the rest.
     let doc = read_doc();
     let homebrew = section_body(&doc, "Homebrew").expect("a `## Homebrew` section");
     let folded = homebrew.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -2604,6 +2605,7 @@ fn test_what_we_run_says_what_happens_when_homebrew_leaves_formulae_out() {
         "`InstanceNote::FormulaeNotListed`",
         "`Warning::DependentsUnknown`",
         "`brew trust --tap`",
+        "Each names that Homebrew's brew by its full path",
         "Banager runs neither",
     ] {
         assert!(

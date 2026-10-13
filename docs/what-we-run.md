@@ -1940,8 +1940,11 @@ packages installed with it aren't shown, usually because it doesn't
 trust where they come from, so their updates weren't checked; that in
 Terminal `brew tap` lists every tap and `brew trust` the ones Homebrew
 trusts; and to run `brew trust --tap` with the name of one only in the
-first list (`InstanceNote::FormulaeNotListed`). Banager runs none of
-them. Until it is
+first list (`InstanceNote::FormulaeNotListed`). Each names that
+Homebrew's brew by its full path, quoted if it has a space
+(`/usr/local/bin/brew tap`), as the unpin commands do, since Terminal's
+`brew` may be the other Homebrew's (`sourceNoticesFor` in
+src/lib/sources.ts). Banager runs none of them. Until it is
 gone the Overview does not say everything is up to date, and every
 formula's uninstall preview says it couldn't check what else needs it
 (`Warning::DependentsUnknown`), whatever `brew uses` named. Nothing more
