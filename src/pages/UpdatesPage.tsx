@@ -584,7 +584,9 @@ export function UpdatesPage() {
 
   // "Update History": this session's updates that ended -- worked, or
   // did not, or ask to be checked -- once their rows have gone
-  // (`justUpdatedOps`). Out of every count, and of Select all:
+  // (`justUpdatedOps`), one that did not work or asks to be checked only
+  // while the last check still offers that tool an update, as the
+  // history's below. Out of every count, and of Select all:
   // nothing in it has a checkbox or a button.
   //
   // The version is the one the snapshot now lists for the tool -- what is
@@ -609,10 +611,13 @@ export function UpdatesPage() {
       const op = operationFor(candidate);
       if (op !== null) shownInRows.add(op.id);
     }
+    // A failure or one to check, only while its update is still offered.
+    const offered = new Set((snapshot?.updates ?? []).map((candidate) => artifactKeyId(candidate.key)));
     const ops = justUpdatedOps(operations ?? [], {
       shownInRows,
       cleared: clearedJustUpdated,
       finishedAt: opFinishedAt,
+      offered,
     });
     // And nothing a kept Clear came after, should the web view have
     // reloaded since and forgotten `clearedJustUpdated`.
@@ -647,8 +652,6 @@ export function UpdatesPage() {
         },
       ];
     });
-    // A failure or one to check, only while its update is still offered.
-    const offered = new Set((snapshot?.updates ?? []).map((candidate) => artifactKeyId(candidate.key)));
     const kept = recentUpdates(history, toolsSeenHere(operations ?? []), Date.now(), offered).flatMap((record): JustUpdatedEntry[] => {
       const ending = endingOfRecord(record.result, record.already_updated ?? null, record.follow_up_warnings);
       if (ending === null) return [];

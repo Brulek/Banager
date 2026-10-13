@@ -14,7 +14,7 @@ import {
 } from "./JustUpdated";
 import type { HistoryResult, OpSummary } from "../lib/types";
 import { failureCause } from "../lib/failureCause";
-import { useUiStore } from "../store/ui";
+import { artifactKeyId, useUiStore } from "../store/ui";
 
 function upgrade(id: number, name: string, fields: Partial<OpSummary> = {}): OpSummary {
   return {
@@ -31,7 +31,18 @@ function upgrade(id: number, name: string, fields: Partial<OpSummary> = {}): OpS
   };
 }
 
-const none = { shownInRows: new Set<number>(), cleared: [], finishedAt: {} };
+/** The tools of Homebrew's formulae named, by `artifactKeyId`: what the last check offers. */
+function offering(...names: string[]): Set<string> {
+  return new Set(names.map((name) => artifactKeyId({ instance_id: "brew:/opt/homebrew", kind: "Formula", name })));
+}
+
+/** No row, no Clear, no time; every tool the tests name still offered an update. */
+const none = {
+  shownInRows: new Set<number>(),
+  cleared: [],
+  finishedAt: {},
+  offered: offering("jq", "wget", "glib", "gh", "fd", "bat", "tree", "node", "node@22", "python@3.13"),
+};
 
 /**
  * What the ⓘ after a line's ending says, once pressed: its why, which a
@@ -69,6 +80,19 @@ describe("justUpdatedOps", () => {
       ["wget", 4],
       ["jq", 2],
     ]);
+  });
+
+  it("leaves out one that failed or asks to be checked once no update is offered for the tool, not one that worked (r23 R55-3)", () => {
+    const stepped = { NeedsAttention: { UpdatedButStepFailed: { version: "3.13.8", cause: null, detail: null } } } as const;
+    const operations = [
+      upgrade(1, "glib", { outcome: { Failed: { exit_code: 1, summary: "no bottle", cause: failureCause("no bottle") } } }),
+      upgrade(2, "fd", { outcome: "Unconfirmed" }),
+      upgrade(3, "bat", { outcome: { NeedsAttention: "UnchangedAfterUpgrade" } }),
+      upgrade(4, "jq"),
+      upgrade(5, "python@3.13", { outcome: stepped }),
+    ];
+    // Updated in Terminal since: no check offers glib, fd or bat.
+    expect(justUpdatedOps(operations, { ...none, offered: offering("bat") }).map((op) => op.id)).toEqual([5, 4, 3]);
   });
 
   it("leaves out what a row still shows and what Clear took off", () => {

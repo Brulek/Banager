@@ -12,7 +12,7 @@ import {
   type FailureCause,
 } from "../lib/failureCause";
 import { ALREADY_UPDATED_KEYS, outcomeSentence, outcomeTone } from "../lib/operations";
-import { stepFailedOf } from "../lib/format";
+import { isUpdatedButStepFailed, stepFailedOf } from "../lib/format";
 import { calendarDaysBetween, shortDateText, shortTimeText } from "../lib/shortDate";
 import type { AlreadyUpdated, ArtifactKey, FollowUpWarning, Attention, HistoryResult, OpSummary, Outcome } from "../lib/types";
 import { PasswordRecovery } from "./PasswordRecovery";
@@ -172,6 +172,12 @@ export interface JustUpdatedFilter {
   cleared: readonly number[];
   /** When each operation finished (`opFinishedAt`), for the order. */
   finishedAt: Readonly<Record<number, number>>;
+  /**
+   * The tools, by `artifactKeyId`, the last check still offers an update
+   * (the snapshot's `updates`): what keeps one that failed or asks to be
+   * checked listed, as `recentUpdates` has it (r23 R55-3).
+   */
+  offered: ReadonlySet<string>;
 }
 
 /**
@@ -191,7 +197,12 @@ export interface JustUpdatedFilter {
  * and then the tick moves here -- never in both places, never in neither.
  * One that failed or asks to be checked keeps its row, with its outcome,
  * its log and Retry, for as long as that update is still offered; it is
- * listed here only once the row has gone. (A failure the history kept
+ * listed here only once the row has gone -- a newer version offered, or
+ * the row hidden -- and only while the last check still offers the tool
+ * an update (`offered`): updated in Terminal since, or uninstalled, it no
+ * longer is, as after a restart (`recentUpdates` in src/lib/history.ts,
+ * r23 R55-3). One installed though a step after it failed is listed
+ * either way, as one that worked is. (A failure the history kept
  * from an earlier launch is listed beside its row on purpose: that row,
  * after a restart, shows View Steps for a recorded password stop --
  * `recentUpdates` in src/lib/history.ts.)
@@ -214,6 +225,9 @@ export function justUpdatedOps(operations: readonly OpSummary[], filter: JustUpd
         op.kind === "Upgrade" &&
         op.status === "Done" &&
         endingOfOutcome(op.outcome) !== null &&
+        (op.outcome === "Succeeded" ||
+          isUpdatedButStepFailed(op.outcome) ||
+          filter.offered.has(artifactKeyId({ instance_id: op.instance_id, kind: op.artifact_kind, name: op.name }))) &&
         !filter.shownInRows.has(op.id) &&
         !cleared.has(op.id),
     )

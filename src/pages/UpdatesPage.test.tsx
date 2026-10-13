@@ -3846,7 +3846,8 @@ describe("UpdatesPage", () => {
         // Their rows still show how they ended, with the log and Retry: not listed.
         operation(glibKey, { id: 9, status: "Done", outcome: { Failed: { exit_code: 1, summary: "Error: no bottle", cause: failureCause("Error: no bottle") } } }),
         operation(onyxKey, { id: 10, status: "Done", outcome: { NeedsAttention: "UnchangedAfterUpgrade" } }),
-        // Three whose rows are gone: the two that did not update are listed.
+        // Three whose rows are gone -- a newer version is offered now --
+        // the two that did not update are listed.
         operation({ ...glibKey, name: "wget" }, { id: 11, status: "Done", outcome: "Cancelled" }),
         operation({ ...glibKey, name: "jq" }, { id: 12, status: "Done", outcome: "Unconfirmed" }),
         operation(
@@ -3860,6 +3861,7 @@ describe("UpdatesPage", () => {
       started(12, "1.1.0");
       started(13, "2.80.0");
       useUiStore.setState({ opFinishedAt: { 12: Date.now() - 60_000, 13: Date.now() } });
+      updates = [...updates, { ...brewCandidate("gh"), target: "2.81.0" }, { ...brewCandidate("jq"), target: "1.2.0" }];
       renderPage();
 
       expect(await within(await findRow("glib")).findByText("Couldn't update")).toBeInTheDocument();
@@ -3872,6 +3874,31 @@ describe("UpdatesPage", () => {
       // No version beside them: it would read as the one they were updated to.
       expect(within(section).queryByText(/^\d+\.\d+/)).toBeNull();
       expect(within(section).queryByText("wget")).toBeNull();
+    });
+
+    it("leaves out a failure of this window's once no update is offered for the tool, as after a restart (r23 R55-3)", async () => {
+      // glib's update failed here, then was done in Terminal.
+      operations = [
+        operation(glibKey, { id: 9, status: "Done", outcome: { Failed: { exit_code: 1, summary: "Error: no bottle", cause: failureCause("Error: no bottle") } } }),
+      ];
+      started(9, "2.90.0");
+      useUiStore.setState({ opFinishedAt: { 9: Date.now() } });
+      const { queryClient } = renderPage();
+      expect(await within(await findRow("glib")).findByText("Couldn't update")).toBeInTheDocument();
+
+      // Check Again no longer offers glib.
+      act(() => {
+        queryClient.setQueryData(queryKeys.snapshot, {
+          ...snapshot,
+          generation: snapshot.generation + 1,
+          instances,
+          artifacts: [installed(glibKey, "2.90.0"), installed(onyxKey, "5.0.2")],
+          updates: [snapshot.updates[1]],
+        });
+      });
+      await waitFor(() => expect(rowNames()).toEqual(["OnyX"]));
+      expect(justUpdated()).toBeNull();
+      expect(screen.queryByText("Couldn't update")).toBeNull();
     });
 
     it("says an update installed though a step after it failed as updated with an error: in its row, the count and the list (r35 U2)", async () => {
@@ -4688,18 +4715,18 @@ describe("UpdatesPage", () => {
           expect(screen.queryByText("Couldn't update: Needs your password")).toBeNull();
         });
 
-        it("gives the line no View Steps once onyx is offered no update: there is nothing to plan", async () => {
+        it("lists no line and no View Steps once onyx is offered no update: there is nothing to plan, or to say (r23 R55-3)", async () => {
           // Updated in Terminal since: the last check offers onyx nothing.
           updates = updates.filter((candidate) => candidate.key.name !== "onyx");
           operations = [stopped()];
           answerHistory({ run: "this-launch", cleared_before: null, records: [thisLaunch()] });
           renderPage();
           await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("get_history"));
-          const line = await stopLine();
           await act(async () => {
             await new Promise((resolve) => setTimeout(resolve, 50));
           });
-          expect(within(line).queryByRole("button", { name: "View steps: onyx" })).toBeNull();
+          expect(justUpdated()).toBeNull();
+          expect(screen.queryByRole("button", { name: "View steps: onyx" })).toBeNull();
         });
 
         it("lets an update the row shows say how it stands, over an earlier stop's View Steps", async () => {
