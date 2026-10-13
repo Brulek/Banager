@@ -39,8 +39,12 @@ impl RealRunner {
     /// runs anything (`not_found_auto_install`, on by default; "This also
     /// runs in shims", mise's `settings.toml`, v2026.9.0): a download and
     /// an install no preview showed, from a refresh's version read or a
-    /// plan's command. Off, the shim says that version is not installed
-    /// instead. Only mise reads it. mise installs a tool it was told to
+    /// plan's command. Off, the shim installs nothing: it runs the next
+    /// program of that name on `PATH` instead, as for a tool with no
+    /// version set (`not_found_system_fallback`, on by default; pip's
+    /// `NO_FALLBACK_ENV` for where that would be `/usr/bin/python3`), or,
+    /// with none there, says that version is not installed. Only mise
+    /// reads it. mise installs a tool it was told to
     /// install lazily (a "lazy bin provider") whatever this says.
     pub const EVERY_COMMAND_ENV: [(&'static str, &'static str); 1] =
         [("MISE_NOT_FOUND_AUTO_INSTALL", "false")];

@@ -739,11 +739,14 @@ fn regression_r63_2_a_command_behind_a_version_managers_shim_gets_no_verdict() {
 }
 
 #[test]
-fn regression_r63_2_a_version_managers_shim_first_gives_claude_code_no_notice() {
+fn regression_r63_2_a_version_managers_shim_first_hides_only_a_copy_it_can_reach() {
     // The notice on a tool with its own installer answers the same
-    // question for its launcher (`shadow_note`), and a shim first says no
-    // more there: mise's `claude` runs mise's npm-installed Claude Code, or,
-    // with none active, the next `claude` on `PATH` -- this copy.
+    // question for its launcher (`shadow_note`). mise's `claude` runs the
+    // Claude Code mise has active -- from mise's own folder -- or, with
+    // none active, the next `claude` on `PATH`. So a copy behind it on
+    // `PATH` gets no notice and no verdict, as it may be what runs; but a
+    // copy outside mise's folder whose folder `PATH` lacks the shim can
+    // never reach, and that copy is still not on `PATH` (skeptic of R63-2).
     let home = Home::new("mise-shim-claude");
     let setup = two_claudes(&home);
     let mise = home.exe(".local/bin/mise");
@@ -751,7 +754,6 @@ fn regression_r63_2_a_version_managers_shim_first_gives_claude_code_no_notice() 
     home.link(".local/share/mise/shims/claude", &mise);
     let real = home.at(".local/share/claude/versions/2.1.281");
     for path in [
-        vec![shims.clone()],
         vec![shims.clone(), setup.local_bin.clone()],
         vec![
             shims.clone(),
@@ -765,15 +767,28 @@ fn regression_r63_2_a_version_managers_shim_first_gives_claude_code_no_notice() 
             "PATH {path:?}"
         );
     }
-    let found = verdicts(
-        &home,
-        &[shims, setup.local_bin.clone()],
-        &setup.instances,
-        &setup.artifacts,
+    assert_eq!(
+        shadow_note("claude", &home.env(vec![shims.clone()]), &real),
+        Some(InstanceNote::NotOnPath)
     );
     assert_eq!(
-        found,
-        vec![vec![unjudged("claude")], vec![unjudged("claude")]]
+        verdicts(
+            &home,
+            &[shims.clone(), setup.local_bin.clone()],
+            &setup.instances,
+            &setup.artifacts,
+        ),
+        vec![
+            vec![not_on_path("claude", "~/npm/bin")],
+            vec![unjudged("claude")]
+        ]
+    );
+    assert_eq!(
+        verdicts(&home, &[shims], &setup.instances, &setup.artifacts),
+        vec![
+            vec![not_on_path("claude", "~/npm/bin")],
+            vec![not_on_path("claude", "~/.local/bin")]
+        ]
     );
 }
 

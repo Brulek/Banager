@@ -315,9 +315,12 @@ clears the environment). The `python3`, `npm` or `node` a command runs may
 be one of mise's shims, and by default such a shim first downloads and
 installs a version mise's settings name that is not installed yet
 (`not_found_auto_install`, mise's `settings.toml`, v2026.9.0) -- an install
-no preview showed. With this set, the shim says that version is not
-installed instead, which Banager takes as a command that did not answer
-(for pip's Python, no row: see pip's section). Only mise reads it;
+no preview showed. With this set, the shim installs nothing: it runs the
+next program of that name on `PATH` instead, as for a tool with no
+version set (`not_found_system_fallback`, on by default; pip's section
+says what Banager does when that would be `/usr/bin/python3`), or, with
+none there, says that version is not installed, which Banager takes as a
+command that did not answer. Only mise reads it;
 a tool mise was told to install on first use ("lazy") it still installs.
 Opened from
 Finder or the Dock, Banager starts with macOS's small default
@@ -3457,9 +3460,12 @@ command runs, below) -- `~/Documents`, iCloud Drive, `/Volumes` and the
 rest -- or a `claude` that leads into one, is not looked into: when it
 comes before this copy, or could be this copy, there is no notice. Nor
 when the first `claude` is a version manager's shim (in a folder named
-`shims`, as mise's are, or a link to a file in one): it runs whichever
-copy the manager has active, and with none, mise's shim runs the next
-`claude` on `PATH`, which may be this copy. When
+`shims`, as mise's are, or a link to a file in one) and this copy is in
+the folder that holds that shims folder, or behind the shim on `PATH`:
+the shim runs whichever copy the manager has active, from that folder,
+and with none, mise's shim runs the next `claude` on `PATH`, which may be
+this copy. A copy elsewhere whose folder `PATH` lacks the shim never runs,
+and gets the notice. When
 the login shell's `PATH` could not be read (How Banager runs anything,
 above), the `PATH` Banager has is the few folders an app opened from
 Finder starts with, which says nothing of Terminal's: that refresh gives
@@ -4621,11 +4627,16 @@ only a new terminal window or an editor's terminal sets is not seen; the
 details say that an alias, a new window or an editor's terminal may
 differ. Where the first of a name on `PATH` is a version manager's
 shim -- in a folder named `shims`, as mise's, pyenv's and asdf's are, or
-a link to a file in one -- nothing is said about which copy runs, unless
-it is that very copy: the shim runs whichever copy the manager has
-active, perhaps this one from a folder `PATH` lacks (mise's `tsc` runs
-the TypeScript of its Node), and where it leads (mise's shims all lead to
-mise) does not tell which. Nothing is said about a Homebrew formula installed as a
+a link to a file in one -- nothing is said about which copy runs of a
+copy in the folder that holds that shims folder (mise's
+`~/.local/share/mise`) or behind the shim on `PATH`, unless the shim is
+that very copy: the
+shim runs whichever copy the manager has active, from that folder,
+perhaps this one from a folder `PATH` lacks (mise's `tsc` runs the
+TypeScript of its Node), or with none the next one on `PATH`, and where
+it leads (mise's shims all lead to mise) does not tell which. A copy
+elsewhere whose folder `PATH` lacks the shim never runs, and is said not
+to be on `PATH`, as with no shim. Nothing is said about a Homebrew formula installed as a
 dependency, and neither a keg-only one (Homebrew keeps it off `PATH` on
 purpose) nor one Homebrew has not linked (above) is ever said to be
 missing from Terminal; a keg-only one linked by hand (`brew link

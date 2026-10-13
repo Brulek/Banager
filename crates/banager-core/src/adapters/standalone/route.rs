@@ -6,7 +6,7 @@
 //! which copy runs when the user types the tool's name (spec §七).
 
 use super::recipe::RouteKind;
-use crate::commands::in_shims;
+use crate::commands::manager_folder;
 use crate::model::InstanceNote;
 use crate::protected::{self, look, Protected, Resolution};
 use crate::runner::HostEnv;
@@ -418,8 +418,10 @@ pub fn lexical_join(dir: &Path, target: &Path) -> PathBuf {
 /// a protected place (`protected`), or a `command` that leads into one, is
 /// never looked into: when it comes first, or could be this copy behind
 /// another program, there is no note. Nor when a version manager's shim
-/// comes first: it runs whichever copy the manager has active, which may
-/// be this one, as `commands::judge` gives it no verdict.
+/// comes first and this copy is in the manager's own folder or behind it
+/// on `PATH`: the shim runs whichever copy the manager has active, or
+/// with none the next one on `PATH`, which may be this one, as
+/// `commands::judge` gives it no verdict.
 pub fn shadow_note(command: &str, env: &HostEnv, real: &Path) -> Option<InstanceNote> {
     // Standalone-only lookup: changing the shared package-manager
     // discovery helper would broaden this step beyond its PATH notices.
@@ -433,10 +435,16 @@ pub fn shadow_note(command: &str, env: &HostEnv, real: &Path) -> Option<Instance
         match protected::resolve(&dir.join(command), &protected, true) {
             Resolution::Found(path, meta) => {
                 (meta.is_file() && meta.mode() & 0o111 != 0).then(|| {
-                    if in_shims(dir) || path.parent().is_some_and(in_shims) {
-                        OnPath::Shim(path)
-                    } else {
+                    let managers: Vec<PathBuf> = [dir.as_path()]
+                        .into_iter()
+                        .chain(path.parent())
+                        .filter_map(manager_folder)
+                        .map(Path::to_path_buf)
+                        .collect();
+                    if managers.is_empty() {
                         OnPath::Executable(path)
+                    } else {
+                        OnPath::Shim(path, managers)
                     }
                 })
             }
@@ -444,14 +452,23 @@ pub fn shadow_note(command: &str, env: &HostEnv, real: &Path) -> Option<Instance
             Resolution::Missing | Resolution::Refused => None,
         }
     });
-    let first = match found.next() {
+    let (first, shim) = match found.next() {
         None => return Some(InstanceNote::NotOnPath),
         // Whatever comes first was not looked at: no note either way.
         Some(OnPath::Unknown) => return None,
         // A version manager's shim first runs whichever copy the manager
-        // has active, perhaps this one (R63-2): no note either way.
-        Some(OnPath::Shim(_)) => return None,
-        Some(OnPath::Executable(first)) => first,
+        // has active, perhaps this one from its own folder (R63-2): no
+        // note either way. With none active it runs the next one on
+        // `PATH`: below.
+        Some(OnPath::Shim(_, managers))
+            if managers
+                .iter()
+                .any(|manager| protected::starts_with_folded(real, manager)) =>
+        {
+            return None
+        }
+        Some(OnPath::Shim(first, _)) => (first, true),
+        Some(OnPath::Executable(first)) => (first, false),
     };
     if protected::same_path(&first, real) {
         return None;
@@ -463,7 +480,7 @@ pub fn shadow_note(command: &str, env: &HostEnv, real: &Path) -> Option<Instance
     // could be this copy: then no note.
     let mut unknown = false;
     let behind = found.any(|later| match later {
-        OnPath::Executable(later) | OnPath::Shim(later) => protected::same_path(&later, real),
+        OnPath::Executable(later) | OnPath::Shim(later, _) => protected::same_path(&later, real),
         OnPath::Unknown => {
             unknown = true;
             false
@@ -471,6 +488,10 @@ pub fn shadow_note(command: &str, env: &HostEnv, real: &Path) -> Option<Instance
     });
     if !behind {
         return (!unknown).then_some(InstanceNote::NotOnPath);
+    }
+    // Behind a shim, which may run it: no note.
+    if shim {
+        return None;
     }
     Some(if has_component(&first, &["Cellar", "Caskroom"]) {
         InstanceNote::ShadowedByHomebrew
@@ -482,12 +503,13 @@ pub fn shadow_note(command: &str, env: &HostEnv, real: &Path) -> Option<Instance
 }
 
 /// What one `PATH` folder holds of a command, for `shadow_note`: an
-/// executable file, by where it leads -- a version manager's shim
-/// (`commands::in_shims`) apart -- or something nobody looked at because
-/// it is, or leads into, a protected place.
+/// executable file, by where it leads -- a version manager's shim apart,
+/// with the manager's own folders (`commands::manager_folder`) -- or
+/// something nobody looked at because it is, or leads into, a protected
+/// place.
 enum OnPath {
     Executable(PathBuf),
-    Shim(PathBuf),
+    Shim(PathBuf, Vec<PathBuf>),
     Unknown,
 }
 

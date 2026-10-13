@@ -2039,12 +2039,13 @@ mod tests {
         )];
         // (PATH, xcode-select's answer, the commands run, the probe's
         // environment)
-        let cases: Vec<(
-            Vec<&Path>,
-            Option<&Path>,
+        type Case<'a> = (
+            Vec<&'a Path>,
+            Option<&'a Path>,
             Vec<Vec<String>>,
             Vec<(String, String)>,
-        )> = vec![
+        );
+        let cases: Vec<Case> = vec![
             (
                 vec![&mise_shims, &usr_bin],
                 None,
