@@ -365,8 +365,9 @@ export function UnknownPage() {
   // answer is thrown away; the backend finishes it and then scans the
   // new snapshot (`scan_unknown` in src-tauri/src/ipc.rs). In
   // development, StrictMode (src/main.tsx) runs this effect twice on
-  // mount; the second run finds nothing yet to call off and joins the
-  // first's scan.
+  // mount, both calling off before either asks: on a first visit the
+  // second `refetch` joins the first's scan; with a list already kept,
+  // it restarts it, a read thrown away that the backend shares.
   const queryClient = useQueryClient();
   useEffect(() => {
     if (generation === undefined) return;
