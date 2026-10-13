@@ -401,7 +401,10 @@ fn walk_leaving_out(
         }
         let folder = Pending {
             path: root.clone(),
-            parent: Rc::new(parent),
+            parent: Rc::new(Open {
+                dir: parent,
+                up: None,
+            }),
             name,
             meta,
         };
@@ -440,9 +443,17 @@ enum Flow {
 /// open), its name there, and what `fstatat` said of it when it was met.
 struct Pending {
     path: PathBuf,
-    parent: Rc<Dir>,
+    parent: Rc<Open>,
     name: OsString,
     meta: Stat,
+}
+
+/// A folder the walk holds open, and the folder it was opened from, held
+/// open as long as it is: where a folder too deep for `F_GETPATH` to tell
+/// is now is told by the nearest one above it that can be (`outside`).
+struct Open {
+    dir: Dir,
+    up: Option<Rc<Open>>,
 }
 
 /// Everything under `root`, a folder on the volume `device`, into `tally`:
@@ -454,7 +465,8 @@ struct Pending {
 /// `~/Documents`, say -- is not entered, and the result is `partial`.
 /// What is in it is listed and looked at from that descriptor alone
 /// (`readdir`, `fstatat`). A folder held open stays so only while a
-/// folder in it waits to be listed: as many as the walk is deep.
+/// folder in it, or deeper, waits to be listed (`Open`): as many as the
+/// walk is deep.
 fn walk_folder(
     root: Pending,
     device: u64,
@@ -500,20 +512,17 @@ fn walk_folder(
         // into `~/Documents` since it was opened still opens what is in
         // it, which is in `~/Documents` now. Asked before the folder is
         // opened, as opening one there is itself what asks permission.
-        match parent.path() {
-            Ok(at) if !protected.contains(&at.join(&name)) => {}
-            // No such call off a Mac, where no place asks permission.
-            Err(e) if e.kind() == std::io::ErrorKind::Unsupported => {}
-            _ => {
-                tally.partial = true;
-                continue;
-            }
-        }
-        let opened = parent.open_dir_at(&name, Some(&meta), true);
-        drop(parent);
-        let Ok((dir, _)) = opened else {
+        if !outside(&parent, Some(&name), protected) {
             tally.partial = true;
             continue;
+        }
+        let Ok((dir, _)) = parent.dir.open_dir_at(&name, Some(&meta), true) else {
+            tally.partial = true;
+            continue;
+        };
+        let dir = Open {
+            dir,
+            up: Some(parent),
         };
         // And where the folder itself is now, before anything in it is
         // listed or looked at: the folder above may have been moved in
@@ -522,7 +531,7 @@ fn walk_folder(
             tally.partial = true;
             continue;
         }
-        let mut entries = match dir.entries() {
+        let mut entries = match dir.dir.entries() {
             Ok(entries) => entries,
             Err(_) => {
                 tally.partial = true;
@@ -576,7 +585,7 @@ fn walk_folder(
             }
             just_asked = true;
             // `fstatat` without following: a link is the link.
-            let meta = match dir.stat_at(&name) {
+            let meta = match dir.dir.stat_at(&name) {
                 Ok(meta) => meta,
                 Err(_) => {
                     tally.partial = true;
@@ -603,13 +612,39 @@ fn walk_folder(
 
 /// Whether `dir`, a folder the walk holds open, is still outside every
 /// protected place, wherever another program may have moved it since
-/// (`Dir::path`, `F_GETPATH`, which looks nothing up and reads nothing in
-/// it). Always so off a Mac, which has no such call and where no place
-/// asks permission.
-fn still_outside(dir: &Dir, protected: &Protected) -> bool {
-    match dir.path() {
-        Ok(at) => !protected.contains(&at),
-        Err(e) => e.kind() == std::io::ErrorKind::Unsupported,
+/// (`outside`).
+fn still_outside(dir: &Open, protected: &Protected) -> bool {
+    outside(dir, None, protected)
+}
+
+/// Whether `open`, a folder the walk holds open -- or `name` in it -- is
+/// outside every protected place, wherever another program may have moved
+/// it since (`Dir::path`, `F_GETPATH`, which looks nothing up and reads
+/// nothing in it). Always so off a Mac, which has no such call and where
+/// no place asks permission. A folder whose path is too long for
+/// `F_GETPATH` to tell (1024 bytes: macOS says `ENOSPC`) is outside when
+/// the nearest folder above it that can be told is, and holds no place
+/// either: every place's own path is far shorter (r22 R53-3).
+fn outside(open: &Open, name: Option<&std::ffi::OsStr>, protected: &Protected) -> bool {
+    match open.dir.path() {
+        Ok(at) => !protected.contains(&name.map_or_else(|| at.clone(), |name| at.join(name))),
+        Err(e) if e.kind() == std::io::ErrorKind::Unsupported => true,
+        Err(e) if matches!(e.raw_os_error(), Some(libc::ENOSPC | libc::ENAMETOOLONG)) => {
+            let mut up = open.up.as_deref();
+            while let Some(above) = up {
+                match above.dir.path() {
+                    Ok(at) => return !protected.contains(&at) && !protected.under(&at),
+                    Err(e)
+                        if matches!(e.raw_os_error(), Some(libc::ENOSPC | libc::ENAMETOOLONG)) =>
+                    {
+                        up = above.up.as_deref();
+                    }
+                    Err(_) => return false,
+                }
+            }
+            false
+        }
+        Err(_) => false,
     }
 }
 
@@ -1635,7 +1670,10 @@ mod tests {
         let meta = parent.stat_at(&name).unwrap();
         Pending {
             path: path.to_path_buf(),
-            parent: Rc::new(parent),
+            parent: Rc::new(Open {
+                dir: parent,
+                up: None,
+            }),
             name,
             meta,
         }
@@ -2097,6 +2135,68 @@ mod tests {
                 "{call:?} {path:?}"
             );
         }
+    }
+
+    #[test]
+    fn test_a_folder_too_deep_for_its_path_to_be_told_is_measured_all_the_same() {
+        // Six folders of 200-character names: from the fifth on, the path
+        // is longer than `F_GETPATH` can tell (1024 bytes), and macOS says
+        // so (`ENOSPC`). Where such a folder is now is told by the nearest
+        // folder above it that can be (r22 R53-3).
+        use std::ffi::CString;
+        use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+        let scratch = Scratch::new("deep");
+        let home = scratch.dir("home");
+        scratch.dir("home/Documents");
+        let tool = scratch.dir("home/.tool");
+        scratch.file("home/.tool/small.bin", 1_000);
+        let name = CString::new("d".repeat(200)).unwrap();
+        let mut at: OwnedFd = std::fs::File::open(&tool).unwrap().into();
+        for _ in 0..6 {
+            // SAFETY: `at` is an open folder and `name` a C string.
+            assert_eq!(
+                unsafe { libc::mkdirat(at.as_raw_fd(), name.as_ptr(), 0o755) },
+                0
+            );
+            // SAFETY: as above; the descriptor is checked and then owned.
+            let next = unsafe {
+                libc::openat(
+                    at.as_raw_fd(),
+                    name.as_ptr(),
+                    libc::O_RDONLY | libc::O_DIRECTORY,
+                )
+            };
+            assert!(next >= 0, "{}", std::io::Error::last_os_error());
+            at = unsafe { OwnedFd::from_raw_fd(next) };
+        }
+        let file = CString::new("deep.bin").unwrap();
+        // SAFETY: as above.
+        let fd = unsafe {
+            libc::openat(
+                at.as_raw_fd(),
+                file.as_ptr(),
+                libc::O_WRONLY | libc::O_CREAT,
+                0o644,
+            )
+        };
+        assert!(fd >= 0, "{}", std::io::Error::last_os_error());
+        let mut deep = unsafe { std::fs::File::from_raw_fd(fd) };
+        std::io::Write::write_all(&mut deep, &vec![7u8; 500_000]).unwrap();
+        drop(deep);
+        let _account = crate::protected::as_if_account(&home);
+        let mut budget = Budget::new(SizeBudget::default());
+        // Not under `calls::measure`, which names each call's folder by
+        // `F_GETPATH` too.
+        let protected = Protected::new(&home);
+        let end = walk(
+            std::slice::from_ref(&tool),
+            &mut budget,
+            &protected,
+            &mut || true,
+        );
+        let walked = walked(end);
+        assert!(walked.measured.bytes >= 501_000, "{walked:?}");
+        assert!(!walked.measured.partial, "{walked:?}");
     }
 
     #[test]

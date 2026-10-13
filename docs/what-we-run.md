@@ -4743,7 +4743,10 @@ no further: before each folder is opened, the walk asks the folder it
 is opened from where it is now, and before it is listed and again
 before each further name in it is read and looked at, the folder
 itself (`fcntl(F_GETPATH)`, which reads nothing in either), and the
-measurement is partial. It is the same list the command check keeps out
+measurement is partial. A folder too deep for that call to tell where
+it is (a path of 1024 bytes or more) is told by the nearest folder above
+it, held open since the walk came through it, that can be, and measured
+when that one is outside the list and holds nothing on it. It is the same list the command check keeps out
 of (`crates/banager-core/src/protected.rs`). `~` there is both the home
 folder `HOME` names and the account's own home folder from the password
 database, whatever `HOME` says (How Banager runs anything, above;
