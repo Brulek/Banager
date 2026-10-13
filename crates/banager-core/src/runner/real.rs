@@ -32,6 +32,19 @@ pub struct RealRunner {
 }
 
 impl RealRunner {
+    /// Set on every command this runner runs, before the spec's own
+    /// variables. A program on `PATH` may be one of mise's shims -- a
+    /// Python, an npm or the `node` npm runs -- and mise's shim installs a
+    /// version its configuration names and nobody installed before it
+    /// runs anything (`not_found_auto_install`, on by default; "This also
+    /// runs in shims", mise's `settings.toml`, v2026.9.0): a download and
+    /// an install no preview showed, from a refresh's version read or a
+    /// plan's command. Off, the shim says that version is not installed
+    /// instead. Only mise reads it. mise installs a tool it was told to
+    /// install lazily (a "lazy bin provider") whatever this says.
+    pub const EVERY_COMMAND_ENV: [(&'static str, &'static str); 1] =
+        [("MISE_NOT_FOUND_AUTO_INSTALL", "false")];
+
     pub fn new() -> RealRunner {
         RealRunner {
             inherit_settings: true,
@@ -824,6 +837,7 @@ impl CommandRunner for RealRunner {
             &spec.env,
             &inherited,
         ));
+        cmd.envs(Self::EVERY_COMMAND_ENV);
         cmd.envs(spec.env.iter().cloned());
         if let Some(cwd) = &spec.cwd {
             cmd.current_dir(cwd);
@@ -1151,6 +1165,61 @@ mod tests {
                 (Stream::Stdout, "b".to_string())
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn regression_r63_1_a_mise_shim_run_by_any_command_installs_nothing() {
+        // mise's shims install a configured version that is missing before
+        // they run it unless `not_found_auto_install` is off
+        // (`src/cli/shim.rs`, v2026.9.0; on by default). A test-owned shim
+        // that does what mise's does with `MISE_NOT_FOUND_AUTO_INSTALL`:
+        // it leaves `installed` behind unless the setting is false. Run
+        // as pip's and npm's version reads run theirs -- no variable of
+        // the spec's own -- and as a plan's would, with variables of its
+        // own: nothing is installed either way.
+        use std::os::unix::fs::PermissionsExt;
+        let home = std::fs::canonicalize({
+            let raw = unique_temp_path("runner-mise-shim");
+            std::fs::create_dir_all(raw.join("shims")).unwrap();
+            raw
+        })
+        .unwrap();
+        let installed = home.join("installed");
+        let shim = home.join("shims/python3");
+        std::fs::write(
+            &shim,
+            format!(
+                "#!/bin/sh\ncase \"$MISE_NOT_FOUND_AUTO_INSTALL\" in\n  false) ;;\n  *) touch '{}' ;;\nesac\necho 'pip 26.2.1'\n",
+                installed.display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let runner = RealRunner::without_this_macs_settings();
+        for env in [Vec::new(), vec![("NO_COLOR".to_string(), "1".to_string())]] {
+            let spec = CommandSpec {
+                program: shim.clone(),
+                args: vec!["-m".into(), "pip".into(), "--version".into()],
+                env,
+                cwd: None,
+                timeout: std::time::Duration::from_secs(5),
+                output_use: OutputUse::Parsed,
+            };
+            let output = runner
+                .run(spec, None, CancellationToken::new())
+                .await
+                .expect("run the shim");
+            assert_eq!(output.exit_code, Some(0));
+            assert!(
+                !installed.exists(),
+                "the shim was run with mise's automatic install on"
+            );
+        }
+        assert_eq!(
+            RealRunner::EVERY_COMMAND_ENV,
+            [("MISE_NOT_FOUND_AUTO_INSTALL", "false")]
+        );
+        let _ = std::fs::remove_dir_all(&home);
     }
 
     #[tokio::test]

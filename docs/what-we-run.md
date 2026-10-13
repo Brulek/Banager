@@ -306,8 +306,18 @@ would not be caught.
 `PATH` and the proxy and mirror settings above, the only variables taken
 from the login shell (set on each command, not in Banager's own
 environment), and whatever else Banager itself was started with — plus
-the variables listed in each source's section below (`RealRunner::run`
-adds them with `envs` and never clears the environment). Opened from
+`MISE_NOT_FOUND_AUTO_INSTALL=false` on every command
+(`RealRunner::EVERY_COMMAND_ENV`), and the variables listed in each
+source's section below (`RealRunner::run` adds them with `envs` and never
+clears the environment). The `python3`, `npm` or `node` a command runs may
+be one of mise's shims, and by default such a shim first downloads and
+installs a version mise's settings name that is not installed yet
+(`not_found_auto_install`, mise's `settings.toml`, v2026.9.0) -- an install
+no preview showed. With this set, the shim says that version is not
+installed instead, which Banager takes as a command that did not answer
+(for pip's Python, no row: see pip's section). Only mise reads it;
+a tool mise was told to install on first use ("lazy") it still installs.
+Opened from
 Finder or the Dock, Banager starts with macOS's small default
 environment, so any other variable exported only in a shell startup file
 — `CARGO_HOME`, `RUSTUP_HOME`, a token — does not reach the commands

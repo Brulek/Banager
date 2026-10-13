@@ -2,8 +2,8 @@
 //! who does not read Rust can see every command Banager runs and every
 //! host it contacts. Prose cannot be compiled, so these pin the parts of it
 //! the code can vouch for: a section per registered source, every host on
-//! the https allowlist, every environment variable brew and npm set, that
-//! the Cargo section says every cargo command is given `CargoAdapter::ENV`
+//! the https allowlist, every environment variable brew and npm set and
+//! the one the runner sets on every command, that the Cargo section says every cargo command is given `CargoAdapter::ENV`
 //! and shows each entry, the three Homebrew flags the file promises are
 //! never passed but for the one `--force` of U9, the `brew cleanup` after a
 //! formula's update with its time limit and, in the never-list, the cache
@@ -68,7 +68,7 @@ use banager_core::icon::ICON_PIXELS;
 use banager_core::kept_data;
 use banager_core::model::{InstanceNote, KeptWhat};
 use banager_core::protected::{OTHER_VOLUMES, PROTECTED_IN_HOME};
-use banager_core::runner::HostEnv;
+use banager_core::runner::{HostEnv, RealRunner};
 use banager_core::scan::ScanBudget;
 use banager_core::session::Session;
 use banager_core::size::SizeBudget;
@@ -233,6 +233,27 @@ fn test_what_we_run_shows_every_environment_variable_brew_and_npm_set() {
         assert!(
             doc.contains(&format!("{name}={value}")),
             "docs/what-we-run.md does not show {name}={value}"
+        );
+    }
+}
+
+#[test]
+fn test_what_we_run_shows_every_variable_the_runner_sets_on_every_command() {
+    // `RealRunner::EVERY_COMMAND_ENV` goes on every command (R63-1: mise's
+    // shims install a missing version before running unless told not to).
+    // The paragraph on what a command inherits has to show each entry
+    // under the constant's name.
+    let doc = read_doc();
+    let folded = doc.split_whitespace().collect::<Vec<_>>().join(" ");
+    let start = folded
+        .find("**What a command inherits.**")
+        .expect("docs/what-we-run.md has no paragraph on what a command inherits");
+    let paragraph = &folded[start..(start + 1500).min(folded.len())];
+    assert!(paragraph.contains("`RealRunner::EVERY_COMMAND_ENV`"));
+    for (name, value) in RealRunner::EVERY_COMMAND_ENV {
+        assert!(
+            paragraph.contains(&format!("`{name}={value}` on every command")),
+            "docs/what-we-run.md does not show {name}={value} on every command"
         );
     }
 }
