@@ -5414,13 +5414,13 @@ not read (`protected::look`; How Banager runs anything, above):
   `{prefix}/Cellar` and `{prefix}/bin/corepack` lead, when a listing
   or a check lists corepack or its update is planned, or its uninstall
   is, to tell a Homebrew formula's corepack (npm's section).
+  Planning also compares the prefix directory's device/inode with Homebrew's
+  fixed discovery prefixes to share one lock across symbolic-link aliases.
 - Homebrew, at each detection but under root: where its `brew` leads,
   and whether Homebrew's own folder and its `Cellar` are writable, via
   `access(2)` (`faccessat` of the folder held open; one that cannot be
   looked at is taken as not writable), to tell a Homebrew this account
   cannot change (Homebrew's section, Detect).
-  Planning also compares the prefix directory's device/inode with Homebrew's
-  fixed discovery prefixes to share one lock across symbolic-link aliases.
 - pip: the canonical path of each interpreter found, to count it once, and
   for the shim guard; whether `pyvenv.cfg` is a regular file beside the
   launcher or one folder above, and the site-packages directory named by

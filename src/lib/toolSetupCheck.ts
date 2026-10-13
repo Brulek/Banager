@@ -423,9 +423,14 @@ function homebrewLines(t: Translate, input: ToolSetupInput): SetupLine[] | null 
   // list read this time -- none at all on a first launch -- so nothing is
   // said to be fine of it, nor of every Homebrew because another one's
   // list is clean (R59-3). What is counted is still said, under a line
-  // saying it may be incomplete; the Sources section has its ⚠︎.
+  // saying it may be incomplete; the Sources section has its ⚠︎. A list
+  // not read because `brew update` was running (`IndexUpdating`) is last
+  // check's too, with no ⚠︎ -- nothing failed.
   const failed = new Set(snapshot.errors.map((error) => error.instance_id));
-  const unfinished = snapshot.instances.filter((instance) => brews.has(instance.id) && sourceWarns(instance, failed));
+  const unfinished = snapshot.instances.filter(
+    (instance) =>
+      brews.has(instance.id) && (sourceWarns(instance, failed) || instance.status.notes.includes("IndexUpdating")),
+  );
   const known = unfinished.length === 0;
   if (known && retired === 0 && keeping.length === 0) return [line("fine", "fine", t("setupCheck.homebrew.fine"))];
   const lines: SetupLine[] = [];

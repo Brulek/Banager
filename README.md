@@ -165,7 +165,8 @@ background starts one on its own when it ends (`ipc::refresh_on_background_chang
 `src-tauri/src/lib.rs:70-73`). Checks run Homebrew's own `brew update`, which updates Homebrew and
 its index, and when Homebrew has moved a package you have between a formula and a cask, or renamed
 one, can install, move or uninstall Homebrew packages by itself without a preview or confirmation
-(`docs/what-we-run.md`, "Homebrew"). After one that succeeded, checks skip it for six hours on the
+(`docs/what-we-run.md`, "Homebrew"). A Homebrew whose own folders this account can't change gets no
+`brew update`, which would only refuse there; it is view only. After one that succeeded, checks skip it for six hours on the
 clock (time the Mac spends
 asleep counts, and a clock set back to before it ended counts as the six hours gone); after one that
 failed, the next check runs it again — or, when a check had stopped waiting for it, the check after
@@ -617,6 +618,7 @@ Banager 在打开时、每次操作完成后，以及你按下“概览”“更
 `src-tauri/src/lib.rs:70-73`，不需要用户动手）。检查时会运行 Homebrew 自己的 `brew update`，
 它会更新 Homebrew 本身和它的索引；Homebrew 把你装的某个软件在 formula 和 cask 之间挪了位置或者改了名时，
 它还能未经预览或确认就安装、移动或卸载软件包（见 `docs/what-we-run.md` 的“Homebrew”一节）。
+当前账户无法修改其自身文件夹的 Homebrew 不运行 `brew update`（在那里它只会拒绝），只能查看。
 上一次 `brew update` 成功后，六小时内的检查都不再运行它（按时钟算，Mac 睡眠的时间也算在内；
 时钟被调回到它结束之前，就当六小时已过）；上一次失败了，下一次检查就会再运行——
 如果当时的检查没等它结束，那就是它结束时引发的那次检查之后的下一次。

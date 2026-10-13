@@ -750,6 +750,19 @@ describe("toolSetupCheck's Homebrew lines when a Homebrew wasn't fully checked (
     ]);
   });
 
+  it("says the same when its list wasn't read because brew update was running", () => {
+    // `IndexUpdating`: no error and no ⚠︎ (nothing failed), but the list is
+    // last check's -- on a first launch, none.
+    const snapshot = fineSnapshot();
+    snapshot.instances = snapshot.instances.map((i) =>
+      i.id === BREW ? { ...i, status: { unavailable: null, notes: ["IndexUpdating"] } } : i,
+    );
+    snapshot.artifacts = snapshot.artifacts.filter((a) => a.key.instance_id !== BREW);
+    expect(shape(toolSetupCheck(en, input({ snapshot })))["Homebrew"]).toEqual([
+      "note Couldn't fully check Homebrew this time, so what's here about it may be incomplete",
+    ]);
+  });
+
   it("doesn't let one Homebrew's clean list speak for another that didn't answer", () => {
     const snapshot = fineSnapshot();
     snapshot.instances.push(instance(INTEL, { status: { unavailable: "NotResponding", notes: [] } }));
