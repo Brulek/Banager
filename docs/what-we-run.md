@@ -11,7 +11,9 @@ it can be checked against `crates/banager-core/src/adapters/` rather than
 believed. `crates/banager-core/tests/what_we_run_test.rs` checks the parts
 a test can: a section per registered source, every host on the https
 allowlist, every environment variable Homebrew's and npm's commands are
-given, that Cargo's section says every Cargo command is given the
+given, the one every command is given (`RealRunner::EVERY_COMMAND_ENV`)
+and the one pip's version read through a mise shim may be given
+(`PipAdapter::NO_FALLBACK_ENV`), that Cargo's section says every Cargo command is given the
 variables in `CargoAdapter::ENV` and shows each one, the three Homebrew
 flags this file promises are never passed, that pip's section shows the
 `xcode-select -p` it asks before running an interpreter in `/usr/bin` and
@@ -2877,12 +2879,28 @@ are installed, its pip is listed. Both the initial shim-parent check and
 the developer-tool exclusion compare paths with `protected::same_path`, so
 case variants such as `/USR/BIN` and links spelled that way are guarded too.
 
+A version manager's shim (a folder named `shims`: mise's, pyenv's,
+asdf's) with no Python of its own active runs the next one of its name
+on `PATH` -- mise by default (`not_found_system_fallback`, mise's
+`settings.toml`, v2026.9.0), pyenv and asdf for `system` -- which can be
+`/usr/bin/python3`. So for such a shim Banager also looks down `PATH`,
+past the folders named `shims` and past whatever leads where the shim
+does, for the first executable of its name (`developer_shim_after`).
+When that is the `/usr/bin` shim, it asks `xcode-select -p` as above
+(still at most once a refresh), and with no tool there: mise's shim is
+run with `MISE_NOT_FOUND_SYSTEM_FALLBACK=false`
+(`PipAdapter::NO_FALLBACK_ENV`), so with no Python active it says no
+version is set and is skipped as above; a shim that does not lead to
+mise -- pyenv's and asdf's are scripts, which read no such setting -- is
+skipped without being run. With the tools there, or another Python
+first, the shim is run as before.
+
 **Read-only commands:**
 
 | Purpose | Argv | Timeout |
 |---|---|---|
-| Which developer directory the `/usr/bin` shims use (`detect`, before running an interpreter there; at most once a refresh) | `/usr/bin/xcode-select -p` | 10 s |
-| Version | `<python> -m pip --version` | 30 s |
+| Which developer directory the `/usr/bin` shims use (`detect`, before running an interpreter there, or a version manager's shim that would run one; at most once a refresh) | `/usr/bin/xcode-select -p` | 10 s |
+| Version | `<python> -m pip --version`; through one of mise's shims that would run the `/usr/bin` shim with no tool, with `MISE_NOT_FOUND_SYSTEM_FALLBACK=false` | 30 s |
 | List packages (`inventory`) | `<python> -m pip list --format=json` | 60 s |
 | List packages nothing else depends on (`inventory`, to tell dependencies apart) | `<python> -m pip list --format=json --not-required` | 60 s |
 | List packages nothing else depends on, to count them (`check_updates`, before the next row) | `<python> -m pip list --format=json --not-required` | 60 s |

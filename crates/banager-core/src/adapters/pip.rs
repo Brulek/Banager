@@ -416,6 +416,15 @@ fn version_manager_shim(python: &Path) -> bool {
         .is_some_and(|folder| protected::same_path(Path::new(folder), Path::new("shims")))
 }
 
+/// Whether a version manager's shim leads to mise (`program`, where it
+/// leads): mise's shims are links to the mise program itself, which reads
+/// `PipAdapter::NO_FALLBACK_ENV`; pyenv's and asdf's are scripts.
+fn leads_to_mise(program: &Path) -> bool {
+    program
+        .file_name()
+        .is_some_and(|name| protected::same_path(Path::new(name), Path::new("mise")))
+}
+
 #[cfg(not(test))]
 const DEFAULT_ENVIRONMENT_KEY_FN: fn(&str, &Path, &Protected) -> Option<Vec<u8>> = environment_key;
 #[cfg(test)]
@@ -444,6 +453,17 @@ impl PipAdapter {
     /// TN2339 gives `--print-path` as the way to see which Xcode the tools
     /// use.
     pub const XCODE_SELECT_ARGV: [&'static str; 2] = ["/usr/bin/xcode-select", "-p"];
+
+    /// The environment of `detect`'s `-m pip --version` through one of
+    /// mise's shims whose fallback would be a developer-tool shim with no
+    /// tool (`developer_shim_after`): with no Python of its own active
+    /// here, mise's shim runs the next `python3` on `PATH`
+    /// (`not_found_system_fallback`, on by default, mise's `settings.toml`,
+    /// v2026.9.0) -- `/usr/bin/python3`, and the dialog offering to install
+    /// the Command Line Tools. Off, it says no version is set, exit 1, and
+    /// `detect` skips it. Every other version read is given none.
+    pub const NO_FALLBACK_ENV: [(&'static str, &'static str); 1] =
+        [("MISE_NOT_FOUND_SYSTEM_FALLBACK", "false")];
 
     /// The environment of `check_updates`' `pip list --outdated`: pip's
     /// normal verbosity, whatever the user's `pip.conf` or environment
@@ -501,8 +521,11 @@ impl PipAdapter {
     /// (`shim_has_tool`); otherwise it is skipped as if it were not on
     /// `PATH` -- no instance, no error, no note -- because running it would
     /// open the system's dialog offering to install the Command Line Tools.
-    /// `xcode-select -p` is asked at most once a call, and only when such
-    /// an interpreter turns up; nothing keeps its answer past the call, so
+    /// So is a version manager's shim that would fall back to one
+    /// (`developer_shim_after`), mise's apart, which is run with its
+    /// fallback off (`NO_FALLBACK_ENV`). `xcode-select -p` is asked at
+    /// most once a call, and only when such an interpreter or shim turns
+    /// up; nothing keeps its answer past the call, so
     /// the refresh after the tools are installed finds them.
     pub async fn detect(&self, env: &HostEnv) -> Vec<ManagerInstance> {
         let mut seen = HashSet::new();
@@ -542,13 +565,39 @@ impl PipAdapter {
                     continue;
                 }
             }
+            // A version manager's shim with nothing active here runs the
+            // next of its name on `PATH` (mise's `not_found_system_fallback`,
+            // on by default; pyenv's and asdf's `system`): when that is a
+            // developer-tool shim with no tool behind it, the same dialog.
+            // mise is told not to (`NO_FALLBACK_ENV`), and says no version
+            // is set; a shim that reads no such setting is not run.
+            let mut probe_env = Vec::new();
+            if version_manager_shim(&python_path) {
+                if let Some(next) =
+                    self.developer_shim_after(&python_path, &canonical, env, &protected)
+                {
+                    if developer_dir.is_none() {
+                        developer_dir = Some(self.active_developer_dir().await);
+                    }
+                    let dir = developer_dir.as_ref().and_then(|dir| dir.as_deref());
+                    if !self.shim_has_tool(&next, dir, &protected) {
+                        if !leads_to_mise(&canonical) {
+                            continue;
+                        }
+                        probe_env = Self::NO_FALLBACK_ENV
+                            .iter()
+                            .map(|(name, value)| (name.to_string(), value.to_string()))
+                            .collect();
+                    }
+                }
+            }
             let output = self
                 .runner
                 .run(
                     CommandSpec {
                         program: python_path.clone(),
                         args: vec!["-m".to_string(), "pip".to_string(), "--version".to_string()],
-                        env: Vec::new(),
+                        env: probe_env,
                         cwd: None,
                         timeout: Duration::from_secs(30),
                         output_use: OutputUse::Parsed,
@@ -670,6 +719,40 @@ impl PipAdapter {
         }
         let path = PathBuf::from(output.stdout.strip_suffix('\n').unwrap_or(&output.stdout));
         path.is_absolute().then_some(path)
+    }
+
+    /// The developer-tool shim (in `shim_dir`) a version manager's shim
+    /// `shim` falls back to with no version of its own active, if that is
+    /// where it would go: the first executable of its name on `PATH` past
+    /// the folders named `shims` and past what leads where `shim` does
+    /// (`program`) -- what mise's fallback passes over (`which_shim` in
+    /// its `shims.rs`) -- when it, or where it leads, is in `shim_dir`. A
+    /// name that cannot be looked at (a protected place) is passed over.
+    fn developer_shim_after(
+        &self,
+        shim: &Path,
+        program: &Path,
+        env: &HostEnv,
+        protected: &Protected,
+    ) -> Option<PathBuf> {
+        let name = shim.file_name()?;
+        for dir in &env.path_dirs {
+            if crate::commands::in_shims(dir) {
+                continue;
+            }
+            let next = dir.join(name);
+            let Ok((real, meta)) = look::target(&next, protected) else {
+                continue;
+            };
+            if !meta.is_file() || meta.mode() & 0o111 == 0 || protected::same_path(&real, program) {
+                continue;
+            }
+            return [real, next].into_iter().find(|path| {
+                path.parent()
+                    .is_some_and(|parent| protected::same_path(parent, &self.shim_dir))
+            });
+        }
+        None
     }
 
     /// Whether the shim `shim` has a tool to run: `developer_dir` names a
@@ -1909,6 +1992,109 @@ mod tests {
             .collect();
         assert_eq!(found, [(shims.join("python3.13"), None)]);
         assert_eq!(runner.calls().len(), 4, "each shim is asked once");
+    }
+
+    #[tokio::test]
+    async fn regression_r63_3_a_shim_never_falls_back_to_a_developer_tool_shim_with_no_tool() {
+        // mise's `python3` shim, with no Python active here, runs the next
+        // `python3` on `PATH` (`not_found_system_fallback`, on by default)
+        // -- `/usr/bin/python3` (here the test's own `usr/bin`), which with
+        // no developer tools opens the dialog offering to install them.
+        // The guard looked only at where the shim leads (mise). Now, with
+        // no tools behind that next `python3`, mise's shim is run with its
+        // fallback off and answers that no version is set (no row); a
+        // pyenv- or asdf-style shim, a script that reads no such setting,
+        // is not run. With the tools there, or a Python of its own first,
+        // the fallback stays on and nothing changes.
+        let root = temp_folder("r63-3-fallback");
+        let usr_bin = root.join("usr/bin");
+        file_at(&usr_bin.join("python3"), 0o755);
+        let mise = root.join(".local/bin/mise");
+        file_at(&mise, 0o755);
+        let mise_shims = root.join(".local/share/mise/shims");
+        std::fs::create_dir_all(&mise_shims).unwrap();
+        std::os::unix::fs::symlink(&mise, mise_shims.join("python3")).unwrap();
+        let pyenv_shims = root.join(".pyenv/shims");
+        file_at(&pyenv_shims.join("python3"), 0o755);
+        let homebrew = root.join("homebrew/bin");
+        file_at(&homebrew.join("python3"), 0o755);
+        let developer = root.join("Developer");
+        file_at(&developer.join("usr/bin/python3"), 0o755);
+        let no_version = CommandOutput {
+            stderr: "mise ERROR No version is set for shim: python3\n".into(),
+            ..exited(1, "")
+        };
+        let xcode_select = argv(&PipAdapter::XCODE_SELECT_ARGV);
+        let probe = |shims: &Path| {
+            vec![
+                text(&shims.join("python3")).to_string(),
+                "-m".into(),
+                "pip".into(),
+                "--version".into(),
+            ]
+        };
+        let off = vec![(
+            "MISE_NOT_FOUND_SYSTEM_FALLBACK".to_string(),
+            "false".to_string(),
+        )];
+        // (PATH, xcode-select's answer, the commands run, the probe's
+        // environment)
+        let cases: Vec<(
+            Vec<&Path>,
+            Option<&Path>,
+            Vec<Vec<String>>,
+            Vec<(String, String)>,
+        )> = vec![
+            (
+                vec![&mise_shims, &usr_bin],
+                None,
+                vec![xcode_select.clone(), probe(&mise_shims)],
+                off.clone(),
+            ),
+            (
+                vec![&pyenv_shims, &usr_bin],
+                None,
+                vec![xcode_select.clone()],
+                Vec::new(),
+            ),
+            (
+                vec![&mise_shims, &usr_bin],
+                Some(&developer),
+                vec![xcode_select.clone(), probe(&mise_shims)],
+                Vec::new(),
+            ),
+            (
+                vec![&mise_shims, &homebrew, &usr_bin],
+                None,
+                vec![probe(&mise_shims)],
+                Vec::new(),
+            ),
+        ];
+        for (path, developer_dir, calls, env) in cases {
+            let runner = Arc::new(MockRunner::new());
+            runner.respond(
+                PipAdapter::XCODE_SELECT_ARGV.to_vec(),
+                match developer_dir {
+                    Some(dir) => exited(0, text(dir)),
+                    None => exited(2, ""),
+                },
+            );
+            for shims in [&mise_shims, &pyenv_shims] {
+                runner.respond(
+                    probe(shims).iter().map(String::as_str).collect(),
+                    no_version.clone(),
+                );
+            }
+            let instances = adapter_with_shims_in(runner.clone(), &usr_bin)
+                .detect(&path_of(&path))
+                .await;
+            assert!(instances.is_empty(), "{path:?}: {instances:?}");
+            assert_eq!(runner.calls(), calls, "{path:?}");
+            if let Some(spec) = runner.specs().iter().find(|spec| spec.args[0] == "-m") {
+                assert_eq!(spec.env, env, "{path:?}");
+            }
+        }
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[tokio::test]

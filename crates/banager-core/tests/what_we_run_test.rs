@@ -3,7 +3,8 @@
 //! host it contacts. Prose cannot be compiled, so these pin the parts of it
 //! the code can vouch for: a section per registered source, every host on
 //! the https allowlist, every environment variable brew and npm set and
-//! the one the runner sets on every command, that the Cargo section says every cargo command is given `CargoAdapter::ENV`
+//! the one the runner sets on every command, the one pip's version read
+//! through a mise shim is given, that the Cargo section says every cargo command is given `CargoAdapter::ENV`
 //! and shows each entry, the three Homebrew flags the file promises are
 //! never passed but for the one `--force` of U9, the `brew cleanup` after a
 //! formula's update with its time limit and, in the never-list, the cache
@@ -1057,6 +1058,30 @@ fn test_what_we_run_shows_the_environment_of_pips_outdated_check_and_no_verbosit
         !row.contains("-v"),
         "pip's outdated row in docs/what-we-run.md shows a verbosity flag check_updates does not pass: {row}"
     );
+}
+
+#[test]
+fn test_what_we_run_shows_the_environment_of_pips_version_read_through_a_mise_shim() {
+    // R63-3: `detect` runs one of mise's shims that would fall back to
+    // `/usr/bin/python3` with no developer tools with
+    // `PipAdapter::NO_FALLBACK_ENV`. pip's section has to show each entry
+    // in the version row of its table, and in its prose.
+    let doc = read_doc();
+    let body =
+        section_body(&doc, "pip").expect("docs/what-we-run.md has no `## pip` section for pip");
+    let row = body
+        .lines()
+        .find(|line| line.starts_with("| Version |"))
+        .expect("pip's table in docs/what-we-run.md has no Version row");
+    let folded = body.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(folded.contains("`PipAdapter::NO_FALLBACK_ENV`"));
+    for (name, value) in PipAdapter::NO_FALLBACK_ENV {
+        assert!(
+            row.contains(&format!("`{name}={value}`")),
+            "pip's version row in docs/what-we-run.md does not show {name}={value}: {row}"
+        );
+        assert!(folded.contains(&format!("`{name}={value}`")));
+    }
 }
 
 #[test]
