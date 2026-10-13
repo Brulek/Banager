@@ -979,7 +979,7 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       return mockSystemFacts(committed?.instances ?? [], scenario.path, committed !== null);
     },
     async get_history() {
-      // `Session::history`: every record, newest first.
+      // `Session::history`: every record, the last kept first.
       return clone(history);
     },
     async clear_history() {

@@ -32,6 +32,11 @@ function view(records: HistoryRecord[], fields: Partial<HistoryView> = {}): Hist
   return { run: "now", cleared_before: null, records, ...fields };
 }
 
+/** `records`, given in the order they were kept, as the view lists them: the last kept first. */
+function kept(...records: HistoryRecord[]): HistoryRecord[] {
+  return records.reverse();
+}
+
 /** The tools the last check still offers an update for, by name. */
 function offered(...names: string[]): Set<string> {
   return new Set(names.map((name) => artifactKeyId(record(name).key)));
@@ -120,11 +125,11 @@ describe("recentUpdates", () => {
 
   it("lists each tool's newest update that worked, newest first", () => {
     const listed = recentUpdates(
-      view([
+      view(kept(
         record("cmake", { finished_at: NOW - 3 * DAY, to_version: "3.0" }),
         record("cmake", { finished_at: NOW - DAY, to_version: "4.0" }),
         record("git", { finished_at: NOW - 2 * DAY }),
-      ]),
+      )),
       new Set(),
       NOW,
       offered(),
@@ -138,7 +143,7 @@ describe("recentUpdates", () => {
   it(`lists nothing older than ${RECENT_DAYS} days, nothing from before Clear, no uninstall and no update cancelled`, () => {
     const listed = recentUpdates(
       view(
-        [
+        kept(
           record("old", { finished_at: NOW - 31 * DAY }),
           record("cleared", { finished_at: NOW - 5 * DAY }),
           record("oldFailure", { finished_at: NOW - 31 * DAY, result: { Failed: { cause: "network" } } }),
@@ -149,7 +154,7 @@ describe("recentUpdates", () => {
           record("gone", { kind: "Uninstall", finished_at: NOW - 2 * DAY }),
           record("removed", { kind: "Uninstall", finished_at: NOW - 2 * DAY, result: { Failed: { cause: "permission" } } }),
           record("kept", { finished_at: NOW - 3 * DAY }),
-        ],
+        ),
         { cleared_before: NOW - 4 * DAY },
       ),
       new Set(),
@@ -183,7 +188,7 @@ describe("recentUpdates", () => {
   it("leaves out a failure once the tool's update has worked since, and lists a failure after a success", () => {
     const failed = { to_version: null, result: { Failed: { cause: "network" } } } as const;
     const listed = recentUpdates(
-      view([
+      view(kept(
         record("cmake", { finished_at: NOW - 3 * DAY, ...failed }),
         record("cmake", { finished_at: NOW - 2 * DAY, to_version: "4.0" }),
         record("git", { finished_at: NOW - 3 * DAY }),
@@ -191,7 +196,7 @@ describe("recentUpdates", () => {
         // Failed, then cancelled: the cancel is its newest, and nothing is listed.
         record("jq", { finished_at: NOW - 3 * DAY, ...failed }),
         record("jq", { finished_at: NOW - DAY, result: "Cancelled" }),
-      ]),
+      )),
       new Set(),
       NOW,
       offered("cmake", "git", "jq"),
@@ -204,14 +209,14 @@ describe("recentUpdates", () => {
 
   it("lets only an uninstall that worked hide an update, as the window that ran it does (r35 U4)", () => {
     const listed = recentUpdates(
-      view([
+      view(kept(
         record("wget", { finished_at: NOW - 3 * DAY }),
         record("wget", { kind: "Uninstall", finished_at: NOW - 2 * DAY, result: { Failed: { cause: "permission" } } }),
         record("jq", { finished_at: NOW - 4 * DAY }),
         record("jq", { kind: "Uninstall", finished_at: NOW - 2 * DAY, result: "Cancelled" }),
         record("tree", { finished_at: NOW - 3 * DAY }),
         record("tree", { kind: "Uninstall", finished_at: NOW - 2 * DAY }),
-      ]),
+      )),
       new Set(),
       NOW,
       offered(),
@@ -318,6 +323,28 @@ describe("persisted dismissal after a backward clock correction", () => {
     const good = record("git");
     const bad = record("git", { finished_at: 9_000_000_000_000_000 });
     expect(recentUpdates(view([good, bad]), new Set(), NOW, offered())).toEqual([good]);
+  });
+});
+
+describe("which of a tool's records came later, whatever the clock said (r23 R55-2)", () => {
+  // The clock an hour fast when an update failed, then put right before
+  // the retry that worked: the retry has the earlier time.
+  const failed = { Failed: { cause: "network" } } as const;
+
+  it("reads a launch's own records by the operations' order", () => {
+    const failure = record("cmake", { run: "earlier", op_id: 4, finished_at: NOW, result: failed, to_version: null });
+    const retry = record("cmake", { run: "earlier", op_id: 5, finished_at: NOW - 59 * 60 * 1000 });
+    // However the view lists them: a file sorted by time, from before.
+    for (const records of [[retry, failure], [failure, retry]]) {
+      expect(recentUpdates(view(records), new Set(), NOW, offered())).toEqual([retry]);
+    }
+  });
+
+  it("reads two launches' records by the order the history kept them, the last kept first", () => {
+    const failure = record("cmake", { run: "first", op_id: 4, finished_at: NOW, result: failed, to_version: null });
+    const retry = record("cmake", { run: "second", op_id: 1, finished_at: NOW - 59 * 60 * 1000 });
+    expect(recentUpdates(view([retry, failure]), new Set(), NOW, offered())).toEqual([retry]);
+    expect(recentUpdates(view([failure, retry]), new Set(), NOW, offered("cmake"))).toEqual([failure]);
   });
 });
 

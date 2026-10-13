@@ -170,7 +170,7 @@ pub struct HistoryRecord {
 }
 
 /// What the window is given (`get_history`): this launch's `run`, when the
-/// list was last cleared, and every record, newest first.
+/// list was last cleared, and every record, the last kept first.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HistoryView {
     pub run: String,
@@ -180,7 +180,7 @@ pub struct HistoryView {
     pub records: Vec<HistoryRecord>,
 }
 
-/// The file. `records` oldest first. `trusted_at` and `pending_at` are
+/// The file. `records` in the order they were kept, the first first. `trusted_at` and `pending_at` are
 /// `Clock`'s; a file without them (written before they were) starts from
 /// `age_anchor`.
 #[derive(Serialize, Deserialize)]
@@ -634,10 +634,14 @@ impl Clock {
 }
 
 /// Drops what is older than `MAX_AGE_MS` before `anchor` (`Clock::anchor`),
-/// then all but the newest `MAX_RECORDS`. Leaves `records` oldest first.
+/// then all but the last `MAX_RECORDS` kept. Leaves `records` in the order
+/// they were kept, the first kept first: never sorted by `finished_at`,
+/// the clock as it was, which a clock put right can turn around -- so the
+/// window can tell which of a tool's records came later after a restart
+/// too (`keptLater` in src/lib/history.ts, r23 R55-2). A file written
+/// before, sorted by time, keeps that order.
 fn bound(records: &mut Vec<HistoryRecord>, anchor: i64) {
     records.retain(|r| r.finished_at >= anchor.saturating_sub(MAX_AGE_MS));
-    records.sort_by_key(|r| r.finished_at);
     if records.len() > MAX_RECORDS {
         let extra = records.len() - MAX_RECORDS;
         records.drain(..extra);
@@ -771,7 +775,7 @@ fn new_run_id() -> String {
 
 struct State {
     cleared_before: Option<i64>,
-    /// Oldest first.
+    /// The first kept first (`bound`).
     records: Vec<HistoryRecord>,
     /// What the records' age is measured from.
     clock: Clock,
@@ -927,7 +931,7 @@ impl HistoryStore {
         self.view()
     }
 
-    /// What `get_history` answers: the records, newest first, but none
+    /// What `get_history` answers: the records, the last kept first, but none
     /// older than `MAX_AGE_MS` by the clock. The file can keep older ones
     /// (`age_anchor`: after more than 180 days with no update, up to 180
     /// days before its newest record); they are not listed, so an idle
@@ -1327,8 +1331,10 @@ mod tests {
         let k = key("new");
         store.record(&ended(&k, &Outcome::Succeeded), &started("new"));
         let wire = serde_json::to_value(store.view()).unwrap();
-        assert_eq!(wire["records"][0]["dismissed"], true);
-        assert_eq!(wire["records"][1]["dismissed"], false);
+        // The last kept first, though the clock was ahead for the other.
+        assert_eq!(wire["records"][0]["key"]["name"], "new");
+        assert_eq!(wire["records"][0]["dismissed"], false);
+        assert_eq!(wire["records"][1]["dismissed"], true);
         store.clear(); // Corrected time must not resurrect the advanced-clock record.
         assert!(store.flush(Duration::from_secs(5)));
         let next = HistoryStore::open_with_clock(dir.file(), now);
@@ -1345,7 +1351,8 @@ mod tests {
         assert!(next.flush(Duration::from_secs(5)));
         let reopened = HistoryStore::open_with_clock(dir.file(), now);
         let wire = serde_json::to_value(reopened.view()).unwrap();
-        assert_eq!(wire["records"][1]["dismissed"], false);
+        assert_eq!(wire["records"][0]["key"]["name"], "later");
+        assert_eq!(wire["records"][0]["dismissed"], false);
     }
 
     #[test]
@@ -2333,17 +2340,44 @@ mod tests {
     }
 
     #[test]
+    fn test_records_stay_in_the_order_they_were_kept_whatever_the_clock_said() {
+        // r23 R55-2: an update fails with the clock an hour fast; the clock
+        // is put right and the retry works. The next launch reads the
+        // retry as the later one.
+        static CLOCK: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
+        fn clock() -> i64 {
+            CLOCK.load(std::sync::atomic::Ordering::SeqCst)
+        }
+        let dir = TempDir::new("order");
+        CLOCK.store(NOW + 60 * 60 * 1_000, std::sync::atomic::Ordering::SeqCst);
+        let store = HistoryStore::open_with_clock(dir.file(), clock);
+        let k = key("cmake");
+        let failed = failed_with("Error: boom");
+        store.record(&ended(&k, &failed), &started("cmake"));
+        CLOCK.store(NOW, std::sync::atomic::Ordering::SeqCst);
+        let mut retry = ended(&k, &Outcome::Succeeded);
+        retry.op_id = 5;
+        store.record(&retry, &started("cmake"));
+        let order = |view: HistoryView| view.records.iter().map(|r| r.op_id).collect::<Vec<_>>();
+        assert_eq!(order(store.view()), [5, 4], "the last kept first");
+        assert!(store.flush(Duration::from_secs(5)));
+        drop(store);
+        let next = HistoryStore::open_with_clock(dir.file(), clock);
+        assert_eq!(order(next.view()), [5, 4], "and so after a restart");
+    }
+
+    #[test]
     fn test_the_file_keeps_the_newest_thousand_and_nothing_older_than_180_days() {
         let mut records: Vec<HistoryRecord> = (0..1_005)
             .map(|i| record_at("cmake", NOW - 1_005 + i))
             .collect();
         records.insert(0, record_at("old", NOW - 181 * DAY));
-        records.push(record_at("edge", NOW - 180 * DAY));
+        records.insert(1, record_at("edge", NOW - 180 * DAY));
         bound(&mut records, NOW);
         assert_eq!(records.len(), MAX_RECORDS);
         assert!(
             records.iter().all(|r| r.key.name == "cmake"),
-            "the newest stay"
+            "the last kept stay"
         );
         assert_eq!(records.last().unwrap().finished_at, NOW - 1);
 

@@ -5754,8 +5754,13 @@ an address masked (`failure_detail`). An operation cancelled before Banager bega
 (while it waited for its turn, or while Banager read the installed
 version) is not recorded. Each record also carries a random id of the
 launch of Banager that ran it and the operation's number in that launch,
-so that the page lists an update it watched finish only once. The file
-keeps the newest 1,000 records and nothing older than 180 days: as Banager
+so that the page lists an update it watched finish only once. The records
+stay in the order they were kept, never sorted by their times, so that
+which of a tool's records came later -- the one 「最近的更新记录」 lists --
+is not decided by a clock that was put right in between (`bound`; the
+page reads two of one launch by the operation's number: `keptLater` in
+`src/lib/history.ts`). The file
+keeps the last 1,000 records kept and nothing older than 180 days: as Banager
 starts it drops the rest and, if it dropped any, writes the file again
 straight away; it drops them again at each record. The 180 days count back
 from a time the file keeps as trusted (`trusted_at`), or from now when the

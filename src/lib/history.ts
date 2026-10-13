@@ -84,7 +84,8 @@ export function listedResult(result: HistoryResult): boolean {
  * the records Clear dismissed too (`includeDismissed`): Clear tidies the
  * list, it does not resolve the stop. A record kept since the last Clear
  * is newer than every one a Clear dismissed, whatever the clock said;
- * otherwise the later finish is (`keptLater`).
+ * otherwise the one kept later is (`keptLater`), whatever the clock said
+ * too.
  *
  * `seenHere`, by `artifactKeyId`, the tools whose say is this window's:
  * for the list, those it has an update or a finished uninstall of that
@@ -109,6 +110,7 @@ export function recentUpdates(
     if (!recordWeighs(record)) continue;
     const id = artifactKeyId(record.key);
     const seen = newest.get(id);
+    // `seen` comes before `record` in the view, the last kept first.
     if (seen === undefined || keptLater(view, record, seen)) newest.set(id, record);
   }
   const since = now - RECENT_DAYS * DAY_MS;
@@ -164,17 +166,21 @@ export function toolsSeenHere(operations: readonly OpSummary[]): Set<string> {
 }
 
 /**
- * Whether `record` was kept after `other`, as far as the history can say:
- * Clear dismisses every record already kept, so one not dismissed came
- * after the last Clear, and so after every dismissed one. Else by finish
- * time, the only order left (`dismissed` is a boolean, and the file is
- * kept sorted by `finished_at`), which a clock set wrong can mislead:
- * between two records that two different Clears dismissed, say.
+ * Whether `record` was kept after `other`, which the view lists before it,
+ * as far as the history can say -- never by finish time, the clock as it
+ * was, which a clock put right can turn around (r23 R55-2). Clear
+ * dismisses every record already kept, so one not dismissed came after
+ * the last Clear, and so after every dismissed one. Two of one launch
+ * came in the order of their operations (`op_id`), which holds in a file
+ * a build before this one sorted by time too. Else in the view's order,
+ * the last kept first (`bound` in crates/banager-core/src/history/mod.rs):
+ * `other`.
  */
 function keptLater(view: HistoryView, record: HistoryRecord, other: HistoryRecord): boolean {
   const dismissed = isDismissed(view, record);
   if (dismissed !== isDismissed(view, other)) return !dismissed;
-  return record.finished_at > other.finished_at;
+  if (record.run === other.run && record.op_id !== other.op_id) return record.op_id > other.op_id;
+  return false;
 }
 
 /** Legacy wire data uses its cutoff; current records always carry a boolean. */
