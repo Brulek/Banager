@@ -400,12 +400,11 @@ fn detail_patterns() -> &'static DetailPatterns {
                 r"(?i)^(?:(?:error|fatal)\b\s*(?:\[[^\]]*\])?\s*:?|npm (?:err!|error)\b|E:)\s*",
             ),
             // Not right after a host or a folder's name (a web address's
-            // `/users/<id>`), and the name only letters and digits of any
-            // script, `_`, `.` and `-` (`name_char`), so a colon or a quote
-            // after it stays (r20 R50 skeptic 1, 2; Astra R20-A1-4).
-            home: re(
-                r"(?i)(^|[^\p{L}\p{M}\p{N}_.\-])((?:/System/Volumes/Data)?/Users/([\p{L}\p{M}\p{N}_.\-]+))",
-            ),
+            // `/users/<id>`; `after_a_name`), and the name only letters and
+            // digits of any script, `_`, `.` and `-` (`name_char`), so a
+            // colon or a quote after it stays (r20 R50 skeptic 1, 2; Astra
+            // R20-A1-4).
+            home: re(r"(?i)(?:/System/Volumes/Data)?/Users/([\p{L}\p{M}\p{N}_.\-]+)"),
             name_char: re(r"^[\p{L}\p{M}\p{N}_.\-]$"),
             login: re(r"([A-Za-z][A-Za-z0-9+.-]*://)[^/\s@'\x22`]+@"),
             query: re(r"([A-Za-z][A-Za-z0-9+.-]*://[^\s?#'\x22`]*)[?#][^\s'\x22`]*"),
@@ -477,10 +476,11 @@ fn failure_detail_in(summary: &str, home: Option<&Path>) -> Option<String> {
     let text = home_as_tilde(&text, home);
     // `/Users/Shared` is no one's home (review of r6 y3-batch, finding 8).
     let text = p.home.replace_all(&text, |c: &regex::Captures<'_>| {
-        if c[3].eq_ignore_ascii_case("Shared") {
-            format!("{}{}", &c[1], &c[2])
+        let path = c.get(0).expect("the whole match");
+        if c[1].eq_ignore_ascii_case("Shared") || after_a_name(&text, path.start()) {
+            path.as_str().to_string()
         } else {
-            format!("{}~", &c[1])
+            "~".to_string()
         }
     });
     let text = p.login.replace_all(&text, "${1}****@");
@@ -530,16 +530,11 @@ fn home_as_tilde<'a>(text: &'a str, home: Option<&Path>) -> std::borrow::Cow<'a,
     let Ok(pattern) = regex::Regex::new(&pattern) else {
         return std::borrow::Cow::Borrowed(text);
     };
-    let name_char = &detail_patterns().name_char;
-    let in_a_name =
-        |c: Option<char>| c.is_some_and(|c| name_char.is_match(c.encode_utf8(&mut [0; 4])));
     let mut out = String::new();
     let (mut copied, mut from) = (0, 0);
     while let Some(found) = pattern.find_at(text, from) {
         let rest = &text[found.start()..];
-        if in_a_name(text[..found.start()].chars().next_back())
-            || in_a_name(text[found.end()..].chars().next())
-        {
+        if after_a_name(text, found.start()) || is_name_char(text[found.end()..].chars().next()) {
             from = found.start() + rest.chars().next().map_or(1, char::len_utf8);
             continue;
         }
@@ -552,6 +547,26 @@ fn home_as_tilde<'a>(text: &'a str, home: Option<&Path>) -> std::borrow::Cow<'a,
     }
     out.push_str(&text[copied..]);
     std::borrow::Cow::Owned(out)
+}
+
+/// Whether `c` can be part of a folder's name as `DetailPatterns`'
+/// `name_char` reads it.
+fn is_name_char(c: Option<char>) -> bool {
+    c.is_some_and(|c| detail_patterns().name_char.is_match(c.encode_utf8(&mut [0; 4])))
+}
+
+/// Whether `text` at `at` comes right after a folder's or a host's name:
+/// a name's character just before, and a `/` earlier in the same word
+/// (back to a space or a quote) -- not a compiler's `-I` or `CFLAGS=-L`,
+/// after which a home is still one (r22 R53-1).
+fn after_a_name(text: &str, at: usize) -> bool {
+    let before = &text[..at];
+    is_name_char(before.chars().next_back())
+        && before
+            .chars()
+            .rev()
+            .take_while(|c| !c.is_whitespace() && !matches!(c, '\'' | '"' | '`'))
+            .any(|c| c == '/')
 }
 
 /// Where a history with no `Clock` yet starts trusting from: `now`, or
@@ -1992,6 +2007,15 @@ mod tests {
             )
             .as_deref(),
             Some("~ ~:/x/Volumes/Data/jane ~/y")
+        );
+        // Right after a compiler's flag it is still the home (r22 R53-1).
+        assert_eq!(
+            failure_detail_in(
+                "Error: clang -I/Volumes/Data/jane/inc -L/volumes/data/jane CFLAGS=-I/Volumes/Data/jane/x",
+                home
+            )
+            .as_deref(),
+            Some("clang -I~/inc -L~ CFLAGS=-I~/x")
         );
         for home in [None, Some(Path::new("/")), Some(Path::new("relative"))] {
             assert_eq!(

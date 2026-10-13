@@ -500,7 +500,8 @@ to stderr -- and, for a cause that is not recognised, the sentence under
 the subtitle says to click it and send the details to someone who can
 help. Both Copy Error Details buttons write the home folder in what they
 copy as `~` (`/Users/<name>`, in any case, becomes `~`, and what follows
-the name stays; not `/Users/Shared`, nor a web address's `/users/<id>`), as Copy
+the name stays; not `/Users/Shared`, nor a web address's `/users/<id>`
+or one under another folder, as `/Volumes/Backup/Users/<name>`), as Copy
 Diagnostic Info does; the words on screen keep it as the tool wrote it.
 A failure that kept no words gets no such line, as its log may
 never have had one. This fetches no old output and writes no log file.
@@ -5197,7 +5198,7 @@ no file is opened, nothing is written to disk, and no connection is made.
 Every path in the text has the home folder written as `~`: the folder
 `HOME` names, in any case, in the `PATH` folders and the sources' places,
 and any `/Users/<name>` but `/Users/Shared`, in any case, everywhere (not
-a web address's `/users/<id>`) -- only a home outside `/Users` that the
+a web address's `/users/<id>` or one under another folder) -- only a home outside `/Users` that the
 window alone sees stays as it was written, as the window is not told
 `HOME`: in a source's error details, and in the place of a source found
 after the facts were read, or of every source when they could not be
@@ -5677,7 +5678,8 @@ first line that says what went wrong kept, so that the page can say why,
 and which file or what, after the window that watched it has closed -- at most 160
 characters, its label (`Error:`) taken off (with the line after it where
 it ends with a colon), with any home folder but `/Users/Shared` written
-as `~` -- any `/Users/<name>` (not a web address's `/users/<id>`) and the
+as `~` -- any `/Users/<name>` (not a web address's `/users/<id>` or one
+under another folder) and the
 folder `HOME` names, in any case --
 and any login, query, fragment or token-like part of the path in
 an address masked (`failure_detail`). An operation cancelled before Banager began carrying it out

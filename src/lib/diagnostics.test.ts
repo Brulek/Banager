@@ -394,6 +394,13 @@ describe("the text's helpers", () => {
     expect(withoutHomePaths("/Users/张三/.npmrc '/Users/josé' /Users/jose\u0301/x")).toBe("~/.npmrc '~' ~/x");
     expect(withoutHomePaths("/System/Volumes/Data/Users/Zoë/bin")).toBe("~/bin");
     expect(withoutHomePaths("https://例子.测试/users/张三/repos")).toBe("https://例子.测试/users/张三/repos");
+    // Right after a compiler's flag, a home is still one; right after a
+    // folder's name it is not (r22 R53-1).
+    expect(withoutHomePaths("clang -I/Users/jane/.local/include -L/Users/jane/lib x.c")).toBe(
+      "clang -I~/.local/include -L~/lib x.c",
+    );
+    expect(withoutHomePaths("CFLAGS=-I/Users/jane/inc -Wl,-rpath,/Users/bob/lib")).toBe("CFLAGS=-I~/inc -Wl,-rpath,~/lib");
+    expect(withoutHomePaths("/Volumes/Backup/Users/jane/x")).toBe("/Volumes/Backup/Users/jane/x");
   });
 });
 

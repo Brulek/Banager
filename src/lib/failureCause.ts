@@ -361,6 +361,40 @@ function looksLikeAToken(part: string): boolean {
 const DETAIL_CHARS = 160;
 
 /**
+ * `text` with each `/Users/<name>` (in any case, also through the data
+ * volume) as `~` -- but not `/Users/Shared`, no one's home (review of r6
+ * y3-batch, finding 8), nor one right after a folder's or a host's name,
+ * as a web address's `/users/<id>` (r20 R50 skeptic 1; Astra R20-A1-4).
+ * Right after a compiler's flag (`-I/Users/<name>`) it is still a home
+ * (r22 R53-1). The name is letters and digits of any script, `_`, `.`
+ * and `-`, so a colon or a quote after it stays. History's `home`
+ * pattern (crates/banager-core/src/history/mod.rs) is the same.
+ */
+export function homesAsTilde(text: string): string {
+  return text.replace(
+    /(?:\/System\/Volumes\/Data)?\/Users\/([\p{L}\p{M}\p{N}_.\-]+)/giu,
+    (path: string, name: string, at: number) =>
+      name.toLowerCase() === "shared" || afterAName(text, at) ? path : "~",
+  );
+}
+
+/**
+ * Whether `text` at `at` comes right after a folder's or a host's name:
+ * a letter, a digit, `_`, `.` or `-` just before, and a `/` earlier in
+ * the same word (back to a space or a quote) -- not `-I` or `CFLAGS=-L`.
+ */
+function afterAName(text: string, at: number): boolean {
+  const last = Array.from(text.slice(Math.max(0, at - 2), at)).pop();
+  if (last === undefined || !/^[\p{L}\p{M}\p{N}_.\-]$/u.test(last)) return false;
+  for (let i = at - 1; i >= 0; i--) {
+    const c = text[i];
+    if (c === "/") return true;
+    if (c === undefined || /[\s'"`]/.test(c)) return false;
+  }
+  return false;
+}
+
+/**
  * The one line of a failed tool's words that says what went wrong, where
  * no cause names it (Rust `failure_detail`, crates/banager-core/src/history/
  * mod.rs, which the history keeps): the first line that says it is an
@@ -395,14 +429,7 @@ export function failureDetail(summary: string): string | null {
   // next line: the two together (review of r6 y3-batch, finding 5).
   const next = lines[index + 1];
   if (text.endsWith(":") && next !== undefined) text = `${text} ${next}`;
-  const masked = text
-    // `/Users/Shared` is no one's home (review of r6 y3-batch, finding 8);
-    // nor a web address's `/users/<id>` (r20 R50 skeptic 1).
-    .replace(
-      /(^|[^\p{L}\p{M}\p{N}_.\-])((?:\/System\/Volumes\/Data)?\/Users\/([\p{L}\p{M}\p{N}_.\-]+))/giu,
-      (_whole: string, before: string, path: string, name: string) =>
-        before + (name.toLowerCase() === "shared" ? path : "~"),
-    )
+  const masked = homesAsTilde(text)
     .replace(/([A-Za-z][A-Za-z0-9+.-]*:\/\/)[^/\s@'"`]+@/g, "$1****@")
     .replace(/([A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s?#'"`]*)[?#][^\s'"`]*/g, "$1")
     .replace(

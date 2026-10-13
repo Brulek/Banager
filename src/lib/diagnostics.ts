@@ -30,6 +30,7 @@ import { create } from "zustand";
 import { getSystemFacts } from "./api";
 import { twinsByArtifact, type Twin } from "./commands";
 import { commandsKnown, toolsNotJudged, toolsNotLinked } from "./commandsKnown";
+import { homesAsTilde } from "./failureCause";
 import { updatesUnchecked } from "./uncheckedStandalone";
 import { useSizes, useSnapshot } from "./queries";
 import { sizeTotalsOf, sourceTotalText } from "./sizeTotals";
@@ -87,8 +88,9 @@ export function diagnosticsTime(date: Date): string {
  * (`/users/<name>` leads home too). The name is letters and digits of
  * any script, `_`, `.` and `-`, so a colon or a quote after it stays; and
  * not right after a host or a folder's name, so a web address's
- * `/users/<id>` is left alone (r20 R50 skeptic 1, 2; Astra R20-A1-4). History's
- * `home` pattern (crates/banager-core/src/history/mod.rs) is the same. Rust already writes each path it hands over
+ * `/users/<id>` is left alone, but right after a compiler's flag
+ * (`-I/Users/<name>`) it is a home (`homesAsTilde`; r20 R50 skeptic 1, 2;
+ * Astra R20-A1-4; r22 R53-1). Rust already writes each path it hands over
  * with the home folder as `~`; this is the last guard, for a path the
  * snapshot carries that the facts did not cover (a source found since
  * they were read), and the only one for a tool's own words, which Copy
@@ -96,11 +98,7 @@ export function diagnosticsTime(date: Date): string {
  * `MissingFailureLog`).
  */
 export function withoutHomePaths(text: string): string {
-  return text.replace(
-    /(^|[^\p{L}\p{M}\p{N}_.\-])((?:\/System\/Volumes\/Data)?\/Users\/([\p{L}\p{M}\p{N}_.\-]+))/giu,
-    (_whole: string, before: string, path: string, name: string) =>
-      before + (name.toLowerCase() === "shared" ? path : "~"),
-  );
+  return homesAsTilde(text);
 }
 
 /**
