@@ -4587,9 +4587,10 @@ describe("UpdatesPage", () => {
       });
 
       it.each(["Succeeded", "Cancelled"] as const)("a later recorded %s supersedes a password stop", async (result) => {
+        // The last kept first, as the history lists them.
         answerHistory({ run: "this-launch", cleared_before: null, records: [
+          kept("onyx", Date.now() - 1000, { key: onyxKey, op_id: 4, result }),
           kept("onyx", Date.now() - 2000, { key: onyxKey, result: { Failed: { cause: "needsPassword" } } }),
-          kept("onyx", Date.now() - 1000, { key: onyxKey, result }),
         ] });
         renderPage();
         await screen.findByRole("button", { name: "Update onyx" });
