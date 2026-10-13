@@ -523,7 +523,26 @@ pub fn parse_info_installed(
 ) -> Result<Vec<InstalledArtifact>, AdapterError> {
     let root: InfoInstalledRoot =
         serde_json::from_str(json).map_err(|e| AdapterError::Parse(e.to_string()))?;
+    Ok(artifacts_from_info(root, instance_id))
+}
 
+/// `brew info --json=v2 --formula|--cask <name>` (R60-3, r24): the same
+/// reply as `parse_info_installed`'s for the packages named, which
+/// Homebrew writes whether or not they are installed. Only an installed one
+/// is kept: a formula with a keg in its `installed` list, a cask with an
+/// `installed` version (`null` when it is not).
+pub fn parse_info_named(
+    json: &str,
+    instance_id: &str,
+) -> Result<Vec<InstalledArtifact>, AdapterError> {
+    let mut root: InfoInstalledRoot =
+        serde_json::from_str(json).map_err(|e| AdapterError::Parse(e.to_string()))?;
+    root.formulae.retain(|f| !f.installed.is_empty());
+    root.casks.retain(|c| c.installed.is_some());
+    Ok(artifacts_from_info(root, instance_id))
+}
+
+fn artifacts_from_info(root: InfoInstalledRoot, instance_id: &str) -> Vec<InstalledArtifact> {
     let mut out = Vec::new();
 
     for f in root.formulae {
@@ -650,7 +669,7 @@ pub fn parse_info_installed(
         });
     }
 
-    Ok(crate::adapters::sanity::artifacts(out))
+    crate::adapters::sanity::artifacts(out)
 }
 
 // Required for the same reason as `InfoInstalledRoot`'s, and the lie this

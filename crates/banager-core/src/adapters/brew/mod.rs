@@ -29,7 +29,10 @@ use brew_env::HomebrewSwitches;
 use cask_receipt::{Classified, Recorded};
 use kegs::{Kegs, Service};
 use links::KegLinks;
-use parse::{parse_info_installed, parse_outdated, parse_search, parse_uses, parse_version};
+use parse::{
+    parse_info_installed, parse_info_named, parse_outdated, parse_search, parse_uses,
+    parse_version,
+};
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -3566,16 +3569,33 @@ impl BrewAdapter {
         inst: &ManagerInstance,
         key: &ArtifactKey,
     ) -> Result<Reconciled, AdapterError> {
-        let artifacts = self.inventory(inst).await?;
-        // Inventory keys are always the fully-qualified name (see
-        // `parse::parse_info_installed`), but a caller may have started the
-        // operation from a short name (e.g. the user typed `claudebar`
-        // rather than `gautham-v/tap/claudebar`, or an older `OpRequest` was
-        // built before full names existed). Resolve the short spelling to
-        // the name inventory actually uses first; the presence rule itself
-        // is the shared one every adapter applies.
-        let key = qualified_key(&artifacts, key);
-        let mut reconciled = reconcile_from(artifacts, &key);
+        if self.join_running_update(&inst.id) {
+            return Err(AdapterError::IndexUpdating);
+        }
+        // R60-3 (r24): Homebrew is asked about this one package first
+        // (`read_one`), so the readings before and after each update of an
+        // Update all do not each list everything installed while the
+        // Homebrew lock is held. Only "installed, at this version" is taken
+        // from it. "Not installed" and a reading that failed are the full
+        // inventory's word, as before: Homebrew resolves a short name it was
+        // given itself, and could name a package other than the installed
+        // one the inventory's spelling finds (`qualified_key`).
+        let mut reconciled = match self.read_one(inst, key).await {
+            Some(found) => found,
+            None => {
+                let artifacts = self.inventory(inst).await?;
+                // Inventory keys are always the fully-qualified name (see
+                // `parse::parse_info_installed`), but a caller may have
+                // started the operation from a short name (e.g. the user
+                // typed `claudebar` rather than `gautham-v/tap/claudebar`, or
+                // an older `OpRequest` was built before full names existed).
+                // Resolve the short spelling to the name inventory actually
+                // uses first; the presence rule itself is the shared one
+                // every adapter applies.
+                let key = qualified_key(&artifacts, key);
+                reconcile_from(artifacts, &key)
+            }
+        };
         // A cask declared `version :latest` is installed under the version
         // "latest": `brew info` reports as `installed` the name of the
         // version directory in its Caskroom metadata
@@ -3590,6 +3610,33 @@ impl BrewAdapter {
             reconciled.version = None;
         }
         Ok(reconciled)
+    }
+
+    /// `key` installed, at its version, from `brew info --json=v2
+    /// --formula|--cask <name>` (R60-3, r24): Homebrew's record of that one
+    /// package, the same entry `brew info --installed --json=v2` writes for
+    /// it, read from the same catalogue on this Mac. `None` when Homebrew
+    /// names no installed package by that name, or the reading failed (an
+    /// unknown name exits 1). Nothing the inventory remembers is touched.
+    async fn read_one(&self, inst: &ManagerInstance, key: &ArtifactKey) -> Option<Reconciled> {
+        let kind = match key.kind {
+            ArtifactKind::Formula => "--formula",
+            ArtifactKind::Cask => "--cask",
+            _ => return None,
+        };
+        let args = ["info", "--json=v2", kind, key.name.as_str()]
+            .map(str::to_string)
+            .to_vec();
+        let output = self
+            .run_brew(inst, args, Duration::from_secs(120))
+            .await
+            .ok()?;
+        if output.exit_code != Some(0) {
+            return None;
+        }
+        let artifacts = parse_info_named(&output.stdout, &inst.id).ok()?;
+        let key = qualified_key(&artifacts, key);
+        Some(reconcile_from(artifacts, &key)).filter(|found| found.present)
     }
 
     /// After a link (`OpKind::Link`): whether the formula is linked now,
@@ -8151,6 +8198,110 @@ mod plan_execute_tests {
                 version: None
             }
         );
+    }
+
+    /// R60-3 (r24): an update's readings before and after ask Homebrew about
+    /// that one package, of its kind, and not for everything installed, so
+    /// an Update all of 200 packages runs no 400 full inventories while it
+    /// holds the Homebrew lock. Homebrew names a package it knows but has not
+    /// installed too (`installed` empty, or `null` for a cask): that one and
+    /// a reading that failed are answered from the full inventory, as before.
+    #[tokio::test]
+    async fn test_reconcile_reads_only_the_one_package() {
+        let runner = Arc::new(MockRunner::new());
+        let named = |args: &[&str], stdout: &str, exit_code: i32| {
+            let mut argv = vec!["/opt/homebrew/bin/brew", "info", "--json=v2"];
+            argv.extend_from_slice(args);
+            runner.respond(
+                argv,
+                CommandOutput {
+                    stderr_cause: Default::default(),
+                    exit_code: Some(exit_code),
+                    stdout: stdout.to_string(),
+                    stderr: String::new(),
+                    timed_out: false,
+                    cancelled: false,
+                },
+            );
+        };
+        named(
+            &["--formula", "jq"],
+            r#"{"formulae":[{"name":"jq","full_name":"jq","linked_keg":"1.7.1","installed":[{"version":"1.7.1","installed_on_request":true}]}],"casks":[]}"#,
+            0,
+        );
+        named(
+            &["--cask", "claudebar"],
+            r#"{"formulae":[],"casks":[{"token":"claudebar","full_token":"gautham-v/tap/claudebar","name":["Claudebar"],"installed":"0.1.1"}]}"#,
+            0,
+        );
+        named(
+            &["--formula", "wget"],
+            r#"{"formulae":[{"name":"wget","full_name":"wget","linked_keg":null,"installed":[]}],"casks":[]}"#,
+            0,
+        );
+        named(&["--cask", "gone"], "", 1);
+        runner.respond(
+            vec!["/opt/homebrew/bin/brew", "info", "--installed", "--json=v2"],
+            CommandOutput {
+                stderr_cause: Default::default(),
+                exit_code: Some(0),
+                stdout: r#"{"formulae":[],"casks":[]}"#.to_string(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let adapter = BrewAdapter::new(runner.clone());
+        let inst = test_instance();
+        let key = |kind, name: &str| ArtifactKey {
+            instance_id: inst.id.clone(),
+            kind,
+            name: name.to_string(),
+        };
+        let full_inventories = || {
+            runner
+                .calls()
+                .iter()
+                .filter(|call| call.iter().any(|arg| arg == "--installed"))
+                .count()
+        };
+
+        let jq = adapter
+            .reconcile(&inst, &key(ArtifactKind::Formula, "jq"))
+            .await
+            .expect("jq");
+        assert_eq!(
+            jq,
+            Reconciled {
+                present: true,
+                version: Some("1.7.1".to_string())
+            }
+        );
+        let claudebar = adapter
+            .reconcile(&inst, &key(ArtifactKind::Cask, "claudebar"))
+            .await
+            .expect("claudebar");
+        assert_eq!(
+            claudebar,
+            Reconciled {
+                present: true,
+                version: Some("0.1.1".to_string())
+            }
+        );
+        assert_eq!(full_inventories(), 0, "{:?}", runner.calls());
+
+        let wget = adapter
+            .reconcile(&inst, &key(ArtifactKind::Formula, "wget"))
+            .await
+            .expect("wget");
+        assert!(!wget.present);
+        assert_eq!(full_inventories(), 1, "absent is the full inventory's word");
+        let gone = adapter
+            .reconcile(&inst, &key(ArtifactKind::Cask, "gone"))
+            .await
+            .expect("gone");
+        assert!(!gone.present);
+        assert_eq!(full_inventories(), 2, "a failed reading falls back");
     }
 
     #[tokio::test]

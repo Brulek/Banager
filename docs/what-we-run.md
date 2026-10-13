@@ -1854,6 +1854,7 @@ required (`BrewAdapter::update_steps`).
 | List installed formulae + casks (`inventory`) | `<brew> info --installed --json=v2` | 120 s |
 | List outdated formulae + casks (`check_updates`) | `<brew> outdated --json=v2`, with no `--greedy` flag (below); while the setting that shows Homebrew apps with their own updater is off, with `HOMEBREW_NO_UPGRADE_AUTO_UPDATES_CASKS=1` (Environment, above) | 120 s |
 | Qualify the names `outdated` reported, and read which of them Homebrew disabled (once per `check_updates`) | `<brew> info --installed --json=v2` | 120 s |
+| The reading before and after an install or update (`reconcile`): that one package's version | `<brew> info --json=v2 --formula {name}` or `<brew> info --json=v2 --cask {name}`; when it names no installed package by that name, or fails, `<brew> info --installed --json=v2` | 120 s each |
 | Search by name | `<brew> search {query}` | 30 s |
 | Search by name + description | `<brew> search --desc {query}` | 30 s |
 | List installed formulae depending on a formula (uninstall preview) | `<brew> uses --installed {name}` | 120 s |
@@ -1885,8 +1886,18 @@ and the Installed page does not call it up to date
 The fresh inventory used to qualify outdated names is indexed once per
 check by kind and full/short name, preserving the first installed match
 for ambiguous short names. Reconciliation before and after each operation
-still runs the full installed-info reader above; it does not use a cached
-inventory or a new per-package command.
+does not use a cached inventory. Since R60-3 (r24) it first asks Homebrew
+about that one package, of its kind (`BrewAdapter::read_one`): an Update
+all of 200 packages used to list everything installed 400 times while it
+held the Homebrew lock. Homebrew writes the same entry for the package as
+`--installed` does (`Formula#to_hash`, `Cask#to_h`, `cmd/info.rb:757-788`
+in Homebrew 7.0.9), read from the same catalogue in the same way
+(`fetch_api_files!`, `api.rb:188-209`), and without `--fetch-manifest`
+nothing more. Only "installed, at this version" is taken from it: a
+package Homebrew knows but has not installed (`installed` empty, or `null`
+for a cask), an unknown name (exit 1) and a failed reading are answered by
+the full installed-info reader above, as before, since Homebrew resolves a
+short name itself and could name a package other than the installed one.
 
 `brew outdated` lists a formula or cask Homebrew disabled like any other —
 its JSON has no field for the mark, and neither `Formula#outdated?` nor
@@ -2096,7 +2107,7 @@ still running in the background; if it is still running after that,
 nothing is run and the operation is reported as failed for that reason.
 
 An upgrade started while that `brew update` is still running also gets
-no reading before: `inventory` refuses at once with `IndexUpdating`, no
+no reading before: `reconcile` refuses at once with `IndexUpdating`, no
 `brew info` runs, and there is nothing to compare the reading after with
 — so an upgrade that then exits 0 is reported as a success whenever the
 package is still installed afterwards, whether or not its version moved

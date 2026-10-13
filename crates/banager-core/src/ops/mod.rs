@@ -1040,8 +1040,8 @@ impl OperationManager {
         // An `Err` here keeps `before` `None`, and every arm below then
         // decides exactly as it did before this reading existed. On brew,
         // that is what happens while a `brew update` a refresh left
-        // running is still going: `inventory` refuses with
-        // `IndexUpdating` (`BrewAdapter::inventory`). Its
+        // running is still going: `reconcile` refuses with
+        // `IndexUpdating` (`BrewAdapter::reconcile`). Its
         // `join_running_update` also marks that update `announced`, which
         // it already is: only `maybe_update` starts one, only from a
         // refresh's `check_updates` holding this instance's `ResourceLock`
