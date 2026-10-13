@@ -73,5 +73,10 @@
     "name": "what follows a home folder's name stays, and so does the shared folder before a comma (r20 R50 skeptic 2)",
     "summary": "Error: cannot open /Users/jane: denied; '/Users/bob' and /Users/Shared, too",
     "detail": "cannot open ~: denied; '~' and /Users/Shared, too"
+  },
+  {
+    "name": "a home folder's name in any script is written as ~ too, also as macOS's disk writes Zoë (e and a mark); a web address's /users/<id> after a host in any script stays (Astra R20-A1-4)",
+    "summary": "Error: cannot open /Users/张三/.npmrc or '/Users/josé' or /System/Volumes/Data/Users/Zoe\u0308/x via https://例子.测试/users/张三/repos",
+    "detail": "cannot open ~/.npmrc or '~' or ~/x via https://例子.测试/users/张三/repos"
   }
 ]

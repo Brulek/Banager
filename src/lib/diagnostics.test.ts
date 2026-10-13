@@ -388,6 +388,12 @@ describe("the text's helpers", () => {
     expect(withoutHomePaths("x '/Users/jane' y \"/Users/bob\"")).toBe("x '~' y \"~\"");
     expect(withoutHomePaths("x /Users/Shared, y /Users/Shared: z")).toBe("x /Users/Shared, y /Users/Shared: z");
     expect(withoutHomePaths("PATH=/Users/jane/bin:/Users/bob/bin")).toBe("PATH=~/bin:~/bin");
+    // A name in any script, also as macOS's disk writes é (e and a mark),
+    // and a host in any script before a web address's `/users/<id>`
+    // (Astra R20-A1-4).
+    expect(withoutHomePaths("/Users/张三/.npmrc '/Users/josé' /Users/jose\u0301/x")).toBe("~/.npmrc '~' ~/x");
+    expect(withoutHomePaths("/System/Volumes/Data/Users/Zoë/bin")).toBe("~/bin");
+    expect(withoutHomePaths("https://例子.测试/users/张三/repos")).toBe("https://例子.测试/users/张三/repos");
   });
 });
 

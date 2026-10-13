@@ -380,6 +380,7 @@ struct DetailPatterns {
     bookkeeping: regex::Regex,
     label: regex::Regex,
     home: regex::Regex,
+    name_char: regex::Regex,
     login: regex::Regex,
     query: regex::Regex,
     address_path: regex::Regex,
@@ -399,9 +400,13 @@ fn detail_patterns() -> &'static DetailPatterns {
                 r"(?i)^(?:(?:error|fatal)\b\s*(?:\[[^\]]*\])?\s*:?|npm (?:err!|error)\b|E:)\s*",
             ),
             // Not right after a host or a folder's name (a web address's
-            // `/users/<id>`), and the name only what an account's can hold,
-            // so a colon or a quote after it stays (r20 R50 skeptic 1, 2).
-            home: re(r"(?i)(^|[^A-Za-z0-9_.-])((?:/System/Volumes/Data)?/Users/([A-Za-z0-9_.-]+))"),
+            // `/users/<id>`), and the name only letters and digits of any
+            // script, `_`, `.` and `-` (`name_char`), so a colon or a quote
+            // after it stays (r20 R50 skeptic 1, 2; Astra R20-A1-4).
+            home: re(
+                r"(?i)(^|[^\p{L}\p{M}\p{N}_.\-])((?:/System/Volumes/Data)?/Users/([\p{L}\p{M}\p{N}_.\-]+))",
+            ),
+            name_char: re(r"^[\p{L}\p{M}\p{N}_.\-]$"),
             login: re(r"([A-Za-z][A-Za-z0-9+.-]*://)[^/\s@'\x22`]+@"),
             query: re(r"([A-Za-z][A-Za-z0-9+.-]*://[^\s?#'\x22`]*)[?#][^\s'\x22`]*"),
             address_path: re(r"([A-Za-z][A-Za-z0-9+.-]*://[^/\s'\x22`]+)(/[^\s'\x22`]*)"),
@@ -505,10 +510,13 @@ fn failure_detail_in(summary: &str, home: Option<&Path>) -> Option<String> {
 }
 
 /// `text` with the folder `home` names written as `~` wherever it is --
-/// in any case, as macOS's disk finds it, and not where a longer name only
-/// begins with it -- for a home outside /Users, which `DetailPatterns`'
-/// `home` does not cover (r20 R50-2). A home that is missing, relative or
-/// the root folder writes nothing, as `diagnostics::shown_path`.
+/// in any case, as macOS's disk finds it, also through the data volume
+/// (`/System/Volumes/Data<home>`), and neither where a longer name only
+/// begins with it nor right after a host or a folder's name, as
+/// `DetailPatterns`' `home` -- for a home outside /Users, which that
+/// pattern does not cover (r20 R50-2; Astra R20-A1-3). A home that is
+/// missing, relative or the root folder writes nothing, as
+/// `diagnostics::shown_path`.
 fn home_as_tilde<'a>(text: &'a str, home: Option<&Path>) -> std::borrow::Cow<'a, str> {
     let home = home
         .filter(|home| home.is_absolute() && home.parent().is_some())
@@ -518,11 +526,32 @@ fn home_as_tilde<'a>(text: &'a str, home: Option<&Path>) -> std::borrow::Cow<'a,
     let Some(home) = home else {
         return std::borrow::Cow::Borrowed(text);
     };
-    let pattern = format!(r"(?i){}([^\w.-]|$)", regex::escape(home));
-    match regex::Regex::new(&pattern) {
-        Ok(pattern) => pattern.replace_all(text, "~${1}"),
-        Err(_) => std::borrow::Cow::Borrowed(text),
+    let pattern = format!(r"(?i)(?:/System/Volumes/Data)?{}", regex::escape(home));
+    let Ok(pattern) = regex::Regex::new(&pattern) else {
+        return std::borrow::Cow::Borrowed(text);
+    };
+    let name_char = &detail_patterns().name_char;
+    let in_a_name =
+        |c: Option<char>| c.is_some_and(|c| name_char.is_match(c.encode_utf8(&mut [0; 4])));
+    let mut out = String::new();
+    let (mut copied, mut from) = (0, 0);
+    while let Some(found) = pattern.find_at(text, from) {
+        let rest = &text[found.start()..];
+        if in_a_name(text[..found.start()].chars().next_back())
+            || in_a_name(text[found.end()..].chars().next())
+        {
+            from = found.start() + rest.chars().next().map_or(1, char::len_utf8);
+            continue;
+        }
+        out.push_str(&text[copied..found.start()]);
+        out.push('~');
+        (copied, from) = (found.end(), found.end());
     }
+    if copied == 0 {
+        return std::borrow::Cow::Borrowed(text);
+    }
+    out.push_str(&text[copied..]);
+    std::borrow::Cow::Owned(out)
 }
 
 /// Where a history with no `Clock` yet starts trusting from: `now`, or
@@ -1870,7 +1899,9 @@ mod tests {
         // `failure_detail_cases.json` is read by src/lib/failureCause.test.ts
         // too, so a failure says the same before a restart and after it --
         // read with no `HOME`, which the window does not know, so the
-        // tester's own does not count.
+        // tester's own does not count; and with each `/Users/<name>` a
+        // case names (but the shared folder) as `HOME`, which must change
+        // nothing (Astra R20-A1-3).
         #[derive(serde::Deserialize)]
         struct Case {
             name: String,
@@ -1880,6 +1911,7 @@ mod tests {
         let cases: Vec<Case> =
             serde_json::from_str(include_str!("failure_detail_cases.json")).expect("cases parse");
         assert!(cases.len() >= 8, "the shared cases are all there");
+        let named = regex::Regex::new(r"(?i)/users/([^/\s:'\x22`,]+)").expect("compiles");
         for case in cases {
             assert_eq!(
                 failure_detail_in(&case.summary, None),
@@ -1887,6 +1919,17 @@ mod tests {
                 "{}",
                 case.name
             );
+            let names = named.captures_iter(&case.summary);
+            for name in names.filter(|name| !name[1].eq_ignore_ascii_case("Shared")) {
+                let home = PathBuf::from(format!("/Users/{}", &name[1]));
+                assert_eq!(
+                    failure_detail_in(&case.summary, Some(&home)),
+                    case.detail,
+                    "{} (HOME {})",
+                    case.name,
+                    home.display()
+                );
+            }
         }
     }
 
@@ -1928,6 +1971,27 @@ mod tests {
         assert_eq!(
             failure_detail_in("Error: cannot open /Volumes/Data/janet/x", home).as_deref(),
             Some("cannot open /Volumes/Data/janet/x")
+        );
+        // Not right after a host or a folder's name, and through the data
+        // volume as the whole home, not as `/System/Volumes/Data~`
+        // (Astra R20-A1-3).
+        let home = Some(Path::new("/Users/jane"));
+        assert_eq!(
+            failure_detail_in(
+                "Error: Not Found https://api.github.com/users/jane/repos for /System/Volumes/Data/Users/jane/.npmrc",
+                home
+            )
+            .as_deref(),
+            Some("Not Found https://api.github.com/users/jane/repos for ~/.npmrc")
+        );
+        let home = Some(Path::new("/Volumes/Data/jane"));
+        assert_eq!(
+            failure_detail_in(
+                "Error: /Volumes/Data/jane /Volumes/Data/jane:/x/Volumes/Data/jane /System/Volumes/Data/Volumes/Data/jane/y",
+                home
+            )
+            .as_deref(),
+            Some("~ ~:/x/Volumes/Data/jane ~/y")
         );
         for home in [None, Some(Path::new("/")), Some(Path::new("relative"))] {
             assert_eq!(
