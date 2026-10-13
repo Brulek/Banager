@@ -1984,7 +1984,8 @@ Banager cannot list in full -- in or through a protected place, more
 than 4,096 names, or slower than two seconds (`look::ListingBudget`) --
 is not taken for one with nothing left out (R60-1, r24): Homebrew's
 notice stays while the formulae the last listing found are still left
-out of `brew info`, no others are claimed, and every formula's uninstall
+out of `brew info` and their folders still hold a version (one
+uninstalled since is dropped), no others are claimed, and every formula's uninstall
 preview says it couldn't check what else needs it
 (`Warning::DependentsUnknown`), since none of Homebrew's own checks would
 count a formula it dropped (`BrewAdapter::may_have_unlisted_racks`).

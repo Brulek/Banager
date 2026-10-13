@@ -1293,8 +1293,9 @@ impl BrewAdapter {
     /// R60-1 (r24): a Cellar that cannot be listed in full (`read_racks`:
     /// more names than one directory budget, or slower than its two
     /// seconds) is not one with nothing left out. It keeps the formulae
-    /// the last listing found that this inventory still leaves out, claims
-    /// no others, and is remembered as not read, so an uninstall preview
+    /// the last listing found that this inventory still leaves out and
+    /// that still hold a version, claims no others, and is remembered as
+    /// not read, so an uninstall preview
     /// cannot rule anything out (`may_have_unlisted_racks`).
     fn remember_unlisted_racks(&self, inst: &ManagerInstance, artifacts: &[InstalledArtifact]) {
         let listed: HashSet<&str> = artifacts
@@ -1308,16 +1309,13 @@ impl BrewAdapter {
         let Ok(mut known) = self.unlisted_racks.lock() else {
             return;
         };
+        let left_out = |rack: &String| {
+            !listed.contains(rack.as_str())
+                && (self.kegs_fn)(&inst.prefix, rack).is_some_and(|kegs| !kegs.versions.is_empty())
+        };
         let reading = match (self.racks_fn)(&inst.prefix) {
             Some(racks) => UnlistedRacks {
-                names: racks
-                    .into_iter()
-                    .filter(|rack| !listed.contains(rack.as_str()))
-                    .filter(|rack| {
-                        (self.kegs_fn)(&inst.prefix, rack)
-                            .is_some_and(|kegs| !kegs.versions.is_empty())
-                    })
-                    .collect(),
+                names: racks.into_iter().filter(left_out).collect(),
                 cellar_unread: false,
             },
             None => UnlistedRacks {
@@ -1326,7 +1324,7 @@ impl BrewAdapter {
                     .map(|last| last.names.clone())
                     .unwrap_or_default()
                     .into_iter()
-                    .filter(|rack| !listed.contains(rack.as_str()))
+                    .filter(left_out)
                     .collect(),
                 cellar_unread: true,
             },
@@ -5917,6 +5915,53 @@ mod plan_execute_tests {
             .expect("check_updates");
         assert!(outcome.notes.is_empty(), "got {:?}", outcome.notes);
         let plan = never_read
+            .plan(&inst, &uninstall_oniguruma(&inst))
+            .await
+            .expect("plan");
+        assert!(
+            plan.warnings.contains(&Warning::DependentsUnknown),
+            "got {:?}",
+            plan.warnings
+        );
+    }
+
+    /// R60-1 (r24 skeptic): a formula the last listing found left out, and
+    /// uninstalled since, is not kept while the Cellar cannot be listed:
+    /// what is kept still has to hold a version, as on a full listing. An
+    /// uninstall preview still cannot rule anything out.
+    #[tokio::test]
+    async fn a_cellar_that_could_not_be_listed_forgets_a_formula_uninstalled_since() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        static PRESENT: AtomicBool = AtomicBool::new(true);
+        let adapter = BrewAdapter::new(runner_listing_jq_alone())
+            .with_racks_fn(|_| {
+                PRESENT.load(Ordering::SeqCst).then(|| {
+                    vec![
+                        "jq".to_string(),
+                        "oniguruma".to_string(),
+                        "speedtest".to_string(),
+                    ]
+                })
+            })
+            .with_kegs_fn(|prefix, name| {
+                if PRESENT.load(Ordering::SeqCst) {
+                    kegs_but_in_empty(prefix, name)
+                } else {
+                    None
+                }
+            });
+        let inst = test_instance();
+        let check = || async {
+            adapter
+                .check_updates(&inst, &CheckOptions::default())
+                .await
+                .expect("check_updates")
+                .notes
+        };
+        assert_eq!(check().await, [InstanceNote::FormulaeNotListed]);
+        PRESENT.store(false, Ordering::SeqCst);
+        assert!(check().await.is_empty(), "their folders are gone");
+        let plan = adapter
             .plan(&inst, &uninstall_oniguruma(&inst))
             .await
             .expect("plan");
