@@ -286,7 +286,11 @@ pub fn needed_by_on_path(
             .iter()
             .filter(|tool| tool.key.instance_id == source.id && counts(&source.adapter_id, tool))
             .collect();
-        if tools.is_empty() {
+        // Whether an Ollama stays is asked even when no round has listed
+        // its models: they are in `~/.ollama/models` all the same (r22
+        // R53-4).
+        let ollama = source.adapter_id == "ollama";
+        if tools.is_empty() && !ollama {
             continue;
         }
         // What the source's program, and the interpreter it is run with,
@@ -324,13 +328,16 @@ pub fn needed_by_on_path(
         // Ollama.app or another `ollama` on `PATH` while Banager's leads
         // in -- runs the same models from the same folder
         // (`~/.ollama/models`): they need nothing of this one.
-        if source.adapter_id == "ollama" {
+        if ollama {
             if into == Some(false) {
                 ollama_stays = true;
             } else if program && look.another_ollama(env, &refreshed.applications, &roots) {
                 ollama_stays = true;
                 continue;
             }
+        }
+        if tools.is_empty() {
+            continue;
         }
         if program {
             warnings.push(Warning::NeededBySource {
@@ -1845,6 +1852,48 @@ mod tests {
         );
         assert!(found.warnings.is_empty());
         assert!(found.complete);
+        assert!(found.ollama_stays);
+    }
+
+    #[test]
+    fn test_an_ollama_app_that_stays_is_found_when_no_round_has_listed_the_models() {
+        // Ollama has not answered since Banager opened: no round has
+        // listed its models, but Ollama.app still runs those in
+        // `~/.ollama/models` (r22 R53-4).
+        let root = Root::new("ollama-unlisted");
+        root.dir("opt/homebrew/Caskroom");
+        root.program("opt/homebrew/Cellar/ollama/0.34.1/bin/ollama");
+        root.link(
+            "opt/homebrew/bin/ollama",
+            "../Cellar/ollama/0.34.1/bin/ollama",
+        );
+        let ollama = instance(
+            "ollama",
+            "ollama:http://127.0.0.1:11434",
+            root.path("opt/homebrew/bin/ollama"),
+            root.path("home/.ollama"),
+        );
+        let instances = vec![brew(&root), ollama.clone()];
+        let env = root.env(&["opt/homebrew/bin", "usr/local/bin"]);
+        let look = || {
+            needed_by_on_path(
+                &formula("ollama"),
+                &instances[0],
+                &instances,
+                &[],
+                &env,
+                &Refreshed {
+                    path_known: true,
+                    unlisted: vec![ollama.id.clone()],
+                    applications: root.path("Applications"),
+                },
+                BUDGET,
+            )
+        };
+        assert!(!look().ollama_stays);
+        root.program("Applications/Ollama.app/Contents/Resources/ollama");
+        let found = look();
+        assert!(found.warnings.is_empty(), "{:?}", found.warnings);
         assert!(found.ollama_stays);
     }
 
