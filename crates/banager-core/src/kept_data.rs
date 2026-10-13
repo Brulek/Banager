@@ -450,6 +450,7 @@ mod tests {
         // `/System/Volumes/Data/private/var/...` is `/private/var/...`
         // (`protected::DATA_VOLUME`), on the way and as the target alike.
         let home = Home::new("data-volume-overlap");
+        let _account = crate::protected::as_if_account(&home.0);
         let root = home.0.join(".local/share/uv/tools/mistral-vibe");
         home.file(".local/share/uv/tools/mistral-vibe/settings", 10);
         let data = home.0.join(".vibe");

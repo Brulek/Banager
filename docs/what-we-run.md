@@ -396,7 +396,10 @@ as a `~/NAS` mounted from Terminal -- but one a home folder is on: each
 time the places are made, Banager reads the kernel's table of mounts as
 the kernel last knew it, asking no disk or server anything
 (`getfsstat` with `MNT_NOWAIT`; `protected::network_shares`), and takes
-each one not marked as this Mac's own (`MNT_LOCAL`). A disk attached to
+each one not marked as this Mac's own (`MNT_LOCAL`). A share a home
+folder is on is read but for that home folder's own places, unless it is
+mounted under `/Volumes`, which stays out whatever is on it
+(`protected::places`). A disk attached to
 this Mac and mounted outside `/Volumes` by hand, such as the volume Nix
 keeps `/nix` on, is read like this Mac's own disk. What
 Banager does not look at, the programs it runs may: the login shell it
@@ -4736,7 +4739,8 @@ is `~/Documents`, through the firmlinks macOS keeps; `protected::DATA_VOLUME`).
 A tool kept in one of them shows no size (`Protected`). A folder that
 another program moves into one of them while it is measured is listed
 no further: before each folder is opened, the walk asks the folder it
-is opened from where it is now, and before it is listed, the folder
+is opened from where it is now, and before it is listed and again
+before each further name in it is read and looked at, the folder
 itself (`fcntl(F_GETPATH)`, which reads nothing in either), and the
 measurement is partial. It is the same list the command check keeps out
 of (`crates/banager-core/src/protected.rs`). `~` there is both the home

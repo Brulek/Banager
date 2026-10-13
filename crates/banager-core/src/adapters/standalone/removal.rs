@@ -1760,6 +1760,7 @@ mod tests {
         // (`protected::DATA_VOLUME`): the settings link leads into the
         // program folder all the same, so that folder stays.
         let home = TempHome::new("removal-settings-data-volume");
+        let _account = crate::protected::as_if_account(home.path());
         let layout = claude_layout(&home, "2.1.281");
         let inside = home.file(".local/share/claude/settings.json");
         let spelled = Path::new(crate::protected::DATA_VOLUME)

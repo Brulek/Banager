@@ -1477,9 +1477,12 @@ fn test_a_scanned_folder_in_a_protected_place_is_not_read_and_is_named_once() {
 fn test_a_folder_on_a_network_share_mounted_in_the_home_folder_is_not_read() {
     // An SMB share mounted at `~/NAS` (`mount_smbfs` takes any folder),
     // `~/NAS/bin` on `PATH`: a folder of the test's own stands in for the
-    // share, which the kernel's table of mounts names as not local.
-    use banager_core::protected::{as_if_mounted, Mount};
+    // share, which the kernel's table of mounts names as not local. The
+    // account's own home folder is the test's too (`as_if_account`): the
+    // scan neither asks the password database nor looks at this Mac's.
+    use banager_core::protected::{as_if_account, as_if_mounted, Mount};
     let home = Home::new("network-share");
+    let _account = as_if_account(home.path());
     let local = home.dir(".local/bin");
     exe(&local, "mine", b"x");
     let nas_bin = home.dir("NAS/bin");

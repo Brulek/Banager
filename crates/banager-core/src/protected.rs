@@ -68,10 +68,11 @@ pub struct Mount {
 /// `/Volumes`, where Finder mounts one, or any folder (`mount_smbfs`
 /// takes one: `~/NAS`) -- spelled from `/`: one that went away does not
 /// answer at all. Not one a home folder of `homes` is in, or is (a home
-/// folder kept on a server): nothing in it could be read then. A disk
-/// attached to this Mac and mounted outside `/Volumes` by hand -- the
-/// separate volume Nix keeps `/nix` on -- answers as this Mac's own does,
-/// and is read.
+/// folder kept on a server): nothing in it could be read then -- though
+/// one under `/Volumes` stays out all the same (`places`). A disk attached
+/// to this Mac and mounted outside `/Volumes` by hand -- the separate
+/// volume Nix keeps `/nix` on -- answers as this Mac's own does, and is
+/// read.
 fn network_shares(homes: &[PathBuf]) -> Vec<PathBuf> {
     mounts()
         .into_iter()
@@ -485,7 +486,7 @@ impl Protected {
 /// change while Banager runs, and asking can mean a round trip to the
 /// directory service.
 pub fn account_home() -> Option<PathBuf> {
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     if let Some(account) = ACCOUNT_HOME_FOR_TESTS.with(|account| account.borrow().clone()) {
         return account;
     }
@@ -536,9 +537,33 @@ thread_local! {
     /// The home folder `Protected::of_this_process` answers for on this
     /// thread instead of `HOME` (`as_if_home`).
     static PROCESS_HOME: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(any(test, feature = "test-support"))]
+thread_local! {
     /// What `account_home` answers on this thread instead of the password
-    /// database, when a test sets it (`tests::AsIfAccount`).
+    /// database, when a test sets it (`as_if_account`).
     static ACCOUNT_HOME_FOR_TESTS: std::cell::RefCell<Option<Option<PathBuf>>> = const { std::cell::RefCell::new(None) };
+}
+
+/// A test's stand-in for the account's own home folder, on its own thread
+/// only, until the guard is dropped (`account_home`): `Protected::new`
+/// then neither asks the password database nor looks at this Mac's own
+/// home folder to find where it leads.
+#[cfg(any(test, feature = "test-support"))]
+pub fn as_if_account(account: &Path) -> AsIfAccount {
+    ACCOUNT_HOME_FOR_TESTS.with(|slot| *slot.borrow_mut() = Some(Some(account.to_path_buf())));
+    AsIfAccount
+}
+
+#[cfg(any(test, feature = "test-support"))]
+pub struct AsIfAccount;
+
+#[cfg(any(test, feature = "test-support"))]
+impl Drop for AsIfAccount {
+    fn drop(&mut self) {
+        ACCOUNT_HOME_FOR_TESTS.with(|slot| *slot.borrow_mut() = None);
+    }
 }
 
 /// A test's stand-in for this process's `HOME`, on its own thread only,
@@ -1124,23 +1149,6 @@ mod tests {
         assert!(!protected.contains(&account.join(".cargo/bin")));
     }
 
-    /// `account_home` answering `account` on this thread until dropped.
-    struct AsIfAccount;
-
-    impl AsIfAccount {
-        fn new(account: &Path) -> AsIfAccount {
-            ACCOUNT_HOME_FOR_TESTS
-                .with(|slot| *slot.borrow_mut() = Some(Some(account.to_path_buf())));
-            AsIfAccount
-        }
-    }
-
-    impl Drop for AsIfAccount {
-        fn drop(&mut self) {
-            ACCOUNT_HOME_FOR_TESTS.with(|slot| *slot.borrow_mut() = None);
-        }
-    }
-
     #[test]
     fn test_a_network_share_is_kept_out_wherever_it_is_mounted() {
         // An SMB share at `~/NAS` (`mount_smbfs` takes any folder), one at
@@ -1149,7 +1157,7 @@ mod tests {
         // disk is read. A share holding the home folder itself -- a home
         // folder kept on a server -- is not: the home would be unreadable.
         let home = Temp::new("shares");
-        let _account = AsIfAccount::new(&home.0);
+        let _account = as_if_account(&home.0);
         let spelled = Path::new(DATA_VOLUME).join(home.0.strip_prefix("/").unwrap());
         let mount = |at: PathBuf, local| Mount { at, local };
         let parent = home.0.parent().unwrap().to_path_buf();
@@ -1198,7 +1206,7 @@ mod tests {
         // in. The account's places are kept, and `HOME`'s as given.
         let account = Temp::new("account");
         std::fs::create_dir_all(account.0.join("Documents/h")).unwrap();
-        let _account = AsIfAccount::new(&account.0);
+        let _account = as_if_account(&account.0);
         let home = account.0.join("Documents/h");
         let (protected, made) = crate::dirfd::calls::measure(|| Protected::new(&home));
         for (call, path) in &made.paths {

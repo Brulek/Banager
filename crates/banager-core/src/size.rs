@@ -518,16 +518,11 @@ fn walk_folder(
         // And where the folder itself is now, before anything in it is
         // listed or looked at: the folder above may have been moved in
         // between.
-        match dir.path() {
-            Ok(at) if !protected.contains(&at) => {}
-            // No such call off a Mac, where no place asks permission.
-            Err(e) if e.kind() == std::io::ErrorKind::Unsupported => {}
-            _ => {
-                tally.partial = true;
-                continue;
-            }
+        if !still_outside(&dir, protected) {
+            tally.partial = true;
+            continue;
         }
-        let entries = match dir.entries() {
+        let mut entries = match dir.entries() {
             Ok(entries) => entries,
             Err(_) => {
                 tally.partial = true;
@@ -536,7 +531,20 @@ fn walk_folder(
         };
         let dir = Rc::new(dir);
         tally.reached = true;
-        for entry in entries {
+        // `readdir` reads names a few at a time as the walk goes, so the
+        // folder may be moved into `~/Documents` while it is listed:
+        // where it is now is asked again before each further name is
+        // read, and before what a name is is looked at.
+        let mut just_asked = true;
+        loop {
+            if !just_asked && !still_outside(&dir, protected) {
+                tally.partial = true;
+                break;
+            }
+            just_asked = false;
+            let Some(entry) = entries.next() else {
+                break;
+            };
             if !wanted() {
                 return Flow::Superseded;
             }
@@ -562,6 +570,11 @@ fn walk_folder(
                 tally.partial = true;
                 continue;
             }
+            if !still_outside(&dir, protected) {
+                tally.partial = true;
+                break;
+            }
+            just_asked = true;
             // `fstatat` without following: a link is the link.
             let meta = match dir.stat_at(&name) {
                 Ok(meta) => meta,
@@ -586,6 +599,18 @@ fn walk_folder(
         }
     }
     Flow::Finished
+}
+
+/// Whether `dir`, a folder the walk holds open, is still outside every
+/// protected place, wherever another program may have moved it since
+/// (`Dir::path`, `F_GETPATH`, which looks nothing up and reads nothing in
+/// it). Always so off a Mac, which has no such call and where no place
+/// asks permission.
+fn still_outside(dir: &Dir, protected: &Protected) -> bool {
+    match dir.path() {
+        Ok(at) => !protected.contains(&at),
+        Err(e) => e.kind() == std::io::ErrorKind::Unsupported,
+    }
 }
 
 /// The total of several measurements, each file with several hard links
@@ -1572,6 +1597,18 @@ mod tests {
             std::fs::create_dir_all(&path).unwrap();
             path
         }
+
+        /// That every call in `made` looked at this folder, something in
+        /// it, or a folder on the way down to it from `/`: nothing of this
+        /// Mac's own home folder, nor anywhere else.
+        fn only_looked_at(&self, made: &crate::dirfd::calls::Calls) {
+            for (call, path) in &made.paths {
+                assert!(
+                    path.starts_with(&self.0) || self.0.starts_with(path),
+                    "{call:?} looked at {path:?}"
+                );
+            }
+        }
     }
 
     impl Drop for Scratch {
@@ -2024,7 +2061,7 @@ mod tests {
         let tool = scratch.dir("home/.tool");
         scratch.file("home/.tool/small.bin", 1_000);
         scratch.file("home/.tool/sub/private.bin", 500_000);
-        let protected = Protected::new(&home);
+        let _account = crate::protected::as_if_account(&home);
         let mut calls = 0;
         let mut move_it = || {
             calls += 1;
@@ -2037,6 +2074,7 @@ mod tests {
         };
         let mut budget = Budget::new(SizeBudget::default());
         let (end, made) = crate::dirfd::calls::measure(|| {
+            let protected = Protected::new(&home);
             walk(
                 std::slice::from_ref(&tool),
                 &mut budget,
@@ -2045,12 +2083,62 @@ mod tests {
             )
         });
         let walked = walked(end);
+        scratch.only_looked_at(&made);
         assert!(calls >= 5, "the walk got to `sub`");
         assert!(
             walked.measured.bytes < 500_000,
             "~/Documents was listed through the moved folder: {walked:?}"
         );
         assert!(walked.measured.partial, "{walked:?}");
+        for (call, path) in &made.paths {
+            assert!(
+                *call == crate::dirfd::calls::Call::GetPath
+                    || !path.starts_with(home.join("Documents")),
+                "{call:?} {path:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_a_flat_folder_moved_into_documents_while_listed_is_listed_no_further() {
+        // A tool's folder with only files in it, part listed when another
+        // program moves it into `~/Documents`: nothing more in it is read
+        // from the descriptor the walk holds, as all of it is in
+        // `~/Documents` now, and the result says so (`partial`).
+        let scratch = Scratch::new("moved-flat");
+        let home = scratch.dir("home");
+        scratch.dir("home/Documents");
+        let tool = scratch.dir("home/.tool");
+        for n in 0..20 {
+            scratch.file(&format!("home/.tool/file-{n:02}.bin"), 1_000);
+        }
+        let _account = crate::protected::as_if_account(&home);
+        let mut calls = 0;
+        let mut move_it = || {
+            calls += 1;
+            // 1: the root; 2: the root folder popped; 3 on: its entries,
+            // each as `readdir` has just given its name.
+            if calls == 6 {
+                std::fs::rename(&tool, home.join("Documents/.tool")).unwrap();
+            }
+            true
+        };
+        let mut budget = Budget::new(SizeBudget::default());
+        let (end, made) = crate::dirfd::calls::measure(|| {
+            let protected = Protected::new(&home);
+            walk(
+                std::slice::from_ref(&tool),
+                &mut budget,
+                &protected,
+                &mut move_it,
+            )
+        });
+        let walked = walked(end);
+        scratch.only_looked_at(&made);
+        assert!(calls >= 6, "the walk got into the folder");
+        assert!(walked.measured.partial, "{walked:?}");
+        assert!(walked.measured.bytes < 20_000, "{walked:?}");
+        assert!(made.entries < 20, "{} names read", made.entries);
         for (call, path) in &made.paths {
             assert!(
                 *call == crate::dirfd::calls::Call::GetPath
@@ -2083,18 +2171,21 @@ mod tests {
                 local: false,
             },
         ]);
-        let protected = Protected::new(&home);
+        let _account = crate::protected::as_if_account(&home);
         let mut budget = Budget::new(SizeBudget::default());
-        let on_share = walk(
-            &[home.join("NAS/tool")],
-            &mut budget,
-            &protected,
-            &mut || true,
-        );
-        assert_eq!(on_share, WalkEnd::Nothing);
-        let (end, made) = crate::dirfd::calls::measure(|| {
-            walk(&[home.join(".tool")], &mut budget, &protected, &mut || true)
+        let ((on_share, end), made) = crate::dirfd::calls::measure(|| {
+            let protected = Protected::new(&home);
+            let on_share = walk(
+                &[home.join("NAS/tool")],
+                &mut budget,
+                &protected,
+                &mut || true,
+            );
+            let end = walk(&[home.join(".tool")], &mut budget, &protected, &mut || true);
+            (on_share, end)
         });
+        scratch.only_looked_at(&made);
+        assert_eq!(on_share, WalkEnd::Nothing);
         let walked = walked(end);
         assert!(walked.measured.bytes < 500_000, "{walked:?}");
         assert!(walked.measured.partial, "{walked:?}");
