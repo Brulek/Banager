@@ -471,9 +471,10 @@ checks.
 to Homebrew cask installs and upgrades when the variable is already set
 in Banager's environment (Homebrew's section); it never sets it on its
 own behalf. An `OLLAMA_HOST` URL may already contain a login, which is
-sent to that daemon as HTTP Basic authentication (Network). Its userinfo
-is omitted from public instance ids and masked in command previews,
-operation summaries and inventory errors. It is also removed from keys
+sent to that daemon as HTTP Basic authentication (Network) to list its
+models; that Ollama is then view only, so no command is given it (Ollama's
+section). Its userinfo is omitted from public instance ids and masked in
+command previews, operation summaries and inventory errors. It is also removed from keys
 before history or settings are stored; older records
 are scrubbed on load and a rewrite is attempted (Files Banager writes).
 A proxy setting read from the login shell may hold a login;
@@ -3287,18 +3288,26 @@ by each detection; with none kept (no `ollama`, or a refused
 `OLLAMA_HOST`) nothing is asked or planned, and a plan whose
 `OLLAMA_HOST` is no longer the kept endpoint is not run: it ends as
 changed since shown (`Fault::ChangedSinceShown`), before `ollama` starts. URL userinfo
-is retained for requests and commands, including HTTP Basic authentication
-to the daemon; plain HTTP does not encrypt it (Network). The authenticated
-endpoint stays privately in the adapter, while detected instance ids omit
-userinfo before snapshots, model keys, plans or operation events reach the
-window. Plan serialization and operation `env_preview` put `****` in
-place of the user name and of the password, whichever the login has
-(`runner::redact`); an `OLLAMA_HOST` with no login is shown as it is. The
-command preview and command text copied from the window keep those masks. Such copied text requires the
-person to supply their own login. The backend retains the real plan and
-passes the original normalized value to the command; the window submits
-only the held plan id. This does not add CLI support for URL userinfo:
-Ollama itself may still reject that value.
+(a user name, a password, or both) is retained for Banager's own requests,
+as HTTP Basic authentication to the daemon; plain HTTP does not encrypt it
+(Network). It is never given to `ollama`, which cannot use it: Ollama 0.40
+takes the whole authority, login included, for the host
+(`envconfig.Host`) and sends its requests there (`api/client.go`), so a
+pull or rm would always fail. An Ollama at such an address, on this Mac or
+another, is view only (`ReadOnlyReason::OllamaAuthenticationUnsupported`,
+`has_login`): its models are listed, with "View only" and the reason
+"OLLAMA_HOST includes a login, so you can only view these models";
+Install, Update and Uninstall are refused, no local manifest is read and
+no registry is asked for its models, which are listed as not looked up
+here; and a plan made before the address got a login ends as changed since
+shown. The authenticated endpoint stays privately in the adapter, while
+detected instance ids omit userinfo before snapshots, model keys or
+operation events reach the window. Plan serialization and operation
+`env_preview` still put `****` in place of the user name and of the
+password, whichever a login has (`runner::redact`), for any value that
+carries one; an `OLLAMA_HOST` with no login is shown as it is. The backend
+retains the real plan and passes the normalized value to the command; the
+window submits only the held plan id.
 
 Inventory errors mask the requested URL and any login echoed in transport
 errors, non-200 response bodies or parse errors, using the same redactor.
@@ -3422,7 +3431,8 @@ is listed again once, and the old skip stays in Settings until the
 model's next build is skipped or it is removed there. A registry answer
 with no config is no model: "could not check".
 
-**Write commands:**
+**Write commands** (only at an `OLLAMA_HOST` Banager can use that has no
+login, above):
 
 | Purpose | Argv | Timeout | Needs a password |
 |---|---|---|---|
@@ -6420,7 +6430,7 @@ that has been set up.
 - Homebrew 卸载开始前会重新读取 `brew.env`。若现在会或可能自动移除依赖，而预览没有说明，或预览承诺保留的公式不再排除，则不运行命令，并提示重新打开确认窗口。
 - cask 卸载开始前也会重新读取安装记录及预览所用的信任设置和 App 名称。删除范围、步骤、目标或条件与预览不同时，不运行命令，并提示重新打开确认窗口。检查不会锁住外部程序，仍可能在读取后发生变化。
 - `brew.env` 读取清单包括 `HOMEBREW_NO_AUTO_UPDATE`。它被设为空时，会阻止可能触发未跟踪自动更新的命令。
-- `OLLAMA_HOST` 地址中的登录信息会用于该服务的 HTTP 基本认证。普通 HTTP 不加密这些信息。发给窗口的实例标识不含登录信息；命令预览、操作摘要和库存错误会遮蔽登录信息，实际请求和命令仍使用原值。拷贝的预览命令也保留遮蔽，需要自行补入登录信息。历史和忽略、跳过、稍后提醒设置保存前会去除地址中的用户名与密码；旧文件读取时也会脱敏并尝试重写。写入失败可能使旧内容仍留在磁盘，较新格式的历史文件不会被覆盖。
+- `OLLAMA_HOST` 地址中的登录信息会用于该服务的 HTTP 基本认证，以列出模型。普通 HTTP 不加密这些信息。`ollama` 命令无法使用地址中的登录信息，所以这样的 Ollama 中的模型仅供查看，不会为它运行任何命令。发给窗口的实例标识不含登录信息；库存错误会遮蔽登录信息。`OLLAMA_HOST` 设置的地址无法使用时，不会连接任何 Ollama，也不会改连默认地址。历史和忽略、跳过、稍后提醒设置保存前会去除地址中的用户名与密码；旧文件读取时也会脱敏并尝试重写。写入失败可能使旧内容仍留在磁盘，较新格式的历史文件不会被覆盖。
 - Claude Code、Antigravity CLI 和 Grok Build 卸载后，除了检查启动器，还会检查卸载清单中的其他路径；Antigravity 也会重新列出备份。可选路径还会检查归属及应保留的路径，不运行版本命令。
 - 刷新确认工具已不在清单中时，旧更新计划无法提交，也不会建立操作。请重新检查列表。其他工具的变化不会让预览失效；更新候选消失但工具仍已安装时，保留既有版本检查。
 - 预览必须在生成后 10 分钟内确认并提交。已接受的操作可以排队超过 10 分钟再执行。
@@ -6438,7 +6448,7 @@ that has been set up.
 - Homebrew 解除安裝開始前會重新讀取 `brew.env`。若現在會或可能自動移除相依套件，而預覽沒有說明，或預覽承諾保留的公式不再排除，則不執行指令，並提示重新開啟確認視窗。
 - cask 解除安裝開始前也會重新讀取安裝記錄及預覽所用的信任設定和 App 名稱。刪除範圍、步驟、目標或條件與預覽不同時，不執行指令，並提示重新開啟確認視窗。檢查不會鎖住外部程式，仍可能在讀取後發生變化。
 - `brew.env` 讀取清單包括 `HOMEBREW_NO_AUTO_UPDATE`。它被設為空值時，會阻止可能觸發未追蹤自動更新的指令。
-- `OLLAMA_HOST` 網址中的登入資訊會用於該服務的 HTTP 基本驗證。一般 HTTP 不會加密這些資訊。傳給視窗的實例識別碼不含登入資訊；指令預覽、操作摘要和庫存錯誤會遮蔽登入資訊，實際要求和指令仍使用原值。拷貝的預覽指令也保留遮蔽，需要自行補入登入資訊。更新和解除安裝記錄及忽略、略過、稍後提醒設定儲存前會去除網址中的使用者名稱與密碼；舊檔案讀取時也會遮蔽登入資訊並嘗試重新寫入。寫入失敗可能使舊內容仍留在磁碟，較新格式的更新和解除安裝記錄檔案不會被覆寫。
+- `OLLAMA_HOST` 網址中的登入資訊會用於該服務的 HTTP 基本驗證，以列出模型。一般 HTTP 不會加密這些資訊。`ollama` 指令無法使用網址中的登入資訊，所以這樣的 Ollama 中的模型僅供查看，不會為它執行任何指令。傳給視窗的實例識別碼不含登入資訊；庫存錯誤會遮蔽登入資訊。`OLLAMA_HOST` 設定的網址無法使用時，不會連線任何 Ollama，也不會改連預設網址。更新和解除安裝記錄及忽略、略過、稍後提醒設定儲存前會去除網址中的使用者名稱與密碼；舊檔案讀取時也會遮蔽登入資訊並嘗試重新寫入。寫入失敗可能使舊內容仍留在磁碟，較新格式的更新和解除安裝記錄檔案不會被覆寫。
 - Claude Code、Antigravity CLI 和 Grok Build 解除安裝後，除了檢查啟動器，還會檢查解除安裝清單中的其他路徑；Antigravity 也會重新列出備份。選用路徑還會檢查歸屬及應保留的路徑，不執行版本指令。
 - 重新整理確認工具已不在清單中時，舊更新計畫無法送出，也不會建立操作。請重新檢查清單。其他工具的變化不會讓預覽失效；更新候選消失但工具仍已安裝時，保留既有版本檢查。
 - 預覽必須在產生後 10 分鐘內確認並送出。已接受的操作可以排隊超過 10 分鐘再執行。

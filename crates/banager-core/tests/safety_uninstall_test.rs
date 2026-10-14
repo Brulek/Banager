@@ -130,7 +130,17 @@ fn cases(npm_prefix: &str, brew_prefix: &str, applications: &Path) -> Vec<Case> 
     );
     add(
         "ollama",
-        &|r| Arc::new(OllamaAdapter::new(r, Arc::new(MockHttpClient::new()))),
+        &|r| {
+            let adapter = OllamaAdapter::new(r, Arc::new(MockHttpClient::new()));
+            // The address `detect` would have kept: an Ollama plans only
+            // for the one it found (r24 R75-1).
+            adapter.assume_detected(&instance(
+                "ollama",
+                "/opt/homebrew/bin/ollama",
+                "http://127.0.0.1:11434",
+            ));
+            Arc::new(adapter)
+        },
         instance(
             "ollama",
             "/opt/homebrew/bin/ollama",

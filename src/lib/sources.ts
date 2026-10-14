@@ -1092,6 +1092,7 @@ export const READ_ONLY_DETAIL_KEYS: Record<ReadOnlyReason, string> = {
   // latest (no `brew update` runs there), and the account those folders
   // belong to as the way out -- never taking them over (R59-2).
   HomebrewNotWritable: "sourceNotice.homebrewNotWritable.description",
+  OllamaAuthenticationUnsupported: "sourceNotice.ollamaLogin.description",
 };
 
 /**

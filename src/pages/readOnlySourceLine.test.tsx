@@ -20,6 +20,7 @@ const mockInvoke = vi.mocked(invoke);
 const BREW = "brew:/opt/homebrew";
 const PIP = "pip:/usr/bin/python3";
 const NPM = "npm:/usr/local";
+const OLLAMA = "ollama:http://nas.local:11434";
 
 function instance(adapterId: string, id: string): Snapshot["instances"][number] {
   return {
@@ -32,7 +33,14 @@ function instance(adapterId: string, id: string): Snapshot["instances"][number] 
     status: { unavailable: null, notes: [] },
     answered_at: null,
     unverified_version: null,
-    read_only_reason: id === PIP ? "ByDesign" : id === NPM ? "PrefixNotWritable" : null,
+    read_only_reason:
+      id === PIP
+        ? "ByDesign"
+        : id === NPM
+          ? "PrefixNotWritable"
+          : id === OLLAMA
+            ? "OllamaAuthenticationUnsupported"
+            : null,
   };
 }
 
@@ -56,6 +64,7 @@ function artifact(key: ArtifactKey, commands: CommandFact[], displayName = key.n
 const wget: ArtifactKey = { instance_id: BREW, kind: "Formula", name: "wget" };
 const requests: ArtifactKey = { instance_id: PIP, kind: "Package", name: "requests" };
 const typescript: ArtifactKey = { instance_id: NPM, kind: "Package", name: "typescript" };
+const qwen: ArtifactKey = { instance_id: OLLAMA, kind: "Model", name: "qwen3.8:27b-mlx" };
 
 const settings: Settings = {
   language: "System",
@@ -68,7 +77,7 @@ const settings: Settings = {
 };
 
 beforeEach(() => {
-  const artifacts = [artifact(wget, []), artifact(requests, []), artifact(typescript, [])];
+  const artifacts = [artifact(wget, []), artifact(requests, []), artifact(typescript, []), artifact(qwen, [])];
   mockInvoke.mockReset();
   vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (this: HTMLElement) {
     return this.getAttribute("data-index") === null ? 600 : 56;
@@ -80,7 +89,7 @@ beforeEach(() => {
         generation: 1,
         round: 1,
         detect: "Found",
-        instances: [instance("brew", BREW), instance("pip", PIP), instance("npm", NPM)],
+        instances: [instance("brew", BREW), instance("pip", PIP), instance("npm", NPM), instance("ollama", OLLAMA)],
         artifacts,
         updates: [],
         refreshed_at: 1789700000,
@@ -137,6 +146,31 @@ describe("the Installed page on a read-only source", () => {
       /^npm keeps these in a folder your account can't change, so you can only view them\./,
     );
     expect(selectAll()).toBeNull();
+  });
+
+  it("says an Ollama at an address with a login is view only, in every language, with no Select All", async () => {
+    // r24 R75-2: Banager lists the models with the login, but `ollama`
+    // can't use it, so no row offers Update or Uninstall.
+    for (const [lng, said] of [
+      [
+        "en",
+        "OLLAMA_HOST includes a login, so you can only view these models. The login can be used to list them, but not to install, update or uninstall them.",
+      ],
+      ["zh-CN", "OLLAMA_HOST中带有登录信息，因此这些模型只能查看。登录信息可以用来列出模型，但无法用来安装、更新或卸载模型。"],
+      [
+        "zh-Hant",
+        "OLLAMA_HOST中含有登入資訊，因此這些模型只能查看。登入資訊可以用來列出模型，但無法用來安裝、更新或解除安裝模型。",
+      ],
+    ] as const) {
+      await i18n.changeLanguage(lng);
+      useUiStore.getState().openInstalled(OLLAMA);
+      const { unmount } = renderInstalled();
+      await screen.findByText("qwen3.8:27b-mlx", { selector: "[data-tool-row] p" });
+      expect(document.querySelector("[data-read-only-line]")).toHaveTextContent(said);
+      expect(document.querySelector("[data-selection-header]")).toBeNull();
+      expect(screen.queryByRole("checkbox")).toBeNull();
+      unmount();
+    }
   });
 
   it("keeps Select All on a source that can be changed, and on All Tools", async () => {

@@ -725,6 +725,9 @@
     "homebrewNotWritable": {
       "description": "Homebrew keeps these in folders your account can't change, so you can only view them, and their updates may not be the latest. To update or uninstall them, log in to this Mac with the account those folders belong to."
     },
+    "ollamaLogin": {
+      "description": "OLLAMA_HOST includes a login, so you can only view these models. The login can be used to list them, but not to install, update or uninstall them."
+    },
     "unreachable": {
       "title": "{{source}} isn't responding",
       "description": "{{source}} didn't respond, so what it has installed can't be shown. Check again later.",
@@ -1564,7 +1567,7 @@
       },
       "cantUpdate": {
         "question": "Why can't some tools be updated here?",
-        "answer": "On Updates, under the tools that can be updated, a line says how many more can't be updated here; click it to see them. Each of their rows says why, for example “View only”, “Pinned” or “Updates when run”. Tools installed with pip, and npm packages or Homebrew tools in folders this account can't change, can only be viewed; if OLLAMA_HOST is set to an address that can't be used, no Ollama models are listed, and no other Ollama is contacted instead. A pinned tool has to be unpinned in Terminal first; one marked “Updates when run” updates itself, and opening it once checks for a new version."
+        "answer": "On Updates, under the tools that can be updated, a line says how many more can't be updated here; click it to see them. Each of their rows says why, for example “View only”, “Pinned” or “Updates when run”. Tools installed with pip, npm packages or Homebrew tools in folders this account can't change, and Ollama models at an address with a login can only be viewed; if OLLAMA_HOST is set to an address that can't be used, no Ollama models are listed, and no other Ollama is contacted instead. A pinned tool has to be unpinned in Terminal first; one marked “Updates when run” updates itself, and opening it once checks for a new version."
       },
       "twins": {
         "question": "What does “Installed twice” mean, and what should I do?",

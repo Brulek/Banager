@@ -2203,6 +2203,7 @@ describe("the Updates page's chip details", () => {
     sourceNotice: {
       pipReadOnly: { description: string };
       prefixNotWritable: { description: string };
+      ollamaLogin: { description: string };
     };
     sourceNoticeMore: { prefixProtected: { description: string } };
   }
@@ -2215,6 +2216,7 @@ describe("the Updates page's chip details", () => {
     locale.updates.cannotCheckShort,
     locale.sourceNotice.pipReadOnly.description,
     locale.sourceNotice.prefixNotWritable.description,
+    locale.sourceNotice.ollamaLogin.description,
     locale.sourceNoticeMore.prefixProtected.description,
     ...Object.values(locale.updates.unavailableDetail),
   ];
@@ -2240,6 +2242,7 @@ describe("the Updates page's chip details", () => {
       PrefixNotWritable: "sourceNotice.prefixNotWritable.description",
       PrefixProtected: "sourceNoticeMore.prefixProtected.description",
       HomebrewNotWritable: "sourceNotice.homebrewNotWritable.description",
+      OllamaAuthenticationUnsupported: "sourceNotice.ollamaLogin.description",
     });
     expect(notActionableMessage(fakeT, { read_only: "ByDesign", unavailable: null }, "pip")).toBe(
       READ_ONLY_DETAIL_KEYS.ByDesign,

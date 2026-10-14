@@ -630,8 +630,15 @@ export interface UpdateCandidate {
  * whether it could be changed is not known (decision I23).
  * `HomebrewNotWritable`: Homebrew's own folder or its Cellar is not
  * writable by this account (another account's Homebrew), R59-2.
+ * `OllamaAuthenticationUnsupported`: `OLLAMA_HOST` carries a login, which
+ * Banager lists the models with but the `ollama` command can't use, r24 R75-2.
  */
-export type ReadOnlyReason = "ByDesign" | "PrefixNotWritable" | "PrefixProtected" | "HomebrewNotWritable";
+export type ReadOnlyReason =
+  | "ByDesign"
+  | "PrefixNotWritable"
+  | "PrefixProtected"
+  | "HomebrewNotWritable"
+  | "OllamaAuthenticationUnsupported";
 /**
  * Why a source Banager knows about cannot answer right now. Mirrors
  * `Unavailable` in crates/banager-core/src/model.rs, same bare-string rule

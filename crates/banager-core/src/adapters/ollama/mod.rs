@@ -14,8 +14,8 @@ use crate::events::{EventSink, OpId};
 use crate::http::{HttpClient, HttpRequest};
 use crate::model::{
     ArtifactKey, CancelPolicy, InstalledArtifact, InstanceStatus, ManagerInstance, OpKind,
-    OpRequest, Outcome, Plan, PlanAction, Reconciled, ResourceLock, Scope, SearchHit, Unavailable,
-    UninstallScope, UpdateCandidate, UpdateChannel, Warning,
+    OpRequest, Outcome, Plan, PlanAction, ReadOnlyReason, Reconciled, ResourceLock, Scope,
+    SearchHit, Unavailable, UninstallScope, UpdateCandidate, UpdateChannel, Warning,
 };
 use crate::protected::{look, Protected};
 use crate::runner::redact::{without_ollama_login, Redactor};
@@ -233,6 +233,16 @@ fn host_of(inst: &ManagerInstance) -> Option<&str> {
     inst.id.strip_prefix("ollama:")
 }
 
+/// Whether the daemon URL `host` carries a login (`user:password@host`, a
+/// user name or a password alone included). Banager's requests use it, but
+/// the `ollama` command does not: Ollama 0.40 takes the whole authority for
+/// the host (`envconfig.Host`) and sends its requests there
+/// (`api/client.go`), so a pull or rm with such an `OLLAMA_HOST` always
+/// fails. Its models are listed only (r24 R75-2).
+fn has_login(host: &str) -> bool {
+    url::Url::parse(host).is_ok_and(|url| !url.username().is_empty() || url.password().is_some())
+}
+
 /// The two places a macOS install of Ollama puts its app bundle: the
 /// system-wide `/Applications`, and the per-user `~/Applications` that a
 /// drag-install into the user's own folder produces.
@@ -383,8 +393,10 @@ impl OllamaAdapter {
     }
 
     /// Whether `plan` would still run against the address it was made for:
-    /// the one the last `detect` kept for its instance. A saved plan from
-    /// before `OLLAMA_HOST` changed, or stopped being usable, is not run.
+    /// the one the last `detect` kept for its instance, and one with no
+    /// login, which `ollama` cannot use (`has_login`). A saved plan from
+    /// before `OLLAMA_HOST` changed, stopped being usable or got a login,
+    /// is not run.
     fn still_shown(&self, plan: &Plan) -> bool {
         let PlanAction::Command { env, .. } = &plan.action else {
             return false;
@@ -397,7 +409,7 @@ impl OllamaAdapter {
             .lock()
             .unwrap()
             .get(&plan.request.instance_id)
-            .is_some_and(|current| Some(current) == planned)
+            .is_some_and(|current| Some(current) == planned && !has_login(current))
     }
 
     /// Test-only: keep `inst`'s own address as `detect` would have, for the
@@ -545,7 +557,9 @@ impl OllamaAdapter {
             version,
             answered_at: None,
             unverified_version,
-            read_only_reason: None,
+            // Listed only: `ollama` cannot use the login (`has_login`).
+            read_only_reason: has_login(&host)
+                .then_some(ReadOnlyReason::OllamaAuthenticationUnsupported),
         }]
     }
 
@@ -800,7 +814,17 @@ impl OllamaAdapter {
         _opts: &CheckOptions,
     ) -> Result<CheckOutcome, AdapterError> {
         let installed = self.inventory(inst).await?;
-        if !models_on_this_mac(inst) {
+        // A model at an address with a login cannot be updated from here
+        // (`has_login`), so neither its manifests nor the registry are
+        // read for it, on this Mac or another (r24 R75-2).
+        let not_looked_up = if has_login(&self.endpoint(inst)?) {
+            Some("models at an address with a login cannot be updated from this Mac")
+        } else if !models_on_this_mac(inst) {
+            Some("remote daemon manifests cannot be checked from this Mac")
+        } else {
+            None
+        };
+        if let Some(reason) = not_looked_up {
             return Ok(installed
                 .iter()
                 .map(|artifact| {
@@ -808,9 +832,7 @@ impl OllamaAdapter {
                         artifact.key.clone(),
                         artifact.version.clone(),
                         UpdateChannel::Digest,
-                        LookupFailure::not_looked_up(
-                            "remote daemon manifests cannot be checked from this Mac".to_string(),
-                        ),
+                        LookupFailure::not_looked_up(reason.to_string()),
                     )
                 })
                 .collect::<Vec<_>>()
@@ -873,6 +895,14 @@ impl OllamaAdapter {
             return Err(super::links_nothing(&self.meta.id));
         }
         let host = self.endpoint(inst)?;
+        // `ollama` cannot use a login (`has_login`): the source is listed
+        // only, which `Session::issue_plan`'s gate refuses first.
+        if has_login(&host) {
+            return Err(AdapterError::NotActionable {
+                read_only: Some(ReadOnlyReason::OllamaAuthenticationUnsupported),
+                unavailable: inst.status.unavailable,
+            });
+        }
         let lock = ResourceLock(inst.id.clone());
         // The registry warning belongs to the arm that fetches, not to the
         // operation as a whole. Computed before this `match` it also rode
@@ -1042,28 +1072,23 @@ mod tests {
         }
     }
 
-    /// Detection, inventory, planning, the operation's summary and its
-    /// execution, for an `OLLAMA_HOST` with a login and for the ordinary
-    /// one with none. With a login, nothing the window is sent carries it
-    /// (the instance, the model keys, the plan, the summary), while every
-    /// request and every command still gets the address as written. With
-    /// none, the id, the keys and the plan's `OLLAMA_HOST` are exactly the
-    /// address, as before: the keys saved in settings and history match.
+    /// Detection and inventory for an `OLLAMA_HOST` with a login, and
+    /// those, planning, the operation's summary and its execution for the
+    /// ordinary one with none. With a login, nothing the window is sent
+    /// carries it (the instance, the model keys), every request still gets
+    /// the address as written, and the source is listed only: `ollama`
+    /// cannot use the login, so no model command is planned or run (r24
+    /// R75-2). With none, the id, the keys and the plan's `OLLAMA_HOST` are
+    /// exactly the address, as before: the keys saved in settings and
+    /// history match.
     #[tokio::test]
-    async fn login_stays_private_through_detect_plan_execution_and_inventory() {
-        let tags = std::fs::read_to_string("../../adapters/fixtures/ollama/0.34.1/api-tags.json")
-            .expect("read ollama api-tags.json fixture");
-        for (host, public_id, preview) in [
+    async fn login_stays_private_through_detect_and_inventory_and_plans_need_none() {
+        for (host, public_id) in [
             (
                 "http://alice:s%40cret@server:11434",
                 "ollama:http://server:11434",
-                "http://****:****@server:11434",
             ),
-            (
-                DEFAULT_HOST,
-                "ollama:http://127.0.0.1:11434",
-                "http://127.0.0.1:11434",
-            ),
+            (DEFAULT_HOST, "ollama:http://127.0.0.1:11434"),
         ] {
             let dir = isolated_path_dir("private-login");
             let url = format!("{host}/api/tags");
@@ -1073,21 +1098,14 @@ mod tests {
                 &url,
                 HttpResponse {
                     status: 200,
-                    body: tags.clone(),
+                    body: TAGS_FIXTURE.to_string(),
                 },
             );
             let adapter = Arc::new(OllamaAdapter::new(runner.clone(), http.clone()));
-            let env = HostEnv {
-                path_dirs: vec![dir.clone()],
-                home: dir.clone(),
-                euid: 501,
-                cargo_home: None,
-                rustup_home: None,
-                zdotdir: None,
-                ollama_host: Some(OllamaHost::Endpoint(host.into())),
-                tilde_entries: Vec::new(),
-            };
-            let inst = adapter.detect(&env).await.remove(0);
+            let inst = adapter
+                .detect(&env_in(&dir, Some(OllamaHost::Endpoint(host.into()))))
+                .await
+                .remove(0);
             assert_eq!(inst.id, public_id);
             assert!(!serde_json::to_string(&inst).unwrap().contains("alice"));
             let models = adapter.inventory(&inst).await.unwrap();
@@ -1096,27 +1114,39 @@ mod tests {
                 assert_eq!(model.key.instance_id, public_id);
             }
             assert!(!serde_json::to_string(&models).unwrap().contains("alice"));
+            let login = host != DEFAULT_HOST;
+            assert_eq!(
+                inst.read_only_reason,
+                login.then_some(ReadOnlyReason::OllamaAuthenticationUnsupported)
+            );
             let mut manager =
                 crate::ops::OperationManager::new(Arc::new(crate::events::VecSink::new()));
             manager.register_adapter(adapter.clone());
             let manager = Arc::new(manager);
             manager.register_instance(inst.clone());
             for kind in [OpKind::Install, OpKind::Upgrade, OpKind::Uninstall] {
-                let req = OpRequest {
-                    kind,
-                    instance_id: inst.id.clone(),
-                    artifact_kind: crate::model::ArtifactKind::Model,
-                    name: "qwen3.8:27b-mlx".into(),
-                };
-                let plan = adapter.plan(&inst, &req).await.unwrap();
+                let planned = adapter
+                    .plan(&inst, &model_request(kind, &inst, "qwen3.8:27b-mlx"))
+                    .await;
+                if login {
+                    assert!(
+                        matches!(
+                            planned,
+                            Err(AdapterError::NotActionable {
+                                read_only: Some(ReadOnlyReason::OllamaAuthenticationUnsupported),
+                                ..
+                            })
+                        ),
+                        "{kind:?}: {planned:?}"
+                    );
+                    continue;
+                }
+                let plan = planned.unwrap();
                 let wire = serde_json::to_value(&plan).unwrap();
                 assert_eq!(
                     wire["action"]["Command"]["env"],
-                    serde_json::json!([["OLLAMA_HOST", preview]])
+                    serde_json::json!([["OLLAMA_HOST", host]])
                 );
-                let wire = wire.to_string();
-                assert!(!wire.contains("alice"));
-                assert!(!wire.contains("s%40cret"));
                 let id = manager.submit(plan);
                 manager.wait(id).await;
                 let summary = manager
@@ -1126,25 +1156,199 @@ mod tests {
                     .unwrap();
                 assert_eq!(
                     summary.env_preview,
-                    vec![("OLLAMA_HOST".into(), preview.into())]
+                    vec![("OLLAMA_HOST".into(), host.into())]
                 );
                 let wire = serde_json::to_string(&summary).unwrap();
-                assert!(!wire.contains("alice"));
                 let back: crate::ops::OpSummary = serde_json::from_str(&wire).unwrap();
                 assert_eq!(back, summary);
             }
             let calls = runner.0.lock().unwrap();
             let writes: Vec<_> = calls.iter().filter(|c| c.args[0] != "--version").collect();
-            assert_eq!(writes.len(), 3);
+            assert_eq!(writes.len(), if login { 0 } else { 3 }, "{host}");
             for call in writes {
                 assert_eq!(call.env, vec![("OLLAMA_HOST".into(), host.into())]);
             }
-            // Detection, the inventory and each operation's check after it.
-            assert!(http.calls().len() >= 5, "{:?}", http.calls());
+            // Detection, the inventory and, with no login, each
+            // operation's check after it.
+            assert!(http.calls().len() >= 2, "{:?}", http.calls());
             assert!(http.calls().iter().all(|called| called == &url));
             drop(calls);
             std::fs::remove_dir_all(dir).unwrap();
         }
+    }
+
+    /// Every login form -- user and password, a user alone, a password
+    /// alone, a percent-encoded one -- on another machine or on this Mac:
+    /// the models are listed, but the source is listed only and `ollama`
+    /// plans nothing; the same address with no login stays actionable
+    /// (r24 R75-2).
+    #[tokio::test]
+    async fn authenticated_endpoints_are_inventory_only() {
+        for (host, login) in [
+            ("http://alice:secret@nas.local:11434", true),
+            ("http://alice@nas.local:11434", true),
+            ("http://:secret@nas.local:11434", true),
+            ("http://alice:s%2Fcret@127.0.0.1:11434", true),
+            ("http://alice:secret@localhost:11500", true),
+            ("http://nas.local:11434", false),
+        ] {
+            let dir = isolated_path_dir("inventory-only");
+            let http = Arc::new(MockHttpClient::new());
+            http.respond(
+                &format!("{host}/api/tags"),
+                HttpResponse {
+                    status: 200,
+                    body: TAGS_FIXTURE.to_string(),
+                },
+            );
+            let runner = Arc::new(EnvRecorder::default());
+            let adapter =
+                OllamaAdapter::new(runner.clone(), http.clone()).with_app_present_fn(|_| true);
+            let inst = adapter
+                .detect(&env_in(&dir, Some(OllamaHost::Endpoint(host.into()))))
+                .await
+                .remove(0);
+            assert!(inst.available(), "{host}");
+            assert_eq!(adapter.inventory(&inst).await.unwrap().len(), 1, "{host}");
+            assert_eq!(
+                inst.read_only_reason,
+                login.then_some(ReadOnlyReason::OllamaAuthenticationUnsupported),
+                "{host}"
+            );
+            assert_eq!(inst.writable(), !login, "{host}");
+            for kind in [OpKind::Install, OpKind::Upgrade, OpKind::Uninstall] {
+                let planned = adapter
+                    .plan(&inst, &model_request(kind, &inst, "qwen3.8:27b-mlx"))
+                    .await;
+                assert_eq!(planned.is_ok(), !login, "{host} {kind:?}: {planned:?}");
+            }
+            assert!(runner
+                .0
+                .lock()
+                .unwrap()
+                .iter()
+                .all(|spec| spec.args == ["--version"]));
+            std::fs::remove_dir_all(dir).unwrap();
+        }
+    }
+
+    /// An authenticated daemon on this Mac: its models are listed, but no
+    /// local manifest is read and no registry asked -- though a complete
+    /// manifest and a registry answer that would offer an update are both
+    /// there, as the control with no login shows -- since the update could
+    /// not run (r24 R75-2).
+    #[tokio::test]
+    async fn authenticated_loopback_does_not_check_local_manifests() {
+        let home = tempfile::tempdir().unwrap();
+        let model_dir = home
+            .path()
+            .join("models/manifests/registry.ollama.ai/library/qwen3.8");
+        std::fs::create_dir_all(&model_dir).unwrap();
+        std::fs::write(
+            model_dir.join("27b-mlx"),
+            include_str!(
+                "../../../../../adapters/fixtures/ollama/0.34.1/local-manifest-qwen3.8-27b-mlx.json"
+            ),
+        )
+        .unwrap();
+        let login = "http://alice:secret@127.0.0.1:11434";
+        let http = Arc::new(MockHttpClient::new());
+        for host in [login, DEFAULT_HOST] {
+            http.respond(
+                &format!("{host}/api/tags"),
+                HttpResponse {
+                    status: 200,
+                    body: TAGS_FIXTURE.to_string(),
+                },
+            );
+        }
+        let registry = "https://registry.ollama.ai/v2/library/qwen3.8/manifests/27b-mlx";
+        let mut registry_manifest: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../../adapters/fixtures/ollama/0.34.1/registry-manifest-qwen3.8-27b-mlx.json"
+        ))
+        .unwrap();
+        registry_manifest["layers"][0]["digest"] = format!("sha256:{}", "a".repeat(64)).into();
+        http.respond(
+            registry,
+            HttpResponse {
+                status: 200,
+                body: registry_manifest.to_string(),
+            },
+        );
+        let adapter = OllamaAdapter::new(Arc::new(MockRunner::new()), http.clone());
+        let local = test_instance(DEFAULT_HOST, home.path().into());
+        // As `detect` keeps it: the public id, and the address with its login.
+        *adapter.hosts.lock().unwrap() = HashMap::from([(local.id.clone(), login.to_string())]);
+        let rows = adapter
+            .check_updates(&local, &CheckOptions::default())
+            .await
+            .unwrap()
+            .candidates;
+        assert_eq!(rows.len(), 1);
+        assert!(!rows[0].checkable);
+        assert!(rows[0].warnings.contains(&Warning::NotLookedUpHere));
+        assert_eq!(http.calls(), vec![format!("{login}/api/tags")]);
+
+        adapter.assume_detected(&local);
+        let rows = adapter
+            .check_updates(&local, &CheckOptions::default())
+            .await
+            .unwrap()
+            .candidates;
+        assert!(rows[0].checkable);
+        assert!(http.calls().contains(&registry.to_string()));
+    }
+
+    /// A plan made with no login, run after detection found the same
+    /// address -- the same public id -- with one: no `ollama` command
+    /// runs, and the operation ends as changed since shown (r24 R75-2).
+    #[tokio::test]
+    async fn authenticated_endpoint_refuses_saved_model_commands() {
+        let dir = isolated_path_dir("saved-login");
+        let runner = Arc::new(EnvRecorder::default());
+        let adapter = Arc::new(OllamaAdapter::new(
+            runner.clone(),
+            Arc::new(MockHttpClient::new()),
+        ));
+        let plain = Some(OllamaHost::Endpoint("http://nas.local:11434".into()));
+        let inst = adapter.detect(&env_in(&dir, plain)).await.remove(0);
+        let mut manager = crate::ops::OperationManager::new(Arc::new(VecSink::new()));
+        manager.register_adapter(adapter.clone());
+        let manager = Arc::new(manager);
+        manager.register_instance(inst.clone());
+        let mut plans = Vec::new();
+        for kind in [OpKind::Install, OpKind::Upgrade, OpKind::Uninstall] {
+            let req = model_request(kind, &inst, "qwen3.8:27b-mlx");
+            plans.push(adapter.plan(&inst, &req).await.unwrap());
+        }
+        let login = Some(OllamaHost::Endpoint(
+            "http://alice:secret@nas.local:11434".into(),
+        ));
+        let again = adapter.detect(&env_in(&dir, login)).await.remove(0);
+        assert_eq!(again.id, inst.id);
+        for plan in plans {
+            let id = manager.submit(plan);
+            manager.wait(id).await;
+            let outcome = manager
+                .summaries()
+                .into_iter()
+                .find(|s| s.id == id)
+                .unwrap()
+                .outcome;
+            assert_eq!(
+                outcome,
+                Some(Outcome::BanagerFailed(
+                    crate::model::Fault::ChangedSinceShown
+                ))
+            );
+        }
+        assert!(runner
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .all(|spec| spec.args == ["--version"]));
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     const TAGS_FIXTURE: &str =
@@ -1256,19 +1460,19 @@ mod tests {
     }
 
     /// A plan made for one address and run after detection found another
-    /// -- one Banager cannot use, no `ollama` at all, a different address,
-    /// or the same one with another login -- ends as changed since shown,
-    /// with no `ollama pull` or `rm` run; one for the address detection
-    /// still has runs (r24 R75-1).
+    /// -- one Banager cannot use, no `ollama` at all, or a different
+    /// address -- ends as changed since shown, with no `ollama pull` or
+    /// `rm` run; one for the address detection still has runs (r24 R75-1).
+    /// The same address with a login is
+    /// `authenticated_endpoint_refuses_saved_model_commands`'s.
     #[tokio::test]
     async fn saved_ollama_command_ends_as_changed_since_shown() {
         let endpoint = |host: &str| Some(OllamaHost::Endpoint(host.into()));
-        let first = "http://alice:one@10.0.0.5:11434";
+        let first = "http://10.0.0.5:11434";
         for (later, runs) in [
             (Some(OllamaHost::Invalid), false),
             (None, false),
             (endpoint("http://10.0.0.6:11434"), false),
-            (endpoint("http://alice:two@10.0.0.5:11434"), false),
             (endpoint(first), true),
         ] {
             let dir = isolated_path_dir("saved-command");
@@ -1391,9 +1595,7 @@ mod tests {
         let republished = republished.to_string();
         let live = format!("{:x}", Sha256::digest(republished.as_bytes()));
         let recorded = "5642e97495e1a088883805981563dcdc4a040c2f53388b7a41d1f24d3622cf7e";
-        let tags = std::fs::read_to_string("../../adapters/fixtures/ollama/0.34.1/api-tags.json")
-            .expect("read ollama api-tags.json fixture")
-            .replace(recorded, &live);
+        let tags = TAGS_FIXTURE.to_string().replace(recorded, &live);
         let home = tempfile::tempdir().unwrap();
         let dir = home
             .path()
@@ -1457,8 +1659,7 @@ mod tests {
             .unwrap(),
         )
         .unwrap();
-        let tags =
-            std::fs::read_to_string("../../adapters/fixtures/ollama/0.34.1/api-tags.json").unwrap();
+        let tags = TAGS_FIXTURE.to_string();
         let http = Arc::new(MockHttpClient::new());
         for host in ["http://server:11434", "http://127.0.0.1:11434"] {
             http.respond(
@@ -1562,8 +1763,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_inventory_parses_the_recorded_fixture_via_http() {
-        let json = std::fs::read_to_string("../../adapters/fixtures/ollama/0.34.1/api-tags.json")
-            .expect("read ollama api-tags.json fixture");
+        let json = TAGS_FIXTURE.to_string();
         let http = Arc::new(MockHttpClient::new());
         http.respond(
             "http://127.0.0.1:11434/api/tags",
@@ -1673,9 +1873,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_check_updates_reports_nothing_for_the_recorded_up_to_date_fixture() {
-        let tags_json =
-            std::fs::read_to_string("../../adapters/fixtures/ollama/0.34.1/api-tags.json")
-                .expect("read ollama api-tags.json fixture");
+        let tags_json = TAGS_FIXTURE.to_string();
         let local_json = std::fs::read_to_string(
             "../../adapters/fixtures/ollama/0.34.1/local-manifest-qwen3.8-27b-mlx.json",
         )
@@ -1744,9 +1942,7 @@ mod tests {
                 ]}}"#
         );
 
-        let tags_json =
-            std::fs::read_to_string("../../adapters/fixtures/ollama/0.34.1/api-tags.json")
-                .expect("read ollama api-tags.json fixture");
+        let tags_json = TAGS_FIXTURE.to_string();
         let local_json = std::fs::read_to_string(
             "../../adapters/fixtures/ollama/0.34.1/local-manifest-qwen3.8-27b-mlx.json",
         )
@@ -1835,9 +2031,7 @@ mod tests {
                     ]}}"#
             )
         };
-        let tags_json =
-            std::fs::read_to_string("../../adapters/fixtures/ollama/0.34.1/api-tags.json")
-                .expect("read ollama api-tags.json fixture");
+        let tags_json = TAGS_FIXTURE.to_string();
         let local_json = std::fs::read_to_string(
             "../../adapters/fixtures/ollama/0.34.1/local-manifest-qwen3.8-27b-mlx.json",
         )
@@ -1890,9 +2084,7 @@ mod tests {
         // gets a 404 at every check: a failure no later check gets past,
         // so no `TransientLookupFailure`. A request that got no answer has
         // one (walk-2 review 1.1).
-        let tags_json =
-            std::fs::read_to_string("../../adapters/fixtures/ollama/0.34.1/api-tags.json")
-                .expect("read ollama api-tags.json fixture");
+        let tags_json = TAGS_FIXTURE.to_string();
         let local_json = std::fs::read_to_string(
             "../../adapters/fixtures/ollama/0.34.1/local-manifest-qwen3.8-27b-mlx.json",
         )
@@ -2009,9 +2201,7 @@ mod tests {
         // deleted out from under Banager. No request is made, at this
         // check or the next: not looked up on this Mac (F5 review), so
         // it keeps no Overview from its all good for good.
-        let tags_json =
-            std::fs::read_to_string("../../adapters/fixtures/ollama/0.34.1/api-tags.json")
-                .expect("read ollama api-tags.json fixture");
+        let tags_json = TAGS_FIXTURE.to_string();
         let home = crate::testing::unique_temp_path("ollama-missing-manifest");
         let http = Arc::new(MockHttpClient::new());
         http.respond(
@@ -2378,8 +2568,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_reconcile_reports_present_and_absent() {
-        let json = std::fs::read_to_string("../../adapters/fixtures/ollama/0.34.1/api-tags.json")
-            .expect("read ollama api-tags.json fixture");
+        let json = TAGS_FIXTURE.to_string();
         let http = Arc::new(MockHttpClient::new());
         http.respond(
             "http://127.0.0.1:11434/api/tags",

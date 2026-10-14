@@ -32,7 +32,7 @@ Banager updates and uninstalls what you already have; it can't install anything 
 | uv — tools | yes | yes, but no uninstall while `UV_TOOL_DIR` is set in Banager's environment: removing the last tool, uv would then also delete the folder above that one, with every file in it, when that folder holds no other folder; the row says so |
 | pip | yes | **no** — Banager will not drive pip's installer; it points you at pipx or uv |
 | cargo | yes | yes, with a warning that it compiles locally |
-| Ollama — models | yes, unless `OLLAMA_HOST` is an address Banager can't use | yes, likewise |
+| Ollama — models | yes, unless `OLLAMA_HOST` is an address Banager can't use | yes, likewise, but not at an address with a login |
 | Claude Code — the native install, via its own installer | yes | updates yes, except while its own `~/.claude/settings.json` turns every update off with `DISABLE_UPDATES`, which `claude update` obeys too: then a newer version is listed under "N more can't be updated here", marked "Updates turned off", with no Update button; install no (the installer is Anthropic's, and Banager never runs it); uninstall yes — its program files, download cache and launcher go to the Trash, and your settings and history stay |
 | rustup — the Rust toolchain manager, via its own installer | yes | updates yes (`rustup self update`); install no (the installer is rust-lang's, and Banager never runs it); uninstall yes (`rustup self uninstall -y`), offered only when Rust is in its standard folders (`~/.cargo`, `~/.rustup`) and previewed with everything it removes — permanently, not to the Trash: every toolchain by name, the whole Cargo folder with its settings and saved login, and the programs in its `bin` folder, named where known — by the name the Installed page gives a program Cargo's records list (`jj-cli`, not `jj`; also one cargo-binstall installed), else by its file name, on a line of its own that says reinstalling Rust won't bring it back. Neither can be cancelled once it is running, and the preview says so |
 | Antigravity CLI (`agy`) — Google's terminal agent, via its own installer | yes | updates **no** — it installs its updates itself in the background and its own `agy update` is undocumented, so a newer version is listed under "N more can't be updated here", marked "Updates when run", whose ⓘ says to open the tool once — by typing `agy` in Terminal, where typing it runs this copy (Banager looks the newer version up on Apple silicon only: on an Intel Mac the row reads "Can't check" and nothing is sent); install no (the installer is Google's, and Banager never runs it); uninstall yes — the `agy` program, and any `agy.<time>.old` backup its updater left beside it, go to the Trash; its conversations, history and working files in `~/.gemini/antigravity-cli` stay, and so do its staging folder in `~/.cache` and the `PATH` lines its installer added |
@@ -265,8 +265,8 @@ This app runs package managers on your behalf, so the boundary matters more than
   one press on "Show Command" ("Show Commands" when there is more than one), or open from the
   start with Settings' "Show technical details" on — and
   says whether it may ask for your password; an uninstall that runs no command lists instead the
-  exact paths it will move to the Trash. `OLLAMA_HOST` logins are masked in the preview and
-  copied text; execution retains the original value. An uninstall also says what it will affect. A Homebrew
+  exact paths it will move to the Trash. An Ollama whose `OLLAMA_HOST` has a login is view only, since
+  `ollama` can't use the login, so no command gets it. An uninstall also says what it will affect. A Homebrew
   formula update normally previews a follow-up `brew cleanup <name>` after success: it removes
   that formula's old installed versions, its outdated cached downloads and every unreferenced
   download in Homebrew's cache, including other packages' downloads. It is omitted for pinned

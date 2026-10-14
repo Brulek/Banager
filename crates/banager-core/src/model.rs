@@ -68,6 +68,12 @@ pub enum ReadOnlyReason {
     /// uninstall. Not `PrefixNotWritable`, whose words are about npm and a
     /// Node from Homebrew (R59-2, r24).
     HomebrewNotWritable,
+    /// Ollama's `OLLAMA_HOST` carries a login (`user:password@host`).
+    /// Banager's own requests use it to list the models, but the `ollama`
+    /// command that installs, updates and removes them cannot: Ollama
+    /// reads no login out of the address, so every such command would
+    /// fail. Listed only (r24 R75-2).
+    OllamaAuthenticationUnsupported,
 }
 
 /// Why a source Banager knows about cannot answer right now. The state
@@ -2635,6 +2641,7 @@ mod tests {
             ReadOnlyReason::PrefixNotWritable,
             ReadOnlyReason::PrefixProtected,
             ReadOnlyReason::HomebrewNotWritable,
+            ReadOnlyReason::OllamaAuthenticationUnsupported,
         ] {
             let read_only = ManagerInstance {
                 read_only_reason: Some(reason),
