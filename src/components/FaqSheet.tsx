@@ -27,6 +27,7 @@ const QUESTION_KEYS: Record<FaqId, { question: string; answer: string }> = {
     answer: "faq.questions.serviceAfterUpdate.answer",
   },
   autoCheck: { question: "faq.questions.autoCheck.question", answer: "faq.questions.autoCheck.answer" },
+  canagerData: { question: "faq.questions.canagerData.question", answer: "faq.questions.canagerData.answer" },
 };
 
 /**

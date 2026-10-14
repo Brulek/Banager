@@ -225,7 +225,8 @@ and the keys that page or jump to an end, Space to tick a row, Return and Escape
 details, Tab) and the dialogs' (Return, Escape). **Common Questions**, above it, answers thirteen questions
 in a few plain sentences each — a command Terminal can't find, why some tools can't be updated here,
 "Installed twice", the Mac password, what an uninstall leaves, what keeps a tool from being uninstalled, what Banager itself changes, Other
-Programs, sizes, major updates, an update's warning, a background service after its update and the automatic check — with a button named for the page it opens
+Programs, sizes, major updates, an update's warning, a background service after its update, the automatic check and
+Canager's settings — with a button named for the page it opens
 (*Show in Installed*, *Show in Updates*…) where the answer can be acted on.
 
 The first time Banager opens, a welcome sheet shows three short titles — see what's installed; you confirm each update and uninstall you choose; no data collected — and nothing more. The first check runs behind it, and its `brew update`, which no one chose, asks nothing, as above. However
@@ -242,6 +243,16 @@ is, and no setting can be saved until you reopen Banager: quit it, repair access
 `~/Library/Application Support/com.brulek.banager` or restore a valid copy — or move it to the Trash
 to start fresh — then reopen Banager. A settings file that can't be read doesn't bring up the welcome
 sheet.
+
+Banager used to be called Canager, and a copy built under that name kept its settings — among them the
+versions it was told to skip and the tools it was told not to remind you about — in
+`~/Library/Application Support/com.brulek.canager`. Banager doesn't read that folder, so those settings
+aren't brought over and those updates can show again. To bring them over, quit Banager and Canager, open
+that folder with Go to Folder in Finder's Go menu and copy `settings.json` from it, leaving the original
+there, then paste it into `~/Library/Application Support/com.brulek.banager` (create that folder if it
+isn't there) — but only if there's no `settings.json` there yet: one that is there holds Banager's own
+settings, so don't replace it. Canager kept no update history, so there is nothing else to bring over;
+**Common Questions** says the same.
 
 Closing the window — its red button, or Close Window (⌘W) in the menu bar's File menu — leaves
 Banager running, and an operation under way carries on; its icon in the Dock brings the window back
@@ -693,7 +704,8 @@ Banager 开着时还会每天做一次同样的检查，查到的更新都不安
 选这些项会先把窗口叫回来。菜单栏“帮助”里的“键盘快捷键”列出 Banager 里能用的按键，分三组：窗口（上面这些，再加
 “关闭窗口”和“退出”）、列表（↑ ↓、翻页和跳到两头的键、用空格键勾选一行、在“已安装”里用回车和 Esc 打开和关闭详细信息、Tab）
 和对话框（回车、Esc）。它上面的“常见问题”用几句大白话回答十三个常见问题：终端里找不到命令、为什么有的工具不能在这里更新、
-“装了两份”、Mac 密码、卸载后留下什么、什么会让工具不能卸载、Banager 自己会改动什么、“其他程序”、占用空间、大版本更新、更新后的警告、更新后台服务和自动检查；
+“装了两份”、Mac 密码、卸载后留下什么、什么会让工具不能卸载、Banager 自己会改动什么、“其他程序”、占用空间、大版本更新、更新后的警告、更新后台服务、自动检查和
+Canager 的设置；
 能动手处理的，旁边有“查看”按钮，直接打开对应的页面或“已安装”里的显示选项。
 
 第一次打开 Banager 时，会出现一个欢迎页，只有三个短标题：看清装了什么；你选的更新、卸载都由你确认；不收集数据。第一次检查在它背后照常进行，其中的 `brew update` 不是你选的，不会问你，见上文。不管怎样关掉它——点“开始使用”、按回车或 Esc、点它外面——设置文件都会记下
@@ -705,6 +717,13 @@ Banager 开着时还会每天做一次同样的检查，查到的更新都不安
 30天内不提醒选择未生效。该文件原样保留，重新打开 Banager 之前任何设置都无法保存：请退出 Banager，修复
 `~/Library/Application Support/com.brulek.banager` 中 `settings.json` 的访问权限或恢复一份有效的副本——
 或者把它移到废纸篓以重新开始——然后重新打开 Banager。无法读取的设置文件不会让欢迎页出现。
+
+Banager 以前叫 Canager，用这个名字构建的版本把设置——包括让它跳过的版本和不再提醒的工具——存在
+`~/Library/Application Support/com.brulek.canager`。Banager 不读取这个文件夹，所以这些设置不会被带过来，那些更新
+可能会重新出现。要带过来，先退出 Banager 和 Canager，在访达的“前往”菜单里用“前往文件夹”打开那个文件夹，
+拷贝其中的 `settings.json`，原文件留在原处，再粘贴到 `~/Library/Application Support/com.brulek.banager`
+（没有这个文件夹就先创建）——但只有那里还没有 `settings.json` 时才粘贴：已有的那个保存的是 Banager 自己的设置，
+不要替换它。Canager 没有更新记录，所以没有别的要带过来；“常见问题”里也这样说。
 
 关掉窗口——点它的红色按钮，或从菜单栏选“文件”菜单里的“关闭窗口”（⌘W）——Banager 仍在运行，进行中的操作照常
 继续；点程序坞里的图标，窗口按你离开时的样子回来（发过通知后照上面说的，改为打开“更新”页），不会重新检查。

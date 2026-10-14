@@ -6069,6 +6069,29 @@ ships. Those writes are grok's, not Banager's. Every other change to what
 is installed is made by the tool named in the preview, running the
 command shown there.
 
+**Canager's folder.** Banager was called Canager, and builds under that
+name (`identifier` `com.brulek.canager` in `src-tauri/tauri.conf.json`,
+now `com.brulek.banager`) kept `settings.json` and `.window-state.json`
+in `~/Library/Application Support/com.brulek.canager`. The application
+data directory follows the identifier (`app_data_dir()` in `run()`,
+`src-tauri/src/lib.rs`), and Banager never reads that folder: there is
+no import, so a Canager build's settings, among them `skipped_versions`
+and `ignored_updates`, are not brought over, and Banager starts with the
+defaults, as on a first launch (`settings::load` on a missing file).
+Canager kept no `history.json`: the history came after the rename. To
+bring the settings over by hand, quit Banager and Canager, open
+`~/Library/Application Support/com.brulek.canager` in Finder (Go > Go to
+Folder) and copy `settings.json` from it, leaving the original, then
+paste it into `~/Library/Application Support/com.brulek.banager`,
+creating that folder if it is missing -- only if there is no
+`settings.json` there yet, never over one that is there, which holds
+Banager's own settings. To use the old settings in place of Banager's
+own, first move Banager's `settings.json` into a new, empty folder
+somewhere else, so that nothing is replaced and it can be put back,
+then paste. The copy is read as any `settings.json` is, field by field
+(above).
+`.window-state.json` stays where it is; Banager keeps its own.
+
 ## Moving files to the Trash
 
 `RealTrasher` (`crates/banager-core/src/trash/real.rs`) is the only code

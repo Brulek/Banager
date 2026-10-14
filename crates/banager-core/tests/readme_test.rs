@@ -396,3 +396,66 @@ fn test_readme_preview_sentence_names_every_variable_the_runner_sets_on_every_co
         );
     }
 }
+
+/// r24 R79-2: Banager was Canager, and a Canager build kept its
+/// settings.json in `com.brulek.canager`'s folder, which Banager never
+/// reads (the app data folder follows tauri.conf.json's identifier). Both
+/// README blocks and docs/what-we-run.md say so and say how to bring the
+/// file over by hand -- copied, the original left, and never over a
+/// settings.json Banager already has -- before anything says to remove the
+/// old folder. Canager kept no history.json (history came after the
+/// rename), so none is offered to bring over.
+#[test]
+fn test_readme_documents_canager_transfer_without_replacing_existing_settings() {
+    let readme = read_readme();
+    let (english, chinese) = blocks(&readme);
+    let doc = std::fs::read_to_string("../../docs/what-we-run.md").expect("read what-we-run.md");
+    let fold = |text: &str| text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let english = fold(english);
+    let chinese = chinese.replace('\n', "");
+    let doc = fold(&doc);
+    for (name, text, phrases) in [
+        (
+            "README English",
+            english.as_str(),
+            &[
+                "Banager doesn't read that folder",
+                "copy `settings.json` from it, leaving the original",
+                "only if there's no `settings.json` there yet",
+                "don't replace it",
+            ][..],
+        ),
+        (
+            "README Chinese",
+            chinese.as_str(),
+            &[
+                "Banager 不读取这个文件夹",
+                "拷贝其中的 `settings.json`，原文件留在原处",
+                "只有那里还没有 `settings.json` 时才粘贴",
+                "不要替换它",
+            ][..],
+        ),
+        (
+            "what-we-run.md",
+            doc.as_str(),
+            &[
+                "Banager never reads that folder",
+                "copy `settings.json` from it, leaving the original",
+                "only if there is no `settings.json` there yet",
+                "never over one that is there",
+            ][..],
+        ),
+    ] {
+        let canager = text
+            .find("Application Support/com.brulek.canager")
+            .unwrap_or_else(|| panic!("{name} does not name Canager's folder"));
+        for phrase in phrases {
+            assert!(text.contains(phrase), "{name} does not say: {phrase}");
+        }
+        // Bringing the file over is said before removing the old folder is.
+        if let Some(remove) = text.find("com.brulek.canager` to the Trash") {
+            assert!(canager < remove, "{name} says to remove Canager's folder before saying how to bring its settings over");
+        }
+        assert!(!text.contains("com.brulek.canager/history.json"));
+    }
+}

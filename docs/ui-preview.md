@@ -361,7 +361,7 @@ Paths are under a generic home folder, `/Users/you`.
   console opens the sheet over any page: thirteen questions, each answered in a few sentences, in the
   window's language. A question's 查看 closes the sheet and opens where the answer points: Installed
   on 「终端里找不到」, 「装了不止一份」 or sorted by size, the Updates page, Other Programs or Settings.
-  The password question, 「为什么其他软件会让工具不能卸载？」 and 「此App会改动我的Mac吗？」 have none. Done, Escape or a click beside it closes it.
+  The password question, 「为什么其他软件会让工具不能卸载？」, 「此App会改动我的Mac吗？」 and 「Canager的设置在哪里？」 have none. Done, Escape or a click beside it closes it.
 - Help's 「检查工具环境…」 ("Check Tool Setup…"): `window.mockMenu("check-tool-setup")`
   in the console, or 「查看…」 beside 「工具环境」 on the Overview or in Settings' 诊断, opens the
   sheet over any page. On the pretend Mac it says pip is 仅供查看 and uv 没有响应

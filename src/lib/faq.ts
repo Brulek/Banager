@@ -25,7 +25,8 @@ export type FaqId =
   | "majorUpdate"
   | "updatedWithWarning"
   | "serviceAfterUpdate"
-  | "autoCheck";
+  | "autoCheck"
+  | "canagerData";
 
 /**
  * Where a question's 查看 goes, the sheet closing first: the Installed page
@@ -51,7 +52,8 @@ export interface FaqItem {
  * a command Terminal does not find -- then updating, two copies, the
  * password, uninstalling and what keeps a tool from it, what Banager touches, Other Programs, sizes,
  * major updates, an update's warning, a background service after its
- * update, and the daily check.
+ * update, the daily check, and, last, where the settings of Canager --
+ * this app's old name -- went.
  */
 export const FAQ_ITEMS: readonly FaqItem[] = [
   { id: "notFound", view: { kind: "installed", show: "notOnPath" } },
@@ -67,6 +69,7 @@ export const FAQ_ITEMS: readonly FaqItem[] = [
   { id: "updatedWithWarning", view: { kind: "updates" } },
   { id: "serviceAfterUpdate", view: { kind: "updates" } },
   { id: "autoCheck", view: { kind: "settings" } },
+  { id: "canagerData", view: null },
 ];
 
 /** Whether the sheet is open: Help's 「常见问题」 opens it, over any page. */

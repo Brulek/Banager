@@ -91,6 +91,36 @@ describe("FaqSheet", () => {
     expect(locale.faq.questions.twins.answer).toContain(sentence);
   });
 
+  it.each([
+    // r24 R79-2: Banager was Canager, whose builds kept settings.json in
+    // com.brulek.canager's folder, which nothing here reads (the app data
+    // folder follows tauri.conf.json's identifier). Canager kept no
+    // history, so settings.json is the one file to bring over, and never
+    // over a settings.json Banager already has.
+    ["en", en, ["Canager is this app's old name", "quit this app and Canager", "Go > Go to Folder", "leaving the original there", "only if that folder has no settings.json yet", "don't replace it"]],
+    ["zh-CN", zhCN, ["Canager是此App以前的名字", "退出此App和Canager", "“前往”>“前往文件夹”", "原文件留在原处", "只有其中还没有settings.json时才粘贴", "不要替换它"]],
+    ["zh-Hant", zhHant, ["Canager是此App以前的名字", "結束此App和Canager", "「前往」>「前往檔案夾」", "原始檔案留在原處", "只有其中還沒有settings.json時才貼上", "不要取代它"]],
+  ] as const)("says how to bring Canager's settings over without replacing this app's own, in %s", async (language, _locale, phrases) => {
+    await i18n.changeLanguage(language);
+    try {
+      renderWithProviders(<FaqSheet />);
+      act(() => openFaqSheet());
+      const dialog = await screen.findByRole("dialog");
+      const section = dialog.querySelector('section[data-faq="canagerData"]') as HTMLElement | null;
+      expect(section, "a question about Canager's settings").not.toBeNull();
+      const answer = section?.querySelector("p")?.textContent ?? "";
+      for (const phrase of phrases) expect(answer).toContain(phrase);
+      expect(answer).toContain("~/Library/Application Support/com.brulek.canager");
+      expect(answer).toContain("~/Library/Application Support/com.brulek.banager");
+      // Copying from Canager's folder comes before pasting into this app's.
+      expect(answer.indexOf("com.brulek.canager")).toBeLessThan(answer.indexOf("com.brulek.banager"));
+      expect(answer).not.toContain("history.json");
+      if (section !== null) expect(within(section).queryByRole("button")).toBeNull();
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+
   it("answers all thirteen questions in English, each under its question, Done focused", async () => {
     renderWithProviders(<FaqSheet />);
     expect(screen.queryByRole("dialog")).toBeNull();
@@ -114,6 +144,7 @@ describe("FaqSheet", () => {
       "Why does an update say it has a warning?",
       "Does updating a background service restart it?",
       "When does the automatic check stop?",
+      "Where are my settings from Canager?",
     ]);
     expect(within(dialog).getByRole("button", { name: "Done" })).toHaveFocus();
   });
@@ -139,6 +170,7 @@ describe("FaqSheet", () => {
         "为什么更新后显示有警告？",
         "更新后台服务会重新启动它吗？",
         "自动检查什么时候会停？",
+        "Canager的设置在哪里？",
       ]);
       expect(within(dialog).getAllByRole("button", { name: /^查看：/ })).toHaveLength(10);
       expect(within(dialog).getByRole("button", { name: "完成" })).toHaveFocus();
@@ -273,11 +305,11 @@ describe("FaqSheet", () => {
     expect(chinese).toContain(`没有按“${zhCN.updates.justUpdated.clear}”的话`);
   });
 
-  it("offers no 查看 where there is no one place to act: the password, what keeps a tool from being uninstalled, and what the app changes", async () => {
+  it("offers no 查看 where there is no one place to act: the password, what keeps a tool from being uninstalled, what the app changes, and Canager's settings", async () => {
     renderWithProviders(<FaqSheet />);
     act(() => openFaqSheet());
     const dialog = await screen.findByRole("dialog", { name: "Common Questions" });
-    for (const id of ["password", "cantUninstall", "changesMac"] as const) {
+    for (const id of ["password", "cantUninstall", "changesMac", "canagerData"] as const) {
       const section = dialog.querySelector(`section[data-faq="${id}"]`) as HTMLElement;
       expect(within(section).queryByRole("button")).toBeNull();
     }

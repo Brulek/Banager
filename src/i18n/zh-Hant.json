@@ -1522,6 +1522,10 @@
       "autoCheck": {
         "question": "自動檢查什麼時候會停止？",
         "answer": "自動檢查預設關閉，在「設定」的「檢查更新」中選「每天」或「每週」才會進行；改回「不自動檢查」就會停止。結束此App或重新啟動Mac後不再檢查，直到再次開啟它；只關閉視窗還會檢查。正在更新或解除安裝時不會開始檢查，15分鐘後再看一次；所有來源都檢查失敗時，會隔得越來越久再試，最久六小時一次。如果已儲存的設定無法讀取，自動檢查會保持關閉，直到修復或移走設定檔後重新開啟此App，「設定」中會說明。"
+      },
+      "canagerData": {
+        "question": "Canager的設定在哪裡？",
+        "answer": "Canager是此App以前的名字，那時的設定存在另一個檔案夾裡，此App不會讀取，所以在那裡略過的版本和不再提醒的工具可能會重新顯示更新。要把這些設定帶過來，請結束此App和Canager，在Finder中選擇「前往」>「前往檔案夾」，開啟~/Library/Application Support/com.brulek.canager，拷貝settings.json，原始檔案留在原處。然後用同樣的方法開啟~/Library/Application Support/com.brulek.banager，沒有這個檔案夾時先建立，只有其中還沒有settings.json時才貼上。如果已經有一個，它儲存的是此App自己的設定，不要取代它。"
       }
     }
   },
