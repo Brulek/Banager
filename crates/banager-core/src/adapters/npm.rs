@@ -1090,6 +1090,7 @@ fn parse_outdated_result(
                     warnings: Vec::new(),
                     blocked: None,
                     download_bytes: None,
+                    display_current: None,
                 });
             }
             (Ok(_), Ok(_)) => {}
@@ -3656,7 +3657,15 @@ mod tests {
         );
         runner.respond(vec![npm, "--version"], f08_npm_output("12.0.2", 0));
         runner.respond(
-            vec![npm, "outdated", "-g", "--json", "--all=false", "--prefix", prefix],
+            vec![
+                npm,
+                "outdated",
+                "-g",
+                "--json",
+                "--all=false",
+                "--prefix",
+                prefix,
+            ],
             f08_npm_output("{}", 0),
         );
         runner.respond(

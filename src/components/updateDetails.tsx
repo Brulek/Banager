@@ -14,6 +14,7 @@ import type { InstalledArtifact, ManagerInstance, UpdateBlocked, UpdateCandidate
 import { warningMessage, warningText } from "../lib/warnings";
 import { COMMAND_SLOT, withCommand } from "./withCommand";
 import { CopyButton } from "./CopyButton";
+import { currentVersionForDisplay } from "../lib/versionJump";
 
 /**
  * A chip's detail, a sentence to a line; the lines after the first are the
@@ -220,7 +221,8 @@ export function updateVersionColumn(t: TFunction, candidate: UpdateCandidate): U
   }
   if (candidate.channel === "Digest") return { version: t("updates.newVersion") };
   if (current !== "" && target !== "") {
-    return { version: t("updates.versionChange", { current, target }), newVersion: target };
+    const shown = currentVersionForDisplay(candidate);
+    return { version: t("updates.versionChange", { current: shown, target }), newVersion: target };
   }
   return { version: target !== "" ? target : current !== "" ? current : null };
 }

@@ -794,6 +794,7 @@ impl OllamaAdapter {
                 warnings: Vec::new(),
                 blocked: None,
                 download_bytes: change.download_bytes,
+                display_current: None,
             }),
             // Uncheckable: there is no target to claim. `checkable: false`
             // is what stops the UI offering an Update button for this row

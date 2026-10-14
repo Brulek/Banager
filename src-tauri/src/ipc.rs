@@ -1076,6 +1076,7 @@ mod tests {
                         warnings: Vec::new(),
                         blocked: None,
                         download_bytes: None,
+                        display_current: None,
                     })
                     .collect(),
                 ..CheckOutcome::default()

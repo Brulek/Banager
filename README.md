@@ -83,6 +83,8 @@ a protected place**, and the link is not followed.
   what it found; uninstalling waits until that check is done.
 - On the Updates page, an update to a new major version is marked **Major update**, unless its row
   already says the tool updates itself or that Terminal runs another copy (**Not used in Terminal**).
+  For self-updating apps, the displayed version change and major-update warning use the version read
+  from the app when available.
   **Update All** leaves such a copy unticked, and no count of updates — the sidebar's, the Dock badge's,
   the Overview's — counts it.
   **Update History**, under the updates still to install (at the top when there are none), lists the
@@ -587,7 +589,7 @@ formula 与 cask，以及 npm、PyPI、crates.io 上的包，每条都译自该�
   后面，按名称排列，日期处显示“—”。
 - 打开 Banager 后的第一次检查还在查更新时，“已安装”页就先列出已找到的工具；要等这次检查完成才能卸载。
 - 在“更新”页，跨大版本的更新会标“大版本更新”，除非这一行已经写着它会自行更新，或者终端运行的是另一份
-  （“终端用另一份”）。“全部更新”不会勾选这种终端用不到的那一份，侧栏、程序坞角标和概览里的更新数也不算它。待更新的工具下面的“最近的更新记录”（没有待更新时在最上面）列出 30 天内的更新：成功的（轮到它时已是新版本、且之前同一个Homebrew里同一类（公式或cask）有改动了东西的更新已结束时——Homebrew会先更新一个工具需要的其他工具——写“已由前面的更新一并完成”，其他情况写“轮到它时已是新版本”），以及未能更新的
+  （“终端用另一份”）。对于会自行更新的App，如果能读到App的版本，显示的版本变化和大版本更新提示会使用这个版本。“全部更新”不会勾选这种终端用不到的那一份，侧栏、程序坞角标和概览里的更新数也不算它。待更新的工具下面的“最近的更新记录”（没有待更新时在最上面）列出 30 天内的更新：成功的（轮到它时已是新版本、且之前同一个Homebrew里同一类（公式或cask）有改动了东西的更新已结束时——Homebrew会先更新一个工具需要的其他工具——写“已由前面的更新一并完成”，其他情况写“轮到它时已是新版本”），以及未能更新的
   （知道原因时写出原因，例如“未能更新：网络连接失败”“未能更新：App已不在原来的位置”，不知道原因、或原因要看报错（例如与已有的文件冲突）时ⓘ里写出工具自己报错的第一行，重启后也在）和结果对不上的（写明是怎么回事，例如更新后读到的版本没有变、也还没到新版本时写“没有更新成功：版本没有变”）；
   新版本已装好、但之后有一步失败的（例如Homebrew的post-install步骤）写“已更新，有错误”，带上更新到的版本，ⓘ里说明是怎么回事——
   Homebrew的链接步骤失败时写新版本没有链接到终端，其他情况写出工具自己报错的第一行，重启后也在——

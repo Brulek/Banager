@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ArtifactKind, UpdateCandidate } from "./types";
-import { majorJump, majorOf } from "./versionJump";
+import { currentVersionForDisplay, majorJump, majorOf } from "./versionJump";
 
 function update(
   current: string,
@@ -10,6 +10,35 @@ function update(
 ) {
   return { key: { kind }, current, target, channel };
 }
+
+describe("currentVersionForDisplay and majorJump with a version read from the app (r25 R77-3)", () => {
+  // Firefox updated itself from Homebrew's 130.0 to 131.0.2.
+  const cask = (display: string | null | undefined, target: string, kind: ArtifactKind = "Cask") => ({
+    key: { kind },
+    current: "130.0",
+    target,
+    channel: "Native" as const,
+    display_current: display,
+  });
+
+  it("uses the observed app version for major update detection", () => {
+    expect(majorJump(cask("131.0.2", "131.0.3"))).toBeNull();
+    expect(majorJump(cask("131.0.2", "132.0"))).toEqual({ from: 131, to: 132 });
+    expect(currentVersionForDisplay(cask("131.0.2", "131.0.3"))).toBe("131.0.2");
+  });
+
+  it("falls back to the record when there is none, and reads it for a cask only", () => {
+    for (const display of [undefined, null, "", "   "]) {
+      expect(currentVersionForDisplay(cask(display, "131.0.3"))).toBe("130.0");
+      expect(majorJump(cask(display, "131.0.3"))).toEqual({ from: 130, to: 131 });
+    }
+    expect(currentVersionForDisplay(cask("131.0.2", "131.0.3", "Formula"))).toBe("130.0");
+    expect(majorJump(cask("131.0.2", "131.0.3", "Formula"))).toEqual({ from: 130, to: 131 });
+    // A date-like, model or digest stays unmarked whatever is shown.
+    expect(majorJump(cask("2026.09.28", "2026.10.01"))).toBeNull();
+    expect(majorJump({ ...cask("1a", "9f", "Model"), channel: "Digest" })).toBeNull();
+  });
+});
 
 describe("majorJump", () => {
   // Appendix A3's table (research synthesis §4.2 item 3), and the cases

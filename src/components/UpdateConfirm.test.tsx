@@ -204,3 +204,34 @@ describe("UpdateConfirmDialog on a copy Terminal does not run", () => {
     expect(within(dialog).getAllByText(/Terminal runs another copy/)).toHaveLength(1);
   });
 });
+
+describe("UpdateConfirmDialog for an app that updated itself (r25 R77-3)", () => {
+  it("shows the observed app patch update without the receipt's version, alone or in a list", () => {
+    const firefox: UpdateCandidate = {
+      key: { instance_id: "brew:/opt/homebrew", kind: "Cask", name: "firefox" },
+      current: "130.0",
+      target: "131.0.3",
+      channel: "Native",
+      checkable: true,
+      warnings: [],
+      blocked: null,
+      display_current: "131.0.2",
+    };
+    const one = renderWithProviders(
+      <UpdateConfirmDialog confirm={confirmOf({ id: 5, phase: "planning", items: [item(firefox)] })} />,
+    );
+    const sheet = one.getByRole("alertdialog", { name: "Update “firefox”?" });
+    expect(sheet).toHaveAccessibleDescription(/131\.0\.2 → 131\.0\.3/);
+    expect(sheet.textContent).not.toContain("130.0");
+    expect(sheet.textContent).not.toContain(i18n.getFixedT("en")("clarity.majorNote"));
+    one.unmount();
+
+    const several = renderWithProviders(
+      <UpdateConfirmDialog
+        confirm={confirmOf({ id: 6, phase: "planning", items: [item(firefox), item(candidate("jq"))] })}
+      />,
+    );
+    const dialog = several.getByRole("alertdialog", { name: "Update 2 tools?" });
+    expect(dialog.textContent).not.toContain("130.0");
+  });
+});

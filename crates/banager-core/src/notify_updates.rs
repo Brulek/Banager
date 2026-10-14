@@ -317,6 +317,7 @@ mod tests {
             warnings: Vec::new(),
             blocked: None,
             download_bytes: None,
+            display_current: None,
         };
         let candidates = [
             candidate(ArtifactKind::Formula, "jq", "1.8.1"),
@@ -602,6 +603,7 @@ mod tests {
             warnings: Vec::new(),
             blocked: None,
             download_bytes: None,
+            display_current: None,
         };
         assert_eq!(&pair_of(&candidate), pair, "the page's spelling");
         candidate

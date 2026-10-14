@@ -2308,7 +2308,17 @@ path, that app's `Contents/Info.plist`, as for a cask's quit step
 through a protected place, parsed and nothing run), for its
 `CFBundleShortVersionString`: the version the app says it is, which the
 Installed page shows where it is not Homebrew's record, the record
-beside it in the details (R47-3, r18).
+beside it in the details (R47-3, r18). For self-updating apps, Updates
+and its confirmation use an available observed app version for the
+displayed version change and major-update warning
+(`UpdateCandidate::display_current`, set in `check_updates`); otherwise
+they use Homebrew's recorded version. When an update check fails but
+fresh inventory is available, retained update candidates refresh this
+display version from the matching inventory; when inventory also fails,
+the previous one is kept (`session/refresh.rs`). Homebrew's recorded
+version remains separate, as the candidate's `current`, and is what the
+offered version and the update's result are checked against (r25
+R77-3).
 
 ## Why a source did not answer, and the link that fixes it: nothing runs until a link is confirmed
 

@@ -1280,6 +1280,7 @@ mod history_at_quit_tests {
                     warnings: Vec::new(),
                     blocked: None,
                     download_bytes: None,
+                    display_current: None,
                 }],
                 ..CheckOutcome::default()
             })

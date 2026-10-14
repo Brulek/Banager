@@ -735,6 +735,7 @@ pub fn parse_outdated(json: &str, instance_id: &str) -> Result<Vec<UpdateCandida
             warnings: Vec::new(),
             blocked: item.pinned.then_some(UpdateBlocked::Pinned),
             download_bytes: None,
+            display_current: None,
         });
     }
 

@@ -6,6 +6,20 @@ import type { ArtifactKind, UpdateCandidate } from "./types";
  * (research synthesis §4.2 item 3, appendix A3): such an upgrade is the
  * one most likely to change how the tool is used or set up.
  */
+/**
+ * The installed version an update is shown from, and a major update
+ * judged from: a cask's version read from its app (`display_current`)
+ * where Banager has one -- an app that updated itself since Homebrew
+ * installed it -- and otherwise the manager's record, `current` (r25
+ * R77-3). Never for another kind.
+ */
+export function currentVersionForDisplay(
+  candidate: Pick<UpdateCandidate, "current" | "display_current"> & { key: { kind: ArtifactKind } },
+): string {
+  const shown = candidate.key.kind === "Cask" ? candidate.display_current?.trim() : undefined;
+  return shown !== undefined && shown !== "" ? shown : candidate.current;
+}
+
 export interface MajorJump {
   from: number;
   to: number;
@@ -47,13 +61,13 @@ export function majorOf(version: string): number | null {
  * kind, not by how the string looks.
  */
 export function majorJump(
-  candidate: Pick<UpdateCandidate, "current" | "target"> & {
+  candidate: Pick<UpdateCandidate, "current" | "target" | "display_current"> & {
     key: { kind: ArtifactKind };
     channel?: UpdateCandidate["channel"];
   },
 ): MajorJump | null {
   if (candidate.key.kind === "Model" || candidate.channel === "Digest") return null;
-  const from = majorOf(candidate.current);
+  const from = majorOf(currentVersionForDisplay(candidate));
   const to = majorOf(candidate.target);
   if (from === null || to === null) return null;
   if (from < 1 || from >= DATE_LIKE_FROM || to >= DATE_LIKE_FROM) return null;

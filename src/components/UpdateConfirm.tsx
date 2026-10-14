@@ -7,7 +7,7 @@ import { newSubmissionBatch } from "../lib/api";
 import { adapterIdOf, adapterLabel, instanceLabels, planErrorDetail, refusalSentence } from "../lib/sources";
 import { modelPath } from "../lib/names";
 import { isRoutineNote, warningLines, type WarningLine } from "../lib/warnings";
-import { majorJump } from "../lib/versionJump";
+import { currentVersionForDisplay, majorJump } from "../lib/versionJump";
 import { CHANGED_SINCE_SHOWN, letGoPolicy, PLAN_LIFETIME_MS, startShown } from "../lib/heldPlans";
 import { artifactKeyId, useUiStore } from "../store/ui";
 import type { OpSummary, ArtifactKey, InstalledArtifact, IssuedPlan, OpRequest, UpdateCandidate } from "../lib/types";
@@ -464,8 +464,9 @@ type Translate = (key: string, options?: Record<string, unknown>) => string;
  */
 function versionJump(t: Translate, candidate: UpdateCandidate): string | null {
   if (candidate.channel === "Digest") return t("updates.newBuild");
-  if (candidate.current === "" || candidate.target === "") return null;
-  return t("updates.versionChange", { current: candidate.current, target: candidate.target });
+  const current = currentVersionForDisplay(candidate);
+  if (current === "" || candidate.target === "") return null;
+  return t("updates.versionChange", { current, target: candidate.target });
 }
 
 /**

@@ -70,6 +70,7 @@ pub(crate) fn parse_pip_outdated(
                 warnings: Vec::new(),
                 blocked: None,
                 download_bytes: None,
+                display_current: None,
             })
             .collect(),
     ))

@@ -16,10 +16,10 @@ use crate::adapters::{
 use crate::dirfd::Stat;
 use crate::events::{EventSink, LogNote, OpId, OperationEvent};
 use crate::model::{
-    ArtifactKey, ArtifactKind, CancelPolicy, CaskStep, Fault, InstalledArtifact, InstanceId,
-    InstanceNote, InstanceStatus, ManagerInstance, OpKind, OpRequest, Outcome, Plan, PlanAction,
-    ReadOnlyReason, Reconciled, ResourceLock, Scope, SearchHit, Unavailable, UninstallScope,
-    UpdateBlocked, Warning,
+    observed_app_version, ArtifactKey, ArtifactKind, CancelPolicy, CaskStep, Fault,
+    InstalledArtifact, InstanceId, InstanceNote, InstanceStatus, ManagerInstance, OpKind,
+    OpRequest, Outcome, Plan, PlanAction, ReadOnlyReason, Reconciled, ResourceLock, Scope,
+    SearchHit, Unavailable, UninstallScope, UpdateBlocked, Warning,
 };
 use crate::protected::{look, Protected};
 use crate::runner::{CommandOutput, CommandRunner, CommandSpec, HostEnv, OutputUse};
@@ -2419,6 +2419,11 @@ impl BrewAdapter {
         for candidate in &mut candidates {
             if let Some(artifact) = index.resolve(&candidate.key) {
                 candidate.key = artifact.key.clone();
+                // A cask that updated itself: the version its app says it
+                // is (`read_app_versions`), for the version change and the
+                // major-update warning, with Homebrew's record kept as
+                // `current` (r25 R77-3).
+                candidate.display_current = observed_app_version(artifact);
                 if artifact
                     .facts
                     .homebrew
@@ -4493,6 +4498,95 @@ mod tests {
                 ("zoom", "6.2.5", None),
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn self_updated_cask_candidate_keeps_receipt_and_observed_display_version() {
+        // r25 R77-3: Homebrew recorded Firefox 130.0, the app updated
+        // itself to 131.0.2, and 131.0.3 is out. `brew outdated` gives the
+        // receipt; the candidate keeps it as `current` and shows the app's.
+        // A test-owned brew under its own prefix (98f32928's pattern).
+        let prefix = crate::testing::unique_temp_path("brew-r77-3");
+        let brew = prefix.join("bin/brew");
+        let inst = ManagerInstance {
+            exe_path: brew.clone(),
+            prefix: prefix.clone(),
+            ..test_instance()
+        };
+        let brew = brew.to_str().unwrap();
+        let outdated = r#"{"formulae":[{"name":"jq","installed_versions":["1.7"],"current_version":"1.7.1","pinned":false}],
+            "casks":[
+              {"name":"firefox","installed_versions":["130.0"],"current_version":"131.0.3"},
+              {"name":"onyx","installed_versions":["4.6.2"],"current_version":"4.7.0"},
+              {"name":"zoom","installed_versions":["6.2.5"],"current_version":"6.3.0"}]}"#;
+        let info = r#"{"formulae": [{"name":"jq","full_name":"jq","installed":[{"version":"1.7"}]}],
+            "casks": [
+                {"token":"firefox","full_token":"firefox","name":["Mozilla Firefox"],"installed":"130.0","auto_updates":true,"artifacts":[{"app":["Firefox.app"],"target":"/Applications/Firefox.app"}]},
+                {"token":"onyx","full_token":"onyx","name":["OnyX"],"installed":"4.6.2","auto_updates":null,"artifacts":[{"app":["OnyX.app"],"target":"/Applications/OnyX.app"}]},
+                {"token":"zoom","full_token":"zoom","name":["Zoom"],"installed":"6.2.5","auto_updates":true,"artifacts":[{"app":["zoom.us.app"],"target":"/Applications/zoom.us.app"}]}
+            ]}"#;
+        let answer = |stdout: &str, code: i32| CommandOutput {
+            stderr_cause: Default::default(),
+            exit_code: Some(code),
+            stdout: stdout.to_string(),
+            stderr: String::new(),
+            timed_out: false,
+            cancelled: false,
+        };
+        for inventory_ok in [true, false] {
+            let runner = Arc::new(MockRunner::new());
+            runner.respond(vec![brew, "outdated", "--json=v2"], answer(outdated, 0));
+            runner.respond(
+                vec![brew, "info", "--installed", "--json=v2"],
+                if inventory_ok {
+                    answer(info, 0)
+                } else {
+                    answer("", 1)
+                },
+            );
+            let adapter = BrewAdapter::new(runner.clone()).with_app_version_fn(|app| {
+                match app.to_str()? {
+                    "/Applications/Firefox.app" => Some("131.0.2"),
+                    "/Applications/OnyX.app" => Some("4.7.0"),
+                    "/Applications/zoom.us.app" => Some(""),
+                    _ => None,
+                }
+                .map(str::to_string)
+            });
+            let candidates = adapter
+                .check_updates(
+                    &inst,
+                    &CheckOptions {
+                        include_self_updating: true,
+                        ..Default::default()
+                    },
+                )
+                .await
+                .expect("checked")
+                .candidates;
+            let rows: Vec<(&str, &str, &str, Option<&str>)> = candidates
+                .iter()
+                .map(|c| {
+                    (
+                        c.key.name.as_str(),
+                        c.current.as_str(),
+                        c.target.as_str(),
+                        c.display_current.as_deref(),
+                    )
+                })
+                .collect();
+            let firefox = if inventory_ok { Some("131.0.2") } else { None };
+            assert_eq!(
+                rows,
+                vec![
+                    ("jq", "1.7", "1.7.1", None),
+                    ("firefox", "130.0", "131.0.3", firefox),
+                    ("onyx", "4.6.2", "4.7.0", None),
+                    ("zoom", "6.2.5", "6.3.0", None),
+                ],
+                "inventory read: {inventory_ok}"
+            );
+        }
     }
 
     #[tokio::test]

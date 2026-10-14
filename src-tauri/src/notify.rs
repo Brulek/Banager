@@ -800,6 +800,7 @@ mod forget_unoffered_tests {
                     warnings: Vec::new(),
                     blocked: None,
                     download_bytes: None,
+                    display_current: None,
                 });
             }
             Ok(outcome)

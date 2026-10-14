@@ -1943,6 +1943,21 @@ pub enum UpdateBlocked {
     UpdateSourceMismatch,
 }
 
+/// The version read from a self-updating cask's app where it is not
+/// Homebrew's record (`ArtifactFacts::app_version`), for
+/// `UpdateCandidate::display_current`; `None` for anything else, or a blank
+/// one (r25 R77-3).
+pub fn observed_app_version(artifact: &InstalledArtifact) -> Option<String> {
+    if artifact.key.kind != ArtifactKind::Cask || !artifact.auto_updates {
+        return None;
+    }
+    artifact
+        .facts
+        .app_version
+        .clone()
+        .filter(|version| !version.trim().is_empty())
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UpdateCandidate {
     pub key: ArtifactKey,
@@ -1970,6 +1985,18 @@ pub struct UpdateCandidate {
     /// before it existed still reads.
     #[serde(default)]
     pub download_bytes: Option<u64>,
+    /// Presentation only: the version the Updates page and the update
+    /// confirmation show as the one installed, and the major-update
+    /// warning reads, where it is not `current`. For a cask that updates
+    /// itself, the version read from its app (`ArtifactFacts::app_version`),
+    /// which may be newer than Homebrew's record: the app updated itself
+    /// since Homebrew installed it (r25 R77-3). `current` stays the
+    /// manager's own record -- Homebrew's receipt -- which the offered
+    /// version, the update's outcome and its history are read against.
+    /// Left out of the JSON when `None`; `serde(default)` so a candidate
+    /// written before it existed still reads.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_current: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -2715,6 +2742,7 @@ mod tests {
             warnings: Vec::new(),
             blocked: None,
             download_bytes: None,
+            display_current: None,
         };
         let json = serde_json::to_string(&candidate).expect("serialize");
         assert!(
@@ -2794,6 +2822,43 @@ mod tests {
     }
 
     #[test]
+    fn candidate_display_version_is_optional_and_presentation_only() {
+        // r25 R77-3: `src/lib/types.ts` spells it `display_current?: string`.
+        let firefox = UpdateCandidate {
+            key: ArtifactKey {
+                instance_id: "brew:/opt/homebrew".to_string(),
+                kind: ArtifactKind::Cask,
+                name: "firefox".to_string(),
+            },
+            current: "130.0".to_string(),
+            target: "131.0.3".to_string(),
+            channel: UpdateChannel::Native,
+            checkable: true,
+            warnings: Vec::new(),
+            blocked: None,
+            download_bytes: None,
+            display_current: Some("131.0.2".to_string()),
+        };
+        let json = serde_json::to_string(&firefox).expect("serialize");
+        assert!(json.contains("\"display_current\":\"131.0.2\""), "{json}");
+        assert_eq!(
+            serde_json::from_str::<UpdateCandidate>(&json).unwrap(),
+            firefox
+        );
+        // Left out when None, and a candidate written before it reads as None.
+        let receipt = UpdateCandidate {
+            display_current: None,
+            ..firefox.clone()
+        };
+        let json = serde_json::to_string(&receipt).expect("serialize");
+        assert!(!json.contains("display_current"), "{json}");
+        assert_eq!(
+            serde_json::from_str::<UpdateCandidate>(&json).unwrap(),
+            receipt
+        );
+    }
+
+    #[test]
     fn test_download_bytes_is_a_number_or_null_on_the_wire_and_optional_when_read() {
         // `src/lib/types.ts` spells it `download_bytes?: number | null`;
         // src/lib/modelDownload.ts reads it.
@@ -2811,6 +2876,7 @@ mod tests {
             warnings: Vec::new(),
             blocked: None,
             download_bytes: Some(4_683_087_520),
+            display_current: None,
         };
         let json = serde_json::to_string(&model).expect("serialize");
         assert!(
@@ -2824,6 +2890,7 @@ mod tests {
 
         let unknown = UpdateCandidate {
             download_bytes: None,
+            display_current: None,
             ..model.clone()
         };
         let json = serde_json::to_string(&unknown).expect("serialize");

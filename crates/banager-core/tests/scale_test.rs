@@ -399,6 +399,7 @@ impl Adapter for Fixed {
                     warnings: vec![],
                     blocked: None,
                     download_bytes: None,
+                    display_current: None,
                 })
                 .collect(),
             notes: vec![],

@@ -631,6 +631,14 @@ export interface UpdateCandidate {
    * it out, which reads as `null`. Read by src/lib/modelDownload.ts.
    */
   download_bytes?: number | null;
+  /**
+   * Presentation only (Rust `UpdateCandidate::display_current`): for a
+   * cask that updates itself, the version read from its app where it is
+   * not Homebrew's record, which `current` stays. Absent otherwise. Read
+   * through `currentVersionForDisplay` in src/lib/versionJump.ts (r25
+   * R77-3).
+   */
+  display_current?: string | null;
 }
 /**
  * Why a source can be listed but never changed from Banager. Mirrors

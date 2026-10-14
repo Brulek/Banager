@@ -356,6 +356,7 @@ pub(crate) fn uncheckable_candidate(
         warnings,
         blocked: None,
         download_bytes: None,
+        display_current: None,
     }
 }
 

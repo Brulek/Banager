@@ -2,7 +2,7 @@ import { fireEvent, render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import i18n from "../i18n";
 import type { UpdateCandidate } from "../lib/types";
-import { blockedDetail, cannotCheckDetail } from "./updateDetails";
+import { blockedDetail, cannotCheckDetail, updateVersionColumn } from "./updateDetails";
 
 describe("blockedDetail", () => {
   it("names the package that updates with Homebrew's Node, npm or corepack (R42-2)", () => {
@@ -99,5 +99,26 @@ describe("cannotCheckDetail", () => {
       <>{cannotCheckDetail(i18n.getFixedT("en"), { ...candidate, warnings: ["TransientLookupFailure"] }, true)}</>,
     );
     expect(queryByRole("button", { name: "Copy Error Details" })).toBeNull();
+  });
+});
+
+describe("updateVersionColumn", () => {
+  it("uses the version read from a self-updated app for the version change (r25 R77-3)", () => {
+    const firefox: UpdateCandidate = {
+      key: { instance_id: "brew:/opt/homebrew", kind: "Cask", name: "firefox" },
+      current: "130.0",
+      target: "131.0.3",
+      channel: "Native",
+      checkable: true,
+      warnings: [],
+      blocked: null,
+      display_current: "131.0.2",
+    };
+    const en = i18n.getFixedT("en");
+    expect(updateVersionColumn(en, firefox)).toEqual({ version: "131.0.2 → 131.0.3", newVersion: "131.0.3" });
+    // Without one, Homebrew's record; a row that can't be checked shows
+    // the record it has, as before.
+    expect(updateVersionColumn(en, { ...firefox, display_current: undefined }).version).toBe("130.0 → 131.0.3");
+    expect(updateVersionColumn(en, { ...firefox, checkable: false, target: "130.0" }).version).toBe("130.0");
   });
 });

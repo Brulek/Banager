@@ -1189,6 +1189,7 @@ mod tests {
             warnings: Vec::new(),
             blocked,
             download_bytes: None,
+            display_current: None,
         }
     }
 

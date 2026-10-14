@@ -6,8 +6,8 @@
 use super::{DetectOutcome, InventoryPreview, Session, Snapshot, SourceError};
 use crate::adapters::{AdapterError, CheckOptions};
 use crate::model::{
-    ArtifactKey, InstalledArtifact, InstanceId, InstanceNote, InstanceStatus, ManagerInstance,
-    ResourceLock, Unavailable,
+    observed_app_version, ArtifactKey, ArtifactKind, InstalledArtifact, InstanceId, InstanceNote,
+    InstanceStatus, ManagerInstance, ResourceLock, Unavailable,
 };
 use crate::runner::HostEnv;
 use std::collections::{HashMap, HashSet};
@@ -862,10 +862,17 @@ impl Session {
                             // with thousands of formulae and hundreds of
                             // updates would otherwise compare millions of
                             // keys.
-                            let mut listed: HashMap<&ArtifactKey, Vec<&str>> = HashMap::new();
+                            //
+                            // A kept cask's version read from its app
+                            // (`display_current`) is this round's where the
+                            // inventory is: the app may have updated itself
+                            // since the round that found the update (r25
+                            // R77-3). Otherwise it is kept as it was.
+                            let mut listed: HashMap<&ArtifactKey, Vec<&InstalledArtifact>> =
+                                HashMap::new();
                             if inventory_confirmed {
                                 for a in &artifacts {
-                                    listed.entry(&a.key).or_default().push(&a.version);
+                                    listed.entry(&a.key).or_default().push(a);
                                 }
                             }
                             updates.extend(
@@ -875,13 +882,24 @@ impl Session {
                                     .filter(|u| u.key.instance_id == inst.id)
                                     .filter(|u| {
                                         !inventory_confirmed
-                                            || listed.get(&u.key).is_some_and(|versions| {
-                                                versions.iter().any(|version| {
-                                                    !u.checkable || *version != u.target
-                                                })
+                                            || listed.get(&u.key).is_some_and(|found| {
+                                                found
+                                                    .iter()
+                                                    .any(|a| !u.checkable || a.version != u.target)
                                             })
                                     })
-                                    .cloned(),
+                                    .map(|u| {
+                                        let mut u = u.clone();
+                                        if inventory_confirmed && u.key.kind == ArtifactKind::Cask {
+                                            u.display_current =
+                                                listed.get(&u.key).and_then(|found| {
+                                                    found
+                                                        .iter()
+                                                        .find_map(|a| observed_app_version(a))
+                                                });
+                                        }
+                                        u
+                                    }),
                             );
                         }
                     }
@@ -4245,6 +4263,7 @@ mod tests {
             warnings: Vec::new(),
             blocked: None,
             download_bytes: None,
+            display_current: None,
         }
     }
 
@@ -4266,6 +4285,7 @@ mod tests {
             warnings: Vec::new(),
             blocked: None,
             download_bytes: None,
+            display_current: None,
         }
     }
 
@@ -4500,6 +4520,134 @@ mod tests {
              only by absence, got {:?}",
             second.updates
         );
+    }
+
+    #[tokio::test]
+    async fn fresh_inventory_refreshes_display_version_of_carried_cask_candidate() {
+        // r25 R77-3: Firefox updated itself from Homebrew's 130.0 to
+        // 131.0.2 after the round that found 131.0.3. A round whose
+        // update check fails (or declines) but whose inventory is read
+        // keeps that candidate, and must show the version read from the
+        // app, as the Installed page does, not the receipt's.
+        let cask = |name: &str, app: Option<&str>| InstalledArtifact {
+            version: "130.0".to_string(),
+            auto_updates: true,
+            facts: crate::model::ArtifactFacts {
+                app_version: app.map(str::to_string),
+                ..Default::default()
+            },
+            ..crate::testing::installed_artifact("fake:1", ArtifactKind::Cask, name)
+        };
+        let candidate =
+            |instance: &str, kind: ArtifactKind, display: Option<&str>| UpdateCandidate {
+                key: ArtifactKey {
+                    instance_id: instance.to_string(),
+                    kind,
+                    name: "firefox".to_string(),
+                },
+                current: "130.0".to_string(),
+                target: "131.0.3".to_string(),
+                channel: UpdateChannel::Native,
+                checkable: true,
+                warnings: vec![],
+                blocked: None,
+                download_bytes: None,
+                display_current: display.map(str::to_string),
+            };
+        for declined in [false, true] {
+            // (first round's display, second round's app version, whether
+            // the second inventory fails, what the second round shows)
+            for (before, app, inventory_fails, after) in [
+                (None, Some("131.0.2"), false, Some("131.0.2")),
+                (Some("130.5"), Some("131.0.2"), false, Some("131.0.2")),
+                (Some("130.5"), None, false, None),
+                (Some("130.5"), Some("  "), false, None),
+                (Some("130.5"), Some("131.0.2"), true, Some("130.5")),
+            ] {
+                let (adapter, state) = FakeAdapter::new("fake");
+                {
+                    let mut s = state.lock().unwrap();
+                    s.instances = vec![
+                        make_instance("fake", "fake:1"),
+                        make_instance("fake", "fake:2"),
+                    ];
+                    s.artifacts
+                        .insert("fake:1".to_string(), vec![cask("firefox", None)]);
+                    s.artifacts.insert(
+                        "fake:2".to_string(),
+                        vec![InstalledArtifact {
+                            version: "130.0".to_string(),
+                            ..crate::testing::installed_artifact(
+                                "fake:2",
+                                ArtifactKind::Cask,
+                                "firefox",
+                            )
+                        }],
+                    );
+                    s.updates.insert(
+                        "fake:1".to_string(),
+                        vec![
+                            candidate("fake:1", ArtifactKind::Cask, before),
+                            // Another kind with the same name keeps its own.
+                            candidate("fake:1", ArtifactKind::Formula, Some("9")),
+                        ],
+                    );
+                    s.updates.insert(
+                        "fake:2".to_string(),
+                        vec![candidate("fake:2", ArtifactKind::Cask, Some("7"))],
+                    );
+                }
+                let session = Session::with_adapters(Arc::new(VecSink::new()), vec![adapter], None);
+                session
+                    .refresh(&non_root_env(), &CheckOptions::default())
+                    .await;
+                {
+                    let mut s = state.lock().unwrap();
+                    s.artifacts
+                        .insert("fake:1".to_string(), vec![cask("firefox", app)]);
+                    if inventory_fails {
+                        s.failing.push("fake:1".to_string());
+                    }
+                    if declined {
+                        s.declining_updates.push("fake:1".to_string());
+                    } else {
+                        s.failing_updates.push("fake:1".to_string());
+                    }
+                }
+                let second = session
+                    .refresh(&non_root_env(), &CheckOptions::default())
+                    .await;
+                let case = format!("{declined} {before:?} {app:?} {inventory_fails}");
+                let firefox = second
+                    .updates
+                    .iter()
+                    .find(|u| u.key.instance_id == "fake:1" && u.key.kind == ArtifactKind::Cask)
+                    .unwrap_or_else(|| panic!("{case}: the candidate was dropped"));
+                assert_eq!(firefox.current, "130.0", "{case}");
+                assert_eq!(firefox.target, "131.0.3", "{case}");
+                assert_eq!(firefox.display_current.as_deref(), after, "{case}");
+                // Other instances and kinds are untouched.
+                let other = |id: &str, kind: ArtifactKind| {
+                    second
+                        .updates
+                        .iter()
+                        .find(|u| u.key.instance_id == id && u.key.kind == kind)
+                        .and_then(|u| u.display_current.clone())
+                };
+                assert_eq!(
+                    other("fake:2", ArtifactKind::Cask).as_deref(),
+                    Some("7"),
+                    "{case}: fake:2 answered its own"
+                );
+                if inventory_fails {
+                    assert_eq!(
+                        other("fake:1", ArtifactKind::Formula).as_deref(),
+                        Some("9"),
+                        "{case}"
+                    );
+                }
+            }
+        }
     }
 
     #[tokio::test]
