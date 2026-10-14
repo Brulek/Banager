@@ -6133,8 +6133,13 @@ right within the week; with a right clock, a record is dropped up to a week
 more than 180 days with no update the file can keep older records until
 the next record. A file from before these two times were kept starts
 trusting from now, or from its newest record when that is earlier.
-「最近的更新记录」 lists none older
-than 180 days by the Mac's clock (`HistoryStore::view`). It is written whole to
+The window is sent none older
+than 180 days by the Mac's clock (`HistoryStore::view`), and
+「最近的更新记录」 lists only updates that finished in the last 30 days by it
+(`isRecentUpdateTime` in `src/lib/history.ts`): records from earlier
+launches and this launch's own alike, read against the clock each time the
+list is worked out -- every minute while the Updates page is open, and
+whenever what it lists changes. It is written whole to
 a random, exclusively created `history.json.tmp.<random>` beside it by the
 same atomic writer as settings and renamed into place, on a thread of
 its own, after each operation finishes and after Clear. A missing file,

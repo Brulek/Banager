@@ -102,6 +102,18 @@ export function listedResult(result: HistoryResult): boolean {
 }
 
 /**
+ * Whether an update that finished at `finishedAt` (milliseconds) is one of
+ * the last `RECENT_DAYS`, 30 whole days of 24 hours back from `now`, that
+ * 「最近的更新记录」 lists: the one cutoff for the history's records
+ * (`recentUpdates`) and this window's own updates alike. One with no time
+ * known, or none that is a date, is not; one the clock puts after `now`
+ * -- the clock set back since -- is.
+ */
+export function isRecentUpdateTime(finishedAt: number | null | undefined, now: number): boolean {
+  return typeof finishedAt === "number" && Number.isFinite(finishedAt) && finishedAt >= now - RECENT_DAYS * DAY_MS;
+}
+
+/**
  * The records 「最近的更新记录」 adds to what this window saw, newest first: per
  * tool, its newest kept operation, when that is an update that ended in a
  * way to know of (`listedResult`) -- the rule `justUpdatedOps` has for this
@@ -156,7 +168,6 @@ export function recentUpdates(
     // `seen` comes before `record` in the view, the last kept first.
     if (seen === undefined || keptLater(view, record, seen)) newest.set(id, record);
   }
-  const since = now - RECENT_DAYS * DAY_MS;
   return [...newest.entries()]
     .filter(
       ([id, record]) =>
@@ -164,7 +175,7 @@ export function recentUpdates(
         record.kind === "Update" &&
         listedResult(record.result) &&
         (record.result === "Succeeded" || isUpdatedButStepFailed(record.result) || offered.has(id)) &&
-        record.finished_at >= since,
+        isRecentUpdateTime(record.finished_at, now),
     )
     .map(([, record]) => record)
     .sort((a, b) => b.finished_at - a.finished_at);

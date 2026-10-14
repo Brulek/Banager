@@ -29,7 +29,7 @@ import {
   justUpdatedOps,
   type JustUpdatedEntry,
 } from "../components/JustUpdated";
-import { clearedHere, recentUpdates, recordHere, toolsSeenHere, useClearHistory, useHistory, verifiedHere } from "../lib/history";
+import { clearedHere, isRecentUpdateTime, recentUpdates, recordHere, toolsSeenHere, useClearHistory, useHistory, verifiedHere } from "../lib/history";
 import { NO_HISTORY } from "../lib/types";
 import { RowAction, ToolRow } from "../components/ToolRow";
 import { StatusChip, type StatusChipProps } from "../components/StatusChip";
@@ -585,7 +585,9 @@ export function UpdatesPage() {
   // did not, or ask to be checked -- once their rows have gone
   // (`justUpdatedOps`), one that did not work or asks to be checked only
   // while the last check still offers that tool an update, as the
-  // history's below. Out of every count, and of Select all:
+  // history's below, and only one that finished in the last 30 days
+  // (`isRecentUpdateTime`), as the history's: one with no time known yet
+  // waits for its record. Out of every count, and of Select all:
   // nothing in it has a checkbox or a button.
   //
   // The version is the one Banager read back after the update, as the
@@ -659,7 +661,11 @@ export function UpdatesPage() {
         },
       ];
     });
-    const kept = recentUpdates(history, toolsSeenHere(operations ?? []), Date.now(), offered).flatMap((record): JustUpdatedEntry[] => {
+    // The clock as it is now, read afresh each time the list is worked
+    // out -- at the minute clock's tick (`now`) as when its data changes.
+    const historyNow = Date.now();
+    const recentHere = here.filter((entry) => isRecentUpdateTime(entry.finishedAt, historyNow));
+    const kept = recentUpdates(history, toolsSeenHere(operations ?? []), historyNow, offered).flatMap((record): JustUpdatedEntry[] => {
       const ending = endingOfRecord(record.result, record.already_updated ?? null, record.follow_up_warnings);
       if (ending === null) return [];
       return [
@@ -682,7 +688,7 @@ export function UpdatesPage() {
     });
     const at = (entry: JustUpdatedEntry) => entry.finishedAt ?? Number.NEGATIVE_INFINITY;
     // Stable: this window's own keep their order among themselves.
-    return [...here, ...kept].sort((a, b) => {
+    return [...recentHere, ...kept].sort((a, b) => {
       const byTime = at(b) - at(a);
       return Number.isNaN(byTime) ? 0 : byTime;
     });
@@ -700,6 +706,9 @@ export function UpdatesPage() {
     passwordRecoveryKeys,
     labels,
     t,
+    // Not read: it ticks once a minute, so that what turned 30 days old
+    // since leaves the list though nothing else changed (`historyNow`).
+    now,
   ]);
   // Clear has the history dismiss what it kept, so that none of what was
   // shown comes back after a restart once the file has it, and takes this
