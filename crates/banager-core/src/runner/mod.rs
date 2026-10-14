@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+pub(crate) mod dispatch;
 pub mod login_path;
 pub mod mock;
 pub mod no_answer;

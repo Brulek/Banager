@@ -33,19 +33,16 @@ pub struct RealRunner {
 
 impl RealRunner {
     /// Set on every command this runner runs, before the spec's own
-    /// variables. A program on `PATH` may be one of mise's shims -- a
-    /// Python, an npm or the `node` npm runs -- and mise's shim installs a
-    /// version its configuration names and nobody installed before it
-    /// runs anything (`not_found_auto_install`, on by default; "This also
-    /// runs in shims", mise's `settings.toml`, v2026.9.0): a download and
-    /// an install no preview showed, from a refresh's version read or a
-    /// plan's command. Off, the shim installs nothing: it runs the next
-    /// program of that name on `PATH` instead, as for a tool with no
-    /// version set (`not_found_system_fallback`, on by default; pip's
-    /// `NO_FALLBACK_ENV` for where that would be `/usr/bin/python3`), or,
-    /// with none there, says that version is not installed. Only mise
-    /// reads it. mise installs a tool it was told to
-    /// install lazily (a "lazy bin provider") whatever this says.
+    /// variables. mise's shim installs a version its configuration names
+    /// and nobody installed before it runs anything
+    /// (`not_found_auto_install`, on by default; "This also runs in shims",
+    /// mise's `settings.toml`, v2026.9.0): a download and an install no
+    /// preview showed. Off, it installs nothing that way. Only mise reads
+    /// it, and mise installs a tool it was told to install lazily (a "lazy
+    /// bin provider") whatever this says -- so `run` never starts a
+    /// version manager's shim, nor a script that starts one, at all
+    /// (`dispatch`, R73-1); this stays for what that cannot see (a shell
+    /// script that runs a shim some other way).
     pub const EVERY_COMMAND_ENV: [(&'static str, &'static str); 1] =
         [("MISE_NOT_FOUND_AUTO_INSTALL", "false")];
 
@@ -789,9 +786,10 @@ impl CommandRunner for RealRunner {
         // or through a protected place (`protected::look`): a program
         // there is not found, as `resolve_exe` passes over a `PATH` folder
         // there, and never run -- running it would read it there.
-        if look::target(&spec.program, &Protected::of_this_process()).is_err() {
+        let protected = Protected::of_this_process();
+        let Ok((real, _)) = look::target(&spec.program, &protected) else {
             return Err(RunnerError::NotFound(spec.program.clone()));
-        }
+        };
 
         if cancel.is_cancelled() {
             // Cancelled before we ever spawned anything — report it the same
@@ -810,14 +808,32 @@ impl CommandRunner for RealRunner {
             });
         }
 
-        let mut cmd = Command::new(&spec.program);
-        cmd.args(&spec.args);
         // The login shell's `PATH`, and the proxy and mirror settings read
         // with it (`login_path::IMPORTED`), once read
         // (`login_path::accept`): kept out of the process environment, so
         // handed to each command here. A variable the spec sets itself
         // still wins, set after them.
         let accepted = super::login_path::accepted_env();
+
+        // A version manager's shim, or a script that starts one along the
+        // `PATH` the command gets, is never started: it may install what
+        // it runs first (`dispatch`, R73-1).
+        let child_path = spec
+            .env
+            .iter()
+            .rev()
+            .find(|(name, _)| name == "PATH")
+            .map(|(_, value)| std::ffi::OsString::from(value))
+            .or_else(|| accepted.as_ref().map(|found| found.path.clone().into()))
+            .or_else(|| std::env::var_os("PATH"));
+        if let Some(why) =
+            super::dispatch::refusal(&spec.program, &real, child_path.as_deref(), &protected)
+        {
+            return Err(RunnerError::Spawn(why));
+        }
+
+        let mut cmd = Command::new(&spec.program);
+        cmd.args(&spec.args);
         if !self.inherit_settings {
             for name in super::login_path::IMPORTED.iter().chain(&["OLLAMA_HOST"]) {
                 cmd.env_remove(name);
@@ -1172,38 +1188,29 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn regression_r63_1_a_mise_shim_run_by_any_command_installs_nothing() {
-        // mise's shims install a configured version that is missing before
-        // they run it unless `not_found_auto_install` is off
-        // (`src/cli/shim.rs`, v2026.9.0; on by default). A test-owned shim
-        // that does what mise's does with `MISE_NOT_FOUND_AUTO_INSTALL`:
-        // it leaves `installed` behind unless the setting is false. Run
-        // as pip's and npm's version reads run theirs -- no variable of
-        // the spec's own -- and as a plan's would, with variables of its
-        // own: nothing is installed either way.
+    async fn regression_r63_1_every_command_is_told_not_to_install_a_missing_version() {
+        // `MISE_NOT_FOUND_AUTO_INSTALL=false` reaches what a command runs,
+        // with no variable of the spec's own and with some: an ordinary
+        // program of the test's own prints what it got.
         use std::os::unix::fs::PermissionsExt;
         let home = std::fs::canonicalize({
-            let raw = unique_temp_path("runner-mise-shim");
-            std::fs::create_dir_all(raw.join("shims")).unwrap();
+            let raw = unique_temp_path("runner-every-env");
+            std::fs::create_dir_all(raw.join("bin")).unwrap();
             raw
         })
         .unwrap();
-        let installed = home.join("installed");
-        let shim = home.join("shims/python3");
+        let program = home.join("bin/tool");
         std::fs::write(
-            &shim,
-            format!(
-                "#!/bin/sh\ncase \"$MISE_NOT_FOUND_AUTO_INSTALL\" in\n  false) ;;\n  *) touch '{}' ;;\nesac\necho 'pip 26.2.1'\n",
-                installed.display()
-            ),
+            &program,
+            "#!/bin/sh\nprintf '%s\\n' \"$MISE_NOT_FOUND_AUTO_INSTALL\"\n",
         )
         .unwrap();
-        std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
         let runner = RealRunner::without_this_macs_settings();
         for env in [Vec::new(), vec![("NO_COLOR".to_string(), "1".to_string())]] {
             let spec = CommandSpec {
-                program: shim.clone(),
-                args: vec!["-m".into(), "pip".into(), "--version".into()],
+                program: program.clone(),
+                args: Vec::new(),
                 env,
                 cwd: None,
                 timeout: std::time::Duration::from_secs(5),
@@ -1212,17 +1219,134 @@ mod tests {
             let output = runner
                 .run(spec, None, CancellationToken::new())
                 .await
-                .expect("run the shim");
+                .expect("run the program");
             assert_eq!(output.exit_code, Some(0));
-            assert!(
-                !installed.exists(),
-                "the shim was run with mise's automatic install on"
-            );
+            assert_eq!(output.stdout, "false\n");
         }
         assert_eq!(
             RealRunner::EVERY_COMMAND_ENV,
             [("MISE_NOT_FOUND_AUTO_INSTALL", "false")]
         );
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[tokio::test]
+    async fn regression_r73_1_a_dispatcher_or_a_script_that_starts_one_is_never_run() {
+        // A lazy tool's shim installs it whatever MISE_NOT_FOUND_AUTO_INSTALL
+        // says: the stand-ins here leave `installed` behind whenever they
+        // run. A shim, a link to mise of another name, and an npm-style
+        // `#!/usr/bin/env node` script whose `node` on the command's `PATH`
+        // is a shim -- after a `node` that is not executable, or after a
+        // folder in a protected place -- are refused before they start, as
+        // parsers and transcripts both. A cancelled one is cancelled, as
+        // before; the same script with a plain `node` first runs.
+        use std::os::unix::fs::PermissionsExt;
+        let home = std::fs::canonicalize({
+            let raw = unique_temp_path("runner-dispatch");
+            std::fs::create_dir_all(raw.join("shims")).unwrap();
+            raw
+        })
+        .unwrap();
+        let installed = home.join("installed");
+        let executable = |path: &std::path::Path, text: String, mode: u32| {
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, text).unwrap();
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)).unwrap();
+        };
+        let lazy = format!("#!/bin/sh\ntouch '{}'\necho ran\n", installed.display());
+        let mise = home.join("mise/bin/mise");
+        executable(&mise, lazy.clone(), 0o755);
+        let shim_python = home.join("shims/python3");
+        std::os::unix::fs::symlink(&mise, &shim_python).unwrap();
+        let shim_node = home.join("shims/node");
+        executable(&shim_node, lazy.clone(), 0o755);
+        let alias = home.join("bin/python3");
+        std::fs::create_dir_all(alias.parent().unwrap()).unwrap();
+        std::os::unix::fs::symlink(&mise, &alias).unwrap();
+        let npm = home.join("npm/bin/npm");
+        executable(
+            &npm,
+            "#!/usr/bin/env node\necho npm ran\n".to_string(),
+            0o755,
+        );
+        let plain = home.join("plain/node");
+        executable(&plain, "#!/bin/sh\necho no\n".to_string(), 0o644);
+        let node = home.join("node/bin/node");
+        executable(&node, "#!/bin/sh\nexec /bin/sh \"$@\"\n".to_string(), 0o755);
+        std::fs::create_dir_all(home.join("Documents/bin")).unwrap();
+        let path_of = |dirs: &[std::path::PathBuf]| {
+            std::env::join_paths(dirs).unwrap().into_string().unwrap()
+        };
+        let shims = home.join("shims");
+        let spec = |program: &std::path::Path, path: Option<String>, output_use| CommandSpec {
+            program: program.to_path_buf(),
+            args: vec![],
+            env: path
+                .map(|path| vec![("PATH".to_string(), path)])
+                .unwrap_or_default(),
+            cwd: None,
+            timeout: std::time::Duration::from_secs(5),
+            output_use,
+        };
+        let runner = RealRunner::without_this_macs_settings();
+        let _home = crate::protected::as_if_home(&home);
+        let refused = [
+            (shim_python.clone(), None),
+            (alias.clone(), None),
+            (
+                npm.clone(),
+                Some(path_of(&[shims.clone(), node.parent().unwrap().into()])),
+            ),
+            (
+                npm.clone(),
+                Some(path_of(&[plain.parent().unwrap().into(), shims.clone()])),
+            ),
+            (
+                npm.clone(),
+                Some(path_of(&[
+                    home.join("Documents/bin"),
+                    node.parent().unwrap().into(),
+                ])),
+            ),
+        ];
+        for (program, path) in refused {
+            for output_use in [OutputUse::Parsed, OutputUse::Transcript] {
+                let result = runner
+                    .run(
+                        spec(&program, path.clone(), output_use),
+                        None,
+                        CancellationToken::new(),
+                    )
+                    .await;
+                assert!(
+                    matches!(&result, Err(RunnerError::Spawn(error))
+                        if error.kind() == std::io::ErrorKind::PermissionDenied),
+                    "{program:?} {path:?}: {result:?}"
+                );
+            }
+        }
+        let cancel = CancellationToken::new();
+        cancel.cancel();
+        let output = runner
+            .run(spec(&shim_python, None, OutputUse::Parsed), None, cancel)
+            .await
+            .expect("a cancelled run is cancelled");
+        assert!(output.cancelled);
+        assert!(!installed.exists(), "a dispatcher was run");
+        let output = runner
+            .run(
+                spec(
+                    &npm,
+                    Some(path_of(&[node.parent().unwrap().into(), shims.clone()])),
+                    OutputUse::Parsed,
+                ),
+                None,
+                CancellationToken::new(),
+            )
+            .await
+            .expect("runs with a plain node first");
+        assert_eq!(output.stdout, "npm ran\n");
+        assert!(!installed.exists());
         let _ = std::fs::remove_dir_all(&home);
     }
 

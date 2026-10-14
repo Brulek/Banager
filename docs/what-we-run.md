@@ -12,8 +12,7 @@ believed. `crates/banager-core/tests/what_we_run_test.rs` checks the parts
 a test can: a section per registered source, every host on the https
 allowlist, every environment variable Homebrew's and npm's commands are
 given, the one every command is given (`RealRunner::EVERY_COMMAND_ENV`)
-and the one pip's version read through a mise shim may be given
-(`PipAdapter::NO_FALLBACK_ENV`), that Cargo's section says every Cargo command is given the
+and that no version manager's shim is run, that Cargo's section says every Cargo command is given the
 variables in `CargoAdapter::ENV` and shows each one, the three Homebrew
 flags this file promises are never passed, that pip's section shows the
 `xcode-select -p` it asks before running an interpreter in `/usr/bin` and
@@ -311,17 +310,30 @@ environment), and whatever else Banager itself was started with — plus
 `MISE_NOT_FOUND_AUTO_INSTALL=false` on every command
 (`RealRunner::EVERY_COMMAND_ENV`), and the variables listed in each
 source's section below (`RealRunner::run` adds them with `envs` and never
-clears the environment). The `python3`, `npm` or `node` a command runs may
-be one of mise's shims, and by default such a shim first downloads and
-installs a version mise's settings name that is not installed yet
+clears the environment). By default one of mise's shims first downloads
+and installs a version mise's settings name that is not installed yet
 (`not_found_auto_install`, mise's `settings.toml`, v2026.9.0) -- an install
-no preview showed. With this set, the shim installs nothing: it runs the
-next program of that name on `PATH` instead, as for a tool with no
-version set (`not_found_system_fallback`, on by default; pip's section
-says what Banager does when that would be `/usr/bin/python3`), or, with
-none there, says that version is not installed, which Banager takes as a
-command that did not answer. Only mise reads it;
-a tool mise was told to install on first use ("lazy") it still installs.
+no preview showed; this setting turns that off. Only mise reads it, and
+it does not cover a tool mise was told to install on first use ("lazy"),
+which mise installs whatever it says. So Banager never runs a version
+manager's shim at all (`runner::dispatch`, checked by `RealRunner::run`
+before it starts anything): a program in a folder named `shims` (mise's,
+pyenv's, asdf's) or one that leads to the mise program, however it is
+named; a script whose `#!` line names one; and a script whose `#!` line is
+`/usr/bin/env <name>` -- npm's own `npm` and the packages it installs
+begin `#!/usr/bin/env node` -- when the first executable `<name>` in the
+`PATH` that command gets is one, or when a `PATH` folder before it cannot
+be looked at (a protected place), since it may hold one. A relative
+`PATH` folder, one written `~/...` among them, is passed over there, as
+`env` finds nothing in it from the command's folder. Such a command is not
+started and fails as a program that could not start; a source found only
+through a shim is listed as one whose program could not start, and keeps
+what it listed when it last answered. Neither mise, pyenv nor asdf is run
+to ask which copy a shim would pick, so a tool reached only through a
+shim is not checked or changed by Banager; one put on `PATH` directly
+(`mise activate`, a virtual environment) is. A shell script that runs a
+shim some other way, or a file swapped between the check and the start,
+is beyond what this check sees.
 Opened from
 Finder or the Dock, Banager starts with macOS's small default
 environment, so any other variable exported only in a shell startup file
@@ -2859,10 +2871,7 @@ protected read-only path lookups and counts it once, including distinct
 pyenv shim files that reach the same pip. The first launcher's original
 path remains the source ID and argv. No extra command is run. A launcher
 found in a folder named `shims` (a version manager's: mise's, pyenv's,
-asdf's) is counted by its own path rather than the program it leads to,
-since mise's shims all lead to mise itself; one that does not answer
-`-m pip --version` with exit 0 -- a shim of a version installed but not
-active -- is passed over, not listed as not responding. The venv
+asdf's) is never run, as said below. The venv
 directory is part of that identity too, which keeps venvs separate when
 they inherit the base environment's pip.
 An unavailable or unparseable answer, a location that cannot be resolved,
@@ -2932,28 +2941,27 @@ are installed, its pip is listed. Both the initial shim-parent check and
 the developer-tool exclusion compare paths with `protected::same_path`, so
 case variants such as `/USR/BIN` and links spelled that way are guarded too.
 
-A version manager's shim (a folder named `shims`: mise's, pyenv's,
-asdf's) with no Python of its own active runs the next one of its name
-on `PATH` -- mise by default (`not_found_system_fallback`, mise's
-`settings.toml`, v2026.9.0), pyenv and asdf for `system` -- which can be
-`/usr/bin/python3`. So for such a shim Banager also looks down `PATH`,
-past the folders named `shims` and past whatever leads where the shim
-does, for the first executable of its name (`developer_shim_after`).
-When that is the `/usr/bin` shim, it asks `xcode-select -p` as above
-(still at most once a refresh), and with no tool there: mise's shim is
-run with `MISE_NOT_FOUND_SYSTEM_FALLBACK=false`
-(`PipAdapter::NO_FALLBACK_ENV`), so with no Python active it says no
-version is set and is skipped as above; a shim that does not lead to
-mise -- pyenv's and asdf's are scripts, which read no such setting -- is
-skipped without being run. With the tools there, or another Python
-first, the shim is run as before.
+A version manager's shim -- a launcher in a folder named `shims` (mise's,
+pyenv's, asdf's), or one that leads to the mise program -- is never run
+(`runner::dispatch::is_dispatcher`, in `detect`, before any command): it
+may first install the Python it would run (a mise tool set to install on
+first use), or run the next one on `PATH` (mise's fallback, pyenv's and
+asdf's `system`), which can be `/usr/bin/python3` and the Command Line
+Tools dialog, and which copy that is, nothing short of running it says.
+Such a launcher is listed as a pip whose program could not start, once
+for each shims folder, named by the first launcher found there; a pip
+the previous check listed through that folder keeps that name and what
+it listed (`resume_refused_pip` in `session/refresh.rs`). No
+`xcode-select -p` is asked for it. A Python reached directly -- a
+folder on `PATH` that holds it, a virtual environment, `mise activate` --
+is asked as above.
 
 **Read-only commands:**
 
 | Purpose | Argv | Timeout |
 |---|---|---|
-| Which developer directory the `/usr/bin` shims use (`detect`, before running an interpreter there, or a version manager's shim that would run one; at most once a refresh) | `/usr/bin/xcode-select -p` | 10 s |
-| Version | `<python> -m pip --version`; through one of mise's shims that would run the `/usr/bin` shim with no tool, with `MISE_NOT_FOUND_SYSTEM_FALLBACK=false` | 30 s |
+| Which developer directory the `/usr/bin` shims use (`detect`, before running an interpreter there; at most once a refresh) | `/usr/bin/xcode-select -p` | 10 s |
+| Version | `<python> -m pip --version`; never through a version manager's shim | 30 s |
 | List packages (`inventory`) | `<python> -m pip list --format=json` | 60 s |
 | List packages nothing else depends on (`inventory`, to tell dependencies apart) | `<python> -m pip list --format=json --not-required` | 60 s |
 | List packages nothing else depends on, to count them (`check_updates`, before the next row) | `<python> -m pip list --format=json --not-required` | 60 s |
@@ -6385,6 +6393,7 @@ that has been set up.
 - 更新后版本未变通常需要检查；若已达到或超过确认的目标版本，则报告已更新。这也适用于 Grok Build 和 rustup。没有可比较的目标版本时，不适用此例外。
 - 已安装页详情里的 HTTPS 首页链接只交给默认浏览器打开：先按 `https:` 查出系统设置的默认浏览器，再指定由它打开，不会被声明了该域名的 App 直接接走；查不到默认浏览器时不打开。只打开当前列表里某个工具的来源报告的首页，普通 HTTP 首页只供拷贝。
 - npm 的操作，以及 Cargo 和 uv 的更新，在开始前会再核对一次：npm 重新读取全局安装位置（`npm prefix -g`），Cargo 重新读取这个工具的安装记录，uv 重新列出工具（`uv tool list --show-paths`）并读取这个工具的环境和安装记录（receipt）。读到的与预览时不一致，或读到了却用不上（npm 给出的位置为空或不是完整路径、回答长得无法读完、Cargo 或 uv 的安装记录无法读取、uv 的列表不再列出或列出两次这个工具）时，不运行任何写入命令，结果显示为未能开始，请重新打开确认窗口。npm 或 uv 的读取命令本身没有回答时，同样不运行写入命令，但按该程序自己的失败结束：程序已不在或无法启动，显示为未能开始、没有改动；非零退出，是该程序的失败，带有退出码和它最后写到 stderr 的几行（例如 `node` 不在时 npm 的 `env: node: No such file or directory`）；超过时限（npm 30 秒；uv 与更新命令相同，600 秒）没有回答，是运行超时，没有退出码。后两种情况下，它写到 stderr 的每一行都记在操作日志里。uv 的这次读取和 `uv tool upgrade` 一样要等 uv 的工具文件夹锁：另一个 uv 命令占着这把锁时（例如终端里正在运行的 `uv tool upgrade --all`），它会像更新命令一样等锁放开，而不是先失败；uv 默认最多等 5 分钟，之后报它自己的错误。读取期间点“取消”会立即停下（npm 的读取也是这样），这个更新随即显示为已取消：不运行更新命令，也不再核对结果。一致时运行的仍是预览中的原命令。这些都是已有的只读命令和有大小上限的文件读取，没有新的主机、权限或写入的文件。
+- Banager 从不运行版本管理工具（mise、pyenv、asdf）的 shim，也不运行 `#!` 行会启动 shim 的脚本（例如 `#!/usr/bin/env node` 而 `PATH` 上第一个 `node` 是 shim，或它前面有无法查看的文件夹）：被设为首次使用时才安装的 mise 工具不受 `MISE_NOT_FOUND_AUTO_INSTALL=false` 限制，运行 shim 可能先下载安装。这样的命令不会启动，结果是程序无法启动；只能通过 shim 找到的来源显示为程序无法启动，并保留上次列出的内容。
 
 ## 繁體中文：執行與隱私要點
 
@@ -6402,3 +6411,4 @@ that has been set up.
 - 更新後版本未變通常需要檢查；若已達到或超過確認的目標版本，則回報已更新。這也適用於 Grok Build 和 rustup。沒有可比較的目標版本時，不適用此例外。
 - 已安裝頁詳細資訊裡的 HTTPS 首頁連結只交給預設瀏覽器開啟：先依 `https:` 查出系統設定的預設瀏覽器，再指定由它開啟，不會被宣告了該網域的 App 直接接走；查不到預設瀏覽器時不開啟。只開啟目前清單裡某個工具的來源回報的首頁，一般 HTTP 首頁只供拷貝。
 - npm 的操作，以及 Cargo 和 uv 的更新，在開始前會再核對一次：npm 重新讀取全域安裝位置（`npm prefix -g`），Cargo 重新讀取這個工具的安裝記錄，uv 重新列出工具（`uv tool list --show-paths`）並讀取這個工具的環境和安裝記錄（receipt）。讀到的與預覽時不一致，或讀到了卻無法使用（npm 給出的位置為空或不是完整路徑、回答長得無法讀完、Cargo 或 uv 的安裝記錄無法讀取、uv 的清單不再列出或列出兩次這個工具）時，不執行任何寫入指令，結果顯示為未能開始，請重新開啟確認視窗。npm 或 uv 的讀取指令本身沒有回答時，同樣不執行寫入指令，但按該程式自己的失敗結束：程式已不在或無法啟動，顯示為未能開始、沒有改動；非零結束，是該程式的失敗，帶有結束代碼和它最後寫到 stderr 的幾行（例如 `node` 不在時 npm 的 `env: node: No such file or directory`）；超過時限（npm 30 秒；uv 與更新指令相同，600 秒）沒有回答，是執行逾時，沒有結束代碼。後兩種情況下，它寫到 stderr 的每一行都記在操作記錄裡。uv 的這次讀取和 `uv tool upgrade` 一樣要等 uv 的工具檔案夾鎖：另一個 uv 指令佔著這把鎖時（例如終端機裡正在執行的 `uv tool upgrade --all`），它會像更新指令一樣等鎖放開，而不是先失敗；uv 預設最多等 5 分鐘，之後回報它自己的錯誤。讀取期間點「取消」會立即停下（npm 的讀取也是這樣），這個更新隨即顯示為已取消：不執行更新指令，也不再核對結果。一致時執行的仍是預覽中的原指令。這些都是既有的唯讀指令和有大小上限的檔案讀取，沒有新的主機、權限或寫入的檔案。
+- Banager 從不執行版本管理工具（mise、pyenv、asdf）的 shim，也不執行 `#!` 行會啟動 shim 的腳本（例如 `#!/usr/bin/env node` 而 `PATH` 上第一個 `node` 是 shim，或它前面有無法查看的檔案夾）：被設為首次使用時才安裝的 mise 工具不受 `MISE_NOT_FOUND_AUTO_INSTALL=false` 限制，執行 shim 可能先下載安裝。這樣的指令不會啟動，結果是程式無法啟動；只能透過 shim 找到的來源顯示為程式無法啟動，並保留上次列出的內容。

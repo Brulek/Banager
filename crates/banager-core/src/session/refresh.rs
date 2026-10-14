@@ -451,7 +451,8 @@ impl Session {
             };
             match handle.await {
                 Ok(found) => {
-                    let mut found = resume_unanswered_npm(found, &previous.instances);
+                    let found = resume_unanswered_npm(found, &previous.instances);
+                    let mut found = resume_refused_pip(found, &previous.instances);
                     // What typing a tool's name in Terminal runs is said
                     // only against the login shell's `PATH`, as the rows'
                     // own verdicts are (`commands::start_reading`): on
@@ -1163,6 +1164,59 @@ fn resume_unanswered_npm(
         .collect()
 }
 
+/// A pip whose launcher is in a version manager's shims folder, which
+/// `PipAdapter::detect` never runs (`runner::dispatch`, R73-1): one row
+/// for the folder, named by the first launcher found there, not
+/// responding. Last round, when such shims were still asked, may have
+/// listed pips through that folder under other launchers -- the one that
+/// answered, or one for each pip they reached. Each of those is kept
+/// instead, with last round's id, rows and the updates the user hid, and
+/// this round's state, so the carry-forward below keeps its rows; the
+/// row named by the first launcher is kept only when last round had it
+/// too, or had none of them. Any other instance is returned as found.
+fn resume_refused_pip(
+    found: Vec<ManagerInstance>,
+    previous: &[ManagerInstance],
+) -> Vec<ManagerInstance> {
+    let found_ids: HashSet<InstanceId> = found.iter().map(|i| i.id.clone()).collect();
+    let mut resumed = Vec::with_capacity(found.len());
+    for inst in found {
+        let folder = inst
+            .exe_path
+            .parent()
+            .filter(|folder| crate::commands::in_shims(folder));
+        let Some(folder) =
+            folder.filter(|_| inst.adapter_id == "pip" && inst.status.unavailable.is_some())
+        else {
+            resumed.push(inst);
+            continue;
+        };
+        let last_round: Vec<&ManagerInstance> = previous
+            .iter()
+            .filter(|p| {
+                p.adapter_id == "pip"
+                    && !found_ids.contains(&p.id)
+                    && p.exe_path
+                        .parent()
+                        .is_some_and(|parent| crate::protected::same_path(parent, folder))
+            })
+            .collect();
+        let had_it = previous.iter().any(|p| p.id == inst.id);
+        let carried: Vec<ManagerInstance> = last_round
+            .into_iter()
+            .map(|last| ManagerInstance {
+                status: inst.status.clone(),
+                ..last.clone()
+            })
+            .collect();
+        if had_it || carried.is_empty() {
+            resumed.push(inst);
+        }
+        resumed.extend(carried);
+    }
+    resumed
+}
+
 /// Keep the first instance for each id and drop every later one, with a
 /// `SourceError` for each drop naming both adapters involved.
 ///
@@ -1238,7 +1292,7 @@ fn merge_instance_notes(
 
 #[cfg(test)]
 mod tests {
-    use super::resume_unanswered_npm;
+    use super::{resume_refused_pip, resume_unanswered_npm};
     use crate::adapters::brew::BrewAdapter;
     use crate::adapters::{Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome};
     use crate::events::{EventSink, OpId, VecSink};
@@ -1670,6 +1724,140 @@ mod tests {
             .await;
         assert_eq!(snapshot.instances[0].id, stand_in.id);
         assert_eq!(snapshot.instances[0].answered_at, None);
+    }
+
+    /// A pip asked through a version manager's shim last round, whose shim
+    /// is now never run (`PipAdapter::detect`, R73-1): its rows stay under
+    /// last round's id, and the source says it could not be asked, rather
+    /// than turning into a new source with nothing under it. Seen for the
+    /// first time, it is a source that could not be asked -- never one
+    /// that answered with nothing installed.
+    #[tokio::test]
+    async fn regression_r73_1_refused_discovery_preserves_previous_inventory() {
+        let (adapter, state) = FakeAdapter::new("pip");
+        let root = crate::testing::TempTree::new("refresh-pip-refused");
+        let shims = root.dir(".pyenv/shims");
+        let answering = ManagerInstance {
+            exe_path: shims.join("python3.13"),
+            prefix: shims.clone(),
+            version: Some("26.2.1".to_string()),
+            ..make_instance("pip", "pip:shims/python3.13")
+        };
+        let refused = |name: &str, id: &str| ManagerInstance {
+            exe_path: shims.join(name),
+            prefix: shims.clone(),
+            version: None,
+            status: InstanceStatus {
+                unavailable: Some(Unavailable::NotResponding),
+                notes: Vec::new(),
+                no_answer: None,
+            },
+            ..make_instance("pip", id)
+        };
+        {
+            let mut s = state.lock().unwrap();
+            s.instances = vec![answering.clone()];
+            s.artifacts.insert(
+                "pip:shims/python3.13".to_string(),
+                vec![make_artifact("pip:shims/python3.13", "rich")],
+            );
+        }
+        let session = Session::with_adapters(Arc::new(VecSink::new()), vec![adapter], None);
+        let first = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        assert_eq!(first.artifacts.len(), 1);
+
+        // The shims are no longer run: one row for the folder, by the
+        // first name found there.
+        state.lock().unwrap().instances = vec![refused("python3.14", "pip:shims/python3.14")];
+        for round in 2..=3 {
+            let snapshot = session
+                .refresh(&non_root_env(), &CheckOptions::default())
+                .await;
+            let ids: Vec<_> = snapshot
+                .instances
+                .iter()
+                .map(|inst| (inst.id.as_str(), inst.status.unavailable))
+                .collect();
+            assert_eq!(
+                ids,
+                [("pip:shims/python3.13", Some(Unavailable::NotResponding))],
+                "round {round}"
+            );
+            let names: Vec<_> = snapshot
+                .artifacts
+                .iter()
+                .map(|a| (a.key.instance_id.as_str(), a.key.name.as_str()))
+                .collect();
+            assert_eq!(names, [("pip:shims/python3.13", "rich")], "round {round}");
+        }
+
+        // Never seen before: a source that could not be asked, with
+        // nothing under it.
+        let (fresh, fresh_state) = FakeAdapter::new("pip");
+        fresh_state.lock().unwrap().instances = vec![refused("python3", "pip:shims/python3")];
+        let session = Session::with_adapters(Arc::new(VecSink::new()), vec![fresh], None);
+        let snapshot = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        assert_eq!(snapshot.instances[0].id, "pip:shims/python3");
+        assert_eq!(
+            snapshot.instances[0].status.unavailable,
+            Some(Unavailable::NotResponding)
+        );
+        assert!(snapshot.artifacts.is_empty());
+    }
+
+    #[test]
+    fn test_resume_refused_pip_keeps_every_pip_last_round_reached_through_the_folder() {
+        let folder = PathBuf::from("/x/.pyenv/shims");
+        let last = |name: &str| ManagerInstance {
+            exe_path: folder.join(name),
+            ..make_instance("pip", &format!("pip:{name}"))
+        };
+        let stand_in = |name: &str| ManagerInstance {
+            exe_path: folder.join(name),
+            status: InstanceStatus {
+                unavailable: Some(Unavailable::NotResponding),
+                notes: Vec::new(),
+                no_answer: None,
+            },
+            ..make_instance("pip", &format!("pip:{name}"))
+        };
+        let ids = |found: Vec<ManagerInstance>| -> Vec<String> {
+            found.into_iter().map(|inst| inst.id).collect()
+        };
+        // Two pips through the folder last round, neither the one named now.
+        assert_eq!(
+            ids(resume_refused_pip(
+                vec![stand_in("python3.14")],
+                &[last("python3.12"), last("python3.11")]
+            )),
+            ["pip:python3.12", "pip:python3.11"]
+        );
+        // The one named now was among them: it stays, and so does the other.
+        assert_eq!(
+            ids(resume_refused_pip(
+                vec![stand_in("python3.12")],
+                &[last("python3.12"), last("python3.11")]
+            )),
+            ["pip:python3.12", "pip:python3.11"]
+        );
+        // A pip that answered, or one outside a shims folder, is as found.
+        let answered = last("python3.14");
+        assert_eq!(
+            resume_refused_pip(vec![answered.clone()], &[last("python3.12")]),
+            vec![answered]
+        );
+        let elsewhere = ManagerInstance {
+            exe_path: PathBuf::from("/opt/bin/python3"),
+            ..stand_in("python3")
+        };
+        assert_eq!(
+            resume_refused_pip(vec![elsewhere.clone()], &[last("python3.12")]),
+            vec![elsewhere]
+        );
     }
 
     #[test]

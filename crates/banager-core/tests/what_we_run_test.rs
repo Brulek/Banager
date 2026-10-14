@@ -1061,27 +1061,37 @@ fn test_what_we_run_shows_the_environment_of_pips_outdated_check_and_no_verbosit
 }
 
 #[test]
-fn test_what_we_run_shows_the_environment_of_pips_version_read_through_a_mise_shim() {
-    // R63-3: `detect` runs one of mise's shims that would fall back to
-    // `/usr/bin/python3` with no developer tools with
-    // `PipAdapter::NO_FALLBACK_ENV`. pip's section has to show each entry
-    // in the version row of its table, and in its prose.
+fn test_what_we_run_says_no_version_managers_shim_is_run() {
+    // R73-1: a shim may install what it runs whatever a setting says, so
+    // `RealRunner::run` refuses one, and a script that starts one along the
+    // command's `PATH` (`runner::dispatch`), and pip's discovery never asks
+    // one. What a command inherits, and pip's section, have to say so.
     let doc = read_doc();
+    let folded = doc.split_whitespace().collect::<Vec<_>>().join(" ");
+    let start = folded
+        .find("**What a command inherits.**")
+        .expect("docs/what-we-run.md has no paragraph on what a command inherits");
+    let paragraph = &folded[start..(start + 3000).min(folded.len())];
+    for said in [
+        "never runs a version manager's shim at all",
+        "`runner::dispatch`",
+        "`#!/usr/bin/env node`",
+    ] {
+        assert!(paragraph.contains(said), "{said:?} is not in {paragraph}");
+    }
     let body =
         section_body(&doc, "pip").expect("docs/what-we-run.md has no `## pip` section for pip");
     let row = body
         .lines()
         .find(|line| line.starts_with("| Version |"))
         .expect("pip's table in docs/what-we-run.md has no Version row");
-    let folded = body.split_whitespace().collect::<Vec<_>>().join(" ");
-    assert!(folded.contains("`PipAdapter::NO_FALLBACK_ENV`"));
-    for (name, value) in PipAdapter::NO_FALLBACK_ENV {
-        assert!(
-            row.contains(&format!("`{name}={value}`")),
-            "pip's version row in docs/what-we-run.md does not show {name}={value}: {row}"
-        );
-        assert!(folded.contains(&format!("`{name}={value}`")));
-    }
+    assert!(
+        row.contains("never through a version manager's shim"),
+        "{row}"
+    );
+    assert!(!body.contains("MISE_NOT_FOUND_SYSTEM_FALLBACK"));
+    let body = body.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(body.contains("`resume_refused_pip`"));
 }
 
 #[test]
