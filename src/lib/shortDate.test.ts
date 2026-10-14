@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { pretendMacLocale } from "../test/setup";
 import { calendarDaysBetween, mediumDateText, shortDateText, shortTimeText } from "./shortDate";
 
 describe("calendarDaysBetween", () => {
@@ -46,4 +47,21 @@ it("shared date formatters tolerate invalid persisted dates in all supported lan
       expect(format(new Date(9_000_000_000_000_000), language)).toBe("");
     }
   }
+});
+
+// R87-1: no locale (null) is the Mac's own formats, region and clock included.
+describe("the Mac's own formats", () => {
+  it("formats a British Mac's way with no locale, and the chosen language's with one", () => {
+    pretendMacLocale("en-GB");
+    const date = new Date(2026, 9, 13, 14, 30);
+    expect(shortDateText(date, null)).toBe("13 Oct");
+    expect(shortTimeText(date, null)).toBe("14:30");
+    expect(mediumDateText(date, null)).toBe("13 Oct 2026");
+    expect(shortDateText(date, "en")).toBe("Oct 13");
+    expect(shortTimeText(date, "en")).toMatch(/^2:30\s?PM$/u);
+    expect(mediumDateText(date, "zh-Hant")).toBe("2026年10月13日");
+    for (const format of [shortDateText, shortTimeText, mediumDateText]) {
+      expect(format(new Date(Number.NaN), null)).toBe("");
+    }
+  });
 });

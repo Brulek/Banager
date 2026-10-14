@@ -1,7 +1,12 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { act, screen } from "@testing-library/react";
+import { invoke } from "@tauri-apps/api/core";
 import i18n from "../i18n";
 import zhCN from "../i18n/zh-CN.json";
-import { nextAutoCheckText } from "./NextAutoCheck";
+import { queryKeys } from "../lib/queries";
+import type { Settings } from "../lib/types";
+import { pretendMacLocale, renderWithProviders } from "../test/setup";
+import { NextAutoCheck, nextAutoCheckText } from "./NextAutoCheck";
 
 // Local times, so the words do not hang on the machine's time zone.
 const NOW = new Date(2026, 9, 1, 13, 0).getTime();
@@ -51,5 +56,31 @@ describe("nextAutoCheckText", () => {
       "下次自动检查：10月4日08:00左右",
     );
     expect(zhCN.nextAutoCheck.soon).toBe("下次自动检查：很快");
+  });
+});
+
+// R87-1: a Mac set to English (United Kingdom), Banager's language left
+// at System: its dates and its 24-hour clock, in English words.
+describe("NextAutoCheck, on a British Mac", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("keeps British dates and a 24-hour clock in System, and says it the English way once English is chosen", async () => {
+    pretendMacLocale("en-GB");
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(NOW);
+    const settings = { language: "System" } as Settings;
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => (cmd === "get_settings" ? settings : null));
+    const { queryClient } = renderWithProviders(<NextAutoCheck at={seconds(new Date(2026, 9, 13, 14, 30))} />);
+
+    expect(await screen.findByText("Next automatic check: about 14:30 on 13 Oct")).toBeInTheDocument();
+    // The window's words, its menu bar's among them, are still English's.
+    expect(i18n.resolvedLanguage).toBe("en");
+
+    act(() => {
+      queryClient.setQueryData(queryKeys.settings, { ...settings, language: "En" });
+    });
+    expect(await screen.findByText(/^Next automatic check: about 2:30\s?PM on Oct 13$/u)).toBeInTheDocument();
   });
 });

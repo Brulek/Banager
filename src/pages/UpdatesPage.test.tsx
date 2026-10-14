@@ -3,7 +3,7 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import type { QueryClient } from "@tanstack/react-query";
 import { invoke, type InvokeArgs } from "@tauri-apps/api/core";
-import { renderWithProviders, type RenderOptions } from "../test/setup";
+import { pretendMacLocale, renderWithProviders, type RenderOptions } from "../test/setup";
 import { command } from "../test/command";
 import { UpdatesToolbar } from "../test/updatesToolbar";
 import { UpdatesPage } from "./UpdatesPage";
@@ -4577,6 +4577,25 @@ describe("UpdatesPage", () => {
         // No instance id, and so no home folder, is ever shown.
         expect(section.textContent).not.toMatch(/opt\/homebrew/);
         expect(container.textContent).not.toMatch(/brew:\//);
+      });
+
+      // R87-1: a Mac set to English (United Kingdom), the language left at
+      // System: the Mac's own dates and clock, the tooltip's too.
+      it("dates its lines the Mac's way in System, and their tooltips", async () => {
+        pretendMacLocale("en-GB");
+        vi.useFakeTimers({ toFake: ["Date"] });
+        vi.setSystemTime(new Date(2026, 9, 14, 15, 0));
+        answerHistory({
+          run: "this-launch",
+          cleared_before: null,
+          records: [kept("cmake", new Date(2026, 9, 14, 14, 2).getTime()), kept("wget", new Date(2026, 9, 8, 9, 0).getTime())],
+        });
+        renderPage();
+
+        const section = await screen.findByRole("region", { name: "Update History" });
+        const times = within(section).getAllByRole("listitem").map((line) => line.querySelector("time"));
+        expect(times.map((time) => time?.textContent)).toEqual(["Today 14:02", "8 Oct"]);
+        expect(times.map((time) => time?.getAttribute("title"))).toEqual(["14 Oct 2026, 14:02", "8 Oct 2026, 09:00"]);
       });
 
       // R87-3: a reload (the error screen's Reload) forgets `opFinishedAt`;

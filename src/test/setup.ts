@@ -24,7 +24,34 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  pretendMacLocale("en-US");
 });
+
+// The Mac's own locale, as the web view gives it: `Intl.DateTimeFormat`
+// with no locale formats the Mac's way, and `navigator.languages` names
+// it. A US Mac unless a test says otherwise (`pretendMacLocale`), whatever
+// the machine running the tests is set to.
+let macLocale = "en-US";
+const RealDateTimeFormat = Intl.DateTimeFormat;
+(Intl as { DateTimeFormat: typeof Intl.DateTimeFormat }).DateTimeFormat = new Proxy(RealDateTimeFormat, {
+  construct: (target, [locales, options]: [Intl.LocalesArgument?, Intl.DateTimeFormatOptions?]) =>
+    new target(locales === undefined ? macLocale : locales, options),
+  apply: (target, _this, [locales, options]: [Intl.LocalesArgument?, Intl.DateTimeFormatOptions?]) =>
+    target(locales === undefined ? macLocale : locales, options),
+});
+
+/** A Mac set to `locale` (`en-GB`, `zh-Hant-TW`): its default formats and its first preferred language. */
+export function pretendMacLocale(locale: string): void {
+  macLocale = locale;
+  if (locale === "en-US") {
+    // jsdom's own, en-US, from `Navigator.prototype`.
+    delete (navigator as { languages?: unknown }).languages;
+    delete (navigator as { language?: unknown }).language;
+    return;
+  }
+  Object.defineProperty(navigator, "languages", { configurable: true, get: () => [locale] });
+  Object.defineProperty(navigator, "language", { configurable: true, get: () => locale });
+}
 
 // jsdom has no ResizeObserver. @tanstack/react-virtual (Task 11) and Radix
 // ScrollArea (Task 13) both use it to measure their container; a no-op stub
