@@ -1168,9 +1168,13 @@ mod tests {
             for call in writes {
                 assert_eq!(call.env, vec![("OLLAMA_HOST".into(), host.into())]);
             }
-            // Detection, the inventory and, with no login, each
-            // operation's check after it.
-            assert!(http.calls().len() >= 2, "{:?}", http.calls());
+            // Detection and the inventory; with no login, also each
+            // operation's check after it, which must still reach the daemon.
+            if login {
+                assert_eq!(http.calls().len(), 2, "{:?}", http.calls());
+            } else {
+                assert!(http.calls().len() >= 5, "{:?}", http.calls());
+            }
             assert!(http.calls().iter().all(|called| called == &url));
             drop(calls);
             std::fs::remove_dir_all(dir).unwrap();

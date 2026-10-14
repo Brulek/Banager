@@ -168,8 +168,8 @@ its index, and when Homebrew has moved a package you have between a formula and 
 one, can install, move or uninstall Homebrew packages by itself without a preview or confirmation
 (`docs/what-we-run.md`, "Homebrew"). A Homebrew whose own folders this account can't change gets no
 `brew update`, which would only refuse there; it is view only. An `OLLAMA_HOST` Banager can't use gets no
-request, not even one to Ollama's default address, and no Ollama models are listed. After one that succeeded, checks skip it for six hours on the
-clock (time the Mac spends
+request, not even one to Ollama's default address, and no Ollama models are listed. After a `brew update`
+that succeeded, checks skip it for six hours on the clock (time the Mac spends
 asleep counts, and a clock set back to before it ended counts as the six hours gone); after one that
 failed, the next check runs it again — or, when a check had stopped waiting for it, the check after
 the one its end sets off. With **Check for updates** set to Daily in Settings — it is set to
