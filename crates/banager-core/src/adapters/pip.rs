@@ -1964,6 +1964,114 @@ mod tests {
         std::fs::remove_dir_all(root).unwrap();
     }
 
+    /// `HostEnv` of `path`, as the login shell printed it, split as bash
+    /// searches it with `home` its home folder (`path_dirs_of`).
+    fn bash_path(path: &str, home: &Path) -> HostEnv {
+        let (path_dirs, tilde_entries) =
+            crate::runner::path_dirs_of(std::ffi::OsStr::new(path), home, true);
+        HostEnv {
+            path_dirs,
+            tilde_entries,
+            home: home.to_path_buf(),
+            ..path_of(&[])
+        }
+    }
+
+    #[tokio::test]
+    async fn regression_r73_3_a_literal_tilde_folder_never_lets_a_dispatcher_be_run() {
+        // bash's `PATH`: mise's shims, then `~/python/bin` as written, then
+        // the developer-tool shims. bash finds the Python in `~/python/bin`,
+        // which mise's fallback, reading `PATH` as written, never does: it
+        // falls back to `usr/bin/python3` and the Command Line Tools dialog.
+        // The fallback guard went by bash's reading and ran the shim with
+        // the fallback on. Now no dispatcher is run at all: the shim is a
+        // source that could not be asked, before any command.
+        let root = temp_folder("r73-3-tilde");
+        let home = root.join("home");
+        file_at(&home.join("python/bin/python3"), 0o755);
+        let usr_bin = root.join("usr/bin");
+        file_at(&usr_bin.join("python3"), 0o755);
+        let mise = root.join(".local/bin/mise");
+        file_at(&mise, 0o755);
+        let mise_shims = root.join(".local/share/mise/shims");
+        std::fs::create_dir_all(&mise_shims).unwrap();
+        std::os::unix::fs::symlink(&mise, mise_shims.join("python3")).unwrap();
+        let env = bash_path(
+            &format!(
+                "{}:~/python/bin:{}",
+                mise_shims.display(),
+                usr_bin.display()
+            ),
+            &home,
+        );
+        assert_eq!(env.tilde_entries, [1]);
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(PipAdapter::XCODE_SELECT_ARGV.to_vec(), exited(2, ""));
+        runner.respond(
+            vec![text(&mise_shims.join("python3")), "-m", "pip", "--version"],
+            exited(0, "pip 26.2.1 from /usr/lib/pip (python 3.9)\n"),
+        );
+        let instances = adapter_with_shims_in(runner.clone(), &usr_bin)
+            .detect(&env)
+            .await;
+        std::fs::remove_dir_all(&root).unwrap();
+        assert!(
+            runner
+                .calls()
+                .iter()
+                .all(|call| call[0] != text(&mise_shims.join("python3"))),
+            "{:?}",
+            runner.calls()
+        );
+        let shim_rows: Vec<_> = instances
+            .iter()
+            .filter(|inst| inst.exe_path == mise_shims.join("python3"))
+            .map(|inst| {
+                (
+                    inst.status.unavailable,
+                    inst.status.no_answer.as_ref().map(|answer| answer.kind),
+                )
+            })
+            .collect();
+        assert_eq!(
+            shim_rows,
+            [(
+                Some(Unavailable::NotResponding),
+                Some(crate::model::NoAnswerKind::CouldNotStart)
+            )]
+        );
+    }
+
+    #[tokio::test]
+    async fn regression_r73_3_a_python_found_directly_keeps_bashs_reading_of_a_tilde() {
+        // `~`, `~/python/bin` and the same folder spelled whole: bash finds
+        // the Python in the home folder's `python/bin`, asked once.
+        let root = temp_folder("r73-3-direct");
+        let home = root.join("home");
+        let python = home.join("python/bin/python3");
+        file_at(&python, 0o755);
+        let env = bash_path(
+            &format!("~:~/python/bin:{}", home.join("python/bin").display()),
+            &home,
+        );
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec![text(&python), "-m", "pip", "--version"],
+            exited(0, "pip 26.2.1 from /x/pip (python 3.13)\n"),
+        );
+        let instances = PipAdapter::new(runner.clone()).detect(&env).await;
+        std::fs::remove_dir_all(&root).unwrap();
+        let found: Vec<_> = instances
+            .iter()
+            .map(|inst| (inst.exe_path.clone(), inst.version.clone()))
+            .collect();
+        assert_eq!(found, [(python.clone(), Some("26.2.1".to_string()))]);
+        assert_eq!(
+            runner.calls(),
+            vec![argv(&[text(&python), "-m", "pip", "--version"])]
+        );
+    }
+
     #[tokio::test]
     async fn test_f12_virtualenvs_with_one_base_binary_stay_separate() {
         for shared_pip in [false, true] {
