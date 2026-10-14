@@ -800,9 +800,24 @@ mod tests {
         // and OpenCode 2's npm package `@opencode/cli`: Homebrew keys a tap's
         // formula by its full name, matched exactly (R88-1).
         for (adapter, kind, name, family) in [
-            ("brew", ArtifactKind::Formula, "anomalyco/tap/opencode", "opencode"),
-            ("brew", ArtifactKind::Formula, "anomalyco/tap/opencode-v2", "opencode"),
-            ("brew", ArtifactKind::Formula, "charmbracelet/tap/crush", "crush"),
+            (
+                "brew",
+                ArtifactKind::Formula,
+                "anomalyco/tap/opencode",
+                "opencode",
+            ),
+            (
+                "brew",
+                ArtifactKind::Formula,
+                "anomalyco/tap/opencode-v2",
+                "opencode",
+            ),
+            (
+                "brew",
+                ArtifactKind::Formula,
+                "charmbracelet/tap/crush",
+                "crush",
+            ),
             ("npm", ArtifactKind::Package, "@opencode/cli", "opencode"),
             ("npm", ArtifactKind::Package, "opencode-ai", "opencode"),
         ] {
@@ -810,7 +825,8 @@ mod tests {
         }
         // Their folders are the family's, unchanged: OpenCode 2's docs name
         // the same two (module doc, "Members added 2026-10-14").
-        let opencode = family_for("npm", &key("x", ArtifactKind::Package, "@opencode/cli")).unwrap();
+        let opencode =
+            family_for("npm", &key("x", ArtifactKind::Package, "@opencode/cli")).unwrap();
         assert_eq!(
             opencode.data_paths,
             ["~/.local/share/opencode", "~/.config/opencode"]

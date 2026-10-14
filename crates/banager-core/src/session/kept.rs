@@ -664,7 +664,8 @@ mod tests {
     /// name their family's folders, as its other copies do; another tap's
     /// formula of the same short name names none.
     #[tokio::test]
-    async fn test_uninstalling_the_vendors_own_taps_and_opencode_2s_npm_package_names_their_folders() {
+    async fn test_uninstalling_the_vendors_own_taps_and_opencode_2s_npm_package_names_their_folders(
+    ) {
         let home = Home::new("r88-1");
         for file in [
             ".local/share/opencode/opencode.db",
@@ -675,17 +676,34 @@ mod tests {
             home.file(file, 2_000);
         }
         let tool = |path: &str| (path.to_string(), KeptData::ToolData, true);
-        let opencode = vec![
-            tool("~/.local/share/opencode"),
-            tool("~/.config/opencode"),
-        ];
+        let opencode = vec![tool("~/.local/share/opencode"), tool("~/.config/opencode")];
         let crush = vec![tool("~/.local/share/crush"), tool("~/.config/crush")];
         for (adapter, kind, name, expected) in [
-            ("brew", ArtifactKind::Formula, "anomalyco/tap/opencode", opencode.clone()),
-            ("brew", ArtifactKind::Formula, "anomalyco/tap/opencode-v2", opencode.clone()),
-            ("brew", ArtifactKind::Formula, "charmbracelet/tap/crush", crush),
+            (
+                "brew",
+                ArtifactKind::Formula,
+                "anomalyco/tap/opencode",
+                opencode.clone(),
+            ),
+            (
+                "brew",
+                ArtifactKind::Formula,
+                "anomalyco/tap/opencode-v2",
+                opencode.clone(),
+            ),
+            (
+                "brew",
+                ArtifactKind::Formula,
+                "charmbracelet/tap/crush",
+                crush,
+            ),
             ("npm", ArtifactKind::Package, "@opencode/cli", opencode),
-            ("brew", ArtifactKind::Formula, "someone/tap/opencode", vec![]),
+            (
+                "brew",
+                ArtifactKind::Formula,
+                "someone/tap/opencode",
+                vec![],
+            ),
             ("brew", ArtifactKind::Formula, "someone/tap/crush", vec![]),
         ] {
             let session = session_over(fake(adapter, kind, name, vec![]), &home.0, true).await;

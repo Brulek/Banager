@@ -1034,5 +1034,8 @@ fn test_the_vendors_own_unlinked_tap_formulae_are_named_from_their_short_named_k
         ]
     );
     // Another tap's `crush`, the same keg folder there: not read.
-    assert_eq!(named(&[unlinked("someone/tap/crush")]), vec![Vec::<String>::new()]);
+    assert_eq!(
+        named(&[unlinked("someone/tap/crush")]),
+        vec![Vec::<String>::new()]
+    );
 }
