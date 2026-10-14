@@ -15,7 +15,8 @@ Banager puts all of it in one window: what you have, what has an update, and a b
 > **Status: pre-release.** The core and the UI work and are covered by 2382 Rust tests (plus 11 more
 > that only run with `--ignored`: they touch a real Homebrew, the real Trash, AppKit or this Mac's
 > disk, or time a large run) and 3234 front-end tests, but there is no downloadable build yet — v0.1 is being prepared. Nothing here is
-> ready to rely on.
+> ready to rely on. Banager can't update itself yet: a release build makes no updater files and
+> publishes no `latest.json`.
 
 <!-- A screenshot belongs here before the first release. -->
 
@@ -222,7 +223,7 @@ page with its search box focused, and Settings… (⌘,) is in the Banager menu.
 or minimized, each of these brings it back first. **Keyboard Shortcuts** in the Help menu lists the
 keys Banager answers to, in three groups: the window's (these, Close Window and Quit), the lists' (↑ ↓
 and the keys that page or jump to an end, Space to tick a row, Return and Escape for Installed's
-details, Tab) and the dialogs' (Return, Escape). **Common Questions**, above it, answers thirteen questions
+details, Tab) and the dialogs' (Return, Escape). **Common Questions**, above it, answers fourteen questions
 in a few plain sentences each — a command Terminal can't find, why some tools can't be updated here,
 "Installed twice", the Mac password, what an uninstall leaves, what keeps a tool from being uninstalled, what Banager itself changes, Other
 Programs, sizes, major updates, an update's warning, a background service after its update, the automatic check and
@@ -545,7 +546,8 @@ Banager 把它们放进同一个窗口：装了什么、哪个有更新、每个
 
 **目前处于发布前阶段**，核心与界面已经可用、有 2374 个 Rust 测试（另有 11 个平时跳过、要加
 `--ignored` 才跑：它们连着真实的 Homebrew、真实的废纸篓、AppKit 或本机磁盘，或给大批量计时）和 3234 个前端测试，但还没有可下载的版本，v0.1 正在
-准备。现在还不适合依赖它。
+准备。现在还不适合依赖它。Banager 暂时还不能自我更新：发布构建不生成更新包，也不发布
+`latest.json`。
 
 界面支持英文、简体中文和台湾用语的繁体中文，跟随系统语言，也可以在设置中选择。
 窗口里所有标签、标题、按钮和提示框都走 i18n，三种语言由测试保证同步——
@@ -714,7 +716,7 @@ Banager 开着时还会每天做一次同样的检查，查到的更新都不安
 “搜索”（⌘F），后者打开“已安装”页，并把光标放进搜索框；“设置…”（⌘,）在“Banager”菜单里。窗口关着或最小化时，
 选这些项会先把窗口叫回来。菜单栏“帮助”里的“键盘快捷键”列出 Banager 里能用的按键，分三组：窗口（上面这些，再加
 “关闭窗口”和“退出”）、列表（↑ ↓、翻页和跳到两头的键、用空格键勾选一行、在“已安装”里用回车和 Esc 打开和关闭详细信息、Tab）
-和对话框（回车、Esc）。它上面的“常见问题”用几句大白话回答十三个常见问题：终端里找不到命令、为什么有的工具不能在这里更新、
+和对话框（回车、Esc）。它上面的“常见问题”用几句大白话回答十四个常见问题：终端里找不到命令、为什么有的工具不能在这里更新、
 “装了两份”、Mac 密码、卸载后留下什么、什么会让工具不能卸载、Banager 自己会改动什么、“其他程序”、占用空间、大版本更新、更新后的警告、更新后台服务、自动检查和
 Canager 的设置；
 能动手处理的，旁边有“查看”按钮，直接打开对应的页面或“已安装”里的显示选项。
