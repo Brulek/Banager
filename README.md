@@ -111,7 +111,8 @@ a protected place**, and the link is not followed.
   tool's or app's data, or may hold some that its measurement stopped short of ruling out, since what stays installed
   may still use it. `~/.codex` and `~/.copilot` are always such folders:
   the ChatGPT, Codex and GitHub Copilot apps keep their own settings and data there too, which a line under them says.
-  So is `~/.ollama/models` while Ollama.app or another `ollama` stays beside the Homebrew `ollama` being uninstalled:
+  So is `~/.ollama/models` while Ollama.app or another `ollama` that can run on its own (not a version manager's
+  shim) stays beside the Homebrew `ollama` being uninstalled:
   a line under it says another copy of Ollama still uses those models.
 - A Homebrew package another source runs on can't be uninstalled while that source has tools of its own:
   its preview lists the source under **Software that uses it**, after Homebrew's own dependents — "npm with
@@ -577,7 +578,7 @@ formula 与 cask，以及 npm、PyPI、crates.io 上的包，每条都译自该�
   废纸篓（同时列出终端配置文件时，提醒它留在原处）。这个工具的另一份、或同一类的其他工具还装着，或者文件夹里有另一份
   的程序、别的工具或 App 的数据，或者量大小时没量完、排除不了这些时，不说这句话：还装着的那一份可能还在用。`~/.codex` 和 `~/.copilot` 总是这样的文件夹：
   ChatGPT、Codex 和 GitHub Copilot App 也把自己的设置和数据放在那里，它们下面会有一行说明。卸载 Homebrew 的 `ollama`
-  而 Ollama App 或另一个 `ollama` 还在时，`~/.ollama/models` 也是这样：它下面会有一行说明另一份 Ollama 还在用这些模型。
+  而 Ollama App 或另一个能自己运行的 `ollama`（不是版本管理工具的 shim）还在时，`~/.ollama/models` 也是这样：它下面会有一行说明另一份 Ollama 还在用这些模型。
 - 别的来源要靠它运行的 Homebrew 软件，在那个来源还有自己的工具时不能卸载：预览把那个来源接在 Homebrew 自己的依赖者
   后面，列在“依赖此工具的软件”下——npm 靠着运行的 `node@22` 下是“npm及其4个工具”，pipx 工具环境所用的
   `python@3.13` 下是“pipx装的2个工具”，`ollama` 下是 Ollama 及其模型（Ollama App 或另一个 `ollama` 还在、能接着运行

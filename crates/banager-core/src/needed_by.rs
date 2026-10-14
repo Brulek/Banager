@@ -299,6 +299,8 @@ pub fn needed_by_on_path(
         let mut doubts = Vec::new();
         let into = if source.adapter_id == "pip" {
             look.python_leads_into(&source.exe_path, &roots)
+        } else if ollama {
+            look.ollama_leads_into(&source.exe_path, &roots)
         } else {
             look.leads_into(&source.exe_path, &roots)
         };
@@ -326,12 +328,15 @@ pub fn needed_by_on_path(
         }
         // An Ollama that stays -- Banager's own, outside the package, or
         // Ollama.app or another `ollama` on `PATH` while Banager's leads
-        // in -- runs the same models from the same folder
-        // (`~/.ollama/models`): they need nothing of this one.
+        // in or is not known to lead anywhere (a version manager's shim) --
+        // runs the same models from the same folder (`~/.ollama/models`):
+        // they need nothing of this one.
         if ollama {
             if into == Some(false) {
                 ollama_stays = true;
-            } else if program && look.another_ollama(env, &refreshed.applications, &roots) {
+            } else if (program || into.is_none())
+                && look.another_ollama(env, &refreshed.applications, &roots)
+            {
                 ollama_stays = true;
                 continue;
             }
@@ -660,6 +665,32 @@ impl Look {
         Some(false)
     }
 
+    /// `leads_into` for an Ollama source's program. A version manager's
+    /// shim -- in a folder named `shims`, or a link to the mise program
+    /// (`runner::dispatch::is_dispatcher`) -- runs whichever Ollama the
+    /// manager picks when it runs, the next one on `PATH` among them (mise
+    /// with none of its own installed, as for a tool set to install on
+    /// first use): one outside the package's folders proves nothing about
+    /// which runs, `None` (R73-2). One that leads into the folders still
+    /// does.
+    fn ollama_leads_into(&mut self, path: &Path, roots: &[PathBuf]) -> Option<bool> {
+        let real = match self.resolve(path) {
+            Leads::To(real) => real,
+            Leads::Nowhere => return Some(false),
+            Leads::Unknown => return None,
+        };
+        let spelled = protected::without_data_volume(&real);
+        if roots.iter().any(|root| {
+            protected::starts_with_folded(&spelled, &protected::without_data_volume(root))
+        }) {
+            return Some(true);
+        }
+        if crate::runner::dispatch::is_dispatcher(path, Some(&real)) {
+            return None;
+        }
+        Some(false)
+    }
+
     /// Whether `package` could be what one of the doubts met leads to
     /// (`Doubt`), so that the look did not finish. By its name: a package
     /// named for what a doubt would have to end at (`named_for`: `uv`,
@@ -836,10 +867,11 @@ impl Look {
     /// Whether an `ollama` other than the package's stays: the one in
     /// Ollama.app's `Contents/Resources`, in `applications` or
     /// `~/Applications` (`ollama::ollama_app_roots`), or one in a folder on
-    /// `env`'s `PATH`, that is there and leads, every link followed,
-    /// outside `roots`. One it could not follow, or did not reach within
-    /// the budget, is no proof: `false`, and the models still need the
-    /// package.
+    /// `env`'s `PATH`, that is there, an executable file, no version
+    /// manager's shim, and leads, every link followed, outside `roots`.
+    /// One it could not follow, or did not reach within the budget, is no
+    /// proof: `false`, and the models still need the package; past a shim
+    /// or a file that cannot run, it looks on (R73-2).
     fn another_ollama(&mut self, env: &HostEnv, applications: &Path, roots: &[PathBuf]) -> bool {
         let in_apps = [applications.to_path_buf(), env.home.join("Applications")]
             .into_iter()
@@ -856,12 +888,19 @@ impl Look {
             if let Resolution::Found(real, meta) =
                 protected::resolve(&candidate, &self.protected, true)
             {
-                let real = protected::without_data_volume(&real);
-                if meta.is_file()
-                    && !roots.iter().any(|root| {
-                        protected::starts_with_folded(&real, &protected::without_data_volume(root))
-                    })
+                // A version manager's shim picks the copy it runs when it
+                // runs -- perhaps this one (`ollama_leads_into`); a file
+                // that cannot be run runs nothing.
+                if crate::runner::dispatch::is_dispatcher(&candidate, Some(&real))
+                    || !meta.is_file()
+                    || meta.mode() & 0o111 == 0
                 {
+                    continue;
+                }
+                let real = protected::without_data_volume(&real);
+                if !roots.iter().any(|root| {
+                    protected::starts_with_folded(&real, &protected::without_data_volume(root))
+                }) {
                     return true;
                 }
             }
@@ -1897,6 +1936,94 @@ mod tests {
         );
         assert!(found.warnings.is_empty());
         assert!(found.complete);
+        assert!(found.ollama_stays);
+    }
+
+    #[test]
+    fn regression_r73_2_a_dispatcher_or_a_file_that_cannot_run_is_no_other_ollama() {
+        // Homebrew's formula first on `PATH`, a mise shim of `ollama` after
+        // it: the shim leads to mise, outside the formula, and was taken
+        // for another Ollama that keeps running the models. mise picks the
+        // copy it runs when it runs -- with none of its own installed (a
+        // tool set to install on first use), the next `ollama` on `PATH`,
+        // the formula's. So is a link to mise of that name elsewhere; and a
+        // file named `ollama` that is not executable runs nothing. None of
+        // them keeps the models; a real Ollama after a dispatcher still
+        // does.
+        let root = Root::new("ollama-dispatcher");
+        root.dir("opt/homebrew/Caskroom");
+        root.program("opt/homebrew/Cellar/ollama/0.34.1/bin/ollama");
+        root.link(
+            "opt/homebrew/bin/ollama",
+            "../Cellar/ollama/0.34.1/bin/ollama",
+        );
+        let mise = root.program("home/.local/bin/mise");
+        let shim = root.link(
+            "home/.local/share/mise/shims/ollama",
+            mise.to_str().unwrap(),
+        );
+        let ollama = instance(
+            "ollama",
+            "ollama:http://127.0.0.1:11434",
+            root.path("opt/homebrew/bin/ollama"),
+            root.path("home/.ollama"),
+        );
+        let look = |source: &ManagerInstance, path: &[&str]| {
+            let instances = vec![brew(&root), source.clone()];
+            needed_by_on_path(
+                &formula("ollama"),
+                &instances[0],
+                &instances,
+                &[row(&source.id, ArtifactKind::Model, "llama3.2:3b")],
+                &root.env(path),
+                &Refreshed {
+                    path_known: true,
+                    unlisted: Vec::new(),
+                    applications: root.path("Applications"),
+                },
+                BUDGET,
+            )
+        };
+        let shims = "home/.local/share/mise/shims";
+        let found = look(&ollama, &["opt/homebrew/bin", shims]);
+        assert_eq!(needed(&found.warnings), vec![(ollama.id.clone(), true, 1)]);
+        assert!(!found.ollama_stays);
+        root.link("usr/local/bin/ollama", mise.to_str().unwrap());
+        let found = look(&ollama, &["opt/homebrew/bin", "usr/local/bin"]);
+        assert_eq!(needed(&found.warnings), vec![(ollama.id.clone(), true, 1)]);
+        assert!(!found.ollama_stays);
+        std::fs::remove_file(root.path("usr/local/bin/ollama")).unwrap();
+        std::fs::write(root.path("usr/local/bin/ollama"), b"").unwrap();
+        std::fs::set_permissions(
+            root.path("usr/local/bin/ollama"),
+            std::fs::Permissions::from_mode(0o644),
+        )
+        .unwrap();
+        let found = look(&ollama, &["opt/homebrew/bin", "usr/local/bin"]);
+        assert_eq!(needed(&found.warnings), vec![(ollama.id.clone(), true, 1)]);
+        assert!(!found.ollama_stays);
+        // A real one after the shim keeps them.
+        root.program("opt/ollama-download/ollama");
+        let found = look(&ollama, &["opt/homebrew/bin", shims, "opt/ollama-download"]);
+        assert!(found.warnings.is_empty(), "{:?}", found.warnings);
+        assert!(found.ollama_stays);
+
+        // Banager's own Ollama found as the shim: which copy it runs is not
+        // known -- not a dependency, not another Ollama either -- unless a
+        // real one stays beside it.
+        let through_shim = instance(
+            "ollama",
+            "ollama:http://127.0.0.1:11434",
+            shim.clone(),
+            root.path("home/.ollama"),
+        );
+        let found = look(&through_shim, &[shims, "opt/homebrew/bin"]);
+        assert!(found.warnings.is_empty(), "{:?}", found.warnings);
+        assert!(!found.ollama_stays);
+        assert!(!found.complete);
+        root.program("Applications/Ollama.app/Contents/Resources/ollama");
+        let found = look(&through_shim, &[shims, "opt/homebrew/bin"]);
+        assert!(found.warnings.is_empty());
         assert!(found.ollama_stays);
     }
 

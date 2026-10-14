@@ -5126,12 +5126,20 @@ Mac is only a client. Nor does Ollama need the package while another
 `ollama` stays (`Look::another_ollama`): the one in Ollama.app's
 `Contents/Resources`, in `/Applications` or `~/Applications` (where the
 Open Ollama button looks), or one in a folder on the `PATH` of the last
-refresh, that is there and leads, every link followed, outside the
-package's folder -- ollama.com's app beside Homebrew's formula runs the
-same models from the same `~/.ollama/models`, which the preview names
-among what stays. One look for each of those two apps and each `PATH`
-folder, each link followed; one it could not follow, or did not reach
-within the budget, counts for nothing. While such an Ollama stays, or
+refresh, that is there, is an executable file and leads, every link
+followed, outside the package's folder -- ollama.com's app beside
+Homebrew's formula runs the same models from the same `~/.ollama/models`,
+which the preview names among what stays. One look for each of those two
+apps and each `PATH` folder, each link followed; one it could not follow,
+or did not reach within the budget, counts for nothing, and so does a
+file that cannot be run or a version manager's shim (a folder named
+`shims`, or a link to mise: `runner::dispatch::is_dispatcher`), which
+picks the copy it runs when it runs -- with none of its own installed,
+the next `ollama` on `PATH`, perhaps the package's (R73-2). When
+Banager's own Ollama is found as such a shim, which copy it runs is not
+known (`Look::ollama_leads_into`): its models are not said to need the
+package, the preview says it could not tell everything that uses it, and
+they stay in use only while another copy as above stays. While such an Ollama stays, or
 Banager's own Ollama leads outside the package, the preview says under
 `~/.ollama/models` that another copy of Ollama still uses those models,
 and does not say they can be moved to the Trash
