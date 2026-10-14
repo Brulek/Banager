@@ -562,6 +562,25 @@ impl PipAdapter {
         ("PIP_RETRIES", "5"),
     ];
 
+    /// The environment of every other `pip list --format=json` Banager
+    /// parses (`run_pip_list`: both of the inventory's, the count read
+    /// before the update check, and the list read when that check fails):
+    /// pip's normal verbosity, whatever the user's `pip.conf` or
+    /// environment set. pip prints the JSON through its logger at INFO
+    /// (`commands/list.py:307-308`, `write_output` in `utils/misc.py:402-403`),
+    /// and a valid `pip.conf` with `quiet = 1` lowers the level below INFO
+    /// (`cli/base_command.py:191-201`, `utils/logging.py:289-290`), so pip
+    /// exits 0 having printed nothing, which no parse reads as a list (r81
+    /// R81-2, seen with pip 26.2.1). Both are counts pip accepts from the
+    /// environment, which outranks a `pip.conf`; nothing else of the user's
+    /// configuration is set aside. No `PIP_RETRIES`: these lists ask no
+    /// index (`OUTDATED_ENV` says why the check sets it).
+    ///
+    /// `tests/what_we_run_test.rs` checks that pip's section of
+    /// `docs/what-we-run.md` shows each entry.
+    pub const LIST_ENV: [(&'static str, &'static str); 2] =
+        [("PIP_QUIET", "0"), ("PIP_VERBOSE", "0")];
+
     pub fn new(runner: Arc<dyn CommandRunner>) -> PipAdapter {
         let meta = AdapterMeta::from_toml(include_str!("../../../../adapters/meta/pip.toml"))
             .expect("adapters/meta/pip.toml must parse");
@@ -833,7 +852,10 @@ impl PipAdapter {
                 CommandSpec {
                     program: inst.exe_path.clone(),
                     args,
-                    env: Vec::new(),
+                    env: Self::LIST_ENV
+                        .iter()
+                        .map(|(name, value)| (name.to_string(), value.to_string()))
+                        .collect(),
                     cwd: None,
                     timeout: Duration::from_secs(60),
                     output_use: OutputUse::Parsed,
@@ -1742,6 +1764,192 @@ mod tests {
                 exited_with(0, "[]\n", "")
             })
         }
+    }
+
+    /// A pip whose `pip.conf` sets `quiet = 1` (r81 R81-2): pip logs its
+    /// JSON at INFO, which that level hides, so a list exits 0 having
+    /// printed nothing unless the command sets `PIP_QUIET=0`, which
+    /// outranks the file. The plain list names `requests` and, without
+    /// `--not-required`, `certifi`, which it requires. `fail_first_list`
+    /// fails the first plain list; `lookup_fails` fails the lookup.
+    /// Source-derived, not a recording of a real pip; no Python is run.
+    struct QuietConfRunner {
+        specs: std::sync::Mutex<Vec<CommandSpec>>,
+        fail_first_list: std::sync::atomic::AtomicBool,
+        lookup_fails: bool,
+    }
+
+    impl QuietConfRunner {
+        fn new(fail_first_list: bool, lookup_fails: bool) -> QuietConfRunner {
+            QuietConfRunner {
+                specs: std::sync::Mutex::new(Vec::new()),
+                fail_first_list: std::sync::atomic::AtomicBool::new(fail_first_list),
+                lookup_fails,
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl CommandRunner for QuietConfRunner {
+        async fn run(
+            &self,
+            spec: CommandSpec,
+            _on_line: Option<crate::runner::LineCallback>,
+            _cancel: CancellationToken,
+        ) -> Result<CommandOutput, crate::runner::RunnerError> {
+            let looks_up = spec
+                .args
+                .iter()
+                .any(|a| a == "--outdated" || a == "--uptodate");
+            let heard = spec.env.iter().any(|(k, v)| k == "PIP_QUIET" && v == "0");
+            let leaves_only = spec.args.iter().any(|a| a == "--not-required");
+            self.specs.lock().unwrap().push(spec);
+            Ok(if looks_up {
+                if self.lookup_fails {
+                    exited_with(2, "", "ERROR: an index that did not answer")
+                } else {
+                    exited_with(0, if heard { "[]\n" } else { "" }, "")
+                }
+            } else if self
+                .fail_first_list
+                .swap(false, std::sync::atomic::Ordering::SeqCst)
+            {
+                exited_with(1, "", "ERROR: the first list failed")
+            } else if !heard {
+                exited_with(0, "", "")
+            } else if leaves_only {
+                exited_with(
+                    0,
+                    r#"[{"name":"requests","version":"2.32.3"},{"name":"rich","version":"14.0.0"}]"#,
+                    "",
+                )
+            } else {
+                exited_with(
+                    0,
+                    r#"[{"name":"certifi","version":"2025.1.31"},{"name":"requests","version":"2.32.3"},{"name":"rich","version":"14.0.0"}]"#,
+                    "",
+                )
+            })
+        }
+    }
+
+    fn list_env() -> Vec<(String, String)> {
+        vec![
+            ("PIP_QUIET".to_string(), "0".to_string()),
+            ("PIP_VERBOSE".to_string(), "0".to_string()),
+        ]
+    }
+
+    #[tokio::test]
+    async fn regression_r81_2_inventory_overrides_configured_quiet() {
+        let runner = Arc::new(QuietConfRunner::new(false, false));
+        let artifacts = PipAdapter::new(runner.clone())
+            .inventory(&test_instance())
+            .await
+            .expect("pip.conf's quiet = 1 does not hide the list");
+        let read: Vec<(&str, &str, InstallReason)> = artifacts
+            .iter()
+            .map(|a| (a.key.name.as_str(), a.version.as_str(), a.reason))
+            .collect();
+        assert_eq!(
+            read,
+            [
+                ("certifi", "2025.1.31", InstallReason::Dependency),
+                ("requests", "2.32.3", InstallReason::Unknown),
+                ("rich", "14.0.0", InstallReason::Unknown),
+            ]
+        );
+        let specs = runner.specs.lock().unwrap();
+        assert_eq!(specs.len(), 2);
+        assert_eq!(specs[0].args, ["-m", "pip", "list", "--format=json"]);
+        assert_eq!(
+            specs[1].args,
+            ["-m", "pip", "list", "--format=json", "--not-required"]
+        );
+        for spec in specs.iter() {
+            assert_eq!(spec.env, list_env());
+            assert_eq!(spec.timeout, Duration::from_secs(60));
+        }
+    }
+
+    #[tokio::test]
+    async fn regression_r81_2_quiet_does_not_hide_the_package_count() {
+        let runner = Arc::new(QuietConfRunner::new(false, false));
+        PipAdapter::new(runner.clone())
+            .check_updates(&test_instance(), &CheckOptions::default())
+            .await
+            .expect("the check answers");
+        let specs = runner.specs.lock().unwrap();
+        assert_eq!(specs.len(), 2, "the count read and the lookup, no more");
+        assert_eq!(
+            specs[0].args,
+            ["-m", "pip", "list", "--format=json", "--not-required"]
+        );
+        assert_eq!(specs[0].env, list_env());
+        // Two packages counted: 60 s and 1.5 s each.
+        assert_eq!(specs[1].timeout, Duration::from_secs(63));
+        assert_eq!(
+            specs[1].env,
+            [
+                ("PIP_QUIET".to_string(), "0".to_string()),
+                ("PIP_VERBOSE".to_string(), "2".to_string()),
+                ("PIP_RETRIES".to_string(), "5".to_string())
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn regression_r81_2_fallback_lists_use_the_same_verbosity() {
+        let runner = Arc::new(QuietConfRunner::new(true, true));
+        let rows = PipAdapter::new(runner.clone())
+            .check_updates(&test_instance(), &CheckOptions::default())
+            .await
+            .expect("an index that did not answer is no source failure")
+            .candidates;
+        let names: Vec<&str> = rows.iter().map(|r| r.key.name.as_str()).collect();
+        assert_eq!(names, ["requests", "rich"]);
+        assert!(rows.iter().all(|r| !r.checkable));
+        let specs = runner.specs.lock().unwrap();
+        assert_eq!(specs.len(), 3);
+        for spec in [&specs[0], &specs[2]] {
+            assert_eq!(
+                spec.args,
+                ["-m", "pip", "list", "--format=json", "--not-required"]
+            );
+            assert_eq!(spec.env, list_env());
+        }
+        assert!(specs[1]
+            .env
+            .contains(&("PIP_RETRIES".to_string(), "5".to_string())));
+    }
+
+    /// The overrides make pip print; they make no empty answer a list.
+    #[tokio::test]
+    async fn regression_r81_2_empty_output_with_the_overrides_is_still_no_list() {
+        let runner = Arc::new(MockRunner::new());
+        for args in [
+            vec![
+                "/opt/homebrew/bin/python3.14",
+                "-m",
+                "pip",
+                "list",
+                "--format=json",
+            ],
+            vec![
+                "/opt/homebrew/bin/python3.14",
+                "-m",
+                "pip",
+                "list",
+                "--format=json",
+                "--not-required",
+            ],
+        ] {
+            runner.respond(args, exited_with(0, "", ""));
+        }
+        assert!(matches!(
+            PipAdapter::new(runner).inventory(&test_instance()).await,
+            Err(AdapterError::Parse(_))
+        ));
     }
 
     #[tokio::test]

@@ -31,7 +31,7 @@ Banager updates and uninstalls what you already have; it can't install anything 
 | npm — global packages | yes | yes, when the prefix is yours to write; updates are offered only for packages listed directly in the selected global installation, and nested dependencies are not offered separately |
 | pipx | yes | yes |
 | uv — tools | yes | yes, but no uninstall while `UV_TOOL_DIR` is set in Banager's environment: removing the last tool, uv would then also delete the folder above that one, with every file in it, when that folder holds no other folder; the row says so |
-| pip | yes; if a pip package index rejects the check and no version is confirmed, the package is marked “Can't check”, and its error details can be copied | **no** — Banager will not drive pip's installer; it points you at pipx or uv |
+| pip | yes, even when `pip.conf` turns on quiet output: Banager overrides that setting for its own list commands only, without editing the file; if a pip package index rejects the check and no version is confirmed, the package is marked “Can't check”, and its error details can be copied | **no** — Banager will not drive pip's installer; it points you at pipx or uv |
 | cargo | yes | yes, with a warning that it compiles locally |
 | Ollama — models | yes, unless `OLLAMA_HOST` is an address Banager can't use | yes, likewise, but not at an address with a login |
 | Claude Code — the native install, via its own installer | yes | updates yes, except while its own `~/.claude/settings.json` turns every update off with `DISABLE_UPDATES`, which `claude update` obeys too: then a newer version is listed under "N more can't be updated here", marked "Updates turned off", with no Update button; install no (the installer is Anthropic's, and Banager never runs it); uninstall yes — its program files, download cache and launcher go to the Trash, and your settings and history stay |
@@ -544,7 +544,7 @@ Banager（原名 Canager）：bao-manager，bao 是“包”的拼音；读起�
 Banager 把它们放进同一个窗口：装了什么、哪个有更新、每个都配一个按钮。
 
 在 Banager 里选择更新或卸载时，都能在它运行之前看到确切的命令，连同 Banager 为它设的环境变量（有两类除外，都在 `docs/what-we-run.md` 的“How Banager runs anything”一节列出：从登录 shell 拿来的 `PATH` 和代理、镜像设置，代理设置里可能有密码，所以从不显示；还有每条命令都带的 `MISE_NOT_FOUND_AUTO_INSTALL=false`，让 mise 不会自己装上缺的版本；被设为首次使用时才安装的工具，mise 仍会照装，所以 Banager 从不自己启动 mise、pyenv 等版本管理工具的 shim，也不运行 `#!` 行会启动 shim 的脚本，只能通过 shim 找到的工具会显示它的程序无法启动；`PATH` 里 `node` 前面有受保护位置（例如“下载”）里的文件夹时，npm 也会这样显示）：在确认框里点「查看命令」，或者在设置里打开「显示技术细节」，
-让它一开始就展开；可能要输入 Mac 密码的，确认框也会先说。不运行命令的卸载，改为列出它要移到废纸篓的每一条路径。`OLLAMA_HOST` 带有登录信息的 Ollama 只能查看，因为 `ollama` 命令无法使用登录信息，所以不会有命令拿到它。如果pip软件源拒绝检查，且未能确认版本，这个软件包会标为“无法检查”，并可拷贝错误详情。npm更新只提供给所选全局安装位置直接列出的软件包，不单独提供其依赖项的更新。Google的说明提供了agy update，用于更新已安装的Antigravity CLI；Banager尚未验证运行这条命令，因此暂不提供更新操作。
+让它一开始就展开；可能要输入 Mac 密码的，确认框也会先说。不运行命令的卸载，改为列出它要移到废纸篓的每一条路径。`OLLAMA_HOST` 带有登录信息的 Ollama 只能查看，因为 `ollama` 命令无法使用登录信息，所以不会有命令拿到它。如果pip软件源拒绝检查，且未能确认版本，这个软件包会标为“无法检查”，并可拷贝错误详情。即使pip.conf启用了静默输出，仍可读取pip软件包列表；只在Banager运行列表命令时覆盖这项设置，不修改配置文件。npm更新只提供给所选全局安装位置直接列出的软件包，不单独提供其依赖项的更新。Google的说明提供了agy update，用于更新已安装的Antigravity CLI；Banager尚未验证运行这条命令，因此暂不提供更新操作。
 
 **目前处于发布前阶段**，核心与界面已经可用、有 2399 个 Rust 测试（另有 11 个平时跳过、要加
 `--ignored` 才跑：它们连着真实的 Homebrew、真实的废纸篓、AppKit 或本机磁盘，或给大批量计时）和 3258 个前端测试，但还没有可下载的版本，v0.1 正在

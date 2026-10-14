@@ -2993,11 +2993,20 @@ directory is part of that identity too, which keeps venvs separate when
 they inherit the base environment's pip.
 An unavailable or unparseable answer, a location that cannot be resolved,
 or an unreadable venv marker does not establish identity; those launchers
-remain separate. Every pip instance is read-only by design. Only the
-two update lookups (`--outdated`, and `--uptodate` when it is needed) are
-given environment variables, `PIP_QUIET=0`, `PIP_VERBOSE=2` and
-`PIP_RETRIES=5` (`PipAdapter::OUTDATED_ENV`), which outrank a `pip.conf`.
-The first two set pip's debug verbosity — not quieter, which would hide
+remain separate. Every pip instance is read-only by design. Every parsed
+`pip list --format=json` command receives `PIP_QUIET=0` and
+`PIP_VERBOSE=0` (`PipAdapter::LIST_ENV`), including both inventory reads,
+the preliminary package count and the fallback reads: pip prints that JSON
+through its logger at its normal level, and a valid `pip.conf` with
+`quiet = 1` hides it, so pip exits 0 having printed nothing and the
+packages could not be shown, check after check (r81 R81-2; pip 26.2.1
+`commands/list.py:307-308`, `utils/logging.py:289-290`). These overrides
+keep JSON and the warnings Banager reads visible without changing
+`pip.conf`; nothing else of it is set aside. The two update lookups
+(`--outdated`, and `--uptodate` when it is needed) are given
+`PIP_QUIET=0`, `PIP_VERBOSE=2` and `PIP_RETRIES=5` instead
+(`PipAdapter::OUTDATED_ENV`); only they receive `PIP_RETRIES=5`. Both
+outrank a `pip.conf`. The lookups' first two set pip's debug verbosity — not quieter, which would hide
 the warnings Banager reads below, and not pip's normal verbosity, at which
 an index that answers with an HTTP error, such as a company index whose
 access has expired answering 403, is not mentioned at all: pip logs it
@@ -3089,16 +3098,16 @@ is asked as above.
 |---|---|---|
 | Which developer directory the `/usr/bin` shims use (`detect`, before running an interpreter there; at most once a refresh) | `/usr/bin/xcode-select -p` | 10 s |
 | Version | `<python> -m pip --version`; never through a version manager's shim | 30 s |
-| List packages (`inventory`) | `<python> -m pip list --format=json` | 60 s |
-| List packages nothing else depends on (`inventory`, to tell dependencies apart) | `<python> -m pip list --format=json --not-required` | 60 s |
-| List packages nothing else depends on, to count them (`check_updates`, before the next row) | `<python> -m pip list --format=json --not-required` | 60 s |
+| List packages (`inventory`) | `<python> -m pip list --format=json` with `PIP_QUIET=0` and `PIP_VERBOSE=0` | 60 s |
+| List packages nothing else depends on (`inventory`, to tell dependencies apart) | `<python> -m pip list --format=json --not-required` with `PIP_QUIET=0` and `PIP_VERBOSE=0` | 60 s |
+| List packages nothing else depends on, to count them (`check_updates`, before the next row) | `<python> -m pip list --format=json --not-required` with `PIP_QUIET=0` and `PIP_VERBOSE=0` | 60 s |
 | List outdated packages nothing else depends on (`check_updates`) | `<python> -m pip list --outdated --not-required --format=json` with `PIP_QUIET=0`, `PIP_VERBOSE=2` and `PIP_RETRIES=5` | 60 s, plus 1.5 s for each package the row above listed, at most 180 s |
 | Confirm up-to-date packages an index answered 403, 404 or 410 for (`check_updates`, only then, at most once) | `<python> -m pip list --uptodate --not-required --format=json` with `PIP_QUIET=0`, `PIP_VERBOSE=2` and `PIP_RETRIES=5` | What is left of the row above's timeout, which both share |
 
 If `pip list --outdated` exits non-zero, every package that list named is
 listed as "could not check", with the reason; if that list itself failed,
 `<python> -m pip list --format=json --not-required` is run once more for
-it. The
+it, with the same `PIP_QUIET=0` and `PIP_VERBOSE=0`. The
 list is read for the same rows when the command exits 0 but did not get
 an answer from the index for some package: pip then leaves that package
 out as if it were up to date. Banager reads two things pip prints to tell.

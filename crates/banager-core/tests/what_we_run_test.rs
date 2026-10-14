@@ -1065,6 +1065,33 @@ fn test_what_we_run_shows_the_environment_of_pips_outdated_check_and_no_verbosit
 }
 
 #[test]
+fn regression_r81_2_what_we_run_shows_the_environment_of_pips_plain_lists() {
+    // r81 R81-2: a `pip.conf` with `quiet = 1` hides the JSON pip logs at
+    // INFO, so every parsed `pip list --format=json` runs with
+    // `PipAdapter::LIST_ENV`; only the lookups set `PIP_RETRIES`.
+    let doc = read_doc();
+    let body =
+        section_body(&doc, "pip").expect("docs/what-we-run.md has no `## pip` section for pip");
+    let rows: Vec<&str> = body
+        .lines()
+        .filter(|line| line.starts_with('|') && line.contains("pip list --format=json"))
+        .collect();
+    assert_eq!(rows.len(), 3, "pip's plain list rows: {rows:?}");
+    for row in rows {
+        for (name, value) in PipAdapter::LIST_ENV {
+            assert!(
+                row.contains(&format!("`{name}={value}`")),
+                "pip's row does not show {name}={value}, which PipAdapter::LIST_ENV holds: {row}"
+            );
+        }
+        assert!(!row.contains("PIP_RETRIES"), "{row}");
+    }
+    let folded = body.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(!folded.contains("Only the two update lookups"));
+    assert!(folded.contains("only they receive `PIP_RETRIES=5`"));
+}
+
+#[test]
 fn test_what_we_run_says_no_version_managers_shim_is_run() {
     // R73-1: a shim may install what it runs whatever a setting says, so
     // `RealRunner::run` refuses one, and a script that starts one along the
