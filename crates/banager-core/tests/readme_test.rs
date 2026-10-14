@@ -467,3 +467,34 @@ fn test_readme_documents_canager_transfer_without_replacing_existing_settings() 
         assert!(!text.contains("“常见问题”里也这样说"), "{name}");
     }
 }
+
+/// R79-3: the history file keeps the last `MAX_RECORDS` records and drops
+/// one once it is over `MAX_AGE_MS` old, Clear History or not. Update
+/// History and an update's View Steps after a restart once read as kept
+/// until Clear History, in both blocks; each now names the cap -- the one
+/// limit that can take an entry before its 30 days -- and the History
+/// passage the age too.
+#[test]
+fn test_readme_names_the_history_files_own_limits_beside_clear_history() {
+    use banager_core::history::{MAX_AGE_MS, MAX_RECORDS};
+    assert_eq!(MAX_RECORDS, 1_000);
+    assert_eq!(MAX_AGE_MS, 180 * 24 * 60 * 60 * 1_000);
+    let readme = read_readme();
+    let (english, chinese) = blocks(&readme);
+    let english = english.split_whitespace().collect::<Vec<_>>().join(" ");
+    let chinese = squeeze(chinese);
+    let history = around(&english, "The list is kept across restarts in `history.json`", 0, 400);
+    assert!(history.contains("the last 1,000 updates and uninstalls"), "{history}");
+    assert!(history.contains("over 180 days old"), "{history}");
+    assert!(!history.contains("`history.json`, until you press Clear History."), "{history}");
+    let steps = around(&english, "an update's **View Steps**", 0, 500);
+    assert!(steps.contains("for up to 30 days"), "{steps}");
+    assert!(steps.contains("successful uninstall"), "{steps}");
+    assert!(steps.contains("last 1,000 records"), "{steps}");
+    let history = around(&chinese, "这个列表重启后仍在", 0, 400);
+    assert!(history.contains("1,000"), "{history}");
+    assert!(history.contains("180天"), "{history}");
+    let steps = around(&chinese, "退出Banager再打开后", 0, 400);
+    assert!(steps.contains("成功卸载"), "{steps}");
+    assert!(steps.contains("1,000"), "{steps}");
+}

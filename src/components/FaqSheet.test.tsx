@@ -286,7 +286,7 @@ describe("FaqSheet", () => {
   );
 
   it.each([
-    ["en", en, "the password can't be typed here", "for 30 days"],
+    ["en", en, "the password can't be typed here", "for up to 30 days"],
     ["zh-CN", zhCN, "这里无法输入密码", "30天内"],
     ["zh-Hant", zhHant, "這裡無法輸入密碼", "30天內"],
   ] as const)(
@@ -304,6 +304,21 @@ describe("FaqSheet", () => {
       expect(answer).toContain(locale.updates.justUpdated.clear);
     },
   );
+
+  // R79-3: the 30 days are the most, not a promise: the row keeps View
+  // Steps only while the tool still has an update and its record is the
+  // tool's last that counts -- not after a later update, nor an uninstall
+  // that worked (src/lib/passwordRecovery.ts, `recordWeighs` in
+  // src/lib/history.ts) -- and the history keeps its last 1,000 records
+  // (`MAX_RECORDS`, crates/banager-core/src/history/mod.rs).
+  it.each([
+    ["en", en, ["while the tool still has an update", "no later update or successful uninstall", "last 1,000 records", "sooner"]],
+    ["zh-CN", zhCN, ["这个工具仍有更新", "成功卸载", "最近1,000条", "更早消失"]],
+    ["zh-Hant", zhHant, ["這個工具仍有更新", "成功解除安裝", "最近1,000筆", "更早消失"]],
+  ] as const)("says what can take View Steps away before 30 days besides Clear History, in %s (R79-3)", (_language, locale, phrases) => {
+    const answer = locale.faq.questions.password.answer;
+    for (const phrase of phrases) expect(answer).toContain(phrase);
+  });
 
   it.each([
     ["en", en, "After Banager is quit and reopened, an update's View Steps"],
@@ -331,12 +346,15 @@ describe("FaqSheet", () => {
     const english = item("- When a Homebrew update or uninstall stopped because it needed your Mac's password").replace(/\s+/g, " ");
     expect(english).toContain(`**${en.needsPassword.viewSteps}**`);
     expect(english).toContain(`**${en.updates.justUpdated.title}**`);
-    expect(english).toContain("for 30 days");
+    expect(english).toContain("for up to 30 days");
+    expect(english).toContain("last 1,000 records");
     expect(english).toContain(`unless you press **${en.updates.justUpdated.clear}**`);
     const chinese = item("- Homebrew 的更新或卸载因为要输入 Mac 密码而停下时").replace(/\n\s*/g, "");
     expect(chinese).toContain(`「${zhCN.needsPassword.viewSteps}」`);
     expect(chinese).toContain(`“${zhCN.updates.justUpdated.title}”`);
     expect(chinese).toContain("30 天内");
+    expect(chinese).toContain("成功卸载");
+    expect(chinese).toContain("1,000");
     expect(chinese).toContain(`没有按“${zhCN.updates.justUpdated.clear}”的话`);
   });
 
