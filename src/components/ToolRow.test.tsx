@@ -1193,7 +1193,7 @@ describe("ToolRow", () => {
   });
 
   describe("its accessible name, where it takes the focus", () => {
-    const rovingRow = (props: Partial<ToolRowContentProps>) =>
+    const rovingRow = (props: Partial<ToolRowContentProps> & { adapterId?: string; sourceLabel?: string }) =>
       renderWithProviders(
         <RovingRowProvider value={{ tabIndex: 0, onFocus: vi.fn() }}>
           <ToolRow adapterId="brew" sourceLabel="Homebrew" name="git" description="Distributed revision control system" {...props} />

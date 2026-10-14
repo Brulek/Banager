@@ -349,6 +349,14 @@ Paths are under a generic home folder, `/Users/you`.
 - Help's 「键盘快捷键」 ("Keyboard Shortcuts"): `window.mockMenu("keyboard-shortcuts")` in the
   console opens the sheet over any page: the general keys (pages, Check Again, Search, ⌘W,
   ⌘Q), the lists' and the dialogs', in the window's language. Done, Escape or a click beside it closes it.
+  Its list is its own Tab stop, as is an operation log's transcript (r24 R76-1). To check that the
+  keys scroll them, in Safari (WebKit) with Tab set to reach every control, at 960×640 and
+  800×560, with `?lang=en`, `zh-CN` and `zh-Hant`: Tab from Done onto the list (and, in a log
+  with more lines than fit, from the log onto its transcript), then ↓, ↑, Page Down and Page Up
+  each move it, the page behind stays put, the focus ring shows, and Escape gives the focus back.
+  A log shows its last lines as it opens; Page Up shows earlier ones, and a new line moves it
+  only while it is at its end. Not yet checked in WebKit: Safari's Allow remote automation was
+  off on the machine these changes were made on.
 - Help's 「常见问题」 ("Common Questions"): `window.mockMenu("common-questions")` in the
   console opens the sheet over any page: twelve questions, each answered in a few sentences, in the
   window's language. A question's 查看 closes the sheet and opens where the answer points: Installed
