@@ -2146,7 +2146,7 @@ mod tests {
         assert_eq!(needed(&found.warnings), vec![(UV.to_string(), true, 1)]);
         assert!(found.complete);
         // No uv tool: nothing to lose.
-        let found = look(&pipx_uv, &[pipx_uv.clone()], true);
+        let found = look(&pipx_uv, std::slice::from_ref(&pipx_uv), true);
         assert!(found.warnings.is_empty());
         assert!(found.complete);
         // Another pipx tool is not where uv leads.
