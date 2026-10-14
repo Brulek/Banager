@@ -394,7 +394,8 @@ const EMPTY_PAGE_DESCRIPTION_KEYS: Record<string, string> = {
  * get to; for one that answered in full, that
  * nothing is installed with it; and Check again, the header's, which
  * shows what it has once it answers or has something -- except where
- * checking again cannot change the answer (`NoPip`, `HttpsHostRefused`).
+ * checking again cannot change the answer (`NoPip`, `HttpsHostRefused`,
+ * `InvalidOllamaHost`).
  * In the list's place, so the source's notice is not said a second time
  * over it.
  */
@@ -412,10 +413,13 @@ function SourceEmpty({ instance, label }: { instance: ManagerInstance; label: st
   // In the notice's words, when it last answered included: 「它今天09:12响应时，没有任何工具。」
   const valuesOf = useNoticeValues(warning === null ? [] : [warning]);
   // No Check Again where checking again cannot change the answer: a Python
-  // with no pip, and an https OLLAMA_HOST, which only a new address and a
-  // reopened app fix -- their notices have no button either.
+  // with no pip, and an https OLLAMA_HOST or one Banager can't use, which
+  // only a new address and a reopened app fix -- their notices have no
+  // button either.
   const checkingAgainHelps =
-    instance.status.unavailable !== "NoPip" && instance.status.unavailable !== "HttpsHostRefused";
+    instance.status.unavailable !== "NoPip" &&
+    instance.status.unavailable !== "HttpsHostRefused" &&
+    instance.status.unavailable !== "InvalidOllamaHost";
   return (
     <EmptyState
       symbol={warning === null || warning.variant === "info" ? "info" : "warning"}

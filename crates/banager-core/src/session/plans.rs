@@ -1115,7 +1115,12 @@ mod tests {
         // Nothing about a stopped Ollama's permissions changed, so a
         // writability-only gate lets every row `refresh` carried forward
         // from it keep an Uninstall button that cannot possibly succeed.
-        for unavailable in [Unavailable::NotRunning, Unavailable::NotResponding] {
+        for unavailable in [
+            Unavailable::NotRunning,
+            Unavailable::NotResponding,
+            // An `OLLAMA_HOST` that stopped being usable (r24 R75-1).
+            Unavailable::InvalidOllamaHost,
+        ] {
             let instance = test_support::make_unavailable_instance("fake", "fake:1", unavailable);
             assert!(
                 instance.writable(),
@@ -1838,7 +1843,12 @@ mod tests {
         // offered only when its instance is writable and available -- was
         // bypassed by the plan simply being old enough to predate the bad
         // news, and young enough not to have expired.
-        for unavailable in [Unavailable::NotRunning, Unavailable::NotResponding] {
+        for unavailable in [
+            Unavailable::NotRunning,
+            Unavailable::NotResponding,
+            // An `OLLAMA_HOST` that stopped being usable (r24 R75-1).
+            Unavailable::InvalidOllamaHost,
+        ] {
             let adapter = FakeAdapter::new(vec![test_support::make_instance("fake", "fake:1")]);
             let sink = Arc::new(VecSink::new());
             let session = Session::with_adapters(sink, vec![adapter.clone()], None);

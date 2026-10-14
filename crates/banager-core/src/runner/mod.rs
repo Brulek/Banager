@@ -13,7 +13,7 @@ pub mod real;
 pub mod redact;
 
 pub use mock::MockRunner;
-pub use path_env::{path_dirs_of, resolve_exe, HostEnv};
+pub use path_env::{path_dirs_of, resolve_exe, HostEnv, OllamaHost};
 pub use real::RealRunner;
 
 /// What the caller is going to do with the bytes this command writes to

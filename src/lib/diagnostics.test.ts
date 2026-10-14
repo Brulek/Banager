@@ -423,6 +423,15 @@ describe("a source's state words", () => {
     expect(sourceStateWords(en, noPip)).toEqual(["No pip", "View only"]);
     expect(sourceStateWords(zh, noPip)).toEqual(["没有pip", "仅供查看"]);
   });
+
+  it("names an OLLAMA_HOST Banager can't use in a word (r24 R75-1)", () => {
+    const ollama = instance("ollama", "/opt/homebrew/bin/ollama", {
+      version: null,
+      status: { unavailable: "InvalidOllamaHost", notes: [] },
+    });
+    expect(sourceStateWords(en, ollama)).toEqual(["Invalid address"]);
+    expect(sourceStateWords(zh, ollama)).toEqual(["地址无效"]);
+  });
 });
 
 describe("the check line", () => {

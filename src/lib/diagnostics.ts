@@ -65,6 +65,7 @@ const UNAVAILABLE_WORDS: Record<Unavailable, string> = {
   NotResponding: "diagnostics.text.statusWord.NotResponding",
   RefusesAsRoot: "diagnostics.text.statusWord.RefusesAsRoot",
   HttpsHostRefused: "sourceNotice.httpsHostRefused.statusWord",
+  InvalidOllamaHost: "sourceNotice.invalidOllamaHost.statusWord",
   NoPip: "sourceNotice.noPip.statusWord",
 };
 

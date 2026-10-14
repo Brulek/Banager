@@ -396,6 +396,9 @@ describe("types", () => {
     expect(JSON.stringify(httpsHostRefused)).toBe('{"unavailable":"HttpsHostRefused","notes":[]}');
     expect(JSON.stringify(noPip)).toBe('{"unavailable":"NoPip","notes":[]}');
     expect(roundTrip(noPip)).toEqual(noPip);
+    // r24 R75-1, spelled as in model.rs.
+    const invalidOllamaHost: InstanceStatus = { unavailable: "InvalidOllamaHost", notes: [] };
+    expect(JSON.stringify(invalidOllamaHost)).toBe('{"unavailable":"InvalidOllamaHost","notes":[]}');
 
     // The five notes a standalone tool's detect can add (phase 4): which
     // copy runs when its name is typed, or that its launcher is left

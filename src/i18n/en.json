@@ -810,6 +810,11 @@
       "description": "OLLAMA_HOST is set to an https:// address, and only http connections to Ollama are supported, so {{source}} can't be checked. If that Ollama also answers over http, change OLLAMA_HOST to its http:// address, then quit and reopen this app.",
       "statusWord": "https not supported"
     },
+    "invalidOllamaHost": {
+      "title": "The Ollama address can't be used",
+      "description": "OLLAMA_HOST is set to an address that can't be used, so no Ollama was contacted and {{source}} can't be checked. Correct OLLAMA_HOST, then quit and reopen this app.",
+      "statusWord": "Invalid address"
+    },
     "noPip": {
       "title": "{{command}} doesn't include pip",
       "description": "This Python doesn't include pip, so there's nothing to list.",
@@ -1559,7 +1564,7 @@
       },
       "cantUpdate": {
         "question": "Why can't some tools be updated here?",
-        "answer": "On Updates, under the tools that can be updated, a line says how many more can't be updated here; click it to see them. Each of their rows says why, for example “View only”, “Pinned” or “Updates when run”. Tools installed with pip, and npm packages or Homebrew tools in folders this account can't change, can only be viewed. A pinned tool has to be unpinned in Terminal first; one marked “Updates when run” updates itself, and opening it once checks for a new version."
+        "answer": "On Updates, under the tools that can be updated, a line says how many more can't be updated here; click it to see them. Each of their rows says why, for example “View only”, “Pinned” or “Updates when run”. Tools installed with pip, and npm packages or Homebrew tools in folders this account can't change, can only be viewed; if OLLAMA_HOST is set to an address that can't be used, no Ollama models are listed, and no other Ollama is contacted instead. A pinned tool has to be unpinned in Terminal first; one marked “Updates when run” updates itself, and opening it once checks for a new version."
       },
       "twins": {
         "question": "What does “Installed twice” mean, and what should I do?",

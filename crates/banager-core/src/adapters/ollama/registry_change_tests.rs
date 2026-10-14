@@ -99,6 +99,7 @@ async fn check(name: &str, local: &str, registry: &str) -> (Vec<UpdateCandidate>
         version: Some("0.40.0".into()),
         ..crate::testing::manager_instance("ollama", "ollama:http://127.0.0.1:11434")
     };
+    adapter.assume_detected(&inst);
     let rows = adapter
         .check_updates(&inst, &CheckOptions::default())
         .await

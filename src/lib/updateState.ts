@@ -380,7 +380,7 @@ const NOTE_LEAVES_UPDATES_CHECKED_IN_PART: Record<InstanceNote, boolean> = {
  * Which ways of not answering the next check finds the same way, so not
  * news of this one: a Python with no pip (`NoPip`: nothing is broken),
  * and an Ollama at an `https://` address Banager never asks
- * (`HttpsHostRefused`) -- both until the user changes something outside
+ * (`HttpsHostRefused`) or at one it can't use (`InvalidOllamaHost`) -- all until the user changes something outside
  * Banager. Not `RefusesAsRoot`: Banager was started with `sudo`, and
  * opening it again normally is what changes it, so 「这次」 holds for this
  * launch. A `Record`, so a variant added to `Unavailable` without an
@@ -391,6 +391,7 @@ const UNAVAILABLE_EVERY_TIME: Record<Unavailable, boolean> = {
   NotResponding: false,
   RefusesAsRoot: false,
   HttpsHostRefused: true,
+  InvalidOllamaHost: true,
   NoPip: true,
 };
 

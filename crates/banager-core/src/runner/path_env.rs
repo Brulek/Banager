@@ -31,15 +31,18 @@ pub struct HostEnv {
     /// `rustup_home`: read from Task 4 on by `StandaloneAdapter::detect`,
     /// which seats it.
     pub zdotdir: Option<PathBuf>,
-    /// `OLLAMA_HOST` when the host environment sets it, normalised by
-    /// `normalize_ollama_host` into an absolute http(s) url with no trailing
-    /// slash; `None` means Ollama's own default, `http://127.0.0.1:11434`,
-    /// and is also what an unusable value becomes. Same reasoning as
-    /// `cargo_home`; consumed by Task 10. An `https` value is kept here
-    /// but never reaches a daemon: `RealHttpClient::send` exempts only
-    /// `http` from `ALLOWED_HTTPS_HOSTS` and refuses it (the Ollama
-    /// section of `docs/what-we-run.md` says so).
-    pub ollama_host: Option<String>,
+    /// `OLLAMA_HOST` when the host environment sets it (`ollama_host_setting`):
+    /// `None` when it is unset or empty, which means Ollama's own default,
+    /// `http://127.0.0.1:11434`; else the url `normalize_ollama_host` makes
+    /// of it, or `OllamaHost::Invalid` when it makes none -- never the
+    /// default, which would put another daemon's models, and their
+    /// Uninstall, in the place of the ones the user named (r24 R75-1).
+    /// Same reasoning as `cargo_home`; consumed by Task 10. An `https`
+    /// value is kept here but never reaches a daemon:
+    /// `RealHttpClient::send` exempts only `http` from
+    /// `ALLOWED_HTTPS_HOSTS` and refuses it (the Ollama section of
+    /// `docs/what-we-run.md` says so).
+    pub ollama_host: Option<OllamaHost>,
     /// Where in `path_dirs` the entries written `~` or `~/...` are that
     /// bash, the login shell, looks in as the home folder or a folder in
     /// it (`path_dirs_of`). A program that searches `PATH` itself --
@@ -49,8 +52,33 @@ pub struct HostEnv {
     pub tilde_entries: Vec<usize>,
 }
 
+/// An `OLLAMA_HOST` that is set to something (`HostEnv::ollama_host`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum OllamaHost {
+    /// The url `normalize_ollama_host` made of it.
+    Endpoint(String),
+    /// One it made no url of, or not text at all. The value itself is not
+    /// kept: a part of it may be a password, and there is no telling which.
+    Invalid,
+}
+
+/// `OLLAMA_HOST` as `HostEnv::ollama_host` holds it, from `raw`, the
+/// variable as the environment has it: `None` when it is unset, or empty
+/// once the spaces and quotes Ollama drops are off; anything else is an
+/// `OllamaHost`, `Invalid` where `normalize_ollama_host` refuses it.
+pub fn ollama_host_setting(raw: Option<&std::ffi::OsStr>) -> Option<OllamaHost> {
+    let Some(raw) = raw?.to_str() else {
+        return Some(OllamaHost::Invalid);
+    };
+    if raw.trim().trim_matches(['"', '\'']).trim().is_empty() {
+        return None;
+    }
+    Some(normalize_ollama_host(raw).map_or(OllamaHost::Invalid, OllamaHost::Endpoint))
+}
+
 /// Turns a raw `OLLAMA_HOST` into a url the Ollama adapter can prefix onto
-/// `/api/tags`, or `None` to mean "use Ollama's own default".
+/// `/api/tags`, or `None` for a value it cannot use (`ollama_host_setting`
+/// keeps an empty one, which is Ollama's own default, from reaching it).
 ///
 /// The adapter builds every request as `format!("{host}/api/tags")`, so the
 /// value has to be an absolute url with no trailing slash. Ollama's own
@@ -80,12 +108,12 @@ pub struct HostEnv {
 /// (`user:password@host`) is kept for its requests, though Ollama's own
 /// command refuses one. A value with an `@` after its host -- a login
 /// whose password has a raw `/`, `?`, `#` or `\` in it, which Ollama and
-/// the url both cut short, taking its start for the host -- becomes `None`:
+/// the url both cut short, taking its start for the host -- is refused:
 /// the host would be no daemon the user named, and the rest of the
 /// password would sit where neither the window's id nor the preview masks
 /// a login. And a value that still makes no http(s) url -- a `file://` or
-/// `ftp://` one, a host a url cannot carry -- becomes `None` too: it could
-/// only name something stranger than the default.
+/// `ftp://` one, a host a url cannot carry -- is refused too: it could only
+/// name something stranger than the daemon the user meant.
 fn normalize_ollama_host(raw: &str) -> Option<String> {
     // `envconfig.Var`: spaces off, then every `"` and `'` at either end;
     // `Host` takes spaces off once more.
@@ -202,10 +230,7 @@ impl HostEnv {
         let cargo_home = std::env::var_os("CARGO_HOME").map(PathBuf::from);
         let rustup_home = std::env::var_os("RUSTUP_HOME").map(PathBuf::from);
         let zdotdir = std::env::var_os("ZDOTDIR").map(PathBuf::from);
-        let ollama_host = std::env::var("OLLAMA_HOST")
-            .ok()
-            .as_deref()
-            .and_then(normalize_ollama_host);
+        let ollama_host = ollama_host_setting(std::env::var_os("OLLAMA_HOST").as_deref());
         HostEnv {
             path_dirs,
             home,
@@ -748,6 +773,41 @@ mod tests {
 mod login_host_tests {
     use super::normalize_ollama_host;
 
+    /// Only an `OLLAMA_HOST` that is unset, or empty once Ollama's spaces
+    /// and quotes are off, is Ollama's default; one Banager cannot use is
+    /// `Invalid`, and keeps nothing of what it said (r24 R75-1).
+    #[test]
+    fn ollama_host_distinguishes_default_valid_and_rejected_settings() {
+        use super::{ollama_host_setting, OllamaHost};
+        use std::ffi::OsStr;
+        use std::os::unix::ffi::OsStrExt;
+        let read = |raw: &str| ollama_host_setting(Some(OsStr::new(raw)));
+        assert_eq!(ollama_host_setting(None), None);
+        for empty in ["", "   ", "\"\"", "''", " ' ' ", "\t"] {
+            assert_eq!(read(empty), None, "{empty:?}");
+        }
+        for (raw, url) in [
+            ("127.0.0.1:11434", "http://127.0.0.1:11434"),
+            (" \"http://10.0.0.5:11434/\" ", "http://10.0.0.5:11434"),
+            ("alice:secret@server", "http://alice:secret@server:11434"),
+        ] {
+            assert_eq!(read(raw), Some(OllamaHost::Endpoint(url.into())), "{raw:?}");
+        }
+        for raw in [
+            "http://alice:se/cret@nas.local:11434",
+            "alice:12/cret@nas.local",
+            "ftp://10.0.0.5:11434",
+            "not a url",
+        ] {
+            assert_eq!(read(raw), Some(OllamaHost::Invalid), "{raw:?}");
+        }
+        assert_eq!(
+            ollama_host_setting(Some(OsStr::from_bytes(b"http://nas\xff.local"))),
+            Some(OllamaHost::Invalid)
+        );
+        assert!(!format!("{:?}", OllamaHost::Invalid).contains("cret"));
+    }
+
     #[test]
     fn schemeless_login_colons_are_not_ports() {
         for (raw, expected) in [
@@ -775,8 +835,9 @@ mod login_host_tests {
     /// host, in the path, query or fragment. Kept, that rest reached the
     /// window's id and the preview unmasked -- both masks stop at the first
     /// `/` (`without_ollama_login`, `mask_ollama_host`) -- and the daemon
-    /// was asked at a host named `alice`. Such a value is `None`, Ollama's
-    /// default, as the first two were before r40 R40-2.
+    /// was asked at a host named `alice`. Such a value is refused, and
+    /// `ollama_host_setting` makes it `OllamaHost::Invalid`, not Ollama's
+    /// default (r24 R75-1).
     #[test]
     fn a_login_cut_short_by_a_raw_slash_or_query_names_no_host() {
         for raw in [

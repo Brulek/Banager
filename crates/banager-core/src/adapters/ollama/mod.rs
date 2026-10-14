@@ -19,7 +19,7 @@ use crate::model::{
 };
 use crate::protected::{look, Protected};
 use crate::runner::redact::{without_ollama_login, Redactor};
-use crate::runner::{resolve_exe, CommandRunner, CommandSpec, HostEnv, OutputUse};
+use crate::runner::{resolve_exe, CommandRunner, CommandSpec, HostEnv, OllamaHost, OutputUse};
 use async_trait::async_trait;
 use parse::{
     changed_blob_bytes, config_digest, is_manifest_list, layer_digests, parse_tags, parse_version,
@@ -208,24 +208,29 @@ const RM_TIMEOUT_SECS: u64 = 600;
 const VERSION_PROBE_HOST: &str = "127.0.0.1:0";
 
 /// Ollama's own default daemon URL, used whenever the host environment did
-/// not set `OLLAMA_HOST`.
+/// not set `OLLAMA_HOST`, or set it empty.
 pub const DEFAULT_HOST: &str = "http://127.0.0.1:11434";
 
 /// The daemon URL for this host: `HostEnv::ollama_host` (Task 9) when the
-/// environment set one, else Ollama's default. Never read from `std::env`
-/// here — a machine or CI runner with `OLLAMA_HOST` set would otherwise
-/// silently change every URL these tests mock.
-fn host_for(env: &HostEnv) -> String {
-    env.ollama_host
-        .clone()
-        .unwrap_or_else(|| DEFAULT_HOST.to_string())
+/// environment set one, Ollama's default when it set none, and `None` when
+/// it set one Banager cannot use: then no daemon is asked, and the default
+/// one least of all (r24 R75-1). Never read from `std::env` here — a
+/// machine or CI runner with `OLLAMA_HOST` set would otherwise silently
+/// change every URL these tests mock.
+fn host_for(env: &HostEnv) -> Option<String> {
+    match &env.ollama_host {
+        None => Some(DEFAULT_HOST.to_string()),
+        Some(OllamaHost::Endpoint(host)) => Some(host.clone()),
+        Some(OllamaHost::Invalid) => None,
+    }
 }
 
-/// The public daemon endpoint, without login information. Detection retains
-/// the authenticated endpoint privately in the adapter; local-host checks
-/// need only this credential-free address.
-fn host_of(inst: &ManagerInstance) -> &str {
-    inst.id.strip_prefix("ollama:").unwrap_or(DEFAULT_HOST)
+/// The public daemon endpoint, without login information, or `None` for
+/// the instance of an `OLLAMA_HOST` Banager cannot use, whose id names no
+/// address. Only local-host checks read it: the address requests and
+/// commands go to is the one detection kept (`OllamaAdapter::endpoint`).
+fn host_of(inst: &ManagerInstance) -> Option<&str> {
+    inst.id.strip_prefix("ollama:")
 }
 
 /// The two places a macOS install of Ollama puts its app bundle: the
@@ -314,7 +319,7 @@ fn https_refused(url: &str) -> bool {
 /// there, and a `~/.ollama` here holds none of them. Read by the size
 /// measurement (`size::plan_round`), which walks that folder only then.
 pub(crate) fn models_on_this_mac(inst: &ManagerInstance) -> bool {
-    host_is_this_mac(host_of(inst))
+    host_of(inst).is_some_and(host_is_this_mac)
 }
 
 fn real_ollama_app_present(env: &HostEnv) -> bool {
@@ -325,7 +330,12 @@ pub struct OllamaAdapter {
     runner: Arc<dyn CommandRunner>,
     http: Arc<dyn HttpClient>,
     meta: AdapterMeta,
-    // Runtime authentication stays in the adapter, not in snapshot/operation ids.
+    /// The daemon URL, login and all, of the instance the last `detect`
+    /// found, by its id: authentication stays here, not in snapshot or
+    /// operation ids. Replaced whole by each `detect`, and empty when it
+    /// found no `ollama` or an `OLLAMA_HOST` Banager cannot use -- so
+    /// nothing is asked of, or run against, an address that is no longer
+    /// the one configured (r24 R75-1).
     hosts: Mutex<HashMap<String, String>>,
     /// Whether Ollama.app is installed, which is the difference between
     /// the two states a silent daemon can be in. Production always gets
@@ -353,13 +363,49 @@ impl OllamaAdapter {
         }
     }
 
-    fn endpoint(&self, inst: &ManagerInstance) -> String {
+    /// The address the last `detect` kept for `inst`, or the error for an
+    /// instance it kept none for: the one of an `OLLAMA_HOST` Banager
+    /// cannot use, or one that is no longer there. Never one made up from
+    /// the id, or Ollama's default (r24 R75-1).
+    fn endpoint(&self, inst: &ManagerInstance) -> Result<String, AdapterError> {
+        if let Some(host) = self.hosts.lock().unwrap().get(&inst.id) {
+            return Ok(host.clone());
+        }
+        Err(match inst.status.unavailable {
+            Some(unavailable @ Unavailable::InvalidOllamaHost) => AdapterError::NotActionable {
+                read_only: inst.read_only_reason,
+                unavailable: Some(unavailable),
+            },
+            _ => AdapterError::SourceGone {
+                instance_id: inst.id.clone(),
+            },
+        })
+    }
+
+    /// Whether `plan` would still run against the address it was made for:
+    /// the one the last `detect` kept for its instance. A saved plan from
+    /// before `OLLAMA_HOST` changed, or stopped being usable, is not run.
+    fn still_shown(&self, plan: &Plan) -> bool {
+        let PlanAction::Command { env, .. } = &plan.action else {
+            return false;
+        };
+        let planned = env
+            .iter()
+            .find(|(name, _)| name == "OLLAMA_HOST")
+            .map(|(_, value)| value);
         self.hosts
             .lock()
             .unwrap()
-            .get(&inst.id)
-            .cloned()
-            .unwrap_or_else(|| host_of(inst).to_string())
+            .get(&plan.request.instance_id)
+            .is_some_and(|current| Some(current) == planned)
+    }
+
+    /// Test-only: keep `inst`'s own address as `detect` would have, for the
+    /// tests that make an instance rather than detect one.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn assume_detected(&self, inst: &ManagerInstance) {
+        let host = host_of(inst).expect("an instance with an address");
+        *self.hosts.lock().unwrap() = HashMap::from([(inst.id.clone(), host.to_string())]);
     }
 
     /// Test-only hook (see `app_present_fn`). Public with the
@@ -382,7 +428,31 @@ impl OllamaAdapter {
     /// effect on macOS).
     pub async fn detect(&self, env: &HostEnv) -> Vec<ManagerInstance> {
         let Some(exe_path) = resolve_exe("ollama", env) else {
+            self.hosts.lock().unwrap().clear();
             return Vec::new();
+        };
+        // An `OLLAMA_HOST` Banager cannot use: nothing is run or asked, not
+        // even the version, and no address is kept, so nothing can be
+        // listed, checked, planned or run (r24 R75-1). Its id names no
+        // address: the value may hold a password.
+        let Some(host) = host_for(env) else {
+            self.hosts.lock().unwrap().clear();
+            return vec![ManagerInstance {
+                id: crate::model::instance_id(&self.meta.id, None),
+                adapter_id: self.meta.id.clone(),
+                exe_path,
+                prefix: env.home.join(".ollama"),
+                scope: Scope::User,
+                status: InstanceStatus {
+                    unavailable: Some(Unavailable::InvalidOllamaHost),
+                    notes: Vec::new(),
+                    no_answer: None,
+                },
+                version: None,
+                answered_at: None,
+                unverified_version: None,
+                read_only_reason: None,
+            }];
         };
         let version_output = self
             .runner
@@ -403,7 +473,6 @@ impl OllamaAdapter {
             Ok(o) if o.exit_code == Some(0) => parse_version(&o.stdout),
             _ => None,
         };
-        let host = host_for(env);
         let url = format!("{host}/api/tags");
         // An `https://` `OLLAMA_HOST` is one `RealHttpClient::send` would
         // refuse before connecting: its allowlist exempts `http` only, and
@@ -430,7 +499,10 @@ impl OllamaAdapter {
         let unverified_version = self.meta.unverified_version(&version);
         let id = without_ollama_login(&crate::model::instance_id(&self.meta.id, Some(&host)))
             .into_owned();
-        self.hosts.lock().unwrap().insert(id.clone(), host.clone());
+        // Replaced whole, once every probe is done: an address this
+        // instance no longer has is never left behind, and one it still
+        // has is never missing in between.
+        *self.hosts.lock().unwrap() = HashMap::from([(id.clone(), host.clone())]);
         vec![ManagerInstance {
             id,
             adapter_id: self.meta.id.clone(),
@@ -481,7 +553,7 @@ impl OllamaAdapter {
         &self,
         inst: &ManagerInstance,
     ) -> Result<Vec<InstalledArtifact>, AdapterError> {
-        let host = self.endpoint(inst);
+        let host = self.endpoint(inst)?;
         let redactor = Redactor::for_settings([("OLLAMA_HOST", host.as_str())]);
         let url = format!("{host}/api/tags");
         let resp = self
@@ -800,6 +872,7 @@ impl OllamaAdapter {
         if req.kind == OpKind::Link {
             return Err(super::links_nothing(&self.meta.id));
         }
+        let host = self.endpoint(inst)?;
         let lock = ResourceLock(inst.id.clone());
         // The registry warning belongs to the arm that fetches, not to the
         // operation as a whole. Computed before this `match` it also rode
@@ -848,7 +921,7 @@ impl OllamaAdapter {
             action: PlanAction::Command {
                 program: inst.exe_path.clone(),
                 args,
-                env: vec![("OLLAMA_HOST".to_string(), self.endpoint(inst))],
+                env: vec![("OLLAMA_HOST".to_string(), host)],
             },
             needs_password: false,
             locks: vec![lock],
@@ -867,6 +940,14 @@ impl OllamaAdapter {
         op_id: OpId,
         cancel: CancellationToken,
     ) -> Result<Outcome, AdapterError> {
+        // Detection may have run again since the preview: a plan for an
+        // address that is no longer the configured one ends as changed
+        // since shown, before `ollama` runs (r24 R75-1).
+        if !self.still_shown(plan) {
+            return Ok(Outcome::BanagerFailed(
+                crate::model::Fault::ChangedSinceShown,
+            ));
+        }
         run_plan(&self.runner, plan, sink, op_id, cancel).await
     }
 
@@ -1003,7 +1084,7 @@ mod tests {
                 cargo_home: None,
                 rustup_home: None,
                 zdotdir: None,
-                ollama_host: Some(host.into()),
+                ollama_host: Some(OllamaHost::Endpoint(host.into())),
                 tilde_entries: Vec::new(),
             };
             let inst = adapter.detect(&env).await.remove(0);
@@ -1066,6 +1147,199 @@ mod tests {
         }
     }
 
+    const TAGS_FIXTURE: &str =
+        include_str!("../../../../../adapters/fixtures/ollama/0.34.1/api-tags.json");
+
+    /// A test's own `HostEnv`: `dir` is its PATH and its home.
+    fn env_in(dir: &Path, ollama_host: Option<OllamaHost>) -> HostEnv {
+        HostEnv {
+            path_dirs: vec![dir.to_path_buf()],
+            home: dir.to_path_buf(),
+            euid: 501,
+            cargo_home: None,
+            rustup_home: None,
+            zdotdir: None,
+            ollama_host,
+            tilde_entries: Vec::new(),
+        }
+    }
+
+    /// The model request for `name` at `inst`.
+    fn model_request(kind: OpKind, inst: &ManagerInstance, name: &str) -> OpRequest {
+        OpRequest {
+            kind,
+            instance_id: inst.id.clone(),
+            artifact_kind: crate::model::ArtifactKind::Model,
+            name: name.into(),
+        }
+    }
+
+    /// An `OLLAMA_HOST` Banager cannot use -- the password with a raw `/`
+    /// of R75-1 -- asks no daemon, the default one least of all, though it
+    /// answers here with the model: nothing is listed, checked or planned,
+    /// neither for the instance of that address nor for the default one a
+    /// detection before it found (r24 R75-1).
+    #[tokio::test]
+    async fn rejected_remote_host_never_uses_default_daemon() {
+        use crate::runner::path_env::ollama_host_setting;
+        let dir = isolated_path_dir("rejected-host");
+        let runner = Arc::new(EnvRecorder::default());
+        let http = Arc::new(MockHttpClient::new());
+        let default_tags = format!("{DEFAULT_HOST}/api/tags");
+        http.respond(
+            &default_tags,
+            HttpResponse {
+                status: 200,
+                body: TAGS_FIXTURE.to_string(),
+            },
+        );
+        let adapter =
+            OllamaAdapter::new(runner.clone(), http.clone()).with_app_present_fn(|_| true);
+        let local = adapter.detect(&env_in(&dir, None)).await.remove(0);
+        assert_eq!(adapter.inventory(&local).await.unwrap().len(), 1);
+        let (probes, requests) = (runner.0.lock().unwrap().len(), http.calls().len());
+
+        let rejected = ollama_host_setting(Some(std::ffi::OsStr::new(
+            "http://alice:se/cret@nas.local:11434",
+        )));
+        assert_eq!(rejected, Some(OllamaHost::Invalid));
+        let inst = adapter.detect(&env_in(&dir, rejected)).await.remove(0);
+        assert_eq!(inst.id, "ollama");
+        assert_ne!(inst.id, local.id);
+        assert_eq!(
+            inst.status.unavailable,
+            Some(Unavailable::InvalidOllamaHost)
+        );
+        assert_eq!(inst.version, None);
+        let wire = serde_json::to_string(&inst).unwrap();
+        assert!(!wire.contains("alice") && !wire.contains("cret") && !wire.contains("nas"));
+
+        for inst in [&inst, &local] {
+            assert!(adapter.inventory(inst).await.is_err());
+            assert!(adapter
+                .check_updates(inst, &CheckOptions::default())
+                .await
+                .is_err());
+            let key = ArtifactKey {
+                instance_id: inst.id.clone(),
+                kind: crate::model::ArtifactKind::Model,
+                name: "qwen3.8:27b-mlx".into(),
+            };
+            assert!(adapter.reconcile(inst, &key).await.is_err());
+            for kind in [OpKind::Install, OpKind::Upgrade, OpKind::Uninstall] {
+                let error = adapter
+                    .plan(inst, &model_request(kind, inst, "qwen3.8:27b-mlx"))
+                    .await
+                    .unwrap_err();
+                if inst.id == "ollama" {
+                    assert!(
+                        matches!(
+                            error,
+                            AdapterError::NotActionable {
+                                unavailable: Some(Unavailable::InvalidOllamaHost),
+                                ..
+                            }
+                        ),
+                        "{error:?}"
+                    );
+                } else {
+                    assert!(
+                        matches!(error, AdapterError::SourceGone { .. }),
+                        "{error:?}"
+                    );
+                }
+            }
+        }
+        assert_eq!(runner.0.lock().unwrap().len(), probes, "no version probe");
+        assert_eq!(http.calls().len(), requests, "{:?}", http.calls());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    /// A plan made for one address and run after detection found another
+    /// -- one Banager cannot use, no `ollama` at all, a different address,
+    /// or the same one with another login -- ends as changed since shown,
+    /// with no `ollama pull` or `rm` run; one for the address detection
+    /// still has runs (r24 R75-1).
+    #[tokio::test]
+    async fn saved_ollama_command_ends_as_changed_since_shown() {
+        let endpoint = |host: &str| Some(OllamaHost::Endpoint(host.into()));
+        let first = "http://alice:one@10.0.0.5:11434";
+        for (later, runs) in [
+            (Some(OllamaHost::Invalid), false),
+            (None, false),
+            (endpoint("http://10.0.0.6:11434"), false),
+            (endpoint("http://alice:two@10.0.0.5:11434"), false),
+            (endpoint(first), true),
+        ] {
+            let dir = isolated_path_dir("saved-command");
+            let runner = Arc::new(EnvRecorder::default());
+            let http = Arc::new(MockHttpClient::new());
+            // What the check after a removal that ran reads: no model left.
+            http.respond(
+                &format!("{first}/api/tags"),
+                HttpResponse {
+                    status: 200,
+                    body: r#"{"models":[]}"#.to_string(),
+                },
+            );
+            let adapter = Arc::new(OllamaAdapter::new(runner.clone(), http));
+            let inst = adapter
+                .detect(&env_in(&dir, endpoint(first)))
+                .await
+                .remove(0);
+            let plan = adapter
+                .plan(
+                    &inst,
+                    &model_request(OpKind::Uninstall, &inst, "qwen3.8:27b-mlx"),
+                )
+                .await
+                .unwrap();
+            // `None` here: no `ollama` on PATH at all.
+            let env = match &later {
+                None => HostEnv {
+                    path_dirs: Vec::new(),
+                    ..env_in(&dir, None)
+                },
+                Some(_) => env_in(&dir, later.clone()),
+            };
+            adapter.detect(&env).await;
+            let mut manager = crate::ops::OperationManager::new(Arc::new(VecSink::new()));
+            manager.register_adapter(adapter.clone());
+            let manager = Arc::new(manager);
+            manager.register_instance(inst.clone());
+            let id = manager.submit(plan);
+            manager.wait(id).await;
+            let outcome = manager
+                .summaries()
+                .into_iter()
+                .find(|s| s.id == id)
+                .unwrap()
+                .outcome;
+            let removals: Vec<_> = runner
+                .0
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|spec| spec.args.first().map(String::as_str) == Some("rm"))
+                .map(|spec| spec.env.clone())
+                .collect();
+            if runs {
+                assert_eq!(outcome, Some(Outcome::Succeeded), "{later:?}");
+                assert_eq!(removals, vec![vec![("OLLAMA_HOST".into(), first.into())]]);
+            } else {
+                assert_eq!(
+                    outcome,
+                    Some(Outcome::BanagerFailed(
+                        crate::model::Fault::ChangedSinceShown
+                    )),
+                    "{later:?}"
+                );
+                assert!(removals.is_empty(), "{later:?}: {removals:?}");
+            }
+            std::fs::remove_dir_all(dir).unwrap();
+        }
+    }
+
     #[tokio::test]
     async fn inventory_masks_transport_status_and_parse_errors() {
         let host = "http://alice:s%40cret@server:11434";
@@ -1090,6 +1364,7 @@ mod tests {
                 );
             }
             let adapter = OllamaAdapter::new(Arc::new(MockRunner::new()), http.clone());
+            adapter.assume_detected(&inst);
             let error = adapter.inventory(&inst).await.unwrap_err().to_string();
             for secret in ["alice", "s%40cret", "s@cret"] {
                 assert!(!error.contains(secret), "{error}");
@@ -1146,6 +1421,7 @@ mod tests {
             );
             let adapter = OllamaAdapter::new(Arc::new(MockRunner::new()), http.clone());
             let inst = test_instance("http://127.0.0.1:11435", home.path().into());
+            adapter.assume_detected(&inst);
             let rows = adapter
                 .check_updates(&inst, &CheckOptions::default())
                 .await
@@ -1211,6 +1487,7 @@ mod tests {
         );
         let adapter = OllamaAdapter::new(Arc::new(MockRunner::new()), http.clone());
         let inst = test_instance("http://server:11434", home.path().into());
+        adapter.assume_detected(&inst);
         let rows = adapter
             .check_updates(&inst, &CheckOptions::default())
             .await
@@ -1233,6 +1510,7 @@ mod tests {
         // The same local files and registry response must be actionable
         // for a local daemon, proving that neither fixture is vacuous.
         let local = test_instance("http://127.0.0.1:11434", home.path().into());
+        adapter.assume_detected(&local);
         let rows = adapter
             .check_updates(&local, &CheckOptions::default())
             .await
@@ -1299,6 +1577,7 @@ mod tests {
             "http://127.0.0.1:11434",
             PathBuf::from("/Users/brulek/.ollama"),
         );
+        adapter.assume_detected(&inst);
         let artifacts = adapter.inventory(&inst).await.expect("inventory");
         assert_eq!(artifacts.len(), 1);
         assert_eq!(artifacts[0].key.name, "qwen3.8:27b-mlx");
@@ -1319,6 +1598,7 @@ mod tests {
             "http://127.0.0.1:11434",
             PathBuf::from("/Users/brulek/.ollama"),
         );
+        adapter.assume_detected(&inst);
         let result = adapter.inventory(&inst).await;
         match result {
             Err(AdapterError::CommandFailed {
@@ -1427,6 +1707,7 @@ mod tests {
         );
         let adapter = OllamaAdapter::new(Arc::new(MockRunner::new()), http);
         let inst = test_instance("http://127.0.0.1:11434", home.clone());
+        adapter.assume_detected(&inst);
         let candidates = adapter
             .check_updates(&inst, &CheckOptions::default())
             .await
@@ -1493,6 +1774,7 @@ mod tests {
         );
         let adapter = OllamaAdapter::new(Arc::new(MockRunner::new()), http);
         let inst = test_instance("http://127.0.0.1:11434", home.clone());
+        adapter.assume_detected(&inst);
         let candidates = adapter
             .check_updates(&inst, &CheckOptions::default())
             .await
@@ -1582,6 +1864,7 @@ mod tests {
             );
             let adapter = OllamaAdapter::new(Arc::new(MockRunner::new()), http);
             let inst = test_instance("http://127.0.0.1:11434", home.clone());
+            adapter.assume_detected(&inst);
             let candidates = adapter
                 .check_updates(&inst, &CheckOptions::default())
                 .await
@@ -1640,6 +1923,7 @@ mod tests {
             }
             let adapter = OllamaAdapter::new(Arc::new(MockRunner::new()), http);
             let inst = test_instance("http://127.0.0.1:11434", home.clone());
+            adapter.assume_detected(&inst);
             let candidates = adapter
                 .check_updates(&inst, &CheckOptions::default())
                 .await
@@ -1739,6 +2023,7 @@ mod tests {
         );
         let adapter = OllamaAdapter::new(Arc::new(MockRunner::new()), http.clone());
         let inst = test_instance("http://127.0.0.1:11434", home.clone());
+        adapter.assume_detected(&inst);
         let candidates = adapter
             .check_updates(&inst, &CheckOptions::default())
             .await
@@ -1811,6 +2096,7 @@ mod tests {
         );
         let adapter = OllamaAdapter::new(Arc::new(MockRunner::new()), http.clone());
         let inst = test_instance("http://127.0.0.1:11434", home.clone());
+        adapter.assume_detected(&inst);
         let candidates = adapter
             .check_updates(&inst, &CheckOptions::default())
             .await
@@ -1858,6 +2144,7 @@ mod tests {
             "http://127.0.0.1:11434",
             PathBuf::from("/Users/brulek/.ollama"),
         );
+        adapter.assume_detected(&inst);
         let req = OpRequest {
             kind: OpKind::Install,
             instance_id: "not-ollama".to_string(),
@@ -1879,6 +2166,7 @@ mod tests {
             "http://127.0.0.1:11434",
             PathBuf::from("/Users/brulek/.ollama"),
         );
+        adapter.assume_detected(&inst);
         // A pull gets the runner's longest, a day, so a model still
         // downloading after an hour is not stopped (r40 R40-3); rm, which
         // only deletes, ten minutes.
@@ -1907,7 +2195,10 @@ mod tests {
             assert_eq!(command_args(&plan), expected);
             assert_eq!(
                 crate::testing::command_env(&plan),
-                vec![("OLLAMA_HOST".to_string(), host_of(&inst).to_string())]
+                vec![(
+                    "OLLAMA_HOST".to_string(),
+                    host_of(&inst).unwrap().to_string()
+                )]
             );
             assert!(!plan.needs_password);
             assert_eq!(plan.timeout_secs, timeout_secs, "{kind:?}");
@@ -1929,6 +2220,7 @@ mod tests {
             "http://127.0.0.1:11434",
             PathBuf::from("/Users/brulek/.ollama"),
         );
+        adapter.assume_detected(&inst);
         let bad_req = OpRequest {
             kind: OpKind::Install,
             instance_id: inst.id.clone(),
@@ -1972,6 +2264,7 @@ mod tests {
             "http://127.0.0.1:11434",
             PathBuf::from("/Users/brulek/.ollama"),
         );
+        adapter.assume_detected(&inst);
         let req = OpRequest {
             kind: OpKind::Install,
             instance_id: inst.id.clone(),
@@ -2022,7 +2315,7 @@ mod tests {
                 cargo_home: None,
                 rustup_home: None,
                 zdotdir: None,
-                ollama_host: ollama_host.map(str::to_string),
+                ollama_host: ollama_host.map(|host| OllamaHost::Endpoint(host.to_string())),
                 tilde_entries: Vec::new(),
             };
             let inst = adapter.detect(&env).await.remove(0);
@@ -2058,6 +2351,7 @@ mod tests {
                 "http://127.0.0.1:11434",
                 PathBuf::from("/Users/brulek/.ollama"),
             );
+            adapter.assume_detected(&inst);
             let req = OpRequest {
                 kind,
                 instance_id: inst.id.clone(),
@@ -2099,6 +2393,7 @@ mod tests {
             "http://127.0.0.1:11434",
             PathBuf::from("/Users/brulek/.ollama"),
         );
+        adapter.assume_detected(&inst);
         let present = OllamaAdapter::reconcile(
             &adapter,
             &inst,
@@ -2133,6 +2428,7 @@ mod tests {
             "http://127.0.0.1:11434",
             PathBuf::from("/Users/brulek/.ollama"),
         );
+        adapter.assume_detected(&inst);
         let result = <OllamaAdapter as Adapter>::search(&adapter, &inst, "qwen").await;
         assert!(matches!(result, Err(AdapterError::Unsupported(_))));
     }
@@ -2143,7 +2439,7 @@ mod tests {
         // adapter: nothing here reads OLLAMA_HOST, so a machine or CI runner
         // that has it set cannot change the url any of these tests mock.
         let inst = test_instance("http://127.0.0.1:9999", PathBuf::from("/tmp/.ollama"));
-        assert_eq!(host_of(&inst), "http://127.0.0.1:9999");
+        assert_eq!(host_of(&inst), Some("http://127.0.0.1:9999"));
 
         let mut env = HostEnv {
             path_dirs: vec![],
@@ -2155,9 +2451,11 @@ mod tests {
             ollama_host: None,
             tilde_entries: Vec::new(),
         };
-        assert_eq!(host_for(&env), DEFAULT_HOST);
-        env.ollama_host = Some("http://10.0.0.5:11434".to_string());
-        assert_eq!(host_for(&env), "http://10.0.0.5:11434");
+        assert_eq!(host_for(&env).as_deref(), Some(DEFAULT_HOST));
+        env.ollama_host = Some(OllamaHost::Endpoint("http://10.0.0.5:11434".to_string()));
+        assert_eq!(host_for(&env).as_deref(), Some("http://10.0.0.5:11434"));
+        env.ollama_host = Some(OllamaHost::Invalid);
+        assert_eq!(host_for(&env), None);
     }
 
     /// A dedicated temp directory used only as a fake PATH entry — never a
@@ -2262,7 +2560,7 @@ mod tests {
             zdotdir: None,
             // A non-default port on this Mac, so the id assertion below
             // still proves the instance is keyed by the configured host.
-            ollama_host: Some("http://localhost:11500".to_string()),
+            ollama_host: Some(OllamaHost::Endpoint("http://localhost:11500".to_string())),
             tilde_entries: Vec::new(),
         };
         let adapter = OllamaAdapter::new(runner, Arc::new(MockHttpClient::new()))
@@ -2360,7 +2658,7 @@ mod tests {
             cargo_home: None,
             rustup_home: None,
             zdotdir: None,
-            ollama_host: Some("http://10.0.0.5:11434".to_string()),
+            ollama_host: Some(OllamaHost::Endpoint("http://10.0.0.5:11434".to_string())),
             tilde_entries: Vec::new(),
         };
         let adapter = OllamaAdapter::new(runner, Arc::new(MockHttpClient::new()))
@@ -2417,7 +2715,7 @@ mod tests {
                 cargo_home: None,
                 rustup_home: None,
                 zdotdir: None,
-                ollama_host: Some(host.to_string()),
+                ollama_host: Some(OllamaHost::Endpoint(host.to_string())),
                 tilde_entries: Vec::new(),
             };
             let adapter = OllamaAdapter::new(runner.clone(), http.clone())
@@ -2676,6 +2974,7 @@ mod tests {
         );
         let adapter = OllamaAdapter::new(Arc::new(MockRunner::new()), http.clone());
         let inst = test_instance("http://127.0.0.1:11434", fx.root_home.clone());
+        adapter.assume_detected(&inst);
 
         let candidates = adapter
             .check_updates(&inst, &CheckOptions::default())
@@ -2735,6 +3034,7 @@ mod tests {
         );
         let adapter = OllamaAdapter::new(Arc::new(MockRunner::new()), http.clone());
         let inst = test_instance("http://127.0.0.1:11434", fx.root_home.clone());
+        adapter.assume_detected(&inst);
 
         let candidates = adapter
             .check_updates(&inst, &CheckOptions::default())
@@ -2840,6 +3140,7 @@ mod tests {
             "http://127.0.0.1:11434",
             PathBuf::from("/Users/brulek/.ollama"),
         );
+        adapter.assume_detected(&inst);
         let req = OpRequest {
             kind,
             instance_id: inst.id.clone(),

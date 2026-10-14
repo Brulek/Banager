@@ -32,7 +32,7 @@ Banager updates and uninstalls what you already have; it can't install anything 
 | uv — tools | yes | yes, but no uninstall while `UV_TOOL_DIR` is set in Banager's environment: removing the last tool, uv would then also delete the folder above that one, with every file in it, when that folder holds no other folder; the row says so |
 | pip | yes | **no** — Banager will not drive pip's installer; it points you at pipx or uv |
 | cargo | yes | yes, with a warning that it compiles locally |
-| Ollama — models | yes | yes |
+| Ollama — models | yes, unless `OLLAMA_HOST` is an address Banager can't use | yes, likewise |
 | Claude Code — the native install, via its own installer | yes | updates yes, except while its own `~/.claude/settings.json` turns every update off with `DISABLE_UPDATES`, which `claude update` obeys too: then a newer version is listed under "N more can't be updated here", marked "Updates turned off", with no Update button; install no (the installer is Anthropic's, and Banager never runs it); uninstall yes — its program files, download cache and launcher go to the Trash, and your settings and history stay |
 | rustup — the Rust toolchain manager, via its own installer | yes | updates yes (`rustup self update`); install no (the installer is rust-lang's, and Banager never runs it); uninstall yes (`rustup self uninstall -y`), offered only when Rust is in its standard folders (`~/.cargo`, `~/.rustup`) and previewed with everything it removes — permanently, not to the Trash: every toolchain by name, the whole Cargo folder with its settings and saved login, and the programs in its `bin` folder, named where known — by the name the Installed page gives a program Cargo's records list (`jj-cli`, not `jj`; also one cargo-binstall installed), else by its file name, on a line of its own that says reinstalling Rust won't bring it back. Neither can be cancelled once it is running, and the preview says so |
 | Antigravity CLI (`agy`) — Google's terminal agent, via its own installer | yes | updates **no** — it installs its updates itself in the background and its own `agy update` is undocumented, so a newer version is listed under "N more can't be updated here", marked "Updates when run", whose ⓘ says to open the tool once — by typing `agy` in Terminal, where typing it runs this copy (Banager looks the newer version up on Apple silicon only: on an Intel Mac the row reads "Can't check" and nothing is sent); install no (the installer is Google's, and Banager never runs it); uninstall yes — the `agy` program, and any `agy.<time>.old` backup its updater left beside it, go to the Trash; its conversations, history and working files in `~/.gemini/antigravity-cli` stay, and so do its staging folder in `~/.cache` and the `PATH` lines its installer added |
@@ -167,7 +167,8 @@ background starts one on its own when it ends (`ipc::refresh_on_background_chang
 its index, and when Homebrew has moved a package you have between a formula and a cask, or renamed
 one, can install, move or uninstall Homebrew packages by itself without a preview or confirmation
 (`docs/what-we-run.md`, "Homebrew"). A Homebrew whose own folders this account can't change gets no
-`brew update`, which would only refuse there; it is view only. After one that succeeded, checks skip it for six hours on the
+`brew update`, which would only refuse there; it is view only. An `OLLAMA_HOST` Banager can't use gets no
+request, not even one to Ollama's default address, and no Ollama models are listed. After one that succeeded, checks skip it for six hours on the
 clock (time the Mac spends
 asleep counts, and a clock set back to before it ended counts as the six hours gone); after one that
 failed, the next check runs it again — or, when a check had stopped waiting for it, the check after
@@ -626,6 +627,7 @@ Banager 在打开时、每次操作完成后，以及你按下“概览”“更
 它会更新 Homebrew 本身和它的索引；Homebrew 把你装的某个软件在 formula 和 cask 之间挪了位置或者改了名时，
 它还能未经预览或确认就安装、移动或卸载软件包（见 `docs/what-we-run.md` 的“Homebrew”一节）。
 当前账户无法修改其自身文件夹的 Homebrew 不运行 `brew update`（在那里它只会拒绝），只能查看。
+`OLLAMA_HOST` 设置的地址无法使用时，不会连接任何 Ollama（也不会改连默认地址），也不列出 Ollama 模型。
 上一次 `brew update` 成功后，六小时内的检查都不再运行它（按时钟算，Mac 睡眠的时间也算在内；
 时钟被调回到它结束之前，就当六小时已过）；上一次失败了，下一次检查就会再运行——
 如果当时的检查没等它结束，那就是它结束时引发的那次检查之后的下一次。

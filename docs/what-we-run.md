@@ -3261,20 +3261,32 @@ Mac, `127.0.0.1`; an IPv6 address without brackets (`::1`) is one; a bare
 written in lower case, as Ollama compares it (`HTTP://` is http on port
 11434); a port that is not a
 number from 0 to 65535 is replaced by the default, as Ollama does. A
-value that still does not make an http(s) URL is ignored and the default
-used, and so is one with an `@` after its host: a login whose password
+value that still does not make an http(s) URL is refused, and so is one
+that is not text, or one with an `@` after its host: a login whose password
 has a raw `/`, `?`, `#` or `\` in it, which would otherwise be read with
 the start of the login as the host and the rest of the password in the
 path, where neither the window's id nor a preview masks it (written
 percent-encoded, `%2F`, such a password is kept as any login is). With
-no `OLLAMA_HOST`, it is
-Ollama's default `http://127.0.0.1:11434` (`DEFAULT_HOST`). Banager also
+no `OLLAMA_HOST`, or one that is empty once those spaces and quotes are
+dropped, it is Ollama's default `http://127.0.0.1:11434` (`DEFAULT_HOST`;
+`ollama_host_setting`). A refused value never becomes that default
+(`OllamaHost::Invalid`): the Ollama is listed as one whose address can't
+be used (the `InvalidOllamaHost` state, "The Ollama address can't be
+used"), under an id that names no address, and the value itself is not
+kept; no version command is run, no daemon is asked, no model is listed or
+checked, and Install, Update and Uninstall are refused, with no Check
+Again and no Open Ollama button. Banager also
 checks whether `/Applications/Ollama.app` or `~/Applications/Ollama.app`
 is a directory: a daemon on this Mac that does not answer while the app
 is there is reported as not running, with an Open Ollama button; anything
 else that does not answer is reported as not responding, with no button.
 Every pull and rm plan explicitly sets `OLLAMA_HOST` to that normalized
-instance endpoint, matching inventory and reconciliation. URL userinfo
+instance endpoint, matching inventory and reconciliation. The endpoint is
+the one the last detection found, kept in the adapter and replaced whole
+by each detection; with none kept (no `ollama`, or a refused
+`OLLAMA_HOST`) nothing is asked or planned, and a plan whose
+`OLLAMA_HOST` is no longer the kept endpoint is not run: it ends as
+changed since shown (`Fault::ChangedSinceShown`), before `ollama` starts. URL userinfo
 is retained for requests and commands, including HTTP Basic authentication
 to the daemon; plain HTTP does not encrypt it (Network). The authenticated
 endpoint stays privately in the adapter, while detected instance ids omit

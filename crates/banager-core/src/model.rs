@@ -104,6 +104,12 @@ pub enum Unavailable {
     /// and not `NotRunning`, whose Open Ollama button cannot help either:
     /// the address is the problem, and only the user can change it.
     HttpsHostRefused,
+    /// Ollama's `OLLAMA_HOST` is set to an address Banager cannot use
+    /// (`path_env::OllamaHost::Invalid`), so no daemon was asked -- Ollama's
+    /// default one least of all, whose models, and their Uninstall, would
+    /// have stood in for the ones the user named (r24 R75-1). As
+    /// `HttpsHostRefused`: only the user can change it.
+    InvalidOllamaHost,
     /// This Python has no pip: `<python> -m pip --version` failed with
     /// Python's own "No module named pip" (`PipAdapter::detect`). Nothing
     /// is broken and checking again changes nothing; any other failure of
@@ -4128,6 +4134,7 @@ mod tests {
             Unavailable::NotResponding,
             Unavailable::RefusesAsRoot,
             Unavailable::HttpsHostRefused,
+            Unavailable::InvalidOllamaHost,
             Unavailable::NoPip,
         ] {
             let status = InstanceStatus {

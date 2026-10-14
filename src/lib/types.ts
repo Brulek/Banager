@@ -638,7 +638,13 @@ export type ReadOnlyReason = "ByDesign" | "PrefixNotWritable" | "PrefixProtected
  * as `ReadOnlyReason`: a new Rust variant does not fail this union at
  * compile time, it lands in whatever default branch reads it.
  */
-export type Unavailable = "NotRunning" | "NotResponding" | "RefusesAsRoot" | "HttpsHostRefused" | "NoPip";
+export type Unavailable =
+  | "NotRunning"
+  | "NotResponding"
+  | "RefusesAsRoot"
+  | "HttpsHostRefused"
+  | "InvalidOllamaHost"
+  | "NoPip";
 /**
  * Mirrors `InstanceNote` in crates/banager-core/src/model.rs; payload-free
  * on purpose, so a bare string. `sourceNoticesFor` in src/lib/sources.ts

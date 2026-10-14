@@ -545,6 +545,17 @@ export function sourceNoticesFor(
       descriptionKey: "sourceNotice.httpsHostRefused.description",
       values: { source: sourceLabel },
     });
+  } else if (unavailable === "InvalidOllamaHost") {
+    // `OLLAMA_HOST` is set to an address Banager can't use, so no daemon
+    // was asked -- not Ollama's default one either. As the https one: no
+    // Check again and no Open Ollama; only the user can correct it.
+    notices.push({
+      id: `${instance.id}:invalid-ollama-host`,
+      variant: "warning",
+      titleKey: "sourceNotice.invalidOllamaHost.title",
+      descriptionKey: "sourceNotice.invalidOllamaHost.description",
+      values: { source: sourceLabel },
+    });
   } else if (unavailable === "NoPip") {
     // Python itself said it has no module named pip. Nothing is broken
     // and checking again changes nothing, so an info notice with no
@@ -1097,6 +1108,7 @@ export const UNAVAILABLE_DETAIL_KEYS: Record<Unavailable, string> = {
   // The notices' own sentences: each names the source and says what can
   // be done, and neither is "check again later".
   HttpsHostRefused: "sourceNotice.httpsHostRefused.description",
+  InvalidOllamaHost: "sourceNotice.invalidOllamaHost.description",
   NoPip: "sourceNotice.noPip.description",
 };
 
@@ -1552,6 +1564,8 @@ export function notActionableMessage(
     parts.push(t("sourceNotice.refusesAsRoot.description", { source: sourceLabel }));
   } else if (reason.unavailable === "HttpsHostRefused") {
     parts.push(t("sourceNotice.httpsHostRefused.description", { source: sourceLabel }));
+  } else if (reason.unavailable === "InvalidOllamaHost") {
+    parts.push(t("sourceNotice.invalidOllamaHost.description", { source: sourceLabel }));
   } else if (reason.unavailable === "NoPip") {
     parts.push(t("sourceNotice.noPip.description"));
   }

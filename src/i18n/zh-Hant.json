@@ -747,6 +747,11 @@
       "description": "OLLAMA_HOST設定的是https://開頭的網址，而連線Ollama只支援http，因此無法檢查{{source}}。如果那裡的Ollama也能透過http存取，請把OLLAMA_HOST改為它的http://網址，然後結束並重新開啟此App。",
       "statusWord": "不支援https"
     },
+    "invalidOllamaHost": {
+      "title": "無法使用Ollama網址",
+      "description": "OLLAMA_HOST設定的網址無法使用，因此沒有連線任何Ollama，也無法檢查{{source}}。請修正OLLAMA_HOST，然後結束並重新開啟此App。",
+      "statusWord": "網址無效"
+    },
     "noPip": {
       "title": "「{{command}}」沒有附帶pip",
       "description": "這個Python沒有附帶pip，所以沒有可列出的內容。",
@@ -1433,7 +1438,7 @@
       },
       "cantUpdate": {
         "question": "為什麼有的工具不能在這裡更新？",
-        "answer": "在「更新」頁面，可以更新的工具下方有一行寫著另有幾個無法在這裡更新，點按就能看到這些工具。每一列都標出了原因，例如「僅供查看」「已固定」「開啟它來更新」。pip安裝的工具，以及npm或Homebrew安裝在目前帳號無法修改的檔案夾裡的工具，只能查看。固定了版本的，要先在終端機解除固定；標著「開啟它來更新」的工具會自行更新，開啟它一次就會檢查新版本。"
+        "answer": "在「更新」頁面，可以更新的工具下方有一行寫著另有幾個無法在這裡更新，點按就能看到這些工具。每一列都標出了原因，例如「僅供查看」「已固定」「開啟它來更新」。pip安裝的工具，以及npm或Homebrew安裝在目前帳號無法修改的檔案夾裡的工具，只能查看；OLLAMA_HOST設定的網址無法使用時，不會列出Ollama模型，也不會改為連線另一個Ollama。固定了版本的，要先在終端機解除固定；標著「開啟它來更新」的工具會自行更新，開啟它一次就會檢查新版本。"
       },
       "twins": {
         "question": "「裝了兩份」是什麼意思，該怎麼辦？",

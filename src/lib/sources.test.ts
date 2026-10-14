@@ -191,6 +191,45 @@ describe("sourceNoticesFor", () => {
     expect(UNAVAILABLE_DETAIL_KEYS.HttpsHostRefused).toBe(notice.descriptionKey);
   });
 
+  it("says an OLLAMA_HOST Banager can't use asked no Ollama, with no button, in every language", () => {
+    // r24 R75-1: a rejected address used to become Ollama's default one,
+    // whose models -- and their Uninstall -- stood in for the ones named.
+    const [notice, ...rest] = sourceNoticesFor(
+      instance({
+        id: "ollama",
+        adapter_id: "ollama",
+        exe_path: "/opt/homebrew/bin/ollama",
+        version: null,
+        status: { unavailable: "InvalidOllamaHost", notes: [] },
+      }),
+      "Ollama",
+      3,
+    );
+    expect(rest).toEqual([]);
+    expect(notice).toEqual({
+      id: "ollama:invalid-ollama-host",
+      variant: "warning",
+      titleKey: "sourceNotice.invalidOllamaHost.title",
+      descriptionKey: "sourceNotice.invalidOllamaHost.description",
+      values: { source: "Ollama" },
+    });
+    expect(en.sourceNotice.invalidOllamaHost.description).toBe(
+      "OLLAMA_HOST is set to an address that can't be used, so no Ollama was contacted and {{source}} can't be checked. Correct OLLAMA_HOST, then quit and reopen this app.",
+    );
+    for (const locale of [en, zhCN, zhHant]) {
+      const said = locale.sourceNotice.invalidOllamaHost;
+      expect(said.title).toMatch(/Ollama/);
+      expect(said.description).toMatch(/OLLAMA_HOST/);
+      expect(said.description).toContain("{{source}}");
+      expect(said.description).not.toMatch(/respond|响应|回應|later|稍后|稍後/);
+      expect(said.statusWord).not.toBe("");
+    }
+    expect(
+      notActionableMessage(fakeT, { read_only: null, unavailable: "InvalidOllamaHost" }, "Ollama"),
+    ).toBe(fakeT(notice.descriptionKey, notice.values));
+    expect(UNAVAILABLE_DETAIL_KEYS.InvalidOllamaHost).toBe(notice.descriptionKey);
+  });
+
   it("says a Python with no pip has none, by the name it is typed by, as news and not a warning", () => {
     // Python's own "No module named pip" (`PipAdapter::detect`): nothing
     // is broken and checking again changes nothing, so no button and no
@@ -2297,6 +2336,7 @@ describe("the Updates page's chip details", () => {
       NotResponding: "updates.unavailableDetail.NotResponding",
       RefusesAsRoot: "updates.unavailableDetail.RefusesAsRoot",
       HttpsHostRefused: "sourceNotice.httpsHostRefused.description",
+      InvalidOllamaHost: "sourceNotice.invalidOllamaHost.description",
       NoPip: "sourceNotice.noPip.description",
     });
     // Each says what to do with the button that does it: Check again.
