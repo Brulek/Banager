@@ -1086,6 +1086,7 @@ mod tests {
             ReadOnlyReason::PrefixProtected,
             ReadOnlyReason::HomebrewNotWritable,
             ReadOnlyReason::OllamaAuthenticationUnsupported,
+            ReadOnlyReason::OllamaCliUnavailable,
         ] {
             let adapter = FakeAdapter::new(vec![test_support::make_read_only_instance(
                 "fake", "fake:1", reason,

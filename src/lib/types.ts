@@ -659,13 +659,15 @@ export interface UpdateCandidate {
  * writable by this account (another account's Homebrew), R59-2.
  * `OllamaAuthenticationUnsupported`: `OLLAMA_HOST` carries a login, which
  * Banager lists the models with but the `ollama` command can't use, r24 R75-2.
+ * `OllamaCliUnavailable`: HTTP inventory works, but the CLI could not start.
  */
 export type ReadOnlyReason =
   | "ByDesign"
   | "PrefixNotWritable"
   | "PrefixProtected"
   | "HomebrewNotWritable"
-  | "OllamaAuthenticationUnsupported";
+  | "OllamaAuthenticationUnsupported"
+  | "OllamaCliUnavailable";
 /**
  * Why a source Banager knows about cannot answer right now. Mirrors
  * `Unavailable` in crates/banager-core/src/model.rs, same bare-string rule

@@ -481,6 +481,13 @@ impl OllamaAdapter {
                 CancellationToken::new(),
             )
             .await;
+        // The daemon may answer even when the runner refuses its CLI.
+        // Keep HTTP inventory available, but never offer model commands
+        // whose executable could not start (including version-manager shims).
+        let cli_unavailable = matches!(
+            &version_output,
+            Err(crate::runner::RunnerError::Spawn(_) | crate::runner::RunnerError::NotFound(_))
+        );
         let version = match version_output {
             Ok(o) if o.exit_code == Some(0) => parse_version(&o.stdout),
             _ => None,
@@ -557,9 +564,13 @@ impl OllamaAdapter {
             version,
             answered_at: None,
             unverified_version,
-            // Listed only: `ollama` cannot use the login (`has_login`).
-            read_only_reason: has_login(&host)
-                .then_some(ReadOnlyReason::OllamaAuthenticationUnsupported),
+            read_only_reason: if has_login(&host) {
+                Some(ReadOnlyReason::OllamaAuthenticationUnsupported)
+            } else if cli_unavailable {
+                Some(ReadOnlyReason::OllamaCliUnavailable)
+            } else {
+                None
+            },
         }]
     }
 
@@ -820,6 +831,8 @@ impl OllamaAdapter {
         // read for it, on this Mac or another (r24 R75-2).
         let not_looked_up = if has_login(&self.endpoint(inst)?) {
             Some("models at an address with a login cannot be updated from this Mac")
+        } else if inst.read_only_reason == Some(ReadOnlyReason::OllamaCliUnavailable) {
+            Some("models cannot be changed because the Ollama command could not start")
         } else if !models_on_this_mac(inst) {
             Some("remote daemon manifests cannot be checked from this Mac")
         } else {
@@ -901,6 +914,12 @@ impl OllamaAdapter {
         if has_login(&host) {
             return Err(AdapterError::NotActionable {
                 read_only: Some(ReadOnlyReason::OllamaAuthenticationUnsupported),
+                unavailable: inst.status.unavailable,
+            });
+        }
+        if inst.read_only_reason.is_some() {
+            return Err(AdapterError::NotActionable {
+                read_only: inst.read_only_reason,
                 unavailable: inst.status.unavailable,
             });
         }
@@ -2667,6 +2686,78 @@ mod tests {
         std::fs::create_dir_all(&dir).expect("create temp PATH dir");
         std::fs::write(dir.join("ollama"), b"#!/bin/sh\n").expect("write fake ollama executable");
         dir
+    }
+
+    #[tokio::test]
+    async fn shim_cli_keeps_http_inventory_but_refuses_model_plans() {
+        use std::os::unix::fs::PermissionsExt;
+
+        for manager in ["mise", "asdf"] {
+            let dir = isolated_path_dir(manager);
+            let shims = dir.join(manager).join("shims");
+            std::fs::create_dir_all(&shims).unwrap();
+            let shim = shims.join("ollama");
+            std::fs::write(&shim, "#!/bin/sh\nexit 99\n").unwrap();
+            std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o755)).unwrap();
+            let http = Arc::new(MockHttpClient::new());
+            let url = format!("{DEFAULT_HOST}/api/tags");
+            http.respond(
+                &url,
+                HttpResponse {
+                    status: 200,
+                    body: TAGS_FIXTURE.into(),
+                },
+            );
+            let adapter = OllamaAdapter::new(
+                Arc::new(crate::runner::RealRunner::without_this_macs_settings()),
+                http.clone(),
+            );
+            let mut env = env_in(&dir, None);
+            env.path_dirs = vec![shims];
+            let inst = adapter.detect(&env).await.remove(0);
+            assert_eq!(inst.status.unavailable, None);
+            assert_eq!(
+                inst.read_only_reason,
+                Some(ReadOnlyReason::OllamaCliUnavailable)
+            );
+            assert!(!inst.writable());
+            assert_eq!(adapter.inventory(&inst).await.unwrap().len(), 1);
+            let check = adapter
+                .check_updates(&inst, &CheckOptions::default())
+                .await
+                .unwrap();
+            assert_eq!(check.candidates.len(), 1);
+            assert!(!check.candidates[0].checkable);
+            assert!(http.calls().iter().all(|called| called == &url));
+            for kind in [OpKind::Install, OpKind::Upgrade, OpKind::Uninstall] {
+                assert!(matches!(
+                    adapter
+                        .plan(&inst, &model_request(kind, &inst, "qwen3.8:27b-mlx"))
+                        .await,
+                    Err(AdapterError::NotActionable {
+                        read_only: Some(ReadOnlyReason::OllamaCliUnavailable),
+                        ..
+                    })
+                ));
+            }
+
+            // A later detection of a direct installation restores actions.
+            let direct = dir.join("ollama");
+            std::fs::write(&direct, "#!/bin/sh\nprintf 'ollama version is 0.34.1\\n'\n").unwrap();
+            std::fs::set_permissions(&direct, std::fs::Permissions::from_mode(0o755)).unwrap();
+            env.path_dirs = vec![dir.clone()];
+            let direct = adapter.detect(&env).await.remove(0);
+            assert_eq!(direct.read_only_reason, None);
+            assert_eq!(direct.version.as_deref(), Some("0.34.1"));
+            assert!(adapter
+                .plan(
+                    &direct,
+                    &model_request(OpKind::Uninstall, &direct, "qwen3.8:27b-mlx")
+                )
+                .await
+                .is_ok());
+            std::fs::remove_dir_all(dir).unwrap();
+        }
     }
 
     #[tokio::test]

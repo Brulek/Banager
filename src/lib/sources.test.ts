@@ -2319,6 +2319,7 @@ describe("the Updates page's chip details", () => {
       PrefixProtected: "sourceNoticeMore.prefixProtected.description",
       HomebrewNotWritable: "sourceNotice.homebrewNotWritable.description",
       OllamaAuthenticationUnsupported: "sourceNotice.ollamaLogin.description",
+      OllamaCliUnavailable: "sourceNotice.ollamaCliUnavailable.description",
     });
     expect(notActionableMessage(fakeT, { read_only: "ByDesign", unavailable: null }, "pip")).toBe(
       READ_ONLY_DETAIL_KEYS.ByDesign,

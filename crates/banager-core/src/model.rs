@@ -74,6 +74,9 @@ pub enum ReadOnlyReason {
     /// reads no login out of the address, so every such command would
     /// fail. Listed only (r24 R75-2).
     OllamaAuthenticationUnsupported,
+    /// HTTP inventory still works, but the Ollama executable could not
+    /// start, for example because the runner refused a version-manager shim.
+    OllamaCliUnavailable,
 }
 
 /// Why a source Banager knows about cannot answer right now. The state
@@ -2718,6 +2721,7 @@ mod tests {
             ReadOnlyReason::PrefixProtected,
             ReadOnlyReason::HomebrewNotWritable,
             ReadOnlyReason::OllamaAuthenticationUnsupported,
+            ReadOnlyReason::OllamaCliUnavailable,
         ] {
             let read_only = ManagerInstance {
                 read_only_reason: Some(reason),

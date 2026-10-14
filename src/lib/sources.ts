@@ -1122,6 +1122,7 @@ export const READ_ONLY_DETAIL_KEYS: Record<ReadOnlyReason, string> = {
   // belong to as the way out -- never taking them over (R59-2).
   HomebrewNotWritable: "sourceNotice.homebrewNotWritable.description",
   OllamaAuthenticationUnsupported: "sourceNotice.ollamaLogin.description",
+  OllamaCliUnavailable: "sourceNotice.ollamaCliUnavailable.description",
 };
 
 /**

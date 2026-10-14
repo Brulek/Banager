@@ -752,6 +752,9 @@
     "homebrewNotWritable": {
       "description": "Homebrew keeps these in folders your account can't change, so you can only view them, and their updates may not be the latest. To update or uninstall them, log in to this Mac with the account those folders belong to."
     },
+    "ollamaCliUnavailable": {
+      "description": "Ollama's command couldn't start, so these models are view only. Make sure Ollama is installed directly, not run through a version manager's shim, then check again."
+    },
     "ollamaLogin": {
       "description": "OLLAMA_HOST includes a login, so you can only view these models. The login can be used to list them, but not to install, update or uninstall them."
     },

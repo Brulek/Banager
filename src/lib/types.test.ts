@@ -259,6 +259,7 @@ describe("types", () => {
       "PrefixProtected",
       "HomebrewNotWritable",
       "OllamaAuthenticationUnsupported",
+      "OllamaCliUnavailable",
     ];
     expect(roundTrip(reasons)).toEqual([
       "ByDesign",
@@ -266,6 +267,7 @@ describe("types", () => {
       "PrefixProtected",
       "HomebrewNotWritable",
       "OllamaAuthenticationUnsupported",
+      "OllamaCliUnavailable",
     ]);
     const writable: ReadOnlyReason | null = null;
     expect(roundTrip(writable)).toBeNull();

@@ -695,6 +695,9 @@
     "homebrewNotWritable": {
       "description": "Homebrew把它们安装在当前账户无法修改的文件夹中，因此只能查看，显示的更新不一定是最新的。要更新或卸载，请用这些文件夹所属的账户登录这台Mac。"
     },
+    "ollamaCliUnavailable": {
+      "description": "Ollama的命令无法启动，因此这些模型只能查看。请确认Ollama是直接安装的，而不是通过版本管理工具的shim运行，然后重新检查。"
+    },
     "ollamaLogin": {
       "description": "OLLAMA_HOST中带有登录信息，因此这些模型只能查看。登录信息可以用来列出模型，但无法用来安装、更新或卸载模型。"
     },
