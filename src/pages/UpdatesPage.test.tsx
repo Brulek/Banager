@@ -257,8 +257,17 @@ function calls(cmd: string) {
   return mockInvoke.mock.calls.filter(([name]) => name === cmd);
 }
 
+/**
+ * Each `submit_operation`'s arguments, whole, but for a confirmation's
+ * `batch` (R68-1): a name, checked where it matters, left out here so that
+ * any other field still fails the comparison.
+ */
 function submittedPlanIds() {
-  return calls("submit_operation").map(([, args]) => ({ planId: (args as { planId: string }).planId }));
+  return calls("submit_operation").map(([, args]) => {
+    const { batch, ...rest } = args as { planId: string; batch?: unknown };
+    if (batch !== undefined) expect(batch).toEqual(expect.any(String));
+    return rest;
+  });
 }
 
 function plannedNames(): string[] {

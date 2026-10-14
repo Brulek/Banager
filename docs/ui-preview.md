@@ -350,7 +350,7 @@ Paths are under a generic home folder, `/Users/you`.
   console opens the sheet over any page: the general keys (pages, Check Again, Search, ⌘W,
   ⌘Q), the lists' and the dialogs', in the window's language. Done, Escape or a click beside it closes it.
 - Help's 「常见问题」 ("Common Questions"): `window.mockMenu("common-questions")` in the
-  console opens the sheet over any page: ten questions, each answered in a few sentences, in the
+  console opens the sheet over any page: twelve questions, each answered in a few sentences, in the
   window's language. A question's 查看 closes the sheet and opens where the answer points: Installed
   on 「终端里找不到」, 「装了不止一份」 or sorted by size, the Updates page, Other Programs or Settings.
   The password question and 「此App会改动我的Mac吗？」 have none. Done, Escape or a click beside it closes it.

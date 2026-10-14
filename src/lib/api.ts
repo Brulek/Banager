@@ -70,9 +70,17 @@ export interface BatchSubmission {
   batch: string;
 }
 
-/** A new name for the operations of one confirmation (`BatchSubmission`). */
+let submissionBatches = 0;
+
+/**
+ * A new name for the operations of one confirmation (`BatchSubmission`).
+ * `crypto.randomUUID` needs a secure context; without it, the time and a
+ * count, which this window never repeats either.
+ */
 export function newSubmissionBatch(): string {
-  return crypto.randomUUID();
+  if (typeof globalThis.crypto?.randomUUID === "function") return globalThis.crypto.randomUUID();
+  submissionBatches += 1;
+  return `${Date.now()}-${submissionBatches}`;
 }
 
 export async function submitOperation(submission: PlanId | BatchSubmission): Promise<number> {

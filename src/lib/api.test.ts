@@ -8,6 +8,7 @@ import {
   refresh,
   planOperation,
   submitOperation,
+  newSubmissionBatch,
   cancelOperation,
   listOperations,
   getSettings,
@@ -105,6 +106,20 @@ describe("api", () => {
     mockInvoke.mockResolvedValueOnce(8 as never);
     await submitOperation({ planId: "a1b2c3", batch: "b-1" });
     expect(mockInvoke).toHaveBeenCalledWith("submit_operation", { planId: "a1b2c3", batch: "b-1" });
+  });
+
+  it("names each confirmation's batch anew, even where the web view has no crypto.randomUUID", () => {
+    const first = newSubmissionBatch();
+    expect(newSubmissionBatch()).not.toBe(first);
+    vi.stubGlobal("crypto", {});
+    try {
+      const a = newSubmissionBatch();
+      const b = newSubmissionBatch();
+      expect(a).toEqual(expect.any(String));
+      expect(b).not.toBe(a);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("cancelOperation invokes cancel_operation with opId", async () => {

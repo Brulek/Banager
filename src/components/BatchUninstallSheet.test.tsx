@@ -347,6 +347,11 @@ async function openSheet(tools: InstalledArtifact[]): Promise<HTMLElement> {
   return dialog;
 }
 
+/** Each `submit_operation`'s arguments, in the order they were sent. */
+function submissions(): unknown[] {
+  return mockInvoke.mock.calls.filter(([cmd]) => cmd === "submit_operation").map(([, args]) => args);
+}
+
 /** Waits until every preview is back: the line that says it checks is gone. */
 async function untilChecked(dialog: HTMLElement): Promise<void> {
   await waitFor(() => expect(within(dialog).queryByText(/Checking what this affects|正在检查影响/)).toBeNull());
@@ -813,6 +818,26 @@ describe("the batch uninstall's sheet", () => {
     await waitFor(() => expect(onStarted).toHaveBeenCalledTimes(1));
     // The operation bar carries the run: no log opens by itself.
     expect(useUiStore.getState().drawerOpen).toBe(false);
+  });
+
+  it("starts the uninstalls of one confirmation as one run (R68-1)", async () => {
+    const dialog = await openSheet([python, pipxFormula, wget]);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Uninstall 3 Tools" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    // The same batch with each, even where one ends before the next is sent.
+    const sent = submissions() as { planId: string; batch: string }[];
+    expect(sent).toHaveLength(3);
+    const batch = sent[0].batch;
+    expect(batch).toEqual(expect.any(String));
+    expect(sent).toEqual(sent.map(({ planId }) => ({ planId, batch })));
+  });
+
+  it("starts one uninstall on its own as a run of its own, with no batch (R68-1)", async () => {
+    const dialog = await openSheet([wget]);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Uninstall" }));
+    await waitFor(() => expect(submissions()).toHaveLength(1));
+    // Exactly what a single uninstall sends.
+    expect(Object.keys(submissions()[0] as object)).toEqual(["planId"]);
   });
 
   it("does not start a dependency whose dependent did not start, and stays open saying why", async () => {
