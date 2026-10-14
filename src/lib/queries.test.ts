@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import React from "react";
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import {
@@ -8,6 +8,9 @@ import {
   useRefresh,
   usePlanOperation,
   useSubmitOperation,
+  useOperations,
+  usePendingOperations,
+  queryKeys,
   useCancelOperation,
   useOpenOllamaApp,
   useUnknownScan,
@@ -15,7 +18,8 @@ import {
   ARTIFACT_ICON_STALE_MS,
 } from "./queries";
 import { refreshIntoCache } from "./events";
-import type { ArtifactKey, IssuedPlan, ManagerInstance, Snapshot, UnknownScan } from "./types";
+import { useUpdateOperationFor } from "../components/UpdateProgress";
+import type { ArtifactKey, IssuedPlan, ManagerInstance, OpSummary, Snapshot, UnknownScan, UpdateCandidate } from "./types";
 
 function ollamaInstance(running: boolean): ManagerInstance {
   return {
@@ -229,6 +233,116 @@ describe("queries", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("reserves an artifact across pending IPC, stale lists, batches, and page remounts", async () => {
+    const queryClient = newClient();
+    const key: ArtifactKey = { instance_id: "uv:fixture", kind: "Tool", name: "ruff" };
+    const candidate: UpdateCandidate = {
+      key, current: "1", target: "2", channel: "Native",
+      checkable: true, warnings: [], blocked: null,
+    };
+    const request = { kind: "Upgrade" as const, instance_id: key.instance_id, artifact_kind: key.kind, name: key.name };
+    let planNumber = 0;
+    let accept!: (id: number) => void;
+    let answerList!: (ops: OpSummary[]) => void;
+    mockInvoke.mockImplementation((cmd) => {
+      if (cmd === "plan_operation") return Promise.resolve({
+        id: `reserved-${++planNumber}`, issued_at: 1,
+        plan: {
+          request, action: { Command: { program: "/fixture/uv", args: [], env: [] } },
+          needs_password: false, locks: [], cancel_policy: "KillThenReconcile",
+          warnings: [], affected: [], timeout_secs: 600,
+        },
+      });
+      if (cmd === "submit_operation") return new Promise<number>((resolve) => { accept = resolve; });
+      if (cmd === "list_operations") return new Promise<OpSummary[]>((resolve) => { answerList = resolve; });
+      throw new Error(`Unexpected IPC: ${cmd}`);
+    });
+    const hooks = () => ({
+      plan: usePlanOperation(), submit: useSubmitOperation(),
+      row: useUpdateOperationFor(), pending: usePendingOperations(),
+      operations: useOperations(),
+    });
+    let page = renderHook(hooks, { wrapper: wrapper(queryClient) });
+    let first!: IssuedPlan;
+    let second!: IssuedPlan;
+    await act(async () => {
+      first = await page.result.current.plan.mutateAsync(request);
+      second = await page.result.current.plan.mutateAsync(request);
+    });
+    let submitting!: Promise<number>;
+    await act(async () => {
+      submitting = page.result.current.submit.mutateAsync({ planId: first.id, batch: "first" });
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(page.result.current.row(candidate)?.status).toBe("Queued"));
+    await act(async () => {
+      await expect(page.result.current.submit.mutateAsync({ planId: second.id, batch: "second" }))
+        .rejects.toThrow("pending_artifact_action");
+      accept(71);
+      await submitting;
+    });
+    // A response captured before submit returns no operation.
+    await act(async () => { answerList([]); });
+    await waitFor(() => expect(page.result.current.operations.data).toEqual([]));
+    page.unmount();
+    page = renderHook(hooks, { wrapper: wrapper(queryClient) });
+    await waitFor(() => expect(page.result.current.row(candidate)?.id).toBe(71));
+    await act(async () => {
+      await expect(page.result.current.submit.mutateAsync(second.id))
+        .rejects.toThrow("pending_artifact_action");
+    });
+    expect(mockInvoke.mock.calls.filter(([cmd]) => cmd === "submit_operation")).toHaveLength(1);
+    const operation: OpSummary = {
+      id: 71, ...request, status: "Queued", outcome: null,
+      argv_preview: [], cancel_policy: "KillThenReconcile",
+    };
+    await act(async () => { answerList([operation]); });
+    await act(async () => {
+      await expect(page.result.current.submit.mutateAsync(second.id))
+        .rejects.toThrow("pending_artifact_action");
+    });
+    // Only the authoritative terminal state releases the artifact.
+    await act(async () => {
+      queryClient.setQueryData(queryKeys.operations, [{ ...operation, status: "Done", outcome: "Succeeded" }]);
+    });
+    await waitFor(() => expect(Object.keys(page.result.current.pending)).toHaveLength(0));
+    await act(async () => {
+      submitting = page.result.current.submit.mutateAsync(second.id);
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(mockInvoke.mock.calls.filter(([cmd]) => cmd === "submit_operation")).toHaveLength(2));
+    await act(async () => { accept(72); await submitting; });
+    page.unmount();
+    queryClient.clear();
+  });
+
+  it("releases a rejected submission so a fresh preview can retry", async () => {
+    const queryClient = newClient();
+    const request = { kind: "Upgrade" as const, instance_id: "uv:fixture", artifact_kind: "Tool" as const, name: "ruff" };
+    let number = 0;
+    mockInvoke.mockImplementation((cmd) => {
+      if (cmd === "plan_operation") return Promise.resolve({
+        id: `retry-${++number}`, issued_at: 1,
+        plan: { request, cancel_policy: "KillThenReconcile" },
+      });
+      if (cmd === "submit_operation") return Promise.reject(new Error("refused"));
+      throw new Error(`Unexpected IPC: ${cmd}`);
+    });
+    const { result, unmount } = renderHook(() => ({
+      plan: usePlanOperation(), submit: useSubmitOperation(), pending: usePendingOperations(),
+    }), { wrapper: wrapper(queryClient) });
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await act(async () => {
+        const plan = await result.current.plan.mutateAsync(request);
+        await expect(result.current.submit.mutateAsync(plan.id)).rejects.toThrow("refused");
+      });
+      await waitFor(() => expect(result.current.pending).toEqual({}));
+    }
+    expect(mockInvoke.mock.calls.filter(([cmd]) => cmd === "submit_operation")).toHaveLength(2);
+    unmount();
+    queryClient.clear();
   });
 
   it("useSubmitOperation invalidates the operations query on success", async () => {

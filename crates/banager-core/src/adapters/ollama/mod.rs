@@ -293,9 +293,8 @@ fn ollama_app_path_under(applications: &Path, home: &Path) -> Option<PathBuf> {
 }
 
 /// Whether `host` -- a daemon URL as [`host_for`] builds it -- names this
-/// Mac. Only then can launching the local Ollama.app bring it up: with
-/// `OLLAMA_HOST` pointing at another machine, the app would start a
-/// daemon here and the one Banager is asking would stay exactly as silent.
+/// Mac. This establishes locality only, not whether Ollama.app owns
+/// the endpoint (`host_is_app_endpoint`).
 ///
 /// The unspecified addresses count as this Mac because that is how a
 /// client treats them: `OLLAMA_HOST=0.0.0.0` is Ollama's documented way to
@@ -311,6 +310,28 @@ fn host_is_this_mac(host: &str) -> bool {
         Some(url::Host::Ipv6(ip)) => ip.is_loopback() || ip.is_unspecified(),
         None => false,
     }
+}
+
+/// The endpoint the local app opens by default. Being on loopback alone
+/// does not identify it: another port or a proxy path may be a tunnel or
+/// a separately configured daemon that launching Ollama.app cannot restore.
+fn host_is_app_endpoint(host: &str) -> bool {
+    url::Url::parse(host).is_ok_and(|url| {
+        let loopback = match url.host() {
+            Some(url::Host::Domain(name)) => name.eq_ignore_ascii_case("localhost"),
+            Some(url::Host::Ipv4(ip)) => ip == std::net::Ipv4Addr::LOCALHOST,
+            Some(url::Host::Ipv6(ip)) => ip == std::net::Ipv6Addr::LOCALHOST,
+            None => false,
+        };
+        loopback
+            && url.scheme() == "http"
+            && url.port() == Some(11434)
+            && url.path() == "/"
+            && url.query().is_none()
+            && url.fragment().is_none()
+            && url.username().is_empty()
+            && url.password().is_none()
+    })
 }
 
 /// Whether `url` is an `https` URL that `RealHttpClient::send` refuses
@@ -533,7 +554,7 @@ impl OllamaAdapter {
                 // button that fixes it from inside Banager: Open Ollama,
                 // which runs `open -a Ollama`. So it is given only when
                 // that button can work -- the daemon Banager asked is on
-                // this Mac, and there is an Ollama.app here to open.
+                // the app's default endpoint, and Ollama.app is here to open.
                 // Anything else that is not answering is `NotResponding`,
                 // whose notice claims nothing Banager cannot do.
                 //
@@ -553,7 +574,7 @@ impl OllamaAdapter {
                     None
                 } else if refused {
                     Some(Unavailable::HttpsHostRefused)
-                } else if host_is_this_mac(&host) && (self.app_present_fn)(env) {
+                } else if host_is_app_endpoint(&host) && (self.app_present_fn)(env) {
                     Some(Unavailable::NotRunning)
                 } else {
                     Some(Unavailable::NotResponding)
@@ -2838,14 +2859,12 @@ mod tests {
         // which is what a refused connection looks like to this adapter.
         let env = HostEnv {
             path_dirs: vec![tmp_dir.clone()],
-            home: PathBuf::from("/tmp/fake-home"),
+            home: tmp_dir.join("home"),
             euid: 501,
             cargo_home: None,
             rustup_home: None,
             zdotdir: None,
-            // A non-default port on this Mac, so the id assertion below
-            // still proves the instance is keyed by the configured host.
-            ollama_host: Some(OllamaHost::Endpoint("http://localhost:11500".to_string())),
+            ollama_host: Some(OllamaHost::Endpoint("http://localhost:11434".to_string())),
             tilde_entries: Vec::new(),
         };
         let adapter = OllamaAdapter::new(runner, Arc::new(MockHttpClient::new()))
@@ -2862,9 +2881,27 @@ mod tests {
              Ollama.app, is NotRunning -- which is what puts the Open \
              Ollama button on its notice"
         );
-        assert_eq!(instances[0].id, "ollama:http://localhost:11500");
+        assert_eq!(instances[0].id, "ollama:http://localhost:11434");
         assert_eq!(instances[0].unverified_version, Some("9.9.9".to_string()));
 
+        for host in [
+            "http://127.0.0.1:11435",
+            "http://localhost:11434/ollama",
+            "http://[::1]:11435",
+            "http://127.0.0.2:11434",
+            "http://user:secret@localhost:11434",
+        ] {
+            let custom = HostEnv {
+                ollama_host: Some(OllamaHost::Endpoint(host.to_string())),
+                ..env.clone()
+            };
+            let instances = adapter.detect(&custom).await;
+            assert_eq!(
+                instances[0].status.unavailable,
+                Some(Unavailable::NotResponding),
+                "{host}"
+            );
+        }
         let _ = std::fs::remove_dir_all(&tmp_dir);
     }
 

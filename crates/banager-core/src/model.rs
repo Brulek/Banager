@@ -1077,6 +1077,9 @@ pub enum Warning {
     /// Installed from a git repository or a local path, not the crates.io
     /// registry Banager checks for updates against.
     NonRegistrySource,
+    /// Legacy pipx metadata cannot establish a compatible upgrade target
+    /// for the installed environment. Never an actionable update.
+    PythonCompatibilityUnknown,
     /// On a `checkable: false` candidate, after the `Message` that says
     /// why: its lookup failed in a way checking again can get past. The
     /// request could not connect or broke off (`HttpError::Network`), or

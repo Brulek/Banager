@@ -10,6 +10,8 @@
 //!   this proves the logic still matches a real Homebrew install.
 //! - `live_install_inventory_uninstall_hello` changes the machine, so it
 //!   additionally requires `BANAGER_LIVE=1` and skips loudly without it.
+//!   It also skips if hello is already installed; only its own installation
+//!   may be removed. Run only with exclusive use of the Homebrew prefix.
 
 use banager_core::adapters::brew::BrewAdapter;
 use banager_core::adapters::Adapter;
@@ -98,7 +100,19 @@ async fn live_install_inventory_uninstall_hello() {
         name: "hello".to_string(),
     };
 
-    // Install.
+    // Establish absence before changing anything. A tap-qualified hello
+    // also owns this formula name; never uninstall somebody else's copy.
+    let before = Adapter::inventory(&adapter, &inst)
+        .await
+        .expect("initial inventory must succeed before installing");
+    if before.iter().any(|artifact| {
+        artifact.key.kind == ArtifactKind::Formula
+            && artifact.key.name.rsplit('/').next() == Some("hello")
+    }) {
+        eprintln!("hello is already installed; skipping without changing it");
+        return;
+    }
+    // Install. This opt-in test requires exclusive use of this prefix.
     let install_req = OpRequest {
         kind: OpKind::Install,
         instance_id: inst.id.clone(),

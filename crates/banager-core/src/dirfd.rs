@@ -661,6 +661,48 @@ pub(crate) mod calls {
 
     thread_local! {
         static ACTIVE: RefCell<Option<Calls>> = const { RefCell::new(None) };
+        static ALLOWED_TREE: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
+    }
+
+    /// Reject a lookup before its syscall if it leaves the fixture tree
+    /// or the ancestors needed to reach it. The caller supplies a canonical
+    /// temporary root; this guard itself performs no filesystem lookup.
+    pub(crate) fn restrict_to(root: &std::path::Path) -> TreeGuard {
+        ALLOWED_TREE.with(|slot| {
+            let mut slot = slot.borrow_mut();
+            assert!(slot.is_none(), "one fixture lookup guard at a time");
+            *slot = Some(root.to_path_buf());
+        });
+        TreeGuard
+    }
+
+    pub(crate) struct TreeGuard;
+
+    impl Drop for TreeGuard {
+        fn drop(&mut self) {
+            ALLOWED_TREE.with(|slot| *slot.borrow_mut() = None);
+        }
+    }
+
+    fn check_path(path: &std::path::Path) {
+        ALLOWED_TREE.with(|slot| {
+            if let Some(root) = slot.borrow().as_ref() {
+                let mut absolute = PathBuf::new();
+                for component in path.components() {
+                    match component {
+                        std::path::Component::ParentDir => {
+                            absolute.pop();
+                        }
+                        std::path::Component::CurDir => {}
+                        component => absolute.push(component.as_os_str()),
+                    }
+                }
+                assert!(
+                    absolute.starts_with(root) || root.starts_with(&absolute),
+                    "lookup outside fixture tree {root:?}: {path:?}"
+                );
+            }
+        });
     }
 
     pub(super) fn note_entry() {
@@ -672,6 +714,13 @@ pub(crate) mod calls {
     }
 
     pub(super) fn note(call: Call, dir: Option<&Dir>, names: &[&OsStr]) {
+        if ALLOWED_TREE.with(|slot| slot.borrow().is_some()) {
+            let mut path = dir.map_or_else(|| PathBuf::from("/"), path_of);
+            for name in names {
+                path.push(name);
+            }
+            check_path(&path);
+        }
         ACTIVE.with(|active| {
             let mut active = active.borrow_mut();
             let Some(calls) = active.as_mut() else {
@@ -697,6 +746,7 @@ pub(crate) mod calls {
 
     /// A call whose path is already known: `F_GETPATH`'s answer.
     pub(super) fn note_path(call: Call, path: &std::path::Path) {
+        check_path(path);
         ACTIVE.with(|active| {
             if let Some(calls) = active.borrow_mut().as_mut() {
                 calls.get_path += usize::from(call == Call::GetPath);

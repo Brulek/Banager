@@ -438,6 +438,7 @@ export type Warning =
   | "OllamaStays"
   | "CompilesLocally"
   | "NonRegistrySource"
+  | "PythonCompatibilityUnknown"
   /**
    * On a `checkable: false` candidate, after the `Message` that says why:
    * its lookup failed in a way a later check can get past -- no answer,

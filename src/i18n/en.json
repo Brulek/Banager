@@ -494,6 +494,7 @@
     "soon": "Next automatic check: soon"
   },
   "warnings": {
+    "pythonCompatibilityUnknown": "With this version of pipx, no update compatible with this tool's Python and installation settings can be determined.",
     "serviceMayNeedRestart": "{{name}} is set to run in the background with brew services. Updating its files doesn't restart it. If it is running, restart it with brew services after the update to use the new version.",
     "serviceMayNeedRestartSudo": "{{name}} is set to run in the background with sudo brew services. Updating its files doesn't restart it. If it is running, restart it with sudo brew services after the update to use the new version.",
     "dependentsUnknown": "Couldn't check what else needs this. Check yourself before you uninstall.",
@@ -767,14 +768,14 @@
       "descriptionWithRows_other": "{{count}} tools were installed with {{source}}. It didn't respond this time, so they're shown as they were when it last responded. Check again later.",
       "descriptionWithRowsAt_one": "One tool was installed with {{source}}. It didn't respond this time, so that tool is shown as it was when {{source}} last responded {{when}}. Check again later.",
       "descriptionWithRowsAt_other": "{{count}} tools were installed with {{source}}. It didn't respond this time, so they're shown as they were when it last responded {{when}}. Check again later.",
-      "descriptionWithModels_one": "{{source}} has one model. It didn't respond this time, so that model is shown as it was when {{source}} last responded. Check again later.",
-      "descriptionWithModels_other": "{{source}} has {{count}} models. It didn't respond this time, so they're shown as they were when it last responded. Check again later.",
-      "descriptionWithModelsAt_one": "{{source}} has one model. It didn't respond this time, so that model is shown as it was when {{source}} last responded {{when}}. Check again later.",
-      "descriptionWithModelsAt_other": "{{source}} has {{count}} models. It didn't respond this time, so they're shown as they were when it last responded {{when}}. Check again later.",
+      "descriptionWithModels_one": "{{source}} has one model. It didn't respond this time, so that model is shown as it was when {{source}} last responded. Check the server or tunnel at the configured OLLAMA_HOST address. Check again later.",
+      "descriptionWithModels_other": "{{source}} has {{count}} models. It didn't respond this time, so they're shown as they were when it last responded. Check the server or tunnel at the configured OLLAMA_HOST address. Check again later.",
+      "descriptionWithModelsAt_one": "{{source}} has one model. It didn't respond this time, so that model is shown as it was when {{source}} last responded {{when}}. Check the server or tunnel at the configured OLLAMA_HOST address. Check again later.",
+      "descriptionWithModelsAt_other": "{{source}} has {{count}} models. It didn't respond this time, so they're shown as they were when it last responded {{when}}. Check the server or tunnel at the configured OLLAMA_HOST address. Check again later.",
       "descriptionWithOwnRow": "{{source}} didn't respond this time, so what's shown is from when it last responded. Check again later.",
       "descriptionWithOwnRowAt": "{{source}} didn't respond this time, so what's shown is from when it last responded {{when}}. Check again later.",
-      "detailModels": "Its models can't be listed this time. Check again later.",
-      "detailModelsAt": "Its models can't be listed this time. When it last responded {{when}}, it had no models. Check again later.",
+      "detailModels": "Its models can't be listed this time. Check the server or tunnel at the configured OLLAMA_HOST address. Check again later.",
+      "detailModelsAt": "Its models can't be listed this time. When it last responded {{when}}, it had no models. Check the server or tunnel at the configured OLLAMA_HOST address. Check again later.",
       "detailOwn": "It can't be listed this time. Check again later."
     },
     "refusesAsRoot": {
@@ -970,7 +971,7 @@
     "SignalsAppsMatching": "Also force-quits apps if they are running, including every app whose name matches a pattern. Unsaved work may be lost."
   },
   "uninstallLinks": {
-    "notOwned": "Couldn't uninstall because {{path}} may now belong to another tool, and uninstalling this one would remove it too. Nothing was removed. If you no longer need the other tool, uninstall it first, then try again."
+    "notOwned": "Couldn't continue because {{path}} may now belong to another tool, and this action would remove it. Nothing was removed. If you no longer need the other tool, uninstall it first, then try again."
   },
   "planRefused": {
     "sourceGone": "Couldn't start because the tool that manages this can't be found. Click Check Again.",
@@ -1173,7 +1174,7 @@
     },
     "forgetsTrust": "Homebrew also removes {{name}} from its trust list.",
     "forgetsTrustDetail": "That entry names this package alone. The other entries on the list stay as they are.",
-    "serviceStays": "{{name}} is set to run in the background with brew services, and uninstalling doesn't stop it: it keeps running, and macOS keeps trying to start it. To stop it first, run {{command}} in Terminal.",
+    "serviceStays": "The brew services definition for {{name}} remains after uninstalling. Uninstalling does not stop an already-running service. If the service is still loaded, macOS may try to start it again. To stop it first, run {{command}} in Terminal.",
     "scopeMore": {
       "HomebrewCaskPlainThirdParty": "Deletes the files Homebrew placed for {{name}}; its settings and data stay, and so does anything its installer put on this Mac separately.",
       "HomebrewCaskRuby": "Deletes the files Homebrew placed for {{name}} and runs its uninstall steps; what else some of those steps delete can't be seen in advance. If Homebrew can't read the steps it recorded at install, it uses the cask's current definition.",

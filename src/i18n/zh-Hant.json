@@ -456,6 +456,7 @@
     "soon": "下次自動檢查：很快"
   },
   "warnings": {
+    "pythonCompatibilityUnknown": "使用此版本的pipx時，無法確定哪個更新相容於此工具的Python和安裝設定。",
     "serviceMayNeedRestart": "「{{name}}」已用brew services設為在背景執行。更新檔案不會重新啟動它。如果它正在執行，請在更新後用brew services重新啟動它，以使用新版本。",
     "serviceMayNeedRestartSudo": "「{{name}}」已用sudo brew services設為在背景執行。更新檔案不會重新啟動它。如果它正在執行，請在更新後用sudo brew services重新啟動它，以使用新版本。",
     "dependentsUnknown": "無法確定還有哪些軟體要用它。解除安裝前請自行確認。",
@@ -708,12 +709,12 @@
       "detailAt": "這次無法列出用它安裝的工具。它{{when}}回應時，沒有任何工具。請稍後重新檢查。",
       "descriptionWithRows_other": "有{{count}}個工具是用{{source}}安裝的。{{source}}這次沒有回應，顯示的是它上次回應時的結果，請稍後重新檢查。",
       "descriptionWithRowsAt_other": "有{{count}}個工具是用{{source}}安裝的。{{source}}這次沒有回應，顯示的是它{{when}}回應時的結果，請稍後重新檢查。",
-      "descriptionWithModels_other": "{{source}}中有{{count}}個模型。{{source}}這次沒有回應，顯示的是它上次回應時的結果，請稍後重新檢查。",
-      "descriptionWithModelsAt_other": "{{source}}中有{{count}}個模型。{{source}}這次沒有回應，顯示的是它{{when}}回應時的結果，請稍後重新檢查。",
+      "descriptionWithModels_other": "{{source}}中有{{count}}個模型。{{source}}這次沒有回應，顯示的是它上次回應時的結果，請檢查OLLAMA_HOST所設位址的服務或通道。請稍後重新檢查。",
+      "descriptionWithModelsAt_other": "{{source}}中有{{count}}個模型。{{source}}這次沒有回應，顯示的是它{{when}}回應時的結果，請檢查OLLAMA_HOST所設位址的服務或通道。請稍後重新檢查。",
       "descriptionWithOwnRow": "{{source}}這次沒有回應，顯示的是它上次回應時的結果，請稍後重新檢查。",
       "descriptionWithOwnRowAt": "{{source}}這次沒有回應，顯示的是它{{when}}回應時的結果，請稍後重新檢查。",
-      "detailModels": "這次無法列出它的模型。請稍後重新檢查。",
-      "detailModelsAt": "這次無法列出它的模型。它{{when}}回應時，沒有任何模型。請稍後重新檢查。",
+      "detailModels": "這次無法列出它的模型。請檢查OLLAMA_HOST所設位址的服務或通道。請稍後重新檢查。",
+      "detailModelsAt": "這次無法列出它的模型。它{{when}}回應時，沒有任何模型。請檢查OLLAMA_HOST所設位址的服務或通道。請稍後重新檢查。",
       "detailOwn": "這次無法列出它。請稍後重新檢查。"
     },
     "refusesAsRoot": {
@@ -893,7 +894,7 @@
     "SignalsAppsMatching": "還會強制結束正在執行的相關App，包括名稱符合某個規則的全部App，未儲存的內容可能遺失。"
   },
   "uninstallLinks": {
-    "notOwned": "無法解除安裝，因為{{path}}現在可能屬於另一個工具，解除安裝這個工具會把它一起刪除。沒有刪除任何檔案。如果不再需要另一個工具，請先將它解除安裝，再重試。"
+    "notOwned": "無法繼續，因為{{path}}現在可能屬於另一個工具，此操作會將它刪除。沒有刪除任何檔案。如果不再需要另一個工具，請先將它解除安裝，再重試。"
   },
   "planRefused": {
     "sourceGone": "無法開始，因為找不到管理它的工具。請點按「重新檢查」。",
@@ -1085,7 +1086,7 @@
     },
     "forgetsTrust": "Homebrew還會從它的信任清單中刪除「{{name}}」。",
     "forgetsTrustDetail": "這條記錄只針對它本身，清單裡的其他記錄不受影響。",
-    "serviceStays": "「{{name}}」已用brew services設為在背景執行，解除安裝不會停止它：它會繼續執行，macOS也會繼續嘗試啟動它。要先停止它，請在終端機執行{{command}}。",
+    "serviceStays": "解除安裝後，「{{name}}」的brew services服務定義仍會保留。解除安裝不會停止已在執行的服務。如果該服務仍處於載入狀態，macOS可能會嘗試再次啟動它。要先停止它，請在終端機執行{{command}}。",
     "scopeMore": {
       "HomebrewCaskPlainThirdParty": "刪除Homebrew為「{{name}}」放置的檔案；它的設定和資料保留不動，它的安裝程式如果另外裝了檔案，也不刪除。",
       "HomebrewCaskRuby": "刪除Homebrew為「{{name}}」放置的檔案，並執行它的解除安裝步驟；其中部分步驟還會刪除什麼，無法事先得知。Homebrew讀不出安裝時記下的步驟時，會按它現在的定義執行。",

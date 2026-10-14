@@ -494,15 +494,19 @@ fn test_nothing_writes_a_file_but_banagers_own_two_and_the_move_to_the_trash() {
             "crates/banager-core/src/history/mod.rs:",
             &["atomic_file::write(path, bytes)"],
         ),
-        // Exclusive temporary regular file beside either destination;
-        // tempfile cleans up the owned staging file on failure.
+        // Exclusive staging and rename relative to the held app-data directory;
+        // Staging removes its own temporary file on failure.
         (
             "crates/banager-core/src/atomic_file.rs:",
             &[
                 "create_dir_all(parent)",
-                ".tempfile_in(parent)",
-                "staging.write_all(bytes)",
-                "staging.persist(path)",
+                // The exclusive create's flags, split over lines by rustfmt:
+                // O_EXCL and O_NOFOLLOW are on the lines between them.
+                "libc::O_WRONLY",
+                "| libc::O_CREAT",
+                "staging.file.write_all(bytes)",
+                "libc::renameat(",
+                "libc::unlinkat(self.directory.as_raw_fd(), self.name.as_ptr(), 0)",
             ],
         ),
         // A previewed path moved to the Trash.
@@ -689,7 +693,7 @@ fn test_an_opens_flags_are_read_from_its_own_statement() {
 /// round 5 review found the Codex version read and the standalone launcher
 /// check following `~/.codex` and `~/.local/bin/claude` with plain
 /// `read_link`/`realpath`, which this list now rules out.
-const PATH_LOOKUPS_ALLOWED: [(&str, &str, &str); 17] = [
+const PATH_LOOKUPS_ALLOWED: [(&str, &str, &str); 20] = [
     (
         "crates/banager-core/src/atomic_file.rs:",
         "use std::os::unix::fs::OpenOptionsExt;",
@@ -697,13 +701,23 @@ const PATH_LOOKUPS_ALLOWED: [(&str, &str, &str); 17] = [
     ),
     (
         "crates/banager-core/src/atomic_file.rs:",
-        "pub fn lock_directory(parent: &Path) -> io::Result<std::fs::File> {",
-        "a return type for the held app-data directory lock",
+        "use std::fs::File;",
+        "the descriptor type, not a path lookup",
     ),
     (
         "crates/banager-core/src/atomic_file.rs:",
         "let directory = std::fs::OpenOptions::new()",
         "Banager's own app-data directory, opened read-only with O_DIRECTORY before any persistence loads; no lock file",
+    ),
+    (
+        "crates/banager-core/src/atomic_file.rs:",
+        "let held = directory.metadata()?;",
+        "fstat of the held directory descriptor, not a path lookup",
+    ),
+    (
+        "crates/banager-core/src/atomic_file.rs:",
+        "let named = std::fs::metadata(parent)?;",
+        "compare Banager's configured app-data directory to the held descriptor before saving",
     ),
     (
         "crates/banager-core/src/dirfd.rs:",
@@ -744,6 +758,11 @@ const PATH_LOOKUPS_ALLOWED: [(&str, &str, &str); 17] = [
         "crates/banager-core/src/history/mod.rs:",
         "read: Arc::new(|path| std::fs::read(path)),",
         "Banager's own history.json, beside settings.json",
+    ),
+    (
+        "crates/banager-core/src/adapters/brew/kegs.rs:",
+        "if !look::lstat(&opt, &protected).ok()?.is_symlink() {",
+        "the Homebrew opt link itself, read through protected::look (lstat, never following it)",
     ),
     (
         "crates/banager-core/src/dirfd.rs:",

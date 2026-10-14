@@ -901,7 +901,17 @@ pub async fn get_sizes(state: State<'_, AppState>) -> Result<banager_core::size:
 /// runs no command, opens no file and reads no environment variable but
 /// `PATH` and `HOME`; quick, so it runs inline.
 pub(crate) fn get_system_facts_impl(state: &AppState) -> banager_core::diagnostics::SystemFacts {
-    let mut facts = banager_core::diagnostics::current(
+    get_system_facts_impl_with(state, banager_core::diagnostics::current)
+}
+
+fn get_system_facts_impl_with(
+    state: &AppState,
+    read: impl FnOnce(
+        bool,
+        &[banager_core::model::ManagerInstance],
+    ) -> banager_core::diagnostics::SystemFacts,
+) -> banager_core::diagnostics::SystemFacts {
+    let mut facts = read(
         state.session.login_path_restored(),
         &state.session.snapshot().instances,
     );
@@ -3119,11 +3129,28 @@ mod tests {
         // The facts themselves are banager-core's (diagnostics.rs); the
         // shell owes the snapshot's sources and the session's word on PATH.
         let state = state_measuring_sizes();
-        assert!(get_system_facts_impl(&state).sources.is_empty());
+        let read = |login_path, instances: &[banager_core::model::ManagerInstance]| {
+            banager_core::diagnostics::system_facts(
+                banager_core::diagnostics::OsFacts {
+                    macos_version: Some("27.0".into()),
+                    chip: Some("Fixture CPU".into()),
+                },
+                Some(std::ffi::OsStr::new("/fixture/home/bin")),
+                Some(std::path::Path::new("/fixture/home")),
+                login_path,
+                instances,
+            )
+        };
+        let facts_for = || get_system_facts_impl_with(&state, read);
+        let initial = facts_for();
+        assert_eq!(initial.macos_version.as_deref(), Some("27.0"));
+        assert_eq!(initial.chip.as_deref(), Some("Fixture CPU"));
+        assert_eq!(initial.path_dirs, ["~/bin"]);
+        assert!(facts_for().sources.is_empty());
         // Nothing of the PATH folders before a round has read them.
-        assert_eq!(get_system_facts_impl(&state).path_folders, None);
+        assert_eq!(facts_for().path_folders, None);
         refresh_impl(&state).await.expect("refresh_impl");
-        let facts = get_system_facts_impl(&state);
+        let facts = facts_for();
         // The round's own word on them, as the session keeps it.
         assert_eq!(facts.path_folders, state.session.path_folders());
         assert_eq!(
@@ -3136,7 +3163,7 @@ mod tests {
         );
         assert!(facts.login_path);
         state.session.note_login_path(false);
-        assert!(!get_system_facts_impl(&state).login_path);
+        assert!(!facts_for().login_path);
     }
 
     #[test]

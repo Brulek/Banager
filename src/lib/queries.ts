@@ -39,6 +39,7 @@ import type {
   UnknownScan,
 } from "./types";
 import { NO_SIZES } from "./types";
+import { artifactKeyId } from "../store/ui";
 
 export { queryKeys };
 
@@ -241,15 +242,116 @@ export function useSaveSettings(): UseMutationResult<SettingsSave, Error, Settin
   });
 }
 
+// Kept with the QueryClient, across confirmation batches and page mounts.
+// These are local reservations, never authoritative operations (and never
+// exposed to the operation bar or cancellation controls).
+const submissionKey = ["artifactSubmissions"] as const;
+type Submissions = Record<string, OpSummary>;
+const NO_SUBMISSIONS: Submissions = {};
+const issuedRequests = new WeakMap<QueryClient, Map<PlanId, IssuedPlan>>();
+
+export function usePendingOperations(): Submissions {
+  return useQuery<Submissions>({
+    queryKey: submissionKey,
+    queryFn: () => NO_SUBMISSIONS,
+    initialData: NO_SUBMISSIONS,
+    enabled: false,
+    gcTime: Infinity,
+  }).data ?? NO_SUBMISSIONS;
+}
+
+function retireFinishedSubmissions(queryClient: QueryClient): void {
+  const operations = queryClient.getQueryData<OpSummary[]>(queryKeys.operations) ?? [];
+  const pending = queryClient.getQueryData<Submissions>(submissionKey);
+  if (!pending) return;
+  const done = new Set(operations.filter((op) => op.status === "Done").map((op) => op.id));
+  const next = Object.fromEntries(Object.entries(pending).filter(([, op]) => !done.has(op.id)));
+  if (Object.keys(next).length !== Object.keys(pending).length) {
+    queryClient.setQueryData(submissionKey, next);
+  }
+}
+
+function plansFor(queryClient: QueryClient): Map<PlanId, IssuedPlan> {
+  let plans = issuedRequests.get(queryClient);
+  if (!plans) {
+    plans = new Map();
+    issuedRequests.set(queryClient, plans);
+    queryClient.getQueryCache().subscribe((event) => {
+      if (event.type === "updated" && event.action.type === "success" &&
+          event.query.queryKey[0] === queryKeys.operations[0]) {
+        retireFinishedSubmissions(queryClient);
+      }
+    });
+  }
+  return plans;
+}
+
 /** Plans, shows nothing itself; callers render the IssuedPlan's Plan then submit its id. */
 export function usePlanOperation(): UseMutationResult<IssuedPlan, Error, OpRequest> {
-  return useMutation({ mutationFn: planOperation });
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (request: OpRequest) => {
+      const issued = await planOperation(request);
+      plansFor(queryClient).set(issued.id, issued);
+      return issued;
+    },
+  });
+}
+
+async function submitReserved(
+  queryClient: QueryClient,
+  submission: PlanId | BatchSubmission,
+): Promise<number> {
+  const planId = typeof submission === "string" ? submission : submission.planId;
+  const plans = plansFor(queryClient);
+  const issued = plans.get(planId);
+  // Callers without a locally issued preview still get the backend's
+  // normal unknown/expired-plan response.
+  if (!issued) return submitOperation(submission);
+  const request = issued.plan.request;
+  const key = artifactKeyId({
+    instance_id: request.instance_id, kind: request.artifact_kind, name: request.name,
+  });
+  const operations = queryClient.getQueryData<OpSummary[]>(queryKeys.operations) ?? [];
+  retireFinishedSubmissions(queryClient);
+  const pending = queryClient.getQueryData<Submissions>(submissionKey) ?? NO_SUBMISSIONS;
+  if (pending[key] || operations.some((op) =>
+    op.status !== "Done" && artifactKeyId({
+      instance_id: op.instance_id, kind: op.artifact_kind, name: op.name,
+    }) === key)) {
+    throw new Error("pending_artifact_action");
+  }
+  const reservation: OpSummary = {
+    id: -1, kind: request.kind, instance_id: request.instance_id,
+    artifact_kind: request.artifact_kind, name: request.name, status: "Queued",
+    outcome: null, argv_preview: [], cancel_policy: issued.plan.cancel_policy,
+  };
+  // No await before reserving: two confirmations cannot both pass the guard.
+  queryClient.setQueryData<Submissions>(submissionKey, { ...pending, [key]: reservation });
+  try {
+    const id = await submitOperation(submission);
+    queryClient.setQueryData<Submissions>(submissionKey, (current) => ({
+      ...current, [key]: { ...reservation, id },
+    }));
+    // A Finished event/list can beat the submit response.
+    retireFinishedSubmissions(queryClient);
+    return id;
+  } catch (error) {
+    queryClient.setQueryData<Submissions>(submissionKey, (current) => {
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+    throw error;
+  } finally {
+    plans.delete(planId);
+  }
 }
 
 export function useSubmitOperation(): UseMutationResult<number, Error, PlanId | BatchSubmission> {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: submitOperation,
+    mutationFn: (submission: PlanId | BatchSubmission) => submitReserved(queryClient, submission),
     // Within a frame, with every other start and status change of it
     // (`refetchOperations`): Update all starts hundreds back to back.
     onSuccess: () => refetchOperations(queryClient),

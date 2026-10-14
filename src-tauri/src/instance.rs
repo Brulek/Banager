@@ -122,7 +122,7 @@ mod tests {
     /// has run its exec; a flock lasts while any copy is open, so a release
     /// can be seen a moment late. Only that answer, `WouldBlock`, is retried,
     /// and for at most 5 s: a lock never released still fails.
-    fn acquire_after_release(directory: &Path) -> std::fs::File {
+    fn acquire_after_release(directory: &Path) -> std::sync::Arc<std::fs::File> {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
         loop {
             match acquire(directory) {

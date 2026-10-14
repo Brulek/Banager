@@ -610,9 +610,7 @@ export function InstalledPage() {
   // A tool that is gone -- uninstalled, or no longer listed -- is no
   // longer selected, for good, so the same name listed again later does
   // not open the inspector.
-  useEffect(() => {
-    if (snapshot && selection !== null && !artifactsById.has(selection.id)) setSelection(null);
-  }, [snapshot, selection, artifactsById]);
+  // Cleared with focus recovery below, after the surviving rows are known.
   // Its tick too, for good: a tool installed again later never comes back
   // ticked for removal.
   useEffect(() => {
@@ -891,7 +889,28 @@ export function InstalledPage() {
   // nothing moves no focus.
   const settledNeedle = useSettled(needle, SEARCH_SETTLE_MS);
   const shownBefore = useRef(show);
+  const rowsBefore = useRef(rowItems);
+  const lastPageFocus = useRef<{ node: HTMLElement; owned: boolean } | null>(null);
   useEffect(() => {
+    const previousRows = rowsBefore.current;
+    rowsBefore.current = rowItems;
+    const missing = snapshot && selection !== null && !artifactsById.has(selection.id);
+    if (missing) {
+      setSelection(null);
+      const focus = document.activeElement;
+      const previousFocus = lastPageFocus.current;
+      const vacant = focus === null || focus === document.body || !focus.isConnected;
+      if (vacant && previousFocus?.owned && !previousFocus.node.isConnected) {
+        const oldIndex = previousRows.findIndex((item) => listItemKey(item) === selection.id);
+        const survivors = new Set(rowItems.filter(keyboardRow).map(listItemKey));
+        const neighbor = [
+          ...previousRows.slice(oldIndex + 1),
+          ...previousRows.slice(0, Math.max(0, oldIndex)).reverse(),
+        ].find((item) => keyboardRow(item) && survivors.has(listItemKey(item)));
+        if (neighbor && listHandle.current) listHandle.current.focusKey(listItemKey(neighbor));
+        else focusOrFallback(null);
+      }
+    }
     const showChanged = shownBefore.current !== show;
     shownBefore.current = show;
     const selected = selectedId === null ? undefined : artifactsById.get(selectedId);
@@ -910,7 +929,7 @@ export function InstalledPage() {
     if (!lost) return;
     if (rowItems.some(keyboardRow)) listHandle.current?.focusFirst();
     else focusOrFallback(null);
-  }, [show, selectedId, artifactsById, twins, needle, settledNeedle, rowItems, searchTexts]);
+  }, [show, selectedId, selection, snapshot, artifactsById, twins, needle, settledNeedle, rowItems, searchTexts]);
 
   // The names the list shows under more than one source (spec R3), whose
   // rows say their source's name after the tool's.
@@ -1862,7 +1881,17 @@ export function InstalledPage() {
   // Those of the rows that can be ticked that are: what 「卸载所选」 acts on (`countedTicks`).
   const counted = countedTicks(shownTickable, selectedUninstalls).map(({ artifact }) => artifact);
   return (
-    <div ref={attachPage} className="relative flex h-full">
+    <div
+      ref={attachPage}
+      className="relative flex h-full"
+      onFocusCapture={(event) => {
+        const node = event.target as HTMLElement;
+        lastPageFocus.current = {
+          node,
+          owned: node.closest("[data-inspector], [data-tool-row]") !== null,
+        };
+      }}
+    >
       {/* The page's own controls, in the window's toolbar (spec §3.2):
           how the last Copy command went, for a moment; what it shows
           (every tool, or the AI coding tools) and the sort, grey popup

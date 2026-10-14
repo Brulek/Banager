@@ -248,6 +248,8 @@ export function warningKey(warning: Warning): string | null {
         return "warnings.downloadsModelChanges";
       case "NonRegistrySource":
         return "warnings.nonRegistrySource";
+      case "PythonCompatibilityUnknown":
+        return "warnings.pythonCompatibilityUnknown";
       case "TransientLookupFailure":
         return "warnings.transientLookupFailure";
       case "NotLookedUpHere":
@@ -543,6 +545,7 @@ export function warningDetailKey(warning: Warning): string | null {
       case "CompilesLocally":
       case "DownloadsModelChanges":
       case "NonRegistrySource":
+      case "PythonCompatibilityUnknown":
       case "TransientLookupFailure":
       case "NotLookedUpHere":
       case "HomebrewRustupLosesToolchains":
@@ -699,6 +702,7 @@ export function deletesForGood(warning: Warning): boolean {
       case "CompilesLocally":
       case "DownloadsModelChanges":
       case "NonRegistrySource":
+      case "PythonCompatibilityUnknown":
       case "TransientLookupFailure":
       case "NotLookedUpHere":
       case "HomebrewRustupLosesToolchains":
@@ -889,6 +893,7 @@ export function isCaution(warning: Warning): boolean {
       case "CompilesLocally":
       case "DownloadsModelChanges":
       case "NonRegistrySource":
+      case "PythonCompatibilityUnknown":
       case "TransientLookupFailure":
       case "NotLookedUpHere":
       case "EditsShellConfig":

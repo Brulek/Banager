@@ -390,10 +390,10 @@ fn unconstrained_requirement(text: &str, name: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// The first command uv recorded for `artifact` (`CommandInputs.provided`:
+/// Every command uv recorded for `artifact` (`CommandInputs.provided`:
 /// the `- name (path)` lines of `uv tool list --show-paths`, its receipt's
 /// entrypoints) that is there and is no longer uv's, or that Banager cannot
-/// look at; `None` when each is uv's or is not there. `uv tool uninstall`
+/// look at; empty when each is uv's or is not there. `uv tool uninstall`
 /// removes every path its receipt records, whatever is there now (uv
 /// 0.12.17 `crates/uv/src/commands/tool/uninstall.rs:198-223`:
 /// `remove_file(&entrypoint.install_path)`), so a `~/.local/bin/ruff` that
@@ -409,13 +409,17 @@ fn unconstrained_requirement(text: &str, name: &str) -> Result<(), String> {
 /// at the path, or a link to nothing (removing it stops nothing that
 /// works). Reads links and folders only (`protected::resolve`,
 /// `protected::look::link_text`), never into a protected place.
-fn taken_command(artifact: &InstalledArtifact, protected: &Protected) -> Option<PathBuf> {
+fn taken_commands(artifact: &InstalledArtifact, protected: &Protected) -> Vec<PathBuf> {
+    let mut taken = Vec::new();
     for provided in &artifact.facts.command_inputs.provided {
         let path = &provided.path;
         let at = match protected::resolve(path, protected, false) {
             Resolution::Missing => continue,
             Resolution::Found(at, _) => at,
-            Resolution::Protected(_) | Resolution::Refused => return Some(path.clone()),
+            Resolution::Protected(_) | Resolution::Refused => {
+                taken.push(path.clone());
+                continue;
+            }
         };
         let environments: Vec<PathBuf> = provided
             .within
@@ -444,19 +448,22 @@ fn taken_command(artifact: &InstalledArtifact, protected: &Protected) -> Option<
         match protected::resolve(path, protected, true) {
             Resolution::Missing => continue,
             Resolution::Found(target, _) if inside(&target) => continue,
-            _ => return Some(path.clone()),
+            _ => taken.push(path.clone()),
         }
     }
-    None
+    taken.sort();
+    taken.dedup();
+    taken
 }
 
-/// `taken_command` of the tool `name` among `installed`.
-fn taken_of(installed: &[InstalledArtifact], name: &str) -> Option<PathBuf> {
+/// Every taken command of the tool `name` among `installed`.
+fn taken_of(installed: &[InstalledArtifact], name: &str) -> Vec<PathBuf> {
     let protected = Protected::of_this_process();
     installed
         .iter()
         .filter(|artifact| artifact.key.name == name)
-        .find_map(|artifact| taken_command(artifact, &protected))
+        .flat_map(|artifact| taken_commands(artifact, &protected))
+        .collect()
 }
 
 /// `path` as a refusal or a stopped run names it: the home folder
@@ -825,7 +832,7 @@ impl UvAdapter {
                 });
             }
             // A command uv recorded that another tool has since taken over
-            // would go with this one (`taken_command`): no preview, as a
+            // would go with this one (`taken_commands`): no preview, as a
             // cask's link another source took (`brew/cask_links.rs`).
             //
             // `uv tool list` waits for the lock of the tools folder that
@@ -854,9 +861,9 @@ impl UvAdapter {
                         "uv left this tool out of its list".into(),
                     ));
                 }
-                if let Some(path) = taken_of(&list.artifacts, &req.name) {
+                if let Some(path) = taken_of(&list.artifacts, &req.name).first() {
                     return Err(AdapterError::UninstallUnsafe {
-                        path: shown(&path),
+                        path: shown(path),
                         reason: crate::model::UninstallUnsafeReason::CaskLinkNotOwned,
                     });
                 }
@@ -864,12 +871,12 @@ impl UvAdapter {
         }
         let mut basis = None;
         // A command of the tool another tool has taken over since
-        // (`taken_command`), which the update takes back: `uv tool
+        // (`taken_commands`), which the update takes back: `uv tool
         // upgrade` removes every command its receipt records and links
         // each again with force (uv 0.12.17 `commands/tool/upgrade.rs:
         // 592-614`, `common.rs:903` `replace_symlink`). Said in the
         // preview, not refused: the update is still the user's to make.
-        let mut takes_back = None;
+        let mut takes_back = Vec::new();
         if req.kind == OpKind::Upgrade {
             let installed = self.inventory(inst).await?;
             let artifact = installed
@@ -878,7 +885,9 @@ impl UvAdapter {
                 .ok_or_else(|| AdapterError::Refused("uv tool is absent from inventory".into()))?;
             basis = Some(upgrade_basis(artifact).map_err(AdapterError::Refused)?);
             takes_back = taken_of(&installed, &req.name)
-                .map(|path| Warning::TakesBackCommand { path: shown(&path) });
+                .into_iter()
+                .map(|path| Warning::TakesBackCommand { path: shown(&path) })
+                .collect();
         }
         let lock = ResourceLock(inst.id.clone());
         let args = match req.kind {
@@ -901,7 +910,7 @@ impl UvAdapter {
                 what: UninstallScope::Uv,
             }],
             OpKind::Install => Vec::new(),
-            OpKind::Upgrade => takes_back.into_iter().collect(),
+            OpKind::Upgrade => takes_back,
             OpKind::Link => return Err(super::links_nothing(&self.meta.id)),
         };
         Ok(Plan {
@@ -974,9 +983,9 @@ impl UvAdapter {
                             // the preview did not say the update takes back
                             // (`Warning::TakesBackCommand`): not what was
                             // shown, so the update does not run.
-                            taken_of(installed, &plan.request.name).is_none_or(|path| {
+                            taken_of(installed, &plan.request.name).iter().all(|path| {
                                 plan.warnings
-                                    .contains(&Warning::TakesBackCommand { path: shown(&path) })
+                                    .contains(&Warning::TakesBackCommand { path: shown(path) })
                             })
                         })
                         .and_then(|installed| {
@@ -1003,7 +1012,7 @@ impl UvAdapter {
         }
         // The commands uv recorded, looked at again right before the
         // uninstall: one another tool took over since the preview stops it
-        // before uv removes anything (`taken_command`). The list is read
+        // before uv removes anything (`taken_commands`). The list is read
         // as the upgrade's is above -- the uninstall's own deadline, since
         // `uv tool list` waits for the same lock of the tools folder
         // (`InstalledTools::lock`), and the operation's token.
@@ -1035,9 +1044,9 @@ impl UvAdapter {
                         crate::model::Fault::ChangedSinceShown,
                     ));
                 };
-                if let Some(path) = taken_of(&installed.artifacts, &plan.request.name) {
+                if let Some(path) = taken_of(&installed.artifacts, &plan.request.name).first() {
                     return Ok(Outcome::BanagerFailed(crate::model::Fault::PathChanged {
-                        path: shown(&path),
+                        path: shown(path),
                     }));
                 }
             }
@@ -2606,6 +2615,99 @@ ruff v0.15.0 (/Users/someone/.local/share/uv/tools/ruff)
             .await
             .unwrap();
         assert_eq!(upgrades(), 1);
+    }
+
+    #[tokio::test]
+    async fn upgrade_previews_all_commands_and_stops_a_second_takeover() {
+        let ruffs = Ruffs::new();
+        let second = ruffs.home.join(".local/bin/ruff-lsp");
+        std::fs::write(ruffs.env.join("bin/ruff-lsp"), "second command").unwrap();
+        std::os::unix::fs::symlink(ruffs.env.join("bin/ruff-lsp"), &second).unwrap();
+        std::fs::write(
+            ruffs.env.join("uv-receipt.toml"),
+            "[tool]\nrequirements = [{name = 'ruff'}]\n",
+        )
+        .unwrap();
+        ruffs.runner.respond(
+            vec!["/opt/homebrew/bin/uv", "tool", "list", "--show-paths"],
+            CommandOutput {
+                stdout: format!(
+                    "ruff v0.15.0 ({})\n- ruff ({})\n- ruff-lsp ({})\n",
+                    ruffs.env.display(),
+                    ruffs.link.display(),
+                    second.display()
+                ),
+                stderr: String::new(),
+                exit_code: Some(0),
+                timed_out: false,
+                cancelled: false,
+                stderr_cause: Default::default(),
+            },
+        );
+        ruffs.runner.respond(
+            vec!["/opt/homebrew/bin/uv", "tool", "upgrade", "ruff"],
+            CommandOutput {
+                stdout: String::new(),
+                stderr: String::new(),
+                exit_code: Some(0),
+                timed_out: false,
+                cancelled: false,
+                stderr_cause: Default::default(),
+            },
+        );
+        let adapter = ruffs.adapter();
+        ruffs.link_to(&ruffs.pipx);
+        let first = adapter
+            .plan(&test_instance(), &request(OpKind::Upgrade))
+            .await
+            .unwrap();
+        assert_eq!(
+            first.warnings,
+            vec![Warning::TakesBackCommand {
+                path: ruffs.shown_link(),
+            }]
+        );
+        std::fs::remove_file(&second).unwrap();
+        std::os::unix::fs::symlink(&ruffs.pipx, &second).unwrap();
+        assert_eq!(
+            adapter
+                .execute(
+                    &first,
+                    Arc::new(VecSink::new()),
+                    1,
+                    CancellationToken::new()
+                )
+                .await
+                .unwrap(),
+            Outcome::BanagerFailed(crate::model::Fault::ChangedSinceShown)
+        );
+        assert!(ruffs
+            .runner
+            .calls()
+            .iter()
+            .all(|args| !args.iter().any(|arg| arg == "upgrade")));
+        let both = adapter
+            .plan(&test_instance(), &request(OpKind::Upgrade))
+            .await
+            .unwrap();
+        assert_eq!(
+            both.warnings,
+            vec![
+                Warning::TakesBackCommand {
+                    path: ruffs.shown_link()
+                },
+                Warning::TakesBackCommand {
+                    path: shown(&second)
+                },
+            ]
+        );
+        assert_eq!(
+            adapter
+                .execute(&both, Arc::new(VecSink::new()), 2, CancellationToken::new())
+                .await
+                .unwrap(),
+            Outcome::Succeeded
+        );
     }
 
     /// What uv's uninstall removes without anything that works stopping,

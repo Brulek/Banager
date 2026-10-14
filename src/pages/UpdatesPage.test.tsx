@@ -5714,7 +5714,7 @@ describe("UpdatesPage", () => {
       expect(
         document.getElementById(details.getAttribute("aria-controls") ?? ""),
       ).toHaveTextContent(
-        "Ollama has 3 models. It didn't respond this time, so they're shown as they were when it last responded. Check again later.",
+        "Ollama has 3 models. It didn't respond this time, so they're shown as they were when it last responded. Check the server or tunnel at the configured OLLAMA_HOST address. Check again later.",
       );
       for (const name of ["glib", "onyx", "jq"]) {
         const row = rowOf(name);

@@ -1,7 +1,7 @@
 import { usePasswordRecoveryKeys } from "../lib/passwordRecovery";
 import { useCallback, useId, useMemo, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { useOperations, useSettings, useSnapshot } from "../lib/queries";
+import { useOperations, usePendingOperations, useSettings, useSnapshot } from "../lib/queries";
 import { operationWords } from "../lib/operations";
 import { actionableUpdatesOf, countedUpdatesOf } from "../lib/updateState";
 import { artifactKeyId, useUiStore } from "../store/ui";
@@ -175,6 +175,7 @@ export function progressOf(op: OpSummary): RowProgress {
  */
 export function useUpdateOperationFor(): (candidate: UpdateCandidate) => OpSummary | null {
   const { data: operations } = useOperations();
+  const pending = usePendingOperations();
   const updateTargets = useUiStore((s) => s.updateTargets);
   const latestUpdateOp = useMemo(() => {
     const byKey = new Map<string, OpSummary>();
@@ -186,8 +187,16 @@ export function useUpdateOperationFor(): (candidate: UpdateCandidate) => OpSumma
       if (seen === undefined || (seen.status === "Done" && op.status !== "Done") ||
           ((seen.status === "Done") === (op.status === "Done") && op.id > seen.id)) byKey.set(id, op);
     }
+    const listed = new Set((operations ?? []).map((op) => op.id));
+    for (const [key, reservation] of Object.entries(pending)) {
+      // Prefer the actual operation once it has arrived. An old response
+      // omitting it cannot release the reservation.
+      if (!listed.has(reservation.id)) {
+        byKey.set(key, reservation);
+      }
+    }
     return byKey;
-  }, [operations]);
+  }, [operations, pending]);
   return useCallback(
     (candidate: UpdateCandidate) => {
       const op = latestUpdateOp.get(artifactKeyId(candidate.key));

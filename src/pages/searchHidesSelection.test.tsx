@@ -5,6 +5,7 @@ import { renderWithProviders } from "../test/setup";
 import { WithToolbarSlot } from "../test/toolbarSlot";
 import { InstalledPage } from "./InstalledPage";
 import { useUiStore } from "../store/ui";
+import { queryKeys } from "../lib/queryKeys";
 import { SEARCH_SETTLE_MS } from "../lib/settled";
 import i18n from "../i18n";
 import type { ArtifactKey, InstalledArtifact, Settings, Snapshot } from "../lib/types";
@@ -105,6 +106,7 @@ function rowNames(): string[] {
 function renderInstalled() {
   return renderWithProviders(
     <WithToolbarSlot>
+      <h1 data-focus-fallback="" tabIndex={-1}>{i18n.t("nav.installed")}</h1>
       <InstalledPage />
     </WithToolbarSlot>,
   );
@@ -220,4 +222,41 @@ describe("a search that hides the selected tool", () => {
     });
     await waitFor(() => expect(document.activeElement?.closest("[data-tool-row]")?.textContent).toContain("jq"));
   });
+});
+
+describe.each(["en", "zh-CN", "zh-Hant"])("refresh focus in %s", (language) => {
+  it.each(["inspector", "row", "search", "empty"] as const)(
+    "recovers only focus lost with the removed tool: %s",
+    async (owner) => {
+      await i18n.changeLanguage(language);
+      const { queryClient } = renderInstalled();
+      const label = await screen.findByText("jq", { selector: "[data-tool-row] p" });
+      const row = label.closest("[data-tool-row]") as HTMLElement;
+      row.focus();
+      fireEvent.keyDown(row, { key: "Enter" });
+      const details = await screen.findByRole("complementary", { name: "jq" });
+      await waitFor(() => expect(within(details).getByRole("heading", { name: "jq" })).toHaveFocus());
+      const search = screen.getByRole("searchbox", { name: i18n.t("installed.filterLabel") });
+      if (owner === "row") row.focus();
+      if (owner === "search") search.focus();
+
+      act(() => {
+        queryClient.setQueryData<Snapshot>(queryKeys.snapshot, (snapshot) => ({
+          ...snapshot!,
+          generation: snapshot!.generation + 1,
+          artifacts: owner === "empty" ? [] : snapshot!.artifacts.filter((a) => a.key.name !== "jq"),
+        }));
+      });
+      await waitFor(() => expect(screen.queryByRole("complementary", { name: "jq" })).toBeNull());
+      if (owner === "search") {
+        expect(search).toHaveFocus();
+      } else if (owner === "empty") {
+        expect(document.querySelector("[data-focus-fallback]")).toHaveFocus();
+      } else {
+        await waitFor(() => expect(document.activeElement?.closest("[data-tool-row]")?.textContent).toContain("wget"));
+        fireEvent.keyDown(document.activeElement!, { key: "ArrowUp" });
+        await waitFor(() => expect(document.activeElement?.closest("[data-tool-row]")?.textContent).toContain("httpie"));
+      }
+    },
+  );
 });

@@ -3121,8 +3121,17 @@ mod tests {
 
     #[tokio::test]
     async fn test_detect_falls_back_to_home_dot_cargo_and_flags_an_unverified_version() {
-        let dir = crate::testing::unique_temp_path("cargo-detect-default");
-        std::fs::create_dir_all(&dir).expect("create temp PATH dir");
+        let temp = tempfile::tempdir().expect("temporary home");
+        let dir = std::fs::canonicalize(temp.path()).expect("canonical temporary home");
+        let home = dir.join("home");
+        std::fs::create_dir(&home).expect("create temporary home");
+        let allowed = dir.clone();
+        let _audit = crate::protected::auditing_lookups(move |path| {
+            assert!(
+                path.starts_with(&allowed) || allowed.starts_with(path),
+                "lookup outside fixture: {path:?}"
+            );
+        });
         let cargo_path = fake_exe(&dir, "cargo");
         let runner = version_runner(
             cargo_path.to_str().expect("utf8 path"),
@@ -3131,7 +3140,7 @@ mod tests {
         let adapter = CargoAdapter::new(runner, Arc::new(MockHttpClient::new()));
         let env = HostEnv {
             path_dirs: vec![dir.clone()],
-            home: PathBuf::from("/Users/brulek"),
+            home: home.clone(),
             euid: 501,
             cargo_home: None,
             rustup_home: None,
@@ -3140,10 +3149,12 @@ mod tests {
             tilde_entries: Vec::new(),
         };
         let instances = CargoAdapter::detect(&adapter, &env).await;
-        let _ = std::fs::remove_dir_all(&dir);
 
         assert_eq!(instances.len(), 1);
-        assert_eq!(instances[0].id, "cargo:/Users/brulek/.cargo");
+        assert_eq!(
+            instances[0].id,
+            format!("cargo:{}", home.join(".cargo").display())
+        );
         assert_eq!(
             instances[0].unverified_version,
             Some("99.9.9".to_string()),

@@ -41,13 +41,15 @@ describe("the diagnostic text of the browser preview's Mac", () => {
       errors: world.errors,
     };
     // Values a shell might hold that must never be pasted to anyone.
-    vi.stubEnv("HTTPS_PROXY", "http://someone:hunter2@proxy.example:8080");
-    vi.stubEnv("GITHUB_TOKEN", "ghp_notARealTokenButLooksLikeOne123");
-    const secrets = Object.entries(process.env)
-      .filter(([name]) => name !== "PATH")
-      .map(([, value]) => value ?? "")
-      .filter((value) => value.length >= 8 && !value.startsWith("/"));
-    for (const t of [en, zh]) {
+    const secrets = [
+      "http://someone:hunter2@proxy.example:8080",
+      "ghp_notARealTokenButLooksLikeOne123",
+    ];
+    vi.stubEnv("HTTPS_PROXY", secrets[0]);
+    vi.stubEnv("GITHUB_TOKEN", secrets[1]);
+    // A harmless environment value may also be legitimate fixture copy.
+    vi.stubEnv("TEST_LABEL", "Homebrew");
+    for (const t of [en, zh, i18n.getFixedT("zh-Hant")]) {
       for (const includeTools of [false, true]) {
         const text = diagnosticsText(t, input({ snapshot, facts: mockSystemFacts(world.instances), includeTools }));
         expect(text).not.toContain("/Users/");

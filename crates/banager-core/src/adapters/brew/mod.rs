@@ -847,13 +847,15 @@ impl BrewAdapter {
     }
 
     /// A recorded link that cannot be confirmed as this cask's. Checked
-    /// at preview and again immediately before running its uninstall.
+    /// at preview and again immediately before uninstalling or upgrading.
     fn cask_link_conflict(&self, prefix: &Path, req: &OpRequest) -> Option<PathBuf> {
         #[cfg(test)]
         if !self.inspect_cask_links {
             return None;
         }
-        if req.kind != OpKind::Uninstall || req.artifact_kind != ArtifactKind::Cask {
+        if !matches!(req.kind, OpKind::Uninstall | OpKind::Upgrade)
+            || req.artifact_kind != ArtifactKind::Cask
+        {
             return None;
         }
         // Nothing recorded names a link -- a cask installed before Homebrew
@@ -2976,6 +2978,13 @@ impl BrewAdapter {
         if matches!(req.kind, OpKind::Install | OpKind::Upgrade) {
             self.require_no_auto_update(&inst.prefix, &self.env_vec())?;
         }
+        // Upgrading a cask first unlinks the installed version's artifacts.
+        if let Some(path) = self.cask_link_conflict(&inst.prefix, req) {
+            return Err(AdapterError::UninstallUnsafe {
+                path: path.to_string_lossy().into_owned(),
+                reason: crate::model::UninstallUnsafeReason::CaskLinkNotOwned,
+            });
+        }
         let lock = prefix_lock(&inst.prefix, self.prefix_identity_fn);
         match req.kind {
             // `brew link --formula --force <formula>` (`link_argv`, the
@@ -3072,17 +3081,11 @@ impl BrewAdapter {
                 })
             }
             OpKind::Uninstall => {
-                if let Some(path) = self.cask_link_conflict(&inst.prefix, req) {
-                    return Err(AdapterError::UninstallUnsafe {
-                        path: path.to_string_lossy().into_owned(),
-                        reason: crate::model::UninstallUnsafeReason::CaskLinkNotOwned,
-                    });
-                }
                 let flag = match req.artifact_kind {
                     ArtifactKind::Cask => "--cask",
                     _ => "--formula",
                 };
-                // `brew uses` reads the same catalogue `brew update`
+                // The dependent check reads the catalogue `brew update`
                 // rewrites, and this list is what the user confirms an
                 // uninstall against: a half-written read that still
                 // parses would show fewer dependents than will break --
@@ -3101,17 +3104,31 @@ impl BrewAdapter {
                 let Some(stamp) = self.catalogue_stamp(inst) else {
                     return Err(AdapterError::IndexUpdating);
                 };
-                let uses_output = self
-                    .run_brew(
+                let dependents = if req.artifact_kind == ArtifactKind::Cask {
+                    // Reuse the installed-info command: uses resolves
+                    // formulae, even when uninstall was asked for a cask.
+                    self.run_brew(
                         inst,
-                        vec![
-                            "uses".to_string(),
-                            "--installed".to_string(),
-                            req.name.clone(),
-                        ],
+                        vec!["info".into(), "--installed".into(), "--json=v2".into()],
                         Duration::from_secs(120),
                     )
-                    .await?;
+                    .await
+                    .ok()
+                    .filter(|output| {
+                        output.exit_code == Some(0) && !output.timed_out && !output.cancelled
+                    })
+                    .and_then(|output| parse::cask_dependents(&output.stdout, &req.name))
+                } else {
+                    let output = self
+                        .run_brew(
+                            inst,
+                            vec!["uses".into(), "--installed".into(), req.name.clone()],
+                            Duration::from_secs(120),
+                        )
+                        .await?;
+                    (output.exit_code == Some(0) && !output.timed_out && !output.cancelled)
+                        .then(|| parse_uses(&output.stdout))
+                };
                 if self.catalogue_stamp(inst) != Some(stamp) {
                     return Err(AdapterError::IndexUpdating);
                 }
@@ -3148,8 +3165,8 @@ impl BrewAdapter {
                     warnings.push(Warning::HomebrewRemovesEveryVersion { versions });
                 }
                 args.push(req.name.clone());
-                let affected = if uses_output.exit_code == Some(0) {
-                    parse_uses(&uses_output.stdout)
+                let affected = if let Some(dependents) = dependents {
+                    dependents
                 } else {
                     // The check itself failed or timed out — this is *not*
                     // the same thing as "confirmed no dependents", and must
@@ -3340,7 +3357,9 @@ impl BrewAdapter {
                 }
             }
         }
-        if let PlanAction::Command { program, .. } = &plan.action {
+        if let PlanAction::Command { program, .. } | PlanAction::CommandThen { program, .. } =
+            &plan.action
+        {
             if let Some(path) = self.cask_link_conflict(&Self::prefix_for(program), &plan.request) {
                 return Ok(Outcome::BanagerFailed(Fault::PathChanged {
                     path: path.to_string_lossy().into_owned(),
@@ -3566,8 +3585,10 @@ impl BrewAdapter {
             });
             return;
         }
-        // Recheck settings and the deletion set. The newest keg is kept by
-        // cleanup; every older keg must have appeared in the confirmation.
+        // Recheck settings and the deletion set. Homebrew's opt record
+        // identifies the selected keg; display ordering does not, especially
+        // after a prerelease or a version_scheme reset. Every other keg must
+        // have appeared in the confirmation. An unknown selection stops cleanup.
         let allowed = self
             .cleanup_allowed(&Self::prefix_for(program), &name, env)
             .is_some_and(|kegs| {
@@ -3576,9 +3597,13 @@ impl BrewAdapter {
                     _ => None,
                 });
                 named.is_some_and(|named| {
-                    kegs.versions
-                        .split_last()
-                        .is_some_and(|(_, old)| old.iter().all(|version| named.contains(version)))
+                    kegs.current.as_ref().is_some_and(|current| {
+                        kegs.versions.contains(current)
+                            && kegs
+                                .versions
+                                .iter()
+                                .all(|version| version == current || named.contains(version))
+                    })
                 })
             });
         if !allowed {
@@ -3605,9 +3630,9 @@ impl BrewAdapter {
     /// The versions the update's preview said its `brew cleanup` deletes
     /// (`Warning::HomebrewCleansUpOldVersions`) that are still in the
     /// Cellar once that cleanup has exited 0 -- the same read as the
-    /// preview's (`kegs_fn`) -- but for the newest there, the one the
-    /// update put in. `brew cleanup` exits 0 and keeps some: one named by
-    /// an alias in `HOMEBREW_NO_CLEANUP_FORMULAE` (`onoe`, which does not
+    /// preview's (`kegs_fn`) -- except the keg Homebrew's opt link selects.
+    /// No version comparison is used. `brew cleanup` exits 0 and keeps some:
+    /// one named by an alias in `HOMEBREW_NO_CLEANUP_FORMULAE` (`onoe`, which does not
     /// fail the command, `cleanup.rb:511-514`), or one Homebrew still
     /// needs (`Formula#eligible_kegs_for_cleanup`). Empty when none is
     /// left, or the Cellar cannot be read.
@@ -3621,12 +3646,11 @@ impl BrewAdapter {
         let Some(now) = (self.kegs_fn)(&Self::prefix_for(program), &plan.request.name) else {
             return Vec::new();
         };
-        let Some((_newest, older)) = now.versions.split_last() else {
-            return Vec::new();
-        };
         named
             .iter()
-            .filter(|version| older.contains(version))
+            .filter(|version| {
+                now.versions.contains(version) && now.current.as_ref() != Some(*version)
+            })
             .cloned()
             .collect()
     }
@@ -5898,6 +5922,7 @@ mod plan_execute_tests {
             } else {
                 vec!["1.0".to_string()]
             },
+            current: Some("1.0".to_string()),
             pinned: false,
         })
     }
@@ -6637,6 +6662,17 @@ mod plan_execute_tests {
                 },
             );
         }
+        runner.respond(
+            vec!["/opt/homebrew/bin/brew", "info", "--installed", "--json=v2"],
+            CommandOutput {
+                stderr_cause: Default::default(),
+                exit_code: Some(0),
+                stdout: r#"{"formulae":[],"casks":[{"token":"docker","installed":"1","depends_on":{}}]}"#.into(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
         let inst = test_instance();
         let mut plans = Vec::new();
         for (artifact_kind, name) in [
@@ -6997,7 +7033,7 @@ mod plan_execute_tests {
     }
 
     /// `adapter`'s uninstall plan for the cask `name` on `inst`, with
-    /// `brew uses` answering that nothing depends on it.
+    /// installed cask requirements saying that nothing depends on it.
     async fn cask_uninstall(
         runner: &MockRunner,
         adapter: &BrewAdapter,
@@ -7005,11 +7041,25 @@ mod plan_execute_tests {
         name: &str,
     ) -> Plan {
         runner.respond(
-            vec![inst.exe_path.to_str().unwrap(), "uses", "--installed", name],
+            vec![
+                inst.exe_path.to_str().unwrap(),
+                "info",
+                "--installed",
+                "--json=v2",
+            ],
             CommandOutput {
                 stderr_cause: Default::default(),
                 exit_code: Some(0),
-                stdout: String::new(),
+                stdout: serde_json::json!({
+                    "formulae": [],
+                    "casks": [{
+                        "token": name.rsplit('/').next().unwrap(),
+                        "full_token": name,
+                        "installed": "1.0",
+                        "depends_on": {}
+                    }]
+                })
+                .to_string(),
                 stderr: String::new(),
                 timed_out: false,
                 cancelled: false,
@@ -7022,6 +7072,98 @@ mod plan_execute_tests {
             name: name.to_string(),
         };
         adapter.plan(inst, &req).await.expect("plan")
+    }
+
+    #[tokio::test]
+    async fn cask_preview_uses_cask_requirements_and_keeps_failed_reads_unknown() {
+        let prefix = CaskroomPrefix::new("cask-dependents", &[("libreoffice", "{}")]);
+        let inst = ManagerInstance {
+            prefix: prefix.0.clone(),
+            exe_path: prefix.0.join("bin/brew"),
+            ..test_instance()
+        };
+        let req = OpRequest {
+            kind: OpKind::Uninstall,
+            instance_id: inst.id.clone(),
+            artifact_kind: ArtifactKind::Cask,
+            name: "libreoffice".into(),
+        };
+        for (code, body, affected, unknown) in [
+            (
+                0,
+                r#"{"formulae":[{"name":"libreoffice"}],"casks":[
+                {"token":"libreoffice","installed":"1","depends_on":{}},
+                {"token":"libreoffice-language-pack","installed":"1","depends_on":{"cask":["libreoffice"]}}
+            ]}"#,
+                vec!["libreoffice-language-pack"],
+                false,
+            ),
+            (
+                0,
+                r#"{"formulae":[{"name":"libreoffice"}],"casks":[
+                {"token":"libreoffice","installed":"1","depends_on":{}}
+            ]}"#,
+                vec![],
+                false,
+            ),
+            (
+                0,
+                r#"{"casks":[{"token":"libreoffice","installed":"1"}]}"#,
+                vec![],
+                true,
+            ),
+            (0, "not JSON", vec![], true),
+            (1, r#"{"casks":[]}"#, vec![], true),
+        ] {
+            let runner = Arc::new(MockRunner::new());
+            // A same-named formula's dependents must never be consulted.
+            runner.respond(
+                vec![
+                    inst.exe_path.to_str().unwrap(),
+                    "uses",
+                    "--installed",
+                    "libreoffice",
+                ],
+                CommandOutput {
+                    exit_code: Some(0),
+                    stdout: "formula-consumer\n".into(),
+                    stderr: String::new(),
+                    stderr_cause: Default::default(),
+                    timed_out: false,
+                    cancelled: false,
+                },
+            );
+            runner.respond(
+                vec![
+                    inst.exe_path.to_str().unwrap(),
+                    "info",
+                    "--installed",
+                    "--json=v2",
+                ],
+                CommandOutput {
+                    exit_code: Some(code),
+                    stdout: body.into(),
+                    stderr: String::new(),
+                    stderr_cause: Default::default(),
+                    timed_out: false,
+                    cancelled: false,
+                },
+            );
+            let adapter = BrewAdapter::new(runner.clone());
+            let plan = adapter.plan(&inst, &req).await.unwrap();
+            assert_eq!(plan.affected, affected);
+            assert_eq!(plan.warnings.contains(&Warning::DependentsUnknown), unknown);
+            assert_eq!(
+                plan.warnings
+                    .iter()
+                    .any(|w| matches!(w, Warning::WouldBreak { .. })),
+                !affected.is_empty()
+            );
+            assert!(runner.calls().iter().all(|args| args[1] != "uses"));
+        }
+        let runner = Arc::new(MockRunner::new());
+        let plan = BrewAdapter::new(runner).plan(&inst, &req).await.unwrap();
+        assert!(plan.warnings.contains(&Warning::DependentsUnknown));
     }
 
     #[tokio::test]
@@ -7058,7 +7200,7 @@ mod plan_execute_tests {
     }
 
     #[tokio::test]
-    async fn test_cask_uninstall_refuses_npm_link_and_rechecks_before_dispatch() {
+    async fn test_cask_uninstall_and_upgrade_refuse_npm_link_and_recheck_before_dispatch() {
         use std::os::unix::fs::symlink;
         let prefix = CaskroomPrefix::new(
             "foreign-link",
@@ -7081,9 +7223,14 @@ mod plan_execute_tests {
         symlink(&foreign, &link).unwrap();
         let runner = Arc::new(MockRunner::new());
         let mut adapter = BrewAdapter::new(runner.clone())
-            .with_recorded_uninstall_fn(cask_receipt::read_recorded);
+            .with_recorded_uninstall_fn(cask_receipt::read_recorded)
+            .with_euid_fn(|| 501)
+            .with_askpass_fn(|| None)
+            .with_env_var_fn(|_| None);
         adapter.inspect_cask_links = true;
+        adapter.applications = prefix.0.join("Applications");
         let inst = ManagerInstance {
+            id: format!("brew:{}", prefix.0.display()),
             prefix: prefix.0.clone(),
             exe_path: bin.join("brew"),
             ..test_instance()
@@ -7104,39 +7251,40 @@ mod plan_execute_tests {
                 cancelled: false,
             },
         );
-        let req = OpRequest {
-            kind: OpKind::Uninstall,
-            instance_id: inst.id.clone(),
-            artifact_kind: ArtifactKind::Cask,
-            name: "codex".into(),
-        };
-        assert!(matches!(
-            adapter.plan(&inst, &req).await,
-            Err(AdapterError::UninstallUnsafe { .. })
-        ));
-        std::fs::remove_file(&link).unwrap();
-        symlink(&own, &link).unwrap();
-        let plan = adapter.plan(&inst, &req).await.unwrap();
-        std::fs::remove_file(&link).unwrap();
-        symlink(&foreign, &link).unwrap();
-        let outcome = adapter
-            .execute(
-                &plan,
-                Arc::new(VecSink::new()),
-                901,
-                CancellationToken::new(),
-            )
-            .await
-            .unwrap();
-        assert!(matches!(
-            outcome,
-            Outcome::BanagerFailed(Fault::PathChanged { .. })
-        ));
-        assert!(runner
-            .calls()
-            .iter()
-            .all(|argv| !argv.iter().any(|arg| arg == "uninstall")));
-        assert_eq!(std::fs::read_link(&link).unwrap(), foreign);
+        for kind in [OpKind::Uninstall, OpKind::Upgrade] {
+            let req = OpRequest {
+                kind,
+                instance_id: inst.id.clone(),
+                artifact_kind: ArtifactKind::Cask,
+                name: "codex".into(),
+            };
+            assert!(matches!(
+                adapter.plan(&inst, &req).await,
+                Err(AdapterError::UninstallUnsafe { .. })
+            ));
+            std::fs::remove_file(&link).unwrap();
+            symlink(&own, &link).unwrap();
+            let plan = adapter.plan(&inst, &req).await.unwrap();
+            std::fs::remove_file(&link).unwrap();
+            symlink(&foreign, &link).unwrap();
+            let outcome = adapter
+                .execute(
+                    &plan,
+                    Arc::new(VecSink::new()),
+                    901,
+                    CancellationToken::new(),
+                )
+                .await
+                .unwrap();
+            assert!(matches!(
+                outcome,
+                Outcome::BanagerFailed(Fault::PathChanged { .. })
+            ));
+            assert!(runner.calls().iter().all(|argv| !argv
+                .iter()
+                .any(|arg| arg == "uninstall" || arg == "upgrade")));
+            assert_eq!(std::fs::read_link(&link).unwrap(), foreign);
+        }
 
         // A recorded command_wrapper also owns a command path. Replacing
         // its link with npm's must not bypass the binary-link check.
@@ -7249,7 +7397,16 @@ mod plan_execute_tests {
     #[tokio::test]
     async fn test_flutters_cask_uninstalls_with_its_commands_through_its_moved_suite() {
         use std::os::unix::fs::symlink;
-        let prefix = CaskroomPrefix::new("flutter", &[("flutter", "{}")]);
+        let mut prefix = CaskroomPrefix::new("flutter", &[("flutter", "{}")]);
+        prefix.0 = std::fs::canonicalize(&prefix.0).unwrap();
+        let home = prefix.0.join("home");
+        std::fs::create_dir_all(&home).unwrap();
+        thread_local! {
+            static FLUTTER_HOME: std::cell::RefCell<OsString> =
+                const { std::cell::RefCell::new(OsString::new()) };
+        }
+        FLUTTER_HOME.with(|slot| *slot.borrow_mut() = home.into_os_string());
+        let _lookups = crate::dirfd::calls::restrict_to(&prefix.0);
         let suite = prefix.0.join("share/flutter");
         let receipt = serde_json::json!({
             "homebrew_version": "7.0.8",
@@ -7282,8 +7439,11 @@ mod plan_execute_tests {
         let runner = Arc::new(MockRunner::new());
         let mut adapter = BrewAdapter::new(runner.clone())
             .with_recorded_uninstall_fn(cask_receipt::read_recorded)
-            .with_env_var_fn(someones_home);
+            .with_env_var_fn(|name| {
+                (name == "HOME").then(|| FLUTTER_HOME.with(|slot| slot.borrow().clone()))
+            });
         adapter.inspect_cask_links = true;
+        adapter.applications = prefix.0.join("Applications");
         // Its own brew, so that what the run reads again is this prefix.
         let brew = bin.join("brew");
         let inst = ManagerInstance {
@@ -9634,6 +9794,30 @@ mod plan_execute_tests {
         dir
     }
 
+    #[cfg(target_os = "macos")]
+    fn homebrew_lock_shell() -> std::process::Command {
+        let mut command = std::process::Command::new("/bin/bash");
+        command
+            .env_clear()
+            .env("PATH", "/usr/bin:/bin:/usr/sbin:/sbin");
+        command
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn homebrew_lock_shell_has_only_the_controlled_path() {
+        let command = homebrew_lock_shell();
+        assert_eq!(
+            command.get_envs().collect::<Vec<_>>(),
+            vec![(
+                std::ffi::OsStr::new("PATH"),
+                Some(std::ffi::OsStr::new("/usr/bin:/bin:/usr/sbin:/sbin")),
+            )]
+        );
+        // Inspect the builder; this test launches no shell or startup file.
+        assert!(format!("{command:?}").contains("env -i"));
+    }
+
     /// Holds `prefix`'s update lock, as a running `brew update` does, until
     /// dropped.
     #[cfg(target_os = "macos")]
@@ -9645,7 +9829,7 @@ mod plan_execute_tests {
     impl HomebrewUpdateLockHolder {
         fn hold(prefix: &Path) -> HomebrewUpdateLockHolder {
             use std::io::BufRead;
-            let mut child = std::process::Command::new("/bin/bash")
+            let mut child = homebrew_lock_shell()
                 .arg("-c")
                 .arg(r#"exec 200>"$1"; lockf -t 0 200 || exit 75; echo locked; read -r _"#)
                 .arg("bash")
@@ -9677,7 +9861,7 @@ mod plan_execute_tests {
     /// update` with nothing to do would; true when the lock was taken.
     #[cfg(target_os = "macos")]
     fn quick_homebrew_update(prefix: &Path) -> bool {
-        std::process::Command::new("/bin/bash")
+        homebrew_lock_shell()
             .arg("-c")
             .arg(r#"exec 200>"$1"; lockf -t 0 200"#)
             .arg("bash")
@@ -10613,6 +10797,7 @@ mod plan_execute_tests {
         fn two_versions(_prefix: &Path, name: &str) -> Option<Kegs> {
             (name.rsplit('/').next() == Some("wget")).then(|| Kegs {
                 versions: vec!["1.24.0".to_string(), "1.25.0".to_string()],
+                current: Some("1.25.0".to_string()),
                 pinned: false,
             })
         }
@@ -10622,6 +10807,7 @@ mod plan_execute_tests {
         fn cleaned(_prefix: &Path, name: &str) -> Option<Kegs> {
             (name.rsplit('/').next() == Some("wget")).then(|| Kegs {
                 versions: vec!["1.26.0".to_string()],
+                current: Some("1.26.0".to_string()),
                 pinned: false,
             })
         }
@@ -10853,6 +11039,7 @@ mod plan_execute_tests {
             let adapter = BrewAdapter::new(Arc::new(MockRunner::new())).with_kegs_fn(|_, _| {
                 Some(Kegs {
                     versions: vec!["1.24.0".to_string(), "1.25.0".to_string()],
+                    current: Some("1.25.0".to_string()),
                     pinned: true,
                 })
             });
@@ -10903,12 +11090,14 @@ mod plan_execute_tests {
             let one: Read = |_, _| {
                 Some(Kegs {
                     versions: vec!["1.25.0".to_string()],
+                    current: Some("1.25.0".to_string()),
                     pinned: false,
                 })
             };
             let pinned: Read = |_, _| {
                 Some(Kegs {
                     versions: vec!["1.24.0".to_string(), "1.25.0".to_string()],
+                    current: Some("1.25.0".to_string()),
                     pinned: true,
                 })
             };
@@ -11067,12 +11256,14 @@ mod plan_execute_tests {
                         "1.25.0".to_string(),
                         "1.26.0".to_string(),
                     ],
+                    current: Some("1.26.0".to_string()),
                     pinned: false,
                 })
             };
             let linked: Read = |_, _| {
                 Some(Kegs {
                     versions: vec!["1.25.0".to_string(), "1.26.0".to_string()],
+                    current: Some("1.26.0".to_string()),
                     pinned: false,
                 })
             };
@@ -11088,6 +11279,7 @@ mod plan_execute_tests {
                     .is_multiple_of(2)
                     .then(|| Kegs {
                         versions: vec!["1.24.0".to_string(), "1.25.0".to_string()],
+                        current: Some("1.25.0".to_string()),
                         pinned: false,
                     })
             }
@@ -11245,6 +11437,78 @@ mod plan_execute_tests {
         }
 
         #[tokio::test]
+        async fn cleanup_uses_the_selected_keg_after_prereleases_and_version_scheme_resets() {
+            for (old, current) in [("2.0rc1", "2.0"), ("9.0", "1.0")] {
+                for (extra, selected) in [(false, true), (true, true), (false, false)] {
+                    let temp = tempfile::tempdir().unwrap();
+                    let prefix = std::fs::canonicalize(temp.path()).unwrap();
+                    let rack = prefix.join("Cellar/wget");
+                    std::fs::create_dir_all(rack.join(old)).unwrap();
+                    std::fs::create_dir(prefix.join("opt")).unwrap();
+                    let opt = prefix.join("opt/wget");
+                    std::os::unix::fs::symlink(format!("../Cellar/wget/{old}"), &opt).unwrap();
+                    let inst = ManagerInstance {
+                        id: format!("brew:{}", prefix.display()),
+                        exe_path: prefix.join("bin/brew"),
+                        prefix: prefix.clone(),
+                        ..test_instance()
+                    };
+                    let runner = Arc::new(MockRunner::new());
+                    let brew = inst.exe_path.to_str().unwrap();
+                    let upgrade = vec![brew, "upgrade", "--formula", "wget"];
+                    let cleanup = vec![brew, "cleanup", "wget"];
+                    runner.respond(upgrade.clone(), ok("", "", 0));
+                    runner.respond(cleanup.clone(), ok("", "", 0));
+                    let adapter = BrewAdapter::new(runner.clone()).with_kegs_fn(kegs::read_kegs);
+                    let req = OpRequest {
+                        instance_id: inst.id.clone(),
+                        ..request(OpKind::Upgrade, ArtifactKind::Formula, "wget")
+                    };
+                    let plan = adapter.plan(&inst, &req).await.unwrap();
+
+                    // Model Homebrew selecting the installed update, even when
+                    // its display version sorts before the previous release.
+                    std::fs::create_dir(rack.join(current)).unwrap();
+                    std::fs::remove_file(&opt).unwrap();
+                    if selected {
+                        std::os::unix::fs::symlink(format!("../Cellar/wget/{current}"), &opt)
+                            .unwrap();
+                    }
+                    if extra {
+                        std::fs::create_dir(rack.join("0.5")).unwrap();
+                    }
+                    let sink = Arc::new(VecSink::new());
+                    let outcome = adapter
+                        .execute(&plan, sink.clone(), 7, CancellationToken::new())
+                        .await
+                        .unwrap();
+                    assert_eq!(outcome, Outcome::Succeeded);
+                    if selected && !extra {
+                        assert_eq!(runner.calls(), vec![upgrade, cleanup]);
+                        // The mock command leaves the old keg in the fixture:
+                        // the log must name it even when it sorts last.
+                        assert!(sink.snapshot().iter().any(|event| matches!(
+                            event,
+                            OperationEvent::Note {
+                                note: LogNote::OldVersionsKept { versions, .. },
+                                ..
+                            } if versions == &[old.to_string()]
+                        )));
+                    } else {
+                        assert_eq!(runner.calls(), vec![upgrade]);
+                        assert!(sink.snapshot().iter().any(|event| matches!(
+                            event,
+                            OperationEvent::Note {
+                                note: LogNote::OldVersionsCleanupSkipped { .. },
+                                ..
+                            }
+                        )));
+                    }
+                }
+            }
+        }
+
+        #[tokio::test]
         async fn regression_f01_cleanup_skips_unconfirmed_old_kegs() {
             let runner = Arc::new(MockRunner::new());
             runner.respond(
@@ -11270,6 +11534,7 @@ mod plan_execute_tests {
                         versions: ["1.24.0", "1.25.0", "1.25.1", "1.26.0"]
                             .map(str::to_string)
                             .to_vec(),
+                        current: Some("1.26.0".to_string()),
                         pinned: false,
                     })
                 })
@@ -11336,6 +11601,7 @@ mod plan_execute_tests {
             let pinned: Read = |_, _| {
                 Some(Kegs {
                     versions: vec!["1.24.0".to_string(), "1.25.0".to_string()],
+                    current: Some("1.25.0".to_string()),
                     pinned: true,
                 })
             };
@@ -11618,6 +11884,7 @@ mod plan_execute_tests {
             let pinned: Read = |_, _| {
                 Some(Kegs {
                     versions: vec!["1.24.0".to_string(), "1.25.0".to_string()],
+                    current: Some("1.25.0".to_string()),
                     pinned: true,
                 })
             };
@@ -11702,12 +11969,14 @@ mod plan_execute_tests {
                         "1.25.0".to_string(),
                         "1.26.0".to_string(),
                     ],
+                    current: Some("1.26.0".to_string()),
                     pinned: false,
                 })
             };
             let another: Read = |_, _| {
                 Some(Kegs {
                     versions: vec!["1.25.0".to_string(), "1.26.0".to_string()],
+                    current: Some("1.26.0".to_string()),
                     pinned: false,
                 })
             };
@@ -11728,6 +11997,7 @@ mod plan_execute_tests {
             let fewer: Read = |_, _| {
                 Some(Kegs {
                     versions: vec!["1.25.0".to_string()],
+                    current: Some("1.25.0".to_string()),
                     pinned: false,
                 })
             };
@@ -11764,6 +12034,7 @@ mod plan_execute_tests {
             let one: Read = |_, _| {
                 Some(Kegs {
                     versions: vec!["1.25.0".to_string()],
+                    current: Some("1.25.0".to_string()),
                     pinned: false,
                 })
             };
@@ -11780,6 +12051,7 @@ mod plan_execute_tests {
             let one_more: Read = |_, _| {
                 Some(Kegs {
                     versions: vec!["1.25.0".to_string(), "1.26.0".to_string()],
+                    current: Some("1.26.0".to_string()),
                     pinned: false,
                 })
             };
@@ -11803,12 +12075,14 @@ mod plan_execute_tests {
             let replaced: Read = |_, _| {
                 Some(Kegs {
                     versions: vec!["1.26.0".to_string()],
+                    current: Some("1.26.0".to_string()),
                     pinned: false,
                 })
             };
             let pinned: Read = |_, _| {
                 Some(Kegs {
                     versions: vec!["1.25.0".to_string(), "1.26.0".to_string()],
+                    current: Some("1.26.0".to_string()),
                     pinned: true,
                 })
             };

@@ -75,6 +75,7 @@ fn relinks(name: &str, commands: &[&str]) -> Warning {
 fn one_old_version(_prefix: &Path, name: &str) -> Option<Kegs> {
     (name == "node@22").then(|| Kegs {
         versions: vec!["22.23.3".to_string()],
+        current: Some("22.23.3".to_string()),
         pinned: false,
     })
 }

@@ -27,6 +27,14 @@ function fakeT(key: string, options?: Record<string, unknown>): string {
 }
 
 describe("warningKey", () => {
+  it("explains unknown Python compatibility in all three languages", () => {
+    for (const language of ["en", "zh-CN", "zh-Hant"]) {
+      const t = i18n.getFixedT(language);
+      expect(warningText(t, "PythonCompatibilityUnknown")).toBe(t("warnings.pythonCompatibilityUnknown"));
+      expect(t("warnings.pythonCompatibilityUnknown")).toContain("Python");
+    }
+  });
+
   it("gives each fixed warning its own key", () => {
     expect(warningKey("DependentsUnknown")).toBe("warnings.dependentsUnknown");
     expect(warningKey("CompilesLocally")).toBe("warnings.compilesLocally");
@@ -163,7 +171,7 @@ describe("warningKey", () => {
     expect(warningGroup(warning)).toBe("note");
   });
 
-  it("says a formula's brew services service keeps running after its uninstall, with the command that stops it", () => {
+  it("says the service definition stays and makes running and relaunching conditional", () => {
     // r18 R46-3: `brew uninstall` neither stops the service nor removes its
     // file; one started with `sudo` is stopped with `sudo`.
     const enT = i18n.getFixedT("en");
@@ -171,10 +179,13 @@ describe("warningKey", () => {
     const user: Warning = { HomebrewServiceStays: { name: "ollama", system: false } };
     const system: Warning = { HomebrewServiceStays: { name: "unbound", system: true } };
     expect(enT(warningKey(user) as string, warningArgs(user))).toBe(
-      "ollama is set to run in the background with brew services, and uninstalling doesn't stop it: it keeps running, and macOS keeps trying to start it. To stop it first, run brew services stop ollama in Terminal.",
+      "The brew services definition for ollama remains after uninstalling. Uninstalling does not stop an already-running service. If the service is still loaded, macOS may try to start it again. To stop it first, run brew services stop ollama in Terminal.",
     );
     expect(zh(warningKey(system) as string, warningArgs(system))).toBe(
-      "“unbound”已用brew services设为在后台运行，卸载不会停止它：它会继续运行，macOS也会继续尝试启动它。要先停止它，请在终端运行sudo brew services stop unbound。",
+      "卸载后，“unbound”的brew services服务定义仍会保留。卸载不会停止已经在运行的服务。如果该服务仍处于加载状态，macOS可能会尝试再次启动它。要先停止它，请在终端运行sudo brew services stop unbound。",
+    );
+    expect(i18n.getFixedT("zh-Hant")(warningKey(system) as string, warningArgs(system))).toBe(
+      "解除安裝後，「unbound」的brew services服務定義仍會保留。解除安裝不會停止已在執行的服務。如果該服務仍處於載入狀態，macOS可能會嘗試再次啟動它。要先停止它，請在終端機執行sudo brew services stop unbound。",
     );
     expect(warningDetailKey(user)).toBeNull();
     expect(warningGroup(user)).toBe("note");
@@ -391,6 +402,7 @@ describe("warningKey", () => {
       "CompilesLocally",
       "DownloadsModelChanges",
       "NonRegistrySource",
+      "PythonCompatibilityUnknown",
       "TransientLookupFailure",
       "NotLookedUpHere",
       { SecureConnectionFailed: { host: "crates.io" } },
@@ -606,6 +618,7 @@ const EVERY_VARIANT: Warning[] = [
   "CompilesLocally",
   "DownloadsModelChanges",
   "NonRegistrySource",
+  "PythonCompatibilityUnknown",
   "TransientLookupFailure",
   "NotLookedUpHere",
   "HomebrewRustupLosesToolchains",
@@ -764,7 +777,7 @@ describe("warningGroup", () => {
           "UninstallScope" in warning
         ),
     );
-    expect(notes).toHaveLength(35);
+    expect(notes).toHaveLength(36);
     for (const warning of notes) expect(warningGroup(warning)).toBe("note");
     // Every kind of a cask's extra steps.
     for (const step of EVERY_STEP) {
@@ -847,6 +860,7 @@ describe("warningDetailKey", () => {
       "CompilesLocally",
       "DownloadsModelChanges",
       "NonRegistrySource",
+      "PythonCompatibilityUnknown",
       "TransientLookupFailure",
       "NotLookedUpHere",
       "HomebrewRustupLosesToolchains",
@@ -1167,6 +1181,7 @@ describe("isCaution", () => {
       "CompilesLocally",
       "DownloadsModelChanges",
       "NonRegistrySource",
+      "PythonCompatibilityUnknown",
       "NotLookedUpHere",
       { SecureConnectionFailed: { host: "crates.io" } },
       "EditsShellConfig",

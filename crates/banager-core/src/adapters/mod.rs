@@ -1,3 +1,6 @@
+// Only the PEP 440 ordering tests remain: the legacy pipx check no longer
+// compares versions (BNG-003), so the comparator has no production caller.
+#[cfg(test)]
 mod python_version;
 use crate::events::{EventSink, OpId};
 use crate::model::{

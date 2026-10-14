@@ -1,7 +1,8 @@
 use crate::adapters::{
     ensure_instance_match, get_ok, lookup_failure_reason, reconcile_from, run_plan,
     uncheckable_candidate, uncheckable_from_inventory, url_path_segment, validate_package_name,
-    Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome, LookupFailure,
+    Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome, InventoryOutcome,
+    LookupFailure,
 };
 use crate::events::{EventSink, OpId};
 use crate::http::HttpClient;
@@ -630,8 +631,11 @@ impl PipxAdapter {
     }
 
     /// Below pipx 1.16 there is no `pipx list --outdated`, so each installed
-    /// tool is looked up individually on PyPI. A per-package failure (network
-    /// down, package removed from PyPI) becomes a `checkable: false`
+    /// tool is looked up individually on PyPI, but project-level metadata
+    /// cannot establish compatibility with its environment. Successful
+    /// lookups stay uncheckable until that compatibility can be resolved.
+    /// A per-package failure (network down, package removed from PyPI)
+    /// becomes a `checkable: false`
     /// candidate for just that tool, never a hard error for the whole check.
     /// Handed only the tools installed from an index by name
     /// (`from_index`): the rest get no row, as pipx 1.16+ gives them none.
@@ -660,27 +664,23 @@ impl PipxAdapter {
         )
         .await;
         for (artifact, answer) in installed.iter().zip(answers) {
-            match answer.and_then(|latest| {
-                super::python_version::strictly_newer(&latest, &artifact.version)
-                    .map(|newer| (latest, newer))
-                    .ok_or_else(|| {
-                        LookupFailure::from("could not compare Python package versions".to_string())
-                    })
-            }) {
-                Ok((latest, true)) => out.push(UpdateCandidate {
+            match answer {
+                // Project metadata does not resolve Requires-Python,
+                // wheel tags, constraints or this venv's installation
+                // settings. A successful lookup is not a compatible target.
+                Ok(_) => out.push(UpdateCandidate {
                     key: artifact.key.clone(),
                     current: artifact.version.clone(),
-                    target: latest,
+                    target: artifact.version.clone(),
                     channel: UpdateChannel::Registry,
-                    checkable: true,
-                    warnings: Vec::new(),
+                    checkable: false,
+                    warnings: vec![Warning::PythonCompatibilityUnknown],
                     blocked: pinned
                         .contains(&artifact.key.name)
                         .then_some(UpdateBlocked::Pinned),
                     download_bytes: None,
                     display_current: None,
                 }),
-                Ok(_) => {}
                 Err(reason) => out.push(uncheckable_candidate(
                     artifact.key.clone(),
                     artifact.version.clone(),
@@ -879,8 +879,14 @@ impl PipxAdapter {
         inst: &ManagerInstance,
         key: &ArtifactKey,
     ) -> Result<Reconciled, AdapterError> {
-        let artifacts = self.inventory(inst).await?;
-        Ok(reconcile_from(artifacts, key))
+        let list = self.read_list(inst).await?;
+        let reconciled = reconcile_from(list.artifacts, key);
+        if !reconciled.present && list.left_out {
+            return Err(AdapterError::Refused(
+                "pipx left tools out of its list".into(),
+            ));
+        }
+        Ok(reconciled)
     }
 }
 
@@ -899,6 +905,18 @@ impl Adapter for PipxAdapter {
         inst: &ManagerInstance,
     ) -> Result<Vec<InstalledArtifact>, AdapterError> {
         PipxAdapter::inventory(self, inst).await
+    }
+
+    async fn inventory_with_notes(
+        &self,
+        inst: &ManagerInstance,
+    ) -> Result<InventoryOutcome, AdapterError> {
+        let list = self.read_list(inst).await?;
+        Ok(InventoryOutcome {
+            notes: list.notes(),
+            complete: !list.left_out,
+            artifacts: list.artifacts,
+        })
     }
 
     async fn check_updates(
@@ -1119,13 +1137,7 @@ mod tests {
         });
         let adapter = PipxAdapter::new(runner, http.clone());
         let inst = test_instance();
-        for (current, actionable) in [
-            ("1.0", true),
-            ("2.0rc1", false),
-            ("1.9.0", false),
-            ("1.9+local", false),
-            ("1!1.0", false),
-        ] {
+        for current in ["1.0", "2.0rc1", "1.9.0", "1.9+local", "1!1.0"] {
             let json = format!(
                 r#"{{"venvs":{{"ruff-alt":{{"metadata":{{"main_package":{{"package":"ruff","package_version":"{current}"}}}}}}}}}}"#
             );
@@ -1133,10 +1145,11 @@ mod tests {
             let rows = adapter
                 .check_outdated_via_pypi(&installed, &HashSet::new())
                 .await;
-            assert_eq!(!rows.is_empty(), actionable, "{current}");
-            if actionable {
-                assert_eq!(rows[0].key.name, "ruff-alt");
-            }
+            assert_eq!(rows.len(), 1, "{current}");
+            assert_eq!(rows[0].key.name, "ruff-alt");
+            assert_eq!(rows[0].target, current);
+            assert!(!rows[0].checkable);
+            assert_eq!(rows[0].warnings, [Warning::PythonCompatibilityUnknown]);
         }
         assert!(http
             .calls()
@@ -1230,7 +1243,7 @@ mod tests {
             .collect();
         assert_eq!(
             rows,
-            [("black".to_string(), true), ("cowsay".to_string(), true)]
+            [("black".to_string(), false), ("cowsay".to_string(), false)]
         );
         let mut asked = http.calls();
         asked.sort();
@@ -1778,13 +1791,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_check_updates_falls_back_to_pypi_below_pipx_1_16() {
+    async fn legacy_pipx_does_not_offer_a_release_requiring_a_newer_python() {
         let runner = Arc::new(MockRunner::new());
         runner.respond(
             vec!["/opt/homebrew/bin/pipx", "list", "--json"],
             CommandOutput { stderr_cause: Default::default(),
                 exit_code: Some(0),
-                stdout: r#"{"venvs":{"cowsay":{"metadata":{"main_package":{"package":"cowsay","package_version":"5.0"}}}}}"#.to_string(),
+                stdout: r#"{"venvs":{"cowsay":{"metadata":{"python_version":"3.9.20","main_package":{"package":"cowsay","package_version":"5.0"}}}}}"#.to_string(),
                 stderr: String::new(),
                 timed_out: false,
                 cancelled: false,
@@ -1795,7 +1808,7 @@ mod tests {
             "https://pypi.org/pypi/cowsay/json",
             HttpResponse {
                 status: 200,
-                body: r#"{"info":{"version":"6.1"}}"#.to_string(),
+                body: r#"{"info":{"version":"6.1","requires_python":">=3.10"},"releases":{"6.1":[{"requires_python":">=3.10"}]}}"#.to_string(),
             },
         );
         let adapter = PipxAdapter::new(runner, http.clone());
@@ -1808,7 +1821,12 @@ mod tests {
             .candidates;
         assert_eq!(candidates.len(), 1);
         assert_eq!(candidates[0].key.name, "cowsay");
-        assert_eq!(candidates[0].target, "6.1");
+        assert_eq!(candidates[0].target, "5.0");
+        assert!(!candidates[0].checkable);
+        assert_eq!(
+            candidates[0].warnings,
+            [Warning::PythonCompatibilityUnknown]
+        );
         assert_eq!(candidates[0].channel, UpdateChannel::Registry);
         assert_eq!(
             http.calls(),
@@ -1967,6 +1985,56 @@ mod tests {
             timed_out: false,
             cancelled: false,
         }
+    }
+
+    #[tokio::test]
+    async fn partial_inventory_does_not_prove_an_omitted_tool_is_gone() {
+        let runner = Arc::new(MockRunner::new());
+        let argv = vec!["/opt/homebrew/bin/pipx", "list", "--json"];
+        runner.respond(argv.clone(), list_without_a_broken_venv());
+        let adapter = PipxAdapter::new(runner.clone(), Arc::new(MockHttpClient::new()));
+        let inst = test_instance();
+        let inventory = Adapter::inventory_with_notes(&adapter, &inst)
+            .await
+            .unwrap();
+        assert!(!inventory.complete);
+        assert_eq!(inventory.notes, [InstanceNote::SomeNotListed]);
+        assert_eq!(inventory.artifacts.len(), 2);
+
+        let key = |name: &str| ArtifactKey {
+            instance_id: inst.id.clone(),
+            kind: ArtifactKind::Tool,
+            name: name.into(),
+        };
+        assert!(
+            adapter
+                .reconcile(&inst, &key("cowsay"))
+                .await
+                .unwrap()
+                .present
+        );
+        assert!(matches!(
+            adapter.reconcile(&inst, &key("black")).await,
+            Err(AdapterError::Refused(_))
+        ));
+
+        // The same omission is conclusive only when pipx completed its list.
+        let mut complete = list_without_a_broken_venv();
+        complete.exit_code = Some(0);
+        complete.stderr.clear();
+        runner.respond(argv, complete);
+        let inventory = Adapter::inventory_with_notes(&adapter, &inst)
+            .await
+            .unwrap();
+        assert!(inventory.complete);
+        assert!(inventory.notes.is_empty());
+        assert!(
+            !adapter
+                .reconcile(&inst, &key("black"))
+                .await
+                .unwrap()
+                .present
+        );
     }
 
     #[tokio::test]

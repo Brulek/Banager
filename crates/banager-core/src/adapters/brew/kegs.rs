@@ -4,9 +4,9 @@
 //! Homebrew lists as `rack.subdirs` (`Formula#installed_kegs`, and
 //! `resolve_kegs` in `cli/named_args.rb:522-543` in Homebrew 7.0.7-9) --
 //! and whether it is pinned, which Homebrew records as a link
-//! `<prefix>/var/homebrew/pinned/<name>` (`FormulaPin#pinned?`). Only
-//! names are read: no keg's contents, and nothing in or through a
-//! protected place (`protected::look`).
+//! `<prefix>/var/homebrew/pinned/<name>` (`FormulaPin#pinned?`). The opt
+//! link records the selected keg. Only names and links are read: no keg's
+//! contents, and nothing in or through a protected place (`protected::look`).
 
 use crate::protected::{look, Protected};
 use std::cmp::Ordering;
@@ -16,8 +16,12 @@ use std::path::Path;
 /// One formula's kegs under a prefix, as `read_kegs` found them.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Kegs {
-    /// Every installed version, oldest first (`version_order`).
+    /// Installed versions in display order (`version_order`).
     pub(crate) versions: Vec<String>,
+    /// The installed keg selected by Homebrew's opt link, independent of
+    /// display order (including prereleases and version_scheme resets).
+    /// None when that record cannot be verified within this formula's rack.
+    pub(crate) current: Option<String>,
     /// Whether it is pinned -- or may be: a pin record Banager could not
     /// look at counts as one, so that nothing Banager adds to a command
     /// overrides Homebrew's own refusal to uninstall a pinned formula
@@ -51,7 +55,23 @@ pub(crate) fn read_kegs(prefix: &Path, name: &str) -> Option<Kegs> {
         Ok(_) => true,
         Err(error) => error.kind() != ErrorKind::NotFound,
     };
-    Some(Kegs { versions, pinned })
+    let opt = prefix.join("opt").join(short);
+    let current = (|| {
+        if !look::lstat(&opt, &protected).ok()?.is_symlink() {
+            return None;
+        }
+        let (at, stat) = look::target(&opt, &protected).ok()?;
+        if !stat.is_dir() || !crate::protected::same_path(at.parent()?, listing.path()) {
+            return None;
+        }
+        let version = at.file_name()?.to_str()?;
+        versions.iter().find(|v| v.as_str() == version).cloned()
+    })();
+    Some(Kegs {
+        versions,
+        current,
+        pinned,
+    })
 }
 
 /// The formula folders in `<prefix>/Cellar` -- its racks, as Homebrew
@@ -191,6 +211,30 @@ mod tests {
         assert_eq!(answer, None);
         assert_eq!(calls.entries, 4097);
         std::fs::remove_dir_all(prefix).unwrap();
+    }
+
+    #[test]
+    fn current_keg_follows_homebrews_record_not_display_order() {
+        for (old, current) in [("2.0rc1", "2.0"), ("9.0", "1.0")] {
+            let prefix = temp_dir("kegs-current");
+            let rack = prefix.join("Cellar/wget");
+            for version in [old, current] {
+                std::fs::create_dir_all(rack.join(version)).unwrap();
+            }
+            std::fs::create_dir(prefix.join("opt")).unwrap();
+            let opt = prefix.join("opt/wget");
+            std::os::unix::fs::symlink(format!("../Cellar/wget/{current}"), &opt).unwrap();
+            let kegs = read_kegs(&prefix, "wget").unwrap();
+            assert_eq!(kegs.current.as_deref(), Some(current));
+            assert_eq!(kegs.versions.last().map(String::as_str), Some(old));
+
+            std::fs::remove_file(&opt).unwrap();
+            assert_eq!(read_kegs(&prefix, "wget").unwrap().current, None);
+            std::fs::create_dir_all(prefix.join("Cellar/other").join(current)).unwrap();
+            std::os::unix::fs::symlink(format!("../Cellar/other/{current}"), &opt).unwrap();
+            assert_eq!(read_kegs(&prefix, "wget").unwrap().current, None);
+            std::fs::remove_dir_all(prefix).unwrap();
+        }
     }
 
     #[test]

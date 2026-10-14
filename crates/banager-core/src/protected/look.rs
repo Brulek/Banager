@@ -189,8 +189,55 @@ impl Listing<'_> {
 
     /// Names one at a time, so callers can check their budget before
     /// each read and stop without collecting the rest of the folder.
-    pub fn entries(&self) -> io::Result<crate::dirfd::Entries> {
-        self.dir.entries()
+    pub fn entries(&self) -> io::Result<impl Iterator<Item = io::Result<OsString>> + '_> {
+        self.current_path()?;
+        let mut entries = self.dir.entries()?;
+        let mut done = false;
+        Ok(std::iter::from_fn(move || {
+            if done {
+                return None;
+            }
+            if let Err(error) = self.current_path() {
+                done = true;
+                return Some(Err(error));
+            }
+            let entry = entries.next();
+            if let Err(error) = self.current_path() {
+                done = true;
+                return Some(Err(error));
+            }
+            done = entry.as_ref().is_none_or(|entry| entry.is_err());
+            entry
+        }))
+    }
+
+    /// Check the held folder itself, not the path it had when opened.
+    /// An unavailable location is never permission to keep reading.
+    fn current_path(&self) -> io::Result<PathBuf> {
+        let at = match self.dir.path() {
+            Ok(at) => at,
+            #[cfg(not(target_os = "macos"))]
+            Err(error) if error.kind() == io::ErrorKind::Unsupported => {
+                // Without F_GETPATH, accept only the original path, reached
+                // through the protected resolver, still naming this descriptor.
+                let (at, stat) = target(&self.path, self.protected)
+                    .map_err(|_| io::Error::from(io::ErrorKind::PermissionDenied))?;
+                if !self.dir.stat()?.same_as(&stat) {
+                    return Err(io::Error::from(io::ErrorKind::PermissionDenied));
+                }
+                at
+            }
+            Err(error) => {
+                return Err(io::Error::new(io::ErrorKind::PermissionDenied, error));
+            }
+        };
+        if !at.is_absolute() {
+            return Err(io::Error::from(io::ErrorKind::PermissionDenied));
+        }
+        if self.protected.contains(&at) {
+            return Err(protected_error(at));
+        }
+        Ok(at)
     }
 
     /// Collect a complete folder within a shared budget. At most one extra
@@ -221,7 +268,7 @@ impl Listing<'_> {
     /// What `name` in the folder is, a link itself rather than what it
     /// leads to (`lstat`): never asked of a protected place itself.
     pub fn lstat(&self, name: &std::ffi::OsStr) -> io::Result<Stat> {
-        let path = self.path.join(name);
+        let path = self.current_path()?.join(name);
         if self.protected.contains(&path) {
             return Err(protected_error(path));
         }
@@ -370,6 +417,45 @@ mod tests {
         symlink(home.at("Documents/tool"), home.at("linked")).unwrap();
     }
 
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn open_listing_refuses_a_move_into_documents() {
+        let home = Home::new("moved-listing");
+        std::fs::create_dir(home.at("scratch")).unwrap();
+        std::fs::write(home.at("scratch/marker"), b"fixture").unwrap();
+        std::fs::write(home.at("scratch/another"), b"fixture").unwrap();
+        let protected = home.protected();
+        let listing = list(&home.at("scratch"), &protected).unwrap();
+        let mut entries = listing.entries().unwrap();
+        assert!(entries.next().unwrap().is_ok());
+        std::fs::rename(home.at("scratch"), home.at("Documents/scratch")).unwrap();
+
+        let (_, calls) = calls::measure(|| {
+            assert!(listing.entries().is_err());
+            assert!(listing.names(&mut ListingBudget::default()).is_err());
+            assert!(listing.lstat(std::ffi::OsStr::new("marker")).is_err());
+            assert!(entries.next().unwrap().is_err());
+            assert!(entries.next().is_none(), "an unsafe stream stays stopped");
+        });
+        assert_eq!(calls.entries, 0, "no name read after the move");
+        assert_eq!(calls.stat_at, 0, "no child inspected after the move");
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn moved_listing_checks_children_at_its_current_location() {
+        let home = Home::new("moved-to-home");
+        let staging = Home::new("move-staging");
+        std::fs::create_dir_all(staging.at("scratch/Documents")).unwrap();
+        let protected = home.protected();
+        let listing = list(&staging.at("scratch"), &protected).unwrap();
+        std::fs::rename(&home.0, staging.at("old-home")).unwrap();
+        std::fs::rename(staging.at("scratch"), &home.0).unwrap();
+        let (result, calls) = calls::measure(|| listing.lstat(std::ffi::OsStr::new("Documents")));
+        assert!(is_protected(&result.unwrap_err()));
+        assert_eq!(calls.stat_at, 0);
+    }
+
     #[test]
     fn bounded_names_never_return_a_partial_folder() {
         let home = Home::new("bounded");
@@ -381,7 +467,12 @@ mod tests {
         let (result, calls) = calls::measure(|| listing.names(&mut ListingBudget::new(2)));
         assert!(result.is_err());
         assert_eq!(calls.entries, 3, "only one overflow probe");
-        assert_eq!(calls.stat_at, 0, "no overflow entry is inspected");
+        assert!(
+            calls.paths.iter().all(|(call, path)| {
+                *call != calls::Call::StatAt || path.parent() != Some(home.0.as_path())
+            }),
+            "no overflow entry is inspected"
+        );
         // A new stream: Home also contains Documents, so exactly five names.
         let listing = list(&home.0, &protected).unwrap();
         assert_eq!(listing.names(&mut ListingBudget::new(5)).unwrap().len(), 5);

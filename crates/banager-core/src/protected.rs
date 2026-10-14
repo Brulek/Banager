@@ -242,10 +242,9 @@ pub const AS_ASCII: [(&str, &str); 11] = [
     ("\u{FB06}", "st"),  // ﬆ
 ];
 
-/// A name's bytes as APFS compares them, as far as ASCII goes: each ASCII
-/// letter in lower case, each of `AS_ASCII` as its letters, and every
-/// other byte as it is. Other letters are compared as spelled: the names
-/// macOS gives accounts, and so their home folders, are ASCII.
+/// Byte-preserving fallback for non-UTF-8 names and non-macOS hosts.
+/// Valid UTF-8 on macOS uses native canonical normalization and full
+/// case folding in `folded_name`, including arbitrary home/share names.
 struct Fold<'a> {
     rest: &'a [u8],
     letters: &'static [u8],
@@ -294,7 +293,7 @@ pub fn same_name(a: &[u8], b: &[u8]) -> bool {
     if a.is_ascii() && b.is_ascii() {
         return false;
     }
-    fold(a).eq(fold(b))
+    folded_name(a) == folded_name(b)
 }
 
 /// `name` as a key two spellings of it that `same_name` takes as one
@@ -302,6 +301,20 @@ pub fn same_name(a: &[u8], b: &[u8]) -> bool {
 pub fn folded_name(name: &[u8]) -> Vec<u8> {
     if name.is_ascii() {
         return name.to_ascii_lowercase();
+    }
+    #[cfg(target_os = "macos")]
+    if let Ok(name) = std::str::from_utf8(name) {
+        use objc2_foundation::{NSString, NSStringCompareOptions};
+        // Canonical decomposition, not compatibility decomposition:
+        // accents and full-width letters remain distinct. A nil locale
+        // requests locale-independent folding (never Turkish-I rules).
+        // Decompose again because folding can introduce composed letters.
+        return NSString::from_str(name)
+            .decomposedStringWithCanonicalMapping()
+            .stringByFoldingWithOptions_locale(NSStringCompareOptions::CaseInsensitiveSearch, None)
+            .decomposedStringWithCanonicalMapping()
+            .to_string()
+            .into_bytes();
     }
     fold(name).collect()
 }
@@ -909,6 +922,57 @@ mod tests {
                 .collect(),
         };
         assert!(protected.contains(Path::new("/Users/strauss/Documents/bin")));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn unicode_names_share_keys_without_erasing_accents_or_width() {
+        for (a, b) in [
+            ("Café", "CAFE\u{301}"),
+            ("Ångström", "a\u{30a}ngstro\u{308}m"),
+            ("Σίσυφος", "σίσυφοσ"),
+            ("Straße", "STRASSE"),
+        ] {
+            assert!(same_name(a.as_bytes(), b.as_bytes()), "{a} / {b}");
+            assert_eq!(folded_name(a.as_bytes()), folded_name(b.as_bytes()));
+        }
+        assert!(!same_name("Café".as_bytes(), b"Cafe"));
+        assert!(!same_name("Ｄocuments".as_bytes(), b"Documents"));
+        assert!(!same_name(b"bad\xff", b"bad\xfe"));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn unicode_home_and_share_aliases_are_refused_before_lookup() {
+        use std::os::unix::fs::symlink;
+        let temp = Temp::new("unicode-protected");
+        let home = temp.0.join("Café");
+        std::fs::create_dir_all(home.join("Documents")).unwrap();
+        let relocated = temp.0.join("home-link");
+        symlink(&home, &relocated).unwrap();
+        let share = home.join("Réseau");
+        let _mounts = as_if_mounted(vec![Mount {
+            at: share,
+            local: false,
+        }]);
+        let _lookups = crate::dirfd::calls::restrict_to(&temp.0);
+        let protected = Protected::new(&relocated);
+        let other_home = temp.0.join("CAFE\u{301}");
+        let other_share = other_home.join("RE\u{301}SEAU");
+        // Only the link text is read; the pretend share itself must never
+        // receive even a metadata lookup.
+        symlink(&other_share, temp.0.join("share-link")).unwrap();
+        for path in [
+            other_home.join("Documents/tool"),
+            other_share.join("bin/tool"),
+            temp.0.join("share-link/bin/tool"),
+        ] {
+            let (answer, calls) = crate::dirfd::calls::measure(|| look::target(&path, &protected));
+            assert!(answer.as_ref().is_err_and(look::is_protected), "{path:?}");
+            for (_, looked_at) in calls.paths {
+                assert!(!protected.contains(&looked_at), "{looked_at:?}");
+            }
+        }
     }
 
     #[test]

@@ -809,6 +809,81 @@ pub fn parse_search(text: &str, adapter_id: &str) -> Vec<SearchHit> {
     crate::adapters::sanity::hits(hits)
 }
 
+/// Reverse cask requirements from the existing installed-info command.
+/// Missing or malformed requirements are unknown, never an empty answer.
+pub(super) fn cask_dependents(json: &str, requested: &str) -> Option<Vec<String>> {
+    #[derive(Deserialize)]
+    struct Root {
+        casks: Vec<Cask>,
+    }
+    #[derive(Deserialize)]
+    struct Cask {
+        token: String,
+        full_token: Option<String>,
+        installed: String,
+        depends_on: Value,
+    }
+    fn canonical(name: &str) -> &str {
+        name.strip_prefix("homebrew/cask/").unwrap_or(name)
+    }
+    fn name(cask: &Cask) -> &str {
+        canonical(cask.full_token.as_deref().unwrap_or(&cask.token))
+    }
+    let root: Root = serde_json::from_str(json).ok()?;
+    for cask in &root.casks {
+        super::validate_package_name(&cask.token).ok()?;
+        super::validate_package_name(name(cask)).ok()?;
+        if cask.installed.trim().is_empty() {
+            return None;
+        }
+    }
+    let requested = canonical(requested);
+    let matches: Vec<_> = root
+        .casks
+        .iter()
+        .filter(|cask| {
+            if requested.contains('/') {
+                name(cask) == requested
+            } else {
+                cask.token == requested
+            }
+        })
+        .collect();
+    let [target] = matches.as_slice() else {
+        return None;
+    };
+    let mut affected = Vec::new();
+    for cask in &root.casks {
+        let requirements = cask.depends_on.as_object()?;
+        let Some(dependencies) = requirements.get("cask") else {
+            continue;
+        };
+        let dependencies = dependencies.as_array()?;
+        let mut needs_target = false;
+        for dependency in dependencies {
+            let dependency = canonical(dependency.as_str()?);
+            super::validate_package_name(dependency).ok()?;
+            let matches_target = if dependency.contains('/') {
+                dependency == name(target)
+            } else {
+                if dependency == target.token
+                    && root.casks.iter().filter(|c| c.token == dependency).count() != 1
+                {
+                    return None;
+                }
+                dependency == target.token
+            };
+            needs_target |= matches_target;
+        }
+        if needs_target && name(cask) != name(target) {
+            affected.push(name(cask).to_string());
+        }
+    }
+    affected.sort();
+    affected.dedup();
+    Some(affected)
+}
+
 /// Parses `brew uses --installed {name}`: one whitespace-separated formula
 /// name per token (brew prints one per line, but splitting on all whitespace
 /// is robust to either layout). A token that is not a usable name (a
@@ -833,6 +908,40 @@ pub fn parse_version(text: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cask_dependencies_keep_tap_identity_and_reject_incomplete_requirements() {
+        let mut json = serde_json::json!({"casks": [
+            {"token":"base","full_token":"vendor/tap/base","installed":"1","depends_on":{}},
+            {"token":"consumer","full_token":"vendor/tap/consumer","installed":"1",
+             "depends_on":{"cask":["vendor/tap/base", "vendor/tap/base"]}}
+        ]});
+        assert_eq!(
+            cask_dependents(&json.to_string(), "vendor/tap/base"),
+            Some(vec!["vendor/tap/consumer".into()])
+        );
+        json["casks"][1]["depends_on"]["cask"] = serde_json::json!(["other/tap/base"]);
+        assert_eq!(
+            cask_dependents(&json.to_string(), "vendor/tap/base"),
+            Some(vec![])
+        );
+        for invalid in [
+            serde_json::json!({}),
+            serde_json::json!(null),
+            serde_json::json!(["base", 3]),
+        ] {
+            json["casks"][1]["depends_on"]["cask"] = invalid;
+            assert_eq!(cask_dependents(&json.to_string(), "vendor/tap/base"), None);
+        }
+        json["casks"][1]["depends_on"]["cask"] = serde_json::json!(["base"]);
+        json["casks"]
+            .as_array_mut()
+            .unwrap()
+            .push(serde_json::json!({
+                "token":"base","full_token":"other/tap/base","installed":"1","depends_on":{}
+            }));
+        assert_eq!(cask_dependents(&json.to_string(), "vendor/tap/base"), None);
+    }
 
     // Homebrew's lifecycle marks, inline because the recording has none.
     // The shapes are `brew info --json=v2`'s: a symbol reason is written as

@@ -74,6 +74,19 @@ function instance(over: Partial<ManagerInstance> = {}): ManagerInstance {
 }
 
 describe("sourceNoticesFor", () => {
+  it("gives a silent custom Ollama endpoint guidance without an Open action", () => {
+    const custom = instance({
+      id: "ollama:http://127.0.0.1:11435",
+      adapter_id: "ollama",
+      status: { unavailable: "NotResponding", notes: [] },
+    });
+    for (const language of ["en", "zh-CN", "zh-Hant"]) {
+      const [notice] = sourceNoticesFor(custom, "Ollama", 0);
+      expect(notice.action?.id).toBe("checkAgain");
+      expect(i18n.getFixedT(language)(notice.descriptionKey, notice.values)).toContain("OLLAMA_HOST");
+    }
+  });
+
   it("says nothing about a source that answered and can be changed", () => {
     expect(sourceNoticesFor(instance(), "Homebrew")).toEqual([]);
     expect(hasSourceNotice(instance())).toBe(false);
@@ -298,13 +311,13 @@ describe("sourceNoticesFor", () => {
       "12 tools were installed with Homebrew. It didn't respond this time, so they're shown as they were when it last responded. Check again later.",
     );
     expect(say("ollama", "Ollama", 3, "zh-CN")).toBe(
-      "Ollama中有3个模型。Ollama这次没有响应，显示的是它上次响应时的结果，请稍后重新检查。",
+      "Ollama中有3个模型。Ollama这次没有响应，显示的是它上次响应时的结果，请检查OLLAMA_HOST所设地址的服务或隧道。请稍后重新检查。",
     );
     expect(say("ollama", "Ollama", 3, "en")).toBe(
-      "Ollama has 3 models. It didn't respond this time, so they're shown as they were when it last responded. Check again later.",
+      "Ollama has 3 models. It didn't respond this time, so they're shown as they were when it last responded. Check the server or tunnel at the configured OLLAMA_HOST address. Check again later.",
     );
     expect(say("ollama", "Ollama", 1, "en")).toBe(
-      "Ollama has one model. It didn't respond this time, so that model is shown as it was when Ollama last responded. Check again later.",
+      "Ollama has one model. It didn't respond this time, so that model is shown as it was when Ollama last responded. Check the server or tunnel at the configured OLLAMA_HOST address. Check again later.",
     );
     expect(say("standalone-claude", "Claude Code", 1, "zh-CN")).toBe(
       "Claude Code这次没有响应，显示的是它上次响应时的结果，请稍后重新检查。",
@@ -315,7 +328,7 @@ describe("sourceNoticesFor", () => {
     // With nothing of theirs on screen: that it cannot be listed this
     // time, in the same three ways.
     expect(say("uv", "uv", 0, "zh-CN")).toBe("这次无法列出用它安装的工具。请稍后重新检查。");
-    expect(say("ollama", "Ollama", 0, "zh-CN")).toBe("这次无法列出它的模型。请稍后重新检查。");
+    expect(say("ollama", "Ollama", 0, "zh-CN")).toBe("这次无法列出它的模型。请检查OLLAMA_HOST所设地址的服务或隧道。请稍后重新检查。");
     expect(say("standalone-claude", "Claude Code", 0, "zh-CN")).toBe("这次无法列出它。请稍后重新检查。");
     // Nothing that soothes: whether it needs anything is not known. And
     // nothing about what a page lists, which the count is not.
@@ -394,13 +407,13 @@ describe("sourceNoticesFor", () => {
       `12 tools were installed with Homebrew. It didn't respond this time, so they're shown as they were when it last responded at ${nine} today. Check again later.`,
     );
     expect(say("ollama", "Ollama", 3, "zh-CN")).toBe(
-      "Ollama中有3个模型。Ollama这次没有响应，显示的是它今天09:12响应时的结果，请稍后重新检查。",
+      "Ollama中有3个模型。Ollama这次没有响应，显示的是它今天09:12响应时的结果，请检查OLLAMA_HOST所设地址的服务或隧道。请稍后重新检查。",
     );
     expect(say("ollama", "Ollama", 1, "en")).toBe(
-      `Ollama has one model. It didn't respond this time, so that model is shown as it was when Ollama last responded at ${nine} today. Check again later.`,
+      `Ollama has one model. It didn't respond this time, so that model is shown as it was when Ollama last responded at ${nine} today. Check the server or tunnel at the configured OLLAMA_HOST address. Check again later.`,
     );
     expect(say("ollama", "Ollama", 3, "en")).toBe(
-      `Ollama has 3 models. It didn't respond this time, so they're shown as they were when it last responded at ${nine} today. Check again later.`,
+      `Ollama has 3 models. It didn't respond this time, so they're shown as they were when it last responded at ${nine} today. Check the server or tunnel at the configured OLLAMA_HOST address. Check again later.`,
     );
     expect(say("standalone-claude", "Claude Code", 1, "zh-CN")).toBe(
       "Claude Code这次没有响应，显示的是它今天09:12响应时的结果，请稍后重新检查。",
@@ -413,9 +426,9 @@ describe("sourceNoticesFor", () => {
     expect(say("uv", "uv", 0, "en")).toBe(
       `The tools installed with it can't be listed this time. When it last responded at ${nine} today, it had no tools. Check again later.`,
     );
-    expect(say("ollama", "Ollama", 0, "zh-CN")).toBe("这次无法列出它的模型。它今天09:12响应时，没有任何模型。请稍后重新检查。");
+    expect(say("ollama", "Ollama", 0, "zh-CN")).toBe("这次无法列出它的模型。它今天09:12响应时，没有任何模型。请检查OLLAMA_HOST所设地址的服务或隧道。请稍后重新检查。");
     expect(say("ollama", "Ollama", 0, "en")).toBe(
-      `Its models can't be listed this time. When it last responded at ${nine} today, it had no models. Check again later.`,
+      `Its models can't be listed this time. When it last responded at ${nine} today, it had no models. Check the server or tunnel at the configured OLLAMA_HOST address. Check again later.`,
     );
     // A tool with its own installer lists itself whenever it answers: with
     // no row of it, there is no answer of its to date.

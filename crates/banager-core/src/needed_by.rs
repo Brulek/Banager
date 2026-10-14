@@ -891,7 +891,10 @@ impl Look {
         if !self.one_more() {
             return true;
         }
-        let listing = match look::list(path, &self.protected) {
+        // The guarded iterator keeps the listing alive while callbacks may
+        // borrow this reader mutably.
+        let protected = self.protected.clone();
+        let listing = match look::list(path, &protected) {
             Ok(listing) => listing,
             Err(error)
                 if matches!(
@@ -913,7 +916,6 @@ impl Look {
         let Ok(mut entries) = listing.entries() else {
             return true;
         };
-        drop(listing);
         loop {
             if !self.one_more() {
                 return true;
