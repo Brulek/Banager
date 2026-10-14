@@ -509,8 +509,10 @@ function cycleMembers(ids: readonly string[], edges: ReadonlyMap<string, readonl
  * included, so the last such copy goes.
  *
  * `DependentsUnknown` is no reason: such a tool is included with its line,
- * and runs after the rest of its source, where Homebrew's own refusal
- * still protects whatever needs it.
+ * and runs after the rest of its source. For a Homebrew package, Homebrew's
+ * own refusal still protects whatever needs it; pipx and uv refuse nothing,
+ * so for their tools the line, which says to check before uninstalling, is
+ * all there is -- as in the tool's own preview.
  */
 export function classify(candidates: readonly BatchCandidate[], artifacts: readonly InstalledArtifact[]): Classification {
   const reasons = new Map<string, Exclusion>();

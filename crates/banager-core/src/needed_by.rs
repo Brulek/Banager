@@ -757,7 +757,9 @@ impl Look {
     /// `python@3.N`; then, for a Python, any Python interpreter
     /// (`is_python`) in a formula's `opt/<name>/bin` -- a PyPy's
     /// `pypy3.11`, a free-threaded `python3.14t` -- and for a cask what
-    /// it keeps with no link in `<prefix>/bin` (`cask_holds`). One look a
+    /// it keeps with no link in `<prefix>/bin` (`cask_holds`); for a pipx or
+    /// uv tool, a Python in its environment's `bin` only where it leads
+    /// into the environment, not the links out every venv has. One look a
     /// name or folder, and none without a doubt or for a package named
     /// for one; one that is not known itself counts as a yes.
     fn could_be(
@@ -819,6 +821,15 @@ impl Look {
         }
         if cask {
             self.cask_holds(roots, &programs, python)
+        } else if package.key.kind == ArtifactKind::Tool {
+            // A venv's `bin/python`, `python3` and `python3.N` are links to
+            // the Python it was made with, outside it: only one that leads
+            // into it -- a venv made with `--copies` -- is its own.
+            python
+                && self.any_name_in(&bin, roots, |look, name| {
+                    name.to_str().is_some_and(is_python)
+                        && look.leads_into(&bin.join(name), roots) != Some(false)
+                })
         } else {
             python && self.holds(&bin, roots, &[], true)
         }
@@ -2175,6 +2186,78 @@ mod tests {
         let brew_owned = needed_by(&pipx_uv, &brew(&root), &instances, &tools, &env, BUDGET);
         assert!(brew_owned.warnings.is_empty());
         assert!(brew_owned.complete);
+    }
+
+    #[test]
+    fn test_a_tool_environments_python_links_out_of_it_are_no_python_of_its_own() {
+        // The skeptic of r24's fix: every venv has `bin/python`,
+        // `bin/python3` and `bin/python3.N`, links to the Python it was
+        // made with, outside it. Taken by their names, they left httpie's
+        // look unfinished whenever a Python was in doubt -- pip on a pyenv
+        // shim, a `PATH` not the login shell's -- where none of them is
+        // httpie's to take away. A venv made with `--copies` keeps a Python
+        // of its own, and its look still does not finish.
+        let root = Root::new("venv-python");
+        root.python_313();
+        let venv = "home/.local/pipx/venvs/httpie";
+        root.program(&format!("{venv}/bin/http"));
+        let python = root.path("opt/homebrew/opt/python@3.13/bin/python3.13");
+        root.link(&format!("{venv}/bin/python"), python.to_str().unwrap());
+        root.link(&format!("{venv}/bin/python3"), "python");
+        root.link(&format!("{venv}/bin/python3.13"), "python");
+        root.program("home/.local/pipx/venvs/copied/bin/python3.13");
+        root.link("home/.local/pipx/venvs/copied/bin/python", "python3.13");
+        root.program("home/.pyenv/shims/python3");
+        const PIPX: &str = "pipx:~/.local/pipx";
+        const PIP: &str = "pip:~/.pyenv/shims/python3";
+        let pipx = instance(
+            "pipx",
+            PIPX,
+            root.program("opt/pipx/bin/pipx"),
+            root.path("home/.local/pipx"),
+        );
+        let pip = instance(
+            "pip",
+            PIP,
+            root.path("home/.pyenv/shims/python3"),
+            root.path("home/.pyenv"),
+        );
+        let httpie = with_path(row(PIPX, ArtifactKind::Tool, "httpie"), root.path(venv));
+        let copied = with_path(
+            row(PIPX, ArtifactKind::Tool, "copied"),
+            root.path("home/.local/pipx/venvs/copied"),
+        );
+        let tools = vec![
+            httpie.clone(),
+            copied.clone(),
+            row(PIP, ArtifactKind::Package, "requests"),
+        ];
+        let env = root.env(&["home/.local/bin", "opt/homebrew/bin"]);
+        let look = |package: &InstalledArtifact, instances: &[ManagerInstance], path_known| {
+            needed_by_on_path(
+                package,
+                &pipx,
+                instances,
+                &tools,
+                &env,
+                &Refreshed {
+                    path_known,
+                    unlisted: Vec::new(),
+                    applications: root.path("Applications"),
+                },
+                BUDGET,
+            )
+        };
+        let alone = vec![pipx.clone()];
+        let with_pip = vec![pipx.clone(), pip];
+        for (instances, path_known) in [(&alone, true), (&with_pip, true), (&alone, false)] {
+            let found = look(&httpie, instances, path_known);
+            assert!(found.warnings.is_empty());
+            assert!(found.complete, "{} sources, {path_known}", instances.len());
+        }
+        assert!(look(&copied, &alone, true).complete);
+        assert!(!look(&copied, &with_pip, true).complete);
+        assert!(!look(&copied, &alone, false).complete);
     }
 
     #[test]

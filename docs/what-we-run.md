@@ -5230,12 +5230,13 @@ protected place, is not known: the preview says it could not check
 everything that uses it. Another `uv` elsewhere on `PATH` excuses nothing:
 only the program Banager runs for the source counts.
 
-What it looks at, during the uninstall preview of a formula or cask only:
+What it looks at, during the uninstall preview of a formula, a cask or a
+pipx or uv tool only:
 
 - the package's own folder: a formula's `<prefix>/Cellar/<name>` (its
-  `opt` link and the aliases Homebrew keeps in `opt` lead there too), or a
+  `opt` link and the aliases Homebrew keeps in `opt` lead there too), a
   cask's `<prefix>/Caskroom/<token>` and the app Homebrew put in place for
-  it;
+  it, or a pipx or uv tool's own environment (above);
 - each such source's program, the one Banager runs for it (found on
   `PATH` when the source was detected), every link followed;
 - for Ollama, when its program leads into the package, the `ollama` in
@@ -5260,7 +5261,10 @@ What it looks at, during the uninstall preview of a formula or cask only:
   every link followed -- one look a name; and then, by the names in them
   (`protected::look::list`, one look a folder and one before each name
   read in it), for a Python a formula's
-  `<prefix>/opt/<name>/bin`, and a cask's app's `Contents/MacOS` and
+  `<prefix>/opt/<name>/bin`, a pipx or uv tool's environment's `bin`
+  (where only a Python that leads into the environment counts, not the
+  `python` links to the Python it was made with that every environment
+  has), and a cask's app's `Contents/MacOS` and
   `Contents/Resources` (for a program) and the `bin` of each folder in its
   `<prefix>/Caskroom/<token>` but the hidden `.metadata`.
 

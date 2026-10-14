@@ -913,7 +913,7 @@ fn test_what_we_run_says_what_the_uninstall_preview_follows_for_what_runs_on_a_h
         );
     }
     for words in [
-        "during the uninstall preview of a formula or cask only",
+        "during the uninstall preview of a formula, a cask or a pipx or uv tool only",
         "`<prefix>/Cellar/<name>`",
         "`<prefix>/Caskroom/<token>`",
         "`bin/python`",
