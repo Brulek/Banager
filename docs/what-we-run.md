@@ -322,10 +322,16 @@ pyenv's, asdf's) or one that leads to the mise program, however it is
 named; a script whose `#!` line names one; and a script whose `#!` line is
 `/usr/bin/env <name>` -- npm's own `npm` and the packages it installs
 begin `#!/usr/bin/env node` -- when the first executable `<name>` in the
-`PATH` that command gets is one, or when a `PATH` folder before it cannot
-be looked at (a protected place), since it may hold one. A relative
-`PATH` folder, one written `~/...` among them, is passed over there, as
-`env` finds nothing in it from the command's folder. Such a command is not
+`PATH` that command gets is one, or when a `PATH` folder before it is in
+a protected place, never looked into, since it may hold one. When the
+line itself names the folders (`env -P <folders>`, or a `PATH=` setting)
+or takes `PATH` away (`-i`, `-u PATH`), those folders, or `env`'s own
+default `/usr/bin:/bin`, are looked along instead; a line that takes a
+`PATH` from a login class (`-L`, `-U`), which Banager does not read, is
+refused. A relative `PATH` folder, one written `~/...` among them, is
+passed over there, as `env` finds nothing in it from the command's
+folder; so is an entry that is a file, or a folder that may not be
+searched, as `env` passes over them. Such a command is not
 started and fails as a program that could not start; a source found only
 through a shim is listed as one whose program could not start, and keeps
 what it listed when it last answered. Neither mise, pyenv nor asdf is run
@@ -333,7 +339,8 @@ to ask which copy a shim would pick, so a tool reached only through a
 shim is not checked or changed by Banager; one put on `PATH` directly
 (`mise activate`, a virtual environment) is. A shell script that runs a
 shim some other way, or a file swapped between the check and the start,
-is beyond what this check sees.
+is beyond what this check sees: Banager never starts a shim itself, nor
+a script whose `#!` line starts one.
 Opened from
 Finder or the Dock, Banager starts with macOS's small default
 environment, so any other variable exported only in a shell startup file
@@ -2296,13 +2303,15 @@ again that way.
 **Why.** Each package manager's `detect` hands the result of the command
 that did not answer -- npm's `npm prefix -g` or `npm --version`, the
 `--version` of Homebrew, Cargo, pipx and uv, pip's `<python> -m pip
---version` -- to `runner::no_answer::of`, which reads it, and nothing
-else (`InstanceStatus::no_answer`, `NoAnswer`):
+--version`, or for a launcher in a shims folder the refusal pip's
+discovery records in its place without running anything -- to
+`runner::no_answer::of`, which reads it, and nothing else
+(`InstanceStatus::no_answer`, `NoAnswer`):
 
 | What the command did | Reason (`NoAnswerKind`) |
 |---|---|
 | The runner stopped it when its time ran out | `TimedOut` |
-| Its program is not there or macOS would not start it (`RunnerError::NotFound`, `Spawn`), or it exited 126 or 127 | `CouldNotStart` |
+| Its program is not there, or macOS or Banager would not start it (`RunnerError::NotFound`, `Spawn`; Banager refuses a version manager's shim and a script that starts one, `runner::dispatch`), or it exited 126 or 127 | `CouldNotStart` |
 | It exited 127 and its last lines include `env`'s `env: <name>: No such file or directory` | `CouldNotStart`, with `<name>` as the program it needs |
 | Any other non-zero exit, or a signal Banager did not send | `ExitedWithError` |
 | It exited 0, was stopped by Banager's own Cancel, or wrote more than Banager reads | no reason |
@@ -2371,7 +2380,12 @@ last check this session found exactly one npm at the same executable, and
 that npm is not among this check's results, it stays that source, with what
 it listed then and the updates hidden for it (`resume_unanswered_npm` in
 `session/refresh.rs`); otherwise it is named by its executable, since its
-prefix is unknown. No other command runs.
+prefix is unknown. No other command runs. npm's `npm` begins
+`#!/usr/bin/env node`, so none of these commands, nor any other npm
+command, is started when the first `node` on its `PATH` is a version
+manager's shim, or a protected `PATH` folder comes before it
+(`runner::dispatch`, "What a command inherits", above): npm is then
+listed as one whose program could not start.
 
 **Environment applied to every invocation** (`NpmAdapter::ENV`):
 
@@ -2868,7 +2882,7 @@ base binary, and a venv stays apart from the base program it links to.
 The existing answer, `pip X from <site-packages>/pip (python 3.13)`, then
 supplies the environment location: Banager resolves that directory with
 protected read-only path lookups and counts it once, including distinct
-pyenv shim files that reach the same pip. The first launcher's original
+launchers that reach the same pip. The first launcher's original
 path remains the source ID and argv. No extra command is run. A launcher
 found in a folder named `shims` (a version manager's: mise's, pyenv's,
 asdf's) is never run, as said below. The venv
@@ -6401,7 +6415,7 @@ that has been set up.
 - 更新后版本未变通常需要检查；若已达到或超过确认的目标版本，则报告已更新。这也适用于 Grok Build 和 rustup。没有可比较的目标版本时，不适用此例外。
 - 已安装页详情里的 HTTPS 首页链接只交给默认浏览器打开：先按 `https:` 查出系统设置的默认浏览器，再指定由它打开，不会被声明了该域名的 App 直接接走；查不到默认浏览器时不打开。只打开当前列表里某个工具的来源报告的首页，普通 HTTP 首页只供拷贝。
 - npm 的操作，以及 Cargo 和 uv 的更新，在开始前会再核对一次：npm 重新读取全局安装位置（`npm prefix -g`），Cargo 重新读取这个工具的安装记录，uv 重新列出工具（`uv tool list --show-paths`）并读取这个工具的环境和安装记录（receipt）。读到的与预览时不一致，或读到了却用不上（npm 给出的位置为空或不是完整路径、回答长得无法读完、Cargo 或 uv 的安装记录无法读取、uv 的列表不再列出或列出两次这个工具）时，不运行任何写入命令，结果显示为未能开始，请重新打开确认窗口。npm 或 uv 的读取命令本身没有回答时，同样不运行写入命令，但按该程序自己的失败结束：程序已不在或无法启动，显示为未能开始、没有改动；非零退出，是该程序的失败，带有退出码和它最后写到 stderr 的几行（例如 `node` 不在时 npm 的 `env: node: No such file or directory`）；超过时限（npm 30 秒；uv 与更新命令相同，600 秒）没有回答，是运行超时，没有退出码。后两种情况下，它写到 stderr 的每一行都记在操作日志里。uv 的这次读取和 `uv tool upgrade` 一样要等 uv 的工具文件夹锁：另一个 uv 命令占着这把锁时（例如终端里正在运行的 `uv tool upgrade --all`），它会像更新命令一样等锁放开，而不是先失败；uv 默认最多等 5 分钟，之后报它自己的错误。读取期间点“取消”会立即停下（npm 的读取也是这样），这个更新随即显示为已取消：不运行更新命令，也不再核对结果。一致时运行的仍是预览中的原命令。这些都是已有的只读命令和有大小上限的文件读取，没有新的主机、权限或写入的文件。
-- Banager 从不运行版本管理工具（mise、pyenv、asdf）的 shim，也不运行 `#!` 行会启动 shim 的脚本（例如 `#!/usr/bin/env node` 而 `PATH` 上第一个 `node` 是 shim，或它前面有无法查看的文件夹）：被设为首次使用时才安装的 mise 工具不受 `MISE_NOT_FOUND_AUTO_INSTALL=false` 限制，运行 shim 可能先下载安装。这样的命令不会启动，结果是程序无法启动；只能通过 shim 找到的来源显示为程序无法启动，并保留上次列出的内容。
+- Banager 从不自己启动版本管理工具（mise、pyenv、asdf）的 shim，也不运行 `#!` 行会启动 shim 的脚本（例如 `#!/usr/bin/env node` 而 `PATH` 上第一个 `node` 是 shim，或它前面有受保护位置里的文件夹）：被设为首次使用时才安装的 mise 工具不受 `MISE_NOT_FOUND_AUTO_INSTALL=false` 限制，运行 shim 可能先下载安装。这样的命令不会启动，结果是程序无法启动；只能通过 shim 找到的来源显示为程序无法启动，并保留上次列出的内容。
 
 ## 繁體中文：執行與隱私要點
 
@@ -6419,4 +6433,4 @@ that has been set up.
 - 更新後版本未變通常需要檢查；若已達到或超過確認的目標版本，則回報已更新。這也適用於 Grok Build 和 rustup。沒有可比較的目標版本時，不適用此例外。
 - 已安裝頁詳細資訊裡的 HTTPS 首頁連結只交給預設瀏覽器開啟：先依 `https:` 查出系統設定的預設瀏覽器，再指定由它開啟，不會被宣告了該網域的 App 直接接走；查不到預設瀏覽器時不開啟。只開啟目前清單裡某個工具的來源回報的首頁，一般 HTTP 首頁只供拷貝。
 - npm 的操作，以及 Cargo 和 uv 的更新，在開始前會再核對一次：npm 重新讀取全域安裝位置（`npm prefix -g`），Cargo 重新讀取這個工具的安裝記錄，uv 重新列出工具（`uv tool list --show-paths`）並讀取這個工具的環境和安裝記錄（receipt）。讀到的與預覽時不一致，或讀到了卻無法使用（npm 給出的位置為空或不是完整路徑、回答長得無法讀完、Cargo 或 uv 的安裝記錄無法讀取、uv 的清單不再列出或列出兩次這個工具）時，不執行任何寫入指令，結果顯示為未能開始，請重新開啟確認視窗。npm 或 uv 的讀取指令本身沒有回答時，同樣不執行寫入指令，但按該程式自己的失敗結束：程式已不在或無法啟動，顯示為未能開始、沒有改動；非零結束，是該程式的失敗，帶有結束代碼和它最後寫到 stderr 的幾行（例如 `node` 不在時 npm 的 `env: node: No such file or directory`）；超過時限（npm 30 秒；uv 與更新指令相同，600 秒）沒有回答，是執行逾時，沒有結束代碼。後兩種情況下，它寫到 stderr 的每一行都記在操作記錄裡。uv 的這次讀取和 `uv tool upgrade` 一樣要等 uv 的工具檔案夾鎖：另一個 uv 指令佔著這把鎖時（例如終端機裡正在執行的 `uv tool upgrade --all`），它會像更新指令一樣等鎖放開，而不是先失敗；uv 預設最多等 5 分鐘，之後回報它自己的錯誤。讀取期間點「取消」會立即停下（npm 的讀取也是這樣），這個更新隨即顯示為已取消：不執行更新指令，也不再核對結果。一致時執行的仍是預覽中的原指令。這些都是既有的唯讀指令和有大小上限的檔案讀取，沒有新的主機、權限或寫入的檔案。
-- Banager 從不執行版本管理工具（mise、pyenv、asdf）的 shim，也不執行 `#!` 行會啟動 shim 的腳本（例如 `#!/usr/bin/env node` 而 `PATH` 上第一個 `node` 是 shim，或它前面有無法查看的檔案夾）：被設為首次使用時才安裝的 mise 工具不受 `MISE_NOT_FOUND_AUTO_INSTALL=false` 限制，執行 shim 可能先下載安裝。這樣的指令不會啟動，結果是程式無法啟動；只能透過 shim 找到的來源顯示為程式無法啟動，並保留上次列出的內容。
+- Banager 從不自己啟動版本管理工具（mise、pyenv、asdf）的 shim，也不執行 `#!` 行會啟動 shim 的腳本（例如 `#!/usr/bin/env node` 而 `PATH` 上第一個 `node` 是 shim，或它前面有受保護位置裡的檔案夾）：被設為首次使用時才安裝的 mise 工具不受 `MISE_NOT_FOUND_AUTO_INSTALL=false` 限制，執行 shim 可能先下載安裝。這樣的指令不會啟動，結果是程式無法啟動；只能透過 shim 找到的來源顯示為程式無法啟動，並保留上次列出的內容。

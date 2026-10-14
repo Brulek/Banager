@@ -35,12 +35,14 @@ pub(crate) fn is_dispatcher(path: &Path, real: Option<&Path>) -> bool {
 /// `RealRunner::run` gives instead of starting it, or `None` when it may
 /// be: it is a dispatcher; or it is a script whose `#!` line runs one --
 /// named whole, or a name `/usr/bin/env` looks for along `path_var` (the
-/// `PATH` the command is given) -- or whose `env` name may be found in a
-/// `PATH` folder that cannot be looked at (a protected place), before any
-/// that can. A relative `PATH` folder is passed over, as `resolve_exe`
-/// passes it over (one written `~/...`, which bash expands but `env` does
-/// not, among them); so is one with no such file, or one that is not an
-/// executable file, as `env` passes over it.
+/// `PATH` the command is given) or the folders its line names -- or whose
+/// `env` name may be found in a `PATH` folder in a protected place, before
+/// any that holds it, or along a `PATH` Banager cannot know. A relative
+/// `PATH` folder is passed over, as `resolve_exe` passes it over (one
+/// written `~/...`, which bash expands but `env` does not, among them); so
+/// is one with no such file, one that is not an executable file, and one
+/// that cannot be looked in for another reason (an entry that is a file, a
+/// folder that may not be searched), as `env` passes over it.
 pub(crate) fn refusal(
     program: &Path,
     real: &Path,
@@ -60,7 +62,18 @@ pub(crate) fn refusal(
                 refused("it runs with a version manager's shim, which may install what it runs")
             });
         }
-        Interpreter::OnPath(name) => first_on_path(&name, path_var, protected),
+        Interpreter::OnPath(name, search) => match search {
+            Search::Given => first_on_path(&name, path_var, protected),
+            Search::Default => first_on_path(&name, None, protected),
+            Search::Folders(path) => {
+                first_on_path(&name, Some(OsStr::from_bytes(&path)), protected)
+            }
+            Search::Unknown => {
+                return Some(refused(
+                    "the PATH it finds the program it runs with along is not known",
+                ))
+            }
+        },
     };
     match found {
         OnPath::Found(path, real) if is_dispatcher(&path, Some(&real)) => Some(refused(
@@ -85,9 +98,9 @@ fn refused(why: &str) -> std::io::Error {
 enum Interpreter {
     /// A program named whole (`#!/opt/homebrew/bin/python3`).
     Named(PathBuf),
-    /// A name `/usr/bin/env` looks for on `PATH` (`#!/usr/bin/env node`,
-    /// `#!/usr/bin/env -S node --flag`).
-    OnPath(Vec<u8>),
+    /// A name `/usr/bin/env` looks for (`#!/usr/bin/env node`,
+    /// `#!/usr/bin/env -S node --flag`), and along what.
+    OnPath(Vec<u8>, Search),
 }
 
 /// The first line of the file `real` leads to, when it starts with `#!`:
@@ -112,11 +125,70 @@ fn parse_shebang(head: &[u8]) -> Option<Interpreter> {
     if first.file_name() != Some(OsStr::new("env")) {
         return Some(Interpreter::Named(first.to_path_buf()));
     }
-    // `env`'s own options (`-S`, `-i`...) and `NAME=value` settings come
-    // before the name it looks for.
-    words
-        .find(|word| !word.starts_with(b"-") && !word.contains(&b'='))
-        .map(|name| Interpreter::OnPath(name.to_vec()))
+    // macOS splits a `#!` line's words, so `env` reads them as separate
+    // arguments: its own options (`getopt`'s "0iL:P:S:U:u:v"), then
+    // `NAME=value` settings, then the name it looks for.
+    let mut words: Vec<&[u8]> = words.collect();
+    words.reverse();
+    let mut search = Search::Given;
+    let mut altpath = None;
+    while let Some(word) = words.pop() {
+        if word == b"--" {
+            break;
+        }
+        let Some(cluster) = word.strip_prefix(b"-") else {
+            words.push(word);
+            break;
+        };
+        if cluster.is_empty() {
+            search = Search::Default;
+        }
+        for (at, option) in cluster.iter().enumerate() {
+            match option {
+                b'0' | b'v' => continue,
+                b'i' => {
+                    search = Search::Default;
+                    continue;
+                }
+                b'L' | b'P' | b'S' | b'U' | b'u' => {}
+                _ => return None,
+            }
+            let rest = &cluster[at + 1..];
+            let argument = if rest.is_empty() { words.pop()? } else { rest };
+            match option {
+                b'P' => altpath = Some(argument.to_vec()),
+                b'u' if argument == b"PATH" => search = Search::Default,
+                b'L' | b'U' => search = Search::Unknown,
+                // `-S`'s string is split into arguments read in its place.
+                b'S' => words.push(argument),
+                _ => {}
+            }
+            break;
+        }
+    }
+    while let Some(word) = words.pop() {
+        if let Some(path) = word.strip_prefix(b"PATH=") {
+            search = Search::Folders(path.to_vec());
+        } else if !word.contains(&b'=') {
+            let search = altpath.map(Search::Folders).unwrap_or(search);
+            return Some(Interpreter::OnPath(word.to_vec(), search));
+        }
+    }
+    None
+}
+
+/// The folders `env` looks along for a name.
+#[derive(Debug, PartialEq, Eq)]
+enum Search {
+    /// The `PATH` the command is given.
+    Given,
+    /// `env`'s default, `PATH` taken away (`-i`, `-u PATH`).
+    Default,
+    /// Folders named on the line: `-P altpath`, or a `PATH=` setting.
+    Folders(Vec<u8>),
+    /// A `PATH` `env` may take from a login class (`-L`, `-U`), which
+    /// Banager does not read.
+    Unknown,
 }
 
 /// Where `env` finds a name along a `PATH`.
@@ -126,7 +198,8 @@ enum OnPath {
     Found(PathBuf, PathBuf),
     /// None of the folders holds one.
     Nowhere,
-    /// A folder before any that holds one could not be looked at.
+    /// A folder before any that holds one is in a protected place, never
+    /// looked in.
     Unknown,
 }
 
@@ -148,9 +221,10 @@ fn first_on_path(name: &[u8], path_var: Option<&OsStr>, protected: &Protected) -
             Ok((real, stat)) if stat.is_file() && stat.mode() & 0o111 != 0 => {
                 return OnPath::Found(candidate, real)
             }
-            Ok(_) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(_) => return OnPath::Unknown,
+            Err(error) if look::is_protected(&error) => return OnPath::Unknown,
+            // `execvp`, which `env` runs, passes over a folder that is not
+            // one, may not be searched, or loops, as over one without it.
+            Ok(_) | Err(_) => {}
         }
     }
     OnPath::Nowhere
@@ -196,12 +270,31 @@ mod tests {
     fn test_a_shebang_names_its_interpreter_or_the_name_env_looks_for() {
         assert_eq!(
             parse_shebang(b"#!/usr/bin/env node\nrest"),
-            Some(Interpreter::OnPath(b"node".to_vec()))
+            Some(Interpreter::OnPath(b"node".to_vec(), Search::Given))
         );
         assert_eq!(
             parse_shebang(b"#! /usr/bin/env -S NODE_OPTIONS=x node --flag\n"),
-            Some(Interpreter::OnPath(b"node".to_vec()))
+            Some(Interpreter::OnPath(b"node".to_vec(), Search::Given))
         );
+        assert_eq!(
+            parse_shebang(b"#!/usr/bin/env -i PATH=/a:/b node\n"),
+            Some(Interpreter::OnPath(
+                b"node".to_vec(),
+                Search::Folders(b"/a:/b".to_vec())
+            ))
+        );
+        assert_eq!(
+            parse_shebang(b"#!/usr/bin/env -P /c PATH=/a:/b node\n"),
+            Some(Interpreter::OnPath(
+                b"node".to_vec(),
+                Search::Folders(b"/c".to_vec())
+            ))
+        );
+        assert_eq!(
+            parse_shebang(b"#!/usr/bin/env -L someone node\n"),
+            Some(Interpreter::OnPath(b"node".to_vec(), Search::Unknown))
+        );
+        assert_eq!(parse_shebang(b"#!/usr/bin/env -x node\n"), None);
         assert_eq!(
             parse_shebang(b"#!/opt/homebrew/bin/python3 -E\n"),
             Some(Interpreter::Named(PathBuf::from(
@@ -275,5 +368,60 @@ mod tests {
         assert!(refusal(&named, &named, None, &protected).is_some());
         let error = refusal(&shims.join("node"), &mise, None, &protected).unwrap();
         assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied);
+    }
+
+    #[test]
+    fn regression_skeptic_env_options_taking_an_argument_still_find_the_dispatcher() {
+        let temp = Temp::new("envopts");
+        let mise = temp.file("bin/mise", "", 0o755);
+        let shims = temp.0.join("mise/shims");
+        std::fs::create_dir_all(&shims).unwrap();
+        symlink(&mise, shims.join("node")).unwrap();
+        let direct = temp.file("node/bin/node", "", 0o755);
+        let protected = Protected::default();
+        let path = |dirs: &[&Path]| std::env::join_paths(dirs).unwrap();
+        let shims_first = path(&[&shims, direct.parent().unwrap()]);
+        let direct_first = path(&[direct.parent().unwrap(), &shims]);
+        let shims_at = shims.display();
+        let direct_at = direct.parent().unwrap().display();
+        for (line, path_var, refused) in [
+            ("-u NODE_OPTIONS node".to_owned(), &shims_first, true),
+            ("-uNODE_OPTIONS node".to_owned(), &shims_first, true),
+            ("-i -U someone node".to_owned(), &direct_first, true),
+            ("-i node".to_owned(), &shims_first, false),
+            (format!("-P {shims_at} node"), &direct_first, true),
+            (format!("-iP{shims_at} node"), &direct_first, true),
+            (format!("PATH={shims_at} node"), &direct_first, true),
+            (format!("-P {direct_at} node"), &shims_first, false),
+            ("-u PATH node".to_owned(), &shims_first, false),
+            ("-- node".to_owned(), &shims_first, true),
+        ] {
+            let script = temp.file("script", &format!("#!/usr/bin/env {line}\n"), 0o755);
+            assert_eq!(
+                refusal(&script, &script, Some(path_var.as_os_str()), &protected).is_some(),
+                refused,
+                "{line}"
+            );
+        }
+    }
+
+    #[test]
+    fn regression_skeptic_a_path_entry_env_passes_over_is_passed_over() {
+        let temp = Temp::new("skip");
+        let script = temp.file("npm/bin/npm", "#!/usr/bin/env node\n", 0o755);
+        let direct = temp.file("node/bin/node", "", 0o755);
+        let file = temp.file("a-file", "", 0o644);
+        let locked = temp.0.join("locked");
+        std::fs::create_dir_all(&locked).unwrap();
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let protected = Protected::new(&temp.0.join("home"));
+        let path = |dirs: &[&Path]| std::env::join_paths(dirs).unwrap();
+        let file_first = path(&[&file, direct.parent().unwrap()]);
+        let locked_first = path(&[&locked, direct.parent().unwrap()]);
+        let results = [&file_first, &locked_first].map(|path_var| {
+            refusal(&script, &script, Some(path_var.as_os_str()), &protected).map(|e| e.to_string())
+        });
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert_eq!(results, [None, None]);
     }
 }

@@ -1092,6 +1092,12 @@ fn test_what_we_run_says_no_version_managers_shim_is_run() {
     assert!(!body.contains("MISE_NOT_FOUND_SYSTEM_FALLBACK"));
     let body = body.split_whitespace().collect::<Vec<_>>().join(" ");
     assert!(body.contains("`resume_refused_pip`"));
+    // A shim is never run, so none reaches a pip.
+    assert!(!body.contains("shim files that reach the same pip"));
+    // npm's own section says its `node` is checked first.
+    let npm = section_body(&doc, "npm").expect("docs/what-we-run.md has no `## npm` section");
+    let npm = npm.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(npm.contains("`runner::dispatch`"), "{npm}");
 }
 
 #[test]

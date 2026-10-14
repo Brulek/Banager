@@ -257,9 +257,10 @@ This app runs package managers on your behalf, so the boundary matters more than
   the `PATH` and the proxy and mirror settings it takes from your login shell, never shown since a
   proxy setting can hold a password, and `MISE_NOT_FOUND_AUTO_INSTALL=false`, which every command
   gets so that mise does not install a missing version on its own; a tool mise was told to install
-  on first use it installs whatever that says, so Banager never runs a version manager's shim, such
-  as mise's or pyenv's, nor a script that starts one, and a tool it finds only through one shows that
-  its program couldn't start) —
+  on first use it installs whatever that says, so Banager never starts a version manager's shim
+  itself, such as mise's or pyenv's, nor a script whose `#!` line starts one, and a tool it finds
+  only through one shows that its program couldn't start, as npm does when a folder in a protected
+  place, such as Downloads, comes before `node` in your `PATH`) —
   one press on "Show Command" ("Show Commands" when there is more than one), or open from the
   start with Settings' "Show technical details" on — and
   says whether it may ask for your password; an uninstall that runs no command lists instead the
@@ -489,7 +490,7 @@ Banager（原名 Canager）：bao-manager，bao 是“包”的拼音；读起�
 
 Banager 把它们放进同一个窗口：装了什么、哪个有更新、每个都配一个按钮。
 
-在 Banager 里选择更新或卸载时，都能在它运行之前看到确切的命令，连同 Banager 为它设的环境变量（有两类除外，都在 `docs/what-we-run.md` 的“How Banager runs anything”一节列出：从登录 shell 拿来的 `PATH` 和代理、镜像设置，代理设置里可能有密码，所以从不显示；还有每条命令都带的 `MISE_NOT_FOUND_AUTO_INSTALL=false`，让 mise 不会自己装上缺的版本；被设为首次使用时才安装的工具，mise 仍会照装，所以 Banager 从不运行 mise、pyenv 等版本管理工具的 shim，也不运行会启动 shim 的脚本，只能通过 shim 找到的工具会显示它的程序无法启动）：在确认框里点「查看命令」，或者在设置里打开「显示技术细节」，
+在 Banager 里选择更新或卸载时，都能在它运行之前看到确切的命令，连同 Banager 为它设的环境变量（有两类除外，都在 `docs/what-we-run.md` 的“How Banager runs anything”一节列出：从登录 shell 拿来的 `PATH` 和代理、镜像设置，代理设置里可能有密码，所以从不显示；还有每条命令都带的 `MISE_NOT_FOUND_AUTO_INSTALL=false`，让 mise 不会自己装上缺的版本；被设为首次使用时才安装的工具，mise 仍会照装，所以 Banager 从不自己启动 mise、pyenv 等版本管理工具的 shim，也不运行 `#!` 行会启动 shim 的脚本，只能通过 shim 找到的工具会显示它的程序无法启动；`PATH` 里 `node` 前面有受保护位置（例如“下载”）里的文件夹时，npm 也会这样显示）：在确认框里点「查看命令」，或者在设置里打开「显示技术细节」，
 让它一开始就展开；可能要输入 Mac 密码的，确认框也会先说。不运行命令的卸载，改为列出它要移到废纸篓的每一条路径。`OLLAMA_HOST` 中的登录信息在预览和拷贝的命令里会被遮蔽，实际执行仍使用原值。
 
 **目前处于发布前阶段**，核心与界面已经可用、有 2343 个 Rust 测试（另有 11 个平时跳过、要加
