@@ -364,7 +364,6 @@ export function UpdatesPage() {
   const updateTargets = useUiStore((s) => s.updateTargets);
   const opFinishedAt = useUiStore((s) => s.opFinishedAt);
   const clearedJustUpdated = useUiStore((s) => s.clearedJustUpdated);
-  const clearJustUpdated = useUiStore((s) => s.clearJustUpdated);
   // What the history kept, for 「最近的更新记录」 after a restart (src/lib/history.ts).
   const { data: history = NO_HISTORY } = useHistory();
   const clearHistory = useClearHistory();
@@ -696,12 +695,14 @@ export function UpdatesPage() {
     labels,
     t,
   ]);
-  // Clear takes this window's off its list, and has the history note the
-  // time, so that none of what was shown comes back after a restart.
+  // Clear has the history dismiss what it kept, so that none of what was
+  // shown comes back after a restart once the file has it, and takes this
+  // window's own off its list -- those listed now, once Banager has taken
+  // the Clear (`useClearHistory`). Pressed once: off until it is answered.
   const clearJustUpdatedList = () => {
+    if (clearHistory.isPending) return;
     refocusAfterClear.current = true;
-    clearJustUpdated(justUpdated.flatMap((entry) => (entry.opId === null ? [] : [entry.opId])));
-    clearHistory.mutate();
+    clearHistory.mutate(justUpdated.flatMap((entry) => (entry.opId === null ? [] : [entry.opId])));
   };
 
   // What each source has to say about this check, one compact line each
@@ -1106,7 +1107,7 @@ export function UpdatesPage() {
     ) : null;
 
   const justUpdatedSection =
-    justUpdated.length > 0 ? <JustUpdated entries={justUpdated} onClear={clearJustUpdatedList} /> : null;
+    justUpdated.length > 0 ? <JustUpdated entries={justUpdated} onClear={clearJustUpdatedList} clearing={clearHistory.isPending} /> : null;
 
   // Two different kinds of empty: the backend found no updates, or it found
   // some and the user has hidden every one (skipped the version it offers,
@@ -1444,7 +1445,7 @@ export function UpdatesPage() {
             // 20 in, as the rows are; a little more room over it under the
             // rows than at the top.
             <div className={`px-5 pb-4 ${items.some(keyboardRow) ? "pt-5" : "pt-3"}`}>
-              <JustUpdated entries={justUpdated} onClear={clearJustUpdatedList} />
+              <JustUpdated entries={justUpdated} onClear={clearJustUpdatedList} clearing={clearHistory.isPending} />
             </div>
           ) : item.type === "section" ? (
             // The rows ↑ and ↓ move between are each in a box of no box of

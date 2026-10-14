@@ -389,9 +389,15 @@
         "newer": "Update History was saved by a newer version of Banager and isn't being saved here.",
         "newerDetail": "This version leaves it as it is. Updates from now on are listed only until you quit Banager. To save history, use the newer version of Banager.",
         "writerUnavailable": "Update History isn't being saved.",
-        "writerUnavailableDetail": "Banager couldn't start saving it. Updates from now on are listed only until you quit Banager; reopening Banager tries again.",
+        "writerUnavailableDetail": "Saving it couldn't start. Updates from now on are listed only until you quit Banager; reopening Banager tries again.",
         "unattached": "Update History isn't available.",
-        "unattachedDetail": "Updates from now on are listed only until you quit Banager."
+        "unattachedDetail": "Updates from now on are listed only until you quit Banager.",
+        "writeFailed": "Update History couldn't be saved.",
+        "writeFailedDetail": "The latest updates are listed until you quit Banager, but may be missing after you reopen it. Saving is tried again after the next update and when you quit.",
+        "clearUnsaved": "Clear History couldn't be saved.",
+        "clearUnsavedDetail": "What you cleared stays hidden until you quit Banager, and is listed again after you reopen it. Saving is tried again after the next update and when you quit.",
+        "clearUnconfirmed": "Couldn't confirm Clear History.",
+        "clearUnconfirmedDetail": "The list shows what Banager has kept. To try again, click Clear History."
       }
     },
     "confirmTitleNamed": "Update “{{name}}”?",
@@ -1587,7 +1593,7 @@
       },
       "password": {
         "question": "Why is my Mac password needed? Can it be typed for me here?",
-        "answer": "Some apps installed with Homebrew ask for your Mac's login password when they're updated or uninstalled, and the confirmation says so beforehand; the password can't be typed here, and it isn't saved. If that stops one, its View Steps gives a command to copy into Terminal, where you type the password when asked; nothing appears on screen as you type, and that's normal. When it's done, come back here and press ⌘R to check again. After Banager is quit and reopened, an update's View Steps is still on its row for 30 days, and in Update History unless you click Clear History."
+        "answer": "Some apps installed with Homebrew ask for your Mac's login password when they're updated or uninstalled, and the confirmation says so beforehand; the password can't be typed here, and it isn't saved. If that stops one, its View Steps gives a command to copy into Terminal, where you type the password when asked; nothing appears on screen as you type, and that's normal. When it's done, come back here and press ⌘R to check again. After Banager is quit and reopened, an update's View Steps is still on its row for 30 days, and in Update History unless you click Clear History, as long as its history could be saved; a warning over Updates says when it couldn't."
       },
       "leftBehind": {
         "question": "What stays behind after uninstalling, and where?",

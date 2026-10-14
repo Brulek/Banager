@@ -4294,6 +4294,31 @@ describe("UpdatesPage", () => {
       });
     });
 
+    it("keeps this window's on a Clear Banager turned away, sends that Clear once, and is off while one is under way (r24 R74-2)", async () => {
+      operations = [operation(glibKey, { status: "Done", outcome: "Succeeded" })];
+      started(7, "2.90.0");
+      updates = [snapshot.updates[1]];
+      artifacts = [installed(glibKey, "2.90.0"), installed(onyxKey, "5.0.2")];
+      let refuse: (error: unknown) => void = () => {};
+      const answer = mockInvoke.getMockImplementation()!;
+      mockInvoke.mockImplementation((cmd: string, args?: InvokeArgs) =>
+        cmd === "clear_history" ? new Promise((_, reject) => (refuse = reject)) : answer(cmd, args),
+      );
+      renderPage();
+
+      const section = await screen.findByRole("region", { name: "Update History" });
+      const clear = within(section).getByRole("button", { name: "Clear the Update History list" });
+      fireEvent.click(clear);
+      await waitFor(() => expect(clear).toBeDisabled());
+      fireEvent.click(clear);
+      expect(justUpdated()).not.toBeNull();
+      await act(async () => refuse(new Error("lost")));
+      await waitFor(() => expect(clear).toBeEnabled());
+      expect(mockInvoke.mock.calls.filter(([cmd]) => cmd === "clear_history")).toHaveLength(1);
+      expect(useUiStore.getState().clearedJustUpdated).toEqual([]);
+      expect(justUpdated()).not.toBeNull();
+    });
+
     it("hides itself on Clear, until the next update ends", async () => {
       operations = [operation(glibKey, { status: "Done", outcome: "Succeeded" })];
       started(7, "2.90.0");

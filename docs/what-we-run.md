@@ -5834,7 +5834,15 @@ note this build does not know is skipped, never its record
 (`follow_up::known_warnings`); a record written before the field existed
 reads as having none.
 Also whether Clear dismissed
-each record already present and the time Clear was last pressed. Clear never hides later completions by their wall-clock
+each record already present when Banager took it and the time Clear was
+last pressed. Clear's answer is the Clear taken in memory: until the file
+has it, the Updates page says it applies to this session, and the
+records it hid can come back after reopening if saving does not succeed
+(`HistoryView::unsaved_clear`). A failed write stays owed and is tried
+again after another record, Clear or Banager's bounded exit flush; the
+window asks `get_history` again every 2 seconds while a write is under
+way or failed, which only reads. Failing to save history never changes an
+update's result. Clear never hides later completions by their wall-clock
 time, so moving the clock backwards cannot hide new updates or revive dismissed
 ones. Existing format-1 records without a dismissal field inherit their original
 Clear cutoff once on load. Never a line of

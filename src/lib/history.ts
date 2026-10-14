@@ -8,9 +8,10 @@
  * not see, and never a tool twice.
  */
 import { useMutation, useQuery, useQueryClient, type UseMutationResult, type UseQueryResult } from "@tanstack/react-query";
+import { create } from "zustand";
 import { clearHistory, getHistory } from "./api";
 import { queryKeys } from "./queryKeys";
-import { artifactKeyId } from "../store/ui";
+import { artifactKeyId, useUiStore } from "../store/ui";
 import { isUpdatedButStepFailed } from "./format";
 import { NO_HISTORY, type HistoryRecord, type HistoryResult, type HistoryView, type OpSummary } from "./types";
 
@@ -18,32 +19,74 @@ import { NO_HISTORY, type HistoryRecord, type HistoryResult, type HistoryView, t
 export const RECENT_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+/** How often the history is asked again while its file is being written, or a write of it failed. */
+export const HISTORY_POLL_MS = 2_000;
+
+/**
+ * Whether to ask `get_history` again, and when: while the history's last
+ * answer says a write is under way (`pending`) or failed (`write_failed`),
+ * so that the Updates page's notice (`HistoryNotice`) follows it; never
+ * otherwise. Asking only reads: the write is tried again by the next
+ * record, Clear History or Banager's exit, not by this.
+ */
+export function historyPollInterval(view: HistoryView | undefined): number | false {
+  return view?.persistence === "pending" || view?.persistence === "write_failed" ? HISTORY_POLL_MS : false;
+}
+
 /**
  * The history, asked for as the Updates page needs it and again after each
  * `Finished` event (src/lib/events.ts), whose record is kept before the
- * event is sent. A command that answers nothing reads as no history.
+ * event is sent, and every `HISTORY_POLL_MS` while it is not yet saved
+ * (`historyPollInterval`). A command that answers nothing reads as no
+ * history. A failed ask keeps the last answer, and with it what the notice
+ * says.
  */
 export function useHistory(): UseQueryResult<HistoryView> {
   return useQuery({
     queryKey: queryKeys.history,
     queryFn: async () => (await getHistory()) ?? NO_HISTORY,
+    refetchInterval: (query) => historyPollInterval(query.state.data),
   });
 }
 
 /**
- * Clear marks existing records as dismissed, including after a restart.
- * Later completions stay visible even if the wall clock moves backwards.
+ * Whether the last Clear History went unanswered -- turned away, or its
+ * answer lost -- so that Banager may or may not have done it: the
+ * Updates page's notice says so (`HistoryNotice`) until a Clear is
+ * answered.
  */
-export function useClearHistory(): UseMutationResult<HistoryView, Error, void> {
+export const useHistoryClearState = create<{ unconfirmed: boolean }>(() => ({ unconfirmed: false }));
+
+/**
+ * Clear marks existing records as dismissed, including after a restart once
+ * the file has it (the answer's `unsaved_clear` says whether it does).
+ * Later completions stay visible even if the wall clock moves backwards.
+ * Its variables are this window's own operations listed when it was
+ * pressed, taken off the list once Banager has taken the Clear -- not
+ * before, and not one that ended since.
+ */
+export function useClearHistory(): UseMutationResult<HistoryView, Error, number[]> {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: clearHistory,
-    // A Clear that did not reach the backend would come back after a
-    // restart: try it again before giving up.
-    retry: 2,
-    onSuccess: (view) => {
+    mutationFn: () => clearHistory(),
+    // Sent once: a Clear that reached Banager though its answer was lost,
+    // sent again, would also hide what finished in between. What Banager
+    // has is asked for instead (`onSettled`).
+    retry: false,
+    // An ask under way, or one the poll or a `Finished` event starts
+    // meanwhile, could answer what was there before the Clear after the
+    // Clear's own answer: each is called off, before and again at it.
+    onMutate: () => queryClient.cancelQueries({ queryKey: queryKeys.history }),
+    onSuccess: async (view, opIds) => {
+      useHistoryClearState.setState({ unconfirmed: false });
+      useUiStore.getState().clearJustUpdated(opIds);
+      await queryClient.cancelQueries({ queryKey: queryKeys.history });
       if (view) queryClient.setQueryData(queryKeys.history, view);
-      else queryClient.invalidateQueries({ queryKey: queryKeys.history });
+    },
+    onError: () => useHistoryClearState.setState({ unconfirmed: true }),
+    // Not waited for: the Clear is answered whether or not this ask is.
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.history });
     },
   });
 }

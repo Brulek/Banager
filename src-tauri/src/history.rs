@@ -206,4 +206,54 @@ mod tests {
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    /// Clear's answer says whether the file has it: a Clear whose write
+    /// failed is `unsaved_clear`, with the write still owed, and the next
+    /// try that works says it is saved (r24 R74-2).
+    #[test]
+    fn test_clear_history_response_exposes_persistence_status() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Arc;
+        let dir = temp_dir("clear-status");
+        std::fs::write(dir.join(HISTORY_FILE), EARLIER).unwrap();
+        let state = AppState::new(dir.join("settings.json"), ChannelSink::new());
+        let failing = Arc::new(AtomicBool::new(true));
+        let fails = failing.clone();
+        let io = banager_core::history::HistoryIo::default().with_write(move |_, _| {
+            if fails.load(Ordering::SeqCst) {
+                Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied))
+            } else {
+                Ok(())
+            }
+        });
+        state.session.attach_history(HistoryStore::open_with_io(
+            dir.join(HISTORY_FILE),
+            || 4_102_444_800_000,
+            io,
+        ));
+        let json = serde_json::to_value(get_history_impl(&state)).unwrap();
+        assert_eq!(json["persistence"], "saved");
+        assert_eq!(json["unsaved_clear"], false);
+
+        let cleared = serde_json::to_value(clear_history_impl(&state)).unwrap();
+        // Its write may have failed already, or not have ended yet.
+        assert!(
+            cleared["persistence"] == "pending" || cleared["persistence"] == "write_failed",
+            "{}",
+            cleared["persistence"]
+        );
+        assert_eq!(cleared["unsaved_clear"], true);
+        assert!(!state.session.flush_history(EXIT_FLUSH));
+        let json = serde_json::to_value(get_history_impl(&state)).unwrap();
+        assert_eq!(json["persistence"], "write_failed");
+        assert_eq!(json["unsaved_clear"], true);
+        assert_eq!(json["records"][0]["dismissed"], true, "hidden in memory");
+
+        failing.store(false, Ordering::SeqCst);
+        assert!(state.session.flush_history(Duration::from_secs(5)));
+        let json = serde_json::to_value(get_history_impl(&state)).unwrap();
+        assert_eq!(json["persistence"], "saved");
+        assert_eq!(json["unsaved_clear"], false);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

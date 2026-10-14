@@ -3057,4 +3057,134 @@ mod tests {
             );
         }
     }
+
+    /// A writer each of whose writes waits for the test's word: `entered`
+    /// says one has begun; each word sent on `verdicts` ends one, written
+    /// for real (`true`) or failed (`false`). Words can be sent ahead.
+    struct GatedWrites {
+        entered: mpsc::Receiver<()>,
+        verdicts: mpsc::Sender<bool>,
+    }
+
+    fn gated_writes() -> (HistoryIo, GatedWrites) {
+        let (entered_tx, entered) = mpsc::channel();
+        let (verdicts, verdict_rx) = mpsc::channel::<bool>();
+        let entered_tx = Mutex::new(entered_tx);
+        let verdict_rx = Mutex::new(verdict_rx);
+        let io = HistoryIo::default().with_write(move |path, bytes| {
+            let _ = entered_tx.lock().unwrap().send(());
+            match verdict_rx
+                .lock()
+                .unwrap()
+                .recv_timeout(Duration::from_secs(10))
+            {
+                Ok(true) => write_atomically(path, bytes),
+                _ => Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied)),
+            }
+        });
+        (io, GatedWrites { entered, verdicts })
+    }
+
+    fn on_disk(dir: &TempDir) -> Vec<(String, bool)> {
+        let file: HistoryFile =
+            serde_json::from_slice(&std::fs::read(dir.file()).unwrap()).unwrap();
+        file.records
+            .into_iter()
+            .map(|r| (r.key.name, r.dismissed))
+            .collect()
+    }
+
+    /// Clear says whether the file has it, apart from the records that came
+    /// after it: an older write that lands does not make newer changes
+    /// saved, a failed one keeps the Clear unsaved and the records it hid
+    /// undismissed on disk, and once the Clear is written a later record
+    /// that fails says so without calling the Clear unsaved (r24 R74-2).
+    #[test]
+    fn test_clear_reports_unsaved_dismissal_and_later_completions_stay_visible() {
+        let dir = TempDir::new("clear-gen");
+        let (io, gate) = gated_writes();
+        let store = HistoryStore::open_with_io(dir.file(), now, io);
+        let wait_entered = || {
+            gate.entered
+                .recv_timeout(Duration::from_secs(10))
+                .expect("a write began")
+        };
+        let ka = key("a");
+        let mut a = ended(&ka, &Outcome::Succeeded);
+        a.op_id = 1;
+        store.record(&a, &started("a"));
+        // The write of A alone has begun, and waits.
+        wait_entered();
+        let cleared = store.clear();
+        assert_eq!(cleared.persistence, HistoryPersistence::Pending);
+        assert!(cleared.unsaved_clear);
+        let kb = key("b");
+        let mut b = ended(&kb, &Outcome::Succeeded);
+        b.op_id = 2;
+        store.record(&b, &started("b"));
+
+        // A's write lands; the Clear and B are still owed.
+        gate.verdicts.send(true).unwrap();
+        wait_entered();
+        let view = store.view();
+        assert_eq!(view.persistence, HistoryPersistence::Pending);
+        assert!(view.unsaved_clear);
+        let dismissed: Vec<(String, bool)> = view
+            .records
+            .iter()
+            .map(|r| (r.key.name.clone(), r.dismissed))
+            .collect();
+        assert_eq!(
+            dismissed,
+            vec![("b".to_string(), false), ("a".to_string(), true)]
+        );
+        assert_eq!(on_disk(&dir), vec![("a".to_string(), false)]);
+
+        // The write with the Clear fails, and so does the flush's try.
+        gate.verdicts.send(false).unwrap();
+        gate.verdicts.send(false).unwrap();
+        assert!(!store.flush(Duration::from_secs(10)));
+        let view = store.view();
+        assert_eq!(view.persistence, HistoryPersistence::WriteFailed);
+        assert!(view.unsaved_clear);
+        assert!(view
+            .records
+            .iter()
+            .any(|r| r.key.name == "a" && r.dismissed));
+        assert_eq!(
+            on_disk(&dir),
+            vec![("a".to_string(), false)],
+            "would come back"
+        );
+
+        // Writable again: a flush, with no new Clear, writes it.
+        gate.verdicts.send(true).unwrap();
+        assert!(store.flush(Duration::from_secs(10)));
+        let view = store.view();
+        assert_eq!(view.persistence, HistoryPersistence::Saved);
+        assert!(!view.unsaved_clear);
+        assert_eq!(
+            on_disk(&dir),
+            vec![("a".to_string(), true), ("b".to_string(), false)]
+        );
+
+        // A Clear that is written, then a record whose write fails.
+        gate.verdicts.send(true).unwrap();
+        store.clear();
+        assert!(store.flush(Duration::from_secs(10)));
+        gate.verdicts.send(false).unwrap();
+        gate.verdicts.send(false).unwrap();
+        let kc = key("c");
+        let mut c = ended(&kc, &Outcome::Succeeded);
+        c.op_id = 3;
+        store.record(&c, &started("c"));
+        assert!(!store.flush(Duration::from_secs(10)));
+        let view = store.view();
+        assert_eq!(view.persistence, HistoryPersistence::WriteFailed);
+        assert!(!view.unsaved_clear, "the Clear itself is in the file");
+        assert!(!view.records[0].dismissed, "c came after the Clear");
+        // Nothing left waiting when the store goes.
+        while gate.entered.try_recv().is_ok() {}
+        drop(store);
+    }
 }

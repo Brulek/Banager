@@ -349,15 +349,21 @@
       "clearLabel": "清除「最近的更新記錄」清單",
       "storage": {
         "unreadable": "無法讀取「最近的更新記錄」，目前不會儲存。",
-        "unreadableDetail": "該檔案已原樣保留。從現在起的更新只列到結束此App為止。要找回之前的記錄，請結束此App，讓~/Library/Application Support/com.brulek.banager中的history.json重新可讀取（例如從備份回復），然後重新開啟此App。",
+        "unreadableDetail": "該檔案已原樣保留。從現在起的更新只列到結束此App為止。要找回之前的記錄，請結束此App，讓~/Library/Application Support/com.brulek.banager中的history.json重新可讀取，例如從備份回復，然後重新開啟此App。",
         "malformed": "「最近的更新記錄」已損毀，目前不會儲存。",
         "malformedDetail": "該檔案已原樣保留。從現在起的更新只列到結束此App為止。要重新儲存記錄，請結束此App，放回~/Library/Application Support/com.brulek.banager中history.json的完好副本，或將該檔案移到垃圾桶以重新開始記錄，然後重新開啟此App。",
-        "newer": "「最近的更新記錄」由較新版本的Banager儲存，這裡不會儲存。",
-        "newerDetail": "此版本會原樣保留它。從現在起的更新只列到結束此App為止。要儲存記錄，請使用較新版本的Banager。",
+        "newer": "「最近的更新記錄」由較新版本的此App儲存，這裡不會儲存。",
+        "newerDetail": "此版本會原樣保留它。從現在起的更新只列到結束此App為止。要儲存記錄，請使用較新版本的此App。",
         "writerUnavailable": "目前不會儲存「最近的更新記錄」。",
-        "writerUnavailableDetail": "Banager無法開始儲存記錄。從現在起的更新只列到結束此App為止；重新開啟此App時會再試一次。",
+        "writerUnavailableDetail": "無法開始儲存記錄。從現在起的更新只列到結束此App為止；重新開啟此App時會再試一次。",
         "unattached": "「最近的更新記錄」無法使用。",
-        "unattachedDetail": "從現在起的更新只列到結束此App為止。"
+        "unattachedDetail": "從現在起的更新只列到結束此App為止。",
+        "writeFailed": "無法儲存「最近的更新記錄」。",
+        "writeFailedDetail": "最近的更新會列到結束此App為止，但重新開啟後可能不在清單中。下次更新時和結束此App時會再試一次。",
+        "clearUnsaved": "無法儲存「清除記錄」。",
+        "clearUnsavedDetail": "清除的記錄在結束此App前保持隱藏，重新開啟後會再次列出。下次更新時和結束此App時會再試一次。",
+        "clearUnconfirmed": "無法確認是否已清除記錄。",
+        "clearUnconfirmedDetail": "清單顯示的是目前保留的記錄。要重試，請點按「清除記錄」。"
       }
     },
     "confirmTitleNamed": "要更新「{{name}}」嗎？",
@@ -1461,7 +1467,7 @@
       },
       "password": {
         "question": "為什麼要輸入Mac的密碼？這裡能代我輸入嗎？",
-        "answer": "Homebrew安裝的App，有些在更新或解除安裝時會要求輸入Mac的登入密碼，確認視窗會事先說明；這裡無法輸入密碼，也不會儲存密碼。如果因此沒有完成，它的「查看步驟」裡會給出一條指令，拷貝到終端機裡執行，按提示輸入密碼；輸入時螢幕上不顯示任何字元，這是正常的。完成後回到這裡，按⌘R重新檢查。結束此App再重新開啟後，更新的「查看步驟」30天內仍在它那一列；沒有點按「清除記錄」的話，「最近的更新記錄」裡也有。"
+        "answer": "Homebrew安裝的App，有些在更新或解除安裝時會要求輸入Mac的登入密碼，確認視窗會事先說明；這裡無法輸入密碼，也不會儲存密碼。如果因此沒有完成，它的「查看步驟」裡會給出一條指令，拷貝到終端機裡執行，按提示輸入密碼；輸入時螢幕上不顯示任何字元，這是正常的。完成後回到這裡，按⌘R重新檢查。結束此App再重新開啟後，更新的「查看步驟」30天內仍在它那一列；沒有點按「清除記錄」的話，「最近的更新記錄」裡也有；這些都需要記錄能儲存，無法儲存時「更新」頁上方會有提示。"
       },
       "leftBehind": {
         "question": "解除安裝後哪些東西會留下，在哪裡？",

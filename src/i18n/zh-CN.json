@@ -349,15 +349,21 @@
       "clearLabel": "清除“最近的更新记录”列表",
       "storage": {
         "unreadable": "无法读取“最近的更新记录”，目前不会保存。",
-        "unreadableDetail": "该文件已原样保留。从现在起的更新只列到退出此App为止。要找回之前的记录，请退出此App，让~/Library/Application Support/com.brulek.banager中的history.json重新可读（例如从备份恢复），然后重新打开此App。",
+        "unreadableDetail": "该文件已原样保留。从现在起的更新只列到退出此App为止。要找回之前的记录，请退出此App，让~/Library/Application Support/com.brulek.banager中的history.json重新可读，例如从备份恢复，然后重新打开此App。",
         "malformed": "“最近的更新记录”已损坏，目前不会保存。",
         "malformedDetail": "该文件已原样保留。从现在起的更新只列到退出此App为止。要重新保存记录，请退出此App，放回~/Library/Application Support/com.brulek.banager中history.json的完好副本，或将该文件移到废纸篓以重新开始记录，然后重新打开此App。",
-        "newer": "“最近的更新记录”由较新版本的Banager保存，这里不会保存。",
-        "newerDetail": "此版本会原样保留它。从现在起的更新只列到退出此App为止。要保存记录，请使用较新版本的Banager。",
+        "newer": "“最近的更新记录”由较新版本的此App保存，这里不会保存。",
+        "newerDetail": "此版本会原样保留它。从现在起的更新只列到退出此App为止。要保存记录，请使用较新版本的此App。",
         "writerUnavailable": "目前不会保存“最近的更新记录”。",
-        "writerUnavailableDetail": "Banager无法开始保存记录。从现在起的更新只列到退出此App为止；重新打开此App时会再试一次。",
+        "writerUnavailableDetail": "无法开始保存记录。从现在起的更新只列到退出此App为止；重新打开此App时会再试一次。",
         "unattached": "“最近的更新记录”不可用。",
-        "unattachedDetail": "从现在起的更新只列到退出此App为止。"
+        "unattachedDetail": "从现在起的更新只列到退出此App为止。",
+        "writeFailed": "无法保存“最近的更新记录”。",
+        "writeFailedDetail": "最近的更新会列到退出此App为止，但重新打开后可能不在列表中。下次更新时和退出此App时会再试一次。",
+        "clearUnsaved": "无法保存“清除记录”。",
+        "clearUnsavedDetail": "清除的记录在退出此App前保持隐藏，重新打开后会再次列出。下次更新时和退出此App时会再试一次。",
+        "clearUnconfirmed": "无法确认是否已清除记录。",
+        "clearUnconfirmedDetail": "列表显示的是目前保留的记录。要重试，请点按“清除记录”。"
       }
     },
     "confirmTitleNamed": "要更新“{{name}}”吗？",
@@ -1461,7 +1467,7 @@
       },
       "password": {
         "question": "为什么要输入Mac的密码？这里能代我输入吗？",
-        "answer": "Homebrew安装的App，有些在更新或卸载时会要求输入Mac的登录密码，确认窗口会提前说明；这里无法输入密码，也不会保存密码。如果因此没有完成，它的“查看步骤”里会给出一条命令，拷贝到终端里运行，按提示输入密码；输入时屏幕上不显示任何字符，这是正常的。完成后回到这里，按⌘R重新检查。退出此App再重新打开后，更新的“查看步骤”30天内仍在它那一行；没有点按“清除记录”的话，“最近的更新记录”里也有。"
+        "answer": "Homebrew安装的App，有些在更新或卸载时会要求输入Mac的登录密码，确认窗口会提前说明；这里无法输入密码，也不会保存密码。如果因此没有完成，它的“查看步骤”里会给出一条命令，拷贝到终端里运行，按提示输入密码；输入时屏幕上不显示任何字符，这是正常的。完成后回到这里，按⌘R重新检查。退出此App再重新打开后，更新的“查看步骤”30天内仍在它那一行；没有点按“清除记录”的话，“最近的更新记录”里也有；这些都需要记录能保存，无法保存时“更新”页上方会有提示。"
       },
       "leftBehind": {
         "question": "卸载后哪些东西会留下，在哪里？",

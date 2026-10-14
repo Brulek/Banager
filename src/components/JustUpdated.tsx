@@ -419,6 +419,8 @@ export const JUST_UPDATED_SHOWN = 6;
 export interface JustUpdatedProps {
   entries: JustUpdatedEntry[];
   onClear: () => void;
+  /** A Clear sent and not yet answered: Clear is off, so it is sent once. */
+  clearing?: boolean;
 }
 
 /**
@@ -446,7 +448,7 @@ export interface JustUpdatedProps {
  * `JUST_UPDATED_SHOWN` lines, the "N More" line that shows the rest; it
  * is no part of the page's count or of Select all.
  */
-export function JustUpdated({ entries, onClear }: JustUpdatedProps) {
+export function JustUpdated({ entries, onClear, clearing = false }: JustUpdatedProps) {
   const { t, i18n } = useTranslation();
   const headingId = useId();
   const listId = useId();
@@ -463,6 +465,7 @@ export function JustUpdated({ entries, onClear }: JustUpdatedProps) {
         <button
           type="button"
           onClick={onClear}
+          disabled={clearing}
           aria-label={t("updates.justUpdated.clearLabel")}
           className={BUTTON.small.grey}
         >
