@@ -2871,10 +2871,18 @@ mod tests {
             let store = HistoryStore::open_with_clock(dir.file(), now);
             let what = format!("{bytes:?}");
             assert_eq!(store.view().records, vec![], "{what}");
-            assert_eq!(store.view().persistence, HistoryPersistence::Saved, "{what}");
+            assert_eq!(
+                store.view().persistence,
+                HistoryPersistence::Saved,
+                "{what}"
+            );
             store.record(&ended(&k, &Outcome::Succeeded), &started("cmake"));
             assert!(store.flush(Duration::from_secs(5)), "{what}");
-            assert_eq!(store.view().persistence, HistoryPersistence::Saved, "{what}");
+            assert_eq!(
+                store.view().persistence,
+                HistoryPersistence::Saved,
+                "{what}"
+            );
             drop(store);
             let file: serde_json::Value =
                 serde_json::from_slice(&std::fs::read(dir.file()).unwrap()).unwrap();

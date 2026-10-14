@@ -4106,9 +4106,11 @@ listed as "could not check", never as an error for the source. Where
 `https://static.rust-lang.org/rustup`, no request is made: rustup is listed
 as not checked at the version it has, its update is refused when planned,
 and asked once more right before `rustup self update` would run, refused
-as changed since it was shown. An update that exits 0 but leaves a lower
-version than it read before ends as "An older version is now installed",
-never as updated; one that fails is a failure unless the version went up. rustup does
+as changed since it was shown. An update that leaves a lower version than
+it read before ends as "An older version is now installed", never as
+updated, whether it exits 0 or with an error (its log still has the
+error), and Update History keeps both versions; any other one that fails
+is a failure unless the version went up. rustup does
 not update itself on its own: it updates itself only as part of `rustup
 update` and `rustup toolchain install`, which Banager never runs.
 

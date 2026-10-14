@@ -1437,30 +1437,41 @@ impl OperationManager {
                     Some(crate::history::FailureCause::Busy)
                         | Some(crate::history::FailureCause::HomebrewUpdating)
                 );
-                let moved_to = match (&reconciled, plan.request.kind) {
+                // Where the adapter orders its versions (`upgrade_order`),
+                // only a higher one is an update done: rustup's can install
+                // an older one, which is said as such, as for an exit 0 --
+                // a plain failure would not say an older version is there
+                // now, and its record would keep no version after it
+                // (skeptic of b1/t3, 3). The log still has the error.
+                enum Moved {
+                    No,
+                    To(Option<String>),
+                    Older,
+                }
+                let moved = match (&reconciled, plan.request.kind) {
                     (Ok(r), OpKind::Upgrade)
                         if r.present
                             && plan.request.artifact_kind != ArtifactKind::Cask
                             && !waited_on_another =>
                     {
-                        // Where the adapter orders its versions
-                        // (`upgrade_order`), only a higher one is an
-                        // update done: rustup's can install an older one.
                         match version_change(before.as_ref(), r) {
-                            VersionChange::Changed
-                                if upgrade_order(adapter.as_ref(), before.as_ref(), r)
-                                    .is_some_and(|order| order != std::cmp::Ordering::Greater) =>
-                            {
-                                None
+                            VersionChange::Changed => {
+                                match upgrade_order(adapter.as_ref(), before.as_ref(), r) {
+                                    Some(std::cmp::Ordering::Less) => Moved::Older,
+                                    Some(std::cmp::Ordering::Equal) => Moved::No,
+                                    Some(std::cmp::Ordering::Greater) | None => {
+                                        Moved::To(r.version.clone())
+                                    }
+                                }
                             }
-                            VersionChange::Changed => Some(r.version.clone()),
-                            VersionChange::Unchanged | VersionChange::Unknown => None,
+                            VersionChange::Unchanged | VersionChange::Unknown => Moved::No,
                         }
                     }
-                    _ => None,
+                    _ => Moved::No,
                 };
-                match moved_to {
-                    Some(version) => {
+                match moved {
+                    Moved::Older => Outcome::NeedsAttention(Attention::OlderAfterUpgrade),
+                    Moved::To(version) => {
                         self.say_promised_cleanup_did_not_run(op_id, &plan, &warning_sink);
                         Outcome::NeedsAttention(Attention::UpdatedButStepFailed {
                             version: version
@@ -1472,7 +1483,7 @@ impl OperationManager {
                             cause,
                         })
                     }
-                    None => Outcome::Failed {
+                    Moved::No => Outcome::Failed {
                         exit_code: Some(code),
                         summary,
                         cause,

@@ -1460,11 +1460,12 @@ async fn test_a_rustup_self_update_that_exited_non_zero_after_its_version_moved_
 
 /// rustup's `self update` installs whatever its update address names, an
 /// older version too (it skips only the one it has): one that left a lower
-/// version needs a look, and one that also failed is a failure -- never
-/// an update done (R75-3).
+/// version needs a look, whether or not it also exited with an error --
+/// never an update done, and never a plain failure that would not say an
+/// older version is installed now (R75-3; skeptic of b1/t3, 3).
 #[tokio::test]
 async fn test_a_rustup_self_update_that_left_an_older_version_is_never_an_update() {
-    for (exit, older) in [(0, true), (1, false)] {
+    for exit in [0, 1] {
         let runner = Arc::new(ScriptedRunner::default());
         let (home, adapter, inst) =
             rustup_home_and_instance(&runner, &["1.29.1", "1.29.1", "1.28.2"]).await;
@@ -1479,23 +1480,11 @@ async fn test_a_rustup_self_update_that_left_an_older_version_is_never_an_update
         );
         let outcome = upgrade(&runner, adapter, inst, ArtifactKind::Binary, "rustup").await;
         let _ = std::fs::remove_dir_all(&home);
-        if older {
-            assert_eq!(
-                outcome,
-                Outcome::NeedsAttention(Attention::OlderAfterUpgrade)
-            );
-        } else {
-            assert!(
-                matches!(
-                    outcome,
-                    Outcome::Failed {
-                        exit_code: Some(1),
-                        ..
-                    }
-                ),
-                "{outcome:?}"
-            );
-        }
+        assert_eq!(
+            outcome,
+            Outcome::NeedsAttention(Attention::OlderAfterUpgrade),
+            "exit {exit}"
+        );
     }
 }
 
