@@ -1949,13 +1949,13 @@ describe("UPDATE_BLOCKED_KEYS", () => {
     expect(UPDATE_BLOCKED_KEYS.SelfUpdatesOnly.commandInDetail).toBe(false);
   });
 
-  it("tells a self-updating tool's user to open it once, in both locales, with no command or versions in the sentence", () => {
+  it("tells a self-updating tool's user to open it, while its automatic updates are on, in both locales, with no command or versions in the sentence", () => {
     // The versions are the row's own version column; the launcher is shown
     // under the sentence only with technical details on.
     expect(en.updates.blocked.SelfUpdatesOnly.detail).toBe(
-      "It updates itself and can't be updated here. Open it once and it checks for a new version.",
+      "It updates itself and can't be updated here. If its automatic updates are on, it can check for a new version when you open it, though not always right away.",
     );
-    expect(zhCN.updates.blocked.SelfUpdatesOnly.detail).toBe("它会自行更新，无法在这里更新。打开它一次就会检查新版本。");
+    expect(zhCN.updates.blocked.SelfUpdatesOnly.detail).toBe("它会自行更新，无法在这里更新。启用自动更新时，打开它可以检查新版本，但不一定会立即检查。");
     for (const copy of [en.updates.blocked.SelfUpdatesOnly.detail, zhCN.updates.blocked.SelfUpdatesOnly.detail]) {
       expect(copy).not.toContain("{{command}}");
       expect(copy).not.toContain("{{target}}");
@@ -2191,10 +2191,10 @@ describe("typedLauncherName", () => {
   it("is said in a sentence that names the Terminal and sets the name as {{command}}, in both locales", () => {
     expect(UPDATE_BLOCKED_KEYS.SelfUpdatesOnly.typed?.detail).toBe("updates.selfUpdatesTyped");
     expect(en.updates.selfUpdatesTyped).toBe(
-      "It updates itself and can't be updated here. Type {{command}} in Terminal to open it once, and it checks for a new version.",
+      "It updates itself and can't be updated here. If its automatic updates are on, it can check for a new version when you type {{command}} in Terminal to open it, though not always right away.",
     );
     expect(zhCN.updates.selfUpdatesTyped).toBe(
-      "它会自行更新，无法在这里更新。在终端里输入{{command}}打开它一次，就会检查新版本。",
+      "它会自行更新，无法在这里更新。启用自动更新时，在终端里输入{{command}}打开它，可以检查新版本，但不一定会立即检查。",
     );
   });
 });

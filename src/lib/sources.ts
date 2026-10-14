@@ -996,7 +996,13 @@ export const UPDATE_BLOCKED_KEYS: Record<UpdateBlocked, UpdateBlockedCopy> = {
     // Where typing its name in Terminal opens this copy, the sentence
     // says so, with the name and not the path: 「在终端里输入agy打开它一次」.
     typed: { detail: "updates.selfUpdatesTyped", name: typedLauncherName },
-    note: () => null,
+    // Antigravity CLI's own `agy update` is documented by Google (its
+    // installation guide, checked 2026-10-13), but Banager has not
+    // verified running it, so the row says why there is no Update (r25
+    // R75-4). The sentence above says opening it checks only while its
+    // automatic updates are on: Banager does not look for the switch that
+    // turns them off (docs/what-we-run.md, Antigravity CLI).
+    note: (key) => (key.instance_id === "standalone-agy" ? { key: "updates.agyUpdateUnverified" } : null),
     refused: "updates.blocked.SelfUpdatesOnly.refused",
   },
   Disabled: {

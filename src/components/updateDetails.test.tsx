@@ -1,7 +1,8 @@
 import { fireEvent, render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import i18n from "../i18n";
-import type { UpdateCandidate } from "../lib/types";
+import type { CommandState, InstalledArtifact, ManagerInstance, UpdateCandidate } from "../lib/types";
+import { NO_FACTS } from "../lib/types";
 import { blockedDetail, cannotCheckDetail, updateVersionColumn } from "./updateDetails";
 
 describe("blockedDetail", () => {
@@ -120,5 +121,60 @@ describe("updateVersionColumn", () => {
     // the record it has, as before.
     expect(updateVersionColumn(en, { ...firefox, display_current: undefined }).version).toBe("130.0 → 131.0.3");
     expect(updateVersionColumn(en, { ...firefox, checkable: false, target: "130.0" }).version).toBe("130.0");
+  });
+});
+
+describe("blockedDetail for Antigravity CLI (r25 R75-4)", () => {
+  // Google documents `agy update`; Banager hasn't verified running it, so
+  // the row has no Update, and opening the tool checks only while its
+  // automatic updates are on.
+  const agy: UpdateCandidate = {
+    key: { instance_id: "standalone-agy", kind: "Binary", name: "agy" },
+    current: "1.2.10",
+    target: "1.3.0",
+    channel: "Registry",
+    checkable: true,
+    warnings: [],
+    blocked: "SelfUpdatesOnly",
+  };
+  const instance = { exe_path: "/Users/test/.local/bin/agy" } as ManagerInstance;
+  const artifact = (state: CommandState | null): InstalledArtifact =>
+    ({
+      key: agy.key,
+      version: "1.2.10",
+      facts: { ...NO_FACTS, commands: state === null ? [] : [{ name: "agy", state }] },
+    }) as unknown as InstalledArtifact;
+  const NOTE: Record<string, string> = {
+    en: "Updating Antigravity CLI from here hasn't been verified yet, so Banager doesn't offer Update for it.",
+    "zh-CN": "尚未验证从这里更新Antigravity CLI的行为，因此暂不提供更新操作。",
+    "zh-Hant": "尚未驗證從這裡更新Antigravity CLI的行為，因此暫不提供更新操作。",
+  };
+  const AUTOMATIC: Record<string, string> = { en: "automatic updates", "zh-CN": "自动更新", "zh-Hant": "自動更新" };
+
+  it.each(["en", "zh-CN", "zh-Hant"])("says why there is no Update in %s, typed or not", (lang) => {
+    for (const state of ["Runs", "Shadowed", null] as const) {
+      for (const technical of [false, true]) {
+        const lines = [
+          ...render(
+            <>
+              {blockedDetail(
+                i18n.getFixedT(lang),
+                agy,
+                "SelfUpdatesOnly",
+                instance,
+                "Antigravity CLI",
+                technical,
+                artifact(state === null ? null : (state as CommandState)),
+              )}
+            </>,
+          ).container.querySelectorAll("[data-detail-line]"),
+        ].map((line) => line.textContent ?? "");
+        const said = `${lang} ${state} ${technical}: ${lines.join(" | ")}`;
+        expect(lines[0], said).toContain(AUTOMATIC[lang]);
+        expect(lines, said).toContain(NOTE[lang]);
+        // Only this copy's name is typed, and only where it runs.
+        expect(lines[0].includes("agy"), said).toBe(state === "Runs");
+      }
+    }
   });
 });

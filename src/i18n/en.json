@@ -421,7 +421,7 @@
       },
       "SelfUpdatesOnly": {
         "badge": "Updates when run",
-        "detail": "It updates itself and can't be updated here. Open it once and it checks for a new version.",
+        "detail": "It updates itself and can't be updated here. If its automatic updates are on, it can check for a new version when you open it, though not always right away.",
         "refused": "{{source}} updates itself and can't be updated here."
       },
       "UpdatesTurnedOff": {
@@ -440,7 +440,8 @@
     "snooze": "Remind Me in 30 Days",
     "snoozeHint": "This tool's updates will be listed again in 30 days. Undo it in Settings.",
     "snoozedUntil": "No reminders until {{date}}",
-    "selfUpdatesTyped": "It updates itself and can't be updated here. Type {{command}} in Terminal to open it once, and it checks for a new version.",
+    "selfUpdatesTyped": "It updates itself and can't be updated here. If its automatic updates are on, it can check for a new version when you type {{command}} in Terminal to open it, though not always right away.",
+    "agyUpdateUnverified": "Updating Antigravity CLI from here hasn't been verified yet, so Banager doesn't offer Update for it.",
     "disabledBlocked": {
       "detail": "{{source}} has disabled it and won't provide more updates. The installed copy isn't removed; uninstall it when you no longer need it.",
       "refused": "Couldn't update it because {{source}} has disabled it."
@@ -1602,7 +1603,7 @@
       },
       "cantUpdate": {
         "question": "Why can't some tools be updated here?",
-        "answer": "On Updates, under the tools that can be updated, a line says how many more can't be updated here; click it to see them. Each of their rows says why, for example “View only”, “Pinned” or “Updates when run”. Tools installed with pip, npm packages or Homebrew tools in folders this account can't change, and Ollama models at an address with a login can only be viewed; if OLLAMA_HOST is set to an address that can't be used, no Ollama models are listed, and no other Ollama is contacted instead. A pinned tool has to be unpinned in Terminal first; one marked “Updates when run” updates itself, and opening it once checks for a new version."
+        "answer": "On Updates, under the tools that can be updated, a line says how many more can't be updated here; click it to see them. Each of their rows says why, for example “View only”, “Pinned” or “Updates when run”; if a pip package's index rejects the check and no version is confirmed, it says “Can't check”, and you can copy the error details. Tools installed with pip, npm packages or Homebrew tools in folders this account can't change, and Ollama models at an address with a login can only be viewed; if OLLAMA_HOST is set to an address that can't be used, no Ollama models are listed, and no other Ollama is contacted instead; dependencies installed inside an npm package aren't offered as separate updates. A pinned tool, a pipx one included, has to be unpinned in Terminal first, and rustup set to get its updates from another address isn't checked or updated here; one marked “Updates when run” updates itself, and opening it can check for a new version if its automatic updates are on, though not always right away."
       },
       "twins": {
         "question": "What does “Installed twice” mean, and what should I do?",

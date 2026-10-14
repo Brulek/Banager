@@ -6732,7 +6732,7 @@ describe("UpdatesPage", () => {
     // Under "can't be updated here": no version to move to here.
     expect(within(claude).queryByText("2.1.281 → 2.1.290")).toBeNull();
     const detail = chipDetail(claude, "Updates when run");
-    expect(detail.textContent).toBe("It updates itself and can't be updated here. Open it once and it checks for a new version.");
+    expect(detail.textContent).toBe("It updates itself and can't be updated here. If its automatic updates are on, it can check for a new version when you open it, though not always right away.");
     expect(queryByText(/\.local\/bin\/claude/)).toBeNull();
     // Not the updatable row's chip: this row has no button to point at.
     expect(queryByText(/also update it now/)).toBeNull();
@@ -6750,7 +6750,7 @@ describe("UpdatesPage", () => {
     await showCantUpdate();
     const detail = chipDetail(await findRow("Claude Code"), "Updates when run");
     expect(detail.textContent).toBe(
-      "It updates itself and can't be updated here. Type claude in Terminal to open it once, and it checks for a new version.",
+      "It updates itself and can't be updated here. If its automatic updates are on, it can check for a new version when you type claude in Terminal to open it, though not always right away.",
     );
     expect(within(detail).getByText("claude").tagName).toBe("CODE");
   });
@@ -6768,7 +6768,7 @@ describe("UpdatesPage", () => {
 
     await showCantUpdate();
     const detail = chipDetail(await findRow("Claude Code"), "Updates when run");
-    expect(detail.textContent).toBe("It updates itself and can't be updated here. Open it once and it checks for a new version.");
+    expect(detail.textContent).toBe("It updates itself and can't be updated here. If its automatic updates are on, it can check for a new version when you open it, though not always right away.");
   });
 
   it("shows the command that opens a tool that updates itself, and offers to copy it, with technical details on", async () => {

@@ -162,10 +162,12 @@ pub static CLAUDE: Recipe = Recipe {
 ///   (`latest::manifest_arch_allowed`); the amd64 manifest is spec §十一's;
 /// - it installs its updates itself, in the background, at most every 15
 ///   minutes (§4: the documented debounce and this Mac's own log), so
-///   `self_updates` is `Yes` and, since `agy update` is undocumented, takes
-///   no options and has never been run (§4), there is no `upgrade`: every
-///   newer version is `UpdateBlocked::SelfUpdatesOnly` -- a badge, no
-///   button, and a sentence saying to open it once (spec §4.4, D5, Q3);
+///   `self_updates` is `Yes` and, since Banager has not verified running
+///   `agy update` -- which Google's installation guide documents for an
+///   existing installation (checked 2026-10-13, r25 R75-4) -- there is no
+///   `upgrade`: every newer version is `UpdateBlocked::SelfUpdatesOnly`
+///   -- a badge, no button, and a sentence saying opening it can check
+///   while its automatic updates are on (spec §4.4, D5, Q3);
 /// - there is no vendor uninstall document and no `agy uninstall` (§5).
 ///   The list combines the installer's own path with the cask's `zap`
 ///   (which trashes only `~/.gemini/antigravity-cli`) -- a synthesis, as
@@ -1422,7 +1424,8 @@ mod tests {
 
     #[test]
     fn test_agy_has_no_update_command_and_a_one_path_uninstall_with_a_backup_pattern() {
-        // Spec §4.4 D5 item 4: `agy update` is undocumented and unrun, so no
+        // Spec §4.4 D5 item 4: `agy update` is not verified with Banager (r25
+        // R75-4: Google documents it, Banager has never run it), so no
         // upgrade -- every candidate is SelfUpdatesOnly. Spec §6.3's agy row
         // as the phase 4 step D plan rules it (its rulings 1 and 2): the
         // launcher is the whole program and goes alone, the updater's

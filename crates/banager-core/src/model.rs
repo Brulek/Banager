@@ -1843,8 +1843,9 @@ pub enum UpdateBlocked {
     /// Banager may run for it, so a newer version is listed with no
     /// button. Produced by `StandaloneAdapter::check_updates`
     /// (`adapters/standalone/mod.rs`) for a recipe whose `upgrade` is
-    /// `None` -- Antigravity CLI, whose `agy update` is undocumented, takes
-    /// no options and has never been run (agy.md §4; spec §4.4) -- and, for
+    /// `None` -- Antigravity CLI, whose `agy update` Google documents but
+    /// Banager has not verified running (agy.md §4; spec §4.4; r25 R75-4)
+    /// -- and, for
     /// the same recipe, by `StandaloneAdapter::plan`'s `Upgrade` arm inside
     /// `AdapterError::UpdateBlocked`: the gate's late twin for a stale
     /// snapshot (spec §五). Not "no

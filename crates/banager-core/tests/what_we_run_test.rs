@@ -2720,3 +2720,32 @@ fn test_what_we_run_says_a_cask_updates_signal_line_shows_when_on_upgrade_names_
         "the cask update paragraph does not say when the confirmation has a line for `signal`"
     );
 }
+
+#[test]
+fn antigravity_docs_distinguish_vendor_command_from_verified_execution() {
+    // r25 R75-4: Google's installation guide documents `agy update`
+    // (checked 2026-10-13). The README and this reference may not call it
+    // undocumented, and must still say Banager does not run it.
+    let readme = include_str!("../../../README.md");
+    let doc = read_doc();
+    for (name, text) in [("README.md", readme), ("docs/what-we-run.md", doc.as_str())] {
+        for line in text.lines().filter(|line| line.contains("agy update")) {
+            assert!(
+                !line.contains("undocumented"),
+                "{name} still calls `agy update` undocumented: {line}"
+            );
+        }
+    }
+    let readme_row = readme
+        .lines()
+        .find(|line| line.starts_with("| Antigravity CLI"))
+        .expect("README.md has an Antigravity CLI row");
+    assert!(
+        readme_row.contains("Banager hasn't verified running it"),
+        "{readme_row}"
+    );
+    assert!(
+        doc.contains("Banager has not verified running this command"),
+        "docs/what-we-run.md does not say Banager has not verified running `agy update`"
+    );
+}

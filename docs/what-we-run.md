@@ -3909,12 +3909,15 @@ never an error for the source.
 **Write commands**: none. Antigravity CLI installs its updates itself in
 the background (at most every 15 minutes, by Google's documentation and
 this Mac's own log), unless `AGY_CLI_DISABLE_AUTO_UPDATE=true`, the
-switch Google documents for turning that off, is set where it runs; and
-its `agy update` subcommand is undocumented, has no options and has never
-been run — so Banager offers no Update button: a newer version is listed
-with the badge "Updates when run" and a sentence that says to open the tool
-once and quit it, after which it installs the new version unless its
-automatic updates have been turned off. Where typing `agy` in Terminal
+switch Google documents for turning that off, is set where it runs.
+Google documents `agy update` for existing installations (its
+[installation guide](https://antigravity.google/docs/cli/install/#verify-installation-and-version),
+checked 2026-10-13). Banager has not verified running this command, so
+Update remains unavailable here (r25 R75-4): a newer version is listed
+with the badge "Updates when run", a sentence that says that, if its
+automatic updates are on, opening the tool can check for a new version,
+though not always right away, and a line saying that updating Antigravity
+CLI from here hasn't been verified (`updates.agyUpdateUnverified`). Where typing `agy` in Terminal
 runs this copy (Which copy a command runs, below — judged from the folders
 already read, nothing more), the sentence names `agy` as what to type;
 otherwise it does not say how, and the launcher's path is shown with Show
@@ -6411,7 +6414,8 @@ configured, `index.crates.io`, and cargo still follows a
 - Never asks rustup to uninstall from anywhere but its standard folders,
   `~/.cargo` and `~/.rustup`: rustup deletes both whole, permanently, and
   Banager offers that only when the preview can name exactly those two.
-- Never runs `agy update` (undocumented, never observed), and never runs
+- Never runs `agy update` (documented by Google, not verified with
+  Banager), and never runs
   `grok update` from a refresh: the refresh runs `grok update --check
   --json`, which grok's own help describes as checking without
   installing; `grok update` runs only after a confirmed preview.
