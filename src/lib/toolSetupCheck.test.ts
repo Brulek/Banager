@@ -156,7 +156,7 @@ describe("toolSetupCheck, on a Mac with nothing wrong", () => {
         "fine Every source answered normally · Homebrew, npm",
         "note Command-line programs from other sources are listed separately → unknown",
       ],
-      Commands: ["fine Terminal finds every installed tool, and none is installed more than once"],
+      Commands: ["fine Terminal finds every installed tool, and no AI coding tool is installed more than once"],
       Homebrew: ["fine Homebrew hasn't disabled or deprecated any tool, and keeps no other versions"],
       Disk: ["note Installed tools take about\u00a09.8 GB in all"],
     });
@@ -169,7 +169,7 @@ describe("toolSetupCheck, on a Mac with nothing wrong", () => {
         "fine 所有来源都正常回应 · Homebrew、npm",
         "note 不属于这些来源的命令行程序，可以在“其他程序”里找 → unknown",
       ],
-      命令: ["fine 终端都能找到已安装的工具，也没有装了不止一份的"],
+      命令: ["fine 终端都能找到已安装的工具，也没有装了不止一份的AI编程工具"],
       Homebrew: ["fine 没有Homebrew已停用或弃用的工具，也没有保留的其他版本"],
       磁盘: ["note 已安装的工具共占用约9.8 GB"],
     });
@@ -361,13 +361,13 @@ describe("toolSetupCheck's command lines", () => {
     const check = toolSetupCheck(zh, input({ snapshot: twinsSnapshot() }));
     expect(shape(check)["命令"]).toEqual([
       "warning 1个工具在终端里找不到 → installed:notOnPath",
-      "note 1个工具装了不止一份，共2份 → installed:twins",
+      "note 1个AI编程工具装了不止一份，共2份 → installed:twins",
     ]);
     expect(lineOf(check, "commands", "notOnPath").detail).toBe(zh("notOnPathMore.detailOne"));
     expect(lineOf(check, "commands", "twins").detail).toMatch(/只会运行其中一份/);
     expect(shape(toolSetupCheck(en, input({ snapshot: twinsSnapshot() })))["Commands"]).toEqual([
       "warning 1 tool can't be found in Terminal → installed:notOnPath",
-      "note 1 tool is installed more than once, 2 copies in all → installed:twins",
+      "note 1 AI coding tool is installed more than once, 2 copies in all → installed:twins",
     ]);
   });
 
@@ -381,12 +381,12 @@ describe("toolSetupCheck's command lines", () => {
       artifact({ instance_id: BREW, kind: "Cask", name: "codex" }, { family: "codex", commands: [runs("codex")] }),
       artifact({ instance_id: CODEX, kind: "Binary", name: "codex" }, { family: "codex", commands: [runs("codex")] }),
     );
-    expect(lineOf(toolSetupCheck(zh, input({ snapshot })), "commands", "twins").text).toBe("2个工具装了不止一份，共5份");
+    expect(lineOf(toolSetupCheck(zh, input({ snapshot })), "commands", "twins").text).toBe("2个AI编程工具装了不止一份，共5份");
     expect(lineOf(toolSetupCheck(en, input({ snapshot })), "commands", "twins").text).toBe(
-      "2 tools are installed more than once, 5 copies in all",
+      "2 AI coding tools are installed more than once, 5 copies in all",
     );
     expect(lineOf(toolSetupCheck(zhHant, input({ snapshot })), "commands", "twins").text).toBe(
-      "2個工具裝了不止一份，共5份",
+      "2個AI程式設計工具裝了不止一份，共5份",
     );
   });
 
@@ -395,7 +395,7 @@ describe("toolSetupCheck's command lines", () => {
     snapshot.artifacts[2] = artifact(snapshot.artifacts[2].key, { family: "claude-code", commands: [runs("claude")] });
     expect(shape(toolSetupCheck(en, input({ snapshot })))["Commands"]).toEqual([
       "fine Terminal finds every installed tool",
-      "note 1 tool is installed more than once, 2 copies in all → installed:twins",
+      "note 1 AI coding tool is installed more than once, 2 copies in all → installed:twins",
     ]);
     const lone = fineSnapshot();
     lone.artifacts.push(
@@ -403,7 +403,7 @@ describe("toolSetupCheck's command lines", () => {
     );
     expect(shape(toolSetupCheck(zh, input({ snapshot: lone })))["命令"]).toEqual([
       "warning 1个工具在终端里找不到 → installed:notOnPath",
-      "fine 没有装了不止一份的工具",
+      "fine 没有装了不止一份的AI编程工具",
     ]);
   });
 
@@ -415,12 +415,12 @@ describe("toolSetupCheck's command lines", () => {
     // The names are still there: two copies can still be told apart.
     expect(shape(toolSetupCheck(zh, input({ snapshot })))["命令"]).toEqual([
       "note 终端找不到：这次没有判断",
-      "note 1个工具装了不止一份，共2份 → installed:twins",
+      "note 1个AI编程工具装了不止一份，共2份 → installed:twins",
     ]);
     for (const a of snapshot.artifacts) a.facts = { ...a.facts, commands: [] };
     expect(shape(toolSetupCheck(en, input({ snapshot })))["Commands"]).toEqual([
       "note Not found in Terminal: not looked at this time",
-      "note Tools installed more than once: not looked at this time",
+      "note AI coding tools installed more than once: not looked at this time",
     ]);
   });
 
@@ -448,13 +448,13 @@ describe("toolSetupCheck's command lines", () => {
     expect(shape(toolSetupCheck(en, input({ snapshot: partlyCheckedSnapshot(), facts })))["Commands"]).toEqual([
       "fine Terminal finds every tool that was checked",
       "note Couldn't check whether Terminal finds 2 tools",
-      "fine No tool is installed more than once",
+      "fine No AI coding tool is installed more than once",
     ]);
     const zhCheck = toolSetupCheck(zh, input({ snapshot: partlyCheckedSnapshot(), facts }));
     expect(shape(zhCheck)["命令"]).toEqual([
       "fine 终端都能找到检查过的工具",
       "note 2个工具无法确认终端能否找到",
-      "fine 没有装了不止一份的工具",
+      "fine 没有装了不止一份的AI编程工具",
     ]);
     expect(lineOf(zhCheck, "commands", "notChecked").detail).toBe(
       "无法判断终端会运行这些工具的哪一份，例如终端查找命令的某个文件夹无法读取。",
@@ -485,16 +485,16 @@ describe("toolSetupCheck's command lines", () => {
     expect(shape(toolSetupCheck(en, input({ snapshot })))["Commands"]).toEqual([
       "fine Terminal finds every tool that was checked",
       "note Couldn't check whether Terminal finds 1 tool",
-      "fine No tool that was checked is installed more than once",
+      "fine No AI coding tool that was checked is installed more than once",
     ]);
     expect(shape(toolSetupCheck(zh, input({ snapshot })))["命令"]).toEqual([
       "fine 终端都能找到检查过的工具",
       "note 1个工具无法确认终端能否找到",
-      "fine 检查过的工具中没有装了不止一份的",
+      "fine 检查过的工具中没有装了不止一份的AI编程工具",
     ]);
     const hant = toolSetupCheck(i18n.getFixedT("zh-Hant"), input({ snapshot }));
     expect(hant.sections.find((section) => section.id === "commands")!.lines.map((l) => l.text)).toContain(
-      "檢查過的工具中沒有裝了不止一份的",
+      "檢查過的工具中沒有裝了不止一份的AI程式設計工具",
     );
   });
 
@@ -507,7 +507,7 @@ describe("toolSetupCheck's command lines", () => {
     expect(shape(toolSetupCheck(en, input({ snapshot })))["Commands"]).toEqual([
       "warning 1 tool can't be found in Terminal → installed:notOnPath",
       "note Couldn't check whether Terminal finds 1 tool",
-      "fine No tool is installed more than once",
+      "fine No AI coding tool is installed more than once",
     ]);
   });
 
@@ -525,11 +525,11 @@ describe("toolSetupCheck's command lines", () => {
     );
     expect(shape(toolSetupCheck(en, input({ snapshot })))["Commands"]).toEqual([
       "warning 1 tool can't be found in Terminal → installed:notOnPath",
-      "fine No tool is installed more than once",
+      "fine No AI coding tool is installed more than once",
     ]);
     snapshot.artifacts.pop();
     expect(shape(toolSetupCheck(en, input({ snapshot })))["Commands"]).toEqual([
-      "fine Terminal finds every installed tool, and none is installed more than once",
+      "fine Terminal finds every installed tool, and no AI coding tool is installed more than once",
     ]);
   });
 
@@ -550,11 +550,11 @@ describe("toolSetupCheck's command lines", () => {
     snapshot.artifacts.push(formula);
     expect(shape(toolSetupCheck(en, input({ snapshot })))["Commands"]).toEqual([
       "fine Terminal finds every installed tool",
-      "note 1 tool is installed more than once, 2 copies in all → installed:twins",
+      "note 1 AI coding tool is installed more than once, 2 copies in all → installed:twins",
     ]);
     expect(shape(toolSetupCheck(zh, input({ snapshot })))["命令"]).toEqual([
       "fine 终端都能找到已安装的工具",
-      "note 1个工具装了不止一份，共2份 → installed:twins",
+      "note 1个AI编程工具装了不止一份，共2份 → installed:twins",
     ]);
     // Its keg could not all be read: then it is one it couldn't check.
     formula.facts.commands_unavailable = true;
@@ -577,15 +577,15 @@ describe("toolSetupCheck's command lines", () => {
     snapshot.artifacts.push(formula);
     expect(shape(toolSetupCheck(en, input({ snapshot })))["Commands"]).toEqual([
       "note Homebrew didn't link 1 tool where Terminal looks · ollama",
-      "fine No tool is installed more than once",
+      "fine No AI coding tool is installed more than once",
     ]);
     expect(shape(toolSetupCheck(zh, input({ snapshot })))["命令"]).toEqual([
       "note Homebrew没有把1个工具链接到终端能找到的地方 · ollama",
-      "fine 没有装了不止一份的工具",
+      "fine 没有装了不止一份的AI编程工具",
     ]);
     expect(shape(toolSetupCheck(zhHant, input({ snapshot })))["指令"]).toEqual([
       "note Homebrew沒有把1個工具連結到終端機找得到的地方 · ollama",
-      "fine 沒有裝了不止一份的工具",
+      "fine 沒有裝了不止一份的AI程式設計工具",
     ]);
     const line = toolSetupCheck(en, input({ snapshot })).sections.find((s) => s.id === "commands")!.lines[0];
     expect(line.detail).toBe(
@@ -598,14 +598,98 @@ describe("toolSetupCheck's command lines", () => {
     expect(shape(toolSetupCheck(en, input({ snapshot })))["Commands"]).toEqual([
       "warning 1 tool can't be found in Terminal → installed:notOnPath",
       "note Homebrew didn't link 1 tool where Terminal looks · ollama",
-      "fine No tool is installed more than once",
+      "fine No AI coding tool is installed more than once",
     ]);
     // Its keg first on PATH after all: it has a verdict, and is found.
     snapshot.artifacts.pop();
     formula.facts.commands = [runs("ollama")];
     expect(shape(toolSetupCheck(en, input({ snapshot })))["Commands"]).toEqual([
-      "fine Terminal finds every installed tool, and none is installed more than once",
+      "fine Terminal finds every installed tool, and no AI coding tool is installed more than once",
     ]);
+  });
+
+  /**
+   * Ruff from Homebrew and from pipx, both on Terminal's search path: two
+   * copies of one program, but no AI coding tool (`families.rs` has no
+   * Ruff), so `twinsByArtifact` pairs neither -- and a matching command name
+   * alone is no proof of one tool. What is said of copies is said of the AI
+   * coding tools only; what Terminal finds stays said of every tool (R82-3).
+   */
+  function ruffTwiceSnapshot(): Snapshot {
+    const snapshot = fineSnapshot();
+    const pipx = instance("pipx:home");
+    snapshot.instances.push(pipx);
+    const brewRuff: ArtifactKey = { instance_id: BREW, kind: "Formula", name: "ruff" };
+    snapshot.artifacts.push(
+      artifact(brewRuff, { commands: [runs("ruff")], homebrew: brewFacts() }),
+      artifact(
+        { instance_id: pipx.id, kind: "Tool", name: "ruff" },
+        { commands: [{ name: "ruff", state: { ShadowedBy: { by: brewRuff } } }] },
+      ),
+    );
+    return snapshot;
+  }
+
+  it("says what it says of copies of the AI coding tools only, with Ruff installed twice (R82-3)", () => {
+    const snapshot = ruffTwiceSnapshot();
+    expect(shape(toolSetupCheck(en, input({ snapshot })))["Commands"]).toEqual([
+      "fine Terminal finds every installed tool, and no AI coding tool is installed more than once",
+    ]);
+    expect(shape(toolSetupCheck(zh, input({ snapshot })))["命令"]).toEqual([
+      "fine 终端都能找到已安装的工具，也没有装了不止一份的AI编程工具",
+    ]);
+    expect(lineOf(toolSetupCheck(zhHant, input({ snapshot })), "commands", "allFine").text).toBe(
+      "終端機都能找到已安裝的工具，也沒有裝了不止一份的AI程式設計工具",
+    );
+    // Beside a tool Terminal can't find, the twins line of its own.
+    snapshot.artifacts.push(
+      artifact({ instance_id: NPM, kind: "Package", name: "tsx" }, { commands: [notOnPath("tsx")] }),
+    );
+    for (const [t, want] of [
+      [en, "No AI coding tool is installed more than once"],
+      [zh, "没有装了不止一份的AI编程工具"],
+      [zhHant, "沒有裝了不止一份的AI程式設計工具"],
+    ] as const) {
+      expect(lineOf(toolSetupCheck(t, input({ snapshot })), "commands", "twins").text).toBe(want);
+    }
+    // And with a tool whose commands could not all be listed.
+    const dropped = artifact({ instance_id: "pipx:home", kind: "Tool", name: "cowsay" });
+    dropped.facts.commands_unavailable = true;
+    snapshot.artifacts.push(dropped);
+    for (const [t, want] of [
+      [en, "No AI coding tool that was checked is installed more than once"],
+      [zh, "检查过的工具中没有装了不止一份的AI编程工具"],
+      [zhHant, "檢查過的工具中沒有裝了不止一份的AI程式設計工具"],
+    ] as const) {
+      expect(lineOf(toolSetupCheck(t, input({ snapshot })), "commands", "twins").text).toBe(want);
+    }
+  });
+
+  it("says the copies of an AI coding tool are more than one, not where they came from or that one runs (R82-3)", () => {
+    // Two copies from one source -- Homebrew's ollama formula and cask --
+    // neither found in Terminal: still two copies of one tool.
+    const snapshot = fineSnapshot();
+    snapshot.artifacts.push(
+      artifact({ instance_id: BREW, kind: "Formula", name: "ollama" }, { family: "ollama", commands: [notOnPath("ollama")] }),
+      artifact({ instance_id: BREW, kind: "Cask", name: "ollama-app" }, { family: "ollama", commands: [notOnPath("ollama")] }),
+    );
+    for (const [t, text, detail] of [
+      [
+        en,
+        "1 AI coding tool is installed more than once, 2 copies in all",
+        "More than one copy of the same AI coding tool is installed. Typing its command in Terminal runs one of them at most.",
+      ],
+      [zh, "1个AI编程工具装了不止一份，共2份", "同一个AI编程工具装了不止一份。在终端里输入它的命令，最多只会运行其中一份。"],
+      [
+        zhHant,
+        "1個AI程式設計工具裝了不止一份，共2份",
+        "同一個AI程式設計工具裝了不止一份。在終端機裡輸入它的指令，最多只會執行其中一份。",
+      ],
+    ] as const) {
+      const twins = lineOf(toolSetupCheck(t, input({ snapshot })), "commands", "twins");
+      expect(twins.text).toBe(text);
+      expect(twins.detail).toBe(detail);
+    }
   });
 });
 

@@ -137,6 +137,7 @@ function input(more: Partial<DiagnosticsInput> = {}): DiagnosticsInput {
 
 const en = i18n.getFixedT("en");
 const zh = i18n.getFixedT("zh-CN");
+const zhHant = i18n.getFixedT("zh-Hant");
 
 describe("diagnosticsText", () => {
   it("says, in English, what a helper needs: the Mac, each source, the search folders, the last check and the counts", () => {
@@ -184,7 +185,7 @@ describe("diagnosticsText", () => {
         "Last check: 2026-10-01 13:58",
         "Check: incomplete, Homebrew, npm and uv didn't finish",
         "Not found in Terminal: 1",
-        "Tools installed more than once: 1",
+        "AI coding tools installed more than once: 1",
         "Space used: 1.2 GB or more",
         "",
       ].join("\n"),
@@ -236,7 +237,7 @@ describe("diagnosticsText", () => {
         "上次检查：2026-10-01 13:58",
         "检查结果：不完整，Homebrew、npm和uv未检查完",
         "终端找不到：1个",
-        "装了不止一份的工具：1个",
+        "装了不止一份的AI编程工具：1个",
         "占用空间：1.2 GB以上",
         "",
       ].join("\n"),
@@ -262,24 +263,48 @@ describe("diagnosticsText", () => {
     expect(notTools(withTools)).toEqual(notTools(without));
   });
 
-  it("counts a tool installed twice once, however many copies it has, and each such tool", () => {
-    // A third Claude Code, from Homebrew; and ruff twice more, from pipx and Homebrew.
+  it("counts an AI coding tool installed twice once, however many copies it has, and each such tool", () => {
+    // A third Claude Code, from Homebrew; and Codex twice, from npm and Homebrew.
     const brewClaude = artifact({ instance_id: BREW, kind: "Cask", name: "claude-code" }, "2.1.0", "claude-code", [
       { name: "claude", state: { ShadowedBy: { by: npmClaude } } },
     ]);
-    const pipxRuff = artifact({ instance_id: "pipx:/opt/homebrew/bin/pipx", kind: "Package", name: "ruff" }, "0.14.0", "ruff", [
-      { name: "ruff", state: "Runs" },
+    const npmCodex = artifact({ instance_id: NPM, kind: "Package", name: "@openai/codex" }, "0.50.0", "codex", [
+      { name: "codex", state: "Runs" },
     ]);
-    const brewRuff = artifact({ instance_id: BREW, kind: "Formula", name: "ruff" }, "0.14.0", "ruff", [
-      { name: "ruff", state: { ShadowedBy: { by: pipxRuff.key } } },
+    const brewCodex = artifact({ instance_id: BREW, kind: "Cask", name: "codex" }, "0.50.0", "codex", [
+      { name: "codex", state: { ShadowedBy: { by: npmCodex.key } } },
     ]);
     const three = diagnosticsText(en, input({ snapshot: { ...SNAPSHOT, artifacts: [...SNAPSHOT.artifacts, brewClaude] } }));
-    expect(three).toContain("\nTools installed more than once: 1\n");
+    expect(three).toContain("\nAI coding tools installed more than once: 1\n");
     const two = diagnosticsText(
       zh,
-      input({ snapshot: { ...SNAPSHOT, artifacts: [...SNAPSHOT.artifacts, brewClaude, pipxRuff, brewRuff] } }),
+      input({ snapshot: { ...SNAPSHOT, artifacts: [...SNAPSHOT.artifacts, brewClaude, npmCodex, brewCodex] } }),
     );
-    expect(two).toContain("\n装了不止一份的工具：2个\n");
+    expect(two).toContain("\n装了不止一份的AI编程工具：2个\n");
+  });
+
+  it("counts no copies of a tool that is no AI coding tool, and says so of the AI coding tools only (R82-3)", () => {
+    // Ruff from Homebrew beside uv's: two copies of one program, but no AI
+    // coding tool (`families.rs` has no Ruff), so not counted -- and the
+    // count says what it is of. Listed with the tools all the same.
+    const brewRuff = artifact({ instance_id: BREW, kind: "Formula", name: "ruff" }, "0.14.0", null, [
+      { name: "ruff", state: "Runs" },
+    ]);
+    const snapshot = {
+      ...SNAPSHOT,
+      artifacts: SNAPSHOT.artifacts.filter((a) => a.key.instance_id !== CLAUDE).concat(brewRuff),
+    };
+    for (const [t, zero] of [
+      [en, "\nAI coding tools installed more than once: 0\n"],
+      [zh, "\n装了不止一份的AI编程工具：0个\n"],
+      [zhHant, "\n裝了不止一份的AI程式設計工具：0個\n"],
+    ] as const) {
+      for (const includeTools of [false, true]) {
+        const text = diagnosticsText(t, input({ includeTools, snapshot }));
+        expect(text).toContain(zero);
+        expect(text.split("\n").filter((line) => line.startsWith("    ruff ")).length).toBe(includeTools ? 2 : 0);
+      }
+    }
   });
 
   it("cuts an Ollama model's digest to the twelve digits ollama list shows", () => {
@@ -361,7 +386,7 @@ describe("diagnosticsText", () => {
     );
     const empty = diagnosticsText(en, input({ snapshot: null, sizes: null }));
     expect(empty).toContain("\nSources: 0\n\nCommand search folders: 4\n");
-    expect(empty).toContain("\nNot found in Terminal: 0\nTools installed more than once: 0\n");
+    expect(empty).toContain("\nNot found in Terminal: 0\nAI coding tools installed more than once: 0\n");
   });
 });
 
@@ -621,11 +646,11 @@ describe("the command counts", () => {
       })),
     };
     const text = diagnosticsText(zh, input({ snapshot: noVerdicts }));
-    expect(text).toContain("\n终端找不到：这次没有判断\n装了不止一份的工具：1个\n");
+    expect(text).toContain("\n终端找不到：这次没有判断\n装了不止一份的AI编程工具：1个\n");
     // The read ran past its budget: nothing at all.
     const nothing = { ...SNAPSHOT, artifacts: SNAPSHOT.artifacts.map(strip([])) };
     expect(diagnosticsText(en, input({ snapshot: nothing }))).toContain(
-      "\nNot found in Terminal: not looked at this time\nTools installed more than once: not looked at this time\n",
+      "\nNot found in Terminal: not looked at this time\nAI coding tools installed more than once: not looked at this time\n",
     );
   });
 
@@ -639,9 +664,9 @@ describe("the command counts", () => {
       ),
     };
     const zhText = diagnosticsText(zh, input({ snapshot: partly }));
-    expect(zhText).toMatch(/\n终端找不到：\d+个\n终端里无法确认：1个\n装了不止一份的工具：/);
+    expect(zhText).toMatch(/\n终端找不到：\d+个\n终端里无法确认：1个\n装了不止一份的AI编程工具：/);
     expect(diagnosticsText(en, input({ snapshot: partly }))).toMatch(
-      /\nNot found in Terminal: \d+\nNot checked in Terminal: 1\nTools installed more than once: /,
+      /\nNot found in Terminal: \d+\nNot checked in Terminal: 1\nAI coding tools installed more than once: /,
     );
     // Every tool checked: no such line.
     expect(diagnosticsText(en, input())).not.toContain("Not checked in Terminal");
@@ -658,10 +683,10 @@ describe("the command counts", () => {
       artifacts: [...SNAPSHOT.artifacts, { ...ollama, facts: { ...ollama.facts, unlinked: true } }],
     };
     expect(diagnosticsText(en, input({ snapshot: unlinked }))).toMatch(
-      /\nNot found in Terminal: 1\nNot linked by Homebrew: 1\nTools installed more than once: 1\n/,
+      /\nNot found in Terminal: 1\nNot linked by Homebrew: 1\nAI coding tools installed more than once: 1\n/,
     );
     expect(diagnosticsText(zh, input({ snapshot: unlinked }))).toMatch(
-      /\n终端找不到：1个\nHomebrew没有链接：1个\n装了不止一份的工具：1个\n/,
+      /\n终端找不到：1个\nHomebrew没有链接：1个\n装了不止一份的AI编程工具：1个\n/,
     );
     // Not where there is none.
     expect(diagnosticsText(en, input())).not.toContain("Not linked by Homebrew");

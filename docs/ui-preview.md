@@ -257,7 +257,7 @@ Paths are under a generic home folder, `/Users/you`.
   default pretend Mac, Codex's own install and npm's @openai/codex; with
   `?state=notices`, Claude Code and @anthropic-ai/claude-code as well. With
   `?state=uptodate`, which leaves Codex's own install out,
-  「没有发现装了不止一份的工具」.
+  「没有发现装了不止一份的AI编程工具」.
 - The 「显示」 popup's last four choices say how many they show: on the
   default pretend Mac 「装了不止一份（2）」, Codex's two copies,
   「终端里找不到（1）」, Grok Build,

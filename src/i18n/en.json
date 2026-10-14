@@ -136,8 +136,8 @@
   },
   "twinsFilter": {
     "show": "Installed More Than Once",
-    "none": "Nothing is installed more than once",
-    "noneInSource": "Nothing in {{source}} is installed more than once"
+    "none": "No AI coding tool is installed more than once",
+    "noneInSource": "No AI coding tool in {{source}} is installed more than once"
   },
   "twinsFilterMore": {
     "showCount": "Installed More Than Once ({{number}})"
@@ -150,7 +150,7 @@
     "previewing": "These appear here when the check finishes",
     "unjudged": "This check didn't look at the commands in Terminal",
     "notFoundUnknown": "Not found in Terminal: not looked at this time",
-    "twinsUnknown": "Tools installed more than once: not looked at this time"
+    "twinsUnknown": "AI coding tools installed more than once: not looked at this time"
   },
   "overview": {
     "updatesAvailable_one": "{{count}} tool can be updated",
@@ -1474,7 +1474,7 @@
       "incompletePlain": "Check: incomplete",
       "notFound": "Not found in Terminal: {{number}}",
       "notLinked": "Not linked by Homebrew: {{number}}",
-      "twins": "Tools installed more than once: {{number}}",
+      "twins": "AI coding tools installed more than once: {{number}}",
       "diskTotal": "Space used: {{size}}",
       "noFacts": "System info: couldn't read"
     }
@@ -1516,12 +1516,12 @@
       "otherPrograms": "Command-line programs from other sources are listed separately"
     },
     "commands": {
-      "allFine": "Terminal finds every installed tool, and none is installed more than once",
+      "allFine": "Terminal finds every installed tool, and no AI coding tool is installed more than once",
       "notOnPathFine": "Terminal finds every installed tool",
-      "twins_one": "{{count}} tool is installed more than once, {{copies}} copies in all",
-      "twins_other": "{{count}} tools are installed more than once, {{copies}} copies in all",
-      "twinsDetail": "Different sources each installed a copy of the same tool. Typing its command in Terminal runs only one of them.",
-      "twinsFine": "No tool is installed more than once",
+      "twins_one": "{{count}} AI coding tool is installed more than once, {{copies}} copies in all",
+      "twins_other": "{{count}} AI coding tools are installed more than once, {{copies}} copies in all",
+      "twinsDetail": "More than one copy of the same AI coding tool is installed. Typing its command in Terminal runs one of them at most.",
+      "twinsFine": "No AI coding tool is installed more than once",
       "notLinked_one": "Homebrew didn't link {{count}} tool where Terminal looks",
       "notLinked_other": "Homebrew didn't link {{count}} tools where Terminal looks",
       "notLinkedDetailOne": "Usually a file of the same name was in the way when Homebrew installed it. Typing its commands in Terminal doesn't run it.",
@@ -1550,7 +1550,7 @@
     "diagnosticsNotChecked": "Not checked in Terminal: {{number}}"
   },
   "setupCheckPartial": {
-    "twinsFine": "No tool that was checked is installed more than once"
+    "twinsFine": "No AI coding tool that was checked is installed more than once"
   },
   "shortcuts": {
     "title": "Keyboard Shortcuts",
@@ -1618,7 +1618,7 @@
       },
       "twins": {
         "question": "What does “Installed twice” mean, and what should I do?",
-        "answer": "The same AI coding tool was installed in two ways, say once with npm and once by its own installer. Typing its command in Terminal runs one of them at most; select the tool, and “In Terminal” can show which one. Updating the copy Terminal doesn't use doesn't change the one it runs, unless the confirmation says the update points the command back to the copy being updated. Uninstalling one copy leaves the other as it is."
+        "answer": "More than one copy of the same AI coding tool is installed, say once with npm and once by its own installer; only the tools shown under “AI Tools” are checked for this. Typing its command in Terminal runs one of them at most; select the tool, and “In Terminal” can show which one. Updating the copy Terminal doesn't use doesn't change the one it runs, unless the confirmation says the update points the command back to the copy being updated. Uninstalling one copy leaves the other as it is."
       },
       "password": {
         "question": "Why is my Mac password needed? Can it be typed for me here?",

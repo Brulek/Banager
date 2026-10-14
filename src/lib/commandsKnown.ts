@@ -105,7 +105,7 @@ export function toolsNotLinked(
  * or npm's `bin` that leads into a protected place, or could not be
  * followed, where its own first step goes into the tool's folder
  * (`commands_unavailable`; crates/banager-core/src/commands.rs, `linked`).
- * Their names may be missing, so 「没有装了不止一份的工具」 is said of the
+ * Their names may be missing, so 「没有装了不止一份的AI编程工具」 is said of the
  * tools whose commands were listed only. Dependencies count too: a tool
  * installed twice may be one.
  */

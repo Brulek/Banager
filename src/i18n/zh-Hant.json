@@ -123,8 +123,8 @@
   },
   "twinsFilter": {
     "show": "裝了不止一份",
-    "none": "沒有發現裝了不止一份的工具",
-    "noneInSource": "{{source}}中沒有發現裝了不止一份的工具"
+    "none": "沒有發現裝了不止一份的AI程式設計工具",
+    "noneInSource": "{{source}}中沒有發現裝了不止一份的AI程式設計工具"
   },
   "twinsFilterMore": {
     "showCount": "裝了不止一份（{{number}}）"
@@ -136,7 +136,7 @@
     "previewing": "檢查完成後會顯示在這裡",
     "unjudged": "這次檢查沒有判斷終端機裡的指令",
     "notFoundUnknown": "終端機找不到：這次沒有判斷",
-    "twinsUnknown": "裝了不止一份的工具：這次沒有判斷"
+    "twinsUnknown": "裝了不止一份的AI程式設計工具：這次沒有判斷"
   },
   "overview": {
     "updatesAvailable_other": "{{count}}個工具可以更新",
@@ -1354,7 +1354,7 @@
       "incompletePlain": "檢查結果：不完整",
       "notFound": "終端機找不到：{{number}}個",
       "notLinked": "Homebrew沒有連結：{{number}}個",
-      "twins": "裝了不止一份的工具：{{number}}個",
+      "twins": "裝了不止一份的AI程式設計工具：{{number}}個",
       "diskTotal": "佔用空間：{{size}}",
       "noFacts": "系統資訊：無法讀取"
     }
@@ -1395,11 +1395,11 @@
       "otherPrograms": "不屬於這些來源的命令列程式，可以在「其他程式」裡找"
     },
     "commands": {
-      "allFine": "終端機都能找到已安裝的工具，也沒有裝了不止一份的",
+      "allFine": "終端機都能找到已安裝的工具，也沒有裝了不止一份的AI程式設計工具",
       "notOnPathFine": "終端機都能找到已安裝的工具",
-      "twins_other": "{{count}}個工具裝了不止一份，共{{copies}}份",
-      "twinsDetail": "同一個工具由不同的來源各裝了一份。在終端機裡輸入它的指令，只會執行其中一份。",
-      "twinsFine": "沒有裝了不止一份的工具",
+      "twins_other": "{{count}}個AI程式設計工具裝了不止一份，共{{copies}}份",
+      "twinsDetail": "同一個AI程式設計工具裝了不止一份。在終端機裡輸入它的指令，最多只會執行其中一份。",
+      "twinsFine": "沒有裝了不止一份的AI程式設計工具",
       "notLinked_other": "Homebrew沒有把{{count}}個工具連結到終端機找得到的地方",
       "notLinkedDetailOne": "通常是Homebrew安裝它時有同名的檔案擋住了。在終端機裡輸入它的指令時不會執行它。",
       "notLinkedDetailMany": "通常是Homebrew安裝它們時有同名的檔案擋住了。在終端機裡輸入它們的指令時不會執行它們。"
@@ -1424,7 +1424,7 @@
     "diagnosticsNotChecked": "終端機裡無法確認：{{number}}個"
   },
   "setupCheckPartial": {
-    "twinsFine": "檢查過的工具中沒有裝了不止一份的"
+    "twinsFine": "檢查過的工具中沒有裝了不止一份的AI程式設計工具"
   },
   "shortcuts": {
     "title": "鍵盤快速鍵",
@@ -1492,7 +1492,7 @@
       },
       "twins": {
         "question": "「裝了兩份」是什麼意思，該怎麼辦？",
-        "answer": "同一個AI程式設計工具用兩種方式各安裝了一份，例如npm安裝了一份，它內附的安裝程式又安裝了一份。在終端機裡輸入指令時，最多只會執行其中一份；選取這個工具，在「在終端機裡輸入時」下方可以看到執行的是哪一份。更新終端機用不到的那一份，不會改變終端機裡執行的那一份，除非確認時說明這次更新會把指令改回要更新的這一份。解除安裝其中一份，另一份不受影響。"
+        "answer": "同一個AI程式設計工具安裝了不止一份，例如npm安裝了一份，它內附的安裝程式又安裝了一份；只檢查「AI工具」裡列出的工具。在終端機裡輸入指令時，最多只會執行其中一份；選取這個工具，在「在終端機裡輸入時」下方可以看到執行的是哪一份。更新終端機用不到的那一份，不會改變終端機裡執行的那一份，除非確認時說明這次更新會把指令改回要更新的這一份。解除安裝其中一份，另一份不受影響。"
       },
       "password": {
         "question": "為什麼要輸入Mac的密碼？這裡能代我輸入嗎？",

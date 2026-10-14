@@ -312,9 +312,11 @@ function sourceLines(t: Translate, input: ToolSetupInput): SetupLine[] {
 }
 
 /**
- * 「命令」: how many tools Terminal cannot find, and how many are installed
- * more than once and how many copies those are (「1个工具装了不止一份，共2
- * 份」: the list the choice shows has a row a copy), each with 查看 to the
+ * 「命令」: how many tools Terminal cannot find, and how many AI coding tools
+ * are installed more than once and how many copies those are (「1个AI编程
+ * 工具装了不止一份，共2份」: the list the choice shows has a row a copy) --
+ * of the AI coding tools only, as `twinsByArtifact` pairs copies within a
+ * family: Ruff from Homebrew and from pipx is no pair (R82-3) -- each with 查看 to the
  * Installed page's choice that lists them -- or, where the check did not look at the commands, that it did
  * not (`commandsKnown`), as the diagnostic text says it. Where it looked at
  * some tools' commands and not at others' (`toolsNotJudged`), 「终端都能找到」

@@ -156,7 +156,7 @@ describe("ToolSetupSheet", () => {
 
   it.each([
     ["1 tool can't be found in Terminal", "notOnPath"],
-    ["1 tool is installed more than once, 2 copies in all", "twins"],
+    ["1 AI coding tool is installed more than once, 2 copies in all", "twins"],
     ["1 tool was disabled or deprecated by Homebrew", "brewRetired"],
     ["Homebrew keeps other versions of 1 tool", "otherVersions"],
   ] as const)("closes on 查看 of “%s” and opens Installed on every source showing that choice", async (line, show) => {
@@ -171,7 +171,7 @@ describe("ToolSetupSheet", () => {
   it("counts as many copies on its twins line as the Installed list it opens shows (r24 W3)", async () => {
     const { dialog, findByRole, findByText, findAllByText } = await openedFromHelp();
     fireEvent.click(
-      within(dialog).getByRole("button", { name: "Show in Installed: 1 tool is installed more than once, 2 copies in all" }),
+      within(dialog).getByRole("button", { name: "Show in Installed: 1 AI coding tool is installed more than once, 2 copies in all" }),
     );
     expect(await findByRole("heading", { level: 1, name: "Installed" })).toBeInTheDocument();
     // The toolbar's count and the Show menu's number: the two copies.

@@ -5522,7 +5522,8 @@ list that left tools out) has no reason to copy: its status says it.
 The folders on `PATH` and whether they are the
 login shell's; when the last check was and whether it covered every
 source, as the Updates page counts it, naming those it did not; how many
-tools Terminal cannot find and how many are installed more than once, or
+tools Terminal cannot find and how many AI coding tools (`families.rs`)
+are installed more than once, or
 that this check did not look at the commands, and, where there are any,
 how many Homebrew has not linked that are no copy of another tool; and the disk
 they take, once measured. Settings' checkbox, off each time Settings opens,
@@ -5639,8 +5640,11 @@ commands of an AI tool's formula Homebrew has not linked, named from its
 keg with none by design (Which copy a command runs, above), unless its
 keg could not all be read. When only some tools
 were checked, the positive Terminal sentence refers only to those tools,
-and so does the sentence that no tool is installed more than once when
-some tools' commands could not be listed.
+and so does the sentence that no AI coding tool is installed more than
+once when some tools' commands could not be listed. What either says of
+copies is said of the AI coding tools in `families.rs` only: two copies
+of another program, Ruff from Homebrew and from pipx say, are not counted,
+as a command name alone is no proof of one tool.
 
 ## Files Banager reads
 

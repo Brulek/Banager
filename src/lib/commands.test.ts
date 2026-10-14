@@ -94,6 +94,15 @@ describe("twinsByArtifact", () => {
       { name: "grok", state: { ShadowedBy: { by: formula.key } } },
     ]);
     expect(twinsByArtifact([formula, grok]).size).toBe(0);
+    // Ruff from Homebrew and from pipx: no family either, so no pair, though
+    // name and command match -- a command name alone is no proof (R82-3).
+    const brewRuff = artifact({ instance_id: "brew:/opt/homebrew", kind: "Formula", name: "ruff" }, null, [
+      { name: "ruff", state: "Runs" },
+    ]);
+    const pipxRuff = artifact({ instance_id: "pipx:home", kind: "Tool", name: "ruff" }, null, [
+      { name: "ruff", state: { ShadowedBy: { by: brewRuff.key } } },
+    ]);
+    expect(twinsByArtifact([brewRuff, pipxRuff]).size).toBe(0);
     // One tool, two copies with no command in common.
     const npm = artifact(npmKey, "claude-code", [{ name: "claude", state: "Runs" }]);
     const other = artifact(nativeKey, "claude-code", [{ name: "claude-helper", state: "Runs" }]);

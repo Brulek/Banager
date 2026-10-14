@@ -202,7 +202,8 @@ function notFoundInTerminal(artifact: InstalledArtifact): boolean {
 }
 
 /**
- * How many tools are installed more than once: one tool (a family, such as
+ * How many AI coding tools are installed more than once (no other tool has
+ * a family to pair its copies by, `twinsByArtifact`): one tool (a family, such as
  * Claude Code from npm and from its own installer) counts once however many
  * of its copies there are, not once a copy as `twinsByArtifact` keys them.
  */
@@ -223,7 +224,7 @@ export function toolsInstalledTwice(
  * How many copies those tools are, all told: every copy `twinsByArtifact`
  * keys, which is every row the Installed page's 「装了不止一份」 shows, and
  * the number beside it (「装了不止一份（2）」). Check Tool Setup says it
- * after `toolsInstalledTwice` -- 「1个工具装了不止一份，共2份」 -- so that
+ * after `toolsInstalledTwice` -- 「1个AI编程工具装了不止一份，共2份」 -- so that
  * the list its 查看 opens counts what the sheet said (r24 W3).
  */
 export function copiesOfToolsInstalledTwice(

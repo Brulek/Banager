@@ -222,11 +222,11 @@ describe("the Installed page with 「装了不止一份」 shown", () => {
     const popup = screen.getByRole("combobox", { name: "Show" });
     expect(popup.querySelector('option[value="twins"]')?.textContent).toBe("Installed More Than Once");
     show("twins");
-    expect(await screen.findByText("Nothing is installed more than once")).toBeInTheDocument();
+    expect(await screen.findByText("No AI coding tool is installed more than once")).toBeInTheDocument();
     expect(screen.queryByText("Nothing installed")).not.toBeInTheDocument();
 
     await i18n.changeLanguage("zh-CN");
-    expect(await screen.findByText("没有发现装了不止一份的工具")).toBeInTheDocument();
+    expect(await screen.findByText("没有发现装了不止一份的AI编程工具")).toBeInTheDocument();
   });
 
   it("says the commands weren't looked at when no row has any, rather than that none is installed twice", async () => {
@@ -237,7 +237,7 @@ describe("the Installed page with 「装了不止一份」 shown", () => {
     await screen.findByText("wget", { selector: "[data-tool-row] p" });
     show("twins");
     expect(await screen.findByText("This check didn't look at the commands in Terminal")).toBeInTheDocument();
-    expect(screen.queryByText("Nothing is installed more than once")).not.toBeInTheDocument();
+    expect(screen.queryByText("No AI coding tool is installed more than once")).not.toBeInTheDocument();
   });
 
   it("closes the details of a tool a new check takes out of the choice, and keeps those it doesn't", async () => {
@@ -263,14 +263,14 @@ describe("the Installed page with 「装了不止一份」 shown", () => {
       }),
     );
     await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
-    expect(await screen.findByText("Nothing is installed more than once")).toBeInTheDocument();
+    expect(await screen.findByText("No AI coding tool is installed more than once")).toBeInTheDocument();
   });
 
   it("names the source when the page shows one source that has none", async () => {
     useUiStore.getState().openInstalled(BREW);
     useUiStore.getState().setInstalledShow("twins");
     renderInstalled();
-    expect(await screen.findByText(/^Nothing in Homebrew/)).toBeInTheDocument();
+    expect(await screen.findByText("No AI coding tool in Homebrew is installed more than once")).toBeInTheDocument();
   });
 
   it("shows every tool again wherever the AI tools' choice is reset", () => {

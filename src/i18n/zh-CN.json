@@ -123,8 +123,8 @@
   },
   "twinsFilter": {
     "show": "装了不止一份",
-    "none": "没有发现装了不止一份的工具",
-    "noneInSource": "{{source}}中没有发现装了不止一份的工具"
+    "none": "没有发现装了不止一份的AI编程工具",
+    "noneInSource": "{{source}}中没有发现装了不止一份的AI编程工具"
   },
   "twinsFilterMore": {
     "showCount": "装了不止一份（{{number}}）"
@@ -136,7 +136,7 @@
     "previewing": "检查完成后会显示在这里",
     "unjudged": "这次检查没有判断终端里的命令",
     "notFoundUnknown": "终端找不到：这次没有判断",
-    "twinsUnknown": "装了不止一份的工具：这次没有判断"
+    "twinsUnknown": "装了不止一份的AI编程工具：这次没有判断"
   },
   "overview": {
     "updatesAvailable_other": "{{count}}个工具可以更新",
@@ -1354,7 +1354,7 @@
       "incompletePlain": "检查结果：不完整",
       "notFound": "终端找不到：{{number}}个",
       "notLinked": "Homebrew没有链接：{{number}}个",
-      "twins": "装了不止一份的工具：{{number}}个",
+      "twins": "装了不止一份的AI编程工具：{{number}}个",
       "diskTotal": "占用空间：{{size}}",
       "noFacts": "系统信息：无法读取"
     }
@@ -1395,11 +1395,11 @@
       "otherPrograms": "不属于这些来源的命令行程序，可以在“其他程序”里找"
     },
     "commands": {
-      "allFine": "终端都能找到已安装的工具，也没有装了不止一份的",
+      "allFine": "终端都能找到已安装的工具，也没有装了不止一份的AI编程工具",
       "notOnPathFine": "终端都能找到已安装的工具",
-      "twins_other": "{{count}}个工具装了不止一份，共{{copies}}份",
-      "twinsDetail": "同一个工具由不同的来源各装了一份。在终端里输入它的命令，只会运行其中一份。",
-      "twinsFine": "没有装了不止一份的工具",
+      "twins_other": "{{count}}个AI编程工具装了不止一份，共{{copies}}份",
+      "twinsDetail": "同一个AI编程工具装了不止一份。在终端里输入它的命令，最多只会运行其中一份。",
+      "twinsFine": "没有装了不止一份的AI编程工具",
       "notLinked_other": "Homebrew没有把{{count}}个工具链接到终端能找到的地方",
       "notLinkedDetailOne": "通常是Homebrew安装它时有同名的文件挡住了。在终端里输入它的命令时不会运行它。",
       "notLinkedDetailMany": "通常是Homebrew安装它们时有同名的文件挡住了。在终端里输入它们的命令时不会运行它们。"
@@ -1424,7 +1424,7 @@
     "diagnosticsNotChecked": "终端里无法确认：{{number}}个"
   },
   "setupCheckPartial": {
-    "twinsFine": "检查过的工具中没有装了不止一份的"
+    "twinsFine": "检查过的工具中没有装了不止一份的AI编程工具"
   },
   "shortcuts": {
     "title": "键盘快捷键",
@@ -1492,7 +1492,7 @@
       },
       "twins": {
         "question": "“装了两份”是什么意思，该怎么办？",
-        "answer": "同一个AI编程工具用两种方式各装了一份，比如npm装了一份，它自带的安装程序又装了一份。在终端里输入命令时，最多只会运行其中一份；选中这个工具，在“在终端里输入时”下面可以看到运行的是哪一份。更新终端用不到的那一份，不会改变终端里运行的那一份，除非确认时说明这次更新会把命令改回要更新的这一份。卸载其中一份，另一份不受影响。"
+        "answer": "同一个AI编程工具装了不止一份，比如npm装了一份，它自带的安装程序又装了一份；只检查“AI工具”里列出的工具。在终端里输入命令时，最多只会运行其中一份；选中这个工具，在“在终端里输入时”下面可以看到运行的是哪一份。更新终端用不到的那一份，不会改变终端里运行的那一份，除非确认时说明这次更新会把命令改回要更新的这一份。卸载其中一份，另一份不受影响。"
       },
       "password": {
         "question": "为什么要输入Mac的密码？这里能代我输入吗？",
