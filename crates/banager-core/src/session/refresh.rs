@@ -3446,7 +3446,7 @@ mod tests {
             exited_0(r#"{"dependencies":{"prettier":{"version":"3.6.2"}}}"#),
         );
         runner.respond(
-            vec![n, "outdated", "-g", "--json", "--prefix", p],
+            vec![n, "outdated", "-g", "--json", "--all=false", "--prefix", p],
             exited_0("{}"),
         );
         let (brew, brew_state) = FakeAdapter::new("brew");
@@ -3567,7 +3567,7 @@ mod tests {
             vec![n, "ls", "-g", "--depth=0", "--json", "--prefix", p],
             exited_0(r#"{"dependencies":{"prettier":{"version":"3.6.2"}}}"#),
         );
-        let outdated = vec![n, "outdated", "-g", "--json", "--prefix", p];
+        let outdated = vec![n, "outdated", "-g", "--json", "--all=false", "--prefix", p];
         runner.respond(outdated.clone(), exited_0("{}"));
         let (brew, brew_state) = FakeAdapter::new("brew");
         {

@@ -2438,7 +2438,7 @@ listed as one whose program could not start.
 | Global prefix (discovery and before executing a saved plan) | `<npm> prefix -g` | 30 s |
 | Version | `<npm> --version` | 30 s |
 | List global packages (`inventory`; `check_updates` before offering an update, or after `outdated` failed) | `<npm> ls -g --depth=0 --json --prefix {prefix}` | 60 s |
-| List outdated global packages (`check_updates`) | `<npm> outdated -g --json --prefix {prefix}` | 60 s |
+| List outdated global packages (`check_updates`) | `<npm> outdated -g --json --all=false --prefix {prefix}` | 60 s |
 | Search | `<npm> search --json --searchlimit 20 {query}` | 30 s |
 
 `npm ls` exits 1 for problems it found in the packages it read (a peer
@@ -2464,12 +2464,21 @@ which no check looks up, rather than as "everything is up to date" — listing e
 `<npm> ls -g --depth=0 --json --prefix {prefix}`, so
 a refresh whose `outdated` failed runs the inventory command twice.
 
+The outdated query explicitly sets `all=false` (`--all=false`), so an
+`all` setting inherited from a user's `.npmrc` or `NPM_CONFIG_ALL` cannot
+make it list the dependencies inside each global, nor turn a name found
+more than once into a list Banager cannot read (npm 10.9.9
+`outdated.js`; r25 R72-2). Dependencies installed inside a global package
+are not offered as separate updates.
+
 `npm outdated -g` looks every global up on the registry by name, whatever
 it was installed from, and the update below would put the registry's
 package of that name in its place. So when the check listed any row, one
 it could not check included, it runs the same `<npm> ls -g --depth=0
 --json --prefix {prefix}` once more, under npm's own lock as the check is,
-and lists no row -- neither an update nor "could not check" -- for a global
+and keeps only rows for packages present in that depth-zero global
+inventory; it lists no row -- neither an update nor "could not check" -- for a
+name that inventory does not list, nor for a global
 npm says it installed from somewhere other than a registry
 (`installed_from_elsewhere` in `npm.rs`): `file:` -- what npm always says
 of an `npm link` or a folder -- `git+…`, a URL that is no registry's

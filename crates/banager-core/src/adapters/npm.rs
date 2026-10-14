@@ -505,8 +505,13 @@ impl NpmAdapter {
         Ok((parsed?, output.stdout))
     }
 
-    /// `candidates` without the updates of globals npm did not install from
-    /// a registry (`installed_from_elsewhere`): `npm outdated -g` looks
+    /// `candidates` without the updates of a name the depth-zero inventory
+    /// does not list -- a dependency inside a global, which an `npm
+    /// outdated -g` broadened by npm's `all` setting lists, and an update
+    /// of it would end as gone before it ran (r25 R72-2; `check_updates`
+    /// also passes `--all=false`) -- and without the updates of globals npm
+    /// did not install from a registry (`installed_from_elsewhere`): `npm
+    /// outdated -g` looks
     /// every global up on the registry by name, whatever it came from
     /// (npm 10.9.9 `outdated.js:122`, `:179`), and `npm install -g <name>`
     /// would put the registry's package in place of an `npm link`, a
@@ -517,7 +522,7 @@ impl NpmAdapter {
     /// later name the source of a link or a folder only (no hidden lockfile
     /// for globals, arborist `reify.js:253`), so git, URL and alias globals
     /// keep their update there.
-    async fn without_updates_from_elsewhere(
+    async fn only_listed_registry_globals(
         &self,
         inst: &ManagerInstance,
         mut candidates: Vec<UpdateCandidate>,
@@ -525,9 +530,12 @@ impl NpmAdapter {
         if candidates.is_empty() {
             return Ok(candidates);
         }
-        let (_, listing) = self.read_ls_global(inst).await?;
+        let (installed, listing) = self.read_ls_global(inst).await?;
+        let listed: HashSet<ArtifactKey> = installed.into_iter().map(|a| a.key).collect();
         let elsewhere = installed_from_elsewhere(&listing)?;
-        candidates.retain(|candidate| !elsewhere.contains(&candidate.key.name));
+        candidates.retain(|candidate| {
+            listed.contains(&candidate.key) && !elsewhere.contains(&candidate.key.name)
+        });
         Ok(candidates)
     }
 
@@ -539,10 +547,16 @@ impl NpmAdapter {
         let output = self
             .run_npm(
                 inst,
+                // `--all=false`: npm's `all` setting, from a user's
+                // `.npmrc` or `NPM_CONFIG_ALL`, would list every dependency
+                // inside every global, a name found twice as an array that
+                // does not parse (npm 10.9.9 `outdated.js:64-66,259-278`;
+                // r25 R72-2). The command line outranks both.
                 vec![
                     "outdated".to_string(),
                     "-g".to_string(),
                     "--json".to_string(),
+                    "--all=false".to_string(),
                 ],
                 Duration::from_secs(60),
             )
@@ -551,7 +565,7 @@ impl NpmAdapter {
         // and stdout that will not parse is a real parse error.
         if output.exit_code == Some(0) {
             let found = parse_outdated_global(&output.stdout, &inst.id)?;
-            let found = self.without_updates_from_elsewhere(inst, found).await?;
+            let found = self.only_listed_registry_globals(inst, found).await?;
             return Ok(self.with_formulas_npm_marked(inst, found).into());
         }
         // npm exits 1 whenever it *finds* a version difference -- a result,
@@ -563,7 +577,7 @@ impl NpmAdapter {
         if output.exit_code == Some(1) {
             if let Ok((found, has_rows)) = parse_outdated_result(&output.stdout, &inst.id) {
                 if has_rows {
-                    let found = self.without_updates_from_elsewhere(inst, found).await?;
+                    let found = self.only_listed_registry_globals(inst, found).await?;
                     return Ok(self.with_formulas_npm_marked(inst, found).into());
                 }
             }
@@ -1166,6 +1180,7 @@ mod tests {
                     "outdated",
                     "-g",
                     "--json",
+                    "--all=false",
                     "--prefix",
                     "/opt/homebrew",
                 ],
@@ -1213,6 +1228,7 @@ mod tests {
                     "outdated",
                     "-g",
                     "--json",
+                    "--all=false",
                     "--prefix",
                     "/opt/homebrew",
                 ],
@@ -1424,6 +1440,164 @@ mod tests {
     use std::path::PathBuf;
     use std::sync::Arc;
     use tokio_util::sync::CancellationToken;
+
+    /// An npm under a test-owned prefix that is never created: the
+    /// adapter only hands its path to the mocked npm.
+    fn owned_instance(tag: &str) -> ManagerInstance {
+        let prefix = crate::testing::unique_temp_path(tag);
+        ManagerInstance {
+            exe_path: prefix.join("bin/npm"),
+            prefix: prefix.clone(),
+            version: Some("10.9.9".to_string()),
+            ..crate::testing::manager_instance("npm", &format!("npm:{}", prefix.display()))
+        }
+    }
+
+    fn npm_argv(inst: &ManagerInstance, args: &[&str]) -> Vec<String> {
+        let mut argv = vec![inst.exe_path.display().to_string()];
+        argv.extend(args.iter().map(|a| a.to_string()));
+        argv.extend(["--prefix".to_string(), inst.prefix.display().to_string()]);
+        argv
+    }
+
+    fn respond(runner: &MockRunner, argv: Vec<String>, output: CommandOutput) {
+        runner.respond(argv.iter().map(String::as_str).collect(), output);
+    }
+
+    fn npm_output(code: i32, stdout: &str) -> CommandOutput {
+        CommandOutput {
+            stderr_cause: Default::default(),
+            exit_code: Some(code),
+            stdout: stdout.to_string(),
+            stderr: String::new(),
+            timed_out: false,
+            cancelled: false,
+        }
+    }
+
+    /// The depth-zero inventory of the globals the R72-2 tests use.
+    const R72_2_LS: &str =
+        r#"{"dependencies":{"typescript":{"version":"5.4.0"},"@scope/cli":{"version":"1.0.0"}}}"#;
+
+    #[tokio::test]
+    async fn regression_r72_2_outdated_overrides_all_for_unique_and_duplicate_nested_dependencies()
+    {
+        // r25 R72-2: with all=true in npm's settings (`~/.npmrc`,
+        // NPM_CONFIG_ALL), npm 10.9.9 `outdated -g` walks the whole tree
+        // (`outdated.js:64-66`): a nested dependency became an update
+        // candidate, and a name found more than once came back as an array
+        // (`:259-278`) that failed the whole check. The setting is modelled
+        // by the mock's answer to the old argv alone.
+        let top_level = r#"{"typescript":{"current":"5.4.0","wanted":"5.5.0","latest":"5.5.0","location":"/x/lib/node_modules/typescript"}}"#;
+        let unique_nested = r#"{"typescript":{"current":"5.4.0","wanted":"5.5.0","latest":"5.5.0"},"semver":{"current":"7.5.0","wanted":"7.6.0","latest":"7.6.0","dependent":"@scope/cli"}}"#;
+        let duplicates = r#"{"typescript":[{"current":"5.4.0","wanted":"5.5.0","latest":"5.5.0","dependent":"global"},{"current":"4.9.0","wanted":"4.9.5","latest":"5.5.0","dependent":"@scope/cli"}]}"#;
+        for broad in [unique_nested, duplicates] {
+            for code in [0, 1] {
+                let inst = owned_instance("npm-r72-2-all");
+                let runner = Arc::new(MockRunner::new());
+                respond(
+                    &runner,
+                    npm_argv(&inst, &["outdated", "-g", "--json"]),
+                    npm_output(code, broad),
+                );
+                respond(
+                    &runner,
+                    npm_argv(&inst, &["outdated", "-g", "--json", "--all=false"]),
+                    npm_output(code, top_level),
+                );
+                respond(
+                    &runner,
+                    npm_argv(&inst, &["ls", "-g", "--depth=0", "--json"]),
+                    npm_output(0, R72_2_LS),
+                );
+                let rows = NpmAdapter::new(runner.clone())
+                    .check_updates(&inst, &CheckOptions::default())
+                    .await
+                    .unwrap_or_else(|e| panic!("{broad} exit {code}: {e:?}"))
+                    .candidates;
+                let names: Vec<&str> = rows.iter().map(|r| r.key.name.as_str()).collect();
+                assert_eq!(names, ["typescript"], "{broad} exit {code}");
+                assert!(rows[0].checkable);
+                assert_eq!(rows[0].target, "5.5.0");
+                assert!(
+                    !runner
+                        .calls()
+                        .contains(&npm_argv(&inst, &["outdated", "-g", "--json"])),
+                    "{broad}: the old argv ran"
+                );
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn regression_r72_2_candidates_must_belong_to_top_level_inventory() {
+        // Even with all=false: only a global the depth-zero inventory lists
+        // is an update; a name it does not list is none, every check.
+        let outdated = r#"{
+            "typescript": {"current":"5.4.0","wanted":"5.5.0","latest":"5.5.0"},
+            "@scope/cli": {"current":"1.0.0","wanted":"1.1.0","latest":"1.1.0"},
+            "semver": {"current":"7.5.0","wanted":"7.6.0","latest":"7.6.0"},
+            "left-behind": {"wanted":"2.0.0","latest":"2.0.0"}
+        }"#;
+        let inst = owned_instance("npm-r72-2-inventory");
+        let runner = Arc::new(MockRunner::new());
+        respond(
+            &runner,
+            npm_argv(&inst, &["outdated", "-g", "--json", "--all=false"]),
+            npm_output(1, outdated),
+        );
+        respond(
+            &runner,
+            npm_argv(&inst, &["ls", "-g", "--depth=0", "--json"]),
+            npm_output(0, R72_2_LS),
+        );
+        let adapter = NpmAdapter::new(runner.clone());
+        for _ in 0..2 {
+            let rows = adapter
+                .check_updates(&inst, &CheckOptions::default())
+                .await
+                .unwrap()
+                .candidates;
+            let mut names: Vec<&str> = rows.iter().map(|r| r.key.name.as_str()).collect();
+            names.sort();
+            assert_eq!(names, ["@scope/cli", "typescript"]);
+        }
+        // One inventory read for each check, and nothing more.
+        let ls = npm_argv(&inst, &["ls", "-g", "--depth=0", "--json"]);
+        assert_eq!(runner.calls().iter().filter(|c| **c == ls).count(), 2);
+    }
+
+    #[tokio::test]
+    async fn regression_r72_2_unexpected_array_output_is_never_an_actionable_update() {
+        // An array is npm's answer for a name found more than once; with
+        // all=false there is none, and one that comes anyway is no update.
+        let array = r#"{"typescript":[{"current":"5.4.0","wanted":"5.5.0","latest":"5.5.0"},{"current":"4.9.0","wanted":"4.9.5","latest":"5.5.0"}]}"#;
+        for code in [0, 1] {
+            let inst = owned_instance("npm-r72-2-array");
+            let runner = Arc::new(MockRunner::new());
+            respond(
+                &runner,
+                npm_argv(&inst, &["outdated", "-g", "--json", "--all=false"]),
+                npm_output(code, array),
+            );
+            respond(
+                &runner,
+                npm_argv(&inst, &["ls", "-g", "--depth=0", "--json"]),
+                npm_output(0, R72_2_LS),
+            );
+            let result = NpmAdapter::new(runner)
+                .check_updates(&inst, &CheckOptions::default())
+                .await;
+            match result {
+                Err(_) => {}
+                Ok(outcome) => assert!(
+                    outcome.candidates.iter().all(|c| !c.checkable),
+                    "exit {code}: {:?}",
+                    outcome.candidates
+                ),
+            }
+        }
+    }
 
     fn test_instance() -> ManagerInstance {
         ManagerInstance {
@@ -2041,6 +2215,7 @@ mod tests {
                 "outdated",
                 "-g",
                 "--json",
+                "--all=false",
                 "--prefix",
                 "/opt/homebrew",
             ],
@@ -2068,13 +2243,19 @@ mod tests {
         // `npm link` whose working copy is gone -- with no `current` key
         // (npm 10.9.9 outdated.js:159, 188, 264-271). That one row made
         // the whole answer unreadable, and every npm row "couldn't check".
-        let runner = ls_global_answering(0, r#"{"name": "lib"}"#, "");
+        // Both are globals the depth-zero inventory lists (r25 R72-2).
+        let runner = ls_global_answering(
+            0,
+            r#"{"name": "lib", "dependencies": {"left-behind": {}, "prettier": {"version": "3.8.1"}}}"#,
+            "",
+        );
         runner.respond(
             vec![
                 "/opt/homebrew/bin/npm",
                 "outdated",
                 "-g",
                 "--json",
+                "--all=false",
                 "--prefix",
                 "/opt/homebrew",
             ],
@@ -2175,6 +2356,7 @@ mod tests {
                 "outdated",
                 "-g",
                 "--json",
+                "--all=false",
                 "--prefix",
                 "/opt/homebrew",
             ],
@@ -2259,6 +2441,7 @@ mod tests {
                 "outdated",
                 "-g",
                 "--json",
+                "--all=false",
                 "--prefix",
                 "/opt/homebrew",
             ],
@@ -2303,6 +2486,7 @@ mod tests {
                 "outdated",
                 "-g",
                 "--json",
+                "--all=false",
                 "--prefix",
                 "/opt/homebrew",
             ],
@@ -2335,6 +2519,7 @@ mod tests {
                 "outdated",
                 "-g",
                 "--json",
+                "--all=false",
                 "--prefix",
                 "/opt/homebrew",
             ],
@@ -2449,6 +2634,7 @@ mod tests {
                 "outdated",
                 "-g",
                 "--json",
+                "--all=false",
                 "--prefix",
                 "/opt/homebrew",
             ],
@@ -2573,7 +2759,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_npm_that_comes_with_a_homebrew_formula_is_not_offered_its_own_update() {
-        let runner = ls_global_answering(0, r#"{"name": "lib"}"#, "");
+        let runner = ls_global_answering(
+            0,
+            r#"{"name": "lib", "dependencies": {"npm": {"version": "10.9.9"}, "prettier": {"version": "3.8.1"}}}"#,
+            "",
+        );
         let json = r#"{
             "npm": {"current": "10.9.9", "wanted": "10.9.9", "latest": "12.2.0", "dependent": "global", "location": "/opt/homebrew/lib/node_modules/npm"},
             "prettier": {"current": "3.8.1", "wanted": "3.8.2", "latest": "3.8.2", "dependent": "global", "location": "/opt/homebrew/lib/node_modules/prettier"}
@@ -2584,6 +2774,7 @@ mod tests {
                 "outdated",
                 "-g",
                 "--json",
+                "--all=false",
                 "--prefix",
                 "/opt/homebrew",
             ],
@@ -2656,7 +2847,15 @@ mod tests {
         // indistinguishable from good news.
         let runner = Arc::new(MockRunner::new());
         runner.respond(
-            vec!["/opt/homebrew/bin/npm", "outdated", "-g", "--json", "--prefix", "/opt/homebrew"],
+            vec![
+                "/opt/homebrew/bin/npm",
+                "outdated",
+                "-g",
+                "--json",
+                "--all=false",
+                "--prefix",
+                "/opt/homebrew",
+            ],
             CommandOutput { stderr_cause: Default::default(),
                 exit_code: Some(1),
                 stdout: String::new(),
@@ -3457,7 +3656,7 @@ mod tests {
         );
         runner.respond(vec![npm, "--version"], f08_npm_output("12.0.2", 0));
         runner.respond(
-            vec![npm, "outdated", "-g", "--json", "--prefix", prefix],
+            vec![npm, "outdated", "-g", "--json", "--all=false", "--prefix", prefix],
             f08_npm_output("{}", 0),
         );
         runner.respond(

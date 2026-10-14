@@ -286,7 +286,7 @@ async fn test_a_refresh_runs_only_the_read_only_commands_each_sources_section_sh
     );
     recorder.answer(
         "npm",
-        &format!("outdated -g --json --prefix {prefix}"),
+        &format!("outdated -g --json --all=false --prefix {prefix}"),
         1,
         away(fixture("npm/12.0.2/outdated-global.json")),
     );
