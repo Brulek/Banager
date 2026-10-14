@@ -2,8 +2,10 @@
  * 「拷贝诊断信息」, "Copy Diagnostic Info": a short plain text, in the
  * window's language, that the user can paste to whoever helps them --
  * which Banager, which macOS on which chip, each source with its version,
- * where its program is, how it is doing, and the error details of one that
- * did not answer (`NoAnswer.diagnostic`); the folders searched for commands
+ * where its program is, how it is doing, and its error details: why it did
+ * not answer (`NoAnswer.diagnostic`), and why its last check did not
+ * finish (`SourceError.message`, `sourceErrorGroups`) -- an error naming
+ * no listed source under 「上次检查的其他错误」; the folders searched for commands
  * (Banager's own `PATH`, the login shell's when it could be read);
  * the last check and whether it finished; how many tools Terminal cannot
  * find and how many tools are installed twice; and the disk they take, once
@@ -15,7 +17,10 @@
  * setting can hold a password) but the `PATH` folders, the home folder's
  * path (written as `~`, and any `/Users/<name>` left over is too), anything
  * from a shell file. A source's error details are its tool's own stderr,
- * masked by the runner (`runner::redact`): they can quote a setting, its
+ * masked by the runner (`runner::redact`), and Banager's own words for
+ * what failed; a check's at most five lines and 4096 bytes, URL logins
+ * masked before they are cut (`source_error_excerpt` in
+ * crates/banager-core/src/session/mod.rs). They can quote a setting, its
  * login masked, or a line of the tool's own settings file, and a token
  * there that is no URL login, or a login in a form the runner does not
  * read as one (docs/what-we-run.md, "What a tool prints about a login"),
@@ -34,7 +39,7 @@ import { homesAsTilde } from "./failureCause";
 import { updatesUnchecked } from "./uncheckedStandalone";
 import { useSizes, useSnapshot } from "./queries";
 import { sizeTotalsOf, sourceTotalText } from "./sizeTotals";
-import { adapterLabel, failedSourceAdapters, instanceLabels, namesInSentence } from "./sources";
+import { adapterLabel, failedSourceAdapters, instanceLabels, namesInSentence, sourceErrorGroups } from "./sources";
 import { checkedInFull } from "./updateState";
 import { NO_ANSWER_WORDS, saidNoAnswer } from "./noAnswer";
 import type { InstalledArtifact, InstanceNote, ManagerInstance, Sizes, Snapshot, SystemFacts, Unavailable } from "./types";
@@ -261,6 +266,7 @@ export function diagnosticsText(t: Translate, input: DiagnosticsInput): string {
   const artifacts = snapshot?.artifacts ?? [];
   const labels = instanceLabels(t, instances);
   const paths = new Map((facts?.sources ?? []).map((source) => [source.instance_id, source.exe_path]));
+  const errorGroups = sourceErrorGroups(t, snapshot?.errors ?? [], instances);
   lines.push("");
   lines.push(t("diagnostics.text.sources", { number: instances.length }));
   for (const instance of instances) {
@@ -278,11 +284,16 @@ export function diagnosticsText(t: Translate, input: DiagnosticsInput): string {
     lines.push(INDENT + t("diagnostics.text.path", { path: paths.get(instance.id) ?? instance.exe_path }));
     lines.push(INDENT + t("diagnostics.text.status", { status: statusOf(t, instance) }));
     const diagnostic = instance.status.no_answer?.diagnostic;
+    const details = [
+      ...(diagnostic ? [diagnostic] : []),
+      ...(errorGroups.find((group) => group.instanceId === instance.id)?.messages ?? []),
+    ];
     // The source's own words, a step further in: at the line start they
-    // would read as the next source's name.
-    if (diagnostic) {
+    // would read as the next source's name. Why it did not answer, then
+    // why its check did not finish.
+    if (details.length > 0) {
       lines.push(INDENT + t("sourceDiagnostic.text"));
-      for (const line of diagnostic.split("\n")) lines.push(INDENT + INDENT + line);
+      for (const detail of details) for (const line of detail.split("\n")) lines.push(INDENT + INDENT + line);
     }
     if (instance.status.notes.length > 0) {
       lines.push(INDENT + t("diagnostics.text.notes", { number: instance.status.notes.length }));
@@ -290,6 +301,18 @@ export function diagnosticsText(t: Translate, input: DiagnosticsInput): string {
     lines.push(INDENT + t("diagnostics.text.tools", { number: tools.length }));
     if (input.includeTools) {
       for (const tool of tools) lines.push(`${INDENT}${INDENT}${tool.key.name} ${shownVersion(tool)}`);
+    }
+  }
+  // Errors naming no listed source -- a detection that failed, a source
+  // gone since -- each under what it names, with nothing said of a source
+  // there is none of.
+  const unlisted = errorGroups.filter((group) => group.instanceId === null && group.messages.length > 0);
+  if (unlisted.length > 0) {
+    lines.push("");
+    lines.push(t("diagnostics.text.otherErrors"));
+    for (const group of unlisted) {
+      lines.push(INDENT + group.label);
+      for (const message of group.messages) for (const line of message.split("\n")) lines.push(INDENT + INDENT + line);
     }
   }
 

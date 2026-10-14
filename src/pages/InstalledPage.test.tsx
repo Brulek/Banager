@@ -2511,7 +2511,7 @@ describe("InstalledPage", () => {
       const { findByText, getByText, getByRole, queryByText, unmount } = renderInstalled();
 
       expect(await findByText("Some checks didn't finish")).toBeInTheDocument();
-      expect(getByText("npm didn't finish checking this time; some updates may not be listed yet.")).toBeInTheDocument();
+      expect(getByText("npm didn't finish checking this time; some tools or updates may not be listed yet.")).toBeInTheDocument();
       expect(queryByText("Nothing installed with npm")).toBeNull();
       expect(getByRole("button", { name: "Check Again" })).toBeEnabled();
       unmount();
@@ -2525,8 +2525,11 @@ describe("InstalledPage", () => {
       const details = within(line).getByRole("button", { name: "Details: Some checks didn't finish" });
       fireEvent.click(details);
       expect(document.getElementById(details.getAttribute("aria-controls") ?? "")).toHaveTextContent(
-        /^Homebrew didn't finish checking this time; some updates may not be listed yet\.$/,
+        /^Homebrew didn't finish checking this time; some tools or updates may not be listed yet\.Show Error Details$/,
       );
+      // Homebrew's reason alone behind it (R82-2).
+      fireEvent.click(within(line).getByRole("button", { name: "Show Error Details" }));
+      expect(line.querySelector("[data-source-diagnostic]")).toHaveTextContent(/^Homebrew\s+brew outdated exited 1$/);
       expect(within(line).getByRole("button", { name: "Check Again" })).toBeEnabled();
     });
 

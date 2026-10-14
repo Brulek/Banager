@@ -8,9 +8,12 @@ import { DisclosureButton } from "./DisclosureButton";
 
 /**
  * What a source said when it did not answer at startup (`NoAnswer::diagnostic`),
- * behind a closed disclosure as Homebrew's caveats are: the cause's line
- * where one was read, the next step, the source's own words and Copy.
- * Only the runner's bounded, redacted diagnostic reaches this control.
+ * or why a refresh's checks did not finish (`SourceError.message`, under
+ * 「部分检查未完成」: `unfinishedChecksNotice`, R82-2), behind a closed
+ * disclosure as Homebrew's caveats are: the cause's line where one was
+ * read, the next step, the words and Copy. Only bounded, masked text
+ * reaches this control: the runner's diagnostic, or the core's excerpt of
+ * an error (`source_error_excerpt`).
  * Copy writes the home folder in it as `~`, as Copy Diagnostic Info
  * does (`withoutHomePaths`): the step says to send it to someone.
  *

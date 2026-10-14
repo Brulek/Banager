@@ -160,7 +160,9 @@ a protected place**, and the link is not followed.
   the box, and writes your home folder as `~`, though a home folder outside the Users folder may still
   appear in full. For a source that can't run, ran into an error or isn't
   responding, it includes the error details that source's tool wrote, which can quote its settings
-  file; user names and passwords that Banager recognizes in web addresses and proxy settings are
+  file, and for a check that didn't finish, the reason it kept — the tool's last five lines at most,
+  inside Banager's own words for what failed, also behind **Show Error Details** on the notice that
+  some checks didn't finish; user names and passwords that Banager recognizes in web addresses and proxy settings are
   hidden in them
   (`docs/what-we-run.md`, "What a tool prints about a login", says which).
 - **Check Tool Setup…**, in the Help menu and as a button on the Overview and in Settings, says in short lines
@@ -665,7 +667,8 @@ formula 与 cask，以及 npm、PyPI、crates.io 上的包，每条都译自该�
 - 把“检查更新”设为“每天”或“每周”后，Banager 运行时，设置里会写出下次检查大约在什么时候。设置里的“拷贝诊断信息”（菜单栏“帮助”里的同名项会
   带你到这里）会拷贝一段关于 Banager、这台 Mac 和各来源的简短文字，可以粘贴给帮你看问题的人；勾选后才包括
   工具清单，个人文件夹的路径写成 `~`，但不在“用户”文件夹里的个人文件夹可能仍会写出完整路径。无法运行、运行时出错或没有响应的来源会附上它的工具输出的错误详情，其中可能引用工具的设置文件；
-  地址和代理设置里能识别出的用户名和密码会隐藏（哪些能识别出，见 `docs/what-we-run.md` 的
+  这次没有检查完的来源会附上保留下来的原因（最多是工具输出的最后5行，外加 Banager 对出错的说明），“部分检查未完成”提示里的
+  “查看错误详情”也能看到；地址和代理设置里能识别出的用户名和密码会隐藏（哪些能识别出，见 `docs/what-we-run.md` 的
   “What a tool prints about a login”）。
 - 菜单栏“帮助”里的“检查工具环境…”（概览和设置里“工具环境”旁边的“检查…”也一样）用几行短句说明这台 Mac 上的工具
   环境：有没有读取终端登录时的设置、哪个来源没有响应或这次没有列全、查全、终端里找不到或装了不止一份的工具有几个、Homebrew

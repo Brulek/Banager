@@ -21,7 +21,7 @@ import type {
 import type { InstalledShow } from "./families";
 import { warningArgs, warningKey } from "./warnings";
 import { displayToken, namesInSentence } from "./format";
-import { FAILURE_CAUSE_KEYS, failureCause } from "./failureCause";
+import { FAILURE_CAUSE_KEYS, failureCause, homesAsTilde } from "./failureCause";
 import { noAnswerNotice } from "./noAnswer";
 
 /** i18n key holding each adapter's human name. The `standalone-*` ids are
@@ -2009,6 +2009,64 @@ export function failedSourceAdapters(errors: SourceError[], instances: ManagerIn
 }
 
 /**
+ * An error naming no listed source, by name: its kind's, and where it was
+ * when another of its kind is listed -- 「Homebrew（/usr/local）」 beside
+ * the Homebrew that is -- the home folder as `~` (R82-1, R82-2).
+ */
+export function unlistedSourceLabel(t: Translate, id: string, instances: readonly ManagerInstance[]): string {
+  const adapterId = adapterIdOf(id);
+  const source = adapterLabel(t, adapterId);
+  if (id === adapterId || !instances.some((instance) => instance.adapter_id === adapterId)) return source;
+  return t("common.sourceWithPlace", { source, place: homesAsTilde(id.slice(adapterId.length + 1)) });
+}
+
+/** One source's reasons in `sourceErrorGroups`. */
+export interface SourceErrorGroup {
+  /** The listed source they are of; null for an error naming none. */
+  instanceId: string | null;
+  /** What the errors are said under: the source's name as the sidebar says it (`instanceLabels`), or `unlistedSourceLabel`'s. */
+  label: string;
+  /** Each different reason once, in the order kept, the home folder as `~`; none that is empty. */
+  messages: string[];
+}
+
+/**
+ * The reasons this round's checks kept (`SourceError.message`, as the core
+ * sends it: masked, its last five lines, at most 4096 bytes), by what each
+ * names, in the order `errors` first names it (R82-2): a listed source by
+ * its id, or by its adapter's bare id when it is the only one of its kind;
+ * else the id itself -- a detection that failed with two of its kind
+ * listed, or a source the snapshot no longer lists -- with no source of
+ * its own, never another's. Read by Copy Diagnostic Info
+ * (`diagnosticsText`) and 「部分检查未完成」's error details
+ * (`unfinishedChecksNotice`).
+ */
+export function sourceErrorGroups(
+  t: Translate,
+  errors: readonly SourceError[],
+  instances: readonly ManagerInstance[],
+): SourceErrorGroup[] {
+  const labels = instanceLabels(t, instances);
+  const groups = new Map<string, SourceErrorGroup>();
+  for (const error of errors) {
+    const kin = instances.filter((instance) => instance.adapter_id === error.instance_id);
+    const instance = instances.find((each) => each.id === error.instance_id) ?? (kin.length === 1 ? kin[0] : undefined);
+    const key = instance === undefined ? `unlisted:${error.instance_id}` : instance.id;
+    let group = groups.get(key);
+    if (group === undefined) {
+      group =
+        instance === undefined
+          ? { instanceId: null, label: unlistedSourceLabel(t, error.instance_id, instances), messages: [] }
+          : { instanceId: instance.id, label: labels.get(instance.id) ?? instance.adapter_id, messages: [] };
+      groups.set(key, group);
+    }
+    const message = homesAsTilde(error.message.trim());
+    if (message !== "" && !group.messages.includes(message)) group.messages.push(message);
+  }
+  return [...groups.values()];
+}
+
+/**
  * The sources a refresh failed for (`failedSourceAdapters`), by name, in
  * the user's language: what 「部分检查未完成」 says did not finish
  * (`unfinishedChecksNotice`), in place of a count that did not say which. Each adapter has a name of its
@@ -2048,7 +2106,7 @@ export function fewNames(
  * `SourceError` each (`Snapshot.errors`; `Snapshot.stale` is exactly
  * that there are any) -- or null when every one finished: 「部分检查未完成」,
  * a warning, the sources named behind its ⓘ with what that may leave
- * out (「pipx和Cargo这次未检查完，更新可能还没全部列出。」 -- "may":
+ * out (「pipx和Cargo这次未检查完，工具或更新可能还没全部列出。」 -- "may":
  * a failed update check keeps last round's candidates, but the error
  * does not say which step failed; `failedSourceNames`), and Check
  * again, as a silent source's notice offers. It used to be a band of its own over the page, the web's way;
@@ -2058,6 +2116,9 @@ export function fewNames(
  * Not the sources' own notices (`sourceNoticesFor`), which are about one
  * instance: an error can name a source the snapshot no longer lists, or
  * a bare adapter id when its detection failed (`failedSourceAdapters`).
+ * Their reasons are its error details (`sourceErrorGroups`, R82-2): what
+ * failed and why, as the tool or Banager said it. A list that left tools
+ * out (`SomeNotListed`) is no error, and has its own notice.
  * But a source that did not answer at all -- not running, not responding,
  * refusing to run as root -- already says so in its own notice, with its
  * own button, and naming it here too would say it twice: its errors are
@@ -2084,6 +2145,13 @@ export function unfinishedChecksNotice(
   });
   const names = failedSourceNames(t, unsaid, instances);
   if (names.length === 0) return null;
+  // The reasons of the errors it names, each source's under its name.
+  const diagnostic = sourceErrorGroups(t, unsaid, instances)
+    .filter((group) => group.messages.length > 0)
+    .map((group) =>
+      [group.label, ...group.messages.flatMap((message) => message.split("\n").map((line) => `  ${line}`))].join("\n"),
+    )
+    .join("\n\n");
   return {
     id: "checks-unfinished",
     variant: "warning",
@@ -2091,6 +2159,7 @@ export function unfinishedChecksNotice(
     descriptionKey: "sourceNotice.checksUnfinished.description",
     values: { count: names.length, sources: namesInSentence(t, names) },
     action: { id: "checkAgain", labelKey: "header.checkAgain" },
+    diagnostic: diagnostic === "" ? null : diagnostic,
   };
 }
 

@@ -5502,7 +5502,24 @@ version, program and status, and, for a source that did not answer, its
 error details (「错误详情」): the diagnostic its failed command left, the last
 five lines it wrote to stderr, at most 4,096 bytes, masked as all of a
 command's output is (see "Why a source did not answer" and "What a tool
-prints about a login"); the folders on `PATH` and whether they are the
+prints about a login"); and, for a source whose last check did not
+finish, why, under the same heading: each reason the refresh kept
+(`SourceError.message`) -- the tool's stderr as the runner masked it
+inside Banager's own words for what failed (`command failed (exit …):`,
+`internal error detecting this source`) -- each different one once, in
+the order kept, whether or not the tools are listed. The core sends each
+such reason as an excerpt (`source_error_excerpt` in
+`crates/banager-core/src/session/mod.rs`): every URL login in the whole
+message masked first, then its last five lines, then at most 4,096 bytes
+of their end, a word the cut falls in losing its first half; the message
+Banager holds is not changed. A reason naming no listed source -- a
+source whose detection failed, with none or two of its kind listed, or
+one the snapshot no longer lists -- is under "Other errors from the last
+check" (「上次检查的其他错误」), by what it names, with nothing said of a
+source there is none of (`sourceErrorGroups` in `src/lib/sources.ts`). A
+list or check that is incomplete without an error (a note, such as a
+list that left tools out) has no reason to copy: its status says it.
+The folders on `PATH` and whether they are the
 login shell's; when the last check was and whether it covered every
 source, as the Updates page counts it, naming those it did not; how many
 tools Terminal cannot find and how many are installed more than once, or
@@ -5551,12 +5568,20 @@ holds -- a token in a query string (`?token=…`), a bare one, a login in a
 form those rules leave as written (`https://user:1234/rest@…`, a password
 with a quote in it, a proxy's login written with no scheme in a file
 Banager does not read) -- is copied as the tool wrote it. Settings' footnote under the button
-says the text includes the error details of a source that can't run, ran
-into an error or isn't responding (「无法运行、运行时出错或没有响应」, the
-window's three names for a source that did not answer;
+says the text includes the error details kept for a source that can't run, ran
+into an error, isn't responding or didn't finish its check
+(「无法运行、运行时出错、没有响应或这次没有检查完」: the window's three
+names for a source that did not answer, and a check with an error;
 `diagnostics.footnote`), and its ⓘ what they can quote and what is hidden,
-and that a home folder outside the Users folder may still appear in full
-(`clarity.diagnosticsDetail`).
+that they are the tool's words or Banager's about what failed, that a
+check's keep at most its last five lines, shortened when very long, and
+that a home folder outside the Users folder may still appear in full
+(`clarity.diagnosticsDetail`). The same reasons are behind 「部分检查未完成」's
+Show Error Details (「查看错误详情」), each under its source's name, those
+of the errors that notice names, with Copy Error Details
+(`unfinishedChecksNotice`, `SourceDiagnostic`); copying writes the home
+folder as `~`. Nothing runs and nothing is checked again to show or copy
+them.
 
 Check Tool Setup (「检查工具环境」), in the Help menu, on the Overview and beside Copy
 Diagnostic Info in Settings' Diagnostics group, opens a sheet that says the same facts

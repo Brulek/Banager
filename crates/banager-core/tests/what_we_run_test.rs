@@ -1880,7 +1880,11 @@ fn test_what_we_run_has_the_diagnostic_info_section_saying_what_it_reads_and_nev
         "as \"What a tool prints about a login\" reads one",
         "a login in a form those rules leave as written",
         // r31 E4: every state whose error details the text includes.
-        "a source that can't run, ran into an error or isn't responding (「无法运行、运行时出错或没有响应」",
+        // R82-2: and a check that kept a reason.
+        "a source that can't run, ran into an error, isn't responding or didn't finish its check (「无法运行、运行时出错、没有响应或这次没有检查完」",
+        "every URL login in the whole message masked first, then its last five lines, then at most 4,096 bytes of their end",
+        "`source_error_excerpt`",
+        "Other errors from the last check",
         "`diagnostics.footnote`",
         "`clarity.diagnosticsDetail`",
         // Astra R20-A1-5: the ⓘ says what the window cannot write as `~`.

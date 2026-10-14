@@ -830,8 +830,8 @@
     },
     "checksUnfinished": {
       "title": "Some checks didn't finish",
-      "description_one": "{{sources}} didn't finish checking this time; some updates may not be listed yet.",
-      "description_other": "{{sources}} didn't finish checking this time; some updates may not be listed yet."
+      "description_one": "{{sources}} didn't finish checking this time; some tools or updates may not be listed yet.",
+      "description_other": "{{sources}} didn't finish checking this time; some tools or updates may not be listed yet."
     },
     "more_one": "{{count}} more note",
     "more_other": "{{count}} more notes",
@@ -1432,7 +1432,7 @@
     "label": "Diagnostic info",
     "copy": "Copy Diagnostic Info",
     "includeTools": "Include the list of tools",
-    "footnote": "Paste it to whoever is helping you. It lists your tools only when the checkbox is selected, and includes the error details of any source that can't run, ran into an error or isn't responding.",
+    "footnote": "Paste it to whoever is helping you. It lists your tools only when the checkbox is selected, and includes the error details kept for any source that can't run, ran into an error, isn't responding or didn't finish its check.",
     "text": {
       "title": "Diagnostic info",
       "time": "Time: {{time}}",
@@ -1449,6 +1449,7 @@
       "path": "Location: {{path}}",
       "status": "Status: {{status}}",
       "notes": "Notes: {{number}}",
+      "otherErrors": "Other errors from the last check:",
       "tools": "Tools: {{number}}",
       "statusWord": {
         "ok": "OK",
@@ -1613,7 +1614,7 @@
       },
       "cantUpdate": {
         "question": "Why can't some tools be updated here?",
-        "answer": "On Updates, under the tools that can be updated, a line says how many more can't be updated here; click it to see them. Each of their rows says why, for example “View only”, “Pinned” or “Updates when run”; if a pip package's index rejects the check and no version is confirmed, it says “Can't check”, and you can copy the error details. Tools installed with pip, npm packages or Homebrew tools in folders this account can't change, and Ollama models at an address with a login can only be viewed; if OLLAMA_HOST is set to an address that can't be used, no Ollama models are listed, and no other Ollama is contacted instead; dependencies installed inside an npm package aren't offered as separate updates. A pinned tool, a pipx one included, has to be unpinned in Terminal first, and rustup set to get its updates from another address isn't checked or updated here; one marked “Updates when run” updates itself, and opening it can check for a new version if its automatic updates are on, though not always right away."
+        "answer": "On Updates, under the tools that can be updated, a line says how many more can't be updated here; click it to see them, and if a source's list or check is incomplete, Check Tool Setup names that source and can open it while it's still listed. Each of their rows says why, for example “View only”, “Pinned” or “Updates when run”; if a pip package's index rejects the check and no version is confirmed, it says “Can't check”, and you can copy the error details, as you can under Show Error Details when a notice that a check didn't finish offers it, to send to someone who can help. Tools installed with pip, npm packages or Homebrew tools in folders this account can't change, and Ollama models at an address with a login can only be viewed; if OLLAMA_HOST is set to an address that can't be used, no Ollama models are listed, and no other Ollama is contacted instead; dependencies installed inside an npm package aren't offered as separate updates. A pinned tool, a pipx one included, has to be unpinned in Terminal first, and rustup set to get its updates from another address isn't checked or updated here; one marked “Updates when run” updates itself, and opening it can check for a new version if its automatic updates are on, though not always right away."
       },
       "twins": {
         "question": "What does “Installed twice” mean, and what should I do?",
@@ -1666,7 +1667,7 @@
     }
   },
   "clarity": {
-    "diagnosticsDetail": "It lists the macOS version, the location and status of each source, and the folders searched for commands, with your home folder written as “~”, though a home folder outside the Users folder may still appear in full. A source's error details are the tool's own words and can quote its settings files: user names and passwords that Banager recognizes in web addresses and proxy settings are hidden, and everything else is copied as the tool wrote it.",
+    "diagnosticsDetail": "It lists the macOS version, the location and status of each source, and the folders searched for commands, with your home folder written as “~”, though a home folder outside the Users folder may still appear in full. A source's error details are the tool's own words, or Banager's about what failed, and can quote its settings files: user names and passwords that Banager recognizes in web addresses and proxy settings are hidden, and everything else is copied as the tool wrote it. Of a check that didn't finish, at most the last five lines are kept, shortened if they're very long.",
     "keptLeftOut": "Not counting {{path}}, which holds another copy installed on its own.",
     "keptLeftOutLabel": "About the size: {{path}}",
     "ownInstaller": "{{source}}'s own installer",

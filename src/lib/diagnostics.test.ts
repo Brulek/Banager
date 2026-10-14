@@ -160,6 +160,8 @@ describe("diagnosticsText", () => {
         "  Version: 11.6.2",
         "  Location: /opt/homebrew/bin/npm",
         "  Status: View only",
+        "  Error details:",
+        "    npm outdated timed out",
         "  Tools: 1",
         "uv",
         "  Version: 0.9.1",
@@ -210,6 +212,8 @@ describe("diagnosticsText", () => {
         "  版本：11.6.2",
         "  位置：/opt/homebrew/bin/npm",
         "  状态：仅供查看",
+        "  错误详情：",
+        "    npm outdated timed out",
         "  工具：1个",
         "uv",
         "  版本：0.9.1",
@@ -254,7 +258,8 @@ describe("diagnosticsText", () => {
       "    jq 1.8.2",
     ]);
     // Nothing else changes.
-    expect(withTools.split("\n").filter((line) => !line.startsWith("    "))).toEqual(without.split("\n"));
+    const notTools = (text: string) => text.split("\n").filter((line) => !line.startsWith("    "));
+    expect(notTools(withTools)).toEqual(notTools(without));
   });
 
   it("counts a tool installed twice once, however many copies it has, and each such tool", () => {
@@ -468,6 +473,92 @@ describe("a source's incomplete list or check, in a word (R82-1)", () => {
     const text = diagnosticsText(en, input({ snapshot: { ...SNAPSHOT, instances: [noted(["FormulaeNotListed"])] } }));
     expect(text).toContain("\n  Status: Some packages not shown\n");
     expect(text).not.toContain("Status: OK");
+  });
+});
+
+describe("the reasons a check kept (R82-2)", () => {
+  const zhHant = i18n.getFixedT("zh-Hant");
+  const enotdir =
+    "command failed (exit Some(236)): npm error code ENOTDIR\nnpm error path /Users/alice/prefix/lib\nnpm error ENOTDIR: not a directory, lstat '/Users/alice/prefix/lib'";
+  const withErrors = (errors: Snapshot["errors"], instances = SNAPSHOT.instances): Snapshot => ({ ...SNAPSHOT, instances, errors });
+
+  it("copies a listing's and an update check's reasons under their source, with or without the tools", () => {
+    const snapshot = withErrors([
+      { instance_id: NPM, message: enotdir },
+      { instance_id: NPM, message: "npm outdated timed out" },
+    ]);
+    const npmBlock = [
+      "npm",
+      "  Version: 11.6.2",
+      "  Location: /opt/homebrew/bin/npm",
+      "  Status: View only",
+      "  Error details:",
+      "    command failed (exit Some(236)): npm error code ENOTDIR",
+      "    npm error path ~/prefix/lib",
+      "    npm error ENOTDIR: not a directory, lstat '~/prefix/lib'",
+      "    npm outdated timed out",
+      "  Tools: 1",
+    ].join("\n");
+    for (const includeTools of [false, true]) {
+      const text = diagnosticsText(en, input({ snapshot, includeTools }));
+      expect(text).toContain(npmBlock);
+      expect(text).not.toContain("alice");
+    }
+    expect(diagnosticsText(zh, input({ snapshot }))).toContain(
+      "  错误详情：\n    command failed (exit Some(236)): npm error code ENOTDIR\n    npm error path ~/prefix/lib\n",
+    );
+    expect(diagnosticsText(zhHant, input({ snapshot }))).toContain(
+      "  錯誤詳細資訊：\n    command failed (exit Some(236)): npm error code ENOTDIR\n",
+    );
+  });
+
+  it("keeps a source's startup details, then its check's, under one heading", () => {
+    const silent = instance(UV, "/Users/alice/.local/bin/uv", {
+      version: "0.9.1",
+      status: { unavailable: "NotResponding", notes: [], no_answer: { kind: "ExitedWithError", diagnostic: "error: uv broke", missing_program: null, link_fixes: [] } },
+    });
+    const text = diagnosticsText(en, input({ snapshot: withErrors([{ instance_id: UV, message: "uv tool list timed out" }], [silent]) }));
+    expect(text).toContain("  Status: Ran into an error\n  Error details:\n    error: uv broke\n    uv tool list timed out\n  Tools: 1\n");
+  });
+
+  it("keeps each error with what it names: never on another source, nor counted as one", () => {
+    const apple = instance(BREW, "/opt/homebrew/bin/brew", { version: "7.0.3" });
+    const intel = instance("brew:/usr/local", "/usr/local/bin/brew", { version: "7.0.3", prefix: "/usr/local" });
+    const snapshot = withErrors(
+      [
+        { instance_id: BREW, message: "brew outdated failed" },
+        { instance_id: BREW, message: "brew outdated failed" },
+        { instance_id: "brew", message: "internal error detecting this source" },
+        { instance_id: "brew:/Users/alice/brew", message: "brew list failed" },
+        { instance_id: "pipx", message: "internal error detecting this source" },
+      ],
+      [apple, intel],
+    );
+    const text = diagnosticsText(en, input({ snapshot }));
+    expect(text).toContain("Sources: 2\n");
+    expect(text).toContain(
+      "Homebrew (Apple silicon)\n  Version: 7.0.3\n  Location: /opt/homebrew/bin/brew\n  Status: OK\n  Error details:\n    brew outdated failed\n  Tools: 2\n",
+    );
+    expect(text).toContain("Homebrew (Intel)\n  Version: 7.0.3\n  Location: /usr/local/bin/brew\n  Status: OK\n  Tools: 0\n");
+    expect(text).toContain(
+      [
+        "",
+        "Other errors from the last check:",
+        "  Homebrew",
+        "    internal error detecting this source",
+        "  Homebrew (~/brew)",
+        "    brew list failed",
+        "  pipx",
+        "    internal error detecting this source",
+        "",
+      ].join("\n"),
+    );
+    expect(diagnosticsText(zh, input({ snapshot }))).toContain("\n上次检查的其他错误：\n  Homebrew\n");
+    expect(diagnosticsText(zhHant, input({ snapshot }))).toContain("\n上次檢查的其他錯誤：\n  Homebrew\n");
+    // A bare source's error, with only one source of its kind listed, is that source's.
+    const one = diagnosticsText(en, input({ snapshot: withErrors([{ instance_id: "npm", message: "internal error refreshing this instance" }]) }));
+    expect(one).toContain("  Status: View only\n  Error details:\n    internal error refreshing this instance\n");
+    expect(one).not.toContain("Other errors");
   });
 });
 

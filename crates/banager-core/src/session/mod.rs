@@ -58,7 +58,36 @@ use std::sync::{Arc, Mutex};
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SourceError {
     pub instance_id: InstanceId,
+    /// Why: `AdapterError`'s words, with the tool's stderr the runner
+    /// masked, or Banager's own (`refresh()`). Sent to the window as an
+    /// excerpt ([`source_error_excerpt`]), which shows and copies it.
+    #[serde(serialize_with = "serialize_source_error_message")]
     pub message: String,
+}
+
+/// The most of a `SourceError::message` the window gets: as much as a
+/// source's no-answer keeps (`NoAnswer::diagnostic`).
+const SOURCE_ERROR_BYTES: usize = 4096;
+
+/// A `SourceError::message` as the window gets it (R82-2): every URL login
+/// in the whole message masked (`mask_url_logins`) before anything is cut,
+/// then its last five lines (`failure_summary`), then its last
+/// [`SOURCE_ERROR_BYTES`] bytes, a word cut in two losing its first half
+/// (`tail_within`). The message Banager holds is not changed, and nothing
+/// is read to make it.
+fn source_error_excerpt(message: &str) -> String {
+    let masked = crate::runner::redact::mask_url_logins(message);
+    let summary = crate::runner::failure_summary(&masked);
+    crate::runner::redact::tail_within(summary.trim(), SOURCE_ERROR_BYTES)
+        .trim()
+        .to_string()
+}
+
+fn serialize_source_error_message<S: serde::Serializer>(
+    message: &str,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    serializer.serialize_str(&source_error_excerpt(message))
 }
 
 /// Whether any adapter detected a usable instance. There used to be a
@@ -960,5 +989,79 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
         assert!(!session.busy(), "the operation is done");
+    }
+
+    /// What the window gets of a `SourceError`'s message: masked as a
+    /// whole, then its last five lines, at most 4096 bytes (R82-2).
+    fn wire_message(message: &str) -> String {
+        let error = SourceError {
+            instance_id: "npm:/opt/homebrew".to_string(),
+            message: message.to_string(),
+        };
+        let wire = serde_json::to_value(&error).unwrap();
+        assert_eq!(
+            error.message, message,
+            "the message Banager holds is not changed"
+        );
+        let back: SourceError = serde_json::from_value(wire.clone()).unwrap();
+        assert_eq!(back.instance_id, error.instance_id);
+        wire["message"].as_str().unwrap().to_string()
+    }
+
+    #[test]
+    fn test_a_source_errors_message_reaches_the_window_bounded_and_masked() {
+        // npm's ENOTDIR as `refresh()` keeps it (`e.to_string()`), from
+        // the stderr recorded in adapters/npm.rs's tests.
+        let enotdir = AdapterError::CommandFailed {
+            code: Some(236),
+            stderr: "npm error code ENOTDIR\nnpm error syscall lstat\nnpm error path /Users/me/prefix/lib\nnpm error errno -20\nnpm error ENOTDIR: not a directory, lstat '/Users/me/prefix/lib'\n".to_string(),
+        }
+        .to_string();
+        assert_eq!(wire_message(&enotdir), enotdir.trim_end());
+        assert!(wire_message(&enotdir)
+            .contains("ENOTDIR: not a directory, lstat '/Users/me/prefix/lib'"));
+        assert_eq!(
+            wire_message("internal error detecting this source"),
+            "internal error detecting this source"
+        );
+
+        // Its last five lines.
+        let eight = (1..=8)
+            .map(|n| format!("line {n}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert_eq!(
+            wire_message(&eight),
+            "line 4\nline 5\nline 6\nline 7\nline 8"
+        );
+
+        // At most 4096 bytes, on a character's boundary, the end kept.
+        let long = format!("{}end", "界".repeat(3000));
+        let said = wire_message(&long);
+        assert!(said.len() <= 4096, "{}", said.len());
+        assert!(said.ends_with("界end"));
+
+        // A URL login is masked before the cut, so no half of it is left.
+        let prefix = "see https://alice:h";
+        let rest = format!("unter22@proxy.example/ {}", "b".repeat(4096 - 23));
+        let said = wire_message(&format!("{prefix}{rest}"));
+        assert!(said.len() <= 4096, "{}", said.len());
+        for part in ["alice", "hunter22", "unter22", "nter"] {
+            assert!(!said.contains(part), "{part} in {said:?}");
+        }
+        assert!(
+            wire_message("fetch https://alice:hunter22@proxy.example/ failed")
+                .contains("https://****:****@proxy.example/")
+        );
+
+        // A word cut in two loses its first half; one the cut falls
+        // beside is kept whole.
+        let cut_inside = wire_message(&format!("token{}", "x".repeat(4100)));
+        assert!(cut_inside.starts_with("****x"), "{}", &cut_inside[..10]);
+        assert!(cut_inside.len() <= 4096);
+        let beside = format!("secret {}", "w".repeat(4096));
+        assert_eq!(wire_message(&beside), "w".repeat(4096));
+        let beside = format!("secret {}", "w".repeat(4095));
+        assert_eq!(wire_message(&beside), "w".repeat(4095));
     }
 }

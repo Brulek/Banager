@@ -1735,6 +1735,42 @@ describe("unfinishedChecksNotice", () => {
   const say = (t: typeof enT, notice: ReturnType<typeof unfinishedChecksNotice>) =>
     notice === null ? null : [t(notice.titleKey, notice.values), t(notice.descriptionKey, notice.values)];
 
+  it("gives the reasons of the errors it names as its error details, each source's once (R82-2)", () => {
+    const npm = instance({ id: "npm:/opt/homebrew", adapter_id: "npm", exe_path: "/opt/homebrew/bin/npm" });
+    const silent = instance({ status: { unavailable: "NotResponding", notes: [] } });
+    const errors: SourceError[] = [
+      { instance_id: npm.id, message: "command failed (exit Some(236)): npm error code ENOTDIR\nnpm error path /Users/alice/prefix/lib" },
+      { instance_id: npm.id, message: "npm outdated timed out" },
+      { instance_id: npm.id, message: "npm outdated timed out" },
+      // Said by its own notice, so neither named nor detailed here.
+      { instance_id: silent.id, message: "brew list timed out" },
+      { instance_id: "pipx", message: "internal error detecting this source" },
+    ];
+    const notice = unfinishedChecksNotice(enT, errors, [silent, npm]);
+    expect(notice?.diagnostic).toBe(
+      [
+        "npm",
+        "  command failed (exit Some(236)): npm error code ENOTDIR",
+        "  npm error path ~/prefix/lib",
+        "  npm outdated timed out",
+        "",
+        "pipx",
+        "  internal error detecting this source",
+      ].join("\n"),
+    );
+    expect(notice?.diagnosticCause ?? null).toBeNull();
+    expect(notice?.action).toEqual({ id: "checkAgain", labelKey: "header.checkAgain" });
+    // On pipx's page alone, only pipx's.
+    expect(unfinishedChecksNotice(enT, errors, [silent, npm], [npm])?.diagnostic).toBe(
+      "npm\n  command failed (exit Some(236)): npm error code ENOTDIR\n  npm error path ~/prefix/lib\n  npm outdated timed out",
+    );
+    // A list that left tools out has no error, and no details invented for it.
+    const pipx = instance({ id: "pipx:/opt/homebrew/bin/pipx", adapter_id: "pipx", status: { unavailable: null, notes: ["SomeNotListed"] } });
+    expect(unfinishedChecksNotice(enT, [], [pipx])).toBeNull();
+    // An error with no words gives no details.
+    expect(unfinishedChecksNotice(enT, [{ instance_id: npm.id, message: " " }], [npm])?.diagnostic ?? null).toBeNull();
+  });
+
   it("is nothing when every check finished", () => {
     expect(unfinishedChecksNotice(enT, [], [instance()])).toBeNull();
   });
@@ -1758,12 +1794,12 @@ describe("unfinishedChecksNotice", () => {
     });
     expect(say(enT, notice)).toEqual([
       "Some checks didn't finish",
-      "Homebrew, npm and uv didn't finish checking this time; some updates may not be listed yet.",
+      "Homebrew, npm and uv didn't finish checking this time; some tools or updates may not be listed yet.",
     ]);
     // Never 更新 for a check: it is this app's word for installing a newer version.
     expect(say(zhT, unfinishedChecksNotice(zhT, errors, [instance()]))).toEqual([
       "部分检查未完成",
-      "Homebrew、npm和uv这次未检查完，更新可能还没全部列出。",
+      "Homebrew、npm和uv这次未检查完，工具或更新可能还没全部列出。",
     ]);
     // Two Homebrews that both failed are the one Homebrew it names.
     const intel = instance({ id: "brew:/usr/local", prefix: "/usr/local", exe_path: "/usr/local/bin/brew" });
@@ -1779,7 +1815,7 @@ describe("unfinishedChecksNotice", () => {
           [instance(), intel],
         ),
       ),
-    ).toEqual(["Some checks didn't finish", "Homebrew didn't finish checking this time; some updates may not be listed yet."]);
+    ).toEqual(["Some checks didn't finish", "Homebrew didn't finish checking this time; some tools or updates may not be listed yet."]);
   });
 
   it("leaves out a source that did not answer: its own notice says so", () => {
@@ -1800,11 +1836,11 @@ describe("unfinishedChecksNotice", () => {
     expect(unfinishedChecksNotice(enT, errors, [silent, stopped, pipx])).toBeNull();
     expect(
       say(enT, unfinishedChecksNotice(enT, [...errors, { instance_id: pipx.id, message: "timed out" }], [silent, stopped, pipx])),
-    ).toEqual(["Some checks didn't finish", "pipx didn't finish checking this time; some updates may not be listed yet."]);
+    ).toEqual(["Some checks didn't finish", "pipx didn't finish checking this time; some tools or updates may not be listed yet."]);
     // One source or several, the same words: no 它们 for one.
     expect(
       say(zhT, unfinishedChecksNotice(zhT, [...errors, { instance_id: pipx.id, message: "timed out" }], [silent, stopped, pipx])),
-    ).toEqual(["部分检查未完成", "pipx这次未检查完，更新可能还没全部列出。"]);
+    ).toEqual(["部分检查未完成", "pipx这次未检查完，工具或更新可能还没全部列出。"]);
   });
 
   it("names only the sources in view, and a failed detection by its adapter", () => {
@@ -1816,12 +1852,12 @@ describe("unfinishedChecksNotice", () => {
     // The Installed page on Homebrew: its detection failed, pipx is not in view.
     expect(say(enT, unfinishedChecksNotice(enT, errors, [instance(), pipx], [instance()]))).toEqual([
       "Some checks didn't finish",
-      "Homebrew didn't finish checking this time; some updates may not be listed yet.",
+      "Homebrew didn't finish checking this time; some tools or updates may not be listed yet.",
     ]);
     // On pipx: pipx alone.
     expect(say(enT, unfinishedChecksNotice(enT, errors, [instance(), pipx], [pipx]))).toEqual([
       "Some checks didn't finish",
-      "pipx didn't finish checking this time; some updates may not be listed yet.",
+      "pipx didn't finish checking this time; some tools or updates may not be listed yet.",
     ]);
     // On a source whose checks all finished: nothing.
     const cargo = instance({ id: "cargo:/Users/you/.cargo", adapter_id: "cargo" });

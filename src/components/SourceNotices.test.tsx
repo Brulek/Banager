@@ -504,3 +504,40 @@ describe("SourceNotices: when a source that did not answer last did (R12)", () =
     expect(screen.getByText(/显示的是它昨天21:40响应时的结果/)).toBeVisible();
   });
 });
+
+describe("SourceNotices, a check that didn't finish (R82-2)", () => {
+  it("shows and copies the reasons the check kept, and checks nothing again by itself", async () => {
+    await i18n.changeLanguage("en");
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    const { unfinishedChecksNotice } = await import("../lib/sources");
+    const npm = {
+      id: "npm:/opt/homebrew",
+      adapter_id: "npm",
+      exe_path: "/opt/homebrew/bin/npm",
+      prefix: "/opt/homebrew",
+      scope: "User" as const,
+      version: "11.6.2",
+      answered_at: null,
+      unverified_version: null,
+      read_only_reason: null,
+      status: { unavailable: null, notes: [] },
+    };
+    const notice = unfinishedChecksNotice(
+      i18n.getFixedT("en"),
+      [{ instance_id: npm.id, message: "npm error code ENOTDIR\nnpm error path /Users/alice/prefix/lib" }],
+      [npm],
+    );
+    expect(notice).not.toBeNull();
+    renderWithProviders(<SourceNotices notices={[notice!]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Details: Some checks didn't finish" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show Error Details" }));
+    expect(document.querySelector("[data-source-diagnostic]")).toHaveTextContent("npm error path ~/prefix/lib");
+    fireEvent.click(screen.getByRole("button", { name: "Copy Error Details" }));
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith("npm\n  npm error code ENOTDIR\n  npm error path ~/prefix/lib"),
+    );
+    expect(mockInvoke).not.toHaveBeenCalledWith("refresh", expect.anything());
+    expect(mockInvoke.mock.calls.map(([command]) => command)).not.toContain("refresh");
+  });
+});

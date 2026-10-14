@@ -714,6 +714,33 @@ pub fn after_cut(text: &str) -> Cow<'_, str> {
     Cow::Owned(format!("{MASK}{}", &text[end..]))
 }
 
+/// The last `max` bytes of `text` at most, on a character's boundary.
+/// Where that cuts a word in two, its first half is masked ([`after_cut`]),
+/// the mask within `max` too; a word the cut falls beside is kept whole.
+pub fn tail_within(text: &str, max: usize) -> Cow<'_, str> {
+    if text.len() <= max {
+        return Cow::Borrowed(text);
+    }
+    let start_within = |budget: usize| {
+        let mut start = text.len() - budget;
+        while !text.is_char_boundary(start) {
+            start += 1;
+        }
+        start
+    };
+    let splits_a_word =
+        |at: usize| !text[..at].ends_with(ends_a_word) && !text[at..].starts_with(ends_a_word);
+    let start = start_within(max);
+    if !splits_a_word(start) {
+        return Cow::Borrowed(&text[start..]);
+    }
+    let start = start_within(max.saturating_sub(MASK.len()));
+    if !splits_a_word(start) {
+        return Cow::Borrowed(&text[start..]);
+    }
+    after_cut(&text[start..])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

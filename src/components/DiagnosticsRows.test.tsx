@@ -186,7 +186,7 @@ describe("Settings' Diagnostics group", () => {
     expect(controls[1]).toHaveTextContent("Copy Diagnostic Info");
     const footnote = group.nextElementSibling as HTMLElement;
     expect(footnote).toHaveTextContent(
-      "Paste it to whoever is helping you. It lists your tools only when the checkbox is selected, and includes the error details of any source that can't run, ran into an error or isn't responding.",
+      "Paste it to whoever is helping you. It lists your tools only when the checkbox is selected, and includes the error details kept for any source that can't run, ran into an error, isn't responding or didn't finish its check.",
     );
     // The details behind its ⓘ.
     fireEvent.click(within(footnote).getByRole("button", { name: "Details: Diagnostic info" }));
@@ -194,7 +194,7 @@ describe("Settings' Diagnostics group", () => {
     // the logins Banager recognizes, not every one a tool can print.
     expect(
       screen.getByText(
-        /error details are the tool's own words and can quote its settings files: user names and passwords that Banager recognizes in web addresses and proxy settings are hidden, and everything else is copied as the tool wrote it\./,
+        /error details are the tool's own words, or Banager's about what failed, and can quote its settings files: user names and passwords that Banager recognizes in web addresses and proxy settings are hidden, and everything else is copied as the tool wrote it\./,
       ),
     ).toBeInTheDocument();
   });

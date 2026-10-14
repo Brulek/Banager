@@ -22,13 +22,12 @@
 import { create } from "zustand";
 import { commandsKnown, toolsNamesIncomplete, toolsNotJudged, toolsNotLinked } from "./commandsKnown";
 import { copiesOfToolsInstalledTwice, noteWarns, sourceStateWords, toolsInstalledTwice, type Translate } from "./diagnostics";
-import { homesAsTilde } from "./failureCause";
 import { twinsByArtifact } from "./commands";
 import { discoverCounts, keepsOtherVersions, notOnPathDetailKey, type DiscoverShow } from "./families";
 import { modelsTotalText } from "./sizes";
 import { sizeTotalsOf, sourceTotalText, type SizeTotal } from "./sizeTotals";
 import { answeredWhen } from "./answeredWhen";
-import { adapterIdOf, adapterLabel, instanceLabels } from "./sources";
+import { instanceLabels, unlistedSourceLabel } from "./sources";
 import type { InstalledArtifact, ManagerInstance, Sizes, Snapshot, SystemFacts } from "./types";
 import { artifactKeyId } from "../store/ui";
 
@@ -237,18 +236,6 @@ function sourceProblems(snapshot: Snapshot): { failed: Set<string>; unlisted: st
 }
 
 /**
- * An `unlisted` error's source by name: its kind's, and where it was when
- * another of its kind is listed -- 「Homebrew（/usr/local）」 beside the
- * Homebrew that is -- its home folder as `~`.
- */
-function unlistedLabel(t: Translate, id: string, instances: readonly ManagerInstance[]): string {
-  const adapterId = adapterIdOf(id);
-  const source = adapterLabel(t, adapterId);
-  if (id === adapterId || !instances.some((instance) => instance.adapter_id === adapterId)) return source;
-  return t("common.sourceWithPlace", { source, place: homesAsTilde(id.slice(adapterId.length + 1)) });
-}
-
-/**
  * Whether a source's line has the ⚠︎: it did not answer, a note says its
  * list or check is incomplete (`noteWarns`), or its check did not finish
  * (`failed`, from `sourceProblems`). Read by `sourceLines`,
@@ -295,7 +282,7 @@ function sourceLines(t: Translate, input: ToolSetupInput): SetupLine[] {
         `unlisted:${id}`,
         "warning",
         t("setupCheck.sources.state", {
-          source: unlistedLabel(t, id, snapshot.instances),
+          source: unlistedSourceLabel(t, id, snapshot.instances),
           state: t("setupCheck.sources.checkUnfinished"),
         }),
       ),
