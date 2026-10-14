@@ -17,6 +17,8 @@ import { openToolSetupSheet } from "../lib/toolSetupCheck";
 import { TextWithInfo } from "../components/InfoDetail";
 import { BUTTON } from "../components/ui/controls";
 import { PopupButton } from "../components/ui/PopupButton";
+import { SourceNotice } from "../components/SourceNotice";
+import { settingsUnreadable } from "../components/SettingsNotice";
 import { focusOrFallback } from "../components/ui/focus";
 import {
   FORM_COLUMN,
@@ -196,6 +198,12 @@ export function SettingsPage() {
 
   const current = draft ?? settingsQuery.data;
   const loaded = !settingsQuery.isLoading && current !== undefined;
+  // The defaults standing in for settings that could not be read when
+  // Banager opened (r24 R74-3): said first, and none of them changed --
+  // the backend would refuse the save -- nor permission to notify asked
+  // for, until Banager is reopened.
+  const locked = settingsUnreadable(settingsQuery.data);
+  const rowLabel = locked ? ROW_LABEL_DISABLED : ROW_LABEL;
 
   // Opened from the Overview's 「2个已隐藏」 (`showHiddenUpdates`): the
   // two groups of hidden updates -- their titles and their rows -- in
@@ -252,6 +260,7 @@ export function SettingsPage() {
   // saved (`useSaveSettings`); on screen it is made to `from`, what the
   // page shows, until the save ends.
   const persist = (edit: SettingsEdit, from: Settings = current) => {
+    if (locked) return;
     setDraft(edit(from));
     saveMutation.mutate(edit, {
       onSettled: () => setDraft(null),
@@ -264,6 +273,7 @@ export function SettingsPage() {
   // then and in what is saved. Refused, or the asking itself failed, the
   // switch is back off with the line that says where to allow it.
   const turnNotifyOn = () => {
+    if (locked) return;
     setNotifyRefused(false);
     setAskingToNotify(true);
     void requestNotificationPermission()
@@ -285,6 +295,7 @@ export function SettingsPage() {
   // first -- the same permission, asked the same way -- and saved on only
   // once it is granted. It needs no automatic check.
   const turnNotifyOpsOn = () => {
+    if (locked) return;
     setNotifyOpsRefused(false);
     setAskingToNotifyOps(true);
     void requestNotificationPermission()
@@ -364,6 +375,21 @@ export function SettingsPage() {
     // than 560, so that on a wide window a switch stays within reach of
     // its words.
     <div className={FORM_COLUMN}>
+      {locked ? (
+        <div data-settings-load-warning="" role="status" className="px-2.5">
+          <SourceNotice
+            variant="warning"
+            title={t("persistence.settingsUnreadable")}
+            description={t("persistence.settingsLoadEffects")}
+            details={
+              <>
+                <p className="mt-1 text-small text-muted">{t("persistence.settingsDefaultsDetail")}</p>
+                <p className="mt-1 text-small text-muted">{t("persistence.settingsRecovery")}</p>
+              </>
+            }
+          />
+        </div>
+      ) : null}
       {/* Its reason only with "Show technical details" on as saved, not
           as shown: a save that was to turn it on is what failed. */}
       {saveMutation.isError && (
@@ -380,7 +406,7 @@ export function SettingsPage() {
       <SettingsGroup title={t("settings.groups.general")}>
         <SettingRow
           label={
-            <label htmlFor="settings-language" className={ROW_LABEL}>
+            <label htmlFor="settings-language" className={rowLabel}>
               {t("settings.language.label")}
             </label>
           }
@@ -391,6 +417,7 @@ export function SettingsPage() {
               id="settings-language"
               value={current.language}
               options={LANGUAGES.map((lang) => ({ value: lang, label: t(languageLabelKey(lang)) }))}
+              disabled={locked}
               onChange={(language) => persist((saved) => ({ ...saved, language }))}
             />
           }
@@ -398,7 +425,7 @@ export function SettingsPage() {
         {/* The group's one explanation, under the row it explains. */}
         <SettingRow
           label={
-            <label htmlFor="settings-show-technical" className={ROW_LABEL}>
+            <label htmlFor="settings-show-technical" className={rowLabel}>
               {t("settings.showTechnicalDetails.label")}
             </label>
           }
@@ -412,6 +439,7 @@ export function SettingsPage() {
               id="settings-show-technical"
               aria-describedby="settings-show-technical-desc"
               checked={current.show_technical_details}
+              disabled={locked}
               onCheckedChange={(checked) => persist((saved) => ({ ...saved, show_technical_details: checked }))}
             />
           }
@@ -438,7 +466,7 @@ export function SettingsPage() {
       >
         <SettingRow
           label={
-            <label htmlFor="settings-auto-check" className={ROW_LABEL}>
+            <label htmlFor="settings-auto-check" className={rowLabel}>
               {t("settings.autoCheck.label")}
             </label>
           }
@@ -460,6 +488,7 @@ export function SettingsPage() {
               id="settings-auto-check"
               describedBy="settings-auto-check-desc"
               value={autoCheckChoice(current)}
+              disabled={locked}
               options={AUTO_CHECK_CHOICES.map((choice) => ({ value: choice, label: t(AUTO_CHECK_CHOICE_KEYS[choice]) }))}
               onChange={(choice) => {
                 setNotifyRefused(false);
@@ -472,7 +501,7 @@ export function SettingsPage() {
           label={
             <label
               htmlFor="settings-notify-updates"
-              className={current.auto_check ? ROW_LABEL : ROW_LABEL_DISABLED}
+              className={current.auto_check && !locked ? ROW_LABEL : ROW_LABEL_DISABLED}
             >
               {t("settings.notifyUpdates.label")}
             </label>
@@ -500,7 +529,7 @@ export function SettingsPage() {
                 !current.auto_check || notifyRefused ? "settings-notify-updates-desc" : undefined
               }
               checked={current.auto_check && (current.notify_updates || askingToNotify)}
-              disabled={!current.auto_check || askingToNotify}
+              disabled={locked || !current.auto_check || askingToNotify}
               onCheckedChange={(checked) =>
                 checked ? turnNotifyOn() : persist((saved) => ({ ...saved, notify_updates: false }))
               }
@@ -513,7 +542,7 @@ export function SettingsPage() {
             permission to post (`turnNotifyOpsOn`). */}
         <SettingRow
           label={
-            <label htmlFor="settings-notify-operations" className={ROW_LABEL}>
+            <label htmlFor="settings-notify-operations" className={rowLabel}>
               {t("settings.notifyOperations.label")}
             </label>
           }
@@ -531,7 +560,7 @@ export function SettingsPage() {
               id="settings-notify-operations"
               aria-describedby={notifyOpsRefused ? "settings-notify-operations-desc" : undefined}
               checked={(current.notify_operations ?? false) || askingToNotifyOps}
-              disabled={askingToNotifyOps}
+              disabled={locked || askingToNotifyOps}
               onCheckedChange={(checked) =>
                 checked ? turnNotifyOpsOn() : persist((saved) => ({ ...saved, notify_operations: false }))
               }
@@ -540,7 +569,7 @@ export function SettingsPage() {
         />
         <SettingRow
           label={
-            <label htmlFor="settings-include-self-updating" className={ROW_LABEL}>
+            <label htmlFor="settings-include-self-updating" className={rowLabel}>
               {t("settings.includeSelfUpdating.label")}
             </label>
           }
@@ -549,6 +578,7 @@ export function SettingsPage() {
               id="settings-include-self-updating"
               aria-describedby="settings-include-self-updating-desc"
               checked={current.include_self_updating}
+              disabled={locked}
               onCheckedChange={(checked) => persist((saved) => ({ ...saved, include_self_updating: checked }))}
             />
           }

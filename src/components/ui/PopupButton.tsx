@@ -13,6 +13,8 @@ export interface PopupButtonProps<T extends string> {
   onChange: (value: T) => void;
   /** The id of what describes it -- its row's second line -- where it has one. */
   describedBy?: string;
+  /** Off, its value dimmed: Settings' popups while the settings cannot be saved. */
+  disabled?: boolean;
 }
 
 /**
@@ -51,11 +53,18 @@ function UpDownChevrons() {
  * whatever the longest option is. The keyboard's focus ring goes round
  * the whole, since the select itself is not seen.
  */
-export function PopupButton<T extends string>({ id, value, options, onChange, describedBy }: PopupButtonProps<T>) {
+export function PopupButton<T extends string>({
+  id,
+  value,
+  options,
+  onChange,
+  describedBy,
+  disabled = false,
+}: PopupButtonProps<T>) {
   const current = options.find((option) => option.value === value);
   return (
     <span className="relative mr-1 inline-flex h-5 shrink-0 items-center gap-4 rounded-control has-[:focus-visible]:outline-3 has-[:focus-visible]:outline-focus">
-      <span aria-hidden="true" className="text-body text-foreground">
+      <span aria-hidden="true" className={`text-body ${disabled ? "text-tertiary" : "text-foreground"}`}>
         {current?.label}
       </span>
       <span
@@ -68,6 +77,7 @@ export function PopupButton<T extends string>({ id, value, options, onChange, de
         id={id}
         aria-describedby={describedBy}
         value={value}
+        disabled={disabled}
         onChange={(event: ChangeEvent<HTMLSelectElement>) => onChange(event.target.value as T)}
         className="absolute inset-0 h-full w-full appearance-none opacity-0 outline-none"
       >

@@ -221,7 +221,17 @@ Programs, sizes, major updates and the automatic check — with a button named f
 The first time Banager opens, a welcome sheet shows three short titles — see what's installed; you confirm each update and uninstall you choose; no data collected — and nothing more. The first check runs behind it, and its `brew update`, which no one chose, asks nothing, as above. However
 you close it — **Get Started**, Return, Escape or a click beside it — its settings file records that
 it was shown, and it doesn't open on its own again; **Welcome to Banager** in the Help menu shows it
-again at any time.
+again at any time. That is remembered only if the save succeeds: if it fails, a line over the page
+says the sheet may show again the next time you open Banager.
+
+If Banager's settings file is there but can't be read, Banager uses the defaults for that launch and
+says so before you edit a setting — in a warning over every page, with *Open Settings*, and in full at
+the top of Settings: automatic checks and notifications are off, the language follows your Mac, and
+saved choices to skip versions or hide or pause update reminders aren't applied. The file is left as it
+is, and no setting can be saved until you reopen Banager: quit it, repair access to `settings.json` in
+`~/Library/Application Support/com.brulek.banager` or restore a valid copy — or move it to the Trash
+to start fresh — then reopen Banager. A settings file that can't be read doesn't bring up the welcome
+sheet.
 
 Closing the window — its red button, or Close Window (⌘W) in the menu bar's File menu — leaves
 Banager running, and an operation under way carries on; its icon in the Dock brings the window back
@@ -673,7 +683,14 @@ Banager 开着时还会每天做一次同样的检查，查到的更新都不安
 能动手处理的，旁边有“查看”按钮，直接打开对应的页面或“已安装”里的显示选项。
 
 第一次打开 Banager 时，会出现一个欢迎页，只有三个短标题：看清装了什么；你选的更新、卸载都由你确认；不收集数据。第一次检查在它背后照常进行，其中的 `brew update` 不是你选的，不会问你，见上文。不管怎样关掉它——点“开始使用”、按回车或 Esc、点它外面——设置文件都会记下
-已经看过，以后不会自己再出现；随时可以从菜单栏“帮助”里的“欢迎使用Banager”再打开。
+已经看过，以后不会自己再出现；随时可以从菜单栏“帮助”里的“欢迎使用Banager”再打开。只有保存成功才会记下：
+保存失败时，页面上方会有一行提示，说下次打开 Banager 时它可能还会出现。
+
+如果 Banager 的设置文件在、却无法读取，这次打开就用默认设置，并在你改动设置之前说明：每一页上方有一行警告，
+带“打开设置”按钮，“设置”页顶部有完整说明——自动检查和通知已关闭，语言跟随系统，已保存的跳过版本、不再提醒和
+30天内不提醒选择未生效。该文件原样保留，重新打开 Banager 之前任何设置都无法保存：请退出 Banager，修复
+`~/Library/Application Support/com.brulek.banager` 中 `settings.json` 的访问权限或恢复一份有效的副本——
+或者把它移到废纸篓以重新开始——然后重新打开 Banager。无法读取的设置文件不会让欢迎页出现。
 
 关掉窗口——点它的红色按钮，或从菜单栏选“文件”菜单里的“关闭窗口”（⌘W）——Banager 仍在运行，进行中的操作照常
 继续；点程序坞里的图标，窗口按你离开时的样子回来（发过通知后照上面说的，改为打开“更新”页），不会重新检查。

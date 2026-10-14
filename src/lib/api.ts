@@ -93,8 +93,11 @@ export function getSettings(): Promise<Settings> {
   return call<Settings>("get_settings");
 }
 
+/** Saves `settings`, without `load_status`, which `get_settings` answers and no setting is. */
 export function setSettings(settings: Settings): Promise<void> {
-  return call<void>("set_settings", { settings });
+  const saved = { ...settings };
+  delete saved.load_status;
+  return call<void>("set_settings", { settings: saved });
 }
 
 /**

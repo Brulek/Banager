@@ -1893,12 +1893,15 @@ const SETTINGS_SAVE_FAILURE_KEYS: Record<string, string> = {
   disk_full: "settingsSaveFailed.diskFull",
   read_only: "settingsSaveFailed.readOnly",
   invalid_data: "persistence.unreadableSettings",
+  // Settings unread when Banager opened, which no save replaces until it
+  // is reopened (`AppState::set_settings`, r24 R74-3).
+  recovery_required: "persistence.settingsRecoveryRequired",
 };
 
 /**
  * What a rejected `set_settings` should read as, as a phrase for the
- * caller's own frame (`settings.saveError`, `updates.saveChoiceFailed`) to
- * interpolate. The three reasons a person can act on are worded here;
+ * caller's own frame (`settings.saveError`, `updates.saveChoiceFailed`,
+ * `welcome.saveError`) to interpolate. The three reasons a person can act on are worded here;
  * `other` quotes the operating system's own description verbatim inside
  * a translated phrase, since that text is the system's, not Banager's.
  * Anything that is not the payload at all is shown verbatim, as
@@ -1928,6 +1931,7 @@ export function settingsSaveErrorMessage(t: Translate, raw: string, technical: b
 const SETTINGS_SAVE_PLAIN_KEYS = {
   "settings.saveError": "settings.saveErrorPlain",
   "updates.saveChoiceFailed": "updates.saveChoiceFailedPlain",
+  "welcome.saveError": "welcome.saveErrorPlain",
 } as const;
 
 /**

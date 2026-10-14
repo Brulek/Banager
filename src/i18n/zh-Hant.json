@@ -9,7 +9,9 @@
     "listTitle": "看清裝了什麼",
     "confirmTitle": "你選的更新、解除安裝都由你確認",
     "privacyTitle": "不收集資料",
-    "start": "開始使用"
+    "start": "開始使用",
+    "saveError": "無法記住你已看過歡迎頁面：{{message}}。下次開啟此App時可能還會顯示。",
+    "saveErrorPlain": "無法記住你已看過歡迎頁面。下次開啟此App時可能還會顯示。"
   },
   "inventoryPreview": {
     "subtitle_other": "已找到{{count}}個工具 · 正在檢查更新…",
@@ -1284,7 +1286,12 @@
     "other": "{{detail}}"
   },
   "persistence": {
-    "unreadableSettings": "設定檔無法讀取，已原樣保留。要重新儲存設定，請將~/Library/Application Support/com.brulek.banager中的settings.json移到垃圾桶"
+    "unreadableSettings": "設定檔無法讀取，已原樣保留。要重新儲存設定，請將~/Library/Application Support/com.brulek.banager中的settings.json移到垃圾桶",
+    "settingsUnreadable": "無法讀取設定，目前使用預設設定。",
+    "settingsLoadEffects": "自動檢查和通知已關閉。已儲存的略過版本、不再提醒和30天內不提醒選擇未生效。",
+    "settingsDefaultsDetail": "語言採用系統預設值。「顯示技術細節」和「顯示內建更新功能的Homebrew App」已關閉。",
+    "settingsRecovery": "該檔案已原樣保留，重新開啟此App前無法儲存設定。要找回之前的設定，請結束此App，讓~/Library/Application Support/com.brulek.banager中的settings.json重新可讀取，例如從備份回復，然後重新開啟此App。要從頭開始，請在重新開啟前將它移到垃圾桶。",
+    "settingsRecoveryRequired": "開啟此App時無法讀取設定，重新開啟前無法儲存任何設定。請結束此App，讓~/Library/Application Support/com.brulek.banager中的settings.json重新可讀取，或將它移到垃圾桶，然後重新開啟此App"
   },
   "settingsDiagnostics": {
     "title": "診斷"
@@ -1491,7 +1498,7 @@
       },
       "autoCheck": {
         "question": "自動檢查什麼時候會停止？",
-        "answer": "自動檢查預設關閉，在「設定」的「檢查更新」中選「每天」或「每週」才會進行；改回「不自動檢查」就會停止。結束此App或重新啟動Mac後不再檢查，直到再次開啟它；只關閉視窗還會檢查。正在更新或解除安裝時不會開始檢查，15分鐘後再看一次。所有來源都檢查失敗時，會隔得越來越久再試，最久六小時一次。"
+        "answer": "自動檢查預設關閉，在「設定」的「檢查更新」中選「每天」或「每週」才會進行；改回「不自動檢查」就會停止。結束此App或重新啟動Mac後不再檢查，直到再次開啟它；只關閉視窗還會檢查。正在更新或解除安裝時不會開始檢查，15分鐘後再看一次；所有來源都檢查失敗時，會隔得越來越久再試，最久六小時一次。如果已儲存的設定無法讀取，自動檢查會保持關閉，直到修復或移走設定檔後重新開啟此App，「設定」中會說明。"
       }
     }
   },

@@ -4,7 +4,7 @@ use banager_core::notify_updates::Notified;
 use banager_core::runner::login_path::LoginPath;
 use banager_core::runner::HostEnv;
 use banager_core::session::Session;
-use banager_core::settings::{self, Settings};
+use banager_core::settings::{self, LoadStatus, Settings};
 use std::path::PathBuf;
 use std::sync::Mutex;
 
@@ -12,6 +12,12 @@ pub struct AppState {
     pub session: std::sync::Arc<Session>,
     pub settings_path: PathBuf,
     pub settings: Mutex<Settings>,
+    /// How the settings were found at startup (`settings::load_with_status`),
+    /// for the whole launch: told to the window with them (`get_settings`
+    /// in ipc.rs), and, when they could not be read, what refuses every
+    /// save until Banager is reopened (`set_settings`). Never changes after
+    /// `new`, so it needs no lock of its own to agree with `settings`.
+    pub settings_load: LoadStatus,
     pub channel_sink: std::sync::Arc<ChannelSink>,
     /// The last `Snapshot::generation` this process has ever broadcast as a
     /// `SnapshotChanged` event (Task 13). `refresh_impl` compares against
@@ -49,15 +55,16 @@ pub struct AppState {
 
 impl AppState {
     /// Loads settings from `settings_path` (falling back to defaults per
-    /// `banager_core::settings::load`'s contract) and builds a `Session`
-    /// wired to `channel_sink` as its event sink.
+    /// `banager_core::settings::load`'s contract, and noting whether it had
+    /// to) and builds a `Session` wired to `channel_sink` as its event sink.
     pub fn new(settings_path: PathBuf, channel_sink: std::sync::Arc<ChannelSink>) -> AppState {
-        let loaded = settings::load(&settings_path);
+        let (loaded, settings_load) = settings::load_with_status(&settings_path);
         let session = Session::new(channel_sink.clone(), None);
         AppState {
             session,
             settings_path,
             settings: Mutex::new(loaded),
+            settings_load,
             channel_sink,
             last_broadcast_generation: std::sync::atomic::AtomicU64::new(0),
             rounds: Mutex::new(RoundLog::default()),
@@ -132,7 +139,16 @@ impl AppState {
     /// What was told or seen of a row it puts off for 30 days is forgotten
     /// (`Notified::forget_snoozed`), so the daily check reminds of it once
     /// it is offered again (r23 R55-1).
+    ///
+    /// Settings that could not be read at startup refuse every save for the
+    /// rest of the launch (`RecoveryRequired`, r24 R74-3), even once the
+    /// file reads again or is gone: what this window holds are the defaults
+    /// that stood in for them, and saving those would put the defaults in
+    /// place of choices the user can still get back.
     pub fn set_settings(&self, new_settings: Settings) -> std::io::Result<()> {
+        if self.settings_load == LoadStatus::Unreadable {
+            return Err(std::io::Error::other(RecoveryRequired));
+        }
         let mut settings = self.settings.lock().unwrap();
         let new_settings = new_settings.keep_welcome_seen(&settings);
         settings::save(&self.settings_path, &new_settings)?;
@@ -146,6 +162,28 @@ impl AppState {
             .forget_snoozed(&before.snoozed_updates, &after);
         Ok(())
     }
+}
+
+/// Why `AppState::set_settings` refused: the settings could not be read
+/// when Banager opened, and are not saved until it is reopened after the
+/// file is put right or moved away. `settings_save_error` (ipc.rs) says it
+/// as its own reason, `recovery_required`.
+#[derive(Debug)]
+pub struct RecoveryRequired;
+
+impl std::fmt::Display for RecoveryRequired {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("settings could not be read at startup; reopen Banager to save them")
+    }
+}
+
+impl std::error::Error for RecoveryRequired {}
+
+/// Whether `error` is `set_settings`' `RecoveryRequired`.
+pub fn is_recovery_required(error: &std::io::Error) -> bool {
+    error
+        .get_ref()
+        .is_some_and(|inner| inner.is::<RecoveryRequired>())
 }
 
 /// The environment a test's refresh rounds read (`AppState::round_env`):
@@ -262,6 +300,7 @@ mod tests {
         let _ = std::fs::remove_file(&path);
         let state = AppState::new(path, ChannelSink::new());
         assert_eq!(state.get_settings(), Settings::default());
+        assert_eq!(state.settings_load, LoadStatus::Missing);
     }
 
     #[test]
@@ -366,6 +405,62 @@ mod tests {
             Ok(Notice::Post { count: 2 }),
             "reminded of jq, with gh counted"
         );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_failed_startup_load_blocks_saves_until_reopen() {
+        // r24 R74-3: settings that could not be read at startup stand in as
+        // defaults, said as such, and nothing this launch saves over them
+        // -- not the welcome sheet's close, not a setting -- even once the
+        // file has been put right or moved away behind its back.
+        let path = temp_settings_path("unreadable");
+        std::fs::write(&path, b"{\"language\": \"En\", \"auto_ch").unwrap();
+        let state = AppState::new(path.clone(), ChannelSink::new());
+        assert_eq!(state.settings_load, LoadStatus::Unreadable);
+        assert_eq!(state.get_settings(), Settings::default());
+
+        let restored = serde_json::to_vec_pretty(&Settings {
+            language: settings::Language::En,
+            auto_check: true,
+            welcome_seen: true,
+            ..Settings::default()
+        })
+        .unwrap();
+        std::fs::write(&path, &restored).unwrap();
+        let welcome = Settings {
+            welcome_seen: true,
+            ..Settings::default()
+        };
+        let choice = Settings {
+            show_technical_details: true,
+            ..Settings::default()
+        };
+        for attempt in [welcome.clone(), choice.clone()] {
+            let refused = state.set_settings(attempt).unwrap_err();
+            assert!(is_recovery_required(&refused), "{refused:?}");
+            assert_eq!(std::fs::read(&path).unwrap(), restored);
+        }
+        assert_eq!(state.get_settings(), Settings::default());
+
+        std::fs::remove_file(&path).unwrap();
+        for attempt in [welcome, choice] {
+            let refused = state.set_settings(attempt).unwrap_err();
+            assert!(is_recovery_required(&refused), "{refused:?}");
+            assert!(!path.exists(), "no file is made in its place");
+        }
+
+        // Reopened, the file put back reads as it was.
+        std::fs::write(&path, &restored).unwrap();
+        let reopened = AppState::new(path.clone(), ChannelSink::new());
+        assert_eq!(reopened.settings_load, LoadStatus::Loaded);
+        assert_eq!(reopened.get_settings().language, settings::Language::En);
+        reopened
+            .set_settings(Settings {
+                show_technical_details: true,
+                ..reopened.get_settings()
+            })
+            .expect("saved once reopened");
         let _ = std::fs::remove_file(&path);
     }
 

@@ -1334,6 +1334,24 @@ function withNoNode(world: World, formulae: readonly LinkFix[]): void {
  * with a chip on the Installed page).
  */
 export function initialSettings(scenario: Scenario): Settings {
+  // A settings.json that could not be read: Rust's defaults stand in for
+  // it (`Settings::default()`), the welcome sheet's flag among them.
+  if (scenario.settings === "unreadable") {
+    return {
+      language: scenario.language,
+      show_technical_details: false,
+      ignored_updates: [],
+      skipped_versions: [],
+      include_self_updating: false,
+      auto_check: false,
+      notify_updates: false,
+      auto_check_every: "Day",
+      notify_operations: false,
+      snoozed_updates: [],
+      welcome_seen: false,
+      load_status: "unreadable",
+    };
+  }
   return {
     language: scenario.language,
     show_technical_details: scenario.technicalDetails,
@@ -1352,6 +1370,7 @@ export function initialSettings(scenario: Scenario): Settings {
     // Seen, as on any launch after the first, unless `?welcome=1` asks for
     // the first one's welcome sheet.
     welcome_seen: !scenario.welcome,
+    load_status: "loaded",
   };
 }
 

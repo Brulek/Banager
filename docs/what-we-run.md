@@ -5685,12 +5685,18 @@ not read (`protected::look`; How Banager runs anything, above):
   path; never into a protected place) — never a file's contents (Which
   copy a command runs, above).
 - Banager's own `settings.json` in its application data directory
-  (`settings::load`; a missing file means defaults. Known fields and collection
-  entries in valid JSON are recovered independently: only invalid fields or
-  entries fall back or are dropped. Unreadable/non-object JSON uses defaults
-  for this launch, but saving refuses to overwrite the original bytes; the
-  Settings page says so and that moving `settings.json` to the Trash, or
-  restoring a readable one, lets settings save again).
+  (`settings::load_with_status`; a missing file means defaults. Known fields
+  and collection entries in valid JSON are recovered independently: only
+  invalid fields or entries fall back or are dropped. A file that is there
+  but cannot be read, or is not a JSON object, is left exactly as it is, and
+  Banager uses defaults for this launch: automatic checks and notifications
+  are off, the language follows the system, and saved choices to skip
+  versions or hide or postpone reminders don't apply. A warning over every
+  page, and the Settings page before any setting can be edited, say so.
+  No setting can be saved for the rest of that launch, even once the file
+  is put right or moved away: quit Banager, repair access or restore a
+  valid settings file — or move `settings.json` to the Trash to start
+  fresh — then reopen it. Such a file does not bring up the welcome sheet).
 - Banager's own `history.json` beside it, once, as Banager starts
   (`HistoryStore::open` in `crates/banager-core/src/history/mod.rs`; a
   missing file starts an empty history. An existing file that cannot be
@@ -5781,7 +5787,12 @@ when that timestamp is outside JavaScript Date's supported range),
 and whether the welcome sheet of the first launch has been shown
 (`welcome_seen`), so that it shows once. A `settings.json` written before
 that field existed reads it as not shown, so the sheet also shows once
-after an upgrade.
+after an upgrade. Closing the sheet is remembered only if that save
+succeeds; if it fails, a line over the page says the sheet may show again
+at the next launch. A `settings.json` that cannot be read never brings the
+sheet up, and closing it from Help then saves nothing. How the file was
+found as Banager opened (`load_status`) is told to the window beside the
+settings and never written into the file.
 
 Ollama URL logins are removed when public instance ids are created, and
 legacy ids are scrubbed before a history record

@@ -925,7 +925,13 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       return clone(settings);
     },
     async set_settings(args) {
-      settings = clone(args.settings as Settings);
+      // Settings unread at startup are not saved over until the app is
+      // reopened (`AppState::set_settings`, r24 R74-3).
+      if (settings.load_status === "unreadable") {
+        throw refusal({ kind: "settings_save_failed", reason: "recovery_required" });
+      }
+      // What `get_settings` adds is not a setting, and is kept.
+      settings = { ...clone(args.settings as Settings), load_status: settings.load_status };
     },
     async subscribe_events(args) {
       channels.add(args.channel as EventChannel);

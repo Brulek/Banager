@@ -616,11 +616,11 @@ fn test_every_file_opened_is_opened_without_waiting_or_as_a_folder() {
     let allowed = [
         (
             "crates/banager-core/src/settings.rs:",
-            "match std::fs::read(path) {",
+            "std::fs::read(path)",
         ),
         (
             "crates/banager-core/src/history/mod.rs:",
-            "let Ok(bytes) = std::fs::read(path) else {",
+            "read: Arc::new(|path| std::fs::read(path)),",
         ),
     ];
     let others: Vec<&String> = plain
@@ -737,12 +737,12 @@ const PATH_LOOKUPS_ALLOWED: [(&str, &str, &str); 17] = [
     ),
     (
         "crates/banager-core/src/settings.rs:",
-        "match std::fs::read(path) {",
+        "std::fs::read(path)",
         "Banager's own settings.json, in its application data folder",
     ),
     (
         "crates/banager-core/src/history/mod.rs:",
-        "let Ok(bytes) = std::fs::read(path) else {",
+        "read: Arc::new(|path| std::fs::read(path)),",
         "Banager's own history.json, beside settings.json",
     ),
     (

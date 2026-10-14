@@ -36,6 +36,7 @@ import {
   SCENARIO_OUTCOMES,
   SCENARIO_PATHS,
   SCENARIO_HISTORIES,
+  SCENARIO_SETTINGS,
   SCENARIO_SCANS,
   SCENARIO_SIZES,
   SCENARIO_STATES,
@@ -1297,7 +1298,7 @@ describe("the preview's URL switches", () => {
   it("reads every switch", () => {
     expect(parseScenario("?outcome=mixed").scenario.outcome).toBe("mixed");
     const { scenario, problems } = parseScenario(
-      "?state=offline&lang=zh-CN&tech=1&page=updates&outcome=failed&scan=stopped&sizes=pending&path=unread&history=unreadable&welcome=1",
+      "?state=offline&lang=zh-CN&tech=1&page=updates&outcome=failed&scan=stopped&sizes=pending&path=unread&history=unreadable&settings=unreadable&welcome=1",
     );
     expect(problems).toEqual([]);
     expect(scenario).toEqual({
@@ -1310,6 +1311,7 @@ describe("the preview's URL switches", () => {
       sizes: "pending",
       path: "unread",
       history: "unreadable",
+      settings: "unreadable",
       welcome: true,
     });
   });
@@ -1322,6 +1324,24 @@ describe("the preview's URL switches", () => {
     const cleared = (await backend.invoke("clear_history")) as HistoryView;
     expect(cleared.persistence).toBe("unreadable");
     expect(((await backendFor({}).backend.invoke("get_history")) as HistoryView).persistence).toBe("saved");
+  });
+
+  it("serves defaults for settings it could not read with ?settings=, and refuses every save as Rust does (r24 R74-3)", async () => {
+    const { backend } = backendFor({ settings: "unreadable", welcome: true });
+    const served = (await backend.invoke("get_settings")) as Settings;
+    expect(served).toMatchObject({
+      load_status: "unreadable",
+      auto_check: false,
+      ignored_updates: [],
+      skipped_versions: [],
+      snoozed_updates: [],
+      welcome_seen: false,
+    });
+    await expect(backend.invoke("set_settings", { settings: { ...served, welcome_seen: true } })).rejects.toBe(
+      JSON.stringify({ kind: "settings_save_failed", reason: "recovery_required" }),
+    );
+    expect(((await backend.invoke("get_settings")) as Settings).welcome_seen).toBe(false);
+    expect(((await backendFor({}).backend.invoke("get_settings")) as Settings).load_status).toBe("loaded");
   });
 
   it("shows the welcome sheet only with ?welcome=1", async () => {
@@ -1374,6 +1394,7 @@ describe("the preview's URL switches", () => {
       ["sizes", SCENARIO_SIZES],
       ["path", SCENARIO_PATHS],
       ["history", SCENARIO_HISTORIES],
+      ["settings", SCENARIO_SETTINGS],
     ] as const) {
       expect([...(listed.get(name) ?? [])].sort(), `?${name}=`).toEqual([...values].sort());
     }

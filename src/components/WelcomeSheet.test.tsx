@@ -10,6 +10,7 @@ import { queryKeys } from "../lib/queryKeys";
 import type { Settings, Snapshot } from "../lib/types";
 import { openWelcomeSheet, useWelcomeAgain } from "../lib/welcome";
 import { fakeMenuBar } from "../test/menuBar";
+import { useUiStore } from "../store/ui";
 import { PrivacyIcon, SettingsIcon } from "./icons";
 import { WelcomeSheet, welcomeDue } from "./WelcomeSheet";
 import { BUTTON } from "./ui/controls";
@@ -51,7 +52,7 @@ beforeEach(() => {
   served = { ...base, welcome_seen: false };
   saved = [];
   saveReply = () => Promise.resolve();
-  useWelcomeAgain.setState({ open: false });
+  useWelcomeAgain.setState({ open: false, saveError: null });
   mockInvoke.mockReset();
   mockInvoke.mockImplementation((cmd: string, args?: InvokeArgs) => {
     if (cmd === "get_settings") return Promise.resolve(served);
@@ -220,17 +221,63 @@ describe("WelcomeSheet", () => {
 
   it("does not come back in the same launch, even when saving fails", async () => {
     const user = userEvent.setup();
-    const error = vi.spyOn(console, "error").mockImplementation(() => {});
     saveReply = () => Promise.reject(new Error("disk full"));
     const { queryClient } = renderWithProviders(<WelcomeSheet />);
     await findSheet();
     await user.click(screen.getByRole("button", { name: "Get Started" }));
-    await waitFor(() => expect(error).toHaveBeenCalledWith("saving welcome_seen failed", expect.anything()));
+    await waitFor(() => expect(saved).toHaveLength(1));
     // The settings are read again -- still saying it was not seen.
     await queryClient.invalidateQueries({ queryKey: queryKeys.settings });
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("says over the page that it was not remembered when saving fails, not only in the console (r24 R74-3)", async () => {
+    const user = userEvent.setup();
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    saveReply = () => Promise.reject(JSON.stringify({ kind: "settings_save_failed", reason: "disk_full" }));
+    useUiStore.setState({ page: "overview" });
+    renderWithProviders(<App />);
+    await findSheet();
+    await user.click(screen.getByRole("button", { name: "Get Started" }));
+    expect(
+      await screen.findByText(
+        "Couldn't remember that you've seen the welcome: the disk is full. It may show again the next time you open Banager.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    // Closed again from Help and saved this time, it has nothing to say.
+    saveReply = () => Promise.resolve();
+    act(() => openWelcomeSheet());
+    await user.click(await screen.findByRole("button", { name: "Get Started" }));
+    await waitFor(() => expect(saved).toHaveLength(2));
+    await waitFor(() => expect(screen.queryByText(/Couldn't remember that you've seen the welcome/)).toBeNull());
+    expect(error).not.toHaveBeenCalled();
     error.mockRestore();
+  });
+
+  it("never opens by itself for settings that could not be read, and closing Help's saves nothing (r24 R74-3)", async () => {
+    // Their `welcome_seen` is a default's, standing in for a file that may
+    // say it was seen long ago.
+    served = { ...base, welcome_seen: false, load_status: "unreadable" };
+    const user = userEvent.setup();
+    renderWithProviders(<WelcomeSheet />);
+    await settle();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    act(() => openWelcomeSheet());
+    await user.click(within(await findSheet()).getByRole("button", { name: "Get Started" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(saved).toEqual([]);
+  });
+
+  it("opens at a first launch and saves the settings without how they were found", async () => {
+    served = { ...base, welcome_seen: false, load_status: "missing" };
+    const user = userEvent.setup();
+    renderWithProviders(<WelcomeSheet />);
+    await user.click(within(await findSheet()).getByRole("button", { name: "Get Started" }));
+    await waitFor(() => expect(saved).toHaveLength(1));
+    expect(saved[0]).toEqual({ ...base, welcome_seen: true });
   });
 
   it("shows nothing at the next launch, once closed", async () => {

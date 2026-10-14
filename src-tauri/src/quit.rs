@@ -1422,6 +1422,7 @@ mod history_at_quit_tests {
             settings_path: dir.join("settings.json"),
             settings: Mutex::new(Settings::default()),
             channel_sink: sink,
+            settings_load: banager_core::settings::LoadStatus::Loaded,
             last_broadcast_generation: std::sync::atomic::AtomicU64::new(0),
             rounds: Mutex::new(Default::default()),
             notified: Mutex::new(Default::default()),

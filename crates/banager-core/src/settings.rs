@@ -183,6 +183,30 @@ impl Default for Settings {
     }
 }
 
+/// How `load_with_status` found settings.json (r24 R74-3). Told to the
+/// window beside the settings (`get_settings` in src-tauri/src/ipc.rs) and
+/// never written into the file.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LoadStatus {
+    /// Read: whole, or field by field (`recover`).
+    Loaded,
+    /// Not there: a first launch, or a file moved to the Trash.
+    Missing,
+    /// There, and not read: not JSON, not an object, or not readable by
+    /// this user. The defaults stand in for it for this launch, and the
+    /// file is left as it is (`save`'s guard).
+    Unreadable,
+}
+
+/// How settings.json is read: `std::fs::read`, but for the tests that
+/// stand in a read that fails as no temp file can be made to.
+type ReadFn<'a> = &'a dyn Fn(&Path) -> std::io::Result<Vec<u8>>;
+
+fn fs_read(path: &Path) -> std::io::Result<Vec<u8>> {
+    std::fs::read(path)
+}
+
 /// Missing or unreadable JSON uses defaults without preventing startup.
 /// Valid objects recover each field and each collection entry independently.
 /// `save` refuses to replace unreadable JSON, including automatic welcome saves.
@@ -190,17 +214,35 @@ impl Default for Settings {
 /// Snoozed updates whose `until` has come are dropped (`load_at`, at the
 /// wall clock's now): they hide nothing any more.
 pub fn load(path: &Path) -> Settings {
+    load_with_status(path).0
+}
+
+/// `load`, and whether the file was read, missing or unreadable
+/// (`LoadStatus`): what the app tells the window, so that defaults standing
+/// in for unreadable settings are said rather than taken for the user's.
+pub fn load_with_status(path: &Path) -> (Settings, LoadStatus) {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
-    load_at(path, now)
+    load_at_with(path, now, &fs_read)
 }
 
 /// `load`, with the snoozed updates whose `until` is at or before `now`
 /// (Unix seconds) dropped.
 pub fn load_at(path: &Path, now: i64) -> Settings {
-    let mut settings = read_saved(path).unwrap_or_default();
+    load_at_with(path, now, &fs_read).0
+}
+
+/// `load_at`, with its status, reading through `read`.
+fn load_at_with(path: &Path, now: i64, read: ReadFn) -> (Settings, LoadStatus) {
+    let (mut settings, status) = match read_saved(path, read) {
+        Ok(settings) => (settings, LoadStatus::Loaded),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            (Settings::default(), LoadStatus::Missing)
+        }
+        Err(_) => (Settings::default(), LoadStatus::Unreadable),
+    };
     // Check even keys about to expire, so a legacy login left on disk
     // still triggers the rewrite after those keys have been dropped.
     let redacted = redact_ollama_logins(&mut settings);
@@ -214,14 +256,14 @@ pub fn load_at(path: &Path, now: i64) -> Settings {
     if redacted {
         // Best effort, as for ordinary settings writes. Never hand the
         // old login back to the window even when the disk is read-only.
-        let _ = save(path, &settings);
+        let _ = save_with(path, &settings, read);
     }
-    settings
+    (settings, status)
 }
 
 /// Shared by startup and the save guard: a load failure stays distinguishable.
-fn read_saved(path: &Path) -> std::io::Result<Settings> {
-    match std::fs::read(path) {
+fn read_saved(path: &Path, read: ReadFn) -> std::io::Result<Settings> {
+    match read(path) {
         Ok(bytes) => recover(&bytes).ok_or_else(|| {
             std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
@@ -298,9 +340,14 @@ fn redact_ollama_logins(settings: &mut Settings) -> bool {
 /// Writes through an exclusively created staging file beside `path`, then
 /// atomically replaces it. Concurrent processes cannot share a staging file.
 pub fn save(path: &Path, settings: &Settings) -> std::io::Result<()> {
+    save_with(path, settings, &fs_read)
+}
+
+/// `save`, its guard reading through `read`.
+fn save_with(path: &Path, settings: &Settings, read: ReadFn) -> std::io::Result<()> {
     // Do not turn a failed load into silent destruction through an automatic save.
     // Check at save time too: the file may have become unreadable since startup.
-    if let Err(error) = read_saved(path) {
+    if let Err(error) = read_saved(path, read) {
         if error.kind() != std::io::ErrorKind::NotFound {
             return Err(error);
         }
@@ -1071,5 +1118,75 @@ mod tests {
         save(&path, &Settings::default()).expect("save should create the parent dir");
         assert!(path.exists());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_load_status_preserves_unreadable_settings() {
+        // r24 R74-3: a file that is there and cannot be read is told apart
+        // from one that is not there, and from one read field by field.
+        let status_of = |bytes: &[u8]| {
+            let path = temp_settings_path("load-status");
+            std::fs::write(&path, bytes).unwrap();
+            let (settings, status) = load_at_with(&path, 0, &fs_read);
+            // Left as it is, by the load and by a save after it.
+            assert!(save(&path, &settings).is_err(), "{status:?}");
+            assert_eq!(std::fs::read(&path).unwrap(), bytes);
+            std::fs::remove_file(&path).unwrap();
+            (settings, status)
+        };
+        for unreadable in [
+            &br#"{"language": "En", "auto_check": tr"#[..],
+            b"[1, 2]",
+            b"\"En\"",
+            b"",
+            b"\xff\xfe",
+        ] {
+            assert_eq!(
+                status_of(unreadable),
+                (Settings::default(), LoadStatus::Unreadable),
+                "{}",
+                String::from_utf8_lossy(unreadable)
+            );
+        }
+
+        let missing = temp_settings_path("load-status-missing");
+        assert_eq!(
+            load_at_with(&missing, 0, &fs_read),
+            (Settings::default(), LoadStatus::Missing)
+        );
+
+        let path = temp_settings_path("load-status-legacy");
+        std::fs::write(&path, SAVED_BY_THE_PREVIOUS_BUILD).unwrap();
+        let (legacy, status) = load_at_with(&path, 1_790_000_000, &fs_read);
+        assert_eq!(status, LoadStatus::Loaded);
+        assert_eq!(legacy.language, Language::ZhHant);
+        // A field that is not a setting's is recovery, not a failed load.
+        std::fs::write(
+            &path,
+            br#"{"language": "En", "auto_check_every": "Fortnight"}"#,
+        )
+        .unwrap();
+        let (partial, status) = load_at_with(&path, 0, &fs_read);
+        assert_eq!(status, LoadStatus::Loaded);
+        assert_eq!(partial.language, Language::En);
+        assert_eq!(partial.auto_check_every, CheckEvery::Day);
+
+        // A file this user may not read: unreadable, and a save that meets
+        // the same refusal leaves it as it is.
+        std::fs::write(&path, SAVED_BY_THE_PREVIOUS_BUILD).unwrap();
+        let denied = |_: &Path| -> std::io::Result<Vec<u8>> {
+            Err(std::io::ErrorKind::PermissionDenied.into())
+        };
+        assert_eq!(
+            load_at_with(&path, 0, &denied),
+            (Settings::default(), LoadStatus::Unreadable)
+        );
+        let refused = save_with(&path, &Settings::default(), &denied).unwrap_err();
+        assert_eq!(refused.kind(), std::io::ErrorKind::PermissionDenied);
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            SAVED_BY_THE_PREVIOUS_BUILD
+        );
+        std::fs::remove_file(path).unwrap();
     }
 }

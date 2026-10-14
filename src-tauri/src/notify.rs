@@ -423,6 +423,7 @@ mod tests {
             settings_path: std::env::temp_dir().join("banager-notify-never-written"),
             settings: Mutex::new(settings),
             channel_sink: sink,
+            settings_load: banager_core::settings::LoadStatus::Loaded,
             last_broadcast_generation: std::sync::atomic::AtomicU64::new(0),
             rounds: Mutex::new(Default::default()),
             notified: Mutex::new(Default::default()),
@@ -895,6 +896,7 @@ mod forget_unoffered_tests {
                 ..Settings::default()
             }),
             channel_sink: sink,
+            settings_load: banager_core::settings::LoadStatus::Loaded,
             last_broadcast_generation: std::sync::atomic::AtomicU64::new(0),
             rounds: Mutex::new(Default::default()),
             notified: Mutex::new(Default::default()),

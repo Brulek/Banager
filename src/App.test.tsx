@@ -1460,3 +1460,55 @@ describe("the Update History notice", () => {
     expect(view.queryByText(NOTICE)).toBeNull();
   });
 });
+
+/**
+ * Settings that could not be read at startup are said over every page but
+ * Settings, which says them in full, outside `SnapshotStatus`: the
+ * defaults standing in for them change what every page lists (r24 R74-3).
+ */
+describe("the unreadable settings notice", () => {
+  const NOTICE = "Settings couldn't be read, so defaults are in use.";
+  const unreadable = { ...defaultSettings, welcome_seen: false, load_status: "unreadable" } as Settings;
+
+  function backend(get_snapshot: () => Promise<unknown>, settings: Settings = unreadable) {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "get_snapshot" || cmd === "refresh") return get_snapshot();
+      if (cmd === "get_settings") return Promise.resolve(settings);
+      if (cmd === "list_operations") return Promise.resolve([]);
+      if (cmd === "scan_unknown") return Promise.resolve(emptyScan);
+      return Promise.resolve(undefined);
+    });
+  }
+
+  it.each([
+    ["the Overview over a list", "overview", () => Promise.resolve(snapshot)],
+    ["Updates over a first check that failed", "updates", () => Promise.reject(new Error("no snapshot"))],
+    ["Installed over a first check still under way", "installed", () => new Promise(() => {})],
+    ["Other Programs", "unknown", () => Promise.resolve(snapshot)],
+  ] as const)("is said on %s, with Open Settings", async (_, page, get_snapshot) => {
+    backend(get_snapshot);
+    useUiStore.setState({ page });
+    const view = renderWithProviders(<App />);
+    const notice = await view.findByText(NOTICE);
+    expect(notice.closest("[data-settings-notice]")).not.toBeNull();
+    expect(notice.closest(".overflow-y-auto")).toBeNull();
+    // Not the welcome sheet, whose `welcome_seen` is a default's.
+    expect(view.queryByRole("dialog")).toBeNull();
+    fireEvent.click(view.getByRole("button", { name: "Open Settings" }));
+    await view.findByRole("heading", { level: 1, name: "Settings" });
+    // The page says it in full; the line over it goes.
+    expect(view.container.querySelector("[data-settings-notice]")).toBeNull();
+    expect(view.container.querySelector("[data-settings-load-warning]")).not.toBeNull();
+  });
+
+  it("says nothing of settings that were read, or of a first launch's", async () => {
+    for (const load_status of ["loaded", "missing"] as const) {
+      backend(() => Promise.resolve(snapshot), { ...defaultSettings, welcome_seen: true, load_status });
+      const view = renderWithProviders(<App />);
+      await view.findByRole("heading", { level: 1, name: "Overview" });
+      await act(async () => { await Promise.resolve(); });
+      expect(view.container.querySelector("[data-settings-notice]")).toBeNull();
+      view.unmount();
+    }
+  });
+});

@@ -34,10 +34,11 @@ const POINTS: { icon: ComponentType<{ size?: number; className?: string }>; titl
  * Whether these settings ask for the welcome sheet: only when they say,
  * explicitly, that it has not been shown. Rust always sends `welcome_seen`;
  * the settings a test or the preview builds by hand without it never show
- * the sheet.
+ * the sheet. Nor do the defaults that stand in for a settings file that
+ * could not be read (r24 R74-3): their false is a default's, not the file's.
  */
 export function welcomeDue(settings: Settings | undefined): boolean {
-  return settings?.welcome_seen === false;
+  return settings?.welcome_seen === false && settings.load_status !== "unreadable";
 }
 
 /**
@@ -50,7 +51,8 @@ export function welcomeDue(settings: Settings | undefined): boolean {
  * then on only closing it changes anything: by its button, Escape or a
  * click beside it, each of which saves `welcome_seen` over the settings as
  * they are by then, so it does not show again. Should that save fail, the
- * sheet stays closed and shows once more at the next launch. Rust keeps
+ * sheet stays closed, a line over the page says it may show once more at
+ * the next launch (`SettingsNotice`), and it does. Rust keeps
  * `welcome_seen` true once it is (`Settings::keep_welcome_seen`), so a page
  * that saves settings it read before the sheet closed cannot bring it back.
  *
@@ -58,7 +60,8 @@ export function welcomeDue(settings: Settings | undefined): boolean {
  * src/lib/welcome.ts). Closing it then saves nothing, as the settings say
  * it was seen already; should they not -- the item chosen while the first
  * launch's sheet is up, or after its save failed -- closing saves
- * `welcome_seen` as above.
+ * `welcome_seen` as above -- but never over settings that could not be
+ * read when Banager opened, which no save replaces (r24 R74-3).
  *
  * It holds nothing up: the first check starts behind it as at any launch
  * (`useStartupRefresh` in `App`). Mounted once, by `App`.
@@ -66,12 +69,12 @@ export function welcomeDue(settings: Settings | undefined): boolean {
 export function WelcomeSheet() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const { data: settings } = useSettings();
+  const { data: settings, isSuccess } = useSettings();
   const save = useSaveSettings();
   const startButton = useRef<HTMLButtonElement>(null);
-  // null until the settings have arrived and it has decided.
+  // null until `get_settings` has answered and it has decided.
   const [open, setOpen] = useState<boolean | null>(null);
-  if (open === null && settings !== undefined) setOpen(welcomeDue(settings));
+  if (open === null && isSuccess) setOpen(welcomeDue(settings));
   const again = useWelcomeAgain((s) => s.open);
   const shown = open === true || again;
 
@@ -82,13 +85,12 @@ export function WelcomeSheet() {
     setOpen(false);
     useWelcomeAgain.setState({ open: false });
     const latest = queryClient.getQueryData<Settings>(queryKeys.settings) ?? settings;
-    if (latest === undefined || latest.welcome_seen !== false) return;
+    if (latest === undefined || latest.welcome_seen !== false || latest.load_status === "unreadable") return;
     save.mutate(
       (saved) => ({ ...saved, welcome_seen: true }),
       {
-        onError: (e: unknown) => {
-          console.error("saving welcome_seen failed", e);
-        },
+        onSuccess: () => useWelcomeAgain.setState({ saveError: null }),
+        onError: (e: Error) => useWelcomeAgain.setState({ saveError: e.message }),
       },
     );
   };

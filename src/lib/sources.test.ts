@@ -1454,6 +1454,8 @@ describe("settingsSaveErrorMessage", () => {
       ["disk_full", "settingsSaveFailed.diskFull"],
       ["read_only", "settingsSaveFailed.readOnly"],
       ["invalid_data", "persistence.unreadableSettings"],
+      // r24 R74-3: settings unread at startup, which nothing saves over.
+      ["recovery_required", "persistence.settingsRecoveryRequired"],
     ]) {
       for (const technical of [false, true]) {
         expect(
@@ -1495,6 +1497,7 @@ describe("settingsSaveSentence", () => {
     for (const [frame, plain] of [
       ["settings.saveError", "settings.saveErrorPlain"],
       ["updates.saveChoiceFailed", "updates.saveChoiceFailedPlain"],
+      ["welcome.saveError", "welcome.saveErrorPlain"],
     ] as const) {
       expect(settingsSaveSentence(fakeT, frame, "boom", true)).toBe(`${frame}({"message":"boom"})`);
       expect(settingsSaveSentence(fakeT, frame, "boom", false)).toBe(plain);
@@ -1514,6 +1517,17 @@ describe("settingsSaveSentence", () => {
     expect(said("zh-Hant")).toBe(
       "無法儲存此選擇：設定檔無法讀取，已原樣保留。要重新儲存設定，請將~/Library/Application Support/com.brulek.banager中的settings.json移到垃圾桶。",
     );
+  });
+
+  it("says what to do with settings that could not be read when the app opened, in every language (r24 R74-3)", () => {
+    const recovery = JSON.stringify({ kind: "settings_save_failed", reason: "recovery_required" });
+    const said = (language: string) =>
+      settingsSaveSentence(i18n.getFixedT(language), "settings.saveError", recovery, false);
+    expect(said("en")).toBe(
+      "Couldn't save: settings couldn't be read when Banager opened, so none can be saved until you reopen it. Quit Banager, make settings.json in ~/Library/Application Support/com.brulek.banager readable again or move it to the Trash, then reopen Banager. Your previous setting is back.",
+    );
+    expect(said("zh-CN")).toContain("重新打开前无法保存任何设置");
+    expect(said("zh-Hant")).toContain("重新開啟前無法儲存任何設定");
   });
 });
 

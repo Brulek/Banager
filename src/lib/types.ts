@@ -986,6 +986,13 @@ export interface SnoozedUpdate {
  * 「每周」. Its 「不自动检查」 is `auto_check` off.
  */
 export type CheckEvery = "Day" | "Week";
+/**
+ * Rust `LoadStatus` (crates/banager-core/src/settings.rs): how settings.json
+ * was found when Banager opened -- read (whole or field by field), not
+ * there, or there and not read, the defaults standing in for it for the
+ * whole launch (r24 R74-3).
+ */
+export type SettingsLoadStatus = "loaded" | "missing" | "unreadable";
 export interface Settings {
   language: Language;
   show_technical_details: boolean;
@@ -1033,6 +1040,15 @@ export interface Settings {
    * show it.
    */
   welcome_seen?: boolean;
+  /**
+   * How the settings were found when Banager opened (`SettingsLoadStatus`):
+   * what `get_settings` answers beside them (`SettingsView` in
+   * src-tauri/src/ipc.rs), never a setting. A save made over them keeps it
+   * in the cache, and `setSettings` (src/lib/api.ts) leaves it out of what
+   * it sends. Optional: settings a test or the preview builds by hand need
+   * not say it, and read as read.
+   */
+  load_status?: SettingsLoadStatus;
 }
 /**
  * Rust `UpdatePair` (crates/banager-core/src/notify_updates.rs): one row

@@ -559,12 +559,28 @@ pub async fn list_operations(state: State<'_, AppState>) -> Result<Vec<OpSummary
     list_operations_impl(&state)
 }
 
-pub(crate) fn get_settings_impl(state: &AppState) -> Result<Settings, String> {
-    Ok(state.get_settings())
+/// What `get_settings` answers: the settings as one object, as they always
+/// were, with how they were found at startup beside their fields
+/// (`load_status`, r24 R74-3), so the window can say when the defaults
+/// stand in for settings that could not be read. Answered only: what the
+/// window saves is `Settings`, which has no such field, so it never reaches
+/// settings.json.
+#[derive(Debug, serde::Serialize)]
+pub struct SettingsView {
+    #[serde(flatten)]
+    pub settings: Settings,
+    pub load_status: banager_core::settings::LoadStatus,
+}
+
+pub(crate) fn get_settings_impl(state: &AppState) -> Result<SettingsView, String> {
+    Ok(SettingsView {
+        settings: state.get_settings(),
+        load_status: state.settings_load,
+    })
 }
 
 #[tauri::command]
-pub async fn get_settings(state: State<'_, AppState>) -> Result<Settings, String> {
+pub async fn get_settings(state: State<'_, AppState>) -> Result<SettingsView, String> {
     get_settings_impl(&state)
 }
 
@@ -580,13 +596,17 @@ pub(crate) fn set_settings_impl(state: &AppState, settings: Settings) -> Result<
 /// save that change" frame.
 ///
 /// The three reasons a person can do something about get a `reason` the
-/// front end words itself. Anything else is `other`, with the operating
+/// front end words itself, as do a settings file that cannot be read
+/// (`invalid_data`) and settings that could not be read when Banager opened
+/// (`recovery_required`, `state::RecoveryRequired`), which no save replaces
+/// until it is reopened. Anything else is `other`, with the operating
 /// system's own description kept verbatim in `detail` for the front end to
 /// quote: that is the OS's text, not Banager's, and there is no honest way
 /// to translate a reason Banager did not anticipate.
 fn settings_save_error(e: std::io::Error) -> String {
     use std::io::ErrorKind;
     let reason = match e.kind() {
+        _ if crate::state::is_recovery_required(&e) => "recovery_required",
         ErrorKind::PermissionDenied => "permission_denied",
         ErrorKind::StorageFull => "disk_full",
         ErrorKind::ReadOnlyFilesystem => "read_only",
@@ -1350,6 +1370,7 @@ mod tests {
             settings_path: temp_settings_path("appstate"),
             settings: std::sync::Mutex::new(Settings::default()),
             channel_sink: sink,
+            settings_load: banager_core::settings::LoadStatus::Loaded,
             last_broadcast_generation: std::sync::atomic::AtomicU64::new(0),
             rounds: std::sync::Mutex::new(Default::default()),
             notified: std::sync::Mutex::new(Default::default()),
@@ -1395,6 +1416,7 @@ mod tests {
             settings_path: temp_settings_path("ipc-slow"),
             settings: std::sync::Mutex::new(Settings::default()),
             channel_sink: sink,
+            settings_load: banager_core::settings::LoadStatus::Loaded,
             last_broadcast_generation: std::sync::atomic::AtomicU64::new(0),
             rounds: std::sync::Mutex::new(Default::default()),
             notified: std::sync::Mutex::new(Default::default()),
@@ -1452,6 +1474,7 @@ mod tests {
             settings_path: temp_settings_path("ipc-background-change"),
             settings: std::sync::Mutex::new(Settings::default()),
             channel_sink: sink,
+            settings_load: banager_core::settings::LoadStatus::Loaded,
             last_broadcast_generation: std::sync::atomic::AtomicU64::new(0),
             rounds: std::sync::Mutex::new(Default::default()),
             notified: std::sync::Mutex::new(Default::default()),
@@ -2357,6 +2380,12 @@ mod tests {
             parse(Error::from(ErrorKind::InvalidData)),
             serde_json::json!({ "kind": "settings_save_failed", "reason": "invalid_data" })
         );
+        // r24 R74-3: settings unread at startup, which no save replaces
+        // until Banager is reopened.
+        assert_eq!(
+            parse(Error::other(crate::state::RecoveryRequired)),
+            serde_json::json!({ "kind": "settings_save_failed", "reason": "recovery_required" })
+        );
         assert_eq!(
             parse(Error::other("Input/output error (os error 5)")),
             serde_json::json!({
@@ -2428,6 +2457,7 @@ mod tests {
             settings_path: temp_settings_path("not-actionable"),
             settings: std::sync::Mutex::new(Settings::default()),
             channel_sink: sink,
+            settings_load: banager_core::settings::LoadStatus::Loaded,
             last_broadcast_generation: std::sync::atomic::AtomicU64::new(0),
             rounds: std::sync::Mutex::new(Default::default()),
             notified: std::sync::Mutex::new(Default::default()),
@@ -2876,14 +2906,51 @@ mod tests {
         let path = temp_settings_path("settings-roundtrip");
         let _ = std::fs::remove_file(&path);
         let state = AppState::new(path, ChannelSink::new());
-        let mut settings = get_settings_impl(&state).expect("get_settings_impl");
+        let mut settings = get_settings_impl(&state)
+            .expect("get_settings_impl")
+            .settings;
         assert_eq!(settings, Settings::default());
         settings.show_technical_details = true;
         set_settings_impl(&state, settings.clone()).expect("set_settings_impl");
         assert_eq!(
-            get_settings_impl(&state).expect("get_settings_impl again"),
+            get_settings_impl(&state)
+                .expect("get_settings_impl again")
+                .settings,
             settings
         );
+    }
+
+    #[test]
+    fn test_get_settings_says_how_the_settings_were_found_beside_them() {
+        // r24 R74-3: the settings as one object, as before, with
+        // `load_status` beside their fields -- never inside settings.json.
+        let path = temp_settings_path("settings-load-status");
+        std::fs::write(&path, b"not json").unwrap();
+        let state = AppState::new(path.clone(), ChannelSink::new());
+        let view = get_settings_impl(&state).expect("get_settings_impl");
+        let wire = serde_json::to_value(&view).unwrap();
+        assert_eq!(wire["load_status"], "unreadable");
+        assert_eq!(wire["language"], "System");
+        assert_eq!(view.settings, Settings::default());
+        let refused = set_settings_impl(&state, Settings::default()).unwrap_err();
+        let refused: serde_json::Value = serde_json::from_str(&refused).unwrap();
+        assert_eq!(refused["reason"], "recovery_required");
+        assert_eq!(std::fs::read(&path).unwrap(), b"not json");
+        std::fs::remove_file(&path).unwrap();
+
+        let fresh = AppState::new(path.clone(), ChannelSink::new());
+        let wire = serde_json::to_value(get_settings_impl(&fresh).unwrap()).unwrap();
+        assert_eq!(wire["load_status"], "missing");
+        set_settings_impl(&fresh, Settings::default()).expect("saved");
+        let saved: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert!(saved.get("load_status").is_none());
+        let wire = serde_json::to_value(
+            get_settings_impl(&AppState::new(path.clone(), ChannelSink::new())).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(wire["load_status"], "loaded");
+        let _ = std::fs::remove_file(&path);
     }
 
     #[tokio::test]
@@ -2892,7 +2959,9 @@ mod tests {
         // toggle must actually reach `Adapter::check_updates` on every
         // refresh, not just round-trip through get_settings/set_settings.
         let (state, _execute_calls, check_options_calls) = state_with_fake_adapter_and_now(None);
-        let mut settings = get_settings_impl(&state).expect("get_settings_impl");
+        let mut settings = get_settings_impl(&state)
+            .expect("get_settings_impl")
+            .settings;
         settings.include_self_updating = true;
         set_settings_impl(&state, settings).expect("set_settings_impl");
 
@@ -2969,6 +3038,7 @@ mod tests {
             settings_path: temp_settings_path("sizes"),
             settings: std::sync::Mutex::new(Settings::default()),
             channel_sink: sink,
+            settings_load: banager_core::settings::LoadStatus::Loaded,
             last_broadcast_generation: std::sync::atomic::AtomicU64::new(0),
             rounds: std::sync::Mutex::new(Default::default()),
             notified: std::sync::Mutex::new(Default::default()),
@@ -3293,6 +3363,7 @@ mod tests {
             settings_path: temp_settings_path("ipc-listing"),
             settings: std::sync::Mutex::new(Settings::default()),
             channel_sink: sink,
+            settings_load: banager_core::settings::LoadStatus::Loaded,
             last_broadcast_generation: std::sync::atomic::AtomicU64::new(0),
             rounds: std::sync::Mutex::new(Default::default()),
             notified: std::sync::Mutex::new(Default::default()),

@@ -9,7 +9,9 @@
     "listTitle": "See What's Installed",
     "confirmTitle": "You Confirm Each Update and Uninstall You Choose",
     "privacyTitle": "No Data Collected",
-    "start": "Get Started"
+    "start": "Get Started",
+    "saveError": "Couldn't remember that you've seen the welcome: {{message}}. It may show again the next time you open Banager.",
+    "saveErrorPlain": "Couldn't remember that you've seen the welcome. It may show again the next time you open Banager."
   },
   "inventoryPreview": {
     "subtitle_one": "Found {{count}} tool · Checking for updates…",
@@ -1404,7 +1406,12 @@
     "other": "{{detail}}"
   },
   "persistence": {
-    "unreadableSettings": "the settings file couldn't be read and was left as it is. To save settings again, move settings.json in ~/Library/Application Support/com.brulek.banager to the Trash"
+    "unreadableSettings": "the settings file couldn't be read and was left as it is. To save settings again, move settings.json in ~/Library/Application Support/com.brulek.banager to the Trash",
+    "settingsUnreadable": "Settings couldn't be read, so defaults are in use.",
+    "settingsLoadEffects": "Automatic checks and notifications are off. Saved choices to skip versions or hide or pause update reminders aren't applied.",
+    "settingsDefaultsDetail": "Language follows your Mac. “Show technical details” and “Show Homebrew apps that have their own updater” are off.",
+    "settingsRecovery": "The settings file was left as it is, and settings can't be saved until you reopen Banager. To get your settings back, quit Banager, make settings.json in ~/Library/Application Support/com.brulek.banager readable again, for example by restoring it from a backup, then reopen Banager. To start fresh instead, move it to the Trash before reopening.",
+    "settingsRecoveryRequired": "settings couldn't be read when Banager opened, so none can be saved until you reopen it. Quit Banager, make settings.json in ~/Library/Application Support/com.brulek.banager readable again or move it to the Trash, then reopen Banager"
   },
   "settingsDiagnostics": {
     "title": "Diagnostics"
@@ -1617,7 +1624,7 @@
       },
       "autoCheck": {
         "question": "When does the automatic check stop?",
-        "answer": "It's off unless you choose Daily or Weekly for “Check for updates” in Settings; choosing Manually stops it. Checks stop when you quit the app or restart your Mac, until you open it again; closing the window doesn't stop them. While an update or uninstall is under way, no check starts, and it looks again 15 minutes later. When every source fails, it waits longer before each try, up to six hours."
+        "answer": "It's off unless you choose Daily or Weekly for “Check for updates” in Settings; choosing Manually stops it. Checks stop when you quit the app or restart your Mac, until you open it again; closing the window doesn't stop them. While an update or uninstall is under way, no check starts and it looks again 15 minutes later; when every source fails, it waits longer before each try, up to six hours. If your saved settings can't be read, it stays off until you repair or remove the settings file and reopen the app, as Settings explains."
       }
     }
   },

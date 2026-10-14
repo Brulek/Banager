@@ -89,6 +89,58 @@ function notifyStatus(): HTMLElement | null {
 }
 
 describe("SettingsPage", () => {
+  it("says settings that could not be read before anything is changed, and changes none of them (r24 R74-3)", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "get_settings") return { ...baseSettings({ welcome_seen: false }), load_status: "unreadable" };
+      if (cmd === "get_snapshot") return snapshotOf([]);
+      if (cmd === "get_system_facts") return undefined;
+      return undefined;
+    });
+    renderWithProviders(<SettingsPage />);
+    const warning = await screen.findByText("Settings couldn't be read, so defaults are in use.");
+    const block = warning.closest("[data-settings-load-warning]") as HTMLElement;
+    expect(block).not.toBeNull();
+    for (const said of [
+      enUS.persistence.settingsLoadEffects,
+      enUS.persistence.settingsDefaultsDetail,
+      enUS.persistence.settingsRecovery,
+    ]) {
+      expect(within(block).getByText(said)).toBeInTheDocument();
+    }
+    // Before every setting, as the first thing the page says.
+    const language = screen.getByRole("combobox", { name: "Language" });
+    expect(block.compareDocumentPosition(language) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    const switches = screen.getAllByRole("switch");
+    expect(switches.length).toBeGreaterThanOrEqual(4);
+    for (const control of [...switches, ...screen.getAllByRole("combobox")]) {
+      expect(control, control.id).toBeDisabled();
+    }
+    // What is not a setting -- Check Tool Setup, the credits -- still works.
+    for (const button of screen.getAllByRole("button")) {
+      expect(button, button.textContent ?? "").toBeEnabled();
+    }
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("switch", { name: enUS.settings.notifyOperations.label }));
+    await user.click(screen.getByRole("switch", { name: "Show technical details" }));
+    fireEvent.change(language, { target: { value: "En" } });
+    const sent = vi.mocked(invoke).mock.calls.map(([cmd]) => cmd);
+    expect(sent).not.toContain("set_settings");
+    expect(sent).not.toContain("request_notification_permission");
+  });
+
+  it("says nothing of the settings file when it was read, or was not there", async () => {
+    for (const load_status of ["loaded", "missing"] as const) {
+      vi.mocked(invoke).mockImplementation(async (cmd: string) =>
+        cmd === "get_settings" ? { ...baseSettings(), load_status } : undefined,
+      );
+      const view = renderWithProviders(<SettingsPage />);
+      expect(await screen.findByRole("switch", { name: "Show technical details" })).toBeEnabled();
+      expect(view.container.querySelector("[data-settings-load-warning]")).toBeNull();
+      view.unmount();
+    }
+  });
+
   it("renders the settings loaded from the backend", async () => {
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
       if (cmd === "get_settings") {

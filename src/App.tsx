@@ -13,6 +13,7 @@ import { OperationBar } from "./components/OperationBar";
 import { LogDrawer } from "./components/LogDrawer";
 import { SnapshotStatus } from "./components/SnapshotStatus";
 import { HistoryNotice } from "./components/HistoryNotice";
+import { SettingsNotice } from "./components/SettingsNotice";
 import { ShortcutsSheet } from "./components/ShortcutsSheet";
 import { FaqSheet } from "./components/FaqSheet";
 import { ToolSetupSheet } from "./components/ToolSetupSheet";
@@ -303,6 +304,8 @@ function App() {
           {/* Outside `SnapshotStatus` too, so that what it says of the
               Update History is said whatever the page below shows. */}
           {page === "updates" ? <HistoryNotice /> : null}
+          {/* And what it says of the settings, on every page (r24 R74-3). */}
+          <SettingsNotice page={page} />
           {/* The page's own box. The Installed and Updates pages size
               their lists to its height (`h-full`) and scroll inside them;
               the other pages scroll here. Either way the toolbar's

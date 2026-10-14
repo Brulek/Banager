@@ -152,6 +152,16 @@ export type ScenarioPath = (typeof SCENARIO_PATHS)[number];
 export const SCENARIO_HISTORIES = ["saved", "unreadable", "malformed", "newer", "write-failed"] as const;
 export type ScenarioHistory = (typeof SCENARIO_HISTORIES)[number];
 
+/**
+ * `?settings=`: how settings.json was found when the preview opened
+ * (`get_settings`'s `load_status`). `saved` (the default): read, as on any
+ * launch; `unreadable`: there and not read, so the defaults stand in for
+ * it, a warning says so over every page, and every save is refused until
+ * the app is reopened, as Rust refuses them (r24 R74-3).
+ */
+export const SCENARIO_SETTINGS = ["saved", "unreadable"] as const;
+export type ScenarioSettings = (typeof SCENARIO_SETTINGS)[number];
+
 const PAGES: readonly Page[] = ["overview", "updates", "installed", "unknown", "settings"];
 
 /** `?lang=`: the Settings language the preview starts with. */
@@ -175,6 +185,7 @@ export interface Scenario {
   sizes: ScenarioSizes;
   path: ScenarioPath;
   history: ScenarioHistory;
+  settings: ScenarioSettings;
   /**
    * `?welcome=1`: the settings say the welcome sheet has not been shown,
    * so it opens over the first page, as at a first launch. Off by default,
@@ -193,6 +204,7 @@ export const DEFAULT_SCENARIO: Scenario = {
   sizes: "measured",
   path: "read",
   history: "saved",
+  settings: "saved",
   welcome: false,
 };
 
@@ -244,6 +256,7 @@ export function parseScenario(search: string): { scenario: Scenario; problems: s
       sizes: pick(params, "sizes", SCENARIO_SIZES, DEFAULT_SCENARIO.sizes, problems),
       path: pick(params, "path", SCENARIO_PATHS, DEFAULT_SCENARIO.path, problems),
       history: pick(params, "history", SCENARIO_HISTORIES, DEFAULT_SCENARIO.history, problems),
+      settings: pick(params, "settings", SCENARIO_SETTINGS, DEFAULT_SCENARIO.settings, problems),
       welcome: welcome === "1" || welcome === "true",
     },
     problems,
