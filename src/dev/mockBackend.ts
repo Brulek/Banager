@@ -300,6 +300,20 @@ export function createMockBackend(scenario: Scenario): MockBackend {
   const measuredBefore = new Set<string>();
   /** What `get_history` answers: earlier launches' records, then this one's. */
   let history: HistoryView = mockHistory(Date.now());
+  // `?history=`: a history.json left as it is lists none of its records
+  // and keeps this launch's in memory (`Loaded::Blocked`, r24 R74-1).
+  const blockedHistory =
+    scenario.history === "unreadable" || scenario.history === "malformed" || scenario.history === "newer"
+      ? scenario.history
+      : null;
+  if (blockedHistory !== null) history = { ...history, records: [], persistence: blockedHistory };
+  /** What a change leaves `persistence` and `unsaved_clear` at: `?history=write-failed`'s fail. */
+  const afterChange = (cleared: boolean): Pick<HistoryView, "persistence" | "unsaved_clear"> =>
+    blockedHistory !== null
+      ? { persistence: blockedHistory, unsaved_clear: cleared || (history.unsaved_clear ?? false) }
+      : scenario.history === "write-failed"
+        ? { persistence: "write_failed", unsaved_clear: cleared || (history.unsaved_clear ?? false) }
+        : { persistence: "saved", unsaved_clear: false };
   if (scenario.outcome === "follow-up") {
     // Of the Intel Homebrew with `nonode-intel`, where it answers, so that
     // the command its View Log hands over shows whose brew it names:
@@ -606,7 +620,9 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       alreadyUpdated: op.summary.already_updated ?? null,
       followUpWarnings: op.summary.follow_up_warnings,
     });
-    if (record !== null) history = { ...history, records: [{ ...record, dismissed: false }, ...history.records] };
+    if (record !== null) {
+      history = { ...history, ...afterChange(false), records: [{ ...record, dismissed: false }, ...history.records] };
+    }
     if (op.started) {
       for (const lock of op.plan.locks) held.delete(lock);
       running -= 1;
@@ -984,7 +1000,12 @@ export function createMockBackend(scenario: Scenario): MockBackend {
     },
     async clear_history() {
       // `HistoryStore::clear`: dismiss existing records, keep later completions.
-      history = { ...history, cleared_before: Date.now(), records: history.records.map((record) => ({ ...record, dismissed: true })) };
+      history = {
+        ...history,
+        ...afterChange(true),
+        cleared_before: Date.now(),
+        records: history.records.map((record) => ({ ...record, dismissed: true })),
+      };
       return clone(history);
     },
     async report_update_set(args) {

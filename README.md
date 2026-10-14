@@ -103,6 +103,8 @@ a protected place**, and the link is not followed.
   result didn't add up is listed only while the last check still offers that tool an update; one updated with an
   error is listed either way, as a success is. Cancelled updates
   and uninstalls are not listed. The list is kept across restarts in `history.json`, until you press Clear History.
+  If that file is there but can't be read, Banager leaves it as it is and keeps new records only until you quit;
+  a warning over the Updates page says so and what to do, whatever the page shows.
 - An uninstall's preview lists what stays after it — an AI tool's settings and data folders where the
   table names them, Ollama's models — with how much each takes where it could be measured, and Copy Path; nothing in it
   deletes them. One line under the list says that settings and data you don't need can be moved to the Trash in Finder
@@ -574,7 +576,8 @@ formula 与 cask，以及 npm、PyPI、crates.io 上的包，每条都译自该�
   有内容可看时还有“查看日志”（本次打开时看日志，重启后看保留下来的后续说明，例如确认时说会删除的旧版本没有删）；它那一行也这样写，没有“重试”，也不算作待更新。
   cask的更新失败时总是写未能更新：Homebrew会装回旧版本，连这一步也失败时，也无从知道新的App是否已经就位。
   未能更新的和结果对不上的只在上次检查仍为这个工具提供更新时列出；已更新但有错误的和成功的一样，都会列出。
-  取消的更新和卸载不列。这个列表重启后仍在（存在 `history.json` 里），直到你按“清除记录”。
+  取消的更新和卸载不列。这个列表重启后仍在（存在 `history.json` 里），直到你按“清除记录”。这个文件在、却读不了时，
+  Banager 会原样保留它，新的记录只留到退出为止；“更新”页上方会提示这一点和该怎么做，不论页面显示什么。
 - 卸载前的预览会列出卸载后会保留的东西——AI 工具的设置和数据文件夹（内置表格里写了的）、Ollama 的模型——能算出大小的
   写出大小，并可以拷贝路径；预览里没有任何删除它们的按钮，只在列表下面用一句话说明不需要的设置和数据可以在访达中移到
   废纸篓（同时列出终端配置文件时，提醒它留在原处）。这个工具的另一份、或同一类的其他工具还装着，或者文件夹里有另一份

@@ -178,6 +178,39 @@ pub struct HistoryView {
     /// Current readers use each record's `dismissed`, never this cutoff.
     pub cleared_before: Option<i64>,
     pub records: Vec<HistoryRecord>,
+    /// Whether the file has what is listed (`HistoryPersistence`).
+    pub persistence: HistoryPersistence,
+    /// Whether the last Clear is not in the file yet: the records it
+    /// dismissed would be listed again after a restart. False once that
+    /// Clear is written, even while a later record is still owed.
+    pub unsaved_clear: bool,
+}
+
+/// Whether `history.json` has what the window lists. The first three are
+/// a file Banager writes; the others a launch that keeps its records in
+/// memory only, and never writes the file.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HistoryPersistence {
+    /// Every change is in the file.
+    Saved,
+    /// A change is being written.
+    Pending,
+    /// The last write failed. The change is still owed: the next record,
+    /// Clear or Banager's exit tries again.
+    WriteFailed,
+    /// The file is there but could not be read (its permissions, say,
+    /// after a backup was put back). Left as it is for this launch.
+    Unreadable,
+    /// The file read, but is not a history this build can read. Left as
+    /// it is for this launch.
+    Malformed,
+    /// A newer Banager's file: never written over.
+    Newer,
+    /// The thread that writes the file could not be started.
+    WriterUnavailable,
+    /// No history is attached to the session (`Session::history`).
+    Unattached,
 }
 
 /// The file. `records` in the order they were kept, the first first. `trusted_at` and `pending_at` are
@@ -651,9 +684,8 @@ fn bound(records: &mut Vec<HistoryRecord>, anchor: i64) {
 /// How a file on disk read.
 #[derive(Debug, PartialEq, Eq)]
 enum Loaded {
-    /// Its records and Clear, or nothing for a file that is not there or
-    /// cannot be read as a history: start empty, and write the file anew
-    /// at the first record.
+    /// Its records and Clear, or nothing for a file that is not there:
+    /// start empty, and write the file anew at the first record.
     Usable {
         cleared_before: Option<i64>,
         records: Vec<HistoryRecord>,
@@ -666,11 +698,15 @@ enum Loaded {
         /// and no login, for longer than this launch takes to start.
         pruned: bool,
     },
-    /// A newer Banager's file: start empty and never write over it.
-    Newer,
+    /// A file that is there but is not read for this launch: one that
+    /// could not be read (`Unreadable`), one that is not a history
+    /// (`Malformed`), or a newer Banager's (`Newer`). Start empty and never
+    /// write over it: what it holds comes back when Banager is opened
+    /// again with the file put right (r24 R74-1).
+    Blocked(HistoryPersistence),
 }
 
-fn load(path: &Path, now: i64) -> Loaded {
+fn load(path: &Path, now: i64, read: &ReadFn) -> Loaded {
     let empty = Loaded::Usable {
         cleared_before: None,
         records: Vec::new(),
@@ -680,46 +716,56 @@ fn load(path: &Path, now: i64) -> Loaded {
         },
         pruned: false,
     };
-    let Ok(bytes) = std::fs::read(path) else {
-        return empty;
+    // Only a file that is not there is an empty history. One that is
+    // there but does not read is kept as it is: a write would put this
+    // launch's records in its place, and its own would be lost for good.
+    let bytes = match read(path) {
+        Ok(bytes) => bytes,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return empty,
+        Err(e) => {
+            eprintln!("[banager] could not read the history file, left as it is: {e}");
+            return Loaded::Blocked(HistoryPersistence::Unreadable);
+        }
     };
-    let Ok(value) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
-        return empty;
+    let malformed = Loaded::Blocked(HistoryPersistence::Malformed);
+    let Ok(serde_json::Value::Object(value)) = serde_json::from_slice::<serde_json::Value>(&bytes)
+    else {
+        return malformed;
     };
     let Some(format) = value.get("format").and_then(serde_json::Value::as_u64) else {
-        return empty;
+        return malformed;
     };
+    // Before its records' shape: a newer Banager may have changed it.
     if format > u64::from(HISTORY_FORMAT) {
-        return Loaded::Newer;
+        return Loaded::Blocked(HistoryPersistence::Newer);
     }
+    if format == 0 {
+        return malformed;
+    }
+    let Some(items) = value.get("records").and_then(serde_json::Value::as_array) else {
+        return malformed;
+    };
     let cleared_before = value
         .get("cleared_before")
         .and_then(serde_json::Value::as_i64)
         .filter(|value| valid_timestamp_ms(*value));
     // One record that does not read -- cut short, or from a hand that
     // edited the file -- costs that record, not the rest.
-    let mut records: Vec<HistoryRecord> = value
-        .get("records")
-        .and_then(serde_json::Value::as_array)
-        .map(|items| {
-            items
-                .iter()
-                .filter_map(|item| {
-                    let mut record: HistoryRecord = serde_json::from_value(item.clone()).ok()?;
-                    if !valid_timestamp_ms(record.finished_at) {
-                        return None;
-                    }
-                    // Format-1 releases did not write this field. Convert their
-                    // cutoff once, including when the clock has moved backwards.
-                    if item.get("dismissed").is_none() {
-                        record.dismissed =
-                            cleared_before.is_some_and(|time| record.finished_at <= time);
-                    }
-                    Some(record)
-                })
-                .collect()
+    let mut records: Vec<HistoryRecord> = items
+        .iter()
+        .filter_map(|item| {
+            let mut record: HistoryRecord = serde_json::from_value(item.clone()).ok()?;
+            if !valid_timestamp_ms(record.finished_at) {
+                return None;
+            }
+            // Format-1 releases did not write this field. Convert their
+            // cutoff once, including when the clock has moved backwards.
+            if item.get("dismissed").is_none() {
+                record.dismissed = cleared_before.is_some_and(|time| record.finished_at <= time);
+            }
+            Some(record)
         })
-        .unwrap_or_default();
+        .collect();
     let mut redacted = false;
     for record in &mut records {
         if let std::borrow::Cow::Owned(id) =
@@ -779,11 +825,15 @@ struct State {
     records: Vec<HistoryRecord>,
     /// What the records' age is measured from.
     clock: Clock,
-    /// False for a newer Banager's file, which is never written over.
-    writable: bool,
+    /// Why this launch never writes the file (`Loaded::Blocked`, or a
+    /// writer thread that could not start); `None` while it does. Kept for
+    /// the whole launch: memory lacks what a file put right since holds.
+    blocked: Option<HistoryPersistence>,
     /// Bumped on every change; `written` is the change the file has.
     changes: u64,
     written: u64,
+    /// The change the last Clear was (`changes` after it); 0 for none.
+    clear_change: u64,
     /// Writes the writer thread has begun.
     tries: u64,
     /// The last write, when it failed: what `flush` stops waiting at.
@@ -800,7 +850,74 @@ struct FailedWrite {
 
 /// Whether the file still lacks a change it will be written with.
 fn owed(state: &State) -> bool {
-    state.writable && state.written < state.changes
+    state.blocked.is_none() && state.written < state.changes
+}
+
+/// What `HistoryView::persistence` says of `state`.
+fn persistence(state: &State) -> HistoryPersistence {
+    if let Some(blocked) = state.blocked {
+        blocked
+    } else if state.written >= state.changes {
+        HistoryPersistence::Saved
+    } else if state.failed.is_some() {
+        HistoryPersistence::WriteFailed
+    } else {
+        HistoryPersistence::Pending
+    }
+}
+
+/// How the file is read and written: `std::fs::read` and
+/// `write_atomically`, or a test's own (`HistoryIo`).
+type ReadFn = Arc<dyn Fn(&Path) -> std::io::Result<Vec<u8>> + Send + Sync>;
+type WriteFn = Arc<dyn Fn(&Path, &[u8]) -> std::io::Result<()> + Send + Sync>;
+
+/// The file's reads and writes, for one store. Banager's own are
+/// `HistoryIo::real`; a test hands its own to `HistoryStore::open_with_io`
+/// to have a read or a write fail, or wait, in that store alone.
+#[derive(Clone)]
+pub struct HistoryIo {
+    read: ReadFn,
+    write: WriteFn,
+}
+
+impl HistoryIo {
+    fn real() -> HistoryIo {
+        HistoryIo {
+            read: Arc::new(|path| std::fs::read(path)),
+            write: Arc::new(write_atomically),
+        }
+    }
+
+    /// The real reads and writes, with `read` in place of the read.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn with_read(
+        self,
+        read: impl Fn(&Path) -> std::io::Result<Vec<u8>> + Send + Sync + 'static,
+    ) -> HistoryIo {
+        HistoryIo {
+            read: Arc::new(read),
+            ..self
+        }
+    }
+
+    /// The real reads and writes, with `write` in place of the write.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn with_write(
+        self,
+        write: impl Fn(&Path, &[u8]) -> std::io::Result<()> + Send + Sync + 'static,
+    ) -> HistoryIo {
+        HistoryIo {
+            write: Arc::new(write),
+            ..self
+        }
+    }
+}
+
+#[cfg(any(test, feature = "test-support"))]
+impl Default for HistoryIo {
+    fn default() -> HistoryIo {
+        HistoryIo::real()
+    }
 }
 
 /// The history of one launch: the records in memory, and the thread that
@@ -809,6 +926,7 @@ pub struct HistoryStore {
     path: PathBuf,
     run: String,
     now_fn: fn() -> i64,
+    write: WriteFn,
     state: Mutex<State>,
     flushed: Condvar,
     wake: Mutex<mpsc::Sender<()>>,
@@ -817,7 +935,9 @@ pub struct HistoryStore {
 impl HistoryStore {
     /// Reads `path` (`history.json` in Banager's application data
     /// directory) and starts the thread that writes it. Never fails: a
-    /// file that does not read is an empty history.
+    /// file that is not there is an empty history; one that does not read
+    /// is an empty history this launch never writes over
+    /// (`Loaded::Blocked`).
     pub fn open(path: PathBuf) -> Arc<HistoryStore> {
         HistoryStore::open_with_clock(path, system_now_ms)
     }
@@ -825,22 +945,32 @@ impl HistoryStore {
     /// `open`, with the clock a test sets: `now_fn` answers in
     /// milliseconds since 1970.
     pub fn open_with_clock(path: PathBuf, now_fn: fn() -> i64) -> Arc<HistoryStore> {
+        HistoryStore::open_inner(path, now_fn, HistoryIo::real())
+    }
+
+    /// `open_with_clock`, with the file read and written by `io`.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn open_with_io(path: PathBuf, now_fn: fn() -> i64, io: HistoryIo) -> Arc<HistoryStore> {
+        HistoryStore::open_inner(path, now_fn, io)
+    }
+
+    fn open_inner(path: PathBuf, now_fn: fn() -> i64, io: HistoryIo) -> Arc<HistoryStore> {
         let now = now_fn();
-        let (cleared_before, records, clock, writable, pruned) = match load(&path, now) {
+        let (cleared_before, records, clock, blocked, pruned) = match load(&path, now, &io.read) {
             Loaded::Usable {
                 cleared_before,
                 records,
                 clock,
                 pruned,
-            } => (cleared_before, records, clock, true, pruned),
-            Loaded::Newer => (
+            } => (cleared_before, records, clock, None, pruned),
+            Loaded::Blocked(why) => (
                 None,
                 Vec::new(),
                 Clock {
                     trusted: now,
                     pending: None,
                 },
-                false,
+                Some(why),
                 false,
             ),
         };
@@ -849,15 +979,17 @@ impl HistoryStore {
             path,
             run: new_run_id(),
             now_fn,
+            write: io.write,
             state: Mutex::new(State {
                 cleared_before,
                 records,
                 clock,
-                writable,
+                blocked,
                 // Rewrite records past their bounds or containing a legacy
                 // Ollama login straight away, without those details.
                 changes: u64::from(pruned),
                 written: 0,
+                clear_change: 0,
                 tries: 0,
                 failed: None,
             }),
@@ -882,7 +1014,11 @@ impl HistoryStore {
             // launch, and `flush` does not wait for a write that will not
             // come.
             eprintln!("[banager] could not start the history writer; keeping history in memory");
-            store.state.lock().unwrap().writable = false;
+            // A file left as it is keeps saying why.
+            let mut state = store.state.lock().unwrap();
+            state.blocked = state
+                .blocked
+                .or(Some(HistoryPersistence::WriterUnavailable));
         } else if pruned {
             store.wake();
         }
@@ -926,6 +1062,7 @@ impl HistoryStore {
                 record.dismissed = true;
             }
             state.changes += 1;
+            state.clear_change = state.changes;
         }
         self.wake();
         self.view()
@@ -951,11 +1088,15 @@ impl HistoryStore {
                 .filter(|r| r.finished_at >= oldest)
                 .cloned()
                 .collect(),
+            persistence: persistence(&state),
+            unsaved_clear: state.clear_change > state.written,
         }
     }
 
     /// Waits, at most `timeout`, until the file has every change made so
-    /// far; true if it has (or if this launch never writes the file).
+    /// far; true if it has. False at once for a launch that never writes
+    /// the file (`State::blocked`) once anything has changed: those
+    /// changes are in memory only.
     /// A change still owed may be one whose write failed, which nothing
     /// else tries again before the next record or Clear: the writer thread
     /// is woken to try it now, and the wait ends with the first try begun
@@ -967,6 +1108,9 @@ impl HistoryStore {
     pub fn flush(&self, timeout: Duration) -> bool {
         let since = {
             let state = self.state.lock().unwrap();
+            if state.blocked.is_some() {
+                return state.changes == 0;
+            }
             if !owed(&state) {
                 return true;
             }
@@ -1013,7 +1157,7 @@ impl HistoryStore {
         };
         let result = bytes
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
-            .and_then(|bytes| write_atomically(&self.path, &bytes));
+            .and_then(|bytes| (self.write)(&self.path, &bytes));
         let mut state = self.state.lock().unwrap();
         match result {
             Ok(()) => {
@@ -2299,14 +2443,14 @@ mod tests {
             .unwrap(),
         )
         .unwrap();
-        match load(&dir.file(), NOW) {
+        match load(&dir.file(), NOW, &HistoryIo::real().read) {
             Loaded::Usable {
                 records, pruned, ..
             } => {
                 assert_eq!(records, vec![model, pip]);
                 assert!(!pruned, "nothing to write again");
             }
-            Loaded::Newer => panic!("the file is this format"),
+            Loaded::Blocked(why) => panic!("the file is this format: {why:?}"),
         }
     }
 
@@ -2610,36 +2754,104 @@ mod tests {
     }
 
     #[test]
-    fn test_a_missing_or_corrupt_file_is_an_empty_history_and_is_replaced_whole_at_the_next_record()
-    {
-        let dir = TempDir::new("corrupt");
-        assert_eq!(
-            HistoryStore::open_with_clock(dir.file(), now)
-                .view()
-                .records,
-            vec![]
-        );
-
-        for bytes in [
-            &b"{ not json"[..],
-            b"[]",
-            b"{\"format\":\"one\"}",
-            b"\xff\xfe",
-        ] {
-            std::fs::write(dir.file(), bytes).unwrap();
-            let store = HistoryStore::open_with_clock(dir.file(), now);
-            assert_eq!(store.view().records, vec![]);
-            // Opening it leaves the file alone.
-            assert_eq!(std::fs::read(dir.file()).unwrap(), bytes);
-        }
+    fn test_a_missing_file_is_an_empty_history_written_whole_at_the_first_record() {
+        let dir = TempDir::new("missing");
         let store = HistoryStore::open_with_clock(dir.file(), now);
+        let view = store.view();
+        assert_eq!(view.records, vec![]);
+        assert_eq!(view.persistence, HistoryPersistence::Saved);
         let k = key("cmake");
         store.record(&ended(&k, &Outcome::Succeeded), &started("cmake"));
         assert!(store.flush(Duration::from_secs(5)));
+        assert_eq!(store.view().persistence, HistoryPersistence::Saved);
         let file: serde_json::Value =
             serde_json::from_slice(&std::fs::read(dir.file()).unwrap()).unwrap();
         assert_eq!(file["format"], HISTORY_FORMAT);
         assert_eq!(file["records"].as_array().unwrap().len(), 1);
+    }
+
+    /// A file that is there but is not a history this build reads is left
+    /// as it is for the whole launch: what is recorded and cleared stays in
+    /// memory, and no write puts it in the file's place (r24 R74-1).
+    #[test]
+    fn test_invalid_history_is_preserved_and_nothing_is_written_over_it() {
+        let dir = TempDir::new("invalid");
+        let k = key("cmake");
+        for bytes in [
+            &b"{ not json"[..],
+            b"",
+            b"[]",
+            b"\xff\xfe",
+            b"{\"format\":\"one\",\"records\":[]}",
+            b"{\"format\":0,\"records\":[]}",
+            b"{\"format\":1}",
+            b"{\"format\":2,\"records\":{\"cmake\":1}}",
+            b"{\"format\":3,\"records\":null}",
+        ] {
+            std::fs::write(dir.file(), bytes).unwrap();
+            let store = HistoryStore::open_with_clock(dir.file(), now);
+            let what = String::from_utf8_lossy(bytes);
+            assert_eq!(store.view().records, vec![], "{what}");
+            assert_eq!(
+                store.view().persistence,
+                HistoryPersistence::Malformed,
+                "{what}"
+            );
+            assert!(store.flush(Duration::ZERO), "nothing changed yet: {what}");
+            store.record(&ended(&k, &Outcome::Succeeded), &started("cmake"));
+            store.clear();
+            assert!(!store.flush(Duration::ZERO), "kept in memory only: {what}");
+            let view = store.view();
+            assert_eq!(view.records.len(), 1, "{what}");
+            assert!(view.records[0].dismissed, "{what}");
+            assert!(view.unsaved_clear, "{what}");
+            assert_eq!(view.persistence, HistoryPersistence::Malformed, "{what}");
+            drop(store);
+            assert_eq!(std::fs::read(dir.file()).unwrap(), bytes, "{what}");
+        }
+    }
+
+    /// A history file that is there but cannot be read -- its permissions
+    /// wrong after a backup was put back, with its folder still writable --
+    /// is not replaced by this launch's records: once it reads again, its
+    /// records are all there (r24 R74-1).
+    #[test]
+    fn test_unreadable_history_is_preserved_after_record_clear_and_flush() {
+        let dir = TempDir::new("unreadable");
+        let old = record_at("git", NOW - DAY);
+        let bytes = serde_json::to_vec_pretty(&serde_json::json!({
+            "format": HISTORY_FORMAT,
+            "cleared_before": null,
+            "trusted_at": NOW,
+            "records": [old],
+        }))
+        .unwrap();
+        std::fs::write(dir.file(), &bytes).unwrap();
+        let denied = HistoryIo::default()
+            .with_read(|_| Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied)));
+        let store = HistoryStore::open_with_io(dir.file(), now, denied);
+        assert_eq!(store.view().records, vec![]);
+        assert_eq!(store.view().persistence, HistoryPersistence::Unreadable);
+
+        let k = key("cmake");
+        store.record(&ended(&k, &Outcome::Succeeded), &started("cmake"));
+        store.clear();
+        assert!(
+            !store.flush(Duration::from_secs(5)),
+            "the changes are in memory only"
+        );
+        let view = store.view();
+        assert_eq!(view.records.len(), 1, "this launch's record is listed");
+        assert!(view.records[0].dismissed);
+        assert!(view.unsaved_clear);
+        assert_eq!(view.persistence, HistoryPersistence::Unreadable);
+        drop(store);
+        assert_eq!(std::fs::read(dir.file()).unwrap(), bytes, "left as it was");
+
+        // Readable again: the next launch has the earlier record.
+        let next = HistoryStore::open_with_clock(dir.file(), now);
+        assert_eq!(next.view().records, vec![old]);
+        assert_eq!(next.view().persistence, HistoryPersistence::Saved);
     }
 
     #[test]
@@ -2667,10 +2879,14 @@ mod tests {
         std::fs::write(dir.file(), &bytes).unwrap();
         let store = HistoryStore::open_with_clock(dir.file(), now);
         assert_eq!(store.view().records, vec![]);
+        assert_eq!(store.view().persistence, HistoryPersistence::Newer);
         let k = key("cmake");
         store.record(&ended(&k, &Outcome::Succeeded), &started("cmake"));
         store.clear();
-        assert!(store.flush(Duration::from_secs(5)));
+        assert!(
+            !store.flush(Duration::from_secs(5)),
+            "the changes are in memory only"
+        );
         assert_eq!(
             store.view().records.len(),
             1,
@@ -2761,25 +2977,40 @@ mod tests {
         assert_eq!(names, vec!["history.json".to_string()]);
     }
 
+    /// Real writes, which fail while the flag is set: a folder Banager
+    /// cannot write to, in this store alone.
+    fn failing_writes(fail: bool) -> (HistoryIo, Arc<std::sync::atomic::AtomicBool>) {
+        let flag = Arc::new(std::sync::atomic::AtomicBool::new(fail));
+        let failing = flag.clone();
+        let io = HistoryIo::default().with_write(move |path, bytes| {
+            if failing.load(std::sync::atomic::Ordering::SeqCst) {
+                Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied))
+            } else {
+                write_atomically(path, bytes)
+            }
+        });
+        (io, flag)
+    }
+
     #[test]
     fn test_a_failed_write_stays_owed_and_the_next_change_writes_it() {
         let dir = TempDir::new("owed");
-        // A file where the folder should be: no write can succeed.
-        let folder = dir.0.join("data");
-        std::fs::write(&folder, b"a file, not a folder").unwrap();
-        let store = HistoryStore::open_with_clock(folder.join("history.json"), now);
+        let (io, failing) = failing_writes(true);
+        let store = HistoryStore::open_with_io(dir.file(), now, io);
         let k = key("cmake");
         store.record(&ended(&k, &Outcome::Succeeded), &started("cmake"));
         assert!(
-            !store.flush(Duration::from_millis(300)),
+            !store.flush(Duration::from_secs(5)),
             "a write that failed is not reported as written"
         );
-        // The folder can be made now: the next change writes both.
-        std::fs::remove_file(&folder).unwrap();
+        assert_eq!(store.view().persistence, HistoryPersistence::WriteFailed);
+        // It can be written now: the next change writes both.
+        failing.store(false, std::sync::atomic::Ordering::SeqCst);
         store.clear();
         assert!(store.flush(Duration::from_secs(5)));
+        assert_eq!(store.view().persistence, HistoryPersistence::Saved);
         let file: HistoryFile =
-            serde_json::from_slice(&std::fs::read(folder.join("history.json")).unwrap()).unwrap();
+            serde_json::from_slice(&std::fs::read(dir.file()).unwrap()).unwrap();
         assert_eq!(file.records.len(), 1);
         assert_eq!(file.cleared_before, Some(NOW));
     }
@@ -2790,20 +3021,19 @@ mod tests {
     #[test]
     fn test_a_flush_after_a_failed_write_tries_it_again_with_no_new_change() {
         let dir = TempDir::new("retry");
-        let folder = dir.0.join("data");
-        std::fs::write(&folder, b"a file, not a folder").unwrap();
-        let store = HistoryStore::open_with_clock(folder.join("history.json"), now);
+        let (io, failing) = failing_writes(true);
+        let store = HistoryStore::open_with_io(dir.file(), now, io);
         let k = key("cmake");
         store.record(&ended(&k, &Outcome::Succeeded), &started("cmake"));
         assert!(!store.flush(Duration::from_secs(5)));
-        // The folder can be made now, and nothing new is recorded.
-        std::fs::remove_file(&folder).unwrap();
+        // It can be written now, and nothing new is recorded.
+        failing.store(false, std::sync::atomic::Ordering::SeqCst);
         assert!(
             store.flush(Duration::from_secs(5)),
             "the flush tried the owed write again"
         );
         let file: HistoryFile =
-            serde_json::from_slice(&std::fs::read(folder.join("history.json")).unwrap()).unwrap();
+            serde_json::from_slice(&std::fs::read(dir.file()).unwrap()).unwrap();
         assert_eq!(file.records.len(), 1);
     }
 
@@ -2813,9 +3043,8 @@ mod tests {
     #[test]
     fn test_a_flush_ends_as_soon_as_its_try_has_failed_again_not_at_its_timeout() {
         let dir = TempDir::new("fails-fast");
-        let folder = dir.0.join("data");
-        std::fs::write(&folder, b"a file, not a folder").unwrap();
-        let store = HistoryStore::open_with_clock(folder.join("history.json"), now);
+        let (io, _failing) = failing_writes(true);
+        let store = HistoryStore::open_with_io(dir.file(), now, io);
         let k = key("cmake");
         store.record(&ended(&k, &Outcome::Succeeded), &started("cmake"));
         for attempt in ["the first flush", "a flush with nothing new since"] {

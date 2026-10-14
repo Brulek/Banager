@@ -1223,8 +1223,41 @@ export interface HistoryView {
   run: string;
   cleared_before: number | null;
   records: HistoryRecord[];
+  /**
+   * Whether history.json has what is listed (Rust `HistoryPersistence`).
+   * Rust always sends it; optional only so that a test's or the preview's
+   * view without it reads as one with nothing to say.
+   */
+  persistence?: HistoryPersistence;
+  /**
+   * Whether the last Clear History is not in the file yet: what it hid
+   * comes back after a restart. False once that Clear is written, even
+   * while a later record is still owed.
+   */
+  unsaved_clear?: boolean;
 }
-/** No history: before `get_history` answers, or a command that answered nothing. */
+/**
+ * Rust `HistoryPersistence`: `saved`, `pending` and `write_failed` for a
+ * file Banager writes; the rest for a launch that keeps its records in
+ * memory only -- a file there that could not be read (`unreadable`), one
+ * that is not a history (`malformed`), a newer Banager's (`newer`), no
+ * thread to write it (`writer_unavailable`), or no history attached at all
+ * (`unattached`).
+ */
+export type HistoryPersistence =
+  | "saved"
+  | "pending"
+  | "write_failed"
+  | "unreadable"
+  | "malformed"
+  | "newer"
+  | "writer_unavailable"
+  | "unattached";
+/**
+ * No history: before `get_history` answers, or a command that answered
+ * nothing. A stand-in for the lists, with no `persistence`: nothing the
+ * history's notice says (`HistoryNotice`) is read off it.
+ */
 export const NO_HISTORY: HistoryView = { run: "", cleared_before: null, records: [] };
 export type UiEvent =
   | { Operation: OperationEvent }

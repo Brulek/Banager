@@ -55,7 +55,9 @@ pub(crate) fn clear_history_impl(state: &AppState) -> HistoryView {
 /// The Updates page's Clear: every record already kept is marked dismissed,
 /// and the page lists none of them again; what finishes later is listed
 /// whatever the clock says. No record is removed; the file is written again
-/// with the marks and the time, by the history's own thread.
+/// with the marks and the time, by the history's own thread. `Ok` is the
+/// Clear taken in memory, not written: the view's `persistence` and
+/// `unsaved_clear` say whether the file has it (r24 R74-2).
 #[tauri::command]
 pub async fn clear_history(state: State<'_, AppState>) -> Result<HistoryView, String> {
     Ok(clear_history_impl(&state))
@@ -168,8 +170,40 @@ mod tests {
         let state = AppState::new(dir.join("settings.json"), ChannelSink::new());
         let view = get_history_impl(&state);
         assert_eq!(view.records, vec![]);
+        // Said as such, never as a history that is saved.
+        let json = serde_json::to_value(&view).unwrap();
+        assert_eq!(json["persistence"], "unattached");
+        assert_eq!(json["unsaved_clear"], false);
         assert_eq!(clear_history_impl(&state).cleared_before, None);
         assert!(!dir.join(HISTORY_FILE).exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A history.json that is there but cannot be read is said to the
+    /// window as such, and Clear and this launch's records leave it as it
+    /// was (r24 R74-1).
+    #[test]
+    fn test_an_unreadable_history_is_said_to_the_window_and_left_as_it_was() {
+        let dir = temp_dir("unreadable");
+        std::fs::write(dir.join(HISTORY_FILE), EARLIER).unwrap();
+        let state = AppState::new(dir.join("settings.json"), ChannelSink::new());
+        let denied = banager_core::history::HistoryIo::default()
+            .with_read(|_| Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied)));
+        state.session.attach_history(HistoryStore::open_with_io(
+            dir.join(HISTORY_FILE),
+            || 4_102_444_800_000,
+            denied,
+        ));
+        let json = serde_json::to_value(get_history_impl(&state)).unwrap();
+        assert_eq!(json["persistence"], "unreadable");
+        assert_eq!(json["records"], serde_json::json!([]));
+        let cleared = serde_json::to_value(clear_history_impl(&state)).unwrap();
+        assert_eq!(cleared["persistence"], "unreadable");
+        assert!(!state.session.flush_history(EXIT_FLUSH));
+        assert_eq!(
+            std::fs::read_to_string(dir.join(HISTORY_FILE)).unwrap(),
+            EARLIER
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

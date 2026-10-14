@@ -35,6 +35,7 @@ import {
   parseScenario,
   SCENARIO_OUTCOMES,
   SCENARIO_PATHS,
+  SCENARIO_HISTORIES,
   SCENARIO_SCANS,
   SCENARIO_SIZES,
   SCENARIO_STATES,
@@ -1296,7 +1297,7 @@ describe("the preview's URL switches", () => {
   it("reads every switch", () => {
     expect(parseScenario("?outcome=mixed").scenario.outcome).toBe("mixed");
     const { scenario, problems } = parseScenario(
-      "?state=offline&lang=zh-CN&tech=1&page=updates&outcome=failed&scan=stopped&sizes=pending&path=unread&welcome=1",
+      "?state=offline&lang=zh-CN&tech=1&page=updates&outcome=failed&scan=stopped&sizes=pending&path=unread&history=unreadable&welcome=1",
     );
     expect(problems).toEqual([]);
     expect(scenario).toEqual({
@@ -1308,8 +1309,19 @@ describe("the preview's URL switches", () => {
       scan: "stopped",
       sizes: "pending",
       path: "unread",
+      history: "unreadable",
       welcome: true,
     });
+  });
+
+  it("keeps a history.json it could not read as it is with ?history=, listing only this launch's records", async () => {
+    const { backend } = backendFor({ history: "unreadable" });
+    const view = (await backend.invoke("get_history")) as HistoryView;
+    expect(view.records).toEqual([]);
+    expect(view.persistence).toBe("unreadable");
+    const cleared = (await backend.invoke("clear_history")) as HistoryView;
+    expect(cleared.persistence).toBe("unreadable");
+    expect(((await backendFor({}).backend.invoke("get_history")) as HistoryView).persistence).toBe("saved");
   });
 
   it("shows the welcome sheet only with ?welcome=1", async () => {
@@ -1361,6 +1373,7 @@ describe("the preview's URL switches", () => {
       ["scan", SCENARIO_SCANS],
       ["sizes", SCENARIO_SIZES],
       ["path", SCENARIO_PATHS],
+      ["history", SCENARIO_HISTORIES],
     ] as const) {
       expect([...(listed.get(name) ?? [])].sort(), `?${name}=`).toEqual([...values].sort());
     }

@@ -5693,8 +5693,12 @@ not read (`protected::look`; How Banager runs anything, above):
   restoring a readable one, lets settings save again).
 - Banager's own `history.json` beside it, once, as Banager starts
   (`HistoryStore::open` in `crates/banager-core/src/history/mod.rs`; a
-  missing, unreadable or malformed file means an empty history, and a file
-  a newer Banager wrote is read as empty and never written over).
+  missing file starts an empty history. An existing file that cannot be
+  read, is not a history, or was written by a newer Banager is left exactly
+  as it is for the whole launch: new records stay in memory until Banager
+  quits, and a warning over the Updates page says so, whatever the page
+  below shows. Quit Banager before repairing access or putting back a good
+  copy, then reopen it; this launch's records in memory are not kept).
 - Banager's own `.window-state.json` beside it, once, as the window opens:
   the size and position the window had when Banager last quit, the
   position used only if a display is still there (the Tauri window-state
@@ -5877,9 +5881,10 @@ trusting from now, or from its newest record when that is earlier.
 than 180 days by the Mac's clock (`HistoryStore::view`). It is written whole to
 a random, exclusively created `history.json.tmp.<random>` beside it by the
 same atomic writer as settings and renamed into place, on a thread of
-its own, after each operation finishes and after Clear. A missing,
-unreadable or malformed file is an empty history and is replaced at the
-next record. Individual records with dates outside JavaScript Date's range are
+its own, after each operation finishes and after Clear. A missing file
+is an empty history, written at the first record. An unreadable or
+malformed one (not a JSON object with a whole-number format and a list of
+records) is never written over during that launch (`Loaded::Blocked`). Individual records with dates outside JavaScript Date's range are
 dropped without discarding valid records; invalid Clear/retention timestamps
 are ignored. New writes use format 3, including the current outcome and failure
 variants and per-record dismissal. All existing format-1 and format-2 shapes

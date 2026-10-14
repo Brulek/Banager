@@ -346,7 +346,19 @@
     "justUpdated": {
       "title": "最近的更新记录",
       "clear": "清除记录",
-      "clearLabel": "清除“最近的更新记录”列表"
+      "clearLabel": "清除“最近的更新记录”列表",
+      "storage": {
+        "unreadable": "无法读取“最近的更新记录”，目前不会保存。",
+        "unreadableDetail": "该文件已原样保留。从现在起的更新只列到退出此App为止。要找回之前的记录，请退出此App，让~/Library/Application Support/com.brulek.banager中的history.json重新可读（例如从备份恢复），然后重新打开此App。",
+        "malformed": "“最近的更新记录”已损坏，目前不会保存。",
+        "malformedDetail": "该文件已原样保留。从现在起的更新只列到退出此App为止。要重新保存记录，请退出此App，放回~/Library/Application Support/com.brulek.banager中history.json的完好副本，或将该文件移到废纸篓以重新开始记录，然后重新打开此App。",
+        "newer": "“最近的更新记录”由较新版本的Banager保存，这里不会保存。",
+        "newerDetail": "此版本会原样保留它。从现在起的更新只列到退出此App为止。要保存记录，请使用较新版本的Banager。",
+        "writerUnavailable": "目前不会保存“最近的更新记录”。",
+        "writerUnavailableDetail": "Banager无法开始保存记录。从现在起的更新只列到退出此App为止；重新打开此App时会再试一次。",
+        "unattached": "“最近的更新记录”不可用。",
+        "unattachedDetail": "从现在起的更新只列到退出此App为止。"
+      }
     },
     "confirmTitleNamed": "要更新“{{name}}”吗？",
     "confirmTitle_other": "要更新{{count}}个工具吗？",

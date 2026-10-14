@@ -380,7 +380,19 @@
     "justUpdated": {
       "title": "Update History",
       "clear": "Clear History",
-      "clearLabel": "Clear the Update History list"
+      "clearLabel": "Clear the Update History list",
+      "storage": {
+        "unreadable": "Update History couldn't be read and isn't being saved.",
+        "unreadableDetail": "It was left as it is. Updates from now on are listed only until you quit Banager. To get the earlier history back, quit Banager, make history.json in ~/Library/Application Support/com.brulek.banager readable again, for example by restoring it from a backup, then reopen Banager.",
+        "malformed": "Update History is damaged and isn't being saved.",
+        "malformedDetail": "Its file was left as it is. Updates from now on are listed only until you quit Banager. To save history again, quit Banager, put back a good copy of history.json in ~/Library/Application Support/com.brulek.banager or move that file to the Trash to start a new history, then reopen Banager.",
+        "newer": "Update History was saved by a newer version of Banager and isn't being saved here.",
+        "newerDetail": "This version leaves it as it is. Updates from now on are listed only until you quit Banager. To save history, use the newer version of Banager.",
+        "writerUnavailable": "Update History isn't being saved.",
+        "writerUnavailableDetail": "Banager couldn't start saving it. Updates from now on are listed only until you quit Banager; reopening Banager tries again.",
+        "unattached": "Update History isn't available.",
+        "unattachedDetail": "Updates from now on are listed only until you quit Banager."
+      }
     },
     "confirmTitleNamed": "Update “{{name}}”?",
     "confirmTitle_one": "Update {{count}} tool?",

@@ -142,6 +142,16 @@ export type ScenarioSizes = (typeof SCENARIO_SIZES)[number];
 export const SCENARIO_PATHS = ["read", "unread", "default"] as const;
 export type ScenarioPath = (typeof SCENARIO_PATHS)[number];
 
+/**
+ * `?history=`: where the Update History is kept (`get_history`'s
+ * `persistence`). `saved` (the default): written as it changes;
+ * `unreadable`, `malformed`, `newer`: a history.json left as it is, the
+ * records kept in memory for this launch (r24 R74-1); `write-failed`:
+ * every write fails, so a Clear History is not saved (r24 R74-2).
+ */
+export const SCENARIO_HISTORIES = ["saved", "unreadable", "malformed", "newer", "write-failed"] as const;
+export type ScenarioHistory = (typeof SCENARIO_HISTORIES)[number];
+
 const PAGES: readonly Page[] = ["overview", "updates", "installed", "unknown", "settings"];
 
 /** `?lang=`: the Settings language the preview starts with. */
@@ -164,6 +174,7 @@ export interface Scenario {
   scan: ScenarioScan;
   sizes: ScenarioSizes;
   path: ScenarioPath;
+  history: ScenarioHistory;
   /**
    * `?welcome=1`: the settings say the welcome sheet has not been shown,
    * so it opens over the first page, as at a first launch. Off by default,
@@ -181,6 +192,7 @@ export const DEFAULT_SCENARIO: Scenario = {
   scan: "found",
   sizes: "measured",
   path: "read",
+  history: "saved",
   welcome: false,
 };
 
@@ -231,6 +243,7 @@ export function parseScenario(search: string): { scenario: Scenario; problems: s
       scan: pick(params, "scan", SCENARIO_SCANS, DEFAULT_SCENARIO.scan, problems),
       sizes: pick(params, "sizes", SCENARIO_SIZES, DEFAULT_SCENARIO.sizes, problems),
       path: pick(params, "path", SCENARIO_PATHS, DEFAULT_SCENARIO.path, problems),
+      history: pick(params, "history", SCENARIO_HISTORIES, DEFAULT_SCENARIO.history, problems),
       welcome: welcome === "1" || welcome === "true",
     },
     problems,

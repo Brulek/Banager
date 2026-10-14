@@ -1405,3 +1405,58 @@ it("f31 G10 keeps both changes to the never-remind list when Settings takes one 
   expect(await view.findByRole("button", { name: "Remind me again about jq" })).toBeInTheDocument();
   expect(view.queryByRole("button", { name: "Remind me again about wget" })).toBeNull();
 });
+
+/**
+ * The Update History's own notice is the window's, over the Updates page
+ * and outside `SnapshotStatus`, whose failed check, first check and empty
+ * Mac replace the page: an unreadable history.json is said whatever the
+ * page shows (r24 R74-1).
+ */
+describe("the Update History notice", () => {
+  const unreadable = { run: "now", cleared_before: null, records: [], persistence: "unreadable", unsaved_clear: false };
+  const NOTICE = "Update History couldn't be read and isn't being saved.";
+
+  function backend(get_snapshot: () => Promise<unknown>, history: () => Promise<unknown>) {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "get_snapshot") return get_snapshot();
+      if (cmd === "refresh") return get_snapshot();
+      if (cmd === "get_settings") return Promise.resolve(defaultSettings);
+      if (cmd === "list_operations") return Promise.resolve([]);
+      if (cmd === "get_history") return history();
+      return Promise.resolve(undefined);
+    });
+  }
+
+  const gates: [string, () => Promise<unknown>][] = [
+    ["a list", () => Promise.resolve(snapshot)],
+    ["a Mac with no source", () => Promise.resolve({ ...snapshot, instances: [], artifacts: [] })],
+    ["a first check that failed", () => Promise.reject(new Error("no snapshot"))],
+    ["a first check still under way", () => new Promise(() => {})],
+  ];
+  it.each(gates)("is said over %s", async (_, get_snapshot) => {
+    backend(get_snapshot, () => Promise.resolve(unreadable));
+    useUiStore.setState({ page: "updates" });
+    const view = renderWithProviders(<App />);
+    const notice = await view.findByText(NOTICE);
+    expect(notice.closest("[data-history-notice]")).not.toBeNull();
+    // Not inside the page's own box, which SnapshotStatus fills.
+    expect(notice.closest(".overflow-y-auto")).toBeNull();
+  });
+
+  it("says nothing while get_history has not answered, and nothing on the other pages", async () => {
+    let answer: (view: unknown) => void = () => {};
+    backend(
+      () => Promise.resolve(snapshot),
+      () => new Promise((resolve) => (answer = resolve)),
+    );
+    useUiStore.setState({ page: "updates" });
+    const view = renderWithProviders(<App />);
+    await view.findByRole("heading", { level: 1, name: "Updates" });
+    expect(view.container.querySelector("[data-history-notice]")).toBeNull();
+    await act(async () => answer(unreadable));
+    expect(await view.findByText(NOTICE)).toBeInTheDocument();
+    fireEvent.click(view.getByRole("button", { name: "Overview" }));
+    await view.findByRole("heading", { level: 1, name: "Overview" });
+    expect(view.queryByText(NOTICE)).toBeNull();
+  });
+});

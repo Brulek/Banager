@@ -12,6 +12,7 @@ import { SettingsPage } from "./pages/SettingsPage";
 import { OperationBar } from "./components/OperationBar";
 import { LogDrawer } from "./components/LogDrawer";
 import { SnapshotStatus } from "./components/SnapshotStatus";
+import { HistoryNotice } from "./components/HistoryNotice";
 import { ShortcutsSheet } from "./components/ShortcutsSheet";
 import { FaqSheet } from "./components/FaqSheet";
 import { ToolSetupSheet } from "./components/ToolSetupSheet";
@@ -299,6 +300,9 @@ function App() {
               put whatever the page below shows -- the first check under
               way, a failed first check, an empty Mac. */}
           <PageToolbar page={page} slotRef={setToolbarSlot} pageBox={pageBox} />
+          {/* Outside `SnapshotStatus` too, so that what it says of the
+              Update History is said whatever the page below shows. */}
+          {page === "updates" ? <HistoryNotice /> : null}
           {/* The page's own box. The Installed and Updates pages size
               their lists to its height (`h-full`) and scroll inside them;
               the other pages scroll here. Either way the toolbar's

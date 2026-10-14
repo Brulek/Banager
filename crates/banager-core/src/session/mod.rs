@@ -572,6 +572,8 @@ impl Session {
                 run: String::new(),
                 cleared_before: None,
                 records: Vec::new(),
+                persistence: crate::history::HistoryPersistence::Unattached,
+                unsaved_clear: false,
             },
         }
     }

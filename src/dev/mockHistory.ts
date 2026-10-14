@@ -134,6 +134,8 @@ export function mockHistory(now: number): HistoryView {
     run: "mock-this-launch",
     cleared_before: null,
     records: SEEDED.map((make) => make(now)).sort((a, b) => b.finished_at - a.finished_at),
+    persistence: "saved",
+    unsaved_clear: false,
   };
 }
 
