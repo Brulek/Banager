@@ -424,22 +424,28 @@ impl Protected {
     /// The places for the home folder this process's `HOME` names --
     /// what `HostEnv::discover` reads for every refresh -- and for the
     /// account's own: for a look made where no `HostEnv` is at hand (a
-    /// file a tool wrote, read by an adapter that keeps none). In a unit
-    /// test, the test's own stand-in (`as_if_home`), or no home, so none
-    /// looks at the tester's own home folder (r22 R53 skeptic 1).
+    /// file a tool wrote, read by an adapter that keeps none). In a test --
+    /// this crate's unit tests, and with the `test-support` feature its
+    /// integration tests -- the test's own stand-in (`as_if_home`), or no
+    /// home, so none looks at the tester's own home folder (r22 R53
+    /// skeptic 1; R73-4). What the app reads is `of_home_variable` of the
+    /// process environment, which a test can try with a `HOME` of its own.
     pub fn of_this_process() -> Protected {
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         return Protected::new(
             &PROCESS_HOME
                 .with(|home| home.borrow().clone())
                 .unwrap_or_default(),
         );
-        #[cfg(not(test))]
-        Protected::new(
-            &std::env::var_os("HOME")
-                .map(PathBuf::from)
-                .unwrap_or_default(),
-        )
+        #[cfg(not(any(test, feature = "test-support")))]
+        Protected::of_home_variable(|name| std::env::var_os(name))
+    }
+
+    /// The places for the home folder `read("HOME")` names, and for the
+    /// account's own (`Protected::new`): `of_this_process` in the app, with
+    /// `read` the process environment; none when `HOME` is not set.
+    pub fn of_home_variable(read: impl FnOnce(&str) -> Option<OsString>) -> Protected {
+        Protected::new(&read("HOME").map(PathBuf::from).unwrap_or_default())
     }
 
     /// Whether `path` is one of the places or inside one: `is_within`,
@@ -541,7 +547,7 @@ fn password_database_home() -> Option<PathBuf> {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 thread_local! {
     /// The home folder `Protected::of_this_process` answers for on this
     /// thread instead of `HOME` (`as_if_home`).
@@ -579,21 +585,80 @@ impl Drop for AsIfAccount {
 /// until the guard is dropped: what `Protected::of_this_process` keeps out
 /// then is `home`'s places (and the account's), so a test can put a
 /// protected place of its own where an adapter that keeps no `HostEnv`
-/// would look.
-#[cfg(test)]
-pub(crate) fn as_if_home(home: &Path) -> AsIfHome {
-    PROCESS_HOME.with(|slot| *slot.borrow_mut() = Some(home.to_path_buf()));
-    AsIfHome
+/// would look. Dropping the guard puts back the stand-in before it, if
+/// any; it stays on the thread that made it (an `async` test keeps it on
+/// a current-thread runtime, and a `spawn_blocking` worker sees none).
+#[cfg(any(test, feature = "test-support"))]
+pub fn as_if_home(home: &Path) -> AsIfHome {
+    let before = PROCESS_HOME.with(|slot| slot.replace(Some(home.to_path_buf())));
+    AsIfHome {
+        before,
+        _this_thread: std::marker::PhantomData,
+    }
 }
 
-#[cfg(test)]
-pub(crate) struct AsIfHome;
+#[cfg(any(test, feature = "test-support"))]
+pub struct AsIfHome {
+    before: Option<PathBuf>,
+    /// Not `Send`: the stand-in is this thread's.
+    _this_thread: std::marker::PhantomData<*const ()>,
+}
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl Drop for AsIfHome {
     fn drop(&mut self) {
-        PROCESS_HOME.with(|slot| *slot.borrow_mut() = None);
+        let before = self.before.take();
+        PROCESS_HOME.with(|slot| *slot.borrow_mut() = before);
     }
+}
+
+/// A test's check of every path `resolve` (and a `Round`) is about to look
+/// up, called before the lookup, on this thread only, until the guard is
+/// dropped: a hook that panics at a path outside the test's own folders
+/// (and the folders on the way to them) stops the look before it is made.
+#[cfg(any(test, feature = "test-support"))]
+pub fn auditing_lookups(hook: impl FnMut(&Path) + 'static) -> AuditingLookups {
+    let before = LOOK.with(|slot| slot.replace(Some(Box::new(hook))));
+    AuditingLookups {
+        before,
+        _this_thread: std::marker::PhantomData,
+    }
+}
+
+#[cfg(any(test, feature = "test-support"))]
+pub struct AuditingLookups {
+    before: Option<LookHook>,
+    _this_thread: std::marker::PhantomData<*const ()>,
+}
+
+#[cfg(any(test, feature = "test-support"))]
+impl Drop for AuditingLookups {
+    fn drop(&mut self) {
+        let before = self.before.take();
+        LOOK.with(|slot| *slot.borrow_mut() = before);
+    }
+}
+
+#[cfg(any(test, feature = "test-support"))]
+type LookHook = Box<dyn FnMut(&Path)>;
+
+#[cfg(any(test, feature = "test-support"))]
+thread_local! {
+    static LOOK: std::cell::RefCell<Option<LookHook>> = const { std::cell::RefCell::new(None) };
+}
+
+/// `path` is about to be looked up: what a test's `auditing_lookups` hook
+/// is told first. Nothing outside a test.
+#[inline]
+pub(crate) fn about_to_look(path: &Path) {
+    #[cfg(any(test, feature = "test-support"))]
+    LOOK.with(|hook| {
+        if let Some(hook) = hook.borrow_mut().as_mut() {
+            hook(path);
+        }
+    });
+    #[cfg(not(any(test, feature = "test-support")))]
+    let _ = path;
 }
 
 /// What `resolve` found at a path.
@@ -658,6 +723,7 @@ pub(crate) fn resolve_saying_why(
     if !path.is_absolute() {
         return Err(Error::new(ErrorKind::InvalidInput, "not an absolute path"));
     }
+    about_to_look(path);
     let root = Dir::root()?;
     // `dirs[i]` is open on the folder `resolved` names at depth `i`.
     let mut dirs: Vec<Dir> = vec![root];
@@ -695,6 +761,7 @@ pub(crate) fn resolve_saying_why(
         let Some(here) = dirs.last() else {
             return Err(Error::other("no folder to look from"));
         };
+        about_to_look(&candidate);
         let stat = match here.stat_at(&name) {
             Ok(stat) => stat,
             Err(e) if e.kind() == ErrorKind::NotFound => return Ok(Resolution::Missing),

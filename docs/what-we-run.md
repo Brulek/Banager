@@ -399,7 +399,12 @@ app folder already looked at this way, the Trash call for a path just
 checked, Show in Finder of a path the scan resolved and just found again
 this way, a command's working
 folder (no command is given one), and a debug build's look at the
-Trash.
+Trash. Banager's own tests, unit and integration alike, keep out home
+folders of their own instead of the tester's: the process's `HOME` and
+the account's home are each the test's stand-in or none
+(`protected::as_if_home`, `protected::as_if_account`), and what the app
+reads for `HOME` is tried with a value the test gives
+(`Protected::of_home_variable`).
 
 The places are those of the home folder `HOME` names -- as given and
 where its own links lead -- and of the account's own home folder, which

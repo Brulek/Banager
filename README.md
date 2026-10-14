@@ -339,6 +339,8 @@ WebView is a type error; `tsconfig.test.json` checks the vitest files with `@typ
 through `node:fs`; `tsconfig.node.json` checks `vite.config.ts` (`--composite false`, so it leaves no
 `.tsbuildinfo` behind). `pnpm build` runs the same three programs before `vite build`.
 
+Apart from the ignored tests below, the tests work in folders of their own, with stand-ins for the home folders, and never look in the tester's.
+
 `cargo test --workspace` has eleven `#[ignore]`d tests, all skipped by a plain `cargo test`:
 
 - Two in `crates/banager-core/tests/brew_live.rs`: one reads the real Homebrew; the other installs

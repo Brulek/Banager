@@ -201,6 +201,7 @@ impl Round {
         if !path.is_absolute() {
             return Some(Resolution::Refused);
         }
+        super::about_to_look(path);
         // A name already looked at, through folders only, that is no
         // link: where a path to a file ends, asked for again to see
         // whether it can be run. Answered as `resolve` spells it (`/a//b`
@@ -253,6 +254,7 @@ impl Round {
                 continue;
             }
             let candidate = here.path.join(&name);
+            super::about_to_look(&candidate);
             if in_one {
                 match self.beneath(&here, &name, &candidate, &pending) {
                     Beneath::Answer(answer) => return Some(answer),

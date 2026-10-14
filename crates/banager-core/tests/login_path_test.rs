@@ -140,3 +140,38 @@ async fn test_an_accepted_login_path_reaches_commands_and_discovery_but_not_the_
         Some(std::ffi::OsStr::new("~/.local/bin:/usr/bin:/bin"))
     );
 }
+
+#[tokio::test]
+async fn test_regression_r73_4_running_a_command_looks_up_nothing_but_its_program() {
+    // `RealRunner::run` checks the program is there, never into a
+    // protected place (`Protected::of_this_process`); with no stand-in
+    // the test has no process home, so nothing on the way to the tester's
+    // own is looked up -- only `/bin/echo`'s own folders. A current-thread
+    // runtime, so the check runs on this thread, where the audit is.
+    let program = std::path::Path::new("/bin/echo");
+    let _audit = banager_core::protected::auditing_lookups(move |path| {
+        assert!(
+            program.starts_with(path),
+            "looked up {} for {}",
+            path.display(),
+            program.display()
+        );
+    });
+    let output = RealRunner::new()
+        .run(
+            CommandSpec {
+                program: program.to_path_buf(),
+                args: vec!["r73-4".to_string()],
+                env: Vec::new(),
+                cwd: None,
+                timeout: Duration::from_secs(10),
+                output_use: OutputUse::Parsed,
+            },
+            None,
+            CancellationToken::new(),
+        )
+        .await
+        .expect("echo runs");
+    assert_eq!(output.exit_code, Some(0));
+    assert_eq!(output.stdout.trim(), "r73-4");
+}
