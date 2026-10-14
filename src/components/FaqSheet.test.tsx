@@ -139,14 +139,14 @@ describe("FaqSheet", () => {
     }
   });
 
-  it("answers all thirteen questions in English, each under its question, Done focused", async () => {
+  it("answers all fourteen questions in English, each under its question, Done focused", async () => {
     renderWithProviders(<FaqSheet />);
     expect(screen.queryByRole("dialog")).toBeNull();
 
     act(() => openFaqSheet());
 
     const dialog = await screen.findByRole("dialog", { name: "Common Questions" });
-    expect(FAQ_ITEMS).toHaveLength(13);
+    expect(FAQ_ITEMS).toHaveLength(14);
     expect(shown(dialog)).toEqual(questionsIn(en));
     expect(within(dialog).getAllByRole("heading", { level: 3 }).map((heading) => heading.textContent)).toEqual([
       "Terminal says a command isn't found. What can I do?",
@@ -167,7 +167,7 @@ describe("FaqSheet", () => {
     expect(within(dialog).getByRole("button", { name: "Done" })).toHaveFocus();
   });
 
-  it("answers all thirteen in Chinese", async () => {
+  it("answers all fourteen in Chinese", async () => {
     await i18n.changeLanguage("zh-CN");
     try {
       renderWithProviders(<FaqSheet />);

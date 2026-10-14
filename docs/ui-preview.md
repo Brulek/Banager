@@ -358,7 +358,7 @@ Paths are under a generic home folder, `/Users/you`.
   only while it is at its end. Not yet checked in WebKit: Safari's Allow remote automation was
   off on the machine these changes were made on.
 - Help's 「常见问题」 ("Common Questions"): `window.mockMenu("common-questions")` in the
-  console opens the sheet over any page: thirteen questions, each answered in a few sentences, in the
+  console opens the sheet over any page: fourteen questions, each answered in a few sentences, in the
   window's language. A question's 查看 closes the sheet and opens where the answer points: Installed
   on 「终端里找不到」, 「装了不止一份」 or sorted by size, the Updates page, Other Programs or Settings.
   The password question, 「为什么其他软件会让工具不能卸载？」, 「此App会改动我的Mac吗？」 and 「Canager的设置在哪里？」 have none. Done, Escape or a click beside it closes it.
