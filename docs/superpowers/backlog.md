@@ -612,7 +612,7 @@ Opus max 全分支终审：3 项必修（已修），其余推迟。按主题分
 
 ## 需要作者本人操作的事项（阶段 0–1 遗留）
 
-- 任务 3：创建 Developer ID Application 证书并导出 .p12、生成 App 专用密码、查 Team ID、`pnpm tauri signer generate -w ~/.tauri/banager.key` 并把公钥填入 `tauri.conf.json`（替换 `REPLACE_WITH_UPDATER_PUBKEY`）、逐个 `gh secret set`；然后打 `v0.0.1` 标签验证公证。
+- 任务 3：创建 Developer ID Application 证书并导出 .p12、生成 App 专用密码、查 Team ID、`pnpm tauri signer generate -w ~/.tauri/banager.key` 并把公钥填入 `tauri.conf.json`（替换 `REPLACE_WITH_UPDATER_PUBKEY`；同时把 `bundle.createUpdaterArtifacts` 和 `release.yml` 的 `includeUpdaterJson` 改回 `true`，并在该步骤的 `env` 里加回 `TAURI_SIGNING_PRIVATE_KEY` 与 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`：r24 R79-1 在公钥就位前把它们关掉了，否则打包在签名时失败）、逐个 `gh secret set`；然后打 `v0.0.1` 标签验证公证。
 - 任务 1：在 Terminal.app 里跑一次 `pnpm tauri build` 确认 .dmg 打包（自动化会话里 Finder AppleEvent 超时 -1712，属 TCC 自动化权限问题）。
 - 任务 6：`pnpm tauri dev` 目视确认窗口打开且日志里 `[banager] discovered PATH dirs` 含 `/opt/homebrew/bin`。
 - 任务 13：按 `docs/spikes/2026-09-askpass.md` 亲自跑 `sudo -A` 对话框试验并填结果表。

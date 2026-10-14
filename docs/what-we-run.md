@@ -6366,7 +6366,13 @@ plugin is compiled in and configured with the endpoint
 calls it yet, and the window is given none of its commands
 (`src-tauri/capabilities/default.json` has no `updater:` permission), so
 no request to it is made; when app self-update ships, this paragraph
-changes.
+changes. Nor does a release build make anything for it: no updater
+artifacts (`bundle.createUpdaterArtifacts` is `false` in
+`src-tauri/tauri.conf.json`) and no `latest.json` (`includeUpdaterJson:
+false` in `.github/workflows/release.yml`), because the updater's public
+key there (`plugins.updater.pubkey`) is still a placeholder, which the
+Tauri CLI cannot sign them with; the release step is handed no updater
+signing key either.
 
 **Window permissions.**
 

@@ -38,8 +38,6 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
           # Named "do not publish" from the start; only a passed Intel
@@ -47,7 +45,14 @@ jobs:
           # times out, is cancelled or never runs leaves it on.
           releaseName: "Banager ${{ github.ref_name }} (Intel launch check pending: do not publish)"
           releaseDraft: true
-          includeUpdaterJson: true
+          # No updater artifacts and no latest.json yet: the updater's
+          # public key in tauri.conf.json (plugins.updater.pubkey) is still
+          # a placeholder, and signing them with it fails the build. Turn
+          # this and bundle.createUpdaterArtifacts back on together, with
+          # the TAURI_SIGNING_PRIVATE_KEY and
+          # TAURI_SIGNING_PRIVATE_KEY_PASSWORD secrets in this step's env,
+          # only once the matching public key is in place.
+          includeUpdaterJson: false
           args: --target universal-apple-darwin
 
       # The universal .dmg just built and uploaded to the draft release, kept
