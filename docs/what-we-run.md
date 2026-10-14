@@ -5574,6 +5574,25 @@ made of the `PATH` folders when it read them to say which copy of a
 command runs (`Session::path_folders`, `commands::finish`). Nothing more is
 read, nothing runs, nothing is written, and no connection is made for it.
 
+A source whose list or check is incomplete is not among those that
+answered normally: one that left tools or packages out of its list
+(pipx's `SomeNotListed`, Homebrew's `FormulaeNotListed`), whose updates
+were checked against a Homebrew list that may be out of date
+(`IndexMayBeStale`), or whose launcher has lost its program
+(`LauncherOnly`) has a warning line in the words the copied diagnostics
+use for its status, and so does one whose check did not finish
+(`sourceStateWords` in src/lib/diagnostics.ts, `sourceWarns` in
+src/lib/toolSetupCheck.ts). A Homebrew still downloading its list
+(`IndexUpdating`) has a line with no warning: nothing failed. Each of
+these lines' Show in Installed opens that source; an error naming a
+source the snapshot does not list -- its detection failed and left none,
+or it is gone -- has a warning line of its own with no such button, as
+there is no source to open (`sourceProblems`). Of a Homebrew that did
+not answer, whose check did not finish, whose list left formulae out,
+may be out of date or is still downloading, the sheet does not say that
+nothing is disabled, deprecated or kept in other versions; what it
+counted is still said, under a line saying it may be incomplete.
+
 Commands whose ownership paths could not be resolved safely carry
 `ArtifactFacts.commands_unavailable`, even when all their command facts
 were dropped. A link in Homebrew's `bin`/`sbin` or npm's `bin` that leads

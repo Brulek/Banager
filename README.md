@@ -165,10 +165,10 @@ a protected place**, and the link is not followed.
   (`docs/what-we-run.md`, "What a tool prints about a login", says which).
 - **Check Tool Setup…**, in the Help menu and as a button on the Overview and in Settings, says in short lines
   how this Mac's tools are set up — whether Terminal's login settings were read, each source that
-  isn't answering, how many tools Terminal can't find or has twice, which ones Homebrew didn't link
+  isn't answering or whose list or check is incomplete, how many tools Terminal can't find or has twice, which ones Homebrew didn't link
   where Terminal looks, what Homebrew disabled or keeps other versions of, and the disk measured. Each
   line that counts tools, but the one that names those Homebrew didn't link, and each line about a source
-  with a problem, has a **Show in Installed** (or **Show in Other Programs**) button that opens that list or that source. It has no score; it is built from what the last check found, and runs nothing.
+  with a problem that the last check still lists, has a **Show in Installed** (or **Show in Other Programs**) button that opens that list or that source. It has no score; it is built from what the last check found, and runs nothing.
   When some of its lines are warnings, the Overview's row says how many need attention.
 
 Banager checks every source when it opens, after each operation, and whenever you press **Check
@@ -668,9 +668,9 @@ formula 与 cask，以及 npm、PyPI、crates.io 上的包，每条都译自该�
   地址和代理设置里能识别出的用户名和密码会隐藏（哪些能识别出，见 `docs/what-we-run.md` 的
   “What a tool prints about a login”）。
 - 菜单栏“帮助”里的“检查工具环境…”（概览和设置里“工具环境”旁边的“检查…”也一样）用几行短句说明这台 Mac 上的工具
-  环境：有没有读取终端登录时的设置、哪个来源没有响应、终端里找不到或装了不止一份的工具有几个、Homebrew
+  环境：有没有读取终端登录时的设置、哪个来源没有响应或这次没有列全、查全、终端里找不到或装了不止一份的工具有几个、Homebrew
   没有链接到终端能找到的地方的是哪些工具、Homebrew 停用或保留了其他版本的工具、实测占用的空间；数到工具的那几行
-  （写出 Homebrew 没有链接的工具名的那一行除外）和说某个来源有问题的那几行都有“查看”，会打开
+  （写出 Homebrew 没有链接的工具名的那一行除外）和说上次检查仍列出的某个来源有问题的那几行都有“查看”，会打开
   对应的列表或那个来源。不打分，
   只用上次检查的结果，不运行任何命令。其中有警告时，概览上那一行会写出“N项需要查看”。
 - 用 OpenAI 自己的脚本装的 Codex：Banager 不为它运行任何命令，连版本检查也不做；卸载时把 `~/.local/bin` 里它的

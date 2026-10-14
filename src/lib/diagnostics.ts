@@ -37,7 +37,7 @@ import { sizeTotalsOf, sourceTotalText } from "./sizeTotals";
 import { adapterLabel, failedSourceAdapters, instanceLabels, namesInSentence } from "./sources";
 import { checkedInFull } from "./updateState";
 import { NO_ANSWER_WORDS, saidNoAnswer } from "./noAnswer";
-import type { InstalledArtifact, ManagerInstance, Sizes, Snapshot, SystemFacts, Unavailable } from "./types";
+import type { InstalledArtifact, InstanceNote, ManagerInstance, Sizes, Snapshot, SystemFacts, Unavailable } from "./types";
 
 /** Whatever `useTranslation()`'s `t` needs to look a key up. */
 export type Translate = (key: string, options?: Record<string, unknown>) => string;
@@ -68,6 +68,32 @@ const UNAVAILABLE_WORDS: Record<Unavailable, string> = {
   InvalidOllamaHost: "sourceNotice.invalidOllamaHost.statusWord",
   NoPip: "sourceNotice.noPip.statusWord",
 };
+
+/**
+ * A source's note in one word, where the note says its list or its check
+ * is incomplete -- the five `NOTE_LEAVES_UPDATES_UNCHECKED` counts
+ * (src/lib/updateState.ts) -- and whether Check Tool Setup gives its line
+ * the ⚠︎: as its notice is a warning (`sourceNoticesFor`), but a list
+ * Homebrew is still downloading (`IndexUpdating`), where nothing failed.
+ * null for the PATH notes, which are about what runs in Terminal, not
+ * about the source (R82-1). A `Record`, so a new note fails `tsc` here.
+ */
+const NOTE_STATES: Record<InstanceNote, { key: string; warns: boolean } | null> = {
+  IndexMayBeStale: { key: "diagnostics.text.statusWord.indexMayBeStale", warns: true },
+  IndexUpdating: { key: "diagnostics.text.statusWord.indexUpdating", warns: false },
+  NotOnPath: null,
+  ShadowedByHomebrew: null,
+  ShadowedByNpm: null,
+  ShadowedByOther: null,
+  LauncherOnly: { key: "diagnostics.text.statusWord.launcherOnly", warns: true },
+  SomeNotListed: { key: "diagnostics.text.statusWord.someNotListed", warns: true },
+  FormulaeNotListed: { key: "diagnostics.text.statusWord.formulaeNotListed", warns: true },
+};
+
+/** Whether one of `instance`'s notes says its list or check is incomplete in a way that warns (`NOTE_STATES`). */
+export function noteWarns(instance: ManagerInstance): boolean {
+  return instance.status.notes.some((note) => NOTE_STATES[note]?.warns === true);
+}
 
 /** The app's name: a name, the same in every language (src-tauri/tauri.conf.json's `productName`). */
 const APP_NAME = "Banager";
@@ -127,7 +153,8 @@ function notCheckedNames(t: Translate, instances: ManagerInstance[], errors: Sna
 
 /**
  * Each thing that holds of one source's state, in a word -- 「没有响应」,
- * 「仅供查看」, 「未经测试的版本」 -- none for one that is 「正常」. The
+ * 「部分工具没有显示」 (`NOTE_STATES`), 「仅供查看」, 「未经测试的版本」 --
+ * each once, none for one that is 「正常」. The
  * status line here and Check Tool Setup's source lines
  * (src/lib/toolSetupCheck.ts) both say a source's state in these words.
  */
@@ -136,6 +163,10 @@ export function sourceStateWords(t: Translate, instance: ManagerInstance): strin
   const why = saidNoAnswer(instance);
   if (why !== null) words.push(t(NO_ANSWER_WORDS[why.kind]));
   else if (instance.status.unavailable !== null) words.push(t(UNAVAILABLE_WORDS[instance.status.unavailable]));
+  for (const note of instance.status.notes) {
+    const state = NOTE_STATES[note];
+    if (state !== null && !words.includes(t(state.key))) words.push(t(state.key));
+  }
   if (instance.read_only_reason !== null) words.push(t("diagnostics.text.statusWord.readOnly"));
   if (instance.unverified_version !== null) words.push(t("diagnostics.text.statusWord.unverified"));
   return words;

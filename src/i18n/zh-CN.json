@@ -1336,7 +1336,12 @@
         "NotResponding": "没有响应",
         "RefusesAsRoot": "无法以管理员身份运行",
         "readOnly": "仅供查看",
-        "unverified": "未经测试的版本"
+        "unverified": "未经测试的版本",
+        "indexMayBeStale": "更新没能查全",
+        "indexUpdating": "正在联网查找新版本",
+        "launcherOnly": "找不到程序文件",
+        "someNotListed": "部分工具没有显示",
+        "formulaeNotListed": "部分软件包没有显示"
       },
       "searchPath": "查找命令的文件夹：{{number}}个",
       "loginRead": "已读取登录时的设置",

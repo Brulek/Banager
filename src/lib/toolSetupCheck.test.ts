@@ -838,3 +838,136 @@ describe("toolSetupCheck's order", () => {
     expect(fine.sections.map((section) => section.id)).toEqual(["terminal", "sources", "commands", "homebrew", "disk"]);
   });
 });
+
+describe("toolSetupCheck's sources whose lists or checks are incomplete (R82-1)", () => {
+  const PIPX = "pipx:/opt/homebrew/bin/pipx";
+  const partial = (): Snapshot => ({
+    ...fineSnapshot(),
+    instances: [
+      instance(BREW, { status: { unavailable: null, notes: ["FormulaeNotListed"] } }),
+      instance(NPM),
+      instance(PIPX, { status: { unavailable: null, notes: ["SomeNotListed"] } }),
+    ],
+  });
+
+  it("warns once for each, with its page, and never counts it among the sources that answered normally", () => {
+    const snapshot = partial();
+    expect(shape(toolSetupCheck(en, input({ snapshot })))["Sources"]).toEqual([
+      `warning Homebrew: Some packages not shown → source:${BREW}`,
+      `warning pipx: Some tools not shown → source:${PIPX}`,
+      "fine The other sources answered normally · npm",
+      "note Command-line programs from other sources are listed separately → unknown",
+    ]);
+    expect(shape(toolSetupCheck(zh, input({ snapshot })))["来源"].slice(0, 3)).toEqual([
+      `warning Homebrew：部分软件包没有显示 → source:${BREW}`,
+      `warning pipx：部分工具没有显示 → source:${PIPX}`,
+      "fine 其他来源都正常回应 · npm",
+    ]);
+    expect(shape(toolSetupCheck(zhHant, input({ snapshot })))["來源"].slice(0, 3)).toEqual([
+      `warning Homebrew：部分套件沒有顯示 → source:${BREW}`,
+      `warning pipx：部分工具沒有顯示 → source:${PIPX}`,
+      "fine 其他來源都正常回應 · npm",
+    ]);
+    expect(toolSetupCheck(en, input({ snapshot })).attention).toBe(2);
+  });
+
+  it("warns for a list that may be out of date, and only notes a list Homebrew is still downloading", () => {
+    const snapshot: Snapshot = {
+      ...fineSnapshot(),
+      instances: [
+        instance(BREW, { status: { unavailable: null, notes: ["IndexMayBeStale"] } }),
+        instance(INTEL, { status: { unavailable: null, notes: ["IndexUpdating"] } }),
+        instance(NPM),
+      ],
+    };
+    const check = toolSetupCheck(en, input({ snapshot }));
+    expect(shape(check)["Sources"].slice(0, 3)).toEqual([
+      `warning Homebrew (Apple silicon): Updates not fully checked → source:${BREW}`,
+      `note Homebrew (Intel): Checking online for new versions → source:${INTEL}`,
+      "fine The other sources answered normally · npm",
+    ]);
+    expect(check.attention).toBe(1);
+  });
+
+  it("says an error whose source isn't listed, once, without a page it doesn't have, and claims no source is fine for it", () => {
+    const bare = { ...fineSnapshot(), instances: [], artifacts: [], errors: [{ instance_id: "npm", message: "internal error detecting this source" }] };
+    expect(shape(toolSetupCheck(en, input({ snapshot: bare })))["Sources"]).toEqual([
+      "warning npm: Check didn't finish",
+      "note Command-line programs from other sources are listed separately → unknown",
+    ]);
+    expect(toolSetupCheck(en, input({ snapshot: bare })).attention).toBe(1);
+
+    // Beside a healthy Homebrew: no 「所有来源都正常回应」.
+    const beside: Snapshot = {
+      ...fineSnapshot(),
+      instances: [instance(BREW)],
+      errors: [
+        { instance_id: "npm", message: "internal error detecting this source" },
+        { instance_id: "npm", message: "again" },
+      ],
+    };
+    expect(shape(toolSetupCheck(zh, input({ snapshot: beside })))["来源"].slice(0, 2)).toEqual([
+      "warning npm：这次没有检查完",
+      "fine 其他来源都正常回应 · Homebrew",
+    ]);
+    expect(toolSetupCheck(en, input({ snapshot: beside })).attention).toBe(1);
+
+    // A Homebrew the snapshot no longer lists: its error isn't the live one's.
+    const gone: Snapshot = { ...fineSnapshot(), errors: [{ instance_id: INTEL, message: "timed out" }] };
+    expect(shape(toolSetupCheck(en, input({ snapshot: gone })))["Sources"].slice(0, 2)).toEqual([
+      "warning Homebrew (/usr/local): Check didn't finish",
+      "fine The other sources answered normally · Homebrew, npm",
+    ]);
+    expect(shape(toolSetupCheck(zhHant, input({ snapshot: gone })))["來源"][0]).toBe(
+      "warning Homebrew（/usr/local）：這次沒有檢查完",
+    );
+  });
+
+  it("adds nothing for a bare source's error when its sources already warn, and gives it to the ones that don't", () => {
+    const retained: Snapshot = {
+      ...fineSnapshot(),
+      instances: [
+        instance(BREW, { status: { unavailable: "NotResponding", notes: [] } }),
+        instance(INTEL, { status: { unavailable: "NotResponding", notes: [] } }),
+      ],
+      errors: [{ instance_id: "brew", message: "internal error detecting this source" }],
+    };
+    expect(shape(toolSetupCheck(en, input({ snapshot: retained })))["Sources"]).toEqual([
+      `warning Homebrew (Apple silicon): Not responding → source:${BREW}`,
+      `warning Homebrew (Intel): Not responding → source:${INTEL}`,
+      "note Command-line programs from other sources are listed separately → unknown",
+    ]);
+    expect(toolSetupCheck(en, input({ snapshot: retained })).attention).toBe(2);
+    const answered: Snapshot = { ...retained, instances: [instance(BREW), instance(NPM)] };
+    expect(shape(toolSetupCheck(en, input({ snapshot: answered })))["Sources"].slice(0, 2)).toEqual([
+      `warning Homebrew: Check didn't finish → source:${BREW}`,
+      "fine The other sources answered normally · npm",
+    ]);
+  });
+
+  it("claims nothing is disabled or kept of a Homebrew whose list left formulae out or may be out of date, and keeps what it counted", () => {
+    for (const note of ["FormulaeNotListed", "IndexMayBeStale"] as const) {
+      const snapshot = fineSnapshot();
+      snapshot.instances = snapshot.instances.map((i) => (i.id === BREW ? { ...i, status: { unavailable: null, notes: [note] } } : i));
+      expect(shape(toolSetupCheck(en, input({ snapshot })))["Homebrew"]).toEqual([
+        "note Couldn't fully check Homebrew this time, so what's here about it may be incomplete",
+      ]);
+      snapshot.artifacts.push(
+        artifact(
+          { instance_id: BREW, kind: "Formula", name: "node@22" },
+          { version: "22.23.3", homebrew: brewFacts({ other_versions: ["22.22.0"] }) },
+        ),
+      );
+      expect(shape(toolSetupCheck(zh, input({ snapshot, sizes: null })))["Homebrew"]).toEqual([
+        "note Homebrew这次没有检查完，这里关于它的结果可能不完整",
+        "note 1个工具保留了其他版本 → installed:otherVersions",
+      ]);
+    }
+    // One of two Homebrews: the other's clean list doesn't speak for it.
+    const two = fineSnapshot();
+    two.instances.push(instance(INTEL, { status: { unavailable: null, notes: ["FormulaeNotListed"] } }));
+    expect(shape(toolSetupCheck(en, input({ snapshot: two })))["Homebrew"]).toEqual([
+      "note Couldn't fully check Homebrew (Intel) this time, so what's here about it may be incomplete",
+    ]);
+  });
+});

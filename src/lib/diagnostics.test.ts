@@ -153,7 +153,7 @@ describe("diagnosticsText", () => {
         "Homebrew",
         "  Version: 7.0.3",
         "  Location: /opt/homebrew/bin/brew",
-        "  Status: OK",
+        "  Status: Updates not fully checked",
         "  Notes: 1",
         "  Tools: 2",
         "npm",
@@ -203,7 +203,7 @@ describe("diagnosticsText", () => {
         "Homebrew",
         "  版本：7.0.3",
         "  位置：/opt/homebrew/bin/brew",
-        "  状态：正常",
+        "  状态：更新没能查全",
         "  提示：1条",
         "  工具：2个",
         "npm",
@@ -431,6 +431,43 @@ describe("a source's state words", () => {
     });
     expect(sourceStateWords(en, ollama)).toEqual(["Invalid address"]);
     expect(sourceStateWords(zh, ollama)).toEqual(["地址无效"]);
+  });
+});
+
+describe("a source's incomplete list or check, in a word (R82-1)", () => {
+  const zhHant = i18n.getFixedT("zh-Hant");
+  const noted = (notes: ManagerInstance["status"]["notes"]) =>
+    instance(BREW, "/opt/homebrew/bin/brew", { status: { unavailable: null, notes } });
+
+  it("names each note that leaves a source's list or check incomplete, in every language, never OK", () => {
+    expect(sourceStateWords(en, noted(["SomeNotListed"]))).toEqual(["Some tools not shown"]);
+    expect(sourceStateWords(en, noted(["FormulaeNotListed", "IndexMayBeStale"]))).toEqual([
+      "Some packages not shown",
+      "Updates not fully checked",
+    ]);
+    expect(sourceStateWords(en, noted(["IndexUpdating"]))).toEqual(["Checking online for new versions"]);
+    expect(sourceStateWords(en, noted(["LauncherOnly"]))).toEqual(["Program files missing"]);
+    expect(sourceStateWords(zh, noted(["SomeNotListed", "FormulaeNotListed", "IndexMayBeStale", "IndexUpdating", "LauncherOnly"]))).toEqual([
+      "部分工具没有显示",
+      "部分软件包没有显示",
+      "更新没能查全",
+      "正在联网查找新版本",
+      "找不到程序文件",
+    ]);
+    expect(sourceStateWords(zhHant, noted(["SomeNotListed", "FormulaeNotListed", "IndexMayBeStale", "IndexUpdating", "LauncherOnly"]))).toEqual([
+      "部分工具沒有顯示",
+      "部分套件沒有顯示",
+      "更新未能完整檢查",
+      "正在連線檢查新版本",
+      "找不到程式檔案",
+    ]);
+    // Said once, however often the note comes; the PATH notes are no state.
+    expect(sourceStateWords(en, noted(["SomeNotListed", "SomeNotListed", "NotOnPath", "ShadowedByOther"]))).toEqual([
+      "Some tools not shown",
+    ]);
+    const text = diagnosticsText(en, input({ snapshot: { ...SNAPSHOT, instances: [noted(["FormulaeNotListed"])] } }));
+    expect(text).toContain("\n  Status: Some packages not shown\n");
+    expect(text).not.toContain("Status: OK");
   });
 });
 

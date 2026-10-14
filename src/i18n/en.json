@@ -1456,7 +1456,12 @@
         "NotResponding": "Not responding",
         "RefusesAsRoot": "Can't run as administrator",
         "readOnly": "View only",
-        "unverified": "Version not tested"
+        "unverified": "Version not tested",
+        "indexMayBeStale": "Updates not fully checked",
+        "indexUpdating": "Checking online for new versions",
+        "launcherOnly": "Program files missing",
+        "someNotListed": "Some tools not shown",
+        "formulaeNotListed": "Some packages not shown"
       },
       "searchPath": "Command search folders: {{number}}",
       "loginRead": "Read from the login settings",

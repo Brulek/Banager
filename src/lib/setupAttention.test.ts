@@ -126,6 +126,63 @@ const cases: Array<[string, ToolSetupInput, number]> = [
   // While the first check runs, the commands are not judged yet.
   ["a tool Terminal can't find, during the first check", input({ snapshot: snapshot({ artifacts: [jq, prettier] }), pending: true }), 0],
   ["no snapshot yet", input({ snapshot: null, pending: true }), 0],
+  // R82-1: a list that left tools out, or may be out of date, warns; one
+  // Homebrew is still downloading is a note.
+  [
+    "a pipx that left tools out, a Homebrew that left formulae out and one still downloading its list",
+    input({
+      snapshot: snapshot({
+        instances: [
+          instance(BREW, { status: { unavailable: null, notes: ["FormulaeNotListed", "IndexMayBeStale"] } }),
+          instance("brew:/usr/local", { status: { unavailable: null, notes: ["IndexUpdating"] } }),
+          instance("pipx:/opt/homebrew/bin/pipx", { status: { unavailable: null, notes: ["SomeNotListed"] } }),
+          instance(NPM),
+        ],
+        errors: [{ instance_id: BREW, message: "brew outdated exited 1" }],
+      }),
+    }),
+    2,
+  ],
+  [
+    "a launcher without its program, and PATH notes",
+    input({
+      snapshot: snapshot({
+        instances: [
+          instance("standalone-claude:/Users/alice/.local/bin/claude", { status: { unavailable: null, notes: ["LauncherOnly"] } }),
+          instance("standalone-codex:/Users/alice/.local/bin/codex", { status: { unavailable: null, notes: ["NotOnPath", "ShadowedByNpm"] } }),
+        ],
+      }),
+    }),
+    1,
+  ],
+  [
+    "an error from a source's detection that left no source, and one from a source no longer listed",
+    input({
+      snapshot: snapshot({
+        errors: [
+          { instance_id: "pipx", message: "internal error detecting this source" },
+          { instance_id: "pipx", message: "internal error detecting this source" },
+          { instance_id: "brew:/usr/local", message: "timed out" },
+        ],
+      }),
+    }),
+    2,
+  ],
+  [
+    "a bare source's error where its sources already say they did not answer",
+    input({
+      snapshot: snapshot({
+        instances: [instance(BREW, { status: { unavailable: "NotResponding", notes: [] } }), instance(NPM)],
+        errors: [{ instance_id: "brew", message: "internal error detecting this source" }],
+      }),
+    }),
+    1,
+  ],
+  [
+    "a bare source's error where its source answered",
+    input({ snapshot: snapshot({ errors: [{ instance_id: "npm", message: "internal error refreshing" }] }) }),
+    1,
+  ],
 ];
 
 describe("setupAttention", () => {

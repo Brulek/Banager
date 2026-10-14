@@ -1336,7 +1336,12 @@
         "NotResponding": "沒有回應",
         "RefusesAsRoot": "無法以管理者身分執行",
         "readOnly": "僅供查看",
-        "unverified": "未經測試的版本"
+        "unverified": "未經測試的版本",
+        "indexMayBeStale": "更新未能完整檢查",
+        "indexUpdating": "正在連線檢查新版本",
+        "launcherOnly": "找不到程式檔案",
+        "someNotListed": "部分工具沒有顯示",
+        "formulaeNotListed": "部分套件沒有顯示"
       },
       "searchPath": "尋找指令的檔案夾：{{number}}個",
       "loginRead": "已讀取登入時的設定",

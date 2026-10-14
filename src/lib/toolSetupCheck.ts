@@ -21,13 +21,14 @@
  */
 import { create } from "zustand";
 import { commandsKnown, toolsNamesIncomplete, toolsNotJudged, toolsNotLinked } from "./commandsKnown";
-import { copiesOfToolsInstalledTwice, sourceStateWords, toolsInstalledTwice, type Translate } from "./diagnostics";
+import { copiesOfToolsInstalledTwice, noteWarns, sourceStateWords, toolsInstalledTwice, type Translate } from "./diagnostics";
+import { homesAsTilde } from "./failureCause";
 import { twinsByArtifact } from "./commands";
 import { discoverCounts, keepsOtherVersions, notOnPathDetailKey, type DiscoverShow } from "./families";
 import { modelsTotalText } from "./sizes";
 import { sizeTotalsOf, sourceTotalText, type SizeTotal } from "./sizeTotals";
 import { answeredWhen } from "./answeredWhen";
-import { instanceLabels } from "./sources";
+import { adapterIdOf, adapterLabel, instanceLabels } from "./sources";
 import type { InstalledArtifact, ManagerInstance, Sizes, Snapshot, SystemFacts } from "./types";
 import { artifactKeyId } from "../store/ui";
 
@@ -183,10 +184,12 @@ function inSentence(words: readonly string[]): string[] {
 }
 
 /**
- * 「来源」: each source not answering, read-only or on a version not tested
- * -- in the diagnostic text's words (`sourceStateWords`) -- or whose check
- * did not finish, a line of its own with 查看 to its page, those that do
- * not answer or did not finish first -- under one that does not answer,
+ * 「来源」: each source not answering, whose list or check is incomplete,
+ * read-only or on a version not tested -- in the diagnostic text's words
+ * (`sourceStateWords`) -- or whose check did not finish, a line of its own
+ * with 查看 to its page, those that warn first; an error naming no listed
+ * source (`unlisted`) a ⚠︎ line too, with no 查看: it has no page (R82-1)
+ * -- under one that does not answer,
  * when it last did, where this session heard it (「上次响应：今天09:12」,
  * as its notice says it: `sourceNoticesFor`); the rest said
  * once, 「所有来源都正常回应」, with their names, two Homebrews named as the
@@ -207,20 +210,62 @@ function lastAnswered(t: Translate, instance: ManagerInstance, input: ToolSetupI
 }
 
 /**
- * Whether a source's line has the ⚠︎: it did not answer, or its check did
- * not finish (`failed`: the ids this round's errors name). Read by
- * `sourceLines` and `setupAttention`.
+ * Where this round's errors (`Snapshot.errors`) go on the sheet (R82-1).
+ * `failed`: each listed source an error names -- by its id, or by its
+ * adapter's bare id (what `refresh()` blames when detection itself
+ * failed) where that source answered: one that did not already has its
+ * ⚠︎ and says so. `unlisted`: each id an error names that no listed
+ * source is, once, in the order the errors first name it -- a source
+ * whose detection left none, or one the snapshot no longer lists -- never
+ * given to another source of its kind. Read by `sourceLines`,
+ * `homebrewLines` and `setupAttention`.
+ */
+function sourceProblems(snapshot: Snapshot): { failed: Set<string>; unlisted: string[] } {
+  const listed = new Set(snapshot.instances.map((instance) => instance.id));
+  const failed = new Set<string>();
+  const unlisted: string[] = [];
+  for (const { instance_id: id } of snapshot.errors) {
+    if (listed.has(id)) {
+      failed.add(id);
+      continue;
+    }
+    const kin = snapshot.instances.filter((instance) => instance.adapter_id === id);
+    for (const instance of kin) if (instance.status.unavailable === null) failed.add(instance.id);
+    if (kin.length === 0 && !unlisted.includes(id)) unlisted.push(id);
+  }
+  return { failed, unlisted };
+}
+
+/**
+ * An `unlisted` error's source by name: its kind's, and where it was when
+ * another of its kind is listed -- 「Homebrew（/usr/local）」 beside the
+ * Homebrew that is -- its home folder as `~`.
+ */
+function unlistedLabel(t: Translate, id: string, instances: readonly ManagerInstance[]): string {
+  const adapterId = adapterIdOf(id);
+  const source = adapterLabel(t, adapterId);
+  if (id === adapterId || !instances.some((instance) => instance.adapter_id === adapterId)) return source;
+  return t("common.sourceWithPlace", { source, place: homesAsTilde(id.slice(adapterId.length + 1)) });
+}
+
+/**
+ * Whether a source's line has the ⚠︎: it did not answer, a note says its
+ * list or check is incomplete (`noteWarns`), or its check did not finish
+ * (`failed`, from `sourceProblems`). Read by `sourceLines`,
+ * `homebrewLines` and `setupAttention`.
  */
 function sourceWarns(instance: ManagerInstance, failed: ReadonlySet<string>): boolean {
-  return instance.status.unavailable !== null || failed.has(instance.id);
+  return instance.status.unavailable !== null || failed.has(instance.id) || noteWarns(instance);
 }
 
 function sourceLines(t: Translate, input: ToolSetupInput): SetupLine[] {
   const { snapshot } = input;
   if (snapshot === null) return [line("checking", "busy", t("common.checking"))];
-  if (snapshot.instances.length === 0) return [line("none", "note", t("setupCheck.sources.none"))];
+  const { failed, unlisted } = sourceProblems(snapshot);
+  if (snapshot.instances.length === 0 && unlisted.length === 0) {
+    return [line("none", "note", t("setupCheck.sources.none"))];
+  }
   const labels = instanceLabels(t, snapshot.instances);
-  const failed = new Set(snapshot.errors.map((error) => error.instance_id));
   const lines: SetupLine[] = [];
   const fine: string[] = [];
   for (const instance of snapshot.instances) {
@@ -241,6 +286,18 @@ function sourceLines(t: Translate, input: ToolSetupInput): SetupLine[] {
           view: { kind: "source", instanceId: instance.id },
           secondary: lastAnswered(t, instance, input),
         },
+      ),
+    );
+  }
+  for (const id of unlisted) {
+    lines.push(
+      line(
+        `unlisted:${id}`,
+        "warning",
+        t("setupCheck.sources.state", {
+          source: unlistedLabel(t, id, snapshot.instances),
+          state: t("setupCheck.sources.checkUnfinished"),
+        }),
       ),
     );
   }
@@ -420,13 +477,16 @@ function homebrewLines(t: Translate, input: ToolSetupInput): SetupLine[] | null 
   const retired = discoverCounts(artifacts).brewRetired;
   const keeping = artifacts.filter((artifact) => keepsOtherVersions(artifact));
   // A Homebrew that didn't answer, or whose check didn't finish, has no
-  // list read this time -- none at all on a first launch -- so nothing is
+  // list read this time -- none at all on a first launch -- and one that
+  // left formulae out of it (`FormulaeNotListed`) or read it against a
+  // list of software that may be out of date (`IndexMayBeStale`) has not
+  // checked them all (`sourceWarns`, R82-1) -- so nothing is
   // said to be fine of it, nor of every Homebrew because another one's
   // list is clean (R59-3). What is counted is still said, under a line
   // saying it may be incomplete; the Sources section has its ⚠︎. A list
   // not read because `brew update` was running (`IndexUpdating`) is last
   // check's too, with no ⚠︎ -- nothing failed.
-  const failed = new Set(snapshot.errors.map((error) => error.instance_id));
+  const { failed } = sourceProblems(snapshot);
   const unfinished = snapshot.instances.filter(
     (instance) =>
       brews.has(instance.id) && (sourceWarns(instance, failed) || instance.status.notes.includes("IndexUpdating")),
@@ -544,8 +604,8 @@ export function setupAttention(input: Pick<ToolSetupInput, "snapshot" | "pending
   const { snapshot } = input;
   let count = terminalWarns(input.facts) ? 1 : 0;
   if (snapshot === null) return count;
-  const failed = new Set(snapshot.errors.map((error) => error.instance_id));
-  count += snapshot.instances.filter((instance) => sourceWarns(instance, failed)).length;
+  const { failed, unlisted } = sourceProblems(snapshot);
+  count += snapshot.instances.filter((instance) => sourceWarns(instance, failed)).length + unlisted.length;
   if (notOnPathWarns(snapshot.artifacts, input.pending)) count += 1;
   return count;
 }
