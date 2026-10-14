@@ -92,6 +92,24 @@ describe("FaqSheet", () => {
   });
 
   it.each([
+    // r24 R79-4: WebKit, which draws the window, keeps data and a cache for
+    // the app in its persistent default store (wry 0.55.1 leaves incognito
+    // off), outside the app's own folder, so "only three files" was not the
+    // whole of what stays on the Mac.
+    ["en", en, "The app itself writes three files", "WebKit, the part of macOS that draws the window, can also keep data and a cache for it", /only three files/],
+    ["zh-CN", zhCN, "此App自己保存三个文件", "显示窗口的macOS组件WebKit还可能", /只写三个文件/],
+    ["zh-Hant", zhHant, "此App自己儲存三個檔案", "顯示視窗的macOS元件WebKit還可能", /只寫入三個檔案/],
+  ] as const)("tells the app's own three files from WebKit's data and cache, in %s", (_language, locale, own, webkit, gone) => {
+    const answer = locale.faq.questions.changesMac.answer;
+    expect(answer).toContain(own);
+    expect(answer).toContain(webkit);
+    expect(answer).not.toMatch(gone);
+    for (const place of ["~/Library/Application Support/com.brulek.banager", "~/Library/WebKit", "~/Library/Caches", "com.brulek.banager"]) {
+      expect(answer).toContain(place);
+    }
+  });
+
+  it.each([
     // r24 R79-2: Banager was Canager, whose builds kept settings.json in
     // com.brulek.canager's folder, which nothing here reads (the app data
     // folder follows tauri.conf.json's identifier). Canager kept no

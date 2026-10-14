@@ -5900,7 +5900,7 @@ without locks, or a directory that cannot be made), Banager starts without it,
 as it did before the lock existed. This coordinates builds that implement the
 lock; older builds do not participate in this protocol.
 
-Three, all in Banager's application data directory
+Three files of Banager's own, all in its application data directory
 (`~/Library/Application Support/com.brulek.banager`). `settings.json`
 (`settings::save`, written to an exclusively created random
 `settings.json.tmp.<random>` regular file beside it and renamed into
@@ -6056,8 +6056,9 @@ written as Banager quits so that the window opens the same way next time
 `src-tauri/src/lib.rs`, which keeps it in Tauri's config directory for the
 app — on macOS the same folder). That one is written in place, not renamed
 into place: a file a crash cut short is ignored at the next launch, and
-the window opens at its default size. Nothing else on the Mac is written
-or deleted by Banager itself. It moves files in one case: a
+the window opens at its default size. Banager's own code writes no other
+file on the Mac and deletes none; what WebKit and macOS keep for the app
+is theirs (below). It moves files in one case: a
 confirmed uninstall of a tool that has no uninstall command (Claude Code,
 Antigravity CLI or Grok Build) moves the paths its preview listed to the
 Trash (next section). The programs Banager runs write their own files as
@@ -6092,11 +6093,32 @@ then paste. The copy is read as any `settings.json` is, field by field
 (above).
 `.window-state.json` stays where it is; Banager keeps its own.
 
+**What WebKit and macOS keep.** The window's page is drawn by WebKit,
+in its persistent default data store: the window is made from
+`app.windows` in `src-tauri/tauri.conf.json`, which sets no data store,
+and wry 0.55.1, the webview layer Tauri uses, leaves `incognito` off and
+so takes `WKWebsiteDataStore defaultDataStore`. For the app, WebKit keeps
+that store's data in `~/Library/WebKit/com.brulek.banager` and its cache
+in `~/Library/Caches/com.brulek.banager`, outside Application Support;
+what is in them is WebKit's, and Banager neither reads nor clears them.
+macOS keeps its own records of the app too, such as whether it may send
+notifications. These places are read from the code of wry and WebKit, not
+an inventory of every trace a Mac keeps of an app. To remove Banager's
+saved data, quit Banager, then move
+`~/Library/Application Support/com.brulek.banager`,
+`~/Library/WebKit/com.brulek.banager` and
+`~/Library/Caches/com.brulek.banager` to the Trash -- those three folders
+only, never the Library folders they are in -- skipping any that is not
+there; the settings and history go with them, and the next launch starts
+with the defaults. Canager's folders, the same three ending in
+`com.brulek.canager`, are left for last: move them to the Trash only
+after bringing its settings over (above), or once they are not wanted.
+
 ## Moving files to the Trash
 
 `RealTrasher` (`crates/banager-core/src/trash/real.rs`) is the only code
-in Banager that changes a file on the Mac other than its own settings and
-history.
+in Banager that changes a file on the Mac other than its own settings,
+history and window state.
 It makes one call per path, `NSFileManager
 trashItemAtURL:resultingItemURL:error:` — the call Finder makes for Move
 to Trash — through the `objc2-foundation` crate, and it is called only by

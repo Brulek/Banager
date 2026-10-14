@@ -254,6 +254,15 @@ isn't there) — but only if there's no `settings.json` there yet: one that is t
 settings, so don't replace it. Canager kept no update history, so there is nothing else to bring over;
 **Common Questions** says the same.
 
+Banager saves its settings, its history of updates and uninstalls and its window's size and position in
+`~/Library/Application Support/com.brulek.banager`. WebKit, the part of macOS that draws its window, can
+also keep data for it in `~/Library/WebKit/com.brulek.banager` and a cache in
+`~/Library/Caches/com.brulek.banager`. To remove all of this once you stop using Banager, quit it, then
+open each of those three folders with Go to Folder and move it to the Trash, skipping any that isn't there
+— those folders only, never the Library folders they're in; your settings and history go with them.
+Canager's folders, the same three ending in `com.brulek.canager`, come last: move them to the Trash
+only after bringing its settings over as above, or once you don't need them.
+
 Closing the window — its red button, or Close Window (⌘W) in the menu bar's File menu — leaves
 Banager running, and an operation under way carries on; its icon in the Dock brings the window back
 as you left it — or on the Updates page after a notification, as above — without a new check. Quit
@@ -724,6 +733,13 @@ Banager 以前叫 Canager，用这个名字构建的版本把设置——包括�
 拷贝其中的 `settings.json`，原文件留在原处，再粘贴到 `~/Library/Application Support/com.brulek.banager`
 （没有这个文件夹就先创建）——但只有那里还没有 `settings.json` 时才粘贴：已有的那个保存的是 Banager 自己的设置，
 不要替换它。Canager 没有更新记录，所以没有别的要带过来；“常见问题”里也这样说。
+
+Banager 把设置、更新和卸载记录、窗口的大小和位置保存在 `~/Library/Application Support/com.brulek.banager`。
+显示它窗口的 macOS 组件 WebKit 还可能把数据保存在 `~/Library/WebKit/com.brulek.banager`，把缓存保存在
+`~/Library/Caches/com.brulek.banager`。不再使用 Banager 后要把这些都移除，先退出它，再在访达里用“前往文件夹”
+分别打开这三个文件夹，把它们移到废纸篓，不存在的跳过——只移这三个文件夹，不要动它们所在的 Library 文件夹；
+设置和记录也会随之移除。Canager 的文件夹是以 `com.brulek.canager` 结尾的同样三个，放到最后：先按上面的方法
+把它的设置带过来，或者确定不需要了，再把它们移到废纸篓。
 
 关掉窗口——点它的红色按钮，或从菜单栏选“文件”菜单里的“关闭窗口”（⌘W）——Banager 仍在运行，进行中的操作照常
 继续；点程序坞里的图标，窗口按你离开时的样子回来（发过通知后照上面说的，改为打开“更新”页），不会重新检查。

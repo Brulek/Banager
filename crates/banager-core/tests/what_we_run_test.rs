@@ -1882,7 +1882,7 @@ fn test_what_we_run_names_the_history_file_what_it_keeps_its_bounds_and_how_to_r
         .collect::<Vec<_>>()
         .join(" ");
     for phrase in [
-        "Three, all in Banager's application data directory".to_string(),
+        "Three files of Banager's own, all in its application data directory".to_string(),
         "`history.json`, Banager's record of the updates and uninstalls it ran".to_string(),
         "Never a line of a log, a command line or any other path, and of an error message one line at most".to_string(),
         format!(
@@ -1927,7 +1927,7 @@ fn test_what_we_run_names_the_history_file_what_it_keeps_its_bounds_and_how_to_r
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ");
-    assert!(trash.contains("other than its own settings and history."));
+    assert!(trash.contains("other than its own settings, history and window state."));
     // No place still promises settings.json and the window's state alone.
     let folded = doc.split_whitespace().collect::<Vec<_>>().join(" ");
     assert!(!folded.contains("other than its own `settings.json` and `.window-state.json`"));
@@ -2748,4 +2748,49 @@ fn antigravity_docs_distinguish_vendor_command_from_verified_execution() {
         doc.contains("Banager has not verified running this command"),
         "docs/what-we-run.md does not say Banager has not verified running `agy update`"
     );
+}
+
+/// r24 R79-4: besides Banager's three files in its application data
+/// folder, WebKit, which draws the window, keeps the app's data and cache
+/// in its persistent default store (wry 0.55.1 leaves `incognito` off and
+/// Banager sets no data store), under folders named for the app's
+/// identifier in `~/Library/WebKit` and `~/Library/Caches`. This document
+/// and both README blocks name all three places, say to quit Banager
+/// before moving them to the Trash, and no longer say nothing else on the
+/// Mac is written.
+#[test]
+fn test_footprint_docs_include_webkit_storage_and_scoped_removal() {
+    let config: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string("../../src-tauri/tauri.conf.json").expect("read tauri.conf.json"),
+    )
+    .expect("tauri.conf.json is JSON");
+    let id = config["identifier"].as_str().expect("an identifier");
+    let readme = std::fs::read_to_string("../../README.md").expect("read README.md");
+    let (english, chinese) = readme
+        .split_once("\n## 中文\n")
+        .expect("README.md has a `## 中文` heading");
+    let doc = read_doc();
+    let fold = |text: &str| text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let chinese = chinese.replace('\n', "");
+    for (name, text, quit) in [
+        ("what-we-run.md", fold(&doc), "quit Banager"),
+        ("README English", fold(english), "quit it"),
+        ("README Chinese", chinese, "先退出它"),
+    ] {
+        let webkit = format!("~/Library/WebKit/{id}");
+        let at = text
+            .find(&webkit)
+            .unwrap_or_else(|| panic!("{name} does not name {webkit}"));
+        for place in [
+            format!("~/Library/Application Support/{id}"),
+            format!("~/Library/Caches/{id}"),
+        ] {
+            assert!(text.contains(&place), "{name} does not name {place}");
+        }
+        assert!(
+            text[at..].contains(quit),
+            "{name} does not say to quit Banager before moving its folders to the Trash"
+        );
+        assert!(!text.contains("Nothing else on the Mac is written"));
+    }
 }
