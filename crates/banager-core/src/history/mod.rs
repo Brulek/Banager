@@ -717,8 +717,8 @@ fn load(path: &Path, now: i64, read: &ReadFn) -> Loaded {
         },
         pruned: false,
     };
-    // Only a file that is not there is an empty history. One that is
-    // there but does not read is kept as it is: a write would put this
+    // Only a file that is not there, or is empty, is an empty history. One
+    // that is there but does not read is kept as it is: a write would put this
     // launch's records in its place, and its own would be lost for good.
     let bytes = match read(path) {
         Ok(bytes) => bytes,
@@ -728,6 +728,12 @@ fn load(path: &Path, now: i64, read: &ReadFn) -> Loaded {
             return Loaded::Blocked(HistoryPersistence::Unreadable);
         }
     };
+    // An empty file holds nothing to keep: most likely a write cut short
+    // by a power loss, as `atomic_file::write` does not wait for the disk.
+    // Kept, it would hold this launch's records in memory on every launch.
+    if bytes.iter().all(u8::is_ascii_whitespace) {
+        return empty;
+    }
     let malformed = Loaded::Blocked(HistoryPersistence::Malformed);
     let Ok(serde_json::Value::Object(value)) = serde_json::from_slice::<serde_json::Value>(&bytes)
     else {
@@ -2820,7 +2826,7 @@ mod tests {
         let k = key("cmake");
         for bytes in [
             &b"{ not json"[..],
-            b"",
+            b"{\"format\":3,\"records\":[",
             b"[]",
             b"\xff\xfe",
             b"{\"format\":\"one\",\"records\":[]}",
@@ -2849,6 +2855,31 @@ mod tests {
             assert_eq!(view.persistence, HistoryPersistence::Malformed, "{what}");
             drop(store);
             assert_eq!(std::fs::read(dir.file()).unwrap(), bytes, "{what}");
+        }
+    }
+
+    /// An empty file -- what a write cut short by a power loss most likely
+    /// leaves, as `atomic_file::write` does not wait for the disk -- holds
+    /// nothing to keep: it is a missing history, and the next record is
+    /// written in its place rather than kept until quit on every launch.
+    #[test]
+    fn test_empty_history_file_is_a_missing_history() {
+        let dir = TempDir::new("empty");
+        let k = key("cmake");
+        for bytes in [&b""[..], b" \n\t\r\n"] {
+            std::fs::write(dir.file(), bytes).unwrap();
+            let store = HistoryStore::open_with_clock(dir.file(), now);
+            let what = format!("{bytes:?}");
+            assert_eq!(store.view().records, vec![], "{what}");
+            assert_eq!(store.view().persistence, HistoryPersistence::Saved, "{what}");
+            store.record(&ended(&k, &Outcome::Succeeded), &started("cmake"));
+            assert!(store.flush(Duration::from_secs(5)), "{what}");
+            assert_eq!(store.view().persistence, HistoryPersistence::Saved, "{what}");
+            drop(store);
+            let file: serde_json::Value =
+                serde_json::from_slice(&std::fs::read(dir.file()).unwrap()).unwrap();
+            assert_eq!(file["format"], HISTORY_FORMAT, "{what}");
+            assert_eq!(file["records"].as_array().unwrap().len(), 1, "{what}");
         }
     }
 

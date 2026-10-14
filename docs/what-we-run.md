@@ -5698,7 +5698,8 @@ not read (`protected::look`; How Banager runs anything, above):
   path; never into a protected place) — never a file's contents (Which
   copy a command runs, above).
 - Banager's own `settings.json` in its application data directory
-  (`settings::load_with_status`; a missing file means defaults. Known fields
+  (`settings::load_with_status`; a missing file, or an empty one such as a
+  write cut short by a power loss can leave, means defaults. Known fields
   and collection entries in valid JSON are recovered independently: only
   invalid fields or entries fall back or are dropped. A file that is there
   but cannot be read, or is not a JSON object, is left exactly as it is, and
@@ -5712,7 +5713,7 @@ not read (`protected::look`; How Banager runs anything, above):
   fresh — then reopen it. Such a file does not bring up the welcome sheet).
 - Banager's own `history.json` beside it, once, as Banager starts
   (`HistoryStore::open` in `crates/banager-core/src/history/mod.rs`; a
-  missing file starts an empty history. An existing file that cannot be
+  missing or empty file starts an empty history. Any other file that cannot be
   read, is not a history, or was written by a newer Banager is left exactly
   as it is for the whole launch: new records stay in memory until Banager
   quits, and a warning over the Updates page says so, whatever the page
@@ -5913,8 +5914,10 @@ trusting from now, or from its newest record when that is earlier.
 than 180 days by the Mac's clock (`HistoryStore::view`). It is written whole to
 a random, exclusively created `history.json.tmp.<random>` beside it by the
 same atomic writer as settings and renamed into place, on a thread of
-its own, after each operation finishes and after Clear. A missing file
-is an empty history, written at the first record. An unreadable or
+its own, after each operation finishes and after Clear. A missing file,
+or an empty one (nothing but spaces and line breaks, which a write cut
+short by a power loss can leave), is an empty history, written at the
+first record. An unreadable or
 malformed one (not a JSON object with a whole-number format and a list of
 records) is never written over during that launch (`Loaded::Blocked`). Individual records with dates outside JavaScript Date's range are
 dropped without discarding valid records; invalid Clear/retention timestamps

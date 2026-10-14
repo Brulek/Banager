@@ -191,7 +191,8 @@ impl Default for Settings {
 pub enum LoadStatus {
     /// Read: whole, or field by field (`recover`).
     Loaded,
-    /// Not there: a first launch, or a file moved to the Trash.
+    /// Not there: a first launch, or a file moved to the Trash. An empty
+    /// file is one too (`read_saved`).
     Missing,
     /// There, and not read: not JSON, not an object, or not readable by
     /// this user. The defaults stand in for it for this launch, and the
@@ -264,6 +265,12 @@ fn load_at_with(path: &Path, now: i64, read: ReadFn) -> (Settings, LoadStatus) {
 /// Shared by startup and the save guard: a load failure stays distinguishable.
 fn read_saved(path: &Path, read: ReadFn) -> std::io::Result<Settings> {
     match read(path) {
+        // An empty file holds nothing to keep: most likely a write cut
+        // short by a power loss, as `atomic_file::write` does not wait for
+        // the disk. It is a missing one, so the next save may replace it.
+        Ok(bytes) if bytes.iter().all(u8::is_ascii_whitespace) => {
+            Err(std::io::ErrorKind::NotFound.into())
+        }
         Ok(bytes) => recover(&bytes).ok_or_else(|| {
             std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
@@ -1138,7 +1145,6 @@ mod tests {
             &br#"{"language": "En", "auto_check": tr"#[..],
             b"[1, 2]",
             b"\"En\"",
-            b"",
             b"\xff\xfe",
         ] {
             assert_eq!(
@@ -1154,6 +1160,25 @@ mod tests {
             load_at_with(&missing, 0, &fs_read),
             (Settings::default(), LoadStatus::Missing)
         );
+
+        // An empty file -- what a write cut short by a power loss most
+        // likely leaves -- holds nothing to keep: it is a missing one, and
+        // the next save is written in its place.
+        for empty in [&b""[..], b" \n\t\r\n"] {
+            let path = temp_settings_path("load-status-empty");
+            std::fs::write(&path, empty).unwrap();
+            assert_eq!(
+                load_at_with(&path, 0, &fs_read),
+                (Settings::default(), LoadStatus::Missing)
+            );
+            let saved = Settings {
+                language: Language::ZhHant,
+                ..Settings::default()
+            };
+            save(&path, &saved).unwrap();
+            assert_eq!(load_at(&path, 0), saved);
+            std::fs::remove_file(&path).unwrap();
+        }
 
         let path = temp_settings_path("load-status-legacy");
         std::fs::write(&path, SAVED_BY_THE_PREVIOUS_BUILD).unwrap();

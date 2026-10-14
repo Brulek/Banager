@@ -397,7 +397,7 @@
         "writeFailed": "Update History couldn't be saved.",
         "writeFailedDetail": "The latest updates are listed until you quit Banager, but may be missing after you reopen it. Saving is tried again after the next update and when you quit.",
         "clearUnsaved": "Clear History couldn't be saved.",
-        "clearUnsavedDetail": "What you cleared stays hidden until you quit Banager, and is listed again after you reopen it. Saving is tried again after the next update and when you quit.",
+        "clearUnsavedDetail": "What you cleared stays hidden until you quit Banager, and may be listed again after you reopen it. Saving is tried again after the next update and when you quit.",
         "clearUnconfirmed": "Couldn't confirm Clear History.",
         "clearUnconfirmedDetail": "The list shows what Banager has kept. To try again, click Clear History."
       }

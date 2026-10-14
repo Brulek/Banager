@@ -54,13 +54,13 @@ describe("historyNoticeKey after a write that failed (r24 R74-2)", () => {
 
 describe("HistoryNotice after a write that failed", () => {
   const cases: [string, HistoryView, boolean, string, RegExp][] = [
-    ["en", view("write_failed", true), false, "Clear History couldn't be saved.", /listed again after you reopen it/],
+    ["en", view("write_failed", true), false, "Clear History couldn't be saved.", /may be listed again after you reopen it/],
     ["en", view("write_failed"), false, "Update History couldn't be saved.", /tried again after the next update and when you quit/],
     ["en", view("saved"), true, "Couldn't confirm Clear History.", /click Clear History/],
-    ["zh-CN", view("write_failed", true), false, "无法保存“清除记录”。", /重新打开后会再次列出/],
+    ["zh-CN", view("write_failed", true), false, "无法保存“清除记录”。", /重新打开后可能会再次列出/],
     ["zh-CN", view("write_failed"), false, "无法保存“最近的更新记录”。", /退出此App时会再试一次/],
     ["zh-CN", view("saved"), true, "无法确认是否已清除记录。", /点按“清除记录”/],
-    ["zh-Hant", view("write_failed", true), false, "無法儲存「清除記錄」。", /重新開啟後會再次列出/],
+    ["zh-Hant", view("write_failed", true), false, "無法儲存「清除記錄」。", /重新開啟後可能會再次列出/],
     ["zh-Hant", view("write_failed"), false, "無法儲存「最近的更新記錄」。", /結束此App時會再試一次/],
     ["zh-Hant", view("saved"), true, "無法確認是否已清除記錄。", /點按「清除記錄」/],
   ];

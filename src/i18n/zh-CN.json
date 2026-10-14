@@ -363,7 +363,7 @@
         "writeFailed": "无法保存“最近的更新记录”。",
         "writeFailedDetail": "最近的更新会列到退出此App为止，但重新打开后可能不在列表中。下次更新时和退出此App时会再试一次。",
         "clearUnsaved": "无法保存“清除记录”。",
-        "clearUnsavedDetail": "清除的记录在退出此App前保持隐藏，重新打开后会再次列出。下次更新时和退出此App时会再试一次。",
+        "clearUnsavedDetail": "清除的记录在退出此App前保持隐藏，重新打开后可能会再次列出。下次更新时和退出此App时会再试一次。",
         "clearUnconfirmed": "无法确认是否已清除记录。",
         "clearUnconfirmedDetail": "列表显示的是目前保留的记录。要重试，请点按“清除记录”。"
       }

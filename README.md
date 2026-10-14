@@ -103,9 +103,9 @@ a protected place**, and the link is not followed.
   result didn't add up is listed only while the last check still offers that tool an update; one updated with an
   error is listed either way, as a success is. Cancelled updates
   and uninstalls are not listed. The list is kept across restarts in `history.json`, until you press Clear History.
-  If that file is there but can't be read, Banager leaves it as it is and keeps new records only until you quit;
+  If that file is there but can't be read (an empty one counts as missing), Banager leaves it as it is and keeps new records only until you quit;
   a warning over the Updates page says so and what to do, whatever the page shows. Clear History hides the records
-  listed when Banager takes it, and later ones stay; when it can't be saved, a warning says the cleared records come
+  listed when Banager takes it, and later ones stay; when it can't be saved, a warning says the cleared records may come
   back after reopening. A history write that failed is tried again after the next update, Clear History, or on quit,
   and never changes an update's result.
 - An uninstall's preview lists what stays after it — an AI tool's settings and data folders where the
@@ -224,7 +224,7 @@ it was shown, and it doesn't open on its own again; **Welcome to Banager** in th
 again at any time. That is remembered only if the save succeeds: if it fails, a line over the page
 says the sheet may show again the next time you open Banager.
 
-If Banager's settings file is there but can't be read, Banager uses the defaults for that launch and
+If Banager's settings file is there but can't be read (an empty one counts as missing), Banager uses the defaults for that launch and
 says so before you edit a setting — in a warning over every page, with *Open Settings*, and in full at
 the top of Settings: automatic checks and notifications are off, the language follows your Mac, and
 saved choices to skip versions or hide or pause update reminders aren't applied. The file is left as it
@@ -589,9 +589,9 @@ formula 与 cask，以及 npm、PyPI、crates.io 上的包，每条都译自该�
   有内容可看时还有“查看日志”（本次打开时看日志，重启后看保留下来的后续说明，例如确认时说会删除的旧版本没有删）；它那一行也这样写，没有“重试”，也不算作待更新。
   cask的更新失败时总是写未能更新：Homebrew会装回旧版本，连这一步也失败时，也无从知道新的App是否已经就位。
   未能更新的和结果对不上的只在上次检查仍为这个工具提供更新时列出；已更新但有错误的和成功的一样，都会列出。
-  取消的更新和卸载不列。这个列表重启后仍在（存在 `history.json` 里），直到你按“清除记录”。这个文件在、却读不了时，
+  取消的更新和卸载不列。这个列表重启后仍在（存在 `history.json` 里），直到你按“清除记录”。这个文件在、却读不了时（空文件当作没有），
   Banager 会原样保留它，新的记录只留到退出为止；“更新”页上方会提示这一点和该怎么做，不论页面显示什么。“清除记录”
-  隐藏 Banager 收到它时列出的记录，之后的照常列出；无法保存时会提示，清除的记录重新打开后会再列出。保存记录失败时，
+  隐藏 Banager 收到它时列出的记录，之后的照常列出；无法保存时会提示，清除的记录重新打开后可能会再列出。保存记录失败时，
   下次更新、清除记录或退出时会再试，更新本身的结果不受影响。
 - 卸载前的预览会列出卸载后会保留的东西——AI 工具的设置和数据文件夹（内置表格里写了的）、Ollama 的模型——能算出大小的
   写出大小，并可以拷贝路径；预览里没有任何删除它们的按钮，只在列表下面用一句话说明不需要的设置和数据可以在访达中移到
@@ -686,7 +686,7 @@ Banager 开着时还会每天做一次同样的检查，查到的更新都不安
 已经看过，以后不会自己再出现；随时可以从菜单栏“帮助”里的“欢迎使用Banager”再打开。只有保存成功才会记下：
 保存失败时，页面上方会有一行提示，说下次打开 Banager 时它可能还会出现。
 
-如果 Banager 的设置文件在、却无法读取，这次打开就用默认设置，并在你改动设置之前说明：每一页上方有一行警告，
+如果 Banager 的设置文件在、却无法读取（空文件当作没有），这次打开就用默认设置，并在你改动设置之前说明：每一页上方有一行警告，
 带“打开设置”按钮，“设置”页顶部有完整说明——自动检查和通知已关闭，语言跟随系统，已保存的跳过版本、不再提醒和
 30天内不提醒选择未生效。该文件原样保留，重新打开 Banager 之前任何设置都无法保存：请退出 Banager，修复
 `~/Library/Application Support/com.brulek.banager` 中 `settings.json` 的访问权限或恢复一份有效的副本——
