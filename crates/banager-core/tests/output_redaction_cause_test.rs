@@ -126,7 +126,7 @@ async fn test_a_password_inside_sudos_words_is_masked_and_the_cause_still_read()
     assert_eq!(*cause, Some(FailureCause::NeedsPassword));
     // The operation ends as needing the password: the notification and
     // the operation bar say so.
-    assert_eq!(Ended::of(&outcome), Ended::NeedsPassword);
+    assert_eq!(Ended::of(&outcome, &[]), Ended::NeedsPassword);
     // The history keeps the cause.
     let key = ArtifactKey {
         instance_id: "brew".to_string(),

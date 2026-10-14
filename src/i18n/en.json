@@ -1628,6 +1628,10 @@
         "question": "Why are some updates marked “Major update”?",
         "answer": "It means the first number of the version goes up, say from 3.x to 4.0, and how the tool is used or set up may change. Tools whose version starts with 0, Ollama models and tools versioned by date aren't marked. If you're not sure, choose “Skip This Version”; you'll be reminded when the next version comes out."
       },
+      "updatedWithWarning": {
+        "question": "Why does an update say it has a warning?",
+        "answer": "The update succeeded, but a step after it needs attention. Choose “View Log” to see what happened and what to do next. If “Notify me when operations finish” is on, the notification counts it as needing attention too."
+      },
       "autoCheck": {
         "question": "When does the automatic check stop?",
         "answer": "It's off unless you choose Daily or Weekly for “Check for updates” in Settings; choosing Manually stops it. Checks stop when you quit the app or restart your Mac, until you open it again; closing the window doesn't stop them. While an update or uninstall is under way, no check starts and it looks again 15 minutes later; when every source fails, it waits longer before each try, up to six hours. If your saved settings can't be read, it stays off until you repair or remove the settings file and reopen the app, as Settings explains."

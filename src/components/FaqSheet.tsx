@@ -17,6 +17,10 @@ const QUESTION_KEYS: Record<FaqId, { question: string; answer: string }> = {
   otherPrograms: { question: "faq.questions.otherPrograms.question", answer: "faq.questions.otherPrograms.answer" },
   sizes: { question: "faq.questions.sizes.question", answer: "faq.questions.sizes.answer" },
   majorUpdate: { question: "faq.questions.majorUpdate.question", answer: "faq.questions.majorUpdate.answer" },
+  updatedWithWarning: {
+    question: "faq.questions.updatedWithWarning.question",
+    answer: "faq.questions.updatedWithWarning.answer",
+  },
   autoCheck: { question: "faq.questions.autoCheck.question", answer: "faq.questions.autoCheck.answer" },
 };
 

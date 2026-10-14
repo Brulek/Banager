@@ -758,6 +758,54 @@ mod tests {
         );
     }
 
+    /// R77-1: an update that succeeded but left commands unlinked is told
+    /// of as needing attention, in every language, as Rust counts it.
+    #[test]
+    fn regression_warned_success_uses_attention_copy_in_every_language() {
+        use banager_core::follow_up::FollowUpWarning;
+        use banager_core::notify_operations::ReportedRuns;
+        use banager_core::ops::Completions;
+        let warned = |id| OpSummary {
+            follow_up_warnings: vec![FollowUpWarning::NoLongerLinked {
+                name: "node@22".into(),
+                commands: vec!["node".into()],
+            }],
+            ..op(id, OpKind::Upgrade, Some(Outcome::Succeeded))
+        };
+        let counted = |operations: Vec<OpSummary>, last| {
+            ReportedRuns::default()
+                .completed(
+                    last,
+                    &Completions {
+                        operations,
+                        ..Completions::default()
+                    },
+                )
+                .unwrap()
+        };
+        let alone = counted(vec![warned(1)], 1);
+        let mixed = counted(
+            vec![warned(2), op(1, OpKind::Upgrade, Some(Outcome::Succeeded))],
+            2,
+        );
+        for (language, alone_words, mixed_words) in [
+            (
+                MenuLanguage::En,
+                "1 needs attention",
+                "1 updated, 1 needs attention",
+            ),
+            (MenuLanguage::ZhCn, "1个需要查看", "1个已更新，1个需要查看"),
+            (
+                MenuLanguage::ZhHant,
+                "1個需要查看",
+                "1個已更新，1個需要查看",
+            ),
+        ] {
+            assert_eq!(body(language, &alone, 0), alone_words);
+            assert_eq!(body(language, &mixed, 0), mixed_words);
+        }
+    }
+
     fn op(id: u64, kind: OpKind, outcome: Option<Outcome>) -> OpSummary {
         OpSummary {
             id,
@@ -854,7 +902,7 @@ mod tests {
                 id,
                 EvictedOp {
                     kind: OpKind::Upgrade,
-                    ended: Ended::of(&failed(summary).unwrap()),
+                    ended: Ended::of(&failed(summary).unwrap(), &[]),
                 },
             );
         }

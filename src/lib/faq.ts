@@ -22,6 +22,7 @@ export type FaqId =
   | "otherPrograms"
   | "sizes"
   | "majorUpdate"
+  | "updatedWithWarning"
   | "autoCheck";
 
 /**
@@ -47,7 +48,7 @@ export interface FaqItem {
  * The questions, in the sheet's order: the wall a newcomer hits first --
  * a command Terminal does not find -- then updating, two copies, the
  * password, uninstalling, what Banager touches, Other Programs, sizes,
- * major updates, and the daily check.
+ * major updates, an update's warning, and the daily check.
  */
 export const FAQ_ITEMS: readonly FaqItem[] = [
   { id: "notFound", view: { kind: "installed", show: "notOnPath" } },
@@ -59,6 +60,7 @@ export const FAQ_ITEMS: readonly FaqItem[] = [
   { id: "otherPrograms", view: { kind: "unknown" } },
   { id: "sizes", view: { kind: "installedBySize" } },
   { id: "majorUpdate", view: { kind: "updates" } },
+  { id: "updatedWithWarning", view: { kind: "updates" } },
   { id: "autoCheck", view: { kind: "settings" } },
 ];
 

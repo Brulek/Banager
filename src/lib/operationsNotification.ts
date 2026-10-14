@@ -11,7 +11,7 @@
  */
 import { useEffect, useRef } from "react";
 import { reportFinishedRun } from "./api";
-import { outcomeTone, trackRun, type OperationRun } from "./operations";
+import { operationTone, trackRun, type OperationRun } from "./operations";
 import { useOperations } from "./queries";
 import type { FinishedRun, OpSummary, RunKind } from "./types";
 
@@ -19,7 +19,9 @@ import type { FinishedRun, OpSummary, RunKind } from "./types";
  * How the finished operations `ran` went, as the report says it: the
  * newest one's id, what they did -- every one an update, every one an
  * uninstall, or anything else -- and how many ended each way
- * (`outcomeTone`), the cancelled ones in none. Null for no operation.
+ * (`operationTone`: a success that left a follow-up warning needs
+ * attention, as Rust counts it, `Ended::of`), the cancelled ones in none.
+ * Null for no operation.
  */
 export function finishedRunOf(ran: OpSummary[]): FinishedRun | null {
   if (ran.length === 0) return null;
@@ -36,7 +38,7 @@ export function finishedRunOf(ran: OpSummary[]): FinishedRun | null {
     attention: 0,
   };
   for (const op of ran) {
-    const tone = outcomeTone(op.outcome);
+    const tone = operationTone(op);
     if (tone === "success") run.succeeded += 1;
     else if (tone === "failure") run.failed += 1;
     else if (tone === "attention") run.attention += 1;

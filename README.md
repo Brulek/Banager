@@ -197,8 +197,9 @@ finish** (off until you do) and a run of updates or uninstalls that finishes whi
 front posts one notification saying how it went, such as "Updated 3 tools" — never one you watched
 finish in the window. One that finishes with the window closed while Banager is still in front is
 posted once you switch to another app (`docs/what-we-run.md`, "The notification when operations finish").
-The result at the bottom of the window includes every operation in the run, even when older operation
-records have been released. A row's … menu on the Updates page has *Remind Me in 30 Days* between *Skip This Version* and
+An update with warnings is counted as needing attention in its completion notification. The result at
+the bottom of the window includes every operation in the run, even when older operation records have
+been released. A row's … menu on the Updates page has *Remind Me in 30 Days* between *Skip This Version* and
 *Don't Remind Me About This Tool*: it hides every version of that tool, not only the one offered, from
 the list, its counts, the Dock badge and the update notification for 30 days, after which the tool is
 listed again and counted like any other update — and, when the update notification is on, the first daily check
@@ -214,10 +215,10 @@ page with its search box focused, and Settings… (⌘,) is in the Banager menu.
 or minimized, each of these brings it back first. **Keyboard Shortcuts** in the Help menu lists the
 keys Banager answers to, in three groups: the window's (these, Close Window and Quit), the lists' (↑ ↓
 and the keys that page or jump to an end, Space to tick a row, Return and Escape for Installed's
-details, Tab) and the dialogs' (Return, Escape). **Common Questions**, above it, answers ten questions
+details, Tab) and the dialogs' (Return, Escape). **Common Questions**, above it, answers eleven questions
 in a few plain sentences each — a command Terminal can't find, why some tools can't be updated here,
 "Installed twice", the Mac password, what an uninstall leaves, what Banager itself changes, Other
-Programs, sizes, major updates and the automatic check — with a button named for the page it opens
+Programs, sizes, major updates, an update's warning and the automatic check — with a button named for the page it opens
 (*Show in Installed*, *Show in Updates*…) where the answer can be acted on.
 
 The first time Banager opens, a welcome sheet shows three short titles — see what's installed; you confirm each update and uninstall you choose; no data collected — and nothing more. The first check runs behind it, and its `brew update`, which no one chose, asks nothing, as above. However
@@ -664,7 +665,7 @@ Banager 开着时还会每天做一次同样的检查，查到的更新都不安
 点程序坞图标——也会这样。
 关掉窗口不会停止正在进行的操作；打开“操作完成时通知”（默认关闭）后，一批更新或卸载在别的应用位于最前面时做完，
 会发一条通知说结果，比如“已更新3个工具”——你在窗口里看着做完的不会通知；窗口关着、Banager 仍在最前面时做完的，
-等你切到别的应用时再通知。窗口底部的结果包含这一批中的每个操作，即使较早的操作记录已经释放。
+等你切到别的应用时再通知。更新有警告时，完成通知会将它计为需要查看。窗口底部的结果包含这一批中的每个操作，即使较早的操作记录已经释放。
 “更新”页每行“…”菜单里，“跳过此版本”和“不再提醒此工具”之间有“30天内不提醒”：这个工具的所有版本（不只是当前这一版）
 30天内都不列出，也不计入数量、程序坞角标和更新通知；到期后重新列出，和其他更新一样计入（开着“有更新时通知我”时，
 到期后第一次每日检查发现它会发通知提醒你，即使你之前看到过它）；在那之前“设置”里会列出它，可以撤销。
@@ -680,8 +681,8 @@ Banager 开着时还会每天做一次同样的检查，查到的更新都不安
 “搜索”（⌘F），后者打开“已安装”页，并把光标放进搜索框；“设置…”（⌘,）在“Banager”菜单里。窗口关着或最小化时，
 选这些项会先把窗口叫回来。菜单栏“帮助”里的“键盘快捷键”列出 Banager 里能用的按键，分三组：窗口（上面这些，再加
 “关闭窗口”和“退出”）、列表（↑ ↓、翻页和跳到两头的键、用空格键勾选一行、在“已安装”里用回车和 Esc 打开和关闭详细信息、Tab）
-和对话框（回车、Esc）。它上面的“常见问题”用几句大白话回答十个常见问题：终端里找不到命令、为什么有的工具不能在这里更新、
-“装了两份”、Mac 密码、卸载后留下什么、Banager 自己会改动什么、“其他程序”、占用空间、大版本更新和自动检查；
+和对话框（回车、Esc）。它上面的“常见问题”用几句大白话回答十一个常见问题：终端里找不到命令、为什么有的工具不能在这里更新、
+“装了两份”、Mac 密码、卸载后留下什么、Banager 自己会改动什么、“其他程序”、占用空间、大版本更新、更新后的警告和自动检查；
 能动手处理的，旁边有“查看”按钮，直接打开对应的页面或“已安装”里的显示选项。
 
 第一次打开 Banager 时，会出现一个欢迎页，只有三个短标题：看清装了什么；你选的更新、卸载都由你确认；不收集数据。第一次检查在它背后照常进行，其中的 `brew update` 不是你选的，不会问你，见上文。不管怎样关掉它——点“开始使用”、按回车或 Esc、点它外面——设置文件都会记下

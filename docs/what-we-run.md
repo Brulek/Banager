@@ -1079,7 +1079,12 @@ It is titled Banager and says how the run went in the window's language:
 ended, "N updated, N couldn't be updated" (「N个已更新，N个未能更新」;
 「N個已更新，N個未能更新」), with "N need attention" (「N个需要查看」;
 「N個需要查看」) for one the tool said worked and Banager could not
-confirm, or one updated whose step after it failed. An update that
+confirm, or one updated whose step after it failed. A successful update
+with saved follow-up warnings (`follow_up_warnings`: old versions not
+cleaned up, commands no longer linked) counts as needing attention, as
+the operation bar shows it, including when its full operation record has
+been evicted (`ops::Ended::of`): "Updated N tools" only when every
+counted operation succeeded without follow-up warnings. An update that
 stopped where `sudo` wanted the Mac's password, which Banager cannot ask
 for, is told of as the operation bar and the
 Updates page tell of it, not as one that couldn't be updated: "N updated,

@@ -12,7 +12,13 @@ const mockInvoke = vi.mocked(invoke);
 
 let operations: OpSummary[];
 
-function op(id: number, status: OpStatus, outcome: Outcome | null = null, kind: OpKind = "Upgrade"): OpSummary {
+function op(
+  id: number,
+  status: OpStatus,
+  outcome: Outcome | null = null,
+  kind: OpKind = "Upgrade",
+  extra: Partial<OpSummary> = {},
+): OpSummary {
   return {
     id,
     kind,
@@ -24,6 +30,7 @@ function op(id: number, status: OpStatus, outcome: Outcome | null = null, kind: 
     argv_preview: [],
     env_preview: [],
     cancel_policy: "KillThenReconcile",
+    ...extra,
   };
 }
 
@@ -71,6 +78,20 @@ describe("finishedRunOf", () => {
         op(7, "Done", "Succeeded"),
       ]),
     ).toEqual({ last_op: 7, kind: "Upgrade", succeeded: 2, failed: 1, attention: 1 });
+  });
+
+  it("counts an update that succeeded but left a follow-up warning as needing attention, once (R77-1)", () => {
+    const unlinked = { NoLongerLinked: { name: "node@22", commands: ["node"] } };
+    const behind = { OldVersionsNotCleanedUp: { name: "node@22", exit_code: 1 } };
+    expect(
+      finishedRunOf([
+        op(3, "Done", "Succeeded", "Upgrade", { follow_up_warnings: [unlinked, behind] }),
+        op(4, "Done", "Succeeded"),
+        // A warning never outranks a failure or a cancel.
+        op(5, "Done", failed, "Upgrade", { follow_up_warnings: [unlinked] }),
+        op(6, "Done", "Cancelled", "Upgrade", { follow_up_warnings: [behind] }),
+      ]),
+    ).toEqual({ last_op: 6, kind: "Upgrade", succeeded: 1, failed: 1, attention: 1 });
   });
 
   it("names a run of uninstalls as one, and a mixed run as other", () => {

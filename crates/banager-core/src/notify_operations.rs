@@ -140,7 +140,11 @@ impl ReportedRuns {
             if op.status != OpStatus::Done {
                 return None;
             }
-            ended.push((op.id, op.kind, Ended::of(op.outcome.as_ref()?)));
+            ended.push((
+                op.id,
+                op.kind,
+                Ended::of(op.outcome.as_ref()?, &op.follow_up_warnings),
+            ));
         }
         ended.extend(
             known
@@ -437,6 +441,50 @@ mod tests {
     }
 
     #[test]
+    fn regression_success_with_unlinked_commands_counts_as_attention() {
+        // R77-1: an update that succeeded but left commands unlinked (or
+        // old versions behind) needs a look, as the operation bar says
+        // (`operationTone`) -- told of as "needs attention", once however
+        // many warnings it has, never as "Updated 1 tool".
+        use crate::follow_up::FollowUpWarning;
+        let unlinked = FollowUpWarning::NoLongerLinked {
+            name: "node@22".into(),
+            commands: vec!["node".into()],
+        };
+        let behind = FollowUpWarning::OldVersionsNotCleanedUp {
+            name: "node@22".into(),
+            exit_code: Some(1),
+        };
+        let warned = |id, warnings: Vec<FollowUpWarning>| OpSummary {
+            follow_up_warnings: warnings,
+            ..summary(id, OpKind::Upgrade, Some(Outcome::Succeeded))
+        };
+        let known = records(&[
+            warned(3, vec![unlinked.clone(), behind.clone()]),
+            warned(2, vec![behind]),
+            warned(1, vec![]),
+        ]);
+        assert_eq!(
+            ReportedRuns::default().completed(3, &known),
+            Some(run(3, RunKind::Upgrade, 1, 0, 2))
+        );
+        let alone = records(&[warned(1, vec![unlinked.clone()])]);
+        assert_eq!(
+            ReportedRuns::default().completed(1, &alone),
+            Some(run(1, RunKind::Upgrade, 0, 0, 1))
+        );
+        // A warning never outranks how an operation ended otherwise.
+        assert_eq!(
+            Ended::of(&failed(SUDO).unwrap(), std::slice::from_ref(&unlinked)),
+            Ended::NeedsPassword
+        );
+        assert_eq!(
+            Ended::of(&Outcome::Cancelled, std::slice::from_ref(&unlinked)),
+            Ended::Cancelled
+        );
+    }
+
+    #[test]
     fn test_an_update_installed_though_a_step_after_it_failed_is_told_of_as_needing_attention() {
         // r35 U2: "1 needs attention", as the operation bar counts it --
         // never "couldn't be updated", held or evicted alike.
@@ -454,7 +502,7 @@ mod tests {
             ReportedRuns::default().completed(3, &known),
             Some(run(3, RunKind::Upgrade, 1, 1, 1))
         );
-        assert_eq!(Ended::of(&stepped), Ended::Attention);
+        assert_eq!(Ended::of(&stepped, &[]), Ended::Attention);
         known.operations.remove(0);
         known
             .evicted
@@ -478,14 +526,14 @@ mod tests {
             summary(4, OpKind::Upgrade, Some(Outcome::Succeeded)),
             summary(3, OpKind::Uninstall, failed(SUDO)),
         ]);
-        let sudo = Ended::of(&failed(SUDO).unwrap());
+        let sudo = Ended::of(&failed(SUDO).unwrap(), &[]);
         assert_eq!(sudo, Ended::NeedsPassword);
         known.evicted.insert(1, evicted(OpKind::Upgrade, sudo));
         known.evicted.insert(
             2,
             evicted(
                 OpKind::Upgrade,
-                Ended::of(&failed("Error: Download failed").unwrap()),
+                Ended::of(&failed("Error: Download failed").unwrap(), &[]),
             ),
         );
         assert_eq!(

@@ -424,7 +424,7 @@ pub struct OpSummary {
 /// notification says apart.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Ended {
-    /// `Outcome::Succeeded`.
+    /// `Outcome::Succeeded`, with no follow-up warning.
     Succeeded,
     /// `Outcome::Failed` and `Outcome::BanagerFailed`: did not happen.
     Failed,
@@ -436,16 +436,25 @@ pub enum Ended {
     /// the operation is counted or evicted, so that what eviction keeps
     /// (`EvictedOp`) still says it once the summary has gone.
     NeedsPassword,
-    /// `Outcome::NeedsAttention` and `Outcome::Unconfirmed`.
+    /// `Outcome::NeedsAttention` and `Outcome::Unconfirmed`, and an
+    /// `Outcome::Succeeded` that left a follow-up warning
+    /// (`OpSummary::follow_up_warnings`): what was updated needs a look
+    /// all the same, as the operation bar says (`operationTone` in
+    /// src/lib/operations.ts).
     Attention,
     /// `Outcome::Cancelled`.
     Cancelled,
 }
 
 impl Ended {
-    pub fn of(outcome: &Outcome) -> Ended {
+    /// How an operation that ended with `outcome` and left `warnings`
+    /// (`OpSummary::follow_up_warnings`) is counted. A warning changes only
+    /// a success: a failure, a cancel or one needing attention is that
+    /// whatever was left after it.
+    pub fn of(outcome: &Outcome, warnings: &[FollowUpWarning]) -> Ended {
         use crate::history::FailureCause;
         match outcome {
+            Outcome::Succeeded if !warnings.is_empty() => Ended::Attention,
             Outcome::Succeeded => Ended::Succeeded,
             Outcome::Failed {
                 cause: Some(FailureCause::NeedsPassword),
@@ -501,14 +510,21 @@ struct EvictedLedger {
 impl EvictedLedger {
     /// Keeps `id`, dropping the oldest past `max`. A record with no
     /// outcome to keep -- never one `Done` -- is dropped as forgotten.
-    fn keep(&mut self, id: OpId, kind: OpKind, outcome: Option<&Outcome>, max: usize) {
+    fn keep(
+        &mut self,
+        id: OpId,
+        kind: OpKind,
+        outcome: Option<&Outcome>,
+        warnings: &[FollowUpWarning],
+        max: usize,
+    ) {
         match outcome {
             Some(outcome) => {
                 self.ops.insert(
                     id,
                     EvictedOp {
                         kind,
-                        ended: Ended::of(outcome),
+                        ended: Ended::of(outcome, warnings),
                     },
                 );
             }
@@ -930,7 +946,13 @@ impl OperationManager {
                 break;
             }
             if let Some(r) = records.remove(&id) {
-                evicted.keep(id, r.plan.request.kind, r.outcome.as_ref(), max_evicted);
+                evicted.keep(
+                    id,
+                    r.plan.request.kind,
+                    r.outcome.as_ref(),
+                    &r.follow_up_warnings,
+                    max_evicted,
+                );
                 if r.run == runs.current {
                     runs.archive.insert(id, Self::summary_of(&r));
                 }
@@ -1978,12 +2000,13 @@ mod evicted_tests {
             summary: "Error: Download failed".into(),
             cause: None,
         };
-        ledger.keep(1, OpKind::Upgrade, Some(&stopped), 3);
-        ledger.keep(2, OpKind::Upgrade, Some(&failed), 3);
+        ledger.keep(1, OpKind::Upgrade, Some(&stopped), &[], 3);
+        ledger.keep(2, OpKind::Upgrade, Some(&failed), &[], 3);
         ledger.keep(
             3,
             OpKind::Upgrade,
             Some(&Outcome::BanagerFailed(Fault::Panicked)),
+            &[],
             3,
         );
         assert_eq!(
@@ -2000,23 +2023,78 @@ mod evicted_tests {
             summary: "no".into(),
             cause: None,
         };
-        ledger.keep(1, OpKind::Upgrade, Some(&Outcome::Succeeded), 3);
-        ledger.keep(2, OpKind::Uninstall, Some(&failed), 3);
-        ledger.keep(3, OpKind::Upgrade, Some(&Outcome::Unconfirmed), 3);
+        ledger.keep(1, OpKind::Upgrade, Some(&Outcome::Succeeded), &[], 3);
+        ledger.keep(2, OpKind::Uninstall, Some(&failed), &[], 3);
+        ledger.keep(3, OpKind::Upgrade, Some(&Outcome::Unconfirmed), &[], 3);
         assert_eq!(
             ledger.ops.values().map(|op| op.ended).collect::<Vec<_>>(),
             [Ended::Succeeded, Ended::Failed, Ended::Attention]
         );
         assert_eq!(ledger.forgotten_through, 0);
-        ledger.keep(4, OpKind::Upgrade, Some(&Outcome::Cancelled), 3);
+        ledger.keep(4, OpKind::Upgrade, Some(&Outcome::Cancelled), &[], 3);
         assert_eq!(ledger.ops.keys().copied().collect::<Vec<_>>(), [2, 3, 4]);
         assert_eq!(ledger.forgotten_through, 1, "the oldest, past the cap");
-        ledger.keep(5, OpKind::Upgrade, None, 3);
+        ledger.keep(5, OpKind::Upgrade, None, &[], 3);
         assert_eq!(ledger.forgotten_through, 5, "nothing to keep is forgotten");
         ledger.forget_through(3);
         assert_eq!(ledger.ops.keys().copied().collect::<Vec<_>>(), [4]);
         ledger.forget_through(OpId::MAX);
         assert!(ledger.ops.is_empty());
+    }
+
+    /// R77-1: what eviction keeps of an update that succeeded but left a
+    /// follow-up warning is what the notification counted while its record
+    /// was there: needing attention. Through the eviction itself, so that
+    /// the record's warnings cannot be left behind on the way.
+    #[test]
+    fn regression_eviction_preserves_success_with_follow_up_warnings() {
+        use crate::notify_operations::ReportedRuns;
+        let inst = crate::testing::manager_instance("fake", "fake:1");
+        let done = |id: OpId, warnings: Vec<FollowUpWarning>| OpInternal {
+            id,
+            plan: install(&inst, "node@22", "a"),
+            status: OpStatus::Done,
+            outcome: Some(Outcome::Succeeded),
+            cancel: CancellationToken::new(),
+            lock_release: None,
+            on_finish: None,
+            finishing: false,
+            started: true,
+            before_version: None,
+            after_version: None,
+            target_version: None,
+            upgrades_seen: 0,
+            already_updated: None,
+            follow_up_warnings: warnings,
+            run: 1,
+        };
+        let unlinked = FollowUpWarning::NoLongerLinked {
+            name: "node@22".into(),
+            commands: vec!["node".into()],
+        };
+        let mut records = HashMap::from([(1, done(1, vec![unlinked])), (2, done(2, vec![]))]);
+        let mut runs = RunBook::default();
+        let before = Completions {
+            operations: OperationManager::summaries_of(&records, &runs),
+            ..Completions::default()
+        };
+        let counted = ReportedRuns::default().completed(2, &before);
+        assert_eq!(
+            counted.map(|run| (run.succeeded, run.attention)),
+            Some((1, 1))
+        );
+
+        let mut ledger = EvictedLedger::default();
+        // Of an earlier run, so that only the ledger keeps them.
+        runs.current = 2;
+        OperationManager::evict_oldest_done_records(&mut records, 0, &mut runs, &mut ledger, 10);
+        assert!(records.is_empty() && runs.archive.is_empty());
+        assert_eq!(ledger.ops[&1].ended, Ended::Attention);
+        let after = Completions {
+            evicted: ledger.ops.clone(),
+            ..Completions::default()
+        };
+        assert_eq!(ReportedRuns::default().completed(2, &after), counted);
     }
 
     /// An adapter whose every operation succeeds at once: enough to put
