@@ -150,7 +150,10 @@ export function tickable(artifact: InstalledArtifact, instance: ManagerInstance,
 }
 
 /** The facts `uninstalledWhileBusy` reads of an operation. */
-type OpFacts = Pick<OpSummary, "id" | "kind" | "instance_id" | "artifact_kind" | "name" | "status" | "outcome">;
+type OpFacts = Pick<
+  OpSummary,
+  "id" | "kind" | "instance_id" | "artifact_kind" | "name" | "status" | "outcome" | "uninstall_revision"
+>;
 
 /**
  * The tools (by artifact key id) whose newest uninstall ended `Succeeded`
@@ -158,9 +161,17 @@ type OpFacts = Pick<OpSummary, "id" | "kind" | "instance_id" | "artifact_kind" |
  * refresh skips a source an operation holds and carries its rows forward,
  * so the row of a tool a batch has already removed stays listed until the
  * source's last operation ends. Its row then says 「已卸载」, with no box and
- * no Uninstall. One pass over the operations, for every row of the list.
+ * no Uninstall. Not once a list of that source read since covers that
+ * uninstall (`covered`, the snapshot's `inventory_uninstall_revisions`,
+ * r24 R80-1): the rows show what it left, and a tool reinstalled in
+ * Terminal since is listed and uninstallable again, whatever runs on its
+ * source later. An uninstall with no number is never taken as covered.
+ * One pass over the operations, for every row of the list.
  */
-export function uninstalledWhileBusy(operations: readonly OpFacts[]): Set<string> {
+export function uninstalledWhileBusy(
+  operations: readonly OpFacts[],
+  covered: Readonly<Record<string, number>> = {},
+): Set<string> {
   const busy = new Set(operations.filter((op) => op.status !== "Done").map((op) => op.instance_id));
   const newest = new Map<string, OpFacts>();
   for (const op of operations) {
@@ -171,7 +182,10 @@ export function uninstalledWhileBusy(operations: readonly OpFacts[]): Set<string
   }
   const ids = new Set<string>();
   for (const [id, op] of newest) {
-    if (op.status === "Done" && op.outcome === "Succeeded") ids.add(id);
+    if (op.status !== "Done" || op.outcome !== "Succeeded") continue;
+    const revision = op.uninstall_revision;
+    if (revision !== undefined && revision <= (covered[op.instance_id] ?? 0)) continue;
+    ids.add(id);
   }
   return ids;
 }

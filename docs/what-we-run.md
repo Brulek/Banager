@@ -761,6 +761,21 @@ its own through the same queue, a Homebrew formula's ticked dependents
 before the formula (`useBatchUninstall` in
 `src/components/BatchUninstallSheet.tsx`). Nothing it keeps — a tool's
 settings and data — is deleted: the batch has no control that deletes it.
+While its source is busy, a tool successfully uninstalled here can remain
+in the previous list with Uninstall disabled and no selection box
+(「已卸载」, `uninstalledWhileBusy` in `src/lib/batchUninstall.ts`). Once a
+later successful refresh reads that source's packages, the old uninstall no
+longer marks the tool as uninstalled during later operations: each
+successful uninstall is numbered among its source's
+(`OpSummary::uninstall_revision`, given before its locks are let go in
+`crates/banager-core/src/ops/mod.rs`), and each snapshot records the number
+reached when it read each source
+(`Snapshot::inventory_uninstall_revisions`, taken with the source's locks
+held just before its inventory in
+`crates/banager-core/src/session/refresh.rs`), so a tool reinstalled in
+Terminal since is listed and uninstallable again (r24 R80-1). This
+bookkeeping stays in memory and adds no command, command argument,
+connection, permission or file written by Banager.
 
 **Quitting while an operation is under way.** Closing the window leaves
 Banager and its operations running (`src-tauri/src/window.rs`). Quitting

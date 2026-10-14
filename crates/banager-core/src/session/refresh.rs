@@ -604,6 +604,9 @@ impl Session {
         // Last round's check notes of the instances carried for `held_now`,
         // merged onto this round's detect notes after the loop.
         let mut carried_notes: Vec<(InstanceId, Vec<InstanceNote>)> = Vec::new();
+        // Each source's successful uninstalls counted before its packages
+        // are read, for those this round reads (`read_now`, below).
+        let mut uninstall_revisions: HashMap<InstanceId, u64> = HashMap::new();
         for inst in instances.clone() {
             let locks = round_locks.remove(&inst.id);
             let held_now = matches!(locks, Some(None));
@@ -678,6 +681,11 @@ impl Session {
             let Some(Some(locks)) = locks else {
                 continue;
             };
+            // How many of its uninstalls had succeeded, taken with its locks
+            // held and before its packages are read: an uninstall that ends
+            // later waits for these locks, and is numbered after
+            // (`Snapshot::inventory_uninstall_revisions`).
+            uninstall_revisions.insert(inst.id.clone(), self.ops.uninstall_revision(&inst.id));
             let Some(adapter) = self.adapters.get(&inst.adapter_id).cloned() else {
                 continue;
             };
@@ -1089,6 +1097,16 @@ impl Session {
             })
             .map(|inst| inst.id.clone())
             .collect();
+        // Last round's numbers, moved on for each source this round read
+        // and kept (`Snapshot::inventory_uninstall_revisions`); a source
+        // gone from the list takes its number with it.
+        let mut inventory_uninstall_revisions = previous.inventory_uninstall_revisions.clone();
+        for id in &read_now {
+            if let Some(revision) = uninstall_revisions.get(id) {
+                inventory_uninstall_revisions.insert(id.clone(), *revision);
+            }
+        }
+        inventory_uninstall_revisions.retain(|id, _| instances.iter().any(|inst| &inst.id == id));
         let candidate = Snapshot {
             generation: previous.generation,
             round,
@@ -1101,6 +1119,7 @@ impl Session {
             errors,
             // The shell's to fill in (`Snapshot::next_auto_check_at`).
             next_auto_check_at: None,
+            inventory_uninstall_revisions,
         };
         (
             round,
@@ -1391,6 +1410,9 @@ mod tests {
         /// open, so a test can look at what a round hands out before it
         /// commits. One `add_permits(1)` lets every check through.
         check_gate: Option<Arc<tokio::sync::Semaphore>>,
+        /// Names not there after an operation (`reconcile`): their
+        /// uninstall succeeds.
+        gone: Vec<String>,
     }
 
     /// Counts its own drop into `FakeState::inventory_dropped`: the only
@@ -1433,6 +1455,7 @@ mod tests {
                 inventory_blocked: 0,
                 inventory_dropped: 0,
                 check_gate: None,
+                gone: Vec::new(),
             }));
             let adapter = Arc::new(FakeAdapter {
                 meta: crate::session::test_support::fake_adapter_meta(id),
@@ -1596,8 +1619,14 @@ mod tests {
         async fn reconcile(
             &self,
             _inst: &ManagerInstance,
-            _key: &crate::model::ArtifactKey,
+            key: &crate::model::ArtifactKey,
         ) -> Result<Reconciled, AdapterError> {
+            if self.state.lock().unwrap().gone.contains(&key.name) {
+                return Ok(Reconciled {
+                    present: false,
+                    version: None,
+                });
+            }
             Ok(crate::session::test_support::fake_reconciled())
         }
     }
@@ -6292,5 +6321,96 @@ mod tests {
         assert_eq!(json["artifacts"][0]["key"]["name"], "jq");
         let back: InventoryPreview = serde_json::from_value(json).expect("deserialize");
         assert_eq!(back, preview);
+    }
+
+    /// r24 R80-1: a round that reads a source's packages records how many
+    /// of its uninstalls had succeeded by then, taken before the read; one
+    /// that carries the source's rows forward -- held by an operation,
+    /// failed, or declined while its catalogue is rewritten -- keeps the
+    /// number it had. Nothing new to cover moves no generation.
+    #[tokio::test]
+    async fn r80_1_a_round_that_reads_a_source_covers_the_uninstalls_before_it() {
+        let (adapter, state) = FakeAdapter::new("fake");
+        {
+            let mut s = state.lock().unwrap();
+            s.instances = vec![
+                make_instance("fake", "fake:1"),
+                make_instance("fake", "fake:2"),
+            ];
+            s.artifacts.insert(
+                "fake:1".to_string(),
+                vec![
+                    make_artifact("fake:1", "wget"),
+                    make_artifact("fake:1", "jq"),
+                ],
+            );
+            s.gone = vec!["wget".to_string()];
+        }
+        let session = Session::with_adapters(Arc::new(VecSink::new()), vec![adapter], None);
+        let env = non_root_env();
+        let covered =
+            |snapshot: &Snapshot, id: &str| snapshot.inventory_uninstall_revisions.get(id).copied();
+        let first = session.refresh(&env, &CheckOptions::default()).await;
+        assert_eq!(covered(&first, "fake:1"), Some(0));
+        assert_eq!(covered(&first, "fake:2"), Some(0));
+        let inst = make_instance("fake", "fake:1");
+        let uninstall = |name: &str| {
+            crate::session::test_support::fake_plan(
+                &inst,
+                &OpRequest {
+                    kind: OpKind::Uninstall,
+                    instance_id: "fake:1".to_string(),
+                    artifact_kind: ArtifactKind::Formula,
+                    name: name.to_string(),
+                },
+            )
+        };
+        let op = session.ops.submit(uninstall("wget"));
+        assert_eq!(session.ops.wait(op).await, Some(Outcome::Succeeded));
+        // wget reinstalled in Terminal: the next round lists it, and covers
+        // the uninstall.
+        let read = session.refresh(&env, &CheckOptions::default()).await;
+        assert_eq!(covered(&read, "fake:1"), Some(1));
+        assert_eq!(covered(&read, "fake:2"), Some(0));
+        assert!(read.generation > first.generation);
+        let again = session.refresh(&env, &CheckOptions::default()).await;
+        assert_eq!(again.generation, read.generation, "nothing new to cover");
+
+        // A second uninstall, then rounds that read nothing of fake:1.
+        let op = session.ops.submit(uninstall("wget"));
+        assert_eq!(session.ops.wait(op).await, Some(Outcome::Succeeded));
+        state.lock().unwrap().failing = vec!["fake:1".to_string()];
+        let failed = session.refresh(&env, &CheckOptions::default()).await;
+        assert_eq!(covered(&failed, "fake:1"), Some(1));
+        state.lock().unwrap().declining_inventory = vec!["fake:1".to_string()];
+        let declined = session.refresh(&env, &CheckOptions::default()).await;
+        assert_eq!(covered(&declined, "fake:1"), Some(1));
+        // Held by an operation: carried forward with its number.
+        state.lock().unwrap().block_execute = true;
+        let held = session.ops.submit(crate::session::test_support::fake_plan(
+            &inst,
+            &OpRequest {
+                kind: OpKind::Install,
+                instance_id: "fake:1".to_string(),
+                artifact_kind: ArtifactKind::Formula,
+                name: "jq".to_string(),
+            },
+        ));
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !session
+            .operations()
+            .iter()
+            .any(|o| o.id == held && o.status == OpStatus::Running)
+        {
+            assert!(Instant::now() < deadline, "the operation never started");
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        let during = session.refresh(&env, &CheckOptions::default()).await;
+        assert_eq!(covered(&during, "fake:1"), Some(1));
+        assert_eq!(covered(&during, "fake:2"), Some(0));
+        session.ops.cancel(held).expect("cancel");
+        session.ops.wait(held).await;
+        let after = session.refresh(&env, &CheckOptions::default()).await;
+        assert_eq!(covered(&after, "fake:1"), Some(2));
     }
 }

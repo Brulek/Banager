@@ -880,6 +880,14 @@ export interface OpSummary {
    * run out itself (`operationsOfRun`).
    */
   run?: number;
+  /**
+   * For an uninstall that `Succeeded`: how many uninstalls of its source
+   * had succeeded this session, it included (Rust
+   * `OpSummary::uninstall_revision`, r24 R80-1). Left off for every other
+   * operation; a summary without it is no proof that a later list covers
+   * it (`uninstalledWhileBusy`).
+   */
+  uninstall_revision?: number;
 }
 /**
  * Rust `AlreadyUpdated` (crates/banager-core/src/model.rs): an update
@@ -924,6 +932,14 @@ export interface Snapshot {
    * switch is on (`NextAutoCheck`).
    */
   next_auto_check_at?: number | null;
+  /**
+   * For each source, how many of its uninstalls had succeeded when the
+   * newest list of its packages here was read (Rust
+   * `Snapshot::inventory_uninstall_revisions`, r24 R80-1); a source
+   * missing, or the whole map, reads as 0. An uninstall numbered at or
+   * below it no longer says its row is uninstalled (`uninstalledWhileBusy`).
+   */
+  inventory_uninstall_revisions?: Record<string, number>;
 }
 /**
  * Rust `EntryKind` (crates/banager-core/src/scan/mod.rs): what one entry

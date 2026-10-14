@@ -956,6 +956,20 @@ describe("the browser preview's mock backend", () => {
     return ids;
   }
 
+  it("numbers a successful uninstall, and the next list of its source covers it (r24 R80-1)", async () => {
+    const { backend } = backendFor();
+    const first = await answer<Snapshot>(backend.invoke("refresh"));
+    expect(first.inventory_uninstall_revisions?.["brew:/opt/homebrew"]).toBe(0);
+    const [ffmpeg] = await submitUninstalls(backend, "ffmpeg");
+    await vi.runAllTimersAsync();
+    const ops = (await backend.invoke("list_operations")) as OpSummary[];
+    const op = ops.find((o) => o.id === ffmpeg)!;
+    expect(op.outcome).toBe("Succeeded");
+    expect(op.uninstall_revision).toBe(1);
+    const read = await answer<Snapshot>(backend.invoke("refresh"));
+    expect(read.inventory_uninstall_revisions?.["brew:/opt/homebrew"]).toBe(1);
+  });
+
   it("uninstalls a dependent and then what it needed, in the order submitted, and Homebrew refuses the other order", async () => {
     // Every operation would succeed, but Homebrew refuses x264 while
     // ffmpeg, which needs it, is installed. (Not pipx and python@3.13:

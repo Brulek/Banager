@@ -655,6 +655,7 @@ mod tests {
             already_updated: None,
             follow_up_warnings: Vec::new(),
             run: 0,
+            uninstall_revision: None,
         }
     }
 

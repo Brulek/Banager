@@ -149,6 +149,7 @@ const EMPTY_SNAPSHOT: Snapshot = {
   stale: false,
   errors: [],
   next_auto_check_at: null,
+  inventory_uninstall_revisions: {},
 };
 
 /** What the backend says when it is broken (`?state=error`, `?state=refresh-error`). */
@@ -273,7 +274,7 @@ export function createMockBackend(scenario: Scenario): MockBackend {
   let committed: Snapshot | null = null;
   let generation = 0;
   let round = 0;
-  let lastContent = JSON.stringify(snapshotContent(buildWorld("empty"), settings));
+  let lastContent = JSON.stringify({ ...snapshotContent(buildWorld("empty"), settings), inventory_uninstall_revisions: {} });
   let lastAnnounced = 0;
   const channels = new Set<EventChannel>();
   const plans = new Map<PlanId, { issued: IssuedPlan; issuedAtMs: number }>();
@@ -290,7 +291,9 @@ export function createMockBackend(scenario: Scenario): MockBackend {
    * along, which are formulae.
    */
   const movedUpgrades = new Map<string, number>();
-  const movedKey = (request: { instance_id: string; artifact_kind: string }) =>
+  /** How many uninstalls of each source have succeeded (`OperationManager::uninstalls_succeeded`). */
+  const uninstallsSucceeded = new Map<string, number>();
+  const movedKey =(request: { instance_id: string; artifact_kind: string }) =>
     `${request.instance_id}\u0000${request.artifact_kind}`;
   let nextOpId = 1;
   /**
@@ -375,7 +378,18 @@ export function createMockBackend(scenario: Scenario): MockBackend {
    * (`announce` in src-tauri/src/ipc.rs).
    */
   function commit(): Snapshot {
-    const content = withHeldCarried(snapshotContent(world, settings));
+    const read = withHeldCarried(snapshotContent(world, settings));
+    // How many uninstalls of each source had succeeded when its list was
+    // read: this round's for a source it read, the last one's for one an
+    // operation holds (`Snapshot::inventory_uninstall_revisions`, r24
+    // R80-1).
+    const covered: Record<string, number> = {};
+    for (const inst of read.instances) {
+      covered[inst.id] = held.has(inst.id)
+        ? (committed?.inventory_uninstall_revisions?.[inst.id] ?? 0)
+        : (uninstallsSucceeded.get(inst.id) ?? 0);
+    }
+    const content = { ...read, inventory_uninstall_revisions: covered };
     const serialized = JSON.stringify(content);
     if (serialized !== lastContent) {
       generation += 1;
@@ -583,6 +597,13 @@ export function createMockBackend(scenario: Scenario): MockBackend {
     stopTimers(op);
     op.summary.status = "Done";
     op.summary.outcome = outcome;
+    // Numbered among its source's successful uninstalls, once
+    // (`OpSummary::uninstall_revision`, r24 R80-1).
+    if (op.summary.kind === "Uninstall" && outcome === "Succeeded" && op.summary.uninstall_revision === undefined) {
+      const count = (uninstallsSucceeded.get(op.summary.instance_id) ?? 0) + 1;
+      uninstallsSucceeded.set(op.summary.instance_id, count);
+      op.summary.uninstall_revision = count;
+    }
     if (scenario.outcome === "follow-up" && outcome === "Succeeded" && mockCleanupLines(op.plan, world).length > 0) {
       op.summary.follow_up_warnings = [{ OldVersionsNotCleanedUp: { name: op.summary.name, exit_code: 1 } }];
     }

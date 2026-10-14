@@ -217,6 +217,31 @@ describe("a row a batch has already uninstalled while its source is busy", () =>
     // The one running is no row that has gone.
     expect(uninstalledWhileBusy([running])).toEqual(new Set());
   });
+
+  it("is not said uninstalled once a later list of its source covers that uninstall (r24 R80-1)", () => {
+    const gitId = artifactKeyId(git.key);
+    const running = op(5, { name: "wget", status: "Running", outcome: null });
+    const done = op(1, { uninstall_revision: 3 });
+    // Read before it (2), or no list read since: still said uninstalled.
+    expect(uninstalledWhileBusy([done, running], { [brew.id]: 2 })).toEqual(new Set([gitId]));
+    expect(uninstalledWhileBusy([done, running], {})).toEqual(new Set([gitId]));
+    expect(uninstalledWhileBusy([done, running])).toEqual(new Set([gitId]));
+    // Read with it (3) or after (4): the list shows what it left -- git
+    // reinstalled in Terminal is listed, and offers Uninstall again.
+    expect(uninstalledWhileBusy([done, running], { [brew.id]: 3 })).toEqual(new Set());
+    expect(uninstalledWhileBusy([done, running], { [brew.id]: 4 })).toEqual(new Set());
+    // Another source's list covers nothing of this one's.
+    expect(uninstalledWhileBusy([done, running], { [npm.id]: 9 })).toEqual(new Set([gitId]));
+    // A newer uninstall after the list was read holds it again.
+    const newer = op(6, { uninstall_revision: 4 });
+    expect(uninstalledWhileBusy([done, newer, running], { [brew.id]: 3 })).toEqual(new Set([gitId]));
+    // A newer failed uninstall still says nothing, covered or not.
+    const failed = op(6, { outcome: { Failed: { exit_code: 1, summary: "", cause: failureCause("") } } });
+    expect(uninstalledWhileBusy([done, failed, running], { [brew.id]: 3 })).toEqual(new Set());
+    expect(uninstalledWhileBusy([done, failed, running], { [brew.id]: 0 })).toEqual(new Set());
+    // A summary from before the number: held, as before.
+    expect(uninstalledWhileBusy([op(1, {}), running], { [brew.id]: 9 })).toEqual(new Set([gitId]));
+  });
 });
 
 describe("which ticked tools a batch uninstalls", () => {

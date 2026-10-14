@@ -381,6 +381,38 @@ describe("a row a batch has already uninstalled", () => {
     expect(within(inspector).getByRole("button", { name: "Uninstalled" })).toBeDisabled();
   });
 
+  it("is a row like any other during a later operation once a check has listed it again (r24 R80-1)", async () => {
+    // git uninstalled here, reinstalled in Terminal, and listed by the
+    // check after: that list covers the uninstall (1). Another operation on
+    // the same Homebrew now does not bring "Uninstalled" back.
+    const upgrade: OpSummary = { ...uninstall(7, "jq", "Running", null), kind: "Upgrade" };
+    operations = [upgrade, { ...uninstall(5, "git", "Done", "Succeeded"), uninstall_revision: 1 }];
+    served = { ...served, inventory_uninstall_revisions: { [BREW]: 1 } };
+    const { unmount } = renderInstalled();
+    await findRow("git");
+    await waitFor(() => expect(boxOf("git")).not.toBeNull());
+    expect(within(rowOf("git")).getByRole("button", { name: "Uninstall git…" })).toBeEnabled();
+    fireEvent.click(within(rowOf("git")).getByRole("button", { name: "Details: git" }));
+    const inspector = await screen.findByRole("complementary", { name: "git" });
+    expect(within(inspector).getByRole("button", { name: "Uninstall…" })).toBeEnabled();
+    unmount();
+    // The same again after the page is left and opened again.
+    renderInstalled();
+    await findRow("git");
+    await waitFor(() => expect(boxOf("git")).not.toBeNull());
+    expect(within(rowOf("git")).getByRole("button", { name: "Uninstall git…" })).toBeEnabled();
+  });
+
+  it("is still said Uninstalled during a later operation when no list since covers it (r24 R80-1)", async () => {
+    const upgrade: OpSummary = { ...uninstall(7, "jq", "Running", null), kind: "Upgrade" };
+    operations = [upgrade, { ...uninstall(5, "git", "Done", "Succeeded"), uninstall_revision: 1 }];
+    served = { ...served, inventory_uninstall_revisions: { [BREW]: 0 } };
+    renderInstalled();
+    await findRow("git");
+    await waitFor(() => expect(within(rowOf("git")).getByRole("button", { name: "git uninstalled" })).toBeDisabled());
+    expect(boxOf("git")).toBeNull();
+  });
+
   it("is a row like any other once its source is free again, for the next check to read", async () => {
     operations = [uninstall(6, "wget", "Done", "Succeeded"), uninstall(5, "git", "Done", "Succeeded")];
     renderInstalled();

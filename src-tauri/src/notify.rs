@@ -397,6 +397,7 @@ mod tests {
             stale: false,
             errors: Vec::new(),
             next_auto_check_at: None,
+            inventory_uninstall_revisions: Default::default(),
         }
     }
 

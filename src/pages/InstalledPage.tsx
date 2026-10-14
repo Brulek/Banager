@@ -997,7 +997,10 @@ export function InstalledPage() {
   // A batch's tool already uninstalled while another operation on its
   // source runs: its row is the last check's, carried forward until the
   // source is read again (`uninstalledWhileBusy`), and says so.
-  const uninstalledIds = useMemo(() => uninstalledWhileBusy(operations ?? []), [operations]);
+  // Not once the committed snapshot's list of the source covers it (r24
+  // R80-1); the first check's preview retires nothing.
+  const covered = preview ? undefined : snapshot?.inventory_uninstall_revisions;
+  const uninstalledIds = useMemo(() => uninstalledWhileBusy(operations ?? [], covered), [operations, covered]);
   // The rows the list shows that can be ticked, in its order, each with its
   // key's id (`tickable`, held as `holdsOf` says): worked out when the list
   // or the operations change, not at every drawing of the page -- a tick,

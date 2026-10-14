@@ -51,7 +51,7 @@ use crate::ops::{CancelRefused, Completions, OpSummary, OperationManager};
 use crate::runner::{CommandRunner, RealRunner};
 use crate::trash::RealTrasher;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -134,6 +134,20 @@ pub struct Snapshot {
     /// of `same_content`.
     #[serde(default)]
     pub next_auto_check_at: Option<i64>,
+    /// For each source, how many of its uninstalls had `Succeeded` when the
+    /// newest list of its packages that this snapshot holds was read
+    /// (`OperationManager::uninstall_revision`, taken with the source's
+    /// locks held just before its inventory); a source missing has 0. An
+    /// uninstall numbered at or below it (`OpSummary::uninstall_revision`)
+    /// is already reflected in the rows -- a tool reinstalled in Terminal
+    /// since is listed again -- so it no longer holds that row as
+    /// uninstalled while the source is busy (`uninstalledWhileBusy` in
+    /// src/lib/batchUninstall.ts, r24 R80-1). Moves only when a round read
+    /// the source's packages and kept them; a source carried forward keeps
+    /// its last number. In memory only. Part of `same_content`: moving it
+    /// changes which rows offer Uninstall.
+    #[serde(default)]
+    pub inventory_uninstall_revisions: BTreeMap<InstanceId, u64>,
 }
 
 impl Snapshot {
@@ -149,6 +163,7 @@ impl Snapshot {
             stale: false,
             errors: Vec::new(),
             next_auto_check_at: None,
+            inventory_uninstall_revisions: BTreeMap::new(),
         }
     }
 
@@ -182,6 +197,7 @@ impl Snapshot {
             && self.artifacts == other.artifacts
             && self.updates == other.updates
             && self.errors == other.errors
+            && self.inventory_uninstall_revisions == other.inventory_uninstall_revisions
     }
 }
 

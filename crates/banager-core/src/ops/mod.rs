@@ -292,6 +292,10 @@ struct OpInternal {
     follow_up_warnings: Vec<FollowUpWarning>,
     /// The run it belongs to (`RunBook`), decided as its record goes in.
     run: u64,
+    /// For an uninstall that `Succeeded`, its place among its source's
+    /// successful uninstalls (`OpSummary::uninstall_revision`), given once
+    /// by `finish` before its locks are let go.
+    uninstall_revision: Option<u64>,
 }
 
 /// Which operations are one run -- what the operation bar shows as one
@@ -372,6 +376,16 @@ pub struct OperationManager {
     /// (`AlreadyUpdated::ByEarlierUpdate`). Locked after `records` where
     /// both are held, and never the other way round.
     upgrades_ended: Mutex<HashMap<(InstanceId, ArtifactKind), u64>>,
+    /// How many uninstalls have `Succeeded`, by source instance, counted as
+    /// each one's locks are released (`finish`), for this session: the
+    /// last one is that uninstall's `uninstall_revision`. A refresh takes
+    /// the count with the source's locks held, just before reading its
+    /// packages (`uninstall_revision`), so the list it reads covers every
+    /// uninstall up to that count and none after it
+    /// (`Snapshot::inventory_uninstall_revisions`, r24 R80-1). Never reset
+    /// or evicted with the records. Locked after `records` where both are
+    /// held, and never the other way round.
+    uninstalls_succeeded: Mutex<HashMap<InstanceId, u64>>,
 }
 
 /// A read-only view of one operation for a UI, independent of the
@@ -417,6 +431,17 @@ pub struct OpSummary {
     /// reads.
     #[serde(default)]
     pub run: u64,
+    /// For an uninstall that `Succeeded`: how many uninstalls of its source
+    /// had succeeded this session, it included (`OperationManager::
+    /// uninstalls_succeeded`). A snapshot whose list of that source was
+    /// read with this many or more (`Snapshot::
+    /// inventory_uninstall_revisions`) already shows what it left, so the
+    /// row it carried forward while the source was busy is not said
+    /// uninstalled by it any longer (`uninstalledWhileBusy` in
+    /// src/lib/batchUninstall.ts, r24 R80-1). `None` for every other
+    /// operation; `serde(default)` so a summary from before it still reads.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub uninstall_revision: Option<u64>,
 }
 
 /// How a finished operation ended, as the completion notification counts
@@ -588,7 +613,20 @@ impl OperationManager {
             runs: Mutex::new(RunBook::default()),
             max_evicted: MAX_EVICTED,
             upgrades_ended: Mutex::new(HashMap::new()),
+            uninstalls_succeeded: Mutex::new(HashMap::new()),
         }
+    }
+
+    /// How many uninstalls of `instance` have `Succeeded` this session
+    /// (`uninstalls_succeeded`): taken by a refresh with that source's locks
+    /// held, just before it reads its packages.
+    pub fn uninstall_revision(&self, instance: &InstanceId) -> u64 {
+        self.uninstalls_succeeded
+            .lock()
+            .unwrap()
+            .get(instance)
+            .copied()
+            .unwrap_or(0)
     }
 
     /// Adapters are registered once, before the manager is shared behind an
@@ -704,6 +742,7 @@ impl OperationManager {
             already_updated: r.already_updated,
             follow_up_warnings: r.follow_up_warnings.clone(),
             run: r.run,
+            uninstall_revision: r.uninstall_revision,
         }
     }
 
@@ -865,6 +904,7 @@ impl OperationManager {
             already_updated: None,
             follow_up_warnings: Vec::new(),
             run: 0,
+            uninstall_revision: None,
         };
         {
             let mut records = self.records.lock().unwrap();
@@ -1768,6 +1808,21 @@ impl OperationManager {
                         ))
                         .or_insert(0) += 1;
                 }
+                // Numbered before the locks are let go too: a refresh reads
+                // this source's packages only once it holds them, and takes
+                // the count first (`uninstall_revision`). Once only, however
+                // often `finish` is reached.
+                if r.plan.request.kind == OpKind::Uninstall
+                    && outcome == Outcome::Succeeded
+                    && r.uninstall_revision.is_none()
+                {
+                    let mut counts = self.uninstalls_succeeded.lock().unwrap();
+                    let count = counts
+                        .entry(r.plan.request.instance_id.clone())
+                        .or_insert(0);
+                    *count += 1;
+                    r.uninstall_revision = Some(*count);
+                }
                 if release_locks {
                     if let Some(lr) = &r.lock_release {
                         lr.release_once();
@@ -2004,6 +2059,7 @@ mod already_updated_tests {
             already_updated: Some(AlreadyUpdated::ByEarlierUpdate),
             follow_up_warnings: Vec::new(),
             run: 3,
+            uninstall_revision: None,
         };
         let json = serde_json::to_string(&summary).unwrap();
         assert_eq!(
@@ -2110,6 +2166,7 @@ mod evicted_tests {
             already_updated: None,
             follow_up_warnings: warnings,
             run: 1,
+            uninstall_revision: None,
         };
         let unlinked = FollowUpWarning::NoLongerLinked {
             name: "node@22".into(),
@@ -2191,10 +2248,12 @@ mod evicted_tests {
         async fn reconcile(
             &self,
             _inst: &ManagerInstance,
-            _key: &ArtifactKey,
+            key: &ArtifactKey,
         ) -> Result<Reconciled, AdapterError> {
+            // A tool named `gone…` is not there afterwards: its uninstall
+            // succeeds.
             Ok(Reconciled {
-                present: true,
+                present: !key.name.starts_with("gone"),
                 version: None,
             })
         }
@@ -2270,6 +2329,87 @@ mod evicted_tests {
             .completed(first, &manager.completions_after(reported.through()))
             .expect("told of once it has finished");
         assert_eq!(told.succeeded, 1);
+    }
+
+    /// r24 R80-1: a successful uninstall is numbered among its source's
+    /// before its locks are let go -- a refresh waiting for them takes the
+    /// count first -- even while the history's callback holds `Done` back;
+    /// once only, and never for another kind of operation.
+    #[tokio::test]
+    async fn r80_1_a_successful_uninstall_is_numbered_before_its_locks_are_let_go() {
+        let mut manager = OperationManager::new(Arc::new(crate::events::VecSink::new()));
+        manager.register_adapter(Arc::new(Instant(crate::adapters::AdapterMeta {
+            id: "fake".into(),
+            name: "fake".into(),
+            kind: "fake".into(),
+            platforms: vec!["macos".into()],
+            homepage: "https://example.invalid".into(),
+            schema_version: 1,
+            verified_versions: vec![],
+        })));
+        let manager = Arc::new(manager);
+        let inst = crate::testing::manager_instance("fake", "fake:1");
+        manager.register_instance(inst.clone());
+        let uninstall = |name: &str| {
+            let mut plan = install(&inst, name, "fake:1");
+            plan.request.kind = OpKind::Uninstall;
+            plan
+        };
+
+        let installed = manager.submit(install(&inst, "aaa", "fake:1"));
+        manager.wait(installed).await;
+        assert_eq!(manager.uninstall_revision(&inst.id), 0);
+
+        let seen = Arc::new(Mutex::new(None));
+        let in_callback = {
+            let manager = manager.clone();
+            let seen = seen.clone();
+            let id = inst.id.clone();
+            Box::new(move |_: &crate::history::Ended<'_>| {
+                *seen.lock().unwrap() = Some((
+                    manager.uninstall_revision(&id),
+                    manager.locks_held().is_empty(),
+                ));
+            }) as OnFinish
+        };
+        let first = manager.submit_with(uninstall("gone-bbb"), Some(in_callback));
+        assert_eq!(manager.wait(first).await, Some(Outcome::Succeeded));
+        // Counted while the callback still held `Done` back, its locks
+        // already let go.
+        assert_eq!(*seen.lock().unwrap(), Some((1, true)));
+        let second = manager.submit(uninstall("gone-ccc"));
+        // One whose tool is still there afterwards did not succeed, and is
+        // not numbered.
+        let kept = manager.submit(uninstall("ddd"));
+        assert_ne!(manager.wait(kept).await, Some(Outcome::Succeeded));
+        manager.wait(second).await;
+        let revision = |id: OpId| {
+            manager
+                .summaries()
+                .into_iter()
+                .find(|s| s.id == id)
+                .unwrap()
+                .uninstall_revision
+        };
+        assert_eq!(revision(installed), None);
+        assert_eq!(revision(first), Some(1));
+        assert_eq!(revision(second), Some(2));
+        assert_eq!(revision(kept), None);
+        // Finishing again numbers nothing again.
+        manager.finish(second, Outcome::Succeeded, true);
+        assert_eq!(revision(second), Some(2));
+        assert_eq!(manager.uninstall_revision(&inst.id), 2);
+        // Another source counts its own.
+        assert_eq!(manager.uninstall_revision(&"fake:2".to_string()), 0);
+        // Left off the wire where there is none.
+        let summary = manager
+            .summaries()
+            .into_iter()
+            .find(|s| s.id == installed)
+            .unwrap();
+        assert!(!serde_json::to_string(&summary)
+            .unwrap()
+            .contains("uninstall_revision"));
     }
 
     /// R68-1: a run's kept summaries go only as the next run's first record
