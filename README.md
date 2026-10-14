@@ -434,7 +434,9 @@ cargo test -p banager-core --lib icon::real -- --ignored
 ## Language
 
 The interface supports English, Simplified Chinese and Traditional Chinese in Taiwan usage. It follows
-the system language unless overridden in Settings. Every label, heading, button and
+the system language unless overridden in Settings. Following the system, dates and times use your Mac's own
+formats wherever your Mac's language is one of the three: on a Mac set to English (United Kingdom), "13 Oct" and
+14:30. Every label, heading, button and
 message frame in the window goes through i18n, and a test keeps the three locales in step — a sentence
 a Chinese user cannot read is treated as a bug. The menu bar follows the window's language, Settings'
 choice included. Its words are Rust's (`src-tauri/src/menu.rs`), macOS's own for the items every Mac
@@ -561,7 +563,8 @@ Banager 把它们放进同一个窗口：装了什么、哪个有更新、每个
 准备。现在还不适合依赖它。Banager 暂时还不能自我更新：发布构建不生成更新包，也不发布
 `latest.json`。
 
-界面支持英文、简体中文和台湾用语的繁体中文，跟随系统语言，也可以在设置中选择。
+界面支持英文、简体中文和台湾用语的繁体中文，跟随系统语言，也可以在设置中选择。跟随系统时，只要 Mac 的语言是这三种之一，
+日期和时间就按 Mac 自己的格式显示：例如 Mac 设为英语（英国）时写“13 Oct”和 14:30。
 窗口里所有标签、标题、按钮和提示框都走 i18n，三种语言由测试保证同步——
 中文用户读不懂的句子算 bug。菜单栏跟着窗口的语言走，设置里选的语言也算。它的文字写在 Rust 里
 （`src-tauri/src/menu.rs`），每个 Mac 应用都有的菜单项用 macOS 自己的叫法，那里也有测试保证三种语言同步。

@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
-import { calendarDaysBetween, shortDateText, shortTimeText } from "../lib/shortDate";
+import { calendarDaysBetween, shortDateText, shortTimeText, type FormattingLocale } from "../lib/shortDate";
+import { useFormattingLocale } from "../i18n/useFormattingLocale";
 import { useMinuteClock } from "./PageHeader";
 
 /**
@@ -27,13 +28,14 @@ import { useMinuteClock } from "./PageHeader";
  * (`next_check_due` follows a clock that moves forward).
  */
 export function NextAutoCheck({ at, className }: { at: number | null | undefined; className?: string }) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
+  const locale = useFormattingLocale();
   // Once a minute, so 「今天」 turns to 「很快」 on time.
   const now = useMinuteClock(null);
   if (at === null || at === undefined) return null;
   return (
     <p data-next-auto-check="" className={className}>
-      {nextAutoCheckText(t, at, now, i18n.language)}
+      {nextAutoCheckText(t, at, now, locale)}
     </p>
   );
 }
@@ -46,7 +48,7 @@ export function NextAutoCheck({ at, className }: { at: number | null | undefined
  */
 const HALF_HOUR_MS = 30 * 60 * 1000;
 
-export function nextAutoCheckText(t: TFunction, at: number, nowMs: number, language: string): string {
+export function nextAutoCheckText(t: TFunction, at: number, nowMs: number, language: FormattingLocale): string {
   // To the half hour: the check runs around then, and 「16:04左右」 pairs
   // a minute's precision with 左右. Within half an hour, 「很快」.
   if (at * 1000 - nowMs < HALF_HOUR_MS) return t("nextAutoCheck.soon");

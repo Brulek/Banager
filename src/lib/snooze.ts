@@ -5,7 +5,7 @@
  */
 import type { TFunction } from "i18next";
 import { artifactKeyId } from "../store/ui";
-import { shortDateText } from "./shortDate";
+import { shortDateText, type FormattingLocale } from "./shortDate";
 import type { ArtifactKey, Settings, SnoozedUpdate } from "./types";
 
 /** The snooze of `key` in `settings`, if there is one. */
@@ -19,11 +19,11 @@ export function snoozeOf(settings: Pick<Settings, "snoozed_updates">, key: Artif
  * "Nov 1" (`shortDateText`). A snooze lasts 30 days, so the year goes
  * without saying.
  */
-export function snoozeDate(until: number, language: string): string {
+export function snoozeDate(until: number, language: FormattingLocale): string {
   return shortDateText(new Date(until * 1000), language);
 }
 
 /** 「11月1日起恢复提醒」, "No reminders until Nov 1", in the words of "Remind Me in 30 Days" (walk-3 W3-11). */
-export function snoozedUntilText(t: TFunction, until: number, language: string): string {
+export function snoozedUntilText(t: TFunction, until: number, language: FormattingLocale): string {
   return t("updates.snoozedUntil", { date: snoozeDate(until, language) });
 }

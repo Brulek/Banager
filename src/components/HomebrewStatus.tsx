@@ -2,6 +2,7 @@ import { useId, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import type { HomebrewLifecycle, InstalledArtifact, Sizes } from "../lib/types";
+import type { FormattingLocale } from "../lib/shortDate";
 import { otherVersionsSizeText, saysSize, sizeViewOf } from "../lib/sizes";
 import { detailLines } from "./updateDetails";
 import { DisclosureButton } from "./DisclosureButton";
@@ -55,7 +56,7 @@ function markOf(artifact: InstalledArtifact): HomebrewMark | null {
  * deprecated one may be disabled later; nothing is said about when, which
  * Banager does not know. The date is Homebrew's, as it writes it.
  */
-export function lifecycleSentence(t: TFunction, mark: HomebrewMark, language?: string): string {
+export function lifecycleSentence(t: TFunction, mark: HomebrewMark, language?: FormattingLocale): string {
   const { reason } = mark.lifecycle;
   const date = mark.lifecycle.date === null ? null : shownDate(mark.lifecycle.date, language);
   // An own key only: a free-text reason such as "constructor" must be
@@ -85,7 +86,7 @@ export function lifecycleSentence(t: TFunction, mark: HomebrewMark, language?: s
 export function homebrewStatusChip(
   t: TFunction,
   artifact: InstalledArtifact,
-  language?: string,
+  language?: FormattingLocale,
 ): { id: string; label: string; ariaLabel: string; detail: ReactNode; tone: "neutral" } | null {
   const mark = markOf(artifact);
   if (mark === null) return null;
@@ -148,15 +149,15 @@ export function addressWithBreaks(address: string): ReactNode {
 /**
  * Homebrew's date (`2025-11-01`) as the inspector's other dates read --
  * 「2025年11月1日」, "Nov 1, 2025" (`installed.installedOn`) -- in
- * `language`; as Homebrew wrote it where no language is given or the date
- * is not one of that shape. A calendar day, so read in UTC: never the day
+ * `language`, the Mac's own formats for null; as Homebrew wrote it where
+ * no language is given (undefined) or the date is not one of that shape. A calendar day, so read in UTC: never the day
  * before west of Greenwich.
  */
-export function shownDate(date: string, language: string | undefined): string {
+export function shownDate(date: string, language: FormattingLocale | undefined): string {
   const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
   if (language === undefined || parts === null) return date;
   const day = Date.UTC(Number(parts[1]), Number(parts[2]) - 1, Number(parts[3]));
-  return new Intl.DateTimeFormat(language, { dateStyle: "medium", timeZone: "UTC" }).format(day);
+  return new Intl.DateTimeFormat(language ?? undefined, { dateStyle: "medium", timeZone: "UTC" }).format(day);
 }
 
 /**
@@ -355,7 +356,7 @@ function Caveats({ text }: { text: string }) {
  * (`InspectorCallout`), the facts' 「状态」 then leaving the mark's word
  * out. None for a package Homebrew has not marked.
  */
-export function homebrewMarkLines(t: TFunction, artifact: InstalledArtifact, language: string): ReactNode[] {
+export function homebrewMarkLines(t: TFunction, artifact: InstalledArtifact, language: FormattingLocale): ReactNode[] {
   const homebrew = artifact.facts.homebrew;
   if (homebrew === null) return [];
   const mark = markOf(artifact);

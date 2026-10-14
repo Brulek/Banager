@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ReactNode, Ref } from "react";
 import { useTranslation } from "react-i18next";
+import { useFormattingLocale } from "../i18n/useFormattingLocale";
 import { requestNotificationPermission } from "../lib/api";
 import { useSettings, useSaveSettings, useSnapshot, type SettingsEdit } from "../lib/queries";
 import { ADAPTER_LABEL_KEYS, adapterIdOf, adapterLabel, instanceLabels, settingsSaveSentence } from "../lib/sources";
@@ -158,7 +159,8 @@ function NoEntries({ text }: { text: string }) {
  * once; one that cannot be saved is undone on screen and said at the top.
  */
 export function SettingsPage() {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
+  const locale = useFormattingLocale();
   const settingsQuery = useSettings();
   const saveMutation = useSaveSettings();
   const { data: snapshot } = useSnapshot();
@@ -654,7 +656,7 @@ export function SettingsPage() {
                 <HiddenEntry
                   key={artifactKeyId(snoozed.key)}
                   name={name}
-                  meta={metaOf(source, t("settings.snoozedUpdates.until", { date: snoozeDate(snoozed.until, i18n.language) }))}
+                  meta={metaOf(source, t("settings.snoozedUpdates.until", { date: snoozeDate(snoozed.until, locale) }))}
                   button={
                     <button
                       type="button"

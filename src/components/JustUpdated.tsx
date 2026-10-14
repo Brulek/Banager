@@ -13,7 +13,8 @@ import {
 } from "../lib/failureCause";
 import { ALREADY_UPDATED_KEYS, outcomeSentence, outcomeTone } from "../lib/operations";
 import { isUpdatedButStepFailed, stepFailedOf } from "../lib/format";
-import { calendarDaysBetween, shortDateText, shortTimeText } from "../lib/shortDate";
+import { calendarDaysBetween, shortDateText, shortTimeText, type FormattingLocale } from "../lib/shortDate";
+import { useFormattingLocale } from "../i18n/useFormattingLocale";
 import type { AlreadyUpdated, ArtifactKey, FollowUpWarning, Attention, HistoryResult, OpSummary, Outcome } from "../lib/types";
 import { PasswordRecovery } from "./PasswordRecovery";
 import { InfoDetail } from "./InfoDetail";
@@ -254,13 +255,13 @@ export function justUpdatedOps(operations: readonly OpSummary[], filter: JustUpd
 export function finishedText(
   finishedAt: number,
   now: number,
-  language: string,
+  language: FormattingLocale,
 ): { text: string; title: string; today: boolean } | null {
   const then = new Date(finishedAt);
   if (!Number.isFinite(then.getTime())) return null;
   const sameDay = calendarDaysBetween(then, new Date(now)) === 0;
   const text = sameDay ? shortTimeText(then, language) : shortDateText(then, language);
-  const title = new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "short" }).format(then);
+  const title = new Intl.DateTimeFormat(language ?? undefined, { dateStyle: "medium", timeStyle: "short" }).format(then);
   return { text, title, today: sameDay };
 }
 
@@ -452,7 +453,8 @@ export interface JustUpdatedProps {
  * is no part of the page's count or of Select all.
  */
 export function JustUpdated({ entries, onClear, clearing = false }: JustUpdatedProps) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
+  const locale = useFormattingLocale();
   const headingId = useId();
   const listId = useId();
   const now = Date.now();
@@ -486,7 +488,7 @@ export function JustUpdated({ entries, onClear, clearing = false }: JustUpdatedP
       >
         {shown.map((entry) => {
           const finished =
-            entry.finishedAt === null ? null : finishedText(entry.finishedAt, now, i18n.language);
+            entry.finishedAt === null ? null : finishedText(entry.finishedAt, now, locale);
           return (
             <li key={entry.id} className="col-span-full grid min-h-7 grid-cols-subgrid items-center px-2.5 py-0.5">
               <ToolAvatar

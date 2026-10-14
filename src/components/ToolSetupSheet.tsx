@@ -1,5 +1,6 @@
 import { useId, useRef } from "react";
 import { useTranslation } from "react-i18next";
+import { useFormattingLocale } from "../i18n/useFormattingLocale";
 import { useSystemFacts } from "../lib/diagnostics";
 import { elapsedSince } from "../lib/format";
 import { previewSnapshot, useInventoryPreview } from "../lib/inventoryPreview";
@@ -128,7 +129,8 @@ function Section({ section, onView }: { section: SetupSection; onView: (view: Se
  * button, closes it.
  */
 export function ToolSetupSheet() {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
+  const locale = useFormattingLocale();
   const open = useToolSetupSheet((s) => s.open);
   const close = () => useToolSetupSheet.setState({ open: false });
   const doneRef = useRef<HTMLButtonElement>(null);
@@ -154,7 +156,7 @@ export function ToolSetupSheet() {
         facts,
         sizes: sizes ?? null,
         technicalDetails: settings?.show_technical_details ?? false,
-        language: i18n.language,
+        language: locale,
         // Read as it is built, so never behind a source's newest stamp; the
         // minute clock only builds it again.
         nowMs: Math.max(now, Date.now()),

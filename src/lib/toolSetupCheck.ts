@@ -27,6 +27,7 @@ import { discoverCounts, keepsOtherVersions, notOnPathDetailKey, type DiscoverSh
 import { modelsTotalText } from "./sizes";
 import { sizeTotalsOf, sourceTotalText, type SizeTotal } from "./sizeTotals";
 import { answeredWhen } from "./answeredWhen";
+import type { FormattingLocale } from "./shortDate";
 import { instanceLabels, unlistedSourceLabel } from "./sources";
 import type { InstalledArtifact, ManagerInstance, Sizes, Snapshot, SystemFacts } from "./types";
 import { artifactKeyId } from "../store/ui";
@@ -92,8 +93,8 @@ export interface ToolSetupInput {
   sizes: Sizes | null;
   /** Settings' Show technical details: the unread folders by path. */
   technicalDetails: boolean;
-  /** The window's language and the time now, for when a source that did not answer last did (`answeredWhen`). */
-  language: string;
+  /** The locale for dates (`useFormattingLocale`) and the time now, for when a source that did not answer last did (`answeredWhen`). */
+  language: FormattingLocale;
   nowMs: number;
 }
 

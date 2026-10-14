@@ -89,6 +89,7 @@ import { compareSizes, sizeCellOf, sizeOrderOf } from "../lib/sizes";
 import { cachedRankedComparator } from "../lib/sortRank";
 import { compareByInstalledAt, installedDateCellOf } from "../lib/installedDates";
 import { mediumDateText } from "../lib/shortDate";
+import { useFormattingLocale } from "../i18n/useFormattingLocale";
 import { COMMANDS_UNKNOWN_KEYS, commandsKnown } from "../lib/commandsKnown";
 import { sizeTotalsOf, sourceTotalText } from "../lib/sizeTotals";
 import {
@@ -481,6 +482,8 @@ const NO_SIZE_ORDER: Map<string, number> = new Map();
  */
 export function InstalledPage() {
   const { t, i18n } = useTranslation();
+  // Dates the Mac's way in System (`useFormattingLocale`).
+  const locale = useFormattingLocale();
   // While the first check is still checking for updates, its list
   // (`preview`): no update in it, and nothing to do on it yet.
   const { data: snapshot, isLoading, preview } = useInstalledSnapshot();
@@ -1246,7 +1249,7 @@ export function InstalledPage() {
         return {
           id: "hidden",
           label:
-            until === undefined ? t("updates.snooze") : snoozedUntilText(t, until, i18n.language),
+            until === undefined ? t("updates.snooze") : snoozedUntilText(t, until, locale),
           detail: detailLines([t("updates.snoozeHint")]),
           tone: "neutral",
           undo: {
@@ -1334,7 +1337,7 @@ export function InstalledPage() {
       });
     }
     // Homebrew's own mark: 「已停用」 or 「已弃用」.
-    const homebrewChip = homebrewStatusChip(t, artifact, i18n.language);
+    const homebrewChip = homebrewStatusChip(t, artifact, locale);
     if (homebrewChip !== null) chips.push(homebrewChip);
     // 「装了两份」: after what the source and the tool allow, and before
     // where its update stands, which the Updates page says too.
@@ -1487,7 +1490,7 @@ export function InstalledPage() {
       sort === "size"
         ? sizeCellOf(t, sizes, artifact)
         : sort === "date"
-          ? installedDateCellOf(artifact, i18n.language, Date.now())
+          ? installedDateCellOf(artifact, locale, Date.now())
           : null;
     return (
       <ToolRow
@@ -1642,7 +1645,7 @@ export function InstalledPage() {
     if (artifact.installed_at !== null) {
       facts.push({
         term: t("installed.installedOn"),
-        value: mediumDateText(new Date(artifact.installed_at * 1000), i18n.language),
+        value: mediumDateText(new Date(artifact.installed_at * 1000), locale),
         selectable: true,
       });
     }
@@ -1661,7 +1664,7 @@ export function InstalledPage() {
     // description (`InspectorCallout`): what Homebrew's mark means, and
     // which copy of a tool installed more than once Terminal runs. The
     // facts' 「状态」 then leaves those words out: said once, up there.
-    const markLines = homebrewMarkLines(t, artifact, i18n.language);
+    const markLines = homebrewMarkLines(t, artifact, locale);
     const twinLines = twinAdviceLines(
       t,
       artifact,

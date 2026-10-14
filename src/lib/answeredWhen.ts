@@ -1,5 +1,5 @@
 import type { Translate } from "./diagnostics";
-import { calendarDaysBetween, shortDateText, shortTimeText } from "./shortDate";
+import { calendarDaysBetween, shortDateText, shortTimeText, type FormattingLocale } from "./shortDate";
 import type { SourceNoticeSpec } from "./sources";
 
 /** How far ahead of a caller's clock a stamp may be and still count as now. */
@@ -19,7 +19,7 @@ const MINUTE_MS = 60_000;
  * ahead, stamped before the Mac's clock was set back, has its date said
  * rather than a 「今天」 or 「昨天」 the clock cannot vouch for, on any day.
  */
-export function answeredWhen(t: Translate, at: number, nowMs: number, language: string): string {
+export function answeredWhen(t: Translate, at: number, nowMs: number, language: FormattingLocale): string {
   const atMs = at * 1000;
   const then = new Date(atMs);
   const time = shortTimeText(then, language);
@@ -42,7 +42,7 @@ export function noticeValues(
   t: Translate,
   notice: Pick<SourceNoticeSpec, "values" | "answeredAt">,
   nowMs: number,
-  language: string,
+  language: FormattingLocale,
 ): SourceNoticeSpec["values"] {
   if (notice.answeredAt === undefined) return notice.values;
   return { ...notice.values, when: answeredWhen(t, notice.answeredAt, nowMs, language) };

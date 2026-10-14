@@ -2,6 +2,7 @@ import { SourceDiagnostic } from "./SourceDiagnostic";
 import { useEffect, useId, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { useFormattingLocale } from "../i18n/useFormattingLocale";
 import { useCheckAgain, useOpenOllamaApp, useSettings, useSnapshot } from "../lib/queries";
 import {
   openOllamaErrorDetail,
@@ -81,13 +82,14 @@ export function useSearchCommand(): (command: string) => void {
 export function useNoticeValues(
   notices: readonly SourceNoticeSpec[],
 ): (notice: SourceNoticeSpec) => SourceNoticeSpec["values"] {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
+  const locale = useFormattingLocale();
   // Rendered again once a minute while a notice says a time, whose 「今天」
   // turns into 「昨天」 at midnight, with no timer while none does; read as
   // it renders, so never behind a time just stamped.
   const timed = notices.some((notice) => notice.answeredAt !== undefined);
   const now = Math.max(useMinuteClock(timed, timed), Date.now());
-  return (notice) => noticeValues(t, notice, now, i18n.language);
+  return (notice) => noticeValues(t, notice, now, locale);
 }
 
 /** Whether a page's notice lines are unfolded, and how to fold or unfold them (`useNoticeFold`). */

@@ -13,7 +13,8 @@ import { SpinnerIcon, TerminalIcon } from "../components/icons";
 import { SHOWN_FOR_MS, copyStatusText, useCopyCommand } from "../lib/clipboard";
 import { revealFailureKey } from "../lib/revealFailure";
 import { elapsedSince, formatBytes } from "../lib/format";
-import { mediumDateText } from "../lib/shortDate";
+import { mediumDateText, type FormattingLocale } from "../lib/shortDate";
+import { useFormattingLocale } from "../i18n/useFormattingLocale";
 import { useRevealInFinder, useSettings, useSnapshot, useUnknownScan } from "../lib/queries";
 import { queryKeys } from "../lib/queryKeys";
 import type { EntryKind, ScanStop, UnknownEntry } from "../lib/types";
@@ -80,7 +81,7 @@ function fileName(path: string): string {
  * window (`ToolRow`'s `narrow` fit), and push that one path out of line
  * with the rest.
  */
-function SizeAndDate({ entry, language, status }: { entry: UnknownEntry; language: string; status?: ReactNode }) {
+function SizeAndDate({ entry, language, status }: { entry: UnknownEntry; language: FormattingLocale; status?: ReactNode }) {
   if (status !== undefined) {
     return (
       <span data-status="" className="flex w-48 justify-end">
@@ -341,7 +342,8 @@ export function ScanAgain() {
  * lines behind a broken link's ⓘ, among them what it pointed at.
  */
 export function UnknownPage() {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
+  const locale = useFormattingLocale();
   const { data: settings } = useSettings();
   const { data: snapshot } = useSnapshot();
   const scan = useUnknownScan();
@@ -559,7 +561,7 @@ export function UnknownPage() {
                           description={entry.path}
                           selectableDescription
                           descriptionNote={notes.length === 0 ? undefined : notes.join(" · ")}
-                          version={<SizeAndDate entry={entry} language={i18n.language} status={status} />}
+                          version={<SizeAndDate entry={entry} language={locale} status={status} />}
                           menu={<Menu label={t("common.moreActions", { name })} items={menuItems(entry)} />}
                         />
                       </div>

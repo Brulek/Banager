@@ -1,4 +1,4 @@
-import { mediumDateText, shortDateText } from "./shortDate";
+import { mediumDateText, shortDateText, type FormattingLocale } from "./shortDate";
 import type { InstalledArtifact } from "./types";
 
 /**
@@ -22,7 +22,7 @@ export function compareByInstalledAt(a: InstalledArtifact, b: InstalledArtifact)
  * 「2025年4月19日」, "Apr 19, 2025" -- for any other. Local time, as the
  * user's calendar has it.
  */
-export function installedDateText(seconds: number, language: string, nowMs: number): string {
+export function installedDateText(seconds: number, language: FormattingLocale, nowMs: number): string {
   const date = new Date(seconds * 1000);
   const thisYear = date.getFullYear() === new Date(nowMs).getFullYear();
   return thisYear ? shortDateText(date, language) : mediumDateText(date, language);
@@ -35,7 +35,7 @@ export function installedDateText(seconds: number, language: string, nowMs: numb
  */
 export function installedDateCellOf(
   artifact: InstalledArtifact,
-  language: string,
+  language: FormattingLocale,
   nowMs: number,
 ): { text: string; muted: boolean } {
   if (artifact.installed_at === null) return { text: "—", muted: true };

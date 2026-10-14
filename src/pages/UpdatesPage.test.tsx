@@ -4748,13 +4748,13 @@ describe("UpdatesPage", () => {
             act(() => {
               vi.advanceTimersByTime(40_000);
             });
-            await check(snapshot.refreshed_at + step);
+            await check(1_789_700_000 + step);
             expect(names()).toEqual(["node", "cmake"]);
           }
           act(() => {
             vi.advanceTimersByTime(40_000);
           });
-          await check(snapshot.refreshed_at + 3);
+          await check(1_789_700_000 + 3);
           expect(names()).toEqual(["node"]);
           page.unmount();
         });
