@@ -363,7 +363,9 @@ fn plan_operation_error(e: banager_core::adapters::AdapterError) -> String {
         // --json`), uv's look at the tool it updates (`uv tool list`) --
         // that timed out or failed: the source did not answer, which the
         // next try may change. Its stderr is for logs.
-        AdapterError::CommandFailed { .. } => {
+        // Only a pip lookup's (`OutputUse::PipLookup`), which no plan reads.
+        AdapterError::CommandFailed { .. }
+        | AdapterError::Runner(RunnerError::OutputIncomplete) => {
             serde_json::json!({ "kind": "not_answered" }).to_string()
         }
         AdapterError::Runner(RunnerError::NoMock(_))

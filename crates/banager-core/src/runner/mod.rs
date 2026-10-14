@@ -44,6 +44,17 @@ pub enum OutputUse {
     /// the app. The only honest answers are all of the bytes, or
     /// [`RunnerError::OutputTooLarge`].
     Parsed,
+    /// `pip list --outdated` and `--uptodate` at pip's debug verbosity
+    /// (`PipAdapter::LOOKUP_ENV`, r25 R70-1): one JSON line for a parser
+    /// among a line of pip's chatter per file it skips, thousands for one
+    /// project. Only the lines the adapter reads are held -- the JSON line,
+    /// pip's `Could not fetch URL` lines and urllib3's retry warnings --
+    /// each within its own bound; every other line is dropped as it
+    /// arrives and handed to no callback. A held line past its bound fails
+    /// the run ([`RunnerError::OutputTooLarge`]), and so does a stdout that
+    /// could not be read to its end ([`RunnerError::OutputIncomplete`]):
+    /// a lost diagnostic would read as an answer.
+    PipLookup,
 }
 
 #[derive(Clone, Debug)]
@@ -178,6 +189,11 @@ pub enum RunnerError {
     /// wearing a success's clothes.
     #[error("the command wrote more than {limit} bytes to stdout, which is more than Banager will read from output it has to parse")]
     OutputTooLarge { limit: usize },
+    /// An [`OutputUse::PipLookup`] command's stdout could not be read to
+    /// its end: a read failed, or the pipe was still open when the drain
+    /// gave up. What was held may lack the line that says a lookup failed.
+    #[error("the command's output could not be read to its end")]
+    OutputIncomplete,
 }
 
 #[async_trait::async_trait]

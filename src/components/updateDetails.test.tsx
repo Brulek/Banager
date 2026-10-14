@@ -1,5 +1,5 @@
-import { render } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import i18n from "../i18n";
 import type { UpdateCandidate } from "../lib/types";
 import { blockedDetail, cannotCheckDetail } from "./updateDetails";
@@ -48,11 +48,56 @@ describe("cannotCheckDetail", () => {
       blocked: "UpdateSourceMismatch",
     };
     const said = (lang: string) =>
-      render(<>{cannotCheckDetail(i18n.getFixedT(lang), candidate, false)}</>).container.textContent;
+      [
+        ...render(<>{cannotCheckDetail(i18n.getFixedT(lang), candidate, false)}</>).container.querySelectorAll(
+          "[data-detail-line]",
+        ),
+      ]
+        .map((line) => line.textContent)
+        .join("");
     expect(said("en")).toBe(
       "rustup is set to get updates from a different address, which Banager hasn't checked, so it can't update rustup here.",
     );
     expect(said("zh-CN")).toBe("rustup设为从另一个地址获取更新。这里没有检查该地址，因此无法在这里更新rustup。");
     expect(said("zh-Hant")).toBe("rustup設為從另一個位址取得更新。這裡沒有檢查該位址，因此無法在這裡更新rustup。");
+  });
+
+  it("lets a pip package whose index refused the check be copied, with or without technical details (r25 R70-1)", async () => {
+    // What `check_updates` in crates/banager-core/src/adapters/pip.rs
+    // gives a package a sole index answered 403 for: the words carry no
+    // address (`without_addresses`), and no "check again".
+    const reason = "pip list --outdated: the package index answered HTTP 403 (Forbidden), and no index gave its latest version";
+    const candidate: UpdateCandidate = {
+      key: { instance_id: "pip:/opt/homebrew/bin/python3.14", kind: "Package", name: "corp-tool" },
+      current: "2.0",
+      target: "2.0",
+      channel: "Native",
+      checkable: false,
+      warnings: [{ Message: reason }, { Message: reason }],
+      blocked: null,
+    };
+    const writeText = vi.fn(() => Promise.resolve());
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    for (const [lang, short, copy] of [
+      ["en", "Couldn't find its latest version.", "Copy Error Details"],
+      ["zh-CN", i18n.getFixedT("zh-CN")("updates.cannotCheckShort"), i18n.getFixedT("zh-CN")("failureRecovery.copy")],
+      ["zh-Hant", i18n.getFixedT("zh-Hant")("updates.cannotCheckShort"), i18n.getFixedT("zh-Hant")("failureRecovery.copy")],
+    ]) {
+      for (const technical of [false, true]) {
+        const { container, getByRole, unmount } = render(
+          <>{cannotCheckDetail(i18n.getFixedT(lang), candidate, technical)}</>,
+        );
+        const lines = [...container.querySelectorAll("[data-detail-line]")].map((line) => line.textContent);
+        expect(lines).toEqual(technical ? [short, reason] : [short]);
+        fireEvent.click(getByRole("button", { name: copy }));
+        expect(writeText).toHaveBeenLastCalledWith(reason);
+        unmount();
+      }
+    }
+    // A row with no words of a tool's has nothing to copy.
+    const { queryByRole } = render(
+      <>{cannotCheckDetail(i18n.getFixedT("en"), { ...candidate, warnings: ["TransientLookupFailure"] }, true)}</>,
+    );
+    expect(queryByRole("button", { name: "Copy Error Details" })).toBeNull();
   });
 });

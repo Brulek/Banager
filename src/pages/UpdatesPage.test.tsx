@@ -6682,7 +6682,7 @@ describe("UpdatesPage", () => {
 
     await showCantUpdate();
     const claude = await findRow("Claude Code");
-    expect(chipDetail(claude, "Can't check").textContent).toBe("Couldn't find its latest version.");
+    expect(chipDetail(claude, "Can't check").textContent).toBe("Couldn't find its latest version.Copy Error Details");
     expect(within(claude).queryByText("Updates itself")).toBeNull();
     expect(queryAllByRole("button", { name: ROW_UPDATE })).toHaveLength(0);
   });

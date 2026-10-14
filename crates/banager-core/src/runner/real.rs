@@ -114,6 +114,17 @@ struct StreamBuffer {
     /// (`runner::redact`, F2 of the decisions-round review): every line
     /// handed on, and the transcript of a stream that is for a person.
     redactor: Arc<Redactor>,
+    /// The line [`CapPolicy::KeepPipLookup`] is reading, not yet ended:
+    /// held apart from `bytes`, which keeps only the lines it chose.
+    pending: Vec<u8>,
+    /// Whether the rest of the line being read is passed over: chatter
+    /// longer than [`PIP_LINE_CAP`].
+    skipping: bool,
+    /// How many bytes of pip's diagnostic lines `bytes` holds, bounded by
+    /// [`PIP_DIAGNOSTICS_CAP`].
+    held_diagnostics: usize,
+    /// Whether a read on this stream failed, so it ended before its end.
+    read_failed: bool,
 }
 
 /// What a buffer does when it will not fit: shorten, or refuse.
@@ -130,6 +141,9 @@ enum CapPolicy {
     ElideMiddle,
     /// Hold up to [`PARSE_CAP`] bytes and fail the whole run past that.
     Refuse,
+    /// Hold only the lines a pip lookup's parser reads, and fail the whole
+    /// run when one of them is past its bound ([`OutputUse::PipLookup`]).
+    KeepPipLookup,
 }
 
 impl StreamBuffer {
@@ -143,6 +157,10 @@ impl StreamBuffer {
             overflowed: false,
             spliced: false,
             redactor: Arc::new(Redactor::default()),
+            pending: Vec::new(),
+            skipping: false,
+            held_diagnostics: 0,
+            read_failed: false,
         }
     }
 
@@ -201,6 +219,27 @@ const TAIL_CAP: usize = 1024 * 1024;
 /// visible per-source error rather than a silently wrong answer.
 const PARSE_CAP: usize = 64 * 1024 * 1024;
 
+/// The longest line of pip's chatter an [`OutputUse::PipLookup`] stdout
+/// reads before passing over the rest of it, and the most bytes of pip's
+/// diagnostic lines it holds. A diagnostic line past the first, or
+/// diagnostics past the second, fail the run; the JSON line is bounded by
+/// [`PARSE_CAP`] alone.
+const PIP_LINE_CAP: usize = 64 * 1024;
+const PIP_DIAGNOSTICS_CAP: usize = 1024 * 1024;
+
+/// Whether `line` is the JSON list `pip list --format=json` prints.
+fn is_json_line(line: &[u8]) -> bool {
+    line.iter().find(|b| !b.is_ascii_whitespace()) == Some(&b'[')
+}
+
+/// Whether `line` is one of the lines pip's lookup is read by: pip's
+/// `Could not fetch URL` (`index/collector.py`) or urllib3's retry warning.
+fn is_pip_diagnostic(line: &[u8]) -> bool {
+    const SAID: [&[u8]; 2] = [b"Could not fetch URL ", b"Retrying (Retry("];
+    SAID.iter()
+        .any(|said| line.windows(said.len()).any(|window| window == *said))
+}
+
 /// What stands in a transcript for the middle [`StreamBuffer`] dropped.
 /// See `StreamBuffer::into_transcript`.
 const ELISION_MARK: &str = "\n[…]\n";
@@ -210,6 +249,10 @@ impl StreamBuffer {
     /// completed. Lines are split on both `\n` and `\r`, so `brew`'s
     /// carriage-return progress updates are treated as line boundaries too.
     fn push(&mut self, chunk: &[u8], stream: Stream, on_line: &Option<LineCallback>) {
+        if self.policy == CapPolicy::KeepPipLookup {
+            self.push_pip_lookup(chunk, stream, on_line);
+            return;
+        }
         // Only the new bytes need scanning: everything before `scan_from`
         // was scanned when it arrived and holds no line terminator.
         let scan_from = self.bytes.len();
@@ -241,7 +284,85 @@ impl StreamBuffer {
         match self.policy {
             CapPolicy::ElideMiddle => self.cap_by_eliding(),
             CapPolicy::Refuse => self.cap_by_refusing(),
+            CapPolicy::KeepPipLookup => {}
         }
+    }
+
+    /// [`CapPolicy::KeepPipLookup`]'s `push`: each line ended in `chunk`
+    /// is kept or dropped as a whole (`end_pip_line`), and the line not
+    /// yet ended waits in `pending`, within its bound.
+    fn push_pip_lookup(&mut self, chunk: &[u8], stream: Stream, on_line: &Option<LineCallback>) {
+        let mut rest = chunk;
+        while !self.overflowed && !rest.is_empty() {
+            let end = rest.iter().position(|&b| b == b'\n' || b == b'\r');
+            let part = &rest[..end.unwrap_or(rest.len())];
+            if !self.skipping {
+                self.pending.extend_from_slice(part);
+                self.bound_pip_line();
+            }
+            match end {
+                Some(end) => {
+                    self.end_pip_line(stream, on_line);
+                    rest = &rest[end + 1..];
+                }
+                None => break,
+            }
+        }
+    }
+
+    /// Past [`PIP_LINE_CAP`], the line being read is passed over if it is
+    /// chatter, and fails the run if it is a diagnostic; the JSON line
+    /// fails it past [`PARSE_CAP`].
+    fn bound_pip_line(&mut self) {
+        if is_json_line(&self.pending) {
+            if self.bytes.len() + self.pending.len() > PARSE_CAP {
+                self.overflow_pip_lookup();
+            }
+        } else if self.pending.len() > PIP_LINE_CAP {
+            if is_pip_diagnostic(&self.pending) {
+                self.overflow_pip_lookup();
+            } else {
+                self.pending.clear();
+                self.skipping = true;
+            }
+        }
+    }
+
+    /// Keeps the line just ended if pip's lookup is read by it -- the JSON
+    /// line, a diagnostic -- and hands it to `on_line`; drops any other.
+    fn end_pip_line(&mut self, stream: Stream, on_line: &Option<LineCallback>) {
+        let line = std::mem::take(&mut self.pending);
+        if std::mem::take(&mut self.skipping) || self.overflowed || line.is_empty() {
+            return;
+        }
+        let json = is_json_line(&line);
+        if !json && !is_pip_diagnostic(&line) {
+            return;
+        }
+        if !json {
+            self.held_diagnostics += line.len() + 1;
+        }
+        if self.held_diagnostics > PIP_DIAGNOSTICS_CAP
+            || self.bytes.len() + line.len() + 1 > PARSE_CAP
+        {
+            self.overflow_pip_lookup();
+            return;
+        }
+        if let Some(cb) = on_line {
+            let text = self
+                .redactor
+                .redact(&String::from_utf8_lossy(&line))
+                .into_owned();
+            cb(RunLine::Output(stream, text));
+        }
+        self.bytes.extend_from_slice(&line);
+        self.bytes.push(b'\n');
+    }
+
+    fn overflow_pip_lookup(&mut self) {
+        self.overflowed = true;
+        self.bytes.clear();
+        self.pending.clear();
     }
 
     /// Past [`PARSE_CAP`], remembers that this stream overflowed and stops
@@ -310,6 +431,10 @@ impl StreamBuffer {
     /// less than the tool actually said, and the missing one is the last,
     /// which on a failure is the one that matters.
     fn flush_partial_line(&mut self, stream: Stream, on_line: &Option<LineCallback>) {
+        if self.policy == CapPolicy::KeepPipLookup {
+            self.end_pip_line(stream, on_line);
+            return;
+        }
         if self.line_start < self.bytes.len() {
             self.emit_line(self.bytes.len(), stream, on_line);
             self.line_start = self.bytes.len();
@@ -366,6 +491,7 @@ impl StreamBuffer {
             Ok(n) => self.push(&read_buf[..n], stream, on_line),
             Err(e) => {
                 *done = true;
+                self.read_failed = true;
                 self.note_read_error(&e, stream, on_line);
             }
         }
@@ -392,7 +518,7 @@ impl StreamBuffer {
                 Ok(text) => text,
                 Err(e) => String::from_utf8_lossy(e.as_bytes()).into_owned(),
             };
-            if self.policy == CapPolicy::Refuse {
+            if self.policy != CapPolicy::ElideMiddle {
                 return text;
             }
             let masked = match self.redactor.redact(&text) {
@@ -921,6 +1047,7 @@ impl CommandRunner for RealRunner {
         let mut out = StreamBuffer::new(match spec.output_use {
             OutputUse::Transcript => CapPolicy::ElideMiddle,
             OutputUse::Parsed => CapPolicy::Refuse,
+            OutputUse::PipLookup => CapPolicy::KeepPipLookup,
         })
         .redacting(redactor.clone());
         let mut err = StreamBuffer::new(CapPolicy::ElideMiddle).redacting(redactor);
@@ -1140,6 +1267,12 @@ impl CommandRunner for RealRunner {
         // reading a spliced document was the worse thing it used to do.
         if out.overflowed {
             return Err(RunnerError::OutputTooLarge { limit: PARSE_CAP });
+        }
+        // A pip lookup's stdout that ended before its end may lack the
+        // line that says a lookup failed (`OutputUse::PipLookup`).
+        if out.policy == CapPolicy::KeepPipLookup && !cancelled && (out.read_failed || !stdout_done)
+        {
+            return Err(RunnerError::OutputIncomplete);
         }
 
         // Why it failed, read off what it wrote before a login is masked
@@ -1415,6 +1548,138 @@ mod tests {
         assert_eq!(output.exit_code, Some(0));
         assert!(ran.exists());
         let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn pip_lookup_capture_keeps_required_data_and_rejects_incomplete_capture() {
+        // r25 R70-1: pip at `-vv` prints a line per file it skips. Only the
+        // JSON line and pip's diagnostics are held, whatever the chatter
+        // around them, however the reads split them.
+        let feed = |buffer: &mut StreamBuffer, bytes: &[u8]| {
+            for chunk in bytes.chunks(4093) {
+                buffer.push(chunk, Stream::Stdout, &None);
+            }
+        };
+        let mut buffer = StreamBuffer::new(CapPolicy::KeepPipLookup);
+        let chatter = format!(
+            "  Skipping link: none of the wheel's tags match: {}\n",
+            "x".repeat(150)
+        );
+        let diagnostic = "Could not fetch URL https://corp.example/simple/caf\u{e9}/: 403 Client Error: Forbidden - skipping\n";
+        let long_chatter = format!("Found link {}\r\n", "y".repeat(PIP_LINE_CAP + 10));
+        let mut stream = Vec::new();
+        while stream.len() <= PARSE_CAP + 1024 * 1024 {
+            stream.extend_from_slice(chatter.as_bytes());
+            if stream.len() % 7 == 0 {
+                stream.extend_from_slice(long_chatter.as_bytes());
+            }
+        }
+        stream.extend_from_slice(diagnostic.as_bytes());
+        stream.extend_from_slice(chatter.as_bytes());
+        // A JSON line longer than a line of chatter may be: the JSON's own
+        // bound governs it.
+        let json = format!(
+            "[{{\"name\": \"{}\", \"version\": \"1.0\"}}]",
+            "z".repeat(PIP_LINE_CAP * 2)
+        );
+        stream.extend_from_slice(json.as_bytes());
+        stream.push(b'\n');
+        // A last line with no newline.
+        stream.extend_from_slice(b"WARNING: Retrying (Retry(total=0, connect=None)) after x");
+        feed(&mut buffer, &stream);
+        buffer.flush_partial_line(Stream::Stdout, &None);
+        assert!(!buffer.overflowed && !buffer.read_failed);
+        assert_eq!(
+            buffer.into_transcript(),
+            format!(
+                "{diagnostic}{json}\nWARNING: Retrying (Retry(total=0, connect=None)) after x\n"
+            )
+        );
+
+        // A diagnostic past its line's bound, or diagnostics past theirs:
+        // what is held would lack one, so the run fails.
+        let mut long = StreamBuffer::new(CapPolicy::KeepPipLookup);
+        feed(
+            &mut long,
+            format!("Could not fetch URL {}\n[]\n", "u".repeat(PIP_LINE_CAP)).as_bytes(),
+        );
+        assert!(long.overflowed);
+        let mut many = StreamBuffer::new(CapPolicy::KeepPipLookup);
+        let line = format!("Could not fetch URL {}\n", "u".repeat(60 * 1024));
+        feed(
+            &mut many,
+            line.repeat(PIP_DIAGNOSTICS_CAP / line.len() + 1).as_bytes(),
+        );
+        assert!(many.overflowed);
+
+        // A read that failed is no stream read to its end.
+        let mut failed = StreamBuffer::new(CapPolicy::KeepPipLookup);
+        let mut done = false;
+        failed.take_read(
+            Err(std::io::Error::other("EIO")),
+            &[],
+            &mut done,
+            Stream::Stdout,
+            &None,
+        );
+        assert!(done && failed.read_failed);
+    }
+
+    #[tokio::test]
+    async fn test_a_pip_lookup_hands_on_and_returns_only_the_lines_read() {
+        let runner = RealRunner::new();
+        let lines: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = lines.clone();
+        let spec = CommandSpec {
+            program: sh(),
+            args: vec![
+                "-c".to_string(),
+                "echo 'Skipping link https://a.example/x.whl'; echo 'Could not fetch URL https://a.example/simple/x/: 404 Client Error - skipping'; echo '[]'; echo 'Looking up https://a.example/simple/y/'".to_string(),
+            ],
+            env: vec![],
+            cwd: None,
+            timeout: std::time::Duration::from_secs(5),
+            output_use: OutputUse::PipLookup,
+        };
+        let output = runner
+            .run(
+                spec,
+                Some(output_lines(move |_, line| seen.lock().unwrap().push(line))),
+                CancellationToken::new(),
+            )
+            .await
+            .expect("spawn /bin/sh");
+        assert_eq!(
+            output.stdout,
+            "Could not fetch URL https://a.example/simple/x/: 404 Client Error - skipping\n[]\n"
+        );
+        assert_eq!(
+            *lines.lock().unwrap(),
+            [
+                "Could not fetch URL https://a.example/simple/x/: 404 Client Error - skipping",
+                "[]"
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn test_a_pip_lookup_whose_stdout_stays_open_after_exit_fails() {
+        // Something the command left running holds stdout open past the
+        // drain: what was read may lack a diagnostic, so it is no answer.
+        let runner = RealRunner::new();
+        let spec = CommandSpec {
+            program: sh(),
+            args: vec!["-c".to_string(), "sleep 2 & echo '[]'".to_string()],
+            env: vec![],
+            cwd: None,
+            timeout: std::time::Duration::from_secs(5),
+            output_use: OutputUse::PipLookup,
+        };
+        let result = runner.run(spec, None, CancellationToken::new()).await;
+        assert!(
+            matches!(result, Err(RunnerError::OutputIncomplete)),
+            "{result:?}"
+        );
     }
 
     #[tokio::test]

@@ -9,7 +9,9 @@ use crate::model::{
     UpdateCandidate, UpdateChannel,
 };
 use crate::protected::{self, look, Protected};
-use crate::runner::{resolve_exe, CommandRunner, CommandSpec, HostEnv, OutputUse, RunnerError};
+use crate::runner::{
+    resolve_exe, CommandOutput, CommandRunner, CommandSpec, HostEnv, OutputUse, RunnerError,
+};
 use async_trait::async_trait;
 use serde::Deserialize;
 use std::collections::HashSet;
@@ -158,6 +160,45 @@ fn without_object_reprs(text: &str) -> String {
 struct GaveUp {
     project: String,
     words: String,
+    kind: Unanswered,
+}
+
+/// Which answer can make up for a lookup pip did not get (r25 R70-1).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Unanswered {
+    /// An index answered 403, 404 or 410: it has no such project, or it
+    /// refuses this Mac. With an extra index that is the index that does
+    /// not host the project (PyTorch's answers 403); as the only index, a
+    /// company index whose access ran out. Made up for only by an
+    /// up-to-date row from `pip list --uptodate` (`confirm_up_to_date`).
+    NotThere(u16),
+    /// Any other: urllib3's final try (`lookups_given_up`), a certificate,
+    /// a proxy, a 401, a 5xx, the network. Nothing makes up for it.
+    Failed,
+}
+
+/// `text` with every address in it -- `scheme://` up to a space or a
+/// quote -- said as `<address>`: an index's address may carry a login, or a
+/// token in its query, and a row's words can be copied (r25 R70-1).
+fn without_addresses(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find("://") {
+        let start = rest[..at]
+            .char_indices()
+            .rev()
+            .take_while(|(_, c)| c.is_ascii_alphanumeric() || matches!(c, '+' | '.' | '-'))
+            .last()
+            .map_or(at, |(i, _)| i);
+        let end = rest[at..]
+            .find(|c: char| c.is_whitespace() || matches!(c, '\'' | '"' | '<' | '>' | '`'))
+            .map_or(rest.len(), |i| at + i);
+        out.push_str(&rest[..start]);
+        out.push_str("<address>");
+        rest = &rest[end..];
+    }
+    out.push_str(rest);
+    out
 }
 
 /// Each lookup pip gave up on, or came to its final try of, in `stderr`'s
@@ -191,7 +232,8 @@ fn lookups_given_up(stderr: &str) -> Vec<GaveUp> {
                 .unwrap_or("");
             Some(GaveUp {
                 project: canonical_project(project),
-                words: without_object_reprs(&line[error_start..error_end]),
+                words: without_addresses(&without_object_reprs(&line[error_start..error_end])),
+                kind: Unanswered::Failed,
             })
         })
         .collect()
@@ -199,29 +241,52 @@ fn lookups_given_up(stderr: &str) -> Vec<GaveUp> {
 
 /// The lookups pip says it could not fetch, from its `Could not fetch URL
 /// <address>: <reason> - skipping` lines (pip 26.2.1
-/// `index/collector.py`, `_handle_get_simple_fail`). At pip's normal
-/// verbosity -- the one `check_updates` pins with `OUTDATED_ENV` -- only
-/// a certificate failure is said this way: pip logs it at INFO, so it is
-/// printed on stdout ahead of the JSON. Every other failure is logged at
-/// DEBUG and printed only at `-vv`, which Banager does not pass: its
-/// output grows by a line per file pip skips, thousands for one project
-/// (opus-int finding 4).
+/// `index/collector.py`, `_handle_get_simple_fail`). pip logs a
+/// certificate failure at INFO and every other one -- an HTTP status, a
+/// proxy, the network -- at DEBUG, so `check_updates` runs pip at `-vv`
+/// (`OUTDATED_ENV`) and holds only these lines of the line per file pip
+/// skips that `-vv` prints (`OutputUse::PipLookup`, r25 R70-1).
 ///
-/// An HTTP answer that says the index does not have the project is no
-/// failed lookup (`index_lacks_project`), whatever the verbosity: with an
-/// extra index, pip asks every index about every project, and the one
-/// that does not host it answers 404 -- or 403, as PyTorch's
-/// `download.pytorch.org` does -- while another index answers with the
-/// project (opus-int finding 3). Keep only the project and a fixed
-/// reason, never an index URL's credentials.
+/// An HTTP answer that the index does not have the project (403, 404,
+/// 410: `index_lacks_project`) is `Unanswered::NotThere`: with an extra
+/// index, pip asks every index about every project, and the one that does
+/// not host it answers 404 -- or 403, as PyTorch's `download.pytorch.org`
+/// does -- while another index answers with the project (opus-int finding
+/// 3); but a sole index whose access ran out answers 403 too.
+/// `check_updates` tells the two apart by `pip list --uptodate`
+/// (`confirm_up_to_date`). Keep only the project, the status and fixed
+/// words, never an index's address, its login or its query.
 fn final_fetch_failures(text: &str) -> Vec<GaveUp> {
     text.lines()
         .filter_map(|line| {
             let (_, tail) = line.split_once("Could not fetch URL ")?;
             let (address, reason) = tail.split_once(": ")?;
-            if index_lacks_project(reason) {
-                return None;
-            }
+            let status = http_status(reason);
+            let (kind, words) = match status {
+                Some(status) if index_lacks_project(reason) => (
+                    Unanswered::NotThere(status),
+                    format!(
+                        "the package index answered HTTP {status} ({}), and no index gave its latest version",
+                        match status {
+                            403 => "Forbidden",
+                            404 => "Not Found",
+                            _ => "Gone",
+                        }
+                    ),
+                ),
+                Some(status) => (
+                    Unanswered::Failed,
+                    format!("pip could not fetch the package index (HTTP {status})"),
+                ),
+                None if super::says_network_failed(reason) => (
+                    Unanswered::Failed,
+                    "network error: pip could not fetch the package index".to_string(),
+                ),
+                None => (
+                    Unanswered::Failed,
+                    "pip could not fetch the package index".to_string(),
+                ),
+            };
             let project = url::Url::parse(address)
                 .ok()
                 .and_then(|u| {
@@ -234,15 +299,33 @@ fn final_fetch_failures(text: &str) -> Vec<GaveUp> {
                 .unwrap_or_default();
             Some(GaveUp {
                 project,
-                words: if super::says_network_failed(reason) {
-                    "network error: pip could not fetch the package index"
-                } else {
-                    "pip could not fetch the package index"
-                }
-                .into(),
+                words,
+                kind,
             })
         })
         .collect()
+}
+
+/// The status of a `Could not fetch URL` reason that is pip's wording of
+/// an HTTP error (`network/utils.py`, `raise_for_status`: `"<status>
+/// Client Error: ..."`, `"<status> Server Error: ..."`).
+fn http_status(reason: &str) -> Option<u16> {
+    let reason = reason.trim_start();
+    let (status, rest) = reason.split_at_checked(3)?;
+    if !(rest.starts_with(" Client Error") || rest.starts_with(" Server Error")) {
+        return None;
+    }
+    status.parse().ok()
+}
+
+/// Every lookup a `pip list` lookup says it did not get: urllib3's final
+/// tries on stderr (`lookups_given_up`) and pip's `Could not fetch URL`
+/// lines on either stream (`final_fetch_failures`).
+fn unanswered_lookups(output: &CommandOutput) -> Vec<GaveUp> {
+    let mut gave_up = lookups_given_up(&output.stderr);
+    gave_up.extend(final_fetch_failures(&output.stdout));
+    gave_up.extend(final_fetch_failures(&output.stderr));
+    gave_up
 }
 
 /// Whether the reason of a `Could not fetch URL` line is an index's answer
@@ -444,16 +527,20 @@ impl PipAdapter {
     /// use.
     pub const XCODE_SELECT_ARGV: [&'static str; 2] = ["/usr/bin/xcode-select", "-p"];
 
-    /// The environment of `check_updates`' `pip list --outdated`: pip's
-    /// normal verbosity, whatever the user's `pip.conf` or environment
-    /// set. Not quieter: at `quiet = 2` pip hides the urllib3 warnings
-    /// `lookups_given_up` reads, and the lookups it gave up on would read
-    /// as up to date. Not louder: `verbose = 2` prints a line per file
-    /// pip skips, thousands for one project, toward the runner's 64 MiB
-    /// and 60-second limits (opus-int finding 4) -- and its index
-    /// answers, a 404 from an extra index among them (finding 3). Both
-    /// are counts in pip, and `0` is a count it accepts from the
-    /// environment (`cli/parser.py`, `_update_defaults`).
+    /// The environment of `check_updates`' `pip list --outdated` and
+    /// `--uptodate`: pip's DEBUG verbosity, whatever the user's `pip.conf`
+    /// or environment set. Not quieter: at `quiet = 2` pip hides the
+    /// urllib3 warnings `lookups_given_up` reads, and the lookups it gave
+    /// up on would read as up to date. And not pip's normal verbosity: an
+    /// index that answers with an HTTP error -- a company index whose
+    /// access ran out answering 403 -- is said only at DEBUG
+    /// (`index/collector.py:298-305,371-372`; `final_fetch_failures`), and
+    /// at the normal one pip exits 0 with every such package left out, as
+    /// if up to date (r25 R70-1). DEBUG also prints a line per file pip
+    /// skips, thousands for one project (opus-int finding 4), which the
+    /// runner drops as they arrive (`OutputUse::PipLookup`). Both are
+    /// counts in pip, which it accepts from the environment
+    /// (`cli/parser.py`, `_update_defaults`).
     ///
     /// And pip's own default of five retries (`cli/cmdoptions.py`,
     /// `retries`), whatever a `pip.conf` sets: with `retries = 0` urllib3
@@ -470,7 +557,7 @@ impl PipAdapter {
     /// `docs/what-we-run.md` shows each entry.
     pub const OUTDATED_ENV: [(&'static str, &'static str); 3] = [
         ("PIP_QUIET", "0"),
-        ("PIP_VERBOSE", "0"),
+        ("PIP_VERBOSE", "2"),
         ("PIP_RETRIES", "5"),
     ];
 
@@ -850,28 +937,15 @@ impl PipAdapter {
         // it. A list that fails here gives the check 60 s, and is asked
         // again where a row needs it.
         let listed = self.run_pip_list(inst, &["--not-required"]).await.ok();
-        let args = vec![
-            "-m".to_string(),
-            "pip".to_string(),
-            "list".to_string(),
-            "--outdated".to_string(),
-            "--not-required".to_string(),
-            "--format=json".to_string(),
-        ];
+        // One deadline for the lookup and, where it is needed, the
+        // `--uptodate` one after it (`confirm_up_to_date`), which gets only
+        // what is left of it.
+        let timeout = Self::outdated_timeout(listed.as_ref().map_or(0, Vec::len));
+        let deadline = tokio::time::Instant::now() + timeout;
         let output = self
             .runner
             .run(
-                CommandSpec {
-                    program: inst.exe_path.clone(),
-                    args,
-                    env: Self::OUTDATED_ENV
-                        .iter()
-                        .map(|(k, v)| (k.to_string(), v.to_string()))
-                        .collect(),
-                    cwd: None,
-                    timeout: Self::outdated_timeout(listed.as_ref().map_or(0, Vec::len)),
-                    output_use: OutputUse::Parsed,
-                },
+                self.lookup_spec(inst, "--outdated", timeout),
                 None,
                 CancellationToken::new(),
             )
@@ -881,10 +955,16 @@ impl PipAdapter {
         // not know about these packages", not "this source failed". Failing
         // the source made every refresh on such a machine report an error
         // and hold the whole snapshot stale; cargo already answers this
-        // question the way it is answered here.
+        // question the way it is answered here. The words are pip's, with
+        // no address in them (`without_addresses`); whether the network
+        // failed is read off pip's own.
         if output.exit_code != Some(0) {
             let failure = LookupFailure::words(
-                lookup_failure_reason("pip list --outdated", output.exit_code, &output.stderr),
+                lookup_failure_reason(
+                    "pip list --outdated",
+                    output.exit_code,
+                    &without_addresses(&output.stderr),
+                ),
                 &output.stderr,
             );
             let installed = match listed {
@@ -909,75 +989,93 @@ impl PipAdapter {
                 .into());
         }
         let checked = parse_outdated_stdout(&output.stdout, &inst.id)?;
-        // Exit 0 is not "every package was looked up": a lookup pip gave
-        // up on is left out of stdout as if it were up to date (round-5
-        // review finding 7). Its retry warnings on stderr say which --
-        // retries are never off here (`OUTDATED_ENV`) -- and a
-        // certificate failure says so on stdout. An index that answered a
-        // lookup with an HTTP error is printed only at `-vv`
-        // (`final_fetch_failures`), and that package still reads as up
-        // to date.
-        let mut gave_up = lookups_given_up(&output.stderr);
-        gave_up.extend(final_fetch_failures(&output.stdout));
-        gave_up.extend(final_fetch_failures(&output.stderr));
+        // Exit 0 is not "every package was looked up": a lookup pip did
+        // not get is left out of stdout as if it were up to date (round-5
+        // review finding 7, r25 R70-1). Its retry warnings on stderr say
+        // which -- retries are never off here (`OUTDATED_ENV`) -- and
+        // pip's `Could not fetch URL` lines, at `-vv`, say the rest.
+        let gave_up = unanswered_lookups(&output);
         if gave_up.is_empty() {
             return Ok(checked.into());
         }
         Ok(self
-            .with_lookups_given_up(inst, checked, &gave_up, listed)
-            .await
+            .with_lookups_given_up(inst, checked, &gave_up, listed, deadline)
+            .await?
             .into())
+    }
+
+    /// `pip list <lookup> --not-required --format=json`, `lookup` being
+    /// `--outdated` or `--uptodate`, at `OUTDATED_ENV`'s verbosity and
+    /// holding only the lines `check_updates` reads
+    /// (`OutputUse::PipLookup`).
+    fn lookup_spec(&self, inst: &ManagerInstance, lookup: &str, timeout: Duration) -> CommandSpec {
+        CommandSpec {
+            program: inst.exe_path.clone(),
+            args: [
+                "-m",
+                "pip",
+                "list",
+                lookup,
+                "--not-required",
+                "--format=json",
+            ]
+            .map(String::from)
+            .to_vec(),
+            env: Self::OUTDATED_ENV
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
+            cwd: None,
+            timeout,
+            output_use: OutputUse::PipLookup,
+        }
     }
 
     /// `checked` -- what `pip list --outdated` listed, each a real answer
     /// -- and, after it, a "could not check" row (`uncheckable_candidate`)
     /// for each package it asked about -- one nothing else requires -- and
-    /// did not list, whose lookup pip gave up on (`lookups_given_up`), with
-    /// that lookup's words: transient where they say the network failed,
-    /// as when `pip list --outdated` exits non-zero
-    /// (`LookupFailure::words`). A lookup whose address
-    /// names none of those -- a `--find-links` page, say -- left every
-    /// package's answer short, so every one not listed gets the row.
-    /// They come from the `--not-required` list, as on that path:
-    /// `listed`, the one read before the check, or read now when that one
-    /// failed.
+    /// did not list, whose lookup pip did not get (`unanswered_lookups`),
+    /// with that lookup's words: transient where they say the network
+    /// failed, as when `pip list --outdated` exits non-zero
+    /// (`LookupFailure::words`). A lookup whose address names none of
+    /// those -- a `--find-links` page, say -- left every package's answer
+    /// short, so every one not listed gets the row. They come from the
+    /// `--not-required` list, as on that path: `listed`, the one read
+    /// before the check, or read now when that one failed; when that
+    /// fails too, the check fails, rather than leave unnamed packages
+    /// reading as up to date (r25 R70-1).
     ///
-    /// If that list cannot be had, `checked` as it is: the answers pip did
-    /// give are real, and a package Banager cannot name gets no row -- it
-    /// reads as up to date, as it did before any of this was read -- where
-    /// failing the source would throw those answers away too (a2 review 4).
+    /// A package whose only failures are an index's 403, 404 or 410
+    /// (`Unanswered::NotThere`) is up to date only if `pip list
+    /// --uptodate` lists it at its installed version, and that lookup met
+    /// no other failure for it (`confirm_up_to_date`); any other failure,
+    /// in either lookup and in whatever order, keeps its row.
     async fn with_lookups_given_up(
         &self,
         inst: &ManagerInstance,
         mut checked: Vec<UpdateCandidate>,
         gave_up: &[GaveUp],
         listed: Option<Vec<PipPackage>>,
-    ) -> Vec<UpdateCandidate> {
+        deadline: tokio::time::Instant,
+    ) -> Result<Vec<UpdateCandidate>, AdapterError> {
         let installed = match listed {
             Some(installed) => installed,
-            None => match self.run_pip_list(inst, &["--not-required"]).await {
-                Ok(installed) => installed,
-                Err(_) => return checked,
-            },
+            None => self.run_pip_list(inst, &["--not-required"]).await?,
         };
         let projects: HashSet<String> = installed
             .iter()
             .map(|p| canonical_project(&p.name))
             .collect();
-        let everyone = gave_up.iter().rfind(|g| !projects.contains(&g.project));
         let listed: HashSet<String> = checked
             .iter()
             .map(|c| canonical_project(&c.key.name))
             .collect();
-        for package in installed {
-            let project = canonical_project(&package.name);
-            if listed.contains(&project) {
-                continue;
-            }
-            let Some(lookup) = gave_up.iter().rfind(|g| g.project == project).or(everyone) else {
-                continue;
-            };
-            checked.push(uncheckable_candidate(
+        // A failure on the project's own address, or on one that names no
+        // package here.
+        let concerns =
+            |g: &GaveUp, project: &str| g.project == project || !projects.contains(&g.project);
+        let row = |package: PipPackage, lookup: &GaveUp| {
+            uncheckable_candidate(
                 ArtifactKey {
                     instance_id: inst.id.clone(),
                     kind: ArtifactKind::Package,
@@ -989,9 +1087,89 @@ impl PipAdapter {
                     lookup_failure_reason("pip list --outdated", Some(0), &lookup.words),
                     &lookup.words,
                 ),
-            ));
+            )
+        };
+        let mut not_there = Vec::new();
+        for package in installed {
+            let project = canonical_project(&package.name);
+            if listed.contains(&project) {
+                continue;
+            }
+            let failures: Vec<&GaveUp> = gave_up.iter().filter(|g| concerns(g, &project)).collect();
+            if let Some(failed) = failures.iter().find(|g| g.kind == Unanswered::Failed) {
+                checked.push(row(package, failed));
+            } else if let Some(first) = failures.first() {
+                not_there.push((package, (*first).clone()));
+            }
         }
-        checked
+        if not_there.is_empty() {
+            return Ok(checked);
+        }
+        let confirmed = self.confirm_up_to_date(inst, deadline).await;
+        for (package, lookup) in not_there {
+            let project = canonical_project(&package.name);
+            let failure = match &confirmed {
+                None => Some(lookup),
+                Some((rows, later)) => {
+                    if let Some(failed) = later
+                        .iter()
+                        .find(|g| g.kind == Unanswered::Failed && concerns(g, &project))
+                    {
+                        Some(failed.clone())
+                    } else if rows.get(&project).is_some_and(|version| {
+                        !version.trim().is_empty() && *version == package.version
+                    }) {
+                        None
+                    } else {
+                        Some(lookup)
+                    }
+                }
+            };
+            if let Some(failure) = failure {
+                checked.push(row(package, &failure));
+            }
+        }
+        Ok(checked)
+    }
+
+    /// `pip list --uptodate`, once, in what is left of the check's
+    /// `deadline`: the packages it lists at their installed version, by
+    /// project, and the lookups it did not get (`unanswered_lookups`).
+    /// `None` when there is no time left, or it did not finish, exited
+    /// non-zero or printed no JSON list: nothing is confirmed then.
+    async fn confirm_up_to_date(
+        &self,
+        inst: &ManagerInstance,
+        deadline: tokio::time::Instant,
+    ) -> Option<(std::collections::HashMap<String, String>, Vec<GaveUp>)> {
+        let left = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if left.is_zero() {
+            return None;
+        }
+        let output = self
+            .runner
+            .run(
+                self.lookup_spec(inst, "--uptodate", left),
+                None,
+                CancellationToken::new(),
+            )
+            .await
+            .ok()?;
+        if output.exit_code != Some(0) || output.timed_out || output.cancelled {
+            return None;
+        }
+        let rows = output
+            .stdout
+            .lines()
+            .rev()
+            .filter(|line| line.trim_start().starts_with('['))
+            .find_map(|line| serde_json::from_str::<Vec<PipPackage>>(line).ok())?;
+        Some((
+            rows.into_iter()
+                .map(|p| (canonical_project(&p.name), p.version))
+                .collect(),
+            unanswered_lookups(&output),
+        ))
     }
 
     pub async fn search(
@@ -1231,24 +1409,29 @@ mod tests {
         // opus-int finding 3. With `extra-index-url` (PyTorch's, a
         // company's), pip asks every index for every project; the one that
         // does not host it answers 404 -- or 403, as PyTorch's does -- and PyPI
-        // answers with the project. At pip's normal verbosity none of that
-        // is printed: stdout is the JSON alone, stderr is empty.
+        // answers with the project. At `-vv` pip says so on stdout.
         // cowsay is out of date on PyPI; six is up to date there, and so
-        // not in the JSON at all.
+        // not in the JSON at all, but `pip list --uptodate` lists it (r25
+        // R70-1: that is what tells it from a sole index's 403).
         let outdated = r#"[{"name": "cowsay", "version": "5.0", "latest_version": "6.1", "latest_filetype": "wheel"}]"#;
         let extra = |project: &str| format!("https://download.pytorch.org/whl/cpu/{project}/");
-        for stdout in [
-            format!("{outdated}\n"),
-            // A pip that prints the index's answers anyway, as at `-vv`.
-            format!(
-                "{}\n{}\n{outdated}\n",
-                http_status_failure(&extra("cowsay"), "404"),
-                http_status_failure(&extra("six"), "404")
+        for (stdout, confirms) in [
+            (format!("{outdated}\n"), false),
+            (
+                format!(
+                    "{}\n{}\n{outdated}\n",
+                    http_status_failure(&extra("cowsay"), "404"),
+                    http_status_failure(&extra("six"), "404")
+                ),
+                true,
             ),
-            format!(
-                "{}\n{}\n{outdated}\n",
-                http_status_failure(&extra("cowsay"), "403"),
-                http_status_failure(&extra("six"), "403")
+            (
+                format!(
+                    "{}\n{}\n{outdated}\n",
+                    http_status_failure(&extra("cowsay"), "403"),
+                    http_status_failure(&extra("six"), "410")
+                ),
+                true,
             ),
         ] {
             let runner = Arc::new(MockRunner::new());
@@ -1258,6 +1441,17 @@ mod tests {
                 exited_with(
                     0,
                     r#"[{"name":"cowsay","version":"5.0"},{"name":"six","version":"1.17.0"}]"#,
+                    "",
+                ),
+            );
+            runner.respond(
+                UPTODATE_ARGV.to_vec(),
+                exited_with(
+                    0,
+                    &format!(
+                        "{}\n[{{\"name\": \"Six\", \"version\": \"1.17.0\"}}]\n",
+                        http_status_failure(&extra("six"), "404")
+                    ),
                     "",
                 ),
             );
@@ -1272,13 +1466,306 @@ mod tests {
             assert_eq!(rows[0].key.name, "cowsay", "{stdout}");
             assert!(rows[0].checkable, "{stdout}");
             assert_eq!(rows[0].target, "6.1");
-            // No lookup was given up on, so nothing ran but the list read
-            // for the check's deadline (unanswered here) and the check.
-            assert_eq!(
-                runner.calls(),
-                vec![NOT_REQUIRED_ARGV.to_vec(), OUTDATED_ARGV.to_vec()],
-                "{stdout}"
+            // The list read for the check's deadline, the check, and the
+            // confirmation only where an index answered 403/404/410.
+            let mut calls = vec![NOT_REQUIRED_ARGV.to_vec(), OUTDATED_ARGV.to_vec()];
+            if confirms {
+                calls.push(UPTODATE_ARGV.to_vec());
+            }
+            assert_eq!(runner.calls(), calls, "{stdout}");
+        }
+    }
+
+    #[tokio::test]
+    async fn regression_r70_1_positive_answers_and_mixed_failures() {
+        // r25 R70-1: a 403/404/410 is made up for only by `--uptodate`
+        // listing that package at its installed version; any other failure
+        // for it, in either lookup and in any order or stream, stays.
+        let outdated = r#"[{"name": "cowsay", "version": "5.0", "latest_version": "6.1", "latest_filetype": "wheel"}]"#;
+        let corp = "https://corp.example/simple/six/";
+        let refused = http_status_failure(corp, "403");
+        let certificate = certificate_failure("https://mirror.example/simple/six/");
+        let proxy = format!(
+            "Could not fetch URL {corp}: proxy connection error: ProxyError('Unable to connect to proxy') - skipping"
+        );
+        let six = r#"[{"name": "six", "version": "1.17.0"}]"#;
+        // (first lookup's stdout, its stderr, the confirmation's stdout and
+        // exit, whether six reads as up to date, what its row says)
+        type Case = (String, String, Option<(String, i32)>, bool, &'static str);
+        let cases: Vec<Case> = vec![
+            // Confirmed.
+            (
+                format!("{refused}\n{outdated}"),
+                String::new(),
+                Some((six.into(), 0)),
+                true,
+                "",
+            ),
+            // Not listed, another version, an empty one, a failed run.
+            (
+                format!("{refused}\n{outdated}"),
+                String::new(),
+                Some(("[]".into(), 0)),
+                false,
+                "HTTP 403",
+            ),
+            (
+                format!("{refused}\n{outdated}"),
+                String::new(),
+                Some((six.replace("1.17.0", "1.16.0"), 0)),
+                false,
+                "HTTP 403",
+            ),
+            (
+                format!("{refused}\n{outdated}"),
+                String::new(),
+                Some((six.replace("1.17.0", ""), 0)),
+                false,
+                "HTTP 403",
+            ),
+            (
+                format!("{refused}\n{outdated}"),
+                String::new(),
+                Some((six.into(), 1)),
+                false,
+                "HTTP 403",
+            ),
+            (
+                format!("{refused}\n{outdated}"),
+                String::new(),
+                None,
+                false,
+                "HTTP 403",
+            ),
+            // A row, but the confirmation met a certificate failure for six.
+            (
+                format!("{refused}\n{outdated}"),
+                String::new(),
+                Some((format!("{certificate}\n{six}"), 0)),
+                false,
+                "could not fetch the package index",
+            ),
+            // The first lookup met another failure as well, before or
+            // after the 403, on either stream: no confirmation helps.
+            (
+                format!("{proxy}\n{refused}\n{outdated}"),
+                String::new(),
+                Some((six.into(), 0)),
+                false,
+                "could not fetch",
+            ),
+            (
+                format!("{refused}\n{proxy}\n{outdated}"),
+                String::new(),
+                Some((six.into(), 0)),
+                false,
+                "could not fetch",
+            ),
+            (
+                format!("{refused}\n{outdated}"),
+                proxy.clone(),
+                Some((six.into(), 0)),
+                false,
+                "could not fetch",
+            ),
+            // Another package's row, or a 200, is no answer for six.
+            (
+                format!("{refused}\n{outdated}"),
+                String::new(),
+                Some((r#"[{"name": "cowsay", "version": "5.0"}]"#.into(), 0)),
+                false,
+                "HTTP 403",
+            ),
+        ];
+        for (stdout, stderr, confirmation, current, says) in cases {
+            let runner = Arc::new(MockRunner::new());
+            runner.respond(OUTDATED_ARGV.to_vec(), exited_with(0, &stdout, &stderr));
+            runner.respond(
+                NOT_REQUIRED_ARGV.to_vec(),
+                exited_with(
+                    0,
+                    r#"[{"name":"cowsay","version":"5.0"},{"name":"six","version":"1.17.0"}]"#,
+                    "",
+                ),
             );
+            if let Some((out, code)) = &confirmation {
+                runner.respond(UPTODATE_ARGV.to_vec(), exited_with(*code, out, ""));
+            }
+            let rows = PipAdapter::new(runner.clone())
+                .check_updates(&test_instance(), &CheckOptions::default())
+                .await
+                .unwrap()
+                .candidates;
+            let case = format!("{stdout} / {stderr} / {confirmation:?}");
+            // The real answer stays whatever happens to six.
+            assert!(
+                rows.iter()
+                    .any(|r| r.key.name == "cowsay" && r.checkable && r.target == "6.1"),
+                "{case}"
+            );
+            let six_row = rows.iter().find(|r| r.key.name == "six");
+            if current {
+                assert!(six_row.is_none(), "{case}: {six_row:?}");
+                continue;
+            }
+            let six_row = six_row.unwrap_or_else(|| panic!("{case}: six read as up to date"));
+            assert!(!six_row.checkable, "{case}");
+            assert_eq!(six_row.current, "1.17.0", "{case}");
+            assert!(
+                !six_row.warnings.contains(&Warning::TransientLookupFailure),
+                "{case}"
+            );
+            let words = format!("{:?}", six_row.warnings);
+            assert!(words.contains(says), "{case}: {words}");
+            assert!(!words.contains("example"), "{case}: {words}");
+            // No more than one confirmation.
+            assert!(
+                runner
+                    .calls()
+                    .iter()
+                    .filter(|c| c.contains(&"--uptodate".to_string()))
+                    .count()
+                    <= 1
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn regression_r70_1_failure_details_are_safe_on_every_exit_path() {
+        // r25 R70-1: a row's words can be copied, so no index address --
+        // its login, its query's token -- is in them, on any path; and the
+        // network is still told from the rest.
+        let token_url = "https://user:pw@corp.example/simple/six/?token=s3cr3t#frag";
+        let name_resolution = format!(
+            "NameResolutionError(\"<urllib3.connection.HTTPSConnection object at 0x1>: Failed to resolve '{token_url}' ([Errno 8] nodename nor servname provided, or not known)\")"
+        );
+        let list = r#"[{"name":"six","version":"1.17.0"}]"#;
+        let cases: Vec<(CommandOutput, bool)> = vec![
+            // Non-zero exit, the address in pip's error.
+            (
+                exited_with(
+                    2,
+                    "",
+                    &format!("ERROR: Could not fetch {token_url}: 403 Client Error: Forbidden for url: {token_url}"),
+                ),
+                false,
+            ),
+            // Non-zero exit for the network.
+            (
+                exited_with(1, "", &format!("ERROR: {name_resolution}")),
+                true,
+            ),
+            // Exit 0, a retry that gave up, its words naming the address.
+            (exited_with(0, "[]", &gave_up_on(&name_resolution, "/simple/six/")), true),
+            // Exit 0, a 403 alongside a retry warning that was answered.
+            (
+                exited_with(
+                    0,
+                    &format!("{}\n[]", http_status_failure(token_url, "403")),
+                    &retry_warning(3, &name_resolution, "/simple/six/"),
+                ),
+                false,
+            ),
+        ];
+        for (output, transient) in cases {
+            let runner = Arc::new(MockRunner::new());
+            runner.respond(OUTDATED_ARGV.to_vec(), output.clone());
+            runner.respond(NOT_REQUIRED_ARGV.to_vec(), exited_with(0, list, ""));
+            // The confirmation fails, with the address on stderr.
+            runner.respond(
+                UPTODATE_ARGV.to_vec(),
+                exited_with(1, "", &format!("ERROR: {token_url}")),
+            );
+            let rows = PipAdapter::new(runner)
+                .check_updates(&test_instance(), &CheckOptions::default())
+                .await
+                .unwrap()
+                .candidates;
+            let case = format!("{output:?}");
+            assert_eq!(rows.len(), 1, "{case}");
+            assert!(!rows[0].checkable, "{case}");
+            assert_eq!(
+                rows[0].warnings.contains(&Warning::TransientLookupFailure),
+                transient,
+                "{case}: {:?}",
+                rows[0].warnings
+            );
+            let words = format!("{:?}", rows[0].warnings);
+            for secret in ["s3cr3t", "frag", "user", "pw@", "corp.example"] {
+                assert!(!words.contains(secret), "{secret} in {words}");
+            }
+        }
+    }
+
+    /// Answers as pip 26.2.1 does where its only index answers 403
+    /// (`index/collector.py:298-305,371-372`, `commands/list.py:270-285`):
+    /// both lookups exit 0 with `[]`, and the `Could not fetch URL` line is
+    /// on stdout only when pip's verbosity reaches DEBUG (`PIP_VERBOSE` 2,
+    /// `utils/logging.py:284-296`). The plain list names one package.
+    /// Source-derived, not a recording of a real pip.
+    struct SoleIndexRefusesRunner {
+        specs: std::sync::Mutex<Vec<CommandSpec>>,
+        address: String,
+    }
+
+    #[async_trait::async_trait]
+    impl CommandRunner for SoleIndexRefusesRunner {
+        async fn run(
+            &self,
+            spec: CommandSpec,
+            _on_line: Option<crate::runner::LineCallback>,
+            _cancel: CancellationToken,
+        ) -> Result<CommandOutput, crate::runner::RunnerError> {
+            let looks_up = spec
+                .args
+                .iter()
+                .any(|a| a == "--outdated" || a == "--uptodate");
+            let debug = spec
+                .env
+                .iter()
+                .any(|(k, v)| k == "PIP_VERBOSE" && v.parse::<u8>().is_ok_and(|v| v >= 2));
+            self.specs.lock().unwrap().push(spec);
+            Ok(if !looks_up {
+                exited_with(0, r#"[{"name":"corp-tool","version":"2.0"}]"#, "")
+            } else if debug {
+                exited_with(
+                    0,
+                    &format!(
+                        "Getting page {0}\n{1}\n[]\n",
+                        self.address,
+                        http_status_failure(&self.address, "403")
+                    ),
+                    "",
+                )
+            } else {
+                exited_with(0, "[]\n", "")
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn regression_r70_1_sole_index_403_is_unchecked_at_configured_verbosity() {
+        // r25 R70-1: a company index that is the only index answers 403
+        // (access expired). pip exits 0 with `[]`, and the package read
+        // as up to date though its latest version was never had.
+        let runner = Arc::new(SoleIndexRefusesRunner {
+            specs: std::sync::Mutex::new(Vec::new()),
+            address: "https://user:****@corp.example/simple/corp-tool/?token=s3cr3t#frag".into(),
+        });
+        let rows = PipAdapter::new(runner.clone())
+            .check_updates(&test_instance(), &CheckOptions::default())
+            .await
+            .expect("the check answers")
+            .candidates;
+        assert_eq!(rows.len(), 1, "{rows:?}");
+        assert_eq!(rows[0].key.name, "corp-tool");
+        assert!(!rows[0].checkable);
+        assert_eq!(rows[0].current, "2.0");
+        assert!(!rows[0].warnings.contains(&Warning::TransientLookupFailure));
+        let row = format!("{:?}", rows[0]);
+        assert!(row.contains("403"), "{row}");
+        for secret in ["s3cr3t", "frag", "user", "corp.example", "****"] {
+            assert!(!row.contains(secret), "{secret} in {row}");
         }
     }
 
@@ -1286,11 +1773,12 @@ mod tests {
     fn test_final_fetch_failures_count_failures_but_not_an_index_without_the_project() {
         let address = "https://index.example/simple/cowsay/";
         for status in ["403", "404", "410"] {
-            assert_eq!(
-                final_fetch_failures(&http_status_failure(address, status)),
-                vec![],
-                "{status}"
-            );
+            let found = final_fetch_failures(&http_status_failure(address, status));
+            assert_eq!(found.len(), 1, "{status}");
+            assert_eq!(found[0].project, "cowsay");
+            assert_eq!(found[0].kind, Unanswered::NotThere(status.parse().unwrap()));
+            assert!(found[0].words.contains(&format!("HTTP {status}")));
+            assert!(!found[0].words.contains("index.example"));
         }
         let failed = |line: String| {
             let found = final_fetch_failures(&line);
@@ -1301,14 +1789,14 @@ mod tests {
         for status in ["401", "407"] {
             assert_eq!(
                 failed(http_status_failure(address, status)),
-                "pip could not fetch the package index"
+                format!("pip could not fetch the package index (HTTP {status})")
             );
         }
         assert_eq!(
             failed(format!(
                 "Could not fetch URL {address}: 503 Server Error: Service Unavailable for url: {address} - skipping"
             )),
-            "pip could not fetch the package index"
+            "pip could not fetch the package index (HTTP 503)"
         );
         assert_eq!(
             failed(certificate_failure(address)),
@@ -1334,25 +1822,6 @@ mod tests {
                 .expect("read pip list-outdated.json fixture");
         assert_eq!(parse_outdated_stdout(&fixture, "pip:/x").unwrap().len(), 3);
         assert!(parse_outdated_stdout("fetch failed but no JSON", "pip:/x").is_err());
-    }
-
-    /// Records each command it is given and answers the outdated check
-    /// with an empty list.
-    struct SpecRecordingRunner {
-        specs: std::sync::Mutex<Vec<CommandSpec>>,
-    }
-
-    #[async_trait::async_trait]
-    impl CommandRunner for SpecRecordingRunner {
-        async fn run(
-            &self,
-            spec: CommandSpec,
-            _on_line: Option<crate::runner::LineCallback>,
-            _cancel: CancellationToken,
-        ) -> Result<CommandOutput, crate::runner::RunnerError> {
-            self.specs.lock().unwrap().push(spec);
-            Ok(exited_with(0, "[]\n", ""))
-        }
     }
 
     #[tokio::test]
@@ -1415,46 +1884,54 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn regression_the_outdated_check_runs_at_pips_normal_verbosity() {
-        // opus-int finding 4: `-vv` printed a line per file pip skipped,
-        // thousands for numpy alone. The check passes no `-v`, and pins
-        // pip's verbosity against a `pip.conf` that sets it either way.
-        let runner = Arc::new(SpecRecordingRunner {
+    async fn regression_r70_1_both_lookups_run_at_debug_verbosity_in_one_deadline() {
+        // r25 R70-1: an index's HTTP error is said only at DEBUG, so both
+        // lookups pin `-vv` against a `pip.conf` that sets it either way,
+        // and hold only the lines read (opus-int finding 4: `-vv` prints a
+        // line per file pip skips). The `--uptodate` one runs only for a
+        // 403/404/410, once, in what is left of the deadline.
+        let runner = Arc::new(SoleIndexRefusesRunner {
             specs: std::sync::Mutex::new(Vec::new()),
+            address: "https://corp.example/simple/corp-tool/".into(),
         });
-        let adapter = PipAdapter::new(runner.clone());
-        adapter
+        PipAdapter::new(runner.clone())
             .check_updates(&test_instance(), &CheckOptions::default())
             .await
             .unwrap();
         let specs = runner.specs.lock().unwrap();
-        // The plain list read for the check's deadline, then the check.
-        assert_eq!(specs.len(), 2);
+        // The plain list read for the check's deadline, the check, and
+        // the one confirmation.
+        assert_eq!(specs.len(), 3);
         assert_eq!(
             specs[0].args,
             ["-m", "pip", "list", "--format=json", "--not-required"]
         );
-        let specs = &specs[1..];
-        assert_eq!(
-            specs[0].args,
-            [
-                "-m",
-                "pip",
-                "list",
-                "--outdated",
-                "--not-required",
-                "--format=json"
-            ]
-        );
-        assert!(!specs[0].args.iter().any(|a| a.starts_with("-v")));
-        assert_eq!(
-            specs[0].env,
-            [
-                ("PIP_QUIET".to_string(), "0".to_string()),
-                ("PIP_VERBOSE".to_string(), "0".to_string()),
-                ("PIP_RETRIES".to_string(), "5".to_string())
-            ]
-        );
+        for (spec, lookup) in specs[1..].iter().zip(["--outdated", "--uptodate"]) {
+            assert_eq!(
+                spec.args,
+                [
+                    "-m",
+                    "pip",
+                    "list",
+                    lookup,
+                    "--not-required",
+                    "--format=json"
+                ]
+            );
+            assert!(!spec.args.iter().any(|a| a.starts_with("-v")));
+            assert_eq!(
+                spec.env,
+                [
+                    ("PIP_QUIET".to_string(), "0".to_string()),
+                    ("PIP_VERBOSE".to_string(), "2".to_string()),
+                    ("PIP_RETRIES".to_string(), "5".to_string())
+                ]
+            );
+            assert_eq!(spec.output_use, OutputUse::PipLookup);
+        }
+        // One package: 60 s and 1.5 s more, rounded up.
+        assert_eq!(specs[1].timeout, Duration::from_secs(62));
+        assert!(specs[2].timeout <= specs[1].timeout && !specs[2].timeout.is_zero());
     }
 
     #[test]
@@ -2738,6 +3215,15 @@ mod tests {
         "--not-required",
         "--format=json",
     ];
+    const UPTODATE_ARGV: [&str; 7] = [
+        "/opt/homebrew/bin/python3.14",
+        "-m",
+        "pip",
+        "list",
+        "--uptodate",
+        "--not-required",
+        "--format=json",
+    ];
     const NOT_REQUIRED_ARGV: [&str; 6] = [
         "/opt/homebrew/bin/python3.14",
         "-m",
@@ -2851,10 +3337,12 @@ mod tests {
                 GaveUp {
                     project: "cowsay".to_string(),
                     words: without_object_reprs(NO_DNS),
+                    kind: Unanswered::Failed,
                 },
                 GaveUp {
                     project: "pyyaml".to_string(),
                     words: HUNG_UP.to_string(),
+                    kind: Unanswered::Failed,
                 },
             ]
         );
@@ -3035,9 +3523,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_check_updates_keeps_what_pip_listed_when_the_plain_list_then_fails() {
-        // a2 review 4: the extra `pip list` failing used to fail the
-        // whole source, throwing away the answers pip did give.
+    async fn regression_r70_1_a_failed_lookup_with_no_package_list_fails_the_check() {
+        // a2 review 4 kept the answers pip gave when the plain list then
+        // failed too, and the packages it could not name read as up to
+        // date. r25 R70-1: a check that cannot say which packages it
+        // failed to look up fails, so the source says so (an error over
+        // the source, no 「已是最新」) and the next check starts over.
         let runner = Arc::new(MockRunner::new());
         runner.respond(
             OUTDATED_ARGV.to_vec(),
@@ -3056,15 +3547,10 @@ mod tests {
             ),
         );
         let adapter = PipAdapter::new(runner.clone());
-        let candidates = adapter
+        let failed = adapter
             .check_updates(&test_instance(), &CheckOptions::default())
-            .await
-            .expect("the answers pip gave are kept")
-            .candidates;
-        assert_eq!(candidates.len(), 1, "{candidates:?}");
-        assert_eq!(candidates[0].key.name, "black");
-        assert!(candidates[0].checkable);
-        assert_eq!(candidates[0].target, "24.10.0");
+            .await;
+        assert!(failed.is_err(), "{failed:?}");
         // Failed before the check too, which then had its 60 s.
         assert_eq!(
             runner.calls(),

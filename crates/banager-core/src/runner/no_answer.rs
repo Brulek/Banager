@@ -62,7 +62,11 @@ pub fn of(result: &Result<CommandOutput, RunnerError>) -> Option<NoAnswer> {
         Err(RunnerError::NotFound(_) | RunnerError::Spawn(_)) => {
             (NoAnswerKind::CouldNotStart, None)
         }
-        Err(RunnerError::NoMock(_) | RunnerError::OutputTooLarge { .. }) => return None,
+        Err(
+            RunnerError::NoMock(_)
+            | RunnerError::OutputTooLarge { .. }
+            | RunnerError::OutputIncomplete,
+        ) => return None,
         Ok(output) if output.cancelled => return None,
         Ok(output) if output.timed_out => (NoAnswerKind::TimedOut, None),
         Ok(output) => match output.exit_code {

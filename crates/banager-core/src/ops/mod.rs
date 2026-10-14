@@ -68,6 +68,7 @@ fn execute_error_outcome(e: AdapterError) -> Outcome {
         },
         AdapterError::Runner(RunnerError::NoMock(_))
         | AdapterError::Runner(RunnerError::OutputTooLarge { .. })
+        | AdapterError::Runner(RunnerError::OutputIncomplete)
         | AdapterError::CommandFailed { .. }
         | AdapterError::Parse(_)
         | AdapterError::Refused(_)

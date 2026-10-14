@@ -1032,32 +1032,36 @@ fn test_what_we_run_shows_the_question_pip_asks_before_running_a_usr_bin_shim() 
 
 #[test]
 fn test_what_we_run_shows_the_environment_of_pips_outdated_check_and_no_verbosity_flag() {
-    // `PipAdapter::check_updates` runs `pip list --outdated` with
-    // `PipAdapter::OUTDATED_ENV` and no `-v` (opus-int findings 3 and 4:
-    // `-vv` counted an extra index's 404s as failed lookups and printed a
-    // line for every file pip skipped). pip's section has to show each
-    // variable in the outdated row of its table, and that row must not
-    // show a verbosity flag the check no longer passes.
+    // `PipAdapter::check_updates` runs `pip list --outdated`, and where an
+    // index answered 403, 404 or 410 `pip list --uptodate`, with
+    // `PipAdapter::OUTDATED_ENV` and no `-v` (r25 R70-1: debug verbosity
+    // from the environment, its chatter dropped as it is read). pip's
+    // section has to show each variable in both rows of its table, and
+    // neither row may show a verbosity flag the check does not pass.
     let doc = read_doc();
     let body =
         section_body(&doc, "pip").expect("docs/what-we-run.md has no `## pip` section for pip");
-    let row = body
-        .lines()
-        .find(|line| {
-            line.starts_with('|')
-                && line.contains("pip list --outdated --not-required --format=json")
-        })
-        .expect("pip's table in docs/what-we-run.md has no `pip list --outdated` row");
-    for (name, value) in PipAdapter::OUTDATED_ENV {
+    for lookup in ["--outdated", "--uptodate"] {
+        let row = body
+            .lines()
+            .find(|line| {
+                line.starts_with('|')
+                    && line.contains(&format!("pip list {lookup} --not-required --format=json"))
+            })
+            .unwrap_or_else(|| {
+                panic!("pip's table in docs/what-we-run.md has no `pip list {lookup}` row")
+            });
+        for (name, value) in PipAdapter::OUTDATED_ENV {
+            assert!(
+                row.contains(&format!("`{name}={value}`")),
+                "pip's {lookup} row in docs/what-we-run.md does not show {name}={value}, which PipAdapter::OUTDATED_ENV holds: {row}"
+            );
+        }
         assert!(
-            row.contains(&format!("`{name}={value}`")),
-            "pip's outdated row in docs/what-we-run.md does not show {name}={value}, which PipAdapter::OUTDATED_ENV holds: {row}"
+            !row.contains(" -v"),
+            "pip's {lookup} row in docs/what-we-run.md shows a verbosity flag check_updates does not pass: {row}"
         );
     }
-    assert!(
-        !row.contains("-v"),
-        "pip's outdated row in docs/what-we-run.md shows a verbosity flag check_updates does not pass: {row}"
-    );
 }
 
 #[test]

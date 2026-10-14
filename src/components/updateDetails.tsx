@@ -45,7 +45,12 @@ export function detailLines(lines: ReactNode[]): ReactNode {
  * (`TransientLookupFailure`) says to check again later -- but not after a
  * cause whose own line already says what to do. A row no check will mend
  * (a 404, a tool not looked up on this Mac, `NonRegistrySource`) says no
- * such thing.
+ * such thing. Its `Message`s, distinct, can be copied (Copy Error
+ * Details) whatever "Show technical details" says, to send to someone who
+ * can help: a pip index that refused the check says why only there (r25
+ * R70-1). They are the words the row shows with technical details on; an
+ * adapter keeps an address's login and token out of them (pip's
+ * `without_addresses`).
  */
 export function cannotCheckDetail(
   t: TFunction,
@@ -77,21 +82,30 @@ export function cannotCheckDetail(
       causeSaid = true;
     }
   }
-  if (showTechnicalDetails) {
-    for (const warning of candidate.warnings) {
-      const raw = warningMessage(warning);
-      if (raw !== null && raw !== "") reasons.add(raw);
-    }
+  const details = new Set<string>();
+  for (const warning of candidate.warnings) {
+    const raw = warningMessage(warning);
+    if (raw !== null && raw !== "") details.add(raw);
   }
+  if (showTechnicalDetails) for (const raw of details) reasons.add(raw);
   const tryLater = candidate.warnings.includes("TransientLookupFailure") && !causeSaid;
   // Not "Couldn't find its latest version." over a tool Banager does not
   // look up on this Mac: nothing was tried; its own line says so.
   const notLookedUp = candidate.warnings.includes("NotLookedUpHere");
-  return detailLines([
+  const lines = detailLines([
     ...(notLookedUp ? [] : [t("updates.cannotCheckShort")]),
     ...reasons,
     ...(tryLater ? [t("warnings.transientLookupFailure")] : []),
   ]);
+  if (details.size === 0) return lines;
+  return (
+    <>
+      {lines}
+      <span data-detail-copy="" className="mt-1.5 flex justify-start">
+        <CopyButton text={[...details].join("\n")} label={t("failureRecovery.copy")} />
+      </span>
+    </>
+  );
 }
 
 /**
