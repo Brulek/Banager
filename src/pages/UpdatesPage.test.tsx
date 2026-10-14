@@ -4567,6 +4567,89 @@ describe("UpdatesPage", () => {
         expect(container.textContent).not.toMatch(/brew:\//);
       });
 
+      // R87-3: a reload (the error screen's Reload) forgets `opFinishedAt`;
+      // Rust still lists the operation, and the history its record.
+      describe("an update of this launch, after the web view reloads", () => {
+        const at = (day: number, hour: number, minute = 0) => new Date(2026, 8, day, hour, minute).getTime();
+        const glibHere = (finishedAt: number, fields: Partial<HistoryRecord> = {}) =>
+          kept("glib", finishedAt, { run: "this-launch", op_id: 7, to_version: "2.90.0", ...fields });
+
+        beforeEach(() => {
+          vi.useFakeTimers({ toFake: ["Date"] });
+          vi.setSystemTime(new Date(2026, 8, 28, 15, 0));
+          operations = [operation(glibKey, { status: "Done", outcome: "Succeeded" })];
+          updates = [snapshot.updates[1]];
+          artifacts = [installed(glibKey, "2.90.0"), installed(onyxKey, "5.0.2")];
+        });
+
+        async function shownLines() {
+          const section = await screen.findByRole("region", { name: "Update History" });
+          await waitFor(() => expect(within(section).getAllByRole("listitem")).toHaveLength(2));
+          return within(section).getAllByRole("listitem");
+        }
+
+        it("keeps the saved completion date and newest-first order", async () => {
+          answerHistory({
+            run: "this-launch",
+            cleared_before: null,
+            records: [glibHere(at(28, 14, 30)), kept("cmake", at(27, 9))],
+          });
+          useUiStore.setState(useUiStore.getInitialState());
+          renderPage();
+
+          const lines = await shownLines();
+          expect(lines.map((line) => line.querySelector("span[title]")?.textContent)).toEqual(["glib", "cmake"]);
+          const time = lines[0].querySelector("time");
+          expect(time).toHaveAttribute("dateTime", new Date(at(28, 14, 30)).toISOString());
+          expect(time?.textContent).toBe(`Today ${new Intl.DateTimeFormat("en", { timeStyle: "short" }).format(at(28, 14, 30))}`);
+          expect(time?.getAttribute("title")).not.toBe("");
+        });
+
+        it("prefers the matching record of this launch to the event's time", async () => {
+          answerHistory({
+            run: "this-launch",
+            cleared_before: null,
+            records: [glibHere(at(28, 14, 30)), kept("cmake", at(27, 9))],
+          });
+          useUiStore.setState({ ...useUiStore.getInitialState(), opFinishedAt: { 7: at(26, 9) } });
+          renderPage();
+
+          const lines = await shownLines();
+          expect(lines.map((line) => line.querySelector("span[title]")?.textContent)).toEqual(["glib", "cmake"]);
+          expect(lines[0].querySelector("time")).toHaveAttribute("dateTime", new Date(at(28, 14, 30)).toISOString());
+        });
+
+        it("uses the event's time until this launch's record comes, not one of another launch with the same number", async () => {
+          answerHistory({
+            run: "this-launch",
+            cleared_before: null,
+            records: [kept("glib", at(25, 9), { run: "earlier", op_id: 7 }), kept("cmake", at(27, 9))],
+          });
+          useUiStore.setState({ ...useUiStore.getInitialState(), opFinishedAt: { 7: at(26, 9) } });
+          const { queryClient } = renderPage();
+
+          let lines = await shownLines();
+          expect(lines.map((line) => line.querySelector("span[title]")?.textContent)).toEqual(["cmake", "glib"]);
+          expect(lines[1].querySelector("time")).toHaveAttribute("dateTime", new Date(at(26, 9)).toISOString());
+
+          act(() => {
+            queryClient.setQueryData(queryKeys.history, {
+              run: "this-launch",
+              cleared_before: null,
+              records: [glibHere(at(28, 14, 30)), kept("cmake", at(27, 9))],
+            });
+          });
+          await waitFor(() =>
+            expect(within(justUpdated()!).getAllByRole("listitem").map((line) => line.querySelector("span[title]")?.textContent)).toEqual([
+              "glib",
+              "cmake",
+            ]),
+          );
+          lines = within(justUpdated()!).getAllByRole("listitem");
+          expect(lines[0].querySelector("time")).toHaveAttribute("dateTime", new Date(at(28, 14, 30)).toISOString());
+        });
+      });
+
       it("says 今天 and 9月20日 in Chinese, the time right after 今天 (text-autospace draws the gap)", async () => {
         vi.useFakeTimers({ toFake: ["Date"] });
         vi.setSystemTime(new Date(2026, 8, 28, 15, 0));
