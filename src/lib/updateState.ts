@@ -279,7 +279,7 @@ export function countedUpdatesOf(
  * list that may be out of date; it is still downloading (`IndexUpdating`),
  * so they were not checked this time at all; or the launcher is left
  * without its program (`LauncherOnly`), so there is no installed version
- * to check; or pipx left some tools it could not read out of its list
+ * to check; or pipx or uv left some tools it could not read out of its list
  * (`SomeNotListed`), so those were not checked; or Homebrew left some
  * installed formulae out of its list (`FormulaeNotListed`), so those were
  * not checked either. The four PATH notes are
@@ -357,7 +357,7 @@ export function upToDateIsKnown(instance: ManagerInstance, errors: SourceError[]
  * Of the notes that leave a source's updates unchecked
  * (`NOTE_LEAVES_UPDATES_UNCHECKED`), those after which it was still
  * checked in part: against a copy of Homebrew's list of software that may
- * be out of date (`IndexMayBeStale`), every tool pipx could read
+ * be out of date (`IndexMayBeStale`), every tool pipx or uv could read
  * (`SomeNotListed`), and every formula Homebrew listed
  * (`FormulaeNotListed`). A list still downloading
  * (`IndexUpdating`) and a launcher without its program (`LauncherOnly`)
@@ -399,7 +399,8 @@ const UNAVAILABLE_EVERY_TIME: Record<Unavailable, boolean> = {
  * Of the notes that leave a source's updates unchecked, those the next
  * check finds the same way: a launcher left without its program
  * (`LauncherOnly`), until the user reinstalls or uninstalls it, and tools
- * pipx could not read (`SomeNotListed`), until the user fixes them, and
+ * pipx could not read (`SomeNotListed`), until the user fixes them -- not
+ * uv's, which the Overview names all the same (`namedEachTime`) -- and
  * formulae Homebrew left out of its list (`FormulaeNotListed`), until the
  * user trusts their tap. A list
  * still downloading or out of date is news of this check.
@@ -431,8 +432,20 @@ function uncheckedEveryTime(instance: ManagerInstance): boolean {
   return (
     updatesUnchecked(instance) ||
     (unavailable !== null && UNAVAILABLE_EVERY_TIME[unavailable]) ||
-    notes.some((note) => NOTE_UNCHECKED_EVERY_TIME[note])
+    notes.some((note) => NOTE_UNCHECKED_EVERY_TIME[note] && !namedEachTime(instance, note))
   );
+}
+
+/**
+ * Whether `note` on `instance`, though the next check may find it the same
+ * way, is news the Overview names all the same: tools uv left out of its
+ * list (`SomeNotListed` on uv, r81 R81-1). uv says so only on stderr and
+ * exits 0, so the source otherwise looks checked; naming it keeps "Everything
+ * you can update here is up to date" away, which would claim those tools.
+ * pipx's, which its own failed list says, keeps its earlier reading.
+ */
+function namedEachTime(instance: ManagerInstance, note: InstanceNote): boolean {
+  return note === "SomeNotListed" && instance.adapter_id === "uv";
 }
 
 /**

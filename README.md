@@ -75,6 +75,8 @@ a protected place**, and the link is not followed.
   gives one, the name it suggests instead. A newer version of a disabled one, which `brew outdated`
   still lists, is held back on the Updates page as **Disabled**, with no Update button. The details also list a formula's other installed versions
   and Homebrew's own notes, in English, folded.
+- When uv reports tools it could not read, the other tools remain listed, a notice explains the omission and
+  gives the command that shows uv's own words, and the check is shown as incomplete.
 - After each check Banager measures, read-only, how much disk the tools take: a tool's details show its
   size once measured, the Installed page can be sorted **By Size**, and sorted by source a heading says
   what that source's measured tools take in all.
@@ -223,8 +225,8 @@ page with its search box focused, and Settings… (⌘,) is in the Banager menu.
 or minimized, each of these brings it back first. **Keyboard Shortcuts** in the Help menu lists the
 keys Banager answers to, in three groups: the window's (these, Close Window and Quit), the lists' (↑ ↓
 and the keys that page or jump to an end, Space to tick a row, Return and Escape for Installed's
-details, Tab) and the dialogs' (Return, Escape). **Common Questions**, above it, answers fourteen questions
-in a few plain sentences each — a command Terminal can't find, why some tools can't be updated here,
+details, Tab) and the dialogs' (Return, Escape). **Common Questions**, above it, answers fifteen questions
+in a few plain sentences each — a command Terminal can't find, uv tools missing from the list, why some tools can't be updated here,
 "Installed twice", the Mac password, what an uninstall leaves, what keeps a tool from being uninstalled, what Banager itself changes, Other
 Programs, sizes, major updates, an update's warning, a background service after its update, the automatic check and
 Canager's settings — with a button named for the page it opens
@@ -612,6 +614,7 @@ formula 与 cask，以及 npm、PyPI、crates.io 上的包，每条都译自该�
 - Homebrew 停用或弃用了的软件会标出来，并说明这意味着什么；Homebrew 给了建议时，也写出建议改用哪个。已停用的软件
   `brew outdated` 仍会列出新版本，更新页把它标为“已停用”，不给“更新”按钮。详情里还列出 formula
   装着的其他版本，以及 Homebrew 自己的英文说明（默认收起）。
+- uv 报告部分工具无法读取时，其余工具仍会显示，提示会说明遗漏情况，并给出查看 uv 原话的命令，这次检查也会显示为未完成。
 - 每次检查后，Banager 以只读方式计算各工具占用的磁盘空间：算好后详情里能看到，“已安装”页可以“按大小”排序，
   按来源排序时，来源标题后写着它算出大小的工具一共占多少。
 - “已安装”页也可以“按安装日期”排序，最近装的在前。只有 Homebrew 记录安装日期，其他来源的工具排在 Homebrew 的
@@ -716,7 +719,7 @@ Banager 开着时还会每天做一次同样的检查，查到的更新都不安
 “搜索”（⌘F），后者打开“已安装”页，并把光标放进搜索框；“设置…”（⌘,）在“Banager”菜单里。窗口关着或最小化时，
 选这些项会先把窗口叫回来。菜单栏“帮助”里的“键盘快捷键”列出 Banager 里能用的按键，分三组：窗口（上面这些，再加
 “关闭窗口”和“退出”）、列表（↑ ↓、翻页和跳到两头的键、用空格键勾选一行、在“已安装”里用回车和 Esc 打开和关闭详细信息、Tab）
-和对话框（回车、Esc）。它上面的“常见问题”用几句大白话回答十四个常见问题：终端里找不到命令、为什么有的工具不能在这里更新、
+和对话框（回车、Esc）。它上面的“常见问题”用几句大白话回答十五个常见问题：终端里找不到命令、为什么有些 uv 工具没有显示、为什么有的工具不能在这里更新、
 “装了两份”、Mac 密码、卸载后留下什么、什么会让工具不能卸载、Banager 自己会改动什么、“其他程序”、占用空间、大版本更新、更新后的警告、更新后台服务、自动检查和
 Canager 的设置；
 能动手处理的，旁边有“查看”按钮，直接打开对应的页面或“已安装”里的显示选项。

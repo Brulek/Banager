@@ -2782,6 +2782,37 @@ itself, under uv's own configuration.
 | List installed tools while an uninstall is previewed (`plan`) | `<uv> tool list --show-paths` | 60 s |
 | List installed tools right before an uninstall runs (`execute`) | `<uv> tool list --show-paths` | 600 s, the uninstall's own |
 
+**Tools uv leaves out.** Both list formats walk the same tools, and uv
+skips one it cannot read -- a receipt that does not parse, an environment
+that is gone or answers with an error (its Python removed, a link to a
+Python that is gone), a version that does not read -- and, before that, a
+folder in its tools folder whose name is no package name. It writes one
+line on stderr for each and still exits 0 (source-reviewed in uv 0.12.23
+`crates/uv/src/commands/tool/list.rs:60-104` and
+`crates/uv-tool/src/lib.rs:145-179, 246-295`; not yet seen on a Mac).
+When uv reports that it omitted tools or tool directories, Banager keeps
+the tools it could list and shows an incomplete-list notice, including
+when the list is empty (`left_out_tools` and `ToolList` in
+`crates/banager-core/src/adapters/uv.rs`; the source's
+`InstanceNote::SomeNotListed`, from both the inventory and the update
+check). The source then counts as not fully checked: the Overview names
+it, and Updates does not say everything is up to date. The notice gives
+the existing list command, `<uv> tool list --show-paths`, this uv by path,
+so you can read uv's diagnostic details in Terminal; Banager does not
+repair the omitted tools. An incomplete list cannot confirm that an
+omitted tool was removed, or establish that its uninstall is safe: after
+an operation such a list does not say the tool is gone, its update found
+by an earlier check stays while a check fails, no uninstall preview is
+built when that preview's list omits its target, and Banager does not run
+a saved uninstall when the list read right before it omits its target.
+A tool the list does name, beside another one left out, is looked at as
+ever. Nor does an uninstall preview of something a uv or pipx tool may
+run on (a Homebrew Python) take such a list as all of that source's
+tools (`needed_by::subject`). Only those lines count: another warning on
+stderr is no tool left out, and nothing in them -- a suggested command, a
+path -- is run or opened. Arguments, environment and timeouts are those in
+the table above.
+
 If `uv tool list --outdated` exits non-zero, `<uv> tool list --show-paths`
 is run once more so every installed tool can be listed as "could not
 check", with the reason — one more process than the table shows, on that

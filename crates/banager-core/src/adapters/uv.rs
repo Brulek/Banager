@@ -1,13 +1,13 @@
 use crate::adapters::{
     ensure_instance_match, lookup_failure_reason, reconcile_from, run_plan, second_token,
     uncheckable_from_inventory, validate_package_name, Adapter, AdapterError, AdapterMeta,
-    CheckOptions, CheckOutcome, LookupFailure,
+    CheckOptions, CheckOutcome, InventoryOutcome, LookupFailure,
 };
 use crate::events::{EventSink, OpId};
 use crate::model::{
     ArtifactFacts, ArtifactKey, ArtifactKind, CancelPolicy, CommandInputs, InstallReason,
-    InstalledArtifact, InstanceStatus, ManagerInstance, OpKind, OpRequest, Outcome, Plan,
-    PlanAction, ProvidedCommand, Reconciled, ResourceLock, Scope, SearchHit, Unavailable,
+    InstalledArtifact, InstanceNote, InstanceStatus, ManagerInstance, OpKind, OpRequest, Outcome,
+    Plan, PlanAction, ProvidedCommand, Reconciled, ResourceLock, Scope, SearchHit, Unavailable,
     UninstallBlocked, UninstallScope, UpdateCandidate, UpdateChannel, Warning,
 };
 use crate::protected::{self, Protected, Resolution};
@@ -163,6 +163,70 @@ fn require_parsed_tools(text: &str, count: usize) -> Result<(), AdapterError> {
         ));
     }
     Ok(())
+}
+
+/// Whether a `uv tool list` that exited 0 left a tool out, by what it wrote
+/// on stderr. Both formats walk the same tools (uv 0.12.23
+/// `crates/uv/src/commands/tool/list.rs:60-104`) and skip, with a line
+/// each, a tool whose receipt does not read (`Ignoring malformed tool
+/// `name` (run `uv tool uninstall name` to remove)`), whose environment is
+/// gone or answers with an error -- its Python removed among them,
+/// `uv-tool/src/lib.rs:246-295` -- or whose version does not read (`...
+/// (run `uv tool install name --reinstall` to reinstall)`), or whose
+/// version read fails otherwise (`Failed find package `name` in tool
+/// environment`, `Failed to read tool environment packages at ...`); and
+/// before any of that, a folder whose name is no package name
+/// (`InstalledTools::tools`, `lib.rs:145-179`, `Ignoring tool directory
+/// ... with an invalid package name`). Every line is read, so a `No tools
+/// installed` after one of them does not hide it. Any other stderr -- a
+/// warning about something else -- is no tool left out. Read only: a
+/// command these lines suggest is never run, nor a path in them looked at.
+fn left_out_tools(stderr: &str) -> bool {
+    stderr.lines().any(|line| {
+        let line = line.trim_start();
+        let line = line.strip_prefix("warning: ").unwrap_or(line);
+        (line.contains("(run `uv tool install ") && line.ends_with("--reinstall` to reinstall)"))
+            || (line.starts_with("Ignoring malformed tool `")
+                && line.contains("(run `uv tool uninstall ")
+                && line.ends_with("` to remove)"))
+            || (line.starts_with("Ignoring tool directory `")
+                && line.contains("` with an invalid package name"))
+            || line.starts_with("Failed find package `")
+            || line.starts_with("Failed to read tool environment packages at `")
+    })
+}
+
+/// What one `uv tool list --show-paths` that exited 0 listed
+/// (`UvAdapter::tools_in`).
+struct ToolList {
+    artifacts: Vec<InstalledArtifact>,
+    /// uv left some tool out (`left_out_tools`): a tool missing from
+    /// `artifacts` may still be installed. The source's
+    /// `InstanceNote::SomeNotListed`.
+    left_out: bool,
+}
+
+impl ToolList {
+    fn notes(&self) -> Vec<InstanceNote> {
+        if self.left_out {
+            vec![InstanceNote::SomeNotListed]
+        } else {
+            Vec::new()
+        }
+    }
+
+    /// Whether the tool `name` is listed, or, when it is not, whether that
+    /// says it is gone: `None` when uv left some tool out and `name` is not
+    /// listed -- it may be the one left out.
+    fn lists(&self, name: &str) -> Option<bool> {
+        if self.artifacts.iter().any(|a| a.key.name == name) {
+            Some(true)
+        } else if self.left_out {
+            None
+        } else {
+            Some(false)
+        }
+    }
 }
 
 /// Until compatible-target resolution is available, a saved constraint
@@ -565,16 +629,25 @@ impl UvAdapter {
         &self,
         inst: &ManagerInstance,
     ) -> Result<Vec<InstalledArtifact>, AdapterError> {
-        self.inventory_at(&inst.exe_path, &inst.id).await
+        Ok(self.listing(inst).await?.artifacts)
     }
 
-    async fn inventory_at(
+    /// `inventory`, with whether uv left a tool out (`ToolList`).
+    pub async fn inventory_with_notes(
         &self,
-        program: &Path,
-        instance_id: &str,
-    ) -> Result<Vec<InstalledArtifact>, AdapterError> {
+        inst: &ManagerInstance,
+    ) -> Result<InventoryOutcome, AdapterError> {
+        let list = self.listing(inst).await?;
+        Ok(InventoryOutcome {
+            notes: list.notes(),
+            complete: !list.left_out,
+            artifacts: list.artifacts,
+        })
+    }
+
+    async fn listing(&self, inst: &ManagerInstance) -> Result<ToolList, AdapterError> {
         let output = self
-            .list_tools(program, Self::LIST_TIMEOUT, CancellationToken::new())
+            .list_tools(&inst.exe_path, Self::LIST_TIMEOUT, CancellationToken::new())
             .await?;
         if output.exit_code != Some(0) {
             return Err(AdapterError::CommandFailed {
@@ -582,7 +655,7 @@ impl UvAdapter {
                 stderr: output.stderr,
             });
         }
-        self.tools_in(&output.stdout, instance_id, program)
+        self.tools_in(&output, &inst.id, &inst.exe_path)
     }
 
     /// How long an inventory's `uv tool list --show-paths` and a check's
@@ -611,27 +684,31 @@ impl UvAdapter {
     }
 
     /// The tools a `uv tool list --show-paths` that exited 0 printed, read
-    /// for the uv at `program`: the tool that uv is in, when it installed
-    /// itself (`own_tool_environment`), is `UninstallBlocked::SourceProgram`.
+    /// for the uv at `program`, and whether its stderr says it left one out
+    /// (`left_out_tools`): the tool that uv is in, when it installed itself
+    /// (`own_tool_environment`), is `UninstallBlocked::SourceProgram`.
     fn tools_in(
         &self,
-        stdout: &str,
+        output: &CommandOutput,
         instance_id: &str,
         program: &Path,
-    ) -> Result<Vec<InstalledArtifact>, AdapterError> {
+    ) -> Result<ToolList, AdapterError> {
         let uninstall_blocked = self.uninstall_blocked();
-        let artifacts = parse_tool_list_show_paths(stdout, instance_id);
-        require_parsed_tools(stdout, artifacts.len())?;
-        Ok(super::block_own_tool(
-            artifacts
-                .into_iter()
-                .map(|artifact| InstalledArtifact {
-                    uninstall_blocked,
-                    ..artifact
-                })
-                .collect(),
-            (self.own_tool_fn)(program).as_deref(),
-        ))
+        let artifacts = parse_tool_list_show_paths(&output.stdout, instance_id);
+        require_parsed_tools(&output.stdout, artifacts.len())?;
+        Ok(ToolList {
+            artifacts: super::block_own_tool(
+                artifacts
+                    .into_iter()
+                    .map(|artifact| InstalledArtifact {
+                        uninstall_blocked,
+                        ..artifact
+                    })
+                    .collect(),
+                (self.own_tool_fn)(program).as_deref(),
+            ),
+            left_out: left_out_tools(&output.stderr),
+        })
     }
 
     pub async fn check_updates(
@@ -660,15 +737,28 @@ impl UvAdapter {
                 lookup_failure_reason("uv tool list --outdated", output.exit_code, &output.stderr),
                 &output.stderr,
             );
-            let installed = self.inventory(inst).await?;
-            return Ok(
-                uncheckable_from_inventory(&installed, UpdateChannel::Native, &failure).into(),
-            );
+            let list = self.listing(inst).await?;
+            return Ok(CheckOutcome {
+                candidates: uncheckable_from_inventory(
+                    &list.artifacts,
+                    UpdateChannel::Native,
+                    &failure,
+                ),
+                notes: list.notes(),
+            });
         }
         let mut candidates = parse_tool_list_outdated(&output.stdout, &inst.id);
         require_parsed_tools(&output.stdout, candidates.len())?;
+        // `--outdated` walks the same tools `--show-paths` does and skips
+        // the same ones, with the same lines (`left_out_tools`): an empty
+        // answer then is no "everything up to date" for the tools it left
+        // out, and the source says so (`InstanceNote::SomeNotListed`), as
+        // pipx's does.
+        let mut left_out = left_out_tools(&output.stderr);
         if !candidates.is_empty() {
-            let installed = self.inventory(inst).await?;
+            let list = self.listing(inst).await?;
+            left_out |= list.left_out;
+            let installed = list.artifacts;
             for candidate in &mut candidates {
                 let requirement = installed
                     .iter()
@@ -685,7 +775,14 @@ impl UvAdapter {
                 }
             }
         }
-        Ok(candidates.into())
+        Ok(CheckOutcome {
+            candidates,
+            notes: if left_out {
+                vec![InstanceNote::SomeNotListed]
+            } else {
+                Vec::new()
+            },
+        })
     }
 
     pub async fn search(
@@ -743,9 +840,21 @@ impl UvAdapter {
             let read = self
                 .list_tools(&inst.exe_path, Self::LIST_TIMEOUT, CancellationToken::new())
                 .await?;
+            //
+            // A list that answered but left tools out, and not this one
+            // (`ToolList::lists`), says nothing of its commands either, and
+            // this time the run's look could not say more: the tool's
+            // receipt still names its commands, which `uv tool uninstall`
+            // removes whatever they now lead to (uv 0.12.23
+            // `commands/tool/uninstall.rs:125-147`). No preview.
             if !read.timed_out && !read.cancelled && read.exit_code == Some(0) {
-                let installed = self.tools_in(&read.stdout, &inst.id, &inst.exe_path)?;
-                if let Some(path) = taken_of(&installed, &req.name) {
+                let list = self.tools_in(&read, &inst.id, &inst.exe_path)?;
+                if list.lists(&req.name).is_none() {
+                    return Err(AdapterError::Refused(
+                        "uv left this tool out of its list".into(),
+                    ));
+                }
+                if let Some(path) = taken_of(&list.artifacts, &req.name) {
                     return Err(AdapterError::UninstallUnsafe {
                         path: shown(&path),
                         reason: crate::model::UninstallUnsafeReason::CaskLinkNotOwned,
@@ -857,8 +966,9 @@ impl UvAdapter {
                         super::ReadBeforeRun::Answered(output) => output,
                         super::ReadBeforeRun::Ends(outcome) => return Ok(outcome),
                     };
-                    self.tools_in(&output.stdout, &plan.request.instance_id, program)
+                    self.tools_in(&output, &plan.request.instance_id, program)
                         .ok()
+                        .map(|list| list.artifacts)
                         .filter(|installed| {
                             // A command taken over since the preview, which
                             // the preview did not say the update takes back
@@ -913,14 +1023,19 @@ impl UvAdapter {
                     super::ReadBeforeRun::Answered(output) => output,
                     super::ReadBeforeRun::Ends(outcome) => return Ok(outcome),
                 };
-                let Ok(installed) =
-                    self.tools_in(&output.stdout, &plan.request.instance_id, program)
+                // A list that left tools out and not this one names none of
+                // its commands to look at (`plan`'s refusal): not what was
+                // shown, so nothing runs.
+                let Some(installed) = self
+                    .tools_in(&output, &plan.request.instance_id, program)
+                    .ok()
+                    .filter(|list| list.lists(&plan.request.name).is_some())
                 else {
                     return Ok(Outcome::BanagerFailed(
                         crate::model::Fault::ChangedSinceShown,
                     ));
                 };
-                if let Some(path) = taken_of(&installed, &plan.request.name) {
+                if let Some(path) = taken_of(&installed.artifacts, &plan.request.name) {
                     return Ok(Outcome::BanagerFailed(crate::model::Fault::PathChanged {
                         path: shown(&path),
                     }));
@@ -935,8 +1050,15 @@ impl UvAdapter {
         inst: &ManagerInstance,
         key: &ArtifactKey,
     ) -> Result<Reconciled, AdapterError> {
-        let artifacts = self.inventory(inst).await?;
-        Ok(reconcile_from(artifacts, key))
+        // A list that left tools out is no proof that one it does not
+        // list is gone (`ToolList::lists`).
+        let list = self.listing(inst).await?;
+        if list.lists(&key.name).is_none() {
+            return Err(AdapterError::Refused(
+                "uv left tools out of its list".into(),
+            ));
+        }
+        Ok(reconcile_from(list.artifacts, key))
     }
 }
 
@@ -955,6 +1077,13 @@ impl Adapter for UvAdapter {
         inst: &ManagerInstance,
     ) -> Result<Vec<InstalledArtifact>, AdapterError> {
         UvAdapter::inventory(self, inst).await
+    }
+
+    async fn inventory_with_notes(
+        &self,
+        inst: &ManagerInstance,
+    ) -> Result<InventoryOutcome, AdapterError> {
+        UvAdapter::inventory_with_notes(self, inst).await
     }
 
     async fn check_updates(
@@ -2648,5 +2777,233 @@ ruff v0.15.0 (/Users/someone/.local/share/uv/tools/ruff)
         );
         assert!(ruffs.refused(ruffs.preview().await));
         assert_eq!(ruffs.uninstalls(), 0);
+    }
+
+    /// What uv 0.12.23 writes on stderr when `uv tool list` skips a tool
+    /// (`commands/tool/list.rs:60-104`, `uv-tool/src/lib.rs:145-179`), with
+    /// `NO_COLOR` set as Banager runs it.
+    const NOT_FOUND: &str = "warning: Tool `black` environment not found (run `uv tool install black --reinstall` to reinstall)\n";
+
+    fn listed(stdout: &str, stderr: &str) -> CommandOutput {
+        CommandOutput {
+            stderr_cause: Default::default(),
+            exit_code: Some(0),
+            stdout: stdout.to_string(),
+            stderr: stderr.to_string(),
+            timed_out: false,
+            cancelled: false,
+        }
+    }
+
+    /// r81 R81-1. Each line uv writes when it leaves a tool out of either
+    /// list says the list is not every tool; a warning about something
+    /// else, an empty answer and `No tools installed` alone do not.
+    #[test]
+    fn regression_r81_1_recognizes_skipped_tool_diagnostics() {
+        for stderr in [
+            NOT_FOUND,
+            "warning: Ignoring malformed tool `black` (run `uv tool uninstall black` to remove)\n",
+            // `get_environment`'s error, and a version that did not read
+            // as an environment error, its text first.
+            "warning: Failed to read `uv-receipt.toml` at `/x/black/uv-receipt.toml` (run `uv tool install black --reinstall` to reinstall)\n",
+            "warning: Failed to inspect Python interpreter from active virtual environment at `/x/black/bin/python3` (run `uv tool install black --reinstall` to reinstall)\n",
+            // Any other version read that failed: the error alone.
+            "Failed find package `black` in tool environment\n",
+            "Failed to read tool environment packages at `/x/black`: No such file or directory (os error 2)\n",
+            "warning: Ignoring tool directory `Not A Name!` with an invalid package name; move or remove it\n",
+            // A skipped tool, then uv's own words for an empty list.
+            "warning: Tool `black` environment not found (run `uv tool install black --reinstall` to reinstall)\nNo tools installed\n",
+        ] {
+            assert!(left_out_tools(stderr), "{stderr}");
+        }
+        for stderr in [
+            "",
+            "No tools installed\n",
+            "warning: `VIRTUAL_ENV=/x/.venv` does not match the project environment path `.venv` and will be ignored\n",
+            "warning: The `--show-paths` flag is deprecated\n",
+            "error: Request failed after 3 retries\n",
+        ] {
+            assert!(!left_out_tools(stderr), "{stderr}");
+        }
+    }
+
+    /// r81 R81-1. A list that exited 0 having left tools out is this
+    /// round's list of what it read, and says it left some out, whether it
+    /// read none or some; an update check that walked the same tools says
+    /// so too, with no candidate made up and the healthy one kept. A clean
+    /// list and check say nothing, and a list that failed is still an
+    /// error.
+    #[tokio::test]
+    async fn regression_r81_1_a_list_that_left_tools_out_says_so() {
+        let ruff = "ruff v0.15.0 (/t/tools/ruff)\n- ruff (/t/bin/ruff)\n";
+        let show_paths = vec!["/opt/homebrew/bin/uv", "tool", "list", "--show-paths"];
+        let outdated = vec!["/opt/homebrew/bin/uv", "tool", "list", "--outdated"];
+        for (stdout, count) in [("", 0), (ruff, 1)] {
+            let runner = Arc::new(MockRunner::new());
+            runner.respond(show_paths.clone(), listed(stdout, NOT_FOUND));
+            runner.respond(outdated.clone(), listed("", NOT_FOUND));
+            let adapter = UvAdapter::new(runner);
+            let outcome = adapter
+                .inventory_with_notes(&test_instance())
+                .await
+                .expect("a list that left tools out still answered");
+            assert_eq!(outcome.artifacts.len(), count);
+            assert_eq!(outcome.notes, vec![InstanceNote::SomeNotListed]);
+            assert!(!outcome.complete);
+            let check = adapter
+                .check_updates(&test_instance(), &CheckOptions::default())
+                .await
+                .expect("check");
+            assert!(check.candidates.is_empty());
+            assert_eq!(check.notes, vec![InstanceNote::SomeNotListed]);
+        }
+        // A healthy tool's update, beside one left out, is still offered.
+        let (_dir, runner) = receipt_runner();
+        runner.respond(
+            outdated.clone(),
+            listed("ruff v0.14.0 [latest: 0.15.0]\n- ruff\n", NOT_FOUND),
+        );
+        let check = UvAdapter::new(runner)
+            .check_updates(&test_instance(), &CheckOptions::default())
+            .await
+            .expect("check");
+        assert_eq!(check.candidates.len(), 1);
+        assert!(check.candidates[0].checkable);
+        assert_eq!(check.notes, vec![InstanceNote::SomeNotListed]);
+        // The index not answering, with a tool left out: the healthy one
+        // uncheckable, and the note from the list read instead.
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(show_paths.clone(), listed(ruff, NOT_FOUND));
+        runner.respond(
+            outdated.clone(),
+            CommandOutput {
+                exit_code: Some(2),
+                ..listed("", "error: Request failed after 3 retries")
+            },
+        );
+        let check = UvAdapter::new(runner)
+            .check_updates(&test_instance(), &CheckOptions::default())
+            .await
+            .expect("check");
+        assert_eq!(check.candidates.len(), 1);
+        assert!(!check.candidates[0].checkable);
+        assert_eq!(check.notes, vec![InstanceNote::SomeNotListed]);
+        // Clean: nothing said.
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(show_paths.clone(), listed("", "No tools installed\n"));
+        runner.respond(outdated.clone(), listed("", ""));
+        let adapter = UvAdapter::new(runner.clone());
+        let outcome = adapter
+            .inventory_with_notes(&test_instance())
+            .await
+            .unwrap();
+        assert!(outcome.complete && outcome.notes.is_empty());
+        let check = adapter
+            .check_updates(&test_instance(), &CheckOptions::default())
+            .await
+            .unwrap();
+        assert!(check.notes.is_empty());
+        // A list that failed is still an error, its stderr whatever it is.
+        runner.respond(
+            show_paths,
+            CommandOutput {
+                exit_code: Some(2),
+                ..listed("", NOT_FOUND)
+            },
+        );
+        assert!(matches!(
+            adapter.inventory_with_notes(&test_instance()).await,
+            Err(AdapterError::CommandFailed { .. })
+        ));
+    }
+
+    /// r81 R81-1. After an operation, a list that left tools out confirms
+    /// no tool it does not list is gone; one it lists is there; a complete
+    /// list without it still says it is gone.
+    #[tokio::test]
+    async fn regression_r81_1_partial_inventory_does_not_confirm_removal() {
+        let show_paths = vec!["/opt/homebrew/bin/uv", "tool", "list", "--show-paths"];
+        let key = |name: &str| ArtifactKey {
+            instance_id: "uv".to_string(),
+            kind: ArtifactKind::Tool,
+            name: name.to_string(),
+        };
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            show_paths.clone(),
+            listed("ruff v0.15.0 (/t/tools/ruff)\n", NOT_FOUND),
+        );
+        let adapter = UvAdapter::new(runner.clone());
+        assert!(adapter
+            .reconcile(&test_instance(), &key("black"))
+            .await
+            .is_err());
+        let ruff = adapter
+            .reconcile(&test_instance(), &key("ruff"))
+            .await
+            .unwrap();
+        assert!(ruff.present);
+        runner.respond(show_paths, listed("ruff v0.15.0 (/t/tools/ruff)\n", ""));
+        let black = adapter
+            .reconcile(&test_instance(), &key("black"))
+            .await
+            .unwrap();
+        assert!(!black.present);
+    }
+
+    /// r81 R81-1. A list that left tools out and not ruff names none of
+    /// ruff's commands to look at: no preview of its uninstall, and a saved
+    /// one does not run. A list that names ruff, beside another tool left
+    /// out, looks at its commands as ever: offered when they are uv's,
+    /// refused when pipx took one over.
+    #[tokio::test]
+    async fn regression_r81_1_partial_uninstall_preflight_requires_the_target() {
+        let ruffs = Ruffs::new();
+        let show_paths = vec!["/opt/homebrew/bin/uv", "tool", "list", "--show-paths"];
+        let with_ruff = format!(
+            "ruff v0.15.0 ({})\n- ruff ({})\n",
+            ruffs.env.display(),
+            ruffs.link.display()
+        );
+        ruffs
+            .runner
+            .respond(show_paths.clone(), listed("", NOT_FOUND));
+        assert!(matches!(
+            ruffs.preview().await,
+            Err(AdapterError::Refused(_))
+        ));
+        assert_eq!(ruffs.uninstalls(), 0);
+        ruffs
+            .runner
+            .respond(show_paths.clone(), listed(&with_ruff, NOT_FOUND));
+        let plan = ruffs.preview().await.expect("ruff listed: offered");
+        ruffs.link_to(&ruffs.pipx);
+        assert!(ruffs.refused(ruffs.preview().await));
+        ruffs.link_to(&ruffs.env.join("bin/ruff"));
+        // Saved, then the list leaves ruff out: nothing runs.
+        ruffs
+            .runner
+            .respond(show_paths.clone(), listed("", NOT_FOUND));
+        let outcome = ruffs
+            .adapter()
+            .execute(&plan, Arc::new(VecSink::new()), 1, CancellationToken::new())
+            .await
+            .unwrap();
+        assert_eq!(
+            outcome,
+            Outcome::BanagerFailed(crate::model::Fault::ChangedSinceShown)
+        );
+        assert_eq!(ruffs.uninstalls(), 0);
+        // Listed again beside the other one left out: it runs.
+        ruffs
+            .runner
+            .respond(show_paths, listed(&with_ruff, NOT_FOUND));
+        let outcome = ruffs
+            .adapter()
+            .execute(&plan, Arc::new(VecSink::new()), 2, CancellationToken::new())
+            .await
+            .unwrap();
+        assert_eq!(outcome, Outcome::Succeeded);
+        assert_eq!(ruffs.uninstalls(), 1);
     }
 }

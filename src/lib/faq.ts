@@ -14,6 +14,7 @@ import type { InstalledShow } from "./families";
 /** One question's name: its words are `faq.questions.<id>` in src/i18n. */
 export type FaqId =
   | "notFound"
+  | "missingTools"
   | "cantUpdate"
   | "twins"
   | "password"
@@ -49,7 +50,8 @@ export interface FaqItem {
 
 /**
  * The questions, in the sheet's order: the wall a newcomer hits first --
- * a command Terminal does not find -- then updating, two copies, the
+ * a command Terminal does not find -- then uv tools missing from the list
+ * (r81 R81-1), updating, two copies, the
  * password, uninstalling and what keeps a tool from it, what Banager touches, Other Programs, sizes,
  * major updates, an update's warning, a background service after its
  * update, the daily check, and, last, where the settings of Canager --
@@ -57,6 +59,7 @@ export interface FaqItem {
  */
 export const FAQ_ITEMS: readonly FaqItem[] = [
   { id: "notFound", view: { kind: "installed", show: "notOnPath" } },
+  { id: "missingTools", view: { kind: "installed", show: "all" } },
   { id: "cantUpdate", view: { kind: "updates" } },
   { id: "twins", view: { kind: "installed", show: "twins" } },
   { id: "password", view: null },

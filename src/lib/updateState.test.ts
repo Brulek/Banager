@@ -358,6 +358,50 @@ describe("everySourceChecked", () => {
     }
   });
 
+  it("names a uv that left tools out as not checked in full, beside a healthy source or alone (r81 R81-1)", () => {
+    // uv exits 0 having skipped tools it could not read: no update listed
+    // is no news of them, so no all good -- not even "what you can update
+    // here", which would claim them. pipx's keeps its earlier reading.
+    const uv: ManagerInstance = {
+      ...brew,
+      id: "uv",
+      adapter_id: "uv",
+      exe_path: "/opt/homebrew/bin/uv",
+      status: { unavailable: null, notes: ["SomeNotListed"] },
+    };
+    const ruff = installed("uv", "ruff", "Requested", "Tool");
+    for (const artifacts of [[], [ruff]]) {
+      expect(updatesSummary({ instances: [brew, uv], updates: [], errors: [], artifacts }, hiding())).toEqual({
+        kind: "nothingToUpdate",
+        notChecked: { ids: ["uv"], partly: true, rest: true },
+        everythingElse: true,
+        cantUpdateHere: 0,
+        hidden: 0,
+        notUsed: 0,
+      });
+      expect(updatesSummary({ instances: [uv], updates: [], errors: [], artifacts }, hiding())).toMatchObject({
+        kind: "nothingToUpdate",
+        notChecked: { ids: ["uv"], partly: true, rest: false },
+      });
+    }
+    expect(everySourceChecked([brew, uv], [])).toBe(false);
+    // A healthy tool's update is still offered first.
+    const update = candidate({ key: { instance_id: "uv", kind: "Tool", name: "ruff" } });
+    expect(updatesSummary({ instances: [brew, uv], updates: [update], errors: [] }, hiding()).kind).toBe("updates");
+    // Clean uv: all good.
+    const clean = { ...uv, status: { unavailable: null, notes: [] } };
+    expect(updatesSummary({ instances: [brew, clean], updates: [], errors: [] }, hiding())).toMatchObject({
+      kind: "upToDate",
+      everything: true,
+    });
+    // pipx's note, as before: never news of this check.
+    const pipx = { ...uv, id: "pipx", adapter_id: "pipx", exe_path: "/opt/homebrew/bin/pipx" };
+    expect(updatesSummary({ instances: [brew, pipx], updates: [], errors: [] }, hiding())).toMatchObject({
+      kind: "upToDate",
+      everything: false,
+    });
+  });
+
   it("fails with Codex's own install, whose updates Banager never checks", () => {
     // Its check lists nothing (`Latest::Unchecked`), so no update listed
     // there is no news: not "Everything is up to date". The Overview's all

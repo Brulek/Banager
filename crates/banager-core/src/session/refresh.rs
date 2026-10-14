@@ -574,8 +574,7 @@ impl Session {
         // registry asked over the network, `brew update`. A later round's
         // list is on screen already, with its updates.
         let previewing = previous.round == 0;
-        let (preview_tx, mut preview_rx) =
-            tokio::sync::mpsc::unbounded_channel::<(usize, Vec<InstalledArtifact>)>();
+        let (preview_tx, mut preview_rx) = tokio::sync::mpsc::unbounded_channel::<PreviewAnswer>();
         // The locks each instance this round asks will be read under, taken
         // for all of them at once, here, and waited for by none
         // (`OperationManager::try_round_locks`). An operation that started
@@ -720,8 +719,20 @@ impl Session {
                     // `stale` -- nothing failed -- but the same carry-forward
                     // as a failed read, and a note saying why.
                     let mut index_updating = false;
-                    match adapter.inventory(&inst).await {
-                        Ok(items) => artifacts.extend(items),
+                    // What the source said of this round's list
+                    // (`InventoryOutcome`): uv's `SomeNotListed`, when it
+                    // left a tool out it could not read. Such a list is
+                    // this round's all the same -- `inventory_confirmed`
+                    // -- but not every package: one it does not list may
+                    // still be installed (`inventory_complete`).
+                    let mut inventory_notes: Vec<InstanceNote> = Vec::new();
+                    let mut inventory_complete = true;
+                    match adapter.inventory_with_notes(&inst).await {
+                        Ok(outcome) => {
+                            artifacts.extend(outcome.artifacts);
+                            inventory_notes = outcome.notes;
+                            inventory_complete = outcome.complete;
+                        }
                         Err(e) => {
                             if matches!(e, AdapterError::IndexUpdating) {
                                 index_updating = true;
@@ -762,7 +773,12 @@ impl Session {
                     // left to read it.
                     if let Some(tx) = preview_tx {
                         if inventory_confirmed {
-                            let _ = tx.send((place, artifacts.clone()));
+                            let _ = tx.send((
+                                place,
+                                inst.id.clone(),
+                                artifacts.clone(),
+                                inventory_notes.clone(),
+                            ));
                         }
                     }
                     // What this source said about *itself* while checking,
@@ -774,7 +790,9 @@ impl Session {
                     // writing a note onto `inst` here would write it onto
                     // the clone and lose it, the same trap `SourceError`'s
                     // `instance_id` already fell into once.
-                    let mut notes: Vec<InstanceNote> = Vec::new();
+                    // The list's own notes come first; the check's join
+                    // them, each once.
+                    let mut notes: Vec<InstanceNote> = inventory_notes;
                     // Not asked at all when the inventory already said the
                     // catalogue is mid-rewrite: its update check reads the
                     // same catalogue. Handed to the `Err` arm instead, which
@@ -789,7 +807,11 @@ impl Session {
                     match checked {
                         Ok(outcome) => {
                             updates.extend(outcome.candidates);
-                            notes.extend(outcome.notes);
+                            for note in outcome.notes {
+                                if !notes.contains(&note) {
+                                    notes.push(note);
+                                }
+                            }
                         }
                         Err(e) => {
                             if matches!(e, AdapterError::IndexUpdating) {
@@ -864,6 +886,12 @@ impl Session {
                             // that update started, so it is fresh evidence
                             // and the filter applies as for any failure.
                             //
+                            // A list that left packages out
+                            // (`inventory_complete` false) disproves no
+                            // candidate by its absence -- the package may be
+                            // one it left out -- but still one it lists at
+                            // the very version the candidate targets.
+                            //
                             // The versions this round listed, by key, so
                             // that each carried candidate is looked up, not
                             // found by going through every row: a Homebrew
@@ -890,11 +918,14 @@ impl Session {
                                     .filter(|u| u.key.instance_id == inst.id)
                                     .filter(|u| {
                                         !inventory_confirmed
-                                            || listed.get(&u.key).is_some_and(|found| {
-                                                found
-                                                    .iter()
-                                                    .any(|a| !u.checkable || a.version != u.target)
-                                            })
+                                            || listed.get(&u.key).map_or(
+                                                !inventory_complete,
+                                                |found| {
+                                                    found.iter().any(|a| {
+                                                        !u.checkable || a.version != u.target
+                                                    })
+                                                },
+                                            )
                                     })
                                     .map(|u| {
                                         let mut u = u.clone();
@@ -956,9 +987,16 @@ impl Session {
             while let Some(answer) = preview_rx.recv().await {
                 answers.push(answer);
             }
-            answers.sort_by_key(|(place, _)| *place);
-            let mut listed: Vec<InstalledArtifact> =
-                answers.into_iter().flat_map(|(_, items)| items).collect();
+            answers.sort_by_key(|(place, ..)| *place);
+            // The preview's sources, with what each one's list said of
+            // itself (uv's `SomeNotListed`), so that a source that left
+            // tools out says so from its first list on.
+            let mut previewed = instances.clone();
+            let mut listed: Vec<InstalledArtifact> = Vec::new();
+            for (_, instance_id, items, notes) in answers {
+                merge_instance_notes(&mut previewed, &instance_id, notes);
+                listed.extend(items);
+            }
             // Which AI coding tool each row is, as the commit below will
             // say (`families::assign`), so the AI Tools filter has
             // something to show while the update checks run. Which copy
@@ -970,7 +1008,7 @@ impl Session {
             if !listed.is_empty() {
                 preview(InventoryPreview {
                     round,
-                    instances: instances.clone(),
+                    instances: previewed,
                     artifacts: listed,
                 });
             }
@@ -1314,6 +1352,11 @@ fn dedupe_instance_ids(
 /// purpose: instances only ever shrink between the clone and the join if
 /// something removed one, and inventing an entry for it would put a source
 /// in the snapshot that no `detect()` reported.
+/// What one task hands the preview (`Session::refresh_round`): its place in
+/// the fan-out, its source, what that source listed, and what it said of
+/// that list (`InventoryOutcome::notes`).
+type PreviewAnswer = (usize, InstanceId, Vec<InstalledArtifact>, Vec<InstanceNote>);
+
 fn merge_instance_notes(
     instances: &mut [ManagerInstance],
     instance_id: &str,
@@ -1331,7 +1374,9 @@ fn merge_instance_notes(
 mod tests {
     use super::{resume_refused_pip, resume_unanswered_npm};
     use crate::adapters::brew::BrewAdapter;
-    use crate::adapters::{Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome};
+    use crate::adapters::{
+        Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome, InventoryOutcome,
+    };
     use crate::events::{EventSink, OpId, VecSink};
     use crate::model::{
         ArtifactKey, ArtifactKind, InstalledArtifact, InstanceId, InstanceNote, InstanceStatus,
@@ -1367,6 +1412,9 @@ mod tests {
         /// opposed to about a package -- the `CheckOutcome.notes` channel
         /// brew fills when `brew update` failed.
         notes: HashMap<InstanceId, Vec<InstanceNote>>,
+        /// What `inventory_with_notes` says of each list: uv's
+        /// `SomeNotListed` makes it incomplete.
+        inventory_notes: HashMap<InstanceId, Vec<InstanceNote>>,
         failing: Vec<InstanceId>,
         /// Instances whose `check_updates` fails once, the same one-shot
         /// shape as `failing` -- the half of a per-instance fetch that can
@@ -1438,6 +1486,7 @@ mod tests {
                 artifacts: HashMap::new(),
                 updates: HashMap::new(),
                 notes: HashMap::new(),
+                inventory_notes: HashMap::new(),
                 failing: Vec::new(),
                 failing_updates: Vec::new(),
                 panicking_inventory: Vec::new(),
@@ -1541,6 +1590,26 @@ mod tests {
                 return Err(AdapterError::IndexUpdating);
             }
             Ok(s.artifacts.get(&inst.id).cloned().unwrap_or_default())
+        }
+
+        async fn inventory_with_notes(
+            &self,
+            inst: &ManagerInstance,
+        ) -> Result<InventoryOutcome, AdapterError> {
+            let artifacts = self.inventory(inst).await?;
+            let notes = self
+                .state
+                .lock()
+                .unwrap()
+                .inventory_notes
+                .get(&inst.id)
+                .cloned()
+                .unwrap_or_default();
+            Ok(InventoryOutcome {
+                complete: !notes.contains(&InstanceNote::SomeNotListed),
+                artifacts,
+                notes,
+            })
         }
 
         async fn check_updates(
@@ -4338,6 +4407,131 @@ mod tests {
             .collect();
         names.sort();
         names
+    }
+
+    /// r81 R81-1, end to end with the uv adapter over a mocked runner and a
+    /// `uv` of the test's own: a uv that left every tool out of both lists,
+    /// exiting 0, is listed as answering with no tools -- no error made up --
+    /// and says once that it left some out, so the round is no complete
+    /// check of it.
+    #[tokio::test]
+    async fn regression_r81_1_all_skipped_uv_is_not_a_complete_check() {
+        let tree = crate::testing::tree::TempTree::new("r81-uv");
+        let uv = tree.file("bin/uv", 0o755);
+        let home = tree.dir("home");
+        let program = uv.to_str().unwrap();
+        let answered = |stdout: &str, stderr: &str| CommandOutput {
+            stderr_cause: Default::default(),
+            exit_code: Some(0),
+            stdout: stdout.to_string(),
+            stderr: stderr.to_string(),
+            timed_out: false,
+            cancelled: false,
+        };
+        let skipped = "warning: Tool `black` environment not found (run `uv tool install black --reinstall` to reinstall)\n";
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec![program, "--version"],
+            answered("uv 0.12.23 (Homebrew 2026-09-01)\n", ""),
+        );
+        runner.respond(
+            vec![program, "tool", "list", "--show-paths"],
+            answered("", skipped),
+        );
+        runner.respond(
+            vec![program, "tool", "list", "--outdated"],
+            answered("", skipped),
+        );
+        let adapter = crate::adapters::uv::UvAdapter::new(runner)
+            .with_tool_dir_fn(|| None)
+            .with_own_tool_fn(|_| None);
+        let session =
+            Session::with_adapters(Arc::new(VecSink::new()), vec![Arc::new(adapter)], None);
+        let env = HostEnv {
+            path_dirs: vec![tree.at("bin")],
+            home,
+            ..non_root_env()
+        };
+        let snapshot = session.refresh(&env, &CheckOptions::default()).await;
+        assert_eq!(snapshot.instances.len(), 1);
+        let uv = &snapshot.instances[0];
+        assert_eq!(uv.status.unavailable, None);
+        assert_eq!(uv.status.notes, vec![InstanceNote::SomeNotListed]);
+        assert!(snapshot.artifacts.is_empty());
+        assert!(snapshot.updates.is_empty());
+        assert!(snapshot.errors.is_empty());
+    }
+
+    /// r81 R81-1. A list that left tools out: the first round's preview
+    /// says so, the note comes once however both halves say it, and the
+    /// rows it listed stay. A failed check keeps a carried update whose
+    /// package that list did not show -- it may be one it left out -- but
+    /// not one it lists at the version the update targets; a complete list
+    /// still disproves by absence, and a clean round takes the note off.
+    #[tokio::test]
+    async fn regression_r81_1_partial_inventory_round_lifecycle() {
+        let gate = Arc::new(tokio::sync::Semaphore::new(0));
+        let (adapter, state) = gated_source("uv", &["ruff", "black"], &gate);
+        {
+            let mut s = state.lock().unwrap();
+            s.inventory_notes
+                .insert("uv:1".into(), vec![InstanceNote::SomeNotListed]);
+            s.notes
+                .insert("uv:1".into(), vec![InstanceNote::SomeNotListed]);
+        }
+        let session = Session::with_adapters(Arc::new(VecSink::new()), vec![adapter], None);
+        let (refresh, mut previews) = spawn_previewing_refresh(&session);
+        let preview = next_preview(&mut previews).await;
+        assert_eq!(
+            preview.instances[0].status.notes,
+            vec![InstanceNote::SomeNotListed]
+        );
+        gate.add_permits(1);
+        let (_, first) = refresh.await.expect("refresh task");
+        assert_eq!(
+            first.instances[0].status.notes,
+            vec![InstanceNote::SomeNotListed]
+        );
+        assert_eq!(update_names(&first), ["black", "ruff"]);
+
+        // black left out this time; ruff listed at the version its update
+        // targets; the check fails.
+        {
+            let mut s = state.lock().unwrap();
+            s.notes.clear();
+            s.artifacts
+                .insert("uv:1".into(), vec![make_artifact_at("uv:1", "ruff", "1.1")]);
+            s.failing_updates.push("uv:1".into());
+        }
+        let second = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        assert_eq!(update_names(&second), ["black"]);
+        assert_eq!(
+            second.instances[0].status.notes,
+            vec![InstanceNote::SomeNotListed]
+        );
+        assert_eq!(second.errors.len(), 1);
+
+        // The same list, complete: black's absence disproves its update.
+        {
+            let mut s = state.lock().unwrap();
+            s.inventory_notes.clear();
+            s.failing_updates.push("uv:1".into());
+        }
+        let third = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        assert!(update_names(&third).is_empty());
+        assert!(third.instances[0].status.notes.is_empty());
+
+        // Clean: no note, the check answers.
+        state.lock().unwrap().updates.clear();
+        let fourth = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        assert!(fourth.instances[0].status.notes.is_empty());
+        assert!(fourth.errors.is_empty());
     }
 
     #[tokio::test]

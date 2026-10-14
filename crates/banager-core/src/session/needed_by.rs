@@ -6,8 +6,8 @@
 
 use super::Session;
 use crate::model::{
-    ArtifactKey, ArtifactKind, InstalledArtifact, InstanceId, KeptData, ManagerInstance, OpKind,
-    OpRequest, Plan, Warning,
+    ArtifactKey, ArtifactKind, InstalledArtifact, InstanceId, InstanceNote, KeptData,
+    ManagerInstance, OpKind, OpRequest, Plan, Warning,
 };
 use crate::needed_by::{self, HOSTED};
 use crate::runner::HostEnv;
@@ -175,9 +175,14 @@ pub(super) fn subject(
         .filter(|a| hosted.iter().any(|i| i.id == a.key.instance_id))
         .cloned()
         .collect();
+    // A source whose last list left tools out (`SomeNotListed`: a pipx or
+    // uv that could not read some of its own) lists no more of what it has
+    // than one no round has read: one it left out may run on the package.
     let unlisted = hosted
         .iter()
-        .filter(|i| unlisted.contains(&i.id))
+        .filter(|i| {
+            unlisted.contains(&i.id) || i.status.notes.contains(&InstanceNote::SomeNotListed)
+        })
         .map(|i| i.id.clone())
         .collect();
     Some(Subject {
@@ -1822,6 +1827,57 @@ mod tests {
         )
         .await;
         assert_eq!(panicked, None);
+    }
+
+    /// r81 R81-1 with T7's look (r24 R85-2): a uv whose last list left
+    /// tools out (`SomeNotListed`) lists no more of what runs on a Python
+    /// than one no round has read, so the look is in doubt about it; the
+    /// same uv with a complete list is not.
+    #[test]
+    fn regression_r81_1_a_source_that_left_tools_out_counts_as_unlisted() {
+        let brew = ManagerInstance {
+            prefix: Path::new("/opt/homebrew").to_path_buf(),
+            ..test_support::make_instance("brew", BREW)
+        };
+        let mut uv = test_support::make_instance("uv", UV);
+        let python = InstalledArtifact {
+            key: ArtifactKey {
+                instance_id: BREW.to_string(),
+                kind: ArtifactKind::Formula,
+                name: "python@3.13".to_string(),
+            },
+            display_name: "python@3.13".to_string(),
+            version: "3.13.1".to_string(),
+            reason: InstallReason::Requested,
+            description: None,
+            homepage: None,
+            size_bytes: None,
+            installed_at: None,
+            path: None,
+            auto_updates: false,
+            uninstall_blocked: None,
+            facts: Default::default(),
+        };
+        let none = HashSet::new();
+        let complete = super::subject(
+            &[brew.clone(), uv.clone()],
+            std::slice::from_ref(&python),
+            &none,
+            &uninstall("python@3.13"),
+        )
+        .unwrap();
+        assert!(complete.unlisted.is_empty());
+        uv.status
+            .notes
+            .push(crate::model::InstanceNote::SomeNotListed);
+        let partial = super::subject(
+            &[brew, uv],
+            std::slice::from_ref(&python),
+            &none,
+            &uninstall("python@3.13"),
+        )
+        .unwrap();
+        assert_eq!(partial.unlisted, vec![UV.to_string()]);
     }
 
     #[test]

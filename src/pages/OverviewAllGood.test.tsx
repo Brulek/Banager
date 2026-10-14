@@ -289,6 +289,26 @@ describe("the Overview's all good", () => {
     await headlineIn("zh-Hant", "uv這次未檢查完，其餘都是最新的");
   });
 
+  it("names a uv that left tools it could not read out of its list as not checked in full, with its notice (r81 R81-1)", async () => {
+    // uv exits 0 having skipped them: without the name, the green check would claim them.
+    const partial: ManagerInstance = { ...uv, status: { unavailable: null, notes: ["SomeNotListed"] } };
+    for (const artifacts of [[artifact(glib)], [artifact(glib), artifact(key(uv, "ruff", "Tool"))]]) {
+      served = snapshotWith({ instances: [brew, partial], artifacts });
+      const { container, unmount } = renderOverview();
+      await headlineIn("en", "uv wasn't fully checked this time; everything else is up to date");
+      expect(statusRow(container).getAttribute("data-status")).toBe("quiet");
+      const attention = screen.getByRole("list", { name: "Needs attention" });
+      expect(within(attention).getByText(/To see which ones and why, run \/opt\/uv\/bin\/uv tool list --show-paths in Terminal/)).toBeInTheDocument();
+      await headlineIn("zh-CN", "uv这次未检查完，其余都是最新的");
+      await headlineIn("zh-Hant", "uv這次未檢查完，其餘都是最新的");
+      unmount();
+    }
+    // Alone: nothing else to call up to date.
+    served = snapshotWith({ instances: [partial], artifacts: [] });
+    renderOverview();
+    await headlineIn("en", "uv wasn't fully checked this time");
+  });
+
   it("claims nothing else is up to date where nothing else was checked", async () => {
     served = snapshotWith({ instances: [stoppedOllama, codexOwn], artifacts: [artifact(ownCodex)] });
     const { container } = renderOverview();

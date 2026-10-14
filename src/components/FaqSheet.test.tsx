@@ -139,17 +139,31 @@ describe("FaqSheet", () => {
     }
   });
 
-  it("answers all fourteen questions in English, each under its question, Done focused", async () => {
+  it.each([
+    // r81 R81-1: uv exits 0 having left out tools it can't read; a notice
+    // says so, names the command that says which and why, and the rest stay.
+    ["en", en, ["uv leaves out tools it can't read", "the Python they use is gone", "the other tools are still listed", "which tools uv left out and why", "choose Check Again"]],
+    ["zh-CN", zhCN, ["uv会略过无法读取的工具", "Python已不存在", "其余工具仍会列出", "uv略过了哪些工具以及原因", "“重新检查”"]],
+    ["zh-Hant", zhHant, ["uv會略過無法讀取的工具", "Python已不存在", "其餘工具仍會列出", "uv略過了哪些工具以及原因", "「重新檢查」"]],
+  ] as const)("says why some uv tools are missing and what the notice gives, in %s", (_language, locale, phrases) => {
+    const answer = locale.faq.questions.missingTools.answer;
+    for (const phrase of phrases) expect(answer).toContain(phrase);
+    expect(answer).not.toMatch(/fix it for you|自动修复|自動修復/);
+    expect(answer).toContain(locale.header.checkAgain);
+  });
+
+  it("answers all fifteen questions in English, each under its question, Done focused", async () => {
     renderWithProviders(<FaqSheet />);
     expect(screen.queryByRole("dialog")).toBeNull();
 
     act(() => openFaqSheet());
 
     const dialog = await screen.findByRole("dialog", { name: "Common Questions" });
-    expect(FAQ_ITEMS).toHaveLength(14);
+    expect(FAQ_ITEMS).toHaveLength(15);
     expect(shown(dialog)).toEqual(questionsIn(en));
     expect(within(dialog).getAllByRole("heading", { level: 3 }).map((heading) => heading.textContent)).toEqual([
       "Terminal says a command isn't found. What can I do?",
+      "Why are some uv tools missing?",
       "Why can't some tools be updated here?",
       "What does “Installed twice” mean, and what should I do?",
       "Why is my Mac password needed? Can it be typed for me here?",
@@ -167,7 +181,7 @@ describe("FaqSheet", () => {
     expect(within(dialog).getByRole("button", { name: "Done" })).toHaveFocus();
   });
 
-  it("answers all fourteen in Chinese", async () => {
+  it("answers all fifteen in Chinese", async () => {
     await i18n.changeLanguage("zh-CN");
     try {
       renderWithProviders(<FaqSheet />);
@@ -176,6 +190,7 @@ describe("FaqSheet", () => {
       expect(shown(dialog)).toEqual(questionsIn(zhCN));
       expect(within(dialog).getAllByRole("heading", { level: 3 }).map((heading) => heading.textContent)).toEqual([
         "终端里说找不到命令，怎么办？",
+        "为什么有些uv工具没有显示？",
         "为什么有的工具不能在这里更新？",
         "“装了两份”是什么意思，该怎么办？",
         "为什么要输入Mac的密码？这里能代我输入吗？",
@@ -190,7 +205,7 @@ describe("FaqSheet", () => {
         "自动检查什么时候会停？",
         "Canager的设置在哪里？",
       ]);
-      expect(within(dialog).getAllByRole("button", { name: /^查看：/ })).toHaveLength(10);
+      expect(within(dialog).getAllByRole("button", { name: /^查看：/ })).toHaveLength(11);
       expect(within(dialog).getByRole("button", { name: "完成" })).toHaveFocus();
     } finally {
       await i18n.changeLanguage("en");
@@ -213,6 +228,7 @@ describe("FaqSheet", () => {
 
   it.each([
     ["notFound", { page: "installed", installedFilter: null, installedShow: "notOnPath", query: "" }],
+    ["missingTools", { page: "installed", installedFilter: null, installedShow: "all", query: "" }],
     ["cantUpdate", { page: "updates", updatesShow: "all" }],
     ["twins", { page: "installed", installedFilter: null, installedShow: "twins", query: "" }],
     ["leftBehind", { page: "installed", installedFilter: null, installedShow: "all", query: "" }],
@@ -230,6 +246,7 @@ describe("FaqSheet", () => {
     // Named for where it goes, never a bare "Show" (walk-3 W3-5).
     const label = {
       notFound: "Show in Installed",
+      missingTools: "Show in Installed",
       cantUpdate: "Show in Updates",
       twins: "Show in Installed",
       leftBehind: "Show in Installed",
@@ -335,6 +352,7 @@ describe("FaqSheet", () => {
     const withView = FAQ_ITEMS.filter((item) => item.view !== null).map((item) => item.id);
     expect(withView).toEqual([
       "notFound",
+      "missingTools",
       "cantUpdate",
       "twins",
       "leftBehind",

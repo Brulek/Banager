@@ -821,7 +821,8 @@
     },
     "someNotListed": {
       "title": "Some tools installed with {{source}} aren't shown",
-      "description": "{{source}} couldn't read them, so their updates weren't checked either. To see which ones and how to fix them, run {{command}} in Terminal, then check again."
+      "description": "{{source}} couldn't read them, so their updates weren't checked either. To see which ones and how to fix them, run {{command}} in Terminal, then check again.",
+      "uvDescription": "{{source}} couldn't read them, so their updates weren't checked either. To see which ones and why, run {{command}} in Terminal, then check again."
     },
     "formulaeNotListed": {
       "title": "Some packages installed with {{source}} aren't shown",
@@ -1600,6 +1601,10 @@
       "notFound": {
         "question": "Terminal says a command isn't found. What can I do?",
         "answer": "Some tools put their commands in a folder Terminal doesn't search, so typing one may find nothing, or run another program with the same name. Open a new Terminal window and try again; if it still isn't found, follow the tool's installation instructions. A command's name isn't always the tool's name, and you can search Installed by command. This is judged from the Terminal settings read when this app opened."
+      },
+      "missingTools": {
+        "question": "Why are some uv tools missing?",
+        "answer": "uv leaves out tools it can't read, for example when the Python they use is gone. When that happens, a notice says so and the other tools are still listed. To see which tools uv left out and why, run the command in that notice in Terminal. Once the problem is fixed, choose Check Again."
       },
       "cantUpdate": {
         "question": "Why can't some tools be updated here?",

@@ -685,8 +685,8 @@ export type Unavailable =
  * ends its loop over these in a `never`, so a variant added here without
  * a branch there fails `tsc`. The five after the first two are a
  * standalone tool's (phase 4): what runs when its name is typed, or that
- * its launcher is left without its program. `SomeNotListed` is pipx's: it
- * left out of its list some tools it could not read. `FormulaeNotListed`
+ * its launcher is left without its program. `SomeNotListed` is pipx's or
+ * uv's: it left out of its list some tools it could not read. `FormulaeNotListed`
  * is Homebrew's: its Cellar holds formulae its own list left out, usually
  * because it does not trust their tap.
  */

@@ -663,6 +663,32 @@ describe("sourceNoticesFor", () => {
     expect(i18n.getFixedT("en")(notices[0].descriptionKey, notices[0].values)).toContain("run pipx list in Terminal");
   });
 
+  it("warns when uv left tools it could not read out of its list, and names this uv's list command, quoted (r81 R81-1)", () => {
+    // uv exits 0 having skipped them, saying so only on stderr; its words
+    // say which and why, not always how to fix it, so the copy promises no fix.
+    const uv = instance({ id: "uv", adapter_id: "uv", exe_path: "/Users/you/My Tools/bin/uv" });
+    const notices = sourceNoticesFor({ ...uv, status: { unavailable: null, notes: ["SomeNotListed"] } }, "uv");
+    expect(notices).toEqual([
+      {
+        id: "uv:some-not-listed",
+        variant: "warning",
+        titleKey: "sourceNotice.someNotListed.title",
+        descriptionKey: "sourceNotice.someNotListed.uvDescription",
+        values: { source: "uv", command: "'/Users/you/My Tools/bin/uv' tool list --show-paths" },
+      },
+    ]);
+    const words = {
+      en: "To see which ones and why, run '/Users/you/My Tools/bin/uv' tool list --show-paths in Terminal, then check again.",
+      "zh-CN": "要查看是哪些工具以及原因，请在终端运行'/Users/you/My Tools/bin/uv' tool list --show-paths，然后重新检查。",
+      "zh-Hant": "要查看是哪些工具以及原因，請在終端機執行'/Users/you/My Tools/bin/uv' tool list --show-paths，然後重新檢查。",
+    } as const;
+    for (const [locale, said] of Object.entries(words)) {
+      const text = i18n.getFixedT(locale)(notices[0].descriptionKey, notices[0].values);
+      expect(text).toContain(said);
+      expect(text).not.toMatch(/fix|修复|修復/);
+    }
+  });
+
   it("warns when Homebrew left installed formulae out of its list, and names the commands to see and trust their taps", () => {
     // r18 R46-1: Homebrew 7 drops a formula from a tap it does not trust
     // from `brew info`, `brew outdated` and `brew uses` alike.

@@ -9,6 +9,7 @@ import { GROUP, GROUP_ROW, GROUP_TITLE } from "./ui/group";
 /** Each question's words, spelled out. A `Record`, so a question added without them fails `tsc`. */
 const QUESTION_KEYS: Record<FaqId, { question: string; answer: string }> = {
   notFound: { question: "faq.questions.notFound.question", answer: "faq.questions.notFound.answer" },
+  missingTools: { question: "faq.questions.missingTools.question", answer: "faq.questions.missingTools.answer" },
   cantUpdate: { question: "faq.questions.cantUpdate.question", answer: "faq.questions.cantUpdate.answer" },
   twins: { question: "faq.questions.twins.question", answer: "faq.questions.twins.answer" },
   password: { question: "faq.questions.password.question", answer: "faq.questions.password.answer" },

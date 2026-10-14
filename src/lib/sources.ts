@@ -655,17 +655,26 @@ export function sourceNoticesFor(
         action: { id: "showTool", labelKey: "sourceNotice.showTool", instanceId: instance.id },
       });
     } else if (note === "SomeNotListed") {
-      // pipx listed what it could read and left out a tool environment it
-      // could not (its Python gone, its pipx data missing). Those tools are
-      // neither shown nor checked; `pipx list` in Terminal names them and
-      // says how to fix each (pipx 1.17's `list_packages.py:143-175`). Only
-      // pipx gives this note, so the command is its own name and `list`.
+      // pipx or uv listed what it could read and left out a tool it could
+      // not (its Python gone, its data missing). Those tools are neither
+      // shown nor checked. `pipx list` in Terminal names them and says how
+      // to fix each (pipx 1.17's `list_packages.py:143-175`), so pipx's
+      // command is its own name and `list`. uv's list says which and why,
+      // not always how to fix it (uv 0.12.23 `commands/tool/list.rs:60-104`),
+      // so its words promise no more; its command is the one Banager ran,
+      // this uv by path (crates/banager-core/src/adapters/uv.rs).
+      const uv = instance.adapter_id === "uv";
       notices.push({
         id: `${instance.id}:some-not-listed`,
         variant: "warning",
         titleKey: "sourceNotice.someNotListed.title",
-        descriptionKey: "sourceNotice.someNotListed.description",
-        values: { source: sourceLabel, command: `${commandNameOf(instance)} list` },
+        descriptionKey: uv ? "sourceNotice.someNotListed.uvDescription" : "sourceNotice.someNotListed.description",
+        values: {
+          source: sourceLabel,
+          command: uv
+            ? [instance.exe_path, "tool", "list", "--show-paths"].map(displayToken).join(" ")
+            : `${commandNameOf(instance)} list`,
+        },
       });
     } else if (note === "FormulaeNotListed") {
       // Homebrew's Cellar holds formulae its own list left out (r18

@@ -253,7 +253,11 @@ pub enum InstanceNote {
     /// shown nor checked; `pipx list` in Terminal says which and why.
     /// Produced by `PipxAdapter`'s update check, from the list it reads
     /// when `list --outdated` exits non-zero and from the one the check
-    /// below pipx 1.16 always reads.
+    /// below pipx 1.16 always reads. uv's `tool list` leaves such a tool
+    /// out too -- a broken receipt, its environment or Python gone -- but
+    /// exits 0, saying so only on stderr (uv 0.12.23
+    /// `commands/tool/list.rs:60-104`): `UvAdapter` reads that from its
+    /// inventory (`Adapter::inventory_with_notes`) and its update check.
     SomeNotListed,
     /// Homebrew listed fewer formulae than its `Cellar` holds: a folder
     /// there with a version in it is missing from `brew info --installed

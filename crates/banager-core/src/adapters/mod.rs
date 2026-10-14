@@ -92,6 +92,18 @@ impl From<Vec<UpdateCandidate>> for CheckOutcome {
     }
 }
 
+/// What one inventory read listed (`Adapter::inventory_with_notes`), and
+/// what the source said of that list: uv's `SomeNotListed` when it left a
+/// tool out it could not read. `complete` is false then -- a package not
+/// listed may still be installed, so its absence disproves nothing
+/// (`Session::refresh_round`).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct InventoryOutcome {
+    pub artifacts: Vec<InstalledArtifact>,
+    pub notes: Vec<InstanceNote>,
+    pub complete: bool,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct AdapterMeta {
     pub id: String,
@@ -910,6 +922,19 @@ pub trait Adapter: Send + Sync {
         &self,
         inst: &ManagerInstance,
     ) -> Result<Vec<InstalledArtifact>, AdapterError>;
+    /// `inventory`, with what the source said of the list
+    /// (`InventoryOutcome`): every adapter's list is complete and says
+    /// nothing but uv's, which can leave out a tool it cannot read.
+    async fn inventory_with_notes(
+        &self,
+        inst: &ManagerInstance,
+    ) -> Result<InventoryOutcome, AdapterError> {
+        Ok(InventoryOutcome {
+            artifacts: self.inventory(inst).await?,
+            notes: Vec::new(),
+            complete: true,
+        })
+    }
     async fn check_updates(
         &self,
         inst: &ManagerInstance,
