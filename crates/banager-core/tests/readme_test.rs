@@ -483,10 +483,21 @@ fn test_readme_names_the_history_files_own_limits_beside_clear_history() {
     let (english, chinese) = blocks(&readme);
     let english = english.split_whitespace().collect::<Vec<_>>().join(" ");
     let chinese = squeeze(chinese);
-    let history = around(&english, "The list is kept across restarts in `history.json`", 0, 400);
-    assert!(history.contains("the last 1,000 updates and uninstalls"), "{history}");
+    let history = around(
+        &english,
+        "The list is kept across restarts in `history.json`",
+        0,
+        400,
+    );
+    assert!(
+        history.contains("the last 1,000 updates and uninstalls"),
+        "{history}"
+    );
     assert!(history.contains("over 180 days old"), "{history}");
-    assert!(!history.contains("`history.json`, until you press Clear History."), "{history}");
+    assert!(
+        !history.contains("`history.json`, until you press Clear History."),
+        "{history}"
+    );
     let steps = around(&english, "an update's **View Steps**", 0, 500);
     assert!(steps.contains("for up to 30 days"), "{steps}");
     assert!(steps.contains("successful uninstall"), "{steps}");
