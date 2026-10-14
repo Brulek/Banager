@@ -3220,6 +3220,21 @@ impl BrewAdapter {
                     .and_then(self.trust_list_fn);
                 let mut warnings = self.update_steps(&inst.prefix, req, &switches, trust.as_ref());
                 warnings.extend(Self::switch_warnings(&switches, req.kind));
+                // R77-2: `brew upgrade` replaces a formula's files and
+                // restarts no `brew services` service already running it,
+                // which runs the old version until restarted. Looked for
+                // as the uninstall looks (r18 R46-3): the file says how it
+                // was set up, not whether it runs.
+                if req.artifact_kind == ArtifactKind::Formula {
+                    let home = (self.env_var_fn)("HOME")
+                        .filter(|home| !home.is_empty())
+                        .map(PathBuf::from);
+                    if (self.service_fn)(home.as_deref(), &req.name).is_some() {
+                        warnings.push(Warning::HomebrewServiceMayNeedRestart {
+                            name: req.name.rsplit('/').next().unwrap_or(&req.name).to_string(),
+                        });
+                    }
+                }
                 let program = inst.exe_path.clone();
                 let args = vec!["upgrade".to_string(), flag.to_string(), req.name.clone()];
                 let mut then = Vec::new();
@@ -5970,6 +5985,80 @@ mod plan_execute_tests {
             "got {:?}",
             plan.warnings
         );
+    }
+
+    /// R77-2: `brew upgrade` restarts no `brew services` service, so a
+    /// formula's update preview says one set up for it may need restarting
+    /// -- whether started with `sudo` or not, and never for a cask or a
+    /// formula with no service file. The command it runs is the same.
+    #[tokio::test]
+    async fn formula_upgrade_warns_that_a_configured_service_may_need_restart() {
+        fn services(home: Option<&Path>, name: &str) -> Option<Service> {
+            assert_eq!(home, Some(Path::new("/Users/someone")));
+            match name {
+                "redis" => Some(Service { system: false }),
+                "homebrew/core/postgresql@17" => Some(Service { system: true }),
+                "docker" => Some(Service { system: false }),
+                _ => None,
+            }
+        }
+        // Its own brew, never the Mac's Homebrew.
+        let prefix = std::env::temp_dir().join(format!(
+            "banager-brew-service-upgrade-{}",
+            std::process::id()
+        ));
+        let inst = ManagerInstance {
+            exe_path: prefix.join("bin/brew"),
+            prefix: prefix.clone(),
+            ..test_instance()
+        };
+        let adapter = BrewAdapter::new(Arc::new(MockRunner::new()))
+            .with_env_var_fn(|name| (name == "HOME").then(|| OsString::from("/Users/someone")))
+            .with_service_fn(services);
+        let plain = BrewAdapter::new(Arc::new(MockRunner::new()))
+            .with_env_var_fn(|name| (name == "HOME").then(|| OsString::from("/Users/someone")));
+        let upgrade = |name: &str, artifact_kind| OpRequest {
+            kind: OpKind::Upgrade,
+            instance_id: inst.id.clone(),
+            artifact_kind,
+            name: name.to_string(),
+        };
+        let reminders = |plan: &Plan| -> Vec<Warning> {
+            plan.warnings
+                .iter()
+                .filter(|w| matches!(w, Warning::HomebrewServiceMayNeedRestart { .. }))
+                .cloned()
+                .collect()
+        };
+        for (name, short) in [
+            ("redis", "redis"),
+            ("homebrew/core/postgresql@17", "postgresql@17"),
+        ] {
+            let request = upgrade(name, ArtifactKind::Formula);
+            let plan = adapter.plan(&inst, &request).await.expect("plan");
+            assert_eq!(
+                reminders(&plan),
+                vec![Warning::HomebrewServiceMayNeedRestart {
+                    name: short.to_string()
+                }]
+            );
+            let without = plain.plan(&inst, &request).await.expect("plan");
+            assert_eq!(
+                plan.action, without.action,
+                "the same command, env and steps"
+            );
+            assert!(reminders(&without).is_empty());
+        }
+        let jq = adapter
+            .plan(&inst, &upgrade("jq", ArtifactKind::Formula))
+            .await
+            .expect("plan");
+        assert!(reminders(&jq).is_empty());
+        let cask = adapter
+            .plan(&inst, &upgrade("docker", ArtifactKind::Cask))
+            .await
+            .expect("plan");
+        assert!(reminders(&cask).is_empty());
     }
 
     /// r18 R46-3: a formula `brew services start` set up to run in the

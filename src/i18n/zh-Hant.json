@@ -455,6 +455,7 @@
     "soon": "下次自動檢查：很快"
   },
   "warnings": {
+    "serviceMayNeedRestart": "「{{name}}」已用brew services設為在背景執行。更新檔案不會重新啟動它。如果它正在執行，請在更新後用brew services重新啟動它，以使用新版本。",
     "dependentsUnknown": "無法確定還有哪些軟體要用它。解除安裝前請自行確認。",
     "wouldBreak_other": "還有{{count}}個工具要用它：{{names}}。",
     "compilesLocally": "需要在這台Mac上編譯，會花一些時間。",
@@ -870,6 +871,7 @@
     "text": "錯誤詳細資訊："
   },
   "followUpWarning": {
+    "serviceMayNeedRestart": "準備這次更新時，「{{name}}」已用brew services設為在背景執行。更新檔案不會重新啟動它。如果它仍在執行舊版本，請用brew services重新啟動它，以使用新版本。",
     "batch_other": "已更新{{total}}個工具，{{count}}個有警告",
     "batchSucceeded_other": "{{total}}個都已成功，{{count}}個有警告",
     "succeeded_other": "已更新，有警告",
@@ -1505,6 +1507,10 @@
       "updatedWithWarning": {
         "question": "為什麼更新後顯示有警告？",
         "answer": "更新已成功，但後續步驟需要查看。點按「查看記錄」，可以了解發生了什麼以及接下來怎麼做。開啟「操作完成時通知」後，通知也會將它計為需要查看。"
+      },
+      "serviceAfterUpdate": {
+        "question": "更新背景服務會重新啟動它嗎？",
+        "answer": "更新檔案不會重新啟動正在執行的服務。對於已用brew services設為在背景執行的工具，確認框和儲存的結果會提醒：如果它仍在執行舊版本，需要重新啟動它。此App不會檢查正在執行的服務使用哪個版本。"
       },
       "autoCheck": {
         "question": "自動檢查什麼時候會停止？",

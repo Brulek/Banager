@@ -91,14 +91,14 @@ describe("FaqSheet", () => {
     expect(locale.faq.questions.twins.answer).toContain(sentence);
   });
 
-  it("answers all eleven questions in English, each under its question, Done focused", async () => {
+  it("answers all twelve questions in English, each under its question, Done focused", async () => {
     renderWithProviders(<FaqSheet />);
     expect(screen.queryByRole("dialog")).toBeNull();
 
     act(() => openFaqSheet());
 
     const dialog = await screen.findByRole("dialog", { name: "Common Questions" });
-    expect(FAQ_ITEMS).toHaveLength(11);
+    expect(FAQ_ITEMS).toHaveLength(12);
     expect(shown(dialog)).toEqual(questionsIn(en));
     expect(within(dialog).getAllByRole("heading", { level: 3 }).map((heading) => heading.textContent)).toEqual([
       "Terminal says a command isn't found. What can I do?",
@@ -111,12 +111,13 @@ describe("FaqSheet", () => {
       "How accurate are the sizes?",
       "Why are some updates marked “Major update”?",
       "Why does an update say it has a warning?",
+      "Does updating a background service restart it?",
       "When does the automatic check stop?",
     ]);
     expect(within(dialog).getByRole("button", { name: "Done" })).toHaveFocus();
   });
 
-  it("answers all eleven in Chinese", async () => {
+  it("answers all twelve in Chinese", async () => {
     await i18n.changeLanguage("zh-CN");
     try {
       renderWithProviders(<FaqSheet />);
@@ -134,9 +135,10 @@ describe("FaqSheet", () => {
         "占用空间的数字准吗？",
         "为什么有些更新标着“大版本更新”？",
         "为什么更新后显示有警告？",
+        "更新后台服务会重新启动它吗？",
         "自动检查什么时候会停？",
       ]);
-      expect(within(dialog).getAllByRole("button", { name: /^查看：/ })).toHaveLength(9);
+      expect(within(dialog).getAllByRole("button", { name: /^查看：/ })).toHaveLength(10);
       expect(within(dialog).getByRole("button", { name: "完成" })).toHaveFocus();
     } finally {
       await i18n.changeLanguage("en");
@@ -166,6 +168,7 @@ describe("FaqSheet", () => {
     ["sizes", { page: "installed", installedFilter: null, installedShow: "all", installedSort: "size", query: "" }],
     ["majorUpdate", { page: "updates", updatesShow: "all" }],
     ["updatedWithWarning", { page: "updates", updatesShow: "all" }],
+    ["serviceAfterUpdate", { page: "updates", updatesShow: "all" }],
     ["autoCheck", { page: "settings" }],
   ] as const)("closes on 查看 of “%s” and opens where its answer points", async (id, state) => {
     renderWithProviders(<FaqSheet />);
@@ -182,6 +185,7 @@ describe("FaqSheet", () => {
       sizes: "Show in Installed",
       majorUpdate: "Show in Updates",
       updatedWithWarning: "Show in Updates",
+      serviceAfterUpdate: "Show in Updates",
       autoCheck: "Show in Settings",
     }[id];
     const view = within(dialog).getByRole("button", { name: `${label}: ${question}` });
@@ -286,6 +290,7 @@ describe("FaqSheet", () => {
       "sizes",
       "majorUpdate",
       "updatedWithWarning",
+      "serviceAfterUpdate",
       "autoCheck",
     ]);
     for (const id of withView) {

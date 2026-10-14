@@ -460,7 +460,17 @@ mod tests {
             ..summary(id, OpKind::Upgrade, Some(Outcome::Succeeded))
         };
         let known = records(&[
-            warned(3, vec![unlinked.clone(), behind.clone()]),
+            // R77-2: with the service reminder, three warnings, one operation.
+            warned(
+                3,
+                vec![
+                    unlinked.clone(),
+                    behind.clone(),
+                    FollowUpWarning::ServiceMayNeedRestart {
+                        name: "node@22".into(),
+                    },
+                ],
+            ),
             warned(2, vec![behind]),
             warned(1, vec![]),
         ]);

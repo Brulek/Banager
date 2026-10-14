@@ -308,6 +308,8 @@ export function warningKey(warning: Warning): string | null {
   if ("HomebrewForgetsTrust" in warning) return "uninstall.forgetsTrust";
   // r18 R46-3: a `brew services` service the uninstall leaves running.
   if ("HomebrewServiceStays" in warning) return "uninstall.serviceStays";
+  // R77-2: a service an update does not restart.
+  if ("HomebrewServiceMayNeedRestart" in warning) return "warnings.serviceMayNeedRestart";
   // U9: plural on `{{count}}`, the versions it names.
   if ("HomebrewCleansUpOldVersions" in warning) return "brewVersions.cleansUp";
   if ("HomebrewRemovesEveryVersion" in warning) return "brewVersions.removesEvery";
@@ -390,6 +392,7 @@ export function warningArgs(warning: Warning, separator = ", "): Record<string, 
   if ("LeavesShellConfigLine" in warning) return { path: warning.LeavesShellConfigLine.path };
   if ("ShellConfigUnread" in warning) return { path: warning.ShellConfigUnread.path };
   if ("HomebrewForgetsTrust" in warning) return { name: warning.HomebrewForgetsTrust.name };
+  if ("HomebrewServiceMayNeedRestart" in warning) return { name: warning.HomebrewServiceMayNeedRestart.name };
   if ("HomebrewServiceStays" in warning) {
     // One started with `sudo` is stopped with `sudo` (`brew services`'s own
     // advice for a service in `/Library/LaunchDaemons`).
@@ -589,6 +592,7 @@ export function warningDetailKey(warning: Warning): string | null {
     "LinkPlacesHeld" in warning ||
     "HomebrewRemovesEveryVersion" in warning ||
     "HomebrewServiceStays" in warning ||
+    "HomebrewServiceMayNeedRestart" in warning ||
     "TakesBackCommand" in warning ||
     "UninstallScope" in warning ||
     "KeepsData" in warning ||
@@ -645,6 +649,7 @@ export function warningGroup(warning: Warning): WarningGroup {
     "HomebrewNoCleanupFormulae" in warning ||
     "HomebrewForgetsTrust" in warning ||
     "HomebrewServiceStays" in warning ||
+    "HomebrewServiceMayNeedRestart" in warning ||
     "HomebrewCleansUpOldVersions" in warning ||
     "HomebrewRemovesEveryVersion" in warning ||
     "HomebrewRelinksAfterUpdate" in warning ||
@@ -736,8 +741,9 @@ export function deletesForGood(warning: Warning): boolean {
     "ShellConfigUnread" in warning ||
     "HomebrewNoCleanupFormulae" in warning ||
     "HomebrewForgetsTrust" in warning ||
-    // A service left running deletes nothing.
+    // A service left running deletes nothing, nor one left to restart.
     "HomebrewServiceStays" in warning ||
+    "HomebrewServiceMayNeedRestart" in warning ||
     // `brew uninstall` and `brew cleanup` delete what they always delete:
     // the old versions are said by name, as how it goes (U9).
     "HomebrewCleansUpOldVersions" in warning ||
@@ -925,8 +931,10 @@ export function isCaution(warning: Warning): boolean {
     "ShellConfigUnread" in warning ||
     // A command another tool took over goes back to uv's (r15 R43-7).
     "TakesBackCommand" in warning ||
-    // What keeps running after the uninstall (r18 R46-3).
+    // What keeps running after the uninstall (r18 R46-3), or keeps running
+    // the old version after the update (R77-2).
     "HomebrewServiceStays" in warning ||
+    "HomebrewServiceMayNeedRestart" in warning ||
     "CaskUninstallStep" in warning ||
     "CaskUpdateRunsOldSteps" in warning ||
     "Message" in warning

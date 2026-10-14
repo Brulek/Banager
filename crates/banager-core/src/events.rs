@@ -141,6 +141,13 @@ pub enum LogNote {
     /// From `BrewAdapter::execute`; worded
     /// by `LogDrawer.tsx`.
     NoLongerLinked { name: String, commands: Vec<String> },
+    /// The update of a formula whose preview found it set up to run with
+    /// `brew services` (`Warning::HomebrewServiceMayNeedRestart`) was
+    /// installed: a service still running runs the old version until it is
+    /// restarted. Said once the update's outcome is known
+    /// (`OperationManager::say_service_may_need_restart`); worded by
+    /// `LogDrawer.tsx`. Banager restarts nothing.
+    ServiceMayNeedRestart { name: String },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

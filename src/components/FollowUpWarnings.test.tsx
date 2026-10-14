@@ -150,6 +150,28 @@ describe("a saved follow-up warning's log (p1 polish)", () => {
   );
 });
 
+describe("a saved reminder that a brew services service may need restarting (R77-2)", () => {
+  it("says it as a plain sentence beside the other warnings, in every language, with nothing to run", async () => {
+    const saved: FollowUpWarning[] = [...warnings, { ServiceMayNeedRestart: { name: "node@22" } }];
+    for (const [language, words] of [
+      [
+        "en",
+        "node@22 was set to run in the background with brew services when this update was prepared. Updating its files doesn't restart it. If it is still running the old version, restart it with brew services to use the new version.",
+      ],
+      ["zh-CN", "准备这次更新时，“node@22”已用brew services设为在后台运行。更新文件不会重新启动它。如果它仍在运行旧版本，请用brew services重新启动它，以使用新版本。"],
+      ["zh-Hant", "準備這次更新時，「node@22」已用brew services設為在背景執行。更新檔案不會重新啟動它。如果它仍在執行舊版本，請用brew services重新啟動它，以使用新版本。"],
+    ] as const) {
+      await i18n.changeLanguage(language);
+      const dialog = open(node22, saved);
+      const line = within(dialog).getByText(words);
+      expect(line.tagName).toBe("P");
+      // The relink's command is the only one set apart: none to restart.
+      expect(within(dialog).getAllByRole("group")).toHaveLength(1);
+      dialog.view.unmount();
+    }
+  });
+});
+
 describe("the relink command names the Homebrew the update was in, not Terminal's brew (r33 T1)", () => {
   /** A saved node@22 warning of the Intel Homebrew, as an Apple-silicon Mac that came through Rosetta keeps one. */
   const intel: ArtifactKey = { instance_id: "brew:/usr/local", kind: "Formula", name: "node@22" };

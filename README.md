@@ -215,10 +215,10 @@ page with its search box focused, and Settings… (⌘,) is in the Banager menu.
 or minimized, each of these brings it back first. **Keyboard Shortcuts** in the Help menu lists the
 keys Banager answers to, in three groups: the window's (these, Close Window and Quit), the lists' (↑ ↓
 and the keys that page or jump to an end, Space to tick a row, Return and Escape for Installed's
-details, Tab) and the dialogs' (Return, Escape). **Common Questions**, above it, answers eleven questions
+details, Tab) and the dialogs' (Return, Escape). **Common Questions**, above it, answers twelve questions
 in a few plain sentences each — a command Terminal can't find, why some tools can't be updated here,
 "Installed twice", the Mac password, what an uninstall leaves, what Banager itself changes, Other
-Programs, sizes, major updates, an update's warning and the automatic check — with a button named for the page it opens
+Programs, sizes, major updates, an update's warning, a background service after its update and the automatic check — with a button named for the page it opens
 (*Show in Installed*, *Show in Updates*…) where the answer can be acted on.
 
 The first time Banager opens, a welcome sheet shows three short titles — see what's installed; you confirm each update and uninstall you choose; no data collected — and nothing more. The first check runs behind it, and its `brew update`, which no one chose, asks nothing, as above. However
@@ -293,7 +293,9 @@ This app runs package managers on your behalf, so the boundary matters more than
   again before cleanup. Separately, when `brew.env` turns automatic cleanup back on, the preview
   explains its broader scope: old versions of the updated software and its updated dependencies,
   stray old downloads and, when periodic cleanup is due, those of all Homebrew software. If
-  autoremove is also on, periodic cleanup can remove unneeded dependencies.
+  autoremove is also on, periodic cleanup can remove unneeded dependencies. For a tool configured
+  to run with brew services, the update confirmation and its saved result remind you to restart
+  it if it is still running the old version.
 - **Nothing is deleted quietly.** An uninstall that would break other packages says which ones,
   in your language. Banager runs Homebrew with its autoremove off, so a Homebrew uninstall does
   not also uninstall the other packages that were installed only as dependencies and that nothing
@@ -681,8 +683,8 @@ Banager 开着时还会每天做一次同样的检查，查到的更新都不安
 “搜索”（⌘F），后者打开“已安装”页，并把光标放进搜索框；“设置…”（⌘,）在“Banager”菜单里。窗口关着或最小化时，
 选这些项会先把窗口叫回来。菜单栏“帮助”里的“键盘快捷键”列出 Banager 里能用的按键，分三组：窗口（上面这些，再加
 “关闭窗口”和“退出”）、列表（↑ ↓、翻页和跳到两头的键、用空格键勾选一行、在“已安装”里用回车和 Esc 打开和关闭详细信息、Tab）
-和对话框（回车、Esc）。它上面的“常见问题”用几句大白话回答十一个常见问题：终端里找不到命令、为什么有的工具不能在这里更新、
-“装了两份”、Mac 密码、卸载后留下什么、Banager 自己会改动什么、“其他程序”、占用空间、大版本更新、更新后的警告和自动检查；
+和对话框（回车、Esc）。它上面的“常见问题”用几句大白话回答十二个常见问题：终端里找不到命令、为什么有的工具不能在这里更新、
+“装了两份”、Mac 密码、卸载后留下什么、Banager 自己会改动什么、“其他程序”、占用空间、大版本更新、更新后的警告、更新后台服务和自动检查；
 能动手处理的，旁边有“查看”按钮，直接打开对应的页面或“已安装”里的显示选项。
 
 第一次打开 Banager 时，会出现一个欢迎页，只有三个短标题：看清装了什么；你选的更新、卸载都由你确认；不收集数据。第一次检查在它背后照常进行，其中的 `brew update` 不是你选的，不会问你，见上文。不管怎样关掉它——点“开始使用”、按回车或 Esc、点它外面——设置文件都会记下
@@ -709,6 +711,7 @@ Banager 开着时还会每天做一次同样的检查，查到的更新都不安
 
 软件包管理操作不经过 shell。启动时读取环境设置会运行登录 shell 及其启动文件，失败后会在后续刷新重试；原生模拟窗口也会执行这一步，浏览器模拟不会。
 Homebrew 公式更新通常会先预览、再于成功后清理该公式的旧版本及相关缓存，清理也包括缓存中所有未引用的下载。用户关闭清理、固定版本或无法确认清理条件时，不安排这一步；`brew.env` 启用的自动清理会另行说明。
+对于已用brew services设为在后台运行的工具，更新确认框和保存的结果会提醒：如果它仍在运行旧版本，需要重新启动它。
 普通测试跳过 11 项，包括真实 Homebrew、废纸篓、AppKit、磁盘探测和性能测试。安装卸载及废纸篓测试需要显式启用。
 `OLLAMA_HOST` 中的登录信息可能通过普通 HTTP 发送，会在窗口中遮蔽，并在历史和设置保存前去除。完整的执行范围、例外与旧记录处理见[运行与隐私要点](docs/what-we-run.md#简体中文运行与隐私要点)。
 已安装页里的 HTTPS 首页链接只交给默认浏览器打开，不会被声明了该域名的 App 直接接走；查不到默认浏览器时不打开。普通 HTTP 首页只供拷贝。

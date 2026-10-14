@@ -546,3 +546,88 @@ async fn test_an_update_whose_tool_failed_with_its_version_unchanged_is_kept_as_
     assert_eq!(record.to_version, None);
     assert!(!record.verified);
 }
+
+/// R77-2: an update of a formula set up to run with `brew services` is
+/// installed, and a service still running runs the old version until it is
+/// restarted. The reminder its preview carried stays with the operation and
+/// its history, beside a cleanup's and a relink's notes, once its new
+/// version is installed -- and only then.
+#[tokio::test]
+async fn service_restart_reminder_survives_success_history_and_other_warnings() {
+    let reminder = FollowUpWarning::ServiceMayNeedRestart {
+        name: "cmake".into(),
+    };
+    let failed = Outcome::Failed {
+        exit_code: Some(1),
+        summary: "Error: post-install step failed".into(),
+        cause: None,
+    };
+    // (how the tool ended, whether its version stays, whether the reminder is kept)
+    let cases = [
+        ("succeeded", Outcome::Succeeded, false, true),
+        ("step-failed", failed.clone(), false, true),
+        ("failed", failed, true, false),
+        ("cancelled", Outcome::Cancelled, false, false),
+        ("unconfirmed", Outcome::Unconfirmed, false, false),
+    ];
+    for (tag, outcome, holds, kept) in cases {
+        let f = fixture_with(&format!("service-{tag}"), outcome);
+        f.adapter.hold_version.store(holds, Ordering::SeqCst);
+        *f.adapter.notes.lock().unwrap() = vec![
+            LogNote::OldVersionsNotCleanedUp {
+                name: "cmake".into(),
+                exit_code: Some(1),
+            },
+            LogNote::NoLongerLinked {
+                name: "cmake".into(),
+                commands: vec!["cmake".into()],
+            },
+        ];
+        let mut plan = f
+            .adapter
+            .plan(&f.instance, &upgrade(&f.instance))
+            .await
+            .unwrap();
+        plan.warnings.push(
+            banager_core::model::Warning::HomebrewServiceMayNeedRestart {
+                name: "cmake".into(),
+            },
+        );
+        let id = f.manager.submit_with(plan, Some(on_finish(&f.store)));
+        let ended = f.manager.wait(id).await;
+        let summary = f
+            .manager
+            .summaries()
+            .into_iter()
+            .find(|s| s.id == id)
+            .unwrap();
+        assert_eq!(
+            summary.follow_up_warnings.contains(&reminder),
+            kept,
+            "{tag}: {ended:?} {:?}",
+            summary.follow_up_warnings
+        );
+        if tag == "succeeded" {
+            assert_eq!(
+                ended,
+                Some(Outcome::Succeeded),
+                "a reminder changes no outcome"
+            );
+            assert_eq!(
+                summary.follow_up_warnings.len(),
+                3,
+                "none displaces another"
+            );
+            let wire = serde_json::to_value(&summary).unwrap();
+            assert_eq!(
+                wire["follow_up_warnings"][2],
+                serde_json::json!({"ServiceMayNeedRestart": {"name": "cmake"}})
+            );
+            assert!(f.store.flush(Duration::from_secs(5)));
+            let reopened = HistoryStore::open(f.dir.join("history.json"));
+            let record = &reopened.view().records[0];
+            assert_eq!(record.result, HistoryResult::Succeeded);
+            assert_eq!(record.follow_up_warnings, summary.follow_up_warnings);
+        }
+    }
+}

@@ -1605,6 +1605,16 @@ impl OperationManager {
             Err(e) => execute_error_outcome(e),
         };
 
+        // An update installed -- or already at its target, which a service
+        // may not be running either -- of a formula set up with `brew
+        // services` (R77-2): the reminder stays with the operation and its
+        // history, after the update itself is gone from the list.
+        if matches!(
+            final_outcome,
+            Outcome::Succeeded | Outcome::NeedsAttention(Attention::UpdatedButStepFailed { .. })
+        ) {
+            self.say_service_may_need_restart(op_id, &plan, &warning_sink);
+        }
         self.finish(op_id, final_outcome, true);
     }
 
@@ -1639,6 +1649,36 @@ impl OperationManager {
                 name: plan.request.name.clone(),
                 exit_code: None,
             },
+        });
+        if let Some(r) = self.records.lock().unwrap().get_mut(&op_id) {
+            r.follow_up_warnings = warning_sink.warnings();
+        }
+    }
+
+    /// For a formula's update whose preview found it set up to run with
+    /// `brew services` (`Warning::HomebrewServiceMayNeedRestart`), and
+    /// whose new version is installed: `LogNote::ServiceMayNeedRestart`,
+    /// in the log and in the operation's follow-up warnings, as
+    /// `say_promised_cleanup_did_not_run` keeps its note. It says what the
+    /// preview saw, not whether the service runs now.
+    fn say_service_may_need_restart(
+        &self,
+        op_id: OpId,
+        plan: &Plan,
+        warning_sink: &Arc<WarningSink>,
+    ) {
+        if plan.request.kind != OpKind::Upgrade {
+            return;
+        }
+        let Some(name) = plan.warnings.iter().find_map(|warning| match warning {
+            Warning::HomebrewServiceMayNeedRestart { name } => Some(name.clone()),
+            _ => None,
+        }) else {
+            return;
+        };
+        warning_sink.emit(OperationEvent::Note {
+            op_id,
+            note: LogNote::ServiceMayNeedRestart { name },
         });
         if let Some(r) = self.records.lock().unwrap().get_mut(&op_id) {
             r.follow_up_warnings = warning_sink.warnings();

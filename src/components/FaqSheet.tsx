@@ -21,6 +21,10 @@ const QUESTION_KEYS: Record<FaqId, { question: string; answer: string }> = {
     question: "faq.questions.updatedWithWarning.question",
     answer: "faq.questions.updatedWithWarning.answer",
   },
+  serviceAfterUpdate: {
+    question: "faq.questions.serviceAfterUpdate.question",
+    answer: "faq.questions.serviceAfterUpdate.answer",
+  },
   autoCheck: { question: "faq.questions.autoCheck.question", answer: "faq.questions.autoCheck.answer" },
 };
 

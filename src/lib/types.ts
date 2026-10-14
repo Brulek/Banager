@@ -515,6 +515,13 @@ export type Warning =
    */
   | { HomebrewServiceStays: { name: string; system: boolean } }
   /**
+   * R77-2: `brew services start` set this formula up to run in the
+   * background, and `brew upgrade` restarts no service already running it,
+   * which runs the old version until restarted. Says how it was set up,
+   * not whether it runs. `name` is its name in the Cellar.
+   */
+  | { HomebrewServiceMayNeedRestart: { name: string } }
+  /**
    * U9 (r6): once this upgrade of a formula exits 0, Banager runs
    * `brew cleanup <name>` (`PlanAction`'s `CommandThen`), which deletes
    * these older versions -- every version installed when the preview
@@ -1121,7 +1128,10 @@ export type LogNote =
   // no longer in Terminal.
   | { RelinkingAfterUpdate: { name: string } }
   | { StillLinkedAfterUpdate: { name: string } }
-  | { NoLongerLinked: { name: string; commands: string[] } };
+  | { NoLongerLinked: { name: string; commands: string[] } }
+  // R77-2: the update of a formula set up with `brew services` is
+  // installed; a service still running runs the old version until restarted.
+  | { ServiceMayNeedRestart: { name: string } };
 export type OperationEvent =
   | { Status: { op_id: number; status: OpStatus } }
   | { Log: { op_id: number; stream: Stream; line: string } }
@@ -1338,4 +1348,7 @@ export interface SourcePath {
 }
 
 /** Rust follow_up::FollowUpWarning; also valid structured log notes. */
-export type FollowUpWarning = Extract<LogNote, { OldVersionsNotCleanedUp: unknown } | { NoLongerLinked: unknown }>;
+export type FollowUpWarning = Extract<
+  LogNote,
+  { OldVersionsNotCleanedUp: unknown } | { NoLongerLinked: unknown } | { ServiceMayNeedRestart: unknown }
+>;

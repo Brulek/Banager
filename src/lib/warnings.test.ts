@@ -137,6 +137,21 @@ describe("warningKey", () => {
     );
   });
 
+  it("says a formula's update doesn't restart its brew services service, conditionally, in every language (R77-2)", () => {
+    const warning: Warning = { HomebrewServiceMayNeedRestart: { name: "redis" } };
+    const words = (language: string) => i18n.getFixedT(language)(warningKey(warning) as string, warningArgs(warning));
+    expect(words("en")).toBe(
+      "redis is set to run in the background with brew services. Updating its files doesn't restart it. If it is running, restart it with brew services after the update to use the new version.",
+    );
+    expect(words("zh-CN")).toBe("“redis”已用brew services设为在后台运行。更新文件不会重新启动它。如果它正在运行，请在更新后用brew services重新启动它，以使用新版本。");
+    expect(words("zh-Hant")).toBe("「redis」已用brew services設為在背景執行。更新檔案不會重新啟動它。如果它正在執行，請在更新後用brew services重新啟動它，以使用新版本。");
+    // A caution with no ⓘ, which deletes nothing.
+    expect(isCaution(warning)).toBe(true);
+    expect(warningDetailKey(warning)).toBeNull();
+    expect(deletesForGood(warning)).toBe(false);
+    expect(warningGroup(warning)).toBe("note");
+  });
+
   it("says a formula's brew services service keeps running after its uninstall, with the command that stops it", () => {
     // r18 R46-3: `brew uninstall` neither stops the service nor removes its
     // file; one started with `sudo` is stopped with `sudo`.
@@ -391,6 +406,7 @@ describe("warningKey", () => {
       { HomebrewNoCleanupFormulae: { names: ["node"], old_versions: false, autoremove: true } },
       { HomebrewForgetsTrust: { name: "someone/tap/thing" } },
       { HomebrewServiceStays: { name: "ollama", system: false } },
+      { HomebrewServiceMayNeedRestart: { name: "redis" } },
       { UninstallScope: { what: "Pipx" } },
       { CaskUninstallStep: { step: "Trashes", items: ["~/.nvs"] } },
       { Message: "boom" },
@@ -605,6 +621,7 @@ const EVERY_VARIANT: Warning[] = [
   { HomebrewNoCleanupFormulae: { names: ["node"], old_versions: true, autoremove: true } },
   { HomebrewForgetsTrust: { name: "someone/tap/thing" } },
   { HomebrewServiceStays: { name: "ollama", system: false } },
+  { HomebrewServiceMayNeedRestart: { name: "redis" } },
   { HomebrewCleansUpOldVersions: { versions: ["1.25.0"] } },
   { HomebrewRemovesEveryVersion: { versions: ["1.25.0", "1.26.0"] } },
   { HomebrewRelinksAfterUpdate: { name: "node@22", commands: ["node", "npm"] } },
@@ -736,7 +753,7 @@ describe("warningGroup", () => {
           "UninstallScope" in warning
         ),
     );
-    expect(notes).toHaveLength(34);
+    expect(notes).toHaveLength(35);
     for (const warning of notes) expect(warningGroup(warning)).toBe("note");
     // Every kind of a cask's extra steps.
     for (const step of EVERY_STEP) {
@@ -1132,6 +1149,7 @@ describe("isCaution", () => {
       { LeavesShellConfigLine: { path: "~/.zshrc", certain: true } },
       { CaskUninstallStep: { step: "Deletes", items: ["~/Library/Foo"] } },
       { HomebrewServiceStays: { name: "ollama", system: false } },
+      { HomebrewServiceMayNeedRestart: { name: "redis" } },
       { Message: "something this build has no words for" },
     ];
     const plain: Warning[] = [

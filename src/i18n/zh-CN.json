@@ -455,6 +455,7 @@
     "soon": "下次自动检查：很快"
   },
   "warnings": {
+    "serviceMayNeedRestart": "“{{name}}”已用brew services设为在后台运行。更新文件不会重新启动它。如果它正在运行，请在更新后用brew services重新启动它，以使用新版本。",
     "dependentsUnknown": "无法确定还有哪些软件要用它。卸载前请自行确认。",
     "wouldBreak_other": "还有{{count}}个工具要用它：{{names}}。",
     "compilesLocally": "需要在这台Mac上编译，会花一些时间。",
@@ -870,6 +871,7 @@
     "text": "错误详情："
   },
   "followUpWarning": {
+    "serviceMayNeedRestart": "准备这次更新时，“{{name}}”已用brew services设为在后台运行。更新文件不会重新启动它。如果它仍在运行旧版本，请用brew services重新启动它，以使用新版本。",
     "batch_other": "已更新{{total}}个工具，{{count}}个有警告",
     "batchSucceeded_other": "{{total}}个都已成功，{{count}}个有警告",
     "succeeded_other": "已更新，有警告",
@@ -1505,6 +1507,10 @@
       "updatedWithWarning": {
         "question": "为什么更新后显示有警告？",
         "answer": "更新已成功，但后续步骤需要查看。点按“查看日志”，可以了解发生了什么以及接下来怎么做。打开“操作完成时通知”后，通知也会将它计为需要查看。"
+      },
+      "serviceAfterUpdate": {
+        "question": "更新后台服务会重新启动它吗？",
+        "answer": "更新文件不会重新启动正在运行的服务。对于已用brew services设为在后台运行的工具，确认框和保存的结果会提醒：如果它仍在运行旧版本，需要重新启动它。此App不会检查正在运行的服务使用哪个版本。"
       },
       "autoCheck": {
         "question": "自动检查什么时候会停？",

@@ -1081,7 +1081,8 @@ ended, "N updated, N couldn't be updated" (「N个已更新，N个未能更新�
 「N個需要查看」) for one the tool said worked and Banager could not
 confirm, or one updated whose step after it failed. A successful update
 with saved follow-up warnings (`follow_up_warnings`: old versions not
-cleaned up, commands no longer linked) counts as needing attention, as
+cleaned up, commands no longer linked, a service that may need
+restarting) counts as needing attention, as
 the operation bar shows it, including when its full operation record has
 been evicted (`ops::Ended::of`): "Updated N tools" only when every
 counted operation succeeded without follow-up warnings. An update that
@@ -2052,7 +2053,19 @@ brew services and that uninstalling doesn't stop it, with `brew services
 stop <name>` -- `sudo brew services stop <name>` for one in
 `/Library/LaunchDaemons` -- to run in Terminal first
 (`Warning::HomebrewServiceStays`). Banager runs neither. A service file
-the formula names some other way is not looked for.
+the formula names some other way is not looked for. A formula update
+uses the same service-file reader and, when a file is found, says
+conditionally that a running service needs restarting to use the new
+version: `brew upgrade` replaces the formula's files and restarts no
+service already running it (`caveats.rb:300-303`,
+`formula_installer.rb:1360-1378` in Homebrew 7)
+(`Warning::HomebrewServiceMayNeedRestart`). This checks configuration,
+not whether the service is running; Banager does not restart it, and
+the update's command is the same either way. Once the update's new
+version is installed (`Succeeded`, or installed though a step after it
+failed), the operation keeps the reminder as a follow-up warning
+(`FollowUpWarning::ServiceMayNeedRestart`, `OperationManager::say_service_may_need_restart`),
+in the log, the result and the history.
 
 `brew uses` names only formulae and casks. The uninstall preview of a
 formula or cask also looks, read-only and running nothing, for the other
@@ -5865,12 +5878,15 @@ may have changed something had ended in between. An update that
 succeeded though a step after it did not end as planned -- or one whose
 tool failed once its new version was installed, kept as needing attention
 with the version it moved to (`Attention::UpdatedButStepFailed`) -- also keeps a
-note of each such step (`follow_up_warnings`, at most two, read off the
+note of each such step (`follow_up_warnings`, at most three, read off the
 log's own notes, never its lines): a `brew cleanup` that did not finish
 (`OldVersionsNotCleanedUp`: the formula's name and the cleanup's exit
 code, when it had one -- none for the cleanup an update installed though
 a step after it failed never ran) and commands left unlinked
-(`NoLongerLinked`: the formula's name and the names of those commands), so
+(`NoLongerLinked`: the formula's name and the names of those commands),
+and a conditional service-restart reminder for a formula whose preview
+found it set up with `brew services` (`ServiceMayNeedRestart`: the
+formula's name), so
 that after a restart 「最近的更新记录」 still says 「已更新，有警告」 (or
 「已更新，有错误」) and its View Log shows those
 notes with their existing next step, saying the full log was not kept. A

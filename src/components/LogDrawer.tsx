@@ -105,6 +105,10 @@ export function noteText(t: TFunction, note: LogNote, brew: string): string {
       command: linkBackCommand(brew, name).join(" "),
     });
   }
+  // R77-2: what the preview saw, never whether the service runs now.
+  if ("ServiceMayNeedRestart" in note) {
+    return t("followUpWarning.serviceMayNeedRestart", { name: note.ServiceMayNeedRestart.name });
+  }
   const unhandled: never = note;
   return unhandled;
 }

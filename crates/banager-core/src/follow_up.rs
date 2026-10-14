@@ -14,6 +14,12 @@ pub enum FollowUpWarning {
         name: String,
         commands: Vec<String>,
     },
+    /// An update installed of a formula set up to run with `brew services`
+    /// when it was previewed (`Warning::HomebrewServiceMayNeedRestart`): a
+    /// service still running runs the old version until it is restarted.
+    ServiceMayNeedRestart {
+        name: String,
+    },
 }
 
 /// `HistoryRecord::follow_up_warnings` as `history.json` holds it: each
@@ -70,12 +76,16 @@ impl EventSink for WarningSink {
                             commands: commands.clone(),
                         })
                     }
+                    LogNote::ServiceMayNeedRestart { name } => {
+                        Some(FollowUpWarning::ServiceMayNeedRestart { name: name.clone() })
+                    }
                     _ => None,
                 };
                 if let Some(warning) = warning {
                     let mut warnings = self.warnings.lock().unwrap();
-                    // One cleanup and one relink per plan; repeated notes add nothing.
-                    if warnings.len() < 2 && !warnings.contains(&warning) {
+                    // One cleanup, one relink and one service reminder per
+                    // plan; repeated notes add nothing.
+                    if warnings.len() < 3 && !warnings.contains(&warning) {
                         warnings.push(warning);
                     }
                 }

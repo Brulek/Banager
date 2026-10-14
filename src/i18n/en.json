@@ -493,6 +493,7 @@
     "soon": "Next automatic check: soon"
   },
   "warnings": {
+    "serviceMayNeedRestart": "{{name}} is set to run in the background with brew services. Updating its files doesn't restart it. If it is running, restart it with brew services after the update to use the new version.",
     "dependentsUnknown": "Couldn't check what else needs this. Check yourself before you uninstall.",
     "wouldBreak_one": "{{names}} still needs this.",
     "wouldBreak_other": "{{count}} other tools still need this: {{names}}.",
@@ -942,6 +943,7 @@
     "text": "Error details:"
   },
   "followUpWarning": {
+    "serviceMayNeedRestart": "{{name}} was set to run in the background with brew services when this update was prepared. Updating its files doesn't restart it. If it is still running the old version, restart it with brew services to use the new version.",
     "batch_one": "Updated {{total}} tools · {{count}} with a warning",
     "batch_other": "Updated {{total}} tools · {{count}} with warnings",
     "batchSucceeded_one": "All {{total}} succeeded · {{count}} with a warning",
@@ -1631,6 +1633,10 @@
       "updatedWithWarning": {
         "question": "Why does an update say it has a warning?",
         "answer": "The update succeeded, but a step after it needs attention. Choose “View Log” to see what happened and what to do next. If “Notify me when operations finish” is on, the notification counts it as needing attention too."
+      },
+      "serviceAfterUpdate": {
+        "question": "Does updating a background service restart it?",
+        "answer": "Updating its files doesn't restart a running service. For a tool set to run with brew services, the update's confirmation and its saved result remind you to restart it if it is still running the old version. This app doesn't check which version the running service is using."
       },
       "autoCheck": {
         "question": "When does the automatic check stop?",
