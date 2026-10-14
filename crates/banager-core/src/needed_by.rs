@@ -175,8 +175,16 @@ pub struct NeededBy {
     /// program leads outside it, or another `ollama` while that one leads
     /// in (`Look::another_ollama`). The preview then says so of that
     /// folder, and not that it can go to the Trash
-    /// (`Warning::KeepsData.in_use`, `Session::with_needed_by`).
+    /// (`Warning::KeepsData.in_use`, `Session::with_needed_by`). Asked
+    /// even when no model is listed, so not by itself a sign of models.
     pub ollama_stays: bool,
+    /// Whether models this Ollama lists on this Mac count on that Ollama
+    /// staying (`ollama_stays`, for a source with models that count): the
+    /// reason this preview names no source that runs on the package,
+    /// whether or not `~/.ollama/models` was found -- `OLLAMA_MODELS` may
+    /// keep them elsewhere (r24 R85-1). The preview carries it as
+    /// `Warning::OllamaStays`, for a batch to keep one copy of Ollama.
+    pub models_on_another_ollama: bool,
 }
 
 /// The sources of `instances` that run on `package`, a formula or cask of
@@ -257,15 +265,18 @@ pub fn needed_by_on_path(
             warnings: Vec::new(),
             complete: false,
             ollama_stays: false,
+            models_on_another_ollama: false,
         };
     };
     let mut warnings = Vec::new();
     let mut ollama_stays = false;
+    let mut models_on_another_ollama = false;
     if roots.is_empty() {
         return NeededBy {
             warnings,
             complete: true,
             ollama_stays: false,
+            models_on_another_ollama: false,
         };
     }
     for source in instances {
@@ -330,14 +341,17 @@ pub fn needed_by_on_path(
         // Ollama.app or another `ollama` on `PATH` while Banager's leads
         // in or is not known to lead anywhere (a version manager's shim) --
         // runs the same models from the same folder (`~/.ollama/models`):
-        // they need nothing of this one.
+        // they need nothing of this one, but that one: listed, they say so
+        // whether or not their folder is the default one.
         if ollama {
             if into == Some(false) {
                 ollama_stays = true;
+                models_on_another_ollama |= !tools.is_empty();
             } else if (program || into.is_none())
                 && look.another_ollama(env, &refreshed.applications, &roots)
             {
                 ollama_stays = true;
+                models_on_another_ollama |= !tools.is_empty();
                 continue;
             }
         }
@@ -382,6 +396,7 @@ pub fn needed_by_on_path(
         warnings,
         complete: !look.over && !doubted,
         ollama_stays,
+        models_on_another_ollama,
     }
 }
 
@@ -1270,6 +1285,7 @@ mod tests {
                 warnings: Vec::new(),
                 complete: true,
                 ollama_stays: false,
+                models_on_another_ollama: false,
             }
         );
     }
@@ -1298,6 +1314,7 @@ mod tests {
                 warnings: Vec::new(),
                 complete: true,
                 ollama_stays: false,
+                models_on_another_ollama: false,
             }
         );
         // `node` itself is: npm's `npm` is a copy outside its keg, but the
@@ -1390,6 +1407,7 @@ mod tests {
                 warnings: Vec::new(),
                 complete: true,
                 ollama_stays: false,
+                models_on_another_ollama: false,
             }
         );
     }
@@ -1419,6 +1437,7 @@ mod tests {
                 warnings: Vec::new(),
                 complete: true,
                 ollama_stays: false,
+                models_on_another_ollama: false,
             }
         );
     }
@@ -1940,6 +1959,83 @@ mod tests {
     }
 
     #[test]
+    fn r85_1_listed_models_count_on_a_surviving_copy_without_the_default_folder() {
+        // Homebrew's formula, first on `PATH`, and its `ollama-app` cask:
+        // the models live where `OLLAMA_MODELS` says, and no
+        // `~/.ollama/models` is there to be marked as in use.
+        let root = Root::new("ollama-custom-models");
+        root.dir("opt/homebrew/Caskroom/ollama-app/0.34.1");
+        root.program("opt/homebrew/Cellar/ollama/0.34.1/bin/ollama");
+        root.link("opt/homebrew/opt/ollama", "../Cellar/ollama/0.34.1");
+        root.link(
+            "opt/homebrew/bin/ollama",
+            "../Cellar/ollama/0.34.1/bin/ollama",
+        );
+        root.program("Applications/Ollama.app/Contents/Resources/ollama");
+        root.dir("models-elsewhere");
+        let ollama = instance(
+            "ollama",
+            "ollama:http://127.0.0.1:11434",
+            root.path("opt/homebrew/opt/ollama/bin/ollama"),
+            root.path("home/.ollama"),
+        );
+        let models = vec![row(&ollama.id, ArtifactKind::Model, "llama3.2:3b")];
+        let instances = vec![brew(&root), ollama.clone()];
+        let env = root.env(&["opt/homebrew/opt/ollama/bin", "opt/homebrew/bin"]);
+        assert!(!root.path("home/.ollama/models").exists());
+        let cask = with_path(
+            row(BREW, ArtifactKind::Cask, "ollama-app"),
+            root.path("Applications/Ollama.app"),
+        );
+        let look = |package: &InstalledArtifact, models: &[InstalledArtifact]| {
+            needed_by_on_path(
+                package,
+                &instances[0],
+                &instances,
+                models,
+                &env,
+                &Refreshed {
+                    path_known: true,
+                    unlisted: Vec::new(),
+                    applications: root.path("Applications"),
+                },
+                BUDGET,
+            )
+        };
+        // Each copy counts on the other for the listed models: the formula
+        // on the app that stays, the app on the formula Banager runs.
+        for package in [&formula("ollama"), &cask] {
+            let found = look(package, &models);
+            assert!(found.complete, "{package:?}");
+            assert!(found.warnings.is_empty(), "{:?}", found.warnings);
+            assert!(found.ollama_stays);
+            assert!(found.models_on_another_ollama, "{package:?}");
+        }
+        // With no model listed, another copy staying is no model's need.
+        for package in [&formula("ollama"), &cask] {
+            let found = look(package, &[]);
+            assert!(found.ollama_stays);
+            assert!(!found.models_on_another_ollama);
+        }
+        // Models kept on another machine need nothing here.
+        let remote = ManagerInstance {
+            id: "ollama:http://studio.local:11434".to_string(),
+            ..ollama.clone()
+        };
+        let instances = vec![brew(&root), remote.clone()];
+        let found = needed_by(
+            &formula("ollama"),
+            &instances[0],
+            &instances,
+            &[row(&remote.id, ArtifactKind::Model, "llama3.2:3b")],
+            &root.env(&["opt/homebrew/opt/ollama/bin"]),
+            BUDGET,
+        );
+        assert!(!found.models_on_another_ollama);
+        assert!(found.warnings.is_empty());
+    }
+
+    #[test]
     fn regression_r73_2_a_dispatcher_or_a_file_that_cannot_run_is_no_other_ollama() {
         // Homebrew's formula first on `PATH`, a mise shim of `ollama` after
         // it: the shim leads to mise, outside the formula, and was taken
@@ -2155,6 +2251,7 @@ mod tests {
                 warnings: Vec::new(),
                 complete: false,
                 ollama_stays: false,
+                models_on_another_ollama: false,
             }
         );
     }
@@ -2260,6 +2357,7 @@ mod tests {
                 warnings: Vec::new(),
                 complete: true,
                 ollama_stays: false,
+                models_on_another_ollama: false,
             }
         );
         // A name that names no single folder.
@@ -2277,6 +2375,7 @@ mod tests {
                     warnings: Vec::new(),
                     complete: true,
                     ollama_stays: false,
+                    models_on_another_ollama: false,
                 },
                 "{name:?}"
             );
@@ -2312,6 +2411,7 @@ mod tests {
                 warnings: Vec::new(),
                 complete: false,
                 ollama_stays: false,
+                models_on_another_ollama: false,
             }
         );
     }
@@ -2336,6 +2436,7 @@ mod tests {
             warnings: Vec::new(),
             complete: false,
             ollama_stays: false,
+            models_on_another_ollama: false,
         }
     }
 
@@ -2344,6 +2445,7 @@ mod tests {
             warnings: Vec::new(),
             complete: true,
             ollama_stays: false,
+            models_on_another_ollama: false,
         }
     }
 

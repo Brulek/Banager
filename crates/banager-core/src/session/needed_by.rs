@@ -249,12 +249,17 @@ impl Session {
 
 /// `warnings` with what a look found (`None`: it did not come back): its
 /// own warnings, the models folder (`kept_data::OLLAMA_MODELS`) marked as
-/// one an Ollama that stays still uses (`NeededBy::ollama_stays`), and
+/// one an Ollama that stays still uses (`NeededBy::ollama_stays`),
+/// `Warning::OllamaStays` when the listed models count on that Ollama
+/// wherever they are kept (`NeededBy::models_on_another_ollama`), and
 /// `Warning::DependentsUnknown` when it did not finish and they do not say
 /// it already.
 fn with_found(warnings: &mut Vec<Warning>, found: Option<needed_by::NeededBy>) {
     let complete = match found {
         Some(found) => {
+            if found.models_on_another_ollama && !warnings.contains(&Warning::OllamaStays) {
+                warnings.push(Warning::OllamaStays);
+            }
             if found.ollama_stays {
                 for warning in warnings.iter_mut() {
                     if let Warning::KeepsData {
@@ -1550,6 +1555,7 @@ mod tests {
                 warnings: Vec::new(),
                 complete: true,
                 ollama_stays,
+                models_on_another_ollama: false,
             })
         };
         let mut stays = plan();
@@ -1566,6 +1572,37 @@ mod tests {
         assert_eq!(lost.last(), Some(&Warning::DependentsUnknown));
     }
 
+    #[test]
+    fn r85_1_models_that_count_on_another_ollama_are_said_without_the_models_folder() {
+        // `OLLAMA_MODELS` keeps the models elsewhere: no `KeepsData` for
+        // `~/.ollama/models` to mark, and the preview still says the listed
+        // models count on another Ollama -- once, and no folder made up.
+        let found = |models_on_another_ollama| {
+            Some(crate::needed_by::NeededBy {
+                warnings: Vec::new(),
+                complete: true,
+                ollama_stays: true,
+                models_on_another_ollama,
+            })
+        };
+        let mut warnings = Vec::new();
+        super::with_found(&mut warnings, found(true));
+        assert_eq!(warnings, vec![Warning::OllamaStays]);
+        super::with_found(&mut warnings, found(true));
+        assert_eq!(warnings, vec![Warning::OllamaStays]);
+        assert!(!super::names_a_source(&Plan {
+            warnings: warnings.clone(),
+            ..test_support::fake_plan(
+                &test_support::make_instance("brew", BREW),
+                &uninstall("ollama")
+            )
+        }));
+        // Another Ollama staying, with no model listed: nothing to say.
+        let mut none = Vec::new();
+        super::with_found(&mut none, found(false));
+        assert!(none.is_empty());
+    }
+
     #[tokio::test]
     async fn test_a_look_that_does_not_come_back_in_time_or_panics_is_not_waited_for() {
         // A step stuck in the kernel never returns to check the budget: the
@@ -1574,6 +1611,7 @@ mod tests {
             warnings: Vec::new(),
             complete: true,
             ollama_stays: false,
+            models_on_another_ollama: false,
         };
         let quick = done.clone();
         assert_eq!(

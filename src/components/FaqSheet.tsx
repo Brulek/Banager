@@ -13,6 +13,7 @@ const QUESTION_KEYS: Record<FaqId, { question: string; answer: string }> = {
   twins: { question: "faq.questions.twins.question", answer: "faq.questions.twins.answer" },
   password: { question: "faq.questions.password.question", answer: "faq.questions.password.answer" },
   leftBehind: { question: "faq.questions.leftBehind.question", answer: "faq.questions.leftBehind.answer" },
+  cantUninstall: { question: "faq.questions.cantUninstall.question", answer: "faq.questions.cantUninstall.answer" },
   changesMac: { question: "faq.questions.changesMac.question", answer: "faq.questions.changesMac.answer" },
   otherPrograms: { question: "faq.questions.otherPrograms.question", answer: "faq.questions.otherPrograms.answer" },
   sizes: { question: "faq.questions.sizes.question", answer: "faq.questions.sizes.answer" },

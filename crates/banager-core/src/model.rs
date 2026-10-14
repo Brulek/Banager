@@ -1053,6 +1053,15 @@ pub enum Warning {
         program: bool,
         tools: usize,
     },
+    /// On a copy of Ollama's uninstall preview: the models the Ollama
+    /// source lists on this Mac count on another Ollama staying -- the
+    /// reason the preview names no `NeededBySource` -- whether or not the
+    /// default models folder was found (`OLLAMA_MODELS` may keep them
+    /// elsewhere; `needed_by::NeededBy::models_on_another_ollama`, r24
+    /// R85-1). No line of its own: a batch reads it to keep one copy of
+    /// Ollama when the copies ticked count on each other. Added by
+    /// `Session::with_needed_by`.
+    OllamaStays,
     /// No `cargo-binstall` on PATH: install/upgrade compiles from source,
     /// which can take a while.
     CompilesLocally,
@@ -3387,6 +3396,10 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&Warning::DependentsUnknown).unwrap(),
             r#""DependentsUnknown""#
+        );
+        assert_eq!(
+            serde_json::to_string(&Warning::OllamaStays).unwrap(),
+            r#""OllamaStays""#
         );
         assert_eq!(
             serde_json::to_string(&Warning::CompilesLocally).unwrap(),

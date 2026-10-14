@@ -379,17 +379,21 @@ const OLLAMA_FAMILY = "ollama";
 
 /**
  * Whether a copy of Ollama's preview counted on another Ollama staying to
- * run the models: its models folder is one an Ollama that stays still uses
- * (`Warning.KeepsData`'s `in_use`, `NeededBy::ollama_stays` in
- * crates/banager-core/src/needed_by.rs), which is why it names no source
- * that runs on it. The other may be a copy in the same batch -- Homebrew's
- * formula and its `ollama-app` cask each count on the other -- and
- * `Session::submit` does not look again once the first has gone.
+ * run the models, which is why it names no source that runs on it: the
+ * models listed on this Mac count on it, wherever they are kept
+ * (`"OllamaStays"`, `NeededBy::models_on_another_ollama` in
+ * crates/banager-core/src/needed_by.rs, r24 R85-1), or its models folder
+ * is one an Ollama that stays still uses (`Warning.KeepsData`'s `in_use`,
+ * `NeededBy::ollama_stays`), models listed or not. The other may be a copy
+ * in the same batch -- Homebrew's formula and its `ollama-app` cask each
+ * count on the other -- and `Session::submit` does not look again once the
+ * first has gone.
  */
 function countsOnAnotherOllama(candidate: BatchCandidate): boolean {
+  const warnings = candidate.plan?.warnings ?? [];
   return (
     candidate.artifact.facts.family === OLLAMA_FAMILY &&
-    keptDataOf(candidate.plan?.warnings ?? []).some((item) => item.what === "Models" && item.inUse)
+    (warnings.includes("OllamaStays") || keptDataOf(warnings).some((item) => item.what === "Models" && item.inUse))
   );
 }
 

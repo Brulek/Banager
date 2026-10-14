@@ -91,14 +91,14 @@ describe("FaqSheet", () => {
     expect(locale.faq.questions.twins.answer).toContain(sentence);
   });
 
-  it("answers all twelve questions in English, each under its question, Done focused", async () => {
+  it("answers all thirteen questions in English, each under its question, Done focused", async () => {
     renderWithProviders(<FaqSheet />);
     expect(screen.queryByRole("dialog")).toBeNull();
 
     act(() => openFaqSheet());
 
     const dialog = await screen.findByRole("dialog", { name: "Common Questions" });
-    expect(FAQ_ITEMS).toHaveLength(12);
+    expect(FAQ_ITEMS).toHaveLength(13);
     expect(shown(dialog)).toEqual(questionsIn(en));
     expect(within(dialog).getAllByRole("heading", { level: 3 }).map((heading) => heading.textContent)).toEqual([
       "Terminal says a command isn't found. What can I do?",
@@ -106,6 +106,7 @@ describe("FaqSheet", () => {
       "What does “Installed twice” mean, and what should I do?",
       "Why is my Mac password needed? Can it be typed for me here?",
       "What stays behind after uninstalling, and where?",
+      "Why does other software keep a tool from being uninstalled?",
       "Does this app change my Mac?",
       "What's in Other Programs?",
       "How accurate are the sizes?",
@@ -117,7 +118,7 @@ describe("FaqSheet", () => {
     expect(within(dialog).getByRole("button", { name: "Done" })).toHaveFocus();
   });
 
-  it("answers all twelve in Chinese", async () => {
+  it("answers all thirteen in Chinese", async () => {
     await i18n.changeLanguage("zh-CN");
     try {
       renderWithProviders(<FaqSheet />);
@@ -130,6 +131,7 @@ describe("FaqSheet", () => {
         "“装了两份”是什么意思，该怎么办？",
         "为什么要输入Mac的密码？这里能代我输入吗？",
         "卸载后哪些东西会留下，在哪里？",
+        "为什么其他软件会让工具不能卸载？",
         "此App会改动我的Mac吗？",
         "“其他程序”里的是什么？",
         "占用空间的数字准吗？",
@@ -271,11 +273,11 @@ describe("FaqSheet", () => {
     expect(chinese).toContain(`没有按“${zhCN.updates.justUpdated.clear}”的话`);
   });
 
-  it("offers no 查看 where there is no one place to act: the password, and what the app changes", async () => {
+  it("offers no 查看 where there is no one place to act: the password, what keeps a tool from being uninstalled, and what the app changes", async () => {
     renderWithProviders(<FaqSheet />);
     act(() => openFaqSheet());
     const dialog = await screen.findByRole("dialog", { name: "Common Questions" });
-    for (const id of ["password", "changesMac"] as const) {
+    for (const id of ["password", "cantUninstall", "changesMac"] as const) {
       const section = dialog.querySelector(`section[data-faq="${id}"]`) as HTMLElement;
       expect(within(section).queryByRole("button")).toBeNull();
     }

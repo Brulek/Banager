@@ -448,6 +448,43 @@ describe("which ticked tools a batch uninstalls", () => {
     expect(ids(alone.included).sort()).toEqual(["ollama", "wget"]);
   });
 
+  it("keeps one copy of Ollama for listed models kept outside the default folder (r24 R85-1)", () => {
+    // `OLLAMA_MODELS` elsewhere: no models folder to mark, only the marker
+    // that the listed models count on another Ollama staying.
+    const stays: Warning = "OllamaStays";
+    const family = { ...NO_FACTS, family: "ollama" };
+    const formulaCopy = formula("ollama", { facts: { ...family, commands: runs("ollama") } });
+    const app = artifact(brew, "Cask", "ollama-app", { display_name: "Ollama", facts: family });
+    const binary = artifact(brew, "Cask", "ollama-binary", { facts: family });
+    const snapshot = [formulaCopy, app, binary, llama];
+    const result = classify([candidate(formulaCopy, { warnings: [stays] }), candidate(app, { warnings: [stays] })], snapshot);
+    expect(ids(result.included)).toEqual(["Ollama"]);
+    expect(result.excluded.map((item) => [item.candidate.name, item.reason])).toEqual([
+      ["ollama", { kind: "otherOllamaGoes", ids: [artifactKeyId(app.key)] }],
+    ]);
+    // Ticked the other way round, the other copy stays out.
+    const reversed = classify([candidate(app, { warnings: [stays] }), candidate(formulaCopy, { warnings: [stays] })], snapshot);
+    expect(ids(reversed.included)).toEqual(["ollama"]);
+    // Three copies: one goes.
+    const three = classify(
+      [candidate(formulaCopy, { warnings: [stays] }), candidate(app, { warnings: [stays] }), candidate(binary, { warnings: [stays] })],
+      snapshot,
+    );
+    expect(ids(three.included)).toEqual(["ollama-binary"]);
+    // One marked copy beside one unmarked: the marked one stays out.
+    const one = classify([candidate(formulaCopy), candidate(app, { warnings: [stays] })], snapshot);
+    expect(ids(one.included)).toEqual(["ollama"]);
+    // Beside a tool of no Ollama, the marked copy goes.
+    const alone = classify([candidate(formulaCopy, { warnings: [stays] }), candidate(wget)], snapshot);
+    expect(ids(alone.included).sort()).toEqual(["ollama", "wget"]);
+    // No model listed and no models folder: nothing to keep a copy for.
+    const empty = classify([candidate(formulaCopy), candidate(app)], [formulaCopy, app]);
+    expect(ids(empty.included).sort()).toEqual(["Ollama", "ollama"]);
+    // The marker alone keeps nothing that is not a copy of Ollama.
+    const other = classify([candidate(wget, { warnings: [stays] }), candidate(htop, { warnings: [stays] })], snapshot);
+    expect(ids(other.included).sort()).toEqual(["htop", "wget"]);
+  });
+
   it("does not take one copy of a tool for the other's program", () => {
     const npmClaude = artifact(npm, "Package", "@anthropic-ai/claude-code", { facts: { ...NO_FACTS, commands: runs("claude") } });
     const own = { ...claudeCode, facts: { ...NO_FACTS, commands: runs("claude") } };

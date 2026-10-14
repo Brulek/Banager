@@ -429,6 +429,13 @@ export type Warning =
    * package out.
    */
   | { NeededBySource: { instance_id: string; program: boolean; tools: number } }
+  /**
+   * On a copy of Ollama's uninstall preview: the models listed on this Mac
+   * count on another Ollama staying, wherever they are kept (Rust
+   * `Warning::OllamaStays`, r24 R85-1). No line of its own: a batch keeps
+   * one copy of Ollama by it (`countsOnAnotherOllama`).
+   */
+  | "OllamaStays"
   | "CompilesLocally"
   | "NonRegistrySource"
   /**

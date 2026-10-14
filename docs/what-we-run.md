@@ -5249,8 +5249,8 @@ Mac is only a client. Nor does Ollama need the package while another
 Open Ollama button looks), or one in a folder on the `PATH` of the last
 refresh, that is there, is an executable file and leads, every link
 followed, outside the package's folder -- ollama.com's app beside
-Homebrew's formula runs the same models from the same `~/.ollama/models`,
-which the preview names among what stays. One look for each of those two
+Homebrew's formula can run the same models, from `~/.ollama/models`
+unless `OLLAMA_MODELS` names another folder. One look for each of those two
 apps and each `PATH` folder, each link followed; one it could not follow,
 or did not reach within the budget, counts for nothing, and so does a
 file that cannot be run or a version manager's shim (a folder named
@@ -5264,12 +5264,18 @@ they stay in use only while another copy as above stays. While such an Ollama st
 Banager's own Ollama leads outside the package, the preview says under
 `~/.ollama/models` that another copy of Ollama still uses those models,
 and does not say they can be moved to the Trash
-(`NeededBy::ollama_stays`, `Warning::KeepsData.in_use`). A batch keeps
-one such copy while the models need one: a copy of Ollama whose preview
-says this is left out while another copy of Ollama goes in the same batch,
+(`NeededBy::ollama_stays`, `Warning::KeepsData.in_use`). When the
+Ollama source lists models on this Mac and they count on such an Ollama
+staying, the preview also records that, even when `~/.ollama/models` is
+not found (`NeededBy::models_on_another_ollama`, `Warning::OllamaStays`,
+which has no line of its own; r24 R85-1). A batch keeps one such copy
+while the models need one: a copy of Ollama whose preview says either of
+these is left out while another copy of Ollama goes in the same batch,
 since the copy it counted on may be that one -- Homebrew's formula and
 its `ollama-app` cask each count on the other (`otherOllamaGoes` in
-`src/lib/batchUninstall.ts`).
+`src/lib/batchUninstall.ts`). Keeping a copy says nothing of whether it is
+running or set up for the same models folder, and this look neither finds,
+measures nor deletes a models folder `OLLAMA_MODELS` names.
 
 Each source with any tool that needs the package is listed under 「依赖此
 工具的软件」 ("Software that uses it"), after what Homebrew names --

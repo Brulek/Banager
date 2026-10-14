@@ -1183,6 +1183,14 @@ describe("isCaution", () => {
 });
 
 describe("warningLines", () => {
+  it("says no line, no path and no Trash for an Ollama that stays (r24 R85-1)", () => {
+    expect(warningKey("OllamaStays")).toBeNull();
+    expect(warningDetailKey("OllamaStays")).toBeNull();
+    expect(deletesForGood("OllamaStays")).toBe(false);
+    expect(isCaution("OllamaStays")).toBe(false);
+    expect(warningLines(fakeT, ["OllamaStays"])).toEqual({ scope: [], trash: [], keep: [], data: [], note: [] });
+  });
+
   it("renders every warning in order, in its group, with its why where it has one", () => {
     const lines = warningLines(fakeT, [
       { WillTrash: { path: "~/.local/share/claude", what: "Program" } },

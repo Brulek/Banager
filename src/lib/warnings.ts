@@ -270,6 +270,9 @@ export function warningKey(warning: Warning): string | null {
         return "unreadInProtectedPlace.homebrewCleanupMayAutoremove";
       case "HomebrewMayAutoUpdate":
         return "unreadBrewEnv.homebrewMayAutoUpdate";
+      // No line: a batch reads it (`countsOnAnotherOllama`).
+      case "OllamaStays":
+        return null;
       default: {
         const unhandled: never = warning;
         return unhandled;
@@ -544,6 +547,7 @@ export function warningDetailKey(warning: Warning): string | null {
       case "NotLookedUpHere":
       case "HomebrewRustupLosesToolchains":
       case "EditsShellConfig":
+      case "OllamaStays":
         return null;
       default: {
         const unhandled: never = warning;
@@ -706,6 +710,7 @@ export function deletesForGood(warning: Warning): boolean {
       case "HomebrewMayCleanUp":
       case "HomebrewCleanupMayAutoremove":
       case "HomebrewMayAutoUpdate":
+      case "OllamaStays":
         return false;
       default: {
         const unhandled: never = warning;
@@ -887,6 +892,8 @@ export function isCaution(warning: Warning): boolean {
       case "TransientLookupFailure":
       case "NotLookedUpHere":
       case "EditsShellConfig":
+      // No line of its own (`warningKey`).
+      case "OllamaStays":
         return false;
       default: {
         const unhandled: never = warning;

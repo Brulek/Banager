@@ -18,6 +18,7 @@ export type FaqId =
   | "twins"
   | "password"
   | "leftBehind"
+  | "cantUninstall"
   | "changesMac"
   | "otherPrograms"
   | "sizes"
@@ -48,7 +49,7 @@ export interface FaqItem {
 /**
  * The questions, in the sheet's order: the wall a newcomer hits first --
  * a command Terminal does not find -- then updating, two copies, the
- * password, uninstalling, what Banager touches, Other Programs, sizes,
+ * password, uninstalling and what keeps a tool from it, what Banager touches, Other Programs, sizes,
  * major updates, an update's warning, a background service after its
  * update, and the daily check.
  */
@@ -58,6 +59,7 @@ export const FAQ_ITEMS: readonly FaqItem[] = [
   { id: "twins", view: { kind: "installed", show: "twins" } },
   { id: "password", view: null },
   { id: "leftBehind", view: { kind: "installed", show: "all" } },
+  { id: "cantUninstall", view: null },
   { id: "changesMac", view: null },
   { id: "otherPrograms", view: { kind: "unknown" } },
   { id: "sizes", view: { kind: "installedBySize" } },

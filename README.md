@@ -138,8 +138,8 @@ a protected place**, and the link is not followed.
   **Uninstall Selected** opens one preview of them all: what each one removes, in the order they will
   run; the ones it leaves to their own row, each with why — such as an uninstall that can't be cancelled
   once it starts, one that deletes files permanently, one whose steps can't be known in advance, one still
-  used by software you didn't select, one copy of Ollama while another goes in the same batch and the models still need
-  one to stay; what stays afterwards, each path once; and the exact commands
+  used by software you didn't select, one copy of Ollama while another goes in the same batch and the models listed on this Mac still need
+  one to stay, even when they are kept outside `~/.ollama/models`; what stays afterwards, each path once; and the exact commands
   under **Show Commands** (**Show Commands and Paths** when an uninstall moves files to the Trash).
   Confirming queues each tool's own uninstall, the same one its row runs — a tool whose dependent in
   the batch could not be started is left for later; on one source they start in the order listed.
@@ -219,9 +219,9 @@ page with its search box focused, and Settings… (⌘,) is in the Banager menu.
 or minimized, each of these brings it back first. **Keyboard Shortcuts** in the Help menu lists the
 keys Banager answers to, in three groups: the window's (these, Close Window and Quit), the lists' (↑ ↓
 and the keys that page or jump to an end, Space to tick a row, Return and Escape for Installed's
-details, Tab) and the dialogs' (Return, Escape). **Common Questions**, above it, answers twelve questions
+details, Tab) and the dialogs' (Return, Escape). **Common Questions**, above it, answers thirteen questions
 in a few plain sentences each — a command Terminal can't find, why some tools can't be updated here,
-"Installed twice", the Mac password, what an uninstall leaves, what Banager itself changes, Other
+"Installed twice", the Mac password, what an uninstall leaves, what keeps a tool from being uninstalled, what Banager itself changes, Other
 Programs, sizes, major updates, an update's warning, a background service after its update and the automatic check — with a button named for the page it opens
 (*Show in Installed*, *Show in Updates*…) where the answer can be acted on.
 
@@ -620,7 +620,7 @@ formula 与 cask，以及 npm、PyPI、crates.io 上的包，每条都译自该�
   它和那样的 npm 一样，随 Node 一起更新。
 - “已安装”页里，“卸载…”可用的行前面有复选框。最多勾 20 个，点“卸载所选”，一个预览里列出全部：按实际执行的
   顺序写出每个会删什么；留给它自己那一行单独卸载的，逐个写明原因，例如开始后无法取消的、会永久删除文件的、
-  卸载步骤删什么无法事先得知的、还有没选上的软件要用到的、模型还需要留一份 Ollama 而另一份已在同一批里卸载的；卸载后会保留的东西，每条路径只列一次；确切的命令收在“查看命令”
+  卸载步骤删什么无法事先得知的、还有没选上的软件要用到的、本机列出的模型还需要留一份 Ollama 而另一份已在同一批里卸载的（模型不在 `~/.ollama/models` 也一样）；卸载后会保留的东西，每条路径只列一次；确切的命令收在“查看命令”
   里（有工具的卸载会把文件移到废纸篓时是“查看命令和路径”）。确认后，每个工具运行的就是它那一行单独卸载时的那一次
   卸载——批量里依赖它的工具没能开始的，它先不卸载；同一个来源上的按列出的顺序开始。
 - “其他程序”页的扫描不读 macOS 在应用读取前会先问你的那些位置——桌面、文稿、下载、图片、影片、音乐、iCloud
@@ -688,8 +688,8 @@ Banager 开着时还会每天做一次同样的检查，查到的更新都不安
 “搜索”（⌘F），后者打开“已安装”页，并把光标放进搜索框；“设置…”（⌘,）在“Banager”菜单里。窗口关着或最小化时，
 选这些项会先把窗口叫回来。菜单栏“帮助”里的“键盘快捷键”列出 Banager 里能用的按键，分三组：窗口（上面这些，再加
 “关闭窗口”和“退出”）、列表（↑ ↓、翻页和跳到两头的键、用空格键勾选一行、在“已安装”里用回车和 Esc 打开和关闭详细信息、Tab）
-和对话框（回车、Esc）。它上面的“常见问题”用几句大白话回答十二个常见问题：终端里找不到命令、为什么有的工具不能在这里更新、
-“装了两份”、Mac 密码、卸载后留下什么、Banager 自己会改动什么、“其他程序”、占用空间、大版本更新、更新后的警告、更新后台服务和自动检查；
+和对话框（回车、Esc）。它上面的“常见问题”用几句大白话回答十三个常见问题：终端里找不到命令、为什么有的工具不能在这里更新、
+“装了两份”、Mac 密码、卸载后留下什么、什么会让工具不能卸载、Banager 自己会改动什么、“其他程序”、占用空间、大版本更新、更新后的警告、更新后台服务和自动检查；
 能动手处理的，旁边有“查看”按钮，直接打开对应的页面或“已安装”里的显示选项。
 
 第一次打开 Banager 时，会出现一个欢迎页，只有三个短标题：看清装了什么；你选的更新、卸载都由你确认；不收集数据。第一次检查在它背后照常进行，其中的 `brew update` 不是你选的，不会问你，见上文。不管怎样关掉它——点“开始使用”、按回车或 Esc、点它外面——设置文件都会记下

@@ -589,6 +589,8 @@ describe("types", () => {
     const message: Warning = { Message: "boom" };
 
     expect(roundTrip(dependentsUnknown)).toBe("DependentsUnknown");
+    const ollamaStays: Warning = "OllamaStays";
+    expect(roundTrip(ollamaStays)).toBe("OllamaStays");
     expect(roundTrip(compilesLocally)).toBe("CompilesLocally");
     expect(roundTrip(downloadsModelChanges)).toBe("DownloadsModelChanges");
     expect(roundTrip(nonRegistrySource)).toBe("NonRegistrySource");
