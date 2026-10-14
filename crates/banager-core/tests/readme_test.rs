@@ -423,6 +423,8 @@ fn test_readme_documents_canager_transfer_without_replacing_existing_settings() 
                 "copy `settings.json` from it, leaving the original",
                 "only if there's no `settings.json` there yet",
                 "don't replace it",
+                "To use the old settings in place of Banager's own, first move Banager's `settings.json` into a new, empty folder",
+                "**Common Questions** has the same steps. Canager kept no update history",
             ][..],
         ),
         (
@@ -433,6 +435,8 @@ fn test_readme_documents_canager_transfer_without_replacing_existing_settings() 
                 "拷贝其中的 `settings.json`，原文件留在原处",
                 "只有那里还没有 `settings.json` 时才粘贴",
                 "不要替换它",
+                "要改用旧的设置代替 Banager 自己的，先把 Banager 的 `settings.json` 移到别处一个新建的空文件夹里",
+                "“常见问题”里有同样的步骤。Canager 没有更新记录",
             ][..],
         ),
         (
@@ -457,5 +461,9 @@ fn test_readme_documents_canager_transfer_without_replacing_existing_settings() 
             assert!(canager < remove, "{name} says to remove Canager's folder before saying how to bring its settings over");
         }
         assert!(!text.contains("com.brulek.canager/history.json"));
+        // Common Questions names settings.json only, never the history, so
+        // nothing points to it for the history (r24 R79-2 skeptic).
+        assert!(!text.contains("**Common Questions** says the same"), "{name}");
+        assert!(!text.contains("“常见问题”里也这样说"), "{name}");
     }
 }

@@ -115,9 +115,9 @@ describe("FaqSheet", () => {
     // folder follows tauri.conf.json's identifier). Canager kept no
     // history, so settings.json is the one file to bring over, and never
     // over a settings.json Banager already has.
-    ["en", en, ["Canager is this app's old name", "quit this app and Canager", "Go > Go to Folder", "leaving the original there", "only if that folder has no settings.json yet", "don't replace it"]],
-    ["zh-CN", zhCN, ["Canager是此App以前的名字", "退出此App和Canager", "“前往”>“前往文件夹”", "原文件留在原处", "只有其中还没有settings.json时才粘贴", "不要替换它"]],
-    ["zh-Hant", zhHant, ["Canager是此App以前的名字", "結束此App和Canager", "「前往」>「前往檔案夾」", "原始檔案留在原處", "只有其中還沒有settings.json時才貼上", "不要取代它"]],
+    ["en", en, ["Canager is this app's old name", "quit this app and Canager", "Go > Go to Folder", "leaving the original there", "only if that folder has no settings.json yet", "don't replace it", "to use the old settings instead, first move that file into a new, empty folder, then paste"]],
+    ["zh-CN", zhCN, ["Canager是此App以前的名字", "退出此App和Canager", "“前往”>“前往文件夹”", "原文件留在原处", "只有其中还没有settings.json时才粘贴", "不要替换它", "要改用旧的设置，请先把这个文件移到一个新建的空文件夹里，再粘贴"]],
+    ["zh-Hant", zhHant, ["Canager是此App以前的名字", "結束此App和Canager", "「前往」>「前往檔案夾」", "原始檔案留在原處", "只有其中還沒有settings.json時才貼上", "不要取代它", "要改用舊的設定，請先把這個檔案移到一個新的空檔案夾裡，再貼上"]],
   ] as const)("says how to bring Canager's settings over without replacing this app's own, in %s", async (language, _locale, phrases) => {
     await i18n.changeLanguage(language);
     try {

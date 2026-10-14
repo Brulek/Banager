@@ -251,8 +251,10 @@ aren't brought over and those updates can show again. To bring them over, quit B
 that folder with Go to Folder in Finder's Go menu and copy `settings.json` from it, leaving the original
 there, then paste it into `~/Library/Application Support/com.brulek.banager` (create that folder if it
 isn't there) — but only if there's no `settings.json` there yet: one that is there holds Banager's own
-settings, so don't replace it. Canager kept no update history, so there is nothing else to bring over;
-**Common Questions** says the same.
+settings, so don't replace it. To use the old settings in place of Banager's own, first move Banager's
+`settings.json` into a new, empty folder somewhere else, so it can be put back, then paste.
+**Common Questions** has the same steps. Canager kept no update history, so there is nothing else to
+bring over.
 
 Banager saves its settings, its history of updates and uninstalls and its window's size and position in
 `~/Library/Application Support/com.brulek.banager`. WebKit, the part of macOS that draws its window, can
@@ -732,7 +734,8 @@ Banager 以前叫 Canager，用这个名字构建的版本把设置——包括�
 可能会重新出现。要带过来，先退出 Banager 和 Canager，在访达的“前往”菜单里用“前往文件夹”打开那个文件夹，
 拷贝其中的 `settings.json`，原文件留在原处，再粘贴到 `~/Library/Application Support/com.brulek.banager`
 （没有这个文件夹就先创建）——但只有那里还没有 `settings.json` 时才粘贴：已有的那个保存的是 Banager 自己的设置，
-不要替换它。Canager 没有更新记录，所以没有别的要带过来；“常见问题”里也这样说。
+不要替换它。要改用旧的设置代替 Banager 自己的，先把 Banager 的 `settings.json` 移到别处一个新建的空文件夹里，
+以便需要时放回，再粘贴。“常见问题”里有同样的步骤。Canager 没有更新记录，所以没有别的要带过来。
 
 Banager 把设置、更新和卸载记录、窗口的大小和位置保存在 `~/Library/Application Support/com.brulek.banager`。
 显示它窗口的 macOS 组件 WebKit 还可能把数据保存在 `~/Library/WebKit/com.brulek.banager`，把缓存保存在

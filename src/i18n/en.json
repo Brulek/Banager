@@ -1651,7 +1651,7 @@
       },
       "canagerData": {
         "question": "Where are my settings from Canager?",
-        "answer": "Canager is this app's old name, and its settings from then are kept in another folder, which this app doesn't read, so versions you skipped and tools you chose not to be reminded about may show updates again. To bring those settings over, quit this app and Canager, choose Go > Go to Folder in Finder, open ~/Library/Application Support/com.brulek.canager and copy settings.json, leaving the original there. Then open ~/Library/Application Support/com.brulek.banager the same way, creating that folder if it isn't there, and paste the file only if that folder has no settings.json yet. If it already has one, that file holds this app's own settings: don't replace it."
+        "answer": "Canager is this app's old name, and its settings from then are kept in another folder, which this app doesn't read, so versions you skipped and tools you chose not to be reminded about may show updates again. To bring those settings over, quit this app and Canager, choose Go > Go to Folder in Finder, open ~/Library/Application Support/com.brulek.canager and copy settings.json, leaving the original there. Then open ~/Library/Application Support/com.brulek.banager the same way, creating that folder if it isn't there, and paste the file only if that folder has no settings.json yet. If it already has one, that file holds this app's own settings, so don't replace it; to use the old settings instead, first move that file into a new, empty folder, then paste."
       }
     }
   },

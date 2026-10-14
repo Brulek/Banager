@@ -1525,7 +1525,7 @@
       },
       "canagerData": {
         "question": "Canager的設定在哪裡？",
-        "answer": "Canager是此App以前的名字，那時的設定存在另一個檔案夾裡，此App不會讀取，所以在那裡略過的版本和不再提醒的工具可能會重新顯示更新。要把這些設定帶過來，請結束此App和Canager，在Finder中選擇「前往」>「前往檔案夾」，開啟~/Library/Application Support/com.brulek.canager，拷貝settings.json，原始檔案留在原處。然後用同樣的方法開啟~/Library/Application Support/com.brulek.banager，沒有這個檔案夾時先建立，只有其中還沒有settings.json時才貼上。如果已經有一個，它儲存的是此App自己的設定，不要取代它。"
+        "answer": "Canager是此App以前的名字，那時的設定存在另一個檔案夾裡，此App不會讀取，所以在那裡略過的版本和不再提醒的工具可能會重新顯示更新。要把這些設定帶過來，請結束此App和Canager，在Finder中選擇「前往」>「前往檔案夾」，開啟~/Library/Application Support/com.brulek.canager，拷貝settings.json，原始檔案留在原處。然後用同樣的方法開啟~/Library/Application Support/com.brulek.banager，沒有這個檔案夾時先建立，只有其中還沒有settings.json時才貼上。如果已經有一個，它儲存的是此App自己的設定，不要取代它；要改用舊的設定，請先把這個檔案移到一個新的空檔案夾裡，再貼上。"
       }
     }
   },
