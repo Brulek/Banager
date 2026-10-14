@@ -56,6 +56,11 @@ pub(crate) fn refusal(
     }
     let interpreter = interpreter_of(real, protected)?;
     let found = match interpreter {
+        Interpreter::Unknown => {
+            return Some(refused(
+                "the script's interpreter could not be determined safely",
+            ))
+        }
         Interpreter::Named(path) => {
             let real = look::real_path(&path, protected).ok();
             return is_dispatcher(&path, real.as_deref()).then(|| {
@@ -96,6 +101,8 @@ fn refused(why: &str) -> std::io::Error {
 /// What a script's `#!` line runs.
 #[derive(Debug, PartialEq, Eq)]
 enum Interpreter {
+    /// env syntax that this reader cannot resolve without executing it.
+    Unknown,
     /// A program named whole (`#!/opt/homebrew/bin/python3`).
     Named(PathBuf),
     /// A name `/usr/bin/env` looks for (`#!/usr/bin/env node`,
@@ -124,6 +131,16 @@ fn parse_shebang(head: &[u8]) -> Option<Interpreter> {
     let first = Path::new(OsStr::from_bytes(words.next()?));
     if first.file_name() != Some(OsStr::new("env")) {
         return Some(Interpreter::Named(first.to_path_buf()));
+    }
+    // env -S interprets quotes, escapes and variable expansions. Splitting
+    // those as literal bytes could miss a shim (e.g. -S "node"). Refuse
+    // such lines until we can resolve them with env's exact semantics;
+    // never treat an unresolved interpreter as a missing executable.
+    if words.clone().any(|word| {
+        word.iter()
+            .any(|byte| matches!(byte, b'\'' | b'"' | b'\\' | b'$'))
+    }) {
+        return Some(Interpreter::Unknown);
     }
     // macOS splits a `#!` line's words, so `env` reads them as separate
     // arguments: its own options (`getopt`'s "0iL:P:S:U:u:v"), then
@@ -263,6 +280,28 @@ mod tests {
     impl Drop for Temp {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn env_split_string_syntax_is_refused_instead_of_looking_up_literal_quotes() {
+        let temp = Temp::new("env-split");
+        let node = temp.file("mise/shims/node", "#!/bin/sh\n", 0o755);
+        let path = std::env::join_paths([node.parent().unwrap()]).unwrap();
+        let protected = Protected::default();
+        for line in [
+            r#"#!/usr/bin/env -S "node""#,
+            "#!/usr/bin/env -S 'node'",
+            r#"#!/usr/bin/env -S n"od"e"#,
+            r#"#!/usr/bin/env -S"node""#,
+            r#"#!/usr/bin/env -S no\de"#,
+            r#"#!/usr/bin/env -S $INTERPRETER"#,
+            r#"#!/usr/bin/env -S PATH="/mise/shims" node"#,
+        ] {
+            assert_eq!(parse_shebang(line.as_bytes()), Some(Interpreter::Unknown));
+            let script = temp.file("script", &format!("{line}\n"), 0o755);
+            let error = refusal(&script, &script, Some(&path), &protected).unwrap();
+            assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied, "{line}");
         }
     }
 
