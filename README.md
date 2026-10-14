@@ -111,14 +111,16 @@ a protected place**, and the link is not followed.
   result didn't add up is listed only while the last check still offers that tool an update; one updated with an
   error is listed either way, as a success is. Cancelled updates
   and uninstalls are not listed. While the Updates page is open, Update History checks the 30 days again every
-  minute and whenever what it lists changes. The list is kept across restarts in `history.json`, until you press Clear History.
-  After **Reload** on the **Couldn't show this page.** screen, an update from this launch keeps the date the history
-  saved for it, and its place in the list.
+  minute and whenever what it lists changes. The list is kept across restarts in `history.json` until you press Clear
+  History, within two limits of the file's own: it keeps the last 1,000 updates and uninstalls, so after more than that
+  within 30 days the oldest go sooner, and it drops records once they are over 180 days old, long after the list stops
+  showing them.
   If that file is there but can't be read (an empty one counts as missing), Banager leaves it as it is and keeps new records only until you quit;
   a warning over the Updates page says so and what to do, whatever the page shows. Clear History hides the records
   listed when Banager takes it, and later ones stay; when it can't be saved, a warning says the cleared records may come
   back after reopening. A history write that failed is tried again after the next update, Clear History, or on quit,
-  and never changes an update's result.
+  and never changes an update's result. After **Reload** on the **Couldn't show this page.** screen, an update from
+  this launch keeps the date the history saved for it, and its place in the list.
 - An uninstall's preview lists what stays after it — an AI tool's settings and data folders where the
   table names them, Ollama's models — with how much each takes where it could be measured, and Copy Path; nothing in it
   deletes them. One line under the list says that settings and data you don't need can be moved to the Trash in Finder
@@ -155,8 +157,10 @@ a protected place**, and the link is not followed.
   the batch could not be started is left for later; on one source they start in the order listed.
 - When a Homebrew update or uninstall stopped because it needed your Mac's password, its **View Steps**
   shows the command to copy and run in Terminal, where you can type it. When Banager could save its history, after
-  it is quit and reopened an update's **View Steps** is still on its row for 30 days, and in **Update History** unless
-  you press **Clear History**; there it prepares that command again, as no log is kept across a restart.
+  it is quit and reopened an update's **View Steps** stays on its row for up to 30 days, while the tool still has an
+  update and no later update or successful uninstall of it has taken its place, and in **Update History** unless
+  you press **Clear History**; there it prepares that command again, as no log is kept across a restart. The history
+  keeps only its last 1,000 records, so View Steps can go sooner.
 - With **Check for updates** set to Daily or Weekly, Settings says about when the next check is due,
   while Banager is running. Its **Copy
   Diagnostic Info** — Help's item of that name takes you there — copies a short text about Banager,
@@ -637,11 +641,13 @@ formula 与 cask，以及 npm、PyPI、crates.io 上的包，每条都译自该�
   cask的更新失败时总是写未能更新：Homebrew会装回旧版本，连这一步也失败时，也无从知道新的App是否已经就位。
   未能更新的和结果对不上的只在上次检查仍为这个工具提供更新时列出；已更新但有错误的和成功的一样，都会列出。
   “更新”页打开时，“最近的更新记录”每分钟以及列出的内容有变化时都会重新检查 30 天的期限。
-  取消的更新和卸载不列。这个列表重启后仍在（存在 `history.json` 里），直到你按“清除记录”。在“无法显示此页面。”上点“重新载入”后，
-  本次运行的更新仍按记录里保存的完成时间显示日期和排序。这个文件在、却读不了时（空文件当作没有），
+  取消的更新和卸载不列。这个列表重启后仍在（存在 `history.json` 里），直到你按“清除记录”；不过这个文件自己有两个上限：
+  只保留最近 1,000 次更新和卸载，30 天内超过这个数时，最早的会提前消失；记录超过 180 天后会被删除，那时列表早已不再显示它。
+  这个文件在、却读不了时（空文件当作没有），
   Banager 会原样保留它，新的记录只留到退出为止；“更新”页上方会提示这一点和该怎么做，不论页面显示什么。“清除记录”
   隐藏 Banager 收到它时列出的记录，之后的照常列出；无法保存时会提示，清除的记录重新打开后可能会再列出。保存记录失败时，
-  下次更新、清除记录或退出时会再试，更新本身的结果不受影响。
+  下次更新、清除记录或退出时会再试，更新本身的结果不受影响。在“无法显示此页面。”上点“重新载入”后，
+  本次运行的更新仍按记录里保存的完成时间显示日期和排序。
 - 卸载前的预览会列出卸载后会保留的东西——AI 工具的设置和数据文件夹（内置表格里写了的）、Ollama 的模型——能算出大小的
   写出大小，并可以拷贝路径；预览里没有任何删除它们的按钮，只在列表下面用一句话说明不需要的设置和数据可以在访达中移到
   废纸篓（同时列出终端配置文件时，提醒它留在原处）。这个工具的另一份、或同一类的其他工具还装着，或者文件夹里有另一份
@@ -669,8 +675,9 @@ formula 与 cask，以及 npm、PyPI、crates.io 上的包，每条都译自该�
   不读取，列表下方有一行写出有几个没有读取（打开“显示技术细节”后，它的 ⓘ 里列出是哪些）；指向这些位置的程序
   链接按它自己的名字列出，标着“指向受保护的位置”，不跟进去。
 - Homebrew 的更新或卸载因为要输入 Mac 密码而停下时，点「查看步骤」会给出一条命令，拷贝到终端里运行，就能在
-  那里输入密码。记录能保存时，退出 Banager 再打开后，更新的「查看步骤」30 天内仍在它那一行；没有按“清除记录”的话，
-  “最近的更新记录”里也有。这时点它会重新准备这条命令：日志不会跨重启保留。
+  那里输入密码。记录能保存时，退出 Banager 再打开后，只要这个工具仍有更新、之后也没有再更新或成功卸载它，更新的「查看步骤」
+  30 天内仍在它那一行；没有按“清除记录”的话，“最近的更新记录”里也有。这时点它会重新准备这条命令：日志不会跨重启保留。
+  记录只保留最近 1,000 条，所以「查看步骤」有时会更早消失。
 - 把“检查更新”设为“每天”或“每周”后，Banager 运行时，设置里会写出下次检查大约在什么时候。设置里的“拷贝诊断信息”（菜单栏“帮助”里的同名项会
   带你到这里）会拷贝一段关于 Banager、这台 Mac 和各来源的简短文字，可以粘贴给帮你看问题的人；勾选后才包括
   工具清单，个人文件夹的路径写成 `~`，但不在“用户”文件夹里的个人文件夹可能仍会写出完整路径。无法运行、运行时出错或没有响应的来源会附上它的工具输出的错误详情，其中可能引用工具的设置文件；

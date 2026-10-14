@@ -6139,7 +6139,13 @@ than 180 days by the Mac's clock (`HistoryStore::view`), and
 (`isRecentUpdateTime` in `src/lib/history.ts`): records from earlier
 launches and this launch's own alike, read against the clock each time the
 list is worked out -- every minute while the Updates page is open, and
-whenever what it lists changes. It is written whole to
+whenever what it lists changes. An update's View Steps that a record gives
+its row after a restart (a Homebrew password stop) keeps to the same 30
+days, and goes sooner once a later update of the tool or an uninstall of it
+that worked is kept, once the last check no longer offers the tool an
+update, or once the record is past the last 1,000; Clear hides the record's
+line in 「最近的更新记录」 but leaves its row's View Steps
+(`usePasswordRecoveryKeys` in `src/lib/passwordRecovery.ts`). It is written whole to
 a random, exclusively created `history.json.tmp.<random>` beside it by the
 same atomic writer as settings and renamed into place, on a thread of
 its own, after each operation finishes and after Clear. A missing file,
