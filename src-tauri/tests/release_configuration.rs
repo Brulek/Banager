@@ -52,7 +52,10 @@ fn release_packaging_does_not_require_unconfigured_updater_signing() {
 #[test]
 fn release_keeps_its_targets_apple_signing_draft_and_intel_check() {
     let config = config();
-    assert_eq!(config["bundle"]["targets"], serde_json::json!(["app", "dmg"]));
+    assert_eq!(
+        config["bundle"]["targets"],
+        serde_json::json!(["app", "dmg"])
+    );
     assert_eq!(config["bundle"]["macOS"]["minimumSystemVersion"], "13.3");
     let lines = tauri_action_lines();
     for wanted in [
