@@ -1,4 +1,5 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { invoke } from "@tauri-apps/api/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../App";
@@ -127,6 +128,56 @@ describe("ShortcutsSheet", () => {
       ]);
       expect(dialog.querySelector('[data-shortcut="tick"] kbd .sr-only')?.textContent).toBe("空格键");
       expect(within(dialog).getByRole("button", { name: "完成" })).toHaveFocus();
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+
+  // Nothing in the list takes the focus, and the keyboard scrolls only
+  // what has it: at the window's height the list runs past the sheet's
+  // foot, so its scrolling body is its own Tab stop (r24 R76-1).
+  it.each([
+    ["en", "Keyboard Shortcuts", "Done"],
+    ["zh-CN", "键盘快捷键", "完成"],
+    ["zh-Hant", "鍵盤快速鍵", "完成"],
+  ])("lets Tab reach its scrolling list in %s, Done still focused first, and hands the focus back", async (lang, title, done) => {
+    await i18n.changeLanguage(lang);
+    try {
+      const user = userEvent.setup();
+      renderWithProviders(
+        <>
+          <button type="button" onClick={() => openShortcutsSheet()}>
+            opener
+          </button>
+          <ShortcutsSheet />
+          <button type="button">behind the sheet</button>
+        </>,
+      );
+      const opener = screen.getByRole("button", { name: "opener" });
+      await user.click(opener);
+      const dialog = await screen.findByRole("dialog", { name: title });
+      const doneButton = within(dialog).getByRole("button", { name: done });
+      expect(doneButton).toHaveFocus();
+
+      const list = within(dialog).getByRole("region", { name: title });
+      // The body that scrolls, not a box inside it.
+      expect(list).toBe(dialog.querySelector("[data-dialog-body]"));
+      expect(list).toHaveAttribute("tabindex", "0");
+      expect(list.querySelector("[data-shortcut-group]")).not.toBeNull();
+
+      await user.tab();
+      expect(list).toHaveFocus();
+      await user.tab();
+      expect(doneButton).toHaveFocus();
+      await user.tab({ shift: true });
+      expect(list).toHaveFocus();
+      await user.tab({ shift: true });
+      expect(doneButton).toHaveFocus();
+
+      await user.tab();
+      await user.keyboard("{Escape}");
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      await waitFor(() => expect(opener).toHaveFocus());
     } finally {
       await i18n.changeLanguage("en");
     }

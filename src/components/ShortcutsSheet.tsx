@@ -120,6 +120,7 @@ export function ShortcutsSheet() {
       onOpenChange={(next) => useShortcutsSheet.setState({ open: next })}
       title={t("shortcuts.title")}
       width="several"
+      bodyScrollLabel={t("shortcuts.title")}
       initialFocus={doneRef}
       footer={
         <button ref={doneRef} type="button" onClick={close} className={BUTTON.large.default}>

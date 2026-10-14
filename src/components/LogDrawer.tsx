@@ -349,6 +349,7 @@ export function LogDrawer() {
         className="min-h-0 flex-1 overflow-hidden rounded-group bg-group"
         ref={viewportRef}
         onViewportScroll={handleScroll}
+        viewportLabel={t("operations.logDrawerTitle")}
       >
         <div
           role="log"

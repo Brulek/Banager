@@ -76,6 +76,14 @@ export interface DialogProps {
    */
   fillBody?: boolean;
   /**
+   * The body's name as its own Tab stop, where nothing in it takes the
+   * focus and it scrolls past the foot -- Keyboard Shortcuts' list. The
+   * keyboard scrolls only what has the focus; without it, ↑ ↓ and Page
+   * Up / Page Down could not reach what is below. Not with `fillBody`,
+   * whose child scrolls instead.
+   */
+  bodyScrollLabel?: string;
+  /**
    * What gets the focus back when it closes: what opened it -- a row's
    * button, the ⋯ button whose menu item opened it, Update all. Without
    * it, or once it is gone from the page, whatever had the focus as the
@@ -154,6 +162,7 @@ export function Dialog({
   footerStart,
   stackedFooter = false,
   fillBody = false,
+  bodyScrollLabel,
   returnFocusTo,
   initialFocus,
   focusSelf = false,
@@ -163,6 +172,7 @@ export function Dialog({
   const noted = useRef<HTMLElement | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const subtitleId = useId();
+  const scrollStop = !fillBody && bodyScrollLabel !== undefined && bodyScrollLabel !== "";
   const hasSubtitle = subtitle !== undefined && subtitle !== null;
   // Its subtitle, then its main text; nothing, where it has neither.
   const describedByIds = [hasSubtitle ? subtitleId : null, describedBy ?? null].filter((id) => id !== null).join(" ");
@@ -239,9 +249,10 @@ export function Dialog({
           <div
             ref={attachBody}
             data-dialog-body=""
+            {...(scrollStop ? { role: "region", "aria-label": bodyScrollLabel, tabIndex: 0 } : {})}
             className={`min-h-0 flex-1 px-5 pt-2 ${fillBody ? "flex flex-col" : "overflow-y-auto"} ${
               hasFooter ? "" : "pb-5"
-            }`}
+            } ${scrollStop ? "focus-visible:outline-offset-[-3px]" : ""}`}
           >
             {description !== undefined ? (
               <RadixDialog.Description className="break-words text-body text-foreground">

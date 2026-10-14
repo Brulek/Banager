@@ -820,6 +820,64 @@ describe("LogDrawer", () => {
   });
 });
 
+// The transcript holds only text, and the keyboard scrolls only what has
+// the focus: its scrolling box is its own Tab stop, so earlier lines can
+// be scrolled back to without a pointer, the dialog itself still focused
+// first (r24 R76-1).
+describe("LogDrawer, its transcript for the keyboard", () => {
+  it.each([
+    ["en", "Operation log", 200],
+    ["zh-CN", "操作日志", 200],
+    ["zh-Hant", "操作記錄", 200],
+    ["en", "Operation log", 0],
+  ])("lets Tab reach the scrolling transcript in %s (%s, %i lines) and hands the focus back", async (lang, name, lines) => {
+    await i18n.changeLanguage(lang);
+    try {
+      useUiStore.setState({ drawerOpen: false });
+      for (let i = 0; i < lines; i += 1) {
+        useUiStore.getState().appendLog({ opId: 1, stream: "Stdout", line: `line ${i}` });
+      }
+      const user = userEvent.setup();
+      const { getByRole } = renderWithProviders(<DrawerInPage />);
+      const opener = getByRole("button", { name: "show the log" });
+      await user.click(opener);
+      const dialog = getByRole("dialog");
+      expect(dialog).toHaveFocus();
+
+      const viewport = within(dialog).getByRole("region", { name });
+      expect(viewport).toHaveAttribute("data-radix-scroll-area-viewport");
+      expect(viewport).toHaveAttribute("tabindex", "0");
+      expect(within(viewport).getByRole("log", { name })).toBeInTheDocument();
+
+      // Forwards, round the dialog and back to it, never behind.
+      const behind = getByRole("button", { name: "behind the drawer", hidden: true });
+      const forwards: Element[] = [];
+      for (let i = 0; i < 8; i += 1) {
+        await user.tab();
+        expect(dialog.contains(document.activeElement)).toBe(true);
+        expect(document.activeElement).not.toBe(behind);
+        forwards.push(document.activeElement as Element);
+      }
+      expect(forwards).toContain(viewport);
+      // And backwards.
+      const backwards: Element[] = [];
+      for (let i = 0; i < 8; i += 1) {
+        await user.tab({ shift: true });
+        expect(dialog.contains(document.activeElement)).toBe(true);
+        backwards.push(document.activeElement as Element);
+      }
+      expect(backwards).toContain(viewport);
+
+      while (document.activeElement !== viewport) await user.tab();
+      await user.keyboard("{Escape}");
+      expect(useUiStore.getState().drawerOpen).toBe(false);
+      await waitFor(() => expect(opener).toHaveFocus());
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+});
+
 describe("LogDrawer, under a tool's own words", () => {
   const failedUpdate = (summary: string, extra: Partial<OpSummary> = {}): OpSummary => ({
     ...runningOp,

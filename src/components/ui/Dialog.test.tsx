@@ -354,6 +354,42 @@ describe("Dialog", () => {
     );
   });
 
+  it("makes its scrolling body a named Tab stop only when asked to, and never with fillBody", () => {
+    const body = (props: { bodyScrollLabel?: string; fillBody?: boolean }) => {
+      const { getByRole, unmount } = renderWithProviders(
+        <Dialog open onOpenChange={vi.fn()} title="Sheet" footer={<button type="button">Done</button>} {...props}>
+          <p>Text</p>
+        </Dialog>,
+      );
+      const found = getByRole("dialog").querySelector("[data-dialog-body]") as HTMLElement;
+      const seen = {
+        role: found.getAttribute("role"),
+        label: found.getAttribute("aria-label"),
+        tabIndex: found.getAttribute("tabindex"),
+        insetRing: found.className.includes("focus-visible:outline-offset-[-3px]"),
+      };
+      unmount();
+      return seen;
+    };
+    const none = { role: null, label: null, tabIndex: null, insetRing: false };
+    expect(body({})).toEqual(none);
+    expect(body({ bodyScrollLabel: "" })).toEqual(none);
+    expect(body({ bodyScrollLabel: "The list", fillBody: true })).toEqual(none);
+    expect(body({ bodyScrollLabel: "The list" })).toEqual({
+      role: "region",
+      label: "The list",
+      tabIndex: "0",
+      insetRing: true,
+    });
+
+    // index.css: while it has the keyboard's focus, its foot does not fade
+    // under the ring.
+    const css = readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../index.css"), "utf-8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/\s+/g, " ");
+    expect(css).toContain("[data-dialog-body][data-more-below]:focus-visible { mask-image: none; }");
+  });
+
   it("does not render when closed", () => {
     const { queryByRole } = renderWithProviders(
       <Dialog open={false} onOpenChange={vi.fn()} title="Confirm">
