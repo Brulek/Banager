@@ -8,6 +8,8 @@ import { command } from "../test/command";
 import { UpdatesToolbar } from "../test/updatesToolbar";
 import { UpdatesPage } from "./UpdatesPage";
 import { PageHeader } from "../components/PageHeader";
+import { HistoryNotice } from "../components/HistoryNotice";
+import { useHistoryClearState } from "../lib/history";
 import { BUTTON } from "../components/ui/controls";
 import { artifactKeyId, useUiStore } from "../store/ui";
 import { queryKeys } from "../lib/queries";
@@ -407,6 +409,7 @@ function operation(key: ArtifactKey, fields: Partial<OpSummary> = {}): OpSummary
 }
 
 beforeEach(() => {
+  useHistoryClearState.setState({ unconfirmed: false });
   settings = {
     language: "System",
     show_technical_details: false,
@@ -506,6 +509,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  useHistoryClearState.setState({ unconfirmed: false });
   vi.restoreAllMocks();
 });
 
@@ -4544,6 +4548,63 @@ describe("UpdatesPage", () => {
           return answer(cmd, args);
         });
       }
+
+      it.each([
+        ["en", false], ["en", true],
+        ["zh-CN", false], ["zh-CN", true],
+        ["zh-Hant", false], ["zh-Hant", true],
+      ] as const)("keeps Clear available after a lost reply in %s (empty updates: %s)", async (lang, empty) => {
+        await i18n.changeLanguage(lang);
+        onTestFinished(async () => { await i18n.changeLanguage("en"); });
+        if (empty) updates = [];
+        let history: HistoryView = {
+          run: "this-launch",
+          cleared_before: null,
+          records: [kept("cmake", Date.now())],
+          persistence: "saved",
+          unsaved_clear: false,
+        };
+        const answer = mockInvoke.getMockImplementation()!;
+        let clears = 0;
+        mockInvoke.mockImplementation((cmd: string, args?: InvokeArgs) => {
+          if (cmd === "get_history") return Promise.resolve(history);
+          if (cmd === "clear_history") {
+            clears += 1;
+            history = { ...history, records: history.records.map((record) => ({ ...record, dismissed: true })) };
+            return clears === 1 ? Promise.reject(new Error("reply lost")) : Promise.resolve(history);
+          }
+          return answer(cmd, args);
+        });
+        const { queryClient } = renderWithProviders(
+          <>
+            <HistoryNotice />
+            <UpdatesToolbar><UpdatesPage /></UpdatesToolbar>
+          </>,
+        );
+        const clearLabel = i18n.t("updates.justUpdated.clearLabel");
+        const notice = i18n.t("updates.justUpdated.storage.clearUnconfirmed");
+        fireEvent.click(await screen.findByRole("button", { name: clearLabel }));
+        await screen.findByText(notice);
+        await waitFor(() => {
+          expect(queryClient.getQueryData<HistoryView>(queryKeys.history)?.records[0].dismissed).toBe(true);
+          expect(document.querySelector("[data-just-updated-cell='name']")).toBeNull();
+        });
+        expect(screen.getByRole("button", { name: clearLabel })).toBeEnabled();
+        expect(clears).toBe(1);
+
+        // A later completion stays visible until the person explicitly retries.
+        history = { ...history, records: [kept("wget", Date.now(), { op_id: 4 }), ...history.records] };
+        await act(async () => { await queryClient.invalidateQueries({ queryKey: queryKeys.history }); });
+        await waitFor(() => expect(document.querySelector("[data-just-updated-cell='name']")).toHaveTextContent("wget"));
+        expect(clears).toBe(1);
+        fireEvent.click(screen.getByRole("button", { name: clearLabel }));
+        await waitFor(() => {
+          expect(screen.queryByText(notice)).toBeNull();
+          expect(screen.queryByRole("button", { name: clearLabel })).toBeNull();
+        });
+        expect(clears).toBe(2);
+        expect(useHistoryClearState.getState().unconfirmed).toBe(false);
+      });
 
       it("lists the last 30 days' updates, newest first, with the version, the date and Updated -- what was read in its tooltip -- and one that failed", async () => {
         vi.useFakeTimers({ toFake: ["Date"] });

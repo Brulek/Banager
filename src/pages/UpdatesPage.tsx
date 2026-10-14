@@ -29,7 +29,7 @@ import {
   justUpdatedOps,
   type JustUpdatedEntry,
 } from "../components/JustUpdated";
-import { clearedHere, isRecentUpdateTime, recentUpdates, recordHere, toolsSeenHere, useClearHistory, useHistory, verifiedHere } from "../lib/history";
+import { clearedHere, isRecentUpdateTime, recentUpdates, recordHere, toolsSeenHere, useClearHistory, useHistory, useHistoryClearState, verifiedHere } from "../lib/history";
 import { NO_HISTORY } from "../lib/types";
 import { RowAction, ToolRow } from "../components/ToolRow";
 import { StatusChip, type StatusChipProps } from "../components/StatusChip";
@@ -367,6 +367,7 @@ export function UpdatesPage() {
   // What the history kept, for 「最近的更新记录」 after a restart (src/lib/history.ts).
   const { data: history = NO_HISTORY } = useHistory();
   const clearHistory = useClearHistory();
+  const clearUnconfirmed = useHistoryClearState((state) => state.unconfirmed);
   const showHiddenUpdates = useUiStore((s) => s.showHiddenUpdates);
   // The empty page's Check Again, the toolbar's own check, and when the
   // last one was, to the minute.
@@ -794,8 +795,11 @@ export function UpdatesPage() {
   // after it lands (`justUpdatedOps`); only then does it move down to the
   // top of 「最近的更新记录」, as 「今天…」. With nothing to install, it is the
   // only list, right under the notices.
+  // Keep the recovery button even if the Clear succeeded but its reply
+  // was lost and the next history read has already dismissed every row.
+  const showHistory = justUpdated.length > 0 || clearUnconfirmed;
   const items = useMemo<ListItem[]>(() => {
-    const recent = justUpdated.length > 0 ? [{ type: "justUpdated", count: justUpdated.length } as const] : [];
+    const recent = showHistory ? [{ type: "justUpdated", count: justUpdated.length } as const] : [];
     const pending = actionableRows.length > 0 || otherRows.length > 0;
     return [
       ...(notices.length > 0 ? [{ type: "notices", count: notices.length } as const] : []),
@@ -817,7 +821,7 @@ export function UpdatesPage() {
         : []),
       ...(pending ? recent : []),
     ];
-  }, [notices.length, justUpdated.length, actionableRows, otherRows, showCantUpdate, hiddenReasonCount, show]);
+  }, [notices.length, justUpdated.length, showHistory, actionableRows, otherRows, showCantUpdate, hiddenReasonCount, show]);
 
   // Once Clear has taken 「最近的更新记录」 away, its button with it, the focus
   // goes to the list's first row, or, with no list, the page's title --
@@ -825,7 +829,7 @@ export function UpdatesPage() {
   // the sidebar. The history's own lines go when it answers, so this
   // waits for the section to be gone.
   useEffect(() => {
-    if (!refocusAfterClear.current || justUpdated.length > 0) return;
+    if (!refocusAfterClear.current || showHistory) return;
     refocusAfterClear.current = false;
     const focus = document.activeElement;
     if (focus !== null && focus !== document.body && focus.isConnected) return;
@@ -1122,7 +1126,7 @@ export function UpdatesPage() {
     ) : null;
 
   const justUpdatedSection =
-    justUpdated.length > 0 ? <JustUpdated entries={justUpdated} onClear={clearJustUpdatedList} clearing={clearHistory.isPending} /> : null;
+    showHistory ? <JustUpdated entries={justUpdated} onClear={clearJustUpdatedList} clearing={clearHistory.isPending} /> : null;
 
   // Two different kinds of empty: the backend found no updates, or it found
   // some and the user has hidden every one (skipped the version it offers,
