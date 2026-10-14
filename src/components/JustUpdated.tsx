@@ -145,7 +145,10 @@ export interface JustUpdatedEntry {
    * a version would read as the one it was updated to.
    */
   version: string | null;
-  /** When it finished, in milliseconds, or null for one this window did not see finish. */
+  /**
+   * When it finished, in milliseconds: its history record's time, or until
+   * the history has it, when this window saw it finish; null with neither.
+   */
   finishedAt: number | null;
   /**
    * Whether Banager read the installed version before the update and after

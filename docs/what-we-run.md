@@ -6107,7 +6107,11 @@ an address masked (`failure_detail`). An operation cancelled before Banager bega
 (while it waited for its turn, or while Banager read the installed
 version) is not recorded. Each record also carries a random id of the
 launch of Banager that ran it and the operation's number in that launch,
-so that the page lists an update it watched finish only once. The records
+so that the page lists an update it watched finish only once, and takes
+that update's finishing time from this record -- the same launch and
+operation number (`recordHere`) -- so that after the window reloads it
+keeps its date and its place in the list; until the record is there, the
+page uses the time the window saw it finish. The records
 stay in the order they were kept, never sorted by their times, so that
 which of a tool's records came later -- the one 「最近的更新记录」 lists --
 is not decided by a clock that was put right in between (`bound`; the

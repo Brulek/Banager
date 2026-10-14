@@ -604,8 +604,11 @@ export function UpdatesPage() {
   // and one that did not work or asks to be checked only while the last
   // check still offers that tool an update. Its row then lists it too, on
   // purpose: the row is a plain update that does not know the last try.
-  // The two together newest first; this window's own that it did not see
-  // finish last, as before.
+  // The two together newest first, each of this window's own by the time
+  // its record of this launch kept (`recordHere`), which outlasts a reload
+  // of the web view, or until the history has it, the time the window saw
+  // it finish; one with neither -- it finished before the window opened --
+  // last, as before.
   const justUpdated = useMemo((): JustUpdatedEntry[] => {
     const shownInRows = new Set<number>();
     for (const candidate of visibleUpdates) {
@@ -627,7 +630,10 @@ export function UpdatesPage() {
       if (ending === null) return [];
       const key = { instance_id: op.instance_id, kind: op.artifact_kind, name: op.name };
       const adapterId = instancesById.get(op.instance_id)?.adapter_id ?? adapterIdOf(op.instance_id);
-      const readBack = recordHere(history, op.id)?.to_version;
+      // This launch's record of it, once the history has it: its finish
+      // time outlasts a reload of the web view, which forgets `opFinishedAt`.
+      const record = recordHere(history, op.id);
+      const readBack = record?.to_version;
       return [
         {
           id: `op:${op.id}`,
@@ -644,7 +650,7 @@ export function UpdatesPage() {
                 : ending.kind === "updatedButStepFailed"
                   ? readBack || stepFailedVersion(op.outcome)
                   : null,
-          finishedAt: opFinishedAt[op.id] ?? null,
+          finishedAt: record?.finished_at ?? opFinishedAt[op.id] ?? null,
           verified: verifiedHere(history, op.id),
           ending,
           // A password stop its row no longer shows -- the page reloaded --
