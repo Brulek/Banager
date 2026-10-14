@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, getByText, waitFor } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
+import i18n from "../i18n";
 import { DESCRIPTION_MIN_CHARACTERS, MIDDLE_CUT_FROM, ROW_FIT_WIDTHS, RowAction, rowFitFor, ToolRow, type ToolRowContentProps } from "./ToolRow";
 import { StatusChip } from "./StatusChip";
 import { BUTTON } from "./ui/controls";
@@ -1236,6 +1237,85 @@ describe("ToolRow", () => {
         </RovingRowProvider>,
       );
       expect(row).not.toHaveAttribute("aria-current");
+    });
+
+    it("says the source after the name where the list shows it, before the status and the change", () => {
+      const { getByRole } = rovingRow({
+        name: "requests",
+        adapterId: "pip",
+        sourceLabel: "pip (Python 3.12)",
+        showSource: true,
+        statusText: "Skipped 2.33.0",
+        status: <StatusChip label="Skipped 2.33.0" />,
+        version: "2.32.0 → 2.32.3",
+        newVersion: "2.32.3",
+      });
+      expect(getByRole("group", { name: "requests, pip (Python 3.12), Skipped 2.33.0, 2.32.0 → 2.32.3" })).toHaveAttribute(
+        "data-tool-row",
+      );
+    });
+
+    it("says no source where the list does not show one, or where it is the tool's own name", () => {
+      const { getByRole, unmount } = rovingRow({ name: "requests", adapterId: "pip", sourceLabel: "pip (Python 3.12)" });
+      expect(getByRole("group", { name: "requests" })).toHaveAttribute("data-tool-row");
+      unmount();
+      const own = rovingRow({ name: "Ollama", sourceLabel: "Ollama", showSource: true });
+      expect(own.getByRole("group", { name: "Ollama" })).toHaveAttribute("data-tool-row");
+      own.unmount();
+      const empty = rovingRow({ name: "requests", sourceLabel: "", showSource: true });
+      expect(empty.getByRole("group", { name: "requests" })).toHaveAttribute("data-tool-row");
+    });
+
+    // Two copies of one package under two Pythons, the list naming each
+    // copy's source in sight: arrowing from one to the other, each focused
+    // row is told apart by its whole source, never by the shortened words
+    // in sight (r24 R78-2).
+    it.each([
+      ["en", "pip (/opt/homebrew/bin/python3.11)", "pip (/opt/homebrew/bin/python3.12)"],
+      ["zh-CN", "pip（/opt/homebrew/bin/python3.11）", "pip（/opt/homebrew/bin/python3.12）"],
+      ["zh-Hant", "pip（/opt/homebrew/bin/python3.11）", "pip（/opt/homebrew/bin/python3.12）"],
+    ])("tells two same-named rows apart by their sources while ↑ and ↓ move between them, in %s", async (lang, first, second) => {
+      await i18n.changeLanguage(lang);
+      const height = vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (this: HTMLElement) {
+        return this.getAttribute("data-index") === null ? 600 : 52;
+      });
+      try {
+        const place = (python: string) =>
+          i18n.t("common.sourceWithPlace", { source: "pip", place: `/opt/homebrew/bin/${python}` });
+        expect([place("python3.11"), place("python3.12")]).toEqual([first, second]);
+        const copies = [
+          { key: "pip:/opt/homebrew/bin/python3.11", source: first },
+          { key: "pip:/opt/homebrew/bin/python3.12", source: second },
+        ];
+        const { getByRole } = renderWithProviders(
+          // Narrow: the source in sight is shortened, its name is not.
+          <ListWidthProvider value={300}>
+            <VirtualList
+              items={copies}
+              itemKey={(copy) => copy.key}
+              estimateSize={() => 52}
+              keyboardRows={() => true}
+              renderItem={(copy) => (
+                <ToolRow adapterId="pip" sourceLabel={copy.source} showSource name="requests" version="2.32.3" description="HTTP" />
+              )}
+            />
+          </ListWidthProvider>,
+        );
+        const one = getByRole("group", { name: `requests, ${first}` });
+        const other = getByRole("group", { name: `requests, ${second}` });
+        expect(one).toHaveAttribute("tabindex", "0");
+        expect(other).toHaveAttribute("tabindex", "-1");
+        act(() => one.focus());
+        fireEvent.keyDown(one, { key: "ArrowDown" });
+        await waitFor(() => expect(other).toHaveFocus());
+        expect(other).toHaveAttribute("tabindex", "0");
+        expect(one).toHaveAttribute("tabindex", "-1");
+        fireEvent.keyDown(other, { key: "ArrowUp" });
+        await waitFor(() => expect(one).toHaveFocus());
+      } finally {
+        height.mockRestore();
+        await i18n.changeLanguage("en");
+      }
     });
 
     it("is no group, and has no name of its own, in a list without arrow keys", () => {

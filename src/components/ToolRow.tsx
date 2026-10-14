@@ -423,19 +423,23 @@ function ToNewVersion({ version, newVersion }: { version: ReactNode; newVersion:
 
 /**
  * A row's accessible name, where it takes the focus (`ToolRow`): the
- * tool's name, then its status word and an update's change of version
- * where it has them, a comma between, which a screen reader pauses at in
+ * tool's name, then its source where the list shows it to tell copies
+ * of one name apart (`showSource`) -- whole, never shortened as in
+ * sight -- then its status word and an update's change of version where
+ * it has them, a comma between, which a screen reader pauses at in
  * either language. A version said as anything but words (none is, yet)
  * is left out; a column that says something else gives its words
  * (`versionText`), last.
  */
 function rowName(
   name: string,
+  source: string | undefined,
   statusText: string | undefined,
   change: ReactNode,
   versionText: string | undefined,
 ): string {
   const parts = [name];
+  if (source !== undefined && source !== "") parts.push(source);
   if (statusText !== undefined && statusText !== "") parts.push(statusText);
   if (typeof change === "string" && change !== "") parts.push(change);
   if (versionText !== undefined && versionText !== "") parts.push(versionText);
@@ -739,7 +743,7 @@ export function ToolRow({
         // Only a row that takes the focus is named: elsewhere its name and
         // controls are read in turn, as any other text.
         role={roving === null ? undefined : "group"}
-        aria-label={roving === null ? undefined : rowName(name, statusText, hasUpdate ? version : undefined, versionText)}
+        aria-label={roving === null ? undefined : rowName(name, showSource ? source : undefined, statusText, hasUpdate ? version : undefined, versionText)}
         aria-describedby={roving === null || descriptionNote === undefined ? undefined : noteId}
         aria-current={selected ? "true" : undefined}
         tabIndex={roving?.tabIndex}
