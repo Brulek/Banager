@@ -973,3 +973,66 @@ fn test_an_unlinked_formulas_keg_is_read_as_its_folders_are_and_never_in_a_prote
     assert_eq!(answer.unavailable, HashSet::from([0]));
     assert_nothing_protected_looked_at(&made, &Protected::new(&tree.root));
 }
+
+#[test]
+fn test_the_vendors_own_unlinked_tap_formulae_are_named_from_their_short_named_kegs() {
+    // R88-1: a recognised tap formula Homebrew did not link has its
+    // commands named from `Cellar/<short name>/<version>/bin`, as `brew`
+    // names its keg, while its key keeps the tap's full name; another
+    // tap's formula of the same short name is no AI tool's, and its keg is
+    // not read. Everything is in the test's own folder; nothing is run.
+    let tree = Tree::new("unlinked-taps");
+    tree.dir("brew/bin");
+    tree.file("brew/Cellar/opencode/1/bin/opencode", 0o755);
+    tree.file("brew/Cellar/opencode-v2/1/bin/opencode", 0o755);
+    tree.file("brew/Cellar/crush/1/bin/crush", 0o755);
+    let instances = vec![instance("brew", tree.at("brew"))];
+    let unlinked = |name: &str| {
+        let mut row = artifact("brew", name, ArtifactKind::Formula);
+        row.facts.unlinked = true;
+        row
+    };
+    let folders = read_folders(
+        &[tree.at("brew/bin")],
+        &bin_folders(&instances),
+        &tree.root,
+        CommandBudget::default(),
+    );
+    let named = |rows: &[InstalledArtifact]| {
+        let (answer, made) = calls::measure(|| {
+            judge_with(
+                &folders,
+                &instances,
+                rows,
+                &tree.root,
+                true,
+                Look::new(&tree.root, CommandBudget::default()),
+            )
+            .unwrap()
+        });
+        assert_nothing_protected_looked_at(&made, &Protected::new(&tree.root));
+        assert!(answer.unavailable.is_empty());
+        answer
+            .commands
+            .into_iter()
+            .map(|facts| facts.into_iter().map(|f| f.name).collect::<Vec<_>>())
+            .collect::<Vec<_>>()
+    };
+    let rows = vec![
+        unlinked("anomalyco/tap/opencode"),
+        unlinked("anomalyco/tap/opencode-v2"),
+        unlinked("charmbracelet/tap/crush"),
+    ];
+    assert_eq!(rows[1].key.name, "anomalyco/tap/opencode-v2");
+    assert_eq!(rows[1].display_name, "opencode-v2");
+    assert_eq!(
+        named(&rows),
+        vec![
+            vec!["opencode".to_string()],
+            vec!["opencode".to_string()],
+            vec!["crush".to_string()]
+        ]
+    );
+    // Another tap's `crush`, the same keg folder there: not read.
+    assert_eq!(named(&[unlinked("someone/tap/crush")]), vec![Vec::<String>::new()]);
+}

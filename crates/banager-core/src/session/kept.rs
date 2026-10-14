@@ -660,6 +660,43 @@ mod tests {
         }
     }
 
+    /// R88-1: opencode's and Charm's own taps and OpenCode 2's npm package
+    /// name their family's folders, as its other copies do; another tap's
+    /// formula of the same short name names none.
+    #[tokio::test]
+    async fn test_uninstalling_the_vendors_own_taps_and_opencode_2s_npm_package_names_their_folders() {
+        let home = Home::new("r88-1");
+        for file in [
+            ".local/share/opencode/opencode.db",
+            ".config/opencode/opencode.json",
+            ".local/share/crush/crush.json",
+            ".config/crush/crush.json",
+        ] {
+            home.file(file, 2_000);
+        }
+        let tool = |path: &str| (path.to_string(), KeptData::ToolData, true);
+        let opencode = vec![
+            tool("~/.local/share/opencode"),
+            tool("~/.config/opencode"),
+        ];
+        let crush = vec![tool("~/.local/share/crush"), tool("~/.config/crush")];
+        for (adapter, kind, name, expected) in [
+            ("brew", ArtifactKind::Formula, "anomalyco/tap/opencode", opencode.clone()),
+            ("brew", ArtifactKind::Formula, "anomalyco/tap/opencode-v2", opencode.clone()),
+            ("brew", ArtifactKind::Formula, "charmbracelet/tap/crush", crush),
+            ("npm", ArtifactKind::Package, "@opencode/cli", opencode),
+            ("brew", ArtifactKind::Formula, "someone/tap/opencode", vec![]),
+            ("brew", ArtifactKind::Formula, "someone/tap/crush", vec![]),
+        ] {
+            let session = session_over(fake(adapter, kind, name, vec![]), &home.0, true).await;
+            let issued = session
+                .issue_plan(&request(adapter, OpKind::Uninstall, kind, name))
+                .await
+                .unwrap();
+            assert_eq!(kept(&issued.plan), expected, "{name}");
+        }
+    }
+
     #[tokio::test]
     async fn test_a_tool_with_no_family_or_no_folder_gets_no_line() {
         let home = Home::new("none");

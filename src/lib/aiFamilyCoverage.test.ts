@@ -22,6 +22,7 @@ const TABLES = path.resolve(__dirname, "../assets/tool-descriptions");
 const lines = (file: string) =>
   new Map(Object.entries(JSON.parse(readFileSync(path.join(TABLES, file), "utf-8")) as Record<string, string>));
 const CHINESE = lines("zh-CN.json");
+const TRADITIONAL = lines("zh-Hant.json");
 const ENGLISH = lines("en.json");
 
 type Source = "npm" | "formula" | "cask" | "pypi" | "standalone";
@@ -125,6 +126,28 @@ describe("the AI-tool families' members", () => {
       return toolKey === null || !ENGLISH.has(toolKey);
     }).map(label);
     expect(missing, `no English line: ${missing.join(", ")}`).toEqual([]);
+  });
+
+  it("include the vendors' own taps and OpenCode 2's npm package, each with its family's logo and its lines (R88-1)", () => {
+    // Listed by hand, so a member dropped from the table fails here rather
+    // than leaving the checks above nothing to check.
+    const added: Member[] = [
+      { family: "opencode", source: "formula", name: "anomalyco/tap/opencode" },
+      { family: "opencode", source: "formula", name: "anomalyco/tap/opencode-v2" },
+      { family: "opencode", source: "npm", name: "@opencode/cli" },
+      { family: "crush", source: "formula", name: "charmbracelet/tap/crush" },
+    ];
+    for (const member of added) {
+      expect(MEMBERS, label(member)).toContainEqual(member);
+      // The logo its family's first-listed member, already in the pack, shows.
+      const first = MEMBERS.find((other) => other.family === member.family)!;
+      expect(resolveToolIcon(...toolOf(member))?.title, label(member)).toBe(resolveToolIcon(...toolOf(first))?.title);
+      expect(resolveToolIcon(...toolOf(member)), label(member)).not.toBeNull();
+      const toolKey = toolIconKey(...toolOf(member))!;
+      expect(CHINESE.has(toolKey), `${label(member)} zh-CN`).toBe(true);
+      expect(TRADITIONAL.has(toolKey), `${label(member)} zh-Hant`).toBe(true);
+      if (member.source === "npm") expect(ENGLISH.has(toolKey), `${label(member)} en`).toBe(true);
+    }
   });
 
   it("are found under the keys the tables and the pack use, a PyPI name as PEP 503 normalises it", () => {

@@ -4545,9 +4545,12 @@ not an uninstall. The row is opencode installed by its own script (`curl
 runs it); what the recipe expects was read from that script as text on
 2026-10-01 (the fixture README,
 `adapters/fixtures/standalone-opencode/install-script-2026-10-01/README.md`,
-names the lines). npm's `opencode-ai` and the Homebrew formula `opencode`
-are other paths and stay npm's and Homebrew's rows; the AI Tools filter
-puts all three in one family.
+names the lines). npm's `opencode-ai` and `@opencode/cli` (OpenCode 2's)
+and the Homebrew formulae `opencode`, `anomalyco/tap/opencode` and
+`anomalyco/tap/opencode-v2` (OpenCode 2's) are other paths and stay npm's
+and Homebrew's rows; the AI Tools filter puts them and this row in one
+family. A tap's formula is matched by its full name only: another tap's
+`opencode` is not in it.
 
 **Detect.** Banager looks at the fixed path the script writes,
 `~/.opencode/bin/opencode` — never an `opencode` found through `PATH` —
@@ -4777,7 +4780,7 @@ It reads:
 |---|---|
 | every `PATH` folder, in `PATH`'s order; the `bin` and `sbin` folders of every Homebrew prefix and the `bin` folder of every npm prefix | where the folder leads, then `read_dir`, one level deep: each folder once, however many entries name it. An empty or relative `PATH` entry is skipped (as one starting with `~` is, except `~` and `~/...` read from bash, which are looked in as the home folder, see above), and so is a folder that does not exist or that no shell could reach. A `PATH` folder that is there but cannot be listed is kept in its place, unread, as a protected one is (`read_folders`) |
 | each entry in a Homebrew or npm prefix's `bin` (and Homebrew's `sbin`) | where it leads: which formula's folder in `Cellar`, or which package's in `lib/node_modules` |
-| for a formula of an AI coding tool Banager knows (`families.rs`) that Homebrew has not linked -- not keg-only, and `brew info` says `linked_keg: null` (its link step stopped at another program's file, as `brew install gemini-cli` does at npm's `bin/gemini`, or it was unlinked) -- the `bin` and `sbin` of its keg, `<prefix>/Cellar/<name>/<version>`, the version its row shows (`commands::keg`) | where the folder leads, then `read_dir`, as for the folders above, and where each entry leads: those that lead into the formula's own folder in `Cellar` are its commands. They are named so its other copies are known as copies (**Installed twice**), with no folder of theirs and so never "not found": a verdict of their own only where a `PATH` folder reaches the keg. Where every command it shares with another copy runs that copy, typing them runs that copy, so the Updates page says this one is **Not used in Terminal** and Update All leaves it unticked (`twinVerdict` in `src/lib/commands.ts`). Its details say Homebrew didn't link it where Terminal looks and, once the login shell's `PATH` was read, that typing it doesn't run this copy; Check Tool Setup and the copied diagnostics count one that is no copy of another, Check Tool Setup by name (`toolsNotLinked`). A batch uninstall says nothing of those commands going, and takes none of them for the program another source runs (an Ollama model's `ollama`; `src/lib/batchUninstall.ts`). No other formula's keg is read. Working out the answer, which lists these folders, stops after 100,000 of their names as after its 5 seconds |
+| for a formula of an AI coding tool Banager knows (`families.rs`) that Homebrew has not linked -- not keg-only, and `brew info` says `linked_keg: null` (its link step stopped at another program's file, as `brew install gemini-cli` does at npm's `bin/gemini`, or it was unlinked) -- the `bin` and `sbin` of its keg, `<prefix>/Cellar/<name>/<version>`, the version its row shows, `<name>` its short name for a tap's formula too (`opencode`, not `anomalyco/tap/opencode`), as Homebrew names the folder (`commands::keg`) | where the folder leads, then `read_dir`, as for the folders above, and where each entry leads: those that lead into the formula's own folder in `Cellar` are its commands. They are named so its other copies are known as copies (**Installed twice**), with no folder of theirs and so never "not found": a verdict of their own only where a `PATH` folder reaches the keg. Where every command it shares with another copy runs that copy, typing them runs that copy, so the Updates page says this one is **Not used in Terminal** and Update All leaves it unticked (`twinVerdict` in `src/lib/commands.ts`). Its details say Homebrew didn't link it where Terminal looks and, once the login shell's `PATH` was read, that typing it doesn't run this copy; Check Tool Setup and the copied diagnostics count one that is no copy of another, Check Tool Setup by name (`toolsNotLinked`). A batch uninstall says nothing of those commands going, and takes none of them for the program another source runs (an Ollama model's `ollama`; `src/lib/batchUninstall.ts`). No other formula's keg is read. Working out the answer, which lists these folders, stops after 100,000 of their names as after its 5 seconds |
 | each command a source's own answer names: a cask's `binary` link (`brew info --installed --json=v2`), a pipx app and `~/.local/bin/<its name>`, a uv tool's executable (`uv tool list --show-paths`), a Cargo crate's binaries in `<CARGO_HOME>/bin` (`.crates2.json`), a tool with its own installer's launcher and the commands its installer puts beside it (Grok Build's `agent`, rustup's proxies) | where it leads: whether into that tool's own folder, and whether to a file with an execute bit. A cask's link that leads elsewhere also has its own text read (`readlink`, from its folder, every link on the way to that folder followed): one that names a place inside the cask's folder in `Caskroom` is the cask's, as Homebrew takes it (Flutter's `dart`, into the suite Homebrew moved to `<prefix>/share/flutter`; Homebrew's section, "A cask's links") |
 | in each `PATH` folder, the entry of each name some tool provides, however the folder spells it that a Mac's disk takes for the same name (typing `node` runs `NODE`; `protected::same_name`) | where it leads, and whether to a file with an execute bit, in `PATH`'s order |
 
@@ -5141,9 +5144,18 @@ opencode's two are the folders its own docs name for macOS
 and logs in `~/.local/share/opencode`; opencode.ai/docs/config: global
 settings in `~/.config/opencode`), and the two its own `opencode
 uninstall` keeps on `--keep-data` / `--keep-config`; it always removes
-its cache and state folders, which are not named here. They are named
-in the preview of an uninstall of npm's `opencode-ai` or Homebrew's
-formula `opencode`. opencode's own install (`~/.opencode`, opencode,
+its cache and state folders, which are not named here (that is
+opencode 1's `uninstall`). OpenCode 2's docs name the same two
+(opencode.ai/v2/docs/config: `~/.config/opencode/opencode.json`;
+opencode.ai/v2/docs/troubleshooting: its database and logs in
+`~/.local/share/opencode`), which says nothing of whether the two
+versions read each other's files; a database moved with `OPENCODE_DB`,
+or any other folder outside these two, is not looked for. They are named
+in the preview of an uninstall of npm's `opencode-ai` or `@opencode/cli`,
+or of Homebrew's formula `opencode`, `anomalyco/tap/opencode` or
+`anomalyco/tap/opencode-v2`. Crush's two are named for npm's
+`@charmland/crush` and for the formula `charmbracelet/tap/crush` of
+Charm's own tap, the only Homebrew route Crush's README gives. opencode's own install (`~/.opencode`, opencode,
 above) has no uninstall in Banager, and neither folder is inside it.
 Kilo, built from opencode, keeps its data and settings the same way, in
 `~/.local/share/kilo` and `~/.config/kilo`; its cache and state folders

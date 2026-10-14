@@ -61,7 +61,8 @@ a protected place**, and the link is not followed.
 
 - The **Show** menu in the toolbar of the Updates and Installed pages narrows the list to **AI Tools**:
   Claude Code, Codex, Gemini CLI, Ollama and the other AI tools in a table built into Banager,
-  whichever source installed them. On the Installed page it also offers **Installed More Than Once** (an AI tool with more than one copy), **Not Found
+  recognized by the sources and package names that table lists for each (a Homebrew tap's formula by
+  its full name, so another tap's formula of the same name is not one). On the Installed page it also offers **Installed More Than Once** (an AI tool with more than one copy), **Not Found
   in Terminal**, **Disabled or Deprecated by Homebrew** and **Other Versions Kept** (Homebrew formulae with
   another version kept beside the one in use), each of these four with how many tools it shows.
 - A tool's details say, under **In Terminal**, what typing each of its commands runs — this copy,
@@ -514,9 +515,9 @@ Under a tool's name, its row says in one line what the tool is: the description 
 gives it, such as Homebrew's for a formula or a cask; where the source gives none, what kind of
 thing that source lists ("npm package"); and for a tool with its own installer, a line of Banager's
 own, in all three languages. npm, pip, pipx, uv and Cargo give none, so in English a row for an npm, PyPI
-or crates.io package says a line in English instead wherever Banager has one: 640 of them,
+or crates.io package says a line in English instead wherever Banager has one: 641 of them,
 each rewritten, shorter, from the description the package's own registry gives it. In Chinese, a
-row says a line in Chinese instead wherever Banager has one: 3,391 in each Chinese language, for Homebrew's
+row says a line in Chinese instead wherever Banager has one: 3,395 in each Chinese language, for Homebrew's
 formulae and casks and for npm, PyPI and crates.io packages, each translated from the description
 the tool's own source gives it. The three tables are built into the app, in
 `src/assets/tool-descriptions/en.json`, `zh-CN.json` and `zh-Hant.json`. A table loads when needed
@@ -594,8 +595,8 @@ Rust 侧返回的拒绝理由也会翻译，不只是外面那层框。操作所
 每个软件名下那一行简介，默认是它所在来源自己给的说明（比如 Homebrew 给 formula 和 cask 写的那句英文）；
 来源没给的，写这个来源列出的是什么（“npm软件包”）；自带安装器的工具，是 Banager 自己写的一句，
 英文、简体中文和繁体中文都有。npm、pip、pipx、uv 和 Cargo 都不给说明，所以英文界面里，npm、PyPI、crates.io 上的包只要
-Banager 有它的英文说明，就改显示这一句：640 条，每条都由该包在 npm、PyPI 或 crates.io 上自己的说明改写而来，
-更简短。中文界面里，只要 Banager 有这个软件的中文说明，就改显示中文：简体中文和繁体中文各 3,391 条，涵盖 Homebrew 的
+Banager 有它的英文说明，就改显示这一句：641 条，每条都由该包在 npm、PyPI 或 crates.io 上自己的说明改写而来，
+更简短。中文界面里，只要 Banager 有这个软件的中文说明，就改显示中文：简体中文和繁体中文各 3,395 条，涵盖 Homebrew 的
 formula 与 cask，以及 npm、PyPI、crates.io 上的包，每条都译自该软件所在来源自己的说明。这些说明内置在应用里
 （`src/assets/tool-descriptions/en.json`、`zh-CN.json` 与 `zh-Hant.json`），列表或搜索需要时才读取，
 繁体中文还会读取简体中文和英文作为缺少条目时的备用。显示时不发任何网络请求。软件详情里也只显示这一行，不再附上来源的原文；当前语言下没有
@@ -606,7 +607,8 @@ formula 与 cask，以及 npm、PyPI、crates.io 上的包，每条都译自该�
 它还会告诉你每个工具的这些事：
 
 - “更新”和“已安装”两页工具栏里的“显示”菜单，可以只列出“AI工具”：Claude Code、Codex、Gemini CLI、
-  Ollama 等 Banager 内置表格里的 AI 工具，不管是哪个来源装的。在“已安装”页，它还有“装了不止一份”（装了不止一份的 AI 工具）“终端里找不到”
+  Ollama 等 Banager 内置表格里的 AI 工具，按表格为每个工具列出的来源和包名识别（Homebrew tap 里的 formula
+  按含 tap 的全名识别，别的 tap 里同名的 formula 不算）。在“已安装”页，它还有“装了不止一份”（装了不止一份的 AI 工具）“终端里找不到”
   “Homebrew已停用或弃用”和“保留了其他版本”（在当前使用的版本之外还留着其他版本的 Homebrew formula），这四项都会写出各有几个。
 - 工具详情里的“在终端里输入”，说明输入它的每条命令会运行什么：这一份、另一份或另一个同名程序，或者什么都
   运行不了（命令所在的文件夹不在终端的搜索路径里）——按打开 Banager 时读到的终端设置判断。还装了另一份的

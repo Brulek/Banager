@@ -208,6 +208,37 @@
 //!
 //! Each joins its family's data folders as they are; none adds one.
 //!
+//! # Members added 2026-10-14
+//!
+//! Four copies of opencode and Crush that their vendors' own instructions
+//! install were missing (review R88-1), so the AI Tools filter, the data
+//! an uninstall keeps and the copy that stays left them out. Each was read
+//! as text, never run, from the vendor's own page or tap:
+//!
+//! - opencode: the formula `anomalyco/tap/opencode`, the Homebrew route
+//!   opencode.ai/docs recommends (the tap's `opencode.rb`: "The AI coding
+//!   agent built for the terminal", homepage github.com/anomalyco/opencode,
+//!   downloads that project's releases, installs `bin/opencode`).
+//! - OpenCode 2, the same family: the formula `anomalyco/tap/opencode-v2`
+//!   (opencode.ai/v2/docs; the tap's `opencode-v2.rb`: "OpenCode V2 - the
+//!   AI coding agent for the terminal", homepage github.com/anomalyco/
+//!   opencode, installs `bin/opencode`, conflicts with `opencode`) and the
+//!   npm package `@opencode/cli` (opencode.ai/v2/docs;
+//!   registry.npmjs.org/@opencode/cli: repository anomalyco/opencode, bin
+//!   `opencode` and `opencode2`). OpenCode 2's docs name the same two
+//!   folders (opencode.ai/v2/docs/config: `~/.config/opencode/
+//!   opencode.json`; /troubleshooting: the database and logs in
+//!   `~/.local/share/opencode`), so the family's are its; that says
+//!   nothing of whether the two versions read each other's files. A
+//!   database moved with `OPENCODE_DB` is not looked for.
+//! - Crush: the formula `charmbracelet/tap/crush`, the only Homebrew route
+//!   Crush's README gives (the tap's `crush.rb`: homepage charm.sh/crush,
+//!   downloads charmbracelet/crush's releases, installs `bin/crush`).
+//!
+//! A tap's formula is keyed by its full name (`brew/parse.rs`), matched
+//! exactly: another tap's `opencode` or `crush`, and the bare `crush`, are
+//! no one's. Like the others, each joins its family's folders as they are.
+//!
 //! Versions are deliberately not in the table: they change weekly. A
 //! Homebrew cask's channel is not a version: `@latest` and `@prerelease`
 //! are part of the token of a cask of its own.
@@ -486,6 +517,13 @@ mod tests {
         (MemberSource::Formula, "kimi-code"),
         (MemberSource::Formula, "mistral-vibe"),
         (MemberSource::Formula, "openclaw-cli"),
+        // Not in appendix B: the vendors' own taps and OpenCode 2's npm
+        // package, checked on 2026-10-14 against the vendors' own pages and
+        // taps (module doc, "Members added 2026-10-14"; review R88-1).
+        (MemberSource::Formula, "anomalyco/tap/opencode"),
+        (MemberSource::Formula, "anomalyco/tap/opencode-v2"),
+        (MemberSource::Npm, "@opencode/cli"),
+        (MemberSource::Formula, "charmbracelet/tap/crush"),
     ];
 
     #[test]
@@ -753,6 +791,46 @@ mod tests {
         // The same name from another source is not an npm package.
         assert_eq!(id_for("brew", ArtifactKind::Formula, "@openai/codex"), None);
         assert_eq!(id_for("pipx", ArtifactKind::Tool, "openclaw"), None);
+    }
+
+    #[test]
+    fn test_the_vendors_own_taps_and_opencode_2s_npm_package_join_their_families() {
+        // opencode's tap (`anomalyco/tap/opencode`, and OpenCode 2's
+        // `anomalyco/tap/opencode-v2`), Charm's (`charmbracelet/tap/crush`)
+        // and OpenCode 2's npm package `@opencode/cli`: Homebrew keys a tap's
+        // formula by its full name, matched exactly (R88-1).
+        for (adapter, kind, name, family) in [
+            ("brew", ArtifactKind::Formula, "anomalyco/tap/opencode", "opencode"),
+            ("brew", ArtifactKind::Formula, "anomalyco/tap/opencode-v2", "opencode"),
+            ("brew", ArtifactKind::Formula, "charmbracelet/tap/crush", "crush"),
+            ("npm", ArtifactKind::Package, "@opencode/cli", "opencode"),
+            ("npm", ArtifactKind::Package, "opencode-ai", "opencode"),
+        ] {
+            assert_eq!(id_for(adapter, kind, name), Some(family), "{name}");
+        }
+        // Their folders are the family's, unchanged: OpenCode 2's docs name
+        // the same two (module doc, "Members added 2026-10-14").
+        let opencode = family_for("npm", &key("x", ArtifactKind::Package, "@opencode/cli")).unwrap();
+        assert_eq!(
+            opencode.data_paths,
+            ["~/.local/share/opencode", "~/.config/opencode"]
+        );
+        // Another tap's formula of that short name, a tap's cask, the bare
+        // `crush` and an npm look-alike are no one's: nothing is inferred
+        // from a short name, and no tap prefix is stripped.
+        for (adapter, kind, name) in [
+            ("brew", ArtifactKind::Formula, "someone/tap/opencode"),
+            ("brew", ArtifactKind::Formula, "someone/tap/crush"),
+            ("brew", ArtifactKind::Formula, "crush"),
+            ("brew", ArtifactKind::Cask, "anomalyco/tap/opencode"),
+            ("brew", ArtifactKind::Cask, "charmbracelet/tap/crush"),
+            ("npm", ArtifactKind::Package, "anomalyco/tap/opencode"),
+            ("npm", ArtifactKind::Package, "@opencode/cli-beta"),
+            ("npm", ArtifactKind::Package, "opencode"),
+            ("pipx", ArtifactKind::Tool, "@opencode/cli"),
+        ] {
+            assert_eq!(id_for(adapter, kind, name), None, "{adapter} {name}");
+        }
     }
 
     #[test]

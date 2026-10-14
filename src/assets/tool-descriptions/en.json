@@ -246,6 +246,7 @@
   "npm:@nestjs/cli": "CLI for the Nest Node.js framework",
   "npm:@oh-my-pi/pi-coding-agent": "AI coding agent for the terminal",
   "npm:@openai/codex": "OpenAI's AI coding agent for the terminal",
+  "npm:@opencode/cli": "Open source AI coding agent",
   "npm:@playwright/test": "Browser automation and testing for web apps",
   "npm:@prisma/cli": "Command-line interface for the Prisma Developer Platform",
   "npm:@qoder-ai/qodercli": "Qoder's AI coding assistant for the terminal",

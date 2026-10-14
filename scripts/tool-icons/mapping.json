@@ -61,6 +61,10 @@
       "icon": "si:opencode",
       "relation": "same"
     },
+    "brew:anomalyco/tap/opencode-v2": {
+      "icon": "si:opencode",
+      "relation": "same"
+    },
     "brew:ansible": {
       "icon": "si:ansible",
       "relation": "same"
@@ -487,6 +491,10 @@
     },
     "brew:chainguard-dev/tap/chainctl": {
       "icon": "gh:chainguard-dev",
+      "relation": "maker"
+    },
+    "brew:charmbracelet/tap/crush": {
+      "icon": "gh:charmbracelet",
       "relation": "maker"
     },
     "brew:chamber": {
@@ -4983,6 +4991,10 @@
     },
     "npm:@openai/codex": {
       "icon": "gh:openai",
+      "relation": "same"
+    },
+    "npm:@opencode/cli": {
+      "icon": "si:opencode",
       "relation": "same"
     },
     "npm:@playwright/test": {

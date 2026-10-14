@@ -1750,6 +1750,55 @@ mod tests {
         );
     }
 
+    #[test]
+    fn parse_info_installed_assigns_the_vendors_own_tap_formulae_their_families() {
+        // R88-1: `brew install anomalyco/tap/opencode` (opencode's own
+        // instructions), `anomalyco/tap/opencode-v2` (OpenCode 2's) and
+        // `charmbracelet/tap/crush` (Crush's only Homebrew route): `brew
+        // info` gives each its short `name` and its tap's `full_name`. The
+        // key keeps the full name, the row the short one, and the family
+        // table matches the full name exactly: another tap's formula of the
+        // same short name is no one's.
+        let json = r#"{
+            "formulae": [
+                { "name": "opencode", "full_name": "anomalyco/tap/opencode",
+                  "linked_keg": "1.19.0", "installed": [{ "version": "1.19.0" }] },
+                { "name": "opencode-v2", "full_name": "anomalyco/tap/opencode-v2",
+                  "linked_keg": "2.0.28", "installed": [{ "version": "2.0.28" }] },
+                { "name": "crush", "full_name": "charmbracelet/tap/crush",
+                  "linked_keg": "0.98.1", "installed": [{ "version": "0.98.1" }] },
+                { "name": "opencode", "full_name": "someone/tap/opencode",
+                  "linked_keg": "1.0.0", "installed": [{ "version": "1.0.0" }] },
+                { "name": "crush", "full_name": "someone/tap/crush",
+                  "linked_keg": "1.0.0", "installed": [{ "version": "1.0.0" }] }
+            ],
+            "casks": []
+        }"#;
+        let mut result = parse_info_installed(json, "brew:/opt/homebrew").expect("parse");
+        let brew = crate::testing::manager_instance("brew", "brew:/opt/homebrew");
+        crate::families::assign(&[brew], &mut result);
+        let got: Vec<(&str, &str, Option<&str>)> = result
+            .iter()
+            .map(|a| {
+                (
+                    a.key.name.as_str(),
+                    a.display_name.as_str(),
+                    a.facts.family.as_deref(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            got,
+            vec![
+                ("anomalyco/tap/opencode", "opencode", Some("opencode")),
+                ("anomalyco/tap/opencode-v2", "opencode-v2", Some("opencode")),
+                ("charmbracelet/tap/crush", "crush", Some("crush")),
+                ("someone/tap/opencode", "opencode", None),
+                ("someone/tap/crush", "crush", None),
+            ]
+        );
+    }
+
     // Regressions found by `adapters/robustness.rs`: each is the smallest
     // input that produced the absurd value.
 
