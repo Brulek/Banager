@@ -849,6 +849,15 @@ export interface OpSummary {
    */
   already_updated?: AlreadyUpdated | null;
   follow_up_warnings?: FollowUpWarning[];
+  /**
+   * The run it belongs to (Rust `OpSummary::run`, `RunBook` in
+   * crates/banager-core/src/ops/mod.rs): the operation bar shows the newest
+   * run's operations as one result, the ones whose records were evicted
+   * included. Always sent; optional here only so the operation fixtures
+   * that predate it need not spell it out -- without it the bar works the
+   * run out itself (`operationsOfRun`).
+   */
+  run?: number;
 }
 /**
  * Rust `AlreadyUpdated` (crates/banager-core/src/model.rs): an update

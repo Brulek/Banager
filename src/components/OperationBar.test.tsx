@@ -1104,6 +1104,53 @@ describe("OperationBar", () => {
   });
 });
 
+describe("OperationBar, with the runs the backend numbers (R68-1)", () => {
+  const failed: Outcome = { Failed: { exit_code: 1, summary: "Error: jq is pinned", cause: failureCause("Error: jq is pinned") } };
+
+  it("shows the whole of a long run that had finished before the bar first looked, its early failure included", async () => {
+    // 201 updates, the first of which failed: its record had been evicted,
+    // and the backend still lists what it left, numbered with its run.
+    operations = Array.from({ length: 201 }, (_, index) => {
+      const id = 201 - index;
+      return op(id, `tool-${id}`, "Done", id === 1 ? failed : "Succeeded", { run: 4 });
+    });
+    const { findByText, getByRole } = renderWithProviders(<OperationBar />);
+    await findByText("1 update failed, 200 succeeded");
+    fireEvent.click(getByRole("button", { name: "View Log" }));
+    expect(useUiStore.getState().focusedOpId).toBe(1);
+    for (const [language, words] of [["zh-CN", "1个更新失败，200个已成功"], ["zh-Hant", "1個更新失敗，200個已成功"]]) {
+      await act(async () => {
+        await i18n.changeLanguage(language);
+      });
+      await findByText(words);
+    }
+    await act(async () => {
+      await i18n.changeLanguage("en");
+    });
+  });
+
+  it("keeps an Update All one run where its first update failed before the next was sent", async () => {
+    const { findByText, queryClient } = renderWithProviders(<OperationBar />);
+    await waitFor(() => expect(queryClient.getQueryData(queryKeys.operations)).toEqual([]));
+    // Seen with nothing under way between the two: the batch is one run
+    // all the same, as the backend numbered it.
+    await listNow(queryClient, [op(1, "jq", "Done", failed, { run: 1 })]);
+    await findByText("jq: Couldn't update");
+    await listNow(queryClient, [op(2, "git", "Running", null, { run: 1 }), op(1, "jq", "Done", failed, { run: 1 })]);
+    await findByText("Working on 2 of 2");
+    await listNow(queryClient, [op(2, "git", "Done", "Succeeded", { run: 1 }), op(1, "jq", "Done", failed, { run: 1 })]);
+    await findByText("1 update failed, 1 succeeded");
+
+    // A later update, of a run of its own, replaces the result.
+    await listNow(queryClient, [
+      op(3, "wget", "Done", "Succeeded", { run: 2 }),
+      op(2, "git", "Done", "Succeeded", { run: 1 }),
+      op(1, "jq", "Done", failed, { run: 1 }),
+    ]);
+    await findByText("wget: Updated");
+  });
+});
+
 describe("OperationBar, after a batch uninstall", () => {
   const uninstall = (id: number, name: string, status: OpStatus, outcome: Outcome | null = null) =>
     op(id, name, status, outcome, { kind: "Uninstall", argv_preview: ["/opt/homebrew/bin/brew", "uninstall", name] });

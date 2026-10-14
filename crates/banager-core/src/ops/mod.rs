@@ -289,6 +289,30 @@ struct OpInternal {
     /// turn came (`OpSummary::already_updated`).
     already_updated: Option<AlreadyUpdated>,
     follow_up_warnings: Vec<FollowUpWarning>,
+    /// The run it belongs to (`RunBook`), decided as its record goes in.
+    run: u64,
+}
+
+/// Which operations are one run -- what the operation bar shows as one
+/// result -- and what the current run's evicted records leave for it.
+///
+/// An operation whose record goes in while another is unfinished joins
+/// that one's run, as does one submitted in a batch the run already has
+/// (`OperationManager::submit_in`): an Update All sends its operations one
+/// at a time, and the first can end before the next is sent. Any other
+/// begins a new run. A record of the current run that is evicted
+/// (`evict_oldest_done_records`) leaves its summary in `archive`, so that
+/// `summaries()` still has the whole run however long it is; the archive is
+/// emptied in the same step as the next run's first record goes in, so no
+/// reader ever sees the old run with part of it gone.
+#[derive(Debug, Default)]
+struct RunBook {
+    /// The current run's number; 0 before any operation.
+    current: u64,
+    /// The batches submitted in the current run.
+    batches: HashSet<String>,
+    /// The current run's evicted operations, by id.
+    archive: BTreeMap<OpId, OpSummary>,
 }
 
 pub struct OperationManager {
@@ -331,6 +355,8 @@ pub struct OperationManager {
     /// (`EvictedOp`). Locked only with `records` held (and `queue` before
     /// both, in `completions_after`).
     evicted: Mutex<EvictedLedger>,
+    /// Runs (`RunBook`). Locked only with `records` held, before `evicted`.
+    runs: Mutex<RunBook>,
     /// Caps `evicted`: `MAX_EVICTED`, smaller in this module's tests.
     max_evicted: usize,
     /// How many updates that reached their command and may have changed
@@ -384,6 +410,12 @@ pub struct OpSummary {
     /// Structured follow-up failures, independent of the version update's outcome.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub follow_up_warnings: Vec<FollowUpWarning>,
+    /// The run it belongs to (`RunBook`): the operation bar shows the
+    /// operations of the newest run as one result. Numbered from 1, higher
+    /// for each new run; `serde(default)` so a summary from before it still
+    /// reads.
+    #[serde(default)]
+    pub run: u64,
 }
 
 /// How a finished operation ended, as the completion notification counts
@@ -536,6 +568,7 @@ impl OperationManager {
             done_notify: Arc::new(Notify::new()),
             max_records: DEFAULT_MAX_RECORDS,
             evicted: Mutex::new(EvictedLedger::default()),
+            runs: Mutex::new(RunBook::default()),
             max_evicted: MAX_EVICTED,
             upgrades_ended: Mutex::new(HashMap::new()),
         }
@@ -571,76 +604,90 @@ impl OperationManager {
         })
     }
 
-    /// Newest first (descending op id).
+    /// Newest first (descending op id): every record, and what the current
+    /// run's evicted ones left (`RunBook`).
     pub fn summaries(&self) -> Vec<OpSummary> {
-        Self::summaries_of(&self.records.lock().unwrap())
+        let records = self.records.lock().unwrap();
+        Self::summaries_of(&records, &self.runs.lock().unwrap())
     }
 
     /// What the completion notification may count once it has accepted
     /// every operation through `after` (`ReportedRuns::through`): the
     /// records and what evicted ones left, read under one lock. What the
     /// manager kept of evicted operations at or below `after` is dropped
-    /// here, never to be asked for again.
+    /// here, never to be asked for again -- but for the current run's, which
+    /// the operation bar still shows (`RunBook`): those are in `operations`,
+    /// and so left out of `evicted`.
     pub fn completions_after(&self, after: OpId) -> Completions {
         // The queue first, as everywhere: no id can be taken meanwhile, and
         // one taken before is in the queue until its op takes its locks or
         // finishes -- both after its record is in.
         let queue = self.queue.lock().unwrap();
         let records = self.records.lock().unwrap();
+        let runs = self.runs.lock().unwrap();
         let mut evicted = self.evicted.lock().unwrap();
         evicted.forget_through(after);
         Completions {
-            operations: Self::summaries_of(&records),
+            operations: Self::summaries_of(&records, &runs),
             unrecorded: queue
                 .keys()
                 .filter(|id| !records.contains_key(id))
                 .copied()
                 .collect(),
-            evicted: evicted.ops.clone(),
+            evicted: evicted
+                .ops
+                .iter()
+                .filter(|(id, _)| !runs.archive.contains_key(id))
+                .map(|(id, op)| (*id, *op))
+                .collect(),
             forgotten_through: evicted.forgotten_through,
         }
     }
 
-    fn summaries_of(records: &HashMap<OpId, OpInternal>) -> Vec<OpSummary> {
+    fn summaries_of(records: &HashMap<OpId, OpInternal>, runs: &RunBook) -> Vec<OpSummary> {
         let mut summaries: Vec<OpSummary> = records
             .values()
-            .map(|r| {
-                let (argv_preview, env_preview) = match &r.plan.action {
-                    // A plan of two commands (U9) previews its first: the
-                    // upgrade a `brew cleanup` follows, which is what a
-                    // failed operation hands over for Terminal.
-                    PlanAction::Command { program, args, env }
-                    | PlanAction::CommandThen {
-                        program, args, env, ..
-                    } => {
-                        let mut argv = vec![program.to_string_lossy().to_string()];
-                        argv.extend(args.iter().cloned());
-                        (argv, crate::runner::redact::preview_env(env))
-                    }
-                    // No command runs, so there is no argv to preview: an
-                    // empty list, never an invented one. (The uninstall
-                    // dialog shows the paths through the plan's
-                    // `WillTrash` warnings.)
-                    PlanAction::TrashPaths { .. } => (Vec::new(), Vec::new()),
-                };
-                OpSummary {
-                    id: r.id,
-                    kind: r.plan.request.kind,
-                    instance_id: r.plan.request.instance_id.clone(),
-                    artifact_kind: r.plan.request.artifact_kind,
-                    name: r.plan.request.name.clone(),
-                    status: r.status,
-                    outcome: r.outcome.clone(),
-                    argv_preview,
-                    env_preview,
-                    cancel_policy: r.plan.cancel_policy,
-                    already_updated: r.already_updated,
-                    follow_up_warnings: r.follow_up_warnings.clone(),
-                }
-            })
+            .map(Self::summary_of)
+            .chain(runs.archive.values().cloned())
             .collect();
         summaries.sort_by_key(|s| std::cmp::Reverse(s.id));
         summaries
+    }
+
+    fn summary_of(r: &OpInternal) -> OpSummary {
+        let (argv_preview, env_preview) = match &r.plan.action {
+            // A plan of two commands (U9) previews its first: the
+            // upgrade a `brew cleanup` follows, which is what a
+            // failed operation hands over for Terminal.
+            PlanAction::Command { program, args, env }
+            | PlanAction::CommandThen {
+                program, args, env, ..
+            } => {
+                let mut argv = vec![program.to_string_lossy().to_string()];
+                argv.extend(args.iter().cloned());
+                (argv, crate::runner::redact::preview_env(env))
+            }
+            // No command runs, so there is no argv to preview: an
+            // empty list, never an invented one. (The uninstall
+            // dialog shows the paths through the plan's
+            // `WillTrash` warnings.)
+            PlanAction::TrashPaths { .. } => (Vec::new(), Vec::new()),
+        };
+        OpSummary {
+            id: r.id,
+            kind: r.plan.request.kind,
+            instance_id: r.plan.request.instance_id.clone(),
+            artifact_kind: r.plan.request.artifact_kind,
+            name: r.plan.request.name.clone(),
+            status: r.status,
+            outcome: r.outcome.clone(),
+            argv_preview,
+            env_preview,
+            cancel_policy: r.plan.cancel_policy,
+            already_updated: r.already_updated,
+            follow_up_warnings: r.follow_up_warnings.clone(),
+            run: r.run,
+        }
     }
 
     /// Asks the op to stop. `Ok(())` means the request went through: the
@@ -731,8 +778,22 @@ impl OperationManager {
         target_version: Option<String>,
         on_finish: Option<OnFinish>,
     ) -> OpId {
+        self.submit_in(plan, target_version, on_finish, None)
+    }
+
+    /// `submit_toward`, as one of the operations of `batch`: the ones one
+    /// confirmation started (`RunBook`). They are one run even when one of
+    /// them ends before the next is submitted -- unless another run has
+    /// begun since. Only which run an operation belongs to depends on it.
+    pub fn submit_in(
+        self: &Arc<Self>,
+        plan: Plan,
+        target_version: Option<String>,
+        on_finish: Option<OnFinish>,
+        batch: Option<String>,
+    ) -> OpId {
         let op_id = self.reserve(&plan);
-        self.record_and_run(op_id, plan, target_version, on_finish);
+        self.record_and_run(op_id, plan, target_version, on_finish, batch);
         op_id
     }
 
@@ -766,6 +827,7 @@ impl OperationManager {
         plan: Plan,
         target_version: Option<String>,
         on_finish: Option<OnFinish>,
+        batch: Option<String>,
     ) {
         let cancel = CancellationToken::new();
         let upgrades_seen = self.upgrades_ended_on(&plan.request);
@@ -785,13 +847,28 @@ impl OperationManager {
             upgrades_seen,
             already_updated: None,
             follow_up_warnings: Vec::new(),
+            run: 0,
         };
         {
             let mut records = self.records.lock().unwrap();
+            let mut runs = self.runs.lock().unwrap();
+            let joins = records.values().any(|r| r.status != OpStatus::Done)
+                || batch.as_ref().is_some_and(|b| runs.batches.contains(b));
+            if !joins {
+                // A new run: the last one's kept summaries go in the same
+                // step as this record comes in (`RunBook`).
+                runs.current += 1;
+                runs.batches.clear();
+                runs.archive.clear();
+            }
+            runs.batches.extend(batch);
+            let mut record = record;
+            record.run = runs.current;
             records.insert(op_id, record);
             Self::evict_oldest_done_records(
                 &mut records,
                 self.max_records,
+                &mut runs,
                 &mut self.evicted.lock().unwrap(),
                 self.max_evicted,
             );
@@ -829,10 +906,12 @@ impl OperationManager {
     /// so `max_records` is a target, not a hard bound: with enough operations
     /// in flight at once, `records` can legitimately sit above it. Each
     /// one evicted leaves its kind and how it ended in `evicted`
-    /// (`EvictedOp`), for the completion notification.
+    /// (`EvictedOp`), for the completion notification, and one of the
+    /// current run its summary in `runs`' archive, for the operation bar.
     fn evict_oldest_done_records(
         records: &mut HashMap<OpId, OpInternal>,
         max_records: usize,
+        runs: &mut RunBook,
         evicted: &mut EvictedLedger,
         max_evicted: usize,
     ) {
@@ -852,6 +931,9 @@ impl OperationManager {
             }
             if let Some(r) = records.remove(&id) {
                 evicted.keep(id, r.plan.request.kind, r.outcome.as_ref(), max_evicted);
+                if r.run == runs.current {
+                    runs.archive.insert(id, Self::summary_of(&r));
+                }
             }
             overflow -= 1;
         }
@@ -1856,12 +1938,16 @@ mod already_updated_tests {
             cancel_policy: CancelPolicy::KillThenReconcile,
             already_updated: Some(AlreadyUpdated::ByEarlierUpdate),
             follow_up_warnings: Vec::new(),
+            run: 3,
         };
         let json = serde_json::to_string(&summary).unwrap();
         assert_eq!(
             json,
-            r#"{"id":10,"kind":"Upgrade","instance_id":"brew:/opt/homebrew","artifact_kind":"Formula","name":"libpng","status":"Done","outcome":"Succeeded","argv_preview":[],"env_preview":[],"cancel_policy":"KillThenReconcile","already_updated":"ByEarlierUpdate"}"#
+            r#"{"id":10,"kind":"Upgrade","instance_id":"brew:/opt/homebrew","artifact_kind":"Formula","name":"libpng","status":"Done","outcome":"Succeeded","argv_preview":[],"env_preview":[],"cancel_policy":"KillThenReconcile","already_updated":"ByEarlierUpdate","run":3}"#
         );
+        // A summary from before runs were numbered reads as run 0.
+        let unnumbered: OpSummary = serde_json::from_str(&json.replace(r#","run":3"#, "")).unwrap();
+        assert_eq!(unnumbered.run, 0);
         assert_eq!(
             serde_json::to_string(&AlreadyUpdated::BeforeItsTurn).unwrap(),
             r#""BeforeItsTurn""#
@@ -2057,12 +2143,70 @@ mod evicted_tests {
         assert_eq!(reported.completed(first, &known), None);
         assert_eq!(reported.completed(last, &known), None);
 
-        manager.record_and_run(first, held_back, None, None);
+        manager.record_and_run(first, held_back, None, None, None);
         assert_eq!(manager.wait(first).await, Some(Outcome::Succeeded));
         let told = reported
             .completed(first, &manager.completions_after(reported.through()))
             .expect("told of once it has finished");
         assert_eq!(told.succeeded, 1);
+    }
+
+    /// R68-1: a run's kept summaries go only as the next run's first record
+    /// comes in. A submission that has taken its id but not put its record
+    /// in yet (`reserve` without `record_and_run`) leaves the last run whole
+    /// on the bar -- emptied earlier, it would read as all its records left,
+    /// without the ones evicted. And the ledger's overflow past them never
+    /// loses one of the current run's: those are counted from its summaries.
+    #[tokio::test]
+    async fn regression_a_new_reservation_never_shows_part_of_the_last_run() {
+        let mut manager =
+            OperationManager::new(Arc::new(crate::events::VecSink::new())).with_max_records(1);
+        manager.max_evicted = 1;
+        manager.register_adapter(Arc::new(Instant(crate::adapters::AdapterMeta {
+            id: "fake".into(),
+            name: "fake".into(),
+            kind: "fake".into(),
+            platforms: vec!["macos".into()],
+            homepage: "https://example.invalid".into(),
+            schema_version: 1,
+            verified_versions: vec![],
+        })));
+        let manager = Arc::new(manager);
+        let inst = crate::testing::manager_instance("fake", "fake:1");
+        manager.register_instance(inst.clone());
+
+        let mut ids = Vec::new();
+        for name in ["aaa", "bbb", "ccc"] {
+            let id = manager.submit_in(install(&inst, name, "a"), None, None, Some("x".into()));
+            manager.wait(id).await;
+            ids.push(id);
+        }
+        let whole: Vec<OpId> = ids.iter().rev().copied().collect();
+        let listed = |m: &OperationManager| m.summaries().iter().map(|s| s.id).collect::<Vec<_>>();
+        assert_eq!(listed(&manager), whole);
+        let known = manager.completions_after(0);
+        assert_eq!(
+            known.operations.len(),
+            3,
+            "every one counted, past the ledger's cap"
+        );
+        assert!(known.evicted.is_empty(), "and none twice");
+
+        let next = install(&inst, "ddd", "a");
+        let d = manager.reserve(&next);
+        assert_eq!(
+            listed(&manager),
+            whole,
+            "the last run, whole, until the next shows"
+        );
+        manager.record_and_run(d, next, None, None, None);
+        let now = manager.summaries();
+        assert_eq!(
+            now.iter().map(|s| s.id).collect::<Vec<_>>(),
+            vec![d],
+            "the new run alone: the last one's records and kept summaries are gone"
+        );
+        assert_eq!(manager.wait(d).await, Some(Outcome::Succeeded));
     }
 }
 

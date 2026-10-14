@@ -776,6 +776,7 @@ mod tests {
             cancel_policy: banager_core::model::CancelPolicy::KillThenReconcile,
             already_updated: None,
             follow_up_warnings: Vec::new(),
+            run: 0,
         }
     }
 

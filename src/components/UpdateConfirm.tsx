@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "../lib/queryKeys";
 import { useTranslation } from "react-i18next";
 import { usePlanOperation, useSettings, useSnapshot, useSubmitOperation } from "../lib/queries";
+import { newSubmissionBatch } from "../lib/api";
 import { adapterIdOf, adapterLabel, instanceLabels, planErrorDetail, refusalSentence } from "../lib/sources";
 import { modelPath } from "../lib/names";
 import { isRoutineNote, warningLines, type WarningLine } from "../lib/warnings";
@@ -296,6 +297,9 @@ export function useUpdateConfirm({ nameOf, compare, sourceLabelFor }: UpdateConf
     // held, and each is worked out again at its turn, and started only if
     // it is the plan shown (`startShown`, src/lib/heldPlans.ts).
     const planned = items.filter((item) => item.issued !== null).length;
+    // Several: one run on the operation bar, even where one ends before
+    // the next is sent (`BatchSubmission`).
+    const runBatch = planned > 1 ? newSubmissionBatch() : undefined;
     let submittingKey: ArtifactKey;
     const through = {
       plan: (request: OpRequest) => planMutation.mutateAsync(request),
@@ -307,7 +311,7 @@ export function useUpdateConfirm({ nameOf, compare, sourceLabelFor }: UpdateConf
           (op) => op.status !== "Done" && artifactKeyId({ instance_id: op.instance_id, kind: op.artifact_kind, name: op.name }) === artifactKeyId(key),
         );
         if (busy) return Promise.reject(new Error(BUSY_ACTION));
-        return submitMutation.mutateAsync(planId);
+        return submitMutation.mutateAsync(runBatch === undefined ? planId : { planId, batch: runBatch });
       },
     };
 

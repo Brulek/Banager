@@ -392,6 +392,20 @@ export function trackRun(previous: OperationRun | null, operations: OpSummary[])
 }
 
 /**
+ * The operations of the run the bar shows: those of the newest run the
+ * backend numbered (`OpSummary.run`) -- which keeps an Update All one run
+ * even where one of its operations ended before the next was sent, and
+ * keeps the ones whose records were evicted -- or, for summaries without
+ * a number, every one above `run.floor` (`trackRun`).
+ */
+export function operationsOfRun(run: OperationRun, operations: OpSummary[]): OpSummary[] {
+  const newest = operations.reduce((highest, op) => Math.max(highest, op.run ?? 0), 0);
+  return newest > 0
+    ? operations.filter((op) => op.run === newest)
+    : operations.filter((op) => op.id > run.floor);
+}
+
+/**
  * The operation a run's words and Cancel are about while it is under way:
  * the oldest one actually doing something, or, when every one left is
  * waiting its turn, the oldest of those. With one operation, that one.

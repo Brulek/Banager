@@ -516,17 +516,27 @@ pub async fn plan_operation(
 /// exactly that stored `Plan`. Rejects an unknown, already-submitted or
 /// expired `plan_id`, and one whose source no longer passes the
 /// actionability gate (`Session::submit`'s `SubmitError`), without ever
-/// constructing or accepting a `Plan` from the caller.
-pub(crate) fn submit_operation_impl(state: &AppState, plan_id: String) -> Result<u64, String> {
+/// constructing or accepting a `Plan` from the caller. `batch`, sent by a
+/// confirmation that starts several operations, keeps them one run on the
+/// operation bar (`Session::submit_in`); it changes nothing else.
+pub(crate) fn submit_operation_impl(
+    state: &AppState,
+    plan_id: String,
+    batch: Option<String>,
+) -> Result<u64, String> {
     state
         .session
-        .submit(plan_id)
+        .submit_in(plan_id, batch)
         .map_err(submit_operation_error)
 }
 
 #[tauri::command]
-pub async fn submit_operation(state: State<'_, AppState>, plan_id: String) -> Result<u64, String> {
-    submit_operation_impl(&state, plan_id)
+pub async fn submit_operation(
+    state: State<'_, AppState>,
+    plan_id: String,
+    batch: Option<String>,
+) -> Result<u64, String> {
+    submit_operation_impl(&state, plan_id, batch)
 }
 
 /// A `NoCancel` op that is Running refuses, as `{"kind":"no_cancel"}` in
@@ -2634,7 +2644,7 @@ mod tests {
         let issued = plan_operation_impl(&state, req)
             .await
             .expect("plan_operation_impl");
-        let op_id = submit_operation_impl(&state, issued.id).expect("submit_operation_impl");
+        let op_id = submit_operation_impl(&state, issued.id, None).expect("submit_operation_impl");
 
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
@@ -2718,7 +2728,7 @@ mod tests {
         let issued = plan_operation_impl(&state, req)
             .await
             .expect("plan_operation_impl");
-        let op_id = submit_operation_impl(&state, issued.id).expect("submit_operation_impl");
+        let op_id = submit_operation_impl(&state, issued.id, None).expect("submit_operation_impl");
         wait_for_op_status(
             &state,
             op_id,
@@ -2764,7 +2774,9 @@ mod tests {
             let issued = plan_operation_impl(&state, req)
                 .await
                 .expect("plan_operation_impl");
-            ids.push(submit_operation_impl(&state, issued.id).expect("submit_operation_impl"));
+            ids.push(
+                submit_operation_impl(&state, issued.id, None).expect("submit_operation_impl"),
+            );
         }
         let (first, second) = (ids[0], ids[1]);
         wait_for_op_status(
@@ -2814,7 +2826,7 @@ mod tests {
         // be reached.
         let (state, execute_calls, _check_options_calls) = state_with_fake_adapter_and_now(None);
         refresh_impl(&state).await.expect("refresh_impl");
-        let err = submit_operation_impl(&state, "forged-plan-id".to_string())
+        let err = submit_operation_impl(&state, "forged-plan-id".to_string(), None)
             .expect_err("an unissued plan id must be rejected");
         let parsed: serde_json::Value = serde_json::from_str(&err)
             .unwrap_or_else(|e| panic!("expected JSON, got {err:?} ({e})"));
@@ -2845,8 +2857,9 @@ mod tests {
         let issued = plan_operation_impl(&state, req)
             .await
             .expect("plan_operation_impl");
-        submit_operation_impl(&state, issued.id.clone()).expect("the first submit must succeed");
-        let err = submit_operation_impl(&state, issued.id)
+        submit_operation_impl(&state, issued.id.clone(), None)
+            .expect("the first submit must succeed");
+        let err = submit_operation_impl(&state, issued.id, None)
             .expect_err("resubmitting the same plan id must be rejected");
         let parsed: serde_json::Value = serde_json::from_str(&err)
             .unwrap_or_else(|e| panic!("expected JSON, got {err:?} ({e})"));
@@ -2886,7 +2899,7 @@ mod tests {
 
         banager_core::testing::expire_issued_plans(&state.session);
 
-        let err = submit_operation_impl(&state, issued.id)
+        let err = submit_operation_impl(&state, issued.id, None)
             .expect_err("a plan older than its lifetime must be rejected");
         let parsed: serde_json::Value = serde_json::from_str(&err)
             .unwrap_or_else(|e| panic!("expected JSON, got {err:?} ({e})"));
@@ -3522,10 +3535,13 @@ mod tests {
             wrong_case.as_str().unwrap().contains("planId"),
             "{wrong_case}"
         );
-        let op_id = dispatch("submit_operation", serde_json::json!({"planId":id}))
-            .unwrap()
-            .as_u64()
-            .unwrap();
+        let op_id = dispatch(
+            "submit_operation",
+            serde_json::json!({"planId":id, "batch":"b-1"}),
+        )
+        .unwrap()
+        .as_u64()
+        .unwrap();
         tokio::time::timeout(std::time::Duration::from_secs(3), async {
             loop {
                 if received

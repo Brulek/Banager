@@ -293,6 +293,13 @@ export function createMockBackend(scenario: Scenario): MockBackend {
   const movedKey = (request: { instance_id: string; artifact_kind: string }) =>
     `${request.instance_id}\u0000${request.artifact_kind}`;
   let nextOpId = 1;
+  /**
+   * The operation bar's runs, as `RunBook` in crates/banager-core/src/ops/mod.rs
+   * numbers them: an operation joins the current run while another is
+   * unfinished or when its batch is one the run already has, and begins
+   * the next one otherwise. Nothing is evicted here, so nothing is kept.
+   */
+  const runs = { current: 0, batches: new Set<string>() };
   /** What `get_sizes` answers: the newest round's sizes so far. */
   let sizes: Sizes = NO_SIZES;
   let sizesTimer: ReturnType<typeof setTimeout> | null = null;
@@ -741,7 +748,7 @@ export function createMockBackend(scenario: Scenario): MockBackend {
     }
   }
 
-  function submit(planId: PlanId): number {
+  function submit(planId: PlanId, batch?: string): number {
     const stored = plans.get(planId);
     if (stored === undefined) throw refusal({ kind: "unknown" });
     plans.delete(planId);
@@ -763,6 +770,12 @@ export function createMockBackend(scenario: Scenario): MockBackend {
     gate(plan.request);
     const id = nextOpId;
     nextOpId += 1;
+    const unfinished = [...operations.values()].some((other) => other.summary.status !== "Done");
+    if (!unfinished && !(batch !== undefined && runs.batches.has(batch))) {
+      runs.current += 1;
+      runs.batches.clear();
+    }
+    if (batch !== undefined) runs.batches.add(batch);
     const op: Operation = {
       summary: {
         id,
@@ -787,6 +800,7 @@ export function createMockBackend(scenario: Scenario): MockBackend {
               ? plan.action.CommandThen.env
               : [],
         cancel_policy: plan.cancel_policy,
+        run: runs.current,
       },
       plan,
       timers: [],
@@ -911,7 +925,7 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       return clone(issued);
     },
     async submit_operation(args) {
-      return submit(args.planId as PlanId);
+      return submit(args.planId as PlanId, args.batch as string | undefined);
     },
     async cancel_operation(args) {
       cancel(args.opId as number);

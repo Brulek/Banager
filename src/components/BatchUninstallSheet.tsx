@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useId, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { usePlanOperation, useSettings, useSizes, useSnapshot, useSubmitOperation } from "../lib/queries";
+import { newSubmissionBatch } from "../lib/api";
 import {
   batchSizeOf,
   classify,
@@ -259,6 +260,9 @@ export function useBatchUninstall(): BatchUninstall {
       }
       setBatch({ ...current, phase: "submitting", reissued: false });
       const started = new Set<string>();
+      // Several: one run on the operation bar, even where one ends before
+      // the next is sent (`BatchSubmission`).
+      const runBatch = included.length > 1 ? newSubmissionBatch() : undefined;
       for (const { candidate, after } of included) {
         const index = at.get(candidate.id)!;
         const entry = entries[index];
@@ -269,7 +273,9 @@ export function useBatchUninstall(): BatchUninstall {
           entries[index] = { ...entry, blockedBy };
         } else {
           try {
-            const opId = await submitMutation.mutateAsync(entry.planId);
+            const opId = await submitMutation.mutateAsync(
+              runBatch === undefined ? entry.planId : { planId: entry.planId, batch: runBatch },
+            );
             entries[index] = { ...entry, opId };
             started.add(entry.id);
             // The name its row showed, for the operation bar and the log

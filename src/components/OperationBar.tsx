@@ -10,6 +10,7 @@ import {
   operationWords,
   printedAnything,
   runsToItsEnd,
+  operationsOfRun,
   trackRun,
   useOperationName,
   type OperationRun,
@@ -95,7 +96,7 @@ export function OperationBar() {
     return null;
   }
 
-  const inRun = operations.filter((op) => op.id > tracked.floor);
+  const inRun = operationsOfRun(tracked, operations);
   const total = inRun.length;
   const active = inRun.filter(isActive);
   const openLog = (op: OpSummary) => {

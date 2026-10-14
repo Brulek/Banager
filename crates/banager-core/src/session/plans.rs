@@ -500,6 +500,18 @@ impl Session {
     /// belongs to `OperationManager` and the adapter's own checks (npm's
     /// `Refused` is the existing example).
     pub fn submit(self: &std::sync::Arc<Self>, plan_id: PlanId) -> Result<OpId, SubmitError> {
+        self.submit_in(plan_id, None)
+    }
+
+    /// `submit`, as one of the operations one confirmation started, named
+    /// by `batch` (`OperationManager::submit_in`): it decides only which run
+    /// the operation bar shows the operation in, never whether it runs --
+    /// every check above is the same with it or without.
+    pub fn submit_in(
+        self: &std::sync::Arc<Self>,
+        plan_id: PlanId,
+        batch: Option<String>,
+    ) -> Result<OpId, SubmitError> {
         let stored = {
             let mut plans = self.issued_plans.lock().unwrap();
             plans.remove(&plan_id).ok_or(SubmitError::Unknown)?
@@ -532,7 +544,7 @@ impl Session {
         });
         Ok(self
             .ops
-            .submit_toward(stored.issued.plan, stored.target_version, on_finish))
+            .submit_in(stored.issued.plan, stored.target_version, on_finish, batch))
     }
 
     /// What the history keeps of an operation from when it starts: the

@@ -734,6 +734,23 @@ describe("the browser preview's mock backend", () => {
     expect(added.filter((a) => a.reason === "Requested").every((a) => a.facts.commands.length === 1)).toBe(true);
   });
 
+  it("numbers runs as the real backend does: one batch is one run across a gap, and the next starts another (R68-1)", async () => {
+    const { backend } = backendFor();
+    await answer(backend.invoke("refresh"));
+    const [git, wget, typescript] = await planUpgrades(backend, "git", "wget", "typescript");
+    const first = (await backend.invoke("submit_operation", { planId: git.id, batch: "b-1" })) as number;
+    await vi.runAllTimersAsync();
+    const second = (await backend.invoke("submit_operation", { planId: wget.id, batch: "b-1" })) as number;
+    await vi.runAllTimersAsync();
+    const third = (await backend.invoke("submit_operation", { planId: typescript.id })) as number;
+    await vi.runAllTimersAsync();
+    const runOf = async (id: number) =>
+      ((await backend.invoke("list_operations")) as OpSummary[]).find((op) => op.id === id)?.run;
+    expect(await runOf(first)).toBeGreaterThan(0);
+    expect(await runOf(second)).toBe(await runOf(first));
+    expect(await runOf(third)).toBe((await runOf(first))! + 1);
+  });
+
   it("runs an upgrade the way the real backend reports one, and the next refresh shows it done", async () => {
     const { backend, events } = backendFor();
     await answer(backend.invoke("refresh"));

@@ -1023,10 +1023,17 @@ post as "Notify me when there are updates" does, through the same
 command (`request_notification_permission`): no permission of its own.
 
 Closing the window does not stop an operation, nor the page, which is
-hidden with the window and hears the operation finish (`window.rs`). Once
+hidden with the window and hears the operation finish (`window.rs`). Rust
+numbers runs as the operation bar shows them (`RunBook` in
+`crates/banager-core/src/ops/mod.rs`): an operation started while another
+is unfinished joins that one's run, and so do the operations one
+confirmation starts — an Update All, a batch uninstall — even when one of
+them ends before the next is submitted: the confirmation sends the same
+batch name with each (`batch` of `submit_operation`, in memory only, used
+for nothing else); any other begins a new run. Once
 every operation of a run has finished — an Update All, one update or
-uninstall, and whatever was started while those were under way, as the
-operation bar groups them (`trackRun` in `src/lib/operations.ts`) — the
+uninstall, and whatever was started while those were under way
+(`trackRun` in `src/lib/operations.ts`) — the
 page sends the number of its newest operation (`report_finished_run`
 in `src-tauri/src/notify_ops.rs`). The legacy kind/count fields remain in
 the request for wire compatibility but are ignored. Rust derives them
@@ -1039,7 +1046,11 @@ submitted, Rust drops its oldest finished operation records until it
 holds 200 (`DEFAULT_MAX_RECORDS` in `crates/banager-core/src/ops/mod.rs`):
 a target, not a bound, since the record of an operation not yet finished
 is never dropped, and records that finish after it stay until the next
-submission. Of each record it drops, it keeps, in memory only, what the
+submission. Of each record of the current run it drops, it keeps the
+operation's summary, in memory only, until the next run's first
+operation appears in the same step, so the operation bar and the
+notification still have the whole run, an early failure included;
+accepting a notification does not drop those. Of each record it drops, it keeps, in memory only, what the
 operation did and how it ended, until a run that includes it is
 accepted, so a long run or a late report is still counted whole. It
 keeps at most 10,000 of those (`MAX_EVICTED`); a run with an operation
@@ -1407,7 +1418,8 @@ planned as any other's):
   whichever Homebrew PATH finds first -- except in the log dialog while
   it does not know the operation it shows: before its list of
   operations has arrived, or once the backend has let that operation go
-  (past 200 operations it lets the oldest finished ones go), it cannot
+  (past 200 operations it lets the oldest finished ones go, but for the
+  summaries of the current run's), it cannot
   tell that Homebrew, and its sentence says `brew` (`LogDrawer` in
   `src/components/LogDrawer.tsx`). Banager never runs the command. How the link
   ends never changes the update's outcome. After an update that

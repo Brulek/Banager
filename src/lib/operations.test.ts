@@ -8,6 +8,7 @@ import {
   cancelState,
   currentOf,
   isWaitingForBrewUpdate,
+  operationsOfRun,
   operationWords,
   outcomeTone,
   outcomeWords,
@@ -92,6 +93,18 @@ describe("trackRun", () => {
     const list = [op(2, "Queued"), op(1, "Running")];
     const run = trackRun(trackRun(null, []), list);
     expect(trackRun(run, [...list])).toBe(run);
+  });
+});
+
+describe("operationsOfRun", () => {
+  it("takes the newest run the backend numbered, whatever the ids, and works it out without numbers", () => {
+    const floor: OperationRun = { floor: 2, seen: 4, open: false };
+    // Id 3 took its number before 4 but was recorded after it, so began
+    // the next run: the run decides, not the id.
+    const numbered = [op(4, "Done", { run: 2 }), op(3, "Done", { run: 3 }), op(2, "Done", { run: 2 }), op(1, "Done", { run: 1 })];
+    expect(operationsOfRun(floor, numbered).map((each) => each.id)).toEqual([3]);
+    const unnumbered = [op(4, "Done"), op(3, "Done"), op(2, "Done")];
+    expect(operationsOfRun(floor, unnumbered).map((each) => each.id)).toEqual([4, 3]);
   });
 });
 

@@ -101,6 +101,12 @@ describe("api", () => {
     expect(mockInvoke).toHaveBeenCalledWith("submit_operation", { planId: "a1b2c3" });
   });
 
+  it("submitOperation sends a batch's name beside its plan id, and nothing else", async () => {
+    mockInvoke.mockResolvedValueOnce(8 as never);
+    await submitOperation({ planId: "a1b2c3", batch: "b-1" });
+    expect(mockInvoke).toHaveBeenCalledWith("submit_operation", { planId: "a1b2c3", batch: "b-1" });
+  });
+
   it("cancelOperation invokes cancel_operation with opId", async () => {
     mockInvoke.mockResolvedValueOnce(undefined as never);
     await cancelOperation(7);

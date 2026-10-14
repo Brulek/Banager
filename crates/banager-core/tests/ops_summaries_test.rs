@@ -553,3 +553,221 @@ async fn regression_an_evicted_operation_never_stops_later_runs_being_told_of() 
         "nothing accepted is kept once the boundary passes it"
     );
 }
+
+/// An adapter whose operations each end as their name says, when the test
+/// lets them: `fail…` returns an error (`BanagerFailed`), anything else
+/// succeeds. Each name waits for its own permit (`release`), which
+/// `Notify::notify_one` keeps for it if it is not waiting yet.
+struct ScriptedAdapter {
+    inner: FakeAdapter,
+    gates: std::sync::Mutex<std::collections::HashMap<String, Arc<tokio::sync::Notify>>>,
+}
+
+impl ScriptedAdapter {
+    fn new() -> ScriptedAdapter {
+        ScriptedAdapter {
+            inner: FakeAdapter::new(),
+            gates: std::sync::Mutex::new(std::collections::HashMap::new()),
+        }
+    }
+
+    fn gate(&self, name: &str) -> Arc<tokio::sync::Notify> {
+        self.gates
+            .lock()
+            .unwrap()
+            .entry(name.to_string())
+            .or_default()
+            .clone()
+    }
+
+    fn release(&self, name: &str) {
+        self.gate(name).notify_one();
+    }
+}
+
+#[async_trait]
+impl Adapter for ScriptedAdapter {
+    fn meta(&self) -> &AdapterMeta {
+        self.inner.meta()
+    }
+
+    async fn detect(&self, env: &HostEnv) -> Vec<ManagerInstance> {
+        self.inner.detect(env).await
+    }
+
+    async fn inventory(
+        &self,
+        inst: &ManagerInstance,
+    ) -> Result<Vec<InstalledArtifact>, AdapterError> {
+        self.inner.inventory(inst).await
+    }
+
+    async fn check_updates(
+        &self,
+        inst: &ManagerInstance,
+        opts: &CheckOptions,
+    ) -> Result<CheckOutcome, AdapterError> {
+        self.inner.check_updates(inst, opts).await
+    }
+
+    async fn search(
+        &self,
+        inst: &ManagerInstance,
+        query: &str,
+    ) -> Result<Vec<SearchHit>, AdapterError> {
+        self.inner.search(inst, query).await
+    }
+
+    async fn plan(&self, inst: &ManagerInstance, req: &OpRequest) -> Result<Plan, AdapterError> {
+        // A lock of each operation's own, so that they run side by side.
+        let mut plan = self.inner.plan(inst, req).await?;
+        plan.locks = vec![ResourceLock(format!("{}:{}", inst.id, req.name))];
+        Ok(plan)
+    }
+
+    async fn execute(
+        &self,
+        plan: &Plan,
+        _sink: Arc<dyn EventSink>,
+        _op_id: OpId,
+        _cancel: CancellationToken,
+    ) -> Result<Outcome, AdapterError> {
+        let name = plan.request.name.clone();
+        self.gate(&name).notified().await;
+        if name.starts_with("fail") {
+            Err(AdapterError::Refused("scripted failure".to_string()))
+        } else {
+            Ok(Outcome::Succeeded)
+        }
+    }
+
+    async fn reconcile(
+        &self,
+        inst: &ManagerInstance,
+        key: &ArtifactKey,
+    ) -> Result<Reconciled, AdapterError> {
+        self.inner.reconcile(inst, key).await
+    }
+}
+
+fn scripted(max_records: usize) -> (Arc<OperationManager>, Arc<ScriptedAdapter>) {
+    let mut manager = OperationManager::new(Arc::new(VecSink::new())).with_max_records(max_records);
+    let adapter = Arc::new(ScriptedAdapter::new());
+    manager.register_adapter(adapter.clone());
+    let manager = Arc::new(manager);
+    manager.register_instance(make_instance("fake:1"));
+    (manager, adapter)
+}
+
+async fn plan_for(adapter: &ScriptedAdapter, name: &str) -> Plan {
+    adapter
+        .plan(&make_instance("fake:1"), &make_request(name, "fake:1"))
+        .await
+        .unwrap()
+}
+
+/// R68-1: the operation bar reads its run's result off `summaries()`. A run
+/// longer than the records' cap has its first finished operations evicted
+/// while the rest still run, and a failure among them must stay in the
+/// run's result -- or a run with a failure ends looking wholly successful.
+#[tokio::test]
+async fn regression_current_run_keeps_an_evicted_early_failure() {
+    let (manager, adapter) = scripted(2);
+    let a = manager.submit(plan_for(&adapter, "fail-a").await);
+    let b = manager.submit(plan_for(&adapter, "bbb").await);
+    adapter.release("fail-a");
+    assert!(matches!(
+        manager.wait(a).await,
+        Some(Outcome::BanagerFailed(_))
+    ));
+    // B still runs, so C joins the run; its record evicts A's.
+    let c = manager.submit(plan_for(&adapter, "ccc").await);
+    assert!(manager.record(a).is_none(), "A's record is evicted");
+    let ids: Vec<OpId> = manager.summaries().iter().map(|s| s.id).collect();
+    assert_eq!(ids, vec![c, b, a], "the run's summaries, newest first");
+
+    adapter.release("bbb");
+    adapter.release("ccc");
+    manager.wait(b).await;
+    manager.wait(c).await;
+    let summaries = manager.summaries();
+    assert_eq!(summaries.len(), 3);
+    assert!(summaries.iter().all(|s| s.status == OpStatus::Done));
+    assert!(matches!(
+        summaries[2].outcome,
+        Some(Outcome::BanagerFailed(_))
+    ));
+    assert_eq!(summaries[2].name, "fail-a");
+    assert_eq!(summaries[1].outcome, Some(Outcome::Succeeded));
+    assert_eq!(summaries[0].outcome, Some(Outcome::Succeeded));
+    assert!(summaries.iter().all(|s| s.run == summaries[0].run));
+
+    // The notification counts it once, from the same summaries.
+    let known = manager.completions_after(0);
+    assert!(!known.evicted.contains_key(&a), "counted once");
+    assert_eq!(known.operations.len(), 3);
+    // Accepting the notification does not take it off the bar.
+    manager.completions_after(c);
+    assert_eq!(manager.summaries().len(), 3);
+
+    // A new operation once all of it has finished begins a new run, which
+    // replaces the old one's kept failure in the same step as it appears.
+    let d = manager.submit(plan_for(&adapter, "ddd").await);
+    let summaries = manager.summaries();
+    assert!(summaries.iter().all(|s| s.id != a), "{summaries:?}");
+    let run_of = |id| summaries.iter().find(|s| s.id == id).unwrap().run;
+    assert!(run_of(d) > run_of(c));
+    adapter.release("ddd");
+    manager.wait(d).await;
+}
+
+/// R68-1: an Update All submits one operation at a time, and the first can
+/// fail before the second is sent, with nothing under way between them.
+/// Submitted under one batch, they are one run all the same, so the
+/// failure is kept with it once evicted; a later operation of no batch
+/// begins a run of its own.
+#[tokio::test]
+async fn regression_one_batch_survives_a_gap_between_submissions() {
+    let (manager, adapter) = scripted(1);
+    adapter.release("fail-a");
+    let a = manager.submit_in(
+        plan_for(&adapter, "fail-a").await,
+        None,
+        None,
+        Some("batch-1".to_string()),
+    );
+    manager.wait(a).await;
+    adapter.release("bbb");
+    let b = manager.submit_in(
+        plan_for(&adapter, "bbb").await,
+        None,
+        None,
+        Some("batch-1".to_string()),
+    );
+    manager.wait(b).await;
+    let summaries = manager.summaries();
+    assert_eq!(
+        summaries.iter().map(|s| s.id).collect::<Vec<_>>(),
+        vec![b, a],
+        "A, evicted by B, stays in B's run"
+    );
+    assert_eq!(summaries[0].run, summaries[1].run);
+
+    adapter.release("ccc");
+    let c = manager.submit(plan_for(&adapter, "ccc").await);
+    manager.wait(c).await;
+    let summaries = manager.summaries();
+    assert_eq!(summaries.iter().map(|s| s.id).collect::<Vec<_>>(), vec![c]);
+
+    // A stale batch never reopens a run another has replaced.
+    adapter.release("ddd");
+    let d = manager.submit_in(
+        plan_for(&adapter, "ddd").await,
+        None,
+        None,
+        Some("batch-1".to_string()),
+    );
+    manager.wait(d).await;
+    let summaries = manager.summaries();
+    assert_eq!(summaries.iter().map(|s| s.id).collect::<Vec<_>>(), vec![d]);
+}

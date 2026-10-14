@@ -258,7 +258,7 @@ function calls(cmd: string) {
 }
 
 function submittedPlanIds() {
-  return calls("submit_operation").map(([, args]) => args);
+  return calls("submit_operation").map(([, args]) => ({ planId: (args as { planId: string }).planId }));
 }
 
 function plannedNames(): string[] {
@@ -652,6 +652,8 @@ describe("UpdatesPage", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Update" }));
 
     await waitFor(() => expect(submittedPlanIds()).toEqual([{ planId: "1" }]));
+    // One update is a run of its own: no batch to keep together.
+    expect(calls("submit_operation")[0][1]).toEqual({ planId: "1" });
     // Every item started, so the dialog closes on its own.
     await waitFor(() => expect(queryByRole("alertdialog")).not.toBeInTheDocument());
   });
@@ -674,6 +676,11 @@ describe("UpdatesPage", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: UPDATE_SEVERAL }));
 
     await waitFor(() => expect(submittedPlanIds()).toEqual([{ planId: "1" }, { planId: "2" }]));
+    // One confirmation, one run on the operation bar (R68-1): both carry
+    // the same batch, even if the first ends before the second is sent.
+    const batches = calls("submit_operation").map(([, args]) => (args as { batch?: string }).batch);
+    expect(batches[0]).toEqual(expect.any(String));
+    expect(batches[1]).toBe(batches[0]);
     await waitFor(() => expect(queryByRole("alertdialog")).not.toBeInTheDocument());
     expect(useUiStore.getState().selectedUpdates).toEqual([]);
   });

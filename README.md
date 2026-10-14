@@ -196,7 +196,9 @@ does the same. Closing the window doesn't stop an operation; turn on **Notify me
 finish** (off until you do) and a run of updates or uninstalls that finishes while another app is in
 front posts one notification saying how it went, such as "Updated 3 tools" — never one you watched
 finish in the window. One that finishes with the window closed while Banager is still in front is
-posted once you switch to another app (`docs/what-we-run.md`, "The notification when operations finish"). A row's … menu on the Updates page has *Remind Me in 30 Days* between *Skip This Version* and
+posted once you switch to another app (`docs/what-we-run.md`, "The notification when operations finish").
+The result at the bottom of the window includes every operation in the run, even when older operation
+records have been released. A row's … menu on the Updates page has *Remind Me in 30 Days* between *Skip This Version* and
 *Don't Remind Me About This Tool*: it hides every version of that tool, not only the one offered, from
 the list, its counts, the Dock badge and the update notification for 30 days, after which the tool is
 listed again and counted like any other update — and, when the update notification is on, the first daily check
@@ -662,7 +664,7 @@ Banager 开着时还会每天做一次同样的检查，查到的更新都不安
 点程序坞图标——也会这样。
 关掉窗口不会停止正在进行的操作；打开“操作完成时通知”（默认关闭）后，一批更新或卸载在别的应用位于最前面时做完，
 会发一条通知说结果，比如“已更新3个工具”——你在窗口里看着做完的不会通知；窗口关着、Banager 仍在最前面时做完的，
-等你切到别的应用时再通知。
+等你切到别的应用时再通知。窗口底部的结果包含这一批中的每个操作，即使较早的操作记录已经释放。
 “更新”页每行“…”菜单里，“跳过此版本”和“不再提醒此工具”之间有“30天内不提醒”：这个工具的所有版本（不只是当前这一版）
 30天内都不列出，也不计入数量、程序坞角标和更新通知；到期后重新列出，和其他更新一样计入（开着“有更新时通知我”时，
 到期后第一次每日检查发现它会发通知提醒你，即使你之前看到过它）；在那之前“设置”里会列出它，可以撤销。

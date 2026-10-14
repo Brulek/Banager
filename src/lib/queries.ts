@@ -20,6 +20,7 @@ import {
   revealInFinder,
   artifactIcon,
   getSizes,
+  type BatchSubmission,
 } from "./api";
 import { checkEvery } from "./checkFrequency";
 import { isNewerSnapshot, isRefreshInFlight, refreshIntoCache, useRefreshInFlight } from "./events";
@@ -245,7 +246,7 @@ export function usePlanOperation(): UseMutationResult<IssuedPlan, Error, OpReque
   return useMutation({ mutationFn: planOperation });
 }
 
-export function useSubmitOperation(): UseMutationResult<number, Error, PlanId> {
+export function useSubmitOperation(): UseMutationResult<number, Error, PlanId | BatchSubmission> {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: submitOperation,

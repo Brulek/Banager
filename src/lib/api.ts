@@ -59,10 +59,28 @@ export function planOperation(request: OpRequest): Promise<IssuedPlan> {
 let pendingSubmissions = 0;
 let operationListsStarted = 0;
 
-export async function submitOperation(planId: PlanId): Promise<number> {
+/**
+ * A plan to start as one of the operations one confirmation starts: the
+ * same `batch` for each keeps them one run on the operation bar, even when
+ * one ends before the next is sent (`RunBook` in
+ * crates/banager-core/src/ops/mod.rs). It decides nothing else.
+ */
+export interface BatchSubmission {
+  planId: PlanId;
+  batch: string;
+}
+
+/** A new name for the operations of one confirmation (`BatchSubmission`). */
+export function newSubmissionBatch(): string {
+  return crypto.randomUUID();
+}
+
+export async function submitOperation(submission: PlanId | BatchSubmission): Promise<number> {
+  const args =
+    typeof submission === "string" ? { planId: submission } : { planId: submission.planId, batch: submission.batch };
   pendingSubmissions += 1;
   try {
-    return await call<number>("submit_operation", { planId });
+    return await call<number>("submit_operation", args);
   } finally {
     pendingSubmissions -= 1;
   }
