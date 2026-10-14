@@ -26,8 +26,9 @@ import { outcomeCause, failureCause } from "../lib/failureCause";
 import { resolveToolIcon } from "../lib/toolIcons";
 import { everySourceChecked, hidingRule, updatesSummary, updateStateOf } from "../lib/updateState";
 import { artifactKeyId } from "../store/ui";
-import { createMockBackend, MOCK_COMMANDS, TIMING, type MockBackend } from "./mockBackend";
-import { MODELS, buildWorld } from "./mockData";
+import { cancelledRunningOutcome, createMockBackend, MOCK_COMMANDS, TIMING, type MockBackend } from "./mockBackend";
+import { MODELS, buildWorld, sameKey } from "./mockData";
+import * as mockData from "./mockData";
 import { withMockNeededBy } from "./mockNeededBy";
 import { getCurrentWindow as previewWindow } from "./mockTauriWindow";
 import {
@@ -111,6 +112,7 @@ describe("the browser preview's mock backend", () => {
     vi.useFakeTimers();
   });
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.useRealTimers();
   });
 
@@ -1157,7 +1159,7 @@ describe("the browser preview's mock backend", () => {
     expect(names).toContain("git");
   });
 
-  it("cancels a running operation and leaves the machine as it was", async () => {
+  it("leaves a cancelled running upgrade unconfirmed and still listed", async () => {
     const { backend, events } = backendFor();
     await answer(backend.invoke("refresh"));
     const [opId] = await submitUpgrades(backend, "wget");
@@ -1170,6 +1172,257 @@ describe("the browser preview's mock backend", () => {
     expect(own[own.length - 1]).toEqual({ Finished: { op_id: opId, outcome: "Unconfirmed" } });
     const after = await answer<Snapshot>(backend.invoke("refresh"));
     expect(after.updates.some((u) => u.key.name === "wget")).toBe(true);
+  });
+
+  it("leaves a cancelled running cask uninstall unconfirmed while its record remains", async () => {
+    const { backend, events } = backendFor();
+    const before = await answer<Snapshot>(backend.invoke("refresh"));
+    const original = before.artifacts.find((a) => a.key.name === "iterm2" && a.key.kind === "Cask")!;
+    expect(original).toBeDefined();
+    const issued = await answer<IssuedPlan>(backend.invoke("plan_operation", { request: {
+      kind: "Uninstall", instance_id: original.key.instance_id, artifact_kind: "Cask", name: "iterm2",
+    } }));
+    const opId = await backend.invoke("submit_operation", { planId: issued.id }) as number;
+    await vi.advanceTimersByTimeAsync(TIMING.start + 1);
+    expect(await backend.invoke("list_operations")).toContainEqual(expect.objectContaining({ id: opId, status: "Running" }));
+    await backend.invoke("cancel_operation", { opId });
+    await vi.advanceTimersByTimeAsync(TIMING.cancel + 300 + TIMING.verify + 1);
+    const finished = () => operationEvents(events, opId).filter((event) => "Finished" in event);
+    expect(statusesOf(operationEvents(events, opId))).toEqual([
+      "Queued", "Running", "CancelRequested", "Cancelling", "Verifying",
+    ]);
+    expect(finished()).toEqual([{ Finished: { op_id: opId, outcome: "Unconfirmed" } }]);
+    expect(await backend.invoke("list_operations")).toContainEqual(expect.objectContaining({
+      id: opId, status: "Done", outcome: "Unconfirmed",
+    }));
+    const after = await answer<Snapshot>(backend.invoke("refresh"));
+    expect(after.artifacts.find((a) => sameKey(a.key, original.key))).toEqual(original);
+    await vi.advanceTimersByTimeAsync(TIMING.start + TIMING.run + TIMING.verify);
+    expect(finished()).toEqual([{ Finished: { op_id: opId, outcome: "Unconfirmed" } }]);
+  });
+
+  it("leaves a cancelled running Node link unconfirmed and still offers its repair", async () => {
+    const { backend, events } = backendFor({ state: "nonode" });
+    const before = await answer<Snapshot>(backend.invoke("refresh"));
+    const npm = before.instances.find((i) => i.adapter_id === "npm")!;
+    expect(npm.status.unavailable).toBe("NotResponding");
+    const issued = await answer<IssuedPlan>(backend.invoke("plan_operation", { request: {
+      kind: "Link", instance_id: "brew:/opt/homebrew", artifact_kind: "Formula", name: "node@20",
+    } }));
+    expect(issued.plan.warnings).toEqual([{ LinkPutsCommands: { names: ["corepack", "node", "npm", "npx"] } }]);
+    const opId = await backend.invoke("submit_operation", { planId: issued.id }) as number;
+    await vi.advanceTimersByTimeAsync(TIMING.start + 1);
+    expect(await backend.invoke("list_operations")).toContainEqual(expect.objectContaining({ id: opId, status: "Running" }));
+    await backend.invoke("cancel_operation", { opId });
+    await vi.runAllTimersAsync();
+    expect(statusesOf(operationEvents(events, opId))).toEqual([
+      "Queued", "Running", "CancelRequested", "Cancelling", "Verifying",
+    ]);
+    expect(operationEvents(events, opId).filter((event) => "Finished" in event)).toEqual([
+      { Finished: { op_id: opId, outcome: "Unconfirmed" } },
+    ]);
+    expect(await backend.invoke("list_operations")).toContainEqual(expect.objectContaining({
+      id: opId, status: "Done", outcome: "Unconfirmed",
+    }));
+    const after = await answer<Snapshot>(backend.invoke("refresh"));
+    expect(after.instances.find((i) => i.id === npm.id)?.status).toEqual(npm.status);
+    expect(after.instances.find((i) => i.id === npm.id)?.status.no_answer?.link_fixes).toEqual(npm.status.no_answer?.link_fixes);
+  });
+
+  it.each([
+    ["Uninstall", true, "Unconfirmed"],
+    ["Uninstall", false, "Succeeded"],
+    ["Uninstall", undefined, "Unconfirmed"],
+    ["Upgrade", true, "Unconfirmed"],
+    ["Upgrade", false, "Unconfirmed"],
+    ["Upgrade", undefined, "Unconfirmed"],
+    ["Link", true, "Unconfirmed"],
+    ["Link", false, "Unconfirmed"],
+    ["Link", undefined, "Unconfirmed"],
+    ["Install", true, "Succeeded"],
+    ["Install", false, "Cancelled"],
+    ["Install", undefined, "Unconfirmed"],
+  ] as const)("settles interrupted removals only when reconciliation proves absence: %s, %s", (kind, present, outcome) => {
+    expect(cancelledRunningOutcome(kind, present)).toBe(outcome);
+  });
+
+  it.each(["absent", "missing source", "unavailable source"] as const)(
+    "uses the current world and complete key when verifying cancellation: %s",
+    async (reading) => {
+      const world = buildWorld("full");
+      vi.spyOn(mockData, "buildWorld").mockReturnValueOnce(world);
+      const { backend, events } = backendFor();
+      const before = await answer<Snapshot>(backend.invoke("refresh"));
+      const original = before.artifacts.find((a) => a.key.name === "iterm2" && a.key.kind === "Cask")!;
+      const issued = await answer<IssuedPlan>(backend.invoke("plan_operation", { request: {
+        kind: "Uninstall", instance_id: original.key.instance_id, artifact_kind: original.key.kind, name: original.key.name,
+      } }));
+      const opId = await backend.invoke("submit_operation", { planId: issued.id }) as number;
+      await vi.advanceTimersByTimeAsync(TIMING.start + 1);
+      await backend.invoke("cancel_operation", { opId });
+      await vi.advanceTimersByTimeAsync(TIMING.cancel + 301);
+      expect(await backend.invoke("list_operations")).toContainEqual(expect.objectContaining({ id: opId, status: "Verifying" }));
+      // Change only the in-memory reading, after cancellation began. The
+      // committed snapshot still lists the target; these names are other keys.
+      world.artifacts = world.artifacts.filter((a) => !sameKey(a.key, original.key));
+      world.artifacts.push(
+        { ...original, key: { ...original.key, kind: "Formula" } },
+        { ...original, key: { ...original.key, instance_id: "brew:/usr/local" } },
+      );
+      if (reading === "missing source") {
+        world.instances = world.instances.filter((i) => i.id !== original.key.instance_id);
+      } else if (reading === "unavailable source") {
+        world.instances.find((i) => i.id === original.key.instance_id)!.status.unavailable = "NotResponding";
+      }
+      await vi.runAllTimersAsync();
+      const outcome = reading === "absent" ? "Succeeded" : "Unconfirmed";
+      expect(operationEvents(events, opId).filter((event) => "Finished" in event)).toEqual([
+        { Finished: { op_id: opId, outcome } },
+      ]);
+      expect(await backend.invoke("list_operations")).toContainEqual(expect.objectContaining({ id: opId, outcome }));
+    },
+  );
+
+  it("keeps a queued cancellation Cancelled without changing its artifact", async () => {
+    const { backend, events } = backendFor();
+    const before = await answer<Snapshot>(backend.invoke("refresh"));
+    const original = before.artifacts.find((a) => a.key.name === "iterm2" && a.key.kind === "Cask")!;
+    const issued = await answer<IssuedPlan>(backend.invoke("plan_operation", { request: {
+      kind: "Uninstall", instance_id: original.key.instance_id, artifact_kind: "Cask", name: "iterm2",
+    } }));
+    const [holder] = await submitUpgrades(backend, "wget");
+    await vi.advanceTimersByTimeAsync(TIMING.start + 1);
+    const opId = await backend.invoke("submit_operation", { planId: issued.id }) as number;
+    expect(await backend.invoke("list_operations")).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: holder, status: "Running" }),
+      expect.objectContaining({ id: opId, status: "Queued" }),
+    ]));
+    await backend.invoke("cancel_operation", { opId });
+    await vi.runAllTimersAsync();
+    expect(statusesOf(operationEvents(events, opId))).toEqual(["Queued", "CancelRequested"]);
+    expect(operationEvents(events, opId).filter((event) => "Finished" in event)).toEqual([
+      { Finished: { op_id: opId, outcome: "Cancelled" } },
+    ]);
+    expect(await backend.invoke("list_operations")).toContainEqual(expect.objectContaining({ id: opId, outcome: "Cancelled" }));
+    const after = await answer<Snapshot>(backend.invoke("refresh"));
+    expect(after.artifacts.find((a) => sameKey(a.key, original.key))).toEqual(original);
+  });
+
+  it("removes the Cargo installation named by a successful rustup uninstall", async () => {
+    const { backend, events } = backendFor();
+    const before = await answer<Snapshot>(backend.invoke("refresh"));
+    const cargo = before.instances.find((i) => i.adapter_id === "cargo")!;
+    const rustup = before.instances.find((i) => i.adapter_id === "standalone-rustup")!;
+    const cargoArtifacts = before.artifacts.filter((a) => a.key.instance_id === cargo.id);
+    const cargoUpdates = before.updates.filter((u) => u.key.instance_id === cargo.id);
+    expect(cargoArtifacts.map((a) => a.key.name)).toEqual(expect.arrayContaining(["tokei", "jj-cli"]));
+    expect(cargoUpdates.map((u) => u.key.name)).toEqual(expect.arrayContaining(["tokei", "jj-cli"]));
+    const request: OpRequest = { kind: "Uninstall", instance_id: rustup.id, artifact_kind: "Binary", name: "rustup" };
+    const issued = await answer<IssuedPlan>(backend.invoke("plan_operation", { request }));
+    expect(issued.plan.warnings).toContainEqual({ DeletesCargoHome: { path: "~/.cargo" } });
+    expect(issued.plan.warnings).toContainEqual({
+      RemovesCargoInstalled: { names: cargoArtifacts.filter((a) => a.path !== null).map((a) => a.display_name) },
+    });
+    const cargoRequest = upgradeOf(cargoUpdates.find((u) => u.key.name === "tokei")!);
+    const saved = await answer<IssuedPlan>(backend.invoke("plan_operation", { request: cargoRequest }));
+    const opId = await backend.invoke("submit_operation", { planId: issued.id }) as number;
+    await vi.runAllTimersAsync();
+    expect(operationEvents(events, opId).filter((event) => "Finished" in event)).toEqual([
+      { Finished: { op_id: opId, outcome: "Succeeded" } },
+    ]);
+    expect(await backend.invoke("list_operations")).toContainEqual(expect.objectContaining({ id: opId, outcome: "Succeeded" }));
+    const after = await answer<Snapshot>(backend.invoke("refresh"));
+    const removed = new Set([cargo.id, rustup.id]);
+    expect(after.instances).toEqual(before.instances.filter((i) => !removed.has(i.id)));
+    expect(after.artifacts).toEqual(before.artifacts.filter((a) => !removed.has(a.key.instance_id)));
+    expect(after.updates).toEqual(before.updates.filter((u) => !removed.has(u.key.instance_id)));
+    await expectRefusal(backend.invoke("plan_operation", { request: cargoRequest }), '{"kind":"source_gone"}');
+    await expectRefusal(backend.invoke("submit_operation", { planId: saved.id }), '{"kind":"source_gone"}');
+  });
+
+  it("removes only rustup's Cargo home, including its greedy updates and source errors", async () => {
+    const world = buildWorld("full");
+    const cargo = world.instances.find((i) => i.adapter_id === "cargo")!;
+    const rustup = world.instances.find((i) => i.adapter_id === "standalone-rustup")!;
+    const outside = { ...cargo, id: "cargo:outside", prefix: cargo.prefix + "-other", exe_path: cargo.prefix + "-other/bin/cargo" };
+    const externalExe = { ...cargo, id: "cargo:external-executable", exe_path: outside.exe_path };
+    world.instances.push(outside, externalExe);
+    for (const source of [outside, externalExe]) {
+      world.artifacts.push(...world.artifacts.filter((a) => a.key.instance_id === cargo.id)
+        .map((a) => ({ ...a, key: { ...a.key, instance_id: source.id } })));
+    }
+    const update = world.updates.find((u) => u.key.instance_id === cargo.id)!;
+    for (const source of [cargo, rustup, outside, externalExe]) {
+      world.greedyUpdates.push({ ...update, key: { ...update.key, instance_id: source.id } });
+      world.errors.push({ instance_id: source.id, message: "mock lookup failed" });
+    }
+    const removed = new Set([cargo.id, rustup.id]);
+    const kept = {
+      instances: world.instances.filter((i) => !removed.has(i.id)),
+      artifacts: world.artifacts.filter((a) => !removed.has(a.key.instance_id)),
+      updates: world.updates.filter((u) => !removed.has(u.key.instance_id)),
+      greedyUpdates: world.greedyUpdates.filter((u) => !removed.has(u.key.instance_id)),
+      errors: world.errors.filter((e) => !removed.has(e.instance_id)),
+    };
+    vi.spyOn(mockData, "buildWorld").mockReturnValueOnce(world);
+    const { backend } = backendFor();
+    await answer(backend.invoke("refresh"));
+    const issued = await answer<IssuedPlan>(backend.invoke("plan_operation", { request: {
+      kind: "Uninstall", instance_id: rustup.id, artifact_kind: "Binary", name: "rustup",
+    } }));
+    await backend.invoke("submit_operation", { planId: issued.id });
+    await vi.runAllTimersAsync();
+    expect(world).toMatchObject(kept);
+    const settings = await backend.invoke("get_settings") as Settings;
+    await backend.invoke("set_settings", { settings: { ...settings, include_self_updating: true } });
+    const after = await answer<Snapshot>(backend.invoke("refresh"));
+    expect(after.updates).toEqual([...kept.updates, ...kept.greedyUpdates]);
+    expect(after.errors).toEqual(kept.errors);
+    expect(after.instances.map((i) => i.id)).toEqual(kept.instances.map((i) => i.id));
+  });
+
+  it.each([
+    ["Upgrade", "succeeded"],
+    ["Uninstall", "failed"],
+    ["Uninstall", "unconfirmed"],
+  ] as const)("keeps Cargo after rustup %s with outcome %s", async (kind, outcome) => {
+    const { backend } = backendFor({ outcome });
+    const before = await answer<Snapshot>(backend.invoke("refresh"));
+    const cargo = before.instances.find((i) => i.adapter_id === "cargo")!;
+    const issued = await answer<IssuedPlan>(backend.invoke("plan_operation", { request: {
+      kind, instance_id: "standalone-rustup", artifact_kind: "Binary", name: "rustup",
+    } }));
+    const opId = await backend.invoke("submit_operation", { planId: issued.id }) as number;
+    await vi.runAllTimersAsync();
+    const ops = await backend.invoke("list_operations") as OpSummary[];
+    const result = ops.find((op) => op.id === opId)?.outcome;
+    if (outcome === "failed") expect(result).toHaveProperty("Failed");
+    else expect(result).toBe(outcome === "succeeded" ? "Succeeded" : "Unconfirmed");
+    const after = await answer<Snapshot>(backend.invoke("refresh"));
+    expect(after.instances.find((i) => i.id === cargo.id)).toEqual(cargo);
+    expect(after.instances.some((i) => i.id === "standalone-rustup")).toBe(true);
+    expect(after.artifacts.filter((a) => a.key.instance_id === cargo.id))
+      .toEqual(before.artifacts.filter((a) => a.key.instance_id === cargo.id));
+    expect(after.artifacts.filter((a) => a.key.instance_id === cargo.id).map((a) => a.key.name))
+      .toEqual(expect.arrayContaining(["tokei", "jj-cli"]));
+    expect(after.updates.filter((u) => u.key.instance_id === cargo.id))
+      .toEqual(before.updates.filter((u) => u.key.instance_id === cargo.id));
+  });
+
+  it("refuses to cancel rustup's self uninstall once it runs", async () => {
+    const { backend } = backendFor();
+    await answer(backend.invoke("refresh"));
+    const issued = await answer<IssuedPlan>(backend.invoke("plan_operation", { request: {
+      kind: "Uninstall", instance_id: "standalone-rustup", artifact_kind: "Binary", name: "rustup",
+    } }));
+    expect(issued.plan.cancel_policy).toBe("NoCancel");
+    const opId = await backend.invoke("submit_operation", { planId: issued.id }) as number;
+    await vi.advanceTimersByTimeAsync(TIMING.start + 1);
+    expect(await backend.invoke("list_operations")).toContainEqual(expect.objectContaining({ id: opId, status: "Running" }));
+    await expect(backend.invoke("cancel_operation", { opId })).rejects.toBe('{"kind":"no_cancel"}');
+    expect(await backend.invoke("list_operations")).toContainEqual(expect.objectContaining({ id: opId, status: "Running" }));
+    await vi.runAllTimersAsync();
+    expect(await backend.invoke("list_operations")).toContainEqual(expect.objectContaining({ id: opId, outcome: "Succeeded" }));
   });
 
   it("refuses to cancel rustup's self update once it runs", async () => {

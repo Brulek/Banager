@@ -192,11 +192,18 @@ Paths are under a generic home folder, `/Users/you`.
   the backend sends: queued, running, the tool's log lines, verifying,
   finished. Operations on the same source run one after another, at most
   three at once.
-- A finished update bumps the version and removes the row; a finished
-  uninstall removes the package, and a tool with its own installer
-  disappears altogether.
-- Cancel works on a queued or running operation, except rustup's, which
-  refuses once it runs.
+- A successful update bumps the version and removes the update row; a
+  successful uninstall removes the package, and a tool with its own
+  installer disappears altogether. After a successful rustup uninstall,
+  the next check also removes Cargo and the programs installed in its
+  Cargo folder from the preview.
+- Cancelling a queued operation reports Cancelled without running it.
+  Cancelling a running update or link reports Unconfirmed after verification.
+  A running uninstall interrupted by Cancel reports Succeeded only when
+  verification confirms absence; a retained record or an unavailable reading
+  leaves it Unconfirmed. These interrupted fixtures retain their listed
+  records; this does not establish whether their files were left intact.
+  Rustup's self update and self uninstall refuse cancellation once running.
 - Settings are kept until the page reloads. Turning on Show Homebrew
   apps that have their own updater (「显示自带更新的Homebrew App」) adds
   the Visual Studio Code update on the next refresh. Check for updates

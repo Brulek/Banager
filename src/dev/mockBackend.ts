@@ -179,6 +179,19 @@ function requestKey(request: OpRequest): ArtifactKey {
   return { instance_id: request.instance_id, kind: request.artifact_kind, name: request.name };
 }
 
+/** The core's result after a running command was interrupted and re-read. */
+export function cancelledRunningOutcome(kind: OpRequest["kind"], present: boolean | undefined): Outcome {
+  switch (kind) {
+    case "Upgrade":
+    case "Link":
+      return "Unconfirmed";
+    case "Uninstall":
+      return present === false ? "Succeeded" : "Unconfirmed";
+    case "Install":
+      return present === undefined ? "Unconfirmed" : present ? "Succeeded" : "Cancelled";
+  }
+}
+
 /**
  * `ops::may_have_moved_others`: whether an update that ended with
  * `outcome` may have changed what is installed, and so brought a later
@@ -583,6 +596,24 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       return;
     }
     if (plan.request.kind === "Uninstall") {
+      if (inst?.adapter_id === "standalone-rustup") {
+        // This instance's prefix is its Cargo home. Only Cargo sources
+        // rooted there whose executable is inside it go with rustup.
+        const removed = new Set([
+          inst.id,
+          ...world.instances
+            .filter((source) => source.adapter_id === "cargo"
+              && source.prefix === inst.prefix
+              && source.exe_path.startsWith(inst.prefix + "/"))
+            .map((source) => source.id),
+        ]);
+        world.instances = world.instances.filter((source) => !removed.has(source.id));
+        world.artifacts = world.artifacts.filter((a) => !removed.has(a.key.instance_id));
+        world.updates = world.updates.filter((u) => !removed.has(u.key.instance_id));
+        world.greedyUpdates = world.greedyUpdates.filter((u) => !removed.has(u.key.instance_id));
+        world.errors = world.errors.filter((error) => !removed.has(error.instance_id));
+        return;
+      }
       world.artifacts = world.artifacts.filter((a) => !sameKey(a.key, target));
       world.updates = world.updates.filter((u) => !sameKey(u.key, target));
       world.greedyUpdates = world.greedyUpdates.filter((u) => !sameKey(u.key, target));
@@ -854,11 +885,16 @@ export function createMockBackend(scenario: Scenario): MockBackend {
     setStatus(op, "CancelRequested");
     schedule(op, TIMING.cancel, () => setStatus(op, "Cancelling"));
     schedule(op, TIMING.cancel + 300, () => setStatus(op, "Verifying"));
-    // A stopped upgrade proves nothing either way; a stopped uninstall
-    // that left the package in place is the user's cancel.
-    schedule(op, TIMING.cancel + 300 + TIMING.verify, () =>
-      finish(op, op.plan.request.kind === "Upgrade" ? "Unconfirmed" : "Cancelled"),
-    );
+    // Re-read the current world: a retained record does not prove files
+    // survived intact, and a missing or unavailable source proves nothing.
+    schedule(op, TIMING.cancel + 300 + TIMING.verify, () => {
+      const target = requestKey(op.plan.request);
+      const source = world.instances.find((instance) => instance.id === target.instance_id);
+      const present = source === undefined || source.status.unavailable !== null
+        ? undefined
+        : world.artifacts.some((artifact) => sameKey(artifact.key, target));
+      finish(op, cancelledRunningOutcome(op.plan.request.kind, present));
+    });
   }
 
   // --------------------------------------------------------------- commands
