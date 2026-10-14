@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { failureCause, type FailureCause } from "./failureCause";
-import { RECENT_DAYS, clearedHere, recentUpdates, toolsSeenHere, verifiedHere } from "./history";
+import { RECENT_DAYS, clearedHere, isRecentUpdateTime, recentUpdates, toolsSeenHere, verifiedHere } from "./history";
 import { artifactKeyId } from "../store/ui";
 import type { HistoryRecord, HistoryView, OpSummary } from "./types";
 
@@ -323,6 +323,37 @@ describe("persisted dismissal after a backward clock correction", () => {
     const good = record("git");
     const bad = record("git", { finished_at: 9_000_000_000_000_000 });
     expect(recentUpdates(view([good, bad]), new Set(), NOW, offered())).toEqual([good]);
+  });
+});
+
+// R87-2: the one 30-day cutoff, for the history's records and this
+// window's own updates alike.
+describe("isRecentUpdateTime", () => {
+  const since = NOW - RECENT_DAYS * DAY;
+
+  it("counts an update exactly 30 days old, not one a millisecond older", () => {
+    expect(isRecentUpdateTime(since, NOW)).toBe(true);
+    expect(isRecentUpdateTime(since - 1, NOW)).toBe(false);
+    expect(recentUpdates(view([record("cmake", { finished_at: since })]), new Set(), NOW, offered()).map((r) => r.display_name)).toEqual(["cmake"]);
+    expect(recentUpdates(view([record("cmake", { finished_at: since - 1 })]), new Set(), NOW, offered())).toEqual([]);
+  });
+
+  it("counts none with no time or one that is not a date, and one the clock puts later", () => {
+    expect(isRecentUpdateTime(null, NOW)).toBe(false);
+    expect(isRecentUpdateTime(undefined, NOW)).toBe(false);
+    expect(isRecentUpdateTime(Number.NaN, NOW)).toBe(false);
+    expect(isRecentUpdateTime(Number.POSITIVE_INFINITY, NOW)).toBe(false);
+    expect(isRecentUpdateTime(NOW + DAY, NOW)).toBe(true);
+  });
+
+  it("lets no earlier update of a tool through when its newest record is too old", () => {
+    // The clock set back between the two: the retry kept later has the older time.
+    const failure = record("cmake", { run: "earlier", op_id: 4, finished_at: NOW - DAY, result: { Failed: { cause: "network" } }, to_version: null });
+    const retry = record("cmake", { run: "earlier", op_id: 5, finished_at: since - 1 });
+    expect(recentUpdates(view([retry, failure]), new Set(), NOW, offered("cmake"))).toEqual([]);
+    const uninstall = record("wget", { run: "earlier", op_id: 7, kind: "Uninstall", finished_at: since - 1, to_version: null });
+    const update = record("wget", { run: "earlier", op_id: 6, finished_at: NOW - DAY });
+    expect(recentUpdates(view([uninstall, update]), new Set(), NOW, offered())).toEqual([]);
   });
 });
 

@@ -3719,6 +3719,11 @@ describe("UpdatesPage", () => {
       useUiStore.setState({ updateTargets: { ...useUiStore.getState().updateTargets, [opId]: target } });
     }
 
+    // As the `Finished` event records it: a minute ago, in this window.
+    function finished(opId: number) {
+      useUiStore.setState({ opFinishedAt: { ...useUiStore.getState().opFinishedAt, [opId]: Date.now() - 60_000 } });
+    }
+
     function installed(key: ArtifactKey, version: string): Snapshot["artifacts"][number] {
       return {
         key,
@@ -4021,6 +4026,7 @@ describe("UpdatesPage", () => {
     it("stays out of the count, the header's box and Update all", async () => {
       operations = [operation(glibKey, { status: "Done", outcome: "Succeeded" })];
       started(7, "2.90.0");
+      finished(7);
       updates = [snapshot.updates[1]];
       artifacts = [installed(glibKey, "2.90.0"), installed(onyxKey, "5.0.2")];
       const { findByText, getByRole, findByRole } = renderPage();
@@ -4046,6 +4052,7 @@ describe("UpdatesPage", () => {
     it("puts the focus on the list's first row once Clear has taken the section away", async () => {
       operations = [operation(glibKey, { status: "Done", outcome: "Succeeded" })];
       started(7, "2.90.0");
+      finished(7);
       updates = [snapshot.updates[1]];
       artifacts = [installed(glibKey, "2.90.0"), installed(onyxKey, "5.0.2")];
       renderPage();
@@ -4129,6 +4136,7 @@ describe("UpdatesPage", () => {
       beforeEach(() => {
         operations = [operation(onyxKey, { status: "Done", outcome: "Succeeded" })];
         started(7, "5.1.0");
+        finished(7);
         artifacts = [
           installed(glibKey, "2.88.3"),
           installed(onyxKey, "5.0.2"),
@@ -4313,6 +4321,7 @@ describe("UpdatesPage", () => {
     it("keeps this window's on a Clear Banager turned away, sends that Clear once, and is off while one is under way (r24 R74-2)", async () => {
       operations = [operation(glibKey, { status: "Done", outcome: "Succeeded" })];
       started(7, "2.90.0");
+      finished(7);
       updates = [snapshot.updates[1]];
       artifacts = [installed(glibKey, "2.90.0"), installed(onyxKey, "5.0.2")];
       let refuse: (error: unknown) => void = () => {};
@@ -4338,6 +4347,7 @@ describe("UpdatesPage", () => {
     it("hides itself on Clear, until the next update ends", async () => {
       operations = [operation(glibKey, { status: "Done", outcome: "Succeeded" })];
       started(7, "2.90.0");
+      finished(7);
       updates = [snapshot.updates[1]];
       artifacts = [installed(glibKey, "2.90.0"), installed(onyxKey, "5.0.2")];
       const { queryClient } = renderPage();
@@ -4351,6 +4361,7 @@ describe("UpdatesPage", () => {
       // onyx's update succeeds and its row goes: the section is back, with onyx alone.
       operations = [operation(onyxKey, { id: 8, status: "Done", outcome: "Succeeded" }), ...operations];
       started(8, "5.1.0");
+      finished(8);
       updates = [];
       artifacts = [installed(glibKey, "2.90.0"), installed(onyxKey, "5.1.0")];
       await act(async () => {
@@ -4369,6 +4380,7 @@ describe("UpdatesPage", () => {
       instances = [...snapshot.instances, { ...stoppedOllama, status: { unavailable: null, notes: [] } }];
       operations = [operation(qwenKey, { status: "Done", outcome: "Succeeded" })];
       started(7, "sha256:9f1c0b6d2e4a7c5b3d1f8a6e4c2b0d9f7e5c3a1b8d6f4e2c0a9b7d5f3e1c8a6b");
+      finished(7);
       artifacts = [installed(qwenKey, "5642e97495e1")];
       const { container } = renderPage();
 
@@ -4647,6 +4659,106 @@ describe("UpdatesPage", () => {
           );
           lines = within(justUpdated()!).getAllByRole("listitem");
           expect(lines[0].querySelector("time")).toHaveAttribute("dateTime", new Date(at(28, 14, 30)).toISOString());
+        });
+      });
+
+      // R87-2: what turns 30 days old leaves the list while the page stays
+      // open with nothing else changing, from the history and this window alike.
+      describe("the 30 days, while the page stays open", () => {
+        const DAY_MS = 24 * 60 * 60 * 1000;
+        const wgetKey: ArtifactKey = { ...glibKey, name: "wget" };
+        const start = new Date(2026, 8, 28, 15, 0).getTime();
+        const names = () => within(justUpdated()!).getAllByRole("listitem").map((line) => line.querySelector("span[title]")?.textContent);
+
+        beforeEach(() => {
+          // The clock and the page's minute tick are fake.
+          vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
+          vi.setSystemTime(start);
+          updates = [snapshot.updates[1]];
+          artifacts = [installed(glibKey, "2.90.0"), installed(wgetKey, "1.25.0"), installed(onyxKey, "5.0.2")];
+        });
+
+        it("takes off what turns 30 days old at the next minute tick, with the same data", async () => {
+          // Each 30 days old in 30 seconds' time.
+          const edge = start - 30 * DAY_MS + 30_000;
+          operations = [
+            operation(wgetKey, { id: 8, status: "Done", outcome: "Succeeded" }),
+            operation(glibKey, { id: 7, status: "Done", outcome: "Succeeded" }),
+          ];
+          useUiStore.setState({ opFinishedAt: { 8: edge } });
+          answerHistory({
+            run: "this-launch",
+            cleared_before: null,
+            records: [
+              kept("glib", edge - 500, { run: "this-launch", op_id: 7 }),
+              kept("cmake", edge - 1_000, { run: "earlier", op_id: 3 }),
+              kept("node", start - DAY_MS, { run: "earlier", op_id: 4 }),
+            ],
+          });
+          const page = renderPage();
+
+          await waitFor(() => expect(justUpdated()).not.toBeNull());
+          await waitFor(() => expect(names()).toEqual(["node", "wget", "glib", "cmake"]));
+
+          act(() => {
+            vi.advanceTimersByTime(60_000);
+          });
+          expect(names()).toEqual(["node"]);
+          page.unmount();
+        });
+
+        it("reads the clock afresh when a check lands sooner than the minute's tick", async () => {
+          const edge = start - 30 * DAY_MS + 90_000;
+          answerHistory({
+            run: "this-launch",
+            cleared_before: null,
+            records: [kept("cmake", edge, { run: "earlier", op_id: 3 }), kept("node", start - DAY_MS, { run: "earlier", op_id: 4 })],
+          });
+          const page = renderPage();
+          await waitFor(() => expect(justUpdated()).not.toBeNull());
+          await waitFor(() => expect(names()).toEqual(["node", "cmake"]));
+
+          // A check every 40 seconds puts the minute's tick off each time.
+          // React Query tells the page on a (real) timer of its own.
+          const check = (refreshedAt: number) =>
+            act(async () => {
+              page.queryClient.setQueryData(queryKeys.snapshot, { ...snapshot, instances, artifacts, updates, refreshed_at: refreshedAt });
+              await new Promise((resolve) => setTimeout(resolve, 0));
+            });
+          for (const step of [1, 2]) {
+            act(() => {
+              vi.advanceTimersByTime(40_000);
+            });
+            await check(snapshot.refreshed_at + step);
+            expect(names()).toEqual(["node", "cmake"]);
+          }
+          act(() => {
+            vi.advanceTimersByTime(40_000);
+          });
+          await check(snapshot.refreshed_at + 3);
+          expect(names()).toEqual(["node"]);
+          page.unmount();
+        });
+
+        it("lists no update of this window with no time known, until its record gives one", async () => {
+          operations = [operation(glibKey, { id: 7, status: "Done", outcome: "Succeeded" })];
+          answerHistory({ run: "this-launch", cleared_before: null, records: [kept("node", start - DAY_MS, { run: "earlier", op_id: 4 })] });
+          const page = renderPage();
+          await waitFor(() => expect(justUpdated()).not.toBeNull());
+          await act(async () => {
+            await Promise.resolve();
+          });
+          expect(names()).toEqual(["node"]);
+
+          act(() => {
+            page.queryClient.setQueryData(queryKeys.history, {
+              run: "this-launch",
+              cleared_before: null,
+              records: [kept("glib", start - 60_000, { run: "this-launch", op_id: 7 }), kept("node", start - DAY_MS, { run: "earlier", op_id: 4 })],
+            });
+          });
+          await waitFor(() => expect(names()).toEqual(["glib", "node"]));
+          page.unmount();
         });
       });
 
