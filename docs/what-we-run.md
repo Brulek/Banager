@@ -334,13 +334,20 @@ line itself names the folders (`env -P <folders>`, or a `PATH=` setting)
 or takes `PATH` away (`-i`, `-u PATH`), those folders, or `env`'s own
 default `/usr/bin:/bin`, are looked along instead; a line that takes a
 `PATH` from a login class (`-L`, `-U`), which Banager does not read, is
-refused. A relative `PATH` folder, one written `~/...` among them, is
+refused. An `env` shebang containing quotes, escapes or variable expansion
+is also refused: Banager cannot yet resolve that syntax safely, including
+`env -S "node"`, and never looks up the quoted text as a literal filename.
+A relative `PATH` folder, one written `~/...` among them, is
 passed over there, as `env` finds nothing in it from the command's
 folder; so is an entry that is a file, or a folder that may not be
 searched, as `env` passes over them. Such a command is not
 started and fails as a program that could not start; a source found only
 through a shim is listed as one whose program could not start, and keeps
-what it listed when it last answered. Neither mise, pyenv nor asdf is run
+what it listed when it last answered. Ollama can still list models over
+HTTP when its CLI could not start, but is view only
+(`ReadOnlyReason::OllamaCliUnavailable`): no model commands are planned
+and no manifests or registry updates are checked.
+Neither mise, pyenv nor asdf is run
 to ask which copy a shim would pick, so a tool reached only through a
 shim is not checked or changed by Banager; one put on `PATH` directly
 (`mise activate`, a virtual environment) is. A shell script that runs a
@@ -478,8 +485,11 @@ to Homebrew cask installs and upgrades when the variable is already set
 in Banager's environment (Homebrew's section); it never sets it on its
 own behalf. An `OLLAMA_HOST` URL may already contain a login, which is
 sent to that daemon as HTTP Basic authentication (Network) to list its
-models; that Ollama is then view only, so no command is given it (Ollama's
-section). Its userinfo is omitted from public instance ids and masked in
+models; that Ollama is then view only, so Banager does not plan commands
+to install, update or remove its models (Ollama's section). This is not
+subprocess environment isolation: other commands still inherit
+`OLLAMA_HOST` from Banager's process environment, including any login.
+Its userinfo is omitted from public instance ids and masked in
 command previews, operation summaries and inventory errors. It is also removed from keys
 before history or settings are stored; older records
 are scrubbed on load and a rewrite is attempted (Files Banager writes).
@@ -723,7 +733,7 @@ cancelled operation ends there, with no re-reading of the inventory after
 it: there is nothing to check, and that reading would not hear the Cancel --
 uv's waits for the same tools-folder lock as the list a Cancel stops (uv's
 section). An
-interrupted install still absent can be cancelled; an upgrade stopped
+interrupted install still absent can be cancelled; an upgrade or link stopped
 partway is never settled either way
 (`run_plan` in `crates/banager-core/src/adapters/mod.rs`, then
 `run_operation`).
@@ -6757,14 +6767,14 @@ that has been set up.
 - Homebrew 卸载开始前会重新读取 `brew.env`。若现在会或可能自动移除依赖，而预览没有说明，或预览承诺保留的公式不再排除，则不运行命令，并提示重新打开确认窗口。
 - cask 卸载开始前也会重新读取安装记录及预览所用的信任设置和 App 名称。删除范围、步骤、目标或条件与预览不同时，不运行命令，并提示重新打开确认窗口。检查不会锁住外部程序，仍可能在读取后发生变化。
 - `brew.env` 读取清单包括 `HOMEBREW_NO_AUTO_UPDATE`。它被设为空时，会阻止可能触发未跟踪自动更新的命令。
-- `OLLAMA_HOST` 地址中的登录信息会用于该服务的 HTTP 基本认证，以列出模型。普通 HTTP 不加密这些信息。`ollama` 命令无法使用地址中的登录信息，所以这样的 Ollama 中的模型仅供查看，不会为它运行任何命令。发给窗口的实例标识不含登录信息；库存错误会遮蔽登录信息。`OLLAMA_HOST` 设置的地址无法使用时，不会连接任何 Ollama，也不会改连默认地址。历史和忽略、跳过、稍后提醒设置保存前会去除地址中的用户名与密码；旧文件读取时也会脱敏并尝试重写。写入失败可能使旧内容仍留在磁盘，较新格式的历史文件不会被覆盖。
+- `OLLAMA_HOST` 地址中的登录信息会用于该服务的 HTTP 基本认证，以列出模型。普通 HTTP 不加密这些信息。`ollama` 命令无法使用地址中的登录信息，所以这样的 Ollama 中的模型仅供查看，不会为它规划安装、更新或卸载模型的命令。其他命令仍会继承Banager进程环境中的 `OLLAMA_HOST`，包括其中的登录信息。发给窗口的实例标识不含登录信息；库存错误会遮蔽登录信息。`OLLAMA_HOST` 设置的地址无法使用时，不会连接任何 Ollama，也不会改连默认地址。历史和忽略、跳过、稍后提醒设置保存前会去除地址中的用户名与密码；旧文件读取时也会脱敏并尝试重写。写入失败可能使旧内容仍留在磁盘，较新格式的历史文件不会被覆盖。
 - Claude Code、Antigravity CLI 和 Grok Build 卸载后，除了检查启动器，还会检查卸载清单中的其他路径；Antigravity 也会重新列出备份。可选路径还会检查归属及应保留的路径，不运行版本命令。
 - 刷新确认工具已不在清单中时，旧更新计划无法提交，也不会建立操作。请重新检查列表。其他工具的变化不会让预览失效；更新候选消失但工具仍已安装时，保留既有版本检查。
 - 预览必须在生成后 10 分钟内确认并提交。已接受的操作可以排队超过 10 分钟再执行。
 - 更新后版本未变通常需要检查；若已达到或超过确认的目标版本，则报告已更新。这也适用于 Grok Build 和 rustup。没有可比较的目标版本时，不适用此例外。
 - 已安装页详情里的 HTTPS 首页链接只交给默认浏览器打开：先按 `https:` 查出系统设置的默认浏览器，再指定由它打开，不会被声明了该域名的 App 直接接走；查不到默认浏览器时不打开。只打开当前列表里某个工具的来源报告的首页，普通 HTTP 首页只供拷贝。
 - npm 的操作，以及 Cargo 和 uv 的更新，在开始前会再核对一次：npm 重新读取全局安装位置（`npm prefix -g`），Cargo 重新读取这个工具的安装记录，uv 重新列出工具（`uv tool list --show-paths`）并读取这个工具的环境和安装记录（receipt）。读到的与预览时不一致，或读到了却用不上（npm 给出的位置为空或不是完整路径、回答长得无法读完、Cargo 或 uv 的安装记录无法读取、uv 的列表不再列出或列出两次这个工具）时，不运行任何写入命令，结果显示为未能开始，请重新打开确认窗口。npm 或 uv 的读取命令本身没有回答时，同样不运行写入命令，但按该程序自己的失败结束：程序已不在或无法启动，显示为未能开始、没有改动；非零退出，是该程序的失败，带有退出码和它最后写到 stderr 的几行（例如 `node` 不在时 npm 的 `env: node: No such file or directory`）；超过时限（npm 30 秒；uv 与更新命令相同，600 秒）没有回答，是运行超时，没有退出码。后两种情况下，它写到 stderr 的每一行都记在操作日志里。uv 的这次读取和 `uv tool upgrade` 一样要等 uv 的工具文件夹锁：另一个 uv 命令占着这把锁时（例如终端里正在运行的 `uv tool upgrade --all`），它会像更新命令一样等锁放开，而不是先失败；uv 默认最多等 5 分钟，之后报它自己的错误。读取期间点“取消”会立即停下（npm 的读取也是这样），这个更新随即显示为已取消：不运行更新命令，也不再核对结果。一致时运行的仍是预览中的原命令。这些都是已有的只读命令和有大小上限的文件读取，没有新的主机、权限或写入的文件。
-- Banager 从不自己启动版本管理工具（mise、pyenv、asdf）的 shim，也不运行 `#!` 行会启动 shim 的脚本（例如 `#!/usr/bin/env node` 而 `PATH` 上第一个 `node` 是 shim，或它前面有受保护位置里的文件夹）：被设为首次使用时才安装的 mise 工具不受 `MISE_NOT_FOUND_AUTO_INSTALL=false` 限制，运行 shim 可能先下载安装。这样的命令不会启动，结果是程序无法启动；只能通过 shim 找到的来源显示为程序无法启动，并保留上次列出的内容。
+- Banager 从不自己启动版本管理工具（mise、pyenv、asdf）的 shim，也不运行 `#!` 行会启动 shim 的脚本（例如 `#!/usr/bin/env node` 而 `PATH` 上第一个 `node` 是 shim，或它前面有受保护位置里的文件夹）：被设为首次使用时才安装的 mise 工具不受 `MISE_NOT_FOUND_AUTO_INSTALL=false` 限制，运行 shim 可能先下载安装。含有引号、转义或变量展开的env解释器行（包括 `env -S "node"`）也会被拒绝，因为目前无法安全确定它运行的程序。这样的命令不会启动，结果是程序无法启动；只能通过 shim 找到的来源显示为程序无法启动，并保留上次列出的内容。Ollama仍可通过HTTP列出模型，但只能查看，不能安装、更新或卸载。
 
 ## 繁體中文：執行與隱私要點
 
@@ -6775,11 +6785,11 @@ that has been set up.
 - Homebrew 解除安裝開始前會重新讀取 `brew.env`。若現在會或可能自動移除相依套件，而預覽沒有說明，或預覽承諾保留的公式不再排除，則不執行指令，並提示重新開啟確認視窗。
 - cask 解除安裝開始前也會重新讀取安裝記錄及預覽所用的信任設定和 App 名稱。刪除範圍、步驟、目標或條件與預覽不同時，不執行指令，並提示重新開啟確認視窗。檢查不會鎖住外部程式，仍可能在讀取後發生變化。
 - `brew.env` 讀取清單包括 `HOMEBREW_NO_AUTO_UPDATE`。它被設為空值時，會阻止可能觸發未追蹤自動更新的指令。
-- `OLLAMA_HOST` 網址中的登入資訊會用於該服務的 HTTP 基本驗證，以列出模型。一般 HTTP 不會加密這些資訊。`ollama` 指令無法使用網址中的登入資訊，所以這樣的 Ollama 中的模型僅供查看，不會為它執行任何指令。傳給視窗的實例識別碼不含登入資訊；庫存錯誤會遮蔽登入資訊。`OLLAMA_HOST` 設定的網址無法使用時，不會連線任何 Ollama，也不會改連預設網址。更新和解除安裝記錄及忽略、略過、稍後提醒設定儲存前會去除網址中的使用者名稱與密碼；舊檔案讀取時也會遮蔽登入資訊並嘗試重新寫入。寫入失敗可能使舊內容仍留在磁碟，較新格式的更新和解除安裝記錄檔案不會被覆寫。
+- `OLLAMA_HOST` 網址中的登入資訊會用於該服務的 HTTP 基本驗證，以列出模型。一般 HTTP 不會加密這些資訊。`ollama` 指令無法使用網址中的登入資訊，所以這樣的 Ollama 中的模型僅供查看，不會為它規劃安裝、更新或解除安裝模型的指令。其他指令仍會繼承Banager程序環境中的 `OLLAMA_HOST`，包括其中的登入資訊。傳給視窗的實例識別碼不含登入資訊；庫存錯誤會遮蔽登入資訊。`OLLAMA_HOST` 設定的網址無法使用時，不會連線任何 Ollama，也不會改連預設網址。更新和解除安裝記錄及忽略、略過、稍後提醒設定儲存前會去除網址中的使用者名稱與密碼；舊檔案讀取時也會遮蔽登入資訊並嘗試重新寫入。寫入失敗可能使舊內容仍留在磁碟，較新格式的更新和解除安裝記錄檔案不會被覆寫。
 - Claude Code、Antigravity CLI 和 Grok Build 解除安裝後，除了檢查啟動器，還會檢查解除安裝清單中的其他路徑；Antigravity 也會重新列出備份。選用路徑還會檢查歸屬及應保留的路徑，不執行版本指令。
 - 重新整理確認工具已不在清單中時，舊更新計畫無法送出，也不會建立操作。請重新檢查清單。其他工具的變化不會讓預覽失效；更新候選消失但工具仍已安裝時，保留既有版本檢查。
 - 預覽必須在產生後 10 分鐘內確認並送出。已接受的操作可以排隊超過 10 分鐘再執行。
 - 更新後版本未變通常需要檢查；若已達到或超過確認的目標版本，則回報已更新。這也適用於 Grok Build 和 rustup。沒有可比較的目標版本時，不適用此例外。
 - 已安裝頁詳細資訊裡的 HTTPS 首頁連結只交給預設瀏覽器開啟：先依 `https:` 查出系統設定的預設瀏覽器，再指定由它開啟，不會被宣告了該網域的 App 直接接走；查不到預設瀏覽器時不開啟。只開啟目前清單裡某個工具的來源回報的首頁，一般 HTTP 首頁只供拷貝。
 - npm 的操作，以及 Cargo 和 uv 的更新，在開始前會再核對一次：npm 重新讀取全域安裝位置（`npm prefix -g`），Cargo 重新讀取這個工具的安裝記錄，uv 重新列出工具（`uv tool list --show-paths`）並讀取這個工具的環境和安裝記錄（receipt）。讀到的與預覽時不一致，或讀到了卻無法使用（npm 給出的位置為空或不是完整路徑、回答長得無法讀完、Cargo 或 uv 的安裝記錄無法讀取、uv 的清單不再列出或列出兩次這個工具）時，不執行任何寫入指令，結果顯示為未能開始，請重新開啟確認視窗。npm 或 uv 的讀取指令本身沒有回答時，同樣不執行寫入指令，但按該程式自己的失敗結束：程式已不在或無法啟動，顯示為未能開始、沒有改動；非零結束，是該程式的失敗，帶有結束代碼和它最後寫到 stderr 的幾行（例如 `node` 不在時 npm 的 `env: node: No such file or directory`）；超過時限（npm 30 秒；uv 與更新指令相同，600 秒）沒有回答，是執行逾時，沒有結束代碼。後兩種情況下，它寫到 stderr 的每一行都記在操作記錄裡。uv 的這次讀取和 `uv tool upgrade` 一樣要等 uv 的工具檔案夾鎖：另一個 uv 指令佔著這把鎖時（例如終端機裡正在執行的 `uv tool upgrade --all`），它會像更新指令一樣等鎖放開，而不是先失敗；uv 預設最多等 5 分鐘，之後回報它自己的錯誤。讀取期間點「取消」會立即停下（npm 的讀取也是這樣），這個更新隨即顯示為已取消：不執行更新指令，也不再核對結果。一致時執行的仍是預覽中的原指令。這些都是既有的唯讀指令和有大小上限的檔案讀取，沒有新的主機、權限或寫入的檔案。
-- Banager 從不自己啟動版本管理工具（mise、pyenv、asdf）的 shim，也不執行 `#!` 行會啟動 shim 的腳本（例如 `#!/usr/bin/env node` 而 `PATH` 上第一個 `node` 是 shim，或它前面有受保護位置裡的檔案夾）：被設為首次使用時才安裝的 mise 工具不受 `MISE_NOT_FOUND_AUTO_INSTALL=false` 限制，執行 shim 可能先下載安裝。這樣的指令不會啟動，結果是程式無法啟動；只能透過 shim 找到的來源顯示為程式無法啟動，並保留上次列出的內容。
+- Banager 從不自己啟動版本管理工具（mise、pyenv、asdf）的 shim，也不執行 `#!` 行會啟動 shim 的腳本（例如 `#!/usr/bin/env node` 而 `PATH` 上第一個 `node` 是 shim，或它前面有受保護位置裡的檔案夾）：被設為首次使用時才安裝的 mise 工具不受 `MISE_NOT_FOUND_AUTO_INSTALL=false` 限制，執行 shim 可能先下載安裝。含有引號、跳脫或變數展開的env直譯器行（包括 `env -S "node"`）也會被拒絕，因為目前無法安全確定它執行的程式。這樣的指令不會啟動，結果是程式無法啟動；只能透過 shim 找到的來源顯示為程式無法啟動，並保留上次列出的內容。Ollama仍可透過HTTP列出模型，但只能查看，不能安裝、更新或解除安裝。

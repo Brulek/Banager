@@ -326,7 +326,9 @@ This app runs package managers on your behalf, so the boundary matters more than
   start with Settings' "Show technical details" on — and
   says whether it may ask for your password; an uninstall that runs no command lists instead the
   exact paths it will move to the Trash. An Ollama whose `OLLAMA_HOST` has a login is view only, since
-  `ollama` can't use the login, so no command gets it. An uninstall also says what it will affect. A Homebrew
+  `ollama` can't use the login, so Banager does not plan model-changing commands for it.
+  This does not isolate subprocess environments: other commands still inherit `OLLAMA_HOST`
+  if it was set in Banager's process environment. An uninstall also says what it will affect. A Homebrew
   formula update normally previews a follow-up `brew cleanup <name>` after success: it removes
   that formula's old installed versions, its outdated cached downloads and every unreferenced
   download in Homebrew's cache, including other packages' downloads. It is omitted for pinned
@@ -556,7 +558,7 @@ Banager（原名 Canager）：bao-manager，bao 是“包”的拼音；读起�
 Banager 把它们放进同一个窗口：装了什么、哪个有更新、每个都配一个按钮。
 
 在 Banager 里选择更新或卸载时，都能在它运行之前看到确切的命令，连同 Banager 为它设的环境变量（有两类除外，都在 `docs/what-we-run.md` 的“How Banager runs anything”一节列出：从登录 shell 拿来的 `PATH` 和代理、镜像设置，代理设置里可能有密码，所以从不显示；还有每条命令都带的 `MISE_NOT_FOUND_AUTO_INSTALL=false`，让 mise 不会自己装上缺的版本；被设为首次使用时才安装的工具，mise 仍会照装，所以 Banager 从不自己启动 mise、pyenv 等版本管理工具的 shim，也不运行 `#!` 行会启动 shim 的脚本，只能通过 shim 找到的工具会显示它的程序无法启动；`PATH` 里 `node` 前面有受保护位置（例如“下载”）里的文件夹时，npm 也会这样显示）：在确认框里点「查看命令」，或者在设置里打开「显示技术细节」，
-让它一开始就展开；可能要输入 Mac 密码的，确认框也会先说。不运行命令的卸载，改为列出它要移到废纸篓的每一条路径。`OLLAMA_HOST` 带有登录信息的 Ollama 只能查看，因为 `ollama` 命令无法使用登录信息，所以不会有命令拿到它。如果pip软件源拒绝检查，且未能确认版本，这个软件包会标为“无法检查”，并可拷贝错误详情。即使pip.conf启用了静默输出，仍可读取pip软件包列表；只在Banager运行列表命令时覆盖这项设置，不修改配置文件。npm更新只提供给所选全局安装位置直接列出的软件包，不单独提供其依赖项的更新。Google的说明提供了agy update，用于更新已安装的Antigravity CLI；Banager尚未验证运行这条命令，因此暂不提供更新操作。
+让它一开始就展开；可能要输入 Mac 密码的，确认框也会先说。不运行命令的卸载，改为列出它要移到废纸篓的每一条路径。`OLLAMA_HOST` 带有登录信息的 Ollama 只能查看，因为 `ollama` 命令无法使用登录信息，所以不会为它规划安装、更新或卸载模型的命令。这不代表子进程环境已隔离：如果Banager进程环境中设有 `OLLAMA_HOST`，其他命令仍会继承它。如果pip软件源拒绝检查，且未能确认版本，这个软件包会标为“无法检查”，并可拷贝错误详情。即使pip.conf启用了静默输出，仍可读取pip软件包列表；只在Banager运行列表命令时覆盖这项设置，不修改配置文件。npm更新只提供给所选全局安装位置直接列出的软件包，不单独提供其依赖项的更新。Google的说明提供了agy update，用于更新已安装的Antigravity CLI；Banager尚未验证运行这条命令，因此暂不提供更新操作。
 
 **目前处于发布前阶段**，核心与界面已经可用、有 2417 个 Rust 测试（另有 11 个平时跳过、要加
 `--ignored` 才跑：它们连着真实的 Homebrew、真实的废纸篓、AppKit 或本机磁盘，或给大批量计时）和 3305 个前端测试，但还没有可下载的版本，v0.1 正在
@@ -785,7 +787,7 @@ Banager 把设置、更新和卸载记录、窗口的大小和位置保存在 `~
 Homebrew 公式更新通常会先预览、再于成功后清理该公式的旧版本及相关缓存，清理也包括缓存中所有未引用的下载。用户关闭清理、固定版本或无法确认清理条件时，不安排这一步；`brew.env` 启用的自动清理会另行说明。
 对于已用brew services设为在后台运行的工具，更新确认框和保存的结果会提醒：如果它仍在运行旧版本，需要重新启动它。
 普通测试跳过 11 项，包括真实 Homebrew、废纸篓、AppKit、磁盘探测和性能测试。安装卸载及废纸篓测试需要显式启用。
-`OLLAMA_HOST` 中的登录信息可能通过普通 HTTP 发送，会在窗口中遮蔽，并在历史和设置保存前去除。完整的执行范围、例外与旧记录处理见[运行与隐私要点](docs/what-we-run.md#简体中文运行与隐私要点)。
+`OLLAMA_HOST` 中的登录信息可能通过普通 HTTP 发送，会在窗口中遮蔽，并在历史和设置保存前去除。模型更改操作会被拒绝，但其他命令仍会继承Banager进程环境中的 `OLLAMA_HOST`。完整的执行范围、例外与旧记录处理见[运行与隐私要点](docs/what-we-run.md#简体中文运行与隐私要点)。
 已安装页里的 HTTPS 首页链接只交给默认浏览器打开，不会被声明了该域名的 App 直接接走；查不到默认浏览器时不打开。普通 HTTP 首页只供拷贝。
 
 ### 執行與隱私
@@ -793,7 +795,7 @@ Homebrew 公式更新通常会先预览、再于成功后清理该公式的旧�
 套件管理操作不透過 shell。啟動時讀取環境設定會執行登入 shell 及其啟動檔，失敗後會在後續重新整理重試；原生模擬視窗也會執行這一步，瀏覽器模擬不會。
 Homebrew 公式更新通常會先預覽、再於成功後清理該公式的舊版本及相關快取，清理也包括快取中所有未參照的下載。使用者關閉清理、固定版本或無法確認清理條件時，不安排這一步；`brew.env` 啟用的自動清理會另外說明。
 一般測試略過 11 項，包括實際 Homebrew、垃圾桶、AppKit、磁碟探測及效能測試。安裝、解除安裝及垃圾桶測試需要明確啟用。
-`OLLAMA_HOST` 中的登入資訊可能透過一般 HTTP 傳送，會在視窗中遮蔽，並在更新和解除安裝記錄及設定儲存前移除。完整的執行範圍、例外與舊記錄處理請見[執行與隱私要點](docs/what-we-run.md#繁體中文執行與隱私要點)。
+`OLLAMA_HOST` 中的登入資訊可能透過一般 HTTP 傳送，會在視窗中遮蔽，並在更新和解除安裝記錄及設定儲存前移除。模型變更操作會被拒絕，但其他指令仍會繼承Banager程序環境中的 `OLLAMA_HOST`。完整的執行範圍、例外與舊記錄處理請見[執行與隱私要點](docs/what-we-run.md#繁體中文執行與隱私要點)。
 已安裝頁裡的 HTTPS 首頁連結只交給預設瀏覽器開啟，不會被宣告了該網域的 App 直接接走；查不到預設瀏覽器時不開啟。一般 HTTP 首頁只供拷貝。
 
 ### 许可证
