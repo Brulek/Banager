@@ -3229,9 +3229,10 @@ impl BrewAdapter {
                     let home = (self.env_var_fn)("HOME")
                         .filter(|home| !home.is_empty())
                         .map(PathBuf::from);
-                    if (self.service_fn)(home.as_deref(), &req.name).is_some() {
+                    if let Some(service) = (self.service_fn)(home.as_deref(), &req.name) {
                         warnings.push(Warning::HomebrewServiceMayNeedRestart {
                             name: req.name.rsplit('/').next().unwrap_or(&req.name).to_string(),
+                            system: service.system,
                         });
                     }
                 }
@@ -6030,16 +6031,18 @@ mod plan_execute_tests {
                 .cloned()
                 .collect()
         };
-        for (name, short) in [
-            ("redis", "redis"),
-            ("homebrew/core/postgresql@17", "postgresql@17"),
+        // One started with `sudo` is restarted with `sudo`.
+        for (name, short, system) in [
+            ("redis", "redis", false),
+            ("homebrew/core/postgresql@17", "postgresql@17", true),
         ] {
             let request = upgrade(name, ArtifactKind::Formula);
             let plan = adapter.plan(&inst, &request).await.expect("plan");
             assert_eq!(
                 reminders(&plan),
                 vec![Warning::HomebrewServiceMayNeedRestart {
-                    name: short.to_string()
+                    name: short.to_string(),
+                    system,
                 }]
             );
             let without = plain.plan(&inst, &request).await.expect("plan");

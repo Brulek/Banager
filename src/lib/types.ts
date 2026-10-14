@@ -520,7 +520,7 @@ export type Warning =
    * which runs the old version until restarted. Says how it was set up,
    * not whether it runs. `name` is its name in the Cellar.
    */
-  | { HomebrewServiceMayNeedRestart: { name: string } }
+  | { HomebrewServiceMayNeedRestart: { name: string; system: boolean } }
   /**
    * U9 (r6): once this upgrade of a formula exits 0, Banager runs
    * `brew cleanup <name>` (`PlanAction`'s `CommandThen`), which deletes
@@ -1131,7 +1131,7 @@ export type LogNote =
   | { NoLongerLinked: { name: string; commands: string[] } }
   // R77-2: the update of a formula set up with `brew services` is
   // installed; a service still running runs the old version until restarted.
-  | { ServiceMayNeedRestart: { name: string } };
+  | { ServiceMayNeedRestart: { name: string; system: boolean } };
 export type OperationEvent =
   | { Status: { op_id: number; status: OpStatus } }
   | { Log: { op_id: number; stream: Stream; line: string } }

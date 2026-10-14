@@ -1394,11 +1394,13 @@ pub enum Warning {
     /// already running, which keeps running the old version until it is
     /// restarted (`caveats.rb:300-303`, `formula_installer.rb:1360-1378` in
     /// Homebrew 7). The file says how it was set up, not whether it runs
-    /// now. `name` is the formula's name in the Cellar (R77-2). Produced by
-    /// `BrewAdapter::plan` for a formula's `Upgrade`; the operation keeps it
-    /// once the update is installed (`FollowUpWarning::ServiceMayNeedRestart`).
-    /// Read by `warningKey` and `warningArgs` in src/lib/warnings.ts.
-    HomebrewServiceMayNeedRestart { name: String },
+    /// now. `name` is the formula's name in the Cellar (R77-2); `system`, a
+    /// file in `/Library/LaunchDaemons`, one started with `sudo` and
+    /// restarted with `sudo`. Produced by `BrewAdapter::plan` for a
+    /// formula's `Upgrade`; the operation keeps it once the update is
+    /// installed (`FollowUpWarning::ServiceMayNeedRestart`). Read by
+    /// `warningKey` and `warningArgs` in src/lib/warnings.ts.
+    HomebrewServiceMayNeedRestart { name: String, system: bool },
     /// Once this upgrade of a formula has exited 0, Banager runs
     /// `brew cleanup <name>` (`PlanAction::CommandThen`), which deletes the
     /// formula's older versions -- `versions`, every version installed when
@@ -3556,9 +3558,10 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&Warning::HomebrewServiceMayNeedRestart {
                 name: "redis".to_string(),
+                system: false,
             })
             .unwrap(),
-            r#"{"HomebrewServiceMayNeedRestart":{"name":"redis"}}"#
+            r#"{"HomebrewServiceMayNeedRestart":{"name":"redis","system":false}}"#
         );
 
         // Round 2: an uninstall's one sentence about what goes and what

@@ -494,6 +494,7 @@
   },
   "warnings": {
     "serviceMayNeedRestart": "{{name}} is set to run in the background with brew services. Updating its files doesn't restart it. If it is running, restart it with brew services after the update to use the new version.",
+    "serviceMayNeedRestartSudo": "{{name}} is set to run in the background with sudo brew services. Updating its files doesn't restart it. If it is running, restart it with sudo brew services after the update to use the new version.",
     "dependentsUnknown": "Couldn't check what else needs this. Check yourself before you uninstall.",
     "wouldBreak_one": "{{names}} still needs this.",
     "wouldBreak_other": "{{count}} other tools still need this: {{names}}.",
@@ -944,6 +945,7 @@
   },
   "followUpWarning": {
     "serviceMayNeedRestart": "{{name}} was set to run in the background with brew services when this update was prepared. Updating its files doesn't restart it. If it is still running the old version, restart it with brew services to use the new version.",
+    "serviceMayNeedRestartSudo": "{{name}} was set to run in the background with sudo brew services when this update was prepared. Updating its files doesn't restart it. If it is still running the old version, restart it with sudo brew services to use the new version.",
     "batch_one": "Updated {{total}} tools · {{count}} with a warning",
     "batch_other": "Updated {{total}} tools · {{count}} with warnings",
     "batchSucceeded_one": "All {{total}} succeeded · {{count}} with a warning",

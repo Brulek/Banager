@@ -468,6 +468,7 @@ mod tests {
                     behind.clone(),
                     FollowUpWarning::ServiceMayNeedRestart {
                         name: "node@22".into(),
+                        system: false,
                     },
                 ],
             ),

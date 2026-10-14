@@ -152,7 +152,7 @@ describe("a saved follow-up warning's log (p1 polish)", () => {
 
 describe("a saved reminder that a brew services service may need restarting (R77-2)", () => {
   it("says it as a plain sentence beside the other warnings, in every language, with nothing to run", async () => {
-    const saved: FollowUpWarning[] = [...warnings, { ServiceMayNeedRestart: { name: "node@22" } }];
+    const saved: FollowUpWarning[] = [...warnings, { ServiceMayNeedRestart: { name: "node@22", system: false } }];
     for (const [language, words] of [
       [
         "en",
@@ -167,6 +167,23 @@ describe("a saved reminder that a brew services service may need restarting (R77
       expect(line.tagName).toBe("P");
       // The relink's command is the only one set apart: none to restart.
       expect(within(dialog).getAllByRole("group")).toHaveLength(1);
+      dialog.view.unmount();
+    }
+  });
+
+  it("says one started with sudo is restarted with sudo, in every language", async () => {
+    const saved: FollowUpWarning[] = [{ ServiceMayNeedRestart: { name: "node@22", system: true } }];
+    for (const [language, words] of [
+      [
+        "en",
+        "node@22 was set to run in the background with sudo brew services when this update was prepared. Updating its files doesn't restart it. If it is still running the old version, restart it with sudo brew services to use the new version.",
+      ],
+      ["zh-CN", "准备这次更新时，“node@22”已用sudo brew services设为在后台运行。更新文件不会重新启动它。如果它仍在运行旧版本，请用sudo brew services重新启动它，以使用新版本。"],
+      ["zh-Hant", "準備這次更新時，「node@22」已用sudo brew services設為在背景執行。更新檔案不會重新啟動它。如果它仍在執行舊版本，請用sudo brew services重新啟動它，以使用新版本。"],
+    ] as const) {
+      await i18n.changeLanguage(language);
+      const dialog = open(node22, saved);
+      expect(within(dialog).getByText(words).tagName).toBe("P");
       dialog.view.unmount();
     }
   });

@@ -2055,8 +2055,9 @@ stop <name>` -- `sudo brew services stop <name>` for one in
 (`Warning::HomebrewServiceStays`). Banager runs neither. A service file
 the formula names some other way is not looked for. A formula update
 uses the same service-file reader and, when a file is found, says
-conditionally that a running service needs restarting to use the new
-version: `brew upgrade` replaces the formula's files and restarts no
+conditionally that a running service needs restarting with brew services
+-- with `sudo brew services` for one in `/Library/LaunchDaemons` -- to
+use the new version: `brew upgrade` replaces the formula's files and restarts no
 service already running it (`caveats.rb:300-303`,
 `formula_installer.rb:1360-1378` in Homebrew 7)
 (`Warning::HomebrewServiceMayNeedRestart`). This checks configuration,
@@ -5886,7 +5887,7 @@ a step after it failed never ran) and commands left unlinked
 (`NoLongerLinked`: the formula's name and the names of those commands),
 and a conditional service-restart reminder for a formula whose preview
 found it set up with `brew services` (`ServiceMayNeedRestart`: the
-formula's name), so
+formula's name, and whether its file is in `/Library/LaunchDaemons`), so
 that after a restart 「最近的更新记录」 still says 「已更新，有警告」 (or
 「已更新，有错误」) and its View Log shows those
 notes with their existing next step, saying the full log was not kept. A

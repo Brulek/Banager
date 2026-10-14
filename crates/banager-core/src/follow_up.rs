@@ -16,9 +16,11 @@ pub enum FollowUpWarning {
     },
     /// An update installed of a formula set up to run with `brew services`
     /// when it was previewed (`Warning::HomebrewServiceMayNeedRestart`): a
-    /// service still running runs the old version until it is restarted.
+    /// service still running runs the old version until it is restarted;
+    /// `system`, one started with `sudo`.
     ServiceMayNeedRestart {
         name: String,
+        system: bool,
     },
 }
 
@@ -76,8 +78,11 @@ impl EventSink for WarningSink {
                             commands: commands.clone(),
                         })
                     }
-                    LogNote::ServiceMayNeedRestart { name } => {
-                        Some(FollowUpWarning::ServiceMayNeedRestart { name: name.clone() })
+                    LogNote::ServiceMayNeedRestart { name, system } => {
+                        Some(FollowUpWarning::ServiceMayNeedRestart {
+                            name: name.clone(),
+                            system: *system,
+                        })
                     }
                     _ => None,
                 };

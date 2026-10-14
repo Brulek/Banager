@@ -308,8 +308,10 @@ export function warningKey(warning: Warning): string | null {
   if ("HomebrewForgetsTrust" in warning) return "uninstall.forgetsTrust";
   // r18 R46-3: a `brew services` service the uninstall leaves running.
   if ("HomebrewServiceStays" in warning) return "uninstall.serviceStays";
-  // R77-2: a service an update does not restart.
-  if ("HomebrewServiceMayNeedRestart" in warning) return "warnings.serviceMayNeedRestart";
+  // R77-2: a service an update does not restart; one started with `sudo` is restarted with `sudo`.
+  if ("HomebrewServiceMayNeedRestart" in warning) {
+    return warning.HomebrewServiceMayNeedRestart.system ? "warnings.serviceMayNeedRestartSudo" : "warnings.serviceMayNeedRestart";
+  }
   // U9: plural on `{{count}}`, the versions it names.
   if ("HomebrewCleansUpOldVersions" in warning) return "brewVersions.cleansUp";
   if ("HomebrewRemovesEveryVersion" in warning) return "brewVersions.removesEvery";

@@ -146,8 +146,9 @@ pub enum LogNote {
     /// installed: a service still running runs the old version until it is
     /// restarted. Said once the update's outcome is known
     /// (`OperationManager::say_service_may_need_restart`); worded by
-    /// `LogDrawer.tsx`. Banager restarts nothing.
-    ServiceMayNeedRestart { name: String },
+    /// `LogDrawer.tsx`. Banager restarts nothing. `system`, one started
+    /// with `sudo`.
+    ServiceMayNeedRestart { name: String, system: bool },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

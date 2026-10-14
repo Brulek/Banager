@@ -456,6 +456,7 @@
   },
   "warnings": {
     "serviceMayNeedRestart": "“{{name}}”已用brew services设为在后台运行。更新文件不会重新启动它。如果它正在运行，请在更新后用brew services重新启动它，以使用新版本。",
+    "serviceMayNeedRestartSudo": "“{{name}}”已用sudo brew services设为在后台运行。更新文件不会重新启动它。如果它正在运行，请在更新后用sudo brew services重新启动它，以使用新版本。",
     "dependentsUnknown": "无法确定还有哪些软件要用它。卸载前请自行确认。",
     "wouldBreak_other": "还有{{count}}个工具要用它：{{names}}。",
     "compilesLocally": "需要在这台Mac上编译，会花一些时间。",
@@ -872,6 +873,7 @@
   },
   "followUpWarning": {
     "serviceMayNeedRestart": "准备这次更新时，“{{name}}”已用brew services设为在后台运行。更新文件不会重新启动它。如果它仍在运行旧版本，请用brew services重新启动它，以使用新版本。",
+    "serviceMayNeedRestartSudo": "准备这次更新时，“{{name}}”已用sudo brew services设为在后台运行。更新文件不会重新启动它。如果它仍在运行旧版本，请用sudo brew services重新启动它，以使用新版本。",
     "batch_other": "已更新{{total}}个工具，{{count}}个有警告",
     "batchSucceeded_other": "{{total}}个都已成功，{{count}}个有警告",
     "succeeded_other": "已更新，有警告",

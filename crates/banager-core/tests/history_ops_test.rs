@@ -556,6 +556,7 @@ async fn test_an_update_whose_tool_failed_with_its_version_unchanged_is_kept_as_
 async fn service_restart_reminder_survives_success_history_and_other_warnings() {
     let reminder = FollowUpWarning::ServiceMayNeedRestart {
         name: "cmake".into(),
+        system: true,
     };
     let failed = Outcome::Failed {
         exit_code: Some(1),
@@ -591,6 +592,7 @@ async fn service_restart_reminder_survives_success_history_and_other_warnings() 
         plan.warnings.push(
             banager_core::model::Warning::HomebrewServiceMayNeedRestart {
                 name: "cmake".into(),
+                system: true,
             },
         );
         let id = f.manager.submit_with(plan, Some(on_finish(&f.store)));
@@ -621,7 +623,7 @@ async fn service_restart_reminder_survives_success_history_and_other_warnings() 
             let wire = serde_json::to_value(&summary).unwrap();
             assert_eq!(
                 wire["follow_up_warnings"][2],
-                serde_json::json!({"ServiceMayNeedRestart": {"name": "cmake"}})
+                serde_json::json!({"ServiceMayNeedRestart": {"name": "cmake", "system": true}})
             );
             assert!(f.store.flush(Duration::from_secs(5)));
             let reopened = HistoryStore::open(f.dir.join("history.json"));

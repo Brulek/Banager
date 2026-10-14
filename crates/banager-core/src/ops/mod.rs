@@ -1670,16 +1670,18 @@ impl OperationManager {
         if plan.request.kind != OpKind::Upgrade {
             return;
         }
-        let Some(name) = plan.warnings.iter().find_map(|warning| match warning {
-            Warning::HomebrewServiceMayNeedRestart { name } => Some(name.clone()),
+        let Some(note) = plan.warnings.iter().find_map(|warning| match warning {
+            Warning::HomebrewServiceMayNeedRestart { name, system } => {
+                Some(LogNote::ServiceMayNeedRestart {
+                    name: name.clone(),
+                    system: *system,
+                })
+            }
             _ => None,
         }) else {
             return;
         };
-        warning_sink.emit(OperationEvent::Note {
-            op_id,
-            note: LogNote::ServiceMayNeedRestart { name },
-        });
+        warning_sink.emit(OperationEvent::Note { op_id, note });
         if let Some(r) = self.records.lock().unwrap().get_mut(&op_id) {
             r.follow_up_warnings = warning_sink.warnings();
         }
