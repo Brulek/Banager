@@ -79,6 +79,8 @@ a protected place**, and the link is not followed.
   what that source's measured tools take in all.
 - The Installed page can also be sorted **By Date Installed**, newest first. Only Homebrew says when a
   tool was installed, so the tools from every other source come after Homebrew's, by name, with "—".
+  Sorted by size or by date, a source's packages installed for other software to use, once shown,
+  follow the same order under their own line.
 - While the first check since launch is still looking for updates, the Installed page already lists
   what it found; uninstalling waits until that check is done.
 - On the Updates page, an update to a new major version is marked **Major update**, unless its row
@@ -586,7 +588,8 @@ formula 与 cask，以及 npm、PyPI、crates.io 上的包，每条都译自该�
 - 每次检查后，Banager 以只读方式计算各工具占用的磁盘空间：算好后详情里能看到，“已安装”页可以“按大小”排序，
   按来源排序时，来源标题后写着它算出大小的工具一共占多少。
 - “已安装”页也可以“按安装日期”排序，最近装的在前。只有 Homebrew 记录安装日期，其他来源的工具排在 Homebrew 的
-  后面，按名称排列，日期处显示“—”。
+  后面，按名称排列，日期处显示“—”。按大小或按安装日期排序时，展开的随其他软件安装的组件也按同样的顺序排列，
+  仍在各自来源的那一行下面。
 - 打开 Banager 后的第一次检查还在查更新时，“已安装”页就先列出已找到的工具；要等这次检查完成才能卸载。
 - 在“更新”页，跨大版本的更新会标“大版本更新”，除非这一行已经写着它会自行更新，或者终端运行的是另一份
   （“终端用另一份”）。对于会自行更新的App，如果能读到App的版本，显示的版本变化和大版本更新提示会使用这个版本。“全部更新”不会勾选这种终端用不到的那一份，侧栏、程序坞角标和概览里的更新数也不算它。待更新的工具下面的“最近的更新记录”（没有待更新时在最上面）列出 30 天内的更新：成功的（轮到它时已是新版本、且之前同一个Homebrew里同一类（公式或cask）有改动了东西的更新已结束时——Homebrew会先更新一个工具需要的其他工具——写“已由前面的更新一并完成”，其他情况写“轮到它时已是新版本”），以及未能更新的

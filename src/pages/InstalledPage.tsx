@@ -801,6 +801,26 @@ export function InstalledPage() {
     const result: ListItem[] = [];
     const rows: ListItem[] = [];
     const folds: ListItem[] = [];
+    // By size: the largest first, then by name, a row with no size last.
+    // Each tool's size looked up once, not at each of the sort's
+    // comparisons -- the components' too, which an unfolded fold sorts
+    // the same way, under its own line (r24 R78-1).
+    const sizeOf = new Map<InstalledArtifact, number | undefined>();
+    if (sort === "size") {
+      for (const instance of instancesInView) {
+        for (const artifact of matchingByInstance.get(instance.id) ?? []) {
+          sizeOf.set(artifact, sizeOrder.get(artifactKeyId(artifact.key)));
+        }
+      }
+    }
+    // By date installed: the newest first, then by name, a row with no
+    // date last. By name or by source: by name.
+    const compareSelected = (a: InstalledArtifact, b: InstalledArtifact) =>
+      sort === "size"
+        ? compareSizes(sizeOf.get(a), sizeOf.get(b)) || compareArtifacts(a, b)
+        : sort === "date"
+          ? compareByInstalledAt(a, b) || compareArtifacts(a, b)
+          : compareArtifacts(a, b);
     for (const instance of instancesInView) {
       const artifacts = matchingByInstance.get(instance.id) ?? [];
       if (artifacts.length === 0) continue;
@@ -816,7 +836,7 @@ export function InstalledPage() {
       // is the rows 查看 shows (`isDiscoverShow`).
       const folding = !isDiscoverShow(show);
       const primary = artifacts.filter((a) => !folding || a.reason !== "Dependency").sort(compareArtifacts);
-      const dependencies = folding ? artifacts.filter((a) => a.reason === "Dependency").sort(compareArtifacts) : [];
+      const dependencies = folding ? artifacts.filter((a) => a.reason === "Dependency").sort(compareSelected) : [];
       // The fold line stays in both states, so a source's components fold
       // back up the way they unfolded.
       const expanded = expandedDependencies.includes(instance.id);
@@ -835,27 +855,10 @@ export function InstalledPage() {
       }
     }
     if (!grouped) {
-      const byName = (a: ListItem, b: ListItem) =>
-        a.type === "row" && b.type === "row" ? compareArtifacts(a.artifact, b.artifact) : 0;
-      // By size: the largest first, then by name, a row with no size last.
-      // Each row's size looked up once, not at each of the sort's comparisons.
-      const sizeOf = new Map<InstalledArtifact, number | undefined>();
-      if (sort === "size") {
-        for (const item of rows) {
-          if (item.type === "row") sizeOf.set(item.artifact, sizeOrder.get(artifactKeyId(item.artifact.key)));
-        }
-      }
-      const bySize = (a: ListItem, b: ListItem) =>
-        a.type === "row" && b.type === "row"
-          ? compareSizes(sizeOf.get(a.artifact), sizeOf.get(b.artifact)) || compareArtifacts(a.artifact, b.artifact)
-          : 0;
-      // By date installed: the newest first, then by name, a row with no
-      // date last.
-      const byDate = (a: ListItem, b: ListItem) =>
-        a.type === "row" && b.type === "row"
-          ? compareByInstalledAt(a.artifact, b.artifact) || compareArtifacts(a.artifact, b.artifact)
-          : 0;
-      result.push(...rows.sort(sort === "size" ? bySize : sort === "date" ? byDate : byName), ...folds);
+      result.push(
+        ...rows.sort((a, b) => (a.type === "row" && b.type === "row" ? compareSelected(a.artifact, b.artifact) : 0)),
+        ...folds,
+      );
     }
     return result;
   }, [instancesInView, matchingByInstance, labelOf, compareArtifacts, expandedDependencies, grouped, sort, sizeOrder, show]);

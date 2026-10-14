@@ -303,6 +303,100 @@ describe("the Installed page's details, on disk use", () => {
     await waitFor(() => expect(document.querySelector("[data-size-cell]")).toBeNull());
   });
 
+  it("order an unfolded source's components By Size too, under their own fold line (r24 R78-1)", async () => {
+    // Components whose name and size orders differ; abseil measured at
+    // nothing, boost measured for a version no longer installed, which
+    // counts as no size, and libpng not measured.
+    const component = (name: string, version = "1.0"): InstalledArtifact => ({
+      ...formula(name, version),
+      reason: "Dependency",
+    });
+    const deps = ["gettext", "icu4c", "zlib", "abseil", "boost", "libpng"].map((name) => component(name));
+    const llamaPart: InstalledArtifact = {
+      ...llama,
+      key: { ...llama.key, name: "nomic-embed-text" },
+      display_name: "nomic-embed-text",
+      reason: "Dependency",
+      size_bytes: 274_000_000,
+    };
+    const withComponents: Snapshot = { ...snapshot, artifacts: [jq, llama, wget, ...deps, llamaPart] };
+    const measure = (name: string, bytes: number, version = "1.0") => ({
+      key: { instance_id: brew.id, kind: "Formula" as const, name },
+      version,
+      measured: about(bytes),
+      old_versions: null,
+    });
+    served = {
+      ...NO_SIZES,
+      round: 4,
+      done: true,
+      artifacts: [
+        measure("gettext", 10_000_000),
+        measure("icu4c", 30_000_000),
+        measure("zlib", 20_000_000),
+        measure("abseil", 0),
+        measure("boost", 90_000_000, "0.9"),
+      ],
+    };
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "get_snapshot") return Promise.resolve(withComponents);
+      if (cmd === "get_settings") return Promise.resolve(settings);
+      if (cmd === "list_operations") return Promise.resolve([]);
+      if (cmd === "get_sizes") return Promise.resolve(served);
+      return Promise.resolve(undefined);
+    });
+    // A window tall enough for every row.
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (this: HTMLElement) {
+      return this.getAttribute("data-index") === null ? 1200 : 56;
+    });
+    useUiStore.setState({ expandedDependencies: [] });
+    const listOrder = () =>
+      [...document.querySelectorAll("[data-tool-row], [data-list] button[aria-expanded]:not([data-tool-row] *)")].map(
+        (element) => (element.matches("[data-tool-row]") ? (element.querySelector("p")?.textContent ?? "") : "fold"),
+      );
+    try {
+      render();
+      await screen.findByText("wget", { selector: "[data-tool-row] p" });
+      for (const fold of screen.getAllByRole("button", { name: /more packages? w/ })) fireEvent.click(fold);
+      const byName = [
+        ...["jq", "llama3.2:3b", "wget"],
+        ...["fold", "abseil", "boost", "gettext", "icu4c", "libpng", "zlib"],
+        ...["fold", "nomic-embed-text"],
+      ];
+      await waitFor(() => expect(listOrder()).toEqual(byName));
+
+      const sortBy = screen.getByRole("combobox", { name: "Sort Order" });
+      fireEvent.change(sortBy, { target: { value: "size" } });
+      // The largest first; nothing measured before no size; no size by
+      // name -- within each fold, after the rows and its own line.
+      const bySize = [
+        ...["llama3.2:3b", "jq", "wget"],
+        ...["fold", "icu4c", "zlib", "gettext", "abseil", "boost", "libpng"],
+        ...["fold", "nomic-embed-text"],
+      ];
+      await waitFor(() => expect(listOrder()).toEqual(bySize));
+      const sizeOf = (name: string) =>
+        screen
+          .getByText(name, { selector: "[data-tool-row] p" })
+          .closest("[data-tool-row]")
+          ?.querySelector("[data-size-cell]")?.textContent;
+      expect(sizeOf("icu4c")).toBe("About 30 MB");
+      // The old version's size is not boost's.
+      expect(sizeOf("boost")).not.toMatch(/90/);
+
+      // Folded and unfolded again, the order holds.
+      fireEvent.click(screen.getByRole("button", { name: /^Hide 6 packages/ }));
+      await waitFor(() => expect(listOrder()).toEqual(["llama3.2:3b", "jq", "wget", "fold", "fold", "nomic-embed-text"]));
+      fireEvent.click(screen.getByRole("button", { name: /^6 more packages/ }));
+      await waitFor(() => expect(listOrder()).toEqual(bySize));
+
+      fireEvent.change(sortBy, { target: { value: "name" } });
+      await waitFor(() => expect(listOrder()).toEqual(byName));
+    } finally {
+      useUiStore.setState({ expandedDependencies: [] });
+    }
+  });
+
   it("By Size, say each row's size with its term in the row's name, and no 「—」 for a row with none", async () => {
     served = {
       ...NO_SIZES,

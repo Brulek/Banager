@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
+import { useUiStore } from "../store/ui";
 import { WithToolbarSlot } from "../test/toolbarSlot";
 import { InstalledPage } from "./InstalledPage";
 import i18n from "../i18n";
@@ -124,6 +125,13 @@ const rowNames = () =>
 const cells = () =>
   [...document.querySelectorAll("[data-tool-row]")].map((row) => row.querySelector("[data-date-cell]")?.textContent);
 
+// The list as it reads, top to bottom: each row's name, and each fold line
+// as "fold".
+const listOrder = () =>
+  [...document.querySelectorAll("[data-tool-row], [data-list] button[aria-expanded]:not([data-tool-row] *)")].map((element) =>
+    element.matches("[data-tool-row]") ? (element.querySelector("p")?.textContent ?? "") : "fold",
+  );
+
 describe("the Installed page, By Date Installed", () => {
   it("orders the newest first, one second's tools by name, a tool with no date last, the components still folded", async () => {
     render();
@@ -136,6 +144,87 @@ describe("the Installed page, By Date Installed", () => {
     // The fold line stays after every row: the component is not sorted in.
     const list = document.querySelector("[data-list]") as HTMLElement;
     expect(list.textContent).toMatch(/yarn.*1 more/s);
+  });
+
+  it("orders an unfolded source's components the same way, under their own fold line (r24 R78-1)", async () => {
+    // Components whose name and date orders differ; boost and zlib in the
+    // same second, abseil with no date. npm reports none.
+    const component = (instance: ManagerInstance, name: string, at: number | null): InstalledArtifact => ({
+      ...artifact(instance, name, at),
+      reason: "Dependency",
+    });
+    const deps = [
+      component(brew, "gettext", day(THIS_YEAR, 1, 3)),
+      component(brew, "icu4c", day(THIS_YEAR, 1, 1)),
+      component(brew, "zlib", day(THIS_YEAR, 1, 2)),
+      component(brew, "boost", day(THIS_YEAR, 1, 2)),
+      component(brew, "abseil", null),
+      component(npm, "ms", null),
+      component(npm, "debug", null),
+    ];
+    const withComponents: Snapshot = { ...snapshot, artifacts: [git, jq, yarn, ...deps] };
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "get_snapshot") return Promise.resolve(withComponents);
+      if (cmd === "get_settings") return Promise.resolve(settings);
+      if (cmd === "list_operations") return Promise.resolve([]);
+      if (cmd === "get_sizes") return Promise.resolve(NO_SIZES);
+      return Promise.resolve(undefined);
+    });
+    // A window tall enough for every row, headings and all.
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (this: HTMLElement) {
+      return this.getAttribute("data-index") === null ? 1200 : 56;
+    });
+    useUiStore.setState({ expandedDependencies: [] });
+    try {
+      render();
+      await screen.findByText("yarn", { selector: "[data-tool-row] p" });
+      for (const fold of screen.getAllByRole("button", { name: /more packages? w/ })) fireEvent.click(fold);
+      const byName = ["git", "jq", "yarn", "fold", "abseil", "boost", "gettext", "icu4c", "zlib", "fold", "debug", "ms"];
+      await waitFor(() => expect(listOrder()).toEqual(byName));
+
+      const sortBy = screen.getByRole("combobox", { name: "Sort Order" });
+      fireEvent.change(sortBy, { target: { value: "date" } });
+      // The newest first, one second's by name, no date last -- within
+      // each fold, which stays after the rows and after its own line.
+      const byDate = ["jq", "git", "yarn", "fold", "gettext", "boost", "zlib", "icu4c", "abseil", "fold", "debug", "ms"];
+      await waitFor(() => expect(listOrder()).toEqual(byDate));
+      const dateOf = (name: string) =>
+        screen
+          .getByText(name, { selector: "[data-tool-row] p" })
+          .closest("[data-tool-row]")
+          ?.querySelector("[data-date-cell]")?.textContent;
+      expect(dateOf("abseil")).toBe("—");
+      expect(dateOf("gettext")).not.toBe("—");
+
+      // Folded and unfolded again, the order holds; so does the count.
+      fireEvent.click(screen.getByRole("button", { name: /^Hide 5 packages/ }));
+      await waitFor(() => expect(listOrder()).toEqual(["jq", "git", "yarn", "fold", "fold", "debug", "ms"]));
+      fireEvent.click(screen.getByRole("button", { name: /^5 more packages/ }));
+      await waitFor(() => expect(listOrder()).toEqual(byDate));
+
+      // By source: each source under its heading, its components by name.
+      fireEvent.change(sortBy, { target: { value: "source" } });
+      await waitFor(() =>
+        expect(listOrder()).toEqual([
+          "git",
+          "jq",
+          "fold",
+          "abseil",
+          "boost",
+          "gettext",
+          "icu4c",
+          "zlib",
+          "yarn",
+          "fold",
+          "debug",
+          "ms",
+        ]),
+      );
+      fireEvent.change(sortBy, { target: { value: "name" } });
+      await waitFor(() => expect(listOrder()).toEqual(byName));
+    } finally {
+      useUiStore.setState({ expandedDependencies: [] });
+    }
   });
 
   it("shows the day in the version's place, without the year this year, 「—」 muted and unread for none", async () => {
