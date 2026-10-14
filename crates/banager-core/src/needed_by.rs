@@ -179,7 +179,8 @@ pub struct NeededBy {
     /// even when no model is listed, so not by itself a sign of models.
     pub ollama_stays: bool,
     /// Whether models this Ollama lists on this Mac count on that Ollama
-    /// staying (`ollama_stays`, for a source with models that count): the
+    /// staying (`ollama_stays`, for a source with models that count), when
+    /// the package is a copy of Ollama itself (`is_ollama_copy`): the
     /// reason this preview names no source that runs on the package,
     /// whether or not `~/.ollama/models` was found -- `OLLAMA_MODELS` may
     /// keep them elsewhere (r24 R85-1). The preview carries it as
@@ -342,16 +343,18 @@ pub fn needed_by_on_path(
         // in or is not known to lead anywhere (a version manager's shim) --
         // runs the same models from the same folder (`~/.ollama/models`):
         // they need nothing of this one, but that one: listed, they say so
-        // whether or not their folder is the default one.
+        // on a copy of Ollama (`ArtifactFacts::family`) whether or not
+        // their folder is the default one. jq's preview says nothing of it.
+        let counted_on = !tools.is_empty() && is_ollama_copy(package);
         if ollama {
             if into == Some(false) {
                 ollama_stays = true;
-                models_on_another_ollama |= !tools.is_empty();
+                models_on_another_ollama |= counted_on;
             } else if (program || into.is_none())
                 && look.another_ollama(env, &refreshed.applications, &roots)
             {
                 ollama_stays = true;
-                models_on_another_ollama |= !tools.is_empty();
+                models_on_another_ollama |= counted_on;
                 continue;
             }
         }
@@ -398,6 +401,13 @@ pub fn needed_by_on_path(
         ollama_stays,
         models_on_another_ollama,
     }
+}
+
+/// Whether `package` is a copy of Ollama: Homebrew's `ollama`, `ollama-app`
+/// or `ollama-binary`, by the family the refresh gave it (`families.rs`),
+/// as a batch tells them (`OLLAMA_FAMILY` in src/lib/batchUninstall.ts).
+fn is_ollama_copy(package: &InstalledArtifact) -> bool {
+    package.facts.family.as_deref() == Some("ollama")
 }
 
 /// The folders whose files are `package`'s, every link followed: a
@@ -1983,10 +1993,14 @@ mod tests {
         let instances = vec![brew(&root), ollama.clone()];
         let env = root.env(&["opt/homebrew/opt/ollama/bin", "opt/homebrew/bin"]);
         assert!(!root.path("home/.ollama/models").exists());
-        let cask = with_path(
+        let copy = |mut package: InstalledArtifact| {
+            package.facts.family = Some("ollama".to_string());
+            package
+        };
+        let cask = copy(with_path(
             row(BREW, ArtifactKind::Cask, "ollama-app"),
             root.path("Applications/Ollama.app"),
-        );
+        ));
         let look = |package: &InstalledArtifact, models: &[InstalledArtifact]| {
             needed_by_on_path(
                 package,
@@ -2004,7 +2018,8 @@ mod tests {
         };
         // Each copy counts on the other for the listed models: the formula
         // on the app that stays, the app on the formula Banager runs.
-        for package in [&formula("ollama"), &cask] {
+        let ollama_formula = copy(formula("ollama"));
+        for package in [&ollama_formula, &cask] {
             let found = look(package, &models);
             assert!(found.complete, "{package:?}");
             assert!(found.warnings.is_empty(), "{:?}", found.warnings);
@@ -2012,11 +2027,16 @@ mod tests {
             assert!(found.models_on_another_ollama, "{package:?}");
         }
         // With no model listed, another copy staying is no model's need.
-        for package in [&formula("ollama"), &cask] {
+        for package in [&ollama_formula, &cask] {
             let found = look(package, &[]);
             assert!(found.ollama_stays);
             assert!(!found.models_on_another_ollama);
         }
+        // Nor is it any need of a package that is no copy of Ollama.
+        root.program("opt/homebrew/Cellar/jq/1.8.1/bin/jq");
+        let jq = look(&formula("jq"), &models);
+        assert!(jq.ollama_stays);
+        assert!(!jq.models_on_another_ollama);
         // Models kept on another machine need nothing here.
         let remote = ManagerInstance {
             id: "ollama:http://studio.local:11434".to_string(),
@@ -2024,7 +2044,7 @@ mod tests {
         };
         let instances = vec![brew(&root), remote.clone()];
         let found = needed_by(
-            &formula("ollama"),
+            &ollama_formula,
             &instances[0],
             &instances,
             &[row(&remote.id, ArtifactKind::Model, "llama3.2:3b")],
