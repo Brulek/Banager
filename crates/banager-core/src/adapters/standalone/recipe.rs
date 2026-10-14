@@ -352,6 +352,29 @@ pub struct UpgradeCmd {
     pub args: &'static [&'static str],
     pub timeout_secs: u64,
     pub cancel: CancelPolicy,
+    /// Where the command looks for and downloads its new version when a
+    /// variable can send it elsewhere than where `Latest` looks, or `None`
+    /// where nothing can (`UpdateSource`).
+    pub source: Option<UpdateSource>,
+}
+
+/// A variable that sends an update command to another release source than
+/// the one `Latest` looks at: rustup's `RUSTUP_UPDATE_ROOT`, which
+/// `rustup self update` takes its release file and its download from
+/// (self_update.rs, rustup 1.29.1), and which Banager hands it from the
+/// login shell (`login_path::IMPORTED`). Set to anything but `official`
+/// (character for character: a trailing `/` too is another value),
+/// Banager makes no lookup, offers no update and refuses one already
+/// confirmed (`StandaloneAdapter::update_source_differs`): what it would
+/// say is newer is not what the command would install. Such a command
+/// also installs whatever version its source names, an older one too --
+/// it skips only the one it has -- so a version read after it that is
+/// lower is no update (`Adapter::upgrade_order`,
+/// `Attention::OlderAfterUpgrade`).
+#[derive(Debug)]
+pub struct UpdateSource {
+    pub var: &'static str,
+    pub official: &'static str,
 }
 
 /// How a tool is removed (phase 4 spec §6.1). Only the arms something

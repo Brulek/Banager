@@ -428,6 +428,10 @@
         "badge": "Updates turned off",
         "detail": "{{source}}'s own settings turn off its updates, so it can't be updated here.",
         "refused": "Couldn't update it because {{source}}'s own settings turn off its updates."
+      },
+      "UpdateSourceMismatch": {
+        "detail": "rustup is set to get updates from a different address, which Banager hasn't checked, so it can't update rustup here.",
+        "refused": "Couldn't update rustup because its update address differs from the one Banager checks."
       }
     },
     "allHiddenTitle": "No updates to install",
@@ -1065,7 +1069,9 @@
         "UpdatedButStepFailedNoVersion": "Updated, but a step after it failed; see the log",
         "UpdatedButNotLinked": "Updated to {{version}}, but the new version isn't linked; see the log",
         "UpdatedButNotLinkedDetail": "Its commands may not be found in Terminal, usually because a file of the same name is in the way; the log says which file. If you're not sure what to do, click Copy Log and send the log to someone who can help.",
-        "UpdatedButStepFailedDetail": "The new version is installed, and the log says which step failed. If you're not sure what to do, click Copy Log and send the log to someone who can help."
+        "UpdatedButStepFailedDetail": "The new version is installed, and the log says which step failed. If you're not sure what to do, click Copy Log and send the log to someone who can help.",
+        "OlderAfterUpgrade": "An older version is now installed",
+        "OlderAfterUpgradeDetail": "The version read after the update is older than the version read before it. Check rustup's update settings before trying again."
       },
       "Failed": "Couldn't finish: {{summary}}",
       "FailedSilent": "Couldn't finish, and the program didn't say why",

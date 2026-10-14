@@ -224,6 +224,8 @@ const INTERPOLATED_SUBTREES: Record<string, readonly string[]> = {
     "NeedsAttention.GoneBeforeUpgrade",
     "NeedsAttention.GoneAfterUpgrade",
     "NeedsAttention.UnchangedAfterUpgrade",
+    // R75-3: rustup's update left a lower version.
+    "NeedsAttention.OlderAfterUpgrade",
     "NeedsAttention.BackAfterUninstall",
     "NeedsAttention.NotLinkedAfterLink",
     // r35 U2: with the version the update moved to, or none for a model;

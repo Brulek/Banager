@@ -47,9 +47,10 @@ use std::time::Duration;
 /// Banager: this one reads none of it and never writes over it. 2 since
 /// `GoneBeforeUpgrade` and per-record dismissal (r17 F5); 3 since
 /// `Attention::UpdatedButStepFailed` (r35 U2), which a format-2 build
-/// would drop as a record it cannot read and then write the rest over.
+/// would drop as a record it cannot read and then write the rest over; 4
+/// since `Attention::OlderAfterUpgrade` (R75-3), for the same reason.
 /// Every earlier format still reads.
-pub const HISTORY_FORMAT: u32 = 3;
+pub const HISTORY_FORMAT: u32 = 4;
 
 /// JavaScript Date's inclusive millisecond range, also exactly representable.
 pub fn valid_timestamp_ms(value: i64) -> bool {
@@ -1572,6 +1573,46 @@ mod tests {
     /// (r17 F5). So the file is format 3, which every earlier build treats
     /// as a newer Banager's (`load`), and every format-2 file still reads
     /// whole.
+    /// An update that left an older version (`OlderAfterUpgrade`, R75-3)
+    /// is a variant a format-3 build would drop as a record it cannot read
+    /// and then write the rest over: so the file is format 4, which such a
+    /// build leaves alone, and the record keeps both versions, not
+    /// verified.
+    #[test]
+    fn test_an_update_that_left_an_older_version_is_kept_in_format_four() {
+        let dir = TempDir::new("format-four");
+        let mut three: serde_json::Value = serde_json::from_str(FORMAT_ONE_FILE).unwrap();
+        three["format"] = serde_json::json!(3);
+        for record in three["records"].as_array_mut().unwrap() {
+            record["dismissed"] = serde_json::json!(false);
+        }
+        std::fs::write(dir.file(), serde_json::to_vec(&three).unwrap()).unwrap();
+        let store = HistoryStore::open_with_clock(dir.file(), now);
+        assert_eq!(store.view().records.len(), 7, "a format-3 file reads whole");
+        let k = key("rustup");
+        let older = Outcome::NeedsAttention(Attention::OlderAfterUpgrade);
+        let older_ended = Ended {
+            before: Some("1.29.1"),
+            after: Some("1.28.2"),
+            ..ended(&k, &older)
+        };
+        store.record(&older_ended, &started("rustup"));
+        assert!(store.flush(Duration::from_secs(5)));
+        let file: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(dir.file()).unwrap()).unwrap();
+        assert_eq!(file["format"], 4);
+        assert_eq!(HISTORY_FORMAT, 4);
+        let reopened = HistoryStore::open_with_clock(dir.file(), now);
+        let record = &reopened.view().records[0];
+        assert_eq!(
+            record.result,
+            HistoryResult::NeedsAttention(Attention::OlderAfterUpgrade)
+        );
+        assert_eq!(record.from_version.as_deref(), Some("1.29.1"));
+        assert_eq!(record.to_version.as_deref(), Some("1.28.2"));
+        assert!(!record.verified);
+    }
+
     #[test]
     fn test_an_update_with_a_failed_step_is_written_in_a_format_earlier_builds_leave_alone() {
         let dir = TempDir::new("format-three");
@@ -1597,7 +1638,7 @@ mod tests {
         assert!(store.flush(Duration::from_secs(5)));
         let bytes = std::fs::read(dir.file()).unwrap();
         let file: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(file["format"], 3);
+        assert_eq!(file["format"], HISTORY_FORMAT);
         let written = file["records"]
             .as_array()
             .unwrap()

@@ -121,6 +121,20 @@ fn version_change(before: Option<&Reconciled>, after: &Reconciled) -> VersionCha
     }
 }
 
+/// How the version an upgrade left compares with the one read before it,
+/// where both readings name one and the adapter orders them
+/// (`Adapter::upgrade_order`: rustup's, whose update can install an older
+/// version); `None` everywhere else, where a changed version is taken as
+/// moved.
+fn upgrade_order(
+    adapter: &dyn Adapter,
+    before: Option<&Reconciled>,
+    after: &Reconciled,
+) -> Option<std::cmp::Ordering> {
+    let before = before.filter(|r| r.present)?.version.as_deref()?;
+    adapter.upgrade_order(before, after.version.as_deref()?)
+}
+
 /// Whether an update that ended with `outcome` may have changed what is
 /// installed, and so brought a later update's package along
 /// (`OperationManager::upgrades_ended`, `already_at_target`): its version
@@ -1249,6 +1263,16 @@ impl OperationManager {
                                         ),
                                     }
                                 }
+                                // Lower than before, where the adapter can
+                                // tell (`upgrade_order`): an update that
+                                // installed an older version, which is no
+                                // update done.
+                                VersionChange::Changed
+                                    if upgrade_order(adapter.as_ref(), before.as_ref(), &r)
+                                        == Some(std::cmp::Ordering::Less) =>
+                                {
+                                    Outcome::NeedsAttention(Attention::OlderAfterUpgrade)
+                                }
                                 VersionChange::Changed | VersionChange::Unknown => {
                                     Outcome::Succeeded
                                 }
@@ -1419,7 +1443,16 @@ impl OperationManager {
                             && plan.request.artifact_kind != ArtifactKind::Cask
                             && !waited_on_another =>
                     {
+                        // Where the adapter orders its versions
+                        // (`upgrade_order`), only a higher one is an
+                        // update done: rustup's can install an older one.
                         match version_change(before.as_ref(), r) {
+                            VersionChange::Changed
+                                if upgrade_order(adapter.as_ref(), before.as_ref(), r)
+                                    .is_some_and(|order| order != std::cmp::Ordering::Greater) =>
+                            {
+                                None
+                            }
                             VersionChange::Changed => Some(r.version.clone()),
                             VersionChange::Unchanged | VersionChange::Unknown => None,
                         }

@@ -158,6 +158,26 @@ describe("outcomeKey", () => {
     expect(zhCN.operations.outcome.BanagerFailed.Internal).toMatch(claimsNothingChanged);
   });
 
+  it("says an update that left an older version did, and what to check before trying again (R75-3)", () => {
+    // Rust sends this when rustup's update exited 0 and the version read
+    // after it is lower than the one read before (`run_operation`).
+    const older: Outcome = { NeedsAttention: "OlderAfterUpgrade" };
+    expect(outcomeKey(older)).toBe("NeedsAttention.OlderAfterUpgrade");
+    expect(en.operations.outcome.NeedsAttention.OlderAfterUpgrade).toBe("An older version is now installed");
+    expect(zhCN.operations.outcome.NeedsAttention.OlderAfterUpgrade).toBe("现在安装的是更旧的版本");
+    expect(zhHant.operations.outcome.NeedsAttention.OlderAfterUpgrade).toBe("現在安裝的是更舊的版本");
+    expect(outcomeDetailKey(older)).toBe("operations.outcome.NeedsAttention.OlderAfterUpgradeDetail");
+    expect(en.operations.outcome.NeedsAttention.OlderAfterUpgradeDetail).toBe(
+      "The version read after the update is older than the version read before it. Check rustup's update settings before trying again.",
+    );
+    expect(zhCN.operations.outcome.NeedsAttention.OlderAfterUpgradeDetail).toBe(
+      "更新后读到的版本比更新前更旧。请先检查rustup的更新设置，再决定是否重试。",
+    );
+    expect(zhHant.operations.outcome.NeedsAttention.OlderAfterUpgradeDetail).toBe(
+      "更新後讀到的版本比更新前更舊。請先檢查rustup的更新設定，再決定是否重試。",
+    );
+  });
+
   it("says an update that changed nothing changed nothing, and what to do next", () => {
     // Rust sends this when the tool exited 0 and the installed version
     // read before the update equals the one read after

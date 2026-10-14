@@ -144,7 +144,13 @@ can go through is refused, never sent straight; one this Mac's network
 settings name that cannot be used is passed over, and the request goes
 straight (Network). A mirror changes
 where the tools download from, not where Banager's own checks ask
-(Network, below). The values are never written
+(Network, below). rustup's `RUSTUP_UPDATE_ROOT` is the exception, since
+`rustup self update` takes from it the very release file Banager checks:
+set, for the update command, to anything but
+`https://static.rust-lang.org/rustup` (a trailing `/` and an empty value
+count as other), rustup is not looked up and is listed as "Can't check"
+with no Update button, and an update confirmed before it was set is
+refused right before it would run, nothing started (rustup, below). The values are never written
 to a log and never in the diagnostic info, since a proxy setting can hold
 a password; the app's own output at launch names the settings read, not
 their values.
@@ -4095,7 +4101,14 @@ The uninstall preview runs no command at all (below). An update is listed
 only when the published `version` is greater than the installed one,
 comparing the dot-separated integers; a request that fails, answers
 anything but 200, or answers something that is not a versioned TOML file is
-listed as "could not check", never as an error for the source. rustup does
+listed as "could not check", never as an error for the source. Where
+`RUSTUP_UPDATE_ROOT`, as the update command would get it, is anything but
+`https://static.rust-lang.org/rustup`, no request is made: rustup is listed
+as not checked at the version it has, its update is refused when planned,
+and asked once more right before `rustup self update` would run, refused
+as changed since it was shown. An update that exits 0 but leaves a lower
+version than it read before ends as "An older version is now installed",
+never as updated; one that fails is a failure unless the version went up. rustup does
 not update itself on its own: it updates itself only as part of `rustup
 update` and `rustup toolchain install`, which Banager never runs.
 
@@ -5905,10 +5918,11 @@ is an empty history, written at the first record. An unreadable or
 malformed one (not a JSON object with a whole-number format and a list of
 records) is never written over during that launch (`Loaded::Blocked`). Individual records with dates outside JavaScript Date's range are
 dropped without discarding valid records; invalid Clear/retention timestamps
-are ignored. New writes use format 3, including the current outcome and failure
-variants and per-record dismissal. All existing format-1 and format-2 shapes
-remain readable. Older format-1 and format-2 builds leave format-3 files
-untouched (format 3 holds `UpdatedButStepFailed`, which they cannot read); a
+are ignored. New writes use format 4, including the current outcome and failure
+variants and per-record dismissal. All existing format-1, format-2 and format-3
+shapes remain readable. Older format-1, format-2 and format-3 builds leave
+format-4 files untouched (format 3 holds `UpdatedButStepFailed` and format 4
+`OlderAfterUpgrade`, which they cannot read); a
 file a newer Banager wrote is left exactly as it is. To
 remove the history, quit Banager and delete `history.json`; it starts
 empty at the next launch. Clear does not delete it.
@@ -6035,7 +6049,7 @@ connection, any `https` request whose host is not on this list
 | `pypi.org` | `GET /pypi/{name}/json` — the newest version of one package | pipx's `check_updates`, on pipx < 1.16 only |
 | `registry.ollama.ai` | `GET /v2/{namespace}/{name}/manifests/{tag}` — one model's manifest | Ollama's `check_updates` |
 | `downloads.claude.ai` | `GET /claude-code-releases/latest` or `/stable` — the newest published Claude Code version on that channel, answered as one bare version number | Claude Code's `check_updates` (`StandaloneAdapter`) |
-| `static.rust-lang.org` | `GET /rustup/release-stable.toml` — the newest published rustup version, a two-line TOML file (`version = '…'`) | rustup's `check_updates` (`StandaloneAdapter`) |
+| `static.rust-lang.org` | `GET /rustup/release-stable.toml` — the newest published rustup version, a two-line TOML file (`version = '…'`) | rustup's `check_updates` (`StandaloneAdapter`), only while `RUSTUP_UPDATE_ROOT` is unset or `https://static.rust-lang.org/rustup` for the update command — otherwise no request is made |
 | `antigravity-cli-auto-updater-974169037036.us-central1.run.app` | `GET /manifests/darwin_arm64.json` — the newest published Antigravity CLI version for Apple silicon, as the JSON manifest its installer and its updater read (`version`, `url`, `sha512`; only `version` is used) | Antigravity CLI's `check_updates` (`StandaloneAdapter`), only when Banager itself runs on Apple silicon — on an Intel Mac no request is made and the row says only that it could not be checked (why, only with "Show technical details" on) |
 
 Plain `http` is exempt from the list for one caller: the Ollama daemon at

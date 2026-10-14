@@ -216,4 +216,15 @@ pub trait CommandRunner: Send + Sync {
         on_line: Option<LineCallback>,
         cancel: tokio_util::sync::CancellationToken,
     ) -> Result<CommandOutput, RunnerError>;
+
+    /// The value `name`, one of `login_path::IMPORTED`, would have in the
+    /// environment of a command this runner ran with `env` as its spec's
+    /// own variables (`login_path::command_setting`): what
+    /// `StandaloneAdapter` asks of rustup's update address before it looks
+    /// anything up, plans the update and runs it. `env`'s alone by
+    /// default -- a runner that hands a command nothing else, as test
+    /// runners do; `RealRunner` adds the login shell's and its own.
+    fn command_setting(&self, name: &str, env: &[(String, String)]) -> Option<String> {
+        login_path::command_setting(name, None, env, &|_| None)
+    }
 }

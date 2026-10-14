@@ -978,6 +978,17 @@ pub trait Adapter: Send + Sync {
         false
     }
 
+    /// How `after`, the version an upgrade left, compares with `before`,
+    /// the one read before it -- for an adapter whose update can
+    /// install an older version than it had (`recipe::UpdateSource`:
+    /// rustup's), so that a lower one is not taken for an update
+    /// (`Attention::OlderAfterUpgrade`, ops/mod.rs). `None`, the default,
+    /// where the two are only told apart, never ordered: every other
+    /// source's changed version is taken as moved, as it was before.
+    fn upgrade_order(&self, _before: &str, _after: &str) -> Option<std::cmp::Ordering> {
+        None
+    }
+
     /// The locks a refresh reads `inst` under (`Session::refresh_round`):
     /// its detection, when last round found `inst`, and its inventory, and
     /// -- those of them `check_locks` keeps -- its update check. The ones

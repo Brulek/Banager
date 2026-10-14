@@ -36,6 +36,8 @@ export type Attention =
   | "GoneBeforeUpgrade"
   | "GoneAfterUpgrade"
   | "UnchangedAfterUpgrade"
+  // rustup's update left a lower version than it read before (R75-3).
+  | "OlderAfterUpgrade"
   | "BackAfterUninstall"
   | "NotLinkedAfterLink"
   | { UpdatedButStepFailed: { version: string | null; cause: FailureCause | null; detail: string | null } };
@@ -600,7 +602,10 @@ export type UpdateBlocked =
   | "Disabled"
   | "LinkTaken"
   | "UpdatesWithFormula"
-  | "UpdatesTurnedOff";
+  | "UpdatesTurnedOff"
+  // rustup set to get its updates from another address than the one
+  // Banager checks: on a `checkable: false` row, and the plan's refusal.
+  | "UpdateSourceMismatch";
 export interface UpdateCandidate {
   key: ArtifactKey;
   current: string;

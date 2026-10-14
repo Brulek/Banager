@@ -392,6 +392,10 @@
         "badge": "已关闭更新",
         "detail": "{{source}}自己的设置关闭了更新，无法在这里更新。",
         "refused": "无法更新，因为{{source}}自己的设置关闭了更新。"
+      },
+      "UpdateSourceMismatch": {
+        "detail": "rustup设为从另一个地址获取更新。这里没有检查该地址，因此无法在这里更新rustup。",
+        "refused": "无法更新rustup，因为它的更新地址与这里检查的地址不同。"
       }
     },
     "allHiddenTitle": "没有要安装的更新",
@@ -985,7 +989,9 @@
         "UpdatedButStepFailedNoVersion": "已更新，但之后有一步失败了，请查看日志",
         "UpdatedButNotLinked": "已更新到{{version}}，但新版本没有链接到终端，请查看日志",
         "UpdatedButNotLinkedDetail": "在终端里输入它的命令可能找不到它；通常是有同名的文件挡住了，日志里写着是哪个文件。不知道怎么办，就点按“拷贝日志”，发给懂的人看。",
-        "UpdatedButStepFailedDetail": "新版本已经装好，日志里写着哪一步失败了。不知道怎么办，就点按“拷贝日志”，发给懂的人看。"
+        "UpdatedButStepFailedDetail": "新版本已经装好，日志里写着哪一步失败了。不知道怎么办，就点按“拷贝日志”，发给懂的人看。",
+        "OlderAfterUpgrade": "现在安装的是更旧的版本",
+        "OlderAfterUpgradeDetail": "更新后读到的版本比更新前更旧。请先检查rustup的更新设置，再决定是否重试。"
       },
       "Failed": "未能完成：{{summary}}",
       "FailedSilent": "未能完成，程序没有给出原因",

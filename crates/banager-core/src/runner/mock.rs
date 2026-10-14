@@ -10,6 +10,9 @@ pub struct MockRunner {
     responses: Mutex<HashMap<Vec<String>, CommandOutput>>,
     delays: Mutex<HashMap<Vec<String>, Duration>>,
     calls: Mutex<Vec<CommandSpec>>,
+    /// What `command_setting` answers where the spec sets nothing itself
+    /// (`set_setting`): the stand-in for the login shell's read.
+    settings: Mutex<Vec<(String, String)>>,
 }
 
 impl MockRunner {
@@ -18,6 +21,18 @@ impl MockRunner {
             responses: Mutex::new(HashMap::new()),
             delays: Mutex::new(HashMap::new()),
             calls: Mutex::new(Vec::new()),
+            settings: Mutex::new(Vec::new()),
+        }
+    }
+
+    /// Sets, or with `None` unsets, the value `name` has for every command
+    /// this runner runs (`CommandRunner::command_setting`), as the login
+    /// shell's read would.
+    pub fn set_setting(&self, name: &str, value: Option<&str>) {
+        let mut settings = self.settings.lock().unwrap();
+        settings.retain(|(set, _)| set != name);
+        if let Some(value) = value {
+            settings.push((name.to_string(), value.to_string()));
         }
     }
 
@@ -62,6 +77,16 @@ impl Default for MockRunner {
 
 #[async_trait]
 impl CommandRunner for MockRunner {
+    fn command_setting(&self, name: &str, env: &[(String, String)]) -> Option<String> {
+        let settings = self.settings.lock().unwrap().clone();
+        super::login_path::command_setting(name, None, env, &|name| {
+            settings
+                .iter()
+                .find(|(set, _)| set == name)
+                .map(|(_, value)| value.clone())
+        })
+    }
+
     async fn run(
         &self,
         spec: CommandSpec,

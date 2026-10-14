@@ -183,6 +183,33 @@ pub fn command_var(name: &str) -> Option<String> {
     found.or_else(|| std::env::var(name).ok())
 }
 
+/// The value `name`, one of `IMPORTED`, has in the environment of a command
+/// built as `RealRunner::run` builds it: the last of `overrides` that sets it
+/// (`RealRunner::EVERY_COMMAND_ENV`, then the spec's own variables, set
+/// last), else what the login shell's read set (`accepted`; an empty value
+/// or one with a control character in it was never kept, `read`), else
+/// what the command inherits (`inherited`: the process's own, or nothing
+/// where the runner hands on none). For a check that must agree with the
+/// command it stands for (`CommandRunner::command_setting`); the value is
+/// never said or kept, as it can hold a login.
+pub fn command_setting(
+    name: &str,
+    accepted: Option<&LoginEnv>,
+    overrides: &[(String, String)],
+    inherited: &dyn Fn(&str) -> Option<String>,
+) -> Option<String> {
+    let set = |pairs: &[(String, String)]| {
+        pairs
+            .iter()
+            .rev()
+            .find(|(set, _)| set == name)
+            .map(|(_, value)| value.clone())
+    };
+    set(overrides)
+        .or_else(|| accepted.and_then(|found| set(&found.imported)))
+        .or_else(|| inherited(name))
+}
+
 /// The `PATH` Banager looks for programs along and hands every command it
 /// runs: the login shell's, once read, else the process's own.
 pub fn path() -> Option<OsString> {
@@ -613,6 +640,57 @@ mod tests {
             found.imported,
             pairs(&[("PIP_INDEX_URL", "https://pypi.tuna.tsinghua.edu.cn/simple")])
         );
+    }
+
+    /// `command_setting` agrees with how `RealRunner::run` builds a
+    /// command's environment: the spec's own variable last, else the login
+    /// shell's -- an empty one or one with a control character never
+    /// taken -- else what is inherited, which is nothing for a runner that
+    /// hands on none of the process's settings.
+    #[tokio::test]
+    async fn test_command_setting_takes_the_spec_then_the_login_shell_then_what_is_inherited() {
+        const ROOT: &str = "RUSTUP_UPDATE_ROOT";
+        let shell = read_of("PATH=/usr/bin\nRUSTUP_UPDATE_ROOT=https://shell.example/rustup\n")
+            .await
+            .expect("a complete read");
+        let inherited =
+            |name: &str| (name == ROOT).then(|| "https://process.example/rustup".to_string());
+        let none = |_: &str| None;
+        let spec = pairs(&[
+            (ROOT, "https://first.example"),
+            (ROOT, "https://spec.example"),
+        ]);
+        assert_eq!(
+            command_setting(ROOT, Some(&shell), &spec, &inherited).as_deref(),
+            Some("https://spec.example")
+        );
+        assert_eq!(
+            command_setting(ROOT, Some(&shell), &[], &inherited).as_deref(),
+            Some("https://shell.example/rustup")
+        );
+        assert_eq!(
+            command_setting(ROOT, Some(&shell), &[], &none).as_deref(),
+            Some("https://shell.example/rustup")
+        );
+        for rejected in [
+            "RUSTUP_UPDATE_ROOT=\n",
+            "RUSTUP_UPDATE_ROOT=https://tab\there\n",
+        ] {
+            let shell = read_of(&format!("PATH=/usr/bin\n{rejected}"))
+                .await
+                .expect("a complete read");
+            assert_eq!(
+                command_setting(ROOT, Some(&shell), &[], &inherited).as_deref(),
+                Some("https://process.example/rustup"),
+                "{rejected:?}"
+            );
+            assert_eq!(command_setting(ROOT, Some(&shell), &[], &none), None);
+        }
+        assert_eq!(
+            command_setting(ROOT, None, &[], &inherited).as_deref(),
+            Some("https://process.example/rustup")
+        );
+        assert_eq!(command_setting(ROOT, None, &[], &none), None);
     }
 
     #[test]

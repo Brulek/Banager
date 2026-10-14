@@ -85,6 +85,7 @@ function attentionKey(attention: Attention): string {
     case "GoneBeforeUpgrade":
     case "GoneAfterUpgrade":
     case "UnchangedAfterUpgrade":
+    case "OlderAfterUpgrade":
     case "BackAfterUninstall":
     case "NotLinkedAfterLink":
       return attention;
@@ -171,6 +172,8 @@ export function outcomeDetailKey(outcome: Outcome): string | null {
     switch (outcome.NeedsAttention) {
       case "UnchangedAfterUpgrade":
         return "operations.outcome.NeedsAttention.UnchangedAfterUpgradeDetail";
+      case "OlderAfterUpgrade":
+        return "operations.outcome.NeedsAttention.OlderAfterUpgradeDetail";
       case "BackAfterUninstall":
         return "operations.outcome.NeedsAttention.BackAfterUninstallDetail";
       case "NotLinkedAfterLink":

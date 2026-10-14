@@ -792,6 +792,24 @@ impl StandaloneAdapter {
             )]
             .into());
         };
+        // rustup set to update from another address than the release file
+        // `published` reads (`update_source_differs`, with the plan's own
+        // variables: none): what that file says is not what `self update`
+        // would install, so it is not asked, and the row says rustup was
+        // not checked -- at the version it has, with no button.
+        if self.update_source_differs(&[]) {
+            let mut row = uncheckable_candidate(
+                key,
+                current,
+                UpdateChannel::Registry,
+                LookupFailure::not_looked_up(format!(
+                    "{} is set to get its updates from another address than the one Banager checks",
+                    self.meta.name
+                )),
+            );
+            row.blocked = Some(UpdateBlocked::UpdateSourceMismatch);
+            return Ok(vec![row].into());
+        }
         let decided: Result<Option<(String, UpdateChannel)>, LookupFailure> =
             match self.published(&inst.exe_path).await {
                 Err(reason) => Err(reason),
@@ -1070,6 +1088,15 @@ impl StandaloneAdapter {
                         reason: UpdateBlocked::SelfUpdatesOnly,
                     });
                 };
+                // The gate's refusal from the candidate, again for a
+                // stale snapshot: an update address other than the one
+                // checked (`update_source_differs`, with the plan's
+                // variables below: none).
+                if self.update_source_differs(&[]) {
+                    return Err(AdapterError::UpdateBlocked {
+                        reason: UpdateBlocked::UpdateSourceMismatch,
+                    });
+                }
                 Ok(Plan {
                     request: req.clone(),
                     action: PlanAction::Command {
@@ -1170,6 +1197,28 @@ impl StandaloneAdapter {
             .unwrap_or(false)
     }
 
+    /// Whether the upgrade, run with `env` as its own variables, would
+    /// look for and download its new version somewhere else than where
+    /// `Latest` looks (`recipe::UpdateSource`): its variable is set, in
+    /// the environment the runner would hand it
+    /// (`CommandRunner::command_setting`), to anything but the official
+    /// address -- empty, or with a trailing `/`, too. `false` for a recipe
+    /// with no such variable. The value is never said, logged or kept: it
+    /// can hold a login.
+    fn update_source_differs(&self, env: &[(String, String)]) -> bool {
+        let Some(source) = self
+            .recipe
+            .upgrade
+            .as_ref()
+            .and_then(|upgrade| upgrade.source.as_ref())
+        else {
+            return false;
+        };
+        self.runner
+            .command_setting(source.var, env)
+            .is_some_and(|value| value != source.official)
+    }
+
     /// A `Command` plan -- the upgrade, `<launcher> update`, or a
     /// `Command` uninstall, rustup's `<launcher> self uninstall -y` -- runs
     /// through `run_plan` like every source's, after one more look at the
@@ -1204,7 +1253,7 @@ impl StandaloneAdapter {
             // root (the updater's own work) is still this route's, and
             // runs. What remains is the instant between this look and the
             // spawn, the same edge the removal documents (`take_turn`).
-            PlanAction::Command { program, .. } => {
+            PlanAction::Command { program, env, .. } => {
                 let detected = self.detected_or_refuse()?;
                 let route = &self.recipe.route;
                 // The seat's own launcher and root. `None` only for a
@@ -1268,7 +1317,16 @@ impl StandaloneAdapter {
                 // for an uninstall no `Command` recipe backs, or for an
                 // install, was not built by `plan` and is a bug's, refused.
                 match plan.request.kind {
-                    OpKind::Upgrade => {}
+                    // rustup's update address, asked once more with the
+                    // plan's own variables, the way the runner is about to
+                    // hand them on: set to another than the one checked
+                    // since the preview, `self update` would install what
+                    // that one names, so nothing is run.
+                    OpKind::Upgrade => {
+                        if self.update_source_differs(env) {
+                            return Ok(Outcome::BanagerFailed(Fault::ChangedSinceShown));
+                        }
+                    }
                     OpKind::Uninstall => {
                         let Some(Uninstall::Command(cmd)) = &self.recipe.uninstall else {
                             return Err(AdapterError::Refused(format!(
@@ -1488,6 +1546,17 @@ fn one_per_recipe(
 impl Adapter for StandaloneAdapter {
     fn meta(&self) -> &AdapterMeta {
         &self.meta
+    }
+
+    /// Ordered, as dotted versions (`latest::compare_dotted`), only for a
+    /// tool whose update installs what another source names, an older
+    /// version too (`recipe::UpdateSource`: rustup's).
+    fn upgrade_order(&self, before: &str, after: &str) -> Option<Ordering> {
+        self.recipe
+            .upgrade
+            .as_ref()
+            .and_then(|upgrade| upgrade.source.as_ref())
+            .and_then(|_| latest::compare_dotted(after, before))
     }
 
     async fn detect(&self, env: &HostEnv) -> Vec<ManagerInstance> {
@@ -3335,6 +3404,7 @@ mod tests {
             args: &["update"],
             timeout_secs: 1800,
             cancel: CancelPolicy::KillThenReconcile,
+            source: None,
         }),
         uninstall: None,
         extra_locks: no_extra_locks,
@@ -4586,6 +4656,121 @@ mod tests {
         assert_eq!(plan.timeout_secs, 600);
     }
 
+    /// rustup's update address, `RUSTUP_UPDATE_ROOT`, as a command would
+    /// have it: unset and the official one look rustup up and plan its
+    /// update as ever; any other -- a mirror, the official one with a
+    /// trailing `/`, an empty one -- makes no request, lists rustup as
+    /// not checked at the version it has, and refuses the update.
+    #[tokio::test]
+    async fn test_rustup_set_to_another_update_address_is_not_looked_up_nor_updated() {
+        const OFFICIAL: &str = "https://static.rust-lang.org/rustup";
+        for (root, differs) in [
+            (None, false),
+            (Some(OFFICIAL), false),
+            (Some("https://mirrors.example.com/rustup"), true),
+            (Some("https://static.rust-lang.org/rustup/"), true),
+            (Some(""), true),
+        ] {
+            let home = TempHome::new("rustup-update-root");
+            let cargo_home = home.path().join(".cargo");
+            let http = Arc::new(MockHttpClient::new());
+            http.respond(
+                RELEASE_URL,
+                answer("schema-version = '1'\nversion = '1.30.0'\n"),
+            );
+            let (adapter, inst, runner) =
+                detected_rustup(&home.env(vec![]), &cargo_home, http.clone()).await;
+            runner.set_setting("RUSTUP_UPDATE_ROOT", root);
+            adapter.inventory(&inst).await.expect("inventory");
+            let out = adapter
+                .check_updates(&inst, &CheckOptions::default())
+                .await
+                .expect("check_updates");
+            let c = &out.candidates[0];
+            let plan = adapter
+                .plan(
+                    &inst,
+                    &request_for("standalone-rustup", OpKind::Upgrade, "rustup"),
+                )
+                .await;
+            if differs {
+                assert!(http.calls().is_empty(), "{root:?}: nothing asked");
+                assert!(!c.checkable, "{root:?}");
+                assert_eq!(c.target, c.current, "{root:?}");
+                assert_eq!(c.blocked, Some(UpdateBlocked::UpdateSourceMismatch));
+                assert!(c.warnings.contains(&Warning::NotLookedUpHere));
+                if let Some(root) = root.filter(|root| root.contains("mirrors")) {
+                    let said = format!("{:?}", c.warnings);
+                    assert!(!said.contains(root), "the address is never said: {said}");
+                }
+                assert!(matches!(
+                    plan,
+                    Err(AdapterError::UpdateBlocked {
+                        reason: UpdateBlocked::UpdateSourceMismatch
+                    })
+                ));
+            } else {
+                assert_eq!(http.calls(), vec![RELEASE_URL.to_string()], "{root:?}");
+                assert!(c.checkable, "{root:?}");
+                assert_eq!(c.target, "1.30.0");
+                assert_eq!(c.blocked, None);
+                plan.expect("planned");
+            }
+        }
+    }
+
+    /// An update confirmed while rustup's update address was the official
+    /// one, run after it was set to another: refused as changed since it
+    /// was shown, and `rustup self update` never run.
+    #[tokio::test]
+    async fn test_a_saved_rustup_update_is_refused_once_its_update_address_changed() {
+        let home = TempHome::new("rustup-update-root-saved");
+        let cargo_home = home.path().join(".cargo");
+        let (adapter, inst, runner) = detected_rustup(
+            &home.env(vec![]),
+            &cargo_home,
+            Arc::new(MockHttpClient::new()),
+        )
+        .await;
+        let plan = adapter
+            .plan(
+                &inst,
+                &request_for("standalone-rustup", OpKind::Upgrade, "rustup"),
+            )
+            .await
+            .expect("plan");
+        runner.set_setting(
+            "RUSTUP_UPDATE_ROOT",
+            Some("https://mirrors.example.com/rustup"),
+        );
+        let before = runner.calls().len();
+        let outcome = adapter
+            .execute(&plan, Arc::new(VecSink::new()), 1, CancellationToken::new())
+            .await
+            .expect("execute");
+        assert_eq!(outcome, Outcome::BanagerFailed(Fault::ChangedSinceShown));
+        assert_eq!(runner.calls().len(), before, "nothing run");
+    }
+
+    #[test]
+    fn test_only_rustup_orders_the_versions_an_update_left() {
+        let rustup = rustup_adapter(Arc::new(MockRunner::new()), Arc::new(MockHttpClient::new()));
+        assert_eq!(
+            Adapter::upgrade_order(&rustup, "1.29.1", "1.28.2"),
+            Some(Ordering::Less)
+        );
+        assert_eq!(
+            Adapter::upgrade_order(&rustup, "1.29.1", "1.30.0"),
+            Some(Ordering::Greater)
+        );
+        assert_eq!(
+            Adapter::upgrade_order(&rustup, "1.29.1", "1.30.0-beta"),
+            None
+        );
+        let claude = adapter(Arc::new(MockRunner::new()));
+        assert_eq!(Adapter::upgrade_order(&claude, "2.0.1", "2.0.0"), None);
+    }
+
     #[tokio::test]
     async fn test_plan_uninstall_for_rustup_runs_nothing_and_lists_the_warnings() {
         // This Mac's layout (spec §6.6): one toolchain, hexyl installed
@@ -4730,6 +4915,7 @@ mod tests {
             args: &["self", "update"],
             timeout_secs: 600,
             cancel: CancelPolicy::NoCancel,
+            source: None,
         }),
         uninstall: Some(Uninstall::Command(CommandUninstall {
             args: &["self", "uninstall", "-y"],

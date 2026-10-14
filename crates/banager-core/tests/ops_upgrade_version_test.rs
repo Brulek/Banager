@@ -1458,6 +1458,47 @@ async fn test_a_rustup_self_update_that_exited_non_zero_after_its_version_moved_
     assert_eq!(outcome, updated_but_a_step_failed("1.30.0"));
 }
 
+/// rustup's `self update` installs whatever its update address names, an
+/// older version too (it skips only the one it has): one that left a lower
+/// version needs a look, and one that also failed is a failure -- never
+/// an update done (R75-3).
+#[tokio::test]
+async fn test_a_rustup_self_update_that_left_an_older_version_is_never_an_update() {
+    for (exit, older) in [(0, true), (1, false)] {
+        let runner = Arc::new(ScriptedRunner::default());
+        let (home, adapter, inst) =
+            rustup_home_and_instance(&runner, &["1.29.1", "1.29.1", "1.28.2"]).await;
+        let launcher = inst.exe_path.to_string_lossy().to_string();
+        runner.script(
+            &[launcher.as_str(), "self", "update"],
+            vec![exited(
+                exit,
+                "  rustup updated - 1.28.2 (from 1.29.1)\n",
+                "",
+            )],
+        );
+        let outcome = upgrade(&runner, adapter, inst, ArtifactKind::Binary, "rustup").await;
+        let _ = std::fs::remove_dir_all(&home);
+        if older {
+            assert_eq!(
+                outcome,
+                Outcome::NeedsAttention(Attention::OlderAfterUpgrade)
+            );
+        } else {
+            assert!(
+                matches!(
+                    outcome,
+                    Outcome::Failed {
+                        exit_code: Some(1),
+                        ..
+                    }
+                ),
+                "{outcome:?}"
+            );
+        }
+    }
+}
+
 #[tokio::test]
 async fn test_a_rustup_self_update_stopped_by_the_timeout_is_unconfirmed_whatever_the_readings_say()
 {

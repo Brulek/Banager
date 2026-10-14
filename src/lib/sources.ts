@@ -1064,6 +1064,20 @@ export const UPDATE_BLOCKED_KEYS: Record<UpdateBlocked, UpdateBlockedCopy> = {
     note: () => null,
     refused: "updates.blocked.UpdatesTurnedOff.refused",
   },
+  UpdateSourceMismatch: {
+    // rustup whose `RUSTUP_UPDATE_ROOT` names another address than the
+    // release file Banager checks (R75-3): its row is also `checkable:
+    // false`, so it shows as "Can't check", with this sentence first
+    // (`cannotCheckDetail`); the address itself is never said. Nothing to
+    // run.
+    badge: "updates.cannotCheck",
+    detail: "updates.blocked.UpdateSourceMismatch.detail",
+    commandInDetail: false,
+    command: () => "",
+    typed: null,
+    note: () => null,
+    refused: "updates.blocked.UpdateSourceMismatch.refused",
+  },
 };
 
 /**

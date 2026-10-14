@@ -1916,6 +1916,18 @@ pub enum UpdateBlocked {
     /// (`blocked_upgrade`), by `updateStateOf` (no button, no checkbox) and
     /// by `UPDATE_BLOCKED_KEYS.UpdatesTurnedOff` in src/lib/sources.ts.
     UpdatesTurnedOff,
+    /// rustup is set to look for and download its updates somewhere else
+    /// than the release file Banager checks (`RUSTUP_UPDATE_ROOT`,
+    /// `recipe::UpdateSource`): nothing was looked up, and its `self
+    /// update` would install what that other source names -- maybe
+    /// nothing, maybe an older version. Produced by the standalone
+    /// adapter's `check_updates`, on a candidate that is also `checkable:
+    /// false` (its target the installed version, `Warning::NotLookedUpHere`
+    /// beside its `Message`), and by its `plan(Upgrade)`. Read by the gate
+    /// (`blocked_upgrade`), by `cannotCheckDetail` in
+    /// src/components/updateDetails.tsx for the row's words, and by
+    /// `UPDATE_BLOCKED_KEYS.UpdateSourceMismatch` in src/lib/sources.ts.
+    UpdateSourceMismatch,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -2396,6 +2408,14 @@ pub enum Attention {
     /// this only when two reads of the installed version, one taken before
     /// the command and one after, both succeeded and are equal.
     UnchangedAfterUpgrade,
+    /// An upgrade exited 0 and the item reads a lower version than it did
+    /// before: a tool that installs whatever its release source names,
+    /// an older one too (rustup's `self update` from another
+    /// `RUSTUP_UPDATE_ROOT`, `recipe::UpdateSource`). Built by
+    /// `run_operation` only where the adapter orders the two readings
+    /// (`Adapter::upgrade_order`). Never a success: not verified in the
+    /// history, and no update done.
+    OlderAfterUpgrade,
     /// A path-list uninstall moved every path on its list to the Trash,
     /// and when it looked once more, after the pause that follows its last
     /// move (`removal::left_behind`), part of what its list names was

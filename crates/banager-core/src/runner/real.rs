@@ -776,6 +776,29 @@ async fn reap(child: &mut tokio::process::Child) -> Option<std::process::ExitSta
 
 #[async_trait]
 impl CommandRunner for RealRunner {
+    /// From the same three things `run` builds a command's environment
+    /// from, in its order: what the process hands on where this runner
+    /// inherits settings, the login shell's read, then
+    /// `EVERY_COMMAND_ENV` and `env`.
+    fn command_setting(&self, name: &str, env: &[(String, String)]) -> Option<String> {
+        let overrides: Vec<(String, String)> = Self::EVERY_COMMAND_ENV
+            .iter()
+            .map(|(name, value)| (name.to_string(), value.to_string()))
+            .chain(env.iter().cloned())
+            .collect();
+        let inherited = |name: &str| {
+            self.inherit_settings
+                .then(|| std::env::var(name).ok())
+                .flatten()
+        };
+        super::login_path::command_setting(
+            name,
+            super::login_path::accepted_env().as_ref(),
+            &overrides,
+            &inherited,
+        )
+    }
+
     async fn run(
         &self,
         spec: CommandSpec,

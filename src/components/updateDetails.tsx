@@ -52,7 +52,11 @@ export function cannotCheckDetail(
   candidate: UpdateCandidate,
   showTechnicalDetails: boolean,
 ): ReactNode {
-  const reasons = new Set<string>();
+  // rustup set to another update address (`UpdateSourceMismatch`): its
+  // own sentence, first, in place of "It isn't checked for updates on this
+  // Mac." -- which is not why, here.
+  const sourceMismatch = candidate.blocked === "UpdateSourceMismatch";
+  const reasons = new Set<string>(sourceMismatch ? [t(UPDATE_BLOCKED_KEYS.UpdateSourceMismatch.detail)] : []);
   let causeSaid = false;
   // A person's words first -- a warning's own sentence, the cause a
   // tool's words give -- then, with technical details on, those words
@@ -60,6 +64,7 @@ export function cannotCheckDetail(
   // on the wire, and would otherwise follow rustls's words (a2 review 5).
   for (const warning of candidate.warnings) {
     if (warning === "TransientLookupFailure") continue;
+    if (sourceMismatch && warning === "NotLookedUpHere") continue;
     const raw = warningMessage(warning);
     if (raw === null) {
       const text = warningText(t, warning);

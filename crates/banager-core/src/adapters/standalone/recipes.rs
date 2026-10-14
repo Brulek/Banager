@@ -7,7 +7,8 @@
 
 use super::recipe::{
     no_extra_locks, CommandUninstall, Expect, KeepSpec, Latest, Recipe, ReleaseLink, RemoveSpec,
-    Route, RouteKind, SelfUpdates, Uninstall, UpgradeCmd, VersionCmd, VersionParse, VersionSource,
+    Route, RouteKind, SelfUpdates, Uninstall, UpdateSource, UpgradeCmd, VersionCmd, VersionParse,
+    VersionSource,
 };
 use super::rustup;
 use crate::adapters::cargo::RUSTUP_AUTO_INSTALL_OFF;
@@ -88,6 +89,7 @@ pub static CLAUDE: Recipe = Recipe {
         args: &["update"],
         timeout_secs: 1800,
         cancel: CancelPolicy::KillThenReconcile,
+        source: None,
     }),
     uninstall: Some(Uninstall::Paths {
         remove: &[
@@ -345,6 +347,7 @@ pub static GROK: Recipe = Recipe {
         args: &["update"],
         timeout_secs: 1800,
         cancel: CancelPolicy::KillThenReconcile,
+        source: None,
     }),
     uninstall: Some(Uninstall::Paths {
         remove: &[
@@ -538,6 +541,12 @@ pub static RUSTUP: Recipe = Recipe {
         args: &["self", "update"],
         timeout_secs: 600,
         cancel: CancelPolicy::NoCancel,
+        // Where `latest` looks, as rustup's own default
+        // (`UPDATE_ROOT`, self_update.rs, rustup 1.29.1).
+        source: Some(UpdateSource {
+            var: "RUSTUP_UPDATE_ROOT",
+            official: "https://static.rust-lang.org/rustup",
+        }),
     }),
     uninstall: Some(Uninstall::Command(CommandUninstall {
         args: &["self", "uninstall", "-y"],

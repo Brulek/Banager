@@ -392,6 +392,10 @@
         "badge": "已關閉更新",
         "detail": "{{source}}自己的設定關閉了更新，無法在這裡更新。",
         "refused": "無法更新，因為{{source}}自己的設定關閉了更新。"
+      },
+      "UpdateSourceMismatch": {
+        "detail": "rustup設為從另一個位址取得更新。這裡沒有檢查該位址，因此無法在這裡更新rustup。",
+        "refused": "無法更新rustup，因為它的更新位址與這裡檢查的位址不同。"
       }
     },
     "allHiddenTitle": "沒有要安裝的更新",
@@ -985,7 +989,9 @@
         "UpdatedButStepFailedNoVersion": "已更新，但之後有一步失敗了，請查看記錄",
         "UpdatedButNotLinked": "已更新到{{version}}，但新版本沒有連結到終端機，請查看記錄",
         "UpdatedButNotLinkedDetail": "在終端機裡輸入它的指令可能找不到它；通常是有同名的檔案擋住了，記錄裡寫著是哪個檔案。不知道怎麼辦，就點按「拷貝記錄」，傳給懂的人看。",
-        "UpdatedButStepFailedDetail": "新版本已經裝好，記錄裡寫著哪一步失敗了。不知道怎麼辦，就點按「拷貝記錄」，傳給懂的人看。"
+        "UpdatedButStepFailedDetail": "新版本已經裝好，記錄裡寫著哪一步失敗了。不知道怎麼辦，就點按「拷貝記錄」，傳給懂的人看。",
+        "OlderAfterUpgrade": "現在安裝的是更舊的版本",
+        "OlderAfterUpgradeDetail": "更新後讀到的版本比更新前更舊。請先檢查rustup的更新設定，再決定是否重試。"
       },
       "Failed": "未能完成：{{summary}}",
       "FailedSilent": "未能完成，程式沒有給出原因",
