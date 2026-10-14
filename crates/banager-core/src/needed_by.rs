@@ -10,6 +10,11 @@
 //! tool of that source unable to run, or with nothing in Banager able to
 //! update or uninstall it, and Homebrew did not refuse.
 //!
+//! The same look serves a pipx or uv tool, whose own environment is the
+//! package's folder (`tool_environment`, r24 R85-2): pipx's `uv`, which
+//! the uv source runs through `~/.local/bin/uv`, removed with its venv,
+//! leaves every uv tool with nothing to update or uninstall it.
+//!
 //! What runs on a package, for each source of the kinds that run their
 //! tools through a program of their own (`HOSTED`):
 //! - the source itself, when the program Banager runs for it
@@ -247,10 +252,11 @@ pub const APPLICATIONS: &str = "/Applications";
 /// So is a look in doubt about each source `refreshed` lists as one whose
 /// packages no round has read (`unseen_source`, of its own program): an
 /// npm first found while a Homebrew operation held its prefix lists no
-/// tools, and that is not "none".
+/// tools, and that is not "none". `owner` is the package's own source: its
+/// Homebrew, or the pipx or uv whose tool it is (`tool_environment`).
 pub fn needed_by_on_path(
     package: &InstalledArtifact,
-    brew: &ManagerInstance,
+    owner: &ManagerInstance,
     instances: &[ManagerInstance],
     artifacts: &[InstalledArtifact],
     env: &HostEnv,
@@ -261,7 +267,7 @@ pub fn needed_by_on_path(
     if !refreshed.path_known {
         look.doubts.extend(unseen_sources());
     }
-    let Some(roots) = own_folders(package, brew, &mut look) else {
+    let Some(roots) = own_folders(package, owner, &mut look) else {
         return NeededBy {
             warnings: Vec::new(),
             complete: false,
@@ -281,7 +287,7 @@ pub fn needed_by_on_path(
         };
     }
     for source in instances {
-        if source.id == brew.id
+        if source.id == owner.id
             || !HOSTED.contains(&source.adapter_id.as_str())
             || !runs_here(source)
         {
@@ -394,7 +400,7 @@ pub fn needed_by_on_path(
             }
         }
     }
-    let doubted = look.could_be(package, brew, &roots);
+    let doubted = look.could_be(package, owner, &roots);
     NeededBy {
         warnings,
         complete: !look.over && !doubted,
@@ -411,17 +417,21 @@ fn is_ollama_copy(package: &InstalledArtifact) -> bool {
 }
 
 /// The folders whose files are `package`'s, every link followed: a
-/// formula's keg folder, a cask's folder in `Caskroom` and its app. Empty
-/// for any other kind of package; `None` when `brew`'s `Cellar` or
-/// `Caskroom` could not be read, or the budget ran out first.
+/// formula's keg folder, a cask's folder in `Caskroom` and its app, or a
+/// pipx or uv tool's own environment (`tool_environment`). Empty for any
+/// other kind of package; `None` when `owner`'s `Cellar` or `Caskroom`, or
+/// the tool's environment, could not be read, or the budget ran out first.
 fn own_folders(
     package: &InstalledArtifact,
-    brew: &ManagerInstance,
+    owner: &ManagerInstance,
     look: &mut Look,
 ) -> Option<Vec<PathBuf>> {
     let folder = match package.key.kind {
-        ArtifactKind::Formula => "Cellar",
-        ArtifactKind::Cask => "Caskroom",
+        ArtifactKind::Formula if owner.adapter_id == "brew" => "Cellar",
+        ArtifactKind::Cask if owner.adapter_id == "brew" => "Caskroom",
+        ArtifactKind::Tool if has_environments(&owner.adapter_id) => {
+            return tool_environment(package, look);
+        }
         _ => return Some(Vec::new()),
     };
     // `Cellar/<name>`, `Caskroom/<token>`: the short name, which a tapped
@@ -429,7 +439,7 @@ fn own_folders(
     let Some(short) = short_name(&package.key.name) else {
         return Some(Vec::new());
     };
-    let Leads::To(folder) = look.resolve(&brew.prefix.join(folder)) else {
+    let Leads::To(folder) = look.resolve(&owner.prefix.join(folder)) else {
         return None;
     };
     let mut roots = vec![folder.join(short)];
@@ -444,6 +454,25 @@ fn own_folders(
         }
     }
     Some(roots)
+}
+
+/// A pipx or uv tool's own environment, every link followed: the folder its
+/// row names (`InstalledArtifact::path`, pipx's `app_paths`' venv, uv's
+/// `--show-paths`), which its uninstall removes -- pipx's `uv` in
+/// `~/.local/pipx/venvs/uv`, into which `~/.local/bin/uv` leads (r24
+/// R85-2). Never the shared `~/.local/bin`, its manager's folder or one
+/// guessed from the tool's name: a row with no absolute environment, or one
+/// not followed (it is not there, or leads into a protected place), is not
+/// known (`None`), and the look does not finish.
+fn tool_environment(package: &InstalledArtifact, look: &mut Look) -> Option<Vec<PathBuf>> {
+    let environment = package
+        .path
+        .as_deref()
+        .filter(|path| path.is_absolute() && path.components().count() > 2)?;
+    match look.resolve(environment) {
+        Leads::To(environment) => Some(vec![environment]),
+        Leads::Nowhere | Leads::Unknown => None,
+    }
 }
 
 /// The last part of a Homebrew name, when it names one folder: not empty,
@@ -734,7 +763,7 @@ impl Look {
     fn could_be(
         &mut self,
         package: &InstalledArtifact,
-        brew: &ManagerInstance,
+        owner: &ManagerInstance,
         roots: &[PathBuf],
     ) -> bool {
         let doubts = std::mem::take(&mut self.doubts);
@@ -764,8 +793,13 @@ impl Look {
             return true;
         }
         let bin = match package.key.kind {
-            ArtifactKind::Formula => brew.prefix.join("opt").join(short).join("bin"),
-            _ => brew.prefix.join("bin"),
+            ArtifactKind::Formula => owner.prefix.join("opt").join(short).join("bin"),
+            // A pipx or uv tool's own environment's `bin` (`tool_environment`).
+            ArtifactKind::Tool => match roots.first() {
+                Some(environment) => environment.join("bin"),
+                None => return true,
+            },
+            _ => owner.prefix.join("bin"),
         };
         let mut names = programs.clone();
         if python {
@@ -2053,6 +2087,94 @@ mod tests {
         );
         assert!(!found.models_on_another_ollama);
         assert!(found.warnings.is_empty());
+    }
+
+    #[test]
+    fn r85_2_a_pipx_or_uv_tools_environment_is_its_own_folder() {
+        // pipx's `uv` in its venv; the uv source runs it through a chain of
+        // links: `~/bin/uv` to `~/.local/bin/uv` to the venv's `bin/uv`.
+        let root = Root::new("pipx-uv");
+        root.program("home/.local/pipx/venvs/uv/bin/uv");
+        root.link("home/.local/bin/uv", "../pipx/venvs/uv/bin/uv");
+        let chained = root.path("home/.local/bin/uv");
+        root.link("home/bin/uv", chained.to_str().unwrap());
+        root.program("home/.local/pipx/venvs/httpie/bin/http");
+        root.program("home/.local/share/uv/tools/ruff/bin/ruff");
+        const PIPX: &str = "pipx:~/.local/pipx";
+        const UV: &str = "uv:~/.local/share/uv";
+        let pipx = instance(
+            "pipx",
+            PIPX,
+            root.program("opt/pipx/bin/pipx"),
+            root.path("home/.local/pipx"),
+        );
+        let uv = instance(
+            "uv",
+            UV,
+            root.path("home/bin/uv"),
+            root.path("home/.local/share/uv"),
+        );
+        let tool = |name: &str, environment: Option<PathBuf>| {
+            let mut tool = row(PIPX, ArtifactKind::Tool, name);
+            tool.path = environment;
+            tool
+        };
+        let pipx_uv = tool("uv", Some(root.path("home/.local/pipx/venvs/uv")));
+        let ruff = with_path(
+            row(UV, ArtifactKind::Tool, "ruff"),
+            root.path("home/.local/share/uv/tools/ruff"),
+        );
+        let instances = vec![pipx.clone(), uv.clone()];
+        let env = root.env(&["home/bin", "home/.local/bin"]);
+        let look = |package: &InstalledArtifact, tools: &[InstalledArtifact], path_known| {
+            needed_by_on_path(
+                package,
+                &pipx,
+                &instances,
+                tools,
+                &env,
+                &Refreshed {
+                    path_known,
+                    unlisted: Vec::new(),
+                    applications: root.path("Applications"),
+                },
+                BUDGET,
+            )
+        };
+        let tools = vec![pipx_uv.clone(), ruff.clone()];
+        let found = look(&pipx_uv, &tools, true);
+        assert_eq!(needed(&found.warnings), vec![(UV.to_string(), true, 1)]);
+        assert!(found.complete);
+        // No uv tool: nothing to lose.
+        let found = look(&pipx_uv, &[pipx_uv.clone()], true);
+        assert!(found.warnings.is_empty());
+        assert!(found.complete);
+        // Another pipx tool is not where uv leads.
+        let httpie = tool("httpie", Some(root.path("home/.local/pipx/venvs/httpie")));
+        let found = look(&httpie, &tools, true);
+        assert!(found.warnings.is_empty());
+        assert!(found.complete);
+        // An environment not known -- none, relative, too short or not
+        // there -- is no proof that nothing runs on the tool.
+        for environment in [
+            None,
+            Some(PathBuf::from(".local/pipx/venvs/uv")),
+            Some(PathBuf::from("/uv")),
+            Some(root.path("home/.local/pipx/venvs/gone")),
+        ] {
+            let found = look(&tool("uv", environment.clone()), &tools, true);
+            assert!(found.warnings.is_empty(), "{environment:?}");
+            assert!(!found.complete, "{environment:?}");
+        }
+        // On a `PATH` that was not the login shell's, a uv may not have been
+        // found: in doubt for pipx's `uv`, named for it, and not for httpie,
+        // whose environment has no `uv`.
+        assert!(!look(&pipx_uv, &[], false).complete);
+        assert!(look(&httpie, &[], false).complete);
+        // A Homebrew owner's tool row is no environment to look at.
+        let brew_owned = needed_by(&pipx_uv, &brew(&root), &instances, &tools, &env, BUDGET);
+        assert!(brew_owned.warnings.is_empty());
+        assert!(brew_owned.complete);
     }
 
     #[test]

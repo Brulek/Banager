@@ -1,5 +1,6 @@
-//! What other sources run on the Homebrew package an uninstall would
-//! remove, added to its preview by `issue_plan` (`crate::needed_by`), and
+//! What other sources run on the Homebrew package, or the pipx or uv tool,
+//! an uninstall would remove, added to its preview by `issue_plan`
+//! (`crate::needed_by`), and
 //! the refusal `submit` gives a preview that named any. Its own file, like
 //! `kept.rs`, so `plans.rs` only calls it.
 
@@ -14,24 +15,26 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 
 /// What `needed_by` looks at for one uninstall, copied out of the snapshot
-/// under its lock: the Homebrew package, its Homebrew, and the sources
+/// under its lock: the package, its own source (`owner`: its Homebrew, or
+/// the pipx or uv whose tool it is), and the sources
 /// that could run on it with their rows -- and which of those sources no
 /// round has read the packages of (`Session::unlisted`), whose rows are
 /// no list of what they have.
 pub(super) struct Subject {
     package: InstalledArtifact,
-    brew: ManagerInstance,
+    owner: ManagerInstance,
     instances: Vec<ManagerInstance>,
     artifacts: Vec<InstalledArtifact>,
     unlisted: Vec<InstanceId>,
 }
 
 /// What `needed_by` reads of a `Subject` that a later snapshot can change,
-/// and nothing else: the package's key and a cask's app (`own_folders`),
-/// its Homebrew's id and prefix, and of each source with a tool that
+/// and nothing else: the package's key and a cask's app or a tool's
+/// environment (`own_folders`), its own source's id, kind and prefix, and
+/// of each source with a tool that
 /// counts (`needed_by::counts`) its kind, its program and those tools, each
 /// with its environment (pipx's and uv's, `InstalledArtifact::path`). Kept
-/// with a Homebrew uninstall's preview, so that `Session::submit` can tell
+/// with such an uninstall's preview, so that `Session::submit` can tell
 /// whether the snapshot it is confirmed against could give the package a
 /// dependent the preview did not look for (`adds_no_dependent`). Not the
 /// rows themselves: a version, a description or when a source answered is
@@ -42,7 +45,7 @@ pub(super) struct Subject {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct Inputs {
     package: (ArtifactKey, Option<PathBuf>),
-    brew: (InstanceId, PathBuf),
+    owner: (InstanceId, String, PathBuf),
     sources: Vec<Source>,
     unlisted: Vec<(InstanceId, PathBuf)>,
 }
@@ -87,7 +90,11 @@ impl Subject {
             .collect();
         Inputs {
             package: (self.package.key.clone(), self.package.path.clone()),
-            brew: (self.brew.id.clone(), self.brew.prefix.clone()),
+            owner: (
+                self.owner.id.clone(),
+                self.owner.adapter_id.clone(),
+                self.owner.prefix.clone(),
+            ),
             sources,
             unlisted,
         }
@@ -116,7 +123,7 @@ pub(super) fn adds_no_dependent(before: Option<&Inputs>, now: Option<&Inputs>) -
         return before.is_none() && now.is_none();
     };
     before.package == now.package
-        && before.brew == now.brew
+        && before.owner == now.owner
         && now
             .unlisted
             .iter()
@@ -132,25 +139,27 @@ pub(super) fn adds_no_dependent(before: Option<&Inputs>, now: Option<&Inputs>) -
 }
 
 /// The `Subject` of `req`, when it uninstalls a formula or cask of a
-/// Homebrew the snapshot lists with that row; `None` for anything else.
-/// `unlisted` is the snapshot's (`Session::unlisted`).
+/// Homebrew, or a tool of a pipx or uv -- each in an environment of its own
+/// (r24 R85-2) -- that the snapshot lists with that row; `None` for
+/// anything else. `unlisted` is the snapshot's (`Session::unlisted`).
 pub(super) fn subject(
     instances: &[ManagerInstance],
     artifacts: &[InstalledArtifact],
     unlisted: &HashSet<InstanceId>,
     req: &OpRequest,
 ) -> Option<Subject> {
-    if req.kind != OpKind::Uninstall
-        || !matches!(
-            req.artifact_kind,
-            ArtifactKind::Formula | ArtifactKind::Cask
-        )
-    {
+    if req.kind != OpKind::Uninstall {
         return None;
     }
-    let brew = instances
-        .iter()
-        .find(|i| i.id == req.instance_id && i.adapter_id == "brew")?;
+    let owner = instances.iter().find(|i| i.id == req.instance_id)?;
+    let looked_at = match req.artifact_kind {
+        ArtifactKind::Formula | ArtifactKind::Cask => owner.adapter_id == "brew",
+        ArtifactKind::Tool => matches!(owner.adapter_id.as_str(), "pipx" | "uv"),
+        _ => false,
+    };
+    if !looked_at {
+        return None;
+    }
     let package = artifacts.iter().find(|a| {
         a.key.instance_id == req.instance_id
             && a.key.kind == req.artifact_kind
@@ -173,7 +182,7 @@ pub(super) fn subject(
         .collect();
     Some(Subject {
         package: package.clone(),
-        brew: brew.clone(),
+        owner: owner.clone(),
         instances: hosted,
         artifacts,
         unlisted,
@@ -227,7 +236,7 @@ impl Session {
             move || {
                 needed_by::needed_by_on_path(
                     &subject.package,
-                    &subject.brew,
+                    &subject.owner,
                     &subject.instances,
                     &subject.artifacts,
                     &env,
@@ -336,6 +345,9 @@ mod tests {
         /// npm at a Homebrew's prefix is read under that Homebrew's
         /// (`NpmAdapter::instance_locks`).
         also_locked: Option<&'static str>,
+        /// Each row's environment, by name (`InstalledArtifact::path`), as
+        /// pipx and uv list one for each tool.
+        paths: Vec<(&'static str, PathBuf)>,
     }
 
     #[async_trait]
@@ -385,7 +397,11 @@ mod tests {
                     homepage: None,
                     size_bytes: None,
                     installed_at: None,
-                    path: None,
+                    path: self
+                        .paths
+                        .iter()
+                        .find(|(row, _)| row == name)
+                        .map(|(_, path)| path.clone()),
                     auto_updates: false,
                     uninstall_blocked: None,
                     facts: Default::default(),
@@ -528,6 +544,7 @@ mod tests {
             brew: None,
             found_on_path: false,
             also_locked: None,
+            paths: Vec::new(),
         })
     }
 
@@ -723,6 +740,7 @@ mod tests {
                 brew: None,
                 found_on_path: false,
                 also_locked: None,
+                paths: Vec::new(),
             })
         };
         let brew = fake(
@@ -1095,6 +1113,7 @@ mod tests {
             brew: Some(BrewAdapter::new(runner.clone())),
             found_on_path: false,
             also_locked: None,
+            paths: Vec::new(),
         });
         let npm = Arc::new(Fake {
             meta: test_support::fake_adapter_meta("npm"),
@@ -1110,6 +1129,7 @@ mod tests {
             brew: None,
             found_on_path: false,
             also_locked: None,
+            paths: Vec::new(),
         });
         let session = Session::with_adapters_and_sizes(
             Arc::new(VecSink::new()),
@@ -1281,6 +1301,7 @@ mod tests {
             brew: None,
             found_on_path: true,
             also_locked: None,
+            paths: Vec::new(),
         });
         let session =
             Session::with_adapters_and_sizes(Arc::new(VecSink::new()), vec![brew, npm], None);
@@ -1400,6 +1421,7 @@ mod tests {
             brew: None,
             found_on_path: true,
             also_locked: Some(BREW),
+            paths: Vec::new(),
         });
         let session =
             Session::with_adapters_and_sizes(Arc::new(VecSink::new()), vec![brew, npm], None);
@@ -1488,6 +1510,167 @@ mod tests {
             Err(SubmitError::Unknown),
             "the preview from the round that did not read npm is spent"
         );
+        assert!(session.operations().is_empty(), "nothing was queued");
+    }
+
+    const PIPX: &str = "pipx:~/.local/pipx";
+    const UV: &str = "uv:~/.local/share/uv";
+
+    /// A session over pipx, with `uv` installed as one of its tools in
+    /// `~/.local/pipx/venvs/uv`, and the uv source whose program is `uv`
+    /// at `uv_exe`, listing `uv_tools` (ruff in its own environment);
+    /// refreshed once, with `PATH` `~/.local/bin` and then the prefix's
+    /// `bin`. And the uv source's fake, to list more later.
+    async fn session_with_pipx_uv(
+        root: &Root,
+        uv_exe: PathBuf,
+        uv_tools: Vec<(ArtifactKind, &'static str)>,
+    ) -> (Arc<Session>, Arc<Fake>, HostEnv) {
+        let home = root.path("home");
+        let pipx = Arc::new(Fake {
+            meta: test_support::fake_adapter_meta("pipx"),
+            instance: ManagerInstance {
+                exe_path: root.path("opt/pipx/bin/pipx"),
+                prefix: home.join(".local/pipx"),
+                ..test_support::make_instance("pipx", PIPX)
+            },
+            rows: Mutex::new(vec![(ArtifactKind::Tool, "uv")]),
+            brew: None,
+            found_on_path: false,
+            also_locked: None,
+            paths: vec![("uv", home.join(".local/pipx/venvs/uv"))],
+        });
+        let uv = Arc::new(Fake {
+            meta: test_support::fake_adapter_meta("uv"),
+            instance: ManagerInstance {
+                exe_path: uv_exe,
+                prefix: home.join(".local/share/uv"),
+                ..test_support::make_instance("uv", UV)
+            },
+            rows: Mutex::new(uv_tools),
+            brew: None,
+            found_on_path: false,
+            also_locked: None,
+            paths: vec![("ruff", home.join(".local/share/uv/tools/ruff"))],
+        });
+        let adapters: Vec<Arc<dyn Adapter>> = vec![pipx, uv.clone()];
+        let session = Session::with_adapters_and_sizes(Arc::new(VecSink::new()), adapters, None);
+        let env = HostEnv {
+            path_dirs: vec![home.join(".local/bin"), root.path("opt/homebrew/bin")],
+            home,
+            euid: 501,
+            cargo_home: None,
+            rustup_home: None,
+            zdotdir: None,
+            ollama_host: None,
+            tilde_entries: Vec::new(),
+        };
+        session.refresh(&env, &CheckOptions::default()).await;
+        (session, uv, env)
+    }
+
+    /// pipx's `uv` in its venv, `~/.local/bin/uv` a link to it as pipx
+    /// makes one, and ruff's own environment, in this root's home.
+    fn pipx_uv_on_disk(root: &Root) -> PathBuf {
+        for program in [
+            "home/.local/pipx/venvs/uv/bin/uv",
+            "home/.local/share/uv/tools/ruff/bin/ruff",
+            "opt/pipx/bin/pipx",
+        ] {
+            let path = root.path(program);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(&path, b"#!/bin/sh\n").unwrap();
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        root.link("home/.local/bin/uv", "../pipx/venvs/uv/bin/uv");
+        root.path("home/.local/bin/uv")
+    }
+
+    fn uninstall_tool(instance_id: &str, name: &str) -> OpRequest {
+        OpRequest {
+            kind: OpKind::Uninstall,
+            instance_id: instance_id.to_string(),
+            artifact_kind: ArtifactKind::Tool,
+            name: name.to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn r85_2_pipx_uv_preview_names_the_uv_source_and_submit_refuses_it() {
+        let root = Root::new("pipx-uv");
+        let uv_exe = pipx_uv_on_disk(&root);
+        // Another `uv` later on `PATH` is not the one the uv source runs,
+        // and excuses nothing.
+        let other = root.path("opt/homebrew/bin/uv");
+        std::fs::create_dir_all(other.parent().unwrap()).unwrap();
+        std::fs::write(&other, b"#!/bin/sh\n").unwrap();
+        std::fs::set_permissions(&other, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let (session, _, _) =
+            session_with_pipx_uv(&root, uv_exe, vec![(ArtifactKind::Tool, "ruff")]).await;
+
+        let issued = session
+            .issue_plan(&uninstall_tool(PIPX, "uv"))
+            .await
+            .unwrap();
+        assert_eq!(
+            needed(&issued.plan),
+            vec![Warning::NeededBySource {
+                instance_id: UV.to_string(),
+                program: true,
+                tools: 1,
+            }]
+        );
+        assert!(!issued.plan.warnings.contains(&Warning::DependentsUnknown));
+        assert_eq!(
+            session.submit(issued.id),
+            Err(SubmitError::UninstallBlocked {
+                reason: UninstallBlocked::NeededBySource
+            })
+        );
+        assert!(session.operations().is_empty(), "nothing was queued");
+
+        // ruff's own uninstall, from uv, takes nothing any other source
+        // runs on.
+        let issued = session
+            .issue_plan(&uninstall_tool(UV, "ruff"))
+            .await
+            .unwrap();
+        assert_eq!(needed(&issued.plan), Vec::new());
+        assert!(!issued.plan.warnings.contains(&Warning::DependentsUnknown));
+    }
+
+    #[tokio::test]
+    async fn r85_2_pipx_uv_goes_when_the_uv_source_runs_another_uv_or_has_no_tools() {
+        let root = Root::new("pipx-uv-free");
+        pipx_uv_on_disk(&root);
+        // The uv source runs a uv of its own, outside pipx's venv.
+        let own = root.path("opt/uv/bin/uv");
+        std::fs::create_dir_all(own.parent().unwrap()).unwrap();
+        std::fs::write(&own, b"#!/bin/sh\n").unwrap();
+        std::fs::set_permissions(&own, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let (session, _, _) =
+            session_with_pipx_uv(&root, own, vec![(ArtifactKind::Tool, "ruff")]).await;
+        let issued = session
+            .issue_plan(&uninstall_tool(PIPX, "uv"))
+            .await
+            .unwrap();
+        assert_eq!(needed(&issued.plan), Vec::new());
+        assert!(!issued.plan.warnings.contains(&Warning::DependentsUnknown));
+
+        // pipx's uv, with no uv tool yet: free to go -- until a refresh
+        // commits ruff while the confirmation is open, which spends it.
+        let root = Root::new("pipx-uv-later");
+        let uv_exe = pipx_uv_on_disk(&root);
+        let (session, uv, env) = session_with_pipx_uv(&root, uv_exe, Vec::new()).await;
+        let issued = session
+            .issue_plan(&uninstall_tool(PIPX, "uv"))
+            .await
+            .unwrap();
+        assert_eq!(needed(&issued.plan), Vec::new());
+        assert!(!issued.plan.warnings.contains(&Warning::DependentsUnknown));
+        uv.rows.lock().unwrap().push((ArtifactKind::Tool, "ruff"));
+        session.refresh(&env, &CheckOptions::default()).await;
+        assert_eq!(session.submit(issued.id), Err(SubmitError::Unknown));
         assert!(session.operations().is_empty(), "nothing was queued");
     }
 
@@ -1677,7 +1860,7 @@ mod tests {
         let subject = super::subject(&instances, &artifacts, &none, &uninstall("node@22")).unwrap();
         assert_eq!(subject.package.key.name, "node@22");
         assert!(subject.unlisted.is_empty());
-        assert_eq!(subject.brew.id, BREW);
+        assert_eq!(subject.owner.id, BREW);
         let ids: Vec<&str> = subject.instances.iter().map(|i| i.id.as_str()).collect();
         assert_eq!(ids, vec![NPM]);
         let names: Vec<&str> = subject

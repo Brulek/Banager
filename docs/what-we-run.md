@@ -5199,6 +5199,22 @@ cask looks for every source of those kinds -- npm, pip, pipx, uv, Cargo
 and Ollama (`HOSTED` in `crates/banager-core/src/needed_by.rs`) -- that
 runs on it (`Session::issue_plan`, `crates/banager-core/src/session/needed_by.rs`).
 
+The same look covers a tool that pipx or uv installed in an environment of
+its own (r24 R85-2). Its removal root is the environment its existing
+listing names (`InstalledArtifact::path`: pipx's venv, uv's
+`--show-paths`), every link followed (`tool_environment` in
+`crates/banager-core/src/needed_by.rs`); never the shared `~/.local/bin`,
+its manager's folder or a folder guessed from the tool's name. When
+another source's program leads into that environment -- the uv source's
+`~/.local/bin/uv` into pipx's `~/.local/pipx/venvs/uv` -- the preview names
+that source and its installed tools, and the uninstall is refused while
+those tools remain: without that `uv`, nothing in Banager could update or
+uninstall them, though their own programs still run. A tool whose listing
+names no absolute environment, or one that is not there or leads into a
+protected place, is not known: the preview says it could not check
+everything that uses it. Another `uv` elsewhere on `PATH` excuses nothing:
+only the program Banager runs for the source counts.
+
 What it looks at, during the uninstall preview of a formula or cask only:
 
 - the package's own folder: a formula's `<prefix>/Cellar/<name>` (its
@@ -5225,6 +5241,7 @@ What it looks at, during the uninstall preview of a formula or cask only:
   is not named for what it would have to end at nor a cask known to hold
   it, whether the package has a program of that name: for a formula
   `<prefix>/opt/<name>/bin/<program>`, for a cask `<prefix>/bin/<program>`,
+  for a pipx or uv tool `bin/<program>` in its environment,
   every link followed -- one look a name; and then, by the names in them
   (`protected::look::list`, one look a folder and one before each name
   read in it), for a Python a formula's
@@ -5290,7 +5307,8 @@ A preview that found nothing running on the package found nothing among
 the tools the snapshot listed then, so it keeps what the look read of the
 snapshot (`needed_by::Inputs` in
 `crates/banager-core/src/session/needed_by.rs`): the package's key and a
-cask's app, its Homebrew's id and prefix, for each source with a tool
+cask's app or a pipx or uv tool's environment, its own source's id, kind
+and prefix (its Homebrew, or the pipx or uv whose tool it is), for each source with a tool
 that counts, its program and those tools, with a pipx or uv tool's
 environment, and each source no refresh has read the packages of (below),
 with its program. When a refresh has committed since, `Session::submit`
@@ -5758,14 +5776,15 @@ not read (`protected::look`; How Banager runs anything, above):
   never anything in the places disk use never looks into (Data an
   uninstall leaves behind, above).
 - What runs on a Homebrew package, during the uninstall preview of a
-  formula or cask: where `<prefix>/Cellar` or `<prefix>/Caskroom` and the
-  cask's app lead; where the program Banager runs for npm, pip, pipx, uv,
+  formula or cask, or of a pipx or uv tool: where `<prefix>/Cellar` or
+  `<prefix>/Caskroom` and the cask's app lead, or the tool's environment; where the program Banager runs for npm, pip, pipx, uv,
   Cargo and Ollama leads; the first `node` on `PATH`, for npm; and each
   pipx and uv tool's `bin/python` (`lstat` and `readlink`, one step at a
   time, never into a protected place); when one of those could not be
   followed, the names in a few of the package's own folders (`readdir`:
   a formula's `opt/<name>/bin`, a cask's app's `Contents/MacOS` and
-  `Contents/Resources`, the `bin` of each folder in its `Caskroom/<token>`)
+  `Contents/Resources`, the `bin` of each folder in its `Caskroom/<token>`,
+  a tool environment's `bin`)
   — never a file's contents (What runs on a Homebrew package, above).
 - Which copy a command runs, at every refresh: the names in each `PATH`
   folder and in each Homebrew and npm prefix's `bin` (and Homebrew's

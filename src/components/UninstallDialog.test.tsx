@@ -410,6 +410,35 @@ describe("UninstallDialog", () => {
       }
     });
 
+    it.each([
+      ["en", "uv with its 1 tool", "Uninstall the tool installed with uv first to remove uv. Tools installed with uv are updated and uninstalled with it."],
+      ["zh-CN", "uv及其1个工具", null],
+      ["zh-Hant", "uv及其1個工具", null],
+    ] as const)("blocks pipx's uv while a uv tool not selected still needs it, in %s (r24 R85-2)", async (language, entry, sentence) => {
+      const uv = brewInstance({ id: "uv:/Users/you/.local/share/uv", adapter_id: "uv", exe_path: "/Users/you/.local/bin/uv", prefix: "/Users/you/.local/share/uv" });
+      const own: OpRequest = { kind: "Uninstall", instance_id: pipx.id, artifact_kind: "Tool", name: "uv" };
+      vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+        if (cmd === "get_snapshot") return snapshotWith([pipx, uv], [tool(pipx.id, "uv"), tool(uv.id, "ruff")]);
+        if (cmd === "plan_operation") {
+          return issuedPlanFor({ request: own, warnings: [{ NeededBySource: { instance_id: uv.id, program: true, tools: 1 } }] });
+        }
+        if (cmd === "submit_operation") throw new Error("never submitted");
+        return undefined;
+      });
+      await i18n.changeLanguage(language);
+      try {
+        renderWithProviders(<UninstallDialog open onOpenChange={() => {}} request={own} displayName="uv" />);
+        expect(await screen.findByText(entry)).toBeInTheDocument();
+        const confirm = screen.getByRole("button", { name: language === "en" ? "Uninstall" : language === "zh-CN" ? "卸载" : "解除安裝" });
+        expect(confirm).toBeDisabled();
+        if (sentence !== null) expect(screen.getByText(sentence)).toBeInTheDocument();
+        fireEvent.click(confirm);
+        expect(vi.mocked(invoke).mock.calls.some(([cmd]) => cmd === "submit_operation")).toBe(false);
+      } finally {
+        await i18n.changeLanguage("en");
+      }
+    });
+
     it("words the refusal of a preview that named one, which only a page that asks for it can reach", async () => {
       // `Session::submit` refuses such a preview whatever the page sends;
       // the dialog checks again, and says why while it does.
@@ -427,7 +456,7 @@ describe("UninstallDialog", () => {
       await waitFor(() => expect(confirm).toBeEnabled());
       fireEvent.click(confirm);
       const alert = await screen.findByRole("alert");
-      await waitFor(() => expect(alert).toHaveTextContent("Couldn't uninstall it because another source runs on it."));
+      await waitFor(() => expect(alert).toHaveTextContent("Couldn't uninstall it because another source still needs it."));
       expect(alert.textContent).not.toMatch(/uninstall_blocked|NeededBySource/);
     });
   });

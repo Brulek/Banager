@@ -129,7 +129,10 @@ a protected place**, and the link is not followed.
   environments use, Ollama with its models under `ollama` unless Ollama.app or another `ollama` stays to run them —
   keeps Uninstall off and says which tools to
   uninstall first; a batch leaves the package out with the same words. The preview finds them by following
-  links, read-only, and runs no command (`docs/what-we-run.md`, "What runs on a Homebrew package"). npm's own
+  links, read-only, and runs no command (`docs/what-we-run.md`, "What runs on a Homebrew package").
+  This protection also covers tools installed in their own environments by pipx or uv: for example, uv installed
+  with pipx can't be uninstalled while the uv source Banager runs through it still has tools to update or uninstall.
+  npm's own
   `npm` row offers no Uninstall, nor does the row of a pipx or uv that installed itself as one of its own
   tools. Nor does `corepack` where it came with a Node from Homebrew linked by hand
   (`node@22`): uninstalling it would delete that Node's `corepack` command and, where Homebrew installed them,
@@ -614,7 +617,8 @@ formula 与 cask，以及 npm、PyPI、crates.io 上的包，每条都译自该�
   `python@3.13` 下是“pipx装的2个工具”，`ollama` 下是 Ollama 及其模型（Ollama App 或另一个 `ollama` 还在、能接着运行
   这些模型时除外）——“卸载”保持不可点，并写明要先卸载哪些工具；
   批量卸载也用同样的话把它留下。预览只顺着链接读取，不运行任何命令（`docs/what-we-run.md` 的
-  “What runs on a Homebrew package”）。npm 自己那一行不提供“卸载”；pipx 或 uv 把自己装成了自己的工具时，那一行也一样。
+  “What runs on a Homebrew package”）。这项保护也适用于 pipx 或 uv 装在独立环境里的工具：例如，用 pipx 安装的 uv
+  正是 Banager 运行 uv 来源所用的程序时，只要该来源还有工具要靠它更新或卸载，就不能在这里卸载它。npm 自己那一行不提供“卸载”；pipx 或 uv 把自己装成了自己的工具时，那一行也一样。
   随手动链接的 Homebrew Node（`node@22`）
   一起来的 `corepack` 也不提供：卸载它会删掉那个 Node 的 `corepack` 命令，装了 Homebrew 的 `pnpm`、`yarn` 时，还有它们的命令。
   它和那样的 npm 一样，随 Node 一起更新。

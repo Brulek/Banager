@@ -410,8 +410,9 @@ impl Session {
         // What the uninstall leaves behind, named (`kept.rs`).
         let plan = self.with_kept_data(plan, family, &instance).await?;
         // The other sources that run on a Homebrew package, which `brew
-        // uses` does not name (`needed_by.rs`): listed with its dependents,
-        // and such a preview is never run (`submit`).
+        // uses` does not name, or on a pipx or uv tool (`needed_by.rs`):
+        // listed with its dependents, and such a preview is never run
+        // (`submit`).
         let inputs = needed_by.as_ref().map(super::needed_by::Subject::inputs);
         let plan = self.with_needed_by(plan, needed_by).await;
         let id = random_plan_id();
@@ -519,10 +520,11 @@ impl Session {
         if has_expired(stored.issued_monotonic.elapsed()) {
             return Err(SubmitError::Expired);
         }
-        // A preview that named a source running on its Homebrew package
-        // (`Warning::NeededBySource`) offered no Uninstall, and `brew
-        // uninstall` would not refuse it as it refuses a formula another
-        // still needs: this does, whatever the page sent.
+        // A preview that named a source running on its Homebrew package,
+        // or its pipx or uv tool (`Warning::NeededBySource`), offered no
+        // Uninstall, and neither Homebrew nor pipx or uv would refuse it
+        // as Homebrew refuses a formula another still needs: this does,
+        // whatever the page sent.
         if super::needed_by::names_a_source(&stored.issued.plan) {
             return Err(SubmitError::UninstallBlocked {
                 reason: UninstallBlocked::NeededBySource,

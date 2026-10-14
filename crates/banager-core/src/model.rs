@@ -1034,7 +1034,9 @@ pub enum Warning {
     WouldBreak { names: Vec<String> },
     /// Another source runs on the Homebrew formula or cask this `Uninstall`
     /// removes, which `brew uses --installed` cannot know (it names only
-    /// formulae and casks): its program, or the interpreter it is run with,
+    /// formulae and casks) -- or on the pipx or uv tool, in its own
+    /// environment, it removes (pipx's `uv`, the uv source's program; r24
+    /// R85-2): its program, or the interpreter it is run with,
     /// leads into the package's own folder (`program`), or so does the
     /// Python of some of its tools' own environments (`program` false). So
     /// uninstalling it would leave `tools` of that source's tools unable to

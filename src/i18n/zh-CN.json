@@ -1104,8 +1104,8 @@
     "sourceProgramRefused": "无法卸载，因为它是{{source}}自己。",
     "withFormula": "它是Homebrew安装的Node自带的。在这里卸载它，还会删掉Homebrew链接到终端的命令，所以不能在这里卸载。",
     "withFormulaRefused": "无法卸载，因为它是Homebrew安装的Node自带的。",
-    "neededBy": "还有别的来源要靠它运行，所以不能在这里卸载。",
-    "neededByRefused": "无法卸载，因为还有别的来源要靠它运行。",
+    "neededBy": "还有别的来源要用到它，所以不能在这里卸载。",
+    "neededByRefused": "无法卸载，因为还有别的来源要用到它。",
     "managedBy": "{{sources}}装的工具要靠它更新和卸载。",
     "inTerminal": "{{sources}}装的工具无法在这里卸载，要在终端里卸载。",
     "goFirst": "这些工具这次会卸载，之后可以再卸载它。",
@@ -1493,7 +1493,7 @@
       },
       "cantUninstall": {
         "question": "为什么其他软件会让工具不能卸载？",
-        "answer": "确认窗口会在“依赖此工具的软件”下面列出Banager发现仍要用到这个工具的其他软件，“卸载”按钮不可用。选中的几份Ollama要靠彼此留下来运行本机列出的模型时，“卸载所选”会留下其中一份，模型不在~/.ollama/models里也一样。请先卸载要用到它的工具或模型，再卸载它们要用到的这个工具。"
+        "answer": "确认窗口会在“依赖此工具的软件”下面列出Banager发现仍要用到这个工具的其他软件，“卸载”按钮不可用。uv装的工具仍要靠它更新和卸载，即使uv本身是用pipx安装的。选中的几份Ollama要靠彼此留下来运行本机列出的模型时，“卸载所选”会留下其中一份，模型不在~/.ollama/models里也一样。请先卸载要用到它的工具或模型，再卸载它们要用到的这个工具。"
       },
       "changesMac": {
         "question": "此App会改动我的Mac吗？",

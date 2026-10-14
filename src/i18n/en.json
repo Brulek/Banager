@@ -1197,8 +1197,8 @@
     "sourceProgramRefused": "Couldn't uninstall it because it's {{source}} itself.",
     "withFormula": "It comes with the Node that Homebrew installed. Uninstalling it here would also remove commands that Homebrew linked into Terminal, so it can't be uninstalled here.",
     "withFormulaRefused": "Couldn't uninstall it because it comes with the Node that Homebrew installed.",
-    "neededBy": "Another source runs on it, so it can't be uninstalled here.",
-    "neededByRefused": "Couldn't uninstall it because another source runs on it.",
+    "neededBy": "Another source still needs it, so it can't be uninstalled here.",
+    "neededByRefused": "Couldn't uninstall it because another source still needs it.",
     "managedBy": "Tools installed with {{sources}} are updated and uninstalled with it.",
     "inTerminal": "Tools installed with {{sources}} can't be uninstalled here. Uninstall them in Terminal.",
     "goFirst": "Those tools are uninstalled in this batch. Uninstall it afterward.",
@@ -1619,7 +1619,7 @@
       },
       "cantUninstall": {
         "question": "Why does other software keep a tool from being uninstalled?",
-        "answer": "The confirmation lists, under “Software that uses it”, the other software Banager found that still needs the tool, and Uninstall stays off. Uninstall Selected keeps one copy of Ollama when the copies selected count on each other for the models listed on this Mac, even when the models are kept outside ~/.ollama/models. Uninstall the tools or models that need it first, then the tool they needed."
+        "answer": "The confirmation lists, under “Software that uses it”, the other software Banager found that still needs the tool, and Uninstall stays off. Tools installed with uv still need it for updates and uninstalling, including when uv itself was installed with pipx. Uninstall Selected keeps one copy of Ollama when the copies selected count on each other for the models listed on this Mac, even when the models are kept outside ~/.ollama/models. Uninstall the tools or models that need it first, then the tool they needed."
       },
       "changesMac": {
         "question": "Does this app change my Mac?",

@@ -481,8 +481,8 @@ function cycleMembers(ids: readonly string[], edges: ReadonlyMap<string, readonl
 
 /**
  * Which ticked tools one batch uninstalls, and why each other one is left
- * out (spec §5.3, X1 to X7, and X1b: a Homebrew package its preview says
- * other sources run on, `Warning.NeededBySource`), with the included ones
+ * out (spec §5.3, X1 to X7, and X1b: a Homebrew package, or a pipx or uv
+ * tool, its preview says other sources run on, `Warning.NeededBySource`), with the included ones
  * in the order they run (`runOrder`). `artifacts` is the snapshot's list,
  * for what Homebrew names as a tool's dependents (`affected`): a dependent
  * ticked too is uninstalled first, one not ticked keeps the tool. X5 and

@@ -485,6 +485,31 @@ describe("which ticked tools a batch uninstalls", () => {
     expect(ids(other.included).sort()).toEqual(["htop", "wget"]);
   });
 
+  it("leaves out pipx's uv while a uv tool still needs it, ticked or not (r24 R85-2)", () => {
+    // uv installed with pipx is the program the uv source runs: its
+    // preview names the uv source and its one tool.
+    const pipxUv = artifact(pipx, "Tool", "uv");
+    const ruff = artifact(uv, "Tool", "ruff");
+    const needs: Warning = { NeededBySource: { instance_id: uv.id, program: true, tools: 1 } };
+    const snapshot = [pipxUv, ruff, wget];
+    const result = classify([candidate(pipxUv, { warnings: [needs] }), candidate(wget)], snapshot);
+    expect(ids(result.included)).toEqual(["wget"]);
+    expect(result.excluded.map((item) => [item.candidate.name, item.reason])).toEqual([
+      ["uv", { kind: "neededBy", sources: [{ instance_id: uv.id, program: true, tools: 1 }], dependents: [] }],
+    ]);
+    // ruff ticked too: uv still waits for the next batch, which this one
+    // makes possible (`toolsGoFirst`).
+    const both = classify([candidate(pipxUv, { warnings: [needs] }), candidate(ruff)], snapshot);
+    expect(ids(both.included)).toEqual(["ruff"]);
+    const reason = both.excluded[0].reason;
+    expect(reason.kind).toBe("neededBy");
+    if (reason.kind === "neededBy") expect(toolsGoFirst(reason, both.included)).toBe(true);
+    // Without ruff ticked, it does not.
+    if (result.excluded[0].reason.kind === "neededBy") {
+      expect(toolsGoFirst(result.excluded[0].reason, result.included)).toBe(false);
+    }
+  });
+
   it("does not take one copy of a tool for the other's program", () => {
     const npmClaude = artifact(npm, "Package", "@anthropic-ai/claude-code", { facts: { ...NO_FACTS, commands: runs("claude") } });
     const own = { ...claudeCode, facts: { ...NO_FACTS, commands: runs("claude") } };

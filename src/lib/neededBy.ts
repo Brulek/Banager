@@ -1,8 +1,9 @@
 /**
- * The other sources an uninstall preview says run on a Homebrew package
- * (`Warning.NeededBySource`, found by crates/banager-core/src/needed_by.rs):
- * npm and its tools on `node@22`, pipx's tools on `python@3.13`, Ollama
- * and its models on `ollama`. Homebrew's own `brew uses` cannot know them,
+ * The other sources an uninstall preview says run on a Homebrew package,
+ * or on a pipx or uv tool (`Warning.NeededBySource`, found by
+ * crates/banager-core/src/needed_by.rs): npm and its tools on `node@22`,
+ * pipx's tools on `python@3.13`, Ollama and its models on `ollama`, the uv
+ * source and its tools on pipx's `uv` (r24 R85-2). Homebrew's own `brew uses` cannot know them,
  * so the preview adds them, and the uninstall confirmation lists them with
  * what Homebrew names under 「依赖此工具的软件」 and offers no Uninstall --
  * as for Homebrew's dependents -- and a batch leaves the package out with
