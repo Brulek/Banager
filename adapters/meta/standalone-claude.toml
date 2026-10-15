@@ -1,0 +1,7 @@
+schema_version = 1
+id = "standalone-claude"
+name = "Claude Code"
+kind = "standalone"
+platforms = ["macos"]
+homepage = "https://code.claude.com/docs/en/setup"
+verified_versions = ["2.1.282"]

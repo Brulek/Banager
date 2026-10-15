@@ -9,3 +9,9 @@ Commands:
 - `npm outdated -g --json` -> `outdated-global.json` (object keyed by package name; the command exits 1 when anything is outdated, which is not an error)
 - `npm search --json --searchlimit 20 jq` -> `search-jq.json`
 - `npm view jq description --json` -> `view-jq-description.json`
+
+`view-jq-description.json` is recorded from `npm view jq description --json`.
+No parser reads it: this phase's npm adapter runs only `ls`, `outdated`,
+`search` and the install/uninstall/upgrade commands, per the per-adapter
+contract table. It is kept for whichever later phase populates
+`SearchHit.description` / `InstalledArtifact.description`.

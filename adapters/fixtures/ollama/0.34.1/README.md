@@ -15,6 +15,6 @@ here carry 1209 layers with identical digest sets and the same config digest,
 so this pair is the "already up to date" case. Note the layer count: this is an
 MLX safetensors model split into many shards, so it is an unusually wide
 example — a GGUF model typically has around five layers. Comparing the **set of
-layer digests** (not the serialized file) is what the adapter does, because
-Ollama rewrites the local manifest on disk and a byte comparison produces false
-"outdated" results.
+layer digests** and the **config digest** (not the serialized file) is what the
+adapter does: it asks whether the model changed, not whether the file is
+spelled the same.

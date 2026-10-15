@@ -1,0 +1,152 @@
+import { useLayoutEffect, useRef, useState, type MouseEvent } from "react";
+import { useTranslation } from "react-i18next";
+import { batchSizeOf, MAX_BATCH_UNINSTALL, selectAllAction } from "../lib/batchUninstall";
+import { textMeasurer } from "../lib/middleCut";
+import { sizeText } from "../lib/sizes";
+import type { InstalledArtifact, Sizes } from "../lib/types";
+import { useUiStore } from "../store/ui";
+import { BUTTON } from "./ui/controls";
+
+export interface InstalledSelectionHeaderProps {
+  /** The rows the list shows now that can be ticked (`tickable`), in its order. */
+  shown: readonly InstalledArtifact[];
+  /** Those of them that are ticked: what 「卸载所选」 would uninstall (`countedTicks`). */
+  counted: readonly InstalledArtifact[];
+  /** How much each tool takes (`useSizes`), for what the ticked ones take together. */
+  sizes: Sizes | undefined;
+}
+
+/**
+ * What the Installed page's list header says on its right: how many rows
+ * are ticked and about how much they take together -- 「已选择3个 · 约1.2
+ * GB」 -- or, past the most one batch takes, that limit; while nothing is
+ * ticked, what ticking is for: 「选择要一起卸载的工具」, with the limit where
+ * the rows shown are more than one batch takes and the whole sentence has
+ * room (`limitFits`): beside the inspector at 800 it was cut mid-clause,
+ * "…together, up to…" (walk-4 W4-3), so there it says what ticking is for
+ * alone.
+ */
+function statusOf(
+  t: ReturnType<typeof useTranslation>["t"],
+  shown: number,
+  counted: readonly InstalledArtifact[],
+  sizes: Sizes | undefined,
+  limitFits = true,
+): string | null {
+  const max = MAX_BATCH_UNINSTALL;
+  if (counted.length > max) return t("batchUninstall.overLimit", { count: counted.length, max });
+  if (counted.length > 0) {
+    const { measured } = batchSizeOf(sizes, counted);
+    return measured === null
+      ? t("batchUninstall.selected", { count: counted.length })
+      : t("batchUninstall.selectedSize", { count: counted.length, size: sizeText(t, measured) });
+  }
+  // Nothing ticked: what ticking is for, as the box's own 「全选」 says
+  // nothing of it, and the Updates page's same box selects to update.
+  if (shown === 0) return null;
+  return shown > max && limitFits ? t("reviewFixes.selectHintLimit", { max }) : t("reviewFixes.selectHint");
+}
+
+/**
+ * The Installed page's list header (author decision 1, in the Updates
+ * page's own look): 28 high over the list, still while it scrolls, a box
+ * in the rows' checkbox column that ticks every row the list shows that
+ * can be ticked -- ticked for all, a dash for some -- and on its right
+ * what is ticked. Its box ticks them only when there are no more of them
+ * than one batch takes (`MAX_BATCH_UNINSTALL`); past that it only clears.
+ * Off when no row the list shows can be ticked.
+ */
+export function InstalledSelectionHeader({ shown, counted, sizes }: InstalledSelectionHeaderProps) {
+  const { t } = useTranslation();
+  const selectUninstalls = useUiStore((s) => s.selectUninstalls);
+  const deselectUninstalls = useUiStore((s) => s.deselectUninstalls);
+  const all = shown.length > 0 && counted.length === shown.length;
+  // Whether the hint with the limit in it has room on the line: measured
+  // from the words and the room the line leaves it, which is the same
+  // whichever it shows, again whenever that room changes. Nothing
+  // measured (jsdom): it does.
+  const said = useRef<HTMLParagraphElement>(null);
+  const [limitFits, setLimitFits] = useState(true);
+  const limitHint =
+    counted.length === 0 && shown.length > MAX_BATCH_UNINSTALL
+      ? t("reviewFixes.selectHintLimit", { max: MAX_BATCH_UNINSTALL })
+      : null;
+  useLayoutEffect(() => {
+    const line = said.current;
+    if (limitHint === null || line === null) return;
+    const measure = () => {
+      const room = line.clientWidth;
+      const width = room === 0 ? null : textMeasurer(line);
+      setLimitFits(width === null || width(limitHint) <= room);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(line);
+    return () => observer.disconnect();
+  }, [limitHint]);
+  const toggleAll = () => {
+    const keys = shown.map((artifact) => artifact.key);
+    if (selectAllAction(shown.length, counted.length) === "select") selectUninstalls(keys);
+    else deselectUninstalls(keys);
+  };
+  return (
+    <div data-selection-header="" className="flex min-h-7 shrink-0 items-center gap-3 border-b border-separator px-5">
+      {/* Whole, on one line: the hint after it gives way (walk-4 W4-3). */}
+      <label className="flex shrink-0 items-center gap-3 whitespace-nowrap text-body text-foreground">
+        <input
+          type="checkbox"
+          ref={(box) => {
+            if (box !== null) box.indeterminate = counted.length > 0 && !all;
+          }}
+          checked={all}
+          disabled={shown.length === 0}
+          onChange={toggleAll}
+          aria-label={t("batchUninstall.selectAllLabel")}
+          className="h-4 w-4 shrink-0"
+        />
+        <span aria-hidden="true" className={shown.length === 0 ? "text-tertiary" : undefined}>
+          {t("batchUninstall.selectAll")}
+        </span>
+      </label>
+      <p ref={said} role="status" data-selection-status="" className="min-w-0 flex-1 py-1 text-right text-small text-muted">
+        {statusOf(t, shown.length, counted, sizes, limitFits)}
+      </p>
+    </div>
+  );
+}
+
+export interface UninstallSelectedButtonProps {
+  /** How many ticked rows the list shows (`countedTicks`). */
+  count: number;
+  /** The batch's sheet is up: one batch at a time. */
+  sheetOpen: boolean;
+  /** Opens the sheet, handed the button, which gets the focus back when it closes. */
+  onOpen: (opener: HTMLElement) => void;
+  /**
+   * The page is narrow (a window under 900 wide): 「卸载（3）…」, so the
+   * toolbar keeps room for the page's title beside the search field.
+   */
+  compact?: boolean;
+}
+
+/**
+ * 「卸载所选（3）…」, in the toolbar after the search field: grey, as every
+ * Uninstall is -- offered, not recommended, never red -- and only while
+ * something is ticked: there is no "uninstall all". Off past the most one
+ * batch takes, and while its sheet is up.
+ */
+export function UninstallSelectedButton({ count, sheetOpen, onOpen, compact = false }: UninstallSelectedButtonProps) {
+  const { t } = useTranslation();
+  if (count === 0) return null;
+  return (
+    <button
+      type="button"
+      data-uninstall-selected=""
+      disabled={count > MAX_BATCH_UNINSTALL || sheetOpen}
+      onClick={(event: MouseEvent<HTMLButtonElement>) => onOpen(event.currentTarget)}
+      className={BUTTON.regular.grey}
+    >
+      {t(compact ? "batchUninstall.uninstallSelectedShort" : "batchUninstall.uninstallSelected", { number: count })}
+    </button>
+  );
+}

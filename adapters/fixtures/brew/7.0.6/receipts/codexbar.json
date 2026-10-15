@@ -1,0 +1,75 @@
+{
+  "homebrew_version": "6.0.16",
+  "loaded_from_api": true,
+  "loaded_from_internal_api": true,
+  "uninstall_flight_blocks": false,
+  "installed_on_request": true,
+  "time": 1787195548,
+  "runtime_dependencies": {},
+  "source": {
+    "tap": "homebrew/cask",
+    "tap_git_head": "c16a43a7fb8aa149d060a908525c4fd0c80f0fa0",
+    "version": "0.53.0",
+    "path": "/Users/brulek/Library/Caches/Homebrew/api/internal/packages.arm64_tahoe.jws.json"
+  },
+  "arch": "arm64",
+  "uninstall_artifacts": [
+    {
+      "uninstall": [
+        {
+          "quit": "com.steipete.codexbar"
+        }
+      ]
+    },
+    {
+      "app": [
+        "CodexBar.app"
+      ]
+    },
+    {
+      "binary": [
+        "/Applications/CodexBar.app/Contents/Helpers/CodexBarCLI",
+        {
+          "target": "codexbar"
+        }
+      ]
+    },
+    {
+      "zap": [
+        {
+          "trash": [
+            "~/.codexbar",
+            "~/Library/Application Scripts/*.com.steipete.codexbar",
+            "~/Library/Application Scripts/com.steipete.codexbar",
+            "~/Library/Application Scripts/com.steipete.codexbar.widget",
+            "~/Library/Application Support/CodexBar",
+            "~/Library/Application Support/com.steipete.codexbar",
+            "~/Library/Application Support/CrashReporter/CodexBar_*.plist",
+            "~/Library/Caches/CodexBar",
+            "~/Library/Caches/com.steipete.codexbar",
+            "~/Library/Containers/com.steipete.codexbar",
+            "~/Library/Containers/com.steipete.codexbar.widget",
+            "~/Library/Group Containers/*.com.steipete.codexbar",
+            "~/Library/HTTPStorages/codexbar",
+            "~/Library/HTTPStorages/codexbar.binarycookies",
+            "~/Library/HTTPStorages/com.steipete.codexbar",
+            "~/Library/HTTPStorages/com.steipete.codexbar.binarycookies",
+            "~/Library/Logs/DiagnosticReports/CodexBar-*.ips",
+            "~/Library/Preferences/com.steipete.codexbar.plist",
+            "~/Library/Saved Application State/com.steipete.codexbar.savedState",
+            "~/Library/WebKit/codexbar",
+            "~/Library/WebKit/com.steipete.codexbar"
+          ]
+        }
+      ]
+    }
+  ],
+  "built_on": {
+    "os": "Macintosh",
+    "os_version": "macOS 26.5",
+    "cpu_family": "arm_sotra",
+    "xcode": "26.6",
+    "clt": "26.6.0.0.1781586589",
+    "preferred_perl": "5.34"
+  }
+}

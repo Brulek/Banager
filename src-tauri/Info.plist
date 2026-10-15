@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Tauri merges this file, found beside tauri.conf.json, into the Info.plist
+  it writes for Banager.app. It says which languages the app is in: with
+  none declared, macOS takes it for an English-only app, and the menu
+  items macOS adds itself (Edit's Start Dictation and Emoji & Symbols, the
+  Window menu's tiling items, the About panel's words) stay in English on
+  a Mac in Chinese. One entry for each language of the window
+  (src/i18n/index.ts): en, zh-Hans (the window's zh-CN), and zh-Hant. Checked by src/test/infoPlist.test.ts.
+-->
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>en</string>
+		<string>zh-Hans</string>
+		<string>zh-Hant</string>
+	</array>
+</dict>
+</plist>

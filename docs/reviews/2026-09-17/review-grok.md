@@ -72,7 +72,7 @@ TOML 可以当配置，不能当解析器。
 - 阶段 0–7 **只发 macOS signed dmg**。Linux/Windows 进 `nightly`，不出现在 README 主按钮。
 - 若坚持 Linux 包：v1 **只发 .deb/.rpm，不发 AppImage**；文档写死 WebKitGTK 依赖和 NVIDIA 环境变量。
 - Windows v1 若做：WebView2 Evergreen 检测 + 托盘不作为默认关闭行为。
-- CI 矩阵把 `ubuntu-22.04` 改成 **build 用 22.04、# Canager 设计文档评审（草案 v0.1）
+- CI 矩阵把 `ubuntu-22.04` 改成 **build 用 22.04、# Banager 设计文档评审（草案 v0.1）
 
 结论先说：**按现在这份草案做，项目大概率会烂尾或首发即口碑崩盘。** 不是“写得不够细”，而是产品定位、竞品事实、适配器模型和发布策略四件事同时错了。作者约束（非专业、只有 Mac、AI 写代码、三平台同日、15 个包管理器）**会直接导致失败**，不是“有风险但可坚持”。
 
@@ -146,7 +146,7 @@ TOML 可以当配置，不能当解析器。
 - **涉及章节**：§6
 - **依据**：
   - `pkexec <cmd>` **不会**无条件弹出图形密码框。没有 polkit agent 的 WM（Hyprland/Sway/i3，Arch 用户重灾区）会失败或掉到 TTY。见 Brodie Robertson 的常见复现、[Arch Wiki / polkit](https://wiki.archlinux.org/title/Polkit)。
-  - pkexec 默认清环境；对 **CLI**（apt-get）通常够用，但你必须：① 安装自己的 `.policy`（`org.canager.pkexec.policy`，标注允许的二进制绝对路径）；② 用 `--disable-internal-agent` 避免卡在无 TTY 的文本 agent；③ 处理退出码 126（用户点取消）。
+  - pkexec 默认清环境；对 **CLI**（apt-get）通常够用，但你必须：① 安装自己的 `.policy`（`org.banager.pkexec.policy`，标注允许的二进制绝对路径）；② 用 `--disable-internal-agent` 避免卡在无 TTY 的文本 agent；③ 处理退出码 126（用户点取消）。
   - Flatpak 系统级是 **polkit 自己弹**，再包一层 pkexec 会双重提权。
   - Windows `Start-Process -Verb RunAs` + 临时文件：UAC 取消、编码（chcp 65001 vs OEM）、杀进程、并发三个操作抢同一个 temp 文件，首发就会有“点了更新没输出”。UniGetUI 为此做了常驻 elevator；你把正确方案放到 v1.x，等于 Windows 核心路径（choco、部分 winget）首发不可用。
 - **建议改法**：Linux 用 **polkit action + pkexec 绝对路径**，不要 `pkexec apt-get ...` 这种任意命令。Windows v1 要么不做需要 UAC 的源（只做 scoop/user-scope winget/npm），要么第一天做 helper。不要假装 auto 探测可写性就能覆盖 choco。
@@ -292,7 +292,7 @@ TOML 可以当配置，不能当解析器。
 
 1. **非目标清单**：AUR、Mac App Store (`mas`)、Windows Store 不可更新包、conda/mamba、nix、SDKMAN、JetBrains Toolbox、公司托管 winget 源。不写就会被 issue 淹没。
 2. **多副本 / 多安装前缀**：brew Intel vs ARM、npm prefix、pyenv 的 pip、flatpak `--user` vs `--system`、pipx `--global`。
-3. **锁与并发**：apt/dpkg 锁、pacman 锁、brew 已有进程。队列不能只管 Canager 内部。
+3. **锁与并发**：apt/dpkg 锁、pacman 锁、brew 已有进程。队列不能只管 Banager 内部。
 4. **取消的真实语义**：`apt-get` 杀到一半会留下半安装；必须写“取消 = 杀进程，系统可能需要 `dpkg --configure -a`”。
 5. **磁盘与时间预算**：`brew update`、`apt-get update`、`cargo install`、`ollama pull` 70GB。UI 要有 size 估计，ollama 不能和 `npm update` 同一个进度条语义。
 6. **签名与公证的具体计划**：Apple ID、公证、Windows 证书预算。写“有 star 再签”等于“永远不签”。

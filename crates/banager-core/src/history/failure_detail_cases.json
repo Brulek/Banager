@@ -1,0 +1,92 @@
+[
+  {
+    "name": "the first error line, its label off, the rest dropped",
+    "summary": "==> Purging files for version 0.2.0 of Cask claudebar\nError: SHA256 mismatch\nExpected: 1f2e\n  Actual: 3a4b",
+    "detail": "SHA256 mismatch"
+  },
+  {
+    "name": "npm's bookkeeping lines are not what went wrong",
+    "summary": "npm error code ETARGET\nnpm error notarget No matching version found for typescript@99.\nnpm error A complete log of this run can be found in: /Users/me/.npm/_logs/x.log",
+    "detail": "notarget No matching version found for typescript@99."
+  },
+  {
+    "name": "with no error line, the last line",
+    "summary": "Building wheel\nsomething odd happened",
+    "detail": "something odd happened"
+  },
+  {
+    "name": "words that are all blank keep nothing",
+    "summary": "  \n",
+    "detail": null
+  },
+  {
+    "name": "a Homebrew build failure: the line that ends with a colon says the reason on the next (review of r6 y3-batch, finding 5)",
+    "summary": "Error: An exception occurred within a child process:\n  BuildError: Failed executing: make install\n",
+    "detail": "An exception occurred within a child process: BuildError: Failed executing: make install"
+  },
+  {
+    "name": "Homebrew passing on another command's output",
+    "summary": "Error: Failure while executing; `/usr/bin/sudo -u root -- /bin/rm -f /Library/LaunchDaemons/x.plist` exited with 1. Here's the output:\nsudo: unable to resolve host\n",
+    "detail": "Failure while executing; `/usr/bin/sudo -u root -- /bin/rm -f /Library/LaunchDaemons/x.plist` exited with 1. Here's the output: sudo: unable to resolve host"
+  },
+  {
+    "name": "a bare label with the reason on the next line",
+    "summary": "error:\n  could not compile `foo` (bin \"foo\") due to 2 previous errors",
+    "detail": "error: could not compile `foo` (bin \"foo\") due to 2 previous errors"
+  },
+  {
+    "name": "a line that ends with a colon and nothing after it stays as it is",
+    "summary": "Building\nError: An exception occurred within a child process:",
+    "detail": "An exception occurred within a child process:"
+  },
+  {
+    "name": "the home folder, a login, a query and a fragment masked",
+    "summary": "Error: \u001b[31mcannot read\u001b[0m /Users/brulek/Library/Caches/x and /Users/other/y via https://me:secret@mirror.example/simple/?token=abc#frag",
+    "detail": "cannot read ~/Library/Caches/x and ~/y via https://****@mirror.example/simple/"
+  },
+  {
+    "name": "the shared folder is no one's home: /Users/Shared stays as it is (review of r6 y3-batch, finding 8)",
+    "summary": "Error: cannot open /Users/Shared/Banager/x.log and /Users/me/y",
+    "detail": "cannot open /Users/Shared/Banager/x.log and ~/y"
+  },
+  {
+    "name": "a token in an address's path is masked, as a login is",
+    "summary": "Error: 403 Forbidden - GET https://pkgs.example.com/AbCdEf0123456789XyZ0123456/simple/foo/",
+    "detail": "403 Forbidden - GET https://pkgs.example.com/****/simple/foo/"
+  },
+  {
+    "name": "an address's ordinary path stays as it is",
+    "summary": "npm error 404 Not Found - GET https://registry.npmjs.org/@scope%2fsome-long-package-name-here - Not found",
+    "detail": "404 Not Found - GET https://registry.npmjs.org/@scope%2fsome-long-package-name-here - Not found"
+  },
+  {
+    "name": "a home folder spelled in lower case or through the data volume is written as ~ too, the shared folder in any case is not",
+    "summary": "Error: cannot open /users/jane/.npmrc or /System/Volumes/Data/Users/bob/x or /USERS/Shared/y",
+    "detail": "cannot open ~/.npmrc or ~/x or /USERS/Shared/y"
+  },
+  {
+    "name": "a web address's /users/<id> is no home folder (r20 R50 skeptic 1)",
+    "summary": "Error: GitHub API Error: Not Found https://api.github.com/users/octocat/repos and https://gitlab.com/api/v4/users/42/projects",
+    "detail": "GitHub API Error: Not Found https://api.github.com/users/octocat/repos and https://gitlab.com/api/v4/users/42/projects"
+  },
+  {
+    "name": "what follows a home folder's name stays, and so does the shared folder before a comma (r20 R50 skeptic 2)",
+    "summary": "Error: cannot open /Users/jane: denied; '/Users/bob' and /Users/Shared, too",
+    "detail": "cannot open ~: denied; '~' and /Users/Shared, too"
+  },
+  {
+    "name": "a home folder's name in any script is written as ~ too, also as macOS's disk writes Zoë (e and a mark); a web address's /users/<id> after a host in any script stays (Astra R20-A1-4)",
+    "summary": "Error: cannot open /Users/张三/.npmrc or '/Users/josé' or /System/Volumes/Data/Users/Zoe\u0308/x via https://例子.测试/users/张三/repos",
+    "detail": "cannot open ~/.npmrc or '~' or ~/x via https://例子.测试/users/张三/repos"
+  },
+  {
+    "name": "a home folder right after a compiler's flag is written as ~ too, not only after a space, a quote or a sign (r22 R53-1)",
+    "summary": "error: command 'clang' failed: clang -I/Users/jane/include -L/Users/jane/lib CFLAGS=-I/Users/jane/inc file:///Users/jane/x via https://host/users/jane",
+    "detail": "command 'clang' failed: clang -I~/include -L~/lib CFLAGS=-I~/inc file://~/x via https://host/users/jane"
+  },
+  {
+    "name": "a web address with no scheme keeps its /users/<id>, and a home right after a flag that follows another path (after , or :) is written as ~ too (r22 R53 skeptic 2)",
+    "summary": "error: see gitlab.com/users/jane/projects: cc -Wl,-L/opt/homebrew/lib,-L/Users/jane/lib -I/opt/x:-I/Users/jane/inc -isystem/Users/jane/sys",
+    "detail": "see gitlab.com/users/jane/projects: cc -Wl,-L/opt/homebrew/lib,-L~/lib -I/opt/x:-I~/inc -isystem~/sys"
+  }
+]

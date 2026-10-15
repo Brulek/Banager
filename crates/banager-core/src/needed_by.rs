@@ -1,0 +1,3621 @@
+//! Which other sources run on a Homebrew formula or cask an uninstall would
+//! remove (`Warning::NeededBySource`), for the uninstall preview.
+//!
+//! `brew uses --installed` names the formulae and casks that need a
+//! package, and nothing else: not npm, whose `npm` and every global package
+//! run on the `node` a Homebrew `node` or `node@22` put on `PATH`; not pip,
+//! a module of the Python it runs in; not a pipx or uv tool, whose own
+//! environment's Python is a Homebrew `python@3.x`; not Ollama, whose
+//! models Homebrew's `ollama` runs. Uninstalling one of those left every
+//! tool of that source unable to run, or with nothing in Banager able to
+//! update or uninstall it, and Homebrew did not refuse.
+//!
+//! The same look serves a pipx or uv tool, whose own environment is the
+//! package's folder (`tool_environment`, r24 R85-2): pipx's `uv`, which
+//! the uv source runs through `~/.local/bin/uv`, removed with its venv,
+//! leaves every uv tool with nothing to update or uninstall it.
+//!
+//! What runs on a package, for each source of the kinds that run their
+//! tools through a program of their own (`HOSTED`):
+//! - the source itself, when the program Banager runs for it
+//!   (`ManagerInstance::exe_path`) leads, every link followed, into the
+//!   package's own folder -- npm's `npm` into a linked `node@22`'s keg,
+//!   pip's Python into `python@3.14`'s, Homebrew's `pipx`, `uv` and
+//!   `ollama` into their own -- or when the interpreter that program is run
+//!   with does: npm's `bin/npm-cli.js` begins `#!/usr/bin/env node`, so the
+//!   `node` first on `PATH` (`interpreter`), which is a Homebrew `node`'s
+//!   even where npm itself is a copy outside its keg -- but not Ollama
+//!   while another `ollama` stays (`Look::another_ollama`): Ollama.app
+//!   from ollama.com beside Homebrew's formula runs the same models from
+//!   the same `~/.ollama/models`;
+//! - some of its tools, for pipx and uv, each of whose tools has an
+//!   environment of its own (`InstalledArtifact::path`): those whose
+//!   `bin/python` leads into it.
+//!
+//! A package's own folder: a formula's keg folder, `<prefix>/Cellar/<name>`
+//! -- its `opt/<name>` link and every alias Homebrew keeps in `opt`
+//! (`python@3`, `python3`) lead into it, so a path spelled through `opt` is
+//! followed there -- or a cask's folder, `<prefix>/Caskroom/<token>`, and the
+//! app it moved into place, into which its `binary` links lead
+//! (`/opt/homebrew/bin/ollama` → `/Applications/Ollama.app/…`). A keg-only
+//! `node@22` that is not linked is nobody's `node`: npm's `npm` and the
+//! `node` on `PATH` lead into another keg, or none, and nothing is said of
+//! it.
+//!
+//! Which tools count (`counts`): every one the source lists, but what it
+//! lists of its own program and what was installed for another package --
+//! npm's `npm` and `corepack`, which Node.js ships with npm (on the
+//! author's Mac they live in the `node@22` keg, linked into
+//! `lib/node_modules`); the `pip`, `setuptools` and `wheel` Homebrew's
+//! Python formulae install into `site-packages` themselves (`post_install`,
+//! python@3.14.rb:301-317 in its keg's `.brew` copy; python@3.11.rb adds
+//! setuptools); and pip's dependencies (`InstallReason::Dependency`). A
+//! source with none that count loses nothing, and is not named: Node.js can
+//! be uninstalled with only its own npm left.
+//!
+//! How: read-only, as the command check is (`protected::resolve`: `lstat`
+//! and `readlink` of each step, from the folder before it held open, and
+//! never a step into one of the places macOS asks about first, nor onto
+//! another disk), plus the same `PATH` look `resolve_exe` makes for the
+//! interpreter. Only folders are opened -- to follow each link, and to
+//! read the names in the few of a package's own folders `Look::could_be`
+//! lists (`protected::look::list`); no file's contents are read, nothing
+//! is written and no command runs.
+//! Bounded (`BUDGET`): a look it stopped short of is reported as one that
+//! did not finish (`NeededBy::complete`), never as "nothing runs on it".
+//! So is one that met a path it may not or cannot follow (`Doubt`) -- a
+//! source's program, a tool's environment or a `PATH` folder that is, or
+//! leads into, a protected place, one on the way to which a folder could
+//! not be searched, and a pipx or uv tool with no environment Banager
+//! knows of -- when the package could be what that path leads to
+//! (`Look::could_be`): what is there is not known, so neither is whether
+//! it runs on such a package. What the path would have to lead to is
+//! judged by what it is for, not only by its name, for a link can change
+//! both: pip's program is a Python whatever it is called (`~/bin/python3`
+//! may lead to python@3.13's `bin/python3.13`, which has no `python3`),
+//! npm's lives in a Node.js, a tool's environment runs a Python. A package
+//! could be it when it is named for it (`uv`, `node@22`, `python@3.13`),
+//! or is a cask known to hold it (Conda's, Ollama's app), or has, of its
+//! own, a program of such a name -- for a Python, any interpreter
+//! (`pypy3.11`, `python3.14t`) -- including where a cask keeps one with
+//! no link in `<prefix>/bin` (Miniconda's `base/bin`, Ollama.app's
+//! `Contents/Resources`). jq, or a font, has none of these, and their
+//! previews say nothing of it. A path that is known not to be there
+//! (`Missing`) is known not to run on it.
+//! Run on the blocking pool by `Session::issue_plan`
+//! (`session/needed_by.rs`).
+
+use crate::model::{
+    ArtifactKind, InstallReason, InstalledArtifact, InstanceId, ManagerInstance, Warning,
+};
+use crate::protected::{self, look, Protected, Resolution};
+use crate::runner::HostEnv;
+use std::path::{Component, Path, PathBuf};
+use std::time::{Duration, Instant};
+
+/// The kinds of source whose tools run through a program of the source's
+/// own, which a Homebrew package can be: the package managers. Not
+/// Homebrew itself, whose dependents are `brew uses`'s, nor a tool with its
+/// own installer, whose one row is the tool.
+pub const HOSTED: [&str; 6] = ["npm", "pip", "pipx", "uv", "cargo", "ollama"];
+
+/// The interpreter a source's program is run with, found on `PATH` as
+/// `env` finds it: npm's `bin/npm-cli.js` begins `#!/usr/bin/env node`
+/// (npm 10.9.9 and 12.0.2 alike).
+fn interpreter(adapter_id: &str) -> Option<&'static str> {
+    (adapter_id == "npm").then_some("node")
+}
+
+/// What a source lists of its own program: npm's `npm` and `corepack`,
+/// and the `pip`, `setuptools` and `wheel` of a Homebrew Python, spelled
+/// as PyPI normalizes a name (`normalized`).
+fn comes_with_program(adapter_id: &str) -> &'static [&'static str] {
+    match adapter_id {
+        "npm" => &["npm", "corepack"],
+        "pip" => &["pip", "setuptools", "wheel"],
+        _ => &[],
+    }
+}
+
+/// The sources each of whose tools has an environment of its own, at the
+/// tool's `path`, run by that environment's `bin/python`: pipx's venvs, uv's
+/// tool environments.
+fn has_environments(adapter_id: &str) -> bool {
+    matches!(adapter_id, "pipx" | "uv")
+}
+
+/// Whether `source`'s tools run on this Mac at all. An Ollama whose
+/// `OLLAMA_HOST` names another machine keeps its models, and runs them,
+/// there: the `ollama` here is only a client, and uninstalling it costs
+/// those models nothing (`models_on_this_mac`).
+fn runs_here(source: &ManagerInstance) -> bool {
+    source.adapter_id != "ollama" || crate::adapters::ollama::models_on_this_mac(source)
+}
+
+/// `name` as PyPI compares names (PEP 503): lower case, with `_` and `.`
+/// read as `-`. Harmless for npm's names, which are lower case already.
+fn normalized(name: &str) -> String {
+    name.to_ascii_lowercase().replace(['_', '.'], "-")
+}
+
+/// Whether `tool`, one of `adapter_id`'s rows, counts as a tool that needs
+/// the package its source runs on (the module doc says which do not). Also
+/// what a preview keeps of each source for `Session::submit` to compare
+/// (`Inputs` in session/needed_by.rs).
+pub(crate) fn counts(adapter_id: &str, tool: &InstalledArtifact) -> bool {
+    tool.reason != InstallReason::Dependency
+        && !comes_with_program(adapter_id).contains(&normalized(&tool.key.name).as_str())
+}
+
+/// How much one preview may look at, and for how long, before it gives up
+/// on what it has not reached: links followed one path at a time, each
+/// path one look, and each name read from a folder one look more
+/// (`Look::any_name_in`). A Mac's sources take a few dozen; a pipx or uv
+/// with hundreds of tools, a few hundred; an app's `Contents/Resources`,
+/// read only for a cask in doubt, up to about a thousand.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Budget {
+    pub max_looks: usize,
+    pub max_duration: Duration,
+}
+
+/// What one uninstall preview may spend: 2,000 paths, 1 second.
+pub const BUDGET: Budget = Budget {
+    max_looks: 2_000,
+    max_duration: Duration::from_secs(1),
+};
+
+/// What `needed_by` found: a `Warning::NeededBySource` for each source that
+/// runs on the package, and whether the look finished. One that did not --
+/// the budget ran out, the package's own folder could not be read, or a
+/// path that could have led into it, were it what the package is, was
+/// not followed (`Doubt`, `Look::could_be`) -- is no proof that nothing
+/// else does.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NeededBy {
+    pub warnings: Vec<Warning>,
+    pub complete: bool,
+    /// Whether an Ollama that stays runs the models from
+    /// `~/.ollama/models` without the package: Banager's Ollama, whose
+    /// program leads outside it, or another `ollama` while that one leads
+    /// in (`Look::another_ollama`). The preview then says so of that
+    /// folder, and not that it can go to the Trash
+    /// (`Warning::KeepsData.in_use`, `Session::with_needed_by`). Asked
+    /// even when no model is listed, so not by itself a sign of models.
+    pub ollama_stays: bool,
+    /// Whether models this Ollama lists on this Mac count on that Ollama
+    /// staying (`ollama_stays`, for a source with models that count), when
+    /// the package is a copy of Ollama itself (`is_ollama_copy`): the
+    /// reason this preview names no source that runs on the package,
+    /// whether or not `~/.ollama/models` was found -- `OLLAMA_MODELS` may
+    /// keep them elsewhere (r24 R85-1). The preview carries it as
+    /// `Warning::OllamaStays`, for a batch to keep one copy of Ollama.
+    pub models_on_another_ollama: bool,
+}
+
+/// The sources of `instances` that run on `package`, a formula or cask of
+/// `brew`, and how many of each one's tools (`artifacts`) need it, in
+/// `instances`' order (the module doc says what counts). `env` is the one
+/// the last refresh had: its home folder decides the places never looked
+/// into, its `PATH` which `node` npm is run with. Empty for any other kind
+/// of package. Blocking. For tests only: `~/Applications` under `env`'s
+/// home, the test's own, stands for `/Applications` too, so that none
+/// looks at this Mac's (the app asks through `needed_by_on_path`).
+#[cfg(test)]
+fn needed_by(
+    package: &InstalledArtifact,
+    brew: &ManagerInstance,
+    instances: &[ManagerInstance],
+    artifacts: &[InstalledArtifact],
+    env: &HostEnv,
+    budget: Budget,
+) -> NeededBy {
+    let refreshed = Refreshed {
+        path_known: true,
+        unlisted: Vec::new(),
+        applications: env.home.join("Applications"),
+    };
+    needed_by_on_path(package, brew, instances, artifacts, env, &refreshed, budget)
+}
+
+/// What a look knows of the refresh whose sources it is given
+/// (`needed_by_on_path`), beyond what that refresh listed.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Refreshed {
+    /// Whether the refresh's `PATH` was the login shell's
+    /// (`Session::refresh_recording_on`).
+    pub path_known: bool,
+    /// The sources it lists whose packages no round has read
+    /// (`Session::unlisted`): their rows -- none, as a rule -- are no list
+    /// of what they have.
+    pub unlisted: Vec<InstanceId>,
+    /// Where Ollama.app is looked for besides `~/Applications`
+    /// (`Look::another_ollama`): `/Applications` (`APPLICATIONS`) in the
+    /// app, a test's own folder in tests.
+    pub applications: PathBuf,
+}
+
+/// The system's folder of apps, where Ollama.app is looked for
+/// (`Refreshed::applications`), as `ollama::ollama_app_path` does.
+pub const APPLICATIONS: &str = "/Applications";
+
+/// `needed_by`, for sources a refresh looked for along `env`'s `PATH`,
+/// which `refreshed` says was the login shell's or not
+/// (`Session::refresh_recording_on`). Every kind of source in `HOSTED` is
+/// found only on `PATH` (`resolve_exe`), so on a `PATH` that was not the
+/// login shell's -- Finder's four folders, when reading it failed -- one
+/// that runs on the package may simply not have been found: `instances`
+/// is then no list of what runs on it. Such a look is in doubt about every
+/// kind of source (`unseen_sources`), and does not finish when the package
+/// could be what one of them runs on (`Look::could_be`): a `node`, a
+/// Python, uv, Ollama. jq could not, and its preview says nothing of it.
+/// So is a look in doubt about each source `refreshed` lists as one whose
+/// packages no round has read (`unseen_source`, of its own program): an
+/// npm first found while a Homebrew operation held its prefix lists no
+/// tools, and that is not "none". `owner` is the package's own source: its
+/// Homebrew, or the pipx or uv whose tool it is (`tool_environment`).
+pub fn needed_by_on_path(
+    package: &InstalledArtifact,
+    owner: &ManagerInstance,
+    instances: &[ManagerInstance],
+    artifacts: &[InstalledArtifact],
+    env: &HostEnv,
+    refreshed: &Refreshed,
+    budget: Budget,
+) -> NeededBy {
+    let mut look = Look::new(&env.home, budget);
+    if !refreshed.path_known {
+        look.doubts.extend(unseen_sources());
+    }
+    let Some(roots) = own_folders(package, owner, &mut look) else {
+        return NeededBy {
+            warnings: Vec::new(),
+            complete: false,
+            ollama_stays: false,
+            models_on_another_ollama: false,
+        };
+    };
+    let mut warnings = Vec::new();
+    let mut ollama_stays = false;
+    let mut models_on_another_ollama = false;
+    if roots.is_empty() {
+        return NeededBy {
+            warnings,
+            complete: true,
+            ollama_stays: false,
+            models_on_another_ollama: false,
+        };
+    }
+    for source in instances {
+        if source.id == owner.id
+            || !HOSTED.contains(&source.adapter_id.as_str())
+            || !runs_here(source)
+        {
+            continue;
+        }
+        // What a source no round has read has is not known, nor whether
+        // any of it runs on the package: in doubt by its program, whatever
+        // it lists (`Refreshed::unlisted`).
+        if refreshed.unlisted.contains(&source.id) {
+            look.doubts
+                .extend(unseen_source(&source.adapter_id, &source.exe_path));
+        }
+        let tools: Vec<&InstalledArtifact> = artifacts
+            .iter()
+            .filter(|tool| tool.key.instance_id == source.id && counts(&source.adapter_id, tool))
+            .collect();
+        // Whether an Ollama stays is asked even when no round has listed
+        // its models: they are in `~/.ollama/models` all the same (r22
+        // R53-4).
+        let ollama = source.adapter_id == "ollama";
+        if tools.is_empty() && !ollama {
+            continue;
+        }
+        // What the source's program, and the interpreter it is run with,
+        // lead to: into the package, or not, or not known (`Doubt`). Its
+        // program not followed is moot when its interpreter leads in.
+        let mut doubts = Vec::new();
+        let into = if source.adapter_id == "pip" {
+            look.python_leads_into(&source.exe_path, &roots)
+        } else if ollama {
+            look.ollama_leads_into(&source.exe_path, &roots)
+        } else {
+            look.leads_into(&source.exe_path, &roots)
+        };
+        let mut program = match into {
+            Some(into) => into,
+            None => {
+                doubts.extend(Doubt::of_program(&source.adapter_id, &source.exe_path));
+                false
+            }
+        };
+        if let Some(name) = interpreter(&source.adapter_id).filter(|_| !program) {
+            let (found, passed_over) = look.on_path(name, env);
+            // A folder passed over may hold the `node` `env` runs: in
+            // doubt even when the one found after it leads into the
+            // package, for then it may not be the one that runs.
+            if passed_over {
+                look.doubts.push(Doubt::Program(name.to_string()));
+            }
+            if let Some(found) = found {
+                match look.leads_into(&found, &roots) {
+                    Some(into) => program = into,
+                    None => doubts.push(Doubt::Program(name.to_string())),
+                }
+            }
+        }
+        // An Ollama that stays -- Banager's own, outside the package, or
+        // Ollama.app or another `ollama` on `PATH` while Banager's leads
+        // in or is not known to lead anywhere (a version manager's shim) --
+        // runs the same models from the same folder (`~/.ollama/models`):
+        // they need nothing of this one, but that one: listed, they say so
+        // on a copy of Ollama (`ArtifactFacts::family`) whether or not
+        // their folder is the default one. jq's preview says nothing of it.
+        let counted_on = !tools.is_empty() && is_ollama_copy(package);
+        if ollama {
+            if into == Some(false) {
+                ollama_stays = true;
+                models_on_another_ollama |= counted_on;
+            } else if (program || into.is_none())
+                && look.another_ollama(env, &refreshed.applications, &roots)
+            {
+                ollama_stays = true;
+                models_on_another_ollama |= counted_on;
+                continue;
+            }
+        }
+        if tools.is_empty() {
+            continue;
+        }
+        if program {
+            warnings.push(Warning::NeededBySource {
+                instance_id: source.id.clone(),
+                program: true,
+                tools: tools.len(),
+            });
+            continue;
+        }
+        look.doubts.extend(doubts);
+        if has_environments(&source.adapter_id) {
+            let on_it = tools
+                .iter()
+                .filter(|tool| {
+                    let into = tool.path.as_deref().and_then(|environment| {
+                        look.leads_into(&environment.join("bin").join("python"), &roots)
+                    });
+                    // No environment to look at, or one not followed:
+                    // whether its Python is the package's is not known.
+                    if into.is_none() {
+                        look.doubts.push(Doubt::Python);
+                    }
+                    into == Some(true)
+                })
+                .count();
+            if on_it > 0 {
+                warnings.push(Warning::NeededBySource {
+                    instance_id: source.id.clone(),
+                    program: false,
+                    tools: on_it,
+                });
+            }
+        }
+    }
+    let doubted = look.could_be(package, owner, &roots);
+    NeededBy {
+        warnings,
+        complete: !look.over && !doubted,
+        ollama_stays,
+        models_on_another_ollama,
+    }
+}
+
+/// Whether `package` is a copy of Ollama: Homebrew's `ollama`, `ollama-app`
+/// or `ollama-binary`, by the family the refresh gave it (`families.rs`),
+/// as a batch tells them (`OLLAMA_FAMILY` in src/lib/batchUninstall.ts).
+fn is_ollama_copy(package: &InstalledArtifact) -> bool {
+    package.facts.family.as_deref() == Some("ollama")
+}
+
+/// The folders whose files are `package`'s, every link followed: a
+/// formula's keg folder, a cask's folder in `Caskroom` and its app, or a
+/// pipx or uv tool's own environment (`tool_environment`). Empty for any
+/// other kind of package; `None` when `owner`'s `Cellar` or `Caskroom`, or
+/// the tool's environment, could not be read, or the budget ran out first.
+fn own_folders(
+    package: &InstalledArtifact,
+    owner: &ManagerInstance,
+    look: &mut Look,
+) -> Option<Vec<PathBuf>> {
+    let folder = match package.key.kind {
+        ArtifactKind::Formula if owner.adapter_id == "brew" => "Cellar",
+        ArtifactKind::Cask if owner.adapter_id == "brew" => "Caskroom",
+        ArtifactKind::Tool if has_environments(&owner.adapter_id) => {
+            return tool_environment(package, look);
+        }
+        _ => return Some(Vec::new()),
+    };
+    // `Cellar/<name>`, `Caskroom/<token>`: the short name, which a tapped
+    // package's key (`user/tap/name`) ends with.
+    let Some(short) = short_name(&package.key.name) else {
+        return Some(Vec::new());
+    };
+    let Leads::To(folder) = look.resolve(&owner.prefix.join(folder)) else {
+        return None;
+    };
+    let mut roots = vec![folder.join(short)];
+    if package.key.kind == ArtifactKind::Cask {
+        if let Some(app) = package.path.as_deref().filter(|path| is_app(path)) {
+            match look.resolve(app) {
+                Leads::To(app) => roots.push(app),
+                Leads::Nowhere => {}
+                // Its own app, not followed: anything may lead into it.
+                Leads::Unknown => look.doubts.push(Doubt::Anything),
+            }
+        }
+    }
+    Some(roots)
+}
+
+/// A pipx or uv tool's own environment, every link followed: the folder its
+/// row names (`InstalledArtifact::path`, pipx's `app_paths`' venv, uv's
+/// `--show-paths`), which its uninstall removes -- pipx's `uv` in
+/// `~/.local/pipx/venvs/uv`, into which `~/.local/bin/uv` leads (r24
+/// R85-2). Never the shared `~/.local/bin`, its manager's folder or one
+/// guessed from the tool's name: a row with no absolute environment, or one
+/// not followed (it is not there, or leads into a protected place), is not
+/// known (`None`), and the look does not finish.
+fn tool_environment(package: &InstalledArtifact, look: &mut Look) -> Option<Vec<PathBuf>> {
+    let environment = package
+        .path
+        .as_deref()
+        .filter(|path| path.is_absolute() && path.components().count() > 2)?;
+    match look.resolve(environment) {
+        Leads::To(environment) => Some(vec![environment]),
+        Leads::Nowhere | Leads::Unknown => None,
+    }
+}
+
+/// The last part of a Homebrew name, when it names one folder: not empty,
+/// `.` or `..`.
+fn short_name(name: &str) -> Option<&str> {
+    let short = name.rsplit('/').next()?;
+    let mut parts = Path::new(short).components();
+    match (parts.next(), parts.next()) {
+        (Some(Component::Normal(_)), None) => Some(short),
+        _ => None,
+    }
+}
+
+/// Whether `path` names an app bundle, `/Applications/Ollama.app`: what a
+/// cask's `path` is (`parse_info_installed`), and nothing broader -- a
+/// folder such as `/Applications` would claim every app in it.
+fn is_app(path: &Path) -> bool {
+    path.is_absolute()
+        && path.components().count() > 2
+        && path
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("app"))
+}
+
+/// Where a path leads, as far as a look can tell.
+enum Leads {
+    /// Every link followed, to here.
+    To(PathBuf),
+    /// Nowhere: it is not there (`Resolution::Missing`).
+    Nowhere,
+    /// Not known: it is, or leads into, a protected place, which is never
+    /// looked into; a folder on the way could not be searched, or was
+    /// replaced while it was looked at (`Resolution::Refused`); or the
+    /// budget ran out first (`Look::over`).
+    Unknown,
+}
+
+/// A path whose end is not known (`Leads::Unknown`), or a tool with no
+/// environment path, by what it would have to lead to for the source to
+/// run on the package: the look did not finish only when the package
+/// could be that (`Look::could_be`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Doubt {
+    /// A program of this name: a source's own program, by its file name,
+    /// or the interpreter it is run with (npm's `node`).
+    Program(String),
+    /// A Python: a pipx or uv tool's environment's `bin/python`, or pip's
+    /// own program, whatever it is called.
+    Python,
+    /// Anything: the package's own app could not be followed.
+    Anything,
+}
+
+impl Doubt {
+    /// The doubts about `adapter_id`'s program at `path`, not followed:
+    /// what it is for, not only what it is called, for a link may lead
+    /// to a program of another name (`~/bin/python3` to python@3.13's
+    /// `bin/python3.13`; npm's `npm` to `lib/node_modules/npm/bin/npm-cli.js`).
+    /// pip's program, or any program named as a Python is, is a Python;
+    /// npm's lives in a Node.js, with its `node`; any other is a program
+    /// of its own name. Anything, for a path with no name.
+    fn of_program(adapter_id: &str, path: &Path) -> Vec<Doubt> {
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            return vec![Doubt::Anything];
+        };
+        if adapter_id == "pip" || is_python(name) {
+            return vec![Doubt::Python];
+        }
+        let mut doubts = vec![Doubt::Program(name.to_string())];
+        if let Some(interpreter) = interpreter(adapter_id) {
+            doubts.push(Doubt::Program(interpreter.to_string()));
+        }
+        doubts
+    }
+}
+
+/// The name each kind of source in `HOSTED` is found by on `PATH`
+/// (`resolve_exe` in each adapter's `detect`; pip's is any of its
+/// candidate Pythons, a Python whatever it is called).
+const FOUND_AS: [(&str, &str); 6] = [
+    ("npm", "npm"),
+    ("pip", "python3"),
+    ("pipx", "pipx"),
+    ("uv", "uv"),
+    ("cargo", "cargo"),
+    ("ollama", "ollama"),
+];
+
+/// The doubts about sources a refresh could not have found
+/// (`needed_by_on_path`): each kind's, by its program as it is found on
+/// `PATH` (`unseen_source`).
+fn unseen_sources() -> Vec<Doubt> {
+    FOUND_AS
+        .iter()
+        .flat_map(|(adapter_id, name)| unseen_source(adapter_id, Path::new(name)))
+        .collect()
+}
+
+/// The doubts about a source of kind `adapter_id` whose program is
+/// `program`, when what it has is not known: that program, with npm's
+/// `node` (`Doubt::of_program`), and a Python for the environments of
+/// pipx's and uv's tools.
+fn unseen_source(adapter_id: &str, program: &Path) -> Vec<Doubt> {
+    let mut doubts = Doubt::of_program(adapter_id, program);
+    if has_environments(adapter_id) {
+        doubts.push(Doubt::Python);
+    }
+    doubts
+}
+
+/// Whether `name` is a Python interpreter's: `python`, `pypy` or `graalpy`
+/// with nothing after it but a version -- digits and dots, and a `t` for
+/// a free-threaded build. pip's candidates (`python`, `python3`,
+/// `python3.N`: `PipAdapter::CANDIDATE_INTERPRETERS`), Homebrew's
+/// `python-freethreading` (`python3.14t`, and no `python3`), its
+/// `pypy3.11` (`pypy3.11`, `pypy3`). Not `python3.13-config`, nor
+/// `python-argcomplete-check-easy-install-script`.
+fn is_python(name: &str) -> bool {
+    ["python", "pypy", "graalpy"].iter().any(|implementation| {
+        name.strip_prefix(implementation).is_some_and(|version| {
+            let version = version.strip_suffix('t').unwrap_or(version);
+            !version.starts_with('.') && version.bytes().all(|b| b.is_ascii_digit() || b == b'.')
+        })
+    })
+}
+
+/// Casks known to keep a runtime a source runs on in their own folders
+/// with no link to it in `<prefix>/bin`, so that no look there finds it:
+/// Conda's distributions, whose installer puts a Python in
+/// `Caskroom/<token>/base` (`-p #{caskroom_path}/base`; only `conda` is
+/// linked); and Ollama's app, `ollama` in `Ollama.app/Contents/Resources`
+/// (a `binary` link Homebrew can be told to skip). Their folders are
+/// looked into as well (`Look::cask_holds`); named here in case their
+/// layout changes.
+const PYTHON_CASKS: [&str; 4] = ["anaconda", "mambaforge", "miniconda", "miniforge"];
+const PROGRAM_CASKS: [(&str, &str); 2] = [("ollama", "ollama"), ("ollama-app", "ollama")];
+
+/// Whether a package of short name `short` is named for the program
+/// `name`: Homebrew's `uv` for `uv`, `node@22` for `node` -- a formula
+/// named for a program is that program, wherever in its keg it keeps it.
+fn named_for(short: &str, name: &str) -> bool {
+    short
+        .strip_prefix(name)
+        .is_some_and(|rest| rest.is_empty() || rest.starts_with('@'))
+}
+
+/// Where each path leads, and what has been spent on finding out.
+struct Look {
+    protected: Protected,
+    started: Instant,
+    looks: usize,
+    budget: Budget,
+    over: bool,
+    /// The paths met whose end is not known, by what each would have to
+    /// lead to (`Doubt`). A path that is not there is known to lead
+    /// nowhere, and is not one of these.
+    doubts: Vec<Doubt>,
+}
+
+impl Look {
+    fn new(home: &Path, budget: Budget) -> Look {
+        Look {
+            protected: Protected::new(home),
+            started: Instant::now(),
+            looks: 0,
+            budget,
+            over: false,
+            doubts: Vec::new(),
+        }
+    }
+
+    /// Whether the budget allows one more look, counting it if so.
+    fn one_more(&mut self) -> bool {
+        if self.looks >= self.budget.max_looks || self.started.elapsed() >= self.budget.max_duration
+        {
+            self.over = true;
+        }
+        if !self.over {
+            self.looks += 1;
+        }
+        !self.over
+    }
+
+    /// Where `path` leads, every link followed and never into a protected
+    /// place (`protected::resolve`).
+    fn resolve(&mut self, path: &Path) -> Leads {
+        if !self.one_more() {
+            return Leads::Unknown;
+        }
+        match protected::resolve(path, &self.protected, true) {
+            Resolution::Found(real, _) => Leads::To(real),
+            Resolution::Missing => Leads::Nowhere,
+            Resolution::Protected(_) | Resolution::Refused => Leads::Unknown,
+        }
+    }
+
+    /// Whether `path` leads, every link followed, into one of `roots`:
+    /// `None` when where it leads is not known.
+    fn leads_into(&mut self, path: &Path, roots: &[PathBuf]) -> Option<bool> {
+        match self.resolve(path) {
+            Leads::To(real) => {
+                let real = protected::without_data_volume(&real);
+                Some(roots.iter().any(|root| {
+                    protected::starts_with_folded(&real, &protected::without_data_volume(root))
+                }))
+            }
+            Leads::Nowhere => Some(false),
+            Leads::Unknown => None,
+        }
+    }
+
+    /// `leads_into` for a pip source's Python. A launcher in a folder
+    /// named `shims` -- pyenv's (`~/.pyenv/shims`, or under any
+    /// `PYENV_ROOT`), asdf's, mise's -- is a version manager's, which
+    /// chooses the Python it runs when it runs, Homebrew's among them for
+    /// `system` (`pyenv-which` takes its shims off `PATH` and runs the
+    /// next Python there). So one outside the package's folders, readable
+    /// or not, proves nothing about where Python runs from: `None`, which
+    /// is `Doubt::Python`. Told by the folder, as found and where its
+    /// links lead, not by `PYENV_ROOT`: an app opened from the Dock does
+    /// not have the shell's. One that leads into the folders still does --
+    /// mise's shims are links to mise itself.
+    fn python_leads_into(&mut self, path: &Path, roots: &[PathBuf]) -> Option<bool> {
+        let real = match self.resolve(path) {
+            Leads::To(real) => real,
+            Leads::Nowhere => return Some(false),
+            Leads::Unknown => return None,
+        };
+        let real = protected::without_data_volume(&real);
+        if roots
+            .iter()
+            .any(|root| protected::starts_with_folded(&real, &protected::without_data_volume(root)))
+        {
+            return Some(true);
+        }
+        let in_shims = |path: &Path| {
+            path.parent()
+                .and_then(Path::file_name)
+                .is_some_and(|folder| protected::same_path(Path::new(folder), Path::new("shims")))
+        };
+        if in_shims(path) || in_shims(&real) {
+            return None;
+        }
+        Some(false)
+    }
+
+    /// `leads_into` for an Ollama source's program. A version manager's
+    /// shim -- in a folder named `shims`, or a link to the mise program
+    /// (`runner::dispatch::is_dispatcher`) -- runs whichever Ollama the
+    /// manager picks when it runs, the next one on `PATH` among them (mise
+    /// with none of its own installed, as for a tool set to install on
+    /// first use): one outside the package's folders proves nothing about
+    /// which runs, `None` (R73-2). One that leads into the folders still
+    /// does.
+    fn ollama_leads_into(&mut self, path: &Path, roots: &[PathBuf]) -> Option<bool> {
+        let real = match self.resolve(path) {
+            Leads::To(real) => real,
+            Leads::Nowhere => return Some(false),
+            Leads::Unknown => return None,
+        };
+        let spelled = protected::without_data_volume(&real);
+        if roots.iter().any(|root| {
+            protected::starts_with_folded(&spelled, &protected::without_data_volume(root))
+        }) {
+            return Some(true);
+        }
+        if crate::runner::dispatch::is_dispatcher(path, Some(&real)) {
+            return None;
+        }
+        Some(false)
+    }
+
+    /// Whether `package` could be what one of the doubts met leads to
+    /// (`Doubt`), so that the look did not finish. By its name: a package
+    /// named for what a doubt would have to end at (`named_for`: `uv`,
+    /// `node@22`, a `python@3.N` for a Python), or a cask known to hold it
+    /// (`PYTHON_CASKS`, `PROGRAM_CASKS`). Or by what it has of its own: a
+    /// program of that name -- a formula in `<prefix>/opt/<name>/bin`
+    /// (where `opt/<name>` leads into its keg, linked or keg-only), a cask
+    /// in `<prefix>/bin` (where its `binary` links go) -- leading into its
+    /// own folders (`roots`), a Python being `python3`, or `python3.N` for
+    /// `python@3.N`; then, for a Python, any Python interpreter
+    /// (`is_python`) in a formula's `opt/<name>/bin` -- a PyPy's
+    /// `pypy3.11`, a free-threaded `python3.14t` -- and for a cask what
+    /// it keeps with no link in `<prefix>/bin` (`cask_holds`); for a pipx or
+    /// uv tool, a Python in its environment's `bin` only where it leads
+    /// into the environment, not the links out every venv has. One look a
+    /// name or folder, and none without a doubt or for a package named
+    /// for one; one that is not known itself counts as a yes.
+    fn could_be(
+        &mut self,
+        package: &InstalledArtifact,
+        owner: &ManagerInstance,
+        roots: &[PathBuf],
+    ) -> bool {
+        let doubts = std::mem::take(&mut self.doubts);
+        if doubts.is_empty() {
+            return false;
+        }
+        let Some(short) = short_name(&package.key.name) else {
+            return true;
+        };
+        let cask = package.key.kind == ArtifactKind::Cask;
+        let mut programs: Vec<String> = Vec::new();
+        let mut python = false;
+        for doubt in doubts {
+            match doubt {
+                Doubt::Anything => return true,
+                Doubt::Program(name) => programs.push(name),
+                Doubt::Python => python = true,
+            }
+        }
+        programs.sort();
+        programs.dedup();
+        let named = programs.iter().any(|name| {
+            named_for(short, name) || (cask && PROGRAM_CASKS.contains(&(short, name.as_str())))
+        }) || (python
+            && (named_for(short, "python") || (cask && PYTHON_CASKS.contains(&short))));
+        if named {
+            return true;
+        }
+        let bin = match package.key.kind {
+            ArtifactKind::Formula => owner.prefix.join("opt").join(short).join("bin"),
+            // A pipx or uv tool's own environment's `bin` (`tool_environment`).
+            ArtifactKind::Tool => match roots.first() {
+                Some(environment) => environment.join("bin"),
+                None => return true,
+            },
+            _ => owner.prefix.join("bin"),
+        };
+        let mut names = programs.clone();
+        if python {
+            names.push("python3".to_string());
+            if let Some(version) = short.strip_prefix("python@") {
+                names.push(format!("python{version}"));
+            }
+        }
+        names.sort();
+        names.dedup();
+        if names
+            .iter()
+            .filter(|name| short_name(name) == Some(name.as_str()))
+            .any(|name| self.leads_into(&bin.join(name), roots) != Some(false))
+        {
+            return true;
+        }
+        if cask {
+            self.cask_holds(roots, &programs, python)
+        } else if package.key.kind == ArtifactKind::Tool {
+            // A venv's `bin/python`, `python3` and `python3.N` are links to
+            // the Python it was made with, outside it: only one that leads
+            // into it -- a venv made with `--copies` -- is its own.
+            python
+                && self.any_name_in(&bin, roots, |look, name| {
+                    name.to_str().is_some_and(is_python)
+                        && look.leads_into(&bin.join(name), roots) != Some(false)
+                })
+        } else {
+            python && self.holds(&bin, roots, &[], true)
+        }
+    }
+
+    /// Whether a cask keeps, in its own folders and with no link in
+    /// `<prefix>/bin`, a program of one of `programs` or, for `python`, a
+    /// Python (`is_python`): by name in its app's `Contents/MacOS` or
+    /// `Contents/Resources` -- Ollama's `ollama` -- for a program (an
+    /// app's own Python, such as the one LibreOffice runs its macros with,
+    /// is no Python a tool's environment is made with, and is not
+    /// counted); and in the `bin` of each folder in its
+    /// `Caskroom/<token>`, a version's or the `base` a Conda installer
+    /// fills. Its `Caskroom/<token>` not known: yes.
+    fn cask_holds(&mut self, roots: &[PathBuf], programs: &[String], python: bool) -> bool {
+        if let Some(app) = roots.get(1).filter(|_| !programs.is_empty()) {
+            for inside in ["Contents/MacOS", "Contents/Resources"] {
+                if self.holds(&app.join(inside), roots, programs, false) {
+                    return true;
+                }
+            }
+        }
+        let Some(caskroom) = roots.first() else {
+            return false;
+        };
+        self.any_name_in(caskroom, roots, |look, name| {
+            !name.as_encoded_bytes().starts_with(b".")
+                && look.holds(&caskroom.join(name).join("bin"), roots, programs, python)
+        })
+    }
+
+    /// Whether the folder `path` leads to, inside `roots`, has an entry
+    /// named one of `programs`, or, for `python`, a Python interpreter
+    /// (`is_python`): its names read until the first such one
+    /// (`any_name_in`), and a yes too where that is not known.
+    fn holds(&mut self, path: &Path, roots: &[PathBuf], programs: &[String], python: bool) -> bool {
+        self.any_name_in(path, roots, |_, name| {
+            name.to_str().is_some_and(|name| {
+                (python && is_python(name)) || programs.iter().any(|program| program == name)
+            })
+        })
+    }
+
+    /// Whether `found` says yes to a name in the folder `path` leads to,
+    /// when it is inside `roots` (`protected::look::list`: one step at a
+    /// time, never into a protected place, `.` and `..` left out): one look
+    /// to reach it, then one before each name read, one name held at a
+    /// time and none read after the first yes. `true` too -- it could hold
+    /// anything -- where that is not known: the folder is protected, not
+    /// searchable or replaced while it was looked at, a name could not be
+    /// read, or the budget ran out first; `false` for a folder that is not
+    /// there, not a folder or outside `roots`, and for one read to its end.
+    fn any_name_in(
+        &mut self,
+        path: &Path,
+        roots: &[PathBuf],
+        mut found: impl FnMut(&mut Self, &std::ffi::OsStr) -> bool,
+    ) -> bool {
+        if !self.one_more() {
+            return true;
+        }
+        // The guarded iterator keeps the listing alive while callbacks may
+        // borrow this reader mutably.
+        let protected = self.protected.clone();
+        let listing = match look::list(path, &protected) {
+            Ok(listing) => listing,
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
+                ) =>
+            {
+                return false
+            }
+            Err(_) => return true,
+        };
+        let real = protected::without_data_volume(listing.path());
+        if !roots
+            .iter()
+            .any(|root| protected::starts_with_folded(&real, &protected::without_data_volume(root)))
+        {
+            return false;
+        }
+        let Ok(mut entries) = listing.entries() else {
+            return true;
+        };
+        loop {
+            if !self.one_more() {
+                return true;
+            }
+            match entries.next() {
+                None => return false,
+                Some(Err(_)) => return true,
+                Some(Ok(name)) => {
+                    if self.started.elapsed() >= self.budget.max_duration {
+                        self.over = true;
+                        return true;
+                    }
+                    if found(self, &name) {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Whether an `ollama` other than the package's stays: the one in
+    /// Ollama.app's `Contents/Resources`, in `applications` or
+    /// `~/Applications` (`ollama::ollama_app_roots`), or one in a folder on
+    /// `env`'s `PATH`, that is there, an executable file, no version
+    /// manager's shim, and leads, every link followed, outside `roots`.
+    /// One it could not follow, or did not reach within the budget, is no
+    /// proof: `false`, and the models still need the package; past a shim
+    /// or a file that cannot run, it looks on (R73-2).
+    fn another_ollama(&mut self, env: &HostEnv, applications: &Path, roots: &[PathBuf]) -> bool {
+        let in_apps = [applications.to_path_buf(), env.home.join("Applications")]
+            .into_iter()
+            .map(|folder| folder.join("Ollama.app/Contents/Resources/ollama"));
+        let on_path = env
+            .path_dirs
+            .iter()
+            .filter(|dir| dir.is_absolute())
+            .map(|dir| dir.join("ollama"));
+        for candidate in in_apps.chain(on_path).collect::<Vec<_>>() {
+            if !self.one_more() {
+                return false;
+            }
+            if let Resolution::Found(real, meta) =
+                protected::resolve(&candidate, &self.protected, true)
+            {
+                // A version manager's shim picks the copy it runs when it
+                // runs -- perhaps this one (`ollama_leads_into`); a file
+                // that cannot be run runs nothing.
+                if crate::runner::dispatch::is_dispatcher(&candidate, Some(&real))
+                    || !meta.is_file()
+                    || meta.mode() & 0o111 == 0
+                {
+                    continue;
+                }
+                let real = protected::without_data_volume(&real);
+                if !roots.iter().any(|root| {
+                    protected::starts_with_folded(&real, &protected::without_data_volume(root))
+                }) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// The first `name` on `env`'s `PATH`, as `env` would find it: as
+    /// `resolve_exe` finds it, each `PATH` folder looked at the same way
+    /// (`protected::resolve`) and one look each; and whether a folder was
+    /// passed over on the way that is, or leads into, a protected place,
+    /// or could not be searched, and so may hold the `name` `env` would
+    /// run. The one after it is still the one returned, as `resolve_exe`'s.
+    /// A relative folder is passed over as `resolve_exe` passes it over: it
+    /// names a folder only from wherever the program is run. So is one
+    /// written `~` or `~/...`, which bash looks in as the home folder's
+    /// (`HostEnv::tilde_entries`) but `env` takes as written.
+    fn on_path(&mut self, name: &str, env: &HostEnv) -> (Option<PathBuf>, bool) {
+        let mut passed_over = false;
+        let as_env_reads = env
+            .path_dirs
+            .iter()
+            .enumerate()
+            .filter(|(at, dir)| dir.is_absolute() && !env.tilde_entries.contains(at))
+            .map(|(_, dir)| dir);
+        for dir in as_env_reads {
+            let candidate = dir.join(name);
+            if !self.one_more() {
+                return (None, passed_over);
+            }
+            match protected::resolve(&candidate, &self.protected, true) {
+                Resolution::Found(_, meta) if meta.is_file() => {
+                    return (Some(candidate), passed_over)
+                }
+                Resolution::Found(..) | Resolution::Missing => {}
+                Resolution::Protected(_) | Resolution::Refused => passed_over = true,
+            }
+        }
+        (None, passed_over)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_a_path_not_the_login_shells_doubts_every_kind_of_source() {
+        // One name for each kind `HOSTED` lists, in its order, so a kind
+        // added there cannot be left out of the doubt (`unseen_sources`).
+        assert_eq!(FOUND_AS.map(|(adapter_id, _)| adapter_id), HOSTED);
+        let doubts = unseen_sources();
+        for program in ["npm", "node", "pipx", "uv", "cargo", "ollama"] {
+            assert!(
+                doubts.contains(&Doubt::Program(program.to_string())),
+                "{program}"
+            );
+        }
+        assert!(doubts.contains(&Doubt::Python));
+        assert!(!doubts.contains(&Doubt::Anything));
+    }
+    use crate::model::{InstanceStatus, Scope};
+    use std::os::unix::fs::{symlink, PermissionsExt};
+
+    #[test]
+    fn test_the_per_source_tables_are_the_ones_the_window_mirrors() {
+        // `needed_by_tables.json` is read here and by
+        // src/lib/neededBy.test.ts, which holds `COMES_WITH_PROGRAM`,
+        // `MANAGES_ONLY` (src/lib/neededBy.ts), `HOSTED_SOURCES` and
+        // `RUNS_ON` (src/lib/batchUninstall.ts) to it. `manages_only` is
+        // the window's own list, with no table here: it is held to these
+        // tables for consistency, and each hosted source outside it says
+        // why (`manages_only_leaves_out`).
+        #[derive(serde::Deserialize)]
+        struct Tables {
+            hosted: Vec<String>,
+            comes_with_program: std::collections::BTreeMap<String, Vec<String>>,
+            interpreter: std::collections::BTreeMap<String, String>,
+            has_environments: Vec<String>,
+            manages_only: Vec<String>,
+            manages_only_leaves_out: std::collections::BTreeMap<String, String>,
+            batch_hosted_leaves_out: std::collections::BTreeMap<String, String>,
+        }
+        let tables: Tables =
+            serde_json::from_str(include_str!("needed_by_tables.json")).expect("tables parse");
+        assert_eq!(tables.hosted, HOSTED);
+        for id in HOSTED.iter().chain(&["brew", "standalone-claude", "pip3"]) {
+            let listed: Vec<&str> = tables
+                .comes_with_program
+                .get(*id)
+                .map(|names| names.iter().map(String::as_str).collect())
+                .unwrap_or_default();
+            assert_eq!(comes_with_program(id), listed.as_slice(), "{id}");
+            assert_eq!(
+                interpreter(id),
+                tables.interpreter.get(*id).map(String::as_str),
+                "{id}"
+            );
+            assert_eq!(
+                has_environments(id),
+                tables.has_environments.iter().any(|each| each == id),
+                "{id}"
+            );
+        }
+        // Whose tools keep running without the package: a source of
+        // `HOSTED` with no interpreter of its own and nothing it lists of
+        // its own program, every source with environments among them.
+        for id in &tables.manages_only {
+            assert!(HOSTED.contains(&id.as_str()), "{id}");
+            assert_eq!(interpreter(id), None, "{id}");
+            assert!(comes_with_program(id).is_empty(), "{id}");
+        }
+        for id in &tables.has_environments {
+            assert!(tables.manages_only.contains(id), "{id}");
+        }
+        // Every hosted source is either in it or left out with why, never
+        // both: Ollama moved in by mistake fails here as well as in the
+        // window's test.
+        for id in HOSTED {
+            let listed = tables.manages_only.iter().any(|each| each == id);
+            let left_out = tables.manages_only_leaves_out.contains_key(id);
+            assert!(
+                listed != left_out,
+                "{id}: in manages_only or left out with why"
+            );
+        }
+        for id in tables.batch_hosted_leaves_out.keys() {
+            assert!(HOSTED.contains(&id.as_str()), "{id}");
+        }
+    }
+
+    /// A folder of a test's own, standing in for `/`: a Homebrew prefix at
+    /// `opt/homebrew`, a home folder at `home`, an app folder at
+    /// `Applications`. Removed when dropped.
+    struct Root(PathBuf);
+
+    impl Root {
+        fn new(tag: &str) -> Root {
+            let dir = std::env::temp_dir().join(format!(
+                "banager-needed-by-{tag}-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
+            std::fs::create_dir_all(&dir).unwrap();
+            Root(std::fs::canonicalize(&dir).unwrap())
+        }
+
+        fn path(&self, relative: &str) -> PathBuf {
+            self.0.join(relative)
+        }
+
+        /// An executable file at `relative`.
+        fn program(&self, relative: &str) -> PathBuf {
+            let path = self.path(relative);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(&path, b"#!/bin/sh\n").unwrap();
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+            path
+        }
+
+        /// A link at `relative` whose text is `target`, as written.
+        fn link(&self, relative: &str, target: &str) -> PathBuf {
+            let path = self.path(relative);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            symlink(target, &path).unwrap();
+            path
+        }
+
+        fn dir(&self, relative: &str) -> PathBuf {
+            let path = self.path(relative);
+            std::fs::create_dir_all(&path).unwrap();
+            path
+        }
+
+        fn prefix(&self) -> PathBuf {
+            self.path("opt/homebrew")
+        }
+
+        fn home(&self) -> PathBuf {
+            self.dir("home")
+        }
+
+        /// A `HostEnv` whose `PATH` is these folders, under this root.
+        fn env(&self, path: &[&str]) -> HostEnv {
+            HostEnv {
+                path_dirs: path.iter().map(|dir| self.path(dir)).collect(),
+                home: self.home(),
+                euid: 501,
+                cargo_home: None,
+                rustup_home: None,
+                zdotdir: None,
+                ollama_host: None,
+                tilde_entries: Vec::new(),
+            }
+        }
+
+        /// Homebrew's `python@3.13` keg, linked as `bin/python3.13` and with
+        /// its `opt` link, as Homebrew lays it out: the program inside the
+        /// framework, `bin/python3.13` a link to it.
+        fn python_313(&self) {
+            self.program(
+                "opt/homebrew/Cellar/python@3.13/3.13.15/Frameworks/Python.framework/Versions/3.13/bin/python3.13",
+            );
+            self.link(
+                "opt/homebrew/Cellar/python@3.13/3.13.15/bin/python3.13",
+                "../Frameworks/Python.framework/Versions/3.13/bin/python3.13",
+            );
+            self.link(
+                "opt/homebrew/opt/python@3.13",
+                "../Cellar/python@3.13/3.13.15",
+            );
+            self.link(
+                "opt/homebrew/bin/python3.13",
+                "../Cellar/python@3.13/3.13.15/bin/python3.13",
+            );
+        }
+
+        /// A keg-only `node@22`: its `node`, and npm inside it, `bin/npm` a
+        /// link to npm's `npm-cli.js`, as the formula lays them out; and
+        /// its `opt` link. Not linked into `bin` until `link_node_22`.
+        fn node_22(&self) {
+            self.program("opt/homebrew/Cellar/node@22/22.23.3/bin/node");
+            self.program("opt/homebrew/Cellar/node@22/22.23.3/lib/node_modules/npm/bin/npm-cli.js");
+            self.link(
+                "opt/homebrew/Cellar/node@22/22.23.3/bin/npm",
+                "../lib/node_modules/npm/bin/npm-cli.js",
+            );
+            self.link("opt/homebrew/opt/node@22", "../Cellar/node@22/22.23.3");
+        }
+
+        /// `brew link --force node@22`, as on the author's Mac on 2026-10-02.
+        fn link_node_22(&self) {
+            self.link(
+                "opt/homebrew/bin/node",
+                "../Cellar/node@22/22.23.3/bin/node",
+            );
+            self.link("opt/homebrew/bin/npm", "../Cellar/node@22/22.23.3/bin/npm");
+        }
+
+        /// Homebrew's `node`, linked: its `bin/npm` an absolute link to the
+        /// copy of npm its `post_install` puts in the prefix's
+        /// `lib/node_modules`, outside the keg; and its `opt` link.
+        fn node_linked(&self) {
+            self.program("opt/homebrew/Cellar/node/24.9.0/bin/node");
+            self.program("opt/homebrew/lib/node_modules/npm/bin/npm-cli.js");
+            let copy = self.path("opt/homebrew/lib/node_modules/npm/bin/npm-cli.js");
+            self.link(
+                "opt/homebrew/Cellar/node/24.9.0/bin/npm",
+                copy.to_str().unwrap(),
+            );
+            self.link("opt/homebrew/bin/node", "../Cellar/node/24.9.0/bin/node");
+            let keg_npm = self.path("opt/homebrew/Cellar/node/24.9.0/bin/npm");
+            self.link("opt/homebrew/bin/npm", keg_npm.to_str().unwrap());
+            self.link("opt/homebrew/opt/node", "../Cellar/node/24.9.0");
+        }
+    }
+
+    impl Drop for Root {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn instance(adapter_id: &str, id: &str, exe_path: PathBuf, prefix: PathBuf) -> ManagerInstance {
+        ManagerInstance {
+            id: id.to_string(),
+            adapter_id: adapter_id.to_string(),
+            exe_path,
+            prefix,
+            scope: Scope::User,
+            version: Some("1.0".to_string()),
+            answered_at: None,
+            unverified_version: None,
+            read_only_reason: None,
+            status: InstanceStatus::default(),
+        }
+    }
+
+    fn row(instance_id: &str, kind: ArtifactKind, name: &str) -> InstalledArtifact {
+        crate::testing::installed_artifact(instance_id, kind, name)
+    }
+
+    fn with_path(mut artifact: InstalledArtifact, path: PathBuf) -> InstalledArtifact {
+        artifact.path = Some(path);
+        artifact
+    }
+
+    fn with_reason(mut artifact: InstalledArtifact, reason: InstallReason) -> InstalledArtifact {
+        artifact.reason = reason;
+        artifact
+    }
+
+    const BREW: &str = "brew:/opt/homebrew";
+    const NPM: &str = "npm:/opt/homebrew";
+
+    fn brew(root: &Root) -> ManagerInstance {
+        instance(
+            "brew",
+            BREW,
+            root.path("opt/homebrew/bin/brew"),
+            root.prefix(),
+        )
+    }
+
+    fn formula(name: &str) -> InstalledArtifact {
+        row(BREW, ArtifactKind::Formula, name)
+    }
+
+    fn needed(warnings: &[Warning]) -> Vec<(String, bool, usize)> {
+        warnings
+            .iter()
+            .map(|warning| match warning {
+                Warning::NeededBySource {
+                    instance_id,
+                    program,
+                    tools,
+                } => (instance_id.clone(), *program, *tools),
+                other => panic!("expected NeededBySource, got {other:?}"),
+            })
+            .collect()
+    }
+
+    /// npm's global packages as `npm ls -g` listed them on the author's Mac
+    /// (`adapters/fixtures/npm/12.0.2/ls-global.json`): four of the user's,
+    /// and npm's own `npm` and `corepack`.
+    fn npm_rows() -> Vec<InstalledArtifact> {
+        let json = std::fs::read_to_string("../../adapters/fixtures/npm/12.0.2/ls-global.json")
+            .expect("read adapters/fixtures/npm/12.0.2/ls-global.json");
+        crate::adapters::npm::parse_ls_global(&json, NPM).expect("parse")
+    }
+
+    #[test]
+    fn test_a_linked_node_22_that_npm_runs_on_is_needed_by_npm_and_its_four_tools() {
+        let root = Root::new("linked");
+        root.node_22();
+        root.link_node_22();
+        let npm = instance("npm", NPM, root.path("opt/homebrew/bin/npm"), root.prefix());
+        let instances = vec![brew(&root), npm];
+        let found = needed_by(
+            &formula("node@22"),
+            &instances[0],
+            &instances,
+            &npm_rows(),
+            &root.env(&["opt/homebrew/bin", "usr/bin"]),
+            BUDGET,
+        );
+        assert!(found.complete);
+        // The recorded list's six packages, less npm's own two.
+        assert_eq!(needed(&found.warnings), vec![(NPM.to_string(), true, 4)]);
+        // A formula whose name `node@22` merely starts with is another
+        // folder: folders are compared whole.
+        root.dir("opt/homebrew/Cellar/node@2/1");
+        let near = needed_by(
+            &formula("node@2"),
+            &instances[0],
+            &instances,
+            &npm_rows(),
+            &root.env(&["opt/homebrew/bin", "usr/bin"]),
+            BUDGET,
+        );
+        assert_eq!(
+            near,
+            NeededBy {
+                warnings: Vec::new(),
+                complete: true,
+                ollama_stays: false,
+                models_on_another_ollama: false,
+            }
+        );
+    }
+
+    #[test]
+    fn test_a_keg_only_node_22_that_is_not_linked_is_nobodys() {
+        // Homebrew's `node` is what npm runs, and the `node` on `PATH`;
+        // `node@22` beside it, keg-only, is not linked.
+        let root = Root::new("unlinked");
+        root.node_22();
+        root.node_linked();
+        let npm = instance("npm", NPM, root.path("opt/homebrew/bin/npm"), root.prefix());
+        let instances = vec![brew(&root), npm];
+        let env = root.env(&["opt/homebrew/bin"]);
+        let node_22 = needed_by(
+            &formula("node@22"),
+            &instances[0],
+            &instances,
+            &npm_rows(),
+            &env,
+            BUDGET,
+        );
+        assert_eq!(
+            node_22,
+            NeededBy {
+                warnings: Vec::new(),
+                complete: true,
+                ollama_stays: false,
+                models_on_another_ollama: false,
+            }
+        );
+        // `node` itself is: npm's `npm` is a copy outside its keg, but the
+        // `node` npm is run with is in it.
+        let node = needed_by(
+            &formula("node"),
+            &instances[0],
+            &instances,
+            &npm_rows(),
+            &env,
+            BUDGET,
+        );
+        assert_eq!(needed(&node.warnings), vec![(NPM.to_string(), true, 4)]);
+    }
+
+    /// The skeptic's answer to R54-1 of the round-11 review: bash looks in
+    /// a `PATH` entry `~/.local/bin` as the home folder's, but `env`, as
+    /// npm's `#!/usr/bin/env node` runs it, takes it as written and passes
+    /// it over, so the `node` npm runs on is Homebrew's, after it.
+    #[test]
+    fn test_a_node_in_a_path_entry_bash_expands_from_a_tilde_is_not_the_one_npm_runs_on() {
+        let root = Root::new("tilde");
+        root.node_22();
+        root.node_linked();
+        root.program("home/.local/bin/node");
+        let npm = instance("npm", NPM, root.path("opt/homebrew/bin/npm"), root.prefix());
+        let instances = vec![brew(&root), npm];
+        let mut env = root.env(&["home/.local/bin", "opt/homebrew/bin"]);
+        env.tilde_entries = vec![0];
+        let node = needed_by(
+            &formula("node"),
+            &instances[0],
+            &instances,
+            &npm_rows(),
+            &env,
+            BUDGET,
+        );
+        assert_eq!(needed(&node.warnings), vec![(NPM.to_string(), true, 4)]);
+        // Written as the folder itself, `env` finds the `node` in it first.
+        env.tilde_entries.clear();
+        let node = needed_by(
+            &formula("node"),
+            &instances[0],
+            &instances,
+            &npm_rows(),
+            &env,
+            BUDGET,
+        );
+        assert_eq!(needed(&node.warnings), Vec::new());
+    }
+
+    #[test]
+    fn test_an_npm_whose_node_is_not_homebrews_needs_neither_formula() {
+        // An npm and a node of their own (nvm's layout), first on `PATH`.
+        let root = Root::new("nvm");
+        root.node_22();
+        root.link_node_22();
+        root.program("home/.nvm/versions/node/v22.20.0/bin/node");
+        root.program("home/.nvm/versions/node/v22.20.0/lib/node_modules/npm/bin/npm-cli.js");
+        root.link(
+            "home/.nvm/versions/node/v22.20.0/bin/npm",
+            "../lib/node_modules/npm/bin/npm-cli.js",
+        );
+        let npm = instance(
+            "npm",
+            "npm:nvm",
+            root.path("home/.nvm/versions/node/v22.20.0/bin/npm"),
+            root.path("home/.nvm/versions/node/v22.20.0"),
+        );
+        let rows: Vec<InstalledArtifact> = npm_rows()
+            .into_iter()
+            .map(|mut artifact| {
+                artifact.key.instance_id = "npm:nvm".to_string();
+                artifact
+            })
+            .collect();
+        let instances = vec![brew(&root), npm];
+        let env = root.env(&["home/.nvm/versions/node/v22.20.0/bin", "opt/homebrew/bin"]);
+        let found = needed_by(
+            &formula("node@22"),
+            &instances[0],
+            &instances,
+            &rows,
+            &env,
+            BUDGET,
+        );
+        assert_eq!(
+            found,
+            NeededBy {
+                warnings: Vec::new(),
+                complete: true,
+                ollama_stays: false,
+                models_on_another_ollama: false,
+            }
+        );
+    }
+
+    #[test]
+    fn test_an_npm_with_nothing_but_its_own_packages_loses_nothing() {
+        let root = Root::new("bare");
+        root.node_22();
+        root.link_node_22();
+        let npm = instance("npm", NPM, root.path("opt/homebrew/bin/npm"), root.prefix());
+        let own: Vec<InstalledArtifact> = npm_rows()
+            .into_iter()
+            .filter(|artifact| artifact.key.name == "npm" || artifact.key.name == "corepack")
+            .collect();
+        let instances = vec![brew(&root), npm];
+        let found = needed_by(
+            &formula("node@22"),
+            &instances[0],
+            &instances,
+            &own,
+            &root.env(&["opt/homebrew/bin"]),
+            BUDGET,
+        );
+        assert_eq!(
+            found,
+            NeededBy {
+                warnings: Vec::new(),
+                complete: true,
+                ollama_stays: false,
+                models_on_another_ollama: false,
+            }
+        );
+    }
+
+    #[test]
+    fn test_pipx_venvs_whose_python_leads_into_python_313_through_opt_or_cellar_need_it() {
+        let root = Root::new("venvs");
+        root.python_313();
+        // A uv-managed Python, not Homebrew's.
+        root.program(
+            "home/.local/share/uv/python/cpython-3.13.7-macos-aarch64-none/bin/python3.13",
+        );
+        let opt = root.path("opt/homebrew/opt/python@3.13/bin/python3.13");
+        let cellar = root.path("opt/homebrew/Cellar/python@3.13/3.13.15/bin/python3.13");
+        let uv_python = root
+            .path("home/.local/share/uv/python/cpython-3.13.7-macos-aarch64-none/bin/python3.13");
+        let venvs = "home/.local/pipx/venvs";
+        root.link(&format!("{venvs}/httpie/bin/python"), opt.to_str().unwrap());
+        root.link(
+            &format!("{venvs}/poetry/bin/python"),
+            cellar.to_str().unwrap(),
+        );
+        root.link(
+            &format!("{venvs}/black/bin/python"),
+            uv_python.to_str().unwrap(),
+        );
+        // A venv whose Python is gone: nothing there to say it is 3.13's.
+        root.link(
+            &format!("{venvs}/gone/bin/python"),
+            "/nonexistent/python3.13",
+        );
+        // Homebrew's pipx itself runs on its own keg, not on python@3.13.
+        root.program("opt/homebrew/Cellar/pipx/1.17.3/libexec/bin/pipx");
+        root.link(
+            "opt/homebrew/Cellar/pipx/1.17.3/bin/pipx",
+            "../libexec/bin/pipx",
+        );
+        root.link("opt/homebrew/bin/pipx", "../Cellar/pipx/1.17.3/bin/pipx");
+        let pipx = instance(
+            "pipx",
+            "pipx",
+            root.path("opt/homebrew/bin/pipx"),
+            root.path("opt/homebrew/bin"),
+        );
+        let tools: Vec<InstalledArtifact> = ["httpie", "poetry", "black", "gone"]
+            .into_iter()
+            .map(|name| {
+                with_path(
+                    row("pipx", ArtifactKind::Tool, name),
+                    root.path(&format!("{venvs}/{name}")),
+                )
+            })
+            // One with no app, so no environment Banager knows of.
+            .chain([row("pipx", ArtifactKind::Tool, "no-app")])
+            .collect();
+        let instances = vec![brew(&root), pipx];
+        let env = root.env(&["opt/homebrew/bin"]);
+        let found = needed_by(
+            &formula("python@3.13"),
+            &instances[0],
+            &instances,
+            &tools,
+            &env,
+            BUDGET,
+        );
+        assert_eq!(
+            needed(&found.warnings),
+            vec![("pipx".to_string(), false, 2)]
+        );
+        // `no-app`'s environment may run on it too, for all Banager knows:
+        // the look did not finish. Without it, it did.
+        assert!(!found.complete);
+        let known = needed_by(
+            &formula("python@3.13"),
+            &instances[0],
+            &instances,
+            &tools[..4],
+            &env,
+            BUDGET,
+        );
+        assert_eq!(known.warnings, found.warnings);
+        assert!(known.complete);
+        // Homebrew's `pipx` is what the pipx source runs: all five need it.
+        let pipx_formula = needed_by(
+            &formula("pipx"),
+            &instances[0],
+            &instances,
+            &tools,
+            &env,
+            BUDGET,
+        );
+        assert_eq!(
+            needed(&pipx_formula.warnings),
+            vec![("pipx".to_string(), true, 5)]
+        );
+    }
+
+    #[test]
+    fn test_f12_custom_pyenv_root_and_alias_are_unknown() {
+        let root = Root::new("f12-custom-pyenv");
+        root.python_313();
+        let shim = root.program("custom pyenv/shims/python");
+        let alias = root.link("home/bin/python3", shim.to_str().unwrap());
+        let upper = root.path("custom pyenv/SHIMS/python");
+        let roots = vec![root.path("opt/homebrew/Cellar/python@3.13")];
+        for program in [shim, alias, upper] {
+            let mut look = Look::new(&root.home(), BUDGET);
+            assert_eq!(look.python_leads_into(&program, &roots), None);
+        }
+        // A Python of its own outside the keg, in no shims folder: proven
+        // not to be the package's, as before.
+        let other = root.program("unrelated/bin/python");
+        let mut look = Look::new(&root.home(), BUDGET);
+        assert_eq!(look.python_leads_into(&other, &roots), Some(false));
+        let keg = root.path("opt/homebrew/bin/python3.13");
+        let mut look = Look::new(&root.home(), BUDGET);
+        assert_eq!(look.python_leads_into(&keg, &roots), Some(true));
+    }
+
+    #[test]
+    fn test_f12_readable_pyenv_shim_leaves_python_dependency_unknown() {
+        let root = Root::new("f12-pyenv-system");
+        root.python_313();
+        root.program("opt/homebrew/Cellar/jq/1.8/bin/jq");
+        let shim = root.program("home/.pyenv/shims/python3.13");
+        let alias = root.link("home/bin/python3", shim.to_str().unwrap());
+        for program in [shim, alias] {
+            let pip = instance("pip", "pip:shim", program, root.path("home/.pyenv/shims"));
+            let instances = vec![brew(&root), pip];
+            let rows = vec![with_reason(
+                row("pip:shim", ArtifactKind::Package, "rich"),
+                InstallReason::Unknown,
+            )];
+            let env = root.env(&["home/.pyenv/shims", "opt/homebrew/bin"]);
+            let found = needed_by(
+                &formula("python@3.13"),
+                &instances[0],
+                &instances,
+                &rows,
+                &env,
+                BUDGET,
+            );
+            assert!(
+                !found.complete,
+                "a readable shim is not proof of no Python dependency"
+            );
+            assert!(found.warnings.is_empty(), "do not invent a dependency");
+            let jq = needed_by(
+                &formula("jq"),
+                &instances[0],
+                &instances,
+                &rows,
+                &env,
+                BUDGET,
+            );
+            assert!(jq.complete, "uncertainty concerns Python, not jq");
+            let bootstrap = vec![with_reason(
+                row("pip:shim", ArtifactKind::Package, "pip"),
+                InstallReason::Unknown,
+            )];
+            assert!(
+                needed_by(
+                    &formula("python@3.13"),
+                    &instances[0],
+                    &instances,
+                    &bootstrap,
+                    &env,
+                    BUDGET
+                )
+                .complete
+            );
+        }
+    }
+
+    /// Banager opened from the Dock has no `PYENV_ROOT` of the shell's, so
+    /// a pyenv kept elsewhere is told by its folder, as asdf's and mise's
+    /// shims are: each can run `system`, Homebrew's Python. mise's shims
+    /// are links to mise itself, so uninstalling mise still names the pip
+    /// that needs it.
+    #[test]
+    fn test_f12_review_shims_of_any_version_manager_leave_python_unknown() {
+        let root = Root::new("f12-any-shims");
+        root.python_313();
+        let mise = root.program("opt/homebrew/Cellar/mise/2026.9.0/bin/mise");
+        let custom = root.program("tools/pyenv/shims/python3");
+        let asdf = root.program("home/.asdf/shims/python3");
+        let mise_shim = root.link(
+            "home/.local/share/mise/shims/python3",
+            mise.to_str().unwrap(),
+        );
+        let custom_alias = root.link("home/bin/python3", custom.to_str().unwrap());
+        for program in [custom, asdf, mise_shim.clone(), custom_alias] {
+            let pip = instance("pip", "pip:shim", program.clone(), root.path("home"));
+            let instances = vec![brew(&root), pip];
+            let rows = vec![with_reason(
+                row("pip:shim", ArtifactKind::Package, "rich"),
+                InstallReason::Unknown,
+            )];
+            let env = root.env(&["opt/homebrew/bin"]);
+            let found = needed_by(
+                &formula("python@3.13"),
+                &instances[0],
+                &instances,
+                &rows,
+                &env,
+                BUDGET,
+            );
+            assert!(!found.complete, "{}", program.display());
+            assert!(found.warnings.is_empty(), "{}", program.display());
+            let manager = needed_by(
+                &formula("mise"),
+                &instances[0],
+                &instances,
+                &rows,
+                &env,
+                BUDGET,
+            );
+            assert!(manager.complete, "{}", program.display());
+            let expected = if program == mise_shim {
+                vec![("pip:shim".to_string(), true, 1)]
+            } else {
+                Vec::new()
+            };
+            assert_eq!(needed(&manager.warnings), expected, "{}", program.display());
+        }
+    }
+
+    #[test]
+    fn test_pip_runs_on_its_python_and_counts_what_the_user_installed() {
+        let root = Root::new("pip");
+        root.python_313();
+        let pip = instance(
+            "pip",
+            "pip:python3.13",
+            root.path("opt/homebrew/bin/python3.13"),
+            root.path("opt/homebrew/bin"),
+        );
+        let rows = vec![
+            with_reason(
+                row("pip:python3.13", ArtifactKind::Package, "pip"),
+                InstallReason::Unknown,
+            ),
+            with_reason(
+                row("pip:python3.13", ArtifactKind::Package, "wheel"),
+                InstallReason::Unknown,
+            ),
+            with_reason(
+                row("pip:python3.13", ArtifactKind::Package, "setuptools"),
+                InstallReason::Unknown,
+            ),
+            with_reason(
+                row("pip:python3.13", ArtifactKind::Package, "requests"),
+                InstallReason::Unknown,
+            ),
+            with_reason(
+                row("pip:python3.13", ArtifactKind::Package, "PyYAML"),
+                InstallReason::Unknown,
+            ),
+            with_reason(
+                row("pip:python3.13", ArtifactKind::Package, "urllib3"),
+                InstallReason::Dependency,
+            ),
+        ];
+        let instances = vec![brew(&root), pip];
+        let found = needed_by(
+            &formula("python@3.13"),
+            &instances[0],
+            &instances,
+            &rows,
+            &root.env(&["opt/homebrew/bin"]),
+            BUDGET,
+        );
+        assert_eq!(
+            needed(&found.warnings),
+            vec![("pip:python3.13".to_string(), true, 2)]
+        );
+    }
+
+    #[test]
+    fn test_homebrews_uv_and_rust_are_each_needed_while_their_source_still_has_tools() {
+        // The author's decision U10 (a), 2026-10-06: Homebrew's `uv` while
+        // uv manages tools, and Homebrew's `rust` while Cargo has installed
+        // programs, are held back like pipx (above), pip's Python and
+        // Ollama -- each source's own program leads into the package's
+        // keg. With no tool left, each may go.
+        let root = Root::new("uv-rust");
+        root.dir("opt/homebrew/Cellar");
+        for (keg, program) in [("uv/0.9.2", "uv"), ("rust/1.90.0", "cargo")] {
+            root.program(&format!("opt/homebrew/Cellar/{keg}/bin/{program}"));
+            root.link(
+                &format!("opt/homebrew/bin/{program}"),
+                &format!("../Cellar/{keg}/bin/{program}"),
+            );
+        }
+        root.link("opt/homebrew/opt/uv", "../Cellar/uv/0.9.2");
+        root.link("opt/homebrew/opt/rust", "../Cellar/rust/1.90.0");
+        const CARGO: &str = "cargo:~/.cargo";
+        let uv = instance(
+            "uv",
+            "uv",
+            root.path("opt/homebrew/bin/uv"),
+            root.path("opt/homebrew/bin"),
+        );
+        let cargo = instance(
+            "cargo",
+            CARGO,
+            root.path("opt/homebrew/bin/cargo"),
+            root.path("home/.cargo"),
+        );
+        let tools = vec![
+            row("uv", ArtifactKind::Tool, "ruff"),
+            row("uv", ArtifactKind::Tool, "black"),
+            row(CARGO, ArtifactKind::Binary, "ripgrep"),
+        ];
+        let instances = vec![brew(&root), uv, cargo];
+        let env = root.env(&["opt/homebrew/bin"]);
+        let look = |package: &str, tools: &[InstalledArtifact]| {
+            needed_by(
+                &formula(package),
+                &instances[0],
+                &instances,
+                tools,
+                &env,
+                BUDGET,
+            )
+        };
+        let uv_formula = look("uv", &tools);
+        assert_eq!(
+            needed(&uv_formula.warnings),
+            vec![("uv".to_string(), true, 2)]
+        );
+        assert!(uv_formula.complete);
+        let rust_formula = look("rust", &tools);
+        assert_eq!(
+            needed(&rust_formula.warnings),
+            vec![(CARGO.to_string(), true, 1)]
+        );
+        assert!(rust_formula.complete);
+        // Nothing left to run on them: both may go.
+        assert_eq!(needed(&look("uv", &[]).warnings), Vec::new());
+        assert_eq!(needed(&look("rust", &[]).warnings), Vec::new());
+    }
+
+    #[test]
+    fn test_ollamas_app_cask_and_formula_each_need_their_models_kept() {
+        let root = Root::new("ollama");
+        root.dir("opt/homebrew/Cellar");
+        root.dir("opt/homebrew/Caskroom/ollama-app/0.34.1");
+        root.program("Applications/Ollama.app/Contents/Resources/ollama");
+        let resources = root.path("Applications/Ollama.app/Contents/Resources/ollama");
+        root.link("opt/homebrew/bin/ollama", resources.to_str().unwrap());
+        let ollama = instance(
+            "ollama",
+            "ollama:http://127.0.0.1:11434",
+            root.path("opt/homebrew/bin/ollama"),
+            root.path("home/.ollama"),
+        );
+        let models = vec![
+            row(&ollama.id, ArtifactKind::Model, "llama3.2:3b"),
+            row(&ollama.id, ArtifactKind::Model, "qwen3.8:27b-mlx"),
+        ];
+        let instances = vec![brew(&root), ollama.clone()];
+        let env = root.env(&["opt/homebrew/bin"]);
+        let cask = with_path(
+            row(BREW, ArtifactKind::Cask, "ollama-app"),
+            root.path("Applications/Ollama.app"),
+        );
+        let found = needed_by(&cask, &instances[0], &instances, &models, &env, BUDGET);
+        assert_eq!(needed(&found.warnings), vec![(ollama.id.clone(), true, 2)]);
+        // Another app is not Ollama's.
+        let other = with_path(
+            row(BREW, ArtifactKind::Cask, "iterm2"),
+            root.dir("Applications/iTerm.app"),
+        );
+        assert!(
+            needed_by(&other, &instances[0], &instances, &models, &env, BUDGET)
+                .warnings
+                .is_empty()
+        );
+        // A cask whose path is a whole folder of apps claims none of them.
+        let broad = with_path(
+            row(BREW, ArtifactKind::Cask, "odd"),
+            root.path("Applications"),
+        );
+        assert!(
+            needed_by(&broad, &instances[0], &instances, &models, &env, BUDGET)
+                .warnings
+                .is_empty()
+        );
+        // With the formula instead, its `ollama` linked from its keg: the
+        // formula is the one the Ollama source runs on, and the cask is not.
+        std::fs::remove_file(root.path("opt/homebrew/bin/ollama")).unwrap();
+        root.program("opt/homebrew/Cellar/ollama/0.34.1/bin/ollama");
+        root.link(
+            "opt/homebrew/bin/ollama",
+            "../Cellar/ollama/0.34.1/bin/ollama",
+        );
+        let found = needed_by(
+            &formula("ollama"),
+            &instances[0],
+            &instances,
+            &models,
+            &env,
+            BUDGET,
+        );
+        assert_eq!(needed(&found.warnings), vec![(ollama.id.clone(), true, 2)]);
+        assert!(
+            needed_by(&cask, &instances[0], &instances, &models, &env, BUDGET)
+                .warnings
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn test_an_ollama_that_stays_beside_the_formula_runs_its_models_without_it() {
+        // ollama.com's Ollama.app, with Homebrew's formula ahead of its CLI
+        // on `PATH`: Banager's Ollama source is the formula's `ollama`.
+        let root = Root::new("ollama-twice");
+        root.dir("opt/homebrew/Caskroom");
+        root.program("opt/homebrew/Cellar/ollama/0.34.1/bin/ollama");
+        root.link(
+            "opt/homebrew/bin/ollama",
+            "../Cellar/ollama/0.34.1/bin/ollama",
+        );
+        let ollama = instance(
+            "ollama",
+            "ollama:http://127.0.0.1:11434",
+            root.path("opt/homebrew/bin/ollama"),
+            root.path("home/.ollama"),
+        );
+        let models = vec![
+            row(&ollama.id, ArtifactKind::Model, "llama3.2:3b"),
+            row(&ollama.id, ArtifactKind::Model, "qwen3.8:27b-mlx"),
+        ];
+        let instances = vec![brew(&root), ollama.clone()];
+        let env = root.env(&["opt/homebrew/bin", "usr/local/bin"]);
+        let look = |applications: &str| {
+            needed_by_on_path(
+                &formula("ollama"),
+                &instances[0],
+                &instances,
+                &models,
+                &env,
+                &Refreshed {
+                    path_known: true,
+                    unlisted: Vec::new(),
+                    applications: root.path(applications),
+                },
+                BUDGET,
+            )
+        };
+        // No other Ollama: the models need the formula.
+        let alone = look("Applications");
+        assert_eq!(needed(&alone.warnings), vec![(ollama.id.clone(), true, 2)]);
+        assert!(!alone.ollama_stays);
+        // Ollama.app in /Applications, or in ~/Applications, runs the same
+        // models from the same folder: they need nothing of the formula,
+        // and the preview says the app still uses them.
+        root.program("Applications/Ollama.app/Contents/Resources/ollama");
+        let found = look("Applications");
+        assert!(found.warnings.is_empty(), "{:?}", found.warnings);
+        assert!(found.complete);
+        assert!(found.ollama_stays);
+        root.program("home/Applications/Ollama.app/Contents/Resources/ollama");
+        let found = look("no-system-apps");
+        assert!(found.warnings.is_empty());
+        assert!(found.ollama_stays);
+        std::fs::remove_dir_all(root.path("Applications")).unwrap();
+        std::fs::remove_dir_all(root.path("home/Applications")).unwrap();
+        // An `Ollama.app` that is no app holds no `ollama`, and counts for
+        // nothing.
+        root.dir("Applications/Ollama.app");
+        let none = look("Applications");
+        assert_eq!(needed(&none.warnings), vec![(ollama.id.clone(), true, 2)]);
+        assert!(!none.ollama_stays);
+        // Another `ollama` further along `PATH` that leads outside the
+        // formula stays too.
+        let own = root.program("opt/ollama-download/ollama");
+        root.link("usr/local/bin/ollama", own.to_str().unwrap());
+        let found = look("Applications");
+        assert!(found.warnings.is_empty());
+        assert!(found.ollama_stays);
+        // One that leads into the formula as well is no other Ollama.
+        std::fs::remove_file(root.path("usr/local/bin/ollama")).unwrap();
+        root.link(
+            "usr/local/bin/ollama",
+            root.path("opt/homebrew/Cellar/ollama/0.34.1/bin/ollama")
+                .to_str()
+                .unwrap(),
+        );
+        assert_eq!(
+            needed(&look("Applications").warnings),
+            vec![(ollama.id.clone(), true, 2)]
+        );
+        // Banager's own Ollama outside the formula stays and runs them.
+        let elsewhere = instance(
+            "ollama",
+            "ollama:http://127.0.0.1:11434",
+            own.clone(),
+            root.path("home/.ollama"),
+        );
+        let instances = vec![brew(&root), elsewhere.clone()];
+        let found = needed_by_on_path(
+            &formula("ollama"),
+            &instances[0],
+            &instances,
+            &[row(&elsewhere.id, ArtifactKind::Model, "llama3.2:3b")],
+            &env,
+            &Refreshed {
+                path_known: true,
+                unlisted: Vec::new(),
+                applications: root.path("Applications"),
+            },
+            BUDGET,
+        );
+        assert!(found.warnings.is_empty());
+        assert!(found.complete);
+        assert!(found.ollama_stays);
+    }
+
+    #[test]
+    fn r85_1_listed_models_count_on_a_surviving_copy_without_the_default_folder() {
+        // Homebrew's formula, first on `PATH`, and its `ollama-app` cask:
+        // the models live where `OLLAMA_MODELS` says, and no
+        // `~/.ollama/models` is there to be marked as in use.
+        let root = Root::new("ollama-custom-models");
+        root.dir("opt/homebrew/Caskroom/ollama-app/0.34.1");
+        root.program("opt/homebrew/Cellar/ollama/0.34.1/bin/ollama");
+        root.link("opt/homebrew/opt/ollama", "../Cellar/ollama/0.34.1");
+        root.link(
+            "opt/homebrew/bin/ollama",
+            "../Cellar/ollama/0.34.1/bin/ollama",
+        );
+        root.program("Applications/Ollama.app/Contents/Resources/ollama");
+        root.dir("models-elsewhere");
+        let ollama = instance(
+            "ollama",
+            "ollama:http://127.0.0.1:11434",
+            root.path("opt/homebrew/opt/ollama/bin/ollama"),
+            root.path("home/.ollama"),
+        );
+        let models = vec![row(&ollama.id, ArtifactKind::Model, "llama3.2:3b")];
+        let instances = vec![brew(&root), ollama.clone()];
+        let env = root.env(&["opt/homebrew/opt/ollama/bin", "opt/homebrew/bin"]);
+        assert!(!root.path("home/.ollama/models").exists());
+        let copy = |mut package: InstalledArtifact| {
+            package.facts.family = Some("ollama".to_string());
+            package
+        };
+        let cask = copy(with_path(
+            row(BREW, ArtifactKind::Cask, "ollama-app"),
+            root.path("Applications/Ollama.app"),
+        ));
+        let look = |package: &InstalledArtifact, models: &[InstalledArtifact]| {
+            needed_by_on_path(
+                package,
+                &instances[0],
+                &instances,
+                models,
+                &env,
+                &Refreshed {
+                    path_known: true,
+                    unlisted: Vec::new(),
+                    applications: root.path("Applications"),
+                },
+                BUDGET,
+            )
+        };
+        // Each copy counts on the other for the listed models: the formula
+        // on the app that stays, the app on the formula Banager runs.
+        let ollama_formula = copy(formula("ollama"));
+        for package in [&ollama_formula, &cask] {
+            let found = look(package, &models);
+            assert!(found.complete, "{package:?}");
+            assert!(found.warnings.is_empty(), "{:?}", found.warnings);
+            assert!(found.ollama_stays);
+            assert!(found.models_on_another_ollama, "{package:?}");
+        }
+        // With no model listed, another copy staying is no model's need.
+        for package in [&ollama_formula, &cask] {
+            let found = look(package, &[]);
+            assert!(found.ollama_stays);
+            assert!(!found.models_on_another_ollama);
+        }
+        // Nor is it any need of a package that is no copy of Ollama.
+        root.program("opt/homebrew/Cellar/jq/1.8.1/bin/jq");
+        let jq = look(&formula("jq"), &models);
+        assert!(jq.ollama_stays);
+        assert!(!jq.models_on_another_ollama);
+        // Models kept on another machine need nothing here.
+        let remote = ManagerInstance {
+            id: "ollama:http://studio.local:11434".to_string(),
+            ..ollama.clone()
+        };
+        let instances = vec![brew(&root), remote.clone()];
+        let found = needed_by(
+            &ollama_formula,
+            &instances[0],
+            &instances,
+            &[row(&remote.id, ArtifactKind::Model, "llama3.2:3b")],
+            &root.env(&["opt/homebrew/opt/ollama/bin"]),
+            BUDGET,
+        );
+        assert!(!found.models_on_another_ollama);
+        assert!(found.warnings.is_empty());
+    }
+
+    #[test]
+    fn r85_2_a_pipx_or_uv_tools_environment_is_its_own_folder() {
+        // pipx's `uv` in its venv; the uv source runs it through a chain of
+        // links: `~/bin/uv` to `~/.local/bin/uv` to the venv's `bin/uv`.
+        let root = Root::new("pipx-uv");
+        root.program("home/.local/pipx/venvs/uv/bin/uv");
+        root.link("home/.local/bin/uv", "../pipx/venvs/uv/bin/uv");
+        let chained = root.path("home/.local/bin/uv");
+        root.link("home/bin/uv", chained.to_str().unwrap());
+        root.program("home/.local/pipx/venvs/httpie/bin/http");
+        root.program("home/.local/share/uv/tools/ruff/bin/ruff");
+        const PIPX: &str = "pipx:~/.local/pipx";
+        const UV: &str = "uv:~/.local/share/uv";
+        let pipx = instance(
+            "pipx",
+            PIPX,
+            root.program("opt/pipx/bin/pipx"),
+            root.path("home/.local/pipx"),
+        );
+        let uv = instance(
+            "uv",
+            UV,
+            root.path("home/bin/uv"),
+            root.path("home/.local/share/uv"),
+        );
+        let tool = |name: &str, environment: Option<PathBuf>| {
+            let mut tool = row(PIPX, ArtifactKind::Tool, name);
+            tool.path = environment;
+            tool
+        };
+        let pipx_uv = tool("uv", Some(root.path("home/.local/pipx/venvs/uv")));
+        let ruff = with_path(
+            row(UV, ArtifactKind::Tool, "ruff"),
+            root.path("home/.local/share/uv/tools/ruff"),
+        );
+        let instances = vec![pipx.clone(), uv.clone()];
+        let env = root.env(&["home/bin", "home/.local/bin"]);
+        let look = |package: &InstalledArtifact, tools: &[InstalledArtifact], path_known| {
+            needed_by_on_path(
+                package,
+                &pipx,
+                &instances,
+                tools,
+                &env,
+                &Refreshed {
+                    path_known,
+                    unlisted: Vec::new(),
+                    applications: root.path("Applications"),
+                },
+                BUDGET,
+            )
+        };
+        let tools = vec![pipx_uv.clone(), ruff.clone()];
+        let found = look(&pipx_uv, &tools, true);
+        assert_eq!(needed(&found.warnings), vec![(UV.to_string(), true, 1)]);
+        assert!(found.complete);
+        // No uv tool: nothing to lose.
+        let found = look(&pipx_uv, std::slice::from_ref(&pipx_uv), true);
+        assert!(found.warnings.is_empty());
+        assert!(found.complete);
+        // Another pipx tool is not where uv leads.
+        let httpie = tool("httpie", Some(root.path("home/.local/pipx/venvs/httpie")));
+        let found = look(&httpie, &tools, true);
+        assert!(found.warnings.is_empty());
+        assert!(found.complete);
+        // An environment not known -- none, relative, too short or not
+        // there -- is no proof that nothing runs on the tool.
+        for environment in [
+            None,
+            Some(PathBuf::from(".local/pipx/venvs/uv")),
+            Some(PathBuf::from("/uv")),
+            Some(root.path("home/.local/pipx/venvs/gone")),
+        ] {
+            let found = look(&tool("uv", environment.clone()), &tools, true);
+            assert!(found.warnings.is_empty(), "{environment:?}");
+            assert!(!found.complete, "{environment:?}");
+        }
+        // On a `PATH` that was not the login shell's, a uv may not have been
+        // found: in doubt for pipx's `uv`, named for it, and not for httpie,
+        // whose environment has no `uv`.
+        assert!(!look(&pipx_uv, &[], false).complete);
+        assert!(look(&httpie, &[], false).complete);
+        // A Homebrew owner's tool row is no environment to look at.
+        let brew_owned = needed_by(&pipx_uv, &brew(&root), &instances, &tools, &env, BUDGET);
+        assert!(brew_owned.warnings.is_empty());
+        assert!(brew_owned.complete);
+    }
+
+    #[test]
+    fn test_a_tool_environments_python_links_out_of_it_are_no_python_of_its_own() {
+        // The skeptic of r24's fix: every venv has `bin/python`,
+        // `bin/python3` and `bin/python3.N`, links to the Python it was
+        // made with, outside it. Taken by their names, they left httpie's
+        // look unfinished whenever a Python was in doubt -- pip on a pyenv
+        // shim, a `PATH` not the login shell's -- where none of them is
+        // httpie's to take away. A venv made with `--copies` keeps a Python
+        // of its own, and its look still does not finish.
+        let root = Root::new("venv-python");
+        root.python_313();
+        let venv = "home/.local/pipx/venvs/httpie";
+        root.program(&format!("{venv}/bin/http"));
+        let python = root.path("opt/homebrew/opt/python@3.13/bin/python3.13");
+        root.link(&format!("{venv}/bin/python"), python.to_str().unwrap());
+        root.link(&format!("{venv}/bin/python3"), "python");
+        root.link(&format!("{venv}/bin/python3.13"), "python");
+        root.program("home/.local/pipx/venvs/copied/bin/python3.13");
+        root.link("home/.local/pipx/venvs/copied/bin/python", "python3.13");
+        root.program("home/.pyenv/shims/python3");
+        const PIPX: &str = "pipx:~/.local/pipx";
+        const PIP: &str = "pip:~/.pyenv/shims/python3";
+        let pipx = instance(
+            "pipx",
+            PIPX,
+            root.program("opt/pipx/bin/pipx"),
+            root.path("home/.local/pipx"),
+        );
+        let pip = instance(
+            "pip",
+            PIP,
+            root.path("home/.pyenv/shims/python3"),
+            root.path("home/.pyenv"),
+        );
+        let httpie = with_path(row(PIPX, ArtifactKind::Tool, "httpie"), root.path(venv));
+        let copied = with_path(
+            row(PIPX, ArtifactKind::Tool, "copied"),
+            root.path("home/.local/pipx/venvs/copied"),
+        );
+        let tools = vec![
+            httpie.clone(),
+            copied.clone(),
+            row(PIP, ArtifactKind::Package, "requests"),
+        ];
+        let env = root.env(&["home/.local/bin", "opt/homebrew/bin"]);
+        let look = |package: &InstalledArtifact, instances: &[ManagerInstance], path_known| {
+            needed_by_on_path(
+                package,
+                &pipx,
+                instances,
+                &tools,
+                &env,
+                &Refreshed {
+                    path_known,
+                    unlisted: Vec::new(),
+                    applications: root.path("Applications"),
+                },
+                BUDGET,
+            )
+        };
+        let alone = vec![pipx.clone()];
+        let with_pip = vec![pipx.clone(), pip];
+        for (instances, path_known) in [(&alone, true), (&with_pip, true), (&alone, false)] {
+            let found = look(&httpie, instances, path_known);
+            assert!(found.warnings.is_empty());
+            assert!(found.complete, "{} sources, {path_known}", instances.len());
+        }
+        assert!(look(&copied, &alone, true).complete);
+        assert!(!look(&copied, &with_pip, true).complete);
+        assert!(!look(&copied, &alone, false).complete);
+    }
+
+    #[test]
+    fn regression_r73_2_a_dispatcher_or_a_file_that_cannot_run_is_no_other_ollama() {
+        // Homebrew's formula first on `PATH`, a mise shim of `ollama` after
+        // it: the shim leads to mise, outside the formula, and was taken
+        // for another Ollama that keeps running the models. mise picks the
+        // copy it runs when it runs -- with none of its own installed (a
+        // tool set to install on first use), the next `ollama` on `PATH`,
+        // the formula's. So is a link to mise of that name elsewhere; and a
+        // file named `ollama` that is not executable runs nothing. None of
+        // them keeps the models; a real Ollama after a dispatcher still
+        // does.
+        let root = Root::new("ollama-dispatcher");
+        root.dir("opt/homebrew/Caskroom");
+        root.program("opt/homebrew/Cellar/ollama/0.34.1/bin/ollama");
+        root.link(
+            "opt/homebrew/bin/ollama",
+            "../Cellar/ollama/0.34.1/bin/ollama",
+        );
+        let mise = root.program("home/.local/bin/mise");
+        let shim = root.link(
+            "home/.local/share/mise/shims/ollama",
+            mise.to_str().unwrap(),
+        );
+        let ollama = instance(
+            "ollama",
+            "ollama:http://127.0.0.1:11434",
+            root.path("opt/homebrew/bin/ollama"),
+            root.path("home/.ollama"),
+        );
+        let look = |source: &ManagerInstance, path: &[&str]| {
+            let instances = vec![brew(&root), source.clone()];
+            needed_by_on_path(
+                &formula("ollama"),
+                &instances[0],
+                &instances,
+                &[row(&source.id, ArtifactKind::Model, "llama3.2:3b")],
+                &root.env(path),
+                &Refreshed {
+                    path_known: true,
+                    unlisted: Vec::new(),
+                    applications: root.path("Applications"),
+                },
+                BUDGET,
+            )
+        };
+        let shims = "home/.local/share/mise/shims";
+        let found = look(&ollama, &["opt/homebrew/bin", shims]);
+        assert_eq!(needed(&found.warnings), vec![(ollama.id.clone(), true, 1)]);
+        assert!(!found.ollama_stays);
+        root.link("usr/local/bin/ollama", mise.to_str().unwrap());
+        let found = look(&ollama, &["opt/homebrew/bin", "usr/local/bin"]);
+        assert_eq!(needed(&found.warnings), vec![(ollama.id.clone(), true, 1)]);
+        assert!(!found.ollama_stays);
+        std::fs::remove_file(root.path("usr/local/bin/ollama")).unwrap();
+        std::fs::write(root.path("usr/local/bin/ollama"), b"").unwrap();
+        std::fs::set_permissions(
+            root.path("usr/local/bin/ollama"),
+            std::fs::Permissions::from_mode(0o644),
+        )
+        .unwrap();
+        let found = look(&ollama, &["opt/homebrew/bin", "usr/local/bin"]);
+        assert_eq!(needed(&found.warnings), vec![(ollama.id.clone(), true, 1)]);
+        assert!(!found.ollama_stays);
+        // A real one after the shim keeps them.
+        root.program("opt/ollama-download/ollama");
+        let found = look(&ollama, &["opt/homebrew/bin", shims, "opt/ollama-download"]);
+        assert!(found.warnings.is_empty(), "{:?}", found.warnings);
+        assert!(found.ollama_stays);
+
+        // Banager's own Ollama found as the shim: which copy it runs is not
+        // known -- not a dependency, not another Ollama either -- unless a
+        // real one stays beside it.
+        let through_shim = instance(
+            "ollama",
+            "ollama:http://127.0.0.1:11434",
+            shim.clone(),
+            root.path("home/.ollama"),
+        );
+        let found = look(&through_shim, &[shims, "opt/homebrew/bin"]);
+        assert!(found.warnings.is_empty(), "{:?}", found.warnings);
+        assert!(!found.ollama_stays);
+        assert!(!found.complete);
+        root.program("Applications/Ollama.app/Contents/Resources/ollama");
+        let found = look(&through_shim, &[shims, "opt/homebrew/bin"]);
+        assert!(found.warnings.is_empty());
+        assert!(found.ollama_stays);
+    }
+
+    #[test]
+    fn test_an_ollama_app_that_stays_is_found_when_no_round_has_listed_the_models() {
+        // Ollama has not answered since Banager opened: no round has
+        // listed its models, but Ollama.app still runs those in
+        // `~/.ollama/models` (r22 R53-4).
+        let root = Root::new("ollama-unlisted");
+        root.dir("opt/homebrew/Caskroom");
+        root.program("opt/homebrew/Cellar/ollama/0.34.1/bin/ollama");
+        root.link(
+            "opt/homebrew/bin/ollama",
+            "../Cellar/ollama/0.34.1/bin/ollama",
+        );
+        let ollama = instance(
+            "ollama",
+            "ollama:http://127.0.0.1:11434",
+            root.path("opt/homebrew/bin/ollama"),
+            root.path("home/.ollama"),
+        );
+        let instances = vec![brew(&root), ollama.clone()];
+        let env = root.env(&["opt/homebrew/bin", "usr/local/bin"]);
+        let look = || {
+            needed_by_on_path(
+                &formula("ollama"),
+                &instances[0],
+                &instances,
+                &[],
+                &env,
+                &Refreshed {
+                    path_known: true,
+                    unlisted: vec![ollama.id.clone()],
+                    applications: root.path("Applications"),
+                },
+                BUDGET,
+            )
+        };
+        assert!(!look().ollama_stays);
+        root.program("Applications/Ollama.app/Contents/Resources/ollama");
+        let found = look();
+        assert!(found.warnings.is_empty(), "{:?}", found.warnings);
+        assert!(found.ollama_stays);
+    }
+
+    #[test]
+    fn test_an_ollama_whose_models_are_on_another_machine_needs_nothing_here() {
+        let root = Root::new("ollama-remote");
+        root.program("opt/homebrew/Cellar/ollama/0.34.1/bin/ollama");
+        root.link(
+            "opt/homebrew/bin/ollama",
+            "../Cellar/ollama/0.34.1/bin/ollama",
+        );
+        let env = root.env(&["opt/homebrew/bin"]);
+        let models_of =
+            |ollama: &ManagerInstance| vec![row(&ollama.id, ArtifactKind::Model, "llama3.2:3b")];
+        // `OLLAMA_HOST` names another machine: its models are there, and the
+        // `ollama` this formula put here is only a client.
+        let remote = instance(
+            "ollama",
+            "ollama:http://studio.local:11434",
+            root.path("opt/homebrew/bin/ollama"),
+            root.path("home/.ollama"),
+        );
+        let instances = vec![brew(&root), remote.clone()];
+        let found = needed_by(
+            &formula("ollama"),
+            &instances[0],
+            &instances,
+            &models_of(&remote),
+            &env,
+            BUDGET,
+        );
+        assert!(found.warnings.is_empty());
+        assert!(found.complete);
+        // The same Mac spelled another way still counts.
+        let local = instance(
+            "ollama",
+            "ollama:http://localhost:11434",
+            root.path("opt/homebrew/bin/ollama"),
+            root.path("home/.ollama"),
+        );
+        let instances = vec![brew(&root), local.clone()];
+        let found = needed_by(
+            &formula("ollama"),
+            &instances[0],
+            &instances,
+            &models_of(&local),
+            &env,
+            BUDGET,
+        );
+        assert_eq!(needed(&found.warnings), vec![(local.id.clone(), true, 1)]);
+    }
+
+    #[test]
+    fn test_a_tool_environment_in_a_protected_place_is_not_looked_into() {
+        // `~/Documents` is a place macOS asks about before an app reads it:
+        // its environment is not looked into, and so not counted -- nor
+        // taken for one that does not run on it: the look did not finish.
+        let root = Root::new("protected");
+        root.python_313();
+        let opt = root.path("opt/homebrew/opt/python@3.13/bin/python3.13");
+        root.link(
+            "home/Documents/venvs/tool/bin/python",
+            opt.to_str().unwrap(),
+        );
+        let uv = instance(
+            "uv",
+            "uv",
+            root.path("home/.local/bin/uv"),
+            root.path("home/.local/bin"),
+        );
+        let tools = vec![with_path(
+            row("uv", ArtifactKind::Tool, "tool"),
+            root.path("home/Documents/venvs/tool"),
+        )];
+        let instances = vec![brew(&root), uv];
+        let found = needed_by(
+            &formula("python@3.13"),
+            &instances[0],
+            &instances,
+            &tools,
+            &root.env(&["opt/homebrew/bin"]),
+            BUDGET,
+        );
+        assert_eq!(
+            found,
+            NeededBy {
+                warnings: Vec::new(),
+                complete: false,
+                ollama_stays: false,
+                models_on_another_ollama: false,
+            }
+        );
+    }
+
+    #[test]
+    fn test_directory_search_stops_at_a_match_or_deadline() {
+        let root = Root::new("names-match");
+        let bin = root.dir("package/bin");
+        for index in 0..32 {
+            root.program(&format!("package/bin/python3.{index}"));
+        }
+        let mut look = Look::new(&root.home(), BUDGET);
+        let (found, made) = crate::dirfd::calls::measure(|| {
+            look.holds(&bin, std::slice::from_ref(&bin), &[], true)
+        });
+        assert!(found && !look.over);
+        assert_eq!(made.entries, 1);
+        look.started = Instant::now() - BUDGET.max_duration;
+        let (unknown, made) = crate::dirfd::calls::measure(|| {
+            look.holds(&bin, std::slice::from_ref(&bin), &[], true)
+        });
+        assert!(unknown && look.over);
+        assert_eq!(made.total(), 0);
+        assert_eq!(made.entries, 0);
+    }
+
+    #[test]
+    fn test_directory_names_spend_the_dependency_budget() {
+        let root = Root::new("names-budget");
+        let bin = root.dir("package/bin");
+        for index in 0..32 {
+            root.program(&format!("package/bin/unrelated-{index}"));
+        }
+        let mut look = Look::new(
+            &root.home(),
+            Budget {
+                max_looks: 4,
+                max_duration: Duration::from_secs(1),
+            },
+        );
+        let (unknown, made) = crate::dirfd::calls::measure(|| {
+            look.holds(&bin, std::slice::from_ref(&bin), &[], true)
+        });
+        assert!(unknown, "exhaustion must leave the dependency unknown");
+        assert!(look.over);
+        assert!(made.entries <= 4, "read {} names", made.entries);
+    }
+
+    #[test]
+    fn test_a_look_the_budget_cut_short_is_not_finished() {
+        let root = Root::new("budget");
+        root.node_22();
+        root.link_node_22();
+        let npm = instance("npm", NPM, root.path("opt/homebrew/bin/npm"), root.prefix());
+        let instances = vec![brew(&root), npm];
+        for budget in [
+            Budget {
+                max_looks: 0,
+                max_duration: Duration::from_secs(1),
+            },
+            Budget {
+                max_looks: 1,
+                max_duration: Duration::from_secs(1),
+            },
+            Budget {
+                max_looks: 2_000,
+                max_duration: Duration::ZERO,
+            },
+        ] {
+            let found = needed_by(
+                &formula("node@22"),
+                &instances[0],
+                &instances,
+                &npm_rows(),
+                &root.env(&["opt/homebrew/bin"]),
+                budget,
+            );
+            assert!(!found.complete, "{budget:?}");
+            assert!(found.warnings.is_empty(), "{budget:?}");
+        }
+    }
+
+    #[test]
+    fn test_only_a_formula_or_cask_of_a_readable_homebrew_is_looked_at() {
+        let root = Root::new("kinds");
+        root.node_22();
+        root.link_node_22();
+        let npm = instance("npm", NPM, root.path("opt/homebrew/bin/npm"), root.prefix());
+        let instances = vec![brew(&root), npm];
+        let env = root.env(&["opt/homebrew/bin"]);
+        // An npm package is no Homebrew package.
+        let package = row(NPM, ArtifactKind::Package, "node@22");
+        assert_eq!(
+            needed_by(
+                &package,
+                &instances[0],
+                &instances,
+                &npm_rows(),
+                &env,
+                BUDGET
+            ),
+            NeededBy {
+                warnings: Vec::new(),
+                complete: true,
+                ollama_stays: false,
+                models_on_another_ollama: false,
+            }
+        );
+        // A name that names no single folder.
+        for name in ["..", "user/tap/..", ".", ""] {
+            assert_eq!(
+                needed_by(
+                    &formula(name),
+                    &instances[0],
+                    &instances,
+                    &npm_rows(),
+                    &env,
+                    BUDGET
+                ),
+                NeededBy {
+                    warnings: Vec::new(),
+                    complete: true,
+                    ollama_stays: false,
+                    models_on_another_ollama: false,
+                },
+                "{name:?}"
+            );
+        }
+        // A tapped formula is found by its short name.
+        assert_eq!(
+            needed(
+                &needed_by(
+                    &formula("homebrew/core/node@22"),
+                    &instances[0],
+                    &instances,
+                    &npm_rows(),
+                    &env,
+                    BUDGET
+                )
+                .warnings
+            ),
+            vec![(NPM.to_string(), true, 4)]
+        );
+        // A Homebrew whose `Cellar` cannot be read: no answer, not "nothing".
+        let gone = instance("brew", BREW, root.path("gone/bin/brew"), root.path("gone"));
+        let instances = vec![gone, instances[1].clone()];
+        assert_eq!(
+            needed_by(
+                &formula("node@22"),
+                &instances[0],
+                &instances,
+                &npm_rows(),
+                &env,
+                BUDGET
+            ),
+            NeededBy {
+                warnings: Vec::new(),
+                complete: false,
+                ollama_stays: false,
+                models_on_another_ollama: false,
+            }
+        );
+    }
+
+    /// `jq`, a formula nothing else runs on, laid out as Homebrew lays it
+    /// out (its keg, its `opt` link, linked into `bin`), and a font cask,
+    /// which has no app: packages no doubt about a `node`, a Python or a
+    /// source's own program can be about.
+    fn bystanders(root: &Root) -> [InstalledArtifact; 2] {
+        root.program("opt/homebrew/Cellar/jq/1.8.1/bin/jq");
+        root.link("opt/homebrew/opt/jq", "../Cellar/jq/1.8.1");
+        root.link("opt/homebrew/bin/jq", "../Cellar/jq/1.8.1/bin/jq");
+        root.dir("opt/homebrew/Caskroom/font-fira-code/6.2");
+        [
+            formula("jq"),
+            row(BREW, ArtifactKind::Cask, "font-fira-code"),
+        ]
+    }
+
+    fn unfinished() -> NeededBy {
+        NeededBy {
+            warnings: Vec::new(),
+            complete: false,
+            ollama_stays: false,
+            models_on_another_ollama: false,
+        }
+    }
+
+    fn finished() -> NeededBy {
+        NeededBy {
+            warnings: Vec::new(),
+            complete: true,
+            ollama_stays: false,
+            models_on_another_ollama: false,
+        }
+    }
+
+    #[test]
+    fn test_a_tool_environment_banager_may_not_or_cannot_look_into_leaves_a_pythons_look_unfinished(
+    ) {
+        // A pipx whose own Python is not python@3.13, with tools whose
+        // environments may run on it: one kept in `~/Documents` -- its
+        // `bin/python` a link to Homebrew's python@3.13, which Banager
+        // never sees -- one whose `bin` cannot be searched, and one with
+        // no environment Banager knows of. Neither "needs it" nor
+        // "nothing needs it" is known of a Python: its look did not finish
+        // (`Warning::DependentsUnknown` in the preview). Of jq or a font,
+        // which no environment's `bin/python` can be, it is.
+        let root = Root::new("unknown-env");
+        root.python_313();
+        let others = bystanders(&root);
+        let opt = root.path("opt/homebrew/opt/python@3.13/bin/python3.13");
+        root.program("opt/homebrew/Cellar/pipx/1.17.3/libexec/bin/pipx");
+        root.link(
+            "opt/homebrew/bin/pipx",
+            "../Cellar/pipx/1.17.3/libexec/bin/pipx",
+        );
+        let pipx = instance(
+            "pipx",
+            "pipx",
+            root.path("opt/homebrew/bin/pipx"),
+            root.path("opt/homebrew/bin"),
+        );
+        root.link(
+            "home/Documents/pipx/venvs/httpie/bin/python",
+            opt.to_str().unwrap(),
+        );
+        root.link(
+            "home/.local/pipx/venvs/poetry/bin/python",
+            opt.to_str().unwrap(),
+        );
+        // A venv whose Python is known to be gone: known not to need it.
+        root.link(
+            "home/.local/pipx/venvs/gone/bin/python",
+            "/nonexistent/python3.13",
+        );
+        let instances = vec![brew(&root), pipx];
+        let env = root.env(&["opt/homebrew/bin"]);
+        let tool = |name: &str, environment: Option<&str>| match environment {
+            Some(environment) => with_path(
+                row("pipx", ArtifactKind::Tool, name),
+                root.path(environment),
+            ),
+            None => row("pipx", ArtifactKind::Tool, name),
+        };
+        let look = |package: &InstalledArtifact, tools: &[InstalledArtifact]| {
+            needed_by(package, &instances[0], &instances, tools, &env, BUDGET)
+        };
+        let python = formula("python@3.13");
+        let gone = tool("gone", Some("home/.local/pipx/venvs/gone"));
+        let in_documents = tool("httpie", Some("home/Documents/pipx/venvs/httpie"));
+        let no_app = tool("no-app", None);
+        // What is known either way finishes the look.
+        assert_eq!(look(&python, std::slice::from_ref(&gone)), finished());
+        // In `~/Documents`, not looked into; or with no environment path
+        // at all: python@3.13's look is not finished -- its keg has
+        // `python3.13`, not `python3` -- and jq's and the font's are.
+        for tools in [vec![gone.clone(), in_documents.clone()], vec![no_app]] {
+            assert_eq!(look(&python, &tools), unfinished(), "{tools:?}");
+            for other in &others {
+                assert_eq!(look(other, &tools), finished(), "{other:?} {tools:?}");
+            }
+        }
+        // One that needs it is still named beside one that may.
+        let found = look(
+            &python,
+            &[
+                tool("poetry", Some("home/.local/pipx/venvs/poetry")),
+                in_documents.clone(),
+            ],
+        );
+        assert_eq!(
+            needed(&found.warnings),
+            vec![("pipx".to_string(), false, 1)]
+        );
+        assert!(!found.complete);
+        // A `bin` this account may not search: not finished either, of a
+        // Python alone.
+        let bin = root.path("home/.local/pipx/venvs/poetry/bin");
+        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let poetry = [tool("poetry", Some("home/.local/pipx/venvs/poetry"))];
+        let unreadable = look(&python, &poetry);
+        let jq = look(&others[0], &poetry);
+        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert_eq!(unreadable, unfinished());
+        assert_eq!(jq, finished());
+        // Homebrew's default Python has `python3` too, and is a Python by
+        // it whatever its name.
+        root.program("opt/homebrew/Cellar/python@3.14/3.14.0/bin/python3");
+        root.link(
+            "opt/homebrew/opt/python@3.14",
+            "../Cellar/python@3.14/3.14.0",
+        );
+        assert_eq!(look(&formula("python@3.14"), &[in_documents]), unfinished());
+    }
+
+    #[test]
+    fn test_a_path_folder_in_a_protected_place_before_node_leaves_a_nodes_look_unfinished() {
+        let root = Root::new("unknown-path");
+        root.node_22();
+        root.node_linked();
+        let others = bystanders(&root);
+        // npm's `npm` is a copy outside the `node` keg; the `node` it is run
+        // with is the first on `PATH`. A `PATH` folder in `~/Documents`
+        // comes first: whether a `node` there would be the one is not
+        // known, so the look of a Node.js does not finish -- and
+        // Homebrew's, found after it, is still named. Of jq or a font,
+        // which no `node` can be, it does.
+        let npm = instance("npm", NPM, root.path("opt/homebrew/bin/npm"), root.prefix());
+        let instances = vec![brew(&root), npm];
+        let protected_first = root.env(&["home/Documents/bin", "opt/homebrew/bin"]);
+        let look = |package: &InstalledArtifact, env: &HostEnv| {
+            needed_by(package, &instances[0], &instances, &npm_rows(), env, BUDGET)
+        };
+        let found = look(&formula("node"), &protected_first);
+        assert_eq!(needed(&found.warnings), vec![(NPM.to_string(), true, 4)]);
+        assert!(!found.complete);
+        // node@22, keg-only and not linked, has a `node` too: whether the
+        // one in `~/Documents` leads into it is not known either.
+        assert_eq!(look(&formula("node@22"), &protected_first), unfinished());
+        for other in &others {
+            assert_eq!(look(other, &protected_first), finished(), "{other:?}");
+        }
+        // A `PATH` folder that is not there is known to hold no `node`.
+        let missing = look(
+            &formula("node"),
+            &root.env(&["home/bin", "opt/homebrew/bin"]),
+        );
+        assert_eq!(needed(&missing.warnings), vec![(NPM.to_string(), true, 4)]);
+        assert!(missing.complete);
+    }
+
+    #[test]
+    fn test_a_source_program_in_a_protected_place_leaves_only_its_own_packages_look_unfinished() {
+        // uv's program leads into `~/Documents`: whether it is Homebrew's
+        // `uv` is not known. Its one tool's environment is known to hold
+        // no Python, so only the program is in doubt -- which only a
+        // package that could be a `uv` can settle.
+        let root = Root::new("unknown-program");
+        root.python_313();
+        let others = bystanders(&root);
+        root.program("opt/homebrew/Cellar/uv/0.9.2/bin/uv");
+        root.link("opt/homebrew/opt/uv", "../Cellar/uv/0.9.2");
+        root.link(
+            "home/.local/bin/uv",
+            root.path("home/Documents/uv/bin/uv").to_str().unwrap(),
+        );
+        let uv = instance(
+            "uv",
+            "uv",
+            root.path("home/.local/bin/uv"),
+            root.path("home/.local/bin"),
+        );
+        let tools = vec![with_path(
+            row("uv", ArtifactKind::Tool, "ruff"),
+            root.path("home/.local/share/uv/tools/ruff"),
+        )];
+        let instances = vec![brew(&root), uv];
+        let env = root.env(&["opt/homebrew/bin"]);
+        let look = |package: &InstalledArtifact| {
+            needed_by(package, &instances[0], &instances, &tools, &env, BUDGET)
+        };
+        assert_eq!(look(&formula("uv")), unfinished());
+        assert_eq!(look(&formula("python@3.13")), finished());
+        for other in &others {
+            assert_eq!(look(other), finished(), "{other:?}");
+        }
+    }
+
+    #[test]
+    fn test_pips_python_not_followed_leaves_every_pythons_look_unfinished_whatever_its_name() {
+        // Astra's late review, finding 2: pip's program is a launcher of
+        // the user's own, `~/bin/python3`, that led into python@3.13's
+        // `bin/python3.13` -- a keg with no `python3` of its own. When it
+        // is rerouted through `~/Documents`, or a folder on the way cannot
+        // be searched, what runs pip is not known: it is a Python, so
+        // every Python's look does not finish, whatever the launcher is
+        // called. jq, a font and uv can be no Python, and theirs do.
+        let root = Root::new("pip-alias");
+        root.python_313();
+        root.link(
+            "opt/homebrew/Cellar/python@3.13/3.13.15/libexec/bin/python3",
+            "../../Frameworks/Python.framework/Versions/3.13/bin/python3.13",
+        );
+        root.program("opt/homebrew/Cellar/python@3.14/3.14.0/bin/python3.14");
+        root.link(
+            "opt/homebrew/Cellar/python@3.14/3.14.0/bin/python3",
+            "python3.14",
+        );
+        root.link(
+            "opt/homebrew/opt/python@3.14",
+            "../Cellar/python@3.14/3.14.0",
+        );
+        root.program("opt/homebrew/Cellar/uv/0.9.2/bin/uv");
+        root.link("opt/homebrew/opt/uv", "../Cellar/uv/0.9.2");
+        let others = bystanders(&root);
+        let real = root.path("opt/homebrew/Cellar/python@3.13/3.13.15/bin/python3.13");
+        const PIP: &str = "pip:~/bin/python3";
+        let tools = vec![row(PIP, ArtifactKind::Package, "requests")];
+        let env = root.env(&["home/bin", "opt/homebrew/bin"]);
+        let look = |launcher: &str, package: &InstalledArtifact| {
+            let pip = instance("pip", PIP, root.path(launcher), root.path("home/bin"));
+            let instances = vec![brew(&root), pip];
+            needed_by(package, &instances[0], &instances, &tools, &env, BUDGET)
+        };
+        // Followed: python@3.13 runs pip, and pip's one package needs it.
+        root.link("home/bin/python3", real.to_str().unwrap());
+        let found = look("home/bin/python3", &formula("python@3.13"));
+        assert_eq!(needed(&found.warnings), vec![(PIP.to_string(), true, 1)]);
+        assert!(found.complete);
+        // Into `~/Documents`, a link to itself, and one named `python`.
+        std::fs::remove_file(root.path("home/bin/python3")).unwrap();
+        root.link(
+            "home/bin/python3",
+            root.path("home/Documents/py/bin/python3").to_str().unwrap(),
+        );
+        root.link("home/bin/loop/python3", "python3");
+        root.link(
+            "home/bin/python",
+            root.path("home/Documents/py/bin/python3.13")
+                .to_str()
+                .unwrap(),
+        );
+        for launcher in [
+            "home/bin/python3",
+            "home/bin/loop/python3",
+            "home/bin/python",
+        ] {
+            for python in ["python@3.13", "python@3.14"] {
+                assert_eq!(
+                    look(launcher, &formula(python)),
+                    unfinished(),
+                    "{launcher} {python}"
+                );
+            }
+            assert_eq!(look(launcher, &formula("uv")), finished(), "{launcher}");
+            for other in &others {
+                assert_eq!(look(launcher, other), finished(), "{launcher} {other:?}");
+            }
+        }
+        // Known not to be there: known to run on nothing.
+        root.link("home/bin/gone/python3", "/nonexistent/python3");
+        assert_eq!(
+            look("home/bin/gone/python3", &formula("python@3.13")),
+            finished()
+        );
+    }
+
+    #[test]
+    fn test_a_package_named_for_a_program_not_followed_could_be_it_wherever_its_keg_keeps_it() {
+        // A link may lead to a program of another name, in another folder
+        // of the keg. A formula named for the program -- `uv` for uv's,
+        // `node@22` for npm's `node` -- could be it however it is laid
+        // out; `libuv`, whose name only contains it, and jq are not.
+        let root = Root::new("named-for");
+        let others = bystanders(&root);
+        root.program("opt/homebrew/Cellar/uv/0.9.2/libexec/vendor-launcher");
+        root.link("opt/homebrew/opt/uv", "../Cellar/uv/0.9.2");
+        root.program("opt/homebrew/Cellar/libuv/1.51.0/lib/libuv.1.dylib");
+        root.link("opt/homebrew/opt/libuv", "../Cellar/libuv/1.51.0");
+        root.link(
+            "home/.local/bin/uv",
+            root.path("home/Documents/uv/bin/uv").to_str().unwrap(),
+        );
+        let uv = instance(
+            "uv",
+            "uv",
+            root.path("home/.local/bin/uv"),
+            root.path("home/.local/bin"),
+        );
+        let tools = vec![with_path(
+            row("uv", ArtifactKind::Tool, "ruff"),
+            root.path("home/.local/share/uv/tools/ruff"),
+        )];
+        let env = root.env(&["opt/homebrew/bin"]);
+        let instances = vec![brew(&root), uv];
+        let look = |package: &InstalledArtifact| {
+            needed_by(package, &instances[0], &instances, &tools, &env, BUDGET)
+        };
+        assert_eq!(look(&formula("uv")), unfinished());
+        assert_eq!(look(&formula("libuv")), finished());
+        for other in &others {
+            assert_eq!(look(other), finished(), "{other:?}");
+        }
+        // npm's program not followed: it lives in a Node.js. The `node` on
+        // `PATH` is Homebrew's `node`, so that one is named; the keg-only
+        // `node@22` could hold the npm itself, and is not known either
+        // way. jq and the font can hold neither.
+        let root = Root::new("npm-not-followed");
+        root.node_22();
+        root.node_linked();
+        let others = bystanders(&root);
+        root.link(
+            "home/bin/npm",
+            root.path("home/Documents/npm/bin/npm-cli.js")
+                .to_str()
+                .unwrap(),
+        );
+        let npm = instance("npm", NPM, root.path("home/bin/npm"), root.prefix());
+        let instances = vec![brew(&root), npm];
+        let env = root.env(&["opt/homebrew/bin"]);
+        let look = |package: &InstalledArtifact| {
+            needed_by(
+                package,
+                &instances[0],
+                &instances,
+                &npm_rows(),
+                &env,
+                BUDGET,
+            )
+        };
+        let node = look(&formula("node"));
+        assert_eq!(needed(&node.warnings), vec![(NPM.to_string(), true, 4)]);
+        assert!(node.complete);
+        assert_eq!(look(&formula("node@22")), unfinished());
+        for other in &others {
+            assert_eq!(look(other), finished(), "{other:?}");
+        }
+    }
+
+    #[test]
+    fn test_the_p8_control_layouts_leave_only_a_runtime_the_path_could_reach_unfinished() {
+        // The real-data recheck p8 (item 7, finding F1), on a Homebrew laid
+        // out as Homebrew lays one out: twelve formulae -- `node@22`
+        // keg-only but linked by force, three Pythons (only 3.14 with a
+        // `python3`), pipx, uv, Ollama and five that are no runtime -- and
+        // two casks, a font and an app. npm runs on `node@22`, Ollama has
+        // one model, pipx no tool. In each layout, the packages whose look
+        // does not finish are exactly the ones the unfollowed path could
+        // reach; 8d437178 left all but one or two unfinished in each.
+        let root = Root::new("p8-layouts");
+        let keg = |name: &str, programs: &[&str]| {
+            for program in programs {
+                root.program(&format!("opt/homebrew/Cellar/{name}/1.0/bin/{program}"));
+                root.link(
+                    &format!("opt/homebrew/bin/{program}"),
+                    &format!("../Cellar/{name}/1.0/bin/{program}"),
+                );
+            }
+            root.dir(&format!("opt/homebrew/Cellar/{name}/1.0"));
+            root.link(
+                &format!("opt/homebrew/opt/{name}"),
+                &format!("../Cellar/{name}/1.0"),
+            );
+        };
+        for (name, programs) in [
+            ("jq", &["jq"][..]),
+            ("wget", &["wget"]),
+            ("git", &["git"]),
+            ("ffmpeg", &["ffmpeg"]),
+            ("libuv", &[]),
+            ("python@3.11", &["python3.11"]),
+            ("python@3.13", &["python3.13"]),
+            ("python@3.14", &["python3.14", "python3"]),
+            ("uv", &["uv", "uvx"]),
+            ("ollama", &["ollama"]),
+        ] {
+            keg(name, programs);
+        }
+        root.program("opt/homebrew/Cellar/pipx/1.0/libexec/bin/pipx");
+        root.link(
+            "opt/homebrew/Cellar/pipx/1.0/bin/pipx",
+            "../libexec/bin/pipx",
+        );
+        root.link("opt/homebrew/bin/pipx", "../Cellar/pipx/1.0/bin/pipx");
+        root.link("opt/homebrew/opt/pipx", "../Cellar/pipx/1.0");
+        root.node_22();
+        root.link_node_22();
+        root.dir("opt/homebrew/Caskroom/font-fira-code/6.2");
+        root.dir("opt/homebrew/Caskroom/libreoffice/26.2.0");
+        root.dir("Applications/LibreOffice.app/Contents/MacOS");
+        let mut packages: Vec<InstalledArtifact> = [
+            "jq",
+            "wget",
+            "git",
+            "ffmpeg",
+            "libuv",
+            "node@22",
+            "python@3.11",
+            "python@3.13",
+            "python@3.14",
+            "pipx",
+            "uv",
+            "ollama",
+        ]
+        .iter()
+        .map(|name| formula(name))
+        .collect();
+        packages.push(row(BREW, ArtifactKind::Cask, "font-fira-code"));
+        packages.push(with_path(
+            row(BREW, ArtifactKind::Cask, "libreoffice"),
+            root.path("Applications/LibreOffice.app"),
+        ));
+        root.program("usr/bin/true");
+        const OLLAMA: &str = "ollama:http://127.0.0.1:11434";
+        const PIP: &str = "pip:~/bin/python3";
+        let mut rows = npm_rows();
+        rows.push(row(OLLAMA, ArtifactKind::Model, "qwen3:8b"));
+        // pip run by a launcher of the user's own, and uv by one, each
+        // leading into `~/Documents`.
+        root.link(
+            "home/bin/python3",
+            root.path("home/Documents/py/bin/python3").to_str().unwrap(),
+        );
+        root.link(
+            "home/.local/bin/uv",
+            root.path("home/Documents/uv/bin/uv").to_str().unwrap(),
+        );
+        let base = vec![
+            brew(&root),
+            instance("npm", NPM, root.path("opt/homebrew/bin/npm"), root.prefix()),
+            instance(
+                "ollama",
+                OLLAMA,
+                root.path("opt/homebrew/bin/ollama"),
+                root.path("home/.ollama"),
+            ),
+            instance(
+                "pipx",
+                "pipx",
+                root.path("opt/homebrew/bin/pipx"),
+                root.path("opt/homebrew/bin"),
+            ),
+        ];
+        let login = root.env(&["opt/homebrew/bin", "usr/bin"]);
+        let protected_first = root.env(&["home/Documents/bin", "opt/homebrew/bin", "usr/bin"]);
+        let unfinished_of = |env: &HostEnv, layout: &str| -> Vec<String> {
+            let mut instances = base.clone();
+            let mut artifacts = rows.clone();
+            if layout == "npm-copy" || layout == "both" {
+                instances[1].exe_path = root.path("usr/bin/true");
+            }
+            let pipx_tool = layout == "pipx-no-env" || layout == "both";
+            if pipx_tool {
+                artifacts.push(row("pipx", ArtifactKind::Tool, "no-env"));
+            }
+            if layout == "pip-launcher" {
+                instances.push(instance(
+                    "pip",
+                    PIP,
+                    root.path("home/bin/python3"),
+                    root.path("home/bin"),
+                ));
+                artifacts.push(row(PIP, ArtifactKind::Package, "requests"));
+            }
+            if layout == "uv-launcher" {
+                instances.push(instance(
+                    "uv",
+                    "uv",
+                    root.path("home/.local/bin/uv"),
+                    root.path("home/.local/bin"),
+                ));
+                artifacts.push(with_path(
+                    row("uv", ArtifactKind::Tool, "ruff"),
+                    root.path("home/.local/share/uv/tools/ruff"),
+                ));
+            }
+            let mut names = Vec::new();
+            for package in &packages {
+                let found = needed_by(package, &instances[0], &instances, &artifacts, env, BUDGET);
+                // What is found is still named, in every layout: npm on
+                // `node@22` (its `npm`, or the `node` on `PATH`), Ollama on
+                // `ollama`, and pipx, once it has a tool, on `pipx`.
+                let expected = match package.key.name.as_str() {
+                    "node@22" => vec![(NPM.to_string(), true, 4)],
+                    "ollama" => vec![(OLLAMA.to_string(), true, 1)],
+                    "pipx" if pipx_tool => vec![("pipx".to_string(), true, 1)],
+                    _ => Vec::new(),
+                };
+                assert_eq!(needed(&found.warnings), expected, "{layout} {package:?}");
+                if !found.complete {
+                    names.push(package.key.name.clone());
+                }
+            }
+            names
+        };
+        let pythons = ["python@3.11", "python@3.13", "python@3.14"];
+        for (env, label) in [(&login, "login"), (&protected_first, "protected first")] {
+            let protected = label == "protected first";
+            assert_eq!(unfinished_of(env, "as-is"), Vec::<String>::new(), "{label}");
+            let npm_copy: Vec<&str> = if protected { vec!["node@22"] } else { vec![] };
+            assert_eq!(unfinished_of(env, "npm-copy"), npm_copy, "{label}");
+            assert_eq!(unfinished_of(env, "pipx-no-env"), pythons, "{label}");
+            let mut both = pythons.to_vec();
+            if protected {
+                both.insert(0, "node@22");
+            }
+            assert_eq!(unfinished_of(env, "both"), both, "{label}");
+            assert_eq!(unfinished_of(env, "pip-launcher"), pythons, "{label}");
+            assert_eq!(unfinished_of(env, "uv-launcher"), vec!["uv"], "{label}");
+        }
+    }
+
+    /// A pipx whose program is Homebrew's, and a tool of it whose
+    /// environment is `environment`.
+    fn pipx_with_tool(root: &Root, environment: &str) -> (ManagerInstance, Vec<InstalledArtifact>) {
+        root.program("opt/homebrew/Cellar/pipx/1.17.3/libexec/bin/pipx");
+        let _ = std::fs::remove_file(root.path("opt/homebrew/bin/pipx"));
+        root.link(
+            "opt/homebrew/bin/pipx",
+            "../Cellar/pipx/1.17.3/libexec/bin/pipx",
+        );
+        let pipx = instance(
+            "pipx",
+            "pipx",
+            root.path("opt/homebrew/bin/pipx"),
+            root.path("opt/homebrew/bin"),
+        );
+        let tools = vec![with_path(
+            row("pipx", ArtifactKind::Tool, "tool"),
+            root.path(environment),
+        )];
+        (pipx, tools)
+    }
+
+    #[test]
+    fn test_a_pypy_or_a_free_threaded_python_is_a_python_too() {
+        // Astra's m2 review, finding 2: Homebrew's `pypy3.11` keeps its
+        // interpreter in `libexec/pypybin` and links `bin/pypy3.11` and
+        // `bin/pypy3`; `python-freethreading` has `bin/python3.14t` and no
+        // `python3`. Neither is named `python@…`. A tool's environment
+        // made with either, when it cannot be followed, leaves their looks
+        // unfinished; `python-tk@3.13` (no interpreter) and a formula whose
+        // programs only begin with `python-` finish, as jq and a font do.
+        let root = Root::new("pypy");
+        let others = bystanders(&root);
+        root.program("opt/homebrew/Cellar/pypy3.11/7.3.20/libexec/pypybin/pypy3.11");
+        root.link(
+            "opt/homebrew/Cellar/pypy3.11/7.3.20/bin/pypy3.11",
+            "../libexec/pypybin/pypy3.11",
+        );
+        root.link("opt/homebrew/Cellar/pypy3.11/7.3.20/bin/pypy3", "pypy3.11");
+        root.link("opt/homebrew/opt/pypy3.11", "../Cellar/pypy3.11/7.3.20");
+        root.program(
+            "opt/homebrew/Cellar/python-freethreading/3.14.0/Frameworks/PythonT.framework/Versions/3.14t/bin/python3.14t",
+        );
+        root.link(
+            "opt/homebrew/Cellar/python-freethreading/3.14.0/bin/python3.14t",
+            "../Frameworks/PythonT.framework/Versions/3.14t/bin/python3.14t",
+        );
+        root.link(
+            "opt/homebrew/opt/python-freethreading",
+            "../Cellar/python-freethreading/3.14.0",
+        );
+        root.dir("opt/homebrew/Cellar/python-tk@3.13/3.13.15/lib/python3.13");
+        root.link(
+            "opt/homebrew/opt/python-tk@3.13",
+            "../Cellar/python-tk@3.13/3.13.15",
+        );
+        for program in [
+            "python-argcomplete-check-easy-install-script",
+            "python3.13-config",
+            "register-python-argcomplete",
+        ] {
+            root.program(&format!(
+                "opt/homebrew/Cellar/python-argcomplete/3.6.2/bin/{program}"
+            ));
+        }
+        root.link(
+            "opt/homebrew/opt/python-argcomplete",
+            "../Cellar/python-argcomplete/3.6.2",
+        );
+        let env = root.env(&["opt/homebrew/bin"]);
+        // Followed into the PyPy: pipx's tool needs it.
+        let (pipx, tools) = pipx_with_tool(&root, "home/.local/pipx/venvs/tool");
+        root.link(
+            "home/.local/pipx/venvs/tool/bin/python",
+            root.path("opt/homebrew/opt/pypy3.11/bin/pypy3.11")
+                .to_str()
+                .unwrap(),
+        );
+        let instances = vec![brew(&root), pipx];
+        let found = needed_by(
+            &formula("pypy3.11"),
+            &instances[0],
+            &instances,
+            &tools,
+            &env,
+            BUDGET,
+        );
+        assert_eq!(
+            needed(&found.warnings),
+            vec![("pipx".to_string(), false, 1)]
+        );
+        assert!(found.complete);
+        // Kept in `~/Documents`: not known.
+        let (_, tools) = pipx_with_tool(&root, "home/Documents/venvs/tool");
+        let look = |package: &InstalledArtifact| {
+            needed_by(package, &instances[0], &instances, &tools, &env, BUDGET)
+        };
+        for python in ["pypy3.11", "python-freethreading"] {
+            assert_eq!(look(&formula(python)), unfinished(), "{python}");
+        }
+        for other in ["python-tk@3.13", "python-argcomplete"] {
+            assert_eq!(look(&formula(other)), finished(), "{other}");
+        }
+        for other in &others {
+            assert_eq!(look(other), finished(), "{other:?}");
+        }
+        // The names a Python's interpreter has, and some it does not.
+        for name in [
+            "python",
+            "python3",
+            "python3.13",
+            "python3.14t",
+            "pypy",
+            "pypy3",
+            "pypy3.11",
+            "graalpy",
+        ] {
+            assert!(is_python(name), "{name}");
+        }
+        for name in [
+            "python3.13-config",
+            "python-argcomplete-check-easy-install-script",
+            "pythonw3.x",
+            "ipython",
+            "python.3",
+            "jq",
+        ] {
+            assert!(!is_python(name), "{name}");
+        }
+    }
+
+    #[test]
+    fn test_a_cask_that_keeps_its_runtime_out_of_prefix_bin_could_be_it() {
+        // Astra's m2 review, finding 1. Miniconda's installer puts its
+        // Python in `Caskroom/miniconda/base`, and only `conda` is linked
+        // into `<prefix>/bin`; Ollama's app keeps `ollama` in
+        // `Contents/Resources`, its `binary` link skippable. Unfollowed,
+        // what leads into them is not known, by their names and by what
+        // their folders hold (the same layout under a name not on the
+        // list); a font, and an app whose only Python is its own
+        // (LibreOffice's), finish.
+        let root = Root::new("runtime-casks");
+        let others = bystanders(&root);
+        for token in ["miniconda", "some-python-dist"] {
+            root.program(&format!(
+                "opt/homebrew/Caskroom/{token}/base/bin/python3.13"
+            ));
+            root.link(
+                &format!("opt/homebrew/Caskroom/{token}/base/bin/python3"),
+                "python3.13",
+            );
+            root.program(&format!(
+                "opt/homebrew/Caskroom/{token}/25.7.0/Miniconda3-py313_25.7.0-2-MacOSX-arm64.sh"
+            ));
+        }
+        root.program("opt/homebrew/Caskroom/miniconda/base/condabin/conda");
+        root.link(
+            "opt/homebrew/bin/conda",
+            "../Caskroom/miniconda/base/condabin/conda",
+        );
+        root.dir("opt/homebrew/Caskroom/anaconda/2025.06");
+        let cask = |token: &str| row(BREW, ArtifactKind::Cask, token);
+        let app = |token: &str, name: &str, inside: &[&str]| {
+            root.dir(&format!("opt/homebrew/Caskroom/{token}/1.0"));
+            for program in inside {
+                root.program(&format!("Applications/{name}.app/Contents/{program}"));
+            }
+            with_path(cask(token), root.path(&format!("Applications/{name}.app")))
+        };
+        let ollama_app = app(
+            "ollama-app",
+            "Ollama",
+            &["MacOS/Ollama", "Resources/ollama"],
+        );
+        let llm_app = app(
+            "some-llm-app",
+            "SomeLLM",
+            &["MacOS/SomeLLM", "Resources/ollama"],
+        );
+        let libreoffice = app(
+            "libreoffice",
+            "LibreOffice",
+            &["MacOS/soffice", "MacOS/python", "Resources/python"],
+        );
+        let env = root.env(&["opt/homebrew/bin"]);
+        // A pipx tool on Miniconda's Python: named while it can be
+        // followed, not known once its environment is in `~/Documents`.
+        let (pipx, tools) = pipx_with_tool(&root, "home/.local/pipx/venvs/tool");
+        root.link(
+            "home/.local/pipx/venvs/tool/bin/python",
+            root.path("opt/homebrew/Caskroom/miniconda/base/bin/python3")
+                .to_str()
+                .unwrap(),
+        );
+        let instances = vec![brew(&root), pipx];
+        let found = needed_by(
+            &cask("miniconda"),
+            &instances[0],
+            &instances,
+            &tools,
+            &env,
+            BUDGET,
+        );
+        assert_eq!(
+            needed(&found.warnings),
+            vec![("pipx".to_string(), false, 1)]
+        );
+        assert!(found.complete);
+        let (_, tools) = pipx_with_tool(&root, "home/Documents/venvs/tool");
+        let look = |package: &InstalledArtifact| {
+            needed_by(package, &instances[0], &instances, &tools, &env, BUDGET)
+        };
+        for token in ["miniconda", "some-python-dist", "anaconda"] {
+            assert_eq!(look(&cask(token)), unfinished(), "{token}");
+        }
+        for package in [&libreoffice, &ollama_app, &others[0], &others[1]] {
+            assert_eq!(look(package), finished(), "{package:?}");
+        }
+        // Ollama run through `~/bin/ollama`, a link of the user's own into
+        // the app, with no `<prefix>/bin/ollama`: named while it can be
+        // followed, not known once it is rerouted through `~/Documents`.
+        const OLLAMA: &str = "ollama:http://127.0.0.1:11434";
+        let models = vec![row(OLLAMA, ArtifactKind::Model, "qwen3:8b")];
+        let resources = root.path("Applications/Ollama.app/Contents/Resources/ollama");
+        root.link("home/bin/ollama", resources.to_str().unwrap());
+        let ollama = instance(
+            "ollama",
+            OLLAMA,
+            root.path("home/bin/ollama"),
+            root.path("home/.ollama"),
+        );
+        let instances = vec![brew(&root), ollama];
+        let look = |package: &InstalledArtifact| {
+            needed_by(package, &instances[0], &instances, &models, &env, BUDGET)
+        };
+        let found = look(&ollama_app);
+        assert_eq!(needed(&found.warnings), vec![(OLLAMA.to_string(), true, 1)]);
+        assert!(found.complete);
+        std::fs::remove_file(root.path("home/bin/ollama")).unwrap();
+        root.link("home/Documents/ollama", resources.to_str().unwrap());
+        root.link(
+            "home/bin/ollama",
+            root.path("home/Documents/ollama").to_str().unwrap(),
+        );
+        for package in [&ollama_app, &llm_app, &cask("ollama")] {
+            assert_eq!(look(package), unfinished(), "{package:?}");
+        }
+        for package in [&libreoffice, &cask("miniconda"), &others[0], &others[1]] {
+            assert_eq!(look(package), finished(), "{package:?}");
+        }
+    }
+
+    /// A recorded fixture, read as it is, with the author's paths moved
+    /// under `root`: `/Users/brulek` to its home folder, `/opt/homebrew`
+    /// to its prefix. Nothing is edited but where things are.
+    fn fixture_under(root: &Root, relative: &str) -> String {
+        let text = std::fs::read_to_string(format!("../../adapters/fixtures/{relative}"))
+            .unwrap_or_else(|e| panic!("read adapters/fixtures/{relative}: {e}"));
+        text.replace("/Users/brulek", root.home().to_str().unwrap())
+            .replace("/opt/homebrew", root.prefix().to_str().unwrap())
+    }
+
+    #[test]
+    fn test_the_recorded_sources_need_python_3_14_and_ollama_and_not_the_unlinked_node_22() {
+        // Every row from the recordings: Homebrew 7.0.3's list (`node@22`
+        // keg-only and not linked, `python@3.11`, `python@3.14`, `ollama`),
+        // npm's six packages, pip's seven, pipx's `cowsay` -- whose venv
+        // pipx made with `/opt/homebrew/opt/python@3.14/bin/python3.14`
+        // (`source_interpreter`) -- uv's `ruff`, and Ollama's one model.
+        // Laid out as that Mac's Homebrew lays them out, with the npm and
+        // node first on `PATH` an nvm's, and uv's `ruff` on a Python uv
+        // downloaded itself.
+        let root = Root::new("fixtures");
+        let brew_rows = crate::adapters::brew::parse::parse_info_installed(
+            &fixture_under(&root, "brew/7.0.3/info-installed.json"),
+            BREW,
+        )
+        .expect("parse brew");
+        let node_22 = brew_rows
+            .iter()
+            .find(|row| row.key.name == "node@22")
+            .expect("node@22 is recorded");
+        assert!(node_22.facts.command_inputs.keg_only, "and keg-only");
+        root.node_22();
+        root.program(
+            "opt/homebrew/Cellar/python@3.14/3.14.7/Frameworks/Python.framework/Versions/3.14/bin/python3.14",
+        );
+        root.link(
+            "opt/homebrew/Cellar/python@3.14/3.14.7/bin/python3.14",
+            "../Frameworks/Python.framework/Versions/3.14/bin/python3.14",
+        );
+        root.link(
+            "opt/homebrew/Cellar/python@3.14/3.14.7/bin/python3",
+            "python3.14",
+        );
+        root.link(
+            "opt/homebrew/opt/python@3.14",
+            "../Cellar/python@3.14/3.14.7",
+        );
+        root.link(
+            "opt/homebrew/bin/python3",
+            "../Cellar/python@3.14/3.14.7/bin/python3",
+        );
+        root.program("opt/homebrew/Cellar/python@3.11/3.11.16/bin/python3.11");
+        root.program("opt/homebrew/Cellar/ollama/0.34.1/bin/ollama");
+        root.link(
+            "opt/homebrew/bin/ollama",
+            "../Cellar/ollama/0.34.1/bin/ollama",
+        );
+        root.program("home/.nvm/versions/node/v22.20.0/bin/node");
+        root.program("home/.nvm/versions/node/v22.20.0/lib/node_modules/npm/bin/npm-cli.js");
+        root.link(
+            "home/.nvm/versions/node/v22.20.0/bin/npm",
+            "../lib/node_modules/npm/bin/npm-cli.js",
+        );
+        let pipx_rows = crate::adapters::pipx::parse_list(
+            &fixture_under(&root, "pipx/1.17.3/list.json"),
+            "pipx",
+        )
+        .expect("parse pipx");
+        let cowsay = pipx_rows[0].path.clone().expect("cowsay's venv");
+        let interpreter = root.path("opt/homebrew/opt/python@3.14/bin/python3.14");
+        root.link(
+            cowsay
+                .join("bin/python")
+                .strip_prefix(&root.0)
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            interpreter.to_str().unwrap(),
+        );
+        let uv_rows = crate::adapters::uv::parse_tool_list_show_paths(
+            &fixture_under(&root, "uv/0.12.17/tool-list-show-paths.txt"),
+            "uv",
+        );
+        let ruff = uv_rows[0].path.clone().expect("ruff's environment");
+        let uv_python = root.program(
+            "home/.local/share/uv/python/cpython-3.14.0-macos-aarch64-none/bin/python3.14",
+        );
+        root.link(
+            ruff.join("bin/python")
+                .strip_prefix(&root.0)
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            uv_python.to_str().unwrap(),
+        );
+        const OLLAMA: &str = "ollama:http://127.0.0.1:11434";
+        let ollama_rows = crate::adapters::ollama::parse::parse_tags(
+            &std::fs::read_to_string("../../adapters/fixtures/ollama/0.34.1/api-tags.json")
+                .expect("read ollama"),
+            OLLAMA,
+        )
+        .expect("parse ollama");
+        // pip's rows as its inventory makes them: what `--not-required`
+        // lists is the user's (`Unknown`), the rest dependencies.
+        let read = |name: &str| {
+            crate::adapters::pip::parse_pip_list(&fixture_under(&root, name)).expect("parse pip")
+        };
+        let leaves: Vec<String> = read("pip/26.2.1/list-not-required.json")
+            .into_iter()
+            .map(|package| package.name)
+            .collect();
+        const PIP: &str = "pip:/opt/homebrew/bin/python3";
+        let pip_rows: Vec<InstalledArtifact> = read("pip/26.2.1/list.json")
+            .into_iter()
+            .map(|package| {
+                let reason = if leaves.contains(&package.name) {
+                    InstallReason::Unknown
+                } else {
+                    InstallReason::Dependency
+                };
+                with_reason(row(PIP, ArtifactKind::Package, &package.name), reason)
+            })
+            .collect();
+        let npm_rows: Vec<InstalledArtifact> = npm_rows()
+            .into_iter()
+            .map(|mut artifact| {
+                artifact.key.instance_id = "npm:nvm".to_string();
+                artifact
+            })
+            .collect();
+        // As a refresh orders them: by adapter id.
+        let instances = vec![
+            brew(&root),
+            instance(
+                "npm",
+                "npm:nvm",
+                root.path("home/.nvm/versions/node/v22.20.0/bin/npm"),
+                root.path("home/.nvm/versions/node/v22.20.0"),
+            ),
+            instance(
+                "ollama",
+                OLLAMA,
+                root.path("opt/homebrew/bin/ollama"),
+                root.path("home/.ollama"),
+            ),
+            instance(
+                "pip",
+                PIP,
+                root.path("opt/homebrew/bin/python3"),
+                root.path("opt/homebrew/bin"),
+            ),
+            instance(
+                "pipx",
+                "pipx",
+                root.path("opt/homebrew/bin/pipx"),
+                root.path("opt/homebrew/bin"),
+            ),
+            instance(
+                "uv",
+                "uv",
+                root.path("home/.local/bin/uv"),
+                root.path("home/.local/bin"),
+            ),
+        ];
+        let artifacts: Vec<InstalledArtifact> =
+            [npm_rows, ollama_rows, pip_rows, pipx_rows, uv_rows]
+                .into_iter()
+                .flatten()
+                .collect();
+        let env = root.env(&[
+            "home/.nvm/versions/node/v22.20.0/bin",
+            "opt/homebrew/bin",
+            "usr/bin",
+        ]);
+        let of = |name: &str| {
+            let package = brew_rows
+                .iter()
+                .find(|row| row.key.name == name)
+                .unwrap_or_else(|| panic!("{name} is recorded"));
+            let found = needed_by(package, &instances[0], &instances, &artifacts, &env, BUDGET);
+            assert!(found.complete, "{name}");
+            needed(&found.warnings)
+        };
+        assert_eq!(of("node@22"), Vec::new());
+        assert_eq!(of("python@3.11"), Vec::new());
+        // pip's seven, less Homebrew Python's own `pip` and `wheel`; and
+        // pipx's `cowsay`, by its venv's Python, though pipx itself is not
+        // on this Mac.
+        assert_eq!(
+            of("python@3.14"),
+            vec![(PIP.to_string(), true, 5), ("pipx".to_string(), false, 1)]
+        );
+        assert_eq!(of("ollama"), vec![(OLLAMA.to_string(), true, 1)]);
+    }
+}

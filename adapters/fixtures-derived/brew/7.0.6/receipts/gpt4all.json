@@ -1,0 +1,45 @@
+{
+  "homebrew_version": "7.0.6",
+  "loaded_from_api": true,
+  "loaded_from_internal_api": true,
+  "uninstall_flight_blocks": false,
+  "installed_on_request": true,
+  "time": 1790484495,
+  "runtime_dependencies": {},
+  "source": {
+    "tap": "homebrew/cask",
+    "tap_git_head": "0000000000000000000000000000000000000000",
+    "version": "3.10.0",
+    "path": "/Users/someone/Library/Caches/Homebrew/api/internal/packages.arm64_golden_gate.jws.json"
+  },
+  "arch": "arm64",
+  "uninstall_artifacts": [
+    {
+      "uninstall": [
+        {
+          "script": "/Applications/gpt4all/maintenancetool.app/Contents/MacOS/maintenancetool",
+          "delete": "~/Library/Application Support/nomic.ai/GPT4All"
+        }
+      ]
+    },
+    {
+      "zap": [
+        {
+          "trash": [
+            "~/Library/Application Support/GPT4All",
+            "~/Library/Preferences/com.nomic-ai.gpt4all.plist",
+            "~/Library/Saved Application State/gpt4all.savedState"
+          ]
+        }
+      ]
+    }
+  ],
+  "built_on": {
+    "os": "Macintosh",
+    "os_version": "macOS 27",
+    "cpu_family": "arm_sotra",
+    "xcode": "26.6",
+    "clt": "27.0.0.0.1788430756",
+    "preferred_perl": "5.34"
+  }
+}

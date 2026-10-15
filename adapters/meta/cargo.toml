@@ -1,0 +1,7 @@
+schema_version = 1
+id = "cargo"
+name = "Cargo"
+kind = "package_manager"
+platforms = ["macos"]
+homepage = "https://doc.rust-lang.org/cargo/"
+verified_versions = ["1.98.1"]

@@ -1,0 +1,119 @@
+{
+  "homebrew_version": "7.0.6",
+  "loaded_from_api": true,
+  "loaded_from_internal_api": true,
+  "uninstall_flight_blocks": false,
+  "installed_on_request": true,
+  "time": 1790484495,
+  "runtime_dependencies": {},
+  "source": {
+    "tap": "homebrew/cask",
+    "tap_git_head": "0000000000000000000000000000000000000000",
+    "version": "py314_26.7.1-1",
+    "path": "/Users/someone/Library/Caches/Homebrew/api/internal/packages.arm64_golden_gate.jws.json"
+  },
+  "arch": "arm64",
+  "uninstall_artifacts": [
+    {
+      "uninstall_preflight_steps": [
+        {
+          "steps": [
+            {
+              "source": {
+                "base": "caskroom_path",
+                "path": "base/envs"
+              },
+              "target": {
+                "path": "{{temp}}/{{token}}-envs"
+              },
+              "guards": [
+                {
+                  "path": "{{caskroom_path}}/base/envs",
+                  "condition": "if_exists",
+                  "id": "1"
+                }
+              ],
+              "type": "move",
+              "overwrite": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "uninstall": [
+        {
+          "delete": "/opt/homebrew/Caskroom/miniconda/base"
+        }
+      ]
+    },
+    {
+      "binary": [
+        "/opt/homebrew/Caskroom/miniconda/base/condabin/conda"
+      ]
+    },
+    {
+      "postflight_steps": [
+        {
+          "steps": [
+            {
+              "paths": [
+                {
+                  "base": "caskroom_path",
+                  "path": "base/envs"
+                }
+              ],
+              "recursive": true,
+              "guards": [
+                {
+                  "path": "{{temp}}/{{token}}-envs",
+                  "condition": "if_exists",
+                  "id": "1"
+                }
+              ],
+              "type": "remove"
+            },
+            {
+              "source": {
+                "path": "{{temp}}/{{token}}-envs"
+              },
+              "target": {
+                "base": "caskroom_path",
+                "path": "base/envs"
+              },
+              "guards": [
+                {
+                  "path": "{{temp}}/{{token}}-envs",
+                  "condition": "if_exists",
+                  "id": "1"
+                }
+              ],
+              "type": "move",
+              "overwrite": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "zap": [
+        {
+          "trash": [
+            "/private/tmp/miniconda-envs",
+            "~/.conda",
+            "~/.condarc",
+            "~/.continuum"
+          ]
+        }
+      ]
+    }
+  ],
+  "built_on": {
+    "os": "Macintosh",
+    "os_version": "macOS 27",
+    "cpu_family": "arm_sotra",
+    "xcode": "26.6",
+    "clt": "27.0.0.0.1788430756",
+    "preferred_perl": "5.34"
+  }
+}

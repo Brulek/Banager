@@ -1,19 +1,19 @@
-# Canager Phase 2 Implementation Plan: UI Shell (Installed / Updates / Operations / Settings)
+# Banager Phase 2 Implementation Plan: UI Shell (Installed / Updates / Operations / Settings)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Turn the working Homebrew core into an app a non-programmer can actually use: a macOS-native-feeling window that lists what is installed, shows what can be updated, runs install/update/uninstall with a live log and a working Cancel button, explains what an uninstall would break, and remembers a few settings — in English and Simplified Chinese.
 
-**Architecture:** `canager-core` gains a `Session` facade that owns the adapters, the detected instances and an in-memory `Snapshot` (generation-numbered), plus file-backed `Settings`. The Tauri shell exposes that facade over `#[tauri::command]`s and streams operation events through a Tauri `Channel`. The React front end is a thin view over those commands: TanStack Query owns server state, Zustand owns view state, and no business logic lives in TypeScript. Persistent caching (SQLite) stays out of this phase — it belongs to the phase 3 storage layer per `docs/superpowers/backlog.md`.
+**Architecture:** `banager-core` gains a `Session` facade that owns the adapters, the detected instances and an in-memory `Snapshot` (generation-numbered), plus file-backed `Settings`. The Tauri shell exposes that facade over `#[tauri::command]`s and streams operation events through a Tauri `Channel`. The React front end is a thin view over those commands: TanStack Query owns server state, Zustand owns view state, and no business logic lives in TypeScript. Persistent caching (SQLite) stays out of this phase — it belongs to the phase 3 storage layer per `docs/superpowers/backlog.md`.
 
-**Tech Stack:** Rust (canager-core, tauri 2.11.x), tauri Channel IPC; pnpm, Vite, React 19, TypeScript, Tailwind CSS v4, Radix UI primitives, TanStack Query v5, Zustand, i18next + react-i18next, @tanstack/react-virtual, vitest + @testing-library/react.
+**Tech Stack:** Rust (banager-core, tauri 2.11.x), tauri Channel IPC; pnpm, Vite, React 19, TypeScript, Tailwind CSS v4, Radix UI primitives, TanStack Query v5, Zustand, i18next + react-i18next, @tanstack/react-virtual, vitest + @testing-library/react.
 
 ## Global Constraints
 
-- Spec: `docs/superpowers/specs/2026-09-17-canager-design.md`. §3 (data flow), §5 (data model), §6 (execution and safety), §7 (UI), §9 (i18n), §11 (testing) bind this phase. Read §7 in full before Task 6.
+- Spec: `docs/superpowers/specs/2026-09-17-banager-design.md`. §3 (data flow), §5 (data model), §6 (execution and safety), §7 (UI), §9 (i18n), §11 (testing) bind this phase. Read §7 in full before Task 6.
 - Backlog: `docs/superpowers/backlog.md`. Every item under "阶段 2（界面 / IPC）之前必须处理" is implemented by Task 1 or Task 4 of this plan and must not be deferred again.
 - macOS only; minimum macOS 13.3; Tauri ≥ 2.11.1; universal build unchanged.
-- `canager-core` must never depend on `tauri` and must never create a tokio runtime.
+- `banager-core` must never depend on `tauri` and must never create a tokio runtime.
 - No business logic in TypeScript. The front end never builds an argv, never decides whether something is safe to remove, and never guesses an outcome: it renders what the commands return.
 - IPC only accepts known operations and server-issued object IDs (spec §6). A command's `program`/`args`/`env`/`locks` are constructed by the Rust side alone and are never accepted as values from the front end — see `plan_operation`/`submit_operation`'s server-issued, single-use `IssuedPlan`/`PlanId` in Core Interfaces below.
 - Every destructive action shows the exact command that will run before it runs (spec §6). Uninstall additionally shows what would break.
@@ -21,7 +21,7 @@
 - UI copy ships in `en` and `zh-CN`. No user-visible string is hard-coded in a component; every one comes from the i18n resources. English is the default; the language follows the system unless overridden in Settings.
 - Default view hides version numbers, paths and argv. The Settings toggle "Show technical details" reveals them. There is one layout, not two (spec §7: one UI, not a simple/advanced split).
 - Visual rules (spec §7): system font stack, follows system light/dark, 8 pt spacing grid, macOS-style sidebar, virtualized long lists.
-- Serde representation is fixed by the existing core types, which carry **no** `rename_all` attributes and whose insta snapshots depend on that. Do not add serde attributes to `crates/canager-core/src/model.rs` or `events.rs`. TypeScript types mirror the default representation exactly (see Core Interfaces below).
+- Serde representation is fixed by the existing core types, which carry **no** `rename_all` attributes and whose insta snapshots depend on that. Do not add serde attributes to `crates/banager-core/src/model.rs` or `events.rs`. TypeScript types mirror the default representation exactly (see Core Interfaces below).
 - Colors always use the `var(--color-*)` arbitrary-value syntax (e.g. `bg-[var(--color-muted)]`, `text-[var(--color-muted-foreground)]`); never a bare semantic utility class such as `bg-muted` or `text-foreground`, and never a hard-coded color literal in component code.
 - Commit messages end with a blank line then `Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>`.
 - Definition of done for every task: `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, and (from Task 6 onward) `pnpm lint` where configured plus `pnpm test` all clean, with no new warnings.
@@ -31,7 +31,7 @@
 ## File Structure
 
 ```
-crates/canager-core/src/
+crates/banager-core/src/
 ├── session/mod.rs        NEW  Session facade: adapters + instances + Snapshot(generation) + ops passthrough
 ├── settings.rs           NEW  Settings struct, atomic JSON load/save, defaults
 ├── ops/mod.rs            MOD  add OpSummary + OperationManager::summaries(); remove OpRecord.cancel
@@ -86,7 +86,7 @@ src/
 ### Rust: new core types
 
 ```rust
-// crates/canager-core/src/settings.rs
+// crates/banager-core/src/settings.rs
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -110,7 +110,7 @@ pub fn save(path: &Path, settings: &Settings) -> std::io::Result<()>;
 ```
 
 ```rust
-// crates/canager-core/src/session/mod.rs
+// crates/banager-core/src/session/mod.rs
 use crate::adapters::Adapter;
 use crate::events::EventSink;
 use crate::model::*;
@@ -204,7 +204,7 @@ impl Session {
 ```
 
 ```rust
-// crates/canager-core/src/ops/mod.rs  (added)
+// crates/banager-core/src/ops/mod.rs  (added)
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OpSummary {
     pub id: OpId,
@@ -229,10 +229,10 @@ impl OperationManager {
 // Deserialize too (not just Serialize): Task 6's tests decode a Channel's
 // received body back into a UiEvent to assert on it. This is the shell's
 // own type, not a core one, so it is exempt from the "no serde attributes
-// on canager-core types" constraint above.
+// on banager-core types" constraint above.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum UiEvent {
-    Operation(canager_core::events::OperationEvent),
+    Operation(banager_core::events::OperationEvent),
     SnapshotChanged { generation: u64 },
 }
 /// Fans every core event out to all registered Channels; a Channel whose
@@ -243,7 +243,7 @@ impl ChannelSink {
     pub fn register(&self, channel: tauri::ipc::Channel<UiEvent>);
     pub fn broadcast(&self, event: UiEvent);
 }
-impl canager_core::events::EventSink for ChannelSink { /* emit -> broadcast(UiEvent::Operation(..)) */ }
+impl banager_core::events::EventSink for ChannelSink { /* emit -> broadcast(UiEvent::Operation(..)) */ }
 ```
 
 ```rust
@@ -426,7 +426,7 @@ export function artifactKeyId(key: ArtifactKey): string;  // `${instance_id}|${k
 ### Task 1: Harden `validate_package_name`
 
 **Files:**
-- Modify: `crates/canager-core/src/adapters/mod.rs:57-71` (harden `validate_package_name`), `:106-135` (add tests to the existing `#[cfg(test)] mod tests`)
+- Modify: `crates/banager-core/src/adapters/mod.rs:57-71` (harden `validate_package_name`), `:106-135` (add tests to the existing `#[cfg(test)] mod tests`)
 
 **Interfaces:**
 - Consumes: `AdapterError::InvalidName` (existing, unchanged); the `Adapter` trait (unchanged — this task adds **no** new trait method).
@@ -434,7 +434,7 @@ export function artifactKeyId(key: ArtifactKey): string;  // `${instance_id}|${k
 
 - [ ] **Step 1: Write the failing tests for hardened `validate_package_name`**
 
-Add these five tests inside the existing `#[cfg(test)] mod tests` block at the bottom of `crates/canager-core/src/adapters/mod.rs` (after `test_validate_package_name_rejects_shell_metacharacters`):
+Add these five tests inside the existing `#[cfg(test)] mod tests` block at the bottom of `crates/banager-core/src/adapters/mod.rs` (after `test_validate_package_name_rejects_shell_metacharacters`):
 
 ```rust
     #[test]
@@ -467,12 +467,12 @@ Add these five tests inside the existing `#[cfg(test)] mod tests` block at the b
 
 - [ ] **Step 2: Run the new tests and confirm they fail**
 
-Run: `cargo test -p canager-core --lib validate_package_name -- --nocapture`
+Run: `cargo test -p banager-core --lib validate_package_name -- --nocapture`
 Expected: FAIL — `test_validate_package_name_rejects_an_absolute_path`, `test_validate_package_name_rejects_a_leading_dot`, `test_validate_package_name_rejects_a_dotdot_segment` and `test_validate_package_name_rejects_an_rb_suffix` all fail with `assertion failed: validate_package_name(...).is_err()` (the current implementation accepts all four inputs); `test_validate_package_name_still_accepts_a_tap_qualified_cask_name` passes already.
 
 - [ ] **Step 3: Harden `validate_package_name`**
 
-Replace the function at `crates/canager-core/src/adapters/mod.rs:57-71` with:
+Replace the function at `crates/banager-core/src/adapters/mod.rs:57-71` with:
 
 ```rust
 /// Matches `^[A-Za-z0-9@._+/-]+$`, rejects names starting with `-`, `/` or
@@ -507,13 +507,13 @@ pub fn validate_package_name(name: &str) -> Result<(), AdapterError> {
 
 - [ ] **Step 4: Run the tests again and confirm they pass**
 
-Run: `cargo test -p canager-core --lib validate_package_name`
+Run: `cargo test -p banager-core --lib validate_package_name`
 Expected: `test result: ok. 7 passed; 0 failed; ...` (the 2 pre-existing `validate_package_name` tests plus the 5 new ones)
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/canager-core/src/adapters/mod.rs
+git add crates/banager-core/src/adapters/mod.rs
 git commit -m "$(cat <<'EOF'
 fix(core): reject path-like package names in validate_package_name
 
@@ -531,7 +531,7 @@ EOF
 ### Task 2: Distinguish root refusal from missing Homebrew
 
 **Files:**
-- Modify: `crates/canager-core/src/adapters/brew/mod.rs:158-192` (extract `refuses_as_root`, use it in `detect()`), `:539-846` (add a test to the existing `#[cfg(test)] mod tests`)
+- Modify: `crates/banager-core/src/adapters/brew/mod.rs:158-192` (extract `refuses_as_root`, use it in `detect()`), `:539-846` (add a test to the existing `#[cfg(test)] mod tests`)
 
 **Interfaces:**
 - Consumes: `HostEnv { path_dirs, home, euid }` (existing, unchanged).
@@ -539,7 +539,7 @@ EOF
 
 - [ ] **Step 1: Write the failing test for `BrewAdapter::refuses_as_root`**
 
-Add this test inside the first `#[cfg(test)] mod tests` block in `crates/canager-core/src/adapters/brew/mod.rs` (the one starting at line 539, right after `test_detect_refuses_root`):
+Add this test inside the first `#[cfg(test)] mod tests` block in `crates/banager-core/src/adapters/brew/mod.rs` (the one starting at line 539, right after `test_detect_refuses_root`):
 
 ```rust
     #[test]
@@ -561,12 +561,12 @@ Add this test inside the first `#[cfg(test)] mod tests` block in `crates/canager
 
 - [ ] **Step 2: Run the test and confirm it fails to compile**
 
-Run: `cargo test -p canager-core --lib refuses_as_root`
+Run: `cargo test -p banager-core --lib refuses_as_root`
 Expected: FAIL to compile — `error[E0599]: no function or associated item named `refuses_as_root` found for struct `BrewAdapter``
 
 - [ ] **Step 3: Extract `refuses_as_root` and use it in `detect()`**
 
-Replace the start of `detect` at `crates/canager-core/src/adapters/brew/mod.rs:158-161` (`pub async fn detect(&self, env: &HostEnv) -> Vec<ManagerInstance> { if env.euid == 0 { return Vec::new(); }`) with:
+Replace the start of `detect` at `crates/banager-core/src/adapters/brew/mod.rs:158-161` (`pub async fn detect(&self, env: &HostEnv) -> Vec<ManagerInstance> { if env.euid == 0 { return Vec::new(); }`) with:
 
 ```rust
     /// True when `env`'s effective UID means every brew invocation this
@@ -589,13 +589,13 @@ Replace the start of `detect` at `crates/canager-core/src/adapters/brew/mod.rs:1
 
 - [ ] **Step 4: Run the test and confirm it passes, then confirm no regression**
 
-Run: `cargo test -p canager-core --lib brew::`
+Run: `cargo test -p banager-core --lib brew::`
 Expected: `test result: ok. 27 passed; 0 failed; ...` (this filter matches both the `brew::tests::` module and the separate `brew::plan_execute_tests::` module in the same file — 26 pre-existing across the two, plus the new `test_refuses_as_root_is_true_only_for_euid_zero`), including `test_detect_refuses_root` and `test_detect_finds_opt_homebrew_on_this_apple_silicon_mac` still passing unchanged.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/canager-core/src/adapters/brew/mod.rs
+git add crates/banager-core/src/adapters/brew/mod.rs
 git commit -m "$(cat <<'EOF'
 refactor(core): extract BrewAdapter::refuses_as_root from detect()
 
@@ -613,8 +613,8 @@ EOF
 ### Task 3: `OpSummary` + `OperationManager::summaries()`; `OpRecord.cancel` removed
 
 **Files:**
-- Modify: `crates/canager-core/src/ops/mod.rs:1-11` (imports), `:13-19` (delete `OpRecord.cancel` — the cancellation token stays on the private `OpInternal` only), `:82-94` (new `done_notify` field), `:96-107` (`new()`), `:121-129` (`record()` drops the now-removed field from the `OpRecord { ... }` it builds), `:154-166` (`wait()` rewritten on `Notify`), `:458-472` (`finish()` notifies waiters), plus a new `OpSummary` struct and `OperationManager::summaries()`
-- Test: `crates/canager-core/tests/ops_summaries_test.rs` (new)
+- Modify: `crates/banager-core/src/ops/mod.rs:1-11` (imports), `:13-19` (delete `OpRecord.cancel` — the cancellation token stays on the private `OpInternal` only), `:82-94` (new `done_notify` field), `:96-107` (`new()`), `:121-129` (`record()` drops the now-removed field from the `OpRecord { ... }` it builds), `:154-166` (`wait()` rewritten on `Notify`), `:458-472` (`finish()` notifies waiters), plus a new `OpSummary` struct and `OperationManager::summaries()`
+- Test: `crates/banager-core/tests/ops_summaries_test.rs` (new)
 
 **Interfaces:**
 - Consumes: `OperationManager::{new, register_adapter, register_instance, submit, wait}` (existing, unchanged).
@@ -624,18 +624,18 @@ EOF
 
 - [ ] **Step 1: Write the failing tests for `OperationManager::summaries()` and the `Notify`-based `wait()`**
 
-Create `crates/canager-core/tests/ops_summaries_test.rs`:
+Create `crates/banager-core/tests/ops_summaries_test.rs`:
 
 ```rust
 use async_trait::async_trait;
-use canager_core::adapters::{Adapter, AdapterError, AdapterMeta, Capabilities};
-use canager_core::events::{EventSink, OpId, VecSink};
-use canager_core::model::{
+use banager_core::adapters::{Adapter, AdapterError, AdapterMeta, Capabilities};
+use banager_core::events::{EventSink, OpId, VecSink};
+use banager_core::model::{
     ArtifactKey, ArtifactKind, CancelPolicy, InstalledArtifact, ManagerInstance, OpKind, OpRequest,
     OpStatus, Outcome, Plan, Reconciled, ResourceLock, Scope, SearchHit, UpdateCandidate,
 };
-use canager_core::ops::OperationManager;
-use canager_core::runner::HostEnv;
+use banager_core::ops::OperationManager;
+use banager_core::runner::HostEnv;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -942,12 +942,12 @@ async fn test_multiple_waiters_all_wake_once_the_op_finishes() {
 
 - [ ] **Step 2: Run the new test file and confirm it fails to compile**
 
-Run: `cargo test -p canager-core --test ops_summaries_test`
+Run: `cargo test -p banager-core --test ops_summaries_test`
 Expected: FAIL to compile — `error[E0599]: no method named `summaries` found for struct `OperationManager` in the current scope`
 
 - [ ] **Step 3: Implement `OpSummary`, `OperationManager::summaries()`, remove `OpRecord.cancel`, and `Notify`-based `wait()`**
 
-In `crates/canager-core/src/ops/mod.rs`, replace the imports at lines 1-11 with:
+In `crates/banager-core/src/ops/mod.rs`, replace the imports at lines 1-11 with:
 
 ```rust
 use crate::adapters::Adapter;
@@ -1103,16 +1103,16 @@ Finally, in `finish()` (lines 458-472), notify waiters right after the lock scop
 
 - [ ] **Step 4: Run the new test file and confirm it passes, then run the whole ops test surface**
 
-Run: `cargo test -p canager-core --test ops_summaries_test`
+Run: `cargo test -p banager-core --test ops_summaries_test`
 Expected: `test result: ok. 5 passed; 0 failed; ...`
 
-Run: `cargo test -p canager-core --test ops_cancel_test --test ops_lock_test --test ops_outcome_test --test ops_panic_test --test ops_semaphore_test`
+Run: `cargo test -p banager-core --test ops_cancel_test --test ops_lock_test --test ops_outcome_test --test ops_panic_test --test ops_semaphore_test`
 Expected: every suite reports `test result: ok.` with the same pass counts as before this task (0 regressions) — `ops_outcome_test` `9 passed`, `ops_panic_test` `1 passed`, `ops_semaphore_test` `2 passed`, and `ops_cancel_test`/`ops_lock_test` with 0 failures across their scenarios.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/canager-core/src/ops/mod.rs crates/canager-core/tests/ops_summaries_test.rs
+git add crates/banager-core/src/ops/mod.rs crates/banager-core/tests/ops_summaries_test.rs
 git commit -m "$(cat <<'EOF'
 feat(core): add OperationManager::summaries, remove OpRecord.cancel
 
@@ -1133,9 +1133,9 @@ EOF
 ### Task 4: Core `Settings`
 
 **Files:**
-- Create: `crates/canager-core/src/settings.rs`
-- Modify: `crates/canager-core/src/lib.rs` (add `pub mod settings;`)
-- Test: `crates/canager-core/src/settings.rs` (inline `#[cfg(test)] mod tests`, matching the crate's existing convention in `model.rs`/`events.rs`/`adapters/mod.rs`)
+- Create: `crates/banager-core/src/settings.rs`
+- Modify: `crates/banager-core/src/lib.rs` (add `pub mod settings;`)
+- Test: `crates/banager-core/src/settings.rs` (inline `#[cfg(test)] mod tests`, matching the crate's existing convention in `model.rs`/`events.rs`/`adapters/mod.rs`)
 
 **Interfaces:**
 - Consumes: `crate::model::ArtifactKey` (existing, unchanged).
@@ -1149,7 +1149,7 @@ EOF
 
 - [ ] **Step 1: Write the failing tests**
 
-Create `crates/canager-core/src/settings.rs` with the module's `use` statements and its full test module, and nothing else yet (the types and functions the tests reference do not exist yet):
+Create `crates/banager-core/src/settings.rs` with the module's `use` statements and its full test module, and nothing else yet (the types and functions the tests reference do not exist yet):
 
 ```rust
 use crate::model::ArtifactKey;
@@ -1164,7 +1164,7 @@ mod tests {
 
     fn temp_settings_path(tag: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
-            "canager-settings-{}-{}-{}",
+            "banager-settings-{}-{}-{}",
             tag,
             std::process::id(),
             std::time::SystemTime::now()
@@ -1265,7 +1265,7 @@ mod tests {
 }
 ```
 
-Then add `pub mod settings;` to `crates/canager-core/src/lib.rs`, after `pub mod runner;`:
+Then add `pub mod settings;` to `crates/banager-core/src/lib.rs`, after `pub mod runner;`:
 
 ```rust
 pub mod adapters;
@@ -1281,12 +1281,12 @@ pub use model::*;
 
 - [ ] **Step 2: Run the tests and confirm they fail to compile**
 
-Run: `cargo test -p canager-core --lib settings::`
+Run: `cargo test -p banager-core --lib settings::`
 Expected: FAIL to compile — multiple `error[E0412]: cannot find type `Settings` in this scope` / `cannot find type `Language` in this scope` / `error[E0425]: cannot find function `load`/`save` in this scope` (the module has tests but no implementation yet).
 
 - [ ] **Step 3: Implement `Language`, `Settings`, `load`, and `save`**
 
-Insert the implementation into `crates/canager-core/src/settings.rs`, between the `use` block and the `#[cfg(test)]` module:
+Insert the implementation into `crates/banager-core/src/settings.rs`, between the `use` block and the `#[cfg(test)]` module:
 
 ```rust
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -1353,7 +1353,7 @@ pub fn save(path: &Path, settings: &Settings) -> std::io::Result<()> {
 
 - [ ] **Step 4: Run the tests and confirm they pass**
 
-Run: `cargo test -p canager-core --lib settings::`
+Run: `cargo test -p banager-core --lib settings::`
 Expected: `test result: ok. 7 passed; 0 failed; ...`
 
 - [ ] **Step 5: Run the full workspace definition-of-done check**
@@ -1364,7 +1364,7 @@ Expected: `cargo fmt --all --check` prints nothing and exits 0; clippy ends with
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/canager-core/src/settings.rs crates/canager-core/src/lib.rs
+git add crates/banager-core/src/settings.rs crates/banager-core/src/lib.rs
 git commit -m "$(cat <<'EOF'
 feat(core): add file-backed Settings with atomic save and safe defaults
 
@@ -1384,10 +1384,10 @@ EOF
 ### Task 5: Core `Session` facade
 
 **Files:**
-- Create: `crates/canager-core/src/session/mod.rs`
-- Modify: `crates/canager-core/src/lib.rs` (insert `pub mod session;` before the `pub mod settings;` line Task 4 added, keeping the module list alphabetical)
-- Modify: `crates/canager-core/src/ops/mod.rs` (add `OperationManager::acquire_resource_lock` + `ResourceLockGuard`, so `refresh` can share the real per-instance resource lock with in-flight operations — M8 in the design review)
-- Test: `crates/canager-core/src/session/mod.rs` (inline `#[cfg(test)] mod tests`, with a self-contained `FakeAdapter` in the style of `crates/canager-core/tests/ops_cancel_test.rs`)
+- Create: `crates/banager-core/src/session/mod.rs`
+- Modify: `crates/banager-core/src/lib.rs` (insert `pub mod session;` before the `pub mod settings;` line Task 4 added, keeping the module list alphabetical)
+- Modify: `crates/banager-core/src/ops/mod.rs` (add `OperationManager::acquire_resource_lock` + `ResourceLockGuard`, so `refresh` can share the real per-instance resource lock with in-flight operations — M8 in the design review)
+- Test: `crates/banager-core/src/session/mod.rs` (inline `#[cfg(test)] mod tests`, with a self-contained `FakeAdapter` in the style of `crates/banager-core/tests/ops_cancel_test.rs`)
 
 **Interfaces:**
 - Consumes: the `Adapter` trait and `AdapterError` (`crate::adapters`, unchanged); `BrewAdapter::refuses_as_root` (`crate::adapters::brew`, Task 2) — called directly, by its concrete type, wherever `refresh` needs to tell "refused as root" apart from "not installed" (Task 2's Interfaces note now says this explicitly, closing N5 in the design review); `EventSink`, `OpId` (`crate::events`, unchanged); `AdapterId, InstalledArtifact, InstanceId, ManagerInstance, OpRequest, Plan, ResourceLock, UpdateCandidate` (`crate::model`, unchanged); `HostEnv` (`crate::runner`, unchanged); `OperationManager::{new, register_adapter, register_instance, submit, cancel}` (existing) and `OperationManager::summaries` / `OpSummary` (Task 3); `BrewAdapter::new` and `RealRunner::new` (existing, used only by `Session::new`'s production path).
@@ -1397,15 +1397,15 @@ EOF
   - `Snapshot { generation: u64, detect: DetectOutcome, instances: Vec<ManagerInstance>, artifacts: Vec<InstalledArtifact>, updates: Vec<UpdateCandidate>, refreshed_at: Option<i64>, stale: bool, errors: Vec<SourceError> }`
   - `PlanId` (= `u64`), `IssuedPlan { id: PlanId, plan: Plan, issued_at: i64 }`, `SubmitError { Unknown, Expired }` — the server-issued, single-use, expiring plan handle spec §6 requires (F1 in the design review): IPC must accept only known operations and server-issued object IDs, never a client-supplied `Plan`.
   - `Session::{new, with_adapters, refresh, snapshot, issue_plan, submit, cancel, operations}` with exactly the signatures in the skeleton. `issue_plan` is the only way a `Plan` is ever produced for a caller to see; `submit` accepts nothing but the opaque `PlanId` `issue_plan` handed out, looks up and removes the matching stored `Plan`, and submits exactly that — never anything reconstructed from caller-supplied data.
-  - Also modifies `crates/canager-core/src/ops/mod.rs` (touched by Task 3, extended here): a new `OperationManager::acquire_resource_lock(self: &Arc<Self>, lock: ResourceLock) -> ResourceLockGuard` and a `pub struct ResourceLockGuard` (RAII; releases the lock on drop) that share the same `held` set `run_operation` already uses. This lets `refresh` (M8 in the design review) hold the *same* resource lock as an in-flight install/upgrade/uninstall for a given instance, so the two can never interleave on that instance while still running freely across different instances.
+  - Also modifies `crates/banager-core/src/ops/mod.rs` (touched by Task 3, extended here): a new `OperationManager::acquire_resource_lock(self: &Arc<Self>, lock: ResourceLock) -> ResourceLockGuard` and a `pub struct ResourceLockGuard` (RAII; releases the lock on drop) that share the same `held` set `run_operation` already uses. This lets `refresh` (M8 in the design review) hold the *same* resource lock as an in-flight install/upgrade/uninstall for a given instance, so the two can never interleave on that instance while still running freely across different instances.
   - Not fixed by the skeleton (this task's own design decisions, needed to implement the documented contracts): a private `Snapshot::same_content` comparison used to decide whether `generation` bumps; a private `Session::commit` helper; a private `refresh_seq: AtomicU64` counter on `Session`, bumped every time a refresh completes regardless of whether its content changed (M5 in the design review — see Step 3's doc comment for why this must be separate from `generation`); and a private `issued_plans: Mutex<HashMap<PlanId, IssuedPlan>>` plus `next_plan_id: AtomicU64` on `Session`, backing `issue_plan`/`submit`. None of these are used outside this file.
 
 - [ ] **Step 1: Write the failing tests**
 
-Create `crates/canager-core/src/session/mod.rs` with its full production `use` block plus the complete test module (the types the tests reference — `Session`, `Snapshot`, `DetectOutcome`, `SourceError` — do not exist yet):
+Create `crates/banager-core/src/session/mod.rs` with its full production `use` block plus the complete test module (the types the tests reference — `Session`, `Snapshot`, `DetectOutcome`, `SourceError` — do not exist yet):
 
 ```rust
-//! `Session`: the facade `canager-core` exposes to a host shell (the Tauri
+//! `Session`: the facade `banager-core` exposes to a host shell (the Tauri
 //! app in this repo, or a test harness). It owns the registered adapters,
 //! the last known set of instances, and an in-memory, generation-numbered
 //! `Snapshot`; it forwards operation lifecycle calls to an internal
@@ -1846,7 +1846,7 @@ mod tests {
 }
 ```
 
-Then add `pub mod session;` to `crates/canager-core/src/lib.rs`, before the `pub mod settings;` line Task 4 added (keeping the module list alphabetical):
+Then add `pub mod session;` to `crates/banager-core/src/lib.rs`, before the `pub mod settings;` line Task 4 added (keeping the module list alphabetical):
 
 ```rust
 pub mod adapters;
@@ -1867,12 +1867,12 @@ Deliberately **not yet included above**: any test that calls `issue_plan`, `subm
 
 - [ ] **Step 2: Run the tests and confirm they fail to compile**
 
-Run: `cargo test -p canager-core --lib session::`
+Run: `cargo test -p banager-core --lib session::`
 Expected: FAIL to compile — `error[E0412]: cannot find type `Session`/`Snapshot`/`DetectOutcome`/`SourceError` in this scope` (the module is now part of the crate via `pub mod session;`, so this is a real compile failure — the types simply do not exist yet; Step 3 implements them).
 
 - [ ] **Step 3: Implement `SourceError`, `DetectOutcome`, `Snapshot`, `PlanId`, `IssuedPlan`, `SubmitError`, `Session::{new, with_adapters, refresh, snapshot}`, and `OperationManager::acquire_resource_lock`**
 
-First, add this to `crates/canager-core/src/ops/mod.rs` (extending Task 3's edits to this file) — a way for a caller other than `run_operation` to hold one of the same resource locks an operation holds, so `refresh` (below) can never interleave with an install/upgrade/uninstall on the same instance (M8 in the design review):
+First, add this to `crates/banager-core/src/ops/mod.rs` (extending Task 3's edits to this file) — a way for a caller other than `run_operation` to hold one of the same resource locks an operation holds, so `refresh` (below) can never interleave with an install/upgrade/uninstall on the same instance (M8 in the design review):
 
 ```rust
 /// Held while `refresh` is fetching one instance's inventory/updates, over
@@ -1916,7 +1916,7 @@ impl OperationManager {
 }
 ```
 
-Now insert this into `crates/canager-core/src/session/mod.rs`, between the `use` block and the `#[cfg(test)]` module:
+Now insert this into `crates/banager-core/src/session/mod.rs`, between the `use` block and the `#[cfg(test)]` module:
 
 ```rust
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -2260,13 +2260,13 @@ impl Session {
 
 - [ ] **Step 4: Run the refresh/snapshot tests and confirm they pass**
 
-Run: `cargo test -p canager-core --lib session::`
+Run: `cargo test -p banager-core --lib session::`
 Expected: `test result: ok. 8 passed; 0 failed; ...` — every test written in Step 1 (`refresh`, `snapshot`, and the M5 unchanged-content-coalescing regression test) genuinely compiles and passes; nothing in this module yet references `issue_plan`/`submit`/`cancel`/`operations`, so there is no half-compiling state to describe.
 
 - [ ] **Step 5: Commit the refresh/snapshot half**
 
 ```bash
-git add crates/canager-core/src/session/mod.rs crates/canager-core/src/lib.rs crates/canager-core/src/ops/mod.rs
+git add crates/banager-core/src/session/mod.rs crates/banager-core/src/lib.rs crates/banager-core/src/ops/mod.rs
 git commit -m "$(cat <<'EOF'
 feat(core): add Session::{new,with_adapters,refresh,snapshot}
 
@@ -2283,7 +2283,7 @@ EOF
 
 - [ ] **Step 6: Write the failing tests for `Session::{issue_plan, submit, cancel, operations}`**
 
-Append these tests to the `#[cfg(test)] mod tests` block in `crates/canager-core/src/session/mod.rs`, after `test_snapshot_returns_cached_value_without_calling_adapters`:
+Append these tests to the `#[cfg(test)] mod tests` block in `crates/banager-core/src/session/mod.rs`, after `test_snapshot_returns_cached_value_without_calling_adapters`:
 
 ```rust
     #[tokio::test]
@@ -2454,12 +2454,12 @@ Append these tests to the `#[cfg(test)] mod tests` block in `crates/canager-core
 
 - [ ] **Step 7: Run the tests and confirm they fail to compile**
 
-Run: `cargo test -p canager-core --lib session::`
+Run: `cargo test -p banager-core --lib session::`
 Expected: FAIL to compile — `error[E0599]: no method named `issue_plan`/`submit`/`cancel`/`operations` found for struct `Session`` (Step 4's 8 tests still compile fine on their own; it is only these 4 new ones that reference methods that do not exist yet — and per M4 in the design review, that failure now applies to the whole compile unit, so re-running Step 4's `cargo test` command at this point would report the same failure, not a partial pass).
 
 - [ ] **Step 8: Implement `Session::{issue_plan, submit, cancel, operations}`**
 
-Append these methods to `impl Session` in `crates/canager-core/src/session/mod.rs`, after `snapshot`. This is F1 in the design review: IPC must accept only known operations and server-issued object IDs, never a client-supplied `Plan` — `issue_plan` is the only place a `Plan` is ever computed, and `submit` accepts nothing but the opaque `PlanId` it handed out, looks the stored plan up by that id, removes it (one-time use), and submits exactly what was stored:
+Append these methods to `impl Session` in `crates/banager-core/src/session/mod.rs`, after `snapshot`. This is F1 in the design review: IPC must accept only known operations and server-issued object IDs, never a client-supplied `Plan` — `issue_plan` is the only place a `Plan` is ever computed, and `submit` accepts nothing but the opaque `PlanId` it handed out, looks the stored plan up by that id, removes it (one-time use), and submits exactly what was stored:
 
 ```rust
     /// Resolves `req` to its owning adapter, asks it to plan the operation,
@@ -2523,7 +2523,7 @@ Append these methods to `impl Session` in `crates/canager-core/src/session/mod.r
 
 - [ ] **Step 9: Run the full session test module and confirm everything passes**
 
-Run: `cargo test -p canager-core --lib session::`
+Run: `cargo test -p banager-core --lib session::`
 Expected: `test result: ok. 12 passed; 0 failed; ...`
 
 - [ ] **Step 10: Run the full workspace definition-of-done check**
@@ -2534,7 +2534,7 @@ Expected: `cargo fmt --all --check` prints nothing and exits 0; clippy ends with
 - [ ] **Step 11: Commit**
 
 ```bash
-git add crates/canager-core/src/session/mod.rs crates/canager-core/src/lib.rs
+git add crates/banager-core/src/session/mod.rs crates/banager-core/src/lib.rs
 git commit -m "$(cat <<'EOF'
 feat(core): add Session::{issue_plan,submit,cancel,operations}
 
@@ -2545,7 +2545,7 @@ stored plan exactly once and forwards it to OperationManager. IPC (and
 any caller) can therefore never hand back a Plan of its own — only the
 opaque id this crate issued (spec §6: known operations and
 server-issued object IDs only). cancel/operations are thin, tested
-passthroughs to OperationManager. canager-core now exposes everything
+passthroughs to OperationManager. banager-core now exposes everything
 the Tauri shell needs without depending on tauri.
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
@@ -2562,8 +2562,8 @@ EOF
 - Test: `src-tauri/src/events.rs` (inline `#[cfg(test)] mod tests`)
 
 **Interfaces:**
-- Consumes: `canager_core::events::{EventSink, OperationEvent}` (existing).
-- Produces: `src-tauri/src/events.rs`: `UiEvent { Operation(canager_core::events::OperationEvent), SnapshotChanged { generation: u64 } }` and `ChannelSink::{new, register, broadcast}` implementing `canager_core::events::EventSink`, matching the skeleton exactly. **Verified against the vendored `tauri` 2.11.5 source** (`~/.cargo/registry/src/.../tauri-2.11.5/src/ipc/channel.rs`): `tauri::ipc::Channel<TSend>::new<F: Fn(tauri::ipc::InvokeResponseBody) -> tauri::Result<()> + Send + Sync + 'static>(on_message: F) -> Self` can construct a `Channel` directly with no live webview, and `send(&self, data: TSend) -> tauri::Result<()> where TSend: IpcResponse` is available for any `TSend: Serialize` via a blanket impl. This is what makes `ChannelSink` fully unit-testable below. Task 7's `AppState` holds an `Arc<ChannelSink>` built from `ChannelSink::new()`; Task 8's `subscribe_events` command calls `ChannelSink::register`.
+- Consumes: `banager_core::events::{EventSink, OperationEvent}` (existing).
+- Produces: `src-tauri/src/events.rs`: `UiEvent { Operation(banager_core::events::OperationEvent), SnapshotChanged { generation: u64 } }` and `ChannelSink::{new, register, broadcast}` implementing `banager_core::events::EventSink`, matching the skeleton exactly. **Verified against the vendored `tauri` 2.11.5 source** (`~/.cargo/registry/src/.../tauri-2.11.5/src/ipc/channel.rs`): `tauri::ipc::Channel<TSend>::new<F: Fn(tauri::ipc::InvokeResponseBody) -> tauri::Result<()> + Send + Sync + 'static>(on_message: F) -> Self` can construct a `Channel` directly with no live webview, and `send(&self, data: TSend) -> tauri::Result<()> where TSend: IpcResponse` is available for any `TSend: Serialize` via a blanket impl. This is what makes `ChannelSink` fully unit-testable below. Task 7's `AppState` holds an `Arc<ChannelSink>` built from `ChannelSink::new()`; Task 8's `subscribe_events` command calls `ChannelSink::register`.
 - **Unverified by this task's tests (N2 in the design review):** `test_broadcast_removes_a_channel_from_the_registry_after_its_send_fails` below only proves that `broadcast` drops a channel once its `send` returns an error — it manufactures that error directly (a closure returning `Err`) and cannot say anything about when, or whether, a *real* closed Tauri window actually makes `Channel::send` fail, nor about behavior across a window reload or a duplicate subscription. Confirm the real timing manually against a running app once one exists (Task 7 onward) and record the result in this task's completion report; do not read passing unit tests here as proof of real window-close behavior.
 
 - [ ] **Step 1: Write the failing tests for `ChannelSink`**
@@ -2571,7 +2571,7 @@ EOF
 Create `src-tauri/src/events.rs` with its `use` block and test module only (no production code yet):
 
 ```rust
-use canager_core::events::EventSink;
+use banager_core::events::EventSink;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use tauri::ipc::Channel;
@@ -2579,8 +2579,8 @@ use tauri::ipc::Channel;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use canager_core::events::OperationEvent;
-    use canager_core::model::OpStatus;
+    use banager_core::events::OperationEvent;
+    use banager_core::model::OpStatus;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[test]
@@ -2695,7 +2695,7 @@ mod tests {
 
 Then add `pub mod events;` to `src-tauri/src/lib.rs`, right above the existing `#[tauri::command] fn greet...` line (it will be removed in Step 6, but this keeps the module declared while both exist momentarily). This must happen now, not after the implementation exists: the module has to actually be part of the crate for the compile failure in Step 2 below to be the real one (unresolved names), rather than the test filter silently matching zero tests because the file was never compiled at all (M4 in the design review):
 
-`pub`, not a private `mod`: nothing consumes `UiEvent`/`ChannelSink` until Task 7 builds `AppState`, and this workspace lints with `-D warnings`. This crate has a library target (`canager_lib`), so items of a public module count as reachable API and `dead_code` stays quiet without an `#[allow]`.
+`pub`, not a private `mod`: nothing consumes `UiEvent`/`ChannelSink` until Task 7 builds `AppState`, and this workspace lints with `-D warnings`. This crate has a library target (`banager_lib`), so items of a public module count as reachable API and `dead_code` stays quiet without an `#[allow]`.
 
 
 ```rust
@@ -2708,7 +2708,7 @@ fn greet(name: &str) -> String {
 
 - [ ] **Step 2: Run the tests and confirm they fail to compile**
 
-Run: `cargo test -p canager --lib events::`
+Run: `cargo test -p banager --lib events::`
 Expected: FAIL to compile — `error[E0433]: failed to resolve: use of undeclared type `ChannelSink`` and `error[E0412]: cannot find type `UiEvent` in this scope` (the module is now part of the crate via `pub mod events;`, so this is a real compile failure — the referenced types simply do not exist yet; Step 3 implements them).
 
 - [ ] **Step 3: Implement `UiEvent` and `ChannelSink`**
@@ -2718,7 +2718,7 @@ Insert into `src-tauri/src/events.rs`, between the `use` block and the `#[cfg(te
 ```rust
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum UiEvent {
-    Operation(canager_core::events::OperationEvent),
+    Operation(banager_core::events::OperationEvent),
     SnapshotChanged { generation: u64 },
 }
 
@@ -2746,7 +2746,7 @@ impl ChannelSink {
 }
 
 impl EventSink for ChannelSink {
-    fn emit(&self, event: canager_core::events::OperationEvent) {
+    fn emit(&self, event: banager_core::events::OperationEvent) {
         self.broadcast(UiEvent::Operation(event));
     }
 }
@@ -2756,7 +2756,7 @@ impl EventSink for ChannelSink {
 
 - [ ] **Step 4: Run the tests and confirm they pass**
 
-Run: `cargo test -p canager --lib events::`
+Run: `cargo test -p banager --lib events::`
 Expected: `test result: ok. 3 passed; 0 failed; ...`
 
 - [ ] **Step 5: Commit**
@@ -2764,7 +2764,7 @@ Expected: `test result: ok. 3 passed; 0 failed; ...`
 ```bash
 git add src-tauri/src/events.rs src-tauri/src/lib.rs
 git commit -m "$(cat <<'EOF'
-feat(shell): add ChannelSink, a canager_core::EventSink over Tauri Channels
+feat(shell): add ChannelSink, a banager_core::EventSink over Tauri Channels
 
 Fans every core OperationEvent out to all subscribed webviews as
 UiEvent::Operation, and drops a channel whose send fails (closed
@@ -2788,7 +2788,7 @@ EOF
 - Test: `src-tauri/src/state.rs` (inline `#[cfg(test)] mod tests`)
 
 **Interfaces:**
-- Consumes: `canager_core::session::Session::new` (Task 5), `canager_core::settings::{self, Settings}` (Task 4), `ChannelSink::new` (Task 6).
+- Consumes: `banager_core::session::Session::new` (Task 5), `banager_core::settings::{self, Settings}` (Task 4), `ChannelSink::new` (Task 6).
 - Produces: `src-tauri/src/state.rs`: `AppState { session: Arc<Session>, settings_path: PathBuf, settings: Mutex<Settings>, channel_sink: Arc<ChannelSink> }`, `AppState::new(settings_path, channel_sink) -> AppState`, `AppState::get_settings(&self) -> Settings`, `AppState::set_settings(&self, new: Settings) -> std::io::Result<()>`. `get_settings`/`set_settings` are not fixed by the skeleton (which only names the struct's shape); they exist so Task 8's `get_settings`/`set_settings` commands have real logic to call instead of reaching into the struct's fields directly from `ipc.rs`. `set_settings` holds `settings`'s mutex for its entire save-then-update-memory sequence rather than just the final assignment (M7 in the design review): two overlapping calls could otherwise finish with disk holding one caller's settings and memory holding the other's. The whole method stays synchronous (no `.await` inside), so holding a `std::sync::Mutex` guard across it is safe.
 
 - [ ] **Step 1: Write the failing tests for `AppState`**
@@ -2797,20 +2797,20 @@ Create `src-tauri/src/state.rs` with its `use` block and test module only:
 
 ```rust
 use crate::events::ChannelSink;
-use canager_core::session::Session;
-use canager_core::settings::{self, Settings};
+use banager_core::session::Session;
+use banager_core::settings::{self, Settings};
 use std::path::PathBuf;
 use std::sync::Mutex;
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use canager_core::model::{ArtifactKey, ArtifactKind};
+    use banager_core::model::{ArtifactKey, ArtifactKind};
     use std::sync::Arc;
 
     fn temp_settings_path(tag: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
-            "canager-appstate-{}-{}-{}",
+            "banager-appstate-{}-{}-{}",
             tag,
             std::process::id(),
             std::time::SystemTime::now()
@@ -2911,7 +2911,7 @@ This has to happen now, not after `AppState` exists: `state.rs` must actually be
 
 - [ ] **Step 2: Run the tests and confirm they fail to compile**
 
-Run: `cargo test -p canager --lib state::`
+Run: `cargo test -p banager --lib state::`
 Expected: FAIL to compile — `error[E0433]: failed to resolve: use of undeclared type `AppState`` (the module is now part of the crate via `mod state;`, so this is a real compile failure — the struct simply does not exist yet; Step 3 implements it).
 
 - [ ] **Step 3: Implement `AppState`**
@@ -2928,7 +2928,7 @@ pub struct AppState {
 
 impl AppState {
     /// Loads settings from `settings_path` (falling back to defaults per
-    /// `canager_core::settings::load`'s contract) and builds a `Session`
+    /// `banager_core::settings::load`'s contract) and builds a `Session`
     /// wired to `channel_sink` as its event sink.
     pub fn new(settings_path: PathBuf, channel_sink: std::sync::Arc<ChannelSink>) -> AppState {
         let loaded = settings::load(&settings_path);
@@ -2969,7 +2969,7 @@ impl AppState {
 
 - [ ] **Step 4: Run the tests and confirm they pass**
 
-Run: `cargo test -p canager --lib state::`
+Run: `cargo test -p banager --lib state::`
 Expected: `test result: ok. 4 passed; 0 failed; ...`
 
 - [ ] **Step 5: Commit**
@@ -3004,10 +3004,10 @@ use tauri::Manager;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     if fix_path_env::fix().is_err() {
-        eprintln!("[canager] failed to fix PATH; falling back to the process's default PATH");
+        eprintln!("[banager] failed to fix PATH; falling back to the process's default PATH");
     }
-    let host_env = canager_core::runner::HostEnv::discover();
-    println!("[canager] discovered PATH dirs: {:?}", host_env.path_dirs);
+    let host_env = banager_core::runner::HostEnv::discover();
+    println!("[banager] discovered PATH dirs: {:?}", host_env.path_dirs);
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -3045,7 +3045,7 @@ import "./App.css";
 function App() {
   return (
     <main className="container">
-      <h1 className="text-2xl font-bold">Canager</h1>
+      <h1 className="text-2xl font-bold">Banager</h1>
     </main>
   );
 }
@@ -3055,7 +3055,7 @@ export default App;
 
 - [ ] **Step 7: Run and confirm both the Rust and the front-end sides still build, then manually verify the CSP against real styling and IPC**
 
-Run: `cargo build -p canager 2>&1 | tail -20`
+Run: `cargo build -p banager 2>&1 | tail -20`
 Expected: ends with `Finished` and no errors (the `greet` command and its `invoke_handler` registration are gone, `AppState` is built and managed in `.setup`, and `tauri.conf.json`'s new CSP parses — `tauri-build` re-parses `tauri.conf.json` at compile time and would fail the build on invalid JSON or an unrecognised CSP shape). This only proves the CSP string is syntactically acceptable to `tauri-build`; it says nothing about whether real styling, hot reload, or IPC actually work under it.
 
 Run: `pnpm exec tsc -p tsconfig.json`
@@ -3095,12 +3095,12 @@ EOF
 - Test: `src-tauri/src/ipc.rs` (inline `#[cfg(test)] mod tests`, with a self-contained `FakeAdapter`)
 
 **Interfaces:**
-- Consumes: `AppState` (Task 7); `Session::{issue_plan, submit, cancel, operations}`, `Snapshot`, `DetectOutcome`, `IssuedPlan`, `PlanId`, `SubmitError` (Task 5); `OpSummary` (Task 3); `Settings` (Task 4); `ChannelSink::{register, broadcast}`, `UiEvent` (Task 6); `canager_core::model::OpRequest` (existing); `canager_core::runner::HostEnv` (existing).
+- Consumes: `AppState` (Task 7); `Session::{issue_plan, submit, cancel, operations}`, `Snapshot`, `DetectOutcome`, `IssuedPlan`, `PlanId`, `SubmitError` (Task 5); `OpSummary` (Task 3); `Settings` (Task 4); `ChannelSink::{register, broadcast}`, `UiEvent` (Task 6); `banager_core::model::OpRequest` (existing); `banager_core::runner::HostEnv` (existing).
 - Produces: all nine `#[tauri::command]` functions with exactly the signatures fixed by the skeleton (`get_snapshot`, `refresh`, `plan_operation`, `submit_operation`, `cancel_operation`, `list_operations`, `get_settings`, `set_settings`, `subscribe_events`) — `plan_operation` returns `IssuedPlan` and `submit_operation` takes only `plan_id: u64` (F1 in the design review: IPC accepts only known operations and server-issued object IDs, never a client-supplied `Plan`). Each is a **thin, ≤2-line adapter** over a plain, non-`#[tauri::command]` `..._impl` function that takes `&AppState` directly — introduced by this task specifically so the real logic is unit-testable, since `tauri::State<'_, T>` wraps a private field and cannot be constructed outside the `tauri` crate (verified against the vendored source: `pub struct State<'r, T: Send + Sync + 'static>(&'r T);` in `~/.cargo/registry/src/.../tauri-2.11.5/src/state.rs` has no public constructor). These `..._impl` functions (`get_snapshot_impl`, `refresh_impl`, `plan_operation_impl`, `submit_operation_impl`, `cancel_operation_impl`, `list_operations_impl`, `get_settings_impl`, `set_settings_impl`, `subscribe_events_impl`) are not named by the skeleton and are private to this crate (`pub(crate)`); no other task depends on their names. `refresh_impl` also broadcasts `UiEvent::SnapshotChanged` on `state.channel_sink` whenever the refreshed snapshot's `generation` differs from the one before the call (M9 in the design review — this is the only production code path in the whole plan that ever sends `SnapshotChanged`; every other mention of it up to this task is in a test).
 
 - [ ] **Step 1: Add the test-only dependencies this task's tests need**
 
-Task 8's tests are the first in `src-tauri` to use `#[tokio::test]`, `async_trait`, and `tokio_util::sync::CancellationToken`. `canager-core` depends on `tokio`, `tokio-util` and `async-trait`, but a dependency of `canager-core` is not usable directly from the `canager` (src-tauri) crate — each crate must declare what it imports itself (M2 in the design review). Add to `src-tauri/Cargo.toml`:
+Task 8's tests are the first in `src-tauri` to use `#[tokio::test]`, `async_trait`, and `tokio_util::sync::CancellationToken`. `banager-core` depends on `tokio`, `tokio-util` and `async-trait`, but a dependency of `banager-core` is not usable directly from the `banager` (src-tauri) crate — each crate must declare what it imports itself (M2 in the design review). Add to `src-tauri/Cargo.toml`:
 
 ```toml
 [dev-dependencies]
@@ -3118,11 +3118,11 @@ Create `src-tauri/src/ipc.rs` with its `use` block and full test module (the `..
 ```rust
 use crate::events::UiEvent;
 use crate::state::AppState;
-use canager_core::model::OpRequest;
-use canager_core::ops::OpSummary;
-use canager_core::runner::HostEnv;
-use canager_core::session::{IssuedPlan, Snapshot};
-use canager_core::settings::Settings;
+use banager_core::model::OpRequest;
+use banager_core::ops::OpSummary;
+use banager_core::runner::HostEnv;
+use banager_core::session::{IssuedPlan, Snapshot};
+use banager_core::settings::Settings;
 use tauri::ipc::Channel;
 use tauri::State;
 
@@ -3131,9 +3131,9 @@ mod tests {
     use super::*;
     use crate::events::ChannelSink;
     use async_trait::async_trait;
-    use canager_core::adapters::{Adapter, AdapterError, AdapterMeta, Capabilities};
-    use canager_core::events::{EventSink, OpId, OperationEvent};
-    use canager_core::model::{
+    use banager_core::adapters::{Adapter, AdapterError, AdapterMeta, Capabilities};
+    use banager_core::events::{EventSink, OpId, OperationEvent};
+    use banager_core::model::{
         ArtifactKey, ArtifactKind, CancelPolicy, InstalledArtifact, ManagerInstance, OpKind, Plan,
         Outcome, Reconciled, ResourceLock, Scope, SearchHit, UpdateCandidate,
     };
@@ -3239,7 +3239,7 @@ mod tests {
 
     fn temp_settings_path(tag: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
-            "canager-ipc-{}-{}-{}",
+            "banager-ipc-{}-{}-{}",
             tag,
             std::process::id(),
             std::time::SystemTime::now()
@@ -3298,7 +3298,7 @@ mod tests {
         });
         let sink = ChannelSink::new();
         let session =
-            canager_core::session::Session::with_adapters(sink.clone(), vec![adapter], now_fn);
+            banager_core::session::Session::with_adapters(sink.clone(), vec![adapter], now_fn);
         let state = AppState {
             session,
             settings_path: temp_settings_path("appstate"),
@@ -3562,7 +3562,7 @@ This has to happen now, not after the `..._impl` functions exist: `ipc.rs` must 
 
 - [ ] **Step 3: Run the tests and confirm they fail to compile**
 
-Run: `cargo test -p canager --lib ipc::`
+Run: `cargo test -p banager --lib ipc::`
 Expected: FAIL to compile — `error[E0425]: cannot find function `get_snapshot_impl` in this scope` and similarly for every other `..._impl` function referenced by the test module (the module is now part of the crate via `mod ipc;`, and `AppState` itself resolves fine via the existing `use crate::state::AppState;` — it is only the `..._impl` functions and command wrappers that do not exist yet).
 
 - [ ] **Step 4: Implement all nine `..._impl` functions and their thin `#[tauri::command]` wrappers**
@@ -3581,7 +3581,7 @@ pub async fn get_snapshot(state: State<'_, AppState>) -> Result<Snapshot, String
 
 /// Also broadcasts `UiEvent::SnapshotChanged` on `state.channel_sink`
 /// whenever the refreshed snapshot's `generation` differs from the one
-/// before this call (M9 in the design review). `canager-core` must never
+/// before this call (M9 in the design review). `banager-core` must never
 /// depend on `tauri`, so `Session::refresh` itself cannot send this — the
 /// shell is the only layer that can, and this is the only place in the
 /// whole plan that does so outside a test.
@@ -3695,7 +3695,7 @@ pub async fn subscribe_events(
 
 - [ ] **Step 5: Run the tests and confirm they pass**
 
-Run: `cargo test -p canager --lib ipc::`
+Run: `cargo test -p banager --lib ipc::`
 Expected: `test result: ok. 10 passed; 0 failed; ...`
 
 - [ ] **Step 6: Commit**
@@ -3765,7 +3765,7 @@ EOF
 - [ ] **Step 10: Run the full workspace definition-of-done check**
 
 Run: `cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace`
-Expected: `cargo fmt --all --check` prints nothing and exits 0; clippy ends with `Finished` and no warnings; `cargo test --workspace` reports `test result: ok.` for every suite in the workspace with zero failures — in `canager-core`, that includes `adapters::` (35 tests: the pre-existing 29 across `adapters::tests`/`brew::tests`/`brew::plan_execute_tests` plus this plan's 6 new ones), `settings::` (7 tests, new), `session::` (12 tests, new — refresh/snapshot/issue_plan/submit plus the M5 unchanged-content-coalescing and M8 same-instance-lock regression tests), `ops::` unit tests, and every `tests/*.rs` integration file including the new `ops_summaries_test.rs` (5 tests, including N4's multiple-waiters regression test); in `canager` (`src-tauri`), that includes `events::` (3 tests, new), `state::` (4 tests, new — including the M7 concurrent-save regression test) and `ipc::` (10 tests, new — including the three F1 plan-rejection tests) — with zero regressions anywhere in the workspace relative to the pre-Task-1 baseline.
+Expected: `cargo fmt --all --check` prints nothing and exits 0; clippy ends with `Finished` and no warnings; `cargo test --workspace` reports `test result: ok.` for every suite in the workspace with zero failures — in `banager-core`, that includes `adapters::` (35 tests: the pre-existing 29 across `adapters::tests`/`brew::tests`/`brew::plan_execute_tests` plus this plan's 6 new ones), `settings::` (7 tests, new), `session::` (12 tests, new — refresh/snapshot/issue_plan/submit plus the M5 unchanged-content-coalescing and M8 same-instance-lock regression tests), `ops::` unit tests, and every `tests/*.rs` integration file including the new `ops_summaries_test.rs` (5 tests, including N4's multiple-waiters regression test); in `banager` (`src-tauri`), that includes `events::` (3 tests, new), `state::` (4 tests, new — including the M7 concurrent-save regression test) and `ipc::` (10 tests, new — including the three F1 plan-rejection tests) — with zero regressions anywhere in the workspace relative to the pre-Task-1 baseline.
 
 ---
 
@@ -3792,7 +3792,7 @@ Expected: `cargo fmt --all --check` prints nothing and exits 0; clippy ends with
 - Delete: `src/assets/react.svg`
 
 **Interfaces:**
-- Consumes: none from earlier tasks — this is the front-end foundation. No IPC calls yet (Tasks 1–8 exist only in `canager-core` / `src-tauri`, not called from React until Task 10).
+- Consumes: none from earlier tasks — this is the front-end foundation. No IPC calls yet (Tasks 1–8 exist only in `banager-core` / `src-tauri`, not called from React until Task 10).
 - Produces: `renderWithProviders(ui: ReactElement)` test helper (`src/test/setup.ts`), used by every later test in Tasks 10–18; a global `vi.mock` of `@tauri-apps/api/core`'s `invoke` and `Channel`; `Sidebar` component and its `SidebarPage` type (`"installed" | "updates" | "settings"`) from `src/components/Sidebar.tsx` (Task 11 later replaces this local type with the shared `Page` type from `src/store/ui.ts`); the default `i18n` instance from `src/i18n/index.ts` with `en.json` resources loaded under keys `app.*` and `nav.*`; `Dialog({ open, onOpenChange, title, children, footer? })` and `Switch({ checked, onCheckedChange, id?, "aria-label"?, "aria-describedby"? })` (`src/components/ui/Dialog.tsx` and `src/components/ui/Switch.tsx` — the two Radix wrappers every later dialog/toggle in this plan builds on: Task 12's `UpdatesPage`, Task 14's `UninstallDialog`, and Task 15's `SettingsPage`).
 
 - [ ] **Step 1: Add front-end dependencies and install them**
@@ -3801,7 +3801,7 @@ Replace `package.json` with:
 
 ```json
 {
-  "name": "canager",
+  "name": "banager",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -3859,7 +3859,7 @@ Create `src/i18n/en.json`:
 ```json
 {
   "app": {
-    "title": "Canager",
+    "title": "Banager",
     "operationBarRegion": "Operation status"
   },
   "nav": {
@@ -4136,7 +4136,7 @@ describe("App", () => {
 - [ ] **Step 9: Run the test, verify it fails**
 
 Run: `pnpm exec vitest run src/App.test.tsx`
-Expected: FAIL — the current `src/App.tsx` still renders the create-tauri-app template (a "Canager" `h1`, Vite/Tauri/React logos and a greet form), so no heading named "Installed" exists yet.
+Expected: FAIL — the current `src/App.tsx` still renders the create-tauri-app template (a "Banager" `h1`, Vite/Tauri/React logos and a greet form), so no heading named "Installed" exists yet.
 
 - [ ] **Step 10: Rewrite the shell, delete template leftovers**
 
@@ -4460,7 +4460,7 @@ function roundTrip<T>(value: T): T {
 }
 
 describe("types", () => {
-  it("round-trips a realistic Snapshot (shape copied from canager-core's brew fixtures)", () => {
+  it("round-trips a realistic Snapshot (shape copied from banager-core's brew fixtures)", () => {
     const snapshot = {
       generation: 3,
       detect: "Found",
@@ -5895,7 +5895,7 @@ Replace `src/i18n/en.json`:
 ```json
 {
   "app": {
-    "title": "Canager",
+    "title": "Banager",
     "operationBarRegion": "Operation status"
   },
   "nav": {
@@ -6426,7 +6426,7 @@ Replace `src/i18n/en.json`:
 ```json
 {
   "app": {
-    "title": "Canager",
+    "title": "Banager",
     "operationBarRegion": "Operation status"
   },
   "nav": {
@@ -7564,7 +7564,7 @@ Replace `src/i18n/en.json`:
 ```json
 {
   "app": {
-    "title": "Canager",
+    "title": "Banager",
     "operationBarRegion": "Operation status"
   },
   "nav": {
@@ -9023,7 +9023,7 @@ Add these top-level keys to `src/i18n/en.json`:
   "loading": "Loading settings…",
   "showTechnicalDetails": {
     "label": "Show technical details",
-    "description": "Reveal version numbers, file paths, and the exact commands Canager runs."
+    "description": "Reveal version numbers, file paths, and the exact commands Banager runs."
   },
   "language": {
     "label": "Language",
@@ -9416,7 +9416,7 @@ This file needs a Simplified Chinese entry for every key in `src/i18n/en.json` �
 ```json
 {
   "app": {
-    "title": "Canager",
+    "title": "Banager",
     "operationBarRegion": "操作状态"
   },
   "nav": {
@@ -9508,7 +9508,7 @@ This file needs a Simplified Chinese entry for every key in `src/i18n/en.json` �
     "loading": "正在加载设置…",
     "showTechnicalDetails": {
       "label": "显示技术细节",
-      "description": "显示版本号、文件路径,以及 Canager 实际执行的命令。"
+      "description": "显示版本号、文件路径,以及 Banager 实际执行的命令。"
     },
     "language": {
       "label": "语言",
@@ -9999,7 +9999,7 @@ describe("SnapshotStatus", () => {
     );
 
     expect(
-      await screen.findByText("Canager can't run as an administrator"),
+      await screen.findByText("Banager can't run as an administrator"),
     ).toBeInTheDocument();
   });
 
@@ -10212,11 +10212,11 @@ Add this top-level key to `src/i18n/en.json` (the loading branch reuses the exis
   },
   "noHomebrew": {
     "title": "Homebrew isn't installed yet",
-    "description": "Canager manages tools installed through Homebrew. Install Homebrew first, then come back here."
+    "description": "Banager manages tools installed through Homebrew. Install Homebrew first, then come back here."
   },
   "refusedAsRoot": {
-    "title": "Canager can't run as an administrator",
-    "description": "Homebrew refuses to run under the root user for safety. Quit Canager, then open it again from your normal user account."
+    "title": "Banager can't run as an administrator",
+    "description": "Homebrew refuses to run under the root user for safety. Quit Banager, then open it again from your normal user account."
   },
   "refreshFailed": {
     "title": "Some data might be out of date",
@@ -10242,11 +10242,11 @@ And this matching top-level key to `src/i18n/zh-CN.json` (this keeps Task 16's k
   },
   "noHomebrew": {
     "title": "还没有安装 Homebrew",
-    "description": "Canager 管理通过 Homebrew 安装的工具。请先安装 Homebrew,然后再回到这里。"
+    "description": "Banager 管理通过 Homebrew 安装的工具。请先安装 Homebrew,然后再回到这里。"
   },
   "refusedAsRoot": {
-    "title": "Canager 不能以管理员身份运行",
-    "description": "出于安全考虑,Homebrew 拒绝以 root 用户运行。请退出 Canager,改用你平时的用户账户重新打开。"
+    "title": "Banager 不能以管理员身份运行",
+    "description": "出于安全考虑,Homebrew 拒绝以 root 用户运行。请退出 Banager,改用你平时的用户账户重新打开。"
   },
   "refreshFailed": {
     "title": "部分数据可能不是最新的",
@@ -10495,8 +10495,8 @@ jobs:
 
       - name: live homebrew smoke (install/inventory/uninstall hello)
         env:
-          CANAGER_LIVE: "1"
-        run: cargo test -p canager-core --test brew_live -- --ignored --nocapture
+          BANAGER_LIVE: "1"
+        run: cargo test -p banager-core --test brew_live -- --ignored --nocapture
 
       - name: pnpm install
         run: pnpm install --frozen-lockfile
@@ -10519,7 +10519,7 @@ Expected: one match — `        run: pnpm test` — on the line just added betw
 - [ ] **Step 6: Confirm the whole workflow still passes, command by command**
 
 Run: `cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace && pnpm install --frozen-lockfile && pnpm test && pnpm build && pnpm tauri build --target universal-apple-darwin --no-bundle`
-Expected: PASS end to end, exit code 0 — this is the exact command sequence `ci.yml` now runs (minus the `CANAGER_LIVE` smoke test, which needs a real Homebrew and is optional here), so a clean local pass is strong evidence the workflow will pass in CI too.
+Expected: PASS end to end, exit code 0 — this is the exact command sequence `ci.yml` now runs (minus the `BANAGER_LIVE` smoke test, which needs a real Homebrew and is optional here), so a clean local pass is strong evidence the workflow will pass in CI too.
 
 - [ ] **Step 7: Commit**
 

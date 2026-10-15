@@ -1,0 +1,7 @@
+schema_version = 1
+id = "standalone-codex"
+name = "Codex"
+kind = "standalone"
+platforms = ["macos"]
+homepage = "https://github.com/openai/codex"
+verified_versions = []

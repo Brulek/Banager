@@ -1,5 +1,5 @@
 [package]
-name = "canager"
+name = "banager"
 version = "0.1.0"
 description = "A friendly manager for everything you installed from the terminal"
 authors = ["Brulek"]
@@ -11,7 +11,7 @@ edition = "2021"
 # The `_lib` suffix may seem redundant but it is necessary
 # to make the lib name unique and wouldn't conflict with the bin name.
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
-name = "canager_lib"
+name = "banager_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
@@ -19,23 +19,131 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2.11.1", features = [] }
-tauri-plugin-opener = "2"
 tauri-plugin-updater = "2.11.0"
+# 2.4.1 is the newest release that runs on tauri 2.11, which Cargo.lock is
+# on; 2.5.0 needs 2.12.
+tauri-plugin-window-state = "2.4.1"
+# The update notification (notify.rs): asking for permission to post one.
+# 2.4 is the newest line that runs on tauri 2.11, which Cargo.lock is on;
+# 2.5.0 needs 2.12, and a plain "2.4.0" would let Cargo take it and move
+# tauri up with it.
+tauri-plugin-notification = "~2.4.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-canager-core = { path = "../crates/canager-core" }
-fix-path-env = { git = "https://github.com/tauri-apps/fix-path-env-rs" }
-
+banager-core = { path = "../crates/banager-core" }
+# The daily check's timer (`tokio::time::interval_at` in auto_check.rs), on
+# tauri's own tokio runtime; and the turns and shared runs of ipc.rs and
+# shared_run.rs (`tokio::sync::Mutex`, `tokio::sync::watch`). Already in
+# Cargo.lock at this version as a dependency of tauri, and banager-core
+# already switches `time` and `sync` on, so no new crate and no new feature
+# enters the build.
+tokio = { version = "1", features = ["time", "sync"] }
+# `menu::preferred_languages` asks macOS for the user's preferred languages
+# (`NSLocale preferredLanguages`), to build the menu bar in the window's
+# language before the page has said which; `window::observe_activation`
+# watches Foundation's notification center for Banager coming to the front
+# (`addObserverForName:object:queue:usingBlock:`). Already in Cargo.lock at
+# this version as a dependency of tauri, with these features on, so no new
+# crate and no new feature enters the build -- declared, as banager-core
+# declares its own. macOS only, as the calls are.
+# `reveal::show_in_finder` makes the file URL it hands Finder
+# (`NSURL fileURLWithPath:isDirectory:`) in an `NSArray`: `NSURL` is
+# already on in this build -- banager-core switches it on (the Trash call,
+# `trash::real`), and so do tao and wry -- so no new feature enters the
+# build. `homepage::open_in_browser` hears from AppKit, in the completion
+# of `openURLs:withApplicationAtURL:configuration:completionHandler:`,
+# whether the browser opened (`NSError`): already on in this build --
+# banager-core switches it on -- so no new feature enters the build.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-foundation = { version = "0.3", default-features = false, features = [
+    "std",
+    "NSArray",
+    "NSError",
+    "NSLocale",
+    "NSNotification",
+    "NSOperation",
+    "NSString",
+    "NSURL",
+    "block2",
+] }
+# `notify::app_active` asks macOS whether Banager is the app in front
+# (`NSRunningApplication`'s `isActive`): macOS shows no banner for its
+# notifications then, so none is posted. `window::observe_activation`
+# names the notification AppKit posts as Banager comes to the front
+# (`NSApplicationDidBecomeActiveNotification`). `quit::guard_quitting`
+# asks for AppKit's application delegate (`NSApplication`, which is an
+# `NSResponder`) and answers its `applicationShouldTerminate:` with an
+# `NSApplicationTerminateReply`. Already in Cargo.lock at this version as
+# a dependency of tauri, with these features on -- tao switches on
+# `NSResponder` -- so no new crate and no new feature enters the build.
+# `reveal::show_in_finder` asks Finder to show a file
+# (`NSWorkspace activateFileViewerSelectingURLs:`), the one call the opener
+# plugin's `reveal_item_in_dir` made, without the plugin resolving the path
+# again first (the plugin is no longer built in); `NSWorkspace` is already
+# on in this build -- banager-core switches it on (the app icons,
+# `icon::real`) -- so no new feature enters the build either.
+# macOS only, as the calls are.
+objc2-app-kit = { version = "0.3", default-features = false, features = [
+    "std",
+    "NSApplication",
+    "NSResponder",
+    "NSRunningApplication",
+    "NSWorkspace",
+] }
+# `quit::guard_quitting` adds `applicationShouldTerminate:` to the class of
+# AppKit's application delegate (`objc2::ffi::class_addMethod`), and its
+# test sends that method to a class of its own. Already in Cargo.lock at
+# this version as a dependency of tauri, and banager-core already declares
+# it with `std`, so no new crate and no new feature enters the build.
+# macOS only, as the call is.
+objc2 = { version = "0.6", default-features = false, features = ["std"] }
+# The block `window::observe_activation` hands the notification center.
+# Already in Cargo.lock at this version as a dependency of objc2-foundation,
+# with its default feature, `std`, on, so no new crate and no new feature
+# enters the build. macOS only, as the call is.
+block2 = "0.6"
+# The update notification itself on a Mac (`notify::post`): the crate
+# tauri-plugin-notification posts through, at the version the plugin pulls
+# in, so no crate enters the build that the plugin does not bring. Called
+# directly because only its `wait_for_response` hears a click on the
+# notification, which the plugin's `show` hands off unheard.
+notify-rust = "4.11"
 
 [dev-dependencies]
+# Mock-runtime dispatch through the same generated handlers as production.
+tauri = { version = "2.11.1", features = ["test"] }
+# The parser tauri reads a menu item's shortcut with -- `MenuItem::with_id`
+# parses the string, and drops a shortcut it cannot read without a word --
+# so that `menu.rs`'s tests read the page items' shortcuts as tauri will.
+# The version tauri depends on, already in Cargo.lock, and no feature
+# tauri does not already switch on, so nothing new is compiled.
+muda = { version = "0.19", default-features = false }
 async-trait = "0.1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "sync"] }
 tokio-util = { version = "0.7", features = ["rt"] }
+# Same crate as the plain `banager-core` entry under [dependencies] above,
+# with `test-support` turned on: resolver v2 unifies features per target,
+# so this only reaches the test build of banager-core, never the release
+# binary's. This is what lets `ipc.rs`'s tests call
+# `banager_core::testing::expire_issued_plans`, which is cfg-gated on that
+# feature specifically so it cannot ship in a release build. See
+# `crates/banager-core/src/testing.rs`.
+banager-core = { path = "../crates/banager-core", features = ["test-support"] }
 
-# Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
-[profile.release]
-codegen-units = 1
-lto = true
-opt-level = 3
-panic = "abort"
-strip = true
+# tests/tao_delegate.rs makes tao's event loop, as tauri makes it, to ask
+# whether tao's application delegate answers `applicationShouldTerminate:`
+# (`quit::add_should_terminate`). tauri's own runtime crate, whose `tao`
+# re-export is the tao tauri runs on: the version tauri depends on, already
+# in Cargo.lock, and no feature switched on, so nothing new is compiled.
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+tauri-runtime-wry = { version = "2", default-features = false }
+
+# Its own `main`, on the main thread, where tao makes its event loop.
+[[test]]
+name = "tao_delegate"
+harness = false
+
+# [profile.release] lives at the workspace root (../Cargo.toml), not here --
+# Cargo only reads profiles from the workspace root; a copy in this member
+# crate's Cargo.toml is silently ignored. See the comment there for why
+# `panic = "abort"` is deliberately left out.

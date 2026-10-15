@@ -1,0 +1,91 @@
+{
+  "homebrew_version": "7.0.4",
+  "loaded_from_api": true,
+  "loaded_from_internal_api": true,
+  "uninstall_flight_blocks": false,
+  "installed_on_request": true,
+  "time": 1789695865,
+  "runtime_dependencies": {},
+  "source": {
+    "tap": "homebrew/cask",
+    "tap_git_head": "040e2704fb38698e86abd8b0d03e1a3f6948dee8",
+    "version": "26.8.0",
+    "path": "/Users/brulek/Library/Caches/Homebrew/api/internal/packages.arm64_golden_gate.jws.json"
+  },
+  "arch": "arm64",
+  "uninstall_artifacts": [
+    {
+      "app": [
+        "LibreOffice.app"
+      ]
+    },
+    {
+      "binary": [
+        "/Applications/LibreOffice.app/Contents/MacOS/gengal"
+      ]
+    },
+    {
+      "binary": [
+        "/Applications/LibreOffice.app/Contents/MacOS/regview"
+      ]
+    },
+    {
+      "binary": [
+        "/Applications/LibreOffice.app/Contents/MacOS/senddoc"
+      ]
+    },
+    {
+      "binary": [
+        "/Applications/LibreOffice.app/Contents/MacOS/uno"
+      ]
+    },
+    {
+      "binary": [
+        "/Applications/LibreOffice.app/Contents/MacOS/uri-encode"
+      ]
+    },
+    {
+      "binary": [
+        "/Applications/LibreOffice.app/Contents/MacOS/xpdfimport"
+      ]
+    },
+    {
+      "command_wrapper": [
+        "soffice",
+        {
+          "executable": "/Applications/LibreOffice.app/Contents/MacOS/soffice"
+        }
+      ]
+    },
+    {
+      "binary": [
+        "/Applications/LibreOffice.app/Contents/MacOS/unoinfo"
+      ]
+    },
+    {
+      "binary": [
+        "/Applications/LibreOffice.app/Contents/MacOS/unopkg"
+      ]
+    },
+    {
+      "zap": [
+        {
+          "trash": [
+            "~/Library/Application Support/com.apple.sharedfilelist/com.apple.LSSharedFileList.ApplicationRecentDocuments/org.libreoffice.script.sfl*",
+            "~/Library/Application Support/LibreOffice",
+            "~/Library/Preferences/org.libreoffice.script.plist",
+            "~/Library/Saved Application State/org.libreoffice.script.savedState"
+          ]
+        }
+      ]
+    }
+  ],
+  "built_on": {
+    "os": "Macintosh",
+    "os_version": "macOS 27",
+    "cpu_family": "arm_sotra",
+    "xcode": "26.6",
+    "clt": "27.0.0.0.1788430756",
+    "preferred_perl": "5.34"
+  }
+}

@@ -1,0 +1,7 @@
+schema_version = 1
+id = "pipx"
+name = "pipx"
+kind = "package_manager"
+platforms = ["macos"]
+homepage = "https://pipx.pypa.io"
+verified_versions = ["1.17.3"]

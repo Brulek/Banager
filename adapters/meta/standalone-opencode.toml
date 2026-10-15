@@ -1,0 +1,7 @@
+schema_version = 1
+id = "standalone-opencode"
+name = "opencode"
+kind = "standalone"
+platforms = ["macos"]
+homepage = "https://opencode.ai"
+verified_versions = []

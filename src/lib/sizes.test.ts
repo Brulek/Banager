@@ -1,0 +1,241 @@
+import { describe, expect, it } from "vitest";
+import i18n from "../i18n";
+import {
+  compareSizes,
+  modelsTotalText,
+  otherVersionsSizeText,
+  saysSize,
+  sizeCellOf,
+  sizeNoteOf,
+  sizeOrderOf,
+  sizeText,
+  sizeViewOf,
+} from "./sizes";
+import { NO_FACTS, NO_SIZES, type InstalledArtifact, type Sizes } from "./types";
+import { artifactKeyId } from "../store/ui";
+
+const ruff: InstalledArtifact = {
+  key: { instance_id: "uv", kind: "Tool", name: "ruff" },
+  display_name: "ruff",
+  version: "0.14.3",
+  reason: "Requested",
+  description: null,
+  homepage: null,
+  size_bytes: null,
+  installed_at: null,
+  path: "/Users/you/.local/share/uv/tools/ruff",
+  auto_updates: false,
+  uninstall_blocked: null,
+  facts: NO_FACTS,
+};
+
+const OLLAMA = "ollama:http://127.0.0.1:11434";
+
+function sizes(overrides: Partial<Sizes>): Sizes {
+  return { ...NO_SIZES, round: 1, ...overrides };
+}
+
+const zh = i18n.getFixedT("zh-CN");
+const en = i18n.getFixedT("en");
+
+/** "By Size" over two rows, as the Installed page sorts them: each row's size looked up in `order`, then `compareSizes`. */
+function compareBySize(order: Map<string, number>, a: InstalledArtifact, b: InstalledArtifact): number {
+  return compareSizes(order.get(artifactKeyId(a.key)), order.get(artifactKeyId(b.key)));
+}
+
+describe("sizeViewOf", () => {
+  it("has nothing to show for an artifact the sizes do not list, or before they are asked for", () => {
+    expect(sizeViewOf(undefined, ruff)).toBeNull();
+    expect(sizeViewOf(NO_SIZES, ruff)).toBeNull();
+    const other = sizes({
+      artifacts: [{ key: { ...ruff.key, name: "black" }, version: "25.1.0", measured: null, old_versions: null }],
+    });
+    expect(sizeViewOf(other, ruff)).toBeNull();
+  });
+
+  it("is measuring while its size is not in, and while the size is of another version", () => {
+    const pending = sizes({ artifacts: [{ key: ruff.key, version: "0.14.3", measured: null, old_versions: null }] });
+    expect(sizeViewOf(pending, ruff)).toEqual({ kind: "measuring" });
+    const older = sizes({
+      artifacts: [
+        { key: ruff.key, version: "0.14.2", measured: { bytes: 1, partial: false, at_least: false }, old_versions: null },
+      ],
+    });
+    expect(sizeViewOf(older, ruff)).toEqual({ kind: "measuring" });
+  });
+
+  it("is the measured size, with the other versions', for the version listed", () => {
+    const measured = { bytes: 312_600_000, partial: false, at_least: false };
+    const old = { bytes: 298_400_000, partial: false, at_least: false };
+    const done = sizes({ done: true, artifacts: [{ key: ruff.key, version: "0.14.3", measured, old_versions: old }] });
+    expect(sizeViewOf(done, ruff)).toEqual({ kind: "measured", measured, otherVersions: old });
+  });
+});
+
+describe("the size words", () => {
+  it("say every number is rough, and how it is when part of it could not be measured", () => {
+    const exact = { bytes: 312_600_000, partial: false, at_least: false };
+    expect(sizeText(zh, exact)).toBe("约312.6 MB");
+    expect(sizeText(en, exact)).toBe("About\u00a0312.6 MB");
+    expect(sizeText(zh, { ...exact, at_least: true })).toBe("312.6 MB以上");
+    expect(sizeText(en, { ...exact, at_least: true })).toBe("312.6 MB or more");
+    expect(sizeText(zh, { ...exact, partial: true })).toBe("约312.6 MB，部分无法读取");
+    expect(sizeText(en, { ...exact, partial: true })).toBe("About\u00a0312.6 MB; some of it couldn't be read");
+    // Both: the budget's word wins -- it is the larger "more than this".
+    expect(sizeText(zh, { ...exact, partial: true, at_least: true })).toBe("312.6 MB以上");
+  });
+
+  it("say what a formula's other versions take, in all for several, as at least when not all were measured", () => {
+    const other = { bytes: 1_200_000_000, partial: false, at_least: false };
+    expect(otherVersionsSizeText(zh, other, 1)).toBe("约1.2 GB");
+    expect(otherVersionsSizeText(en, other, 1)).toBe("About\u00a01.2 GB");
+    expect(otherVersionsSizeText(zh, other, 3)).toBe("共约1.2 GB");
+    expect(otherVersionsSizeText(en, other, 3)).toBe("About\u00a01.2 GB in all");
+    expect(otherVersionsSizeText(zh, { ...other, partial: true }, 1)).toBe("1.2 GB以上");
+    expect(otherVersionsSizeText(zh, { ...other, at_least: true }, 2)).toBe("共1.2 GB以上");
+    expect(otherVersionsSizeText(en, { ...other, partial: true }, 2)).toBe("1.2 GB or more in all");
+  });
+
+  it("say what an Ollama's models take together, and nothing while it is measured or for another source", () => {
+    const done = sizes({
+      done: true,
+      models: [{ instance_id: OLLAMA, measured: { bytes: 6_620_000_000, partial: false, at_least: false } }],
+    });
+    expect(modelsTotalText(zh, done, OLLAMA, 1)).toBe("Ollama模型共约6.6 GB");
+    expect(modelsTotalText(en, done, OLLAMA, 1)).toBe("Ollama models: about\u00a06.6 GB in all");
+    expect(modelsTotalText(zh, done, "brew:/opt/homebrew", 1)).toBeNull();
+    expect(modelsTotalText(zh, sizes({ models: [{ instance_id: OLLAMA, measured: null }] }), OLLAMA, 1)).toBeNull();
+    expect(modelsTotalText(zh, undefined, OLLAMA, 1)).toBeNull();
+    const cut = sizes({
+      models: [{ instance_id: OLLAMA, measured: { bytes: 6_620_000_000, partial: false, at_least: true } }],
+    });
+    expect(modelsTotalText(zh, cut, OLLAMA, 1)).toBe("Ollama模型共6.6 GB以上");
+  });
+
+  it("say nothing of the models from a round before the list shown", () => {
+    // A model deleted and the list refreshed: the new list's count beside
+    // the old round's total would be the old folder's size.
+    const earlier = sizes({
+      round: 1,
+      done: true,
+      models: [{ instance_id: OLLAMA, measured: { bytes: 6_620_000_000, partial: false, at_least: false } }],
+    });
+    expect(modelsTotalText(zh, earlier, OLLAMA, 2)).toBeNull();
+    expect(modelsTotalText(zh, earlier, OLLAMA, undefined)).toBeNull();
+    expect(modelsTotalText(zh, earlier, OLLAMA, 1)).toBe("Ollama模型共约6.6 GB");
+  });
+
+  it("never claim what could be freed", () => {
+    const words = [
+      ...Object.values(i18n.getResourceBundle("zh-CN", "translation").sizes as Record<string, string>),
+      ...Object.values(i18n.getResourceBundle("en", "translation").sizes as Record<string, string>),
+    ];
+    for (const text of words) {
+      expect(text).not.toMatch(/腾出|释放|清理|free up|reclaim|clean/i);
+    }
+  });
+});
+
+describe("saysSize", () => {
+  it("says no number for a measured 0, whatever else it says, and one for anything more", () => {
+    expect(saysSize({ bytes: 0, partial: false, at_least: false })).toBe(false);
+    expect(saysSize({ bytes: 0, partial: true, at_least: false })).toBe(false);
+    expect(saysSize({ bytes: 1, partial: false, at_least: false })).toBe(true);
+    expect(saysSize({ bytes: 4_096, partial: false, at_least: true })).toBe(true);
+  });
+
+  it("still sorts a measured 0 By Size, as the smallest measured", () => {
+    const zero = { ...ruff, key: { ...ruff.key, name: "corepack" } };
+    const order = sizeOrderOf(
+      sizes({ artifacts: [{ key: zero.key, version: zero.version, measured: { bytes: 0, partial: false, at_least: false }, old_versions: null }] }),
+      [zero],
+    );
+    expect([...order.entries()]).toEqual([["uv|Tool|corepack", 0]]);
+  });
+
+  it("shows 「—」 in By Size's column for a measured 0, as for none, never 「约0 B」", () => {
+    const zero = { ...ruff, key: { ...ruff.key, name: "corepack" } };
+    const measured = (bytes: number) =>
+      sizes({ artifacts: [{ key: zero.key, version: zero.version, measured: { bytes, partial: false, at_least: false }, old_versions: null }] });
+    expect(sizeCellOf(zh, measured(0), zero)).toEqual({ text: "—", muted: true });
+    expect(sizeCellOf(zh, measured(4_096), zero)).toEqual({ text: "约4.1 KB", muted: false });
+  });
+});
+
+describe("By Size", () => {
+  const tool = (name: string, version = "1.0", size_bytes: number | null = null): InstalledArtifact => ({
+    ...ruff,
+    key: { ...ruff.key, name },
+    display_name: name,
+    version,
+    size_bytes,
+  });
+
+  it("goes by a measured size of the version listed, or the size the source reports, and nothing else", () => {
+    const big = tool("big");
+    const small = tool("small");
+    const stale = tool("stale", "2.0");
+    const pending = tool("pending");
+    const model = tool("model", "abc", 2_019_393_189);
+    const order = sizeOrderOf(
+      sizes({
+        artifacts: [
+          { key: big.key, version: "1.0", measured: { bytes: 900, partial: false, at_least: false }, old_versions: null },
+          { key: small.key, version: "1.0", measured: { bytes: 10, partial: true, at_least: false }, old_versions: null },
+          { key: stale.key, version: "1.0", measured: { bytes: 5_000, partial: false, at_least: false }, old_versions: null },
+          { key: pending.key, version: "1.0", measured: null, old_versions: null },
+        ],
+      }),
+      [big, small, stale, pending, model, tool("unknown")],
+    );
+    expect([...order.entries()]).toEqual([
+      ["uv|Tool|big", 900],
+      ["uv|Tool|small", 10],
+      ["uv|Tool|model", 2_019_393_189],
+    ]);
+  });
+
+  it("puts the larger first and a row with no size after every row with one", () => {
+    const order = new Map([
+      ["uv|Tool|a", 10],
+      ["uv|Tool|b", 900],
+    ]);
+    const [a, b, c] = [tool("a"), tool("b"), tool("c")];
+    expect([a, c, b].sort((x, y) => compareBySize(order, x, y)).map((t) => t.key.name)).toEqual(["b", "a", "c"]);
+    expect(compareBySize(order, c, tool("d"))).toBe(0);
+  });
+
+  it("orders two sizes already looked up as it orders their rows (compareSizes)", () => {
+    const sizes = [10, undefined, 900, 10, undefined];
+    for (const x of sizes) {
+      for (const y of sizes) {
+        const order = new Map<string, number>();
+        if (x !== undefined) order.set("uv|Tool|x", x);
+        if (y !== undefined) order.set("uv|Tool|y", y);
+        expect(Math.sign(compareSizes(x, y))).toBe(Math.sign(compareBySize(order, tool("x"), tool("y"))));
+      }
+    }
+  });
+});
+
+describe("sizeNoteOf", () => {
+  const of = (instance_id: string) => sizeNoteOf({ ...ruff, key: { ...ruff.key, instance_id } });
+
+  it("says a crate and a tool with its own installer are their program files only, and a uv tool shares with uv's cache", () => {
+    expect(of("cargo:/Users/you/.cargo")).toBe("sizes.programOnly");
+    expect(of("standalone-claude")).toBe("sizes.programOnly");
+    expect(of("standalone-rustup")).toBe("sizes.programOnly");
+    expect(of("uv")).toBe("sizes.sharedWithCache");
+    expect(of("brew:/opt/homebrew")).toBeNull();
+    expect(of("npm:/opt/homebrew")).toBeNull();
+    expect(of("pipx")).toBeNull();
+  });
+
+  it("says it plainly in both languages, and never that anything could be freed", () => {
+    for (const key of ["sizes.programOnly", "sizes.sharedWithCache"]) {
+      expect(zh(key)).not.toMatch(/您|！|!|释放|腾出/);
+      expect(en(key)).not.toMatch(/free|!/i);
+    }
+    expect(zh("sizes.programOnly")).toBe("只算程序文件本身，不含它下载的内容和缓存。");
+  });
+});

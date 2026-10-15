@@ -1,0 +1,192 @@
+[
+  {
+    "name": "brew: curl could not resolve the bottle's host",
+    "text": "curl: (6) Could not resolve host: ghcr.io\n\nError: git: Failed to download resource \"git (2.55.1)\"\nDownload failed: https://ghcr.io/v2/homebrew/core/git/blobs/sha256:0c1d",
+    "cause": "network"
+  },
+  {
+    "name": "brew: a download that timed out",
+    "text": "curl: (28) Operation timed out after 300000 milliseconds with 0 bytes received",
+    "cause": "network"
+  },
+  {
+    "name": "brew: a folder another user owns",
+    "text": "Error: Permission denied @ apply2files - /usr/local/lib/node_modules/npm/node_modules/@colors/colors/lib/custom/zalgo.js",
+    "cause": "permission"
+  },
+  {
+    "name": "brew: another brew holds the keg's lock",
+    "text": "Error: A `brew upgrade git` process has already locked /opt/homebrew/Cellar/git.\nPlease wait for it to finish or terminate it to continue.",
+    "cause": "busy"
+  },
+  {
+    "name": "brew: another brew update",
+    "text": "Error: Another active Homebrew update process is already in progress.\nPlease wait for it to finish or terminate it to continue.",
+    "cause": "busy"
+  },
+  {
+    "name": "brew: the disk is full",
+    "text": "Error: No space left on device @ rb_sysopen - /Users/me/Library/Caches/Homebrew/downloads/1f2e--ffmpeg--8.0.bottle.tar.gz",
+    "cause": "diskFull"
+  },
+  {
+    "name": "npm: no DNS",
+    "text": "npm error code ENOTFOUND\nnpm error syscall getaddrinfo\nnpm error errno ENOTFOUND\nnpm error network request to https://registry.npmjs.org/typescript failed, reason: getaddrinfo ENOTFOUND registry.npmjs.org\nnpm error network This is a problem related to network connectivity.",
+    "cause": "network"
+  },
+  {
+    "name": "npm: a global folder it cannot write",
+    "text": "npm error code EACCES\nnpm error syscall mkdir\nnpm error path /usr/local/lib/node_modules/typescript\nnpm error errno -13\nnpm error Error: EACCES: permission denied, mkdir '/usr/local/lib/node_modules/typescript'",
+    "cause": "permission"
+  },
+  {
+    "name": "npm: the disk is full",
+    "text": "npm error code ENOSPC\nnpm error syscall write\nnpm error errno -28\nnpm error nospc ENOSPC: no space left on device, write",
+    "cause": "diskFull"
+  },
+  {
+    "name": "pipx: pip retried offline, then found no version",
+    "text": "WARNING: Retrying (Retry(total=4, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<pip._vendor.urllib3.connection.HTTPSConnection object at 0x1045c2f90>: Failed to establish a new connection: [Errno 8] nodename nor servname provided, or not known')': /simple/httpie/\nERROR: Could not find a version that satisfies the requirement httpie (from versions: none)\nERROR: No matching distribution found for httpie",
+    "cause": "network"
+  },
+  {
+    "name": "pip: a read that timed out",
+    "text": "pip._vendor.urllib3.exceptions.ReadTimeoutError: HTTPSConnectionPool(host='files.pythonhosted.org', port=443): Read timed out.",
+    "cause": "network"
+  },
+  {
+    "name": "pip: a certificate it could not check",
+    "text": "Could not fetch URL https://pypi.org/simple/httpie/: There was a problem confirming the ssl certificate: HTTPSConnectionPool(host='pypi.org', port=443): Max retries exceeded with url: /simple/httpie/ (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed')))",
+    "cause": "network"
+  },
+  {
+    "name": "uv: dns error under its fetch",
+    "text": "error: Failed to fetch: `https://pypi.org/simple/ruff/`\n  Caused by: Request failed after 3 retries\n  Caused by: error sending request for url (https://pypi.org/simple/ruff/)\n  Caused by: dns error: failed to lookup address information: nodename nor servname provided, or not known",
+    "cause": "network"
+  },
+  {
+    "name": "cargo: the index's host could not be resolved",
+    "text": "warning: spurious network error (3 tries remaining): [6] Couldn't resolve host name (Could not resolve host: index.crates.io)\nerror: failed to get `tokei` as a dependency of package `tokei v13.0.1`\nCaused by:\n  [6] Couldn't resolve host name (Could not resolve host: index.crates.io)",
+    "cause": "network"
+  },
+  {
+    "name": "cargo: a registry folder it may not write",
+    "text": "error: failed to create directory `/Users/me/.cargo/registry/cache/index.crates.io-1949cf8c6b5b557f`\n\nCaused by:\n  Permission denied (os error 13)",
+    "cause": "permission"
+  },
+  {
+    "name": "cargo: another cargo holds the package cache",
+    "text": "    Blocking waiting for file lock on package cache",
+    "cause": "busy"
+  },
+  {
+    "name": "rustup: a request that timed out",
+    "text": "error: could not download file from 'https://static.rust-lang.org/dist/channel-rust-stable.toml.sha256'\nerror: caused by: failed to make network request\nerror: caused by: operation timed out",
+    "cause": "network"
+  },
+  {
+    "name": "ollama: no such host",
+    "text": "Error: pull model manifest: Get \"https://registry.ollama.ai/v2/library/llama3/manifests/latest\": dial tcp: lookup registry.ollama.ai: no such host",
+    "cause": "network"
+  },
+  {
+    "name": "macOS refused a move to the Trash",
+    "text": "“claude” couldn’t be moved to the Trash because you don’t have permission to access it. Operation not permitted",
+    "cause": "permission"
+  },
+  {
+    "name": "the last reason wins: a retry that timed out, then a refused file",
+    "text": "WARNING: Read timed out. Retrying…\nERROR: Could not install packages due to an OSError: [Errno 13] Permission denied: '/Library/Python/3.9/site-packages/six.py'",
+    "cause": "permission"
+  },
+  {
+    "name": "brew: a cask's uninstaller ran sudo with no terminal to ask in",
+    "text": "==> Removing launchctl service com.example.helper\nError: Failure while executing; `/usr/bin/sudo -u root -E LOGNAME=me USER=me USERNAME=me -- /bin/launchctl remove com.example.helper` exited with 1. Here's the output:\nsudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper\nsudo: a password is required",
+    "cause": "needsPassword"
+  },
+  {
+    "name": "brew: an older sudo's words for the same",
+    "text": "sudo: no tty present and no askpass program specified",
+    "cause": "needsPassword"
+  },
+  {
+    "name": "brew: the password window SUDO_ASKPASS names was closed",
+    "text": "sudo: no password was provided\nsudo: a password is required",
+    "cause": "passwordNotAccepted"
+  },
+  {
+    "name": "brew: SUDO_ASKPASS set but empty",
+    "text": "sudo: no askpass program specified, try setting SUDO_ASKPASS",
+    "cause": "needsPassword"
+  },
+  {
+    "name": "brew: the password window answered wrongly three times",
+    "text": "sudo: 3 incorrect password attempts",
+    "cause": "passwordNotAccepted"
+  },
+  {
+    "name": "sudo's password line wins over a refused file the rollback hit after it",
+    "text": "sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper\nsudo: a password is required\n==> Purging files for version 2.4.1 of Cask example\nError: Permission denied @ apply2files - /Applications/Example.app/Contents/Info.plist",
+    "cause": "needsPassword"
+  },
+  {
+    "name": "a formula named timeout",
+    "text": "Error: No available formula with the name \"timeout\".",
+    "cause": null
+  },
+  {
+    "name": "an npm package named connection-refused",
+    "text": "npm error 404 Not Found - GET https://registry.npmjs.org/connection-refused - Not found",
+    "cause": null
+  },
+  {
+    "name": "openssl's bottle",
+    "text": "Error: openssl@3: the bottle needs the Apple Command Line Tools to be installed.",
+    "cause": null
+  },
+  {
+    "name": "a crate named permission-denied that does not compile",
+    "text": "error: could not compile `permission-denied` (lib) due to 2 previous errors",
+    "cause": null
+  },
+  {
+    "name": "a pipx package named timeout-decorator for another Python",
+    "text": "ERROR: Package 'timeout-decorator' requires a different Python: 3.14.2 not in '<3.12'",
+    "cause": null
+  },
+  {
+    "name": "a checksum that did not match",
+    "text": "Error: ffmpeg: SHA256 mismatch\nExpected: 0c1d\n  Actual: 9f8e",
+    "cause": null
+  },
+  {
+    "name": "nothing at all",
+    "text": "",
+    "cause": null
+  },
+  {
+    "name": "a registry that asks for a password is not sudo's",
+    "text": "npm error code E401\nnpm error Unable to authenticate, a password is required",
+    "cause": null
+  },
+  {
+    "name": "an account that may not use sudo at all",
+    "text": "Error: Failure while executing; `/usr/bin/sudo -E -- /bin/rm -f -- /Library/LaunchDaemons/com.example.plist` exited with 1. Here's the output:\nsudo is disabled by HOMEBREW_NO_SUDO.",
+    "cause": null
+  },
+  {
+    "name": "brew: its software list update ran over its time",
+    "text": "Error: brew update timed out after 600 seconds",
+    "cause": "homebrewUpdating"
+  },
+  {
+    "name": "Homebrew still updating",
+    "text": "Homebrew is still updating its list of software",
+    "cause": "homebrewUpdating"
+  },
+  {
+    "name": "a package named timeout is not the network",
+    "text": "Error: timeout 1.2.3 has no bottle for this macOS",
+    "cause": null
+  }
+]

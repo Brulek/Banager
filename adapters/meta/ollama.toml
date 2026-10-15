@@ -1,0 +1,7 @@
+schema_version = 1
+id = "ollama"
+name = "Ollama"
+kind = "model_manager"
+platforms = ["macos"]
+homepage = "https://ollama.com"
+verified_versions = ["0.34.1"]

@@ -1,0 +1,1 @@
+-rwxr-xr-x@ 1 501  20  186406752 Sep 25 12:25 ~/.local/bin/agy

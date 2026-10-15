@@ -1,0 +1,217 @@
+[
+  {
+    "name": "brew cask: the app was moved out of Applications before the update (Claudebar and OnyX, 2026-10-07)",
+    "text": "Error: It seems the App source '/Applications/Claudebar.app' is not there.",
+    "cause": "appMissing"
+  },
+  {
+    "name": "brew cask: an app in the person's own Applications folder is gone",
+    "text": "Error: It seems the App source '/Users/me/Applications/OnyX.app' is not there.",
+    "cause": "appMissing"
+  },
+  {
+    "name": "brew cask: the download had no app where the recipe says",
+    "text": "Error: It seems the App source '/opt/homebrew/Caskroom/onyx/5.1.0/OnyX.app' is not there.",
+    "cause": "notFound"
+  },
+  {
+    "name": "brew cask: another kind of item missing",
+    "text": "Error: It seems the Binary source '/opt/homebrew/Caskroom/foo/1.0/foo' is not there.",
+    "cause": "notFound"
+  },
+  {
+    "name": "brew cask: a version for newer macOS only",
+    "text": "Error: onyx: This cask does not run on macOS versions older than Tahoe.",
+    "cause": "unsupported"
+  },
+  {
+    "name": "brew cask: a version for older macOS only",
+    "text": "Error: onyx: This cask does not run on macOS versions newer than Sequoia.",
+    "cause": "unsupported"
+  },
+  {
+    "name": "brew cask: not for this Mac's chip",
+    "text": "Error: foo: This cask depends on hardware architecture being one of [{:type=>:intel, :bits=>64}], but you are running {:type=>:arm, :bits=>64}.",
+    "cause": "unsupported"
+  },
+  {
+    "name": "brew formula: does not work on this macOS",
+    "text": "Error: foo: This formula either does not compile or function as expected on macOS\nversions newer than Sonoma due to an upstream incompatibility.",
+    "cause": "unsupported"
+  },
+  {
+    "name": "brew cask: an app of the same name already there",
+    "text": "Error: It seems there is already an App at '/Applications/Foo.app'.",
+    "cause": "conflict"
+  },
+  {
+    "name": "brew cask: conflicts with another cask",
+    "text": "Error: Cask 'foo' conflicts with 'foo@beta'.",
+    "cause": "conflict"
+  },
+  {
+    "name": "brew formula: conflicting formulae are installed",
+    "text": "Error: Cannot install node because conflicting formulae are installed.\n  node@22: because both install `node` binaries\n\nPlease `brew unlink node@22` before continuing.",
+    "cause": "conflict"
+  },
+  {
+    "name": "brew formula: its link step stopped (node@22, 2026-10-07): only this line reaches stderr, the conflict goes to stdout",
+    "text": "Error: The `brew link` step did not complete successfully",
+    "cause": "notLinked"
+  },
+  {
+    "name": "brew formula: its link step failed another way",
+    "text": "Error: An unexpected error occurred during the `brew link` step",
+    "cause": "notLinked"
+  },
+  {
+    "name": "brew link: a file already where it links, as the brew link command says it",
+    "text": "Error: Could not symlink bin/npm\nTarget /opt/homebrew/bin/npm\nalready exists. You may want to remove it:\n  rm '/opt/homebrew/bin/npm'",
+    "cause": "conflict"
+  },
+  {
+    "name": "brew formula: its link step stopped, after the warning brew upgrade writes first (node@22, 2026-10-07)",
+    "text": "Warning: Treating node@22 as a formula.\nError: The `brew link` step did not complete successfully",
+    "cause": "notLinked"
+  },
+  {
+    "name": "brew link: a file already where it links, Homebrew's suggestions last, as the last five lines keep them",
+    "text": "To force the link and overwrite all conflicting files:\n  brew link --overwrite node@22\n\nTo list all files that would be deleted:\n  brew link --overwrite node@22 --dry-run",
+    "cause": "conflict"
+  },
+  {
+    "name": "brew link: the whole refusal, the file in the way first",
+    "text": "Error: Could not symlink bin/npm\nTarget /opt/homebrew/bin/npm\nalready exists. You may want to remove it:\n  rm '/opt/homebrew/bin/npm'\n\nTo force the link and overwrite all conflicting files:\n  brew link --overwrite node@22\n\nTo list all files that would be deleted:\n  brew link --overwrite node@22 --dry-run",
+    "cause": "conflict"
+  },
+  {
+    "name": "brew link: a folder it may not write is the permission",
+    "text": "Error: Could not symlink bin/node\n/opt/homebrew/bin is not writable.",
+    "cause": "permission"
+  },
+  {
+    "name": "brew: no formula of that name any more",
+    "text": "Error: No available formula with the name \"foo\". Did you mean foo2?",
+    "cause": "notFound"
+  },
+  {
+    "name": "brew: a cask gone from its tap",
+    "text": "Error: Cask 'claudebar' is unavailable: No Cask with this name exists.",
+    "cause": "notFound"
+  },
+  {
+    "name": "brew: a cask Homebrew no longer has installed",
+    "text": "Error: Cask 'foo' is not installed.",
+    "cause": "notFound"
+  },
+  {
+    "name": "brew: a keg gone from the Cellar",
+    "text": "Error: No such keg: /opt/homebrew/Cellar/foo",
+    "cause": "notFound"
+  },
+  {
+    "name": "npm: the package is not in the registry",
+    "text": "npm error code E404\nnpm error 404 Not Found - GET https://registry.npmjs.org/nope - Not found\nnpm error 404\nnpm error 404  'nope@*' is not in this registry.",
+    "cause": "notFound"
+  },
+  {
+    "name": "npm: node is not there to run it (node@22 unlinked by its own upgrade, 2026-10-07)",
+    "text": "env: node: No such file or directory",
+    "cause": "notFound"
+  },
+  {
+    "name": "a program the command runs is not there",
+    "text": "/bin/sh: foo: command not found",
+    "cause": "notFound"
+  },
+  {
+    "name": "npm: a file already where it installs",
+    "text": "npm error code EEXIST\nnpm error path /opt/homebrew/bin/tsc\nnpm error EEXIST: file already exists\nnpm error File exists: /opt/homebrew/bin/tsc\nnpm error Remove the existing file and try again, or run npm",
+    "cause": "conflict"
+  },
+  {
+    "name": "npm: a package for another system",
+    "text": "npm error code EBADPLATFORM\nnpm error notsup Unsupported platform for fsevents@2.3.3: wanted {\"os\":\"darwin\"} (current: {\"os\":\"linux\"})",
+    "cause": "unsupported"
+  },
+  {
+    "name": "cargo: the program is already installed by something else",
+    "text": "error: binary `rg` already exists in destination\nAdd --force to overwrite",
+    "cause": "conflict"
+  },
+  {
+    "name": "cargo: no such crate",
+    "text": "error: could not find `nope` in registry `crates-io` with version `*`",
+    "cause": "notFound"
+  },
+  {
+    "name": "uv: the program is already there",
+    "text": "error: Executable already exists: black (use `--force` to overwrite)",
+    "cause": "conflict"
+  },
+  {
+    "name": "pip: a wheel for another Mac",
+    "text": "ERROR: foo-1.0-cp313-cp313-macosx_14_0_arm64.whl is not a supported wheel on this platform.",
+    "cause": "unsupported"
+  },
+  {
+    "name": "pip: no such package, with nothing about the network",
+    "text": "ERROR: Could not find a version that satisfies the requirement nope (from versions: none)\nERROR: No matching distribution found for nope",
+    "cause": "notFound"
+  },
+  {
+    "name": "ollama: no such model",
+    "text": "Error: pull model manifest: file does not exist",
+    "cause": "notFound"
+  },
+  {
+    "name": "brew: a step that ran past Homebrew's own time limit",
+    "text": "Error: Timeout::Error",
+    "cause": "timedOut"
+  },
+  {
+    "name": "brew: a step whose time ran out",
+    "text": "Error: execution expired",
+    "cause": "timedOut"
+  },
+  {
+    "name": "brew cask: quarantine could not be released",
+    "text": "Error: Failed to release /Applications/Foo.app from quarantine.",
+    "cause": "permission"
+  },
+  {
+    "name": "brew cask: quarantine could not be set",
+    "text": "Error: Failed to quarantine /opt/homebrew/Caskroom/foo/1.0/Foo.app.",
+    "cause": "permission"
+  },
+  {
+    "name": "brew cask: an app macOS will not let go of",
+    "text": "Error: Cannot remove undeletable App.",
+    "cause": "permission"
+  },
+  {
+    "name": "the network, said on an earlier line, wins over a later line's missing package",
+    "text": "WARNING: Retrying (Retry(total=4, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<pip._vendor.urllib3.connection.HTTPSConnection object at 0x1045c2f90>: Failed to establish a new connection: [Errno 8] nodename nor servname provided, or not known')': /simple/httpie/\nERROR: Could not find a version that satisfies the requirement httpie (from versions: none)\nERROR: No matching distribution found for httpie",
+    "cause": "network"
+  },
+  {
+    "name": "sudo's password line wins over an app missing after it",
+    "text": "sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper\nError: It seems the App source '/Applications/Foo.app' is not there.",
+    "cause": "needsPassword"
+  },
+  {
+    "name": "a refused file wins over a later conflict",
+    "text": "Error: Permission denied @ rb_sysopen - /opt/homebrew/bin/foo\nError: It seems there is already a Binary at '/opt/homebrew/bin/foo'.",
+    "cause": "permission"
+  },
+  {
+    "name": "words of no known cause",
+    "text": "Error: Something odd happened while pouring the bottle",
+    "cause": null
+  },
+  {
+    "name": "a package whose name says not found",
+    "text": "Error: An exception occurred within a child process:\n  RuntimeError: not-found-tool failed",
+    "cause": null
+  }
+]

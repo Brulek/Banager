@@ -3,11 +3,28 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main, "feat/**"]
+    # main only. A feature branch is checked through its pull request: a
+    # push trigger on feature branches as well (it was `feat/**` while
+    # feat/phase-3-sources was verified before merging) ran this whole
+    # macOS job twice for every push to a branch with a pull request open,
+    # and CI runs a live `brew install`/`brew uninstall` against the
+    # runner's real Homebrew. Removed by the author's decision R3,
+    # 2026-10-06.
+    branches: [main]
+
+concurrency:
+  # One live-Homebrew run per ref at a time: pushing twice in quick
+  # succession would otherwise run two `brew install`/`brew uninstall`
+  # jobs concurrently against the same runner image.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-and-test:
     runs-on: macos-latest
+    # Upper bound on a hung `brew` (or any other step); without this a
+    # stuck live-Homebrew install/uninstall could run indefinitely.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -36,14 +53,28 @@ jobs:
 
       - name: live homebrew smoke (install/inventory/uninstall hello)
         env:
-          CANAGER_LIVE: "1"
-        run: cargo test -p canager-core --test brew_live -- --ignored --nocapture
+          BANAGER_LIVE: "1"
+        run: cargo test -p banager-core --test brew_live -- --ignored --nocapture
+
+      # The one test that calls macOS's real move-to-Trash: it moves five
+      # throwaway items it makes (a file, a directory, and three kinds of
+      # link) into the runner's Trash, which is discarded with the runner.
+      - name: real Trash smoke (moves five throwaway items)
+        env:
+          BANAGER_LIVE: "1"
+        run: cargo test -p banager-core --test standalone_uninstall_test -- --ignored --nocapture
 
       - name: pnpm install
         run: pnpm install --frozen-lockfile
 
       - name: pnpm test
         run: pnpm test
+
+      # `pnpm build` below runs the same two tsc programs again before
+      # `vite build`; this step exists so a type error fails under its own
+      # gate's name rather than under "pnpm build".
+      - name: pnpm typecheck
+        run: pnpm typecheck
 
       - name: pnpm build
         run: pnpm build
