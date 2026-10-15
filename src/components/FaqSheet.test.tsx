@@ -335,7 +335,11 @@ describe("FaqSheet", () => {
   );
 
   it("has the README say the same as the FAQ of a password stop after a restart, in English and Chinese (r26 D4 skeptic)", () => {
-    const readme = readFileSync(path.join(ROOT, "README.md"), "utf-8");
+    // The README's long text: the English reference, the `## 中文` heading, the Chinese reference.
+    const readme = [
+      readFileSync(path.join(ROOT, "docs/reference.en.md"), "utf-8"),
+      readFileSync(path.join(ROOT, "docs/reference.zh-CN.md"), "utf-8"),
+    ].join("\n## 中文\n");
     // The one list item each block has on it, from its dash to the next.
     const item = (start: string) => {
       const from = readme.indexOf(start);

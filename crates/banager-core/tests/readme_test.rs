@@ -21,12 +21,20 @@ use banager_core::adapters::AdapterMeta;
 use banager_core::runner::RealRunner;
 use std::path::Path;
 
-/// The README, read the way every other repo path in this crate's tests
-/// is: cargo runs tests with cwd = the package manifest directory
-/// (crates/banager-core).
+/// The README's long text, the English reference and the Chinese one, read
+/// the way every other repo path in this crate's tests is: cargo runs tests
+/// with cwd = the package manifest directory (crates/banager-core). The
+/// homepages (README.md, README.en.md) are short now, so the sentences these
+/// tests pin live in docs/reference.en.md and docs/reference.zh-CN.md, joined
+/// here as the English block, the `## 中文` heading and the Chinese block.
 fn read_readme() -> String {
-    let path = Path::new("../../README.md");
-    std::fs::read_to_string(path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
+    let read = |path: &str| {
+        let path = Path::new(path);
+        std::fs::read_to_string(path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
+    };
+    let english = read("../../docs/reference.en.md");
+    let chinese = read("../../docs/reference.zh-CN.md");
+    format!("{english}\n## 中文\n{chinese}")
 }
 
 /// A language file of the window, `src/i18n/{name}.json`.
@@ -39,9 +47,9 @@ fn read_locale(name: &str) -> serde_json::Value {
 /// The README's English block (before its `## 中文` heading) and its
 /// Chinese one (after it).
 fn blocks(readme: &str) -> (&str, &str) {
-    readme
-        .split_once("\n## 中文\n")
-        .expect("README.md has no `## 中文` heading between its English and Chinese blocks")
+    readme.split_once("\n## 中文\n").expect(
+        "the reference docs have no `## 中文` heading between its English and Chinese blocks",
+    )
 }
 
 #[test]
@@ -68,7 +76,7 @@ fn test_readme_scopes_confirmation_to_chosen_operations_and_discloses_refresh_mi
     );
     assert!(
         english.contains(&press),
-        "README.md's preview bullet does not say {press:?}"
+        "docs/reference.en.md's preview bullet does not say {press:?}"
     );
     assert!(english.contains("without a preview or confirmation"));
     let chinese = squeeze(chinese);
@@ -92,7 +100,7 @@ fn test_readme_restates_the_welcome_confirmation_title_as_the_sheet_says_it() {
     assert!(title.ends_with("you choose"), "{title:?}");
     assert!(
         english.contains(&format!("see what's installed; {title}; no data collected")),
-        "README.md's welcome sentence does not say {title:?}"
+        "docs/reference.en.md's welcome sentence does not say {title:?}"
     );
     let zh = read_locale("zh-CN");
     let title = zh["welcome"]["confirmTitle"]
@@ -101,7 +109,7 @@ fn test_readme_restates_the_welcome_confirmation_title_as_the_sheet_says_it() {
     assert!(title.starts_with("你选的"), "{title:?}");
     assert!(
         squeeze(chinese).contains(&format!("看清装了什么；{title}；不收集数据")),
-        "README.md's Chinese welcome sentence does not say {title:?}"
+        "docs/reference.zh-CN.md's Chinese welcome sentence does not say {title:?}"
     );
 }
 
@@ -209,7 +217,7 @@ fn test_readme_english_block_names_the_tools_each_installed_version_reason_can_c
     );
     assert!(
         folded.contains(&compare),
-        "README.md's English block does not say \"cannot compare the installed version ... with the published ...\" comes from {} only, the tools whose update check compares versions (a `Latest::Command` tool's answer is trusted, never compared); expected the words {compare:?}, and the README says {:?}",
+        "docs/reference.en.md's English block does not say \"cannot compare the installed version ... with the published ...\" comes from {} only, the tools whose update check compares versions (a `Latest::Command` tool's answer is trusted, never compared); expected the words {compare:?}, and the README says {:?}",
         english_list(&comparing),
         around(&folded, "\"cannot compare the installed version", 40, 160)
     );
@@ -220,7 +228,7 @@ fn test_readme_english_block_names_the_tools_each_installed_version_reason_can_c
     );
     assert!(
         folded.contains(&read),
-        "README.md's English block does not say \"cannot read the installed version now\" can come from every one of {}, whose rows check_updates can give it before it asks for any published version; expected the words {read:?}, and the README says {:?}",
+        "docs/reference.en.md's English block does not say \"cannot read the installed version now\" can come from every one of {}, whose rows check_updates can give it before it asks for any published version; expected the words {read:?}, and the README says {:?}",
         english_list(&every),
         around(&folded, "\"cannot read the installed version now", 40, 160)
     );
@@ -239,7 +247,7 @@ fn test_readme_chinese_block_names_the_tools_each_installed_version_reason_can_c
     ));
     assert!(
         squeezed.contains(&compare),
-        "README.md's Chinese block does not say that the reason the installed version cannot be compared with the published one comes from {} only, the tools whose update check compares versions (a `Latest::Command` tool's answer is trusted, never compared); expected the words {compare:?}, and the README says {:?}",
+        "docs/reference.zh-CN.md's Chinese block does not say that the reason the installed version cannot be compared with the published one comes from {} only, the tools whose update check compares versions (a `Latest::Command` tool's answer is trusted, never compared); expected the words {compare:?}, and the README says {:?}",
         chinese_list(&comparing),
         around(&squeezed, "无法比较", 100, 20)
     );
@@ -250,7 +258,7 @@ fn test_readme_chinese_block_names_the_tools_each_installed_version_reason_can_c
     ));
     assert!(
         squeezed.contains(&read),
-        "README.md's Chinese block does not say that the reason the installed version cannot be read now can come from every one of {}, whose rows check_updates can give it before it asks for any published version; expected the words {read:?}, and the README says {:?}",
+        "docs/reference.zh-CN.md's Chinese block does not say that the reason the installed version cannot be read now can come from every one of {}, whose rows check_updates can give it before it asks for any published version; expected the words {read:?}, and the README says {:?}",
         chinese_list(&every),
         around(&squeezed, "读不到已安装版本", 100, 60)
     );
@@ -267,7 +275,7 @@ fn test_readme_traditional_chinese_summary_uses_the_windows_words() {
     let readme = read_readme();
     let (_, summary) = readme
         .split_once("\n### 執行與隱私\n")
-        .expect("README.md has a `### 執行與隱私` heading");
+        .expect("the reference docs have a `### 執行與隱私` heading");
     assert!(summary.contains("安裝、解除安裝及垃圾桶測試"));
     let history = "更新和解除安裝記錄";
     let faq = read_locale("zh-Hant")["faq"]["questions"]["changesMac"]["answer"]
@@ -283,7 +291,7 @@ fn test_readme_traditional_chinese_summary_uses_the_windows_words() {
     for unlike in ["安裝移除", "歷程", "紀錄", "命令"] {
         assert!(
             !summary.contains(unlike),
-            "README.md's `### 執行與隱私` says {unlike:?} where the zh-Hant window does not"
+            "docs/reference.zh-CN.md's `### 執行與隱私` says {unlike:?} where the zh-Hant window does not"
         );
     }
 }
@@ -345,7 +353,7 @@ fn test_readme_source_table_offers_no_install() {
     let header = english
         .lines()
         .find(|line| line.starts_with("| Source |"))
-        .expect("README.md has no source table");
+        .expect("the reference docs have no source table");
     assert_eq!(header, "| Source | Reads | Updates / removes |");
     assert!(english.contains("no way to install something new"));
 }
@@ -362,22 +370,22 @@ fn test_readme_preview_sentence_names_every_variable_the_runner_sets_on_every_co
     let english = english.split_whitespace().collect::<Vec<_>>().join(" ");
     let start = english
         .find("the confirmation lets you see the exact command before it runs")
-        .expect("README.md's English block has no preview sentence");
+        .expect("docs/reference.en.md's English block has no preview sentence");
     let english: String = english[start..].chars().take(700).collect();
     let chinese = squeeze(chinese);
     let start = chinese
         .find("都能在它运行之前看到确切的命令")
-        .expect("README.md's Chinese block has no preview sentence");
+        .expect("docs/reference.zh-CN.md's Chinese block has no preview sentence");
     let chinese: String = chinese[start..].chars().take(260).collect();
     for (name, value) in RealRunner::EVERY_COMMAND_ENV {
         let shown = format!("`{name}={value}`");
         assert!(
             english.contains(&shown),
-            "README.md's English preview sentence does not name {shown}: {english}"
+            "docs/reference.en.md's English preview sentence does not name {shown}: {english}"
         );
         assert!(
             chinese.contains(&shown),
-            "README.md's Chinese preview sentence does not name {shown}: {chinese}"
+            "docs/reference.zh-CN.md's Chinese preview sentence does not name {shown}: {chinese}"
         );
     }
     // A tool mise was told to install on first use ("lazy") it still
@@ -386,13 +394,13 @@ fn test_readme_preview_sentence_names_every_variable_the_runner_sets_on_every_co
     for overclaim in ["installs nothing", "install nothing", "nothing installs"] {
         assert!(
             !english.contains(overclaim),
-            "README.md's English preview sentence says {overclaim:?}: {english}"
+            "docs/reference.en.md's English preview sentence says {overclaim:?}: {english}"
         );
     }
     for overclaim in ["什么都不装", "什么也不装", "不装任何"] {
         assert!(
             !chinese.contains(overclaim),
-            "README.md's Chinese preview sentence says {overclaim:?}: {chinese}"
+            "docs/reference.zh-CN.md's Chinese preview sentence says {overclaim:?}: {chinese}"
         );
     }
 }
@@ -508,4 +516,60 @@ fn test_readme_names_the_history_files_own_limits_beside_clear_history() {
     let steps = around(&chinese, "退出Banager再打开后", 0, 400);
     assert!(steps.contains("成功卸载"), "{steps}");
     assert!(steps.contains("1,000"), "{steps}");
+}
+
+/// The relative targets a README names: each `src="..."` and each `](...)`,
+/// without any `#anchor`, `http(s):` or `mailto:` link.
+fn relative_targets(text: &str) -> Vec<String> {
+    let mut targets = Vec::new();
+    for part in text.split("src=\"").skip(1) {
+        if let Some(end) = part.find('"') {
+            targets.push(part[..end].to_string());
+        }
+    }
+    for part in text.split("](").skip(1) {
+        if let Some(end) = part.find(')') {
+            targets.push(part[..end].to_string());
+        }
+    }
+    targets
+        .into_iter()
+        .filter(|t| {
+            !t.starts_with('#') && !t.contains("://") && !t.starts_with("mailto:") && !t.is_empty()
+        })
+        .map(|t| t.split('#').next().unwrap_or("").to_string())
+        .collect()
+}
+
+/// The two homepages stay short, each links to the other and to its own
+/// reference document, and every file they name (images included) exists.
+#[test]
+fn test_homepages_are_short_link_each_other_and_their_reference_and_name_existing_files() {
+    let root = Path::new("../..");
+    for (home, other, reference) in [
+        ("README.md", "README.en.md", "docs/reference.zh-CN.md"),
+        ("README.en.md", "README.md", "docs/reference.en.md"),
+    ] {
+        let text =
+            std::fs::read_to_string(root.join(home)).unwrap_or_else(|e| panic!("read {home}: {e}"));
+        let lines = text.lines().count();
+        assert!(
+            lines <= 120,
+            "{home} has {lines} lines; a homepage must stay within 120"
+        );
+        assert!(
+            text.contains(&format!("]({other})")),
+            "{home} does not link to {other}"
+        );
+        assert!(
+            text.contains(&format!("]({reference})")),
+            "{home} does not link to {reference}"
+        );
+        for target in relative_targets(&text) {
+            assert!(
+                root.join(&target).exists(),
+                "{home} names {target}, which does not exist"
+            );
+        }
+    }
 }

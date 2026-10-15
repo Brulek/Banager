@@ -139,9 +139,13 @@ it("has the README say how many lines each built-in table holds, in its English 
   const chinese = count("zh-CN.json");
   // "In each Chinese language": the two Chinese tables hold as many.
   expect(count("zh-Hant.json")).toBe(chinese);
-  const readme = readFileSync(path.resolve(SRC, "../README.md"), "utf-8");
+  // The README's long text: the English reference, the `## 中文` heading, the Chinese reference.
+  const readme = [
+    readFileSync(path.resolve(SRC, "../docs/reference.en.md"), "utf-8"),
+    readFileSync(path.resolve(SRC, "../docs/reference.zh-CN.md"), "utf-8"),
+  ].join("\n## 中文\n");
   const heading = "\n## 中文\n";
-  expect(readme.split(heading), "README.md has one `## 中文` heading").toHaveLength(2);
+  expect(readme.split(heading), "docs/reference.en.md + docs/reference.zh-CN.md have one `## 中文` heading").toHaveLength(2);
   const [englishBlock, chineseBlock] = readme.split(heading).map((block) => block.replace(/\s+/g, " "));
   // The number each sentence gives, or what the sentence no longer says.
   const said = (block: string, sentence: RegExp): string => sentence.exec(block)?.[1] ?? `no ${String(sentence)}`;

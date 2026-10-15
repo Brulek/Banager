@@ -2757,9 +2757,19 @@ fn antigravity_docs_distinguish_vendor_command_from_verified_execution() {
     // r25 R75-4: Google's installation guide documents `agy update`
     // (checked 2026-10-13). The README and this reference may not call it
     // undocumented, and must still say Banager does not run it.
-    let readme = include_str!("../../../README.md");
+    let readme = format!(
+        "{}\n## 中文\n{}",
+        include_str!("../../../docs/reference.en.md"),
+        include_str!("../../../docs/reference.zh-CN.md")
+    );
     let doc = read_doc();
-    for (name, text) in [("README.md", readme), ("docs/what-we-run.md", doc.as_str())] {
+    for (name, text) in [
+        (
+            "docs/reference.en.md + docs/reference.zh-CN.md",
+            readme.as_str(),
+        ),
+        ("docs/what-we-run.md", doc.as_str()),
+    ] {
         for line in text.lines().filter(|line| line.contains("agy update")) {
             assert!(
                 !line.contains("undocumented"),
@@ -2770,7 +2780,7 @@ fn antigravity_docs_distinguish_vendor_command_from_verified_execution() {
     let readme_row = readme
         .lines()
         .find(|line| line.starts_with("| Antigravity CLI"))
-        .expect("README.md has an Antigravity CLI row");
+        .expect("docs/reference.en.md has an Antigravity CLI row");
     assert!(
         readme_row.contains("Banager hasn't verified running it"),
         "{readme_row}"
@@ -2796,17 +2806,17 @@ fn test_footprint_docs_include_webkit_storage_and_scoped_removal() {
     )
     .expect("tauri.conf.json is JSON");
     let id = config["identifier"].as_str().expect("an identifier");
-    let readme = std::fs::read_to_string("../../README.md").expect("read README.md");
-    let (english, chinese) = readme
-        .split_once("\n## 中文\n")
-        .expect("README.md has a `## 中文` heading");
+    let english =
+        std::fs::read_to_string("../../docs/reference.en.md").expect("read docs/reference.en.md");
+    let chinese = std::fs::read_to_string("../../docs/reference.zh-CN.md")
+        .expect("read docs/reference.zh-CN.md");
     let doc = read_doc();
     let fold = |text: &str| text.split_whitespace().collect::<Vec<_>>().join(" ");
     let chinese = chinese.replace('\n', "");
     for (name, text, quit) in [
         ("what-we-run.md", fold(&doc), "quit Banager"),
-        ("README English", fold(english), "quit it"),
-        ("README Chinese", chinese, "先退出它"),
+        ("reference English", fold(&english), "quit it"),
+        ("reference Chinese", chinese, "先退出它"),
     ] {
         let webkit = format!("~/Library/WebKit/{id}");
         let at = text
