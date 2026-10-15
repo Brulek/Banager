@@ -15,7 +15,15 @@ Banager lists, updates and uninstalls software installed through Homebrew, npm, 
 
 </div>
 
-> **Status: pre-release.** As of 2026-10-15, the repository has no downloadable release. Run Banager from source. Banager cannot update itself yet. The project was formerly named Canager and was renamed to Banager on 2026-09-30.
+> **Status: pre-release v0.1: downloadable from GitHub Releases (unsigned).** You can also run Banager from source. Banager cannot update itself yet. The project was formerly named Canager and was renamed to Banager on 2026-09-30.
+
+## Installation
+
+1. Open the [GitHub Releases page](https://github.com/Brulek/Banager/releases) and download the `.dmg` file.
+2. Open the `.dmg` and drag Banager into the Applications folder.
+3. The first time you open Banager, macOS will say that the developer cannot be verified. Open System Settings > Privacy & Security, click "Open Anyway" next to Banager, and then confirm in the dialog that follows.
+
+This version is not yet notarised by Apple. The source code is public, so you can also build Banager yourself as described in "Running from Source" below.
 
 ## Features
 
