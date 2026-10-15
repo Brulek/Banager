@@ -15,7 +15,15 @@ Banager 把 Homebrew、npm、pipx、uv、pip、Cargo / rustup、Ollama 及几款
 
 </div>
 
-> **项目状态：发布前。** 截至 2026-10-15，仓库尚无可下载的正式版本，请从源码运行。Banager 暂时还不能自行更新。项目原名 Canager，2026-09-30 改名为 Banager。
+> **项目状态：发布前 v0.1，可从 GitHub Releases 下载（未签名）。** 也可以从源码运行。Banager 暂时还不能自行更新。项目原名 Canager，2026-09-30 改名为 Banager。
+
+## 安装
+
+1. 打开 [GitHub Releases 页面](https://github.com/Brulek/Banager/releases)，下载 `.dmg` 文件。
+2. 打开 `.dmg`，把 Banager 拖到「应用程序」文件夹。
+3. 首次打开时，macOS 会提示无法验证开发者。请打开「系统设置」>「隐私与安全性」，在 Banager 一项旁点击「仍要打开」，然后在随后出现的确认框中确认打开。
+
+本版本尚未经过 Apple 公证。源码公开，也可以按下文「从源码启动」自行构建。
 
 ## 主要功能
 
