@@ -50,23 +50,27 @@ fn release_packaging_does_not_require_unconfigured_updater_signing() {
 }
 
 #[test]
-fn release_keeps_its_targets_apple_signing_draft_and_intel_check() {
+fn release_keeps_its_targets_draft_and_intel_check_and_ships_unsigned() {
     let config = config();
     assert_eq!(
         config["bundle"]["targets"],
         serde_json::json!(["app", "dmg"])
     );
     assert_eq!(config["bundle"]["macOS"]["minimumSystemVersion"], "13.3");
+    // v0.1 is an unsigned pre-release: ad-hoc signing ("-") only, and no
+    // Apple certificate or notarisation secrets in the release step.
+    assert_eq!(
+        config["bundle"]["macOS"]["signingIdentity"], "-",
+        "the v0.1 build is ad-hoc signed; a real Developer ID identity needs the author's decision"
+    );
+    assert!(
+        !WORKFLOW.contains("secrets.APPLE_"),
+        "the release workflow still hands Apple signing or notarisation secrets to an unsigned v0.1 build"
+    );
     let lines = tauri_action_lines();
     for wanted in [
         "args: --target universal-apple-darwin",
         "releaseDraft: true",
-        "APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}",
-        "APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}",
-        "APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}",
-        "APPLE_ID: ${{ secrets.APPLE_ID }}",
-        "APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}",
-        "APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}",
     ] {
         assert!(lines.contains(&wanted), "the release step lost `{wanted}`");
     }
