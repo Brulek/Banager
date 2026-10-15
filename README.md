@@ -1,4 +1,173 @@
+<div align="center">
+
 # Banager
+
+**把 Mac 上用命令行装的东西，管得明明白白。**
+
+统一查看 Homebrew、npm、pipx、uv、pip、Cargo / rustup、Ollama 和几款命令行工具独立安装器留下的东西，选择更新，确认后再卸载。
+
+[![CI](https://github.com/Brulek/Banager/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Brulek/Banager/actions/workflows/ci.yml)
+![macOS 13.3+](https://img.shields.io/badge/macOS-13.3%2B-111827)
+![Status: pre-release](https://img.shields.io/badge/status-pre--release-f59e0b)
+[![MIT License](https://img.shields.io/badge/license-MIT-2563eb)](LICENSE)
+
+[当前功能](#当前功能) · [快速开始](#快速开始) · [路线图](#路线图) · [参与贡献](#参与贡献)
+
+</div>
+
+> **项目状态：发布前。** 截至 2026-10-15，仓库尚无公开 Release，请从源码运行；v0.1 正在准备中。Banager 暂时还不能自行更新。
+>
+> **名称说明：** Banager（原名 Canager）。旧名称下保存的设置如何带过来，见正文中的说明。
+
+## 为什么做 Banager
+
+跟着教程装过一些工具，过了一段时间，却不记得装了什么、哪些需要更新、哪些能放心删除。Banager 希望把这些零散的维护工作放进一个桌面界面，让你先看懂将要发生什么，再决定是否执行。
+
+不同工具用不同的命令安装，更新和卸载又要换一套命令。Banager 通过每个来源自己的命令读取清单、检查更新，并在你确认后执行更新或卸载；它不接管各来源的安装过程，也不替你发现和安装新软件。
+
+## 当前功能
+
+| 你想做什么 | 本分支已实现 |
+| --- | --- |
+| 看清装了什么 | 「已安装」页按来源分组，列出 Homebrew、npm 全局包、pipx、uv 工具、pip、cargo、Ollama 模型，以及 Claude Code、rustup、Antigravity CLI、Grok Build 的独立安装；可按名称搜索，也可按大小或安装日期排序 |
+| 其他来源 | npm 全局包、pipx、uv 工具、cargo、Ollama 模型可读取，多数可更新、卸载，个别例外在行内说明；Claude Code、rustup、Grok Build 的独立安装可更新、卸载；pip 只读；Antigravity CLI（agy）不在这里更新，Codex 不检查更新，两者都可以卸载；opencode 只列出 |
+| 其他程序 | 只读列出不是上述来源装的程序（例如 `~/.local/bin` 里的工具）；Banager 不运行、不移动、不删除其中任何东西 |
+| 概览 | 汇总可更新的数量、需要你注意的提示和各来源的检查结果，并可查看工具设置 |
+| 最近更新 | 「更新」页下方保留 30 天内的更新和卸载记录，包括成功、失败和需要处理的结果；可以清除，记录保存在本机的 `history.json` 中 |
+| 后台检查与通知 | 设置里可选每天或每周自动检查，也可以手动检查；有更新，或操作完成时可以收到通知，通知在你切换到其他应用后出现 |
+| 菜单栏 | macOS 菜单栏提供 ⌘1 至 ⌘4 切换概览、更新、已安装和其他程序，⌘R 重新检查，⌘F 搜索，⌘, 打开设置 |
+| 筛选与折叠 | 「已安装」可按名称筛选，也可只看 AI 工具；与其他软件一起装上的组件默认折叠，点开才展开 |
+| 多选更新 | 「更新」页可以勾选一个或多个项目，用「全选」或「全部更新」，确认后逐项执行 |
+| 跳过这个版本 | 对某个新版本选择「跳过此版本」，下个版本出现时再提醒；也可以让某个工具在一段时间内或永久不再提醒 |
+| 卸载前看清影响 | 卸载预览列出将运行的命令、会删除的内容、仍会保留的设置与数据，以及依赖它的其他软件；有其他软件依赖它时，卸载按钮保持关闭 |
+| 日志、取消与重新核实 | 操作中可查看实时日志并请求取消（取消不会回滚已完成的更改）；操作结束后重新读取状态，并可随时「重新检查」 |
+| 三种界面语言 | 简体中文、繁體中文或 English，也可以跟随系统 |
+
+**支持范围：** pip 只读，Banager 不驱动 pip 的安装器；opencode 只列出，不检查版本或更新；Antigravity CLI（agy）不在这里更新，Codex 不检查更新。
+
+**界面范围：** 「概览」「更新」「已安装」「其他程序」「设置」五个页面。Banager 只管理这台 Mac 上已经装好的内容，没有发现新软件或图形化安装的入口。
+
+截图由 `pnpm dev:mock` 的假数据预览页生成，不包含真实的软件清单。
+
+![已安装页：按来源分组列出本机工具，可搜索、排序、勾选](docs/screenshots/installed.png)
+
+![更新页：列出可更新的工具，可勾选一个或多个后更新](docs/screenshots/updates.png)
+
+![卸载预览：列出将运行的命令、会删除的内容和保留的数据](docs/screenshots/uninstall-preview.png)
+
+![概览页：汇总可更新数量与需要查看的工具环境提示](docs/screenshots/overview.png)
+
+![设置页：语言、检查频率、通知，以及已跳过的版本和不再提醒的工具](docs/screenshots/settings.png)
+
+## 操作前后，都让你看得见
+
+- **先预览，再执行。** 更新与卸载会先生成操作计划，展示将要运行的命令，再由你确认。
+- **不盲目强制删除。** 卸载前查询依赖关系，不使用 `--ignore-dependencies` 绕过 Homebrew 的依赖保护。
+- **逐项更新。** 多选更新也会按已确认的项目分别执行，不调用不带包名的 `brew upgrade`。
+- **结果需要核实。** 执行后重新读取状态，区分成功、部分成功、结果未确认和需要处理的问题。
+- **命令直接调用。** 核心使用可执行文件路径与参数数组运行命令，并校验包名，不把输入拼成 shell 命令。
+
+取消操作不会自动回滚已经发生的更改，请以操作后的核实结果和日志为准。各来源会运行的命令，见 [What Banager Runs](docs/what-we-run.md)。
+
+## 快速开始
+
+### 准备环境
+
+- **macOS 13.3 或更新版本**；当前项目面向 macOS。
+- **Homebrew**：请先自行安装。应用会检测 `/opt/homebrew/bin/brew` 和 `/usr/local/bin/brew` 等预设路径。
+- **Node.js 22**（CI 使用 22）、**pnpm 12.4.2**（以 `package.json` 为准）。
+- **Rust stable** 和 **Xcode Command Line Tools**，用于构建 Tauri 桌面应用。
+
+### 从源码启动
+
+```bash
+git clone https://github.com/Brulek/Banager.git
+cd Banager
+pnpm install --frozen-lockfile
+pnpm tauri dev
+```
+
+启动后显示的应用名称为 **Banager**。请使用普通用户运行，不要使用 `sudo` 启动应用。
+
+`pnpm dev` 只启动前端开发服务器；完整的本机软件管理功能需要通过 `pnpm tauri dev` 打开桌面窗口。
+
+想先看界面而不接触真实软件，可运行 `pnpm tauri:mock`，它打开一个使用假数据的 Banager 窗口；所有 Banager 命令都交给假数据，不会运行真实的 Homebrew 或其他来源。也可以运行 `pnpm dev:mock`，在浏览器中打开 <http://localhost:1430/> 预览。
+
+### 第一次使用
+
+1. 打开「已安装」，等待 Homebrew 检测与清单刷新完成。
+2. 输入名称筛选工具；需要查看附带安装的组件时，展开依赖列表。
+3. 在「更新」中选择要处理的项目，检查命令预览后确认；暂不处理的项目可以忽略。
+4. 卸载时先查看影响提示；在底部操作区域查看进度和日志。
+5. 在「设置」中切换语言、显示技术细节或恢复已忽略的更新。
+
+### 当前使用边界
+
+- **刷新可能联网。** 检查更新时会按缓存时效执行 `brew update`，刷新 Homebrew 本地索引；这不会自动升级已安装的软件。
+- **管理员密码仍需手动处理。** 部分 cask 的安装和更新会要求管理员密码。Banager 不收集、不保存密码，只把你自己设置的 `SUDO_ASKPASS` 环境变量原样传给 Homebrew；仓库里的 `scripts/banager-askpass.sh` 只是示例，应用目前不会调用它。遇到需要密码的步骤，请在界面的「查看步骤」中复制命令，到终端里自行运行。
+- **发行流程尚未完成。** 仓库已有 Universal 构建与草稿发布工作流，但签名、公证及应用自身更新配置仍需完善，不能据此视为已有可下载的正式版本。
+
+## 路线图
+
+以下是规划方向，不代表当前已经支持，也不承诺发布日期。
+
+| 方向 | 状态 |
+| --- | --- |
+| Homebrew 适配器、任务执行与结果核实 | 已实现 |
+| 已安装 / 更新 / 概览 / 其他程序 / 设置界面，三种语言 | 已实现 |
+| npm 全局包、pipx、uv、pip（只读）、cargo、Ollama，以及几款独立安装器 | 已实现，范围见上文「支持范围」 |
+| 菜单栏、后台检查与通知、最近更新、AI 工具筛选 | 已实现 |
+| 发现页与安装入口（发现并安装新软件） | 规划中 |
+| 签名、公证、正式发行与应用自身更新 | 待完善与验证 |
+
+设计目标见 [产品设计](docs/superpowers/specs/2026-09-17-banager-design.md)，后续接入方案见 [更多来源实施计划](docs/superpowers/plans/2026-09-20-phase-3-more-sources.md)，已知问题见 [Backlog](docs/superpowers/backlog.md)。历史设计文档包含尚未实现的能力，当前功能请以上文及主分支代码为准。
+
+## 开发与验证
+
+桌面外壳采用 **Tauri 2**，核心逻辑使用 **Rust**；界面使用 **React 19、TypeScript、Vite 和 Tailwind CSS**。软件来源适配、命令执行和操作结果核实放在独立的 `banager-core` 中。
+
+```text
+crates/banager-core/  软件来源适配、命令执行、任务调度与状态核实
+src-tauri/           桌面应用、IPC 与设置存储接入
+src/                React 页面、组件、状态与双语文案
+adapters/           适配器元数据与真实命令输出样本
+docs/               产品设计、实施计划、评审与命令说明
+.github/workflows/  CI 与发布工作流
+```
+
+安装依赖后，可在仓库根目录执行以下检查：
+
+```bash
+cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+pnpm test
+pnpm typecheck
+```
+
+`pnpm build` 会先运行 `pnpm typecheck` 的三个 TypeScript 检查，再执行 `vite build`。
+
+仅编译本机桌面应用、不生成安装包：
+
+```bash
+pnpm tauri build --no-bundle
+```
+
+CI 还配置了真实 Homebrew 冒烟测试，会安装并卸载测试软件 `hello`；它需要显式启用，不属于普通 `cargo test --workspace` 的执行范围。检查配置见 [CI 工作流](.github/workflows/ci.yml)，实际结果以 GitHub Actions 为准。
+
+## 参与贡献
+
+欢迎通过 [Issues](https://github.com/Brulek/Banager/issues) 反馈问题或讨论功能，通过 [Pull Requests](https://github.com/Brulek/Banager/pulls) 提交改进。
+
+报告问题时，请附上 macOS 版本、芯片架构、Homebrew 版本、复现步骤和相关日志。提交日志前，请先移除令牌、私有源地址等敏感内容。
+
+涉及功能变更时，请同步维护中英文界面文案与相关测试。适配器样本应来自真实命令输出；实现前建议先查看 [已知问题与待办](docs/superpowers/backlog.md)，了解现有约束。
+
+## License
+
+[MIT](LICENSE) © 2026 Brulek
+
+---
 
 **A Mac app for everything you installed from the terminal and then forgot about.**
 
@@ -18,7 +187,6 @@ Banager puts all of it in one window: what you have, what has an update, and a b
 > ready to rely on. Banager can't update itself yet: a release build makes no updater files and
 > publishes no `latest.json`.
 
-<!-- A screenshot belongs here before the first release. -->
 
 ## What it manages
 
@@ -239,7 +407,7 @@ details, Tab) and the dialogs' (Return, Escape). **Common Questions**, above it,
 in a few plain sentences each — a command Terminal can't find, uv tools missing from the list, why some tools can't be updated here,
 "Installed twice", the Mac password, what an uninstall leaves, what keeps a tool from being uninstalled, what Banager itself changes, Other
 Programs, sizes, major updates, an update's warning, a background service after its update, the automatic check and
-Canager's settings — with a button named for the page it opens
+settings from the old name Canager — with a button named for the page it opens
 (*Show in Installed*, *Show in Updates*…) where the answer can be acted on.
 
 The first time Banager opens, a welcome sheet shows three short titles — see what's installed; you confirm each update and uninstall you choose; no data collected — and nothing more. The first check runs behind it, and its `brew update`, which no one chose, asks nothing, as above. However
@@ -743,7 +911,7 @@ Banager 开着时还会每天做一次同样的检查，查到的更新都不安
 “关闭窗口”和“退出”）、列表（↑ ↓、翻页和跳到两头的键、用空格键勾选一行、在“已安装”里用回车和 Esc 打开和关闭详细信息、Tab）
 和对话框（回车、Esc）。它上面的“常见问题”用几句大白话回答十五个常见问题：终端里找不到命令、为什么有些 uv 工具没有显示、为什么有的工具不能在这里更新、
 “装了两份”、Mac 密码、卸载后留下什么、什么会让工具不能卸载、Banager 自己会改动什么、“其他程序”、占用空间、大版本更新、更新后的警告、更新后台服务、自动检查和
-Canager 的设置；
+旧名 Canager 的设置；
 能动手处理的，旁边有“查看”按钮，直接打开对应的页面或“已安装”里的显示选项。
 
 第一次打开 Banager 时，会出现一个欢迎页，只有三个短标题：看清装了什么；你选的更新、卸载都由你确认；不收集数据。第一次检查在它背后照常进行，其中的 `brew update` 不是你选的，不会问你，见上文。不管怎样关掉它——点“开始使用”、按回车或 Esc、点它外面——设置文件都会记下
