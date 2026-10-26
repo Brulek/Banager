@@ -771,6 +771,10 @@
       "title": "用{{source}}安装的部分软件包没有显示",
       "description": "{{source}}没有列出它们，通常是因为它不信任它们的来源，所以没有检查它们的更新，也无法确定它们还要用哪些软件包。在终端运行{{command}}可列出{{source}}获取软件包的所有来源，运行{{trusted}}可列出它信任的来源；要信任只在前一个列表中的某个来源，请运行{{trust}}并在后面加上它的名称，然后重新检查。"
     },
+    "casksNotChecked": {
+      "title": "用{{source}}安装的部分应用没有检查更新",
+      "description": "{{source}}只检查它信任的来源中的应用，而无法确认它信任这些应用的来源，所以没有检查它们的更新。在终端运行{{trusted}}可列出它信任的来源；要信任其他来源，请运行{{trust}}并在后面加上它的名称，然后重新检查。"
+    },
     "checksUnfinished": {
       "title": "部分检查未完成",
       "description_other": "{{sources}}这次未检查完，工具或更新可能还没全部列出。"
@@ -1347,7 +1351,8 @@
         "indexUpdating": "正在联网查找新版本",
         "launcherOnly": "找不到程序文件",
         "someNotListed": "部分工具没有显示",
-        "formulaeNotListed": "部分软件包没有显示"
+        "formulaeNotListed": "部分软件包没有显示",
+        "casksNotChecked": "部分应用没有检查更新"
       },
       "searchPath": "查找命令的文件夹：{{number}}个",
       "loginRead": "已读取登录时的设置",

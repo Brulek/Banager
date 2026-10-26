@@ -832,6 +832,10 @@
       "title": "Some packages installed with {{source}} aren't shown",
       "description": "{{source}} didn't list them, usually because it doesn't trust where they come from, so their updates weren't checked and Banager can't tell which other packages they need. In Terminal, {{command}} lists every place {{source}} gets packages from and {{trusted}} lists the ones it trusts; to trust one that's only in the first list, run {{trust}} followed by its name, then check again."
     },
+    "casksNotChecked": {
+      "title": "Updates for some apps installed with {{source}} weren't checked",
+      "description": "{{source}} checks apps only from places it trusts, and nothing shows it trusts where these come from, so their updates weren't checked. In Terminal, {{trusted}} lists the places it trusts; to trust another, run {{trust}} followed by its name, then check again."
+    },
     "checksUnfinished": {
       "title": "Some checks didn't finish",
       "description_one": "{{sources}} didn't finish checking this time; some tools or updates may not be listed yet.",
@@ -1467,7 +1471,8 @@
         "indexUpdating": "Checking online for new versions",
         "launcherOnly": "Program files missing",
         "someNotListed": "Some tools not shown",
-        "formulaeNotListed": "Some packages not shown"
+        "formulaeNotListed": "Some packages not shown",
+        "casksNotChecked": "Some apps' updates not checked"
       },
       "searchPath": "Command search folders: {{number}}",
       "loginRead": "Read from the login settings",

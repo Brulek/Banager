@@ -93,6 +93,7 @@ const NOTE_STATES: Record<InstanceNote, { key: string; warns: boolean } | null> 
   LauncherOnly: { key: "diagnostics.text.statusWord.launcherOnly", warns: true },
   SomeNotListed: { key: "diagnostics.text.statusWord.someNotListed", warns: true },
   FormulaeNotListed: { key: "diagnostics.text.statusWord.formulaeNotListed", warns: true },
+  CasksNotChecked: { key: "diagnostics.text.statusWord.casksNotChecked", warns: true },
 };
 
 /** Whether one of `instance`'s notes says its list or check is incomplete in a way that warns (`NOTE_STATES`). */

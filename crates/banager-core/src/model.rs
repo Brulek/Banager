@@ -275,6 +275,22 @@ pub enum InstanceNote {
     /// `BrewAdapter::check_updates` from what the inventory found
     /// (`BrewAdapter::remember_unlisted_racks`).
     FormulaeNotListed,
+    /// Banager could not confirm that Homebrew checked the updates of
+    /// every cask it lists. Homebrew 7 loads a cask from a tap it does not
+    /// trust from the copy it saved at install (`Caskroom.casks`,
+    /// `cask/caskroom.rb:232-241`), so `brew outdated` compares that copy
+    /// with itself and lists nothing, though the tap has a newer version
+    /// (`Cask#outdated_version`, `cask/cask.rb:414`). Banager reads
+    /// Homebrew's trust settings at each read (`BrewAdapter::trust_look`):
+    /// a cask from a third-party tap, with trust required, that the trust
+    /// list does not surely trust -- the list unreadable, its folder
+    /// unsure, or the tap named only by its remote -- is marked
+    /// `ArtifactFacts::not_looked_up` and its source says this; so does a
+    /// check whose own reading of the casks failed. Not proof that
+    /// Homebrew distrusts anything: that it may. Produced by
+    /// `BrewAdapter`'s inventory (`Adapter::inventory_with_notes`) and
+    /// update check (r83 R83-1).
+    CasksNotChecked,
 }
 
 impl InstanceNote {
@@ -294,7 +310,8 @@ impl InstanceNote {
             InstanceNote::IndexMayBeStale
             | InstanceNote::IndexUpdating
             | InstanceNote::SomeNotListed
-            | InstanceNote::FormulaeNotListed => true,
+            | InstanceNote::FormulaeNotListed
+            | InstanceNote::CasksNotChecked => true,
             InstanceNote::NotOnPath
             | InstanceNote::ShadowedByHomebrew
             | InstanceNote::ShadowedByNpm
@@ -320,6 +337,7 @@ impl InstanceNote {
             | InstanceNote::IndexUpdating
             | InstanceNote::SomeNotListed
             | InstanceNote::FormulaeNotListed
+            | InstanceNote::CasksNotChecked
             | InstanceNote::LauncherOnly => false,
         }
     }
@@ -4325,6 +4343,8 @@ mod tests {
             (InstanceNote::ShadowedByOther, "ShadowedByOther"),
             (InstanceNote::LauncherOnly, "LauncherOnly"),
             (InstanceNote::SomeNotListed, "SomeNotListed"),
+            (InstanceNote::FormulaeNotListed, "FormulaeNotListed"),
+            (InstanceNote::CasksNotChecked, "CasksNotChecked"),
         ] {
             let status = InstanceStatus {
                 unavailable: None,

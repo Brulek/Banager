@@ -2078,6 +2078,33 @@ preview says it couldn't check what else needs it
 (`Warning::DependentsUnknown`), since none of Homebrew's own checks would
 count a formula it dropped (`BrewAdapter::may_have_unlisted_racks`).
 
+**Casks Homebrew checks against their saved copy** (r83 R83-1). A cask
+from a tap Homebrew 7 does not trust is still listed: `Caskroom.casks`
+loads it from the copy Homebrew saved at install when its tap refuses it
+(`cask/caskroom.rb`, Homebrew 7.0.10), and that copy carries the
+installed version, so `brew outdated` compares the version with itself
+and lists no update whatever the tap holds (`Cask#outdated_version`). So
+every inventory reads Homebrew's settings -- the `brew.env` files and the
+trust list, as an uninstall preview reads them (below) -- once before
+its `brew info` and once after, and an update check once more as its
+`brew outdated` starts; a cask from a third-party tap is marked as one no
+check looks up (`ArtifactFacts::not_looked_up`: its row says nothing
+about updates, not "Up to date") unless every one of those reads surely
+lets Homebrew check it: `HOMEBREW_NO_REQUIRE_TAP_TRUST` set, a tap of
+Homebrew's own, or a trust list that names the cask or its tap. A list
+that could not be read, one in a folder `bin/brew` may not have chosen
+(a `brew.env` Banager could not read may have set
+`HOMEBREW_XDG_CONFIG_HOME`), or an entry naming a tap by its remote,
+which Banager does not resolve, is no such proof. Trust granted after
+`brew outdated` started does not make that check one. While any cask is
+marked -- or the check's own reading of the casks failed and the settings
+did not let Homebrew check every cask -- Homebrew's notice says the
+updates of some apps installed with it weren't checked, with `brew trust`
+to list the trusted taps and `brew trust --tap` to trust another, by
+this Homebrew's own brew (`InstanceNote::CasksNotChecked`); Banager runs
+neither. These are reads of settings, not of what Homebrew loaded: a
+change between them and Homebrew's commands is not seen.
+
 **A formula's background service** (r18 R46-3). `brew services start
 <name>` puts the formula's service file in `~/Library/LaunchAgents`, or in
 `/Library/LaunchDaemons` when started with `sudo`, as `sh.brew.<name>.plist`
@@ -2308,7 +2335,11 @@ without waiting (links followed), checked with `fstat` once open, and read
 and parsed as JSON only when that says it is a regular file of at most
 16 MiB. The `.internal.json` and `.rb`
 caskfiles are never opened. Every uninstall preview, formula or cask, and
-the check before a cask uninstall runs, also read Homebrew's trust list,
+the check before a cask uninstall runs, also read Homebrew's trust list --
+and so do every inventory, before and after its `brew info`, and every
+update check, as its `brew outdated` starts, with the `brew.env` files
+that choose its folder ("Casks Homebrew checks against their saved
+copy", above) --
 `trust.json` in the folder `bin/brew` takes
 for the user's Homebrew config — `$XDG_CONFIG_HOME/homebrew`,
 `$HOMEBREW_XDG_CONFIG_HOME/homebrew` or `~/.homebrew`, as for the user's
@@ -5655,7 +5686,9 @@ read, nothing runs, nothing is written, and no connection is made for it.
 
 A source whose list or check is incomplete is not among those that
 answered normally: one that left tools or packages out of its list
-(pipx's `SomeNotListed`, Homebrew's `FormulaeNotListed`), whose updates
+(pipx's `SomeNotListed`, Homebrew's `FormulaeNotListed`), that checked
+casks against the copy saved at install (Homebrew's `CasksNotChecked`),
+whose updates
 were checked against a Homebrew list that may be out of date
 (`IndexMayBeStale`), or whose launcher has lost its program
 (`LauncherOnly`) has a warning line in the words the copied diagnostics
@@ -5725,8 +5758,10 @@ not read (`protected::look`; How Banager runs anything, above):
   absolute source its stanza names lead (`lstat` and `readlink`, names
   and links only; Homebrew's section, "A cask's links");
   during every uninstall preview and again before
-  a cask uninstall runs, its trust list,
-  `trust.json` in the user's Homebrew config folder; during a formula's
+  a cask uninstall runs, during every inventory, before and after its
+  `brew info`, and as every update check's `brew outdated` starts, its
+  trust list, `trust.json` in the user's Homebrew config folder, and the
+  `brew.env` files that choose that folder; during a formula's
   upgrade and uninstall preview, the names in `<prefix>/Cellar/<name>` and
   whether `<prefix>/var/homebrew/pinned/<name>` is there (Homebrew's
   section, "Old versions"); after every inventory, the names in

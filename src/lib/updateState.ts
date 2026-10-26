@@ -282,7 +282,8 @@ export function countedUpdatesOf(
  * to check; or pipx or uv left some tools it could not read out of its list
  * (`SomeNotListed`), so those were not checked; or Homebrew left some
  * installed formulae out of its list (`FormulaeNotListed`), so those were
- * not checked either. The four PATH notes are
+ * not checked either, or checked casks from a tap it may not trust against
+ * the copy it saved at install (`CasksNotChecked`). The four PATH notes are
  * about what runs when the tool's name is typed in Terminal, not about
  * the check. Read by
  * `everySourceChecked`. A `Record`, so a note added to `InstanceNote`
@@ -298,6 +299,7 @@ const NOTE_LEAVES_UPDATES_UNCHECKED: Record<InstanceNote, boolean> = {
   LauncherOnly: true,
   SomeNotListed: true,
   FormulaeNotListed: true,
+  CasksNotChecked: true,
 };
 
 /**
@@ -358,8 +360,9 @@ export function upToDateIsKnown(instance: ManagerInstance, errors: SourceError[]
  * (`NOTE_LEAVES_UPDATES_UNCHECKED`), those after which it was still
  * checked in part: against a copy of Homebrew's list of software that may
  * be out of date (`IndexMayBeStale`), every tool pipx or uv could read
- * (`SomeNotListed`), and every formula Homebrew listed
- * (`FormulaeNotListed`). A list still downloading
+ * (`SomeNotListed`), every formula Homebrew listed
+ * (`FormulaeNotListed`), and every cask but those from a tap it may not
+ * trust (`CasksNotChecked`). A list still downloading
  * (`IndexUpdating`) and a launcher without its program (`LauncherOnly`)
  * leave nothing checked. A `Record`, so a note added to `InstanceNote`
  * without an answer here fails `tsc`.
@@ -374,6 +377,7 @@ const NOTE_LEAVES_UPDATES_CHECKED_IN_PART: Record<InstanceNote, boolean> = {
   LauncherOnly: false,
   SomeNotListed: true,
   FormulaeNotListed: true,
+  CasksNotChecked: true,
 };
 
 /**
@@ -401,7 +405,8 @@ const UNAVAILABLE_EVERY_TIME: Record<Unavailable, boolean> = {
  * (`LauncherOnly`), until the user reinstalls or uninstalls it, and tools
  * pipx could not read (`SomeNotListed`), until the user fixes them -- not
  * uv's, which the Overview names all the same (`namedEachTime`) -- and
- * formulae Homebrew left out of its list (`FormulaeNotListed`), until the
+ * formulae Homebrew left out of its list (`FormulaeNotListed`) and casks
+ * it checked against their saved copy (`CasksNotChecked`), until the
  * user trusts their tap. A list
  * still downloading or out of date is news of this check.
  */
@@ -415,6 +420,7 @@ const NOTE_UNCHECKED_EVERY_TIME: Record<InstanceNote, boolean> = {
   LauncherOnly: true,
   SomeNotListed: true,
   FormulaeNotListed: true,
+  CasksNotChecked: true,
 };
 
 /**

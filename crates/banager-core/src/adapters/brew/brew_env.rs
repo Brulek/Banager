@@ -152,6 +152,14 @@ pub(crate) struct HomebrewSwitches {
     /// Homebrew's trust list (`Homebrew::Trust.trust_file`, `trust.rb:27-42`).
     /// `None` when `HOME` is unset or empty: `bin/brew` stops then.
     pub(crate) user_config_home: Option<PathBuf>,
+    /// Whether `user_config_home` is surely the folder `bin/brew` chooses,
+    /// as it chose it: false when that depends on a
+    /// `HOMEBREW_XDG_CONFIG_HOME` a file Banager cannot read may have set
+    /// (`EnvFile::Unknown`), so the folder named is only a guess, whatever
+    /// a later file says. Read where a trust list found there must not be
+    /// taken as Homebrew's (`BrewAdapter::trust_look`, r83 R83-1); the
+    /// uninstall preview's sentences go on reading the guess.
+    pub(crate) user_config_home_known: bool,
 }
 
 /// What Homebrew will make of `HOMEBREW_NO_AUTOREMOVE` and
@@ -230,6 +238,7 @@ pub(crate) fn after_brew_env(
         autoremove_unknown: !known(NO_AUTOREMOVE),
         install_cleanup_unknown: !known(NO_INSTALL_CLEANUP),
         user_config_home,
+        user_config_home_known: !user_file_unknown,
     }
 }
 
@@ -604,6 +613,7 @@ mod tests {
                 install_cleanup_unknown: false,
                 auto_update_unknown: false,
                 user_config_home: Some(PathBuf::from("/Users/someone/.homebrew")),
+                user_config_home_known: true,
             }
         );
     }
@@ -629,6 +639,32 @@ mod tests {
             &[("HOMEBREW_NO_CLEANUP_FORMULAE", "wget")],
         );
         assert_eq!(over.no_cleanup_formulae, ["jq"]);
+    }
+
+    /// r83 R83-1: the trust list's folder is known only when `bin/brew`
+    /// could not have chosen another: with the prefix's file unreadable,
+    /// `HOMEBREW_XDG_CONFIG_HOME` may have pointed it elsewhere, and a user
+    /// file that sets nothing later does not make the guess certain; with
+    /// `XDG_CONFIG_HOME` in Banager's environment the folder is that one,
+    /// whatever a file says; an unreadable user file leaves its folder known.
+    #[test]
+    fn regression_r83_1_the_config_folder_is_known_only_as_chosen() {
+        assert!(switches(&[], &[]).user_config_home_known);
+        let guessed = switches_unknown(&[(HOME_FILE, "")], &[PREFIX_FILE], &[]);
+        assert_eq!(
+            guessed.user_config_home,
+            Some(PathBuf::from("/Users/someone/.homebrew"))
+        );
+        assert!(!guessed.user_config_home_known);
+        assert!(
+            switches_unknown(
+                &[],
+                &[PREFIX_FILE],
+                &[("XDG_CONFIG_HOME", "/Users/someone/.config")]
+            )
+            .user_config_home_known
+        );
+        assert!(switches_unknown(&[], &[HOME_FILE], &[]).user_config_home_known);
     }
 
     #[test]

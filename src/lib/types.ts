@@ -691,7 +691,9 @@ export type Unavailable =
  * its launcher is left without its program. `SomeNotListed` is pipx's or
  * uv's: it left out of its list some tools it could not read. `FormulaeNotListed`
  * is Homebrew's: its Cellar holds formulae its own list left out, usually
- * because it does not trust their tap.
+ * because it does not trust their tap. `CasksNotChecked` is Homebrew's too:
+ * casks from a tap it may not trust, which it checks against the copy it
+ * saved at install, so their rows are `not_looked_up` (r83 R83-1).
  */
 export type InstanceNote =
   | "IndexMayBeStale"
@@ -702,7 +704,8 @@ export type InstanceNote =
   | "ShadowedByOther"
   | "LauncherOnly"
   | "SomeNotListed"
-  | "FormulaeNotListed";
+  | "FormulaeNotListed"
+  | "CasksNotChecked";
 /**
  * Mirrors `InstanceStatus`, which derives `Default` on the Rust side: this
  * is always an object, never null, and `notes` is `[]` rather than absent

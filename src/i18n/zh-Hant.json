@@ -771,6 +771,10 @@
       "title": "用{{source}}安裝的部分套件沒有顯示",
       "description": "{{source}}沒有列出它們，通常是因為它不信任它們的來源，所以沒有檢查它們的更新，也無法確定它們還要用哪些套件。在終端機執行{{command}}可列出{{source}}取得套件的所有來源，執行{{trusted}}可列出它信任的來源；要信任只在前一個清單中的某個來源，請執行{{trust}}並在後面加上它的名稱，然後重新檢查。"
     },
+    "casksNotChecked": {
+      "title": "用{{source}}安裝的部分應用程式沒有檢查更新",
+      "description": "{{source}}只檢查它信任的來源中的應用程式，而無法確認它信任這些應用程式的來源，所以沒有檢查它們的更新。在終端機執行{{trusted}}可列出它信任的來源；要信任其他來源，請執行{{trust}}並在後面加上它的名稱，然後重新檢查。"
+    },
     "checksUnfinished": {
       "title": "部分檢查未完成",
       "description_other": "{{sources}}這次未檢查完，工具或更新可能還沒全部列出。"
@@ -1347,7 +1351,8 @@
         "indexUpdating": "正在連線檢查新版本",
         "launcherOnly": "找不到程式檔案",
         "someNotListed": "部分工具沒有顯示",
-        "formulaeNotListed": "部分套件沒有顯示"
+        "formulaeNotListed": "部分套件沒有顯示",
+        "casksNotChecked": "部分應用程式沒有檢查更新"
       },
       "searchPath": "尋找指令的檔案夾：{{number}}個",
       "loginRead": "已讀取登入時的設定",

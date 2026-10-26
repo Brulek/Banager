@@ -232,6 +232,7 @@ const UNINSTALL_HOLD_KEYS: Record<InstanceNote, string | null> = {
   LauncherOnly: null,
   SomeNotListed: null,
   FormulaeNotListed: null,
+  CasksNotChecked: null,
 };
 
 /**
@@ -697,6 +698,25 @@ export function sourceNoticesFor(
         values: {
           source: sourceLabel,
           command: brew("tap"),
+          trusted: brew("trust"),
+          trust: brew("trust", "--tap"),
+        },
+      });
+    } else if (note === "CasksNotChecked") {
+      // Homebrew 7 loads a cask from a tap it does not trust from the copy
+      // it saved at install, so `brew outdated` compares that copy with
+      // itself (r83 R83-1). Banager marks those casks (`not_looked_up`)
+      // unless Homebrew's settings surely trust the cask or its tap; the
+      // way out is trusting the tap, named as under `FormulaeNotListed`,
+      // by this Homebrew's own brew.
+      const brew = (...args: string[]) => [instance.exe_path, ...args].map(displayToken).join(" ");
+      notices.push({
+        id: `${instance.id}:casks-not-checked`,
+        variant: "warning",
+        titleKey: "sourceNotice.casksNotChecked.title",
+        descriptionKey: "sourceNotice.casksNotChecked.description",
+        values: {
+          source: sourceLabel,
           trusted: brew("trust"),
           trust: brew("trust", "--tap"),
         },

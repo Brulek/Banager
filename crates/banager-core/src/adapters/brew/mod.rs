@@ -11,7 +11,7 @@ pub(crate) mod trust;
 
 use crate::adapters::{
     ensure_instance_match, reconcile_from, run_plan, validate_package_name, Adapter, AdapterError,
-    AdapterMeta, CheckOptions, CheckOutcome,
+    AdapterMeta, CheckOptions, CheckOutcome, InventoryOutcome,
 };
 use crate::dirfd::Stat;
 use crate::events::{EventSink, LogNote, OpId, OperationEvent};
@@ -258,7 +258,8 @@ pub struct BrewAdapter {
     /// apps of the Mac running them.
     applications: PathBuf,
     /// How to read Homebrew's trust list in the user's Homebrew config
-    /// folder, for the uninstall preview (`trust::read_trust_list`):
+    /// folder, for the uninstall preview and for each inventory and update
+    /// check (`trust_look`, r83 R83-1) (`trust::read_trust_list`):
     /// the real file outside this crate's unit tests; inside them an empty
     /// list unless a test installs a reader (`with_trust_list_fn`), so that
     /// no test answers differently for the trust list of the Mac running it.
@@ -383,6 +384,46 @@ const DEFAULT_APP_BUNDLE_ID_FN: fn(&Path) -> Option<String> = |_| None;
 const DEFAULT_APP_VERSION_FN: fn(&Path) -> Option<String> = cask_receipt::app_short_version;
 #[cfg(test)]
 const DEFAULT_APP_VERSION_FN: fn(&Path) -> Option<String> = |_| None;
+
+/// One look at what Homebrew's settings say of checking a cask from a
+/// third-party tap (`BrewAdapter::trust_look`, r83 R83-1).
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum TrustLook {
+    /// No home folder: `bin/brew` runs nothing, so there is nothing to say.
+    Moot,
+    /// `HOMEBREW_NO_REQUIRE_TAP_TRUST` is surely set: Homebrew loads every
+    /// cask from its tap.
+    NotRequired,
+    /// Trust is required, or may be: the trust list, or `None` when it could
+    /// not be read or its folder is not surely the one `bin/brew` chooses
+    /// (`HomebrewSwitches::user_config_home_known`).
+    Required(Option<TrustList>),
+}
+
+impl TrustLook {
+    /// Whether this look surely lets Homebrew check the cask `token` from
+    /// `tap` against its tap: trust not required, a tap of Homebrew's own,
+    /// or a list that surely names the cask or its tap (`trusts_cask`; an
+    /// entry naming a tap by its remote, which Banager does not read, is no
+    /// such proof).
+    fn confirms(&self, tap: &str, token: &str) -> bool {
+        match self {
+            TrustLook::Moot | TrustLook::NotRequired => true,
+            TrustLook::Required(list) => {
+                trust::official(tap)
+                    || list
+                        .as_ref()
+                        .is_some_and(|list| list.trusts_cask(tap, token))
+            }
+        }
+    }
+
+    /// Whether this look lets Homebrew check every cask, whichever it is:
+    /// so even a reading of the casks that failed leaves none unconfirmed.
+    fn confirms_every_cask(&self) -> bool {
+        matches!(self, TrustLook::Moot | TrustLook::NotRequired)
+    }
+}
 
 /// `BrewAdapter::trust_list_fn` as `BrewAdapter::new` sets it: the real
 /// trust list in every build but this crate's unit tests, where it is
@@ -2252,9 +2293,66 @@ impl BrewAdapter {
         &self,
         inst: &ManagerInstance,
     ) -> Result<Vec<InstalledArtifact>, AdapterError> {
+        Ok(self.inventory_looked(inst, None).await?.0)
+    }
+
+    /// `inventory`, with `InstanceNote::CasksNotChecked` when it marked a
+    /// cask whose update check Banager cannot confirm (`trust_look`).
+    pub async fn inventory_with_notes(
+        &self,
+        inst: &ManagerInstance,
+    ) -> Result<InventoryOutcome, AdapterError> {
+        let (artifacts, unconfirmed) = self.inventory_looked(inst, None).await?;
+        Ok(InventoryOutcome {
+            artifacts,
+            notes: if unconfirmed {
+                vec![InstanceNote::CasksNotChecked]
+            } else {
+                Vec::new()
+            },
+            complete: true,
+        })
+    }
+
+    /// What Homebrew's settings, read now, say of checking a cask from a
+    /// third-party tap (r83 R83-1): Homebrew 7 loads one from a tap it does
+    /// not trust from the copy it saved at install (`Caskroom.casks`,
+    /// `cask/caskroom.rb:232-241`), so `brew outdated` finds nothing newer
+    /// whatever the tap has. Read through the same bounded readers as the
+    /// uninstall preview: the `brew.env` files (`brew_env::after_brew_env`)
+    /// and the trust list in the folder they choose (`trust_list_fn`).
+    fn trust_look(&self, inst: &ManagerInstance) -> TrustLook {
+        let switches = self.switches_at(&inst.prefix, &self.env_vec());
+        match &switches.user_config_home {
+            // No home folder: `bin/brew` stops before it reads anything
+            // (`bin/brew:39-43`), so no cask was loaded either way.
+            None => TrustLook::Moot,
+            Some(_) if !switches.require_tap_trust => TrustLook::NotRequired,
+            Some(home) => TrustLook::Required(
+                switches
+                    .user_config_home_known
+                    .then(|| (self.trust_list_fn)(home))
+                    .flatten(),
+            ),
+        }
+    }
+
+    /// `inventory`, its casks marked by what Homebrew's settings say before
+    /// and after its `brew info` -- and at `earlier`, the look the update
+    /// check took before `brew outdated` -- with whether it marked any: a
+    /// cask from a third-party tap is `ArtifactFacts::not_looked_up` unless
+    /// every look surely lets Homebrew check it (`TrustLook::confirms`).
+    /// Looks at settings, not at what Homebrew loaded: a change between
+    /// them and its commands is not seen.
+    async fn inventory_looked(
+        &self,
+        inst: &ManagerInstance,
+        earlier: Option<&TrustLook>,
+    ) -> Result<(Vec<InstalledArtifact>, bool), AdapterError> {
         if self.join_running_update(&inst.id) {
             return Err(AdapterError::IndexUpdating);
         }
+        let before = self.trust_look(inst);
         let output = self
             .run_brew(
                 inst,
@@ -2272,12 +2370,31 @@ impl BrewAdapter {
                 stderr: output.stderr,
             });
         }
+        let after = self.trust_look(inst);
         let mut artifacts = parse_info_installed(&output.stdout, &inst.id)?;
+        let looks: Vec<&TrustLook> = [Some(&before), Some(&after), earlier]
+            .into_iter()
+            .flatten()
+            .collect();
+        let mut unconfirmed = false;
+        for artifact in &mut artifacts {
+            if artifact.key.kind != ArtifactKind::Cask {
+                continue;
+            }
+            let Some((tap, token)) = trust::split_full_name(&artifact.key.name) else {
+                // A bare token is a cask of Homebrew's own tap.
+                continue;
+            };
+            if !looks.iter().all(|look| look.confirms(tap, token)) {
+                artifact.facts.not_looked_up = true;
+                unconfirmed = true;
+            }
+        }
         self.read_app_versions(&mut artifacts);
         self.remember_keg_only(&inst.id, &artifacts);
         self.remember_unlisted_racks(inst, &artifacts);
         self.remember_source_builds(inst, &output.stdout);
-        Ok(artifacts)
+        Ok((artifacts, unconfirmed))
     }
 
     /// R47-3 (r18): the version each app of a cask that updates itself
@@ -2373,6 +2490,10 @@ impl BrewAdapter {
         } else {
             &[("HOMEBREW_NO_UPGRADE_AUTO_UPDATES_CASKS", "1")]
         };
+        // What Homebrew's settings say of the casks as `brew outdated`
+        // starts (`trust_look`), carried to the reading below: trust granted
+        // after it does not make that check one (r83 R83-1).
+        let at_outdated = self.trust_look(inst);
         let output = self
             .run_brew_with(inst, args, extra, Duration::from_secs(120))
             .await?;
@@ -2410,12 +2531,25 @@ impl BrewAdapter {
         // as before (`UnchangedAfterUpgrade`). The mark is as fresh as the
         // last `brew update` that succeeded: after `MayBeStale` this reads
         // the catalogue already on disk, like `brew outdated` above.
-        let installed = self.inventory(inst).await.unwrap_or_default();
+        //
+        // The same reading marks the casks Homebrew may not have checked
+        // (`inventory_looked`, r83 R83-1), and one that failed leaves none
+        // of the casks confirmed unless the look before `brew outdated`
+        // confirms every one: either is `CasksNotChecked`, the candidates
+        // above kept.
+        let (installed, casks_unconfirmed) =
+            match self.inventory_looked(inst, Some(&at_outdated)).await {
+                Ok(read) => read,
+                Err(_) => (Vec::new(), !at_outdated.confirms_every_cask()),
+            };
         // The same reading finds the formulae Homebrew left out of it
         // (r18 R46-1): their updates were not checked either.
         let mut notes = notes;
         if self.has_unlisted_racks(&inst.id) {
             notes.push(InstanceNote::FormulaeNotListed);
+        }
+        if casks_unconfirmed {
+            notes.push(InstanceNote::CasksNotChecked);
         }
         let index = InventoryIndex::new(&installed);
         for candidate in &mut candidates {
@@ -3773,6 +3907,13 @@ impl Adapter for BrewAdapter {
         inst: &ManagerInstance,
     ) -> Result<Vec<InstalledArtifact>, AdapterError> {
         BrewAdapter::inventory(self, inst).await
+    }
+
+    async fn inventory_with_notes(
+        &self,
+        inst: &ManagerInstance,
+    ) -> Result<InventoryOutcome, AdapterError> {
+        BrewAdapter::inventory_with_notes(self, inst).await
     }
 
     async fn check_updates(
@@ -7536,6 +7677,285 @@ mod plan_execute_tests {
     /// (`adapters/fixtures-derived/brew/7.0.6/README.md`).
     fn someones_home(name: &str) -> Option<OsString> {
         (name == "HOME").then(|| OsString::from("/Users/someone"))
+    }
+
+    /// r83 R83-1: a Homebrew of the test's own (98f32928's pattern), whose
+    /// `brew info` lists aerospace 0.1 from nikitabobko/tap, read from the
+    /// copy Homebrew saved at install, and firefox from Homebrew's own tap,
+    /// and whose `brew outdated` lists nothing. No definition is fetched or
+    /// run; every reader is the test's.
+    struct Aerospace {
+        inst: ManagerInstance,
+        runner: Arc<MockRunner>,
+    }
+
+    impl Aerospace {
+        fn new(label: &str) -> Aerospace {
+            let prefix = crate::testing::unique_temp_path(label);
+            let inst = ManagerInstance {
+                exe_path: prefix.join("bin/brew"),
+                prefix: prefix.clone(),
+                ..test_instance()
+            };
+            let brew = inst.exe_path.to_str().unwrap().to_string();
+            let answer = |stdout: &str| CommandOutput {
+                stderr_cause: Default::default(),
+                exit_code: Some(0),
+                stdout: stdout.to_string(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            };
+            let runner = Arc::new(MockRunner::new());
+            runner.respond(vec![&brew, "update"], answer(""));
+            runner.respond(
+                vec![&brew, "outdated", "--json=v2"],
+                answer(r#"{"formulae":[],"casks":[]}"#),
+            );
+            runner.respond(
+                vec![&brew, "info", "--installed", "--json=v2"],
+                answer(
+                    r#"{"formulae":[],"casks":[
+                    {"token":"aerospace","full_token":"nikitabobko/tap/aerospace","tap":"nikitabobko/tap","name":["AeroSpace"],"installed":"0.1","auto_updates":null,"artifacts":[]},
+                    {"token":"firefox","full_token":"firefox","tap":"homebrew/cask","name":["Mozilla Firefox"],"installed":"131.0","auto_updates":null,"artifacts":[]}]}"#,
+                ),
+            );
+            Aerospace { inst, runner }
+        }
+
+        /// Which casks the inventory marked, and its notes.
+        async fn read(&self, adapter: &BrewAdapter) -> (Vec<String>, Vec<InstanceNote>) {
+            let outcome = adapter
+                .inventory_with_notes(&self.inst)
+                .await
+                .expect("listed");
+            let marked = outcome
+                .artifacts
+                .iter()
+                .filter(|a| a.facts.not_looked_up)
+                .map(|a| a.key.name.clone())
+                .collect();
+            (marked, outcome.notes)
+        }
+    }
+
+    fn empty_trust(_: &Path) -> Option<TrustList> {
+        Some(TrustList::default())
+    }
+
+    #[tokio::test]
+    async fn regression_r83_1_untrusted_cask_receipt_does_not_count_as_an_update_check() {
+        let aerospace = Aerospace::new("brew-r83-1");
+        let adapter = BrewAdapter::new(aerospace.runner.clone())
+            .with_env_var_fn(someones_home)
+            .with_trust_list_fn(empty_trust);
+        let (marked, notes) = aerospace.read(&adapter).await;
+        assert_eq!(marked, ["nikitabobko/tap/aerospace"]);
+        assert_eq!(notes, [InstanceNote::CasksNotChecked]);
+        let listed = adapter.inventory(&aerospace.inst).await.unwrap();
+        let row = listed
+            .iter()
+            .find(|a| a.key.name == "nikitabobko/tap/aerospace")
+            .unwrap();
+        assert_eq!(row.version, "0.1");
+        let check = adapter
+            .check_updates(&aerospace.inst, &CheckOptions::default())
+            .await
+            .expect("checked");
+        assert!(check.candidates.is_empty());
+        assert_eq!(check.notes, [InstanceNote::CasksNotChecked]);
+        let brew = aerospace.inst.exe_path.to_str().unwrap().to_string();
+        let calls = aerospace.runner.calls();
+        for call in &calls {
+            assert_eq!(call[0], brew);
+        }
+        let argv: Vec<Vec<String>> = calls.into_iter().map(|c| c[1..].to_vec()).collect();
+        let info = vec!["info".to_string(), "--installed".into(), "--json=v2".into()];
+        assert_eq!(
+            argv,
+            [
+                info.clone(),
+                info.clone(),
+                vec!["update".to_string()],
+                vec!["outdated".to_string(), "--json=v2".into()],
+                info,
+            ]
+        );
+    }
+
+    /// r83 R83-1: what lets the inventory leave a third-party cask
+    /// unmarked -- a list that surely names the cask or its tap, or trust
+    /// switched off -- and what does not: a list that does not name it, one
+    /// Banager cannot read, a tap named only by its remote, or a list in a
+    /// folder `bin/brew` may not have chosen.
+    #[tokio::test]
+    async fn regression_r83_1_only_sure_trust_confirms_a_casks_check() {
+        fn names_cask(_: &Path) -> Option<TrustList> {
+            Some(TrustList {
+                casks: vec!["nikitabobko/tap/aerospace".to_string()],
+                ..TrustList::default()
+            })
+        }
+        fn names_tap(_: &Path) -> Option<TrustList> {
+            Some(TrustList {
+                taps: vec!["nikitabobko/tap".to_string()],
+                ..TrustList::default()
+            })
+        }
+        fn names_a_remote(_: &Path) -> Option<TrustList> {
+            Some(TrustList {
+                taps: vec!["https://github.com/nikitabobko/homebrew-tap".to_string()],
+                ..TrustList::default()
+            })
+        }
+        fn unreadable(_: &Path) -> Option<TrustList> {
+            None
+        }
+        fn trust_off(path: &Path) -> brew_env::EnvFile {
+            if path == Path::new("/Users/someone/.homebrew/brew.env") {
+                brew_env::EnvFile::Read(b"HOMEBREW_NO_REQUIRE_TAP_TRUST=1\n".to_vec())
+            } else {
+                brew_env::EnvFile::Skipped
+            }
+        }
+        fn prefix_file_unknown(path: &Path) -> brew_env::EnvFile {
+            if path.ends_with("etc/homebrew/brew.env") && path != Path::new(brew_env::SYSTEM_FILE) {
+                brew_env::EnvFile::Unknown
+            } else {
+                brew_env::EnvFile::Skipped
+            }
+        }
+        let aerospace = Aerospace::new("brew-r83-1-trust");
+        let base = || BrewAdapter::new(aerospace.runner.clone()).with_env_var_fn(someones_home);
+        let none: Vec<String> = Vec::new();
+        let marked = vec!["nikitabobko/tap/aerospace".to_string()];
+        for (case, adapter, expected) in [
+            ("cask", base().with_trust_list_fn(names_cask), &none),
+            ("tap", base().with_trust_list_fn(names_tap), &none),
+            (
+                "trust off",
+                base()
+                    .with_trust_list_fn(empty_trust)
+                    .with_brew_env_fn(trust_off),
+                &none,
+            ),
+            ("remote", base().with_trust_list_fn(names_a_remote), &marked),
+            ("unreadable", base().with_trust_list_fn(unreadable), &marked),
+            (
+                "folder unsure",
+                base()
+                    .with_trust_list_fn(names_cask)
+                    .with_brew_env_fn(prefix_file_unknown),
+                &marked,
+            ),
+        ] {
+            let (found, notes) = aerospace.read(&adapter).await;
+            assert_eq!(&found, expected, "{case}");
+            assert_eq!(notes.is_empty(), expected.is_empty(), "{case}");
+        }
+    }
+
+    /// r83 R83-1: the looks taken around a check. Trust granted after
+    /// `brew outdated` read the saved copy does not make that a check;
+    /// trust revoked during it leaves the check unconfirmed; a reading of
+    /// the casks that fails confirms none, its candidates kept; a stable
+    /// trusted Homebrew says nothing.
+    #[tokio::test]
+    async fn regression_r83_1_cask_check_uncertainty_survives_failures_and_trust_changes() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static GRANTED: AtomicUsize = AtomicUsize::new(0);
+        static REVOKED: AtomicUsize = AtomicUsize::new(0);
+        fn trusted() -> TrustList {
+            TrustList {
+                taps: vec!["nikitabobko/tap".to_string()],
+                ..TrustList::default()
+            }
+        }
+        // Looks in a check: before `brew outdated`, then before and after
+        // its own `brew info`.
+        fn granted_after_outdated(_: &Path) -> Option<TrustList> {
+            Some(if GRANTED.fetch_add(1, Ordering::SeqCst) == 0 {
+                TrustList::default()
+            } else {
+                trusted()
+            })
+        }
+        fn revoked_after_outdated(_: &Path) -> Option<TrustList> {
+            Some(if REVOKED.fetch_add(1, Ordering::SeqCst) == 0 {
+                trusted()
+            } else {
+                TrustList::default()
+            })
+        }
+        fn always(_: &Path) -> Option<TrustList> {
+            Some(trusted())
+        }
+        let aerospace = Aerospace::new("brew-r83-1-race");
+        for (case, trust, expected) in [
+            (
+                "granted",
+                granted_after_outdated as fn(&Path) -> Option<TrustList>,
+                true,
+            ),
+            ("revoked", revoked_after_outdated, true),
+            ("stable", always, false),
+        ] {
+            let adapter = BrewAdapter::new(aerospace.runner.clone())
+                .with_env_var_fn(someones_home)
+                .with_trust_list_fn(trust);
+            let check = adapter
+                .check_updates(&aerospace.inst, &CheckOptions::default())
+                .await
+                .expect("checked");
+            assert_eq!(
+                check.notes.contains(&InstanceNote::CasksNotChecked),
+                expected,
+                "{case}: {:?}",
+                check.notes
+            );
+            assert_eq!(
+                check
+                    .notes
+                    .iter()
+                    .filter(|n| **n == InstanceNote::CasksNotChecked)
+                    .count(),
+                usize::from(expected),
+                "{case}"
+            );
+        }
+        // The check's own `brew info` fails: its candidate stays, and no
+        // cask is confirmed.
+        let brew = aerospace.inst.exe_path.to_str().unwrap().to_string();
+        aerospace.runner.respond(
+            vec![&brew, "outdated", "--json=v2"],
+            CommandOutput {
+                stderr_cause: Default::default(),
+                exit_code: Some(0),
+                stdout: r#"{"formulae":[{"name":"jq","installed_versions":["1.6"],"current_version":"1.7.1"}],"casks":[]}"#.to_string(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        aerospace.runner.respond(
+            vec![&brew, "info", "--installed", "--json=v2"],
+            CommandOutput {
+                stderr_cause: Default::default(),
+                exit_code: Some(1),
+                stdout: String::new(),
+                stderr: "Error: something".to_string(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let check = BrewAdapter::new(aerospace.runner.clone())
+            .with_env_var_fn(someones_home)
+            .with_trust_list_fn(always)
+            .check_updates(&aerospace.inst, &CheckOptions::default())
+            .await
+            .expect("a failed inventory does not fail the check");
+        assert_eq!(check.candidates.len(), 1);
+        assert_eq!(check.notes, [InstanceNote::CasksNotChecked]);
     }
 
     const CLAUDEBAR_RECEIPT: &str =

@@ -477,6 +477,9 @@ describe("a source's incomplete list or check, in a word (R82-1)", () => {
     ]);
     expect(sourceStateWords(en, noted(["IndexUpdating"]))).toEqual(["Checking online for new versions"]);
     expect(sourceStateWords(en, noted(["LauncherOnly"]))).toEqual(["Program files missing"]);
+    expect(sourceStateWords(en, noted(["CasksNotChecked"]))).toEqual(["Some apps' updates not checked"]);
+    expect(sourceStateWords(zh, noted(["CasksNotChecked"]))).toEqual(["部分应用没有检查更新"]);
+    expect(sourceStateWords(zhHant, noted(["CasksNotChecked"]))).toEqual(["部分應用程式沒有檢查更新"]);
     expect(sourceStateWords(zh, noted(["SomeNotListed", "FormulaeNotListed", "IndexMayBeStale", "IndexUpdating", "LauncherOnly"]))).toEqual([
       "部分工具没有显示",
       "部分软件包没有显示",

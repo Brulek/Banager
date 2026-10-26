@@ -730,6 +730,38 @@ describe("sourceNoticesFor", () => {
     expect(description).toContain("run /opt/homebrew/bin/brew trust --tap followed by its name");
   });
 
+  it("warns when Homebrew may have checked casks against their saved copy, and names the commands to see and trust taps (r83 R83-1)", () => {
+    // Homebrew 7 loads a cask from a tap it does not trust from the copy
+    // it saved at install, so `brew outdated` finds nothing newer.
+    const brew = instance({ id: "brew:/usr/local", adapter_id: "brew", exe_path: "/usr/local/bin/brew" });
+    const notices = sourceNoticesFor({ ...brew, status: { unavailable: null, notes: ["CasksNotChecked"] } }, "Homebrew");
+    expect(notices).toEqual([
+      {
+        id: "brew:/usr/local:casks-not-checked",
+        variant: "warning",
+        titleKey: "sourceNotice.casksNotChecked.title",
+        descriptionKey: "sourceNotice.casksNotChecked.description",
+        values: {
+          source: "Homebrew",
+          trusted: "/usr/local/bin/brew trust",
+          trust: "/usr/local/bin/brew trust --tap",
+        },
+      },
+    ]);
+    const said = {
+      en: ["Updates for some apps installed with Homebrew weren't checked", "/usr/local/bin/brew trust lists the places it trusts", "run /usr/local/bin/brew trust --tap followed by its name"],
+      "zh-CN": ["用Homebrew安装的部分应用没有检查更新", "运行/usr/local/bin/brew trust可列出它信任的来源", "请运行/usr/local/bin/brew trust --tap并在后面加上它的名称"],
+      "zh-Hant": ["用Homebrew安裝的部分應用程式沒有檢查更新", "執行/usr/local/bin/brew trust可列出它信任的來源", "請執行/usr/local/bin/brew trust --tap並在後面加上它的名稱"],
+    };
+    for (const [lng, [title, ...parts]] of Object.entries(said)) {
+      const t = i18n.getFixedT(lng);
+      expect(t(notices[0].titleKey, notices[0].values)).toBe(title);
+      const description = t(notices[0].descriptionKey, notices[0].values);
+      for (const part of parts) expect(description).toContain(part);
+      expect(description).not.toMatch(/(^|[^/])brew (tap|trust)/);
+    }
+  });
+
   it("names the Homebrew that left formulae out by its own brew, not Terminal's, with Homebrews in both prefixes", () => {
     // r22 R64-1: Terminal's bare `brew` on Apple silicon is usually
     // /opt/homebrew's, whose `brew tap` would not list the tap of a
@@ -983,6 +1015,7 @@ describe("uninstallHoldKey", () => {
       "LauncherOnly",
       "SomeNotListed",
       "FormulaeNotListed",
+      "CasksNotChecked",
     ];
     for (const note of others) {
       expect(uninstallHoldKey(instance({ status: { unavailable: null, notes: [note] } })), note).toBeNull();

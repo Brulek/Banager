@@ -2,7 +2,10 @@
 //! says: that `brew uninstall` deletes the entry the list holds for what it
 //! uninstalls (`Warning::HomebrewForgetsTrust`), and, for a cask from a tap
 //! Homebrew does not trust, that it then runs none of the cask's recorded
-//! uninstall steps (`UninstallScope::HomebrewCaskStepsIfTrusted`).
+//! uninstall steps (`UninstallScope::HomebrewCaskStepsIfTrusted`). Each
+//! inventory and update check reads it too, for the casks whose updates
+//! Banager cannot confirm Homebrew checked (`BrewAdapter::trust_look`,
+//! `InstanceNote::CasksNotChecked`).
 //!
 //! Homebrew 7.0.7-9 keeps the list in `$HOMEBREW_USER_CONFIG_HOME/trust.json`
 //! (`Homebrew::Trust.trust_file`, `trust.rb:27-43`; the folder `bin/brew`
