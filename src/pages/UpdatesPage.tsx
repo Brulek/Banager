@@ -196,7 +196,7 @@ export function useUpdatesHeadline(): string | null {
   // Of only some: how many of how many, 「5个可更新，共13个」, so the
   // sidebar's 13 beside it does not read as wrong.
   if (show !== "all" && updating === 0 && shown > 0 && shown < counted.length) {
-    const parts = [t("clarity.updatesOfAll", { count: shown, total: counted.length })];
+    const parts = [t("clarity.updatesOfAll", { count: counted.length, shown, total: counted.length })];
     if (notUsed > 0) parts.push(t("notUsedCopy.count", { count: notUsed }));
     if (password > 0) parts.push(t("updates.needPasswordCount", { count: password }));
     return parts.join(t("overview.listSeparator"));

@@ -159,7 +159,7 @@ function usePageSubtitle(page: Page): PageSubtitle | null {
               shownBy(show, artifact, twins) &&
               searchMatch(artifact, needle, searchTexts?.get(artifactKeyId(artifact.key))) !== null,
           ).length;
-          return said(t("clarity.shownOfAll", { count: shown, total: inSource.length }));
+          return said(t("clarity.shownOfAll", { count: inSource.length, shown, total: inSource.length }));
         }
         // No size while operations are under way: each check after one
         // is a new round, whose sizes are measured again (`sizeTotalsOf`),

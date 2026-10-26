@@ -6,6 +6,7 @@ import * as ts from "typescript";
 import en from "./en.json";
 import zhCN from "./zh-CN.json";
 import zhHant from "./zh-Hant.json";
+import i18n from ".";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -452,3 +453,78 @@ describe.each([["zh-CN", zhCN], ["zh-Hant", zhHant]])("%s uses full-width punctu
     expect(offenders, `half-width punctuation inside Chinese prose:\n${offenders.join("\n")}`).toEqual([]);
   });
 });
+
+/**
+ * I18N-004: the parity tests compare keys with their plural suffix taken
+ * off, so an English `_other` deleted from beside its `_one` passed them
+ * all, and `t(key, { count: 2 })` rendered the key itself. Each locale
+ * has every form its plural rules need of each counted key -- English
+ * `_one` and `_other`, Chinese `_other` alone -- and renders a count of 1
+ * and of 2 as words. A key whose callers only ever count 2 or more needs
+ * no `_one`, and is named here with why.
+ */
+describe("i18n plural forms", () => {
+  const ONLY_MORE_THAN_ONE: Record<string, string> = {
+    "commands.names": "only past NAMES_SHOWN names (CommandFacts.namesOf, namesText; sources.ts)",
+    "commands.twinOthersCount": "only for two or more copies from fewer sources (CommandFacts.whereTheOthersAre)",
+    "quit.body.mixed": "only for operations of more than one kind (quit.ts quitBodyKey)",
+  };
+  const forms = (resource: unknown) => {
+    const bases = new Map<string, Set<string>>();
+    for (const key of flattenKeys(resource)) {
+      const suffix = PLURAL_SUFFIXES.find((s) => key.endsWith(s));
+      if (suffix === undefined) continue;
+      const base = key.slice(0, -suffix.length);
+      bases.set(base, (bases.get(base) ?? new Set()).add(suffix));
+    }
+    return bases;
+  };
+
+  it.each([
+    ["en", en, ["_one", "_other"]],
+    ["zh-CN", zhCN, ["_other"]],
+    ["zh-Hant", zhHant, ["_other"]],
+  ] as const)("gives every counted key in %s the forms its plural rules need", (name, resource, needed) => {
+    const missing: string[] = [];
+    for (const [base, has] of forms(resource)) {
+      for (const suffix of needed) {
+        if (!has.has(suffix) && !(suffix === "_one" && base in ONLY_MORE_THAN_ONE)) missing.push(`${base}${suffix}`);
+      }
+      for (const suffix of has) {
+        if (!(needed as readonly string[]).includes(suffix)) missing.push(`${base}${suffix} (not a form of ${name})`);
+      }
+    }
+    expect(missing).toEqual([]);
+  });
+
+  it.each(["en", "zh-CN", "zh-Hant"])("renders a count of 1 and of 2 as words in %s", async (language) => {
+    const t = i18n.getFixedT(language);
+    for (const base of forms(en).keys()) {
+      for (const count of base in ONLY_MORE_THAN_ONE ? [2] : [1, 2]) {
+        expect(t(base, { count }), `${base} at ${count}`).not.toBe(base);
+      }
+    }
+  });
+
+  it("names only keys that still exist, with no _one", () => {
+    const bases = forms(en);
+    for (const base of Object.keys(ONLY_MORE_THAN_ONE)) {
+      expect(bases.get(base), base).toEqual(new Set(["_other"]));
+    }
+  });
+});
+
+/** I18N-003: "N of M tools" agrees with M, the tools there are. */
+describe("a count of some of all", () => {
+  it("says the noun as the total needs it", () => {
+    const t = i18n.getFixedT("en");
+    expect(t("clarity.shownOfAll", { count: 1, shown: 1, total: 1 })).toBe("1 of 1 tool");
+    expect(t("clarity.shownOfAll", { count: 1, shown: 0, total: 1 })).toBe("0 of 1 tool");
+    expect(t("clarity.shownOfAll", { count: 3, shown: 1, total: 3 })).toBe("1 of 3 tools");
+    expect(t("clarity.updatesOfAll", { count: 13, shown: 1, total: 13 })).toBe("1 of 13 updates");
+    const zh = i18n.getFixedT("zh-CN");
+    expect(zh("clarity.shownOfAll", { count: 58, shown: 2, total: 58 })).toBe("58个工具中的2个");
+    expect(zh("clarity.updatesOfAll", { count: 13, shown: 5, total: 13 })).toBe("5个可更新，共13个");
+  });
+});
+

@@ -1570,8 +1570,8 @@
     "headingCount_other": "{{count}}个",
     "modelCount_other": "{{count}}个模型",
     "modelsNote": "几个模型共用的文件只算一次，所以合计可能比逐个相加小。",
-    "shownOfAll_other": "{{total}}个工具中的{{count}}个",
-    "updatesOfAll_other": "{{count}}个可更新，共{{total}}个",
+    "shownOfAll_other": "{{total}}个工具中的{{shown}}个",
+    "updatesOfAll_other": "{{shown}}个可更新，共{{total}}个",
     "totalNoteAtLeast": "实测大小的合计，含其他版本，不含缓存。几个工具共用的文件只算一次。有些工具没有大小，或部分文件无法读取，所以实际占用的更多。",
     "willKeepWhat": {
       "Settings": "设置",
