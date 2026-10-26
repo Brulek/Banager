@@ -75,7 +75,9 @@ pub fn run() {
         // title bar tauri.conf.json gives it. All in Rust -- restored as
         // the window is created, saved on quit -- so the page is given none
         // of the plugin's commands: capabilities/default.json has no
-        // `window-state:` permission.
+        // `window-state:` permission. Its file kept a plain one first
+        // (`window::keep_state_file_plain`, registered before it).
+        .plugin(window::keep_state_file_plain())
         .plugin(
             tauri_plugin_window_state::Builder::new()
                 .with_state_flags(WINDOW_STATE_FLAGS)

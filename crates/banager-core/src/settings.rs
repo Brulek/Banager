@@ -223,6 +223,29 @@ pub(crate) fn own_file(path: &Path) -> std::io::Result<Vec<u8>> {
     crate::adapters::read_file::read_bytes(path, &crate::protected::Protected::default())
 }
 
+/// `path` left a plain file, or nothing: for a file Banager does not read
+/// itself, the window-state plugin's `.window-state.json`, which the plugin
+/// opens with a plain open -- waiting for ever on a named pipe, before any
+/// window is up -- and writes with `std::fs::write`, through a link onto
+/// whatever it leads to (R91-2; from the independent review of the
+/// branch). Anything else there, a pipe, a link, a folder, is moved aside
+/// to `<name>.not-a-file` beside it, never opened; where that fails, a pipe
+/// or link is removed (a link's own file, never what it leads to). A plain
+/// file, or nothing, is left as it is.
+pub fn keep_plain_file(path: &Path) {
+    let Ok(meta) = std::fs::symlink_metadata(path) else {
+        return;
+    };
+    if meta.file_type().is_file() {
+        return;
+    }
+    let mut aside = path.as_os_str().to_owned();
+    aside.push(".not-a-file");
+    if std::fs::rename(path, &aside).is_err() && !meta.is_dir() {
+        let _ = std::fs::remove_file(path);
+    }
+}
+
 /// Missing or unreadable JSON uses defaults without preventing startup.
 /// Valid objects recover each field and each collection entry independently.
 /// `save` refuses to replace unreadable JSON, including automatic welcome saves.
@@ -401,6 +424,38 @@ mod tests {
         std::fs::write(&path, b"{}").unwrap();
         assert_eq!(own_file(&path).unwrap(), b"{}");
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn test_keep_plain_file_moves_a_pipe_or_a_link_aside_and_leaves_a_file() {
+        use crate::adapters::read_file::tests::{finishes, make_fifo, temp_dir};
+        let dir = temp_dir("keep-plain");
+        // A named pipe: moved aside, without waiting on it.
+        let pipe = dir.join(".window-state.json");
+        make_fifo(&pipe);
+        let moved = pipe.clone();
+        finishes(move || keep_plain_file(&moved));
+        assert!(std::fs::symlink_metadata(&pipe).is_err());
+        let aside = dir.join(".window-state.json.not-a-file");
+        assert!(std::fs::symlink_metadata(&aside).is_ok());
+        std::fs::remove_file(&aside).unwrap();
+        // A link: moved aside, and what it leads to untouched.
+        let target = dir.join("someone-else's");
+        std::fs::write(&target, b"theirs").unwrap();
+        std::os::unix::fs::symlink(&target, &pipe).unwrap();
+        keep_plain_file(&pipe);
+        assert!(std::fs::symlink_metadata(&pipe).is_err());
+        assert_eq!(std::fs::read(&target).unwrap(), b"theirs");
+        assert!(std::fs::symlink_metadata(&aside)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        // A plain file, or nothing: left as it is.
+        std::fs::write(&pipe, b"{}").unwrap();
+        keep_plain_file(&pipe);
+        assert_eq!(std::fs::read(&pipe).unwrap(), b"{}");
+        keep_plain_file(&dir.join("nothing-here"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

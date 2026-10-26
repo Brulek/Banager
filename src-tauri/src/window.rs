@@ -402,6 +402,35 @@ pub fn show_and_send<R: Runtime, S: serde::Serialize + Clone>(
     app.emit_to(MAIN_WINDOW, event, payload)
 }
 
+/// Keeps the window-state plugin's file a plain file, or nothing, before
+/// the plugin reads it as Banager starts and before it writes it as Banager
+/// quits (`settings::keep_plain_file`; R91-2, from the independent review of
+/// the branch): the plugin opens it with a plain open, which waits for ever
+/// on a named pipe, and writes through a link. Registered just before the
+/// plugin, since Tauri sets plugins up, and hands each of them a run event,
+/// in the order they were registered.
+pub fn keep_state_file_plain<R: Runtime>() -> tauri::plugin::TauriPlugin<R> {
+    tauri::plugin::Builder::new("window-state-file")
+        .setup(|app, _api| {
+            keep_plain(app);
+            Ok(())
+        })
+        .on_event(|app, event| {
+            if matches!(event, RunEvent::Exit) {
+                keep_plain(app);
+            }
+        })
+        .build()
+}
+
+fn keep_plain<R: Runtime>(app: &AppHandle<R>) {
+    if let Ok(dir) = app.path().app_config_dir() {
+        banager_core::settings::keep_plain_file(
+            &dir.join(tauri_plugin_window_state::DEFAULT_FILENAME),
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

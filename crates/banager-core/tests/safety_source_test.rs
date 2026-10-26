@@ -23,7 +23,9 @@
 //! - Promise 4: nothing writes, creates, renames or deletes a file but
 //!   `settings::save` and the history store (Banager's own two files), and
 //!   `RealTrasher` moves a previewed path to the Trash. The third file,
-//!   `.window-state.json`, is the Tauri plugin's, not code here.
+//!   `.window-state.json`, is the Tauri plugin's, not code here -- but for
+//!   `settings::keep_plain_file`, which moves anything but a plain file
+//!   there aside before the plugin opens it (R91-2).
 //! - Promise 6: every file that is opened is opened without waiting
 //!   (`O_NONBLOCK`) or as a folder (`O_DIRECTORY`), so a named pipe
 //!   cannot stall a refresh; the few plain reads left are listed with why.
@@ -485,10 +487,17 @@ fn test_nothing_writes_a_file_but_banagers_own_two_and_the_move_to_the_trash() {
     );
     // Each allowed write, by file: what it writes.
     let allowed: [(&str, &[&str]); 4] = [
-        // Only settings and history may call the shared atomic writer.
+        // Only settings and history may call the shared atomic writer. And
+        // the window-state plugin's file kept a plain one: anything else
+        // there moved aside, or, a pipe or link that cannot be, its own
+        // entry removed (`keep_plain_file`; R91-2).
         (
             "crates/banager-core/src/settings.rs:",
-            &["atomic_file::write(path, &json)"],
+            &[
+                "atomic_file::write(path, &json)",
+                "std::fs::rename(path, &aside)",
+                "std::fs::remove_file(path)",
+            ],
         ),
         (
             "crates/banager-core/src/history/mod.rs:",
@@ -685,7 +694,17 @@ fn test_an_opens_flags_are_read_from_its_own_statement() {
 /// round 5 review found the Codex version read and the standalone launcher
 /// check following `~/.codex` and `~/.local/bin/claude` with plain
 /// `read_link`/`realpath`, which this list now rules out.
-const PATH_LOOKUPS_ALLOWED: [(&str, &str, &str); 19] = [
+const PATH_LOOKUPS_ALLOWED: [(&str, &str, &str); 21] = [
+    (
+        "crates/banager-core/src/settings.rs:",
+        "let Ok(meta) = std::fs::symlink_metadata(path) else {",
+        "the window-state plugin's `.window-state.json` in Banager's own Application Support folder, looked at without being opened or followed (`settings::keep_plain_file`; R91-2)",
+    ),
+    (
+        "crates/banager-core/src/settings.rs:",
+        "if meta.file_type().is_file() {",
+        "the same look's answer: a plain file, left as it is",
+    ),
     (
         "crates/banager-core/src/catalog.rs:",
         "let read = unsafe { libc::statfs(path.as_ptr(), &mut stat) };",

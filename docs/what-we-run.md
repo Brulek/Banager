@@ -6296,6 +6296,12 @@ not read (`protected::look`; How Banager runs anything, above):
   whether the window was zoomed or in full screen when Banager last quit
   (the Tauri window-state plugin, registered in `run()` in
   `src-tauri/src/lib.rs`; a missing or unreadable file means neither).
+  The plugin opens it with a plain open, so first Banager looks at what is
+  there without opening it (`window::keep_state_file_plain`, registered
+  just before the plugin; `settings::keep_plain_file`): anything but a
+  plain file -- a named pipe, a link, a folder -- is moved aside to
+  `.window-state.json.not-a-file`, and a launch never waits on a pipe
+  there (R91-2).
   Its size and place are AppKit's, in Banager's defaults (`NSWindow Frame
   main`, `window::keep_frame`; "Files Banager writes", below).
 
@@ -6528,7 +6534,9 @@ next time (the Tauri window-state plugin, registered in `run()` in
 `src-tauri/src/lib.rs`, which keeps it in Tauri's config directory for the
 app — on macOS the same folder). That one is written in place, not renamed
 into place: a file a crash cut short is ignored at the next launch, and
-the window opens as it does the first time. The window's size and place
+the window opens as it does the first time. Just before the plugin writes
+it, the same look as at launch moves aside anything there but a plain
+file, so the write never goes through a link onto another file. The window's size and place
 are not in it any more: the plugin kept them in pixels with no scale, so a
 window saved on a Retina display opened twice its size on a standard one.
 AppKit keeps them, in points, as it does any Mac app's that asks
@@ -6537,11 +6545,14 @@ AppKit keeps them, in points, as it does any Mac app's that asks
 main`, saved as the window moves or is resized and put back when it opens,
 on a display that is still there. A `.window-state.json` an older Banager
 wrote still holds a size and position; they are no longer read. Banager's
-own code writes no other file on the Mac and deletes none; what WebKit
-and macOS keep for the app is theirs (below). It moves files in one case: a
-confirmed uninstall of a tool that has no uninstall command (Claude Code,
-Antigravity CLI or Grok Build) moves the paths its preview listed to the
-Trash (next section). The programs Banager runs write their own files as
+own code writes no other file on the Mac and deletes none -- but a named
+pipe or a link at `.window-state.json` that cannot be moved aside, whose
+own entry, never what a link leads to, is removed (above); what WebKit
+and macOS keep for the app is theirs (below). It moves files in two cases:
+anything but a plain file at `.window-state.json`, moved aside beside it
+(above); and a confirmed uninstall of a tool that has no uninstall command
+(Claude Code, Antigravity CLI or Grok Build), which moves the paths its
+preview listed to the Trash (next section). The programs Banager runs write their own files as
 they run — Grok Build's own update check (`grok update --check --json`,
 Grok Build's section), for one, writes inside `~/.grok` on every refresh:
 on the recorded run it replaced `~/.grok/version.json` with the time of
