@@ -5,7 +5,7 @@
  * (crates/banager-core/src/catalog.rs), sent with `get_catalog`.
  */
 import { formatBytesRoundedUp } from "./modelDownload";
-import type { ArtifactKey, CatalogEntry, CatalogState, ManagerInstance, OpSummary } from "./types";
+import type { ArtifactKey, CatalogEntry, CatalogState, ManagerInstance, OpSummary, Snapshot } from "./types";
 
 /** Whatever `useTranslation()`'s `t` needs here; the same convention as `Translate` in src/lib/sources.ts. */
 type Translate = (key: string, options?: Record<string, string | number>) => string;
@@ -260,20 +260,30 @@ export function installOperationFor(
 }
 
 /**
- * Whether `op`, an install that ended, ended after the snapshot the page
- * has was made (`refreshedAt`, Unix seconds): the check after it has not
- * come yet, so what the install said is newer than what the catalog says.
- * When it ended is what this window heard (`opFinishedAt`, from the
- * operation's `Finished` event); one it did not hear end -- before the
- * window was reloaded -- is older than any snapshot.
+ * Whether `op`, an install that ended, ended after what `checked` lists
+ * was read: the check after it has not come yet, so what the install said
+ * is newer than what the catalog says. What was read is the source's
+ * answer the snapshot carries (`answered_at` of the source that ran it,
+ * Unix seconds; when its refresh task began asking), or where it has none,
+ * when the snapshot was made (`refreshed_at`) -- which is later than the
+ * read: a check under way when the install ended commits after it without
+ * it (from the review of 44674745). `checked` null is a catalog older than
+ * any install this window heard end (the one before the snapshot's, shown
+ * while the snapshot's is asked for). When it ended is what this window
+ * heard (`opFinishedAt`, from the operation's `Finished` event); one it
+ * did not hear end -- before the window was reloaded -- is older than any
+ * snapshot.
  */
 export function endedAfterCheck(
   op: OpSummary,
   opFinishedAt: Record<number, number>,
-  refreshedAt: number | null,
+  checked: Pick<Snapshot, "instances" | "refreshed_at"> | null,
 ): boolean {
   const finished = opFinishedAt[op.id];
-  return op.status === "Done" && finished !== undefined && (refreshedAt === null || refreshedAt * 1000 < finished);
+  if (op.status !== "Done" || finished === undefined) return false;
+  if (checked === null) return true;
+  const read = checked.instances.find((instance) => instance.id === op.instance_id)?.answered_at ?? checked.refreshed_at;
+  return read === null || read * 1000 < finished;
 }
 
 /**

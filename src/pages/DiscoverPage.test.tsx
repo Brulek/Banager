@@ -6,7 +6,7 @@ import { command } from "../test/command";
 import { DiscoverPage } from "./DiscoverPage";
 import { useUiStore } from "../store/ui";
 import i18n from "../i18n";
-import type { CatalogEntry, IssuedPlan, OpSummary, Outcome, Snapshot } from "../lib/types";
+import type { CatalogEntry, IssuedPlan, ManagerInstance, OpSummary, Outcome, Snapshot } from "../lib/types";
 
 const mockInvoke = vi.mocked(invoke);
 
@@ -316,6 +316,25 @@ describe("the Discover page", () => {
       installOp(4, "ffmpeg", "Done", "Succeeded", "Uninstall"),
     ];
     useUiStore.getState().rememberOpFinished(3, (snapshot.refreshed_at! + 5) * 1000);
+    renderWithProviders(<DiscoverPage />);
+    await waitFor(() => expect(rows()[7]).toEqual(["ffmpeg", "Install"]));
+  });
+
+  it("keeps an install that ended while a check was under way, one that read Homebrew before it (from the review of 44674745)", async () => {
+    // The snapshot was made after the install ended, by a check whose
+    // Homebrew task asked before it: the catalog does not have it yet.
+    const made = snapshot.refreshed_at!;
+    snapshot = {
+      ...snapshot,
+      instances: [{ id: "brew:/opt/homebrew", answered_at: made - 30 } as ManagerInstance],
+    };
+    operations = [installOp(3, "ffmpeg", "Done", "Succeeded")];
+    useUiStore.getState().rememberOpFinished(3, (made - 10) * 1000);
+    const { unmount } = renderWithProviders(<DiscoverPage />);
+    await waitFor(() => expect(rows()[7]).toEqual(["ffmpeg", "Installed"]));
+    unmount();
+    // Once Homebrew has answered after it, the catalog says what there is.
+    snapshot = { ...snapshot, instances: [{ id: "brew:/opt/homebrew", answered_at: made } as ManagerInstance] };
     renderWithProviders(<DiscoverPage />);
     await waitFor(() => expect(rows()[7]).toEqual(["ffmpeg", "Install"]));
   });

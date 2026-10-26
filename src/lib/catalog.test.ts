@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import i18n from "../i18n";
 import { catalogRefusal, endedAfterCheck, installOperationOf, installProgressOf, ITEM_KEYS } from "./catalog";
-import type { CatalogEntry, OpSummary } from "./types";
+import type { CatalogEntry, ManagerInstance, OpSummary } from "./types";
 
 const t = i18n.getFixedT("en");
 
@@ -55,11 +55,32 @@ describe("an install from Discover", () => {
 
   it("is newer than the catalog only when this window heard it end after the snapshot was made", () => {
     const done = op(4);
-    expect(endedAfterCheck(done, { 4: 1_000_005_000 }, 1_000_000)).toBe(true);
-    expect(endedAfterCheck(done, { 4: 999_999_000 }, 1_000_000)).toBe(false);
-    expect(endedAfterCheck(done, {}, 1_000_000)).toBe(false);
+    const made = (refreshed_at: number | null) => ({ instances: [], refreshed_at });
+    expect(endedAfterCheck(done, { 4: 1_000_005_000 }, made(1_000_000))).toBe(true);
+    expect(endedAfterCheck(done, { 4: 999_999_000 }, made(1_000_000))).toBe(false);
+    expect(endedAfterCheck(done, {}, made(1_000_000))).toBe(false);
+    expect(endedAfterCheck(done, { 4: 5 }, made(null))).toBe(true);
+    expect(endedAfterCheck(op(4, { status: "Running", outcome: null }), { 4: 1_000_005_000 }, made(1_000_000))).toBe(
+      false,
+    );
+    // A catalog older than the snapshot (the last one's, while the new
+    // one's is asked for): what the install said, while this window heard it.
     expect(endedAfterCheck(done, { 4: 5 }, null)).toBe(true);
-    expect(endedAfterCheck(op(4, { status: "Running", outcome: null }), { 4: 1_000_005_000 }, 1_000_000)).toBe(false);
+    expect(endedAfterCheck(done, {}, null)).toBe(false);
+  });
+
+  it("goes by when the source that ran it answered, not when the snapshot was made (from the review of 44674745)", () => {
+    const done = op(4);
+    const brew = (answered_at: number | null) => ({
+      instances: [{ id: "brew:/opt/homebrew", answered_at } as ManagerInstance],
+      // Committed after the install ended, by a check that read Homebrew
+      // before it.
+      refreshed_at: 1_000_010,
+    });
+    expect(endedAfterCheck(done, { 4: 1_000_005_000 }, brew(1_000_000))).toBe(true);
+    expect(endedAfterCheck(done, { 4: 1_000_005_000 }, brew(1_000_006))).toBe(false);
+    // No answer of its own in full: when the snapshot was made.
+    expect(endedAfterCheck(done, { 4: 1_000_005_000 }, brew(null))).toBe(false);
   });
 
   it("is this window's own submission until the list has it", () => {

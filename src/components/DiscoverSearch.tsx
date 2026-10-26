@@ -122,7 +122,7 @@ export function DiscoverResults({ query }: { query: string }) {
             const installed =
               (listed ?? found.installed) ||
               entry?.state === "Installed" ||
-              (progress?.kind === "installed" && op !== null && endedAfterCheck(op, opFinishedAt, snapshot?.refreshed_at ?? null));
+              (progress?.kind === "installed" && op !== null && endedAfterCheck(op, opFinishedAt, snapshot ?? null));
             const notHere = entry !== undefined && entry.state !== "NotInstalled" && entry.state !== "Installed";
             const description = descriptionOf(found);
             let right: ReactNode;
