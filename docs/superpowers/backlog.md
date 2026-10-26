@@ -426,8 +426,10 @@ brew 7.0.6 `receipts/` 里不是录制的 27 份收据（25 份按 cask 目录�
 
 ## 阶段 5（发现页）之前必须处理
 
-- `brew/mod.rs` `search`：只要 `--desc` 搜索有结果就丢弃名字匹配，搜 "jq" 搜不到 jq（fixture 可复现：`search-jq.txt` 第 3 行是 jq，`search-desc-jq.txt` 无 `jq:` 行）；且无表头输出的"第一组是 formulae"启发式会把纯 cask 结果标成 Formula。改法：按 (kind, name) 合并；用 `brew search --formula {q}` 与 `brew search --cask {q}` 得到无歧义的类型，`--desc` 只用来补描述；同步更新 `docs/what-we-run.md`。
-- 搜索词校验目前套用包名规则，含空格的查询（"json processor"）被拒；spec §4.1 要求独立的 query 规则。
+- ~~`brew/mod.rs` `search`：只要 `--desc` 搜索有结果就丢弃名字匹配，搜 "jq" 搜不到 jq（fixture 可复现：`search-jq.txt` 第 3 行是 jq，`search-desc-jq.txt` 无 `jq:` 行）；且无表头输出的"第一组是 formulae"启发式会把纯 cask 结果标成 Formula。改法：按 (kind, name) 合并；用 `brew search --formula {q}` 与 `brew search --cask {q}` 得到无歧义的类型，`--desc` 只用来补描述；同步更新 `docs/what-we-run.md`。~~
+  —— **已于 2026-10-27 解决**（阶段 5 步骤 E，`95555b8d`；复审后 `fa5370cf` 去掉了只靠描述匹配到的结果，因为 `--desc` 会把第三方 tap 的包显示成短名字）。录制的输出在 `adapters/fixtures/brew/7.0.10/`。
+- ~~搜索词校验目前套用包名规则，含空格的查询（"json processor"）被拒；spec §4.1 要求独立的 query 规则。~~
+  —— **已于 2026-10-27 解决**：`brew::validate_search_query`（`95555b8d`、`fa5370cf`）允许空格，拒绝以 `-` 开头、含 `/`、控制字符、超过 64 个字符，以及少于两个字母/数字/`@`/`+` 的文字。
 - ~~阶段 2 的 Task 16 只做两项 i18n 自动检查：en/zh-CN 键集互比 + 组件里的 JSX 字面量扫描，**不**扫描代码里 `t("…")` 用到的键是否真的存在。若将来要补「静态校验 `t()` 键存在性」，需先把动态键改成静态查表：`Sidebar` 的 `t(\`nav.${p}\`)`、`OperationBar` 的 `operations.kind.${…}` / `operations.status.${…}`、`OperationBar`/`LogDrawer` 的 `operations.outcome.${…}`（改成 `PAGE_LABEL_KEYS` 一类的 `Record` 常量表）。动态键拼错在运行时立刻可见，不是隐蔽 bug，故阶段 2 未做。~~
   —— **2026-10-02 核对，大半已解决，改写为只剩的缺口**：`nav.*`、`operations.kind.*`、`operations.status.*` 已改成常量表
   （`PAGE_LABEL_KEYS`，`src/components/Sidebar.tsx:32`，`a98ba42`；`OP_KIND_KEYS`、`OP_STATUS_KEYS`，`src/lib/operations.ts:27`、`:48`，`e4b57a4`）；
