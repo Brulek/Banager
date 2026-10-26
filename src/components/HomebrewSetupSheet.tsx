@@ -109,9 +109,14 @@ export function HomebrewSetupSheet({ open, onClose }: HomebrewSetupSheetProps) {
   }, [look.dataUpdatedAt]);
   const installed = sure >= LOOKS_TO_BE_SURE;
 
-  // Installed: check again, which finds it and lights the rows up.
+  // Installed: check again, which finds it and lights the rows up. And
+  // Continue, which takes Open Terminal's place, takes the focus it had:
+  // a keyboard's Return or VoiceOver is not left on the sheet itself (from
+  // the independent review of the branch).
   useEffect(() => {
-    if (installed) checkAgain();
+    if (!installed) return;
+    checkAgain();
+    openRef.current?.focus();
   }, [installed]);
 
   // Each time it opens, from the start: as it opens, so that nothing a
@@ -185,12 +190,17 @@ export function HomebrewSetupSheet({ open, onClose }: HomebrewSetupSheetProps) {
         )
       }
     >
-      {installed ? (
-        <p role="status" className="flex items-center gap-1.5 text-body text-foreground">
-          <CheckIcon size={14} className="shrink-0 text-success" />
-          {t("discover.homebrew.installed")}
-        </p>
-      ) : (
+      {/* `status`, there and empty from the time the sheet opens: one put
+          in the page with its words may never be read. */}
+      <p role="status" className={installed ? "flex items-center gap-1.5 text-body text-foreground" : "sr-only"}>
+        {installed ? (
+          <>
+            <CheckIcon size={14} className="shrink-0 text-success" />
+            {t("discover.homebrew.installed")}
+          </>
+        ) : null}
+      </p>
+      {installed ? null : (
         <>
           <SheetText id={textId}>{t("discover.homebrew.text")}</SheetText>
           {older === null ? null : (
