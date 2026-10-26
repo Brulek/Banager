@@ -509,7 +509,8 @@ async fn regression_an_evicted_operation_never_stops_later_runs_being_told_of() 
         whole,
         FinishedRun {
             last_op: ids[2],
-            kind: RunKind::Other,
+            // Every one an install (`make_request`).
+            kind: RunKind::Install,
             succeeded: 3,
             failed: 0,
             attention: 0,
