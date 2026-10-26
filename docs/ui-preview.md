@@ -235,8 +235,10 @@ Paths are under a generic home folder, `/Users/you`.
   and moves the next check's time under it, and checks nothing:
   the daily check is a task of the app's Rust side, which the preview
   does not have. Notify me when there are updates turns on without
-  asking anything, as where permission is granted, and nothing is ever
-  notified: the page's report after each check reaches no Rust. Notify me
+  asking anything, with the line under it saying notifications appear
+  only where System Settings allows them -- macOS's answer in the app,
+  "Unknown" -- and nothing is ever notified: the page's report after each
+  check reaches no Rust. Notify me
   when operations finish turns on the same way; when a run of updates or
   uninstalls ends, the page's report is only checked for its shape
   (`report_finished_run` in `mockBackend.ts`) and posts nothing.

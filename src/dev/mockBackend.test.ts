@@ -158,7 +158,7 @@ describe("the browser preview's mock backend", () => {
     await expect(backend.invoke("report_update_set", { round: 1, updates })).resolves.toBeUndefined();
     await expect(backend.invoke("report_update_set", { updates })).rejects.toMatch(/^invalid args/);
     await expect(backend.invoke("report_update_set", { round: 1 })).rejects.toMatch(/^invalid args/);
-    await expect(backend.invoke("request_notification_permission")).resolves.toBe("Granted");
+    await expect(backend.invoke("request_notification_permission")).resolves.toBe("Unknown");
   });
 
   it("takes the report of a finished run as the real command does, and posts nothing", async () => {

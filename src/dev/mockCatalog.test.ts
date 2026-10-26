@@ -145,6 +145,9 @@ describe("the browser preview's catalog", () => {
     // One not answering at another address is not responding, not "not running".
     const notices = withOllama(buildWorld("notices"), "elsewhere");
     expect(notices.instances.find((i) => i.id === ELSEWHERE_OLLAMA)?.status.unavailable).toBe("NotResponding");
+    // A source where there was none: something found, not "no sources"
+    // beside an Ollama in the sidebar.
+    expect(withOllama(buildWorld("empty"), "elsewhere").detect).toBe("Found");
     // One Banager did not ask stays as it is.
     const refused = withOllama(buildWorld("refused"), "elsewhere");
     expect(refused.instances.find((i) => i.adapter_id === "ollama")?.status.unavailable).toBe("HttpsHostRefused");

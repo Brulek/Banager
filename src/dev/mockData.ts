@@ -741,6 +741,8 @@ export function withOllama(world: World, where: ScenarioOllama): World {
   const anyOllama = world.instances.some((i) => i.adapter_id === "ollama");
   return {
     ...world,
+    // A source where none was: something found, as `refresh` says it.
+    detect: anyOllama ? world.detect : "Found",
     instances: anyOllama
       ? world.instances.map((i) =>
           local.has(i.id)
