@@ -17,3 +17,11 @@ terminal, as Banager runs it:
 - `search-formula-none.stderr.txt` — the stderr of `brew search --formula
   zzzznotapackage`, which exits 1 with no stdout: how a search with no
   result ends.
+- `search-formula-gpg.txt`, `search-cask-gpg.txt`, `search-desc-gpg.txt` —
+  `brew search --formula gpg`, `--cask gpg` and `--desc gpg`, each exit 0
+  (recorded 2026-10-27, 03:02). The formula list has `gpg`, `gpg1` and
+  `gpg2`, aliases of gnupg and gnupg@1.4, as names of their own.
+- `info-formula-gpg.json`, `info-formula-jq.json` — `brew info --json=v2
+  --formula {names}`, exit 0, over the formula names the search lists for
+  `gpg` and for `jq`, in that order: what names each formula as Homebrew
+  does (`name`, `aliases`, `oldnames`).

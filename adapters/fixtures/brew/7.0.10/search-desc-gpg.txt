@@ -1,0 +1,18 @@
+==> Formulae
+git-remote-gcrypt: GPG-encrypted git remotes
+gpgmepp: C++ bindings for gpgme
+gpgmepy: Python bindings for gpgme
+keepkey-agent: Keepkey Hardware-based SSH/GPG agent
+onlykey-agent: Middleware that lets you use OnlyKey as a hardware SSH/GPG device
+pinentry-mac: Pinentry for GPG on Mac
+prs: Secure, fast & convenient password manager CLI with GPG & git sync
+sequoia-chameleon-gnupg: Reimplementatilon of gpg and gpgv using Sequoia
+trezor-agent: Hardware SSH/GPG agent for Trezor and Ledger
+
+==> Casks
+free-gpgmail: (Free-GPGMail) Apple Mail plugin for GnuPG encrypted e-mails
+gpg-suite: (GPG Suite) Tools to protect your emails and files
+gpg-suite-no-mail: (GPG Suite (without GPG Mail)) Tools to protect your files
+gpg-suite-pinentry: (GPG Suite Pinentry) Pinentry GUI for GPG Suite
+gpg-suite@nightly: (GPG Suite Nightly) Tools to protect your emails and files
+gpgfrontend: (GpgFrontend) OpenPGP/GnuPG crypto, sign and key management tool

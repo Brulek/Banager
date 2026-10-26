@@ -1,0 +1,6 @@
+free-gpgmail
+gpg-suite
+gpg-suite-no-mail
+gpg-suite-pinentry
+gpg-suite@nightly
+gpgfrontend

@@ -1965,6 +1965,7 @@ required (`BrewAdapter::update_steps`).
 | Search the formulae by name (Discover's search) | `<brew> search --formula {query}` | 30 s |
 | Search the casks by name (Discover's search) | `<brew> search --cask {query}` | 30 s |
 | Search by description (Discover's search) | `<brew> search --desc {query}` | 30 s |
+| Name the formulae a search found as Homebrew names them (Discover's search) | `<brew> info --json=v2 --formula {names}`, the at most 40 formula names listed | 30 s |
 | List installed formulae depending on a formula (uninstall preview) | `<brew> uses --installed {name}` | 120 s |
 
 Never `--greedy` or `--greedy-latest` (R47-2, r18): with either, Homebrew
@@ -5741,18 +5742,26 @@ and can be written to is there, Discover has a search field. What is
 typed in it -- once it has stayed the same for 0.6 seconds, and is two
 characters or more -- is searched for with `search_homebrew`
 (`Session::search_homebrew`, `BrewAdapter::search`), in that Homebrew,
-with three of its read-only commands (their rows are in "Homebrew"
+with four of its read-only commands (their rows are in "Homebrew"
 above):
 
     <brew> search --formula {query}
     <brew> search --cask {query}
     <brew> search --desc {query}
+    <brew> info --json=v2 --formula {names}
 
-each a list of names of one kind, so that no result's kind is guessed,
-and the last only for the descriptions of those: a package only a
-description matched is not listed, since `brew search --desc` prints a
-third-party tap's package under its short name where that name is unique
-among its lines, and installing that name would install another package.
+the first two each a list of names of one kind, so that no result's kind
+is guessed, and the third only for the descriptions of those: a package
+only a description matched is not listed, since `brew search --desc`
+prints a third-party tap's package under its short name where that name
+is unique among its lines, and installing that name would install
+another package. The last names the formulae listed as Homebrew names
+them: `brew search --formula` prints a formula's aliases and old names as
+names of their own -- `gpg`, `gpg2` (gnupg's), `npm` (node's) -- which no
+list, install or check knows them by, so each is listed once, by
+Homebrew's name, where the name it printed first ranks it; a formula
+that answer does not give as Homebrew's own is left out, and where it
+fails, the search fails.
 The text is given to Homebrew as one argument, and refused first, before
 anything runs, where it starts with `-` (`brew search --macports` and
 its like open a web page), has a `/` in it (a regular expression, or a
@@ -5761,8 +5770,9 @@ character in it, is longer than 64 characters, or has fewer than two of
 the characters Homebrew matches names by -- letters, digits, `@` and `+`;
 it drops every other one, so that a text such as `视频` would match every
 package (`brew::validate_search_query`). Homebrew reads its own copy of its
-catalogue for these, and downloads a new one from its API host where it
-has none or finds it too old, as any of its commands may. A name of
+catalogue for these, as fresh as its last `brew update`: with
+`HOMEBREW_NO_AUTO_UPDATE=1`, which every command Banager runs carries, it
+downloads one from its API host only where it has none. A name of
 another tap (`user/tap/name`) is left out, and so is any name
 `validate_package_name` refuses; at most 40 are listed, the one the text
 is first, then those it starts, then the rest. Each result is kept in the session under a random

@@ -2627,7 +2627,7 @@ impl BrewAdapter {
     }
 
     /// Homebrew's own formulae and casks whose name has `query` in it --
-    /// for the Discover page's search (phase 5 step E). Three read-only
+    /// for the Discover page's search (phase 5 step E). Read-only
     /// commands: `brew search --formula {query}` and `brew search --cask
     /// {query}`, each a list of names of one kind, so that no result's kind
     /// is guessed; then `brew search --desc {query}`, whose lines give the
@@ -2643,6 +2643,16 @@ impl BrewAdapter {
     /// one the text is exactly first, then those it starts, then the rest
     /// as Homebrew listed them; at most `SEARCH_HITS_MAX`. The text is
     /// checked first (`validate_search_query`).
+    ///
+    /// `brew search --formula` lists a formula's aliases and old names as
+    /// names of their own (`gpg`, `npm`, `python3`), which no list, install
+    /// or check knows them by: so the formulae found are named as Homebrew
+    /// names them, with one more read-only command over at most
+    /// `SEARCH_HITS_MAX` of them, `brew info --json=v2 --formula {names}`
+    /// (`canonical_formulae`) -- `gpg` is `gnupg`, listed once, where its
+    /// own name or an alias first ranks it (from the independent review of
+    /// the branch). A name that answer does not give as Homebrew's own is
+    /// left out.
     pub async fn search(
         &self,
         inst: &ManagerInstance,
@@ -2707,13 +2717,98 @@ impl BrewAdapter {
                 2
             }
         };
-        // Stable: Homebrew's own order within each rank.
+        // Stable: Homebrew's own order within each rank, ranked by the name
+        // it printed -- an alias the text is exactly ranks its formula first.
         hits.sort_by_key(rank);
         hits.retain(|hit| !hit.name.contains('/') && validate_package_name(&hit.name).is_ok());
         let mut seen = HashSet::new();
         hits.retain(|hit| seen.insert((hit.kind, hit.name.clone())));
         hits.truncate(SEARCH_HITS_MAX);
+        let printed: Vec<String> = hits
+            .iter()
+            .filter(|hit| hit.kind == ArtifactKind::Formula)
+            .map(|hit| hit.name.clone())
+            .collect();
+        if !printed.is_empty() {
+            let named = self.canonical_formulae(inst, &printed).await?;
+            hits.retain_mut(|hit| {
+                if hit.kind != ArtifactKind::Formula {
+                    return true;
+                }
+                let Some((name, description)) = named.get(&hit.name) else {
+                    return false;
+                };
+                if *name != hit.name {
+                    // The alias's line had no description of the formula's.
+                    hit.description = None;
+                    hit.name = name.clone();
+                }
+                if hit.description.is_none() {
+                    hit.description = description.clone();
+                }
+                true
+            });
+            let mut seen = HashSet::new();
+            hits.retain(|hit| seen.insert((hit.kind, hit.name.clone())));
+        }
         Ok(hits)
+    }
+
+    /// Each of `printed`, formula names as `brew search --formula` printed
+    /// them, with the name Homebrew gives that formula and its description:
+    /// `brew info --json=v2 --formula {printed}`, read-only. A formula's own
+    /// name, each of its aliases and each of its old names lead to its name;
+    /// a third-party tap's formula (its `full_name` tap-qualified) leads
+    /// nowhere, nor does a name the answer does not have.
+    async fn canonical_formulae(
+        &self,
+        inst: &ManagerInstance,
+        printed: &[String],
+    ) -> Result<HashMap<String, (String, Option<String>)>, AdapterError> {
+        #[derive(serde::Deserialize)]
+        struct Info {
+            formulae: Vec<Named>,
+        }
+        #[derive(serde::Deserialize)]
+        struct Named {
+            name: String,
+            full_name: String,
+            #[serde(default)]
+            aliases: Vec<String>,
+            #[serde(default)]
+            oldnames: Vec<String>,
+            #[serde(default)]
+            desc: Option<String>,
+        }
+        let mut args = vec![
+            "info".to_string(),
+            "--json=v2".to_string(),
+            "--formula".to_string(),
+        ];
+        args.extend(printed.iter().cloned());
+        let output = self.run_brew(inst, args, Duration::from_secs(30)).await?;
+        if output.exit_code != Some(0) {
+            return Err(AdapterError::CommandFailed {
+                code: output.exit_code,
+                stderr: output.stderr,
+            });
+        }
+        let info: Info = serde_json::from_str(&output.stdout)
+            .map_err(|e| AdapterError::Parse(format!("brew info --json=v2 --formula: {e}")))?;
+        let mut named = HashMap::new();
+        for formula in info.formulae {
+            if formula.full_name != formula.name || validate_package_name(&formula.name).is_err() {
+                continue;
+            }
+            let found = (formula.name.clone(), formula.desc);
+            for way in std::iter::once(&formula.name)
+                .chain(&formula.aliases)
+                .chain(&formula.oldnames)
+            {
+                named.insert(way.clone(), found.clone());
+            }
+        }
+        Ok(named)
     }
 }
 
@@ -5864,6 +5959,15 @@ mod tests {
                 "../../../../../adapters/fixtures/brew/7.0.10/search-desc-jq.txt"
             )),
         );
+        let jq_formulae = ["jq", "jq-lsp", "jqfmt", "jql", "jqp", "gojq", "ijq"];
+        let mut info = vec![brew, "info", "--json=v2", "--formula"];
+        info.extend(jq_formulae);
+        runner.respond(
+            info.clone(),
+            search_output(include_str!(
+                "../../../../../adapters/fixtures/brew/7.0.10/info-formula-jq.json"
+            )),
+        );
         let adapter = BrewAdapter::new(runner.clone());
         let hits = adapter
             .search(&test_instance(), "jq")
@@ -5901,9 +6005,102 @@ mod tests {
                 vec![brew, "search", "--formula", "jq"],
                 vec![brew, "search", "--cask", "jq"],
                 vec![brew, "search", "--desc", "jq"],
+                info,
             ]
             .map(|c| c.iter().map(|s| s.to_string()).collect::<Vec<_>>())
         );
+    }
+
+    #[tokio::test]
+    async fn test_search_names_a_formula_as_homebrew_does_where_it_printed_an_alias() {
+        // From the independent review of the branch: `brew search --formula
+        // gpg` prints `gpg`, `gpg1` and `gpg2`, aliases of gnupg and
+        // gnupg@1.4, which no list or install knows them by.
+        let runner = Arc::new(MockRunner::new());
+        let brew = "/opt/homebrew/bin/brew";
+        for (flag, file) in [
+            (
+                "--formula",
+                include_str!("../../../../../adapters/fixtures/brew/7.0.10/search-formula-gpg.txt"),
+            ),
+            (
+                "--cask",
+                include_str!("../../../../../adapters/fixtures/brew/7.0.10/search-cask-gpg.txt"),
+            ),
+            (
+                "--desc",
+                include_str!("../../../../../adapters/fixtures/brew/7.0.10/search-desc-gpg.txt"),
+            ),
+        ] {
+            runner.respond(vec![brew, "search", flag, "gpg"], search_output(file));
+        }
+        let mut info = vec![brew, "info", "--json=v2", "--formula"];
+        info.extend([
+            "gpg",
+            "gpg-tui",
+            "gpg1",
+            "gpg2",
+            "gpgme",
+            "gpgmepp",
+            "gpgmepy",
+            "libgpg-error",
+            "swgp-go",
+            "gpx",
+            "gpp",
+            "gpk",
+            "gpa",
+        ]);
+        runner.respond(
+            info,
+            search_output(include_str!(
+                "../../../../../adapters/fixtures/brew/7.0.10/info-formula-gpg.json"
+            )),
+        );
+        let adapter = BrewAdapter::new(runner);
+        let hits = adapter
+            .search(&test_instance(), "gpg")
+            .await
+            .expect("search");
+        let listed: Vec<(ArtifactKind, &str)> =
+            hits.iter().map(|h| (h.kind, h.name.as_str())).collect();
+        // The text is gnupg's alias: gnupg first, once, by its own name.
+        assert_eq!(listed[0], (ArtifactKind::Formula, "gnupg"));
+        assert_eq!(listed.iter().filter(|(_, n)| *n == "gnupg").count(), 1);
+        assert!(listed.contains(&(ArtifactKind::Formula, "gnupg@1.4")));
+        for alias in ["gpg", "gpg1", "gpg2"] {
+            assert!(!listed.iter().any(|(_, n)| *n == alias), "{listed:?}");
+        }
+        assert_eq!(
+            hits[0].description.as_deref(),
+            Some("GNU Privacy Guard (OpenPGP)")
+        );
+        // Casks keep the names Homebrew printed.
+        assert!(listed.contains(&(ArtifactKind::Cask, "gpg-suite")));
+    }
+
+    #[tokio::test]
+    async fn test_search_fails_where_homebrew_cannot_say_what_its_formulae_are_named() {
+        let runner = Arc::new(MockRunner::new());
+        let brew = "/opt/homebrew/bin/brew";
+        runner.respond(
+            vec![brew, "search", "--formula", "jqx"],
+            search_output("jq\n"),
+        );
+        runner.respond(vec![brew, "search", "--cask", "jqx"], found_nothing());
+        runner.respond(vec![brew, "search", "--desc", "jqx"], search_output(""));
+        runner.respond(
+            vec![brew, "info", "--json=v2", "--formula", "jq"],
+            CommandOutput {
+                exit_code: Some(1),
+                stderr: "Error: No available formula with the name \"jq\".".to_string(),
+                ..search_output("")
+            },
+        );
+        let adapter = BrewAdapter::new(runner);
+        assert!(matches!(
+            adapter.search(&test_instance(), "jqx").await,
+            Err(AdapterError::CommandFailed { code: Some(1), .. })
+        ));
     }
 
     #[tokio::test]
@@ -11158,6 +11355,24 @@ mod plan_execute_tests {
                 "../../../../../adapters/fixtures/brew/7.0.10/search-desc-jq.txt"
             )),
         );
+        runner.respond(
+            vec![
+                BREW,
+                "info",
+                "--json=v2",
+                "--formula",
+                "jq",
+                "jq-lsp",
+                "jqfmt",
+                "jql",
+                "jqp",
+                "gojq",
+                "ijq",
+            ],
+            ok(include_str!(
+                "../../../../../adapters/fixtures/brew/7.0.10/info-formula-jq.json"
+            )),
+        );
         checks.push(adapter.search(inst, "jq").await.map(|_| ()));
 
         let doc = include_str!("../../../../../docs/what-we-run.md");
@@ -11190,12 +11405,23 @@ mod plan_execute_tests {
             "`brew update` has its own row"
         );
         assert!(!writes.is_empty(), "the section's write table was read");
+        // A `{placeholder}` stands for one argument; `{names}` last, for
+        // one or more (the search's `brew info --json=v2 --formula {names}`).
         let is = |argv: &[String], written: &str| {
             let words: Vec<&str> = written.split_whitespace().collect();
-            words.len() == argv.len()
-                && words.iter().zip(argv).all(|(word, arg)| {
-                    *word == arg || (word.starts_with('{') && word.ends_with('}'))
-                })
+            let (words, many) = match words.split_last() {
+                Some((&"{names}", head)) => (head.to_vec(), true),
+                _ => (words, false),
+            };
+            let fits = if many {
+                argv.len() > words.len()
+            } else {
+                argv.len() == words.len()
+            };
+            fits && words
+                .iter()
+                .zip(argv)
+                .all(|(word, arg)| *word == arg || (word.starts_with('{') && word.ends_with('}')))
         };
 
         f08_assert_brew_env(&runner);

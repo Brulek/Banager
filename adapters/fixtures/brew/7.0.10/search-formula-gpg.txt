@@ -1,0 +1,13 @@
+gpg
+gpg-tui
+gpg1
+gpg2
+gpgme
+gpgmepp
+gpgmepy
+libgpg-error
+swgp-go
+gpx
+gpp
+gpk
+gpa
