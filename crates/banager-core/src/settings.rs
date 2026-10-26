@@ -213,9 +213,14 @@ fn fs_read(path: &Path) -> std::io::Result<Vec<u8>> {
 /// waiting and read only when it is a regular file of at most 16 MiB, so a
 /// named pipe put there, or a link to an endless device, is unreadable at
 /// once rather than a launch that waits on it or reads without end
-/// (R91-2). Read at every launch, before the window opens.
+/// (R91-2). Read at every launch, before the window opens. With no
+/// protected place kept out (`Protected::default`), as `std::fs::read`
+/// read them before: they are Banager's own, in its own folder, and a home
+/// folder on another disk is under `/Volumes`, which a tool's file is
+/// never read through -- there, every launch would have used the
+/// defaults and refused every save.
 pub(crate) fn own_file(path: &Path) -> std::io::Result<Vec<u8>> {
-    crate::adapters::read_file::read_bytes(path, &crate::protected::Protected::of_this_process())
+    crate::adapters::read_file::read_bytes(path, &crate::protected::Protected::default())
 }
 
 /// Missing or unreadable JSON uses defaults without preventing startup.
@@ -384,6 +389,20 @@ mod tests {
     /// pipe there, a link to an endless device or a file past 16 MiB is
     /// unreadable -- defaults this launch, the file kept as it is, never
     /// a launch that waits on it or reads without end.
+    #[test]
+    fn test_its_own_files_are_read_wherever_the_home_folder_is() {
+        // A home folder on another disk is under `/Volumes`, which a tool's
+        // file is never read through: Banager's own settings are read there
+        // all the same, as `std::fs::read` read them (review of R91-2).
+        let protected = crate::protected::Protected::new(Path::new("/Users/you"));
+        assert!(protected.contains(Path::new("/Volumes/Home/you/Library/x")));
+        let dir = crate::adapters::read_file::tests::temp_dir("settings-own-file");
+        let path = dir.join("settings.json");
+        std::fs::write(&path, b"{}").unwrap();
+        assert_eq!(own_file(&path).unwrap(), b"{}");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
     #[test]
     fn regression_r91_2_a_pipe_a_device_or_a_huge_file_is_unreadable_at_once() {
         use crate::adapters::read_file::tests::{finishes, make_fifo, temp_dir};

@@ -425,6 +425,25 @@ impl TrustLook {
     }
 }
 
+/// Whether a Homebrew of `version` (`7.0.3`, `7.0.10-37-g1ef73bb`) is one
+/// from before 7.0.7, which did not require tap trust by default. `false`
+/// for a version that does not read as numbers: taken as a newer one.
+fn trust_not_default(version: &str) -> bool {
+    let numbers: Vec<u64> = version
+        .split(|c: char| !c.is_ascii_digit() && c != '.')
+        .next()
+        .unwrap_or_default()
+        .split('.')
+        .map_while(|part| part.parse().ok())
+        .collect();
+    match numbers.as_slice() {
+        [major, minor, patch, ..] => (*major, *minor, *patch) < (7, 0, 7),
+        [major, minor] => (*major, *minor) < (7, 0),
+        [major] => *major < 7,
+        [] => false,
+    }
+}
+
 /// `BrewAdapter::trust_list_fn` as `BrewAdapter::new` sets it: the real
 /// trust list in every build but this crate's unit tests, where it is
 /// empty.
@@ -2322,6 +2341,13 @@ impl BrewAdapter {
     /// uninstall preview: the `brew.env` files (`brew_env::after_brew_env`)
     /// and the trust list in the folder they choose (`trust_list_fn`).
     fn trust_look(&self, inst: &ManagerInstance) -> TrustLook {
+        // Before 7.0.7 Homebrew required trust only when asked to
+        // (`HOMEBREW_REQUIRE_TAP_TRUST`, an opt-in then): a cask was loaded
+        // from its tap (backlog, "卸载说明的残留边角"). A version not read is
+        // taken as a newer one.
+        if inst.version.as_deref().is_some_and(trust_not_default) {
+            return TrustLook::NotRequired;
+        }
         let switches = self.switches_at(&inst.prefix, &self.env_vec());
         match &switches.user_config_home {
             // No home folder: `bin/brew` stops before it reads anything
@@ -2537,9 +2563,13 @@ impl BrewAdapter {
         // of the casks confirmed unless the look before `brew outdated`
         // confirms every one: either is `CasksNotChecked`, the candidates
         // above kept.
+        // A reading declined because `brew update` began meanwhile
+        // (`IndexUpdating`) says nothing of trust: the refresh's own
+        // inventory has marked the casks.
         let (installed, casks_unconfirmed) =
             match self.inventory_looked(inst, Some(&at_outdated)).await {
                 Ok(read) => read,
+                Err(AdapterError::IndexUpdating) => (Vec::new(), false),
                 Err(_) => (Vec::new(), !at_outdated.confirms_every_cask()),
             };
         // The same reading finds the formulae Homebrew left out of it
@@ -7695,9 +7725,11 @@ mod plan_execute_tests {
     impl Aerospace {
         fn new(label: &str) -> Aerospace {
             let prefix = crate::testing::unique_temp_path(label);
+            // A Homebrew that requires tap trust by default (7.0.7 on).
             let inst = ManagerInstance {
                 exe_path: prefix.join("bin/brew"),
                 prefix: prefix.clone(),
+                version: Some("7.0.10".to_string()),
                 ..test_instance()
             };
             let brew = inst.exe_path.to_str().unwrap().to_string();
@@ -7791,6 +7823,40 @@ mod plan_execute_tests {
     /// switched off -- and what does not: a list that does not name it, one
     /// Banager cannot read, a tap named only by its remote, or a list in a
     /// folder `bin/brew` may not have chosen.
+    #[test]
+    fn test_trust_is_required_by_default_from_homebrew_7_0_7() {
+        for (version, before) in [
+            ("7.0.3", true),
+            ("7.0.6", true),
+            ("6.9.9", true),
+            ("7.0.7", false),
+            ("7.0.10-37-g1ef73bb", false),
+            ("7.1.0", false),
+            ("8", false),
+            ("", false),
+            ("unknown", false),
+        ] {
+            assert_eq!(trust_not_default(version), before, "{version}");
+        }
+    }
+
+    #[tokio::test]
+    async fn regression_r83_1_a_homebrew_before_7_0_7_checks_every_cask() {
+        // Trust was an opt-in before 7.0.7: an untrusted tap's cask was
+        // still loaded from its tap, and checked.
+        let aerospace = Aerospace::new("brew-r83-1-old");
+        let old = ManagerInstance {
+            version: Some("7.0.3".to_string()),
+            ..aerospace.inst.clone()
+        };
+        let adapter = BrewAdapter::new(aerospace.runner.clone())
+            .with_env_var_fn(someones_home)
+            .with_trust_list_fn(empty_trust);
+        let outcome = adapter.inventory_with_notes(&old).await.unwrap();
+        assert!(outcome.artifacts.iter().all(|a| !a.facts.not_looked_up));
+        assert!(outcome.notes.is_empty());
+    }
+
     #[tokio::test]
     async fn regression_r83_1_only_sure_trust_confirms_a_casks_check() {
         fn names_cask(_: &Path) -> Option<TrustList> {

@@ -343,10 +343,10 @@ is also refused: Banager cannot yet resolve that syntax safely, including
 `env -S "node"`, and never looks up the quoted text as a literal filename.
 A relative `PATH` folder, one written `~/...` among them (bash expands
 it, `env` does not), and an empty one, which is the folder itself, are
-looked in from the folder the command runs in -- Banager's own, which
-is `/` when it is opened from the Finder -- as `env` looks in them; so
-are a relative name after `env` and a `#!` line's relative program. Where
-that folder is not known, the script is refused. An entry that is a
+looked in from the folder the command runs in -- `/`, where every
+command runs unless its own entry below names another (above) -- as
+`env` looks in them; so are a relative name after `env` and a `#!` line's
+relative program. An entry that is a
 file, or a folder that may not be searched, is passed over, as `env`
 passes over them. Such a command is not
 started and fails as a program that could not start; a source found only
@@ -2088,22 +2088,29 @@ from a tap Homebrew 7 does not trust is still listed: `Caskroom.casks`
 loads it from the copy Homebrew saved at install when its tap refuses it
 (`cask/caskroom.rb`, Homebrew 7.0.10), and that copy carries the
 installed version, so `brew outdated` compares the version with itself
-and lists no update whatever the tap holds (`Cask#outdated_version`). So
-every inventory reads Homebrew's settings -- the `brew.env` files and the
-trust list, as an uninstall preview reads them (below) -- once before
-its `brew info` and once after, and an update check once more as its
-`brew outdated` starts; a cask from a third-party tap is marked as one no
-check looks up (`ArtifactFacts::not_looked_up`: its row says nothing
-about updates, not "Up to date") unless every one of those reads surely
-lets Homebrew check it: `HOMEBREW_NO_REQUIRE_TAP_TRUST` set, a tap of
-Homebrew's own, or a trust list that names the cask or its tap. A list
+and lists no update whatever the tap holds (`Cask#outdated_version`).
+Homebrew requires that trust by default from 7.0.7; before, only when
+asked to, so a Homebrew whose version reads older is taken to check every
+cask. So every inventory reads Homebrew's settings -- the `brew.env`
+files and the trust list, as an uninstall preview reads them (below) --
+once before its `brew info` and once after, and a cask from a
+third-party tap is marked as one no check looks up
+(`ArtifactFacts::not_looked_up`: its row says nothing about updates, not
+"Up to date") unless both reads surely let Homebrew check it:
+`HOMEBREW_NO_REQUIRE_TAP_TRUST` set, a tap of Homebrew's own, or a trust
+list that names the cask or its tap. An update check reads them once more
+as its `brew outdated` starts, for its own reading of the casks; what it
+finds there adds the notice below, while each row keeps the inventory's
+mark -- and with the notice no row of that Homebrew says "Up to date". A
+list
 that could not be read, one in a folder `bin/brew` may not have chosen
 (a `brew.env` Banager could not read may have set
 `HOMEBREW_XDG_CONFIG_HOME`), or an entry naming a tap by its remote,
 which Banager does not resolve, is no such proof. Trust granted after
 `brew outdated` started does not make that check one. While any cask is
-marked -- or the check's own reading of the casks failed and the settings
-did not let Homebrew check every cask -- Homebrew's notice says the
+marked -- or the check's own reading of the casks failed, but for a
+`brew update` that began meanwhile, and the settings did not let Homebrew
+check every cask -- Homebrew's notice says the
 updates of some apps installed with it weren't checked, with `brew trust`
 to list the trusted taps and `brew trust --tap` to trust another, by
 this Homebrew's own brew (`InstanceNote::CasksNotChecked`); Banager runs
