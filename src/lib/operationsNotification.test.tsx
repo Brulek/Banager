@@ -163,4 +163,39 @@ describe("useOperationsNotification", () => {
     await waitFor(() => expect(queryClient.getQueryData(queryKeys.operations)).toHaveLength(1));
     expect(reported()).toEqual([]);
   });
+
+  it("says a run was watched where it ended in the focused window, so a quick switch of apps posts nothing (R89-3)", async () => {
+    const watchedOf = () =>
+      mockInvoke.mock.calls
+        .filter(([cmd]) => cmd === "report_finished_run")
+        .map(([, args]) => (args as { watched: boolean }).watched);
+    const focus = vi.spyOn(document, "hasFocus");
+    // jsdom's page is not "visible" unless asked to pretend.
+    const visible = vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+    // A longer wait than the others', so that a busy machine still
+    // switches within it.
+    const settle = 400;
+    function SlowWatcher() {
+      useOperationsNotification(settle);
+      return null;
+    }
+    const { queryClient } = renderWithProviders(<SlowWatcher />);
+    await waitFor(() => expect(queryClient.getQueryData(queryKeys.operations)).toEqual([]));
+    // Ends in front of the user, who switches apps within the wait.
+    focus.mockReturnValue(true);
+    await listNow(queryClient, [op(1, "Running")]);
+    await listNow(queryClient, [op(1, "Done", "Succeeded")]);
+    // The page has seen it end (React Query hands the list on a moment
+    // later); the switch comes within the wait, before the report.
+    await sleep(settle / 10);
+    expect(watchedOf()).toEqual([]);
+    focus.mockReturnValue(false);
+    await waitFor(() => expect(watchedOf()).toEqual([true]));
+    // Ends with another app in front: not watched.
+    await listNow(queryClient, [op(1, "Done", "Succeeded"), op(2, "Running")]);
+    await listNow(queryClient, [op(1, "Done", "Succeeded"), op(2, "Done", "Succeeded")]);
+    await waitFor(() => expect(watchedOf()).toEqual([true, false]));
+    focus.mockRestore();
+    visible.mockRestore();
+  });
 });

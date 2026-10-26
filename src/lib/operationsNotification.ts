@@ -70,6 +70,15 @@ export function runEnded(previous: OperationRun | null, next: OperationRun): boo
 export const RUN_SETTLES_MS = 1500;
 
 /**
+ * Whether the window is on screen and has the focus: what the user sees a
+ * run end in. False when it is closed (hidden with the page), in the
+ * Dock, or another app is in front.
+ */
+function windowHasFocus(): boolean {
+  return document.visibilityState === "visible" && document.hasFocus();
+}
+
+/**
  * Mounted once, by `App`'s `UpdateWatchers`: follows the operations as the
  * operation bar does (`trackRun`), and once a run has ended (`runEnded`)
  * and nothing has started for `settleMs` (`RUN_SETTLES_MS`) reports it
@@ -84,7 +93,10 @@ export function useOperationsNotification(settleMs: number = RUN_SETTLES_MS): vo
   const latest = useRef<OpSummary[]>([]);
   // A run that has ended and waits to be reported: the operations above
   // `floor` are its own, and `timer` reports them unless one more starts.
-  const held = useRef<{ floor: number; timer: ReturnType<typeof setTimeout> | null } | null>(null);
+  // `watched`: whether the window had the focus as the run ended (R89-3).
+  const held = useRef<{ floor: number; timer: ReturnType<typeof setTimeout> | null; watched: boolean } | null>(
+    null,
+  );
 
   useEffect(() => {
     if (operations === undefined) return;
@@ -103,15 +115,20 @@ export function useOperationsNotification(settleMs: number = RUN_SETTLES_MS): vo
     if (!runEnded(previous, next)) return;
     const floor = waiting === null ? next.floor : Math.min(waiting.floor, next.floor);
     if (waiting?.timer != null) clearTimeout(waiting.timer);
+    // Seen ending in the focused window, as the run looks now: Rust then
+    // posts nothing for it, whatever is in front once the wait is over --
+    // the user may switch apps within it (R89-3). Taken again if the run
+    // goes on and ends later.
+    const watched = windowHasFocus();
     const timer = setTimeout(() => {
       held.current = null;
       const finished = finishedRunOf(latest.current.filter((op) => op.id > floor));
       if (finished === null) return;
-      reportFinishedRun(finished).catch((e: unknown) => {
+      reportFinishedRun(finished, watched).catch((e: unknown) => {
         console.error("report_finished_run failed", e);
       });
     }, settleMs);
-    held.current = { floor, timer };
+    held.current = { floor, timer, watched };
   }, [operations, settleMs]);
 
   useEffect(

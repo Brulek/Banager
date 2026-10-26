@@ -1097,7 +1097,12 @@ dropped past that is accepted telling of nothing, so it never holds back
 the runs after it. Rust posts one notification only when
 the switch is on and another app is in front, not Banager — never for a
 run that finished while the window had the focus, which the user watched
-on the operation bar — and only once for a run
+on the operation bar: the page waits 1.5 s after a run ends before it
+reports it (`RUN_SETTLES_MS`, in case the run goes on), so it says with
+the report whether the window was on screen and had the focus as the run
+ended (`watched`), and such a run counts as watched whatever is in front
+when the report arrives (`notify_ops::focus_for_report`, R89-3) — and
+only once for a run
 (`notify_operations::decide` in
 `crates/banager-core/src/notify_operations.rs`). A run whose every
 operation was cancelled posts nothing. A run that finishes while Banager

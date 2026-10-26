@@ -337,8 +337,8 @@ export function reportUpdateSet(round: number, updates: UpdatePair[]): Promise<v
  * src-tauri/src/notify_ops.rs), which decides there whether one goes out.
  * `useOperationsNotification` sends one as each run ends.
  */
-export function reportFinishedRun(run: FinishedRun): Promise<void> {
-  return call<void>("report_finished_run", { run });
+export function reportFinishedRun(run: FinishedRun, watched = false): Promise<void> {
+  return call<void>("report_finished_run", { run, watched });
 }
 
 /**

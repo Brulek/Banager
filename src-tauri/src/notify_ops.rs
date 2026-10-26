@@ -85,8 +85,9 @@ pub async fn report_finished_run(
     state: State<'_, AppState>,
     runs: State<'_, OperationRuns>,
     run: FinishedRun,
+    watched: Option<bool>,
 ) -> Result<(), String> {
-    let focus = notify::focus(&app);
+    let focus = focus_for_report(watched, || notify::focus(&app));
     let language = notify::language(&app, &state);
     let title = app.package_info().name.clone();
     let reported = {
@@ -121,6 +122,20 @@ pub async fn report_finished_run(
         }
     }
     Ok(())
+}
+
+/// The focus a report is judged with: the window's, where the page saw
+/// the run end in the focused window (`watched`) -- it waited a moment
+/// before reporting, and the user may have switched apps since (R89-3) --
+/// else the focus as it is now (`now`). Only ever keeps a notification
+/// back: a page that says it was watched is one whose window had the
+/// focus.
+fn focus_for_report(watched: Option<bool>, now: impl FnOnce() -> Focus) -> Focus {
+    if watched == Some(true) {
+        Focus::Window
+    } else {
+        now()
+    }
 }
 
 /// The run through `last_op`, as the operations `known` -- one read of
@@ -420,6 +435,17 @@ mod tests {
     use banager_core::model::{OpKind, OpStatus, Outcome};
     use banager_core::ops::OpSummary;
     use std::cell::RefCell;
+
+    /// R89-3: a run the page saw end in the focused window is judged as
+    /// watched, whatever is in front by the time its report arrives; one
+    /// it did not see, or an older page that says nothing, by the focus
+    /// now.
+    #[test]
+    fn regression_r89_3_a_run_seen_ending_in_the_window_is_watched_after_a_switch() {
+        assert_eq!(focus_for_report(Some(true), || Focus::Away), Focus::Window);
+        assert_eq!(focus_for_report(Some(false), || Focus::Away), Focus::Away);
+        assert_eq!(focus_for_report(None, || Focus::App), Focus::App);
+    }
 
     fn run(kind: RunKind, succeeded: u32, failed: u32, attention: u32) -> FinishedRun {
         FinishedRun {
