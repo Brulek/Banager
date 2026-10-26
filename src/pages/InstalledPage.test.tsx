@@ -1629,7 +1629,7 @@ describe("InstalledPage", () => {
     it.each([
       // Its only chip is about its Uninstall, held while the list updates.
       ["IndexUpdating", "Homebrew is checking online for new versions", ["Can't uninstall now"]],
-      ["IndexMayBeStale", "Couldn't reach Homebrew, so updates for its tools weren't fully checked", []],
+      ["IndexMayBeStale", "Homebrew couldn't check online for new versions, so updates for its tools weren't fully checked", []],
     ] as const)("says nothing about updates while Homebrew's list is %s, and the line says why", async (note, line, chips) => {
       served = { ...snapshot, instances: [{ ...brew, status: { unavailable: null, notes: [note] } }], updates: [] };
       const { queryByText } = renderInstalled();

@@ -735,8 +735,8 @@
       "other": "无法打开Ollama。请在“应用程序”中手动打开。"
     },
     "indexMayBeStale": {
-      "title": "无法连上Homebrew，用它安装的工具的更新这次没能查全",
-      "description": "这次是按上次连上时的信息检查的。请检查网络连接，然后重新检查。"
+      "title": "Homebrew没能联网查找新版本，用它安装的工具的更新这次没能查全",
+      "description": "这次是按Homebrew上次查到的信息检查的。请稍后重新检查。"
     },
     "indexUpdating": {
       "title": "Homebrew正在联网查找新版本",

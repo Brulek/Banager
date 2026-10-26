@@ -1467,7 +1467,7 @@ describe("OverviewPage", () => {
     const list = await findByRole("list", { name: "Needs attention" });
     const lines = within(list).getAllByRole("listitem");
     expect(lines).toHaveLength(1);
-    expect(within(lines[0]).getByText("Couldn't reach Homebrew, so updates for its tools weren't fully checked")).toBeInTheDocument();
+    expect(within(lines[0]).getByText("Homebrew couldn't check online for new versions, so updates for its tools weren't fully checked")).toBeInTheDocument();
     expect(within(list).queryByRole("button", { name: /more note/ })).toBeNull();
   });
 
@@ -1499,7 +1499,7 @@ describe("OverviewPage", () => {
     const lines = within(list).getAllByRole("listitem");
     expect(lines.map((line) => line.querySelector("p")?.textContent)).toEqual([
       "Homebrew (Apple silicon) isn't responding",
-      "Couldn't reach Homebrew, so updates for its tools weren't fully checked",
+      "Homebrew couldn't check online for new versions, so updates for its tools weren't fully checked",
       "Claude Code's program files are missing",
       "Ollama isn't running",
     ]);
@@ -1507,7 +1507,7 @@ describe("OverviewPage", () => {
     expect(lines[0]).toHaveTextContent(
       "3 tools were installed with Homebrew (Apple silicon). It didn't respond this time, so they're shown as they were when it last responded. Check again later.",
     );
-    expect(lines[1]).toHaveTextContent("This check used what Homebrew knew the last time it could be reached. Check your internet connection, then check again.");
+    expect(lines[1]).toHaveTextContent("This check used what Homebrew found the last time it checked. Check again later.");
     for (const line of lines.slice(0, 2)) {
       const again = within(line).getByRole("button", { name: "Check Again" });
       expect(again.className).toContain(BUTTON.regular.grey);

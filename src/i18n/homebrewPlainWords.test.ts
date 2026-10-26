@@ -30,11 +30,19 @@ describe("Homebrew's catalogue, in plain words", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("says that Homebrew could not be reached, and what that leaves out", () => {
-    expect(zhCN.sourceNotice.indexMayBeStale.title).toBe("无法连上Homebrew，用它安装的工具的更新这次没能查全");
-    expect(zhHant.sourceNotice.indexMayBeStale.title).toBe("無法連上Homebrew，用它安裝的工具的更新這次未能完整檢查");
+  it("says that Homebrew's online check failed, without a cause it can't know, and what that leaves out", () => {
+    // I18N-001: any failed `brew update` is this -- a remote Homebrew's
+    // own settings name that does not exist too, not only the network --
+    // so it neither says Homebrew could not be reached nor sends the user
+    // to their internet connection.
+    for (const locale of [zhCN, zhHant, en]) {
+      const { title, description } = locale.sourceNotice.indexMayBeStale;
+      expect(`${title} ${description}`).not.toMatch(/reach|internet|connection|连上|网络连接|連上|網路連線/i);
+    }
+    expect(zhCN.sourceNotice.indexMayBeStale.title).toBe("Homebrew没能联网查找新版本，用它安装的工具的更新这次没能查全");
+    expect(zhHant.sourceNotice.indexMayBeStale.title).toBe("Homebrew未能連線檢查新版本，用它安裝的工具的更新這次未能完整檢查");
     expect(en.sourceNotice.indexMayBeStale.title).toBe(
-      "Couldn't reach Homebrew, so updates for its tools weren't fully checked",
+      "Homebrew couldn't check online for new versions, so updates for its tools weren't fully checked",
     );
   });
 

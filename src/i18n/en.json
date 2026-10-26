@@ -796,8 +796,8 @@
       "other": "Couldn't open Ollama. Open it yourself from Applications."
     },
     "indexMayBeStale": {
-      "title": "Couldn't reach Homebrew, so updates for its tools weren't fully checked",
-      "description": "This check used what Homebrew knew the last time it could be reached. Check your internet connection, then check again."
+      "title": "Homebrew couldn't check online for new versions, so updates for its tools weren't fully checked",
+      "description": "This check used what Homebrew found the last time it checked. Check again later."
     },
     "indexUpdating": {
       "title": "Homebrew is checking online for new versions",
