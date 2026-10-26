@@ -5659,17 +5659,22 @@ an older macOS (its cask's `depends_on`). Homebrew itself, missing on a
 Mac that is not Apple silicon, is "Not supported on this Mac": its
 official installer no longer installs there. The model is "Not
 installed" where an Ollama that answered and can be written to is
-there, "Needs Ollama" where there is no Ollama at all, "Ollama is on
-another computer" where every Ollama source is at another machine's
-address (`OLLAMA_HOST`), whose notice says nothing of it since it
+there, "Needs Ollama" where there is no Ollama at all, "Ollama uses
+another address" where every Ollama source is at an address `OLLAMA_HOST`
+sets that is not this Mac's own (`host_is_this_mac`: `localhost`, a
+loopback address, an IPv4 loopback written as IPv6, or the every-interface
+ones -- this Mac under another name, its network address or `.local`
+name, is not known to be it), whose notice says nothing of it since it
 answers, and otherwise "Ollama can't download now" -- with Open Ollama
 where its app is not running, as its source's notice has it, or is there
 with no source yet: the app's first run offers to put its `ollama`
 command in place, and the check after that finds the source. Where the
-checks Open Ollama starts still find no source (the app was running, or
-its offer was turned down), the row says so beside the button: "Ollama
-is open, and this Mac still has no ollama command, which downloading the
-model needs." The model is Gemma 3 in the size
+checks Open Ollama starts (one and three seconds after it) still find no
+source -- the app was running, its offer was turned down, or it is still
+waiting for the Mac's password -- the row says so beside the button, and
+what to do: "No ollama command was found after Ollama opened, and
+downloading the model needs one. If Ollama offers to install it, accept,
+then click Check Again." The model is Gemma 3 in the size
 that suits the Mac's memory (`catalog::starter_model`): the largest whose
 download is at most about two-fifths of the least memory it is chosen
 for -- `gemma3:1b` (about 0.81 GB)
@@ -5726,7 +5731,7 @@ ended (its `answered_at`, when that check began asking it; the
 snapshot's time where the source has none), from which on the row says
 what that check found, an uninstall since included. The model
 is pulled, and counted, only through this Mac's own Ollama: an Ollama
-source at another machine's address (`OLLAMA_HOST`) neither pulls it nor
+source at an address not this Mac's own (`OLLAMA_HOST`) neither pulls it nor
 makes it "Installed" (`catalog::this_macs_ollama`).
 
 **Searching Homebrew** (phase 5 step E). Where a Homebrew that answered

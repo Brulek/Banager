@@ -118,9 +118,9 @@ describe("a refusal of plan_install", () => {
     // The model, with every Ollama at another machine's address (from
     // the review of abba6f7e).
     expect(said({ kind: "catalog_state", state: "OllamaElsewhere" })).toBe(
-      "The Ollama this Mac uses is on another computer, so a model it downloads would be there, not on this Mac.",
+      "The Ollama this Mac uses is set by OLLAMA_HOST to an address other than this Mac's own, so the model isn't downloaded from here.",
     );
-    expect(stateText(t, "OllamaElsewhere")).toBe("Ollama is on another computer");
+    expect(stateText(t, "OllamaElsewhere")).toBe("Ollama uses another address");
     // Anything else is `planErrorMessage`'s.
     expect(said({ kind: "refused" })).toBeNull();
     expect(said({ kind: "catalog_state", state: { NeedsMacOS: {} } })).toBeNull();

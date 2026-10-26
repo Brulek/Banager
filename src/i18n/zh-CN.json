@@ -1793,7 +1793,7 @@
     "introNoHomebrew": "这台Mac上还没有Homebrew。先安装它，下面的工具就能在这里一键安装。",
     "introHomebrewNotReady": "这台Mac上有Homebrew，但现在无法用它安装：边栏“来源”下的Homebrew页面会说明原因。",
     "footnote": "这里的工具都用Homebrew安装，模型用Ollama下载；安装前都会先显示要运行的命令。",
-    "ollamaNoCommand": "Ollama已打开，但这台Mac上仍然没有ollama命令，下载模型需要它。",
+    "ollamaNoCommand": "Ollama打开后仍未找到ollama命令，下载模型需要它。如果Ollama提出安装这个命令，请同意，然后按“重新检查”。",
     "install": "安装",
     "installLabel": "安装{{name}}",
     "copyCommand": "拷贝“{{command}}”",
@@ -1811,7 +1811,7 @@
       "homebrewUnsupported": "不支持这台Mac",
       "needsOllama": "需先安装Ollama",
       "ollamaNotReady": "Ollama现在无法下载模型",
-      "ollamaElsewhere": "Ollama在另一台电脑上",
+      "ollamaElsewhere": "Ollama使用的是其他地址",
       "homebrewNotReady": "Homebrew现在无法安装工具"
     },
     "progress": {
@@ -1835,7 +1835,7 @@
       "needsMacOS": "它需要macOS {{major}}或更高版本。",
       "fromOllama": "Ollama会从它的模型库下载{{model}}，约{{size}}。",
       "needsOllama": "这台Mac上的Ollama现在无法下载它。",
-      "ollamaElsewhere": "这台Mac使用的Ollama在另一台电脑上，用它下载的模型会存在那台电脑上，不在这台Mac上。",
+      "ollamaElsewhere": "这台Mac上的Ollama由OLLAMA_HOST设为了其他地址，不是这台Mac自己的地址，所以不在这里下载模型。",
       "noOllama": "这台Mac上没有Ollama，无法下载它。",
       "room": "这台Mac还有{{free}}可用空间。",
       "roomShort": "这台Mac只剩{{free}}可用空间，不够下载它。请先腾出一些空间。",

@@ -615,7 +615,7 @@ describe("the Discover page", () => {
     await waitFor(() => expect(calls("open_ollama_app")).toHaveLength(1));
     expect(
       await within(row("model")).findByText(
-        "Ollama is open, and this Mac still has no ollama command, which downloading the model needs.",
+        "No ollama command was found after Ollama opened, and downloading the model needs one. If Ollama offers to install it, accept, then click Check Again.",
         {},
         { timeout: 8000 },
       ),

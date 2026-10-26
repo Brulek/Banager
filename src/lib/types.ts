@@ -1424,7 +1424,7 @@ export type CatalogState =
   | "NeedsOllama"
   /** The starter model, with an Ollama that cannot pull now (not running, not answering, view only), or Ollama.app with no `ollama` command yet. */
   | "OllamaNotReady"
-  /** The starter model, with every Ollama at another machine's address (`OLLAMA_HOST`). */
+  /** The starter model, with every Ollama at an address `OLLAMA_HOST` sets that is not this Mac's own. */
   | "OllamaElsewhere";
 /**
  * One result of the Discover page's search of Homebrew (Rust `Found`,

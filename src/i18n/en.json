@@ -1937,7 +1937,7 @@
     "introNoHomebrew": "This Mac doesn't have Homebrew yet. Install it first, and then the tools below install here in one click.",
     "introHomebrewNotReady": "Homebrew is on this Mac but can't install anything right now: its page under Sources says why.",
     "footnote": "Tools here install with Homebrew, and the model with Ollama; each install shows the command it runs first.",
-    "ollamaNoCommand": "Ollama is open, and this Mac still has no ollama command, which downloading the model needs.",
+    "ollamaNoCommand": "No ollama command was found after Ollama opened, and downloading the model needs one. If Ollama offers to install it, accept, then click Check Again.",
     "install": "Install",
     "installLabel": "Install {{name}}",
     "copyCommand": "Copy “{{command}}”",
@@ -1955,7 +1955,7 @@
       "homebrewUnsupported": "Not supported on this Mac",
       "needsOllama": "Needs Ollama",
       "ollamaNotReady": "Ollama can't download now",
-      "ollamaElsewhere": "Ollama is on another computer",
+      "ollamaElsewhere": "Ollama uses another address",
       "homebrewNotReady": "Homebrew can't install now"
     },
     "progress": {
@@ -1979,7 +1979,7 @@
       "needsMacOS": "It needs macOS {{major}} or later.",
       "fromOllama": "Ollama downloads {{model}} from its library, about {{size}}.",
       "needsOllama": "Ollama on this Mac can't download it right now.",
-      "ollamaElsewhere": "The Ollama this Mac uses is on another computer, so a model it downloads would be there, not on this Mac.",
+      "ollamaElsewhere": "The Ollama this Mac uses is set by OLLAMA_HOST to an address other than this Mac's own, so the model isn't downloaded from here.",
       "noOllama": "There's no Ollama on this Mac to download it with.",
       "room": "This Mac has {{free}} free.",
       "roomShort": "This Mac has only {{free}} free, less than the download needs. Free up some space first.",

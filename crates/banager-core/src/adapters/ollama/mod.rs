@@ -307,7 +307,14 @@ pub(crate) fn host_is_this_mac(host: &str) -> bool {
     {
         Some(url::Host::Domain(name)) => name.eq_ignore_ascii_case("localhost"),
         Some(url::Host::Ipv4(ip)) => ip.is_loopback() || ip.is_unspecified(),
-        Some(url::Host::Ipv6(ip)) => ip.is_loopback() || ip.is_unspecified(),
+        Some(url::Host::Ipv6(ip)) => {
+            ip.is_loopback()
+                || ip.is_unspecified()
+                // `[::ffff:127.0.0.1]`: an IPv4 loopback written as IPv6,
+                // which `normalize_ollama_host` leaves as it is beside a
+                // port (from the review of 18083acc).
+                || ip.to_ipv4_mapped().is_some_and(|v4| v4.is_loopback())
+        }
         None => false,
     }
 }
@@ -3093,11 +3100,13 @@ mod tests {
             "http://0.0.0.0:11434",
             "http://[::1]:11434",
             "http://[::]:11434",
+            "http://[::ffff:127.0.0.1]:11434",
         ] {
             assert!(host_is_this_mac(local), "{local} is this Mac");
         }
         for remote in [
             "http://10.0.0.5:11434",
+            "http://[::ffff:10.0.0.5]:11434",
             "http://gpu-box.local:11434",
             "https://ollama.example.com",
             "not a url",

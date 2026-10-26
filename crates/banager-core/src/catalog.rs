@@ -252,10 +252,10 @@ pub enum CatalogState {
     /// own notice says which -- or Ollama.app with no `ollama` command
     /// yet. Open Ollama is the window's where the app is not running.
     OllamaNotReady,
-    /// The starter model, where every Ollama source is at another
-    /// machine's address (`OLLAMA_HOST`): a model it pulls would be on
-    /// that machine, and nothing in its notice says so, since it answers
-    /// (from the review of abba6f7e).
+    /// The starter model, where every Ollama source is at an address
+    /// `OLLAMA_HOST` sets that is not known to be this Mac's own
+    /// (`host_is_this_mac`): not offered from here, and nothing in its
+    /// notice says why, since it answers (from the review of abba6f7e).
     OllamaElsewhere,
 }
 
@@ -547,9 +547,9 @@ fn ollama_can_pull(instance: &ManagerInstance) -> bool {
         && instance.read_only_reason.is_none()
 }
 
-/// Whether `instance` is an Ollama at another machine's address: one whose
-/// id names an address (`ollama:<OLLAMA_HOST>`; one Banager cannot use has
-/// none) that is not this Mac's.
+/// Whether `instance` is an Ollama at an address not known to be this
+/// Mac's: one whose id names an address (`ollama:<OLLAMA_HOST>`; one
+/// Banager cannot use has none) that `host_is_this_mac` does not take.
 fn ollama_elsewhere(instance: &ManagerInstance) -> bool {
     instance
         .id
