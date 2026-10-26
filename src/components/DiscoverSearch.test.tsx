@@ -240,23 +240,42 @@ describe("Discover's search of Homebrew", () => {
       state: "NotInstalled",
       installs_here: true,
     };
+    // And Ollama's app, which has nothing to type: no line, as its row on
+    // the list has Open Ollama instead (from the review of b5f7fca5).
+    const ollamaApp = { ...installed, id: 8, name: "ollama-app" };
+    const ollama: CatalogEntry = {
+      id: "ollama",
+      category: "LocalModels",
+      install: { Homebrew: { kind: "Cask", name: "ollama-app" } },
+      state: "NotInstalled",
+      installs_here: true,
+    };
+    search = async () => [
+      ...results,
+      { id: "d".repeat(32), kind: "Cask", name: "ollama-app", description: "Get up and running with large language models locally", installed: false, catalog_id: "ollama" },
+    ];
     mockInvoke.mockImplementation(async (cmd: string, args?: unknown) => {
       if (cmd === "get_snapshot") return snapshot;
-      if (cmd === "get_catalog") return [...catalog, claude];
-      if (cmd === "list_operations") return [installed];
+      if (cmd === "get_catalog") return [...catalog, claude, ollama];
+      if (cmd === "list_operations") return [installed, ollamaApp];
       if (cmd === "search_homebrew") return search((args as { query: string }).query);
       return null;
     });
     useUiStore.getState().rememberOpFinished(7, (snapshot.refreshed_at! + 5) * 1000);
+    useUiStore.getState().rememberOpFinished(8, (snapshot.refreshed_at! + 5) * 1000);
     try {
       renderWithProviders(<DiscoverPage />);
       await typeSearch("claude");
-      await waitFor(() => expect(results_()).toHaveLength(3), { timeout: 3000 });
+      await waitFor(() => expect(results_()).toHaveLength(4), { timeout: 3000 });
       const row = document.querySelector('[data-found="claude-code"]') as HTMLElement;
       await waitFor(() => expect(row.querySelector("[data-found-use]")).toHaveTextContent("Type claude in a new Terminal window."));
       expect(within(row).getByRole("button", { name: "Copy “claude”" })).toBeInTheDocument();
       // Not one of the suggestions, or not installed from here: what it is.
       expect(document.querySelector('[data-found="jq"] [data-found-use]')).toBeNull();
+      const app = document.querySelector('[data-found="ollama-app"]') as HTMLElement;
+      expect(results_()[3]).toEqual(["ollama-app", "Suggested", "Installed"]);
+      expect(app.querySelector("[data-found-use]")).toBeNull();
+      expect(app).toHaveTextContent("Get up and running with large language models locally");
     } finally {
       useUiStore.setState({ opFinishedAt: {} });
     }

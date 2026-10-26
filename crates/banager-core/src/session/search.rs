@@ -1,5 +1,5 @@
 //! The Discover page's search of Homebrew (phase 5 step E): what Homebrew
-//! has whose name or description has a text in it, each result kept here
+//! has whose name has a text in it, each result kept here
 //! under an id of its own, so that Install names a result, never a package
 //! (phase 5 proposal §3.4), as Install on a catalog entry names the entry.
 

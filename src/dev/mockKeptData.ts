@@ -52,6 +52,9 @@ export function withMockKeptData(
   adapterId: string,
   request: OpRequest,
   ownCodexInstall = false,
+  // The models folder is this Mac's Ollama's: not there where its Ollama
+  // is at another address (`?ollama=elsewhere`; from the review of f43e6572).
+  modelsHere = true,
 ): Plan {
   if (request.kind !== "Uninstall") return plan;
   const family = mockFamilyOf(adapterId, {
@@ -59,7 +62,7 @@ export function withMockKeptData(
     kind: request.artifact_kind,
     name: request.name,
   });
-  const kept = family === null ? [] : (KEPT[family] ?? []);
+  const kept = (family === null ? [] : (KEPT[family] ?? [])).filter((item) => modelsHere || item.what !== "Models");
   if (kept.length === 0) return plan;
   const named = new Set(
     plan.warnings.flatMap((warning) => {

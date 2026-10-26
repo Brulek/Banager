@@ -452,6 +452,9 @@ brew 7.0.6 `receipts/` 里不是录制的 27 份收据（25 份按 cask 目录�
   （`ollama::ollama_app_path` 已能找到 App）。这是让 Banager 运行一个不在 PATH 上的程序，属于作者拍板的事，没有做。
 - **`OLLAMA_HOST` 写成本机的局域网地址或 `.local` 名字时，算作「其他地址」。** `host_is_this_mac` 只认 `localhost`、回环地址、
   IPv4 回环的 IPv6 写法与「所有网卡」地址；查本机网卡地址要多读系统信息，没有做。文案因此只说「Ollama使用的是其他地址」，不说「另一台电脑」。
+- **窗口重新载入后，运行条与日志里的名字回到列表里的名字。** 从「发现」装的东西，运行条用安装时记下的名字（「Gemma 3」），
+  记在页面内存里（`opNames`，`src/store/ui.ts`），窗口重新载入（开发时的刷新）后没有了，就按列表里的名字说（`gemma3:4b`）。
+  关窗口不会丢（页面只是隐藏）。要保留就得存盘，没有做。
 - **清单与窗口的快照可能差一轮。** `get_catalog` 按后端当时的快照算（`src-tauri/src/ipc.rs`），窗口拿来比较的是发请求时自己的快照
   （`CatalogView::madeFrom`）。请求途中又提交了一轮时，清单比 `madeFrom` 新：刚装好又在终端里卸掉的工具，可能短暂显示「已安装」，
   窗口的快照跟上后自行纠正。稳妥的改法是 `get_catalog` 一并返回它用的 generation/round 与各来源的 `answered_at`（改线格式），没有做。

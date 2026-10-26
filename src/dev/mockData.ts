@@ -752,7 +752,9 @@ export function withOllama(world: World, where: ScenarioOllama): World {
               }
             : i,
         )
-      : [...world.instances, { ...answering, id: ELSEWHERE_OLLAMA }],
+      : // An `ollama` on PATH where no Homebrew lists one: Ollama.app's
+        // link, as Rust would find it.
+        [...world.instances, { ...answering, id: ELSEWHERE_OLLAMA, exe_path: "/usr/local/bin/ollama" }],
     artifacts: world.artifacts.map((a) => ({ ...a, key: movedKey(a.key) })),
     updates: [
       ...world.updates.filter((u) => !local.has(u.key.instance_id)),

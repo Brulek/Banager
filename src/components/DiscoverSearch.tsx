@@ -139,10 +139,15 @@ export function DiscoverResults({ query }: { query: string }) {
             const notHere = entry !== undefined && entry.state !== "NotInstalled" && entry.state !== "Installed";
             const description = descriptionOf(found);
             // A suggestion installed from here: how to use it, with Copy, in
-            // place of what it is, as its row on the list says it.
-            const use =
-              entry !== undefined && installed && progress?.kind === "installed" ? ITEM_KEYS[entry.id]?.use : undefined;
+            // place of what it is, as its row on the list says it. Not one
+            // with nothing to type -- Ollama's app, whose row on the list
+            // has Open Ollama while it is not running (from the review of
+            // b5f7fca5).
             const command = entry === undefined ? undefined : commandOf(entry);
+            const use =
+              entry !== undefined && command !== undefined && installed && progress?.kind === "installed"
+                ? ITEM_KEYS[entry.id]?.use
+                : undefined;
             let right: ReactNode;
             if (progress !== null && isUnderway(progress)) {
               right = (
@@ -197,9 +202,7 @@ export function DiscoverResults({ query }: { query: string }) {
                         className={`flex flex-wrap items-center gap-x-2 gap-y-1 text-muted ${SMALL_WRAPPING}`}
                       >
                         <span>{t(use, wordsOf(entry))}</span>
-                        {command === undefined ? null : (
-                          <CopyButton text={command} label={t("discover.copyCommand", { command })} />
-                        )}
+                        {command === undefined ? null : <CopyButton text={command} label={t("discover.copyCommand", { command })} />}
                       </span>
                     ) : description === null ? null : (
                       <span className={`block truncate text-muted ${SMALL_WRAPPING}`}>{description}</span>

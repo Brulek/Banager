@@ -1000,6 +1000,7 @@ export function createMockBackend(scenario: Scenario): MockBackend {
                 inst.adapter_id,
                 request,
                 world.instances.some((instance) => instance.adapter_id === "standalone-codex"),
+                scenario.ollama !== "elsewhere",
               ),
               world,
               request,
@@ -1134,8 +1135,7 @@ export function createMockBackend(scenario: Scenario): MockBackend {
     async search_homebrew(args) {
       // `Session::search_homebrew` over the pretend Homebrew's names
       // (`MOCK_HOMEBREW` in ./mockSearch.ts): the same refusals, the same
-      // order -- the name itself, those it starts, the rest, then those
-      // only a description matched.
+      // order -- the name itself, those it starts, the rest; by name only.
       const query = String(args.query ?? "").trim();
       if (!searchable(query)) throw refusal({ kind: "invalid_query" });
       const brew = (committed?.instances ?? []).find(
