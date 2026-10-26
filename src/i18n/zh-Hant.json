@@ -1794,7 +1794,7 @@
     "introNoHomebrew": "這台Mac上還沒有Homebrew。先安裝好它，下面的工具就能在這裡一鍵安裝。",
     "introHomebrewNotReady": "這台Mac上有Homebrew，但現在無法用它安裝：側邊欄「來源」下的Homebrew頁面會說明原因。",
     "footnote": "這裡的工具都用Homebrew安裝，模型用Ollama下載；安裝前都會先顯示要執行的指令。",
-    "ollamaNoCommand": "Ollama開啟後仍未找到ollama指令，下載模型需要它。如果Ollama提議安裝這個指令，請同意，然後按「重新檢查」。",
+    "ollamaNoCommand": "Ollama開啟後仍未找到ollama指令，下載模型需要它。如果Ollama提議安裝這個指令，請同意，然後點按「重新檢查」。",
     "install": "安裝",
     "installLabel": "安裝{{name}}",
     "copyCommand": "拷貝「{{command}}」",
@@ -1864,7 +1864,7 @@
       "text": "Homebrew要在「終端機」裡安裝：由你執行它的安裝程式、輸入密碼，這裡既不會執行它，也看不到你的密碼。",
       "olderMacOS": "Homebrew支援macOS 15或以上版本。在macOS {{version}}上也能安裝，但有些功能可能無法正常使用。",
       "steps": {
-        "open": "按一下「開啟終端機」，安裝指令會先拷貝好。",
+        "open": "點按「開啟終端機」，安裝指令會先拷貝好。",
         "paste": "在「終端機」裡按下Command-V，然後按下Return鍵。",
         "password": "出現「Password」時，輸入這台Mac的登入密碼，然後按下Return鍵。輸入時螢幕上不會顯示任何字元。",
         "return": "出現「Press RETURN」時，再按一次Return鍵，然後等它安裝完。如果它先安裝命令列工具，可能要等幾分鐘。",
@@ -1872,7 +1872,7 @@
       },
       "whatTitle": "這條指令會做什麼",
       "what": {
-        "script": "從GitHub下載Homebrew官方的安裝腳本並執行。這個腳本沒有可供核對的校驗值。",
+        "script": "從GitHub下載Homebrew官方的安裝腳本並執行。這個腳本沒有可供核對的檢查碼。",
         "admin": "確認你是管理者，列出要安裝的內容，然後等你按下Return鍵。",
         "tools": "如果這台Mac沒有Apple的命令列工具，先安裝它。",
         "place": "把Homebrew放進/opt/homebrew，並讓新的終端機視窗能找到它。",

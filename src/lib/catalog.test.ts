@@ -112,13 +112,13 @@ describe("a refusal of plan_install", () => {
     const said = (payload: unknown) => catalogRefusal(t, JSON.stringify(payload));
     expect(said({ kind: "catalog_state", state: "Installed" })).toBe("It's already installed.");
     expect(said({ kind: "catalog_state", state: "NeedsHomebrew" })).toBe(
-      "No Homebrew on this Mac can install it right now.",
+      "There's no Homebrew on this Mac that can install it right now.",
     );
     expect(said({ kind: "catalog_state", state: { NeedsMacOS: { major: 14 } } })).toBe("It needs macOS 14 or later.");
     // The model, with every Ollama at another machine's address (from
     // the review of abba6f7e).
     expect(said({ kind: "catalog_state", state: "OllamaElsewhere" })).toBe(
-      "The Ollama this Mac uses is set by OLLAMA_HOST to an address other than this Mac's own, so the model isn't downloaded from here.",
+      "OLLAMA_HOST points this Mac's Ollama to an address other than this Mac's own, so the model can't be downloaded here.",
     );
     expect(stateText(t, "OllamaElsewhere")).toBe("Ollama uses another address");
     // Anything else is `planErrorMessage`'s.

@@ -1938,7 +1938,7 @@
     "intro": "Tools to start with, and which of them this Mac already has.",
     "introNoHomebrew": "This Mac doesn't have Homebrew yet. Install it first, and then the tools below install here in one click.",
     "introHomebrewNotReady": "Homebrew is on this Mac but can't install anything right now: its page under Sources says why.",
-    "footnote": "Tools here install with Homebrew, and the model with Ollama; each install shows the command it runs first.",
+    "footnote": "Tools here install with Homebrew, and the model with Ollama; each install shows its command before it runs.",
     "ollamaNoCommand": "No ollama command was found after Ollama opened, and downloading the model needs one. If Ollama offers to install it, accept, then click Check Again.",
     "install": "Install",
     "installLabel": "Install {{name}}",
@@ -1977,11 +1977,11 @@
       "submitError": "Couldn't start the install: {{message}}",
       "submitErrorPlain": "Couldn't start the install.",
       "installed": "It's already installed.",
-      "needsHomebrew": "No Homebrew on this Mac can install it right now.",
+      "needsHomebrew": "There's no Homebrew on this Mac that can install it right now.",
       "needsMacOS": "It needs macOS {{major}} or later.",
       "fromOllama": "Ollama downloads {{model}} from its library, about {{size}}.",
       "needsOllama": "Ollama on this Mac can't download it right now.",
-      "ollamaElsewhere": "The Ollama this Mac uses is set by OLLAMA_HOST to an address other than this Mac's own, so the model isn't downloaded from here.",
+      "ollamaElsewhere": "OLLAMA_HOST points this Mac's Ollama to an address other than this Mac's own, so the model can't be downloaded here.",
       "noOllama": "There's no Ollama on this Mac to download it with.",
       "room": "This Mac has {{free}} free.",
       "roomShort": "This Mac has only {{free}} free, less than the download needs. Free up some space first.",
@@ -2022,7 +2022,7 @@
         "admin": "Makes sure you're an administrator, lists what it will install, and waits for you to press Return.",
         "tools": "Installs Apple's Command Line Tools first, if this Mac doesn't have them.",
         "place": "Puts Homebrew in /opt/homebrew, and lets new Terminal windows find it.",
-        "update": "Has Homebrew check online for new versions once. Homebrew turns on anonymous analytics, which you can turn off later."
+        "update": "Finally, has Homebrew check online for new versions once. Homebrew's anonymous analytics are on by default; you can turn them off later."
       },
       "commandLabel": "Homebrew's install command",
       "openTerminal": "Open Terminal",
@@ -2054,7 +2054,7 @@
       "gemini-cli": {
         "name": "Gemini CLI",
         "what": "Google's AI assistant for Terminal",
-        "more": "Answers questions and works on code in Terminal, and installs Node.js with it. Once installed, type gemini in a new Terminal window.",
+        "more": "Answers questions and works on code in Terminal; installing it also installs Node.js. Once installed, type gemini in a new Terminal window.",
         "use": "Type gemini in a new Terminal window."
       },
       "ollama": {
@@ -2065,13 +2065,13 @@
       },
       "model": {
         "name": "Gemma 3",
-        "what": "Google's open AI model, sized for this Mac: {{model}}, about {{size}}",
+        "what": "An openly released AI model from Google, chosen for this Mac's memory: {{model}}, about {{size}}",
         "more": "Once downloaded it runs on this Mac without an internet connection, and answers questions and writes in many languages, Chinese included. Type ollama run {{model}} in a new Terminal window, or use it in the Ollama app.",
         "use": "Type ollama run {{model}} in a new Terminal window."
       },
       "node": {
         "name": "Node.js",
-        "what": "Runs JavaScript programs, as many AI tools are",
+        "what": "Runs programs written in JavaScript, as many AI tools are",
         "more": "Tools installed with npm need it, and npm comes with it. Once installed, type node or npm in a new Terminal window.",
         "use": "Type node or npm in a new Terminal window."
       },

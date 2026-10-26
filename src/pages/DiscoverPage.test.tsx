@@ -207,7 +207,7 @@ describe("the Discover page", () => {
     fireEvent.click(within(codex).getByRole("button", { name: "Details: Codex" }));
     expect(codex).toHaveTextContent("Once installed, type codex in a new Terminal window.");
     expect(
-      screen.getByText("Tools here install with Homebrew, and the model with Ollama; each install shows the command it runs first."),
+      screen.getByText("Tools here install with Homebrew, and the model with Ollama; each install shows its command before it runs."),
     ).toBeInTheDocument();
     expect(screen.getByText("Tools to start with, and which of them this Mac already has.")).toBeInTheDocument();
     // Nothing is planned until Install is pressed.
@@ -525,7 +525,7 @@ describe("the Discover page", () => {
     });
     const { unmount } = renderWithProviders(<DiscoverPage />);
     await waitFor(() => expect(rows()).toEqual([["Gemma 3", "Install"]]));
-    expect(row("model")).toHaveTextContent("Google's open AI model, sized for this Mac: gemma3:4b, about 3.4 GB");
+    expect(row("model")).toHaveTextContent("An openly released AI model from Google, chosen for this Mac's memory: gemma3:4b, about 3.4 GB");
     fireEvent.click(within(row("model")).getByRole("button", { name: "Install Gemma 3" }));
     const sheet = await screen.findByRole("alertdialog", { name: "Install “Gemma 3”?" });
     await waitFor(() => expect(calls("plan_install")[0][1]).toEqual({ catalogId: "model" }));
