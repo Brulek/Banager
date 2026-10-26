@@ -357,10 +357,13 @@ pub fn body(language: MenuLanguage, run: &FinishedRun, password: u32) -> String 
             (MenuLanguage::ZhHant, RunKind::Upgrade) => format!("已更新{n}個工具"),
             (MenuLanguage::ZhCn, RunKind::Uninstall) => format!("已卸载{n}个工具"),
             (MenuLanguage::ZhHant, RunKind::Uninstall) => format!("已解除安裝{n}個工具"),
+            (MenuLanguage::ZhCn, RunKind::Install) => format!("已安装{n}个工具"),
+            (MenuLanguage::ZhHant, RunKind::Install) => format!("已安裝{n}個工具"),
             (MenuLanguage::ZhCn, RunKind::Other) => format!("已完成{n}项操作"),
             (MenuLanguage::ZhHant, RunKind::Other) => format!("已完成{n}項操作"),
             (MenuLanguage::En, RunKind::Upgrade) => format!("Updated {n} {}", tools(n)),
             (MenuLanguage::En, RunKind::Uninstall) => format!("Uninstalled {n} {}", tools(n)),
+            (MenuLanguage::En, RunKind::Install) => format!("Installed {n} {}", tools(n)),
             (MenuLanguage::En, RunKind::Other) => {
                 format!(
                     "Completed {n} {}",
@@ -377,10 +380,13 @@ pub fn body(language: MenuLanguage, run: &FinishedRun, password: u32) -> String 
             (MenuLanguage::ZhHant, RunKind::Upgrade) => format!("{n}個已更新"),
             (MenuLanguage::ZhCn, RunKind::Uninstall) => format!("{n}个已卸载"),
             (MenuLanguage::ZhHant, RunKind::Uninstall) => format!("{n}個已解除安裝"),
+            (MenuLanguage::ZhCn, RunKind::Install) => format!("{n}个已安装"),
+            (MenuLanguage::ZhHant, RunKind::Install) => format!("{n}個已安裝"),
             (MenuLanguage::ZhCn, RunKind::Other) => format!("{n}项已完成"),
             (MenuLanguage::ZhHant, RunKind::Other) => format!("{n}項已完成"),
             (MenuLanguage::En, RunKind::Upgrade) => format!("{n} updated"),
             (MenuLanguage::En, RunKind::Uninstall) => format!("{n} uninstalled"),
+            (MenuLanguage::En, RunKind::Install) => format!("{n} installed"),
             (MenuLanguage::En, RunKind::Other) => format!("{n} completed"),
         });
     }
@@ -391,10 +397,13 @@ pub fn body(language: MenuLanguage, run: &FinishedRun, password: u32) -> String 
             (MenuLanguage::ZhHant, RunKind::Upgrade) => format!("{n}個未能更新"),
             (MenuLanguage::ZhCn, RunKind::Uninstall) => format!("{n}个未能卸载"),
             (MenuLanguage::ZhHant, RunKind::Uninstall) => format!("{n}個未能解除安裝"),
+            (MenuLanguage::ZhCn, RunKind::Install) => format!("{n}个未能安装"),
+            (MenuLanguage::ZhHant, RunKind::Install) => format!("{n}個未能安裝"),
             (MenuLanguage::ZhCn, RunKind::Other) => format!("{n}项未能完成"),
             (MenuLanguage::ZhHant, RunKind::Other) => format!("{n}項未能完成"),
             (MenuLanguage::En, RunKind::Upgrade) => format!("{n} couldn't be updated"),
             (MenuLanguage::En, RunKind::Uninstall) => format!("{n} couldn't be uninstalled"),
+            (MenuLanguage::En, RunKind::Install) => format!("{n} couldn't be installed"),
             (MenuLanguage::En, RunKind::Other) => format!("{n} couldn't be completed"),
         });
     }
@@ -682,6 +691,16 @@ mod tests {
                 "1 uninstalled, 1 couldn't be uninstalled",
             ),
             (
+                run(RunKind::Install, 1, 0, 0),
+                "已安装1个工具",
+                "Installed 1 tool",
+            ),
+            (
+                run(RunKind::Install, 1, 1, 1),
+                "1个已安装，1个未能安装，1个需要查看",
+                "1 installed, 1 couldn't be installed, 1 needs attention",
+            ),
+            (
                 run(RunKind::Other, 3, 0, 0),
                 "已完成3项操作",
                 "Completed 3 operations",
@@ -711,6 +730,8 @@ mod tests {
                 run(RunKind::Uninstall, 1, 1, 1),
                 "1個已解除安裝，1個未能解除安裝，1個需要查看",
             ),
+            (run(RunKind::Install, 2, 0, 0), "已安裝2個工具"),
+            (run(RunKind::Install, 1, 1, 0), "1個已安裝，1個未能安裝"),
             (run(RunKind::Other, 3, 0, 0), "已完成3項操作"),
             (
                 run(RunKind::Other, 1, 1, 1),

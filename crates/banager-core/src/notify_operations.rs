@@ -26,7 +26,9 @@ pub enum RunKind {
     Upgrade,
     /// Every one an uninstall: 「已卸载2个工具」.
     Uninstall,
-    /// Anything else -- updates and uninstalls together, an install:
+    /// Every one an install, from Discover: 「已安装2个工具」.
+    Install,
+    /// Anything else -- updates and uninstalls together, a link:
     /// 「已完成3项操作」.
     Other,
 }
@@ -180,6 +182,8 @@ impl ReportedRuns {
             run.kind = RunKind::Upgrade;
         } else if ended.iter().all(|(_, kind, _)| *kind == OpKind::Uninstall) {
             run.kind = RunKind::Uninstall;
+        } else if ended.iter().all(|(_, kind, _)| *kind == OpKind::Install) {
+            run.kind = RunKind::Install;
         }
         let mut password = 0;
         for (_, kind, how) in ended {
@@ -368,6 +372,18 @@ mod tests {
 
     fn evicted(kind: OpKind, ended: Ended) -> EvictedOp {
         EvictedOp { kind, ended }
+    }
+
+    #[test]
+    fn test_a_run_of_installs_from_discover_is_told_of_as_installs() {
+        let mut op = summary(1, OpKind::Install, None);
+        op.status = OpStatus::Done;
+        op.outcome = Some(Outcome::Succeeded);
+        let reported = ReportedRuns::default();
+        assert_eq!(
+            reported.completed(1, &records(&[op])),
+            Some(run(1, RunKind::Install, 1, 0, 0))
+        );
     }
 
     #[test]
@@ -678,6 +694,7 @@ mod tests {
         for (wire, kind) in [
             (r#""Upgrade""#, RunKind::Upgrade),
             (r#""Uninstall""#, RunKind::Uninstall),
+            (r#""Install""#, RunKind::Install),
             (r#""Other""#, RunKind::Other),
         ] {
             assert_eq!(serde_json::from_str::<RunKind>(wire).unwrap(), kind);

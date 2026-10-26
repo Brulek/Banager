@@ -96,6 +96,11 @@ describe("finishedRunOf", () => {
 
   it("names a run of uninstalls as one, and a mixed run as other", () => {
     expect(finishedRunOf([op(1, "Done", "Succeeded", "Uninstall")])?.kind).toBe("Uninstall");
+    // Discover's installs, as Rust names them (`RunKind::Install`).
+    expect(finishedRunOf([op(1, "Done", "Succeeded", "Install"), op(2, "Done", failed, "Install")])?.kind).toBe(
+      "Install",
+    );
+    expect(finishedRunOf([op(1, "Done", "Succeeded", "Install"), op(2, "Done", "Succeeded")])?.kind).toBe("Other");
     expect(finishedRunOf([op(1, "Done", "Succeeded", "Uninstall"), op(2, "Done", "Succeeded")])?.kind).toBe(
       "Other",
     );

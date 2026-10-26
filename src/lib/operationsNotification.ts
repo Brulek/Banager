@@ -29,7 +29,9 @@ export function finishedRunOf(ran: OpSummary[]): FinishedRun | null {
     ? "Upgrade"
     : ran.every((op) => op.kind === "Uninstall")
       ? "Uninstall"
-      : "Other";
+      : ran.every((op) => op.kind === "Install")
+        ? "Install"
+        : "Other";
   const run: FinishedRun = {
     last_op: Math.max(...ran.map((op) => op.id)),
     kind,

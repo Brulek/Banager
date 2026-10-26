@@ -1122,7 +1122,10 @@ thread, in order with AppKit telling of Banager leaving the front
 (`notify_ops::look_again_on_main_thread`): one that finished just as
 Banager left the front is still posted, and never twice.
 
-It is titled Banager and says how the run went in the window's language:
+It is titled Banager and says how the run went in the window's language
+-- a run of Discover's installs as "Installed N tools" (「已安装N个工具」;
+「已安裝N個工具」), "N installed, N couldn't be installed", a run of
+updates as follows:
 "Updated N tools" (「已更新N个工具」; in Traditional Chinese
 「已更新N個工具」) when every one worked, and otherwise each way they
 ended, "N updated, N couldn't be updated" (「N个已更新，N个未能更新」;
