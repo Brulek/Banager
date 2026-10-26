@@ -685,7 +685,12 @@ fn test_an_opens_flags_are_read_from_its_own_statement() {
 /// round 5 review found the Codex version read and the standalone launcher
 /// check following `~/.codex` and `~/.local/bin/claude` with plain
 /// `read_link`/`realpath`, which this list now rules out.
-const PATH_LOOKUPS_ALLOWED: [(&str, &str, &str); 18] = [
+const PATH_LOOKUPS_ALLOWED: [(&str, &str, &str); 19] = [
+    (
+        "crates/banager-core/src/catalog.rs:",
+        "let read = unsafe { libc::statfs(path.as_ptr(), &mut stat) };",
+        "the home folder's volume's free room for the starter model's sheet (`catalog::free_bytes`): `statfs` asks the file system, and opens nothing in the folder",
+    ),
     (
         "crates/banager-core/src/atomic_file.rs:",
         "use std::os::unix::fs::OpenOptionsExt;",

@@ -35,9 +35,10 @@ pull` plan.
    a release that changes the choice reads them again.
 3. **Any model counts.** A Mac with any Ollama model has "a model to start
    with": the row says Installed rather than offering a second one.
-4. **No free-space check yet.** The proposal's "剩余空间" line is left
-   for later: the sheet says the download's size, and `ollama pull`
-   itself stops when the disk is full.
+4. **Free space, said.** The sheet says the room free on the home
+   folder's volume (`statfs`), as a caution where the download, with a
+   tenth to spare, would not fit; Install stays, as `ollama pull` itself
+   stops when the disk is full. (Added after the step's review.)
 
 ## The work
 

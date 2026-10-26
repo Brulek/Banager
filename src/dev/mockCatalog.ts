@@ -82,7 +82,7 @@ const CATALOG: Item[] = [
 ];
 
 /** The pretend Mac. */
-const HOST = { macosMajor: 15, appleSilicon: true };
+const HOST = { macosMajor: 15, appleSilicon: true, freeBytes: 182_400_000_000 };
 
 /** `catalog::this_macs_ollama`: an Ollama source at this Mac's own address. */
 function thisMacsOllama(instanceId: string): boolean {
@@ -143,6 +143,14 @@ export function mockCatalog(instances: ManagerInstance[], artifacts: InstalledAr
         : instances.some((i) => i.adapter_id === "brew")
           ? "HomebrewNotReady"
           : "NeedsHomebrew";
-    return { id: item.id, category: item.category, install: item.install, state, installs_here: item.installsHere };
+    return {
+      id: item.id,
+      category: item.category,
+      install: item.install,
+      state,
+      installs_here: item.installsHere,
+      // The pretend Mac's free room, for the model's sheet alone.
+      free_bytes: "OllamaModel" in (typeof item.install === "object" ? item.install : {}) ? HOST.freeBytes : null,
+    };
   });
 }

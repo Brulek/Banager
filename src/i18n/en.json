@@ -1977,7 +1977,9 @@
       "needsMacOS": "It needs macOS {{major}} or later.",
       "fromOllama": "Ollama downloads {{model}} from its library, about {{size}}.",
       "needsOllama": "Ollama on this Mac can't download it right now.",
-      "noOllama": "There's no Ollama on this Mac to download it with."
+      "noOllama": "There's no Ollama on this Mac to download it with.",
+      "room": "This Mac has {{free}} free.",
+      "roomShort": "This Mac has only {{free}} free, less than the download needs. Free up some space first."
     },
     "search": {
       "placeholder": "Search Homebrew",

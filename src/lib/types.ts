@@ -1461,5 +1461,12 @@ export interface CatalogEntry {
    * Terminal) nor Ollama (installed with a model to start with), yet.
    */
   installs_here: boolean;
+  /**
+   * For the starter model, the room free on the home folder's volume, in
+   * bytes (`Host::free_bytes`); null for every other entry, and where it
+   * could not be read. Always sent; optional here only so the catalog
+   * fixtures that predate it need not spell it out.
+   */
+  free_bytes?: number | null;
 }
 

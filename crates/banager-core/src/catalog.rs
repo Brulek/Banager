@@ -257,6 +257,10 @@ pub struct CatalogEntry {
     pub state: CatalogState,
     /// `CatalogItem::installs_here`: whether its row offers Install.
     pub installs_here: bool,
+    /// For the starter model, the room free on the home folder's volume
+    /// (`Host::free_bytes`), for its sheet to say beside the download;
+    /// `None` for every other entry, and where it could not be read.
+    pub free_bytes: Option<u64>,
 }
 
 /// What this Mac is, for the states that depend on it.
@@ -269,18 +273,25 @@ pub struct Host {
     /// How much memory the Mac has, in bytes, for the starter model
     /// (`starter_model`); `None` where it could not be read.
     pub memory_bytes: Option<u64>,
+    /// How much room the home folder's volume has free, in bytes, for the
+    /// starter model's sheet (`CatalogEntry::free_bytes`); `None` where it
+    /// could not be read.
+    pub free_bytes: Option<u64>,
 }
 
 impl Host {
     /// This Mac, from the kernel: `kern.osproductversion`,
     /// `hw.optional.arm64`, which is 1 on Apple silicon under Rosetta too,
-    /// and `hw.memsize` (`sysctlbyname`). Runs nothing and opens nothing.
+    /// and `hw.memsize` (`sysctlbyname`); and the free room of the home
+    /// folder's volume (`statfs`). Runs nothing and opens nothing.
     pub fn of_this_mac() -> Host {
         let version = crate::diagnostics::read_os().macos_version;
         Host {
             macos_major: version.as_deref().and_then(major_of),
             apple_silicon: apple_silicon(),
             memory_bytes: memory_bytes(),
+            free_bytes: std::env::var_os("HOME")
+                .and_then(|home| free_bytes(std::path::Path::new(&home))),
         }
     }
 }
@@ -336,6 +347,19 @@ fn memory_bytes() -> Option<u64> {
     None
 }
 
+/// The room free on `folder`'s volume for an unprivileged user, in bytes
+/// (`f_bavail` blocks of `f_bsize`): `statfs`, which asks the file system
+/// how much room it has and opens nothing in the folder.
+fn free_bytes(folder: &std::path::Path) -> Option<u64> {
+    use std::os::unix::ffi::OsStrExt;
+    let path = std::ffi::CString::new(folder.as_os_str().as_bytes()).ok()?;
+    // SAFETY: `statfs` is plain data, for which all zeros is a value; the
+    // kernel fills it in for the NUL-terminated `path`.
+    let mut stat: libc::statfs = unsafe { std::mem::zeroed() };
+    let read = unsafe { libc::statfs(path.as_ptr(), &mut stat) };
+    (read == 0).then(|| (stat.f_bavail as u64).saturating_mul(u64::from(stat.f_bsize)))
+}
+
 /// Every entry of the catalog, in order, with its state on the Mac
 /// `snapshot` and `host` describe.
 pub fn entries(snapshot: &Snapshot, host: &Host) -> Vec<CatalogEntry> {
@@ -348,6 +372,10 @@ pub fn entries(snapshot: &Snapshot, host: &Host) -> Vec<CatalogEntry> {
             install: install_on(item, host),
             state: state_of(item, snapshot, host, can_install),
             installs_here: item.installs_here,
+            free_bytes: match item.install {
+                CatalogInstall::OllamaModel { .. } => host.free_bytes,
+                _ => None,
+            },
         })
         .collect()
 }
@@ -579,6 +607,7 @@ mod tests {
         macos_major: Some(15),
         apple_silicon: true,
         memory_bytes: Some(16 * GIB),
+        free_bytes: Some(100 * GIB),
     };
 
     fn states(snapshot: &Snapshot, host: &Host) -> Vec<(&'static str, CatalogState)> {
@@ -650,6 +679,7 @@ mod tests {
             macos_major: Some(13),
             apple_silicon: false,
             memory_bytes: Some(16 * GIB),
+            free_bytes: Some(100 * GIB),
         };
         let on_intel = states(&empty, &intel_13);
         assert_eq!(on_intel[0], ("homebrew", CatalogState::HomebrewUnsupported));
@@ -778,6 +808,15 @@ mod tests {
     }
 
     #[test]
+    fn test_reads_a_volumes_free_room_and_nothing_for_a_folder_that_is_not_there() {
+        assert!(free_bytes(&std::env::temp_dir()).is_some_and(|room| room > 0));
+        assert_eq!(
+            free_bytes(std::path::Path::new("/no/such/folder/banager-free")),
+            None
+        );
+    }
+
+    #[test]
     fn test_reads_the_major_version() {
         assert_eq!(major_of("14.5"), Some(14));
         assert_eq!(major_of("27.0"), Some(27));
@@ -797,7 +836,8 @@ mod tests {
                 "category": "Basics",
                 "install": "HomebrewItself",
                 "state": "NotInstalled",
-                "installs_here": false
+                "installs_here": false,
+                "free_bytes": null
             })
         );
         assert_eq!(
@@ -807,7 +847,8 @@ mod tests {
                 "category": "LocalModels",
                 "install": {"Homebrew": {"kind": "Cask", "name": "ollama-app"}},
                 "state": "NeedsHomebrew",
-                "installs_here": true
+                "installs_here": true,
+                "free_bytes": null
             })
         );
         assert_eq!(
@@ -817,13 +858,15 @@ mod tests {
                 "category": "LocalModels",
                 "install": {"OllamaModel": {"name": "gemma3:4b", "download_bytes": 3_350_272_403_u64}},
                 "state": "NeedsOllama",
-                "installs_here": true
+                "installs_here": true,
+                "free_bytes": 107_374_182_400_u64
             })
         );
         let old = Host {
             macos_major: Some(13),
             apple_silicon: true,
             memory_bytes: Some(16 * GIB),
+            free_bytes: Some(100 * GIB),
         };
         assert_eq!(
             serde_json::to_value(entries(&empty, &old)).unwrap()[4]["state"],

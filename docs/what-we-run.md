@@ -5665,9 +5665,12 @@ could not be read. Those sizes are fixed in the app, as Ollama's
 registry gave the layers and config of each on 2026-10-27; nothing is
 fetched to show them. Three values the kernel keeps are read for this,
 with `sysctlbyname`: `kern.osproductversion`, `hw.optional.arm64`, which
-is 1 on Apple silicon under Rosetta too, and `hw.memsize`. Nothing else
-is read, nothing runs, nothing is written, and no connection is made for
-it. Until a check has finished, the page says nothing of any entry.
+is 1 on Apple silicon under Rosetta too, and `hw.memsize`; and, with
+`statfs` on the home folder, how much room its volume has free
+(`catalog::free_bytes`), which the model's sheet says beside its
+download, as a caution where the download, with a tenth to spare, would
+not fit. Nothing else is read, nothing runs, nothing is written, and no
+connection is made for it. Until a check has finished, the page says nothing of any entry.
 
 Every entry but Homebrew installs from here (phase 5 steps B and D):
 Claude Code, Codex and Gemini CLI, Ollama's app, Node.js, uv and ffmpeg

@@ -1833,7 +1833,9 @@
       "needsMacOS": "它需要macOS {{major}}或更新版本。",
       "fromOllama": "Ollama會從它的模型庫下載{{model}}，約{{size}}。",
       "needsOllama": "這台Mac上的Ollama現在無法下載它。",
-      "noOllama": "這台Mac上沒有可以下載它的Ollama。"
+      "noOllama": "這台Mac上沒有可以下載它的Ollama。",
+      "room": "這台Mac還有{{free}}可用空間。",
+      "roomShort": "這台Mac只剩{{free}}可用空間，不夠下載它。請先騰出一些空間。"
     },
     "search": {
       "placeholder": "搜尋Homebrew",

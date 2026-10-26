@@ -446,6 +446,8 @@ describe("the Discover page", () => {
       install: { OllamaModel: { name: "gemma3:4b", download_bytes: 3_350_272_403 } },
       state: "NotInstalled",
       installs_here: true,
+      // Less room than the download needs.
+      free_bytes: 2_000_000_000,
     };
     snapshot = { ...snapshotAt(1_789_700_000), instances: [ollama] };
     entries = [model];
@@ -476,6 +478,7 @@ describe("the Discover page", () => {
     const sheet = await screen.findByRole("alertdialog", { name: "Install “Gemma 3”?" });
     await waitFor(() => expect(calls("plan_install")[0][1]).toEqual({ catalogId: "model" }));
     expect(sheet).toHaveTextContent("Ollama downloads gemma3:4b from its library, about 3.4 GB.");
+    expect(sheet).toHaveTextContent("This Mac has only 2 GB free, less than the download needs. Free up some space first.");
     expect(sheet).not.toHaveTextContent("Homebrew");
     await waitFor(() => expect(within(sheet).getByRole("button", { name: "Install" })).toBeEnabled());
     fireEvent.click(within(sheet).getByRole("button", { name: "Show Command" }));

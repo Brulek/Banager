@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { catalogRefusal, entryName, installTargetOf, ITEM_KEYS, wordsOf } from "../lib/catalog";
 import { usePlanInstall, usePlanInstallFound, useSettings, useSubmitOperation } from "../lib/queries";
 import { planErrorDetail, planErrorMessage } from "../lib/sources";
+import { formatBytes } from "../lib/format";
 import { warningLines } from "../lib/warnings";
 import { useUiStore } from "../store/ui";
 import type { ArtifactKey, CatalogEntry, Found } from "../lib/types";
@@ -88,6 +89,19 @@ export function InstallSheet({ entry, found = null, iconKey, description = null,
       : undefined;
   const plan = issued?.plan;
   const keys = entry === null || found !== null ? undefined : ITEM_KEYS[entry.id];
+  // For the model: the room free, and whether its download would not fit,
+  // with a tenth to spare for what Ollama writes beside it.
+  const room =
+    found === null &&
+    entry !== null &&
+    typeof entry.install === "object" &&
+    "OllamaModel" in entry.install &&
+    typeof entry.free_bytes === "number"
+      ? {
+          free: formatBytes(entry.free_bytes),
+          short: entry.free_bytes < entry.install.OllamaModel.download_bytes * 1.1,
+        }
+      : null;
   const name = found !== null ? found.name : entry === null ? "" : entryName(t, entry.id);
 
   function refusal(raw: string, framed: "discover.sheet.planError" | "discover.sheet.submitError"): ReactNode {
@@ -195,6 +209,18 @@ export function InstallSheet({ entry, found = null, iconKey, description = null,
           ? t("discover.sheet.fromOllama", wordsOf(entry))
           : t("noAnswer.sheet.then", { first: t("discover.sheet.from"), then: t("discover.sheet.alsoInstalls") })}
       </SheetText>
+      {/* The model's download beside the room there is for it. */}
+      {room === null ? null : (
+        <div className="mt-3">
+          <SheetLines
+            lines={[
+              room.short
+                ? { text: t("discover.sheet.roomShort", { free: room.free }), detail: null, caution: true }
+                : { text: t("discover.sheet.room", { free: room.free }), detail: null, caution: false },
+            ]}
+          />
+        </div>
+      )}
 
       {planMutation.isPending ? <SheetPending text={t("discover.sheet.checking")} /> : null}
       {planMutation.isError ? <div className="mt-3">{refusal(planMutation.error.message, "discover.sheet.planError")}</div> : null}
