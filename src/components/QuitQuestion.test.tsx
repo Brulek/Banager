@@ -485,7 +485,7 @@ describe("the question before a quit", () => {
     [
       "it in words for any kind, when an update and an uninstall both run",
       [op(1, "wget", "Running"), op(2, "jq", "Running", { kind: "Uninstall" })],
-      "Quitting now stops them, and the tools they're working on can be left half-done.",
+      "Quitting now stops them, and the tools being worked on can be left half-done.",
     ],
   ])("says %s", async (_what, running, line) => {
     operations = running;

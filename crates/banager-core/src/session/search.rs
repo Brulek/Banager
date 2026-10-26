@@ -158,7 +158,7 @@ impl Session {
             .await
             .map_err(SearchError::Adapter)?;
         let artifacts = self.snapshot.lock().unwrap().artifacts.clone();
-        let mut host = crate::catalog::Host::of_this_mac();
+        let mut host = crate::catalog::Host::chip_and_macos();
         // Its chip as this Homebrew runs: one in /usr/local runs as Intel,
         // under Rosetta on Apple silicon, and refuses an Apple silicon
         // cask (`brew::bottles::this_mac`; from the review of the check).

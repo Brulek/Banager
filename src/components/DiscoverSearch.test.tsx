@@ -612,7 +612,7 @@ describe("a search result Homebrew would refuse on this Mac", () => {
     const said = (blocked: unknown) => catalogRefusal(t, JSON.stringify({ kind: "search_blocked", blocked }));
     expect(said("Disabled")).toBe("Homebrew no longer offers it.");
     expect(said({ NeedsMacOS: { major: 15 } })).toBe("It needs macOS 15 or later.");
-    expect(said("OtherChip")).toBe("It doesn't run on this Mac's kind of chip.");
+    expect(said("OtherChip")).toBe("This Mac's Homebrew can't install it: it's made for another kind of chip.");
     expect(said("AppThere")).toBe("Its app is already on this Mac, installed another way.");
     expect(said("Something")).toBeNull();
   });

@@ -1155,11 +1155,11 @@
       "othersModelDownload_other": "Quitting now stops the others. A model is installed or updated only once its download finishes, and a download started again soon can pick up where it stopped.",
       "stopsModelDownload_one": "Quitting now stops it. A model is installed or updated only once its download finishes, and a download started again soon can pick up where it stopped.",
       "stopsModelDownload_other": "Quitting now stops them. A model is installed or updated only once its download finishes, and a download started again soon can pick up where it stopped.",
-      "mixed_other": "Quitting now stops them, and the tools they're working on can be left half-done.",
+      "mixed_other": "Quitting now stops them, and the tools being worked on can be left half-done.",
       "othersStop_one": "Quitting now stops the other one.",
       "othersStop_other": "Quitting now stops the others.",
       "othersHalfDone_one": "Quitting now stops the other one, and the tool it's working on can be left half-done.",
-      "othersHalfDone_other": "Quitting now stops the others, and the tools they're working on can be left half-done."
+      "othersHalfDone_other": "Quitting now stops the others, and a tool being worked on can be left half-done."
     },
     "checking": {
       "Install": "The result of {{name}}'s install is being checked. Quitting now waits up to a few seconds for that.",
@@ -1999,7 +1999,7 @@
       "needsOllama": "Ollama on this Mac can't download it right now.",
       "ollamaElsewhere": "OLLAMA_HOST points this Mac's Ollama to an address other than this Mac's own, so the model can't be downloaded here.",
       "disabled": "Homebrew no longer offers it.",
-      "otherChip": "It doesn't run on this Mac's kind of chip.",
+      "otherChip": "This Mac's Homebrew can't install it: it's made for another kind of chip.",
       "appThere": "Its app is already on this Mac, installed another way.",
       "noOllama": "There's no Ollama on this Mac to download it with.",
       "room": "This Mac has {{free}} free.",

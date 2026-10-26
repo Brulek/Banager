@@ -322,6 +322,23 @@ impl Host {
     }
 }
 
+impl Host {
+    /// This Mac's macOS major version and chip only, as `of_this_mac`
+    /// reads them; nothing of its memory, free room or Ollama.app: what a
+    /// search's results need (`Session::search_homebrew`), and no more is
+    /// looked at for one (from the review of the fix batch).
+    pub(crate) fn chip_and_macos() -> Host {
+        let version = crate::diagnostics::read_macos_version();
+        Host {
+            macos_major: version.as_deref().and_then(major_of),
+            apple_silicon: apple_silicon(),
+            memory_bytes: None,
+            free_bytes: None,
+            ollama_app: false,
+        }
+    }
+}
+
 /// The major version of a macOS version string: 14 of `14.5`.
 fn major_of(version: &str) -> Option<u32> {
     version.split('.').next()?.trim().parse().ok()
