@@ -229,11 +229,15 @@ export function OperationBar() {
     );
     // Every one of it an update: said as updates, 「已更新3个工具」; every
     // one an uninstall -- a batch from the Installed page -- as uninstalls,
-    // 「已卸载3个工具」, or of models, 「已卸载3个模型」, as the notification
-    // says them (`RunKind::ModelUninstall`).
+    // 「已卸载3个工具」, or of models, 「已卸载3个模型」; every one an install
+    // from Discover, as installs, 「已安装2个工具」, or downloads of models,
+    // 「已下载2个模型」 -- as the notification says them (`RunKind`; the
+    // installs from the independent review of the branch).
     const updates = inRun.every((op) => op.kind === "Upgrade");
     const uninstalls = inRun.every((op) => op.kind === "Uninstall");
     const models = inRun.every((op) => op.artifact_kind === "Model");
+    const installs = inRun.every((op) => op.kind === "Install");
+    const toolInstalls = installs && inRun.every((op) => op.artifact_kind !== "Model");
     let tone: OutcomeTone;
     let words: string;
     let logOf: OpSummary | undefined;
@@ -268,7 +272,11 @@ export function OperationBar() {
         ? t("operations.batch.allUpdated", { count: total })
         : uninstalls
           ? t(models ? "batchUninstall.bar.allUninstalledModels" : "batchUninstall.bar.allUninstalled", { count: total })
-          : t("operations.batch.allSucceeded", { count: total });
+          : toolInstalls
+            ? t("operations.batch.allInstalled", { count: total })
+            : installs && models
+              ? t("operations.batch.allDownloadedModels", { count: total })
+              : t("operations.batch.allSucceeded", { count: total });
     } else {
       tone = "cancelled";
       const succeeded = tones.filter((each) => each === "success").length;

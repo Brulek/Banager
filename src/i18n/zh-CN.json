@@ -951,6 +951,8 @@
       "running": "正在处理第{{current}}个，共{{total}}个",
       "allSucceeded_other": "{{count}}个都已成功",
       "allUpdated_other": "已更新{{count}}个工具",
+      "allInstalled_other": "已安装{{count}}个工具",
+      "allDownloadedModels_other": "已下载{{count}}个模型",
       "needsAttention_other": "{{total}}个中有{{count}}个需要查看",
       "finished": "{{succeeded}}个已成功，{{cancelled}}个已取消",
       "cancelAll": "全部取消",
@@ -1531,7 +1533,7 @@
       },
       "changesMac": {
         "question": "此App会改动我的Mac吗？",
-        "answer": "在这里选择更新或卸载时，确认窗口里可以查看要运行的命令或要移走的文件，确认后才会开始。此App自己保存三个文件：设置、更新和卸载记录、窗口的大小和位置，都在~/Library/Application Support/com.brulek.banager里；显示窗口的macOS组件WebKit还可能在~/Library/WebKit和~/Library/Caches中名为com.brulek.banager的文件夹里为它保存数据和缓存；此App不修改终端的设置文件，也不启动mise、pyenv等版本管理工具的shim，因为有些shim会先自行安装缺少的版本，所以只能通过shim找到的工具会显示它的程序无法启动。查找命令、计算占用空间和扫描“其他程序”时，不读取文稿、桌面、下载、iCloud云盘、其他磁盘和网络宗卷等受保护的位置，但在/Volumes以外显示为文件夹的两种除外：设置成这样的磁盘，以及存放个人文件夹的网络宗卷。它运行的工具会改动自己的文件，有时不止于此：比如检查更新时，Homebrew可能会先更新它自己，并联网查找新版本，把你用它装的软件改名或换成另一种软件包时，还可能未经预览或确认就自行安装、移动或卸载软件；卸载rustup时，它会从终端的设置文件中删除自己添加的那一行，确认窗口会提前说明。"
+        "answer": "在这里选择更新或卸载时，确认窗口里可以查看要运行的命令或要移走的文件，确认后才会开始。此App自己保存三个文件：设置、更新和卸载记录、窗口是否缩放或全屏，都在~/Library/Application Support/com.brulek.banager里；窗口的大小和位置由macOS保存在~/Library/Preferences/com.brulek.banager.plist里；显示窗口的macOS组件WebKit还可能在~/Library/WebKit和~/Library/Caches中名为com.brulek.banager的文件夹里为它保存数据和缓存；此App不修改终端的设置文件，也不启动mise、pyenv等版本管理工具的shim，因为有些shim会先自行安装缺少的版本，所以只能通过shim找到的工具会显示它的程序无法启动。查找命令、计算占用空间和扫描“其他程序”时，不读取文稿、桌面、下载、iCloud云盘、其他磁盘和网络宗卷等受保护的位置，但在/Volumes以外显示为文件夹的两种除外：设置成这样的磁盘，以及存放个人文件夹的网络宗卷。它运行的工具会改动自己的文件，有时不止于此：比如检查更新时，Homebrew可能会先更新它自己，并联网查找新版本，把你用它装的软件改名或换成另一种软件包时，还可能未经预览或确认就自行安装、移动或卸载软件；卸载rustup时，它会从终端的设置文件中删除自己添加的那一行，确认窗口会提前说明。"
       },
       "otherPrograms": {
         "question": "“其他程序”里的是什么？",

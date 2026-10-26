@@ -107,6 +107,10 @@ describe("FaqSheet", () => {
     for (const place of ["~/Library/Application Support/com.brulek.banager", "~/Library/WebKit", "~/Library/Caches", "com.brulek.banager"]) {
       expect(answer).toContain(place);
     }
+    // Since TAURI-02 the window's size and place are AppKit's, in the
+    // app's defaults, not in its own folder (from the independent review of
+    // the branch).
+    expect(answer).toContain("~/Library/Preferences/com.brulek.banager.plist");
   });
 
   it.each([

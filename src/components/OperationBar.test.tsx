@@ -1248,6 +1248,38 @@ describe("OperationBar, after a batch uninstall", () => {
     });
   });
 
+  it("says a run of Discover's installs as installs, and of models as downloads, as the notification does", async () => {
+    // From the independent review of the branch: the bar said "All 2
+    // succeeded" where the notification said 「已安装2个工具」.
+    const install = (id: number, name: string, status: OpStatus, outcome: Outcome | null = null) =>
+      op(id, name, status, outcome, { kind: "Install", argv_preview: ["/opt/homebrew/bin/brew", "install", "--formula", name] });
+    const download = (id: number, name: string, status: OpStatus, outcome: Outcome | null = null) => ({
+      ...install(id, name, status, outcome),
+      instance_id: "ollama:http://127.0.0.1:11434",
+      artifact_kind: "Model" as const,
+    });
+    const { findByText, queryClient } = renderWithProviders(<OperationBar />);
+    await waitFor(() => expect(queryClient.getQueryData(queryKeys.operations)).toEqual([]));
+    await listNow(queryClient, [install(2, "uv", "Queued"), install(1, "jq", "Running")]);
+    await findByText("Working on 1 of 2");
+    await listNow(queryClient, [install(2, "uv", "Done", "Succeeded"), install(1, "jq", "Done", "Succeeded")]);
+    await findByText("Installed 2 tools");
+    await listNow(queryClient, [
+      download(4, "qwen3:8b", "Queued"),
+      download(3, "gemma3:4b", "Running"),
+      install(2, "uv", "Done", "Succeeded"),
+      install(1, "jq", "Done", "Succeeded"),
+    ]);
+    await findByText("Working on 1 of 2");
+    await listNow(queryClient, [
+      download(4, "qwen3:8b", "Done", "Succeeded"),
+      download(3, "gemma3:4b", "Done", "Succeeded"),
+      install(2, "uv", "Done", "Succeeded"),
+      install(1, "jq", "Done", "Succeeded"),
+    ]);
+    await findByText("Downloaded 2 models");
+  });
+
   it("says a run of uninstalls of models as models, as the notification does", async () => {
     const model = (id: number, name: string, status: OpStatus, outcome: Outcome | null = null) => ({
       ...uninstall(id, name, status, outcome),
