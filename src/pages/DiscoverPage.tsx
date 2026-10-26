@@ -1,8 +1,10 @@
-import { useId, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { CopyButton } from "../components/CopyButton";
-import { CheckIcon, InfoIcon, SpinnerIcon, WarningFilledIcon } from "../components/icons";
+import { CheckIcon, SpinnerIcon } from "../components/icons";
+import { EndedWithout } from "../components/EndedWithout";
 import { TextWithInfo } from "../components/InfoDetail";
+import { DiscoverResults, DiscoverSearchField } from "../components/DiscoverSearch";
 import { HomebrewSetupSheet } from "../components/HomebrewSetupSheet";
 import { InstallSheet } from "../components/InstallSheet";
 import { SourceAvatar } from "../components/SourceAvatar";
@@ -36,46 +38,6 @@ const CATEGORIES: [CatalogCategory, string][] = [
 ];
 
 /**
- * How an install that ended without the tool says so, in its row, where
- * the state was: a word that opens its log -- 「未能安装」 in the red for
- * text; 「需要查看」 with ⚠︎ where Banager found it not there though
- * Homebrew said it was, 「结果未确认」 where it could not tell -- as an
- * update's row does (`UpdateProgress`).
- */
-function EndedWithout({ progress, name }: { progress: InstallProgress; name: string }) {
-  const { t } = useTranslation();
-  const wordId = useId();
-  const setFocusedOpId = useUiStore((s) => s.setFocusedOpId);
-  const setDrawerOpen = useUiStore((s) => s.setDrawerOpen);
-  if (progress.kind !== "failed" && progress.kind !== "check" && progress.kind !== "unconfirmed") return null;
-  const word =
-    progress.kind === "failed"
-      ? t("discover.progress.failed")
-      : progress.kind === "check"
-        ? t("updates.progress.check")
-        : t("updates.progress.unconfirmed");
-  return (
-    <button
-      type="button"
-      onClick={() => {
-        setFocusedOpId(progress.opId);
-        setDrawerOpen(true);
-      }}
-      aria-label={t("updates.progress.viewLogLabel", { name })}
-      aria-describedby={wordId}
-      title={t("common.viewLog")}
-      className={`inline-flex items-center gap-1 whitespace-nowrap rounded-sm text-small ${
-        progress.kind === "failed" ? "text-danger-text" : "text-foreground"
-      }`}
-    >
-      {progress.kind === "failed" ? null : <WarningFilledIcon size={12} className="shrink-0 text-warning" />}
-      <span id={wordId}>{word}</span>
-      <InfoIcon size={12} className="shrink-0" />
-    </button>
-  );
-}
-
-/**
  * The Discover page (phase 5): the catalog Banager suggests, by group,
  * each entry with its logo, its name, what it is -- with who needs it and
  * how it is used behind the ⓘ -- and on the right whether this Mac has it,
@@ -104,6 +66,10 @@ export function DiscoverPage() {
   const opFinishedAt = useUiStore((s) => s.opFinishedAt);
   const [installing, setInstalling] = useState<CatalogEntry | null>(null);
   const [settingUpHomebrew, setSettingUpHomebrew] = useState(false);
+  // What the search field has (step E): while it has a text, the results
+  // are in the list's place.
+  const [query, setQuery] = useState("");
+  const searching = query.trim().length > 0;
   const checked = snapshot?.refreshed_at != null;
   const brew = snapshot?.instances.find((instance) => instance.adapter_id === "brew");
   // No Homebrew: it comes first, and the page says so.
@@ -199,7 +165,10 @@ export function DiscoverPage() {
   return (
     <div className={FORM_COLUMN}>
       <p className="px-2.5 text-muted">{t(homebrewFirst ? "discover.introNoHomebrew" : "discover.intro")}</p>
-      {CATEGORIES.map(([category, titleKey]) => {
+      {/* Searching takes a Homebrew to search with. */}
+      {checked && brew !== undefined ? <DiscoverSearchField query={query} onChange={setQuery} /> : null}
+      {searching ? <DiscoverResults query={query} /> : null}
+      {searching ? null : CATEGORIES.map(([category, titleKey]) => {
         const entries = (catalog ?? []).filter((entry) => entry.category === category);
         if (entries.length === 0) return null;
         const titleId = `discover-${category}`;
@@ -274,7 +243,7 @@ export function DiscoverPage() {
           </section>
         );
       })}
-      <p className={GROUP_FOOTNOTE}>{t("discover.footnote")}</p>
+      {searching ? null : <p className={GROUP_FOOTNOTE}>{t("discover.footnote")}</p>}
       <HomebrewSetupSheet open={settingUpHomebrew} onClose={() => setSettingUpHomebrew(false)} />
       <InstallSheet
         entry={installing}

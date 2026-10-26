@@ -205,6 +205,8 @@ pub fn run() {
             ipc::plan_install,
             ipc::open_terminal,
             ipc::look_for_homebrew,
+            ipc::search_homebrew,
+            ipc::plan_install_found,
             history::get_history,
             history::clear_history,
             menu::set_menu_language,

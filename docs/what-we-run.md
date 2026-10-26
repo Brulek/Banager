@@ -1953,8 +1953,9 @@ required (`BrewAdapter::update_steps`).
 | List outdated formulae + casks (`check_updates`) | `<brew> outdated --json=v2`, with no `--greedy` flag (below); while the setting that shows Homebrew apps with their own updater is off, with `HOMEBREW_NO_UPGRADE_AUTO_UPDATES_CASKS=1` (Environment, above) | 120 s |
 | Qualify the names `outdated` reported, and read which of them Homebrew disabled (once per `check_updates`) | `<brew> info --installed --json=v2` | 120 s |
 | The reading before and after an install or update (`reconcile`): that one package's version | `<brew> info --json=v2 --formula {name}` or `<brew> info --json=v2 --cask {name}`; when it names no installed package by that name, or fails, `<brew> info --installed --json=v2` | 120 s each |
-| Search by name | `<brew> search {query}` | 30 s |
-| Search by name + description | `<brew> search --desc {query}` | 30 s |
+| Search the formulae by name (Discover's search) | `<brew> search --formula {query}` | 30 s |
+| Search the casks by name (Discover's search) | `<brew> search --cask {query}` | 30 s |
+| Search by description (Discover's search) | `<brew> search --desc {query}` | 30 s |
 | List installed formulae depending on a formula (uninstall preview) | `<brew> uses --installed {name}` | 120 s |
 
 Never `--greedy` or `--greedy-latest` (R47-2, r18): with either, Homebrew
@@ -5694,6 +5695,44 @@ type to use it, and Copy, which only copies those words -- until the
 check after the operation, from which on the row says what that check
 found, an uninstall since included.
 
+**Searching Homebrew** (phase 5 step E). Where a Homebrew that answered
+and can be written to is there, Discover has a search field. What is
+typed in it -- once it has stayed the same for 0.6 seconds, and is two
+characters or more -- is searched for with `search_homebrew`
+(`Session::search_homebrew`, `BrewAdapter::search`), in that Homebrew,
+with three of its read-only commands (their rows are in "Homebrew"
+above):
+
+    <brew> search --formula {query}
+    <brew> search --cask {query}
+    <brew> search --desc {query}
+
+each a list of names of one kind, so that no result's kind is guessed,
+and the last the descriptions of those and the packages only a
+description matched. The text is given to Homebrew as one argument, and
+refused first, before anything runs, where it starts with `-` (`brew
+search --macports` and its like open a web page), has a `/` in it (a
+regular expression, or a tap-qualified name, whose formula Homebrew would
+load), has a control character in it, or is longer than 64 characters
+(`brew::validate_search_query`). Homebrew reads its own copy of its
+catalogue for these, and downloads a new one from its API host where it
+has none or finds it too old, as any of its commands may. A name of
+another tap (`user/tap/name`) is left out, and so is any name
+`validate_package_name` refuses; at most 40 are listed, the one the text
+is first, then those it starts, then the rest, then those only a
+description matched. Each result is kept in the session under a random
+id for ten minutes, at most 400 of them, and the window gets the id, the
+kind, the name, the description, whether that Homebrew lists it
+installed, and the catalog entry it is, if it is one. Install on a
+result asks for the plan with `plan_install_found`, naming the result's
+id and never a package: the install of that formula or cask, by the name
+Homebrew gave, into the Homebrew it was found in, planned as every
+operation is -- the same `<brew> install --formula` or `--cask` as above.
+An id no search gave, or one older than ten minutes, is refused, and so
+is a result the snapshot since lists installed, before any source is
+asked. The sheet says the result is not one of the suggestions where it
+is none.
+
 ## Homebrew itself: installed in Terminal, by the person
 
 Banager does not install Homebrew. Where a check finds none, Discover's
@@ -6939,7 +6978,10 @@ configured, `index.crates.io`, and cargo still follows a
   (`src-tauri/src/ipc.rs`) refuses an install before any source is
   asked, whatever it names. It installs only a Discover entry, by the
   entry's id (`plan_install`), and the package is the catalog's own
-  (`catalog::install_request`; see "Discover"). Nor by another name: the window may ask for
+  (`catalog::install_request`; see "Discover"), or a result of
+  Discover's search of Homebrew, by the result's id
+  (`plan_install_found`), and the package is the one Homebrew listed.
+  Nor by another name: the window may ask for
   an upgrade only of an update the last check listed, or of one the
   window previewed less than ten minutes before whose tool the last
   check still lists installed under the same source, kind and name,

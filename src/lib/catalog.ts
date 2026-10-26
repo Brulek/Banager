@@ -181,6 +181,8 @@ export function catalogRefusal(t: Translate, raw: string): string | null {
   }
   if (typeof parsed !== "object" || parsed === null) return null;
   const { kind, state } = parsed as { kind?: unknown; state?: unknown };
+  // A search result kept longer than its id is good for (step E).
+  if (kind === "search_expired") return t("discover.search.expired");
   if (kind !== "catalog_state") return null;
   if (typeof state === "object" && state !== null && "NeedsMacOS" in state) {
     const major = (state as { NeedsMacOS: { major?: unknown } }).NeedsMacOS.major;
@@ -228,7 +230,15 @@ export function installOperationOf(
   pending: Record<string, OpSummary>,
 ): OpSummary | null {
   const target = installTargetOf(entry);
-  if (target === null) return null;
+  return target === null ? null : installOperationFor(target, operations, pending);
+}
+
+/** `installOperationOf`, for what a search result installs (step E) as for an entry. */
+export function installOperationFor(
+  target: { adapterId: "brew" | "ollama"; kind: string; name: string },
+  operations: OpSummary[],
+  pending: Record<string, OpSummary>,
+): OpSummary | null {
   const { adapterId, kind, name } = target;
   const touches = (op: OpSummary) =>
     (op.kind === "Install" || op.kind === "Uninstall") &&

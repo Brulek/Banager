@@ -1,20 +1,24 @@
 import { useEffect, useId, useRef, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { catalogRefusal, entryName, installTargetOf, ITEM_KEYS, wordsOf } from "../lib/catalog";
-import { usePlanInstall, useSettings, useSubmitOperation } from "../lib/queries";
+import { usePlanInstall, usePlanInstallFound, useSettings, useSubmitOperation } from "../lib/queries";
 import { planErrorDetail, planErrorMessage } from "../lib/sources";
 import { warningLines } from "../lib/warnings";
-import type { ArtifactKey, CatalogEntry } from "../lib/types";
+import type { ArtifactKey, CatalogEntry, Found } from "../lib/types";
 import { CommandPreview } from "./CommandPreview";
 import { Refusal, SheetIcon, SheetLines, SheetPending, SheetText, sheetMeta } from "./SheetParts";
 import { Dialog } from "./ui/Dialog";
 import { BUTTON } from "./ui/controls";
 
 export interface InstallSheetProps {
-  /** The entry whose Install opened it, or null while it is closed. */
+  /** The entry whose Install opened it, or null. */
   entry: CatalogEntry | null;
-  /** The entry's logo (`iconKeyOf`), as its row draws it. */
+  /** The search result whose Install opened it, or null (step E). Closed while both are. */
+  found?: Found | null;
+  /** What it installs' logo (`iconKeyOf`), as its row draws it. */
   iconKey: ArtifactKey | undefined;
+  /** For a search result: what it is, in the window's words where it has them (`useTranslatedDescription`). */
+  description?: string | null;
   onClose: () => void;
 }
 
@@ -32,20 +36,31 @@ export interface InstallSheetProps {
  * It asks for the plan itself (`plan_install`), naming the entry and
  * never a package: Rust works out what installs it, so nothing runs
  * without this preview, and Install submits that plan and nothing else.
+ * For a search result (step E) the same, by the result's id
+ * (`plan_install_found`), and it says what the result is and that it is
+ * not one of the suggestions.
  * Once submitted it closes, and the row and the operation bar take it from
  * there; the check that follows a finished operation says whether it is
  * installed.
  */
-export function InstallSheet({ entry, iconKey, onClose }: InstallSheetProps) {
+export function InstallSheet({ entry, found = null, iconKey, description = null, onClose }: InstallSheetProps) {
   const { t } = useTranslation();
   const { data: settings } = useSettings();
-  const planMutation = usePlanInstall();
+  const planEntry = usePlanInstall();
+  const planFound = usePlanInstallFound();
+  const planMutation = found !== null ? planFound : planEntry;
   const submitMutation = useSubmitOperation();
   const installRef = useRef<HTMLButtonElement>(null);
   const textId = useId();
-  const open = entry !== null;
-  const id = entry?.id ?? null;
-  const target = entry === null ? null : installTargetOf(entry);
+  const open = entry !== null || found !== null;
+  // What the plan is asked for by: the entry's id, or the result's.
+  const id = found?.id ?? entry?.id ?? null;
+  const target =
+    found !== null
+      ? { adapterId: "brew" as const, kind: found.kind, name: found.name }
+      : entry === null
+        ? null
+        : installTargetOf(entry);
   // Homebrew installs it, or Ollama pulls it (the starter model).
   const sourceLabel = t(target?.adapterId === "ollama" ? "adapters.ollama" : "adapters.brew");
   // As the uninstall's: "the sheet as it is open now, for this entry".
@@ -55,13 +70,11 @@ export function InstallSheet({ entry, iconKey, onClose }: InstallSheetProps) {
   useEffect(() => {
     sessionRef.current += 1;
     submitLatch.current = false;
-    if (id !== null) {
-      planMutation.mutate(id);
-    } else {
-      planMutation.reset();
-      submitMutation.reset();
-    }
-    // The mutations are stable; planned again as it opens for an entry.
+    planEntry.reset();
+    planFound.reset();
+    submitMutation.reset();
+    if (id !== null) planMutation.mutate(id);
+    // The mutations are stable; planned again as it opens for an entry or a result.
   }, [id]);
 
   // A preview of another entry, from before it was opened again, is not this one's.
@@ -73,8 +86,8 @@ export function InstallSheet({ entry, iconKey, onClose }: InstallSheetProps) {
       ? planMutation.data
       : undefined;
   const plan = issued?.plan;
-  const keys = id === null ? undefined : ITEM_KEYS[id];
-  const name = id === null ? "" : entryName(t, id);
+  const keys = entry === null || found !== null ? undefined : ITEM_KEYS[entry.id];
+  const name = found !== null ? found.name : entry === null ? "" : entryName(t, entry.id);
 
   function refusal(raw: string, framed: "discover.sheet.planError" | "discover.sheet.submitError"): ReactNode {
     // This Mac cannot install it now: said in the row's own terms, alone.
@@ -135,11 +148,9 @@ export function InstallSheet({ entry, iconKey, onClose }: InstallSheetProps) {
       // A question to answer before anything else, as NSAlert's.
       alert
       icon={
-        entry === null || target === null ? undefined : (
-          <SheetIcon adapterId={target.adapterId} sourceLabel={sourceLabel} iconKey={iconKey} />
-        )
+        target === null ? undefined : <SheetIcon adapterId={target.adapterId} sourceLabel={sourceLabel} iconKey={iconKey} />
       }
-      subtitle={entry === null ? undefined : sheetMeta(name, sourceLabel, target?.adapterId === "ollama" ? target.name : null)}
+      subtitle={open ? sheetMeta(name, sourceLabel, target?.adapterId === "ollama" ? target.name : null) : undefined}
       describedBy={textId}
       initialFocus={installRef}
       footer={
@@ -159,11 +170,21 @@ export function InstallSheet({ entry, iconKey, onClose }: InstallSheetProps) {
         </>
       }
     >
-      {/* Who needs it and how it is used once installed: the alert's text. */}
-      {keys === undefined || entry === null ? null : <SheetText id={textId}>{t(keys.more, wordsOf(entry))}</SheetText>}
+      {/* Who needs it and how it is used once installed: the alert's text.
+          A search result: what it is, where anything says, and that it is
+          none of the suggestions. */}
+      {found !== null ? (
+        <SheetText id={textId}>
+          {description === null
+            ? t("discover.search.notSuggested")
+            : t("noAnswer.sheet.then", { first: description, then: t("discover.search.notSuggested") })}
+        </SheetText>
+      ) : keys === undefined || entry === null ? null : (
+        <SheetText id={textId}>{t(keys.more, wordsOf(entry))}</SheetText>
+      )}
       <SheetText className="mt-3">
-        {target?.adapterId === "ollama"
-          ? t("discover.sheet.fromOllama", wordsOf(entry!))
+        {target?.adapterId === "ollama" && entry !== null
+          ? t("discover.sheet.fromOllama", wordsOf(entry))
           : t("noAnswer.sheet.then", { first: t("discover.sheet.from"), then: t("discover.sheet.alsoInstalls") })}
       </SheetText>
 

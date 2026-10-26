@@ -1,0 +1,1 @@
+Error: No formulae or casks found for "zzzznotapackage".

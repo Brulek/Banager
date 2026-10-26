@@ -1051,6 +1051,74 @@ pub async fn plan_install(
     plan_install_impl(&state, &catalog_id).await
 }
 
+/// The Discover page's search of Homebrew (phase 5 step E,
+/// `Session::search_homebrew`): Homebrew's own formulae and casks whose
+/// name or description has `query` in it, each under an id Install sends
+/// back (`plan_install_found`). Runs `brew search --formula`, `--cask` and
+/// `--desc`, read-only. Refused as `invalid_query` for a text `brew search`
+/// may not be given (`brew::validate_search_query`), and as `catalog_state`
+/// `NeedsHomebrew` where no Homebrew can install; a search Homebrew could
+/// not do goes out as a plan's failure would (`plan_operation_error`).
+pub(crate) async fn search_homebrew_impl(
+    state: &AppState,
+    query: &str,
+) -> Result<Vec<banager_core::session::Found>, String> {
+    use banager_core::adapters::AdapterError;
+    use banager_core::session::SearchError;
+    state
+        .session
+        .search_homebrew(query)
+        .await
+        .map_err(|e| match e {
+            SearchError::NoHomebrew => {
+                serde_json::json!({ "kind": "catalog_state", "state": "NeedsHomebrew" }).to_string()
+            }
+            SearchError::Adapter(AdapterError::InvalidName(_)) => {
+                serde_json::json!({ "kind": "invalid_query" }).to_string()
+            }
+            SearchError::Adapter(e) => plan_operation_error(e),
+        })
+}
+
+#[tauri::command]
+pub async fn search_homebrew(
+    state: State<'_, AppState>,
+    query: String,
+) -> Result<Vec<banager_core::session::Found>, String> {
+    search_homebrew_impl(&state, &query).await
+}
+
+/// The preview of installing a search result (`Session::plan_found`): the
+/// window sends the result's id, never a package name. Refused before any
+/// adapter is asked as `search_expired` where no result has that id any
+/// more -- ten minutes on, or forgotten for newer ones -- and as
+/// `catalog_state` `Installed` where the check since lists it installed.
+pub(crate) async fn plan_install_found_impl(
+    state: &AppState,
+    found_id: &str,
+) -> Result<IssuedPlan, String> {
+    use banager_core::session::FoundError;
+    state
+        .session
+        .plan_found(found_id)
+        .await
+        .map_err(|e| match e {
+            FoundError::Unknown => serde_json::json!({ "kind": "search_expired" }).to_string(),
+            FoundError::Installed => {
+                serde_json::json!({ "kind": "catalog_state", "state": "Installed" }).to_string()
+            }
+            FoundError::Adapter(e) => plan_operation_error(e),
+        })
+}
+
+#[tauri::command]
+pub async fn plan_install_found(
+    state: State<'_, AppState>,
+    found_id: String,
+) -> Result<IssuedPlan, String> {
+    plan_install_found_impl(&state, &found_id).await
+}
+
 /// The icon Finder shows for the app a Homebrew cask installed, for that
 /// cask's row: a `data:image/png;base64,...` URL, or `None` for any other
 /// row and whenever there is no icon to show (`Session::artifact_icon`).
@@ -2336,6 +2404,37 @@ mod tests {
         assert_eq!(other_calls.load(Ordering::SeqCst), 0);
     }
 
+    #[tokio::test]
+    async fn test_search_homebrew_impl_says_why_it_found_nothing_to_list() {
+        let (state, plan_calls) = state_listing_counting_plans(
+            banager_core::testing::manager_instance("brew", "brew:/opt/homebrew"),
+            &[],
+        );
+        // Before the first check there is no Homebrew to search with.
+        assert_eq!(
+            search_homebrew_impl(&state, "jq").await.unwrap_err(),
+            r#"{"kind":"catalog_state","state":"NeedsHomebrew"}"#
+        );
+        refresh_impl(&state).await.expect("refresh_impl");
+        assert_eq!(search_homebrew_impl(&state, "jq").await, Ok(Vec::new()));
+        for query in ["--macports", "/jq/", "user/tap/jq", " "] {
+            assert_eq!(
+                search_homebrew_impl(&state, query).await.unwrap_err(),
+                r#"{"kind":"invalid_query"}"#,
+                "{query:?}"
+            );
+        }
+        // An id no search gave plans nothing.
+        for id in ["", "jq", "00000000000000000000000000000000"] {
+            assert_eq!(
+                plan_install_found_impl(&state, id).await.unwrap_err(),
+                r#"{"kind":"search_expired"}"#,
+                "{id:?}"
+            );
+        }
+        assert_eq!(plan_calls.load(Ordering::SeqCst), 0);
+    }
+
     #[test]
     fn test_what_we_run_never_list_says_the_window_cannot_ask_for_an_install() {
         // docs/what-we-run.md, "What Banager never does": the promise
@@ -2354,7 +2453,9 @@ mod tests {
                  (`src-tauri/src/ipc.rs`) refuses an install before any source is asked, \
                  whatever it names. It installs only a Discover entry, by the entry's id \
                  (`plan_install`), and the package is the catalog's own \
-                 (`catalog::install_request`; see \"Discover\")"
+                 (`catalog::install_request`; see \"Discover\"), or a result of Discover's \
+                 search of Homebrew, by the result's id (`plan_install_found`), and the \
+                 package is the one Homebrew listed"
             ),
             "the never-list of docs/what-we-run.md does not say the window cannot ask for an install"
         );

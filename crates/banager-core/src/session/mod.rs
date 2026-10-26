@@ -12,6 +12,8 @@ mod needed_by;
 mod plans;
 mod refresh;
 mod scan;
+mod search;
+pub use search::{Found, FoundError, SearchError};
 mod sizes;
 /// Re-exported for `crate::testing::expire_issued_plans` alone: how long
 /// an issued plan stays submittable, so that helper can age one past it
@@ -411,6 +413,9 @@ pub struct Session {
     issued_plans: Mutex<HashMap<PlanId, plans::StoredPlan>>,
     /// Recent listed upgrade targets survive eviction of the full preview.
     listed_upgrades: Mutex<HashMap<crate::model::ArtifactKey, plans::ListedUpgrade>>,
+    /// The Discover search's results, by id, for `plan_found`
+    /// (`search::FOUND_LIFETIME`, `search::FOUND_KEPT`).
+    found: Mutex<HashMap<String, search::FoundEntry>>,
     now_fn: Option<fn() -> i64>,
     /// Turns among the plans being worked out (`plans::PLANS_AT_ONCE`).
     planning: tokio::sync::Semaphore,
@@ -588,6 +593,7 @@ impl Session {
             refreshes_under_way: AtomicUsize::new(0),
             issued_plans: Mutex::new(HashMap::new()),
             listed_upgrades: Mutex::new(HashMap::new()),
+            found: Mutex::new(HashMap::new()),
             now_fn,
             planning: tokio::sync::Semaphore::new(plans::PLANS_AT_ONCE),
             background_change,

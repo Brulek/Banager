@@ -97,6 +97,18 @@ function has(way: Recognizer, instances: ManagerInstance[], artifacts: Installed
   );
 }
 
+/** `catalog::id_installing`: the entry that installs this Homebrew formula or cask, if one does. */
+export function catalogIdInstalling(kind: "Formula" | "Cask", name: string): string | null {
+  const item = CATALOG.find(
+    (candidate) =>
+      typeof candidate.install === "object" &&
+      "Homebrew" in candidate.install &&
+      candidate.install.Homebrew.kind === kind &&
+      candidate.install.Homebrew.name === name,
+  );
+  return item?.id ?? null;
+}
+
 /** `catalog::entries`. */
 export function mockCatalog(instances: ManagerInstance[], artifacts: InstalledArtifact[]): CatalogEntry[] {
   const canInstall = instances.some(

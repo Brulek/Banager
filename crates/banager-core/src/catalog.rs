@@ -357,6 +357,18 @@ fn install_on(item: &CatalogItem, host: &Host) -> CatalogInstall {
     }
 }
 
+/// The catalog entry that installs this Homebrew formula or cask, if one
+/// does: what the Discover search marks as one of the suggestions.
+pub fn id_installing(kind: ArtifactKind, name: &str) -> Option<&'static str> {
+    CATALOG.iter().find_map(|item| match item.install {
+        CatalogInstall::Homebrew {
+            kind: its_kind,
+            name: its_name,
+        } if its_kind == kind && its_name == name => Some(item.id),
+        _ => None,
+    })
+}
+
 /// Why `install_request` names nothing to install.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InstallRefusal {
@@ -455,7 +467,7 @@ fn ollama_can_pull(instance: &ManagerInstance) -> bool {
 
 /// Whether `instance` is a Homebrew that can install: it answered, and is
 /// not view only (a prefix this user cannot write, Homebrew run as root).
-fn homebrew_can_install(instance: &ManagerInstance) -> bool {
+pub(crate) fn homebrew_can_install(instance: &ManagerInstance) -> bool {
     instance.adapter_id == "brew"
         && instance.status.unavailable.is_none()
         && instance.read_only_reason.is_none()

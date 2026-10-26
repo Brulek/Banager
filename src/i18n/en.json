@@ -1976,6 +1976,22 @@
       "fromOllama": "Ollama downloads {{model}} from its library, about {{size}}.",
       "needsOllama": "Ollama on this Mac can't download it right now."
     },
+    "search": {
+      "placeholder": "Search Homebrew",
+      "label": "Search Homebrew for a tool",
+      "searching": "Searching Homebrew…",
+      "invalid": "Type at least two characters, without “/” or a leading “-”.",
+      "needsHomebrew": "Install Homebrew first to search it.",
+      "failed": "Couldn't search Homebrew: {{message}}",
+      "failedPlain": "Couldn't search Homebrew.",
+      "none": "Homebrew has nothing matching “{{query}}”.",
+      "title": "In Homebrew",
+      "notSuggestedMark": "Not suggested",
+      "suggestedMark": "Suggested",
+      "notSuggested": "It isn't one of the tools suggested here, so check that it's the one you want.",
+      "expired": "This result is out of date. Search again.",
+      "footnote": "Only Homebrew's own tools and apps are listed, not ones other sources added to it."
+    },
     "homebrew": {
       "title": "Install Homebrew",
       "text": "Homebrew is installed in Terminal, where you run its installer and type your password. Nothing here runs it or sees the password.",

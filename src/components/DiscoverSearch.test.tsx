@@ -1,0 +1,193 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { invoke } from "@tauri-apps/api/core";
+import { renderWithProviders } from "../test/setup";
+import { command } from "../test/command";
+import { DiscoverPage } from "../pages/DiscoverPage";
+import { searchable } from "./DiscoverSearch";
+import i18n from "../i18n";
+import { NO_FACTS, type CatalogEntry, type Found, type IssuedPlan, type ManagerInstance, type Snapshot } from "../lib/types";
+
+const mockInvoke = vi.mocked(invoke);
+
+const brew: ManagerInstance = {
+  id: "brew:/opt/homebrew",
+  adapter_id: "brew",
+  exe_path: "/opt/homebrew/bin/brew",
+  prefix: "/opt/homebrew",
+  scope: "User",
+  version: "7.0.10",
+  answered_at: null,
+  unverified_version: null,
+  read_only_reason: null,
+  status: { unavailable: null, notes: [] },
+};
+
+const snapshot: Snapshot = {
+  generation: 1,
+  round: 1,
+  detect: "Found",
+  instances: [brew],
+  // jq is installed: the results say so as the last check does.
+  artifacts: [
+    {
+      key: { instance_id: brew.id, kind: "Formula", name: "jq" },
+      display_name: "jq",
+      version: "1.8.1",
+      reason: "Requested",
+      description: null,
+      homepage: null,
+      size_bytes: null,
+      installed_at: null,
+      path: null,
+      auto_updates: false,
+      uninstall_blocked: null,
+      facts: NO_FACTS,
+    },
+  ],
+  updates: [],
+  refreshed_at: 1_789_700_000,
+  stale: false,
+  errors: [],
+};
+
+const catalog: CatalogEntry[] = [
+  { id: "homebrew", category: "Basics", install: "HomebrewItself", state: "Installed", installs_here: false },
+];
+
+const results: Found[] = [
+  { id: "a".repeat(32), kind: "Formula", name: "jq", description: "Lightweight and flexible command-line JSON processor", installed: true, catalog_id: null },
+  { id: "b".repeat(32), kind: "Formula", name: "jq-lsp", description: "Jq language server", installed: false, catalog_id: null },
+  { id: "c".repeat(32), kind: "Cask", name: "claude-code", description: null, installed: false, catalog_id: "claude-code" },
+];
+
+function plan(found: Found): IssuedPlan {
+  const flag = found.kind === "Cask" ? "--cask" : "--formula";
+  return {
+    id: `plan-${found.name}`,
+    plan: {
+      request: { kind: "Install", instance_id: brew.id, artifact_kind: found.kind, name: found.name },
+      action: { Command: { program: "/opt/homebrew/bin/brew", args: ["install", flag, found.name], env: [] } },
+      needs_password: found.kind === "Cask",
+      locks: [brew.id],
+      cancel_policy: "KillThenReconcile",
+      warnings: [],
+      affected: [],
+      timeout_secs: 1800,
+    },
+    issued_at: 1_789_700_000,
+  };
+}
+
+let search: (query: string) => Promise<Found[]>;
+
+beforeEach(() => {
+  search = async () => results;
+  mockInvoke.mockReset();
+  mockInvoke.mockImplementation(async (cmd: string, args?: unknown) => {
+    if (cmd === "get_snapshot") return snapshot;
+    if (cmd === "get_catalog") return catalog;
+    if (cmd === "list_operations") return [];
+    if (cmd === "search_homebrew") return search((args as { query: string }).query);
+    if (cmd === "plan_install_found") {
+      const found = results.find((r) => r.id === (args as { foundId: string }).foundId)!;
+      return plan(found);
+    }
+    if (cmd === "submit_operation") return 7;
+    return null;
+  });
+});
+
+afterEach(async () => {
+  await i18n.changeLanguage("en");
+});
+
+function calls(name: string) {
+  return mockInvoke.mock.calls.filter(([cmd]) => cmd === name);
+}
+
+function results_(): [string, string, string][] {
+  return [...document.querySelectorAll("[data-found]")].map((row) => [
+    row.getAttribute("data-found") ?? "",
+    row.querySelector("[data-found-mark]")?.textContent ?? "",
+    row.querySelector("[data-found-state]")?.textContent ?? "",
+  ]);
+}
+
+async function typeSearch(text: string) {
+  const field = await screen.findByRole("searchbox", { name: "Search Homebrew for a tool" });
+  fireEvent.change(field, { target: { value: text } });
+}
+
+describe("Discover's search of Homebrew", () => {
+  it("takes the texts brew search may be given, as Rust does", () => {
+    expect(searchable("jq")).toBe(true);
+    expect(searchable("video editor")).toBe(true);
+    expect(searchable("j")).toBe(false);
+    expect(searchable("--macports")).toBe(false);
+    expect(searchable("user/tap/jq")).toBe(false);
+  });
+
+  it("lists what Homebrew has in the list's place, marked suggested or not, and installs a result by its id", async () => {
+    renderWithProviders(<DiscoverPage />);
+    await typeSearch("jq");
+    await waitFor(() => expect(results_()).toHaveLength(3), { timeout: 3000 });
+    expect(calls("search_homebrew")).toEqual([["search_homebrew", { query: "jq" }]]);
+    // The suggestions are out of the way while searching.
+    expect(screen.queryByRole("heading", { name: "Basics" })).toBeNull();
+    expect(results_()).toEqual([
+      ["jq", "Not suggested", "Installed"],
+      ["jq-lsp", "Not suggested", "Install"],
+      ["claude-code", "Suggested", "Install"],
+    ]);
+    expect(document.querySelector('[data-found="jq-lsp"]')).toHaveTextContent("Jq language server");
+
+    fireEvent.click(screen.getByRole("button", { name: "Install jq-lsp" }));
+    const sheet = await screen.findByRole("alertdialog", { name: "Install “jq-lsp”?" });
+    await waitFor(() => expect(calls("plan_install_found")).toEqual([["plan_install_found", { foundId: "b".repeat(32) }]]));
+    expect(sheet).toHaveTextContent("It isn't one of the tools suggested here, so check that it's the one you want.");
+    await waitFor(() => expect(within(sheet).getByRole("button", { name: "Install" })).toBeEnabled());
+    fireEvent.click(within(sheet).getByRole("button", { name: "Show Command" }));
+    expect(within(sheet).getByText(command("/opt/homebrew/bin/brew install --formula jq-lsp"))).toBeInTheDocument();
+    fireEvent.click(within(sheet).getByRole("button", { name: "Install" }));
+    await waitFor(() => expect(calls("submit_operation")[0][1]).toEqual({ planId: "plan-jq-lsp" }));
+    // Never a package's name by any other way.
+    expect(calls("plan_install")).toEqual([]);
+    expect(calls("plan_operation")).toEqual([]);
+
+    // Cleared: the suggestions again.
+    await typeSearch("");
+    expect(await screen.findByRole("heading", { name: "Basics" })).toBeInTheDocument();
+  });
+
+  it("says what it found nothing for, and what text it does not take, without asking", async () => {
+    search = async () => [];
+    renderWithProviders(<DiscoverPage />);
+    await typeSearch("zzzz");
+    expect(await screen.findByText("Homebrew has nothing matching “zzzz”.", {}, { timeout: 3000 })).toBeInTheDocument();
+    await typeSearch("--macports");
+    expect(await screen.findByText("Type at least two characters, without “/” or a leading “-”.")).toBeInTheDocument();
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    expect(calls("search_homebrew").map(([, args]) => args)).toEqual([{ query: "zzzz" }]);
+  });
+
+  it("says why it could not search", async () => {
+    search = async () => {
+      throw JSON.stringify({ kind: "catalog_state", state: "NeedsHomebrew" });
+    };
+    renderWithProviders(<DiscoverPage />);
+    await typeSearch("jq");
+    expect(await screen.findByRole("alert", {}, { timeout: 3000 })).toHaveTextContent("Install Homebrew first to search it.");
+  });
+
+  it("has no search field before a check, nor without a Homebrew", async () => {
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === "get_snapshot") return { ...snapshot, instances: [] };
+      if (cmd === "get_catalog") return catalog;
+      return null;
+    });
+    renderWithProviders(<DiscoverPage />);
+    await screen.findByText("Tools to start with, and which of them this Mac already has.");
+    expect(screen.queryByRole("searchbox")).toBeNull();
+  });
+});

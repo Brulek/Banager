@@ -7,6 +7,7 @@ import type {
   CatalogEntry,
   FinishedRun,
   HistoryView,
+  Found,
   InstallerLook,
   IssuedPlan,
   OpRequest,
@@ -240,6 +241,25 @@ export function getCatalog(): Promise<CatalogEntry[]> {
  */
 export function planInstall(catalogId: string): Promise<IssuedPlan> {
   return call<IssuedPlan>("plan_install", { catalogId });
+}
+
+/**
+ * The Discover page's search of Homebrew (`search_homebrew` in
+ * src-tauri/src/ipc.rs): Homebrew's own formulae and casks whose name or
+ * description has `query` in it, each under an id for Install. Runs `brew
+ * search`, read-only. `useSearchHomebrew` is the caller.
+ */
+export function searchHomebrew(query: string): Promise<Found[]> {
+  return call<Found[]>("search_homebrew", { query });
+}
+
+/**
+ * The preview of installing a search result (`plan_install_found` in
+ * src-tauri/src/ipc.rs), by the result's id: never a package name.
+ * `usePlanInstallFound` is the caller.
+ */
+export function planInstallFound(foundId: string): Promise<IssuedPlan> {
+  return call<IssuedPlan>("plan_install_found", { foundId });
 }
 
 /**

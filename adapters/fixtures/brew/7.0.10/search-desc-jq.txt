@@ -1,0 +1,18 @@
+==> Formulae
+gojq: Pure Go implementation of jq
+hq: Jq, but for HTML
+ijq: Interactive jq
+jaq: JQ clone focussed on correctness, speed, and simplicity
+jnv: Interactive JSON filter using jq
+jq-lsp: Jq language server
+jqfmt: Opinionated formatter for jq
+jqp: TUI playground to experiment and play with jq
+mdq: Like jq but for Markdown
+mq: Jq-like command-line tool for markdown processing
+oq: Performant, and portable jq wrapper to support formats other than JSON
+python-yq: Command-line YAML and XML processor that wraps jq
+sq: Data wrangler with jq-like query language
+yh: YAML syntax highlighter to bring colours where only jq could
+
+==> Casks
+jquake: (JQuake) Real-time earthquake monitoring software for Japan

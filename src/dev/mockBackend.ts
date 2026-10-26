@@ -7,11 +7,13 @@
  * `vite --mode mock` puts that in a page. Deterministic apart from the
  * clock: timings are fixed, and nothing is random.
  */
-import { mockCatalog } from "./mockCatalog";
+import { catalogIdInstalling, mockCatalog } from "./mockCatalog";
+import { mockSearch } from "./mockSearch";
 import type {
   AlreadyUpdated,
   ArtifactKey,
   CommandFact,
+  Found,
   HistoryView,
   InstalledArtifact,
   InstanceNote,
@@ -81,6 +83,8 @@ export const MOCK_COMMANDS = [
   "plan_install",
   "open_terminal",
   "look_for_homebrew",
+  "search_homebrew",
+  "plan_install_found",
   "get_history",
   "clear_history",
   "set_menu_language",
@@ -303,6 +307,9 @@ export function createMockBackend(scenario: Scenario): MockBackend {
   // The pretend Homebrew install: looks since Open Terminal was pressed,
   // or null before it was (`look_for_homebrew`).
   let homebrewLooks: number | null = null;
+  // The search's results by id, as `Session::search_homebrew` keeps them.
+  const found = new Map<string, OpRequest>();
+  let foundCount = 0;
   const operations = new Map<number, Operation>();
   const waiting: number[] = [];
   const held = new Set<string>();
@@ -1119,6 +1126,55 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       world.detect = "Found";
       world.instances.push(freshHomebrew());
       return { there: true, updating: false };
+    },
+    async search_homebrew(args) {
+      // `Session::search_homebrew` over the pretend Homebrew's names
+      // (`MOCK_HOMEBREW` in ./mockSearch.ts): the same refusals, the same
+      // order -- the name itself, those it starts, the rest, then those
+      // only a description matched.
+      const query = String(args.query ?? "").trim();
+      if (query.length === 0 || query.length > 64 || query.startsWith("-") || query.includes("/")) {
+        throw refusal({ kind: "invalid_query" });
+      }
+      const brew = (committed?.instances ?? []).find(
+        (i) => i.adapter_id === "brew" && i.status.unavailable === null && i.read_only_reason === null,
+      );
+      if (brew === undefined) throw refusal({ kind: "catalog_state", state: "NeedsHomebrew" });
+      await wait(TIMING.plan);
+      return mockSearch(query).map((hit): Found => {
+        foundCount += 1;
+        const id = foundCount.toString(16).padStart(32, "f");
+        found.set(id, { kind: "Install", instance_id: brew.id, artifact_kind: hit.kind, name: hit.name });
+        return {
+          id,
+          kind: hit.kind,
+          name: hit.name,
+          description: hit.description,
+          installed: (committed?.artifacts ?? []).some(
+            (a) => a.key.instance_id === brew.id && a.key.kind === hit.kind && a.key.name === hit.name,
+          ),
+          catalog_id: catalogIdInstalling(hit.kind, hit.name),
+        };
+      });
+    },
+    async plan_install_found(args) {
+      // `Session::plan_found`: only a result a search gave, not installed
+      // since, planned as any install is.
+      const request = found.get(String(args.foundId));
+      if (request === undefined) throw refusal({ kind: "search_expired" });
+      if ((committed?.artifacts ?? []).some((a) => sameKey(a.key, requestKey(request)))) {
+        throw refusal({ kind: "catalog_state", state: "Installed" });
+      }
+      const inst = gate(request);
+      await wait(TIMING.plan);
+      planCount += 1;
+      const issued: IssuedPlan = {
+        id: planCount.toString(16).padStart(32, "0"),
+        plan: buildPlan(world, inst, request),
+        issued_at: nowSeconds(),
+      };
+      plans.set(issued.id, { issued, issuedAtMs: Date.now() });
+      return clone(issued);
     },
     async plan_install(args) {
       // `catalog::install_request` over the committed snapshot, then the

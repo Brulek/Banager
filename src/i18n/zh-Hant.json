@@ -1832,6 +1832,22 @@
       "fromOllama": "Ollama會從它的模型庫下載{{model}}，約{{size}}。",
       "needsOllama": "這台Mac上的Ollama現在無法下載它。"
     },
+    "search": {
+      "placeholder": "搜尋Homebrew",
+      "label": "在Homebrew裡搜尋工具",
+      "searching": "正在搜尋Homebrew…",
+      "invalid": "請輸入至少兩個字元，不要包含「/」，也不要以「-」開頭。",
+      "needsHomebrew": "先安裝好Homebrew才能搜尋。",
+      "failed": "無法搜尋Homebrew：{{message}}",
+      "failedPlain": "無法搜尋Homebrew。",
+      "none": "Homebrew裡沒有和「{{query}}」相符的工具。",
+      "title": "Homebrew裡的結果",
+      "notSuggestedMark": "不在精選裡",
+      "suggestedMark": "精選",
+      "notSuggested": "它不在這裡的精選裡，請確認這就是你要的那個。",
+      "expired": "這個搜尋結果已過期，請重新搜尋。",
+      "footnote": "這裡只列出Homebrew自己的工具和App，不包括其他來源加入給它的。"
+    },
     "homebrew": {
       "title": "安裝Homebrew",
       "text": "Homebrew要在「終端機」裡安裝：由你執行它的安裝程式、輸入密碼，這裡既不執行它，也不經手密碼。",

@@ -1,0 +1,8 @@
+auto-claude
+claude
+claude-code
+claude-code@latest
+claude-devtools
+claude-status-bar
+claudebar
+gautham-v/tap/claudebar

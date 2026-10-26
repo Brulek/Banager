@@ -2626,24 +2626,46 @@ impl BrewAdapter {
         Ok(CheckOutcome { candidates, notes })
     }
 
+    /// Homebrew's own formulae and casks whose name, or whose description,
+    /// has `query` in it -- for the Discover page's search (phase 5 step E).
+    /// Three read-only commands: `brew search --formula {query}` and `brew
+    /// search --cask {query}`, each a list of names of one kind, so that no
+    /// result's kind is guessed; then `brew search --desc {query}`, whose
+    /// lines give the descriptions of those and add the packages only a
+    /// description matched. A name search that finds nothing exits 1,
+    /// saying so on stderr, which is no failure. A tap-qualified name
+    /// (`user/tap/name`) -- a third-party tap's -- is left out, as is any
+    /// name `validate_package_name` refuses. Names first: the one the text
+    /// is exactly, then those it starts, then the rest as Homebrew listed
+    /// them, then those only a description matched; at most
+    /// `SEARCH_HITS_MAX`. The text is checked first
+    /// (`validate_search_query`).
     pub async fn search(
         &self,
         inst: &ManagerInstance,
         query: &str,
     ) -> Result<Vec<SearchHit>, AdapterError> {
-        validate_package_name(query)?;
-        let names_output = self
-            .run_brew(
-                inst,
-                vec!["search".to_string(), query.to_string()],
-                Duration::from_secs(30),
-            )
-            .await?;
-        if names_output.exit_code != Some(0) {
-            return Err(AdapterError::CommandFailed {
-                code: names_output.exit_code,
-                stderr: names_output.stderr,
-            });
+        validate_search_query(query)?;
+        let mut hits: Vec<SearchHit> = Vec::new();
+        for (flag, kind) in [
+            ("--formula", ArtifactKind::Formula),
+            ("--cask", ArtifactKind::Cask),
+        ] {
+            let output = self
+                .run_brew(
+                    inst,
+                    vec!["search".to_string(), flag.to_string(), query.to_string()],
+                    Duration::from_secs(30),
+                )
+                .await?;
+            for name in search_names(&output)? {
+                hits.push(SearchHit {
+                    adapter_id: self.meta.id.clone(),
+                    kind,
+                    name,
+                    description: None,
+                });
+            }
         }
         let desc_output = self
             .run_brew(
@@ -2662,11 +2684,85 @@ impl BrewAdapter {
                 stderr: desc_output.stderr,
             });
         }
-        let mut hits = parse_search(&desc_output.stdout, &self.meta.id);
-        if hits.is_empty() {
-            hits = parse_search(&names_output.stdout, &self.meta.id);
+        let mut described = Vec::new();
+        for hit in parse_search(&desc_output.stdout, &self.meta.id) {
+            match hits
+                .iter_mut()
+                .find(|known| known.kind == hit.kind && known.name == hit.name)
+            {
+                Some(known) => known.description = hit.description,
+                None => described.push(hit),
+            }
         }
+        let wanted = query.to_lowercase();
+        let rank = |hit: &SearchHit| {
+            let name = hit.name.to_lowercase();
+            if name == wanted {
+                0
+            } else if name.starts_with(&wanted) {
+                1
+            } else {
+                2
+            }
+        };
+        // Stable: Homebrew's own order within each rank.
+        hits.sort_by_key(rank);
+        hits.extend(described);
+        hits.retain(|hit| !hit.name.contains('/') && validate_package_name(&hit.name).is_ok());
+        let mut seen = HashSet::new();
+        hits.retain(|hit| seen.insert((hit.kind, hit.name.clone())));
+        hits.truncate(SEARCH_HITS_MAX);
         Ok(hits)
+    }
+}
+
+/// The most results a search gives (`BrewAdapter::search`).
+pub const SEARCH_HITS_MAX: usize = 40;
+
+/// The longest text a search looks for, in characters.
+pub const SEARCH_QUERY_MAX: usize = 64;
+
+/// Whether `query` is a text `brew search` may be given: not empty, at most
+/// `SEARCH_QUERY_MAX` characters, words with spaces between them allowed.
+/// Refused: one starting with `-`, which `brew search` would read as an
+/// option -- `--macports` and its like open a web page; one with a `/`,
+/// which it reads as a regular expression (`/text/`) or a tap-qualified
+/// name, whose formula it loads; and any control character.
+pub fn validate_search_query(query: &str) -> Result<(), AdapterError> {
+    let refused = query.trim().is_empty()
+        || query.chars().count() > SEARCH_QUERY_MAX
+        || query.trim_start().starts_with('-')
+        || query.contains('/')
+        || query.chars().any(char::is_control);
+    if refused {
+        Err(AdapterError::InvalidName(query.to_string()))
+    } else {
+        Ok(())
+    }
+}
+
+/// The names `brew search --formula` or `--cask` printed, one a line; none
+/// where it found none, which it says by exiting 1 with "No formulae or
+/// casks found" on stderr and nothing on stdout. Any other failure is one.
+fn search_names(output: &CommandOutput) -> Result<Vec<String>, AdapterError> {
+    match output.exit_code {
+        Some(0) => Ok(output
+            .stdout
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .map(str::to_string)
+            .collect()),
+        Some(1)
+            if output.stdout.trim().is_empty()
+                && output.stderr.contains("No formulae or casks found") =>
+        {
+            Ok(Vec::new())
+        }
+        code => Err(AdapterError::CommandFailed {
+            code,
+            stderr: output.stderr.clone(),
+        }),
     }
 }
 
@@ -5709,59 +5805,174 @@ mod tests {
         );
     }
 
+    /// What Homebrew 7.0.10 printed for each search, recorded
+    /// (adapters/fixtures/brew/7.0.10/README.md).
+    fn search_output(stdout: &str) -> CommandOutput {
+        CommandOutput {
+            stderr_cause: Default::default(),
+            exit_code: Some(0),
+            stdout: stdout.to_string(),
+            stderr: String::new(),
+            timed_out: false,
+            cancelled: false,
+        }
+    }
+
+    fn found_nothing() -> CommandOutput {
+        CommandOutput {
+            exit_code: Some(1),
+            stdout: String::new(),
+            stderr: include_str!(
+                "../../../../../adapters/fixtures/brew/7.0.10/search-formula-none.stderr.txt"
+            )
+            .to_string(),
+            ..search_output("")
+        }
+    }
+
     #[tokio::test]
-    async fn test_search_calls_both_search_variants() {
+    async fn test_search_finds_jq_itself_first_with_each_kind_from_its_own_search() {
+        // backlog: the old search dropped every name match once `--desc`
+        // found anything, so "jq" did not find jq, and took a headerless
+        // list's second group for casks by guess.
         let runner = Arc::new(MockRunner::new());
+        let brew = "/opt/homebrew/bin/brew";
         runner.respond(
-            vec!["/opt/homebrew/bin/brew", "search", "jq"],
-            CommandOutput {
-                stderr_cause: Default::default(),
-                exit_code: Some(0),
-                stdout: "==> Formulae\njq\n".to_string(),
-                stderr: String::new(),
-                timed_out: false,
-                cancelled: false,
-            },
+            vec![brew, "search", "--formula", "jq"],
+            search_output(include_str!(
+                "../../../../../adapters/fixtures/brew/7.0.10/search-formula-jq.txt"
+            )),
         );
         runner.respond(
-            vec!["/opt/homebrew/bin/brew", "search", "--desc", "jq"],
-            CommandOutput {
-                stderr_cause: Default::default(),
-                exit_code: Some(0),
-                stdout: "==> Formulae\njq: Command-line JSON processor\n".to_string(),
-                stderr: String::new(),
-                timed_out: false,
-                cancelled: false,
-            },
+            vec![brew, "search", "--cask", "jq"],
+            search_output(include_str!(
+                "../../../../../adapters/fixtures/brew/7.0.10/search-cask-jq.txt"
+            )),
         );
-        let mock_ref = runner.clone();
-        let adapter = BrewAdapter::new(runner);
+        runner.respond(
+            vec![brew, "search", "--desc", "jq"],
+            search_output(include_str!(
+                "../../../../../adapters/fixtures/brew/7.0.10/search-desc-jq.txt"
+            )),
+        );
+        let adapter = BrewAdapter::new(runner.clone());
         let hits = adapter
             .search(&test_instance(), "jq")
             .await
             .expect("search");
-        assert_eq!(hits.len(), 1);
-        assert_eq!(hits[0].name, "jq");
+        let listed: Vec<(ArtifactKind, &str)> =
+            hits.iter().map(|h| (h.kind, h.name.as_str())).collect();
+        assert_eq!(listed[0], (ArtifactKind::Formula, "jq"));
+        // Those it starts, in Homebrew's order, then the rest.
         assert_eq!(
-            hits[0].description.as_deref(),
-            Some("Command-line JSON processor")
-        );
-        assert_eq!(
-            mock_ref.calls(),
-            vec![
-                vec![
-                    "/opt/homebrew/bin/brew".to_string(),
-                    "search".to_string(),
-                    "jq".to_string()
-                ],
-                vec![
-                    "/opt/homebrew/bin/brew".to_string(),
-                    "search".to_string(),
-                    "--desc".to_string(),
-                    "jq".to_string()
-                ],
+            &listed[1..6],
+            &[
+                (ArtifactKind::Formula, "jq-lsp"),
+                (ArtifactKind::Formula, "jqfmt"),
+                (ArtifactKind::Formula, "jql"),
+                (ArtifactKind::Formula, "jqp"),
+                (ArtifactKind::Cask, "jquake"),
             ]
         );
+        assert!(listed.contains(&(ArtifactKind::Cask, "j")));
+        // A description for a name both searches found; one only a
+        // description matched, after every name.
+        let gojq = hits.iter().find(|h| h.name == "gojq").unwrap();
+        assert_eq!(
+            gojq.description.as_deref(),
+            Some("Pure Go implementation of jq")
+        );
+        let hq = hits
+            .iter()
+            .position(|h| h.name == "hq")
+            .expect("hq, by its description");
+        assert!(hits[..hq].iter().all(|h| h.name.contains('j')));
+        assert_eq!(hits.iter().filter(|h| h.name == "jquake").count(), 1);
+        assert_eq!(
+            runner.calls(),
+            [
+                vec![brew, "search", "--formula", "jq"],
+                vec![brew, "search", "--cask", "jq"],
+                vec![brew, "search", "--desc", "jq"],
+            ]
+            .map(|c| c.iter().map(|s| s.to_string()).collect::<Vec<_>>())
+        );
+    }
+
+    #[tokio::test]
+    async fn test_search_leaves_out_a_third_party_taps_names_and_takes_none_found_for_no_results() {
+        let runner = Arc::new(MockRunner::new());
+        let brew = "/opt/homebrew/bin/brew";
+        runner.respond(vec![brew, "search", "--formula", "claude"], found_nothing());
+        runner.respond(
+            vec![brew, "search", "--cask", "claude"],
+            search_output(include_str!(
+                "../../../../../adapters/fixtures/brew/7.0.10/search-cask-claude.txt"
+            )),
+        );
+        runner.respond(
+            vec![brew, "search", "--desc", "claude"],
+            search_output("==> Formulae\n\n==> Casks\n"),
+        );
+        let adapter = BrewAdapter::new(runner);
+        let hits = adapter
+            .search(&test_instance(), "claude")
+            .await
+            .expect("search");
+        let names: Vec<&str> = hits.iter().map(|h| h.name.as_str()).collect();
+        assert_eq!(names[0], "claude");
+        assert!(names.contains(&"claude-code") && names.contains(&"claude-code@latest"));
+        assert!(names.contains(&"claudebar"));
+        assert!(!names.iter().any(|n| n.contains('/')), "{names:?}");
+        assert!(hits.iter().all(|h| h.kind == ArtifactKind::Cask));
+    }
+
+    #[tokio::test]
+    async fn test_search_fails_where_homebrew_failed_other_than_finding_nothing() {
+        let runner = Arc::new(MockRunner::new());
+        let brew = "/opt/homebrew/bin/brew";
+        runner.respond(
+            vec![brew, "search", "--formula", "jq"],
+            CommandOutput {
+                exit_code: Some(1),
+                stderr: "Error: Cannot download non-corrupt https://formulae.brew.sh/api/formula.jws.json!".to_string(),
+                ..search_output("")
+            },
+        );
+        let adapter = BrewAdapter::new(runner);
+        assert!(matches!(
+            adapter.search(&test_instance(), "jq").await,
+            Err(AdapterError::CommandFailed { code: Some(1), .. })
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_search_refuses_a_text_brew_would_read_as_an_option_a_regex_or_a_tap_before_running_anything(
+    ) {
+        let runner = Arc::new(MockRunner::new());
+        let adapter = BrewAdapter::new(runner.clone());
+        for query in [
+            "",
+            "   ",
+            "--macports",
+            " -x",
+            "/jq/",
+            "user/tap/jq",
+            "jq\n--desc",
+            &"j".repeat(SEARCH_QUERY_MAX + 1),
+        ] {
+            assert!(
+                matches!(
+                    adapter.search(&test_instance(), query).await,
+                    Err(AdapterError::InvalidName(_))
+                ),
+                "{query:?}"
+            );
+        }
+        assert!(runner.calls().is_empty());
+        // Words with spaces between them are a text Homebrew takes whole.
+        assert!(validate_search_query("video editor").is_ok());
+        assert!(validate_search_query("node@22").is_ok());
     }
 }
 
@@ -10914,18 +11125,24 @@ mod plan_execute_tests {
             };
             checks.push(adapter.check_updates(inst, &opts).await.map(|_| ()));
         }
-        // Search, which runs without a plan as a refresh does, though
-        // nothing in the window asks for it yet.
+        // Search, which runs without a plan as a refresh does: the
+        // Discover page's.
         runner.respond(
-            vec![BREW, "search", "jq"],
+            vec![BREW, "search", "--formula", "jq"],
             ok(include_str!(
-                "../../../../../adapters/fixtures/brew/7.0.3/search-jq.txt"
+                "../../../../../adapters/fixtures/brew/7.0.10/search-formula-jq.txt"
+            )),
+        );
+        runner.respond(
+            vec![BREW, "search", "--cask", "jq"],
+            ok(include_str!(
+                "../../../../../adapters/fixtures/brew/7.0.10/search-cask-jq.txt"
             )),
         );
         runner.respond(
             vec![BREW, "search", "--desc", "jq"],
             ok(include_str!(
-                "../../../../../adapters/fixtures/brew/7.0.3/search-desc-jq.txt"
+                "../../../../../adapters/fixtures/brew/7.0.10/search-desc-jq.txt"
             )),
         );
         checks.push(adapter.search(inst, "jq").await.map(|_| ()));

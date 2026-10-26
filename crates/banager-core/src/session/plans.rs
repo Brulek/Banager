@@ -57,7 +57,7 @@ fn has_expired(elapsed: Duration) -> bool {
 /// meaningfully report through `AdapterError` -- every caller of
 /// `issue_plan` is mid-`await` on a plan it already asked for, with nowhere
 /// sensible to route "the operating system cannot hand out random bytes".
-fn random_plan_id() -> PlanId {
+pub(super) fn random_plan_id() -> PlanId {
     let mut bytes = [0u8; 16];
     getrandom::fill(&mut bytes).expect("OS RNG must be available to issue a PlanId");
     bytes.iter().map(|b| format!("{b:02x}")).collect()

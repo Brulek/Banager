@@ -1423,6 +1423,21 @@ export type CatalogState =
   /** The starter model, with an Ollama that cannot pull now: not running, not answering, view only. */
   | "OllamaNotReady";
 /**
+ * One result of the Discover page's search of Homebrew (Rust `Found`,
+ * crates/banager-core/src/session/search.rs): its id, which Install sends
+ * back (`plan_install_found`) and which is good for ten minutes; what it
+ * is; whether the Homebrew it would go into lists it installed; and the
+ * catalog entry it is, where it is one.
+ */
+export interface Found {
+  id: string;
+  kind: "Formula" | "Cask";
+  name: string;
+  description: string | null;
+  installed: boolean;
+  catalog_id: string | null;
+}
+/**
  * What the Homebrew hand-off sees of /opt/homebrew (Rust `InstallerLook`,
  * `look_for_homebrew` in src-tauri/src/ipc.rs): whether Homebrew's
  * installer has put `bin/brew` there, and whether its last step, a `brew

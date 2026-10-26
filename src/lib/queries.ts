@@ -10,7 +10,9 @@ import {
 import {
   getSnapshot,
   planInstall,
+  planInstallFound,
   planOperation,
+  searchHomebrew,
   submitOperation,
   cancelOperation,
   listOperations,
@@ -32,6 +34,7 @@ import { isAvailable } from "./sources";
 import type {
   ArtifactKey,
   CatalogEntry,
+  Found,
   IssuedPlan,
   OpRequest,
   OpSummary,
@@ -310,6 +313,35 @@ export function usePlanOperation(): UseMutationResult<IssuedPlan, Error, OpReque
   return useMutation({
     mutationFn: async (request: OpRequest) => {
       const issued = await planOperation(request);
+      plansFor(queryClient).set(issued.id, issued);
+      return issued;
+    },
+  });
+}
+
+/**
+ * The Discover page's search of Homebrew for `query` (`searchHomebrew`),
+ * once it is two characters or more. Kept five minutes, half the time its
+ * results' ids can still be installed by (`FOUND_LIFETIME`), so that what
+ * is listed can always be installed.
+ */
+export function useSearchHomebrew(query: string): UseQueryResult<Found[]> {
+  return useQuery({
+    queryKey: ["searchHomebrew", query] as const,
+    queryFn: () => searchHomebrew(query),
+    enabled: query.length >= 2,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 5 * 60 * 1000,
+    retry: false,
+  });
+}
+
+/** `usePlanInstall` for a search result, by its id (`planInstallFound`). */
+export function usePlanInstallFound(): UseMutationResult<IssuedPlan, Error, string> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (foundId: string) => {
+      const issued = await planInstallFound(foundId);
       plansFor(queryClient).set(issued.id, issued);
       return issued;
     },
