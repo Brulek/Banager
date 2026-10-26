@@ -91,7 +91,9 @@ export function HomebrewSetupSheet({ open, onClose }: HomebrewSetupSheetProps) {
     gcTime: 0,
   });
   // When the last look that counted was answered, so that a second one
-  // counts only a look's interval after it.
+  // counts only half a look's interval after it or later: two answers
+  // close together (the window's coming back, then the interval) are one
+  // look, and the interval's own drift does not lose one.
   const counted = useRef(0);
   useEffect(() => {
     // A look answered after the sheet closed is no look of this sheet's.

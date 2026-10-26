@@ -57,8 +57,10 @@ export function DiscoverSearchField({ query, onChange }: { query: string; onChan
 
 /**
  * What Homebrew has for `query` (step E), in the list's place while there
- * is a text: Homebrew's own formulae and casks whose name or description
- * has it in it (`search_homebrew`), each with what it is, in the window's
+ * is a text: Homebrew's own formulae and casks whose name has it in it
+ * (`search_homebrew`; a description only fills in what each is, since
+ * `--desc` names a third-party tap's package by its short name), each
+ * with what it is, in the window's
  * words where it has them, whether it is one of the suggestions, and
  * Install -- which opens the install sheet for that result, by its id --
  * or that it is installed. An install under way or ended says so in its
