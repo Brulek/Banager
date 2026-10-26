@@ -27,9 +27,10 @@
 //!   README installs it with `npm i -g opencode-ai`, and Homebrew's
 //!   `opencode` formula builds from the same project). None was dropped.
 //! - Homebrew: `formulae.brew.sh/api/{formula,cask}/<name>.json`. A name
-//!   that 404'd there (formula `codex`, formula `claude-code`, cask
-//!   `ollama`) is deliberately absent: the cask `codexbar` or a tap's
-//!   `codex` is someone else's.
+//!   that 404'd there (formula `claude-code`, cask `ollama`) is
+//!   deliberately absent: the cask `codexbar` or a tap's `codex` is
+//!   someone else's. The formula `codex` 404'd too, and was added
+//!   afterwards for the reason under "Member added 2026-10-27".
 //! - PyPI: `pypi.org/pypi/<name>/json` (project URLs name the vendor's
 //!   repository).
 //! - Standalone: the recipe ids in `adapters/standalone/recipes.rs`.
@@ -238,6 +239,18 @@
 //! A tap's formula is keyed by its full name (`brew/parse.rs`), matched
 //! exactly: another tap's `opencode` or `crush`, and the bare `crush`, are
 //! no one's. Like the others, each joins its family's folders as they are.
+//!
+//! # Member added 2026-10-27
+//!
+//! The formula `codex`, homebrew-core's own until it was removed on
+//! 2025-10-17 (commit 2de6c8ff61, "codex: remove formula to prepare for
+//! cask migration"); homebrew-core's `tap_migrations.json` now sends
+//! `codex` to homebrew/cask. Both were read with the GitHub API, nothing
+//! run. A Mac that installed the formula before then keeps it installed
+//! and linked, and its `codex` is Codex: without it, Discover said Codex
+//! was not installed and offered a second copy (from the review of the
+//! areas earlier reviews left). The bare name is homebrew-core's only:
+//! a tap's `codex` is keyed by its full name, and stays no one's.
 //!
 //! Versions are deliberately not in the table: they change weekly. A
 //! Homebrew cask's channel is not a version: `@latest` and `@prerelease`
@@ -526,7 +539,7 @@ mod tests {
         (MemberSource::Formula, "charmbracelet/tap/crush"),
         // Not in appendix B: homebrew-core's codex formula, removed on
         // 2025-10-17 for the cask, which a Mac that installed it before
-        // keeps (module doc; review of the areas earlier reviews left).
+        // keeps (module doc, "Member added 2026-10-27").
         (MemberSource::Formula, "codex"),
     ];
 

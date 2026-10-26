@@ -158,7 +158,13 @@ impl Session {
             .await
             .map_err(SearchError::Adapter)?;
         let artifacts = self.snapshot.lock().unwrap().artifacts.clone();
-        let host = crate::catalog::Host::of_this_mac();
+        let mut host = crate::catalog::Host::of_this_mac();
+        // Its chip as this Homebrew runs: one in /usr/local runs as Intel,
+        // under Rosetta on Apple silicon, and refuses an Apple silicon
+        // cask (`brew::bottles::this_mac`; from the review of the check).
+        if instance.prefix == std::path::Path::new("/usr/local") {
+            host.apple_silicon = false;
+        }
         let mut found = self.found.lock().unwrap();
         found.retain(|_, entry| entry.found_at.elapsed() <= FOUND_LIFETIME);
         let now = Instant::now();
@@ -603,6 +609,24 @@ mod tests {
         assert!(found[0].installed);
         assert_eq!(found[0].blocked, None);
         assert_eq!(found[1].blocked, Some(FoundBlock::AppThere));
+    }
+
+    #[tokio::test]
+    async fn test_a_homebrew_in_usr_local_is_taken_to_run_as_intel() {
+        // From the review of the check: on Apple silicon, /usr/local's
+        // Homebrew runs under Rosetta, installs an Intel-only cask, and
+        // refuses one for Apple silicon -- whatever chip the Mac has.
+        let mut instance = crate::testing::manager_instance("brew", "brew:/usr/local");
+        instance.prefix = std::path::PathBuf::from("/usr/local");
+        let (session, brew) = session_with(instance).await;
+        let mut intel = hit(ArtifactKind::Cask, "intel-only");
+        intel.needs.chip = Some(Chip::Intel);
+        let mut arm = hit(ArtifactKind::Cask, "arm-only");
+        arm.needs.chip = Some(Chip::AppleSilicon);
+        *brew.hits.lock().unwrap() = vec![intel, arm];
+        let found = session.search_homebrew("only").await.expect("search");
+        assert_eq!(found[0].blocked, None);
+        assert_eq!(found[1].blocked, Some(FoundBlock::OtherChip));
     }
 
     #[test]

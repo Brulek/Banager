@@ -5808,7 +5808,8 @@ time, never into a protected place, and nothing there is opened. A
 result this Mac does not meet -- its app already there, put there another
 way (from the vendor's site or the App Store); disabled; a macOS newer
 than this Mac's, where this Mac's could be read; or the other kind of
-chip -- says so in place of Install ("Already on this Mac", "No longer
+chip, as the Homebrew searched runs (one in `/usr/local` as Intel, under
+Rosetta on Apple silicon) -- says so in place of Install ("Already on this Mac", "No longer
 offered", "Needs macOS 15", "Not supported on this Mac"), and
 `plan_found` refuses it (`search_blocked`): Homebrew refuses each of
 these, the last three before downloading anything, the first after
