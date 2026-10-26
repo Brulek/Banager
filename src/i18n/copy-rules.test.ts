@@ -125,10 +125,11 @@ describe.each([["zh-CN", zhCN], ["zh-Hant", zhHant]])("the polish-3 copy rules, 
       "emptyStates.loadFailed.nextStep",
       "settings.autoCheck.description",
       "settings.notifyUpdates.refused",
+      "settings.notifyUpdates.allowInSystemSettings",
       "settings.iconCredits.simpleIcons",
     ];
     const naming = keysWhere(chinese, (text) => text.includes("Banager"));
-    expect(naming.length).toBeLessThanOrEqual(6);
+    expect(naming.length).toBeLessThanOrEqual(7);
     expect(naming.filter((key) => !allowed.includes(key))).toEqual([]);
   });
 

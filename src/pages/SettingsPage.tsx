@@ -2,7 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ReactNode, Ref } from "react";
 import { useTranslation } from "react-i18next";
 import { useFormattingLocale } from "../i18n/useFormattingLocale";
-import { requestNotificationPermission } from "../lib/api";
+import { requestNotificationPermission, type NotificationPermission } from "../lib/api";
 import { useSettings, useSaveSettings, useSnapshot, type SettingsEdit } from "../lib/queries";
 import { ADAPTER_LABEL_KEYS, adapterIdOf, adapterLabel, instanceLabels, settingsSaveSentence } from "../lib/sources";
 import { activeSnoozes, shownSkippedVersion, skippedVersionId } from "../lib/updateState";
@@ -142,6 +142,29 @@ function NoEntries({ text }: { text: string }) {
 }
 
 /**
+ * The line a notification switch's last answer leaves under it
+ * (`NOTIFY_LINE_KEYS`): refused, with where to allow it;
+ * not known, on a Mac (TAURI-01), with where macOS decides; granted, none.
+ */
+type NotifyLine = keyof typeof NOTIFY_LINE_KEYS | null;
+
+const NOTIFY_LINE_KEYS = {
+  refused: "settings.notifyUpdates.refused",
+  allowInSystemSettings: "settings.notifyUpdates.allowInSystemSettings",
+} as const;
+
+function lineFor(permission: NotificationPermission): NotifyLine {
+  switch (permission) {
+    case "Granted":
+      return null;
+    case "Denied":
+      return "refused";
+    case "Unknown":
+      return "allowInSystemSettings";
+  }
+}
+
+/**
  * Settings, a grouped form as System Settings' own (spec §3.7), in seven
  * groups: 「通用」 -- the language, and whether to show technical details
  * -- 「更新」 -- how often to check (「检查更新」: 不自动检查, 每天 or
@@ -172,12 +195,14 @@ export function SettingsPage() {
   const [draft, setDraft] = useState<Settings | null>(null);
   const [creditsOpen, setCreditsOpen] = useState(false);
   // 「有更新时通知我」 while the permission it needs is being asked for
-  // (`turnNotifyOn`), and whether it was refused the last time it was.
+  // (`turnNotifyOn`), and the line its last answer left under it: refused,
+  // or -- on a Mac, where it cannot be known (TAURI-01) -- that System
+  // Settings decides.
   const [askingToNotify, setAskingToNotify] = useState(false);
-  const [notifyRefused, setNotifyRefused] = useState(false);
+  const [notifySaid, setNotifySaid] = useState<NotifyLine>(null);
   // The same two for 「操作完成时通知」.
   const [askingToNotifyOps, setAskingToNotifyOps] = useState(false);
-  const [notifyOpsRefused, setNotifyOpsRefused] = useState(false);
+  const [notifyOpsSaid, setNotifyOpsSaid] = useState<NotifyLine>(null);
   // The settings the page holds, as of its last render: what the answer to
   // that permission is saved over, since it arrives after the click.
   const held = useRef<Settings | undefined>(undefined);
@@ -271,21 +296,21 @@ export function SettingsPage() {
 
   // 「有更新时通知我」 turned on: permission to post is asked for first,
   // the switch on and still meanwhile, and the setting saved on only once
-  // it is granted -- while the daily check is still on, on the page by
-  // then and in what is saved. Refused, or the asking itself failed, the
-  // switch is back off with the line that says where to allow it.
+  // it is granted, or not known -- while the daily check is still on, on
+  // the page by then and in what is saved. Not known, the line under it
+  // says that System Settings decides. Refused, or the asking itself
+  // failed, the switch is back off with the line that says where to allow
+  // it.
   const turnNotifyOn = () => {
     if (locked) return;
-    setNotifyRefused(false);
+    setNotifySaid(null);
     setAskingToNotify(true);
     void requestNotificationPermission()
-      .catch(() => false)
-      .then((granted) => {
+      .catch((): NotificationPermission => "Denied")
+      .then((permission) => {
         setAskingToNotify(false);
-        if (!granted) {
-          setNotifyRefused(true);
-          return;
-        }
+        setNotifySaid(lineFor(permission));
+        if (permission === "Denied") return;
         const now = held.current;
         if (now?.auto_check) {
           persist((saved) => (saved.auto_check ? { ...saved, notify_updates: true } : saved), now);
@@ -298,16 +323,14 @@ export function SettingsPage() {
   // once it is granted. It needs no automatic check.
   const turnNotifyOpsOn = () => {
     if (locked) return;
-    setNotifyOpsRefused(false);
+    setNotifyOpsSaid(null);
     setAskingToNotifyOps(true);
     void requestNotificationPermission()
-      .catch(() => false)
-      .then((granted) => {
+      .catch((): NotificationPermission => "Denied")
+      .then((permission) => {
         setAskingToNotifyOps(false);
-        if (!granted) {
-          setNotifyOpsRefused(true);
-          return;
-        }
+        setNotifyOpsSaid(lineFor(permission));
+        if (permission === "Denied") return;
         const now = held.current;
         if (now) persist((saved) => ({ ...saved, notify_operations: true }), now);
       });
@@ -493,7 +516,7 @@ export function SettingsPage() {
               disabled={locked}
               options={AUTO_CHECK_CHOICES.map((choice) => ({ value: choice, label: t(AUTO_CHECK_CHOICE_KEYS[choice]) }))}
               onChange={(choice) => {
-                setNotifyRefused(false);
+                setNotifySaid(null);
                 persist((saved) => withAutoCheckChoice(saved, choice));
               }}
             />
@@ -518,9 +541,9 @@ export function SettingsPage() {
                   week: t("settings.checkEvery.week"),
                 })}
               </p>
-            ) : notifyRefused ? (
+            ) : notifySaid !== null ? (
               <p id="settings-notify-updates-desc" role="status" className={ROW_SUBTITLE}>
-                {t("settings.notifyUpdates.refused")}
+                {t(NOTIFY_LINE_KEYS[notifySaid])}
               </p>
             ) : undefined
           }
@@ -528,13 +551,15 @@ export function SettingsPage() {
             <Switch
               id="settings-notify-updates"
               aria-describedby={
-                !current.auto_check || notifyRefused ? "settings-notify-updates-desc" : undefined
+                !current.auto_check || notifySaid !== null ? "settings-notify-updates-desc" : undefined
               }
               checked={current.auto_check && (current.notify_updates || askingToNotify)}
               disabled={locked || !current.auto_check || askingToNotify}
-              onCheckedChange={(checked) =>
-                checked ? turnNotifyOn() : persist((saved) => ({ ...saved, notify_updates: false }))
-              }
+              onCheckedChange={(checked) => {
+                if (checked) return turnNotifyOn();
+                setNotifySaid(null);
+                persist((saved) => ({ ...saved, notify_updates: false }));
+              }}
             />
           }
         />
@@ -551,21 +576,23 @@ export function SettingsPage() {
           subtitle={
             // Only a state that passes, as under 「有更新时通知我」: the
             // group keeps one standing second line, the check's.
-            notifyOpsRefused ? (
+            notifyOpsSaid !== null ? (
               <p id="settings-notify-operations-desc" role="status" className={ROW_SUBTITLE}>
-                {t("settings.notifyUpdates.refused")}
+                {t(NOTIFY_LINE_KEYS[notifyOpsSaid])}
               </p>
             ) : undefined
           }
           control={
             <Switch
               id="settings-notify-operations"
-              aria-describedby={notifyOpsRefused ? "settings-notify-operations-desc" : undefined}
+              aria-describedby={notifyOpsSaid !== null ? "settings-notify-operations-desc" : undefined}
               checked={(current.notify_operations ?? false) || askingToNotifyOps}
               disabled={locked || askingToNotifyOps}
-              onCheckedChange={(checked) =>
-                checked ? turnNotifyOpsOn() : persist((saved) => ({ ...saved, notify_operations: false }))
-              }
+              onCheckedChange={(checked) => {
+                if (checked) return turnNotifyOpsOn();
+                setNotifyOpsSaid(null);
+                persist((saved) => ({ ...saved, notify_operations: false }));
+              }}
             />
           }
         />

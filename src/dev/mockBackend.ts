@@ -1113,7 +1113,7 @@ export function createMockBackend(scenario: Scenario): MockBackend {
     async request_notification_permission() {
       // Asks nobody: the preview posts no notification, so the switch
       // turns on as it does where permission is granted.
-      return true;
+      return "Granted";
     },
     async ask_before_quit(args) {
       // Nothing to ask before: the browser has no Quit of Banager's, and

@@ -1244,7 +1244,8 @@
     "notifyUpdates": {
       "label": "有更新時通知我",
       "needsAutoCheck": "請先把上方的「{{setting}}」設為「{{day}}」或「{{week}}」。",
-      "refused": "請在「系統設定」>「通知」中允許Banager傳送通知。"
+      "refused": "請在「系統設定」>「通知」中允許Banager傳送通知。",
+      "allowInSystemSettings": "只有在「系統設定」>「通知」中允許Banager傳送通知，通知才會顯示。"
     },
     "language": {
       "label": "語言",

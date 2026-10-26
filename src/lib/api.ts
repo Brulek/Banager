@@ -342,12 +342,19 @@ export function reportFinishedRun(run: FinishedRun): Promise<void> {
 }
 
 /**
- * Asks for permission to post notifications, as Settings' 「有更新时通知我」
- * is turned on (`request_notification_permission` in
- * src-tauri/src/notify.rs): true when it is granted.
+ * What Rust says of permission to post notifications
+ * (`NotificationPermission` in src-tauri/src/notify.rs): granted, denied,
+ * or -- on a Mac, where nothing can be asked (TAURI-01) -- not known.
  */
-export function requestNotificationPermission(): Promise<boolean> {
-  return call<boolean>("request_notification_permission");
+export type NotificationPermission = "Granted" | "Denied" | "Unknown";
+
+/**
+ * Asks for permission to post notifications, as Settings' 「有更新时通知我」
+ * or 「操作完成时通知」 is turned on (`request_notification_permission` in
+ * src-tauri/src/notify.rs).
+ */
+export function requestNotificationPermission(): Promise<NotificationPermission> {
+  return call<NotificationPermission>("request_notification_permission");
 }
 
 /**

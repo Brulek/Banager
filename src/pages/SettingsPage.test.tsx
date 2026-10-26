@@ -3,6 +3,7 @@ import { act, screen, waitFor, fireEvent, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
+import type { NotificationPermission } from "../lib/api";
 import { SettingsPage } from "./SettingsPage";
 import { useUiStore } from "../store/ui";
 import i18n from "../i18n";
@@ -718,7 +719,7 @@ describe("SettingsPage", () => {
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
       if (cmd === "get_settings") return baseSettings({ notify_operations: false });
       if (cmd === "set_settings") return undefined;
-      if (cmd === "request_notification_permission") return true;
+      if (cmd === "request_notification_permission") return "Granted";
       throw new Error(`unexpected command ${cmd}`);
     });
 
@@ -747,7 +748,7 @@ describe("SettingsPage", () => {
   it("turns the notification when operations finish back off when permission is refused, and says where to allow it", async () => {
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
       if (cmd === "get_settings") return baseSettings();
-      if (cmd === "request_notification_permission") return false;
+      if (cmd === "request_notification_permission") return "Denied";
       throw new Error(`unexpected command ${cmd}`);
     });
 
@@ -811,7 +812,7 @@ describe("SettingsPage", () => {
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
       if (cmd === "get_settings") return baseSettings({ auto_check: true });
       if (cmd === "set_settings") return undefined;
-      if (cmd === "request_notification_permission") return true;
+      if (cmd === "request_notification_permission") return "Granted";
       throw new Error(`unexpected command ${cmd}`);
     });
 
@@ -836,12 +837,12 @@ describe("SettingsPage", () => {
   });
 
   it("asks for permission before saving Notify me on, the switch on and still while it waits", async () => {
-    let answer: (granted: boolean) => void = () => {};
+    let answer: (permission: NotificationPermission) => void = () => {};
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
       if (cmd === "get_settings") return baseSettings({ auto_check: true });
       if (cmd === "set_settings") return undefined;
       if (cmd === "request_notification_permission") {
-        return new Promise<boolean>((resolve) => {
+        return new Promise<NotificationPermission>((resolve) => {
           answer = resolve;
         });
       }
@@ -856,7 +857,7 @@ describe("SettingsPage", () => {
     expect(notify).toBeDisabled();
     expect(vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === "set_settings")).toHaveLength(0);
 
-    act(() => answer(true));
+    act(() => answer("Granted"));
 
     await waitFor(() =>
       expect(lastSaved()).toEqual(baseSettings({ auto_check: true, notify_updates: true })),
@@ -869,7 +870,7 @@ describe("SettingsPage", () => {
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
       if (cmd === "get_settings") return baseSettings({ auto_check: true });
       if (cmd === "set_settings") return undefined;
-      if (cmd === "request_notification_permission") return false;
+      if (cmd === "request_notification_permission") return "Denied";
       throw new Error(`unexpected command ${cmd}`);
     });
 
@@ -885,6 +886,38 @@ describe("SettingsPage", () => {
     expect(notify).toBeEnabled();
     expect(notifyStatus()).toHaveTextContent("Allow Banager to send notifications in System Settings > Notifications.");
     expect(vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === "set_settings")).toHaveLength(0);
+  });
+
+  it("saves Notify me on where permission can't be known, on a Mac, and says System Settings decides (TAURI-01)", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "get_settings") return baseSettings({ auto_check: true });
+      if (cmd === "set_settings") return undefined;
+      if (cmd === "request_notification_permission") return "Unknown";
+      throw new Error(`unexpected command ${cmd}`);
+    });
+
+    renderWithProviders(<SettingsPage />);
+
+    const said = "Notifications appear only if Banager is allowed to send them in System Settings > Notifications.";
+    const notify = await screen.findByRole("switch", { name: "Notify me when there are updates" });
+    fireEvent.click(notify);
+    await waitFor(() => expect(lastSaved()).toEqual(baseSettings({ auto_check: true, notify_updates: true })));
+    expect(notify).toBeChecked();
+    expect(notify).toHaveAccessibleDescription(said);
+    expect(notifyStatus()).toHaveTextContent(said);
+    // Turned off: nothing more to say.
+    fireEvent.click(notify);
+    await waitFor(() => expect(lastSaved()).toEqual(baseSettings({ auto_check: true, notify_updates: false })));
+    expect(notifyStatus()).toBeNull();
+
+    const ops = screen.getByRole("switch", { name: "Notify me when operations finish" });
+    fireEvent.click(ops);
+    await waitFor(() =>
+      expect(lastSaved()).toEqual(baseSettings({ auto_check: true, notify_operations: true })),
+    );
+    expect(ops).toHaveAccessibleDescription(said);
+    fireEvent.click(ops);
+    await waitFor(() => expect(ops).not.toHaveAttribute("aria-describedby"));
   });
 
   it("takes a permission request that failed as refused", async () => {
@@ -906,7 +939,7 @@ describe("SettingsPage", () => {
   });
 
   it("drops the line once permission is granted on another try, or the daily check is turned off", async () => {
-    let grant = false;
+    let grant: NotificationPermission = "Denied";
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
       if (cmd === "get_settings") return baseSettings({ auto_check: true });
       if (cmd === "set_settings") return undefined;
@@ -921,7 +954,7 @@ describe("SettingsPage", () => {
     await waitFor(() => expect(notifyStatus()).toBeInTheDocument());
 
     // Allowed in System Settings, then tried again.
-    grant = true;
+    grant = "Granted";
     fireEvent.click(notify);
     await waitFor(() =>
       expect(lastSaved()).toEqual(baseSettings({ auto_check: true, notify_updates: true })),
@@ -930,7 +963,7 @@ describe("SettingsPage", () => {
     expect(notify).not.toHaveAttribute("aria-describedby");
 
     // Refused again after turning it off; then the daily check goes off.
-    grant = false;
+    grant = "Denied";
     fireEvent.click(notify);
     await waitFor(() =>
       expect(lastSaved()).toEqual(baseSettings({ auto_check: true, notify_updates: false })),
@@ -942,12 +975,12 @@ describe("SettingsPage", () => {
   });
 
   it("does not save Notify me on when the daily check was turned off while permission was asked for", async () => {
-    let answer: (granted: boolean) => void = () => {};
+    let answer: (permission: NotificationPermission) => void = () => {};
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
       if (cmd === "get_settings") return baseSettings({ auto_check: true });
       if (cmd === "set_settings") return undefined;
       if (cmd === "request_notification_permission") {
-        return new Promise<boolean>((resolve) => {
+        return new Promise<NotificationPermission>((resolve) => {
           answer = resolve;
         });
       }
@@ -966,7 +999,7 @@ describe("SettingsPage", () => {
     const saves = () => vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === "set_settings").length;
     const before = saves();
 
-    await act(async () => answer(true));
+    await act(async () => answer("Granted"));
 
     expect(saves()).toBe(before);
     expect(notify).not.toBeChecked();

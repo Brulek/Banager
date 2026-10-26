@@ -953,12 +953,18 @@ are updates" (「有更新时通知我」), off by default too
 (`Settings::notify_updates`), which Settings offers only while the check
 is set to Daily or Weekly, and turns off when it is set to Manually. Turning it on asks for permission to
 post first (`request_notification_permission` in
-`src-tauri/src/notify.rs`), through the Tauri notification plugin's
-`request_permission`. The plugin, at the 2.4 line `src-tauri/Cargo.toml`
-pins, answers yes on a Mac without asking macOS, so there the switch
-always turns on, and whether a notification shows is up to System
-Settings → Notifications → Banager. Were the answer no, the switch would
-turn back off with "Allow Banager to send notifications in System Settings > Notifications."
+`src-tauri/src/notify.rs`). On a Mac nothing can be asked: Banager posts
+through `NSUserNotificationCenter`, which has no way to, and the Tauri
+notification plugin's `request_permission`, at the 2.4 line
+`src-tauri/Cargo.toml` pins, answers yes without asking macOS. So the
+answer there is "not known" (`NotificationPermission::Unknown`): the
+switch turns on, with "Notifications appear only if Banager is allowed to
+send them in System Settings > Notifications."
+(「只有在“系统设置”>“通知”中允许Banager发送通知，通知才会显示。」) under
+it, as whether one shows is up to System Settings → Notifications →
+Banager. Elsewhere the plugin is asked; where it answers no, or the asking
+fails, the switch turns back off with "Allow Banager to send
+notifications in System Settings > Notifications."
 (「请在“系统设置”>“通知”中允许Banager发送通知。」) under it.
 
 Each time the window receives a check's result — every daily check's

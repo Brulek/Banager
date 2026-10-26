@@ -347,24 +347,50 @@ pub(crate) fn open_updates<R: Runtime>(app: &AppHandle<R>) {
     }
 }
 
+/// What the Settings page is told of permission to post notifications
+/// (`request_notification_permission`): src/lib/api.ts's
+/// `NotificationPermission` spells the same.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+pub enum NotificationPermission {
+    /// Notifications may be posted: the switch is saved on.
+    Granted,
+    /// They may not: the switch goes back off, with where to allow them.
+    Denied,
+    /// Not known: on a Mac, where Banager posts through
+    /// `NSUserNotificationCenter` (mac-notification-sys), which has no way
+    /// to ask, and tauri-plugin-notification answers `Granted` without
+    /// asking macOS (TAURI-01). The switch is saved on, and the page says
+    /// that macOS shows them only where System Settings → Notifications
+    /// allows Banager.
+    Unknown,
+}
+
 /// Asks for permission to post notifications, as the Settings page turns
-/// 「有更新时通知我」 on: yes when tauri-plugin-notification's
-/// `request_permission` answers `Granted`, and the page turns the switch
-/// back off otherwise. On a Mac the plugin answers `Granted` without
-/// asking macOS; whether macOS shows what Banager posts is then up to
-/// System Settings → Notifications.
+/// 「有更新时通知我」 or 「操作完成时通知」 on. On a Mac nothing can be
+/// asked (`NotificationPermission::Unknown`); elsewhere,
+/// tauri-plugin-notification's `request_permission`, read by
+/// `permission_of`.
 #[tauri::command]
-pub async fn request_notification_permission(app: AppHandle) -> Result<bool, String> {
+pub async fn request_notification_permission(
+    app: AppHandle,
+) -> Result<NotificationPermission, String> {
+    if cfg!(target_os = "macos") {
+        let _ = app;
+        return Ok(NotificationPermission::Unknown);
+    }
     app.notification()
         .request_permission()
-        .map(permission_granted)
+        .map(permission_of)
         .map_err(|e| e.to_string())
 }
 
-/// Whether `state`, the plugin's answer, grants permission: only
-/// `Granted` does. `Denied`, and a prompt still to be answered, do not.
-fn permission_granted(state: PermissionState) -> bool {
-    matches!(state, PermissionState::Granted)
+/// `state`, the plugin's answer, as the page is told it: only `Granted`
+/// grants. `Denied`, and a prompt still to be answered, do not.
+fn permission_of(state: PermissionState) -> NotificationPermission {
+    match state {
+        PermissionState::Granted => NotificationPermission::Granted,
+        _ => NotificationPermission::Denied,
+    }
 }
 
 #[cfg(test)]
@@ -706,10 +732,19 @@ mod tests {
 
     #[test]
     fn test_only_a_granted_permission_turns_notifications_on() {
-        assert!(permission_granted(PermissionState::Granted));
-        assert!(!permission_granted(PermissionState::Denied));
-        assert!(!permission_granted(PermissionState::Prompt));
-        assert!(!permission_granted(PermissionState::PromptWithRationale));
+        use NotificationPermission::{Denied, Granted};
+        assert_eq!(permission_of(PermissionState::Granted), Granted);
+        assert_eq!(permission_of(PermissionState::Denied), Denied);
+        assert_eq!(permission_of(PermissionState::Prompt), Denied);
+        assert_eq!(permission_of(PermissionState::PromptWithRationale), Denied);
+        // The page reads the variants by these names (src/lib/api.ts).
+        for (permission, word) in [
+            (Granted, "Granted"),
+            (Denied, "Denied"),
+            (NotificationPermission::Unknown, "Unknown"),
+        ] {
+            assert_eq!(serde_json::to_value(permission).unwrap(), word);
+        }
     }
 
     #[test]

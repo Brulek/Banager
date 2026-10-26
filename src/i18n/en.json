@@ -1364,7 +1364,8 @@
     "notifyUpdates": {
       "label": "Notify me when there are updates",
       "needsAutoCheck": "Requires “{{setting}}” set to {{day}} or {{week}}.",
-      "refused": "Allow Banager to send notifications in System Settings > Notifications."
+      "refused": "Allow Banager to send notifications in System Settings > Notifications.",
+      "allowInSystemSettings": "Notifications appear only if Banager is allowed to send them in System Settings > Notifications."
     },
     "language": {
       "label": "Language",
