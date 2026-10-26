@@ -259,6 +259,10 @@ fn mutations(name: &str, base: &str, rng: &mut Rng, budget: usize) -> Vec<(Strin
             let mut keys = value.clone();
             replace_keys(&mut keys, replacement.as_str().unwrap_or_default());
             out.push((format!("{name} {label} (keys)"), keys.to_string()));
+            let mut names = value.clone();
+            if replace_name_keys(&mut names, replacement.as_str().unwrap_or_default(), true) {
+                out.push((format!("{name} {label} (name keys)"), names.to_string()));
+            }
         }
     }
     out
@@ -358,6 +362,60 @@ fn replace_keys(value: &mut Value, with: &str) {
             }
         }
         _ => {}
+    }
+}
+
+/// The keys whose object is a map keyed by name: npm's `dependencies`,
+/// pipx's `venvs`, cargo's `installs`.
+const NAME_MAPS: [&str; 3] = ["dependencies", "venvs", "installs"];
+
+/// The keys of every map keyed by name renamed to `with` plus its index,
+/// and no other key: `replace_keys` renames `dependencies`, `venvs` and
+/// `installs` too, so a parser stops at the missing structure before it
+/// reads a name (PARSER-005). A map keyed by name is the object under one
+/// of `NAME_MAPS`, or, at the top (`root`), an object of objects with
+/// none of those keys -- npm's `outdated --json`. Whether there was one.
+fn replace_name_keys(value: &mut Value, with: &str, root: bool) -> bool {
+    match value {
+        Value::Array(items) => items
+            .iter_mut()
+            .fold(false, |found, v| replace_name_keys(v, with, false) | found),
+        Value::Object(map) => {
+            if root
+                && !map.keys().any(|k| NAME_MAPS.contains(&k.as_str()))
+                && map.values().all(Value::is_object)
+            {
+                rename_names(map, with);
+                return true;
+            }
+            let mut found = false;
+            for (key, v) in map.iter_mut() {
+                match v {
+                    Value::Object(names) if NAME_MAPS.contains(&key.as_str()) => {
+                        rename_names(names, with);
+                        found = true;
+                    }
+                    _ => found |= replace_name_keys(v, with, false),
+                }
+            }
+            found
+        }
+        _ => false,
+    }
+}
+
+/// `map`'s keys, which are names, renamed to `with` plus its index; its
+/// values' own keys left to `replace_name_keys`.
+fn rename_names(map: &mut serde_json::Map<String, Value>, with: &str) {
+    let old = std::mem::take(map);
+    for (i, (_, mut v)) in old.into_iter().enumerate() {
+        replace_name_keys(&mut v, with, false);
+        let key = if i == 0 {
+            with.to_string()
+        } else {
+            format!("{with}{i}")
+        };
+        map.insert(key, v);
     }
 }
 
@@ -951,6 +1009,36 @@ fn cargo_parsers_survive_any_input() {
         version_token_ok,
     ));
     assert_none(problems);
+}
+
+#[test]
+fn test_name_key_mutations_keep_the_structure() {
+    // PARSER-005: only the names change -- pipx's `venvs` and each venv's
+    // `metadata` stay, so a parser gets as far as the names.
+    let mut pipx: Value = serde_json::from_str(&fixture("pipx/1.17.3/list.json")).unwrap();
+    assert!(replace_name_keys(&mut pipx, "\n", true));
+    let venvs = pipx["venvs"].as_object().expect("venvs kept");
+    assert!(venvs.keys().all(|k| k.starts_with('\n')), "{venvs:?}");
+    assert!(venvs.values().all(|v| v.get("metadata").is_some()));
+    // npm's outdated list is a map by name at the top.
+    let mut npm: Value = serde_json::from_str(&fixture("npm/12.0.2/outdated-global.json")).unwrap();
+    assert!(replace_name_keys(&mut npm, "", true));
+    let names = npm.as_object().unwrap();
+    assert!(
+        names.keys().all(|k| k.chars().all(|c| c.is_ascii_digit())),
+        "{names:?}"
+    );
+    assert!(names.values().all(|v| v.get("current").is_some()));
+    // cargo's installs keep `installs`; Ollama's list has no map by name.
+    let mut cargo: Value = serde_json::from_str(&fixture("cargo/1.98.1/crates2.json")).unwrap();
+    assert!(replace_name_keys(&mut cargo, "x", true));
+    assert!(cargo["installs"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .all(|k| k.starts_with('x')));
+    let mut ollama: Value = serde_json::from_str(&fixture("ollama/0.34.1/api-tags.json")).unwrap();
+    assert!(!replace_name_keys(&mut ollama, "x", true));
 }
 
 #[test]
