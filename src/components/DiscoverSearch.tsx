@@ -1,6 +1,16 @@
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { endedAfterCheck, installOperationFor, installProgressOf, isUnderway, searchable, stateText } from "../lib/catalog";
+import {
+  commandOf,
+  endedAfterCheck,
+  installOperationFor,
+  installProgressOf,
+  isUnderway,
+  ITEM_KEYS,
+  searchable,
+  stateText,
+  wordsOf,
+} from "../lib/catalog";
 import { useCatalog, useOperations, usePendingOperations, useSearchHomebrew, useSettings, useSnapshot } from "../lib/queries";
 import { useSettled } from "../lib/settled";
 import { planErrorMessage } from "../lib/sources";
@@ -8,6 +18,7 @@ import { useTranslatedDescription } from "../lib/toolDescriptions";
 import { useUiStore } from "../store/ui";
 import type { ArtifactKey, Found } from "../lib/types";
 import { EndedWithout } from "./EndedWithout";
+import { CopyButton } from "./CopyButton";
 import { CheckIcon, SearchIcon, SpinnerIcon } from "./icons";
 import { InstallSheet } from "./InstallSheet";
 import { SheetPending } from "./SheetParts";
@@ -127,6 +138,11 @@ export function DiscoverResults({ query }: { query: string }) {
               (progress?.kind === "installed" && op !== null && endedAfterCheck(op, opFinishedAt, snapshot ?? null));
             const notHere = entry !== undefined && entry.state !== "NotInstalled" && entry.state !== "Installed";
             const description = descriptionOf(found);
+            // A suggestion installed from here: how to use it, with Copy, in
+            // place of what it is, as its row on the list says it.
+            const use =
+              entry !== undefined && installed && progress?.kind === "installed" ? ITEM_KEYS[entry.id]?.use : undefined;
+            const command = entry === undefined ? undefined : commandOf(entry);
             let right: ReactNode;
             if (progress !== null && isUnderway(progress)) {
               right = (
@@ -175,7 +191,17 @@ export function DiscoverResults({ query }: { query: string }) {
                         {t(found.catalog_id === null ? "discover.search.notSuggestedMark" : "discover.search.suggestedMark")}
                       </span>
                     </span>
-                    {description === null ? null : (
+                    {use !== undefined && entry !== undefined ? (
+                      <span
+                        data-found-use=""
+                        className={`flex flex-wrap items-center gap-x-2 gap-y-1 text-muted ${SMALL_WRAPPING}`}
+                      >
+                        <span>{t(use, wordsOf(entry))}</span>
+                        {command === undefined ? null : (
+                          <CopyButton text={command} label={t("discover.copyCommand", { command })} />
+                        )}
+                      </span>
+                    ) : description === null ? null : (
                       <span className={`block truncate text-muted ${SMALL_WRAPPING}`}>{description}</span>
                     )}
                   </span>

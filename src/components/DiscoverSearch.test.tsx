@@ -6,6 +6,7 @@ import { command } from "../test/command";
 import { DiscoverPage } from "../pages/DiscoverPage";
 import { searchable } from "../lib/catalog";
 import i18n from "../i18n";
+import { useUiStore } from "../store/ui";
 import { NO_FACTS, type CatalogEntry, type Found, type IssuedPlan, type ManagerInstance, type Snapshot } from "../lib/types";
 
 const mockInvoke = vi.mocked(invoke);
@@ -207,6 +208,48 @@ describe("Discover's search of Homebrew", () => {
     // Cleared: the suggestions again.
     await typeSearch("");
     expect(await screen.findByRole("heading", { name: "Basics" })).toBeInTheDocument();
+  });
+
+  it("says how to use a suggestion installed from here, with Copy, as its row on the list does", async () => {
+    // Claude Code's cask installed from here, before the check after it.
+    const installed = {
+      id: 7,
+      kind: "Install" as const,
+      instance_id: brew.id,
+      artifact_kind: "Cask" as const,
+      name: "claude-code",
+      status: "Done" as const,
+      outcome: "Succeeded" as const,
+      argv_preview: [],
+      cancel_policy: "KillThenReconcile" as const,
+    };
+    const claude: CatalogEntry = {
+      id: "claude-code",
+      category: "AiAssistants",
+      install: { Homebrew: { kind: "Cask", name: "claude-code" } },
+      state: "NotInstalled",
+      installs_here: true,
+    };
+    mockInvoke.mockImplementation(async (cmd: string, args?: unknown) => {
+      if (cmd === "get_snapshot") return snapshot;
+      if (cmd === "get_catalog") return [...catalog, claude];
+      if (cmd === "list_operations") return [installed];
+      if (cmd === "search_homebrew") return search((args as { query: string }).query);
+      return null;
+    });
+    useUiStore.getState().rememberOpFinished(7, (snapshot.refreshed_at! + 5) * 1000);
+    try {
+      renderWithProviders(<DiscoverPage />);
+      await typeSearch("claude");
+      await waitFor(() => expect(results_()).toHaveLength(3), { timeout: 3000 });
+      const row = document.querySelector('[data-found="claude-code"]') as HTMLElement;
+      await waitFor(() => expect(row.querySelector("[data-found-use]")).toHaveTextContent("Type claude in a new Terminal window."));
+      expect(within(row).getByRole("button", { name: "Copy “claude”" })).toBeInTheDocument();
+      // Not one of the suggestions, or not installed from here: what it is.
+      expect(document.querySelector('[data-found="jq"] [data-found-use]')).toBeNull();
+    } finally {
+      useUiStore.setState({ opFinishedAt: {} });
+    }
   });
 
   it("says what it found nothing for, and what text it does not take, without asking", async () => {
