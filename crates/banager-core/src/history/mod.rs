@@ -258,7 +258,8 @@ pub struct Ended<'a> {
 }
 
 /// The record for an operation that ended, or `None` for one that is not
-/// kept: an install (Banager runs none), a link (`OpKind::Link`, which
+/// kept: an install (the Discover page's: History lists what was updated
+/// and uninstalled, which an install is neither), a link (`OpKind::Link`, which
 /// updates and uninstalls nothing), or one cancelled before it reached
 /// its adapter's `execute` -- nothing was done, so there is nothing to
 /// remember. (One cancelled inside `execute` is kept as `Cancelled`, even

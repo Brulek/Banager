@@ -9,6 +9,7 @@ import { ToolAvatar } from "../components/ToolAvatar";
 import { BUTTON } from "../components/ui/controls";
 import { FORM_COLUMN, GROUP, GROUP_FOOTNOTE, GROUP_ROW_TWO_LINES, GROUP_TITLE, SMALL_WRAPPING } from "../components/ui/group";
 import {
+  endedAfterCheck,
   entryName,
   iconKeyOf,
   installOperationOf,
@@ -93,12 +94,13 @@ export function DiscoverPage() {
   const { data: snapshot } = useSnapshot();
   const { data: operations } = useOperations();
   const pending = usePendingOperations();
+  const opFinishedAt = useUiStore((s) => s.opFinishedAt);
   const [installing, setInstalling] = useState<CatalogEntry | null>(null);
   const checked = snapshot?.refreshed_at != null;
   const brew = snapshot?.instances.find((instance) => instance.adapter_id === "brew");
   const sourceLabel = t("adapters.brew");
 
-  const right = (entry: CatalogEntry, name: string, progress: InstallProgress | null): ReactNode => {
+  const right = (entry: CatalogEntry, name: string, progress: InstallProgress | null, installed: boolean): ReactNode => {
     if (progress !== null && isUnderway(progress)) {
       const word =
         progress.kind === "queued"
@@ -115,7 +117,7 @@ export function DiscoverPage() {
     }
     // Installed by any way the catalog knows of, or by the install that
     // just ended, before the check after it has said so.
-    if (entry.state === "Installed" || progress?.kind === "installed") {
+    if (installed) {
       return (
         <span data-catalog-state="" className="flex shrink-0 items-center gap-1 text-muted">
           <CheckIcon size={14} />
@@ -134,13 +136,16 @@ export function DiscoverPage() {
           {t("discover.install")}
         </button>
       ) : null;
+    // How the last install ended, beside Install to try again -- or beside
+    // why this Mac cannot install it now, which a check since may say.
     const ended =
-      progress === null ? null : progress.kind === "cancelled" ? (
+      progress === null || progress.kind === "installed" ? null : progress.kind === "cancelled" ? (
         <span className="whitespace-nowrap text-small text-muted">{t("discover.progress.cancelled")}</span>
       ) : (
         <EndedWithout progress={progress} name={name} />
       );
-    if (install === null && ended === null) {
+    const state = install ?? <span className="text-muted">{stateText(t, entry.state)}</span>;
+    if (ended === null && install === null) {
       return (
         <span data-catalog-state="" className="flex shrink-0 items-center gap-1 text-muted">
           {stateText(t, entry.state)}
@@ -150,7 +155,7 @@ export function DiscoverPage() {
     return (
       <span data-catalog-state="" className="flex shrink-0 items-center gap-2">
         {ended}
-        {install}
+        {state}
       </span>
     );
   };
@@ -173,8 +178,16 @@ export function DiscoverPage() {
                 const name = entryName(t, entry.id);
                 const op = installOperationOf(entry, operations ?? [], pending);
                 const progress = op === null ? null : installProgressOf(op);
+                // What the install that just ended says is newer than the
+                // catalog until the check after it comes; after that, the
+                // catalog says what there is.
+                const justInstalled =
+                  progress?.kind === "installed" &&
+                  op !== null &&
+                  endedAfterCheck(op, opFinishedAt, snapshot?.refreshed_at ?? null);
+                const installed = entry.state === "Installed" || justInstalled;
                 // Installed from here: how to use it, in place of what it is.
-                const use = progress?.kind === "installed" ? keys?.use : undefined;
+                const use = installed && progress?.kind === "installed" ? keys?.use : undefined;
                 const command = keys?.command;
                 return (
                   <li key={entry.id} data-catalog-entry={entry.id} className={GROUP_ROW_TWO_LINES}>
@@ -205,7 +218,7 @@ export function DiscoverPage() {
                         )}
                       </span>
                     </span>
-                    {checked ? right(entry, name, progress) : null}
+                    {checked ? right(entry, name, progress, installed) : null}
                   </li>
                 );
               })}

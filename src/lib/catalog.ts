@@ -153,9 +153,11 @@ export function iconKeyOf(entry: CatalogEntry, brew: ManagerInstance | undefined
 /**
  * The newest install of `entry` from here -- under way, or finished --
  * among `operations` and this window's own submissions not yet listed
- * (`usePendingOperations`), or null. An install is matched by what it
- * installs, the entry's own Homebrew formula or cask by name under any
- * Homebrew: `plan_install` picks the Homebrew, the window does not.
+ * (`usePendingOperations`), or null, also where an uninstall of the same
+ * formula or cask came after it: what that install said is no longer so.
+ * An install is matched by what it installs, the entry's own Homebrew
+ * formula or cask by name under any Homebrew: `plan_install` picks the
+ * Homebrew, the window does not.
  */
 export function installOperationOf(
   entry: CatalogEntry,
@@ -164,13 +166,36 @@ export function installOperationOf(
 ): OpSummary | null {
   if (entry.install === "HomebrewItself") return null;
   const { kind, name } = entry.install.Homebrew;
-  const installs = (op: OpSummary) =>
-    op.kind === "Install" && op.artifact_kind === kind && op.name === name && op.instance_id.startsWith("brew:");
+  const touches = (op: OpSummary) =>
+    (op.kind === "Install" || op.kind === "Uninstall") &&
+    op.artifact_kind === kind &&
+    op.name === name &&
+    op.instance_id.startsWith("brew:");
   // A reservation not yet answered has no id of its own (-1): it is the
   // newest there is.
-  const reserved = Object.values(pending).find(installs);
-  if (reserved !== undefined && !operations.some((op) => op.id === reserved.id)) return reserved;
-  return operations.filter(installs).reduce<OpSummary | null>((newest, op) => (newest === null || op.id > newest.id ? op : newest), null);
+  const reserved = Object.values(pending).find(touches);
+  const newest =
+    reserved !== undefined && !operations.some((op) => op.id === reserved.id)
+      ? reserved
+      : operations.filter(touches).reduce<OpSummary | null>((last, op) => (last === null || op.id > last.id ? op : last), null);
+  return newest?.kind === "Install" ? newest : null;
+}
+
+/**
+ * Whether `op`, an install that ended, ended after the snapshot the page
+ * has was made (`refreshedAt`, Unix seconds): the check after it has not
+ * come yet, so what the install said is newer than what the catalog says.
+ * When it ended is what this window heard (`opFinishedAt`, from the
+ * operation's `Finished` event); one it did not hear end -- before the
+ * window was reloaded -- is older than any snapshot.
+ */
+export function endedAfterCheck(
+  op: OpSummary,
+  opFinishedAt: Record<number, number>,
+  refreshedAt: number | null,
+): boolean {
+  const finished = opFinishedAt[op.id];
+  return op.status === "Done" && finished !== undefined && (refreshedAt === null || refreshedAt * 1000 < finished);
 }
 
 /**

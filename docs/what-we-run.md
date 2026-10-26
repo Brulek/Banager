@@ -5664,9 +5664,10 @@ Nothing else runs to make the preview: what Homebrew also installs, and
 what it may update on the way, is said in general, not listed. The sheet
 shows the command (Show Command); Install starts that plan, by its id,
 and nothing else. As after any install, Banager then asks Homebrew whether
-it is there, and the check after the operation says "Installed" on the
-row -- with what to type to use it, and Copy, which only copies those
-words.
+it is there, and the row says "Installed" where it is -- with what to
+type to use it, and Copy, which only copies those words -- until the
+check after the operation, from which on the row says what that check
+found, an uninstall since included.
 
 ## Diagnostic info: read-only, no command runs
 

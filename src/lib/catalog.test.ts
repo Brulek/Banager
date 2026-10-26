@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import i18n from "../i18n";
-import { catalogRefusal, installOperationOf, installProgressOf, ITEM_KEYS } from "./catalog";
+import { catalogRefusal, endedAfterCheck, installOperationOf, installProgressOf, ITEM_KEYS } from "./catalog";
 import type { CatalogEntry, OpSummary } from "./types";
 
 const t = i18n.getFixedT("en");
@@ -44,6 +44,22 @@ describe("an install from Discover", () => {
     expect(installOperationOf(node, [], {})).toBeNull();
     // Homebrew itself is never installed from here.
     expect(installOperationOf({ ...node, id: "homebrew", install: "HomebrewItself" }, operations, {})).toBeNull();
+  });
+
+  it("is over once an uninstall of the same formula or cask comes after it", () => {
+    expect(installOperationOf(node, [op(2), op(3, { kind: "Uninstall" })], {})).toBeNull();
+    // An uninstall before it, or of something else, changes nothing.
+    expect(installOperationOf(node, [op(1, { kind: "Uninstall" }), op(2)], {})?.id).toBe(2);
+    expect(installOperationOf(node, [op(2), op(3, { kind: "Uninstall", name: "node@22" })], {})?.id).toBe(2);
+  });
+
+  it("is newer than the catalog only when this window heard it end after the snapshot was made", () => {
+    const done = op(4);
+    expect(endedAfterCheck(done, { 4: 1_000_005_000 }, 1_000_000)).toBe(true);
+    expect(endedAfterCheck(done, { 4: 999_999_000 }, 1_000_000)).toBe(false);
+    expect(endedAfterCheck(done, {}, 1_000_000)).toBe(false);
+    expect(endedAfterCheck(done, { 4: 5 }, null)).toBe(true);
+    expect(endedAfterCheck(op(4, { status: "Running", outcome: null }), { 4: 1_000_005_000 }, 1_000_000)).toBe(false);
   });
 
   it("is this window's own submission until the list has it", () => {

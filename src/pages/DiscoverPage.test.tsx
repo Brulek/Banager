@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { command } from "../test/command";
 import { DiscoverPage } from "./DiscoverPage";
+import { useUiStore } from "../store/ui";
 import i18n from "../i18n";
 import type { CatalogEntry, IssuedPlan, OpSummary, Outcome, Snapshot } from "../lib/types";
 
@@ -97,10 +98,16 @@ function installPlan(kind: "Formula" | "Cask", name: string): IssuedPlan {
 }
 
 /** An install of `name` from Discover, as `list_operations` lists it. */
-function installOp(id: number, name: string, status: OpSummary["status"], outcome: Outcome | null = null): OpSummary {
+function installOp(
+  id: number,
+  name: string,
+  status: OpSummary["status"],
+  outcome: Outcome | null = null,
+  kind: OpSummary["kind"] = "Install",
+): OpSummary {
   return {
     id,
-    kind: "Install",
+    kind,
     instance_id: "brew:/opt/homebrew",
     artifact_kind: "Formula",
     name,
@@ -125,6 +132,7 @@ beforeEach(() => {
     if (entry.install === "HomebrewItself") throw JSON.stringify({ kind: "refused" });
     return installPlan(entry.install.Homebrew.kind, entry.install.Homebrew.name);
   };
+  useUiStore.setState({ opFinishedAt: {} });
   mockInvoke.mockReset();
   mockInvoke.mockImplementation(async (cmd: string, args?: unknown) => {
     if (cmd === "get_snapshot") return snapshot;
@@ -254,11 +262,44 @@ describe("the Discover page", () => {
     // Done: installed, before the check after it says so too, and the
     // line says how to use it, with Copy for what to type.
     operations = [installOp(3, "ffmpeg", "Done", "Succeeded")];
-    renderWithProviders(<DiscoverPage />);
+    useUiStore.getState().rememberOpFinished(3, (snapshot.refreshed_at! + 5) * 1000);
+    const { unmount: again } = renderWithProviders(<DiscoverPage />);
     await waitFor(() => expect(rows()[7]).toEqual(["ffmpeg", "Installed"]));
     const ffmpeg = row("ffmpeg");
     expect(ffmpeg.querySelector("[data-catalog-use]")).toHaveTextContent("Type ffmpeg in a new Terminal window.");
     expect(within(ffmpeg).getByRole("button", { name: "Copy “ffmpeg”" })).toBeInTheDocument();
+    again();
+
+    // The check after it says Installed too: still how to use it.
+    entries = catalog.map((entry) => (entry.id === "ffmpeg" ? { ...entry, state: "Installed" } : entry));
+    snapshot = snapshotAt(snapshot.refreshed_at! + 10);
+    renderWithProviders(<DiscoverPage />);
+    await waitFor(() => expect(rows()[7]).toEqual(["ffmpeg", "Installed"]));
+    expect(row("ffmpeg").querySelector("[data-catalog-use]")).not.toBeNull();
+  });
+
+  it("goes by the catalog once a check after the install says it is not there", async () => {
+    // Installed from here, and the check since says it is gone (removed in
+    // Terminal): Install again, and no word of the old install.
+    operations = [installOp(3, "ffmpeg", "Done", "Succeeded")];
+    useUiStore.getState().rememberOpFinished(3, (snapshot.refreshed_at! - 60) * 1000);
+    const { unmount } = renderWithProviders(<DiscoverPage />);
+    await waitFor(() => expect(rows()[7]).toEqual(["ffmpeg", "Install"]));
+    expect(row("ffmpeg").querySelector("[data-catalog-use]")).toBeNull();
+    unmount();
+    // Nor an install this window did not hear end (before a reload).
+    useUiStore.setState({ opFinishedAt: {} });
+    const { unmount: second } = renderWithProviders(<DiscoverPage />);
+    await waitFor(() => expect(rows()[7]).toEqual(["ffmpeg", "Install"]));
+    second();
+    // And an uninstall of it since, before any check: its install is over.
+    operations = [
+      installOp(3, "ffmpeg", "Done", "Succeeded"),
+      installOp(4, "ffmpeg", "Done", "Succeeded", "Uninstall"),
+    ];
+    useUiStore.getState().rememberOpFinished(3, (snapshot.refreshed_at! + 5) * 1000);
+    renderWithProviders(<DiscoverPage />);
+    await waitFor(() => expect(rows()[7]).toEqual(["ffmpeg", "Install"]));
   });
 
   it("says an install that ended without the tool, opening its log, with Install to try again", async () => {
@@ -271,6 +312,15 @@ describe("the Discover page", () => {
     expect(within(row("node")).getByRole("button", { name: "View log: Node.js" })).toBeInTheDocument();
     expect(within(row("node")).getByRole("button", { name: "Install Node.js" })).toBeInTheDocument();
     expect(rows()[3]).toEqual(["Gemini CLI", "Needs attentionInstall"]);
+  });
+
+  it("says why it cannot install again beside an install that failed", async () => {
+    // uv's install failed, and the check after it found no Homebrew that
+    // can install any more.
+    operations = [installOp(4, "uv", "Done", { Failed: { exit_code: 1, summary: "", cause: null } })];
+    renderWithProviders(<DiscoverPage />);
+    await waitFor(() => expect(rows()[6]).toEqual(["uv", "Couldn't installNeeds Homebrew"]));
+    expect(within(row("uv")).queryByRole("button", { name: "Install uv" })).toBeNull();
   });
 
   it("says it in Chinese and in Taiwan's words", async () => {
