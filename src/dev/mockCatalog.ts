@@ -84,8 +84,19 @@ const CATALOG: Item[] = [
 /** The pretend Mac. */
 const HOST = { macosMajor: 15, appleSilicon: true };
 
+/** `catalog::this_macs_ollama`: an Ollama source at this Mac's own address. */
+function thisMacsOllama(instanceId: string): boolean {
+  if (!instanceId.startsWith("ollama:")) return false;
+  try {
+    const host = new URL(instanceId.slice("ollama:".length)).hostname;
+    return ["localhost", "127.0.0.1", "[::1]", "0.0.0.0", "[::]"].includes(host.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
 function has(way: Recognizer, instances: ManagerInstance[], artifacts: InstalledArtifact[]): boolean {
-  if (way === "anyModel") return artifacts.some((a) => a.key.kind === "Model" && a.key.instance_id.startsWith("ollama:"));
+  if (way === "anyModel") return artifacts.some((a) => a.key.kind === "Model" && thisMacsOllama(a.key.instance_id));
   if ("family" in way) return artifacts.some((a) => a.facts.family === way.family);
   if ("source" in way) return instances.some((i) => i.adapter_id === way.source);
   return artifacts.some(
@@ -115,7 +126,7 @@ export function mockCatalog(instances: ManagerInstance[], artifacts: InstalledAr
     (i) => i.adapter_id === "brew" && i.status.unavailable === null && i.read_only_reason === null,
   );
   const canPull = instances.some(
-    (i) => i.adapter_id === "ollama" && i.status.unavailable === null && i.read_only_reason === null,
+    (i) => thisMacsOllama(i.id) && i.status.unavailable === null && i.read_only_reason === null,
   );
   return CATALOG.map((item) => {
     let state: CatalogState;

@@ -454,6 +454,27 @@ describe("the Discover page", () => {
     await waitFor(() => expect(calls("open_ollama_app")).toHaveLength(1));
     second();
 
+    // Where opening it fails, the row says why, as Ollama's notice does.
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === "get_snapshot") return snapshot;
+      if (cmd === "get_catalog") return entries;
+      if (cmd === "list_operations") return [];
+      if (cmd === "open_ollama_app") throw JSON.stringify({ kind: "ollama_open_failed", reason: "not_installed" });
+      return null;
+    });
+    const { unmount: third } = renderWithProviders(<DiscoverPage />);
+    await waitFor(() => expect(rows()).toEqual([["Gemma 3", "Open Ollama"]]));
+    fireEvent.click(within(row("model")).getByRole("button", { name: "Open Ollama" }));
+    expect(await within(row("model")).findByRole("alert")).toHaveTextContent("There's no Ollama app in Applications.");
+    third();
+    mockInvoke.mockImplementation(async (cmd: string, args?: unknown) => {
+      if (cmd === "get_snapshot") return snapshot;
+      if (cmd === "get_catalog") return entries;
+      if (cmd === "list_operations") return operations;
+      if (cmd === "plan_install") return planInstall((args as { catalogId: string }).catalogId);
+      return null;
+    });
+
     // Pulled from here: how to use it, with Copy for what to type.
     snapshot = { ...snapshotAt(1_789_700_000), instances: [ollama] };
     entries = [{ ...model, state: "Installed" }];

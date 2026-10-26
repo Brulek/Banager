@@ -50,9 +50,10 @@ pub enum CatalogInstall {
 }
 
 /// The starter model by memory (phase 5 step D): Gemma 3, Google's open
-/// model, the largest whose download is at most about a third of the Mac's
-/// memory, so it runs beside everything else; the 4b where the memory is
-/// not known. In this order, smallest first: `(least memory, name, bytes)`.
+/// model, the largest whose download is at most about two-fifths of the
+/// least memory it is chosen for, so it runs beside everything else; the
+/// 4b where the memory is not known. In this order, smallest first:
+/// `(least memory, name, bytes)`.
 const STARTER_MODELS: [(u64, &str, u64); 4] = [
     (0, "gemma3:1b", 806_067_407),
     (8 * GIB, "gemma3:4b", 3_350_272_403),
@@ -90,7 +91,7 @@ enum Recognizer {
     Source(&'static str),
     /// A Homebrew formula by name, or a versioned one of it (`node@22`).
     Formula(&'static str),
-    /// Any model an Ollama source lists: a Mac with one has a model to
+    /// Any model this Mac's own Ollama lists: a Mac with one has a model to
     /// start with.
     AnyModel,
 }
@@ -237,9 +238,10 @@ pub enum CatalogState {
     HomebrewUnsupported,
     /// The starter model, on a Mac with no Ollama source.
     NeedsOllama,
-    /// The starter model, where Ollama is there but cannot pull now: not
-    /// running, not answering, or view only. The source's own notice says
-    /// which, and Open Ollama is the window's where the app is not running.
+    /// The starter model, where Ollama is there but cannot pull now onto
+    /// this Mac: not running, not answering, view only, or at another
+    /// machine's address. The source's own notice says which, and Open
+    /// Ollama is the window's where the app is not running.
     OllamaNotReady,
 }
 
@@ -456,13 +458,22 @@ fn state_of(
     }
 }
 
-/// Whether `instance` is an Ollama that can pull a model now: it answered,
-/// and is not view only (an address with a login in it, an `ollama` that
-/// will not run).
+/// Whether `instance` is an Ollama that can pull a model now onto this
+/// Mac: it answered, is not view only (an address with a login in it, an
+/// `ollama` that will not run), and is this Mac's (`this_macs_ollama`).
 fn ollama_can_pull(instance: &ManagerInstance) -> bool {
-    instance.adapter_id == "ollama"
+    this_macs_ollama(&instance.id)
         && instance.status.unavailable.is_none()
         && instance.read_only_reason.is_none()
+}
+
+/// Whether the Ollama source `instance_id` (`ollama:<OLLAMA_HOST>`) is this
+/// Mac's own: a model it pulls runs here, which the starter model is for.
+/// One at another machine's address is not (`host_is_this_mac`).
+fn this_macs_ollama(instance_id: &str) -> bool {
+    instance_id
+        .strip_prefix("ollama:")
+        .is_some_and(crate::adapters::ollama::host_is_this_mac)
 }
 
 /// Whether `instance` is a Homebrew that can install: it answered, and is
@@ -481,7 +492,7 @@ fn has(way: &Recognizer, instances: &[ManagerInstance], artifacts: &[InstalledAr
         Recognizer::Source(adapter) => instances.iter().any(|i| i.adapter_id == adapter),
         Recognizer::AnyModel => artifacts
             .iter()
-            .any(|a| a.key.kind == ArtifactKind::Model && a.key.instance_id.starts_with("ollama:")),
+            .any(|a| a.key.kind == ArtifactKind::Model && this_macs_ollama(&a.key.instance_id)),
         Recognizer::Formula(name) => artifacts.iter().any(|a| {
             a.key.kind == ArtifactKind::Formula
                 && a.key.instance_id.starts_with("brew:")
@@ -815,10 +826,10 @@ mod tests {
         assert_eq!(name(Some(36 * GIB)), "gemma3:12b");
         assert_eq!(name(Some(64 * GIB)), "gemma3:27b");
         assert_eq!(name(None), "gemma3:4b");
-        // Each download is at most about a third of the least memory it is
+        // Each download is at most two-fifths of the least memory it is
         // chosen for, and each name passes the Ollama adapter's check.
         for (least, name, bytes) in STARTER_MODELS {
-            assert!(least == 0 || bytes * 2 <= least, "{name}");
+            assert!(least == 0 || bytes * 5 <= least * 2, "{name}");
             crate::adapters::ollama::validate_model_reference(name).expect(name);
         }
         // The catalog lists the one for the Mac it is asked about.
@@ -875,6 +886,17 @@ mod tests {
                 artifact_kind: ArtifactKind::Model,
                 name: "gemma3:4b".to_string(),
             })
+        );
+        // An Ollama at another machine's address pulls onto that machine,
+        // and its models are not this Mac's.
+        let remote = "ollama:http://studio.local:11434";
+        let elsewhere = snapshot(
+            vec![instance("ollama", remote)],
+            vec![artifact(remote, ArtifactKind::Model, "qwen3:8b", None)],
+        );
+        assert_eq!(
+            states(&elsewhere, &SILICON_15)[5],
+            ("model", CatalogState::OllamaNotReady)
         );
         // Any model at all: a Mac with one has a model to start with.
         let with_one = snapshot(

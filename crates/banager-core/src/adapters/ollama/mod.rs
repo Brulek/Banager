@@ -300,7 +300,7 @@ fn ollama_app_path_under(applications: &Path, home: &Path) -> Option<PathBuf> {
 /// client treats them: `OLLAMA_HOST=0.0.0.0` is Ollama's documented way to
 /// listen on every interface, and a request to `0.0.0.0` lands on the
 /// loopback. Anything that does not parse is not known to be local.
-fn host_is_this_mac(host: &str) -> bool {
+pub(crate) fn host_is_this_mac(host: &str) -> bool {
     match url::Url::parse(host)
         .ok()
         .and_then(|u| u.host().map(|h| h.to_owned()))

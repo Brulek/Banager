@@ -25,7 +25,8 @@ import {
   wordsOf,
   type InstallProgress,
 } from "../lib/catalog";
-import { useCatalog, useOpenOllamaApp, useOperations, usePendingOperations, useSnapshot } from "../lib/queries";
+import { useCatalog, useOpenOllamaApp, useOperations, usePendingOperations, useSettings, useSnapshot } from "../lib/queries";
+import { openOllamaErrorMessage } from "../lib/sources";
 import { useUiStore } from "../store/ui";
 import type { CatalogCategory, CatalogEntry } from "../lib/types";
 
@@ -61,6 +62,7 @@ export function DiscoverPage() {
   const { t } = useTranslation();
   const { data: catalog } = useCatalog();
   const { data: snapshot } = useSnapshot();
+  const { data: settings } = useSettings();
   const { data: operations } = useOperations();
   const pending = usePendingOperations();
   const opFinishedAt = useUiStore((s) => s.opFinishedAt);
@@ -81,15 +83,24 @@ export function DiscoverPage() {
   const ollamaStopped = snapshot?.instances.some(
     (instance) => instance.adapter_id === "ollama" && instance.status.unavailable === "NotRunning",
   );
+  // Where `open -a Ollama` failed, why, beside the button, as Ollama's
+  // notice says it: a press that does nothing would say nothing.
   const openOllamaButton = (
-    <button
-      type="button"
-      onClick={() => openOllama.mutate()}
-      disabled={openOllama.isPending}
-      className={BUTTON.small.grey}
-    >
-      {t("sourceNotice.openOllama")}
-    </button>
+    <span className="flex items-center gap-2">
+      {openOllama.isError ? (
+        <span role="alert" className={`text-danger-text ${SMALL_WRAPPING}`}>
+          {openOllamaErrorMessage(t, openOllama.error.message, settings?.show_technical_details ?? false)}
+        </span>
+      ) : null}
+      <button
+        type="button"
+        onClick={() => openOllama.mutate()}
+        disabled={openOllama.isPending}
+        className={BUTTON.small.grey}
+      >
+        {t("sourceNotice.openOllama")}
+      </button>
+    </span>
   );
 
   const right = (entry: CatalogEntry, name: string, progress: InstallProgress | null, installed: boolean): ReactNode => {

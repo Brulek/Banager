@@ -1974,7 +1974,8 @@
       "needsHomebrew": "No Homebrew on this Mac can install it right now.",
       "needsMacOS": "It needs macOS {{major}} or later.",
       "fromOllama": "Ollama downloads {{model}} from its library, about {{size}}.",
-      "needsOllama": "Ollama on this Mac can't download it right now."
+      "needsOllama": "Ollama on this Mac can't download it right now.",
+      "noOllama": "There's no Ollama on this Mac to download it with."
     },
     "search": {
       "placeholder": "Search Homebrew",

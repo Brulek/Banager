@@ -195,6 +195,7 @@ export function catalogRefusal(t: Translate, raw: string): string | null {
     case "HomebrewUnsupported":
       return t("discover.sheet.needsHomebrew");
     case "NeedsOllama":
+      return t("discover.sheet.noOllama");
     case "OllamaNotReady":
       return t("discover.sheet.needsOllama");
     default:

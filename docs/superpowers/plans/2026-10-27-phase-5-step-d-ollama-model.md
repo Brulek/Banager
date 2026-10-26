@@ -22,8 +22,10 @@ pull` plan.
 ## Decisions taken on the author's behalf (2026-10-27)
 
 1. **Gemma 3, by memory.** The largest Gemma 3 whose download is at most
-   about a third of the Mac's memory: 1b under 8 GiB, 4b from 8 GiB, 12b
-   from 24 GiB, 27b from 48 GiB; the 4b where `hw.memsize` cannot be read.
+   about two-fifths of the least memory it is chosen for: 1b under 8 GiB,
+   4b from 8 GiB (39%), 12b from 24 GiB, 27b from 48 GiB; the 4b where
+   `hw.memsize` cannot be read. Only through this Mac's own Ollama: one
+   at another machine's `OLLAMA_HOST` neither pulls it nor counts.
    Gemma 3 (Google) answers in Chinese well, has no "thinking" output to
    puzzle a beginner, and the 4b and up read images too. Qwen3 was the
    other candidate (stronger in Chinese, but prints its reasoning).

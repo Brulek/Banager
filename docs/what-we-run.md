@@ -5651,7 +5651,8 @@ there, "Needs Ollama" where there is no Ollama source, and otherwise
 "Ollama can't download now" -- with Open Ollama where its app is not
 running, as its source's notice has it. The model is Gemma 3 in the size
 that suits the Mac's memory (`catalog::starter_model`): the largest whose
-download is at most about a third of it -- `gemma3:1b` (about 0.81 GB)
+download is at most about two-fifths of the least memory it is chosen
+for -- `gemma3:1b` (about 0.81 GB)
 under 8 GiB, `gemma3:4b` (3.35 GB) from 8 GiB, `gemma3:12b` (8.16 GB) from
 24 GiB, `gemma3:27b` (17.4 GB) from 48 GiB, and the 4b where the memory
 could not be read. Those sizes are fixed in the app, as Ollama's
@@ -5689,11 +5690,15 @@ installs, and what it may update on the way, is said in general, not
 listed; the model's sheet says about how much it downloads, from the
 size fixed in the app. The sheet
 shows the command (Show Command); Install starts that plan, by its id,
-and nothing else. As after any install, Banager then asks Homebrew whether
-it is there, and the row says "Installed" where it is -- with what to
-type to use it, and Copy, which only copies those words -- until the
-check after the operation, from which on the row says what that check
-found, an uninstall since included.
+and nothing else. As after any install, Banager then asks the source --
+Homebrew, or Ollama for the model -- whether it is there, and the row
+says "Installed" where it is -- with what to type to use it, and Copy,
+which only copies those words; for Ollama's app, Open Ollama while it is
+not running -- until the check after the operation, from which on the
+row says what that check found, an uninstall since included. The model
+is pulled, and counted, only through this Mac's own Ollama: an Ollama
+source at another machine's address (`OLLAMA_HOST`) neither pulls it nor
+makes it "Installed" (`catalog::this_macs_ollama`).
 
 **Searching Homebrew** (phase 5 step E). Where a Homebrew that answered
 and can be written to is there, Discover has a search field. What is

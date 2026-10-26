@@ -1830,7 +1830,8 @@
       "needsHomebrew": "這台Mac上現在沒有能安裝它的Homebrew。",
       "needsMacOS": "它需要macOS {{major}}或更新版本。",
       "fromOllama": "Ollama會從它的模型庫下載{{model}}，約{{size}}。",
-      "needsOllama": "這台Mac上的Ollama現在無法下載它。"
+      "needsOllama": "這台Mac上的Ollama現在無法下載它。",
+      "noOllama": "這台Mac上沒有可以下載它的Ollama。"
     },
     "search": {
       "placeholder": "搜尋Homebrew",
