@@ -1826,6 +1826,7 @@
     "sheet": {
       "title": "要安装“{{name}}”吗？",
       "from": "由Homebrew下载，核对下载的文件无误后再安装。",
+      "fromFoundCask": "由Homebrew下载并安装。有些App没有提供校验值，Homebrew无法核对下载的文件。",
       "alsoInstalls": "Homebrew会一并安装它需要的组件，有时还会顺带更新一些已安装的内容。",
       "checking": "正在确认要运行的命令…",
       "planError": "无法准备安装：{{message}}",

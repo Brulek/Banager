@@ -1971,6 +1971,7 @@
     "sheet": {
       "title": "Install “{{name}}”?",
       "from": "Homebrew downloads it and checks the download before installing it.",
+      "fromFoundCask": "Homebrew downloads it and installs it. Some apps give Homebrew no checksum to check the download against.",
       "alsoInstalls": "Homebrew also installs what it needs, and may update some of what's already installed.",
       "checking": "Checking what will run…",
       "planError": "Couldn't prepare the install: {{message}}",

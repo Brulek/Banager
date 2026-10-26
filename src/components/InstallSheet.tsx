@@ -226,18 +226,29 @@ export function InstallSheet({ entry, found = null, iconKey, description = null,
         // One of the suggestions, found by searching: its own words.
         <SheetText id={textId}>{t(ITEM_KEYS[found.catalog_id].more)}</SheetText>
       ) : found !== null ? (
-        <SheetText id={textId}>
-          {description === null
-            ? t("discover.search.notSuggested")
-            : t("noAnswer.sheet.then", { first: description, then: t("discover.search.notSuggested") })}
-        </SheetText>
+        // Its description a line of its own: Homebrew's end in no stop, and
+        // run into the next sentence (from the independent review of the
+        // branch).
+        <>
+          {description === null ? null : <SheetText id={textId}>{description}</SheetText>}
+          <SheetText id={description === null ? textId : undefined} className={description === null ? undefined : "mt-2"}>
+            {t("discover.search.notSuggested")}
+          </SheetText>
+        </>
       ) : keys === undefined || entry === null ? null : (
         <SheetText id={textId}>{t(keys.more, wordsOf(entry))}</SheetText>
       )}
       <SheetText className="mt-3">
         {target?.adapterId === "ollama" && entry !== null
           ? t("discover.sheet.fromOllama", wordsOf(entry))
-          : t("noAnswer.sheet.then", { first: t("discover.sheet.from"), then: t("discover.sheet.alsoInstalls") })}
+          : t("noAnswer.sheet.then", {
+              // A cask found by searching may have no checksum to check its
+              // download against (`sha256 :no_check`), as a third of them
+              // have; the suggestions' all do (from the independent review
+              // of the branch).
+              first: t(found !== null && found.catalog_id === null && found.kind === "Cask" ? "discover.sheet.fromFoundCask" : "discover.sheet.from"),
+              then: t("discover.sheet.alsoInstalls"),
+            })}
       </SheetText>
       {/* The model's download beside the room there is for it. */}
       {room === null ? null : (

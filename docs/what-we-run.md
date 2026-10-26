@@ -5800,8 +5800,12 @@ row says that entry's state, as the suggestions' list does. The page
 searches again every five minutes while it shows results, so that what it
 lists has ids still kept; where the window's install is refused for an id
 no longer kept all the same, it searches again, for ids that are. The sheet says a suggestion found
-by searching in the suggestion's own words, and of any other result that
-it is not one of the suggestions.
+by searching in the suggestion's own words, and of any other result its
+description, on a line of its own, and that it is not one of the
+suggestions; for an app (a cask) that is not one, it promises no check of
+the download -- about a third of casks give Homebrew no checksum
+(`sha256 :no_check`) -- where a suggestion's, a formula's included, says
+Homebrew checks it.
 
 ## Homebrew itself: installed in Terminal, by the person
 

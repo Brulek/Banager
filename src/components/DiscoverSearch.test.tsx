@@ -201,6 +201,11 @@ describe("Discover's search of Homebrew", () => {
     const sheet = await screen.findByRole("alertdialog", { name: "Install “jq-lsp”?" });
     await waitFor(() => expect(calls("plan_install_found")).toEqual([["plan_install_found", { foundId: "b".repeat(32) }]]));
     expect(sheet).toHaveTextContent("It isn't one of the tools suggested here, so check that it's the one you want.");
+    // Homebrew's description a line of its own: it ends in no stop (from
+    // the independent review of the branch).
+    expect(within(sheet).getByText("Jq language server").tagName).toBe("P");
+    // A formula's download is checked.
+    expect(sheet).toHaveTextContent("checks the download before installing it");
     await waitFor(() => expect(within(sheet).getByRole("button", { name: "Install" })).toBeEnabled());
     fireEvent.click(within(sheet).getByRole("button", { name: "Show Command" }));
     expect(within(sheet).getByText(command("/opt/homebrew/bin/brew install --formula jq-lsp"))).toBeInTheDocument();
@@ -279,6 +284,29 @@ describe("Discover's search of Homebrew", () => {
     } finally {
       useUiStore.setState({ opFinishedAt: {} });
     }
+  });
+
+  it("promises no check of the download for an app found by searching, which may have no checksum", async () => {
+    // From the independent review of the branch: google-chrome, and a
+    // third of the casks, are `sha256 :no_check`.
+    search = async () => [
+      { id: "e".repeat(32), kind: "Cask", name: "iina", description: "Free and open-source media player", installed: false, catalog_id: null },
+    ];
+    mockInvoke.mockImplementation(async (cmd: string, args?: unknown) => {
+      if (cmd === "get_snapshot") return snapshot;
+      if (cmd === "get_catalog") return catalog;
+      if (cmd === "list_operations") return [];
+      if (cmd === "search_homebrew") return search((args as { query: string }).query);
+      if (cmd === "plan_install_found")
+        return plan({ id: "e".repeat(32), kind: "Cask", name: "iina", description: null, installed: false, catalog_id: null });
+      return null;
+    });
+    renderWithProviders(<DiscoverPage />);
+    await typeSearch("iina");
+    fireEvent.click(await screen.findByRole("button", { name: "Install iina" }, { timeout: 3000 }));
+    const sheet = await screen.findByRole("alertdialog", { name: "Install “iina”?" });
+    expect(sheet).toHaveTextContent("Some apps give Homebrew no checksum to check the download against.");
+    expect(sheet).not.toHaveTextContent("checks the download before installing it");
   });
 
   it("searches again where a result's id is out of date, and says so in the sheet", async () => {
