@@ -105,8 +105,12 @@ export function quitBodyKey(active: OpSummary[]): string | null {
   }
   if (kinds.size === 0) return "quit.body.stops";
   if (downloadsUnderWay) {
-    if (!stops.every(isModelDownload)) return "quit.body.stopsModelDownload";
-    return kinds.has("Install") ? "quit.body.ModelDownload" : "quit.body.ModelUpdate";
+    // Installs only, or updates only, queued ones too; any other mix in
+    // words for both (from the review of the fix: a queued install beside
+    // an update was "the updates").
+    if (stops.every((op) => isModelDownload(op) && op.kind === "Install")) return "quit.body.ModelDownload";
+    if (stops.every((op) => isModelDownload(op) && op.kind === "Upgrade")) return "quit.body.ModelUpdate";
+    return "quit.body.stopsModelDownload";
   }
   if (kinds.size > 1) return "quit.body.mixed";
   const [kind] = kinds;

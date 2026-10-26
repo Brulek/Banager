@@ -20,8 +20,9 @@ pub(crate) const FOUND_LIFETIME: Duration = Duration::from_secs(600);
 pub(crate) const FOUND_KEPT: usize = 2000;
 
 /// How many searches run at once; the others wait their turn. Each runs
-/// three `brew search` commands and up to `CANONICAL_ASKS_MAX` `brew info`
-/// asks, one after another (`BrewAdapter::search`), and the window can ask
+/// three `brew search` commands, up to `CANONICAL_ASKS_MAX` `brew info`
+/// asks of the formulae and one of the casks, one after another
+/// (`BrewAdapter::search`), and the window can ask
 /// for as many searches as it likes (from the independent review of the
 /// branch).
 pub(crate) const SEARCHES_AT_ONCE: usize = 2;
@@ -170,7 +171,14 @@ impl Session {
                         && artifact.key.kind == hit.kind
                         && artifact.key.name == hit.name
                 });
-                let blocked = blocked_on(&hit.needs, &host);
+                // An app Homebrew put there itself is no other one in the
+                // way: once uninstalled, the result installs again (from
+                // the review of the check).
+                let needs = HitNeeds {
+                    app_there: hit.needs.app_there && !installed,
+                    ..hit.needs.clone()
+                };
+                let blocked = blocked_on(&needs, &host);
                 found.insert(
                     id.clone(),
                     FoundEntry {
@@ -574,6 +582,27 @@ mod tests {
         ));
         assert_eq!(brew.plans.load(Ordering::SeqCst), 0);
         session.plan_found(&found[1].id).await.expect("plan");
+    }
+
+    #[tokio::test]
+    async fn test_an_app_homebrew_installed_itself_does_not_block_its_own_cask() {
+        // From the review of the check: the cask's own app, in
+        // /Applications because Homebrew put it there, blocked the result,
+        // and after an uninstall the row still said "Already on this Mac".
+        let (session, brew) = session_listing(
+            crate::testing::manager_instance("brew", "brew:/opt/homebrew"),
+            vec![(ArtifactKind::Cask, "iterm2")],
+        )
+        .await;
+        let mut iterm = hit(ArtifactKind::Cask, "iterm2");
+        iterm.needs.app_there = true;
+        let mut chrome = hit(ArtifactKind::Cask, "google-chrome");
+        chrome.needs.app_there = true;
+        *brew.hits.lock().unwrap() = vec![iterm, chrome];
+        let found = session.search_homebrew("it").await.expect("search");
+        assert!(found[0].installed);
+        assert_eq!(found[0].blocked, None);
+        assert_eq!(found[1].blocked, Some(FoundBlock::AppThere));
     }
 
     #[test]

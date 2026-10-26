@@ -1623,8 +1623,9 @@ Banager's environment or one of the first two files sets that, else
 To find them it reads `HOME`, `XDG_CONFIG_HOME`,
 `HOMEBREW_XDG_CONFIG_HOME` and `HOMEBREW_SYSTEM_ENV_TAKES_PRIORITY` from
 Banager's environment (`env_var_fn`, per preview), and it follows
-`HOMEBREW_NO_CLEANUP_FORMULAE` and `HOMEBREW_NO_REQUIRE_TAP_TRUST` there
-and in the files too. It also reads `HOMEBREW_NO_AUTO_UPDATE` from the
+`HOMEBREW_NO_CLEANUP_FORMULAE`, `HOMEBREW_NO_REQUIRE_TAP_TRUST` and
+`HOMEBREW_CASK_OPTS` (for an `--appdir` in it: Searching Homebrew, below)
+there and in the files too. It also reads `HOMEBREW_NO_AUTO_UPDATE` from the
 files to refuse commands that would start an untracked automatic update
 (Environment applied to every invocation, above). A file's lines count as
 bash reads them: the last line to set a variable wins, and a last line
@@ -1639,7 +1640,8 @@ Banager runs anything, above) is not taken as absent: `bin/brew`, which
 Banager runs, may still read it, so what it sets is unknown, and an
 unknown variable is taken the way that says more -- `HOMEBREW_NO_AUTOREMOVE`
 and `HOMEBREW_NO_INSTALL_CLEANUP` as unset, `HOMEBREW_NO_CLEANUP_FORMULAE`
-as naming nothing, `HOMEBREW_NO_REQUIRE_TAP_TRUST` as unset -- until a
+as naming nothing, `HOMEBREW_NO_REQUIRE_TAP_TRUST` as unset,
+`HOMEBREW_CASK_OPTS` as giving an `--appdir` -- until a
 later file sets it outright (`brew_env::EnvFile::Unknown`); when the
 folder of the user's file hangs on such a variable, what that file sets is
 unknown too. The lines below then say what Homebrew *may* do, and why
@@ -5811,9 +5813,11 @@ offered", "Needs macOS 15", "Not supported on this Mac"), and
 `plan_found` refuses it (`search_blocked`): Homebrew refuses each of
 these, the last three before downloading anything, the first after
 downloading it all, since it never moves one app over another unless
-told to (`--adopt`, `--force`, which Banager does not pass). An app kept
-in an `appdir` of its own (`--appdir` in `HOMEBREW_CASK_OPTS`) is not
-looked for. Where the fifth command fails, or its answer does not read,
+told to (`--adopt`, `--force`, which Banager does not pass). No app is
+looked for where `HOMEBREW_CASK_OPTS` -- in Banager's environment or a
+`brew.env` file, as above -- may give an `appdir` of its own (`--appdir`),
+nor said to be in the way for a cask Homebrew lists installed, whose app
+it put there itself. Where the fifth command fails, or its answer does not read,
 the casks are listed as before, with Install, and Homebrew's own refusal
 is the word.
 The text is given to Homebrew as one argument, and refused first, before

@@ -255,8 +255,10 @@ export function HomebrewSetupSheet({ open, onClose }: HomebrewSetupSheetProps) {
               <SheetPending text={updating ? t("discover.homebrew.updating") : t("discover.homebrew.waiting")} />
               {/* What to do where the installer stopped: this sheet cannot
                   see Terminal, and would wait for ever (from the review of
-                  the uncovered areas). */}
-              <SheetText className="mt-2">{t("discover.homebrew.ifItStops")}</SheetText>
+                  the uncovered areas). Not during its last step, the
+                  update: Homebrew is in place by then, and an error there
+                  leaves it installed (from the review of that fix). */}
+              {updating ? null : <SheetText className="mt-2">{t("discover.homebrew.ifItStops")}</SheetText>}
             </>
           ) : null}
         </>

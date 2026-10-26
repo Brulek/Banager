@@ -102,7 +102,12 @@ describe("what the question says under its title", () => {
     // A model's update is its download too; an uninstall of one is not.
     const update = { ...op(4, "Upgrade", "Running"), artifact_kind: "Model" as const };
     expect(quitBodyKey([update])).toBe("quit.body.ModelUpdate");
-    expect(quitBodyKey([download, update])).toBe("quit.body.ModelDownload");
+    expect(quitBodyKey([download, update])).toBe("quit.body.stopsModelDownload");
+    // An update running, an install queued behind it on the same Ollama:
+    // not "the updates".
+    expect(quitBodyKey([update, { ...op(7, "Install", "Queued"), artifact_kind: "Model" as const }])).toBe(
+      "quit.body.stopsModelDownload",
+    );
     const removal = { ...op(5, "Uninstall", "Running"), artifact_kind: "Model" as const };
     expect(quitBodyKey([removal])).toBe("quit.body.ModelUninstall");
     // A queued uninstall beside a download: not "the downloads" (from the

@@ -56,6 +56,10 @@ const XDG_CONFIG_FALLBACK: &str = "HOMEBREW_XDG_CONFIG_HOME";
 /// last, so it overrides the other two (`bin/brew:155-159`, `:178-181`).
 const SYSTEM_TAKES_PRIORITY: &str = "HOMEBREW_SYSTEM_ENV_TAKES_PRIORITY";
 
+/// Options Homebrew adds to every cask command, `--appdir` among them:
+/// where a cask's app goes in place of `/Applications`.
+const CASK_OPTS: &str = "HOMEBREW_CASK_OPTS";
+
 /// The system-wide file, the first `bin/brew` reads (`bin/brew:153`).
 pub(crate) const SYSTEM_FILE: &str = "/etc/homebrew/brew.env";
 /// The formulae Homebrew neither cleans up nor autoremoves, a
@@ -93,7 +97,7 @@ impl From<Option<Vec<u8>>> for EnvFile {
 }
 
 /// The variables the replay follows, in `Vars`' order.
-const FOLLOWED: [&str; 7] = [
+const FOLLOWED: [&str; 8] = [
     NO_AUTOREMOVE,
     NO_INSTALL_CLEANUP,
     XDG_CONFIG_FALLBACK,
@@ -101,6 +105,7 @@ const FOLLOWED: [&str; 7] = [
     NO_CLEANUP_FORMULAE,
     NO_REQUIRE_TAP_TRUST,
     NO_AUTO_UPDATE,
+    CASK_OPTS,
 ];
 
 /// `Homebrew::EnvConfig`'s `FALSY_VALUES` (`env_config.rb:871`): a
@@ -160,6 +165,12 @@ pub(crate) struct HomebrewSwitches {
     /// taken as Homebrew's (`BrewAdapter::trust_look`, r83 R83-1); the
     /// uninstall preview's sentences go on reading the guess.
     pub(crate) user_config_home_known: bool,
+    /// Whether `HOMEBREW_CASK_OPTS` may give an `appdir` of its own
+    /// (`--appdir`), so that a cask's app may go elsewhere than
+    /// `/Applications`: it does, or a file Banager does not read may have
+    /// set it. `BrewAdapter::cask_needs` then does not say an app is
+    /// already where Homebrew would put it (from the review of that check).
+    pub(crate) cask_appdir_may_differ: bool,
 }
 
 /// What Homebrew will make of `HOMEBREW_NO_AUTOREMOVE` and
@@ -239,6 +250,10 @@ pub(crate) fn after_brew_env(
         install_cleanup_unknown: !known(NO_INSTALL_CLEANUP),
         user_config_home,
         user_config_home_known: !user_file_unknown,
+        cask_appdir_may_differ: !known(CASK_OPTS)
+            || vars
+                .get(CASK_OPTS)
+                .is_some_and(|opts| opts.windows(8).any(|word| word == b"--appdir")),
     }
 }
 
@@ -286,7 +301,7 @@ fn concat(head: &OsStr, tail: &str) -> PathBuf {
 /// value in the environment nor one in a file need be UTF-8. With, for
 /// each, whether a file Banager could not read may have set it since
 /// (`forget_all`).
-struct Vars([Option<Vec<u8>>; 7], [bool; 7]);
+struct Vars([Option<Vec<u8>>; FOLLOWED.len()], [bool; FOLLOWED.len()]);
 
 impl Vars {
     /// What `bin/brew` starts from: the plan's own value, which the runner
@@ -304,14 +319,14 @@ impl Vars {
                     .map(|(_, value)| value.clone().into_bytes())
                     .or_else(|| banager_var(name).map(OsStringExt::into_vec))
             }),
-            [false; 7],
+            [false; FOLLOWED.len()],
         )
     }
 
     /// A file Banager cannot read was exported: any followed variable may
     /// now hold anything.
     fn forget_all(&mut self) {
-        self.1 = [true; 7];
+        self.1 = [true; FOLLOWED.len()];
     }
 
     /// Whether `name` may have been set by a file Banager could not read.
@@ -614,8 +629,34 @@ mod tests {
                 auto_update_unknown: false,
                 user_config_home: Some(PathBuf::from("/Users/someone/.homebrew")),
                 user_config_home_known: true,
+                cask_appdir_may_differ: false,
             }
         );
+    }
+
+    #[test]
+    fn test_an_appdir_in_the_cask_options_is_followed_from_any_file_or_banagers_environment() {
+        assert!(!switches(&[], &[]).cask_appdir_may_differ);
+        assert!(
+            switches(
+                &[(
+                    HOME_FILE,
+                    "HOMEBREW_CASK_OPTS=\"--appdir=~/Applications\"\n"
+                )],
+                &[]
+            )
+            .cask_appdir_may_differ
+        );
+        assert!(
+            !switches(&[(HOME_FILE, "HOMEBREW_CASK_OPTS=--no-quarantine\n")], &[])
+                .cask_appdir_may_differ
+        );
+        assert!(
+            switches(&[], &[("HOMEBREW_CASK_OPTS", "--appdir=/Volumes/Apps")])
+                .cask_appdir_may_differ
+        );
+        // A file Banager cannot read may set it.
+        assert!(switches_unknown(&[], &[HOME_FILE], &[]).cask_appdir_may_differ);
     }
 
     #[test]

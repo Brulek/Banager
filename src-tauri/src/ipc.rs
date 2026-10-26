@@ -1086,8 +1086,8 @@ pub async fn plan_install(
 /// `query` among its formulae and casks (names, aliases named as their
 /// formula, close spellings), each under an id Install sends back
 /// (`plan_install_found`). Runs `brew search --formula`, `--cask` and
-/// `--desc`, and `brew info --json=v2 --formula` over the formulae found,
-/// read-only. Refused as `invalid_query` for a text `brew search`
+/// `--desc`, `brew info --json=v2 --formula` over the formulae found, and
+/// `brew info --json=v2 --cask` over the casks found, read-only. Refused as `invalid_query` for a text `brew search`
 /// may not be given (`brew::validate_search_query`), and as `catalog_state`
 /// `NeedsHomebrew` where no Homebrew can install; a search Homebrew could
 /// not do goes out as a plan's failure would (`plan_operation_error`).

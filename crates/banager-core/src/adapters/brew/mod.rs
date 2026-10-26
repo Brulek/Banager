@@ -2662,7 +2662,9 @@ impl BrewAdapter {
     /// is `gnupg`, listed once, where its
     /// own name or an alias first ranks it (from the independent review of
     /// the branch). A name that answer does not give as Homebrew's own is
-    /// left out.
+    /// left out. That answer also says which formulae are disabled, and
+    /// one `brew info --json=v2 --cask {names}` what the casks found need
+    /// (`cask_needs`): each hit's `needs`.
     pub async fn search(
         &self,
         inst: &ManagerInstance,
@@ -2838,6 +2840,10 @@ impl BrewAdapter {
         let Ok(info) = serde_json::from_str::<Info>(&output.stdout) else {
             return HashMap::new();
         };
+        // Where `HOMEBREW_CASK_OPTS` may give an `appdir` of its own, the
+        // app goes there, not to `/Applications` (from the review of the
+        // check).
+        let look_for_apps = !self.switches_at(&inst.prefix, &[]).cask_appdir_may_differ;
         info.casks
             .into_iter()
             .map(|cask| {
@@ -2859,10 +2865,11 @@ impl BrewAdapter {
                         None
                     }
                 });
-                let app_there = app_targets_of(&cask.artifacts).iter().any(|app| {
-                    look::target(&self.applications.join(app), &Protected::of_this_process())
-                        .is_ok()
-                });
+                let app_there = look_for_apps
+                    && app_targets_of(&cask.artifacts).iter().any(|app| {
+                        look::target(&self.applications.join(app), &Protected::of_this_process())
+                            .is_ok()
+                    });
                 (
                     cask.token,
                     HitNeeds {

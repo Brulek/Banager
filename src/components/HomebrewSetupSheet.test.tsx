@@ -61,4 +61,20 @@ describe("the Homebrew hand-off's looks", () => {
     const status = screen.getByRole("status");
     expect(status).toBeEmptyDOMElement();
   });
+
+  it("says what to do where Terminal stops only while it waits, not during the installer's last step, its update", async () => {
+    // From the review of the fix: an error in that update leaves Homebrew
+    // installed, and the line said it was not.
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === "look_for_homebrew") {
+        looks += 1;
+        return { there: true, updating: true };
+      }
+      return null;
+    });
+    renderWithProviders(<HomebrewSetupSheet open onClose={() => {}} />);
+    await pass(10);
+    expect(screen.getByText("Homebrew is installed and finishing its first update…")).toBeInTheDocument();
+    expect(screen.queryByText(/instead of “Installation successful!”/)).toBeNull();
+  });
 });
