@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { catalogRefusal, entryName, ITEM_KEYS } from "../lib/catalog";
+import { catalogRefusal, entryName, installTargetOf, ITEM_KEYS, wordsOf } from "../lib/catalog";
 import { usePlanInstall, useSettings, useSubmitOperation } from "../lib/queries";
 import { planErrorDetail, planErrorMessage } from "../lib/sources";
 import { warningLines } from "../lib/warnings";
@@ -45,7 +45,9 @@ export function InstallSheet({ entry, iconKey, onClose }: InstallSheetProps) {
   const textId = useId();
   const open = entry !== null;
   const id = entry?.id ?? null;
-  const homebrew = t("adapters.brew");
+  const target = entry === null ? null : installTargetOf(entry);
+  // Homebrew installs it, or Ollama pulls it (the starter model).
+  const sourceLabel = t(target?.adapterId === "ollama" ? "adapters.ollama" : "adapters.brew");
   // As the uninstall's: "the sheet as it is open now, for this entry".
   const sessionRef = useRef(0);
   const submitLatch = useRef(false);
@@ -64,11 +66,10 @@ export function InstallSheet({ entry, iconKey, onClose }: InstallSheetProps) {
 
   // A preview of another entry, from before it was opened again, is not this one's.
   const issued =
-    entry !== null &&
-    entry.install !== "HomebrewItself" &&
+    target !== null &&
     planMutation.data?.plan.request.kind === "Install" &&
-    planMutation.data.plan.request.artifact_kind === entry.install.Homebrew.kind &&
-    planMutation.data.plan.request.name === entry.install.Homebrew.name
+    planMutation.data.plan.request.artifact_kind === target.kind &&
+    planMutation.data.plan.request.name === target.name
       ? planMutation.data
       : undefined;
   const plan = issued?.plan;
@@ -79,7 +80,7 @@ export function InstallSheet({ entry, iconKey, onClose }: InstallSheetProps) {
     // This Mac cannot install it now: said in the row's own terms, alone.
     const state = catalogRefusal(t, raw);
     if (state !== null) return <Refusal text={state} detail={null} detailTitle={state} />;
-    const message = planErrorMessage(t, raw, homebrew, settings?.show_technical_details ?? false);
+    const message = planErrorMessage(t, raw, sourceLabel, settings?.show_technical_details ?? false);
     const plain = framed === "discover.sheet.planError" ? "discover.sheet.planErrorPlain" : "discover.sheet.submitErrorPlain";
     const text = message === null ? t(plain) : t(framed, { message });
     return <Refusal text={text} detail={planErrorDetail(t, raw)} detailTitle={text} />;
@@ -133,8 +134,12 @@ export function InstallSheet({ entry, iconKey, onClose }: InstallSheetProps) {
       title={t("discover.sheet.title", { name })}
       // A question to answer before anything else, as NSAlert's.
       alert
-      icon={entry === null ? undefined : <SheetIcon adapterId="brew" sourceLabel={homebrew} iconKey={iconKey} />}
-      subtitle={entry === null ? undefined : sheetMeta(name, homebrew, null)}
+      icon={
+        entry === null || target === null ? undefined : (
+          <SheetIcon adapterId={target.adapterId} sourceLabel={sourceLabel} iconKey={iconKey} />
+        )
+      }
+      subtitle={entry === null ? undefined : sheetMeta(name, sourceLabel, target?.adapterId === "ollama" ? target.name : null)}
       describedBy={textId}
       initialFocus={installRef}
       footer={
@@ -155,9 +160,11 @@ export function InstallSheet({ entry, iconKey, onClose }: InstallSheetProps) {
       }
     >
       {/* Who needs it and how it is used once installed: the alert's text. */}
-      {keys === undefined ? null : <SheetText id={textId}>{t(keys.more)}</SheetText>}
+      {keys === undefined || entry === null ? null : <SheetText id={textId}>{t(keys.more, wordsOf(entry))}</SheetText>}
       <SheetText className="mt-3">
-        {t("noAnswer.sheet.then", { first: t("discover.sheet.from"), then: t("discover.sheet.alsoInstalls") })}
+        {target?.adapterId === "ollama"
+          ? t("discover.sheet.fromOllama", wordsOf(entry!))
+          : t("noAnswer.sheet.then", { first: t("discover.sheet.from"), then: t("discover.sheet.alsoInstalls") })}
       </SheetText>
 
       {planMutation.isPending ? <SheetPending text={t("discover.sheet.checking")} /> : null}

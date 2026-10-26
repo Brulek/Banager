@@ -1935,7 +1935,7 @@
   "discover": {
     "intro": "Tools to start with, and which of them this Mac already has.",
     "introNoHomebrew": "This Mac doesn't have Homebrew yet. Install it first, and then the tools below install here in one click.",
-    "footnote": "Ollama can't be installed from here yet.",
+    "footnote": "Tools here install with Homebrew, and the model with Ollama; each install shows the command it runs first.",
     "install": "Install",
     "installLabel": "Install {{name}}",
     "copyCommand": "Copy “{{command}}”",
@@ -1950,7 +1950,9 @@
       "notInstalled": "Not installed",
       "needsHomebrew": "Needs Homebrew",
       "needsMacOS": "Needs macOS {{major}}",
-      "homebrewUnsupported": "Not supported on this Mac"
+      "homebrewUnsupported": "Not supported on this Mac",
+      "needsOllama": "Needs Ollama",
+      "ollamaNotReady": "Ollama can't download now"
     },
     "progress": {
       "queued": "Queued",
@@ -1970,7 +1972,9 @@
       "submitErrorPlain": "Couldn't start the install.",
       "installed": "It's already installed.",
       "needsHomebrew": "No Homebrew on this Mac can install it right now.",
-      "needsMacOS": "It needs macOS {{major}} or later."
+      "needsMacOS": "It needs macOS {{major}} or later.",
+      "fromOllama": "Ollama downloads {{model}} from its library, about {{size}}.",
+      "needsOllama": "Ollama on this Mac can't download it right now."
     },
     "homebrew": {
       "title": "Install Homebrew",
@@ -2027,7 +2031,14 @@
       "ollama": {
         "name": "Ollama",
         "what": "Runs AI models on this Mac",
-        "more": "The models you download run without an internet connection, and they're listed and updated here. Once installed, open Ollama from Applications."
+        "more": "The models you download run without an internet connection, and they're listed and updated here. Once installed, open Ollama from Applications.",
+        "use": "Open Ollama to start it."
+      },
+      "model": {
+        "name": "Gemma 3",
+        "what": "Google's open AI model, sized for this Mac: {{model}}, about {{size}}",
+        "more": "Once downloaded it runs on this Mac without an internet connection, and answers questions and writes in many languages, Chinese included. Type ollama run {{model}} in a new Terminal window, or use it in the Ollama app.",
+        "use": "Type ollama run {{model}} in a new Terminal window."
       },
       "node": {
         "name": "Node.js",

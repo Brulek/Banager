@@ -42,6 +42,7 @@ import {
   withUnavailableCommands,
   type World,
   freshHomebrew,
+  freshOllama,
   installedFromCatalog,
 } from "./mockData";
 import { appIcon } from "./mockIcons";
@@ -600,6 +601,10 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       if (!world.artifacts.some((a) => sameKey(a.key, target))) {
         world.artifacts.push(installedFromCatalog(target.instance_id, target.kind, target.name, nowSeconds()));
       }
+      // Ollama's app: its source, not running until Open Ollama.
+      if (target.name === "ollama-app" && !world.instances.some((i) => i.adapter_id === "ollama")) {
+        world.instances.push(freshOllama());
+      }
       return;
     }
     if (plan.request.kind === "Link") {
@@ -1125,17 +1130,22 @@ export function createMockBackend(scenario: Scenario): MockBackend {
         (candidate) => candidate.id === args.catalogId && candidate.installs_here,
       );
       if (entry === undefined || entry.install === "HomebrewItself") throw refusal({ kind: "refused" });
-      const brew = instances.find(
-        (i) => i.adapter_id === "brew" && i.status.unavailable === null && i.read_only_reason === null,
+      // A Homebrew formula or cask, or the starter model, which Ollama pulls.
+      const model = "OllamaModel" in entry.install ? entry.install.OllamaModel : null;
+      const source = instances.find(
+        (i) =>
+          i.adapter_id === (model === null ? "brew" : "ollama") &&
+          i.status.unavailable === null &&
+          i.read_only_reason === null,
       );
-      if (entry.state !== "NotInstalled" || brew === undefined) {
+      if (entry.state !== "NotInstalled" || source === undefined) {
         throw refusal({ kind: "catalog_state", state: entry.state });
       }
       const request: OpRequest = {
         kind: "Install",
-        instance_id: brew.id,
-        artifact_kind: entry.install.Homebrew.kind,
-        name: entry.install.Homebrew.name,
+        instance_id: source.id,
+        artifact_kind: model === null && "Homebrew" in entry.install ? entry.install.Homebrew.kind : "Model",
+        name: model === null && "Homebrew" in entry.install ? entry.install.Homebrew.name : model!.name,
       };
       const inst = gate(request);
       await wait(TIMING.plan);

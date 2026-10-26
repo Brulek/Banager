@@ -36,7 +36,7 @@ use tokio_util::sync::CancellationToken;
 /// Homebrew formula/cask names never contain one — Ollama's naming scheme
 /// does, so this adapter validates model references with its own,
 /// colon-inclusive rule instead of reusing that function.
-fn validate_model_reference(name: &str) -> Result<(), AdapterError> {
+pub(crate) fn validate_model_reference(name: &str) -> Result<(), AdapterError> {
     if name.is_empty()
         || name.starts_with('-')
         || name.starts_with('/')

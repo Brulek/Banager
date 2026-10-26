@@ -1791,7 +1791,7 @@
   "discover": {
     "intro": "可以從這些工具開始，也能看到這台Mac已經有了哪些。",
     "introNoHomebrew": "這台Mac上還沒有Homebrew。先安裝好它，下面的工具就能在這裡一鍵安裝。",
-    "footnote": "Ollama暫時還不能從這裡安裝。",
+    "footnote": "這裡的工具都用Homebrew安裝，模型用Ollama下載；安裝前都會先顯示要執行的指令。",
     "install": "安裝",
     "installLabel": "安裝{{name}}",
     "copyCommand": "拷貝「{{command}}」",
@@ -1806,7 +1806,9 @@
       "notInstalled": "未安裝",
       "needsHomebrew": "需先安裝Homebrew",
       "needsMacOS": "需要macOS {{major}}",
-      "homebrewUnsupported": "不支援這台Mac"
+      "homebrewUnsupported": "不支援這台Mac",
+      "needsOllama": "需先安裝Ollama",
+      "ollamaNotReady": "Ollama現在無法下載"
     },
     "progress": {
       "queued": "排隊中",
@@ -1826,7 +1828,9 @@
       "submitErrorPlain": "無法開始安裝。",
       "installed": "它已經安裝好了。",
       "needsHomebrew": "這台Mac上現在沒有能安裝它的Homebrew。",
-      "needsMacOS": "它需要macOS {{major}}或更新版本。"
+      "needsMacOS": "它需要macOS {{major}}或更新版本。",
+      "fromOllama": "Ollama會從它的模型庫下載{{model}}，約{{size}}。",
+      "needsOllama": "這台Mac上的Ollama現在無法下載它。"
     },
     "homebrew": {
       "title": "安裝Homebrew",
@@ -1883,7 +1887,14 @@
       "ollama": {
         "name": "Ollama",
         "what": "在這台Mac上執行AI模型",
-        "more": "下載的模型不連網也能執行，也能在這裡列出和更新。安裝好後，從「應用程式」裡打開Ollama。"
+        "more": "下載的模型不連網也能執行，也能在這裡列出和更新。安裝好後，從「應用程式」裡打開Ollama。",
+        "use": "打開Ollama就能使用了。"
+      },
+      "model": {
+        "name": "Gemma 3",
+        "what": "Google的開放AI模型，依這台Mac的記憶體選了{{model}}，約{{size}}",
+        "more": "下載後不連網也能在這台Mac上執行，能用包括中文在內的多種語言回答問題、寫文字。在新的終端機視窗裡輸入ollama run {{model}}，或者在Ollama App裡使用。",
+        "use": "在新的終端機視窗裡輸入ollama run {{model}}。"
       },
       "node": {
         "name": "Node.js",

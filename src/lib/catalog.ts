@@ -4,6 +4,7 @@
  * of it from here stands. The catalog itself is Rust's
  * (crates/banager-core/src/catalog.rs), sent with `get_catalog`.
  */
+import { formatBytesRoundedUp } from "./modelDownload";
 import type { ArtifactKey, CatalogEntry, CatalogState, ManagerInstance, OpSummary } from "./types";
 
 /** Whatever `useTranslation()`'s `t` needs here; the same convention as `Translate` in src/lib/sources.ts. */
@@ -20,6 +21,8 @@ export interface ItemKeys {
   use?: string;
   /** What to type in Terminal to use it, for Copy beside `use`: a word the user types, never one Banager runs. */
   command?: string;
+  /** Used by opening it, not by typing: Open Ollama beside `use`, in place of Copy. */
+  opens?: boolean;
 }
 
 /**
@@ -59,6 +62,17 @@ export const ITEM_KEYS: Record<string, ItemKeys> = {
     name: "discover.items.ollama.name",
     what: "discover.items.ollama.what",
     more: "discover.items.ollama.more",
+    use: "discover.items.ollama.use",
+    opens: true,
+  },
+  // Its words name the model and its size (`modelWords`); what to type
+  // names it too (`commandOf`).
+  model: {
+    name: "discover.items.model.name",
+    what: "discover.items.model.what",
+    more: "discover.items.model.more",
+    use: "discover.items.model.use",
+    command: "ollama run",
   },
   node: {
     name: "discover.items.node.name",
@@ -104,7 +118,52 @@ export function stateText(t: Translate, state: CatalogState): string {
       return t("discover.state.needsHomebrew");
     case "HomebrewUnsupported":
       return t("discover.state.homebrewUnsupported");
+    case "NeedsOllama":
+      return t("discover.state.needsOllama");
+    case "OllamaNotReady":
+      return t("discover.state.ollamaNotReady");
   }
+}
+
+/**
+ * The values an entry's words name: for the starter model, which model
+ * and about how much it downloads (`formatBytesRoundedUp`); nothing for the
+ * rest.
+ */
+export function wordsOf(entry: CatalogEntry): Record<string, string> {
+  if (typeof entry.install === "object" && "OllamaModel" in entry.install) {
+    const { name, download_bytes } = entry.install.OllamaModel;
+    return { model: name, size: formatBytesRoundedUp(download_bytes) };
+  }
+  return {};
+}
+
+/**
+ * What to type in Terminal to use `entry` once installed, for Copy: its
+ * command, and for the starter model `ollama run` and the model's name.
+ */
+export function commandOf(entry: CatalogEntry): string | undefined {
+  const command = ITEM_KEYS[entry.id]?.command;
+  if (command === undefined) return undefined;
+  if (typeof entry.install === "object" && "OllamaModel" in entry.install) {
+    return `${command} ${entry.install.OllamaModel.name}`;
+  }
+  return command;
+}
+
+/**
+ * The source an entry installs with, and what it installs: the request
+ * `plan_install` makes of it (`catalog::install_request`), without the
+ * source's id, which Rust chooses. Null for Homebrew itself.
+ */
+export function installTargetOf(
+  entry: CatalogEntry,
+): { adapterId: "brew" | "ollama"; kind: "Formula" | "Cask" | "Model"; name: string } | null {
+  if (entry.install === "HomebrewItself") return null;
+  if ("Homebrew" in entry.install) {
+    return { adapterId: "brew", kind: entry.install.Homebrew.kind, name: entry.install.Homebrew.name };
+  }
+  return { adapterId: "ollama", kind: "Model", name: entry.install.OllamaModel.name };
 }
 
 /**
@@ -133,6 +192,9 @@ export function catalogRefusal(t: Translate, raw: string): string | null {
     case "NeedsHomebrew":
     case "HomebrewUnsupported":
       return t("discover.sheet.needsHomebrew");
+    case "NeedsOllama":
+    case "OllamaNotReady":
+      return t("discover.sheet.needsOllama");
     default:
       return null;
   }
@@ -145,32 +207,34 @@ export function catalogRefusal(t: Translate, raw: string): string | null {
  * app's icon. Homebrew itself has none: its row draws Homebrew's mark.
  */
 export function iconKeyOf(entry: CatalogEntry, brew: ManagerInstance | undefined): ArtifactKey | undefined {
-  if (entry.install === "HomebrewItself") return undefined;
-  const { kind, name } = entry.install.Homebrew;
-  return { instance_id: brew?.id ?? "brew:/opt/homebrew", kind, name };
+  const target = installTargetOf(entry);
+  if (target === null) return undefined;
+  if (target.adapterId === "ollama") return { instance_id: "ollama:http://127.0.0.1:11434", kind: "Model", name: target.name };
+  return { instance_id: brew?.id ?? "brew:/opt/homebrew", kind: target.kind, name: target.name };
 }
 
 /**
  * The newest install of `entry` from here -- under way, or finished --
  * among `operations` and this window's own submissions not yet listed
  * (`usePendingOperations`), or null, also where an uninstall of the same
- * formula or cask came after it: what that install said is no longer so.
- * An install is matched by what it installs, the entry's own Homebrew
- * formula or cask by name under any Homebrew: `plan_install` picks the
- * Homebrew, the window does not.
+ * package came after it: what that install said is no longer so. An
+ * install is matched by what it installs, the entry's own Homebrew formula
+ * or cask, or its model, by name under any Homebrew or Ollama:
+ * `plan_install` picks the source, the window does not.
  */
 export function installOperationOf(
   entry: CatalogEntry,
   operations: OpSummary[],
   pending: Record<string, OpSummary>,
 ): OpSummary | null {
-  if (entry.install === "HomebrewItself") return null;
-  const { kind, name } = entry.install.Homebrew;
+  const target = installTargetOf(entry);
+  if (target === null) return null;
+  const { adapterId, kind, name } = target;
   const touches = (op: OpSummary) =>
     (op.kind === "Install" || op.kind === "Uninstall") &&
     op.artifact_kind === kind &&
     op.name === name &&
-    op.instance_id.startsWith("brew:");
+    op.instance_id.startsWith(`${adapterId}:`);
   // A reservation not yet answered has no id of its own (-1): it is the
   // newest there is.
   const reserved = Object.values(pending).find(touches);

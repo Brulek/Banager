@@ -2263,6 +2263,7 @@ mod tests {
         for (asked, (id, kind, name)) in [
             ("gemini-cli", ArtifactKind::Formula, "gemini-cli"),
             ("claude-code", ArtifactKind::Cask, "claude-code"),
+            ("ollama", ArtifactKind::Cask, "ollama-app"),
         ]
         .into_iter()
         .enumerate()
@@ -2305,13 +2306,18 @@ mod tests {
         );
         // Not offered from here, and names that are no entry: a package's
         // own name included.
-        for id in ["homebrew", "ollama", "jq", "ollama-app", "../uv", ""] {
+        for id in ["homebrew", "jq", "ollama-app", "gemma3:4b", "../uv", ""] {
             assert_eq!(
                 plan_install_impl(&state, id).await.unwrap_err(),
                 r#"{"kind":"refused"}"#,
                 "{id}"
             );
         }
+        // Nor does the starter model, with no Ollama to pull it.
+        assert_eq!(
+            plan_install_impl(&state, "model").await.unwrap_err(),
+            r#"{"kind":"catalog_state","state":"NeedsOllama"}"#
+        );
         assert_eq!(
             plan_calls.load(Ordering::SeqCst),
             0,

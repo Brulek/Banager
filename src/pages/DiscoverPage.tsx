@@ -10,17 +10,20 @@ import { ToolAvatar } from "../components/ToolAvatar";
 import { BUTTON } from "../components/ui/controls";
 import { FORM_COLUMN, GROUP, GROUP_FOOTNOTE, GROUP_ROW_TWO_LINES, GROUP_TITLE, SMALL_WRAPPING } from "../components/ui/group";
 import {
+  commandOf,
   endedAfterCheck,
   entryName,
   iconKeyOf,
+  installTargetOf,
   installOperationOf,
   installProgressOf,
   isUnderway,
   ITEM_KEYS,
   stateText,
+  wordsOf,
   type InstallProgress,
 } from "../lib/catalog";
-import { useCatalog, useOperations, usePendingOperations, useSnapshot } from "../lib/queries";
+import { useCatalog, useOpenOllamaApp, useOperations, usePendingOperations, useSnapshot } from "../lib/queries";
 import { useUiStore } from "../store/ui";
 import type { CatalogCategory, CatalogEntry } from "../lib/types";
 
@@ -88,8 +91,9 @@ function EndedWithout({ progress, name }: { progress: InstallProgress; name: str
  * Copy for what to type; or not, in a word that opens its log, with
  * Install to try again. Homebrew's own Install, where it is not there,
  * opens the Terminal hand-off (`HomebrewSetupSheet`, step C), and the
- * line over the list says to start with it. Ollama is not installed from
- * here yet, and the footnote says so.
+ * line over the list says to start with it. The starter model (step D)
+ * installs with Ollama: where Ollama's app is there and not running, its
+ * row, and Ollama's own once installed from here, have Open Ollama.
  */
 export function DiscoverPage() {
   const { t } = useTranslation();
@@ -105,6 +109,22 @@ export function DiscoverPage() {
   // No Homebrew: it comes first, and the page says so.
   const homebrewFirst = checked && catalog?.find((entry) => entry.id === "homebrew")?.state === "NotInstalled";
   const sourceLabel = t("adapters.brew");
+  // Ollama's app is here and not running: Open Ollama, as its source's
+  // notice has it.
+  const openOllama = useOpenOllamaApp();
+  const ollamaStopped = snapshot?.instances.some(
+    (instance) => instance.adapter_id === "ollama" && instance.status.unavailable === "NotRunning",
+  );
+  const openOllamaButton = (
+    <button
+      type="button"
+      onClick={() => openOllama.mutate()}
+      disabled={openOllama.isPending}
+      className={BUTTON.small.grey}
+    >
+      {t("sourceNotice.openOllama")}
+    </button>
+  );
 
   const right = (entry: CatalogEntry, name: string, progress: InstallProgress | null, installed: boolean): ReactNode => {
     if (progress !== null && isUnderway(progress)) {
@@ -153,6 +173,14 @@ export function DiscoverPage() {
         <EndedWithout progress={progress} name={name} />
       );
     const state = install ?? <span className="text-muted">{stateText(t, entry.state)}</span>;
+    // The model, waiting for an Ollama that is installed and not running.
+    if (entry.state === "OllamaNotReady" && ollamaStopped && ended === null) {
+      return (
+        <span data-catalog-state="" className="flex shrink-0 items-center gap-2">
+          {openOllamaButton}
+        </span>
+      );
+    }
     if (ended === null && install === null) {
       return (
         <span data-catalog-state="" className="flex shrink-0 items-center gap-1 text-muted">
@@ -196,7 +224,9 @@ export function DiscoverPage() {
                 const installed = entry.state === "Installed" || justInstalled;
                 // Installed from here: how to use it, in place of what it is.
                 const use = installed && progress?.kind === "installed" ? keys?.use : undefined;
-                const command = keys?.command;
+                const command = commandOf(entry);
+                const words = wordsOf(entry);
+                const target = installTargetOf(entry);
                 return (
                   <li key={entry.id} data-catalog-entry={entry.id} className={GROUP_ROW_TWO_LINES}>
                     <span className="flex min-w-0 items-center gap-2.5">
@@ -205,22 +235,32 @@ export function DiscoverPage() {
                         // sidebar's row has it.
                         <SourceAvatar adapterId="brew" label={sourceLabel} size="sm" />
                       ) : (
-                        <ToolAvatar size="sm" adapterId="brew" sourceLabel={sourceLabel} iconKey={iconKeyOf(entry, brew)} />
+                        <ToolAvatar
+                          size="sm"
+                          adapterId={target?.adapterId ?? "brew"}
+                          sourceLabel={target?.adapterId === "ollama" ? t("adapters.ollama") : sourceLabel}
+                          iconKey={iconKeyOf(entry, brew)}
+                        />
                       )}
                       <span className="min-w-0">
                         <span className="block truncate text-foreground">{name}</span>
-                        {keys === undefined ? null : use !== undefined && command !== undefined ? (
+                        {keys === undefined ? null : use !== undefined && (command !== undefined || keys.opens) ? (
                           <span
                             data-catalog-use=""
                             className={`flex flex-wrap items-center gap-x-2 gap-y-1 text-muted ${SMALL_WRAPPING}`}
                           >
-                            <span>{t(use)}</span>
-                            <CopyButton text={command} label={t("discover.copyCommand", { command })} />
+                            <span>{t(use, words)}</span>
+                            {command !== undefined ? (
+                              <CopyButton text={command} label={t("discover.copyCommand", { command })} />
+                            ) : ollamaStopped ? (
+                              // Ollama's app, until it runs.
+                              openOllamaButton
+                            ) : null}
                           </span>
                         ) : (
                           <span className={`block text-muted ${SMALL_WRAPPING}`}>
-                            <TextWithInfo text={t(keys.what)} label={t("common.detailsLabel", { title: name })}>
-                              {t(keys.more)}
+                            <TextWithInfo text={t(keys.what, words)} label={t("common.detailsLabel", { title: name })}>
+                              {t(keys.more, words)}
                             </TextWithInfo>
                           </span>
                         )}

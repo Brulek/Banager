@@ -696,6 +696,16 @@ export function freshHomebrew(): ManagerInstance {
   return findInstance(fullWorld(), IDS.brew);
 }
 
+/**
+ * The Ollama source a Discover install of Ollama's app leaves: the app is
+ * there and not running yet, so its notice and the model's row offer Open
+ * Ollama (`apply` in ./mockBackend.ts).
+ */
+export function freshOllama(): ManagerInstance {
+  const ollama = findInstance(fullWorld(), IDS.ollama);
+  return { ...ollama, status: { ...ollama.status, unavailable: "NotRunning" } };
+}
+
 function findInstance(world: World, id: string): ManagerInstance {
   const found = world.instances.find((i) => i.id === id);
   if (found === undefined) throw new Error(`mock data has no instance ${id}`);

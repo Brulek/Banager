@@ -39,6 +39,43 @@ pub enum CatalogInstall {
         kind: ArtifactKind,
         name: &'static str,
     },
+    /// A model Ollama pulls from its library, by name, and about how much
+    /// that downloads (the sizes of its manifest's layers and config, read
+    /// from registry.ollama.ai on 2026-10-27). For the starter model, the
+    /// one this Mac's memory suits (`starter_model`).
+    OllamaModel {
+        name: &'static str,
+        download_bytes: u64,
+    },
+}
+
+/// The starter model by memory (phase 5 step D): Gemma 3, Google's open
+/// model, the largest whose download is at most about a third of the Mac's
+/// memory, so it runs beside everything else; the 4b where the memory is
+/// not known. In this order, smallest first: `(least memory, name, bytes)`.
+const STARTER_MODELS: [(u64, &str, u64); 4] = [
+    (0, "gemma3:1b", 806_067_407),
+    (8 * GIB, "gemma3:4b", 3_350_272_403),
+    (24 * GIB, "gemma3:12b", 8_164_039_732),
+    (48 * GIB, "gemma3:27b", 17_413_409_652),
+];
+
+const GIB: u64 = 1 << 30;
+
+/// The starter model for a Mac with `memory_bytes` of memory, as
+/// `CatalogInstall::OllamaModel` (`STARTER_MODELS`).
+pub fn starter_model(memory_bytes: Option<u64>) -> CatalogInstall {
+    let memory = memory_bytes.unwrap_or(8 * GIB);
+    let (_, name, download_bytes) = STARTER_MODELS
+        .iter()
+        .rev()
+        .find(|(least, _, _)| memory >= *least)
+        .copied()
+        .unwrap_or(STARTER_MODELS[0]);
+    CatalogInstall::OllamaModel {
+        name,
+        download_bytes,
+    }
 }
 
 /// One way of already having an entry.
@@ -53,6 +90,9 @@ enum Recognizer {
     Source(&'static str),
     /// A Homebrew formula by name, or a versioned one of it (`node@22`).
     Formula(&'static str),
+    /// Any model an Ollama source lists: a Mac with one has a model to
+    /// start with.
+    AnyModel,
 }
 
 /// One entry of the catalog.
@@ -68,15 +108,15 @@ pub struct CatalogItem {
     /// The oldest macOS major version it installs on, where Homebrew's
     /// record says (`depends_on macos:`).
     pub needs_macos: Option<u32>,
-    /// Whether Discover installs it from here (`install_request`, step B):
-    /// every Homebrew formula and cask but Ollama's, which step D installs
-    /// with a model to start with. Homebrew itself is installed in
-    /// Terminal (step C).
+    /// Whether Discover installs it from here (`install_request`): every
+    /// Homebrew formula and cask (step B; Ollama's with step D), and the
+    /// starter model (step D). Homebrew itself is installed in Terminal
+    /// (step C).
     pub installs_here: bool,
 }
 
 /// The catalog, in the order the Discover page lists it.
-pub const CATALOG: [CatalogItem; 8] = [
+pub const CATALOG: [CatalogItem; 9] = [
     CatalogItem {
         id: "homebrew",
         category: CatalogCategory::Basics,
@@ -129,7 +169,20 @@ pub const CATALOG: [CatalogItem; 8] = [
         },
         recognized_by: &[Recognizer::Family("ollama"), Recognizer::Source("ollama")],
         needs_macos: Some(14),
-        installs_here: false,
+        installs_here: true,
+    },
+    CatalogItem {
+        id: "model",
+        category: CatalogCategory::LocalModels,
+        // The 4b, for a Mac whose memory is not known: `entries` and
+        // `install_request` put the one this Mac's memory suits.
+        install: CatalogInstall::OllamaModel {
+            name: "gemma3:4b",
+            download_bytes: 3_350_272_403,
+        },
+        recognized_by: &[Recognizer::AnyModel],
+        needs_macos: None,
+        installs_here: true,
     },
     CatalogItem {
         id: "node",
@@ -182,6 +235,12 @@ pub enum CatalogState {
     /// Homebrew's official installer no longer installs on Intel Macs
     /// (phase 5 proposal §1.1).
     HomebrewUnsupported,
+    /// The starter model, on a Mac with no Ollama source.
+    NeedsOllama,
+    /// The starter model, where Ollama is there but cannot pull now: not
+    /// running, not answering, or view only. The source's own notice says
+    /// which, and Open Ollama is the window's where the app is not running.
+    OllamaNotReady,
 }
 
 /// One entry as the window lists it (`get_catalog` in
@@ -203,17 +262,21 @@ pub struct Host {
     pub macos_major: Option<u32>,
     /// Whether the Mac is Apple silicon, whatever this process runs as.
     pub apple_silicon: bool,
+    /// How much memory the Mac has, in bytes, for the starter model
+    /// (`starter_model`); `None` where it could not be read.
+    pub memory_bytes: Option<u64>,
 }
 
 impl Host {
-    /// This Mac, from the kernel: `kern.osproductversion` and
-    /// `hw.optional.arm64`, which is 1 on Apple silicon under Rosetta too
-    /// (`sysctlbyname`). Runs nothing and opens nothing.
+    /// This Mac, from the kernel: `kern.osproductversion`,
+    /// `hw.optional.arm64`, which is 1 on Apple silicon under Rosetta too,
+    /// and `hw.memsize` (`sysctlbyname`). Runs nothing and opens nothing.
     pub fn of_this_mac() -> Host {
         let version = crate::diagnostics::read_os().macos_version;
         Host {
             macos_major: version.as_deref().and_then(major_of),
             apple_silicon: apple_silicon(),
+            memory_bytes: memory_bytes(),
         }
     }
 }
@@ -246,6 +309,29 @@ fn apple_silicon() -> bool {
     false
 }
 
+#[cfg(target_os = "macos")]
+fn memory_bytes() -> Option<u64> {
+    let mut value: u64 = 0;
+    let mut len = std::mem::size_of::<u64>();
+    // SAFETY: `value` is a u64 and `len` says so; the kernel writes at most
+    // `len` bytes into it. The name is a NUL-terminated literal.
+    let read = unsafe {
+        libc::sysctlbyname(
+            c"hw.memsize".as_ptr(),
+            (&mut value as *mut u64).cast(),
+            &mut len,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
+    (read == 0 && len == std::mem::size_of::<u64>() && value > 0).then_some(value)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn memory_bytes() -> Option<u64> {
+    None
+}
+
 /// Every entry of the catalog, in order, with its state on the Mac
 /// `snapshot` and `host` describe.
 pub fn entries(snapshot: &Snapshot, host: &Host) -> Vec<CatalogEntry> {
@@ -255,11 +341,20 @@ pub fn entries(snapshot: &Snapshot, host: &Host) -> Vec<CatalogEntry> {
         .map(|item| CatalogEntry {
             id: item.id,
             category: item.category,
-            install: item.install,
+            install: install_on(item, host),
             state: state_of(item, snapshot, host, can_install),
             installs_here: item.installs_here,
         })
         .collect()
+}
+
+/// What installs `item` on the Mac `host` describes: the catalog's own,
+/// but for the starter model, the one its memory suits.
+fn install_on(item: &CatalogItem, host: &Host) -> CatalogInstall {
+    match item.install {
+        CatalogInstall::OllamaModel { .. } => starter_model(host.memory_bytes),
+        install => install,
+    }
 }
 
 /// Why `install_request` names nothing to install.
@@ -291,20 +386,29 @@ pub fn install_request(
         .iter()
         .find(|item| item.id == id && item.installs_here)
         .ok_or(InstallRefusal::NotOffered)?;
-    let CatalogInstall::Homebrew { kind, name } = item.install else {
-        return Err(InstallRefusal::NotOffered);
-    };
     let brew = snapshot.instances.iter().find(|i| homebrew_can_install(i));
     let state = state_of(item, snapshot, host, brew.is_some());
-    match (state, brew) {
-        (CatalogState::NotInstalled, Some(brew)) => Ok(OpRequest {
-            kind: OpKind::Install,
-            instance_id: brew.id.clone(),
-            artifact_kind: kind,
-            name: name.to_string(),
-        }),
-        (state, _) => Err(InstallRefusal::State(state)),
+    if state != CatalogState::NotInstalled {
+        return Err(InstallRefusal::State(state));
     }
+    // The source that installs it: the first Homebrew that can, or the
+    // first Ollama that can pull.
+    let (source, kind, name) = match install_on(item, host) {
+        CatalogInstall::HomebrewItself => return Err(InstallRefusal::NotOffered),
+        CatalogInstall::Homebrew { kind, name } => (brew, kind, name),
+        CatalogInstall::OllamaModel { name, .. } => (
+            snapshot.instances.iter().find(|i| ollama_can_pull(i)),
+            ArtifactKind::Model,
+            name,
+        ),
+    };
+    let source = source.ok_or(InstallRefusal::State(state))?;
+    Ok(OpRequest {
+        kind: OpKind::Install,
+        instance_id: source.id.clone(),
+        artifact_kind: kind,
+        name: name.to_string(),
+    })
 }
 
 fn state_of(
@@ -328,7 +432,25 @@ fn state_of(
             _ if can_install => CatalogState::NotInstalled,
             _ => CatalogState::NeedsHomebrew,
         },
+        CatalogInstall::OllamaModel { .. } => {
+            if snapshot.instances.iter().any(ollama_can_pull) {
+                CatalogState::NotInstalled
+            } else if snapshot.instances.iter().any(|i| i.adapter_id == "ollama") {
+                CatalogState::OllamaNotReady
+            } else {
+                CatalogState::NeedsOllama
+            }
+        }
     }
+}
+
+/// Whether `instance` is an Ollama that can pull a model now: it answered,
+/// and is not view only (an address with a login in it, an `ollama` that
+/// will not run).
+fn ollama_can_pull(instance: &ManagerInstance) -> bool {
+    instance.adapter_id == "ollama"
+        && instance.status.unavailable.is_none()
+        && instance.read_only_reason.is_none()
 }
 
 /// Whether `instance` is a Homebrew that can install: it answered, and is
@@ -345,6 +467,9 @@ fn has(way: &Recognizer, instances: &[ManagerInstance], artifacts: &[InstalledAr
             .iter()
             .any(|a| a.facts.family.as_deref() == Some(family)),
         Recognizer::Source(adapter) => instances.iter().any(|i| i.adapter_id == adapter),
+        Recognizer::AnyModel => artifacts
+            .iter()
+            .any(|a| a.key.kind == ArtifactKind::Model && a.key.instance_id.starts_with("ollama:")),
         Recognizer::Formula(name) => artifacts.iter().any(|a| {
             a.key.kind == ArtifactKind::Formula
                 && a.key.instance_id.starts_with("brew:")
@@ -409,6 +534,7 @@ mod tests {
     const SILICON_15: Host = Host {
         macos_major: Some(15),
         apple_silicon: true,
+        memory_bytes: Some(16 * GIB),
     };
 
     fn states(snapshot: &Snapshot, host: &Host) -> Vec<(&'static str, CatalogState)> {
@@ -468,6 +594,7 @@ mod tests {
                 ("codex", CatalogState::NeedsHomebrew),
                 ("gemini-cli", CatalogState::NeedsHomebrew),
                 ("ollama", CatalogState::NeedsHomebrew),
+                ("model", CatalogState::NeedsOllama),
                 ("node", CatalogState::NeedsHomebrew),
                 ("uv", CatalogState::NeedsHomebrew),
                 ("ffmpeg", CatalogState::NeedsHomebrew),
@@ -478,6 +605,7 @@ mod tests {
         let intel_13 = Host {
             macos_major: Some(13),
             apple_silicon: false,
+            memory_bytes: Some(16 * GIB),
         };
         let on_intel = states(&empty, &intel_13);
         assert_eq!(on_intel[0], ("homebrew", CatalogState::HomebrewUnsupported));
@@ -523,6 +651,7 @@ mod tests {
                 ("codex", CatalogState::Installed),
                 ("gemini-cli", CatalogState::NotInstalled),
                 ("ollama", CatalogState::NotInstalled),
+                ("model", CatalogState::NeedsOllama),
                 // npm runs on a Node; a uv source is uv.
                 ("node", CatalogState::Installed),
                 ("uv", CatalogState::Installed),
@@ -555,7 +684,7 @@ mod tests {
                 vec![instance("brew", b)],
                 vec![artifact(b, ArtifactKind::Formula, name, None)],
             );
-            let node = states(&mac, &SILICON_15)[5];
+            let node = states(&mac, &SILICON_15)[6];
             assert_eq!(node.1 == CatalogState::Installed, installed, "{name}");
         }
         // Not a formula of Homebrew's: a cask named so, or another source's.
@@ -570,8 +699,8 @@ mod tests {
             ],
         );
         let states = states(&mac, &SILICON_15);
-        assert_eq!(states[6], ("uv", CatalogState::NotInstalled));
-        assert_eq!(states[7], ("ffmpeg", CatalogState::NotInstalled));
+        assert_eq!(states[7], ("uv", CatalogState::NotInstalled));
+        assert_eq!(states[8], ("ffmpeg", CatalogState::NotInstalled));
     }
 
     #[test]
@@ -633,12 +762,23 @@ mod tests {
                 "category": "LocalModels",
                 "install": {"Homebrew": {"kind": "Cask", "name": "ollama-app"}},
                 "state": "NeedsHomebrew",
-                "installs_here": false
+                "installs_here": true
+            })
+        );
+        assert_eq!(
+            json[5],
+            serde_json::json!({
+                "id": "model",
+                "category": "LocalModels",
+                "install": {"OllamaModel": {"name": "gemma3:4b", "download_bytes": 3_350_272_403_u64}},
+                "state": "NeedsOllama",
+                "installs_here": true
             })
         );
         let old = Host {
             macos_major: Some(13),
             apple_silicon: true,
+            memory_bytes: Some(16 * GIB),
         };
         assert_eq!(
             serde_json::to_value(entries(&empty, &old)).unwrap()[4]["state"],
@@ -651,7 +791,96 @@ mod tests {
     }
 
     #[test]
-    fn test_six_entries_install_from_here_each_a_homebrew_formula_or_cask() {
+    fn test_the_starter_model_is_the_gemma_3_this_macs_memory_suits() {
+        let name = |memory| match starter_model(memory) {
+            CatalogInstall::OllamaModel { name, .. } => name,
+            other => panic!("{other:?}"),
+        };
+        assert_eq!(name(Some(4 * GIB)), "gemma3:1b");
+        assert_eq!(name(Some(8 * GIB)), "gemma3:4b");
+        assert_eq!(name(Some(16 * GIB)), "gemma3:4b");
+        assert_eq!(name(Some(24 * GIB)), "gemma3:12b");
+        assert_eq!(name(Some(36 * GIB)), "gemma3:12b");
+        assert_eq!(name(Some(64 * GIB)), "gemma3:27b");
+        assert_eq!(name(None), "gemma3:4b");
+        // Each download is at most about a third of the least memory it is
+        // chosen for, and each name passes the Ollama adapter's check.
+        for (least, name, bytes) in STARTER_MODELS {
+            assert!(least == 0 || bytes * 2 <= least, "{name}");
+            crate::adapters::ollama::validate_model_reference(name).expect(name);
+        }
+        // The catalog lists the one for the Mac it is asked about.
+        let empty = snapshot(Vec::new(), Vec::new());
+        let big = Host {
+            memory_bytes: Some(64 * GIB),
+            ..SILICON_15
+        };
+        assert_eq!(
+            entries(&empty, &big)[5].install,
+            CatalogInstall::OllamaModel {
+                name: "gemma3:27b",
+                download_bytes: 17_413_409_652
+            }
+        );
+    }
+
+    #[test]
+    fn test_the_starter_model_installs_through_an_ollama_that_can_pull_and_counts_any_model() {
+        let o = "ollama:http://127.0.0.1:11434";
+        let not_running = ManagerInstance {
+            status: InstanceStatus {
+                unavailable: Some(Unavailable::NotRunning),
+                notes: Vec::new(),
+                no_answer: None,
+            },
+            ..instance("ollama", o)
+        };
+        assert_eq!(
+            states(
+                &snapshot(vec![not_running.clone()], Vec::new()),
+                &SILICON_15
+            )[5],
+            ("model", CatalogState::OllamaNotReady)
+        );
+        assert_eq!(
+            install_request(
+                &snapshot(vec![not_running], Vec::new()),
+                &SILICON_15,
+                "model"
+            ),
+            Err(InstallRefusal::State(CatalogState::OllamaNotReady))
+        );
+        let running = snapshot(vec![instance("ollama", o)], Vec::new());
+        assert_eq!(
+            states(&running, &SILICON_15)[5],
+            ("model", CatalogState::NotInstalled)
+        );
+        assert_eq!(
+            install_request(&running, &SILICON_15, "model"),
+            Ok(OpRequest {
+                kind: OpKind::Install,
+                instance_id: o.to_string(),
+                artifact_kind: ArtifactKind::Model,
+                name: "gemma3:4b".to_string(),
+            })
+        );
+        // Any model at all: a Mac with one has a model to start with.
+        let with_one = snapshot(
+            vec![instance("ollama", o)],
+            vec![artifact(o, ArtifactKind::Model, "qwen3:8b", None)],
+        );
+        assert_eq!(
+            states(&with_one, &SILICON_15)[5],
+            ("model", CatalogState::Installed)
+        );
+        assert_eq!(
+            install_request(&with_one, &SILICON_15, "model"),
+            Err(InstallRefusal::State(CatalogState::Installed))
+        );
+    }
+
+    #[test]
+    fn test_every_entry_but_homebrew_installs_from_here() {
         let here: Vec<&str> = CATALOG
             .iter()
             .filter(|item| item.installs_here)
@@ -659,11 +888,20 @@ mod tests {
             .collect();
         assert_eq!(
             here,
-            ["claude-code", "codex", "gemini-cli", "node", "uv", "ffmpeg"]
+            [
+                "claude-code",
+                "codex",
+                "gemini-cli",
+                "ollama",
+                "model",
+                "node",
+                "uv",
+                "ffmpeg"
+            ]
         );
         for item in CATALOG.iter().filter(|item| item.installs_here) {
             assert!(
-                matches!(item.install, CatalogInstall::Homebrew { .. }),
+                !matches!(item.install, CatalogInstall::HomebrewItself),
                 "{}",
                 item.id
             );
@@ -719,9 +957,9 @@ mod tests {
             install_request(&mac, &SILICON_15, "uv"),
             Err(InstallRefusal::State(CatalogState::Installed))
         );
-        // Not offered from here: Homebrew, Ollama, and what is no entry --
-        // a package name included.
-        for id in ["homebrew", "ollama", "jq", "", "ollama-app", "Codex"] {
+        // Not offered from here: Homebrew, and what is no entry -- a
+        // package or model name included.
+        for id in ["homebrew", "jq", "", "ollama-app", "gemma3:4b", "Codex"] {
             assert_eq!(
                 install_request(&mac, &SILICON_15, id),
                 Err(InstallRefusal::NotOffered),

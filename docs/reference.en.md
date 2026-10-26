@@ -369,10 +369,10 @@ This app runs package managers on your behalf, so the boundary matters more than
 Being honest about this is part of the point:
 
 - **No search for new tools, and a short catalogue only.** The Installed page searches the
-  tools you already have by name, command or description. The Discover page suggests eight
-  tools and installs six of them with Homebrew (Claude Code, Codex, Gemini CLI, Node.js, uv and
-  ffmpeg); Homebrew itself you install in Terminal, as its sheet walks you through, and it does
-  not install Ollama yet, nor anything beyond its list.
+  tools you already have by name, command or description. The Discover page suggests nine
+  entries and installs eight of them: seven with Homebrew (Claude Code, Codex, Gemini CLI,
+  Ollama, Node.js, uv and ffmpeg) and a Gemma 3 model sized for your Mac with Ollama; Homebrew
+  itself you install in Terminal, as its sheet walks you through. Nothing beyond its list.
 - **macOS only.** The core crate is portable and the architecture is cross-platform, but
   everything below the trait boundary assumes Unix today, and only macOS is tested. Windows and
   Linux are roadmap, not "nearly working".

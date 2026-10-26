@@ -309,7 +309,9 @@ export function buildPlan(world: World, inst: ManagerInstance, request: OpReques
   // Only Discover installs, and only with Homebrew (`plan_install` in
   // mockBackend.ts); `plan_operation` refuses an install before the gate,
   // as the real IPC does.
-  if (request.kind === "Install" && inst.adapter_id !== "brew") throw refusal({ kind: "refused" });
+  if (request.kind === "Install" && inst.adapter_id !== "brew" && inst.adapter_id !== "ollama") {
+    throw refusal({ kind: "refused" });
+  }
   // Stable layouts reproducing the refusal checks without reading a disk.
   if (request.kind === "Uninstall" && inst.adapter_id === "brew" && request.artifact_kind === "Cask" && request.name === "codex") {
     throw refusal({ kind: "uninstall_unsafe", reason: "cask_link_not_owned", path: "/opt/homebrew/bin/codex" });
@@ -442,14 +444,20 @@ export function buildPlan(world: World, inst: ManagerInstance, request: OpReques
         ...plan,
         // `OLLAMA_HOST` set to the daemon the instance was detected at, as
         // `OllamaAdapter::plan` sets it: this Mac's, with no login to mask.
-        action: command(inst.exe_path, [upgrade ? "pull" : "rm", name], [
+        // An install pulls too: the starter model from Discover.
+        action: command(inst.exe_path, [upgrade || kind === "Install" ? "pull" : "rm", name], [
           ["OLLAMA_HOST", inst.id.slice("ollama:".length)],
         ]),
         // The registry is said on the download only, never on an uninstall;
         // then that the upgrade downloads what changed.
-        warnings: upgrade
-          ? [...(thirdParty ? [{ ThirdPartyRegistry: { host } }] : []), "DownloadsModelChanges"]
-          : [scope("Ollama")],
+        warnings:
+          kind === "Install"
+            ? thirdParty
+              ? [{ ThirdPartyRegistry: { host } }]
+              : []
+            : upgrade
+              ? [...(thirdParty ? [{ ThirdPartyRegistry: { host } }] : []), "DownloadsModelChanges"]
+              : [scope("Ollama")],
         // A pull gets the runner's longest, a day; rm ten minutes
         // (`PULL_TIMEOUT_SECS`, `RM_TIMEOUT_SECS`).
         timeout_secs: upgrade ? 24 * 60 * 60 : 600,
@@ -564,7 +572,7 @@ function successLog(plan: Plan, { inst, artifact, candidate }: Subject): LogLine
         : [err(`    Removing ${inHome(`.cargo/bin/${bin}`)}`)];
     }
     case "ollama":
-      return upgrade
+      return upgrade || plan.request.kind === "Install"
         ? [
             err("pulling manifest"),
             err(`pulling 6a0746a1ec1a: 100% ▕████████████████████▏ ${gigabytes(artifact?.size_bytes ?? null)}`),

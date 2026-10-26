@@ -1407,13 +1407,21 @@ export type FollowUpWarning = Extract<
  * snapshot (`get_catalog`).
  */
 export type CatalogCategory = "Basics" | "AiAssistants" | "LocalModels" | "CommonTools";
-export type CatalogInstall = "HomebrewItself" | { Homebrew: { kind: "Formula" | "Cask"; name: string } };
+export type CatalogInstall =
+  | "HomebrewItself"
+  | { Homebrew: { kind: "Formula" | "Cask"; name: string } }
+  /** A model Ollama pulls, and about how much that downloads: the starter model the Mac's memory suits. */
+  | { OllamaModel: { name: string; download_bytes: number } };
 export type CatalogState =
   | "Installed"
   | "NotInstalled"
   | "NeedsHomebrew"
   | { NeedsMacOS: { major: number } }
-  | "HomebrewUnsupported";
+  | "HomebrewUnsupported"
+  /** The starter model, with no Ollama source. */
+  | "NeedsOllama"
+  /** The starter model, with an Ollama that cannot pull now: not running, not answering, view only. */
+  | "OllamaNotReady";
 /**
  * What the Homebrew hand-off sees of /opt/homebrew (Rust `InstallerLook`,
  * `look_for_homebrew` in src-tauri/src/ipc.rs): whether Homebrew's

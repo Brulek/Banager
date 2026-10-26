@@ -129,7 +129,7 @@ beforeEach(() => {
   operations = [];
   planInstall = async (catalogId) => {
     const entry = catalog.find((candidate) => candidate.id === catalogId)!;
-    if (entry.install === "HomebrewItself") throw JSON.stringify({ kind: "refused" });
+    if (entry.install === "HomebrewItself" || !("Homebrew" in entry.install)) throw JSON.stringify({ kind: "refused" });
     return installPlan(entry.install.Homebrew.kind, entry.install.Homebrew.name);
   };
   useUiStore.setState({ opFinishedAt: {} });
@@ -201,7 +201,9 @@ describe("the Discover page", () => {
     // Who needs it and how it is used, behind the line's ⓘ.
     fireEvent.click(within(codex).getByRole("button", { name: "Details: Codex" }));
     expect(codex).toHaveTextContent("Once installed, type codex in a new Terminal window.");
-    expect(screen.getByText("Ollama can't be installed from here yet.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Tools here install with Homebrew, and the model with Ollama; each install shows the command it runs first."),
+    ).toBeInTheDocument();
     expect(screen.getByText("Tools to start with, and which of them this Mac already has.")).toBeInTheDocument();
     // Nothing is planned until Install is pressed.
     expect(calls("plan_install")).toEqual([]);
@@ -386,6 +388,82 @@ describe("the Discover page", () => {
     await waitFor(() => expect(rows()).toHaveLength(8));
     expect(rows()[0]).toEqual(["Homebrew", "Not supported on this Mac"]);
     expect(screen.queryByRole("button", { name: "Install Homebrew" })).toBeNull();
+  });
+
+  it("offers the model this Mac's memory suits through Ollama, and Open Ollama where Ollama is not running", async () => {
+    const ollama = {
+      id: "ollama:http://127.0.0.1:11434",
+      adapter_id: "ollama",
+      exe_path: "/opt/homebrew/bin/ollama",
+      prefix: "/Users/you/.ollama",
+      scope: "User" as const,
+      version: "0.40.1",
+      answered_at: null,
+      unverified_version: null,
+      read_only_reason: null,
+      status: { unavailable: null, notes: [] },
+    };
+    const model: CatalogEntry = {
+      id: "model",
+      category: "LocalModels",
+      install: { OllamaModel: { name: "gemma3:4b", download_bytes: 3_350_272_403 } },
+      state: "NotInstalled",
+      installs_here: true,
+    };
+    snapshot = { ...snapshotAt(1_789_700_000), instances: [ollama] };
+    entries = [model];
+    planInstall = async () => ({
+      id: "plan-gemma3:4b",
+      plan: {
+        request: { kind: "Install", instance_id: ollama.id, artifact_kind: "Model", name: "gemma3:4b" },
+        action: {
+          Command: {
+            program: "/opt/homebrew/bin/ollama",
+            args: ["pull", "gemma3:4b"],
+            env: [["OLLAMA_HOST", "http://127.0.0.1:11434"]],
+          },
+        },
+        needs_password: false,
+        locks: [ollama.id],
+        cancel_policy: "KillThenReconcile",
+        warnings: [],
+        affected: [],
+        timeout_secs: 7200,
+      },
+      issued_at: 1_789_700_000,
+    });
+    const { unmount } = renderWithProviders(<DiscoverPage />);
+    await waitFor(() => expect(rows()).toEqual([["Gemma 3", "Install"]]));
+    expect(row("model")).toHaveTextContent("Google's open AI model, sized for this Mac: gemma3:4b, about 3.4 GB");
+    fireEvent.click(within(row("model")).getByRole("button", { name: "Install Gemma 3" }));
+    const sheet = await screen.findByRole("alertdialog", { name: "Install “Gemma 3”?" });
+    await waitFor(() => expect(calls("plan_install")[0][1]).toEqual({ catalogId: "model" }));
+    expect(sheet).toHaveTextContent("Ollama downloads gemma3:4b from its library, about 3.4 GB.");
+    expect(sheet).not.toHaveTextContent("Homebrew");
+    await waitFor(() => expect(within(sheet).getByRole("button", { name: "Install" })).toBeEnabled());
+    fireEvent.click(within(sheet).getByRole("button", { name: "Show Command" }));
+    expect(within(sheet).getByText(command(/\/opt\/homebrew\/bin\/ollama pull gemma3:4b$/))).toBeInTheDocument();
+    unmount();
+
+    // Ollama is here and not running: Open Ollama, which opens it.
+    snapshot = { ...snapshot, instances: [{ ...ollama, status: { unavailable: "NotRunning", notes: [] } }] };
+    entries = [{ ...model, state: "OllamaNotReady" }];
+    const { unmount: second } = renderWithProviders(<DiscoverPage />);
+    await waitFor(() => expect(rows()).toEqual([["Gemma 3", "Open Ollama"]]));
+    fireEvent.click(within(row("model")).getByRole("button", { name: "Open Ollama" }));
+    await waitFor(() => expect(calls("open_ollama_app")).toHaveLength(1));
+    second();
+
+    // Pulled from here: how to use it, with Copy for what to type.
+    snapshot = { ...snapshotAt(1_789_700_000), instances: [ollama] };
+    entries = [{ ...model, state: "Installed" }];
+    operations = [{ ...installOp(9, "gemma3:4b", "Done", "Succeeded"), instance_id: ollama.id, artifact_kind: "Model" }];
+    renderWithProviders(<DiscoverPage />);
+    await waitFor(() => expect(rows()).toEqual([["Gemma 3", "Installed"]]));
+    expect(row("model").querySelector("[data-catalog-use]")).toHaveTextContent(
+      "Type ollama run gemma3:4b in a new Terminal window.",
+    );
+    expect(within(row("model")).getByRole("button", { name: "Copy “ollama run gemma3:4b”" })).toBeInTheDocument();
   });
 
   it("says it in Chinese and in Taiwan's words", async () => {

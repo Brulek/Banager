@@ -6,7 +6,7 @@
  */
 import type { CatalogEntry, CatalogInstall, CatalogState, InstalledArtifact, ManagerInstance } from "../lib/types";
 
-type Recognizer = { family: string } | { source: string } | { formula: string };
+type Recognizer = { family: string } | { source: string } | { formula: string } | "anyModel";
 
 interface Item {
   id: string;
@@ -48,7 +48,15 @@ const CATALOG: Item[] = [
     install: { Homebrew: { kind: "Cask", name: "ollama-app" } },
     recognizedBy: [{ family: "ollama" }, { source: "ollama" }],
     needsMacOS: 14,
-    installsHere: false,
+    installsHere: true,
+  },
+  {
+    id: "model",
+    category: "LocalModels",
+    // `starter_model` for the pretend Mac's 16 GB.
+    install: { OllamaModel: { name: "gemma3:4b", download_bytes: 3_350_272_403 } },
+    recognizedBy: ["anyModel"],
+    installsHere: true,
   },
   {
     id: "node",
@@ -77,6 +85,7 @@ const CATALOG: Item[] = [
 const HOST = { macosMajor: 15, appleSilicon: true };
 
 function has(way: Recognizer, instances: ManagerInstance[], artifacts: InstalledArtifact[]): boolean {
+  if (way === "anyModel") return artifacts.some((a) => a.key.kind === "Model" && a.key.instance_id.startsWith("ollama:"));
   if ("family" in way) return artifacts.some((a) => a.facts.family === way.family);
   if ("source" in way) return instances.some((i) => i.adapter_id === way.source);
   return artifacts.some(
@@ -93,10 +102,15 @@ export function mockCatalog(instances: ManagerInstance[], artifacts: InstalledAr
   const canInstall = instances.some(
     (i) => i.adapter_id === "brew" && i.status.unavailable === null && i.read_only_reason === null,
   );
+  const canPull = instances.some(
+    (i) => i.adapter_id === "ollama" && i.status.unavailable === null && i.read_only_reason === null,
+  );
   return CATALOG.map((item) => {
     let state: CatalogState;
     if (item.recognizedBy.some((way) => has(way, instances, artifacts))) state = "Installed";
     else if (item.install === "HomebrewItself") state = HOST.appleSilicon ? "NotInstalled" : "HomebrewUnsupported";
+    else if ("OllamaModel" in item.install)
+      state = canPull ? "NotInstalled" : instances.some((i) => i.adapter_id === "ollama") ? "OllamaNotReady" : "NeedsOllama";
     else if (item.needsMacOS !== undefined && HOST.macosMajor < item.needsMacOS) state = { NeedsMacOS: { major: item.needsMacOS } };
     else state = canInstall ? "NotInstalled" : "NeedsHomebrew";
     return { id: item.id, category: item.category, install: item.install, state, installs_here: item.installsHere };

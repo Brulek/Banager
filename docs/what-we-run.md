@@ -5623,11 +5623,13 @@ refresh reads its packages, its tools are looked at like any other's.
 
 The Discover page (「发现」, Taiwan's 「探索」; phase 5) lists the
 tools Banager suggests: Homebrew; Claude Code, Codex and Gemini CLI;
-Ollama; Node.js, uv and ffmpeg. The list is compiled into the app
-(`CATALOG` in `crates/banager-core/src/catalog.rs`): nothing is downloaded
-to show it, and it names no command -- what installs an entry is
-Homebrew itself, which Banager does not install, or a Homebrew formula or
-cask by name, which the brew adapter turns into its own command.
+Ollama and a model to start with; Node.js, uv and ffmpeg. The list is
+compiled into the app (`CATALOG` in `crates/banager-core/src/catalog.rs`):
+nothing is downloaded to show it, and it names no command -- what
+installs an entry is Homebrew itself, which Banager does not install, a
+Homebrew formula or cask by name, which the brew adapter turns into its
+own command, or a model of Ollama's library by name, which the Ollama
+adapter does.
 
 Each entry's state comes from the snapshot the window already has, asked
 for with `get_catalog` (`src-tauri/src/ipc.rs`, `catalog::entries`):
@@ -5636,39 +5638,55 @@ an AI tool by its family in `data/ai-tools.json` (Claude Code's npm
 package, its two casks and its own installer alike), Homebrew by any
 Homebrew source, Node.js by Homebrew's `node` or a versioned `node@N` or
 by any npm source, uv by the `uv` formula or a uv source, ffmpeg by its
-formula or a versioned one, Ollama by its family or an Ollama source;
-otherwise "Not installed" where a Homebrew that answered and can be
-written to is there, "Needs Homebrew" where none is, and for Ollama
-"Needs macOS 14" on an older macOS (its cask's `depends_on`). Homebrew
-itself, missing on a Mac that is not Apple silicon, is "Not supported on
-this Mac": its official installer no longer installs there. Two values
-the kernel keeps are read for this, with `sysctlbyname`:
-`kern.osproductversion` and `hw.optional.arm64`, which is 1 on Apple
-silicon under Rosetta too. Nothing else is read, nothing runs, nothing
-is written, and no connection is made for it. Until a check has
-finished, the page says nothing of any entry.
+formula or a versioned one, Ollama by its family or an Ollama source,
+the model by any model an Ollama source lists; otherwise "Not
+installed" where a Homebrew that answered and can be written to is
+there, "Needs Homebrew" where none is, and for Ollama "Needs macOS 14" on
+an older macOS (its cask's `depends_on`). Homebrew itself, missing on a
+Mac that is not Apple silicon, is "Not supported on this Mac": its
+official installer no longer installs there. The model is "Not
+installed" where an Ollama that answered and can be written to is
+there, "Needs Ollama" where there is no Ollama source, and otherwise
+"Ollama can't download now" -- with Open Ollama where its app is not
+running, as its source's notice has it. The model is Gemma 3 in the size
+that suits the Mac's memory (`catalog::starter_model`): the largest whose
+download is at most about a third of it -- `gemma3:1b` (about 0.81 GB)
+under 8 GiB, `gemma3:4b` (3.35 GB) from 8 GiB, `gemma3:12b` (8.16 GB) from
+24 GiB, `gemma3:27b` (17.4 GB) from 48 GiB, and the 4b where the memory
+could not be read. Those sizes are fixed in the app, as Ollama's
+registry gave the layers and config of each on 2026-10-27; nothing is
+fetched to show them. Three values the kernel keeps are read for this,
+with `sysctlbyname`: `kern.osproductversion`, `hw.optional.arm64`, which
+is 1 on Apple silicon under Rosetta too, and `hw.memsize`. Nothing else
+is read, nothing runs, nothing is written, and no connection is made for
+it. Until a check has finished, the page says nothing of any entry.
 
-Six entries install from here (phase 5 step B): Claude Code, Codex and
-Gemini CLI, Node.js, uv and ffmpeg (`CatalogItem::installs_here`).
-Homebrew itself does not -- Banager does not run its installer -- nor,
-yet, does Ollama. A "Not installed" row of one of the six has Install,
-which opens a sheet that asks for the plan with `plan_install`
-(`src-tauri/src/ipc.rs`), naming the entry by its id and never a
-package: `catalog::install_request` works out, from the snapshot as it is
-then, the entry's own formula or cask under the first Homebrew that
+Every entry but Homebrew installs from here (phase 5 steps B and D):
+Claude Code, Codex and Gemini CLI, Ollama's app, Node.js, uv and ffmpeg
+with Homebrew, the model with Ollama (`CatalogItem::installs_here`).
+Homebrew itself does not -- Banager does not run its installer; see
+"Homebrew itself". A "Not installed" row has Install, which opens a
+sheet that asks for the plan with `plan_install`
+(`src-tauri/src/ipc.rs`), naming the entry by its id and never a package
+or a model: `catalog::install_request` works out, from the snapshot as it
+is then, the entry's own formula or cask under the first Homebrew that
 answered and can be written to, in the order detection found them
-(`/opt/homebrew` before `/usr/local`), and refuses, before any source is
-asked, an id the catalog does not install from here and an entry that is
-not "Not installed" now. The plan is then made as every other operation's
-is (`Session::issue_plan`, its gates, the plan store) and is exactly the
-Homebrew install in "Homebrew" above:
+(`/opt/homebrew` before `/usr/local`), or the model this Mac's memory
+suits under the first Ollama that answered and can be written to, and
+refuses, before any source is asked, an id the catalog does not install
+from here and an entry that is not "Not installed" now. The plan is then
+made as every other operation's is (`Session::issue_plan`, its gates, the
+plan store) and is exactly the install in "Homebrew" or "Ollama" above:
 
     <brew> install --formula <name>
     <brew> install --cask <name>
+    <ollama> pull <model>
 
-with Homebrew's five variables, and `SUDO_ASKPASS` where it applies.
-Nothing else runs to make the preview: what Homebrew also installs, and
-what it may update on the way, is said in general, not listed. The sheet
+with Homebrew's five variables, and `SUDO_ASKPASS` where it applies, or
+`OLLAMA_HOST`. Nothing else runs to make the preview: what Homebrew also
+installs, and what it may update on the way, is said in general, not
+listed; the model's sheet says about how much it downloads, from the
+size fixed in the app. The sheet
 shows the command (Show Command); Install starts that plan, by its id,
 and nothing else. As after any install, Banager then asks Homebrew whether
 it is there, and the row says "Installed" where it is -- with what to

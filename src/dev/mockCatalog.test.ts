@@ -47,7 +47,13 @@ describe("the browser preview's catalog", () => {
     const names = [...table.matchAll(/name: "([^"]+)"/g)].map((m) => m[1]);
     const preview = mockCatalog([], []);
     expect(preview.map((entry) => entry.id)).toEqual(ids);
-    expect(preview.flatMap((entry) => (entry.install === "HomebrewItself" ? [] : [entry.install.Homebrew.name]))).toEqual(names);
+    expect(
+      preview.flatMap((entry) =>
+        entry.install === "HomebrewItself"
+          ? []
+          : ["Homebrew" in entry.install ? entry.install.Homebrew.name : entry.install.OllamaModel.name],
+      ),
+    ).toEqual(names);
   });
 
   it("works each state out as catalog.rs does", () => {
@@ -89,7 +95,10 @@ describe("the browser preview's catalog", () => {
       expect((await states("full")).every(([, state]) => state === "Installed")).toBe(true);
       expect(await states("empty")).toEqual([
         ["homebrew", "NotInstalled"],
-        ...["claude-code", "codex", "gemini-cli", "ollama", "node", "uv", "ffmpeg"].map((id) => [id, "NeedsHomebrew"]),
+        ...["claude-code", "codex", "gemini-cli", "ollama"].map((id) => [id, "NeedsHomebrew"]),
+        // The starter model needs Ollama, not Homebrew.
+        ["model", "NeedsOllama"],
+        ...["node", "uv", "ffmpeg"].map((id) => [id, "NeedsHomebrew"]),
       ]);
     } finally {
       vi.useRealTimers();
@@ -116,12 +125,13 @@ describe("the browser preview's catalog", () => {
         "claude-code",
         "codex",
         "gemini-cli",
+        "ollama",
         "node",
         "uv",
         "ffmpeg",
       ]);
       // Not offered from here, and no entry at all.
-      for (const catalogId of ["homebrew", "ollama", "jq"]) {
+      for (const catalogId of ["homebrew", "jq", "gemma3:4b"]) {
         await refusal(backend.invoke("plan_install", { catalogId }), JSON.stringify({ kind: "refused" }));
       }
       const issued = await settle<IssuedPlan>(backend.invoke("plan_install", { catalogId: "gemini-cli" }));
