@@ -11,7 +11,9 @@
 //! what it is, who needs it, how it is used -- are the window's, in its
 //! three locale files, keyed by `CatalogItem::id`.
 
-use crate::model::{ArtifactKind, InstalledArtifact, ManagerInstance, OpKind, OpRequest};
+use crate::model::{
+    ArtifactKind, InstallReason, InstalledArtifact, ManagerInstance, OpKind, OpRequest,
+};
 use crate::session::Snapshot;
 use serde::Serialize;
 
@@ -89,7 +91,11 @@ enum Recognizer {
     /// A source of this adapter is on the Mac, answering or not: npm's runs
     /// on a Node, a uv source is uv, an Ollama source is Ollama.
     Source(&'static str),
-    /// A Homebrew formula by name, or a versioned one of it (`node@22`).
+    /// A Homebrew formula by name, or a versioned one of it (`node@22`) that
+    /// was not only brought in for another: a versioned formula is keg-only,
+    /// and one installed as a dependency (code-server's node@22) is not
+    /// linked, so its command is nowhere Terminal looks (from the
+    /// independent review of the branch).
     Formula(&'static str),
     /// Any model this Mac's own Ollama lists: a Mac with one has a model to
     /// start with.
@@ -593,11 +599,12 @@ fn has(
             a.key.kind == ArtifactKind::Formula
                 && a.key.instance_id.starts_with("brew:")
                 && (a.key.name == name
-                    || a.key.name.strip_prefix(name).is_some_and(|rest| {
-                        rest.strip_prefix('@').is_some_and(|v| {
-                            !v.is_empty() && v.chars().all(|c| c.is_ascii_digit() || c == '.')
-                        })
-                    }))
+                    || (a.reason != InstallReason::Dependency
+                        && a.key.name.strip_prefix(name).is_some_and(|rest| {
+                            rest.strip_prefix('@').is_some_and(|v| {
+                                !v.is_empty() && v.chars().all(|c| c.is_ascii_digit() || c == '.')
+                            })
+                        })))
         }),
     }
 }
@@ -807,6 +814,16 @@ mod tests {
                 vec![instance("brew", b)],
                 vec![artifact(b, ArtifactKind::Formula, name, None)],
             );
+            let node = states(&mac, &SILICON_15)[6];
+            assert_eq!(node.1 == CatalogState::Installed, installed, "{name}");
+        }
+        // A versioned one brought in only for another (code-server's
+        // node@22, keg-only and not linked): Node.js is still to install.
+        // The formula itself, as a dependency, is Node all the same.
+        for (name, installed) in [("node@22", false), ("node", true)] {
+            let mut dependency = artifact(b, ArtifactKind::Formula, name, None);
+            dependency.reason = InstallReason::Dependency;
+            let mac = snapshot(vec![instance("brew", b)], vec![dependency]);
             let node = states(&mac, &SILICON_15)[6];
             assert_eq!(node.1 == CatalogState::Installed, installed, "{name}");
         }

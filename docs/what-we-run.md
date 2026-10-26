@@ -5650,7 +5650,9 @@ an AI tool by its family in `data/ai-tools.json` (Claude Code's npm
 package, its two casks and its own installer alike), Homebrew by any
 Homebrew source, Node.js by Homebrew's `node` or a versioned `node@N` or
 by any npm source, uv by the `uv` formula or a uv source, ffmpeg by its
-formula or a versioned one, Ollama by its family, an Ollama source, or
+formula or a versioned one -- a versioned formula only where it was not
+installed just for another (code-server's `node@22`, keg-only and not
+linked, puts no `node` where Terminal looks), Ollama by its family, an Ollama source, or
 Ollama.app in /Applications or ~/Applications (looked up as Open Ollama
 looks it up, `ollama::ollama_app_path`: an app dragged in and never
 opened has no `ollama` command yet, and no source), the model by any

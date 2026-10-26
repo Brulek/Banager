@@ -114,12 +114,15 @@ function has(way: Recognizer, instances: ManagerInstance[], artifacts: Installed
   if (way === "anyModel") return artifacts.some((a) => a.key.kind === "Model" && thisMacsOllama(a.key.instance_id));
   if ("family" in way) return artifacts.some((a) => a.facts.family === way.family);
   if ("source" in way) return instances.some((i) => i.adapter_id === way.source);
+  // A versioned one only where it was not brought in for another, as Rust.
   return artifacts.some(
     (a) =>
       a.key.kind === "Formula" &&
       a.key.instance_id.startsWith("brew:") &&
       (a.key.name === way.formula ||
-        (a.key.name.startsWith(way.formula) && /^@[0-9.]+$/.test(a.key.name.slice(way.formula.length)))),
+        (a.reason !== "Dependency" &&
+          a.key.name.startsWith(way.formula) &&
+          /^@[0-9.]+$/.test(a.key.name.slice(way.formula.length)))),
   );
 }
 
