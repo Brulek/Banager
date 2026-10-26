@@ -27,7 +27,7 @@ import type {
   Warning,
 } from "../lib/types";
 import { NO_FACTS } from "../lib/types";
-import { notLookedUp as noCheckLooksUp } from "../lib/updateState";
+import { leftOutOfUpdateCheck, notLookedUp as noCheckLooksUp } from "../lib/updateState";
 import {
   MANY_CARGO,
   MANY_CASKS,
@@ -1136,10 +1136,14 @@ function scenarioWorld(state: ScenarioState): World {
       // with it, no update listed is no news, and the pages say so
       // (`everySourceChecked`) instead of "Everything is up to date". Nor
       // the pip packages another one requires, which pip never looks up,
-      // or any other row no check looks up (`notLookedUp` in
-      // updateState.ts), for the same reason.
+      // any other row no check looks up, or a Homebrew app `brew outdated`
+      // leaves out with Settings as they start -- one that updates itself,
+      // one declared `latest` (`leftOutOfUpdateCheck` in updateState.ts) --
+      // for the same reason (BAN-001).
       world.instances = world.instances.filter((i) => i.id !== IDS.codex);
-      world.artifacts = world.artifacts.filter((a) => a.key.instance_id !== IDS.codex && !noCheckLooksUp(a));
+      world.artifacts = world.artifacts.filter(
+        (a) => a.key.instance_id !== IDS.codex && !leftOutOfUpdateCheck(a, false),
+      );
       return world;
     case "hidden":
       allAnswering(world);

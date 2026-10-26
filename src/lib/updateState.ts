@@ -593,7 +593,9 @@ export function leftOutOfUpdateCheck(artifact: InstalledArtifact, includeSelfUpd
  *   Updates page says "Everything is up to date". It is false where a
  *   source Banager never checks is there too (Codex's own install), where
  *   pip has a package another one requires, which it never looks up, or
- *   another row no check looks up is (`notLookedUp`), and where anything
+ *   another row its source's check leaves out is (`leftOutOfUpdateCheck`:
+ *   one no check looks up, a Homebrew app `brew outdated` does not list,
+ *   as `settings.include_self_updating` says), and where anything
  *   is listed: then the headline says that what can be
  *   updated here is up to date, not that everything is.
  * - `nothingToUpdate`: none to install, and a source was not checked in
@@ -604,7 +606,7 @@ export function leftOutOfUpdateCheck(artifact: InstalledArtifact, includeSelfUpd
  *   `everything` of the sources it does not name: none of them has a row
  *   listed -- hidden, can't be updated here, a copy Terminal does not run
  *   -- each is one Banager checks (not Codex's own install), and none of
- *   its rows is one no check looks up (`notLookedUp`). Where it
+ *   its rows is one its check leaves out (`leftOutOfUpdateCheck`). Where it
  *   is false the headline claims of the rest no more than the all good
  *   would of the same rows: 「其余能在这里更新的都已是最新」. The rows of
  *   a source it names (uv's, kept from its last answer) are its own, said
@@ -650,7 +652,7 @@ export type UpdatesSummary =
 
 export function updatesSummary(
   snapshot: Pick<Snapshot, "instances" | "updates" | "errors"> & Partial<Pick<Snapshot, "artifacts">>,
-  settings: HidingSettings,
+  settings: HidingSettings & Partial<Pick<Settings, "include_self_updating">>,
   holdsRow: (candidate: UpdateCandidate) => boolean = () => false,
   underway: (candidate: UpdateCandidate) => boolean = () => false,
   waitsForPassword: (candidate: UpdateCandidate) => boolean = () => false,
@@ -672,13 +674,18 @@ export function updatesSummary(
     notUsed: free.length,
   };
   if (password > 0) return { kind: "needsPassword", count: password, ...besides };
+  // A row its source's check leaves out -- one no check looks up, and a
+  // Homebrew app `brew outdated` does not list (`leftOutOfUpdateCheck`)
+  // -- is no news, on this page as on the Installed page (BAN-001).
+  const leftOut = (artifact: InstalledArtifact) =>
+    leftOutOfUpdateCheck(artifact, settings.include_self_updating ?? false);
   const notChecked = notCheckedThisTime(snapshot.instances, snapshot.errors);
   if (notChecked !== null) {
     const ofNamed = (instanceId: string) => namedAsNotChecked(notChecked, instanceId);
     const everythingElse =
       snapshot.updates.every((candidate) => ofNamed(candidate.key.instance_id)) &&
       snapshot.instances.every((instance) => ofNamed(instance.id) || checkedInFull(instance)) &&
-      artifacts.every((artifact) => ofNamed(artifact.key.instance_id) || !notLookedUp(artifact));
+      artifacts.every((artifact) => ofNamed(artifact.key.instance_id) || !leftOut(artifact));
     return { kind: "nothingToUpdate", notChecked, everythingElse, ...besides };
   }
   // Not yet the all good: a row whose lookup did not succeed is among
@@ -686,7 +693,7 @@ export function updatesSummary(
   const everything =
     snapshot.updates.length === 0 &&
     everySourceChecked(snapshot.instances, snapshot.errors) &&
-    !artifacts.some(notLookedUp);
+    !artifacts.some(leftOut);
   return { kind: "upToDate", everything, ...besides };
 }
 

@@ -3052,7 +3052,10 @@ about updates on them, rather than "Up to date". Where pip has any, the
 Overview and an empty Updates page say "Everything you can update here
 is up to date", not "Everything is up to date" (`notLookedUp` in
 `src/lib/updateState.ts`). The same goes for a pipx tool and an npm global
-no check looks up (below and in their sections). pip looks packages up one
+no check looks up (below and in their sections), and for a Homebrew app
+`brew outdated` leaves out: one declared `latest`, one that updates
+itself while Settings leaves those out, and, with that switch on, one
+whose app Homebrew can't read (`leftOutOfUpdateCheck`). pip looks packages up one
 at a time, about a second each, so the check is given 60 seconds and 1.5
 more for each package it looks up, at most 3 minutes
 (`PipAdapter::outdated_timeout`). A check shows its results only once

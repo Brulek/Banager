@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import i18n from "../i18n";
 import { notCheckedHeadline, notCheckedNames } from "./allGood";
 import { updatesSummary, type HidingSettings } from "./updateState";
-import type { InstanceNote, ManagerInstance, SourceError, UpdateCandidate } from "./types";
+import type { InstalledArtifact, InstanceNote, ManagerInstance, SourceError, UpdateCandidate } from "./types";
+import { NO_FACTS } from "./types";
 
 /**
  * I22 (decisions round, 2026-10-06): the Overview's 「都好了」. With nothing
@@ -313,5 +314,50 @@ describe("the names in the headline", () => {
     expect(notCheckedHeadline(en, { ids: [ollama.id], partly: false, rest: false }, false, sources)).toBe(
       "Ollama wasn't checked this time",
     );
+  });
+
+  it("is not the plain up to date beside a Homebrew app the check leaves out (BAN-001)", () => {
+    // A cask that updates itself while Settings leaves those out, one
+    // declared `latest`, and with the switch on one Homebrew can't read
+    // the app of: the Installed page says nothing about their updates,
+    // so the Overview can't say everything is up to date either.
+    const cask = (name: string, over: Partial<InstalledArtifact> = {}): InstalledArtifact => ({
+      key: { instance_id: brew.id, kind: "Cask", name },
+      display_name: name,
+      version: "1.0.0",
+      reason: "Requested",
+      description: null,
+      homepage: null,
+      size_bytes: null,
+      installed_at: null,
+      path: null,
+      auto_updates: false,
+      uninstall_blocked: null,
+      facts: NO_FACTS,
+      ...over,
+    });
+    const selfUpdating = cask("google-chrome", { auto_updates: true });
+    const latest = cask("some-latest-app", { version: "latest" });
+    const pkg = cask("zoom", { auto_updates: true, facts: { ...NO_FACTS, no_single_app: true } });
+    const off = { ...hiding(), include_self_updating: false };
+    const on = { ...hiding(), include_self_updating: true };
+    const everything = (artifacts: InstalledArtifact[], settings: HidingSettings, instances = [brew]) =>
+      updatesSummary({ instances, updates: [], errors: [], artifacts }, settings);
+    expect(everything([cask("iterm2")], off)).toMatchObject({ kind: "upToDate", everything: true });
+    expect(everything([selfUpdating], off)).toMatchObject({ kind: "upToDate", everything: false });
+    expect(everything([selfUpdating], on)).toMatchObject({ kind: "upToDate", everything: true });
+    expect(everything([latest], on)).toMatchObject({ kind: "upToDate", everything: false });
+    expect(everything([pkg], on)).toMatchObject({ kind: "upToDate", everything: false });
+    // Without the switch said, as off: Settings' default.
+    expect(everything([selfUpdating], hiding())).toMatchObject({ everything: false });
+    // Of the sources not named as not checked, the same.
+    expect(everything([selfUpdating], off, [brew, stopped(uv)])).toMatchObject({
+      kind: "nothingToUpdate",
+      everythingElse: false,
+    });
+    expect(everything([selfUpdating], on, [brew, stopped(uv)])).toMatchObject({
+      kind: "nothingToUpdate",
+      everythingElse: true,
+    });
   });
 });
