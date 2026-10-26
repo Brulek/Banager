@@ -23,6 +23,11 @@ import type { Page } from "../store/ui";
  * - `hidden`: the only updates are ones the user skipped or silenced.
  * - `stale`: the last refresh could not finish for two sources.
  * - `notices`: every source notice that has a look of its own.
+ * - `untrusted`: Homebrew left formulae out of its list and checked a
+ *   cask from a tap it does not trust against its saved copy
+ *   (`FormulaeNotListed`, `CasksNotChecked`), and so did an Intel Homebrew
+ *   in /usr/local for its formulae, so each notice names its own brew
+ *   (`withUntrusted` in ./mockData.ts; R86-3, r83 R83-1).
  * - `offline`: no registry answered; every lookup is "could not check".
  * - `many`: about 800 things installed, about one in seven with an
  *   update, for how the long lists feel (`addMany` in ./mockData.ts).
@@ -67,6 +72,7 @@ export const SCENARIO_STATES = [
   "hidden",
   "stale",
   "notices",
+  "untrusted",
   "offline",
   "many",
   "huge",

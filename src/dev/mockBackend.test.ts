@@ -18,6 +18,7 @@ import type {
   UnknownScan,
   UpdateCandidate,
 } from "../lib/types";
+import { sourceNoticesFor } from "../lib/sources";
 import { NO_FACTS } from "../lib/types";
 import en from "../i18n/en.json";
 import zhCN from "../i18n/zh-CN.json";
@@ -390,6 +391,23 @@ describe("the browser preview's mock backend", () => {
       ["brew:/usr/local", "/usr/local", "NotResponding"],
     ]);
     expect(snapshot.artifacts.filter((a) => a.key.instance_id === "brew:/usr/local")).toEqual([]);
+  });
+
+  it("shows Homebrew's untrusted-tap notes with ?state=untrusted, each Homebrew's by its own brew (R86-3)", async () => {
+    const snapshot = await answer<Snapshot>(backendFor({ state: "untrusted" }).backend.invoke("refresh"));
+    const brews = snapshot.instances.filter((i) => i.adapter_id === "brew");
+    expect(brews.map((i) => [i.id, i.status.unavailable, i.status.notes])).toEqual([
+      ["brew:/opt/homebrew", null, ["FormulaeNotListed", "CasksNotChecked"]],
+      ["brew:/usr/local", null, ["FormulaeNotListed"]],
+    ]);
+    const aerospace = snapshot.artifacts.find((a) => a.key.name === "nikitabobko/tap/aerospace");
+    expect(aerospace?.facts.not_looked_up).toBe(true);
+    const notices = brews.flatMap((i) => sourceNoticesFor(i, i.prefix).map((n) => n.values?.trust));
+    expect(notices).toEqual([
+      "/opt/homebrew/bin/brew trust --tap",
+      "/opt/homebrew/bin/brew trust --tap",
+      "/usr/local/bin/brew trust --tap",
+    ]);
   });
 
   it("says when uv last answered with ?state=notices, and no time for the Intel Homebrew it never heard (R12)", async () => {

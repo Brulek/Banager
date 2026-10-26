@@ -744,6 +744,33 @@ function withNotices(world: World): void {
   findInstance(world, IDS.uv).answered_at = Math.floor(Date.now() / 1000) - 47 * 60;
 }
 
+/**
+ * Homebrew 7 and the taps it does not trust (`?state=untrusted`; R86-3):
+ * formulae it left out of its list, and a cask from a third-party tap it
+ * checked against the copy it saved at install, which its row says
+ * nothing about updates of (`not_looked_up`, r83 R83-1). An Intel
+ * Homebrew in /usr/local that answers left formulae out too, so each
+ * notice names its own brew by path.
+ */
+function withUntrusted(world: World): void {
+  findInstance(world, IDS.brew).status.notes = ["FormulaeNotListed", "CasksNotChecked"];
+  world.artifacts.push(
+    artifact(IDS.brew, "Cask", "nikitabobko/tap/aerospace", "0.19.2", {
+      display_name: "AeroSpace",
+      description: "Tiling window manager",
+      path: "/Applications/AeroSpace.app",
+      facts: { ...NO_FACTS, not_looked_up: true },
+    }),
+  );
+  world.instances.splice(
+    world.instances.findIndex((i) => i.id === IDS.brew) + 1,
+    0,
+    instance("brew", IDS.brewIntel, "/usr/local/bin/brew", "/usr/local", "7.0.3", {
+      status: { unavailable: null, notes: ["FormulaeNotListed"] },
+    }),
+  );
+}
+
 /** What each lookup said when nothing could be reached (`?state=offline`). */
 const OFFLINE_REASONS: Record<string, string> = {
   cargo: "crates.io request failed: network error: dns error: failed to lookup address information",
@@ -1163,6 +1190,10 @@ function scenarioWorld(state: ScenarioState): World {
       return world;
     case "notices":
       withNotices(world);
+      return world;
+    case "untrusted":
+      allAnswering(world);
+      withUntrusted(world);
       return world;
     case "offline":
       offline(world);
