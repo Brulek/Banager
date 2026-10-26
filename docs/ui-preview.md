@@ -193,7 +193,10 @@ Paths are under a generic home folder, `/Users/you`.
   Terminal opens nothing (the console says so): a few looks later the
   pretend installer is "there", then "updating", then done, and the
   check after it finds Homebrew with nothing installed, as on `nothing`
-  (`look_for_homebrew` in `mockBackend.ts`).
+  (`look_for_homebrew` in `mockBackend.ts`). Its search field searches a
+  pretend Homebrew of eighteen formulae and casks by name
+  (`MOCK_HOMEBREW` in `mockSearch.ts`) with the real search's refusals
+  and order, and installs a result by its id (`plan_install_found`).
 
 ## What it does
 
