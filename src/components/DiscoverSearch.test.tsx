@@ -440,8 +440,14 @@ describe("Discover's search of Homebrew", () => {
     expect(results_()).toHaveLength(3);
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.getByRole("button", { name: "Install jq-lsp" })).toBeInTheDocument();
-    // Past its ids' ten minutes, and failing again: not a list whose
-    // Install can only say "out of date", but why it could not search.
+    // The first failure settled, and the list still there.
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(results_()).toHaveLength(3);
+    expect(screen.getByRole("status")).toHaveTextContent("3 results");
+    // Failing again past its ids' ten minutes: not a list whose Install can
+    // only say "out of date", but why it could not search -- by the
+    // failure's own time, so it shows without anything else re-rendering
+    // the page (from the review of e5e76aee).
     const now = Date.now();
     const later = vi.spyOn(Date, "now").mockReturnValue(now + 11 * 60 * 1000);
     try {
@@ -450,6 +456,8 @@ describe("Discover's search of Homebrew", () => {
       });
       expect(await screen.findByRole("alert")).toHaveTextContent(/Couldn't search Homebrew/);
       expect(results_()).toHaveLength(0);
+      // Nor does the status still say how many there were.
+      expect(screen.getByRole("status")).toBeEmptyDOMElement();
     } finally {
       later.mockRestore();
     }
