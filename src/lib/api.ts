@@ -245,9 +245,11 @@ export function planInstall(catalogId: string): Promise<IssuedPlan> {
 
 /**
  * The Discover page's search of Homebrew (`search_homebrew` in
- * src-tauri/src/ipc.rs): Homebrew's own formulae and casks whose name or
- * description has `query` in it, each under an id for Install. Runs `brew
- * search`, read-only. `useSearchHomebrew` is the caller.
+ * src-tauri/src/ipc.rs): what Homebrew's own search lists for `query`
+ * among its formulae and casks -- names, aliases named as their formula,
+ * close spellings; descriptions are shown, not searched -- each under an
+ * id for Install. Runs `brew search` and `brew info`, read-only.
+ * `useSearchHomebrew` is the caller.
  */
 export function searchHomebrew(query: string): Promise<Found[]> {
   return call<Found[]>("search_homebrew", { query });

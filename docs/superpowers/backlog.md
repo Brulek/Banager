@@ -652,7 +652,7 @@ Opus max 全分支终审：3 项必修（已修），其余推迟。按主题分
 - ~~第三方 tap 的 cask 装好后 tap 被取消信任：Homebrew 只按记录卸载放置的文件，不执行记下的卸载步骤
   （`cask/installer.rb:999-1031`），确认框却说"并执行它记下的卸载步骤"。~~ —— **已于 2026-10-02 做了**
   （`UninstallScope::HomebrewCaskStepsIfTrusted` / `HomebrewCaskStepsOnlyIfTrusted`，`adapters/brew/trust.rs`）：
-  Homebrew 6.0.0 起默认要求信任（2026-10-27 读源码核对；此处原写 7.0.7），只有存成 `.rb` 的记录才会因为不信任而整个不加载（`installer.rb:1010-1043`）；
+  Homebrew 6.0.0 起默认要求信任（2026-10-27 读源码核对）；6.0.7 起只有存成 `.rb` 的记录才会因为不信任而整个不加载（`installer.rb:1010-1043`；6.0.0–6.0.6 照常加载记录、执行记下的卸载步骤，确认框那句话对这几个版本说得比实际保守）；
   这种 cask 来自非 Homebrew 自己的 tap、信任列表里既没写它也没写它的 tap（或读不了列表）时，句子改说「它的卸载步骤，
   只在Homebrew信任它的来源时才执行」。设了 `HOMEBREW_NO_REQUIRE_TAP_TRUST` 时照旧。
 - ~~旧 `.rb` caskfile 读不出来时 Homebrew 改用当前定义（`installer.rb:1040-1042`），执行的是今天的卸载步骤，

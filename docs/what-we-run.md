@@ -6586,9 +6586,10 @@ AppKit keeps them, in points, as it does any Mac app's that asks
 main`, saved as the window moves or is resized and put back when it opens,
 on a display that is still there. A `.window-state.json` an older Banager
 wrote still holds a size and position; they are no longer read. Banager's
-own code writes no other file on the Mac and deletes none -- but a named
-pipe or a link at `.window-state.json` that cannot be moved aside, whose
-own entry, never what a link leads to, is removed (above); what WebKit
+own code writes no other file on the Mac and deletes none -- but anything
+other than a plain file or a folder at `.window-state.json` that cannot be
+moved aside, whose own entry, never what a link leads to, is removed
+(above); what WebKit
 and macOS keep for the app is theirs (below). It moves files in two cases:
 anything but a plain file at `.window-state.json`, moved aside beside it
 (above); and a confirmed uninstall of a tool that has no uninstall command
@@ -7124,10 +7125,10 @@ configured, `index.crates.io`, and cargo still follows a
   tells the user how, and Banager runs nothing.
 - Never asks for, stores or types a password; `SUDO_ASKPASS` is passed
   through to Homebrew only when it was already set.
-- Never deletes a file and never empties the Trash -- but for a named pipe
-  or a link at its own `.window-state.json` that cannot be moved aside,
-  whose own entry is removed, never what a link leads to ("Files Banager
-  writes"). Never writes a file
+- Never deletes a file and never empties the Trash -- but for anything
+  other than a plain file or a folder (a named pipe, a link, a socket) at
+  its own `.window-state.json` that cannot be moved aside, whose own entry
+  is removed, never what a link leads to ("Files Banager writes"). Never writes a file
   on the Mac itself other than its own `settings.json`, `history.json` and
   `.window-state.json` (the programs it
   runs write their own files — Grok Build's update check writes inside
@@ -7144,8 +7145,8 @@ configured, `index.crates.io`, and cargo still follows a
   `~/.config`, `~/.cache`, `~/Library`, `~/.cargo`), anything reached
   through a folder that is a link between where the home folder really is
   and it (the home folder itself may be reached through a link), anything
-  that does not belong to the user, or anything that is not what the
-  tool's uninstall list describes
+  that does not belong to the user, or, uninstalling, anything that is not
+  what the tool's uninstall list describes
   (for Claude Code, Anthropic's removal steps plus its installer's
   download cache; for Antigravity CLI, Grok Build and Codex, which publish
   no removal steps, Banager's own reading of how each was installed);

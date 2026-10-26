@@ -427,8 +427,10 @@ impl TrustLook {
 
 /// Whether a Homebrew of `version` (`5.1.0`, `7.0.10-37-g1ef73bb`) is one
 /// from before 6.0.0, whose `Caskroom.casks` has no fallback to the copy
-/// saved at install, so every cask is checked from its tap -- trust was an
-/// opt-in from 5.1.15 (`HOMEBREW_REQUIRE_TAP_TRUST`) and none before. From
+/// saved at install, so every cask it lists is checked from its tap -- trust
+/// was an opt-in from 5.1.15 (`HOMEBREW_REQUIRE_TAP_TRUST`), under which an
+/// untrusted tap's cask is left out of the list, not checked against its
+/// saved copy, and there was none before. From
 /// 6.0.0 on, trust is required by default (`default: true`, read at the
 /// 6.0.0, 7.0.3 and 7.0.7 tags; from the independent review of the branch
 /// -- the cutoff was 7.0.7). 6.0.0 and 6.0.1 ignored a trust entry for a
@@ -2341,8 +2343,8 @@ impl BrewAdapter {
     }
 
     /// What Homebrew's settings, read now, say of checking a cask from a
-    /// third-party tap (r83 R83-1): Homebrew 7 loads one from a tap it does
-    /// not trust from the copy it saved at install (`Caskroom.casks`,
+    /// third-party tap (r83 R83-1): Homebrew 6.0.0 and later loads one from a
+    /// tap it does not trust from the copy it saved at install (`Caskroom.casks`,
     /// `cask/caskroom.rb:232-241`), so `brew outdated` finds nothing newer
     /// whatever the tap has. Read through the same bounded readers as the
     /// uninstall preview: the `brew.env` files (`brew_env::after_brew_env`)
@@ -8411,8 +8413,8 @@ mod plan_execute_tests {
 
     #[tokio::test]
     async fn regression_r83_1_a_homebrew_before_6_0_0_checks_every_cask() {
-        // Before 6.0.0 there was no tap trust: an untrusted tap's cask was
-        // still loaded from its tap, and checked.
+        // Before 6.0.0 no untrusted cask fell back to its saved copy: one
+        // Homebrew lists was loaded from its tap, and checked.
         let aerospace = Aerospace::new("brew-r83-1-old");
         let old = ManagerInstance {
             version: Some("5.1.0".to_string()),

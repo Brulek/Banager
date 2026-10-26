@@ -39,7 +39,8 @@ pub struct Found {
     pub id: String,
     pub kind: ArtifactKind,
     pub name: String,
-    /// Homebrew's description, where its description search gave one.
+    /// Homebrew's description: its description search's, or for a formula
+    /// it gave none for, `brew info`'s (`BrewAdapter::search`).
     pub description: Option<String>,
     /// The Homebrew it would install into lists it installed now.
     pub installed: bool,
