@@ -460,14 +460,13 @@ fn submit_operation_error(e: banager_core::session::SubmitError) -> String {
 /// (`window_may_plan`).
 ///
 /// An install is refused here, before the snapshot or any adapter is
-/// asked: no page offers one, and `issue_plan`'s gate asks only whether the
-/// source can act, not what it is asked to install, so an `Install` of any
-/// name the window sent used to come back as a plan one
-/// `submit_operation` away from running (phase 5 proposal §零 6). The
-/// adapters keep planning installs, for the catalogue's own command
-/// (§3.4), which will name a catalogue entry rather than a package.
+/// asked: `issue_plan`'s gate asks only whether the source can act, not
+/// what it is asked to install, so an `Install` of any name the window sent
+/// used to come back as a plan one `submit_operation` away from running
+/// (phase 5 proposal §零 6). The window installs through `plan_install`
+/// alone, which names a catalog entry rather than a package (§3.4).
 /// Refused as `refused`, the payload for Banager's own bug: a page asking
-/// for what no page offers.
+/// for what no page offers this way.
 ///
 /// An upgrade or an uninstall is planned only for what the snapshot lists
 /// (`Session::issue_listed_plan`), and refused as `not_listed` otherwise.
@@ -938,6 +937,52 @@ pub async fn get_catalog(
         &state.session.snapshot(),
         &banager_core::catalog::Host::of_this_mac(),
     ))
+}
+
+/// The preview of installing the catalog entry `catalog_id` from the
+/// Discover page (phase 5 step B). The window names the entry, never a
+/// package (proposal §3.4): what installs it -- the entry's own Homebrew
+/// formula or cask, under the first Homebrew that can install it -- comes
+/// from the catalog and the snapshot as it is now
+/// (`catalog::install_request`). Then it is planned as every operation is
+/// (`Session::issue_plan`: its gates, the adapter's own command, the plan
+/// store) and run by its plan id with `submit_operation`.
+///
+/// Refused before any adapter is asked: an id the catalog does not install
+/// from here as `refused`, Banager's own bug, since no row offers its
+/// Install; and an entry that is not "Not installed" on this Mac now as
+/// `catalog_state`, with the state its row would say -- installed since
+/// the page was drawn, or no Homebrew that can install it any more.
+///
+/// The snapshot it reads and the one `issue_plan` reads are two looks: a
+/// check that lands between them and lists the tool installed makes it
+/// plan an install of what is there, which Homebrew answers by saying so,
+/// and the check after it says Installed either way.
+pub(crate) async fn plan_install_impl(
+    state: &AppState,
+    catalog_id: &str,
+) -> Result<IssuedPlan, String> {
+    use banager_core::catalog::{install_request, Host, InstallRefusal};
+    let request = install_request(&state.session.snapshot(), &Host::of_this_mac(), catalog_id)
+        .map_err(|refusal| match refusal {
+            InstallRefusal::NotOffered => serde_json::json!({ "kind": "refused" }).to_string(),
+            InstallRefusal::State(state) => {
+                serde_json::json!({ "kind": "catalog_state", "state": state }).to_string()
+            }
+        })?;
+    state
+        .session
+        .issue_plan(&request)
+        .await
+        .map_err(plan_operation_error)
+}
+
+#[tauri::command]
+pub async fn plan_install(
+    state: State<'_, AppState>,
+    catalog_id: String,
+) -> Result<IssuedPlan, String> {
+    plan_install_impl(&state, &catalog_id).await
 }
 
 /// The icon Finder shows for the app a Homebrew cask installed, for that
@@ -2106,7 +2151,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_plan_operation_impl_refuses_an_install_before_any_adapter_is_asked() {
-        // No page offers an install, and `Session::issue_plan`'s gate asks
+        // No page offers an install this way, and `Session::issue_plan`'s gate asks
         // only whether the source can act, not what it is asked to install
         // -- so an `Install` the window sent, of any name, used to come back
         // as a plan one `submit_operation` away from running (phase 5
@@ -2139,6 +2184,86 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn test_plan_install_impl_plans_the_catalogs_own_name_under_homebrew() {
+        // The window names an entry; the plan installs that entry's own
+        // formula or cask, under the Homebrew the snapshot lists, and is
+        // stored to be submitted by its id like every other.
+        let (state, plan_calls) = state_listing_counting_plans(
+            banager_core::testing::manager_instance("brew", "brew:/opt/homebrew"),
+            &[],
+        );
+        refresh_impl(&state).await.expect("refresh_impl");
+        for (asked, (id, kind, name)) in [
+            ("gemini-cli", ArtifactKind::Formula, "gemini-cli"),
+            ("claude-code", ArtifactKind::Cask, "claude-code"),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let issued = plan_install_impl(&state, id)
+                .await
+                .unwrap_or_else(|e| panic!("{id} must be planned: {e}"));
+            assert_eq!(
+                issued.plan.request,
+                OpRequest {
+                    kind: OpKind::Install,
+                    instance_id: "brew:/opt/homebrew".to_string(),
+                    artifact_kind: kind,
+                    name: name.to_string(),
+                }
+            );
+            assert_eq!(plan_calls.load(Ordering::SeqCst), asked + 1, "{id}");
+            assert!(
+                submit_operation_impl(&state, issued.id, None).is_ok(),
+                "{id}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_plan_install_impl_refuses_what_no_row_offers_before_any_adapter_is_asked() {
+        let (state, plan_calls) = state_listing_counting_plans(
+            banager_core::testing::manager_instance("brew", "brew:/opt/homebrew"),
+            &["uv"],
+        );
+        // Before the first check nothing can install: the snapshot is empty.
+        assert_eq!(
+            plan_install_impl(&state, "node").await.unwrap_err(),
+            r#"{"kind":"catalog_state","state":"NeedsHomebrew"}"#
+        );
+        refresh_impl(&state).await.expect("refresh_impl");
+        assert_eq!(
+            plan_install_impl(&state, "uv").await.unwrap_err(),
+            r#"{"kind":"catalog_state","state":"Installed"}"#
+        );
+        // Not offered from here, and names that are no entry: a package's
+        // own name included.
+        for id in ["homebrew", "ollama", "jq", "ollama-app", "../uv", ""] {
+            assert_eq!(
+                plan_install_impl(&state, id).await.unwrap_err(),
+                r#"{"kind":"refused"}"#,
+                "{id}"
+            );
+        }
+        assert_eq!(
+            plan_calls.load(Ordering::SeqCst),
+            0,
+            "a refused install must never reach an adapter"
+        );
+        // A source that is not Homebrew installs nothing from the catalog.
+        let (other, other_calls) = state_listing_counting_plans(
+            banager_core::testing::manager_instance("fake", "fake:1"),
+            &[],
+        );
+        refresh_impl(&other).await.expect("refresh_impl");
+        assert_eq!(
+            plan_install_impl(&other, "node").await.unwrap_err(),
+            r#"{"kind":"catalog_state","state":"NeedsHomebrew"}"#
+        );
+        assert_eq!(other_calls.load(Ordering::SeqCst), 0);
+    }
+
     #[test]
     fn test_what_we_run_never_list_says_the_window_cannot_ask_for_an_install() {
         // docs/what-we-run.md, "What Banager never does": the promise
@@ -2152,9 +2277,12 @@ mod tests {
         let folded = never.split_whitespace().collect::<Vec<_>>().join(" ");
         assert!(
             folded.contains(
-                "Never lets the window ask for an install: it can ask for the preview of an \
+                "Never lets the window name what to install: it can ask for the preview of an \
                  upgrade, an uninstall or a link only, and `plan_operation_impl` \
-                 (`src-tauri/src/ipc.rs`) refuses an install before any source is asked"
+                 (`src-tauri/src/ipc.rs`) refuses an install before any source is asked, \
+                 whatever it names. It installs only a Discover entry, by the entry's id \
+                 (`plan_install`), and the package is the catalog's own \
+                 (`catalog::install_request`; see \"Discover\")"
             ),
             "the never-list of docs/what-we-run.md does not say the window cannot ask for an install"
         );
@@ -2464,9 +2592,18 @@ mod tests {
     fn state_with_instance_counting_plans(
         instance: ManagerInstance,
     ) -> (AppState, Arc<AtomicUsize>) {
+        state_listing_counting_plans(instance, &["jq"])
+    }
+
+    /// `state_with_instance_counting_plans`, its adapter registered under
+    /// `instance`'s adapter id, listing `offered` installed.
+    fn state_listing_counting_plans(
+        instance: ManagerInstance,
+        offered: &'static [&'static str],
+    ) -> (AppState, Arc<AtomicUsize>) {
         let plan_calls = Arc::new(AtomicUsize::new(0));
         let meta = AdapterMeta {
-            id: "fake".to_string(),
+            id: instance.adapter_id.clone(),
             name: "fake".to_string(),
             kind: "fake".to_string(),
             platforms: vec!["macos".to_string()],
@@ -2484,7 +2621,7 @@ mod tests {
             execute_delay: std::time::Duration::ZERO,
             cancel_policy: CancelPolicy::KillThenReconcile,
             listed: Vec::new(),
-            offered: &["jq"],
+            offered,
         });
         let sink = ChannelSink::new();
         let session =

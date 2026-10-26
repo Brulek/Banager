@@ -202,6 +202,7 @@ pub fn run() {
             ipc::get_sizes,
             ipc::get_system_facts,
             ipc::get_catalog,
+            ipc::plan_install,
             history::get_history,
             history::clear_history,
             menu::set_menu_language,

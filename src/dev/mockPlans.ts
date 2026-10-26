@@ -306,9 +306,10 @@ function linkPreviewFor(name: string): Warning[] {
  * `Session::issue_plan` calls `Adapter::plan`.
  */
 export function buildPlan(world: World, inst: ManagerInstance, request: OpRequest): Plan {
-  // Installing is phase 5: no page offers it, and `plan_operation` refuses
-  // it before the gate (mockBackend.ts), as the real IPC does.
-  if (request.kind === "Install") throw refusal({ kind: "refused" });
+  // Only Discover installs, and only with Homebrew (`plan_install` in
+  // mockBackend.ts); `plan_operation` refuses an install before the gate,
+  // as the real IPC does.
+  if (request.kind === "Install" && inst.adapter_id !== "brew") throw refusal({ kind: "refused" });
   // Stable layouts reproducing the refusal checks without reading a disk.
   if (request.kind === "Uninstall" && inst.adapter_id === "brew" && request.artifact_kind === "Cask" && request.name === "codex") {
     throw refusal({ kind: "uninstall_unsafe", reason: "cask_link_not_owned", path: "/opt/homebrew/bin/codex" });
@@ -341,6 +342,16 @@ export function buildPlan(world: World, inst: ManagerInstance, request: OpReques
       }
       const cask = request.artifact_kind === "Cask";
       const flag = cask ? "--cask" : "--formula";
+      // A Discover entry's own formula or cask (`OpKind::Install` in the
+      // brew adapter): every cask may ask for the Mac's password.
+      if (kind === "Install") {
+        return {
+          ...plan,
+          action: command(inst.exe_path, ["install", flag, name], BREW_ENV),
+          needs_password: cask,
+          timeout_secs: 1800,
+        };
+      }
       if (upgrade) {
         return {
           ...plan,

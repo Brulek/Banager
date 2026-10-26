@@ -14,28 +14,33 @@ interface Item {
   install: CatalogInstall;
   recognizedBy: Recognizer[];
   needsMacOS?: number;
+  /** `installs_here`: Discover installs it from here. */
+  installsHere: boolean;
 }
 
 /** `CATALOG`, in its order. */
 const CATALOG: Item[] = [
-  { id: "homebrew", category: "Basics", install: "HomebrewItself", recognizedBy: [{ source: "brew" }] },
+  { id: "homebrew", category: "Basics", install: "HomebrewItself", recognizedBy: [{ source: "brew" }], installsHere: false },
   {
     id: "claude-code",
     category: "AiAssistants",
     install: { Homebrew: { kind: "Cask", name: "claude-code" } },
     recognizedBy: [{ family: "claude-code" }],
+    installsHere: true,
   },
   {
     id: "codex",
     category: "AiAssistants",
     install: { Homebrew: { kind: "Cask", name: "codex" } },
     recognizedBy: [{ family: "codex" }],
+    installsHere: true,
   },
   {
     id: "gemini-cli",
     category: "AiAssistants",
     install: { Homebrew: { kind: "Formula", name: "gemini-cli" } },
     recognizedBy: [{ family: "gemini-cli" }],
+    installsHere: true,
   },
   {
     id: "ollama",
@@ -43,24 +48,28 @@ const CATALOG: Item[] = [
     install: { Homebrew: { kind: "Cask", name: "ollama-app" } },
     recognizedBy: [{ family: "ollama" }, { source: "ollama" }],
     needsMacOS: 14,
+    installsHere: false,
   },
   {
     id: "node",
     category: "CommonTools",
     install: { Homebrew: { kind: "Formula", name: "node" } },
     recognizedBy: [{ formula: "node" }, { source: "npm" }],
+    installsHere: true,
   },
   {
     id: "uv",
     category: "CommonTools",
     install: { Homebrew: { kind: "Formula", name: "uv" } },
     recognizedBy: [{ formula: "uv" }, { source: "uv" }],
+    installsHere: true,
   },
   {
     id: "ffmpeg",
     category: "CommonTools",
     install: { Homebrew: { kind: "Formula", name: "ffmpeg" } },
     recognizedBy: [{ formula: "ffmpeg" }],
+    installsHere: true,
   },
 ];
 
@@ -90,6 +99,6 @@ export function mockCatalog(instances: ManagerInstance[], artifacts: InstalledAr
     else if (item.install === "HomebrewItself") state = HOST.appleSilicon ? "NotInstalled" : "HomebrewUnsupported";
     else if (item.needsMacOS !== undefined && HOST.macosMajor < item.needsMacOS) state = { NeedsMacOS: { major: item.needsMacOS } };
     else state = canInstall ? "NotInstalled" : "NeedsHomebrew";
-    return { id: item.id, category: item.category, install: item.install, state };
+    return { id: item.id, category: item.category, install: item.install, state, installs_here: item.installsHere };
   });
 }

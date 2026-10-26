@@ -1,0 +1,96 @@
+import { describe, expect, it } from "vitest";
+import i18n from "../i18n";
+import { catalogRefusal, installOperationOf, installProgressOf, ITEM_KEYS } from "./catalog";
+import type { CatalogEntry, OpSummary } from "./types";
+
+const t = i18n.getFixedT("en");
+
+const node: CatalogEntry = {
+  id: "node",
+  category: "CommonTools",
+  install: { Homebrew: { kind: "Formula", name: "node" } },
+  state: "NotInstalled",
+  installs_here: true,
+};
+
+function op(id: number, over: Partial<OpSummary> = {}): OpSummary {
+  return {
+    id,
+    kind: "Install",
+    instance_id: "brew:/opt/homebrew",
+    artifact_kind: "Formula",
+    name: "node",
+    status: "Done",
+    outcome: "Succeeded",
+    argv_preview: [],
+    cancel_policy: "KillThenReconcile",
+    ...over,
+  };
+}
+
+describe("an install from Discover", () => {
+  it("is the newest install of the entry's own formula or cask, under any Homebrew", () => {
+    const operations = [
+      op(2),
+      op(5, { instance_id: "brew:/usr/local", status: "Running", outcome: null }),
+      // Not this entry's: an upgrade of it, another source's node, a cask
+      // of the name, another formula.
+      op(9, { kind: "Upgrade" }),
+      op(10, { instance_id: "npm:/opt/homebrew" }),
+      op(11, { artifact_kind: "Cask" }),
+      op(12, { name: "node@22" }),
+    ];
+    expect(installOperationOf(node, operations, {})?.id).toBe(5);
+    expect(installOperationOf(node, [], {})).toBeNull();
+    // Homebrew itself is never installed from here.
+    expect(installOperationOf({ ...node, id: "homebrew", install: "HomebrewItself" }, operations, {})).toBeNull();
+  });
+
+  it("is this window's own submission until the list has it", () => {
+    const reserved = op(-1, { status: "Queued", outcome: null });
+    expect(installOperationOf(node, [op(2)], { "brew:/opt/homebrew/Formula/node": reserved })).toBe(reserved);
+    const listed = op(7, { status: "Queued", outcome: null });
+    expect(installOperationOf(node, [op(2), listed], { key: { ...reserved, id: 7 } })).toBe(listed);
+  });
+
+  it("says where it stands, and how it ended", () => {
+    expect(installProgressOf(op(1, { status: "Queued", outcome: null }))).toEqual({ kind: "queued" });
+    expect(installProgressOf(op(1, { status: "Verifying", outcome: null }))).toEqual({ kind: "running" });
+    expect(installProgressOf(op(1, { status: "CancelRequested", outcome: null }))).toEqual({ kind: "cancelling" });
+    expect(installProgressOf(op(1))).toEqual({ kind: "installed" });
+    expect(installProgressOf(op(1, { outcome: "Cancelled" }))).toEqual({ kind: "cancelled" });
+    expect(installProgressOf(op(1, { outcome: "Unconfirmed" }))).toEqual({ kind: "unconfirmed", opId: 1 });
+    expect(installProgressOf(op(1, { outcome: { NeedsAttention: "NotInstalledAfterInstall" } }))).toEqual({
+      kind: "check",
+      opId: 1,
+    });
+    expect(
+      installProgressOf(op(1, { outcome: { Failed: { exit_code: 1, summary: "", cause: null } } })),
+    ).toEqual({ kind: "failed", opId: 1 });
+  });
+});
+
+describe("a refusal of plan_install", () => {
+  it("is said in the row's terms where the Mac cannot install the entry now", () => {
+    const said = (payload: unknown) => catalogRefusal(t, JSON.stringify(payload));
+    expect(said({ kind: "catalog_state", state: "Installed" })).toBe("It's already installed.");
+    expect(said({ kind: "catalog_state", state: "NeedsHomebrew" })).toBe(
+      "No Homebrew on this Mac can install it right now.",
+    );
+    expect(said({ kind: "catalog_state", state: { NeedsMacOS: { major: 14 } } })).toBe("It needs macOS 14 or later.");
+    // Anything else is `planErrorMessage`'s.
+    expect(said({ kind: "refused" })).toBeNull();
+    expect(said({ kind: "catalog_state", state: { NeedsMacOS: {} } })).toBeNull();
+    expect(catalogRefusal(t, "not json")).toBeNull();
+  });
+});
+
+describe("the catalog's words", () => {
+  it("give every entry installed from here how it is used and what to type", () => {
+    for (const id of ["claude-code", "codex", "gemini-cli", "node", "uv", "ffmpeg"]) {
+      const keys = ITEM_KEYS[id];
+      expect(keys.use, id).toBe(`discover.items.${id}.use`);
+      expect(t(keys.use!), id).toContain(`Type ${keys.command}`);
+    }
+  });
+});

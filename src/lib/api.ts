@@ -231,6 +231,17 @@ export function getCatalog(): Promise<CatalogEntry[]> {
 }
 
 /**
+ * The preview of installing the catalog entry `catalogId` from the
+ * Discover page (`plan_install` in src-tauri/src/ipc.rs): Rust works out
+ * what installs it from the catalog -- the window names an entry, never a
+ * package -- and keeps the plan to be started by its id
+ * (`submitOperation`). `usePlanInstall` is the caller.
+ */
+export function planInstall(catalogId: string): Promise<IssuedPlan> {
+  return call<IssuedPlan>("plan_install", { catalogId });
+}
+
+/**
  * The finished updates and uninstalls Banager kept across launches
  * (`get_history` in src-tauri/src/history.rs): this launch's id, when the
  * Updates page's Clear was last pressed, and every record, newest first.

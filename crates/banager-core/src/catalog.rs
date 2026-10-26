@@ -7,11 +7,11 @@
 //! proposal): nothing is downloaded for it and nothing is run to list it.
 //! It names no command (spec §6): what installs an entry is a source and a
 //! package name, which the source's adapter turns into its own command
-//! when installing arrives (step B). The words each entry is shown with --
+//! (`install_request`, step B). The words each entry is shown with --
 //! what it is, who needs it, how it is used -- are the window's, in its
 //! three locale files, keyed by `CatalogItem::id`.
 
-use crate::model::{ArtifactKind, InstalledArtifact, ManagerInstance};
+use crate::model::{ArtifactKind, InstalledArtifact, ManagerInstance, OpKind, OpRequest};
 use crate::session::Snapshot;
 use serde::Serialize;
 
@@ -68,6 +68,11 @@ pub struct CatalogItem {
     /// The oldest macOS major version it installs on, where Homebrew's
     /// record says (`depends_on macos:`).
     pub needs_macos: Option<u32>,
+    /// Whether Discover installs it from here (`install_request`, step B):
+    /// every Homebrew formula and cask but Ollama's, which step D installs
+    /// with a model to start with. Homebrew itself is installed in
+    /// Terminal (step C).
+    pub installs_here: bool,
 }
 
 /// The catalog, in the order the Discover page lists it.
@@ -78,6 +83,7 @@ pub const CATALOG: [CatalogItem; 8] = [
         install: CatalogInstall::HomebrewItself,
         recognized_by: &[Recognizer::Source("brew")],
         needs_macos: None,
+        installs_here: false,
     },
     CatalogItem {
         id: "claude-code",
@@ -88,6 +94,7 @@ pub const CATALOG: [CatalogItem; 8] = [
         },
         recognized_by: &[Recognizer::Family("claude-code")],
         needs_macos: None,
+        installs_here: true,
     },
     CatalogItem {
         id: "codex",
@@ -98,6 +105,7 @@ pub const CATALOG: [CatalogItem; 8] = [
         },
         recognized_by: &[Recognizer::Family("codex")],
         needs_macos: None,
+        installs_here: true,
     },
     CatalogItem {
         id: "gemini-cli",
@@ -108,6 +116,7 @@ pub const CATALOG: [CatalogItem; 8] = [
         },
         recognized_by: &[Recognizer::Family("gemini-cli")],
         needs_macos: None,
+        installs_here: true,
     },
     CatalogItem {
         id: "ollama",
@@ -120,6 +129,7 @@ pub const CATALOG: [CatalogItem; 8] = [
         },
         recognized_by: &[Recognizer::Family("ollama"), Recognizer::Source("ollama")],
         needs_macos: Some(14),
+        installs_here: false,
     },
     CatalogItem {
         id: "node",
@@ -130,6 +140,7 @@ pub const CATALOG: [CatalogItem; 8] = [
         },
         recognized_by: &[Recognizer::Formula("node"), Recognizer::Source("npm")],
         needs_macos: None,
+        installs_here: true,
     },
     CatalogItem {
         id: "uv",
@@ -140,6 +151,7 @@ pub const CATALOG: [CatalogItem; 8] = [
         },
         recognized_by: &[Recognizer::Formula("uv"), Recognizer::Source("uv")],
         needs_macos: None,
+        installs_here: true,
     },
     CatalogItem {
         id: "ffmpeg",
@@ -150,6 +162,7 @@ pub const CATALOG: [CatalogItem; 8] = [
         },
         recognized_by: &[Recognizer::Formula("ffmpeg")],
         needs_macos: None,
+        installs_here: true,
     },
 ];
 
@@ -179,6 +192,8 @@ pub struct CatalogEntry {
     pub category: CatalogCategory,
     pub install: CatalogInstall,
     pub state: CatalogState,
+    /// `CatalogItem::installs_here`: whether its row offers Install.
+    pub installs_here: bool,
 }
 
 /// What this Mac is, for the states that depend on it.
@@ -242,8 +257,54 @@ pub fn entries(snapshot: &Snapshot, host: &Host) -> Vec<CatalogEntry> {
             category: item.category,
             install: item.install,
             state: state_of(item, snapshot, host, can_install),
+            installs_here: item.installs_here,
         })
         .collect()
+}
+
+/// Why `install_request` names nothing to install.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InstallRefusal {
+    /// No entry has this id, or Discover does not install it from here
+    /// (`CatalogItem::installs_here`): no row offers its Install.
+    NotOffered,
+    /// The entry is not `NotInstalled` on this Mac now: installed, or one
+    /// this Mac cannot install, as its row says.
+    State(CatalogState),
+}
+
+/// The install of the catalog entry `id` on the Mac `snapshot` and `host`
+/// describe, for `Session::issue_plan` (`plan_install` in
+/// src-tauri/src/ipc.rs): the entry's own Homebrew formula or cask, under
+/// the first Homebrew of the snapshot that answered and can be written to
+/// (`homebrew_can_install`), in the order detection found them
+/// (`/opt/homebrew` before `/usr/local`). The window names an entry, never
+/// a package (phase 5 proposal §3.4), so what is installed is always one of
+/// the catalog's names. Only an entry offered from here and "Not
+/// installed" now; anything else is refused before any adapter is asked.
+pub fn install_request(
+    snapshot: &Snapshot,
+    host: &Host,
+    id: &str,
+) -> Result<OpRequest, InstallRefusal> {
+    let item = CATALOG
+        .iter()
+        .find(|item| item.id == id && item.installs_here)
+        .ok_or(InstallRefusal::NotOffered)?;
+    let CatalogInstall::Homebrew { kind, name } = item.install else {
+        return Err(InstallRefusal::NotOffered);
+    };
+    let brew = snapshot.instances.iter().find(|i| homebrew_can_install(i));
+    let state = state_of(item, snapshot, host, brew.is_some());
+    match (state, brew) {
+        (CatalogState::NotInstalled, Some(brew)) => Ok(OpRequest {
+            kind: OpKind::Install,
+            instance_id: brew.id.clone(),
+            artifact_kind: kind,
+            name: name.to_string(),
+        }),
+        (state, _) => Err(InstallRefusal::State(state)),
+    }
 }
 
 fn state_of(
@@ -557,7 +618,13 @@ mod tests {
         let json = serde_json::to_value(entries(&empty, &SILICON_15)).unwrap();
         assert_eq!(
             json[0],
-            serde_json::json!({"id": "homebrew", "category": "Basics", "install": "HomebrewItself", "state": "NotInstalled"})
+            serde_json::json!({
+                "id": "homebrew",
+                "category": "Basics",
+                "install": "HomebrewItself",
+                "state": "NotInstalled",
+                "installs_here": false
+            })
         );
         assert_eq!(
             json[4],
@@ -565,7 +632,8 @@ mod tests {
                 "id": "ollama",
                 "category": "LocalModels",
                 "install": {"Homebrew": {"kind": "Cask", "name": "ollama-app"}},
-                "state": "NeedsHomebrew"
+                "state": "NeedsHomebrew",
+                "installs_here": false
             })
         );
         let old = Host {
@@ -575,6 +643,104 @@ mod tests {
         assert_eq!(
             serde_json::to_value(entries(&empty, &old)).unwrap()[4]["state"],
             serde_json::json!({"NeedsMacOS": {"major": 14}})
+        );
+        assert_eq!(
+            serde_json::to_value(entries(&empty, &old)).unwrap()[3]["installs_here"],
+            serde_json::json!(true)
+        );
+    }
+
+    #[test]
+    fn test_six_entries_install_from_here_each_a_homebrew_formula_or_cask() {
+        let here: Vec<&str> = CATALOG
+            .iter()
+            .filter(|item| item.installs_here)
+            .map(|item| item.id)
+            .collect();
+        assert_eq!(
+            here,
+            ["claude-code", "codex", "gemini-cli", "node", "uv", "ffmpeg"]
+        );
+        for item in CATALOG.iter().filter(|item| item.installs_here) {
+            assert!(
+                matches!(item.install, CatalogInstall::Homebrew { .. }),
+                "{}",
+                item.id
+            );
+        }
+    }
+
+    #[test]
+    fn test_the_install_of_an_entry_is_its_own_name_under_the_first_homebrew_that_can_install() {
+        let stopped = ManagerInstance {
+            status: InstanceStatus {
+                unavailable: Some(Unavailable::NotResponding),
+                notes: Vec::new(),
+                no_answer: None,
+            },
+            ..instance("brew", "brew:/opt/homebrew")
+        };
+        let mac = snapshot(
+            vec![
+                stopped,
+                instance("brew", "brew:/usr/local"),
+                instance("brew", "brew:/Users/you/homebrew"),
+            ],
+            Vec::new(),
+        );
+        assert_eq!(
+            install_request(&mac, &SILICON_15, "gemini-cli"),
+            Ok(OpRequest {
+                kind: OpKind::Install,
+                instance_id: "brew:/usr/local".to_string(),
+                artifact_kind: ArtifactKind::Formula,
+                name: "gemini-cli".to_string(),
+            })
+        );
+        assert_eq!(
+            install_request(&mac, &SILICON_15, "claude-code"),
+            Ok(OpRequest {
+                kind: OpKind::Install,
+                instance_id: "brew:/usr/local".to_string(),
+                artifact_kind: ArtifactKind::Cask,
+                name: "claude-code".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn test_only_an_entry_offered_here_and_not_installed_is_installed() {
+        let b = "brew:/opt/homebrew";
+        let mac = snapshot(
+            vec![instance("brew", b)],
+            vec![artifact(b, ArtifactKind::Formula, "uv", None)],
+        );
+        assert_eq!(
+            install_request(&mac, &SILICON_15, "uv"),
+            Err(InstallRefusal::State(CatalogState::Installed))
+        );
+        // Not offered from here: Homebrew, Ollama, and what is no entry --
+        // a package name included.
+        for id in ["homebrew", "ollama", "jq", "", "ollama-app", "Codex"] {
+            assert_eq!(
+                install_request(&mac, &SILICON_15, id),
+                Err(InstallRefusal::NotOffered),
+                "{id}"
+            );
+        }
+        // No Homebrew that can install.
+        let empty = snapshot(Vec::new(), Vec::new());
+        assert_eq!(
+            install_request(&empty, &SILICON_15, "node"),
+            Err(InstallRefusal::State(CatalogState::NeedsHomebrew))
+        );
+        let view_only = ManagerInstance {
+            read_only_reason: Some(crate::model::ReadOnlyReason::PrefixNotWritable),
+            ..instance("brew", b)
+        };
+        assert_eq!(
+            install_request(&snapshot(vec![view_only], Vec::new()), &SILICON_15, "node"),
+            Err(InstallRefusal::State(CatalogState::NeedsHomebrew))
         );
     }
 }

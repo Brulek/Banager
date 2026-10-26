@@ -1420,5 +1420,11 @@ export interface CatalogEntry {
   category: CatalogCategory;
   install: CatalogInstall;
   state: CatalogState;
+  /**
+   * Whether its row offers Install (`CatalogItem::installs_here`): six
+   * Homebrew formulas and casks; not Homebrew itself (installed in
+   * Terminal) nor Ollama (installed with a model to start with), yet.
+   */
+  installs_here: boolean;
 }
 

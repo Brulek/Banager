@@ -1933,7 +1933,10 @@
   },
   "discover": {
     "intro": "Tools to start with, and which of them this Mac already has.",
-    "footnote": "This page lists these tools; installing them from here isn't available yet.",
+    "footnote": "Homebrew and Ollama can't be installed from here yet.",
+    "install": "Install",
+    "installLabel": "Install {{name}}",
+    "copyCommand": "Copy “{{command}}”",
     "categories": {
       "basics": "Basics",
       "aiAssistants": "AI Assistants",
@@ -1947,6 +1950,26 @@
       "needsMacOS": "Needs macOS {{major}}",
       "homebrewUnsupported": "Not supported on this Mac"
     },
+    "progress": {
+      "queued": "Queued",
+      "running": "Installing…",
+      "cancelling": "Cancelling…",
+      "cancelled": "Cancelled",
+      "failed": "Couldn't install"
+    },
+    "sheet": {
+      "title": "Install “{{name}}”?",
+      "from": "Homebrew downloads it and checks the download before installing it.",
+      "alsoInstalls": "Homebrew also installs what it needs, and may update some of what's already installed.",
+      "checking": "Checking what will run…",
+      "planError": "Couldn't prepare the install: {{message}}",
+      "planErrorPlain": "Couldn't prepare the install.",
+      "submitError": "Couldn't start the install: {{message}}",
+      "submitErrorPlain": "Couldn't start the install.",
+      "installed": "It's already installed.",
+      "needsHomebrew": "No Homebrew on this Mac can install it right now.",
+      "needsMacOS": "It needs macOS {{major}} or later."
+    },
     "items": {
       "homebrew": {
         "name": "Homebrew",
@@ -1956,17 +1979,20 @@
       "claude-code": {
         "name": "Claude Code",
         "what": "Anthropic's AI coding assistant for Terminal",
-        "more": "Writes and changes code when you say in plain words what you want. Once installed, type claude in a new Terminal window."
+        "more": "Writes and changes code when you say in plain words what you want. Once installed, type claude in a new Terminal window.",
+        "use": "Type claude in a new Terminal window."
       },
       "codex": {
         "name": "Codex",
         "what": "OpenAI's AI coding assistant for Terminal",
-        "more": "Reads your project and writes or changes code as you ask. Once installed, type codex in a new Terminal window."
+        "more": "Reads your project and writes or changes code as you ask. Once installed, type codex in a new Terminal window.",
+        "use": "Type codex in a new Terminal window."
       },
       "gemini-cli": {
         "name": "Gemini CLI",
         "what": "Google's AI assistant for Terminal",
-        "more": "Answers questions and works on code in Terminal, and installs Node.js with it. Once installed, type gemini in a new Terminal window."
+        "more": "Answers questions and works on code in Terminal, and installs Node.js with it. Once installed, type gemini in a new Terminal window.",
+        "use": "Type gemini in a new Terminal window."
       },
       "ollama": {
         "name": "Ollama",
@@ -1976,17 +2002,20 @@
       "node": {
         "name": "Node.js",
         "what": "Runs JavaScript programs, as many AI tools are",
-        "more": "Tools installed with npm need it, and npm comes with it. Once installed, type node or npm in a new Terminal window."
+        "more": "Tools installed with npm need it, and npm comes with it. Once installed, type node or npm in a new Terminal window.",
+        "use": "Type node or npm in a new Terminal window."
       },
       "uv": {
         "name": "uv",
         "what": "Installs and runs tools written in Python",
-        "more": "It keeps each Python tool in a place of its own so they don't clash, and they're listed and updated here. Once installed, type uv in a new Terminal window."
+        "more": "It keeps each Python tool in a place of its own so they don't clash, and they're listed and updated here. Once installed, type uv in a new Terminal window.",
+        "use": "Type uv in a new Terminal window."
       },
       "ffmpeg": {
         "name": "ffmpeg",
         "what": "Converts and cuts audio and video",
-        "more": "Changes a video's format, takes its sound out or cuts a clip with one command. Once installed, type ffmpeg in a new Terminal window."
+        "more": "Changes a video's format, takes its sound out or cuts a clip with one command. Once installed, type ffmpeg in a new Terminal window.",
+        "use": "Type ffmpeg in a new Terminal window."
       }
     }
   }

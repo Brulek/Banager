@@ -1789,7 +1789,10 @@
   },
   "discover": {
     "intro": "可以從這些工具開始，也能看到這台Mac已經有了哪些。",
-    "footnote": "這裡暫時只列出這些工具，還不能直接安裝。",
+    "footnote": "Homebrew和Ollama暫時還不能從這裡安裝。",
+    "install": "安裝",
+    "installLabel": "安裝{{name}}",
+    "copyCommand": "拷貝「{{command}}」",
     "categories": {
       "basics": "基礎",
       "aiAssistants": "AI助理",
@@ -1803,6 +1806,26 @@
       "needsMacOS": "需要macOS {{major}}",
       "homebrewUnsupported": "不支援這台Mac"
     },
+    "progress": {
+      "queued": "排隊中",
+      "running": "正在安裝…",
+      "cancelling": "正在取消…",
+      "cancelled": "已取消",
+      "failed": "未能安裝"
+    },
+    "sheet": {
+      "title": "要安裝「{{name}}」嗎？",
+      "from": "由Homebrew下載，核對下載的檔案無誤後再安裝。",
+      "alsoInstalls": "Homebrew會一併安裝它需要的元件，有時還會順帶更新一些已安裝的元件。",
+      "checking": "正在檢查將執行什麼…",
+      "planError": "無法準備安裝：{{message}}",
+      "planErrorPlain": "無法準備安裝。",
+      "submitError": "無法開始安裝：{{message}}",
+      "submitErrorPlain": "無法開始安裝。",
+      "installed": "它已經安裝好了。",
+      "needsHomebrew": "這台Mac上現在沒有能安裝它的Homebrew。",
+      "needsMacOS": "它需要macOS {{major}}或更新版本。"
+    },
     "items": {
       "homebrew": {
         "name": "Homebrew",
@@ -1812,17 +1835,20 @@
       "claude-code": {
         "name": "Claude Code",
         "what": "Anthropic推出、在終端機裡使用的AI程式設計助理",
-        "more": "用日常語言說要做什麼，它就能寫程式碼、改程式碼。安裝好後，在新的終端機視窗裡輸入claude。"
+        "more": "用日常語言說要做什麼，它就能寫程式碼、改程式碼。安裝好後，在新的終端機視窗裡輸入claude。",
+        "use": "在新的終端機視窗裡輸入claude。"
       },
       "codex": {
         "name": "Codex",
         "what": "OpenAI推出、在終端機裡使用的AI程式設計助理",
-        "more": "它會讀取你的專案，依你的要求寫程式碼、改程式碼。安裝好後，在新的終端機視窗裡輸入codex。"
+        "more": "它會讀取你的專案，依你的要求寫程式碼、改程式碼。安裝好後，在新的終端機視窗裡輸入codex。",
+        "use": "在新的終端機視窗裡輸入codex。"
       },
       "gemini-cli": {
         "name": "Gemini CLI",
         "what": "Google推出、在終端機裡使用的AI助理",
-        "more": "在終端機裡回答問題、處理程式碼，安裝時會一起裝上Node.js。安裝好後，在新的終端機視窗裡輸入gemini。"
+        "more": "在終端機裡回答問題、處理程式碼，安裝時會一起裝上Node.js。安裝好後，在新的終端機視窗裡輸入gemini。",
+        "use": "在新的終端機視窗裡輸入gemini。"
       },
       "ollama": {
         "name": "Ollama",
@@ -1832,17 +1858,20 @@
       "node": {
         "name": "Node.js",
         "what": "執行JavaScript程式，很多AI工具就是這類程式",
-        "more": "用npm安裝的工具都需要它，npm也隨它一起裝上。安裝好後，在新的終端機視窗裡輸入node或npm。"
+        "more": "用npm安裝的工具都需要它，npm也隨它一起裝上。安裝好後，在新的終端機視窗裡輸入node或npm。",
+        "use": "在新的終端機視窗裡輸入node或npm。"
       },
       "uv": {
         "name": "uv",
         "what": "安裝和執行用Python寫的工具",
-        "more": "它把每個Python工具裝在各自的位置，互不干擾，也能在這裡列出和更新。安裝好後，在新的終端機視窗裡輸入uv。"
+        "more": "它把每個Python工具裝在各自的位置，互不干擾，也能在這裡列出和更新。安裝好後，在新的終端機視窗裡輸入uv。",
+        "use": "在新的終端機視窗裡輸入uv。"
       },
       "ffmpeg": {
         "name": "ffmpeg",
         "what": "轉換、剪輯音訊和影片",
-        "more": "輸入一條指令就能轉換影片格式、擷取聲音或剪出片段。安裝好後，在新的終端機視窗裡輸入ffmpeg。"
+        "more": "輸入一條指令就能轉換影片格式、擷取聲音或剪出片段。安裝好後，在新的終端機視窗裡輸入ffmpeg。",
+        "use": "在新的終端機視窗裡輸入ffmpeg。"
       }
     }
   }

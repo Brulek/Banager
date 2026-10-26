@@ -41,6 +41,7 @@ import {
   withNpmPrefixProtected,
   withUnavailableCommands,
   type World,
+  installedFromCatalog,
 } from "./mockData";
 import { appIcon } from "./mockIcons";
 import { withFamilies } from "./mockFamilies";
@@ -75,6 +76,7 @@ export const MOCK_COMMANDS = [
   "get_sizes",
   "get_system_facts",
   "get_catalog",
+  "plan_install",
   "get_history",
   "clear_history",
   "set_menu_language",
@@ -586,6 +588,14 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       if (scenario.outcome !== "follow-up" && scenario.outcome !== "step-failed") applyMockCleanup(plan, world);
       return;
     }
+    if (plan.request.kind === "Install") {
+      // A Discover entry's formula or cask: there for the check after it,
+      // which says Installed.
+      if (!world.artifacts.some((a) => sameKey(a.key, target))) {
+        world.artifacts.push(installedFromCatalog(target.instance_id, target.kind, target.name, nowSeconds()));
+      }
+      return;
+    }
     if (plan.request.kind === "Link") {
       // `node` is back where Terminal looks: the source that needed it
       // answers the next check, with no fix left to offer.
@@ -1077,6 +1087,39 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       // `catalog::entries`, over the committed snapshot: an empty one before
       // the first refresh, as Rust's.
       return mockCatalog(committed?.instances ?? [], committed?.artifacts ?? []);
+    },
+    async plan_install(args) {
+      // `catalog::install_request` over the committed snapshot, then the
+      // plan any operation gets: the entry's own formula or cask, under the
+      // first Homebrew that can install it. Refused, before any plan, for
+      // an entry not offered from here and one not "Not installed" now.
+      const instances = committed?.instances ?? [];
+      const entry = mockCatalog(instances, committed?.artifacts ?? []).find(
+        (candidate) => candidate.id === args.catalogId && candidate.installs_here,
+      );
+      if (entry === undefined || entry.install === "HomebrewItself") throw refusal({ kind: "refused" });
+      const brew = instances.find(
+        (i) => i.adapter_id === "brew" && i.status.unavailable === null && i.read_only_reason === null,
+      );
+      if (entry.state !== "NotInstalled" || brew === undefined) {
+        throw refusal({ kind: "catalog_state", state: entry.state });
+      }
+      const request: OpRequest = {
+        kind: "Install",
+        instance_id: brew.id,
+        artifact_kind: entry.install.Homebrew.kind,
+        name: entry.install.Homebrew.name,
+      };
+      const inst = gate(request);
+      await wait(TIMING.plan);
+      planCount += 1;
+      const issued: IssuedPlan = {
+        id: planCount.toString(16).padStart(32, "0"),
+        plan: buildPlan(world, inst, request),
+        issued_at: nowSeconds(),
+      };
+      plans.set(issued.id, { issued, issuedAtMs: Date.now() });
+      return clone(issued);
     },
     async get_history() {
       // `Session::history`: every record, the last kept first.

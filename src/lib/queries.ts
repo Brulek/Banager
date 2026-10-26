@@ -9,6 +9,7 @@ import {
 } from "@tanstack/react-query";
 import {
   getSnapshot,
+  planInstall,
   planOperation,
   submitOperation,
   cancelOperation,
@@ -309,6 +310,18 @@ export function usePlanOperation(): UseMutationResult<IssuedPlan, Error, OpReque
   return useMutation({
     mutationFn: async (request: OpRequest) => {
       const issued = await planOperation(request);
+      plansFor(queryClient).set(issued.id, issued);
+      return issued;
+    },
+  });
+}
+
+/** `usePlanOperation` for an install from the Discover page, by the entry's id (`planInstall`). */
+export function usePlanInstall(): UseMutationResult<IssuedPlan, Error, string> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (catalogId: string) => {
+      const issued = await planInstall(catalogId);
       plansFor(queryClient).set(issued.id, issued);
       return issued;
     },

@@ -342,10 +342,12 @@ fn test_readme_says_quit_neither_stops_nor_waits_for_an_operation_that_cannot_be
     ));
 }
 
-/// r20 R56-5: the window cannot install anything new -- `ipc.rs` refuses
-/// an `OpKind::Install` the window plans, and the README's "What it
-/// deliberately does not do yet" says so -- yet the source table's column
-/// read "Installs / updates / removes", with "yes" for six sources.
+/// r20 R56-5: no source installs what the window names -- `ipc.rs` refuses
+/// an `OpKind::Install` the window plans -- yet the source table's column
+/// read "Installs / updates / removes", with "yes" for six sources. Since
+/// phase 5 step B the Discover page installs six catalog entries with
+/// Homebrew (`plan_install`), and "What it deliberately does not do yet"
+/// says that much and no more: nothing beyond its list.
 #[test]
 fn test_readme_source_table_offers_no_install() {
     let readme = read_readme();
@@ -355,7 +357,12 @@ fn test_readme_source_table_offers_no_install() {
         .find(|line| line.starts_with("| Source |"))
         .expect("the reference docs have no source table");
     assert_eq!(header, "| Source | Reads | Updates / removes |");
-    assert!(english.contains("no way to install something new"));
+    let folded = english.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(folded.contains(
+        "The Discover page suggests eight tools and installs six of them with Homebrew (Claude \
+         Code, Codex, Gemini CLI, Node.js, uv and ffmpeg); it does not install Homebrew itself \
+         or Ollama yet, and nothing beyond its list."
+    ));
 }
 
 #[test]

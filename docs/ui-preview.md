@@ -181,7 +181,12 @@ Paths are under a generic home folder, `/Users/you`.
   (Apple silicon, macOS 15): Homebrew, Claude Code, Codex, Gemini CLI,
   Ollama, Node.js, uv and ffmpeg are all "Installed" in `full`; on
   `empty` every one but Homebrew "Needs Homebrew". A test holds the copy
-  to catalog.rs's ids and names.
+  to catalog.rs's ids and names. On `nothing`, Homebrew with nothing
+  installed, the six installed from here (all but Homebrew and Ollama)
+  have Install: its sheet plans `brew install --formula` or `--cask` with
+  the entry's own name (`plan_install` in `mockBackend.ts`), the
+  operation plays out as `?outcome=` says, and a succeeded one leaves the
+  formula or cask for the check after it, which says "Installed".
 
 ## What it does
 

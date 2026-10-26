@@ -5612,16 +5612,15 @@ doubt alone refuses nothing. A preview confirmed after a refresh listed such a
 source that the preview did not know as one is spent, as above; once a
 refresh reads its packages, its tools are looked at like any other's.
 
-## Discover: read-only, no command runs
+## Discover: the catalog, and installing from it
 
-The Discover page (「发现」, Taiwan's 「探索」; phase 5 step A) lists the
+The Discover page (「发现」, Taiwan's 「探索」; phase 5) lists the
 tools Banager suggests: Homebrew; Claude Code, Codex and Gemini CLI;
 Ollama; Node.js, uv and ffmpeg. The list is compiled into the app
 (`CATALOG` in `crates/banager-core/src/catalog.rs`): nothing is downloaded
-to show it, and it names no command -- what would install an entry is
+to show it, and it names no command -- what installs an entry is
 Homebrew itself, which Banager does not install, or a Homebrew formula or
-cask by name, as the source's own adapter would turn into a command.
-This step installs nothing: the page has no install button, and says so.
+cask by name, which the brew adapter turns into its own command.
 
 Each entry's state comes from the snapshot the window already has, asked
 for with `get_catalog` (`src-tauri/src/ipc.rs`, `catalog::entries`):
@@ -5641,6 +5640,33 @@ the kernel keeps are read for this, with `sysctlbyname`:
 silicon under Rosetta too. Nothing else is read, nothing runs, nothing
 is written, and no connection is made for it. Until a check has
 finished, the page says nothing of any entry.
+
+Six entries install from here (phase 5 step B): Claude Code, Codex and
+Gemini CLI, Node.js, uv and ffmpeg (`CatalogItem::installs_here`).
+Homebrew itself does not -- Banager does not run its installer -- nor,
+yet, does Ollama. A "Not installed" row of one of the six has Install,
+which opens a sheet that asks for the plan with `plan_install`
+(`src-tauri/src/ipc.rs`), naming the entry by its id and never a
+package: `catalog::install_request` works out, from the snapshot as it is
+then, the entry's own formula or cask under the first Homebrew that
+answered and can be written to, in the order detection found them
+(`/opt/homebrew` before `/usr/local`), and refuses, before any source is
+asked, an id the catalog does not install from here and an entry that is
+not "Not installed" now. The plan is then made as every other operation's
+is (`Session::issue_plan`, its gates, the plan store) and is exactly the
+Homebrew install in "Homebrew" above:
+
+    <brew> install --formula <name>
+    <brew> install --cask <name>
+
+with Homebrew's five variables, and `SUDO_ASKPASS` where it applies.
+Nothing else runs to make the preview: what Homebrew also installs, and
+what it may update on the way, is said in general, not listed. The sheet
+shows the command (Show Command); Install starts that plan, by its id,
+and nothing else. As after any install, Banager then asks Homebrew whether
+it is there, and the check after the operation says "Installed" on the
+row -- with what to type to use it, and Copy, which only copies those
+words.
 
 ## Diagnostic info: read-only, no command runs
 
@@ -6831,10 +6857,12 @@ configured, `index.crates.io`, and cargo still follows a
   update` a refresh runs is Homebrew's exception: it can install, move or
   uninstall Homebrew packages by itself when Homebrew has moved a package
   between a formula and a cask, or renamed one (Homebrew's section).
-- Never lets the window ask for an install: it can ask for the preview
+- Never lets the window name what to install: it can ask for the preview
   of an upgrade, an uninstall or a link only, and `plan_operation_impl`
   (`src-tauri/src/ipc.rs`) refuses an install before any source is
-  asked, whatever it names. Nor by another name: the window may ask for
+  asked, whatever it names. It installs only a Discover entry, by the
+  entry's id (`plan_install`), and the package is the catalog's own
+  (`catalog::install_request`; see "Discover"). Nor by another name: the window may ask for
   an upgrade only of an update the last check listed, or of one the
   window previewed less than ten minutes before whose tool the last
   check still lists installed under the same source, kind and name,

@@ -158,6 +158,25 @@ function artifact(
   };
 }
 
+/** The version a Discover install leaves of each entry's formula or cask: pretend ones. */
+const CATALOG_VERSIONS: Record<string, string> = {
+  "claude-code": "2.1.14",
+  codex: "0.50.0",
+  "gemini-cli": "0.12.0",
+  node: "25.1.0",
+  uv: "0.9.5",
+  ffmpeg: "8.0",
+};
+
+/**
+ * What a Discover install leaves for the next refresh to find (`apply` in
+ * ./mockBackend.ts): the formula or cask, installed `at`. Its AI-tool
+ * family, if any, is set where every row's is, as the snapshot is made.
+ */
+export function installedFromCatalog(instanceId: string, kind: ArtifactKind, name: string, at: number): InstalledArtifact {
+  return artifact(instanceId, kind, name, CATALOG_VERSIONS[name] ?? "1.0.0", { installed_at: at });
+}
+
 function update(
   artifactKey: ArtifactKey,
   current: string,

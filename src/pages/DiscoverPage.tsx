@@ -1,14 +1,26 @@
+import { useId, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { CheckIcon } from "../components/icons";
+import { CopyButton } from "../components/CopyButton";
+import { CheckIcon, InfoIcon, SpinnerIcon, WarningFilledIcon } from "../components/icons";
 import { TextWithInfo } from "../components/InfoDetail";
+import { InstallSheet } from "../components/InstallSheet";
 import { SourceAvatar } from "../components/SourceAvatar";
 import { ToolAvatar } from "../components/ToolAvatar";
+import { BUTTON } from "../components/ui/controls";
 import { FORM_COLUMN, GROUP, GROUP_FOOTNOTE, GROUP_ROW_TWO_LINES, GROUP_TITLE, SMALL_WRAPPING } from "../components/ui/group";
-import { useCatalog, useSnapshot } from "../lib/queries";
-import type { ArtifactKey, CatalogCategory, CatalogEntry, CatalogState, ManagerInstance } from "../lib/types";
-
-/** Whatever `useTranslation()`'s `t` needs here; the same convention as `Translate` in src/lib/sources.ts. */
-type Translate = (key: string, options?: Record<string, string | number>) => string;
+import {
+  entryName,
+  iconKeyOf,
+  installOperationOf,
+  installProgressOf,
+  isUnderway,
+  ITEM_KEYS,
+  stateText,
+  type InstallProgress,
+} from "../lib/catalog";
+import { useCatalog, useOperations, usePendingOperations, useSnapshot } from "../lib/queries";
+import { useUiStore } from "../store/ui";
+import type { CatalogCategory, CatalogEntry } from "../lib/types";
 
 /** The groups, in the order the page lists them, and each one's title. */
 const CATEGORIES: [CatalogCategory, string][] = [
@@ -19,101 +31,130 @@ const CATEGORIES: [CatalogCategory, string][] = [
 ];
 
 /**
- * Each entry's words, by its id (`CatalogItem::id` in
- * crates/banager-core/src/catalog.rs): its name, what it is -- the row's
- * line -- and, behind the line's ⓘ, who needs it and how it is used once
- * installed. Literal keys, so `completeness.test.ts` finds each one; a
- * catalog id with none here shows its id and no line.
+ * How an install that ended without the tool says so, in its row, where
+ * the state was: a word that opens its log -- 「未能安装」 in the red for
+ * text; 「需要查看」 with ⚠︎ where Banager found it not there though
+ * Homebrew said it was, 「结果未确认」 where it could not tell -- as an
+ * update's row does (`UpdateProgress`).
  */
-const ITEM_KEYS: Record<string, { name: string; what: string; more: string }> = {
-  homebrew: {
-    name: "discover.items.homebrew.name",
-    what: "discover.items.homebrew.what",
-    more: "discover.items.homebrew.more",
-  },
-  "claude-code": {
-    name: "discover.items.claude-code.name",
-    what: "discover.items.claude-code.what",
-    more: "discover.items.claude-code.more",
-  },
-  codex: {
-    name: "discover.items.codex.name",
-    what: "discover.items.codex.what",
-    more: "discover.items.codex.more",
-  },
-  "gemini-cli": {
-    name: "discover.items.gemini-cli.name",
-    what: "discover.items.gemini-cli.what",
-    more: "discover.items.gemini-cli.more",
-  },
-  ollama: {
-    name: "discover.items.ollama.name",
-    what: "discover.items.ollama.what",
-    more: "discover.items.ollama.more",
-  },
-  node: {
-    name: "discover.items.node.name",
-    what: "discover.items.node.what",
-    more: "discover.items.node.more",
-  },
-  uv: {
-    name: "discover.items.uv.name",
-    what: "discover.items.uv.what",
-    more: "discover.items.uv.more",
-  },
-  ffmpeg: {
-    name: "discover.items.ffmpeg.name",
-    what: "discover.items.ffmpeg.what",
-    more: "discover.items.ffmpeg.more",
-  },
-};
-
-/**
- * What the row says on its right of `state`. A `switch` with no default,
- * so a state added to `CatalogState` without words here fails `tsc`.
- */
-function stateText(t: Translate, state: CatalogState): string {
-  if (typeof state === "object") return t("discover.state.needsMacOS", { major: state.NeedsMacOS.major });
-  switch (state) {
-    case "Installed":
-      return t("discover.state.installed");
-    case "NotInstalled":
-      return t("discover.state.notInstalled");
-    case "NeedsHomebrew":
-      return t("discover.state.needsHomebrew");
-    case "HomebrewUnsupported":
-      return t("discover.state.homebrewUnsupported");
-  }
+function EndedWithout({ progress, name }: { progress: InstallProgress; name: string }) {
+  const { t } = useTranslation();
+  const wordId = useId();
+  const setFocusedOpId = useUiStore((s) => s.setFocusedOpId);
+  const setDrawerOpen = useUiStore((s) => s.setDrawerOpen);
+  if (progress.kind !== "failed" && progress.kind !== "check" && progress.kind !== "unconfirmed") return null;
+  const word =
+    progress.kind === "failed"
+      ? t("discover.progress.failed")
+      : progress.kind === "check"
+        ? t("updates.progress.check")
+        : t("updates.progress.unconfirmed");
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        setFocusedOpId(progress.opId);
+        setDrawerOpen(true);
+      }}
+      aria-label={t("updates.progress.viewLogLabel", { name })}
+      aria-describedby={wordId}
+      title={t("common.viewLog")}
+      className={`inline-flex items-center gap-1 whitespace-nowrap rounded-sm text-small ${
+        progress.kind === "failed" ? "text-danger-text" : "text-foreground"
+      }`}
+    >
+      {progress.kind === "failed" ? null : <WarningFilledIcon size={12} className="shrink-0 text-warning" />}
+      <span id={wordId}>{word}</span>
+      <InfoIcon size={12} className="shrink-0" />
+    </button>
+  );
 }
 
 /**
- * What finds an entry's logo: a Homebrew formula or cask by its name, as
- * the Installed page finds that package's, under this Mac's first
- * Homebrew -- whose row, where the cask is installed there, also has its
- * app's icon. Homebrew itself has none: its row draws Homebrew's mark.
- */
-function iconKeyOf(entry: CatalogEntry, brew: ManagerInstance | undefined): ArtifactKey | undefined {
-  if (entry.install === "HomebrewItself") return undefined;
-  const { kind, name } = entry.install.Homebrew;
-  return { instance_id: brew?.id ?? "brew:/opt/homebrew", kind, name };
-}
-
-/**
- * The Discover page (phase 5 step A): the catalog Banager suggests, by
- * group, each entry with its logo, its name, what it is -- with who needs
- * it and how it is used behind the ⓘ -- and on the right whether this Mac
- * has it, by any way the catalog knows of (`get_catalog`). Until a check
- * has finished, nothing is said of any entry: an empty snapshot would say
- * everything needs Homebrew. Installing from here is the next step's; the
- * footnote says so.
+ * The Discover page (phase 5): the catalog Banager suggests, by group,
+ * each entry with its logo, its name, what it is -- with who needs it and
+ * how it is used behind the ⓘ -- and on the right whether this Mac has it,
+ * by any way the catalog knows of (`get_catalog`). Until a check has
+ * finished, nothing is said of any entry: an empty snapshot would say
+ * everything needs Homebrew.
+ *
+ * A "Not installed" entry the catalog installs from here has Install in
+ * its state's place (step B), which opens the install sheet
+ * (`InstallSheet`). Once started, the row says how it goes -- waiting,
+ * 「正在安装…」 with a spinner -- and how it ended: installed, the check
+ * after it having found it, with how to use it in place of its line and
+ * Copy for what to type; or not, in a word that opens its log, with
+ * Install to try again. Homebrew and Ollama are not installed from here
+ * yet, and the footnote says so.
  */
 export function DiscoverPage() {
   const { t } = useTranslation();
   const { data: catalog } = useCatalog();
   const { data: snapshot } = useSnapshot();
+  const { data: operations } = useOperations();
+  const pending = usePendingOperations();
+  const [installing, setInstalling] = useState<CatalogEntry | null>(null);
   const checked = snapshot?.refreshed_at != null;
   const brew = snapshot?.instances.find((instance) => instance.adapter_id === "brew");
   const sourceLabel = t("adapters.brew");
+
+  const right = (entry: CatalogEntry, name: string, progress: InstallProgress | null): ReactNode => {
+    if (progress !== null && isUnderway(progress)) {
+      const word =
+        progress.kind === "queued"
+          ? t("discover.progress.queued")
+          : progress.kind === "running"
+            ? t("discover.progress.running")
+            : t("discover.progress.cancelling");
+      return (
+        <span data-catalog-state="" className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap text-small text-muted">
+          {progress.kind === "queued" ? null : <SpinnerIcon size={16} className="shrink-0" />}
+          {word}
+        </span>
+      );
+    }
+    // Installed by any way the catalog knows of, or by the install that
+    // just ended, before the check after it has said so.
+    if (entry.state === "Installed" || progress?.kind === "installed") {
+      return (
+        <span data-catalog-state="" className="flex shrink-0 items-center gap-1 text-muted">
+          <CheckIcon size={14} />
+          {stateText(t, "Installed")}
+        </span>
+      );
+    }
+    const install =
+      entry.state === "NotInstalled" && entry.installs_here ? (
+        <button
+          type="button"
+          onClick={() => setInstalling(entry)}
+          aria-label={t("discover.installLabel", { name })}
+          className={BUTTON.small.grey}
+        >
+          {t("discover.install")}
+        </button>
+      ) : null;
+    const ended =
+      progress === null ? null : progress.kind === "cancelled" ? (
+        <span className="whitespace-nowrap text-small text-muted">{t("discover.progress.cancelled")}</span>
+      ) : (
+        <EndedWithout progress={progress} name={name} />
+      );
+    if (install === null && ended === null) {
+      return (
+        <span data-catalog-state="" className="flex shrink-0 items-center gap-1 text-muted">
+          {stateText(t, entry.state)}
+        </span>
+      );
+    }
+    return (
+      <span data-catalog-state="" className="flex shrink-0 items-center gap-2">
+        {ended}
+        {install}
+      </span>
+    );
+  };
+
   return (
     <div className={FORM_COLUMN}>
       <p className="px-2.5 text-muted">{t("discover.intro")}</p>
@@ -129,7 +170,12 @@ export function DiscoverPage() {
             <ul className={GROUP}>
               {entries.map((entry) => {
                 const keys = ITEM_KEYS[entry.id];
-                const name = keys === undefined ? entry.id : t(keys.name);
+                const name = entryName(t, entry.id);
+                const op = installOperationOf(entry, operations ?? [], pending);
+                const progress = op === null ? null : installProgressOf(op);
+                // Installed from here: how to use it, in place of what it is.
+                const use = progress?.kind === "installed" ? keys?.use : undefined;
+                const command = keys?.command;
                 return (
                   <li key={entry.id} data-catalog-entry={entry.id} className={GROUP_ROW_TWO_LINES}>
                     <span className="flex min-w-0 items-center gap-2.5">
@@ -142,7 +188,15 @@ export function DiscoverPage() {
                       )}
                       <span className="min-w-0">
                         <span className="block truncate text-foreground">{name}</span>
-                        {keys === undefined ? null : (
+                        {keys === undefined ? null : use !== undefined && command !== undefined ? (
+                          <span
+                            data-catalog-use=""
+                            className={`flex flex-wrap items-center gap-x-2 gap-y-1 text-muted ${SMALL_WRAPPING}`}
+                          >
+                            <span>{t(use)}</span>
+                            <CopyButton text={command} label={t("discover.copyCommand", { command })} />
+                          </span>
+                        ) : (
                           <span className={`block text-muted ${SMALL_WRAPPING}`}>
                             <TextWithInfo text={t(keys.what)} label={t("common.detailsLabel", { title: name })}>
                               {t(keys.more)}
@@ -151,12 +205,7 @@ export function DiscoverPage() {
                         )}
                       </span>
                     </span>
-                    {checked ? (
-                      <span data-catalog-state="" className="flex shrink-0 items-center gap-1 text-muted">
-                        {entry.state === "Installed" ? <CheckIcon size={14} /> : null}
-                        {stateText(t, entry.state)}
-                      </span>
-                    ) : null}
+                    {checked ? right(entry, name, progress) : null}
                   </li>
                 );
               })}
@@ -165,6 +214,11 @@ export function DiscoverPage() {
         );
       })}
       <p className={GROUP_FOOTNOTE}>{t("discover.footnote")}</p>
+      <InstallSheet
+        entry={installing}
+        iconKey={installing === null ? undefined : iconKeyOf(installing, brew)}
+        onClose={() => setInstalling(null)}
+      />
     </div>
   );
 }

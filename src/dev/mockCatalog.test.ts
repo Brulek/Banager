@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { mockCatalog } from "./mockCatalog";
 import { createMockBackend } from "./mockBackend";
 import { DEFAULT_SCENARIO } from "./scenario";
-import type { CatalogEntry, InstalledArtifact, ManagerInstance } from "../lib/types";
+import type { CatalogEntry, InstalledArtifact, IssuedPlan, ManagerInstance, OpSummary } from "../lib/types";
 import { NO_FACTS } from "../lib/types";
 
 describe("the browser preview's catalog", () => {
@@ -91,6 +91,67 @@ describe("the browser preview's catalog", () => {
         ["homebrew", "NotInstalled"],
         ...["claude-code", "codex", "gemini-cli", "ollama", "node", "uv", "ffmpeg"].map((id) => [id, "NeedsHomebrew"]),
       ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("installs an entry from Discover by its id, and the check after it finds the tool", async () => {
+    // docs/ui-preview.md: `?state=nothing`, Homebrew with nothing installed.
+    vi.useFakeTimers();
+    try {
+      const backend = createMockBackend({ ...DEFAULT_SCENARIO, state: "nothing" });
+      const settle = async <T,>(call: Promise<unknown>): Promise<T> => {
+        await vi.runOnlyPendingTimersAsync();
+        return (await call) as T;
+      };
+      const refusal = async (call: Promise<unknown>, reason: string) => {
+        const assertion = expect(call).rejects.toBe(reason);
+        await vi.runOnlyPendingTimersAsync();
+        await assertion;
+      };
+      await settle(backend.invoke("refresh"));
+      const catalog = await settle<CatalogEntry[]>(backend.invoke("get_catalog"));
+      expect(catalog.filter((entry) => entry.state === "NotInstalled" && entry.installs_here).map((entry) => entry.id)).toEqual([
+        "claude-code",
+        "codex",
+        "gemini-cli",
+        "node",
+        "uv",
+        "ffmpeg",
+      ]);
+      // Not offered from here, and no entry at all.
+      for (const catalogId of ["homebrew", "ollama", "jq"]) {
+        await refusal(backend.invoke("plan_install", { catalogId }), JSON.stringify({ kind: "refused" }));
+      }
+      const issued = await settle<IssuedPlan>(backend.invoke("plan_install", { catalogId: "gemini-cli" }));
+      expect(issued.plan.request).toEqual({
+        kind: "Install",
+        instance_id: "brew:/opt/homebrew",
+        artifact_kind: "Formula",
+        name: "gemini-cli",
+      });
+      expect(issued.plan.action).toMatchObject({ Command: { args: ["install", "--formula", "gemini-cli"] } });
+      const opId = (await backend.invoke("submit_operation", { planId: issued.id })) as number;
+      for (let turn = 0; turn < 50; turn += 1) {
+        const operations = await settle<OpSummary[]>(backend.invoke("list_operations"));
+        if (operations.find((op) => op.id === opId)?.status === "Done") break;
+      }
+      const done = (await backend.invoke("list_operations")) as OpSummary[];
+      expect(done.find((op) => op.id === opId)).toMatchObject({ status: "Done", outcome: "Succeeded" });
+      await settle(backend.invoke("refresh"));
+      const after = await settle<CatalogEntry[]>(backend.invoke("get_catalog"));
+      expect(after.find((entry) => entry.id === "gemini-cli")?.state).toBe("Installed");
+      // Installed now: refused in the row's terms. And the window still may
+      // not plan an install by a package's name.
+      await refusal(
+        backend.invoke("plan_install", { catalogId: "gemini-cli" }),
+        JSON.stringify({ kind: "catalog_state", state: "Installed" }),
+      );
+      await refusal(
+        backend.invoke("plan_operation", { request: { ...issued.plan.request, name: "node" } }),
+        JSON.stringify({ kind: "refused" }),
+      );
     } finally {
       vi.useRealTimers();
     }
