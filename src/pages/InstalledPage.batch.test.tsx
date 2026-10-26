@@ -421,3 +421,56 @@ describe("a row a batch has already uninstalled", () => {
     expect(within(rowOf("git")).getByRole("button", { name: "Uninstall git…" })).toBeEnabled();
   });
 });
+
+describe("Select It Again, on the Installed page (BAN-002)", () => {
+  const failed = (id: number, of: InstalledArtifact): OpSummary => ({
+    id,
+    kind: "Uninstall",
+    instance_id: of.key.instance_id,
+    artifact_kind: of.key.kind,
+    name: of.key.name,
+    status: "Done",
+    outcome: { Failed: { exit_code: 1, summary: "Error: it failed", cause: null } },
+    argv_preview: [],
+    cancel_policy: "KillThenReconcile",
+  });
+
+  it("shows the tools it ticks again, from another source and a search, so Uninstall Selected has them", async () => {
+    const libpng = artifact(brew, "Formula", "libpng", { reason: "Dependency" });
+    served = { ...snapshot, artifacts: [...snapshot.artifacts, libpng] };
+    operations = [failed(21, wget), failed(22, libpng)];
+    useUiStore.getState().setUninstallBatch({
+      id: 1,
+      items: [
+        { key: wget.key, name: "wget", opId: 21, after: [] },
+        { key: libpng.key, name: "libpng", opId: 22, after: [] },
+      ],
+    });
+    // Looking at pip, with a search: neither row is on the list.
+    useUiStore.getState().setInstalledFilter(pip.id);
+    useUiStore.getState().setQuery("req");
+    renderInstalled();
+    await findRow("requests");
+    fireEvent.click(await screen.findByRole("button", { name: "Select Them Again" }));
+    // Every source, no search, libpng's fold open: both shown, ticked,
+    // and Uninstall Selected counts them.
+    expect(await findRow("wget")).toBeInTheDocument();
+    expect(await findRow("libpng")).toBeInTheDocument();
+    expect(boxOf("wget")).toBeChecked();
+    expect(boxOf("libpng")).toBeChecked();
+    expect(screen.getByRole("button", { name: /^Uninstall Selected/ })).toHaveAccessibleName("Uninstall Selected (2)…");
+    expect(useUiStore.getState().installedFilter).toBeNull();
+    expect(useUiStore.getState().query).toBe("");
+  });
+
+  it("keeps the source shown when it is theirs", async () => {
+    operations = [failed(21, wget)];
+    useUiStore.getState().setUninstallBatch({ id: 1, items: [{ key: wget.key, name: "wget", opId: 21, after: [] }] });
+    useUiStore.getState().setInstalledFilter(BREW);
+    renderInstalled();
+    await findRow("wget");
+    fireEvent.click(await screen.findByRole("button", { name: "Select It Again" }));
+    await waitFor(() => expect(boxOf("wget")).toBeChecked());
+    expect(useUiStore.getState().installedFilter).toBe(BREW);
+  });
+});

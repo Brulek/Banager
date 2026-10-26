@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { useOperations, useSettings } from "../lib/queries";
+import { useOperations, useSettings, useSnapshot } from "../lib/queries";
 import { operationTone, outcomeWords, printedAnything } from "../lib/operations";
 import { FAILURE_CAUSE_KEYS, outcomeCause } from "../lib/failureCause";
 import { namesInSentence } from "../lib/sources";
@@ -32,12 +32,13 @@ export function BatchUninstallResult() {
   const { t } = useTranslation();
   const record = useUiStore((s) => s.uninstallBatch);
   const dismiss = useUiStore((s) => s.dismissUninstallBatch);
-  const selectUninstalls = useUiStore((s) => s.selectUninstalls);
+  const reselectUninstalls = useUiStore((s) => s.reselectUninstalls);
   const setFocusedOpId = useUiStore((s) => s.setFocusedOpId);
   const setDrawerOpen = useUiStore((s) => s.setDrawerOpen);
   const logs = useUiStore((s) => s.logs);
   const { data: operations } = useOperations();
   const { data: settings } = useSettings();
+  const { data: snapshot } = useSnapshot();
   const technical = settings?.show_technical_details ?? false;
   if (record === null || operations === undefined) return null;
   const byOp = new Map(operations.map((op) => [op.id, op]));
@@ -135,11 +136,20 @@ export function BatchUninstallResult() {
               );
             })}
           </ul>
-          {/* The way to try again: they are ticked once more, for 「卸载所选」
-              to preview them again -- nothing starts from here. */}
+          {/* The way to try again: they are ticked once more, and shown,
+              for 「卸载所选」 to preview them again -- nothing starts from
+              here. A component among them is under its source's fold,
+              which opens (BAN-002). */}
           <button
             type="button"
-            onClick={() => selectUninstalls(notUninstalled.map(({ item }) => item.key))}
+            onClick={() => {
+              const keys = notUninstalled.map(({ item }) => item.key);
+              const ids = new Set(keys.map(artifactKeyId));
+              const components = (snapshot?.artifacts ?? []).filter(
+                (artifact) => artifact.reason === "Dependency" && ids.has(artifactKeyId(artifact.key)),
+              );
+              reselectUninstalls(keys, [...new Set(components.map((artifact) => artifact.key.instance_id))]);
+            }}
             className={`mt-2 ${BUTTON.small.grey}`}
           >
             {t("reviewFixes.selectAgain", { count: notUninstalled.length })}

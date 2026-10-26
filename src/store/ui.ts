@@ -166,6 +166,12 @@ export interface UiState {
   // `selectUpdates` and `deselectUpdates` do.
   selectUninstalls(keys: ArtifactKey[]): void;
   deselectUninstalls(keys: ArtifactKey[]): void;
+  // The batch result's Select It Again: ticks `keys` and shows them, so
+  // 「卸载所选」 counts them -- another source's filter dropped (one of
+  // theirs kept), the search emptied, every tool shown, and the
+  // components of each source in `unfold` unfolded. Ticking alone left
+  // them off a list showing npm, and no Uninstall Selected (BAN-002).
+  reselectUninstalls(keys: ArtifactKey[], unfold: string[]): void;
   // Drops every tick whose id is not in `ids`: the tools still listed.
   keepUninstalls(ids: ReadonlySet<string>): void;
   // The last batch uninstall that started something, for the Installed
@@ -373,6 +379,14 @@ export const useUiStore = create<UiState>((set, get) => ({
       const given = new Set(keys.map(artifactKeyId));
       return { selectedUninstalls: s.selectedUninstalls.filter((id) => !given.has(id)) };
     }),
+  reselectUninstalls: (keys, unfold) =>
+    set((s) => ({
+      selectedUninstalls: [...new Set([...s.selectedUninstalls, ...keys.map(artifactKeyId)])],
+      installedFilter: keys.every((key) => key.instance_id === s.installedFilter) ? s.installedFilter : null,
+      installedShow: "all",
+      query: "",
+      expandedDependencies: [...new Set([...s.expandedDependencies, ...unfold])],
+    })),
   // Unchanged when every tick is still listed: no new array, no new draw.
   keepUninstalls: (ids) =>
     set((s) =>
