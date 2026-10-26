@@ -5776,7 +5776,9 @@ catalogue for these, as fresh as its last `brew update`: with
 downloads one from its API host only where it has none. A name of
 another tap (`user/tap/name`) is left out, and so is any name
 `validate_package_name` refuses; at most 40 are listed, the one the text
-is first, then those it starts, then the rest. Each result is kept in the session under a random
+is first, then those it starts, then the rest. At most two searches run
+at once (`search::SEARCHES_AT_ONCE`), however many the window asks for;
+another waits its turn. Each result is kept in the session under a random
 id for ten minutes, at most 2,000 of them, and the window gets the id, the
 kind, the name, the description, whether that Homebrew lists it
 installed, and the catalog entry it is, if it is one. Install on a

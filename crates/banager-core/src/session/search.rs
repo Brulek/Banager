@@ -18,6 +18,11 @@ pub(crate) const FOUND_LIFETIME: Duration = Duration::from_secs(600);
 /// searches' worth: more than ten minutes of typing.
 pub(crate) const FOUND_KEPT: usize = 2000;
 
+/// How many searches run at once; the others wait their turn. Each runs up
+/// to four `brew` processes (`BrewAdapter::search`), and the window can ask
+/// for as many as it likes (from the independent review of the branch).
+pub(crate) const SEARCHES_AT_ONCE: usize = 2;
+
 /// What installs a result, kept under its id.
 pub(crate) struct FoundEntry {
     request: OpRequest,
@@ -69,8 +74,8 @@ pub enum FoundError {
 }
 
 impl Session {
-    /// Homebrew's formulae and casks whose name or description has
-    /// `query` in it (`BrewAdapter::search`), from the first Homebrew of the
+    /// Homebrew's formulae and casks whose name has `query` in it
+    /// (`BrewAdapter::search`), from the first Homebrew of the
     /// snapshot that answered and can be written to -- the one a catalog
     /// entry installs into -- each kept under a fresh id for
     /// `plan_found`. Every search also forgets the results older than
@@ -91,6 +96,11 @@ impl Session {
             .adapters
             .get(&instance.adapter_id)
             .ok_or(SearchError::NoHomebrew)?;
+        // Its turn among the searches under way (`SEARCHES_AT_ONCE`). The
+        // semaphore is never closed.
+        let Ok(_turn) = self.searching.acquire().await else {
+            return Err(SearchError::NoHomebrew);
+        };
         let hits = adapter
             .search(&instance, query)
             .await
@@ -212,6 +222,11 @@ mod tests {
         hits: Vec<SearchHit>,
         searched: Mutex<Vec<String>>,
         plans: AtomicUsize,
+        /// How long each search takes, and how many were under way at once
+        /// at most: for the test of `SEARCHES_AT_ONCE`.
+        search_delay: Duration,
+        searching: AtomicUsize,
+        most_searching: AtomicUsize,
     }
 
     #[async_trait]
@@ -249,6 +264,10 @@ mod tests {
             query: &str,
         ) -> Result<Vec<SearchHit>, AdapterError> {
             self.searched.lock().unwrap().push(query.to_string());
+            let now = self.searching.fetch_add(1, Ordering::SeqCst) + 1;
+            self.most_searching.fetch_max(now, Ordering::SeqCst);
+            tokio::time::sleep(self.search_delay).await;
+            self.searching.fetch_sub(1, Ordering::SeqCst);
             Ok(self.hits.clone())
         }
 
@@ -308,6 +327,9 @@ mod tests {
             ],
             searched: Mutex::new(Vec::new()),
             plans: AtomicUsize::new(0),
+            search_delay: Duration::ZERO,
+            searching: AtomicUsize::new(0),
+            most_searching: AtomicUsize::new(0),
         });
         let adapter: Arc<dyn Adapter> = brew.clone();
         let session = Session::with_adapters(Arc::new(VecSink::new()), vec![adapter], None);
@@ -397,7 +419,10 @@ mod tests {
             session.search_homebrew("jq").await,
             Err(SearchError::NoHomebrew)
         ));
-        let (session, _) = session_with(crate::testing::manager_instance(
+        assert!(brew.searched.lock().unwrap().is_empty());
+        // Refused before the Homebrew that could search is asked (from the
+        // independent review of the branch: this read the view-only one's).
+        let (session, brew) = session_with(crate::testing::manager_instance(
             "brew",
             "brew:/opt/homebrew",
         ))
@@ -412,6 +437,105 @@ mod tests {
             );
         }
         assert!(brew.searched.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_a_result_older_than_its_lifetime_is_unknown() {
+        let (session, brew) = session_with(crate::testing::manager_instance(
+            "brew",
+            "brew:/opt/homebrew",
+        ))
+        .await;
+        let found = session.search_homebrew("jq").await.expect("search");
+        let past = Instant::now()
+            .checked_sub(FOUND_LIFETIME + Duration::from_secs(1))
+            .expect("an instant that long ago");
+        for entry in session.found.lock().unwrap().values_mut() {
+            entry.found_at = past;
+        }
+        assert!(matches!(
+            session.plan_found(&found[1].id).await,
+            Err(FoundError::Unknown)
+        ));
+        assert_eq!(brew.plans.load(Ordering::SeqCst), 0);
+        // And the next search forgets them.
+        session.search_homebrew("jq").await.expect("search");
+        assert_eq!(session.found.lock().unwrap().len(), found.len());
+    }
+
+    #[tokio::test]
+    async fn test_past_the_results_kept_the_oldest_go_first() {
+        let (session, _) = session_with(crate::testing::manager_instance(
+            "brew",
+            "brew:/opt/homebrew",
+        ))
+        .await;
+        // FOUND_KEPT results from earlier, within their lifetime, each a
+        // millisecond after the one before.
+        let start = Instant::now()
+            .checked_sub(Duration::from_secs(300))
+            .expect("an instant that long ago");
+        {
+            let mut found = session.found.lock().unwrap();
+            for n in 0..FOUND_KEPT {
+                found.insert(
+                    format!("old-{n}"),
+                    FoundEntry {
+                        request: OpRequest {
+                            kind: OpKind::Install,
+                            instance_id: "brew:/opt/homebrew".to_string(),
+                            artifact_kind: ArtifactKind::Formula,
+                            name: format!("old{n}"),
+                        },
+                        found_at: start + Duration::from_millis(n as u64),
+                    },
+                );
+            }
+        }
+        let found = session.search_homebrew("jq").await.expect("search");
+        let kept = session.found.lock().unwrap();
+        assert_eq!(kept.len(), FOUND_KEPT);
+        // The newest search's all kept; the oldest earlier ones gone.
+        assert!(found.iter().all(|f| kept.contains_key(&f.id)));
+        for n in 0..found.len() {
+            assert!(!kept.contains_key(&format!("old-{n}")), "old-{n}");
+        }
+        assert!(kept.contains_key(&format!("old-{}", found.len())));
+    }
+
+    #[tokio::test]
+    async fn test_no_more_than_searches_at_once_run_together() {
+        let brew = Arc::new(FakeBrew {
+            meta: test_support::fake_adapter_meta("brew"),
+            instance: crate::testing::manager_instance("brew", "brew:/opt/homebrew"),
+            listed: Vec::new(),
+            hits: vec![hit(ArtifactKind::Formula, "jq")],
+            searched: Mutex::new(Vec::new()),
+            plans: AtomicUsize::new(0),
+            search_delay: Duration::from_millis(40),
+            searching: AtomicUsize::new(0),
+            most_searching: AtomicUsize::new(0),
+        });
+        let adapter: Arc<dyn Adapter> = brew.clone();
+        let session = Session::with_adapters(Arc::new(VecSink::new()), vec![adapter], None);
+        session
+            .refresh(&test_support::non_root_env(), &CheckOptions::default())
+            .await;
+        let searches: Vec<_> = (0..6)
+            .map(|n| {
+                let session = session.clone();
+                tokio::spawn(async move { session.search_homebrew(&format!("jq{n}")).await })
+            })
+            .collect();
+        for search in searches {
+            assert!(search.await.expect("joined").is_ok());
+        }
+        assert_eq!(brew.searched.lock().unwrap().len(), 6);
+        assert!(
+            brew.most_searching.load(Ordering::SeqCst) <= SEARCHES_AT_ONCE,
+            "{} at once",
+            brew.most_searching.load(Ordering::SeqCst)
+        );
     }
 
     #[tokio::test]

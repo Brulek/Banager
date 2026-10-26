@@ -419,6 +419,9 @@ pub struct Session {
     now_fn: Option<fn() -> i64>,
     /// Turns among the plans being worked out (`plans::PLANS_AT_ONCE`).
     planning: tokio::sync::Semaphore,
+    /// Turns among the Discover searches under way
+    /// (`search::SEARCHES_AT_ONCE`).
+    searching: tokio::sync::Semaphore,
     /// See `background_change`. Handed to the adapters that can change
     /// state on their own (Homebrew's background `brew update`) by
     /// `Session::new`.
@@ -596,6 +599,7 @@ impl Session {
             found: Mutex::new(HashMap::new()),
             now_fn,
             planning: tokio::sync::Semaphore::new(plans::PLANS_AT_ONCE),
+            searching: tokio::sync::Semaphore::new(search::SEARCHES_AT_ONCE),
             background_change,
             login_path: std::sync::atomic::AtomicBool::new(true),
             commands_in_flight: Arc::new(std::sync::atomic::AtomicBool::new(false)),
