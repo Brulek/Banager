@@ -750,7 +750,7 @@ describe("sourceNoticesFor", () => {
     ]);
     const said = {
       en: ["Updates for some apps installed with Homebrew weren't checked", "/usr/local/bin/brew trust lists the places it trusts", "run /usr/local/bin/brew trust --tap followed by its name"],
-      "zh-CN": ["用Homebrew安装的部分应用没有检查更新", "运行/usr/local/bin/brew trust可列出它信任的来源", "请运行/usr/local/bin/brew trust --tap并在后面加上它的名称"],
+      "zh-CN": ["用Homebrew安装的部分App没有检查更新", "运行/usr/local/bin/brew trust可列出它信任的来源", "请运行/usr/local/bin/brew trust --tap并在后面加上它的名称"],
       "zh-Hant": ["用Homebrew安裝的部分應用程式沒有檢查更新", "執行/usr/local/bin/brew trust可列出它信任的來源", "請執行/usr/local/bin/brew trust --tap並在後面加上它的名稱"],
     };
     for (const [lng, [title, ...parts]] of Object.entries(said)) {

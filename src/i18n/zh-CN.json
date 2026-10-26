@@ -782,8 +782,8 @@
       "description": "{{source}}没有列出它们，通常是因为它不信任它们的来源，所以没有检查它们的更新，也无法确定它们还要用哪些软件包。在终端运行{{command}}可列出{{source}}获取软件包的所有来源，运行{{trusted}}可列出它信任的来源；要信任只在前一个列表中的某个来源，请运行{{trust}}并在后面加上它的名称，然后重新检查。"
     },
     "casksNotChecked": {
-      "title": "用{{source}}安装的部分应用没有检查更新",
-      "description": "{{source}}只检查它信任的来源中的应用，而无法确认它信任这些应用的来源，所以没有检查它们的更新。在终端运行{{trusted}}可列出它信任的来源；要信任其他来源，请运行{{trust}}并在后面加上它的名称，然后重新检查。"
+      "title": "用{{source}}安装的部分App没有检查更新",
+      "description": "{{source}}只检查它信任的来源中的App，而无法确认它信任这些App的来源，所以没有检查它们的更新。在终端运行{{trusted}}可列出它信任的来源；要信任其他来源，请运行{{trust}}并在后面加上它的名称，然后重新检查。"
     },
     "checksUnfinished": {
       "title": "部分检查未完成",
@@ -1362,7 +1362,7 @@
         "launcherOnly": "找不到程序文件",
         "someNotListed": "部分工具没有显示",
         "formulaeNotListed": "部分软件包没有显示",
-        "casksNotChecked": "部分应用没有检查更新"
+        "casksNotChecked": "部分App没有检查更新"
       },
       "searchPath": "查找命令的文件夹：{{number}}个",
       "loginRead": "已读取登录时的设置",
@@ -1790,8 +1790,8 @@
   },
   "discover": {
     "intro": "可以从这些工具开始，也能看到这台Mac已经有了哪些。",
-    "introNoHomebrew": "这台Mac上还没有Homebrew。先装好它，下面的工具就能在这里一键安装。",
-    "introHomebrewNotReady": "这台Mac上有Homebrew，但现在无法用它安装：侧栏“来源”下的Homebrew页面会说明原因。",
+    "introNoHomebrew": "这台Mac上还没有Homebrew。先安装它，下面的工具就能在这里一键安装。",
+    "introHomebrewNotReady": "这台Mac上有Homebrew，但现在无法用它安装：边栏“来源”下的Homebrew页面会说明原因。",
     "footnote": "这里的工具都用Homebrew安装，模型用Ollama下载；安装前都会先显示要运行的命令。",
     "install": "安装",
     "installLabel": "安装{{name}}",
@@ -1805,12 +1805,12 @@
     "state": {
       "installed": "已安装",
       "notInstalled": "未安装",
-      "needsHomebrew": "需先装Homebrew",
+      "needsHomebrew": "需先安装Homebrew",
       "needsMacOS": "需要macOS {{major}}",
       "homebrewUnsupported": "不支持这台Mac",
-      "needsOllama": "需先装Ollama",
-      "ollamaNotReady": "Ollama现在无法下载",
-      "homebrewNotReady": "Homebrew现在无法安装"
+      "needsOllama": "需先安装Ollama",
+      "ollamaNotReady": "Ollama现在无法下载模型",
+      "homebrewNotReady": "Homebrew现在无法安装工具"
     },
     "progress": {
       "queued": "排队中",
@@ -1822,8 +1822,8 @@
     "sheet": {
       "title": "要安装“{{name}}”吗？",
       "from": "由Homebrew下载，核对下载的文件无误后再安装。",
-      "alsoInstalls": "Homebrew会一并安装它需要的组件，有时还会顺带更新一些已安装的组件。",
-      "checking": "正在检查将运行什么…",
+      "alsoInstalls": "Homebrew会一并安装它需要的组件，有时还会顺带更新一些已安装的内容。",
+      "checking": "正在确认要运行的命令…",
       "planError": "无法准备安装：{{message}}",
       "planErrorPlain": "无法准备安装。",
       "submitError": "无法开始安装：{{message}}",
@@ -1833,7 +1833,7 @@
       "needsMacOS": "它需要macOS {{major}}或更高版本。",
       "fromOllama": "Ollama会从它的模型库下载{{model}}，约{{size}}。",
       "needsOllama": "这台Mac上的Ollama现在无法下载它。",
-      "noOllama": "这台Mac上没有可以下载它的Ollama。",
+      "noOllama": "这台Mac上没有Ollama，无法下载它。",
       "room": "这台Mac还有{{free}}可用空间。",
       "roomShort": "这台Mac只剩{{free}}可用空间，不够下载它。请先腾出一些空间。"
     },
@@ -1842,7 +1842,7 @@
       "label": "在Homebrew里搜索工具",
       "searching": "正在搜索Homebrew…",
       "invalid": "请输入工具的英文名，至少两个字母，不要包含“/”，也不要以“-”开头。",
-      "needsHomebrew": "先装好Homebrew才能搜索。",
+      "needsHomebrew": "先安装Homebrew才能搜索。",
       "failed": "无法搜索Homebrew：{{message}}",
       "failedPlain": "无法搜索Homebrew。",
       "none": "Homebrew里没有和“{{query}}”相符的工具。",
@@ -1851,19 +1851,19 @@
       "suggestedMark": "精选",
       "notSuggested": "它不在这里的精选里，请确认这就是你要的那个。",
       "expired": "这个搜索结果已过期，请重新搜索。",
-      "footnote": "这里只列出Homebrew自己的工具和App，不包括其他来源添加给它的。",
+      "footnote": "这里只列出Homebrew自己的工具和App，不包括从其他来源添加到Homebrew的。",
       "count_other": "{{count}}个结果"
     },
     "homebrew": {
       "title": "安装Homebrew",
-      "text": "Homebrew要在“终端”里安装：由你运行它的安装程序、输入密码，这里既不运行它，也不经手密码。",
-      "olderMacOS": "Homebrew只支持macOS 15及以后的版本。在macOS {{version}}上能安装，但有些功能可能出问题。",
+      "text": "Homebrew要在“终端”里安装：由你运行它的安装程序、输入密码，这里既不会运行它，也看不到你的密码。",
+      "olderMacOS": "Homebrew支持macOS 15或更高版本。在macOS {{version}}上也能安装，但有些功能可能无法正常使用。",
       "steps": {
         "open": "点按“打开终端”，安装命令会先拷贝好。",
         "paste": "在“终端”里按下Command-V，然后按下Return键。",
-        "password": "出现“Password”时，输入这台Mac的登录密码，然后按下Return键。输入时屏幕上不会显示。",
-        "return": "出现“Press RETURN”时，再按一次Return键，然后等它装完。如果它先安装命令行工具，要等几分钟。",
-        "done": "看到“Installation successful!”就装好了，这里会自动发现。"
+        "password": "出现“Password”时，输入这台Mac的登录密码，然后按下Return键。输入时屏幕上不会显示任何字符。",
+        "return": "出现“Press RETURN”时，再按一次Return键，然后等它装完。如果它先安装命令行工具，可能要等几分钟。",
+        "done": "看到“Installation successful!”就安装好了，这个窗口会自动检测到。"
       },
       "whatTitle": "这条命令会做什么",
       "what": {
@@ -1875,9 +1875,9 @@
       },
       "commandLabel": "Homebrew的安装命令",
       "openTerminal": "打开终端",
-      "waiting": "正在等Homebrew装好…",
-      "updating": "Homebrew已装好，正在完成第一次更新…",
-      "installed": "Homebrew已装好。",
+      "waiting": "正在等待Homebrew安装完成…",
+      "updating": "Homebrew已安装，正在完成首次更新…",
+      "installed": "Homebrew已安装。",
       "continue": "继续",
       "copyFailed": "无法拷贝命令。请在“查看命令”里拷贝。",
       "openFailed": "无法打开“终端”。请从“应用程序”›“实用工具”里打开它。"
@@ -1914,7 +1914,7 @@
       },
       "model": {
         "name": "Gemma 3",
-        "what": "Google的开放AI模型，按这台Mac的内存选了{{model}}，约{{size}}",
+        "what": "Google公开发布的AI模型，按这台Mac的内存选了{{model}}，约{{size}}",
         "more": "下载后不联网也能在这台Mac上运行，能用包括中文在内的多种语言回答问题、写文字。在新的终端窗口里输入ollama run {{model}}，或者在Ollama App里使用。",
         "use": "在新的终端窗口里输入ollama run {{model}}。"
       },
@@ -1932,7 +1932,7 @@
       },
       "ffmpeg": {
         "name": "ffmpeg",
-        "what": "转换、剪切音频和视频",
+        "what": "转换和剪辑音频、视频",
         "more": "输入一条命令就能转换视频格式、提取声音或截取片段。装好后，在新的终端窗口里输入ffmpeg。",
         "use": "在新的终端窗口里输入ffmpeg。"
       }

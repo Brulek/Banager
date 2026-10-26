@@ -535,7 +535,7 @@ describe("the Discover page", () => {
     expect(rows().slice(4, 7)).toEqual([
       ["Ollama", "需要macOS 14"],
       ["Node.js", "安装"],
-      ["uv", "需先装Homebrew"],
+      ["uv", "需先安装Homebrew"],
     ]);
     unmount();
     await i18n.changeLanguage("zh-Hant");

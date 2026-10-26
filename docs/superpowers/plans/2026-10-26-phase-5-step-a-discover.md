@@ -20,7 +20,7 @@ of what it is, and on the right its state:
 |---|---|---|
 | `Installed` | 「已安装」 | any way of having it the catalog knows of is in the snapshot |
 | `NotInstalled` | 「未安装」 | not installed, and its source (Homebrew) is there and can install |
-| `NeedsHomebrew` | 「需先装Homebrew」 | not installed, and no Homebrew that can install is there |
+| `NeedsHomebrew` | 「需先安装Homebrew」 | not installed, and no Homebrew that can install is there |
 | `NeedsMacOS` | 「需要macOS 14」 | not installed, and this Mac's macOS is older than the entry needs |
 | `HomebrewUnsupported` | 「Homebrew已不支持这台Mac」 | the Homebrew entry, on an Intel Mac without Homebrew |
 
