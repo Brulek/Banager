@@ -395,6 +395,37 @@ describe("the Discover page", () => {
     expect(rows()[7]).toEqual(["ffmpeg", "Install"]);
   });
 
+  it("measures against the catalog's own snapshot where the install ended between its read and the next one's", async () => {
+    // From the independent review of the branch: the test above passes on
+    // the live snapshot too. Here the catalog shown (the last one's) read
+    // Homebrew before the install ended, and the next snapshot after it:
+    // only the catalog's own snapshot says the install is newer.
+    const made = snapshot.refreshed_at!;
+    const brewAt = (answered_at: number) => [{ id: "brew:/opt/homebrew", answered_at } as ManagerInstance];
+    snapshot = { ...snapshot, instances: brewAt(made - 30) };
+    operations = [installOp(3, "ffmpeg", "Done", "Succeeded")];
+    useUiStore.getState().rememberOpFinished(3, (made - 10) * 1000);
+    const { queryClient } = renderWithProviders(<DiscoverPage />);
+    await waitFor(() => expect(rows()[7]).toEqual(["ffmpeg", "Installed"]));
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === "get_snapshot") return snapshot;
+      if (cmd === "get_catalog") return new Promise(() => {});
+      if (cmd === "list_operations") return operations;
+      return null;
+    });
+    act(() => {
+      queryClient.setQueryData<Snapshot>(queryKeys.snapshot, {
+        ...snapshot,
+        generation: 2,
+        round: 2,
+        refreshed_at: made + 60,
+        instances: brewAt(made + 50),
+      });
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(rows()[7]).toEqual(["ffmpeg", "Installed"]);
+  });
+
   it("says an install that ended without the tool, opening its log, with Install to try again", async () => {
     operations = [
       installOp(4, "node", "Done", { Failed: { exit_code: 1, summary: "Error: node: no bottle", cause: null } }),

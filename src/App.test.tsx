@@ -795,6 +795,31 @@ describe("App", () => {
     expect(second.queryByRole("heading", { level: 1, name: "Discover" })).toBeNull();
   });
 
+  it("opens Discover once only: a page chosen after it stays through the checks after", async () => {
+    // From the independent review of the branch: removing the "once" in
+    // `useFrontDoor` passed every test, and would take an empty Mac's
+    // Overview back to Discover after every check (decision E11).
+    mockBackend({ ...snapshot, detect: "Missing", instances: [], artifacts: [] });
+    const { findByRole, getByRole, getAllByRole } = renderWithProviders(<App />);
+    await findByRole("heading", { level: 1, name: "Discover" });
+    fireEvent.click(getByRole("button", { name: "Overview" }));
+    await findByRole("heading", { level: 1, name: "Overview" });
+    const refreshes = () => mockInvoke.mock.calls.filter(([cmd]) => cmd === "refresh").length;
+    const before = refreshes();
+    // The check after it: a newer snapshot, still of an empty Mac.
+    const empty: Snapshot = { ...snapshot, detect: "Missing", instances: [], artifacts: [] };
+    mockBackend({
+      ...empty,
+      generation: empty.generation + 1,
+      round: (empty.round ?? 0) + 1,
+      refreshed_at: (empty.refreshed_at ?? 0) + 60,
+    });
+    fireEvent.click(getAllByRole("button", { name: "Check Again" })[0]);
+    await waitFor(() => expect(refreshes()).toBeGreaterThan(before));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(getByRole("heading", { level: 1, name: "Overview" })).toBeInTheDocument();
+  });
+
   it("keeps Settings reachable when no source is installed", async () => {
     mockBackend({ ...snapshot, detect: "Missing", instances: [], artifacts: [] });
     const { getByRole, findByText, findByRole } = renderWithProviders(<App />);
