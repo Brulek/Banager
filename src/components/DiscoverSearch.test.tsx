@@ -393,6 +393,35 @@ describe("Discover's search of Homebrew", () => {
     expect(await screen.findByRole("alert", {}, { timeout: 3000 })).toHaveTextContent("Install Homebrew first to search it.");
   });
 
+  it("says why it could not search in words with technical details on too, not as the refusal's JSON", async () => {
+    // From the independent review of the branch.
+    search = async () => {
+      throw JSON.stringify({ kind: "invalid_query" });
+    };
+    mockInvoke.mockImplementation(async (cmd: string, args?: unknown) => {
+      if (cmd === "get_settings")
+        return {
+          language: "System",
+          show_technical_details: true,
+          ignored_updates: [],
+          skipped_versions: [],
+          include_self_updating: false,
+          auto_check: false,
+          notify_updates: false,
+        };
+      if (cmd === "get_snapshot") return snapshot;
+      if (cmd === "get_catalog") return catalog;
+      if (cmd === "list_operations") return [];
+      if (cmd === "search_homebrew") return search((args as { query: string }).query);
+      return null;
+    });
+    renderWithProviders(<DiscoverPage />);
+    await typeSearch("jq");
+    const alert = await screen.findByRole("alert", {}, { timeout: 3000 });
+    expect(alert).not.toHaveTextContent("{");
+    expect(alert).toHaveTextContent(/in English letters/);
+  });
+
   it("has no search field before a check, nor without a Homebrew that can install", async () => {
     for (const instances of [[], [{ ...brew, read_only_reason: "PrefixNotWritable" as const }]]) {
       mockInvoke.mockImplementation(async (cmd: string) => {

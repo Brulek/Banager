@@ -29,8 +29,16 @@ import { GROUP, GROUP_FOOTNOTE, GROUP_ROW_TWO_LINES, GROUP_TITLE, SMALL_WRAPPING
 /** How long the text has to stay the same before it is searched for, in ms: Homebrew takes a second or more a search. */
 export const SEARCH_AFTER_MS = 600;
 
-/** Why a search listed nothing, in the page's words. */
-function searchError(t: (key: string, options?: Record<string, string | number>) => string, raw: string): string {
+/**
+ * Why a search listed nothing, in the page's words -- with technical
+ * details on too, where the refusal is one of the window's own kinds: not
+ * its JSON (from the independent review of the branch).
+ */
+function searchError(
+  t: (key: string, options?: Record<string, string | number>) => string,
+  raw: string,
+  technical: boolean,
+): string {
   try {
     const parsed = JSON.parse(raw) as { kind?: unknown; state?: unknown };
     if (parsed.kind === "invalid_query") return t("discover.search.invalid");
@@ -38,7 +46,7 @@ function searchError(t: (key: string, options?: Record<string, string | number>)
   } catch {
     // Not one of the window's own refusals: said below.
   }
-  const message = planErrorMessage(t, raw, t("adapters.brew"), false);
+  const message = planErrorMessage(t, raw, t("adapters.brew"), technical);
   return message === null ? t("discover.search.failedPlain") : t("discover.search.failed", { message });
 }
 
@@ -106,7 +114,7 @@ export function DiscoverResults({ query }: { query: string }) {
   } else if (search.isError) {
     body = (
       <p role="alert" className="px-2.5 text-danger-text">
-        {settings?.show_technical_details ? search.error.message : searchError(t, search.error.message)}
+        {searchError(t, search.error.message, settings?.show_technical_details ?? false)}
       </p>
     );
   } else if (search.data.length === 0) {
