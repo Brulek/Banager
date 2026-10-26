@@ -862,9 +862,10 @@ pub async fn open_terminal() -> Result<(), String> {
 /// windows, and the login shell was read before.
 pub(crate) fn look_for_homebrew_impl(
     prefix: &std::path::Path,
+    paths_file: &std::path::Path,
     add: impl FnOnce(&std::path::Path),
 ) -> banager_core::adapters::brew::InstallerLook {
-    let look = banager_core::adapters::brew::installer_look(prefix);
+    let look = banager_core::adapters::brew::installer_look(prefix, paths_file);
     if look.there && !look.updating {
         add(&prefix.join("bin"));
     }
@@ -878,6 +879,7 @@ pub(crate) fn look_for_homebrew_impl(
 pub async fn look_for_homebrew() -> Result<banager_core::adapters::brew::InstallerLook, String> {
     Ok(look_for_homebrew_impl(
         std::path::Path::new(banager_core::adapters::brew::INSTALLER_PREFIX),
+        std::path::Path::new(banager_core::adapters::brew::INSTALLER_PATHS_FILE),
         banager_core::runner::login_path::add_folder,
     ))
 }
@@ -3555,18 +3557,26 @@ mod tests {
             std::env::temp_dir().join(format!("banager-look-for-homebrew-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&prefix);
         std::fs::create_dir_all(prefix.join("bin")).unwrap();
+        let paths = prefix.join("paths.d-homebrew");
         let added = std::cell::RefCell::new(Vec::new());
-        let look = look_for_homebrew_impl(&prefix, |folder| {
+        let look = look_for_homebrew_impl(&prefix, &paths, |folder| {
             added.borrow_mut().push(folder.to_path_buf())
         });
         assert!(!look.there && !look.updating);
         assert!(added.borrow().is_empty(), "nothing there yet");
         // A folder named brew is not Homebrew.
         std::fs::create_dir_all(prefix.join("bin/brew")).unwrap();
-        assert!(!look_for_homebrew_impl(&prefix, |_| panic!("not there")).there);
+        std::fs::write(&paths, "/opt/homebrew/bin\n").unwrap();
+        assert!(!look_for_homebrew_impl(&prefix, &paths, |_| panic!("not there")).there);
         std::fs::remove_dir(prefix.join("bin/brew")).unwrap();
         std::fs::write(prefix.join("bin/brew"), "#!/bin/bash\n").unwrap();
-        let look = look_for_homebrew_impl(&prefix, |folder| {
+        // brew there, and the installer still at its second password prompt,
+        // before it writes /etc/paths.d/homebrew: not yet (from the review
+        // of the uncovered areas).
+        std::fs::remove_file(&paths).unwrap();
+        assert!(!look_for_homebrew_impl(&prefix, &paths, |_| panic!("not there")).there);
+        std::fs::write(&paths, "/opt/homebrew/bin\n").unwrap();
+        let look = look_for_homebrew_impl(&prefix, &paths, |folder| {
             added.borrow_mut().push(folder.to_path_buf())
         });
         assert_eq!(

@@ -1872,7 +1872,7 @@
         "open": "点按“打开终端”，安装命令会先拷贝好。",
         "paste": "在“终端”里按下Command-V，然后按下Return键。",
         "password": "出现“Password”时，输入这台Mac的登录密码，然后按下Return键。输入时屏幕上不会显示任何字符。",
-        "return": "出现“Press RETURN”时，再按一次Return键，然后等它装完。如果它先安装命令行工具，可能要等几分钟。",
+        "return": "出现“Press RETURN”时，再按一次Return键，然后等它装完。如果它先安装命令行工具，可能要等几分钟；如果弹出窗口问是否安装命令行工具，点按“安装”，装完后在“终端”里按任意键。",
         "done": "看到“Installation successful!”就安装好了，这个窗口会自动检测到。"
       },
       "whatTitle": "这条命令会做什么",
@@ -1886,6 +1886,7 @@
       "commandLabel": "Homebrew的安装命令",
       "openTerminal": "打开终端",
       "waiting": "正在等待Homebrew安装完成…",
+      "ifItStops": "如果“终端”里出现的是错误，而不是“Installation successful!”，说明Homebrew没有装好，请点按“取消”。连不上GitHub，或者当前账户不是管理员时，都无法安装。",
       "updating": "Homebrew已安装，正在完成首次更新…",
       "installed": "Homebrew已安装。",
       "continue": "继续",

@@ -5865,11 +5865,15 @@ From the sheet Banager does three things, each only while it is open:
   hand.
 - **It looks for Homebrew every 2 seconds** (`look_for_homebrew`,
   `brew::installer_look`), running nothing: whether
-  `/opt/homebrew/bin/brew` is a regular file -- looked up one step at a
-  time, never into a protected place -- and whether a `brew update`
-  holds Homebrew's update lock, looked at as Homebrew's section says,
-  never taken. Two looks in a row that find it there and no update
-  running mean it is installed: the sheet says so and checks again, which
+  `/opt/homebrew/bin/brew` and `/etc/paths.d/homebrew` are regular files
+  -- each looked up one step at a time, never into a protected place --
+  and whether a `brew update` holds Homebrew's update lock, looked at as
+  Homebrew's section says, never taken. The installer writes the second
+  file, with its last password prompt, just before its last step, `brew
+  update`; `brew` is there minutes earlier where a slow download outlasted
+  sudo's five minutes and Terminal asks for the password again, so `brew`
+  alone is not taken for installed. Two looks in a row that find both
+  there and no update running mean it is installed: the sheet says so and checks again, which
   finds Homebrew where it always looks for it. Closed before then, the
   next check finds it all the same.
 - **Once a look finds it there and no update running,
@@ -6054,7 +6058,8 @@ not read (`protected::look`; How Banager runs anything, above):
 - Homebrew: whether the three candidate `brew` paths exist;
   `<prefix>/var/homebrew/locks` and the `update` lock file in it, during
   the uninstall preview, and every two seconds while Discover's Homebrew
-  sheet is open, with whether `/opt/homebrew/bin/brew` is there
+  sheet is open, with whether `/opt/homebrew/bin/brew` and
+  `/etc/paths.d/homebrew` are there
   (`look_for_homebrew`; "Homebrew itself"); its `brew.env` files, during every install,
   uninstall and upgrade preview, again right before an install, upgrade
   or uninstall runs, and right before the cleanup that follows an update;

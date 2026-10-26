@@ -3167,13 +3167,21 @@ fn probe_homebrew_update_lock(prefix: &Path) -> HomebrewUpdateLock {
 /// the installer installs nowhere else on macOS.
 pub const INSTALLER_PREFIX: &str = "/opt/homebrew";
 
+/// The file the installer writes so that a new Terminal finds Homebrew's
+/// commands, just before its last step, `brew update --force --quiet`
+/// (Homebrew/install `install.sh`, read at `85d1a3f`).
+pub const INSTALLER_PATHS_FILE: &str = "/etc/paths.d/homebrew";
+
 /// What the Homebrew hand-off sees of `prefix` while it waits for the
 /// installer the user runs in Terminal (`look_for_homebrew` in
 /// src-tauri/src/ipc.rs).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct InstallerLook {
-    /// `<prefix>/bin/brew` is there, a regular file: the installer has put
-    /// Homebrew in place.
+    /// `<prefix>/bin/brew` is there, a regular file, and so is
+    /// `INSTALLER_PATHS_FILE`: the installer has put Homebrew in place and
+    /// got past its last password prompt. `brew` alone is there minutes
+    /// before that, where a slow download took sudo's five minutes and
+    /// Terminal asks again (from the review of the uncovered areas).
     pub there: bool,
     /// A `brew update` holds Homebrew's update lock: the installer's last
     /// step, `brew update --force --quiet`, has not ended.
@@ -3181,15 +3189,16 @@ pub struct InstallerLook {
 }
 
 /// Looks at `prefix` for the Homebrew hand-off, running nothing: whether
-/// `<prefix>/bin/brew` is a regular file, looked up one step at a time and
-/// never through a protected place (`protected::look`), and whether a
-/// `brew update` holds the update lock (`probe_homebrew_update_lock`,
-/// which never takes it). A lock it cannot look at is not taken for one
-/// held: the check after it says what there is.
-pub fn installer_look(prefix: &Path) -> InstallerLook {
+/// `<prefix>/bin/brew` and `paths_file` (`INSTALLER_PATHS_FILE`) are
+/// regular files, each looked up one step at a time and never through a
+/// protected place (`protected::look`), and whether a `brew update` holds
+/// the update lock (`probe_homebrew_update_lock`, which never takes it). A
+/// lock it cannot look at is not taken for one held: the check after it
+/// says what there is.
+pub fn installer_look(prefix: &Path, paths_file: &Path) -> InstallerLook {
     let protected = Protected::of_this_process();
-    let there =
-        look::target(&prefix.join("bin/brew"), &protected).is_ok_and(|(_, meta)| meta.is_file());
+    let file = |path: &Path| look::target(path, &protected).is_ok_and(|(_, meta)| meta.is_file());
+    let there = file(&prefix.join("bin/brew")) && file(paths_file);
     InstallerLook {
         there,
         updating: there && matches!(probe_homebrew_update_lock(prefix), HomebrewUpdateLock::Held),

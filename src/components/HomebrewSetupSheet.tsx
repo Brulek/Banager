@@ -1,10 +1,11 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { lookForHomebrew, openTerminal } from "../lib/api";
 import { useSystemFacts } from "../lib/diagnostics";
 import { HOMEBREW_INSTALL_COMMAND, LOOK_EVERY_MS, olderThanHomebrewSupports } from "../lib/homebrewSetup";
-import { useCheckAgain, useSettings } from "../lib/queries";
+import { refreshIntoCache } from "../lib/events";
+import { useSettings } from "../lib/queries";
 import { DisclosureButton } from "./DisclosureButton";
 import { CheckIcon } from "./icons";
 import { Refusal, SheetPending, SheetText } from "./SheetParts";
@@ -63,7 +64,7 @@ export function HomebrewSetupSheet({ open, onClose }: HomebrewSetupSheetProps) {
   const { t } = useTranslation();
   const { data: settings } = useSettings();
   const { data: facts } = useSystemFacts();
-  const { checkAgain } = useCheckAgain();
+  const queryClient = useQueryClient();
   const openRef = useRef<HTMLButtonElement>(null);
   const textId = useId();
   const whatId = useId();
@@ -115,7 +116,11 @@ export function HomebrewSetupSheet({ open, onClose }: HomebrewSetupSheetProps) {
   // the independent review of the branch).
   useEffect(() => {
     if (!installed) return;
-    checkAgain();
+    // Through the shared refresh, as Open Ollama's check is: one asked for
+    // while another runs is run after it, not dropped -- a refresh that
+    // began before Homebrew was there would not find it (from the review of
+    // the uncovered areas).
+    void refreshIntoCache(queryClient, "homebrew installed").catch(() => {});
     openRef.current?.focus();
   }, [installed]);
 
@@ -246,7 +251,13 @@ export function HomebrewSetupSheet({ open, onClose }: HomebrewSetupSheetProps) {
           {copyFailed ? <Refusal className="mt-3" text={t("discover.homebrew.copyFailed")} detail={null} detailTitle="" /> : null}
           {openFailed ? <Refusal className="mt-3" text={t("discover.homebrew.openFailed")} detail={null} detailTitle="" /> : null}
           {opened || updating ? (
-            <SheetPending text={updating ? t("discover.homebrew.updating") : t("discover.homebrew.waiting")} />
+            <>
+              <SheetPending text={updating ? t("discover.homebrew.updating") : t("discover.homebrew.waiting")} />
+              {/* What to do where the installer stopped: this sheet cannot
+                  see Terminal, and would wait for ever (from the review of
+                  the uncovered areas). */}
+              <SheetText className="mt-2">{t("discover.homebrew.ifItStops")}</SheetText>
+            </>
           ) : null}
         </>
       )}

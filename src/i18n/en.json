@@ -2020,7 +2020,7 @@
         "open": "Click Open Terminal. The install command is copied first.",
         "paste": "In Terminal, press Command-V, then press Return.",
         "password": "When it asks for your “Password”, type this Mac's login password and press Return. Nothing appears as you type.",
-        "return": "When it says “Press RETURN”, press Return again, then wait. If it installs the Command Line Tools first, that can take several minutes.",
+        "return": "When it says “Press RETURN”, press Return again, then wait. If it installs the Command Line Tools first, that can take several minutes; if a window asks you to install them, click Install, and when they're done, press any key in Terminal.",
         "done": "“Installation successful!” means it's done, and this window notices by itself."
       },
       "whatTitle": "What the Command Does",
@@ -2034,6 +2034,7 @@
       "commandLabel": "Homebrew's install command",
       "openTerminal": "Open Terminal",
       "waiting": "Waiting for Homebrew to be installed…",
+      "ifItStops": "If Terminal shows an error instead of “Installation successful!”, Homebrew wasn't installed: click Cancel. It can't be installed without reaching GitHub, or from an account that isn't an administrator.",
       "updating": "Homebrew is installed and finishing its first update…",
       "installed": "Homebrew is installed.",
       "continue": "Continue",

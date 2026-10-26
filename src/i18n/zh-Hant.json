@@ -1872,7 +1872,7 @@
         "open": "點按「開啟終端機」，安裝指令會先拷貝好。",
         "paste": "在「終端機」裡按下Command-V，然後按下Return鍵。",
         "password": "出現「Password」時，輸入這台Mac的登入密碼，然後按下Return鍵。輸入時螢幕上不會顯示任何字元。",
-        "return": "出現「Press RETURN」時，再按一次Return鍵，然後等它安裝完。如果它先安裝命令列工具，可能要等幾分鐘。",
+        "return": "出現「Press RETURN」時，再按一次Return鍵，然後等它安裝完。如果它先安裝命令列工具，可能要等幾分鐘；如果跳出視窗詢問是否安裝命令列工具，點按「安裝」，安裝完後在「終端機」裡按任意鍵。",
         "done": "看到「Installation successful!」就安裝好了，這個視窗會自動偵測到。"
       },
       "whatTitle": "這條指令會做什麼",
@@ -1886,6 +1886,7 @@
       "commandLabel": "Homebrew的安裝指令",
       "openTerminal": "開啟終端機",
       "waiting": "正在等Homebrew安裝好…",
+      "ifItStops": "如果「終端機」裡出現的是錯誤，而不是「Installation successful!」，表示Homebrew沒有安裝好，請點按「取消」。連不上GitHub，或目前帳號不是管理員時，都無法安裝。",
       "updating": "Homebrew已安裝好，正在完成第一次更新…",
       "installed": "Homebrew已安裝好。",
       "continue": "繼續",
