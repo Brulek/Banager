@@ -435,8 +435,10 @@ function keyIdOf(op: OpSummary): string {
  * shows -- 「Claude Code」, where the operation itself carries only its
  * key's `claude` -- and, once that row is gone, the one it had (`opNames`
  * in the store): an uninstall's row leaves the snapshot when it finishes,
- * and its result should not then rename it. The key's own name for an
- * operation no list ever showed.
+ * and its result should not then rename it. An install keeps the name
+ * Discover started it under (`InstallSheet`), where its row once listed
+ * names it otherwise: 「Gemma 3」, not the model's `gemma3:4b`. The key's
+ * own name for an operation no list ever showed.
  */
 export function useOperationName(operations: OpSummary[] | undefined): (op: OpSummary) => string {
   const { data: snapshot } = useSnapshot();
@@ -456,13 +458,15 @@ export function useOperationName(operations: OpSummary[] | undefined): (op: OpSu
     const fresh: Record<number, string> = {};
     for (const op of operations ?? []) {
       const name = listed.get(keyIdOf(op));
+      if (op.kind === "Install" && remembered[op.id] !== undefined) continue;
       if (name !== undefined && remembered[op.id] !== name) fresh[op.id] = name;
     }
     if (Object.keys(fresh).length > 0) rememberOpNames(fresh);
   }, [operations, listed, remembered, rememberOpNames]);
 
   return useCallback(
-    (op: OpSummary) => listed.get(keyIdOf(op)) ?? remembered[op.id] ?? op.name,
+    (op: OpSummary) =>
+      (op.kind === "Install" ? remembered[op.id] : undefined) ?? listed.get(keyIdOf(op)) ?? remembered[op.id] ?? op.name,
     [listed, remembered],
   );
 }

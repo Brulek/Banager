@@ -1042,6 +1042,47 @@ describe("OperationBar", () => {
     await findByText("Claude Code: Uninstalled");
   });
 
+  it("calls an install from Discover by the name it was started under, once its row is listed too", async () => {
+    // Gemma 3 from Discover: the sheet remembers its name; the model's row,
+    // once listed, says gemma3:4b.
+    const model = { instance_id: "ollama:http://127.0.0.1:11434", kind: "Model" as const, name: "gemma3:4b" };
+    const install = { kind: "Install" as const, instance_id: model.instance_id, artifact_kind: "Model" as const };
+    useUiStore.getState().rememberOpNames({ 4: "Gemma 3" });
+    operations = [op(4, "gemma3:4b", "Running", null, install)];
+    const { findByText, queryClient } = renderWithProviders(<OperationBar />);
+    await findByText("Gemma 3: Installing…");
+    act(() => {
+      queryClient.setQueryData<Snapshot>(queryKeys.snapshot, {
+        generation: 2,
+        round: 2,
+        detect: "Found",
+        instances: [],
+        artifacts: [
+          {
+            key: model,
+            display_name: "gemma3:4b",
+            version: "a2afd9a5",
+            reason: "Requested",
+            description: null,
+            homepage: null,
+            size_bytes: null,
+            installed_at: null,
+            path: null,
+            auto_updates: false,
+            uninstall_blocked: null,
+            facts: NO_FACTS,
+          },
+        ],
+        updates: [],
+        refreshed_at: 1_789_700_000,
+        stale: false,
+        errors: [],
+      });
+    });
+    await listNow(queryClient, [op(4, "gemma3:4b", "Done", "Succeeded", install)]);
+    await findByText("Gemma 3: Installed");
+  });
+
   it("disables Cancel while the finished command's result is being verified", async () => {
     // `OperationManager::cancel` (ops/mod.rs) answers `NotPending` for a
     // Verifying op and the IPC turns that into a silent Ok, so an enabled
