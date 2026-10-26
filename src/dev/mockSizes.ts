@@ -13,6 +13,7 @@
  * measured together, as their folder.
  */
 import type { ArtifactSize, InstalledArtifact, ManagerInstance, Measured, ModelsSize, Sizes } from "../lib/types";
+import { thisMacsOllama } from "./mockCatalog";
 
 const MB = 1_000_000;
 const GB = 1_000_000_000;
@@ -184,6 +185,8 @@ export function mockSizes(
     .filter(
       (instance) =>
         instance.adapter_id === "ollama" &&
+        // Only this Mac's models folder is measured (size.rs).
+        thisMacsOllama(instance.id) &&
         artifacts.some((a) => a.key.instance_id === instance.id && a.key.kind === "Model"),
     )
     .map((instance) => ({

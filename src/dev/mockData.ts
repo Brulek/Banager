@@ -39,6 +39,7 @@ import {
   MANY_UV,
 } from "./mockManyNames";
 import { hugeNames } from "./mockHugeNames";
+import { thisMacsOllama } from "./mockCatalog";
 import type { Scenario, ScenarioOllama, ScenarioScan, ScenarioState } from "./scenario";
 
 /** The home folder every path in the preview is under. */
@@ -696,48 +697,80 @@ export function freshHomebrew(): ManagerInstance {
   return findInstance(fullWorld(), IDS.brew);
 }
 
+/** `?ollama=elsewhere`'s Ollama: at another machine's address. */
+export const ELSEWHERE_OLLAMA = "ollama:http://studio.local:11434";
+
+/**
+ * `world` with its Ollama where `?ollama=` puts it, as Rust would find it:
+ *
+ * - `here`: as it is.
+ * - `elsewhere`: this Mac's Ollama source at another machine's address,
+ *   its models with it -- none looked up for updates, as `check` looks up
+ *   no remote daemon's (crates/banager-core/src/adapters/ollama/mod.rs),
+ *   and one not answering is not running nowhere but this Mac's app
+ *   endpoint, so it is not responding; or one answering with no models
+ *   where it had none. One Banager did not ask (`HttpsHostRefused`) stays.
+ * - `app`: no Ollama source, none of its models, and none of Homebrew's
+ *   Ollama -- the formula's `ollama` would be a source -- only Ollama.app,
+ *   which the catalog is told of (`mockCatalog`'s `ollamaApp`).
+ */
+export function withOllama(world: World, where: ScenarioOllama): World {
+  if (where === "here") return world;
+  if (where === "app") {
+    const ollama = new Set(world.instances.filter((i) => i.adapter_id === "ollama").map((i) => i.id));
+    const gone = (key: ArtifactKey) =>
+      ollama.has(key.instance_id) ||
+      (key.instance_id.startsWith("brew:") &&
+        ((key.kind === "Formula" && key.name === "ollama") || (key.kind === "Cask" && key.name === "ollama-app")));
+    return {
+      ...world,
+      instances: world.instances.filter((i) => !ollama.has(i.id)),
+      artifacts: world.artifacts.filter((a) => !gone(a.key)),
+      updates: world.updates.filter((u) => !gone(u.key)),
+      greedyUpdates: world.greedyUpdates.filter((u) => !gone(u.key)),
+    };
+  }
+  const local = new Set(
+    world.instances
+      .filter((i) => i.adapter_id === "ollama" && thisMacsOllama(i.id) && i.status.unavailable !== "HttpsHostRefused")
+      .map((i) => i.id),
+  );
+  const movedKey = (key: ArtifactKey): ArtifactKey =>
+    local.has(key.instance_id) ? { ...key, instance_id: ELSEWHERE_OLLAMA } : key;
+  const answering = { ...freshOllama(), status: { unavailable: null, notes: [], no_answer: null } };
+  const anyOllama = world.instances.some((i) => i.adapter_id === "ollama");
+  return {
+    ...world,
+    instances: anyOllama
+      ? world.instances.map((i) =>
+          local.has(i.id)
+            ? {
+                ...i,
+                id: ELSEWHERE_OLLAMA,
+                status:
+                  i.status.unavailable === "NotRunning" ? { ...i.status, unavailable: "NotResponding" } : i.status,
+              }
+            : i,
+        )
+      : [...world.instances, { ...answering, id: ELSEWHERE_OLLAMA }],
+    artifacts: world.artifacts.map((a) => ({ ...a, key: movedKey(a.key) })),
+    updates: [
+      ...world.updates.filter((u) => !local.has(u.key.instance_id)),
+      ...world.artifacts
+        .filter((a) => local.has(a.key.instance_id) && a.key.kind === "Model")
+        .map((a) =>
+          notLookedUp(movedKey(a.key), a.version ?? "", "remote daemon manifests cannot be checked from this Mac"),
+        ),
+    ],
+    greedyUpdates: world.greedyUpdates.filter((u) => !local.has(u.key.instance_id)),
+  };
+}
+
 /**
  * The Ollama source a Discover install of Ollama's app leaves: the app is
  * there and not running yet, so its notice and the model's row offer Open
  * Ollama (`apply` in ./mockBackend.ts).
  */
-/** `?ollama=elsewhere`'s Ollama: at another machine's address. */
-export const ELSEWHERE_OLLAMA = "ollama:http://studio.local:11434";
-
-/**
- * `world` with its Ollama where `?ollama=` puts it: as it is (`here`); at
- * another machine's address, its models and their updates with it, or one
- * with no models where it had none (`elsewhere`); or none, nor any of its
- * models -- Ollama.app with no `ollama` command, which the catalog is told
- * of (`app`; `mockCatalog`'s `ollamaApp`).
- */
-export function withOllama(world: World, where: ScenarioOllama): World {
-  if (where === "here") return world;
-  const ollama = new Set(world.instances.filter((i) => i.adapter_id === "ollama").map((i) => i.id));
-  if (where === "app") {
-    return {
-      ...world,
-      instances: world.instances.filter((i) => !ollama.has(i.id)),
-      artifacts: world.artifacts.filter((a) => !ollama.has(a.key.instance_id)),
-      updates: world.updates.filter((u) => !ollama.has(u.key.instance_id)),
-      greedyUpdates: world.greedyUpdates.filter((u) => !ollama.has(u.key.instance_id)),
-    };
-  }
-  const moved = <T extends { key: ArtifactKey }>(row: T): T =>
-    ollama.has(row.key.instance_id) ? { ...row, key: { ...row.key, instance_id: ELSEWHERE_OLLAMA } } : row;
-  const answering = { ...freshOllama(), status: { unavailable: null, notes: [], no_answer: null } };
-  return {
-    ...world,
-    instances:
-      ollama.size === 0
-        ? [...world.instances, { ...answering, id: ELSEWHERE_OLLAMA }]
-        : world.instances.map((i) => (ollama.has(i.id) ? { ...i, id: ELSEWHERE_OLLAMA } : i)),
-    artifacts: world.artifacts.map(moved),
-    updates: world.updates.map(moved),
-    greedyUpdates: world.greedyUpdates.map(moved),
-  };
-}
-
 export function freshOllama(): ManagerInstance {
   const ollama = findInstance(fullWorld(), IDS.ollama);
   return { ...ollama, status: { ...ollama.status, unavailable: "NotRunning" } };

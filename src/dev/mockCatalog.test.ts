@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { mockCatalog } from "./mockCatalog";
+import { buildWorld, ELSEWHERE_OLLAMA, withOllama } from "./mockData";
+import { mockSizes } from "./mockSizes";
 import { createMockBackend } from "./mockBackend";
 import { DEFAULT_SCENARIO } from "./scenario";
 import type { CatalogEntry, InstalledArtifact, IssuedPlan, ManagerInstance, OpSummary } from "../lib/types";
@@ -126,6 +128,26 @@ describe("the browser preview's catalog", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("leaves no trace of this Mac's Ollama where ?ollama= moves or removes it, as Rust would find the Mac (from the review of 94ada7f9)", () => {
+    const full = buildWorld("full");
+    // App only: no Homebrew ollama either, whose command would be a source.
+    const app = withOllama(full, "app");
+    expect(app.instances.some((i) => i.adapter_id === "ollama")).toBe(false);
+    expect(app.artifacts.some((a) => a.key.name === "ollama" || a.key.kind === "Model")).toBe(false);
+    // Elsewhere: its models are not looked up, and none is measured.
+    const elsewhere = withOllama(full, "elsewhere");
+    const remote = elsewhere.updates.filter((u) => u.key.instance_id === ELSEWHERE_OLLAMA);
+    expect(remote.length).toBeGreaterThan(0);
+    expect(remote.every((u) => !u.checkable && u.warnings.includes("NotLookedUpHere"))).toBe(true);
+    expect(mockSizes(1, elsewhere.instances, elsewhere.artifacts, () => true).models).toEqual([]);
+    // One not answering at another address is not responding, not "not running".
+    const notices = withOllama(buildWorld("notices"), "elsewhere");
+    expect(notices.instances.find((i) => i.id === ELSEWHERE_OLLAMA)?.status.unavailable).toBe("NotResponding");
+    // One Banager did not ask stays as it is.
+    const refused = withOllama(buildWorld("refused"), "elsewhere");
+    expect(refused.instances.find((i) => i.adapter_id === "ollama")?.status.unavailable).toBe("HttpsHostRefused");
   });
 
   it("installs an entry from Discover by its id, and the check after it finds the tool", async () => {

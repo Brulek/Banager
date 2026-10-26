@@ -92,13 +92,18 @@ export interface MockHost {
 }
 
 /** `catalog::this_macs_ollama`: an Ollama source at this Mac's own address. */
-function thisMacsOllama(instanceId: string): boolean {
+export function thisMacsOllama(instanceId: string): boolean {
   if (!instanceId.startsWith("ollama:")) return false;
   try {
     const host = new URL(instanceId.slice("ollama:".length)).hostname.toLowerCase();
-    // As `host_is_this_mac`: localhost, any loopback address, and the
-    // "every interface" ones, which land on the loopback.
-    return ["localhost", "[::1]", "0.0.0.0", "[::]"].includes(host) || /^127(\.\d{1,3}){3}$/.test(host);
+    // As `host_is_this_mac`: localhost, any loopback address -- an IPv4
+    // one written as IPv6 too, which URL writes `[::ffff:7f00:1]` -- and
+    // the "every interface" ones, which land on the loopback.
+    return (
+      ["localhost", "[::1]", "0.0.0.0", "[::]"].includes(host) ||
+      /^127(\.\d{1,3}){3}$/.test(host) ||
+      /^\[::ffff:7f[0-9a-f]{2}:[0-9a-f]{1,4}\]$/.test(host)
+    );
   } catch {
     return false;
   }
