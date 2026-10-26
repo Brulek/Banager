@@ -2778,9 +2778,10 @@ impl BrewAdapter {
     /// the fix batch) -- the list is asked again in halves, and so on, so
     /// that only the names Homebrew cannot answer for are left out: halves
     /// of one size before any smaller (breadth first), so that should the
-    /// asks run out (`CANONICAL_ASKS_MAX`) what is left out unasked is the
-    /// least. Where no ask is answered, the first one's failure is the
-    /// search's.
+    /// asks run out (`CANONICAL_ASKS_MAX`) what is left out unasked stays
+    /// small -- with two such names among forty, a few at most, where depth
+    /// first could leave out thirty-one. Where no ask is answered, the first
+    /// one's failure is the search's.
     async fn canonical_formulae(
         &self,
         inst: &ManagerInstance,
@@ -6194,10 +6195,10 @@ mod tests {
         assert_eq!(names, ["fdupes", "fdclone", "fdk-aac"]);
     }
 
-    #[tokio::test]
-    async fn test_one_name_homebrew_cannot_answer_for_among_forty_leaves_out_that_one_alone() {
-        // From the review of the fix batch: with twelve asks, one such name
-        // at the front of forty left half of them out unasked.
+    /// A search for `fz` finding `fz00` to `fz39`, `brew info` failing for
+    /// any list holding one of `bad`: what it lists, and how many asks it
+    /// made.
+    async fn search_forty_with(bad: &[&str]) -> (Vec<String>, usize) {
         let names: Vec<String> = (0..40).map(|n| format!("fz{n:02}")).collect();
         let runner = Arc::new(MockRunner::new());
         let brew = "/opt/homebrew/bin/brew";
@@ -6207,13 +6208,12 @@ mod tests {
         );
         runner.respond(vec![brew, "search", "--cask", "fz"], found_nothing());
         runner.respond(vec![brew, "search", "--desc", "fz"], search_output(""));
-        let bad = "fz03";
-        // Every half: answered, but for any holding the bad name.
+        // Every half there can be: answered, but for any holding a bad name.
         let mut halves: Vec<Vec<String>> = vec![names.clone()];
         while let Some(part) = halves.pop() {
             let mut argv = vec![brew, "info", "--json=v2", "--formula"];
             argv.extend(part.iter().map(String::as_str));
-            if part.iter().any(|n| n == bad) {
+            if part.iter().any(|n| bad.contains(&n.as_str())) {
                 runner.respond(
                     argv,
                     CommandOutput {
@@ -6248,14 +6248,34 @@ mod tests {
             .search(&test_instance(), "fz")
             .await
             .expect("search");
-        assert_eq!(hits.len(), 39);
-        assert!(!hits.iter().any(|h| h.name == bad));
         let asks = runner
             .calls()
             .iter()
             .filter(|call| call.get(1).map(String::as_str) == Some("info"))
             .count();
-        assert!(asks <= CANONICAL_ASKS_MAX, "{asks} asks");
+        (hits.into_iter().map(|h| h.name).collect(), asks)
+    }
+
+    #[tokio::test]
+    async fn test_one_name_homebrew_cannot_answer_for_among_forty_leaves_out_that_one_alone() {
+        // From the review of the fix batch: with twelve asks, one such name
+        // at the front of forty left half of them out unasked.
+        let (listed, asks) = search_forty_with(&["fz03"]).await;
+        assert_eq!(listed.len(), 39);
+        assert!(!listed.iter().any(|n| n == "fz03"));
+        assert_eq!(asks, 13, "1 + 2 * ceil(log2 40)");
+    }
+
+    #[tokio::test]
+    async fn test_two_names_homebrew_cannot_answer_for_leave_out_few_answerable_ones() {
+        // Breadth first: halves of one size before any smaller, so that the
+        // asks running out leaves few answerable names out unasked -- one
+        // here, where depth first left out thirty-one (from the review of
+        // the fix batch).
+        let (listed, asks) = search_forty_with(&["fz04", "fz08"]).await;
+        assert_eq!(asks, CANONICAL_ASKS_MAX);
+        assert!(!listed.iter().any(|n| n == "fz04" || n == "fz08"));
+        assert!(listed.len() >= 37, "{} listed: {listed:?}", listed.len());
     }
 
     #[tokio::test]

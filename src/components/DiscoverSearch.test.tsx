@@ -463,6 +463,48 @@ describe("Discover's search of Homebrew", () => {
     }
   });
 
+  it("does not keep a list past its ten minutes for a failure that came a minute before them", async () => {
+    // From the review of the fix batch: judged by the failure's time alone,
+    // a failure at nine minutes kept the list up until the next search.
+    const { queryClient } = renderWithProviders(<DiscoverPage />);
+    await typeSearch("jq");
+    await waitFor(() => expect(results_()).toHaveLength(3), { timeout: 3000 });
+    search = async () => {
+      throw JSON.stringify({ kind: "not_answered" });
+    };
+    const now = Date.now();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(now + 9 * 60 * 1000);
+    try {
+      await act(async () => {
+        await queryClient.refetchQueries({ queryKey: ["searchHomebrew"] });
+      });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(results_()).toHaveLength(3);
+      // Eleven minutes on, anything that draws the page again: why it
+      // could not search, not the list.
+      clock.mockReturnValue(now + 11 * 60 * 1000);
+      act(() => {
+        useUiStore.setState({ opFinishedAt: { 99: now } });
+      });
+      expect(await screen.findByRole("alert")).toHaveTextContent(/Couldn't search Homebrew/);
+      expect(results_()).toHaveLength(0);
+    } finally {
+      clock.mockRestore();
+      useUiStore.setState({ opFinishedAt: {} });
+    }
+  });
+
+  it("says nothing of how many it found while the text is one it does not take", async () => {
+    // From the review of the fix batch: the status kept "3 results" for the
+    // 0.6 s the text takes to settle.
+    renderWithProviders(<DiscoverPage />);
+    await typeSearch("jq");
+    await waitFor(() => expect(results_()).toHaveLength(3), { timeout: 3000 });
+    expect(screen.getByRole("status")).toHaveTextContent("3 results");
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search Homebrew for a tool" }), { target: { value: "jq/" } });
+    expect(screen.getByRole("status")).toBeEmptyDOMElement();
+  });
+
   it("says why it could not search in words with technical details on too, not as the refusal's JSON", async () => {
     // From the independent review of the branch.
     search = async () => {

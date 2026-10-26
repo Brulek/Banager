@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
   commandOf,
@@ -111,18 +111,30 @@ export function DiscoverResults({ query }: { query: string }) {
   const descriptionOf = (found: Found) => describe(keyOf(found), "brew") ?? found.description;
 
   // A list kept through a failed search again while its ids are kept, and
-  // no longer: the failure's own time against the list's, both of which
-  // re-render the page as they move (`errorUpdatedAt` with each failure),
-  // so a later failure is never left unlooked at (from the reviews of the
-  // fix batch).
-  const listed =
-    search.data !== undefined && !(search.isError && search.errorUpdatedAt - search.dataUpdatedAt >= FOUND_LIFETIME_MS);
+  // no longer: by the failure's own time, which re-renders the page with
+  // each failure, and by the clock, looked at once more when the ten
+  // minutes are up (the timer below) -- a failure a minute before then
+  // must not keep the list past them (from the reviews of the fix batch).
+  const [, lookAgain] = useState(0);
+  const expiresIn = search.isError && search.data !== undefined ? search.dataUpdatedAt + FOUND_LIFETIME_MS - Date.now() : null;
+  useEffect(() => {
+    if (expiresIn === null || expiresIn <= 0) return;
+    const timer = setTimeout(() => lookAgain((n) => n + 1), expiresIn);
+    return () => clearTimeout(timer);
+  }, [expiresIn === null, search.dataUpdatedAt]);
+  const expired =
+    search.isError &&
+    (search.errorUpdatedAt - search.dataUpdatedAt >= FOUND_LIFETIME_MS ||
+      Date.now() - search.dataUpdatedAt >= FOUND_LIFETIME_MS);
+  // Nor while the text is one it does not take: the list is gone at once.
+  const listShown =
+    search.data !== undefined && !expired && !(query.trim().length > 0 && !searchable(query.trim()));
   let body: ReactNode;
   if (query.trim().length > 0 && !searchable(query.trim())) {
     body = <p className="px-2.5 text-muted">{t("discover.search.invalid")}</p>;
   } else if (asked === "" || search.isPending) {
     body = <SheetPending text={t("discover.search.searching")} />;
-  } else if (!listed || search.data === undefined) {
+  } else if (!listShown || search.data === undefined) {
     // Why it could not search -- where it has nothing to show, or what it
     // has is past its ids' ten minutes: a search asked again in the
     // background (every five minutes) that fails leaves the list it had
@@ -253,7 +265,7 @@ export function DiscoverResults({ query }: { query: string }) {
   // included. Always there, empty meanwhile: a status put in the page with
   // its words may never be read.
   const said =
-    asked === "" || !listed || search.data === undefined ? "" : t("discover.search.count", { count: search.data.length });
+    asked === "" || !listShown || search.data === undefined ? "" : t("discover.search.count", { count: search.data.length });
   return (
     <>
       <p role="status" className="sr-only">
