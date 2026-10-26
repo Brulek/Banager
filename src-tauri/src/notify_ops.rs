@@ -359,11 +359,16 @@ pub fn body(language: MenuLanguage, run: &FinishedRun, password: u32) -> String 
             (MenuLanguage::ZhHant, RunKind::Uninstall) => format!("已解除安裝{n}個工具"),
             (MenuLanguage::ZhCn, RunKind::Install) => format!("已安装{n}个工具"),
             (MenuLanguage::ZhHant, RunKind::Install) => format!("已安裝{n}個工具"),
+            (MenuLanguage::ZhCn, RunKind::ModelDownload) => format!("已下载{n}个模型"),
+            (MenuLanguage::ZhHant, RunKind::ModelDownload) => format!("已下載{n}個模型"),
             (MenuLanguage::ZhCn, RunKind::Other) => format!("已完成{n}项操作"),
             (MenuLanguage::ZhHant, RunKind::Other) => format!("已完成{n}項操作"),
             (MenuLanguage::En, RunKind::Upgrade) => format!("Updated {n} {}", tools(n)),
             (MenuLanguage::En, RunKind::Uninstall) => format!("Uninstalled {n} {}", tools(n)),
             (MenuLanguage::En, RunKind::Install) => format!("Installed {n} {}", tools(n)),
+            (MenuLanguage::En, RunKind::ModelDownload) => {
+                format!("Downloaded {n} {}", if n == 1 { "model" } else { "models" })
+            }
             (MenuLanguage::En, RunKind::Other) => {
                 format!(
                     "Completed {n} {}",
@@ -382,11 +387,14 @@ pub fn body(language: MenuLanguage, run: &FinishedRun, password: u32) -> String 
             (MenuLanguage::ZhHant, RunKind::Uninstall) => format!("{n}個已解除安裝"),
             (MenuLanguage::ZhCn, RunKind::Install) => format!("{n}个已安装"),
             (MenuLanguage::ZhHant, RunKind::Install) => format!("{n}個已安裝"),
+            (MenuLanguage::ZhCn, RunKind::ModelDownload) => format!("{n}个已下载"),
+            (MenuLanguage::ZhHant, RunKind::ModelDownload) => format!("{n}個已下載"),
             (MenuLanguage::ZhCn, RunKind::Other) => format!("{n}项已完成"),
             (MenuLanguage::ZhHant, RunKind::Other) => format!("{n}項已完成"),
             (MenuLanguage::En, RunKind::Upgrade) => format!("{n} updated"),
             (MenuLanguage::En, RunKind::Uninstall) => format!("{n} uninstalled"),
             (MenuLanguage::En, RunKind::Install) => format!("{n} installed"),
+            (MenuLanguage::En, RunKind::ModelDownload) => format!("{n} downloaded"),
             (MenuLanguage::En, RunKind::Other) => format!("{n} completed"),
         });
     }
@@ -399,11 +407,14 @@ pub fn body(language: MenuLanguage, run: &FinishedRun, password: u32) -> String 
             (MenuLanguage::ZhHant, RunKind::Uninstall) => format!("{n}個未能解除安裝"),
             (MenuLanguage::ZhCn, RunKind::Install) => format!("{n}个未能安装"),
             (MenuLanguage::ZhHant, RunKind::Install) => format!("{n}個未能安裝"),
+            (MenuLanguage::ZhCn, RunKind::ModelDownload) => format!("{n}个未能下载"),
+            (MenuLanguage::ZhHant, RunKind::ModelDownload) => format!("{n}個未能下載"),
             (MenuLanguage::ZhCn, RunKind::Other) => format!("{n}项未能完成"),
             (MenuLanguage::ZhHant, RunKind::Other) => format!("{n}項未能完成"),
             (MenuLanguage::En, RunKind::Upgrade) => format!("{n} couldn't be updated"),
             (MenuLanguage::En, RunKind::Uninstall) => format!("{n} couldn't be uninstalled"),
             (MenuLanguage::En, RunKind::Install) => format!("{n} couldn't be installed"),
+            (MenuLanguage::En, RunKind::ModelDownload) => format!("{n} couldn't be downloaded"),
             (MenuLanguage::En, RunKind::Other) => format!("{n} couldn't be completed"),
         });
     }
@@ -441,7 +452,7 @@ fn tools(n: u32) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use banager_core::model::{OpKind, OpStatus, Outcome};
+    use banager_core::model::{ArtifactKind, OpKind, OpStatus, Outcome};
     use banager_core::ops::OpSummary;
     use std::cell::RefCell;
 
@@ -701,6 +712,21 @@ mod tests {
                 "1 installed, 1 couldn't be installed, 1 needs attention",
             ),
             (
+                run(RunKind::ModelDownload, 1, 0, 0),
+                "已下载1个模型",
+                "Downloaded 1 model",
+            ),
+            (
+                run(RunKind::ModelDownload, 2, 0, 0),
+                "已下载2个模型",
+                "Downloaded 2 models",
+            ),
+            (
+                run(RunKind::ModelDownload, 1, 1, 1),
+                "1个已下载，1个未能下载，1个需要查看",
+                "1 downloaded, 1 couldn't be downloaded, 1 needs attention",
+            ),
+            (
                 run(RunKind::Other, 3, 0, 0),
                 "已完成3项操作",
                 "Completed 3 operations",
@@ -732,6 +758,11 @@ mod tests {
             ),
             (run(RunKind::Install, 2, 0, 0), "已安裝2個工具"),
             (run(RunKind::Install, 1, 1, 0), "1個已安裝，1個未能安裝"),
+            (run(RunKind::ModelDownload, 1, 0, 0), "已下載1個模型"),
+            (
+                run(RunKind::ModelDownload, 1, 1, 0),
+                "1個已下載，1個未能下載",
+            ),
             (run(RunKind::Other, 3, 0, 0), "已完成3項操作"),
             (
                 run(RunKind::Other, 1, 1, 1),
@@ -858,7 +889,7 @@ mod tests {
             id,
             kind,
             instance_id: "brew:/opt/homebrew".into(),
-            artifact_kind: banager_core::model::ArtifactKind::Cask,
+            artifact_kind: ArtifactKind::Cask,
             name: "tool".into(),
             status: if outcome.is_some() {
                 OpStatus::Done
@@ -950,6 +981,7 @@ mod tests {
                 id,
                 EvictedOp {
                     kind: OpKind::Upgrade,
+                    artifact_kind: ArtifactKind::Formula,
                     ended: Ended::of(&failed(summary).unwrap(), &[]),
                 },
             );

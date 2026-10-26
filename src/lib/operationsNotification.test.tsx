@@ -101,6 +101,13 @@ describe("finishedRunOf", () => {
       "Install",
     );
     expect(finishedRunOf([op(1, "Done", "Succeeded", "Install"), op(2, "Done", "Succeeded")])?.kind).toBe("Other");
+    // Discover's starter model, pulled by Ollama: told of as a download,
+    // and with a tool installed in the same run, as other.
+    const model = { artifact_kind: "Model", instance_id: "ollama:127.0.0.1:11434" } as const;
+    expect(finishedRunOf([op(1, "Done", "Succeeded", "Install", model)])?.kind).toBe("ModelDownload");
+    expect(finishedRunOf([op(1, "Done", "Succeeded", "Install", model), op(2, "Done", "Succeeded", "Install")])?.kind).toBe(
+      "Other",
+    );
     expect(finishedRunOf([op(1, "Done", "Succeeded", "Uninstall"), op(2, "Done", "Succeeded")])?.kind).toBe(
       "Other",
     );

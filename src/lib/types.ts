@@ -1128,7 +1128,7 @@ export interface UpdatePair {
   target: string;
 }
 /** Rust `RunKind` (crates/banager-core/src/notify_operations.rs): what a finished run's operations did. */
-export type RunKind = "Upgrade" | "Uninstall" | "Install" | "Other";
+export type RunKind = "Upgrade" | "Uninstall" | "Install" | "ModelDownload" | "Other";
 /**
  * Rust `FinishedRun` (crates/banager-core/src/notify_operations.rs): a run
  * of operations that has finished, as the page reports it for the

@@ -1126,6 +1126,9 @@ Banager left the front is still posted, and never twice.
 It is titled Banager and says how the run went in the window's language
 -- a run of Discover's installs as "Installed N tools" (「已安装N个工具」;
 「已安裝N個工具」), "N installed, N couldn't be installed", a run of
+downloads of its starter model as "Downloaded N models" (「已下载N个模型」;
+「已下載N個模型」), "N downloaded, N couldn't be downloaded" (an install of
+a tool and of a model in one run is "Completed N operations"), a run of
 updates as follows:
 "Updated N tools" (「已更新N个工具」; in Traditional Chinese
 「已更新N個工具」) when every one worked, and otherwise each way they

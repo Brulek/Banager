@@ -14,7 +14,7 @@
 //! src-tauri/src/notify_ops.rs), words the notification and posts it the
 //! way the update notification is posted (`notify::post`).
 
-use crate::model::{OpKind, OpStatus};
+use crate::model::{ArtifactKind, OpKind, OpStatus};
 use crate::notify_updates::Focus;
 use crate::ops::{Completions, Ended};
 use serde::Deserialize;
@@ -26,10 +26,14 @@ pub enum RunKind {
     Upgrade,
     /// Every one an uninstall: 「已卸载2个工具」.
     Uninstall,
-    /// Every one an install, from Discover: 「已安装2个工具」.
+    /// Every one an install, from Discover, and none of a model:
+    /// 「已安装2个工具」.
     Install,
-    /// Anything else -- updates and uninstalls together, a link:
-    /// 「已完成3项操作」.
+    /// Every one an install of a model -- Discover's starter model, pulled
+    /// by Ollama: 「已下载1个模型」.
+    ModelDownload,
+    /// Anything else -- updates and uninstalls together, a tool and a model
+    /// installed together, a link: 「已完成3项操作」.
     Other,
 }
 
@@ -133,7 +137,7 @@ impl ReportedRuns {
         {
             return None;
         }
-        let mut ended: Vec<(u64, OpKind, Ended)> = Vec::new();
+        let mut ended: Vec<(u64, OpKind, ArtifactKind, Ended)> = Vec::new();
         for op in known
             .operations
             .iter()
@@ -145,6 +149,7 @@ impl ReportedRuns {
             ended.push((
                 op.id,
                 op.kind,
+                op.artifact_kind,
                 Ended::of(op.outcome.as_ref()?, &op.follow_up_warnings),
             ));
         }
@@ -152,9 +157,9 @@ impl ReportedRuns {
             known
                 .evicted
                 .range(first..=last_op)
-                .map(|(id, op)| (*id, op.kind, op.ended)),
+                .map(|(id, op)| (*id, op.kind, op.artifact_kind, op.ended)),
         );
-        let mut ids: Vec<_> = ended.iter().map(|(id, _, _)| *id).collect();
+        let mut ids: Vec<_> = ended.iter().map(|(id, ..)| *id).collect();
         ids.sort_unstable();
         ids.dedup();
         if ids.len() != ended.len() {
@@ -172,21 +177,28 @@ impl ReportedRuns {
             // below `forgotten_through` -- evicted, and forgotten since;
             // any other is unfinished, not submitted yet, or no operation.
             let forgotten = known.forgotten_through;
-            let above = ended.iter().filter(|(id, _, _)| *id > forgotten).count() as u64;
+            let above = ended.iter().filter(|(id, ..)| *id > forgotten).count() as u64;
             if above != last_op.saturating_sub(forgotten.max(through)) {
                 return None;
             }
             return Some(Accepted { run, password: 0 });
         }
-        if ended.iter().all(|(_, kind, _)| *kind == OpKind::Upgrade) {
+        let installs_of = |model: bool| {
+            ended.iter().all(|(_, kind, artifact, _)| {
+                *kind == OpKind::Install && (*artifact == ArtifactKind::Model) == model
+            })
+        };
+        if ended.iter().all(|(_, kind, ..)| *kind == OpKind::Upgrade) {
             run.kind = RunKind::Upgrade;
-        } else if ended.iter().all(|(_, kind, _)| *kind == OpKind::Uninstall) {
+        } else if ended.iter().all(|(_, kind, ..)| *kind == OpKind::Uninstall) {
             run.kind = RunKind::Uninstall;
-        } else if ended.iter().all(|(_, kind, _)| *kind == OpKind::Install) {
+        } else if installs_of(false) {
             run.kind = RunKind::Install;
+        } else if installs_of(true) {
+            run.kind = RunKind::ModelDownload;
         }
         let mut password = 0;
-        for (_, kind, how) in ended {
+        for (_, kind, _, how) in ended {
             match how {
                 Ended::Succeeded => run.succeeded += 1,
                 Ended::Failed => run.failed += 1,
@@ -371,7 +383,11 @@ mod tests {
     }
 
     fn evicted(kind: OpKind, ended: Ended) -> EvictedOp {
-        EvictedOp { kind, ended }
+        EvictedOp {
+            kind,
+            artifact_kind: ArtifactKind::Formula,
+            ended,
+        }
     }
 
     #[test]
@@ -383,6 +399,36 @@ mod tests {
         assert_eq!(
             reported.completed(1, &records(&[op])),
             Some(run(1, RunKind::Install, 1, 0, 0))
+        );
+    }
+
+    #[test]
+    fn test_a_run_of_model_installs_is_told_of_as_downloads_and_with_a_tool_as_other() {
+        let mut model = summary(1, OpKind::Install, Some(Outcome::Succeeded));
+        model.artifact_kind = ArtifactKind::Model;
+        let tool = summary(2, OpKind::Install, Some(Outcome::Succeeded));
+        let reported = ReportedRuns::default();
+        assert_eq!(
+            reported.completed(1, &records(&[model.clone()])),
+            Some(run(1, RunKind::ModelDownload, 1, 0, 0))
+        );
+        assert_eq!(
+            reported.completed(2, &records(&[tool, model])),
+            Some(run(2, RunKind::Other, 2, 0, 0))
+        );
+        // Evicted before its run is reported, it is told of as it ended.
+        let mut known = Completions::default();
+        known.evicted.insert(
+            1,
+            EvictedOp {
+                kind: OpKind::Install,
+                artifact_kind: ArtifactKind::Model,
+                ended: Ended::Failed,
+            },
+        );
+        assert_eq!(
+            reported.completed(1, &known),
+            Some(run(1, RunKind::ModelDownload, 0, 1, 0))
         );
     }
 
@@ -695,6 +741,7 @@ mod tests {
             (r#""Upgrade""#, RunKind::Upgrade),
             (r#""Uninstall""#, RunKind::Uninstall),
             (r#""Install""#, RunKind::Install),
+            (r#""ModelDownload""#, RunKind::ModelDownload),
             (r#""Other""#, RunKind::Other),
         ] {
             assert_eq!(serde_json::from_str::<RunKind>(wire).unwrap(), kind);

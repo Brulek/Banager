@@ -502,6 +502,9 @@ impl Ended {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct EvictedOp {
     pub kind: OpKind,
+    /// What it acted on: an install of a `Model` is told of as a download
+    /// (`RunKind::ModelDownload`).
+    pub artifact_kind: ArtifactKind,
     pub ended: Ended,
 }
 
@@ -539,7 +542,7 @@ impl EvictedLedger {
     fn keep(
         &mut self,
         id: OpId,
-        kind: OpKind,
+        (kind, artifact_kind): (OpKind, ArtifactKind),
         outcome: Option<&Outcome>,
         warnings: &[FollowUpWarning],
         max: usize,
@@ -550,6 +553,7 @@ impl EvictedLedger {
                     id,
                     EvictedOp {
                         kind,
+                        artifact_kind,
                         ended: Ended::of(outcome, warnings),
                     },
                 );
@@ -989,7 +993,7 @@ impl OperationManager {
             if let Some(r) = records.remove(&id) {
                 evicted.keep(
                     id,
-                    r.plan.request.kind,
+                    (r.plan.request.kind, r.plan.request.artifact_kind),
                     r.outcome.as_ref(),
                     &r.follow_up_warnings,
                     max_evicted,
@@ -2099,11 +2103,23 @@ mod evicted_tests {
             summary: "Error: Download failed".into(),
             cause: None,
         };
-        ledger.keep(1, OpKind::Upgrade, Some(&stopped), &[], 3);
-        ledger.keep(2, OpKind::Upgrade, Some(&failed), &[], 3);
+        ledger.keep(
+            1,
+            (OpKind::Upgrade, ArtifactKind::Formula),
+            Some(&stopped),
+            &[],
+            3,
+        );
+        ledger.keep(
+            2,
+            (OpKind::Upgrade, ArtifactKind::Formula),
+            Some(&failed),
+            &[],
+            3,
+        );
         ledger.keep(
             3,
-            OpKind::Upgrade,
+            (OpKind::Upgrade, ArtifactKind::Formula),
             Some(&Outcome::BanagerFailed(Fault::Panicked)),
             &[],
             3,
@@ -2122,18 +2138,42 @@ mod evicted_tests {
             summary: "no".into(),
             cause: None,
         };
-        ledger.keep(1, OpKind::Upgrade, Some(&Outcome::Succeeded), &[], 3);
-        ledger.keep(2, OpKind::Uninstall, Some(&failed), &[], 3);
-        ledger.keep(3, OpKind::Upgrade, Some(&Outcome::Unconfirmed), &[], 3);
+        ledger.keep(
+            1,
+            (OpKind::Upgrade, ArtifactKind::Formula),
+            Some(&Outcome::Succeeded),
+            &[],
+            3,
+        );
+        ledger.keep(
+            2,
+            (OpKind::Uninstall, ArtifactKind::Formula),
+            Some(&failed),
+            &[],
+            3,
+        );
+        ledger.keep(
+            3,
+            (OpKind::Upgrade, ArtifactKind::Formula),
+            Some(&Outcome::Unconfirmed),
+            &[],
+            3,
+        );
         assert_eq!(
             ledger.ops.values().map(|op| op.ended).collect::<Vec<_>>(),
             [Ended::Succeeded, Ended::Failed, Ended::Attention]
         );
         assert_eq!(ledger.forgotten_through, 0);
-        ledger.keep(4, OpKind::Upgrade, Some(&Outcome::Cancelled), &[], 3);
+        ledger.keep(
+            4,
+            (OpKind::Upgrade, ArtifactKind::Formula),
+            Some(&Outcome::Cancelled),
+            &[],
+            3,
+        );
         assert_eq!(ledger.ops.keys().copied().collect::<Vec<_>>(), [2, 3, 4]);
         assert_eq!(ledger.forgotten_through, 1, "the oldest, past the cap");
-        ledger.keep(5, OpKind::Upgrade, None, &[], 3);
+        ledger.keep(5, (OpKind::Upgrade, ArtifactKind::Formula), None, &[], 3);
         assert_eq!(ledger.forgotten_through, 5, "nothing to keep is forgotten");
         ledger.forget_through(3);
         assert_eq!(ledger.ops.keys().copied().collect::<Vec<_>>(), [4]);
