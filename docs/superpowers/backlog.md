@@ -446,10 +446,15 @@ brew 7.0.6 `receipts/` 里不是录制的 27 份收据（25 份按 cask 目录�
   只能退回快照时间 `refreshed_at`，它晚于实际读取，所以检查进行中装好的工具在那一轮会按旧清单显示「安装」，下一次完整回答后恢复。
   Homebrew 极少出现；Ollama 离线时更新检查会失败，但它的清单（本机 `/api/tags`）照样准确，所以这里不改成「一律相信安装」。
 - **Ollama.app 自带的命令不被识别。** 只拖了 Ollama.app、没让它装 `ollama` 命令时，Banager 找不到来源（`OllamaAdapter::detect`
-  只沿 PATH 找 `ollama`），模型那一行给「打开 Ollama」并说明要同意 App 安装命令。较新的 Ollama.app 可能在包里带着命令
-  （`Contents/Resources/ollama`），本机没有 Ollama.app，未核实，所以没有加这个位置。
+  只沿 PATH 找 `ollama`），模型那一行给「打开 Ollama」并说明要同意 App 安装命令。Ollama 自己的文档（`docs/macos.mdx`，
+  2026-10-27 经 `gh api repos/ollama/ollama/contents/docs/macos.mdx` 读到）写明：命令在 `<安装位置>/Ollama.app/Contents/Resources/ollama`；
+  App 每次启动都检查 PATH 里有没有 `ollama`，没有就请求在 `/usr/local/bin` 建链接。可选的改法：PATH 里找不到时改用 App 包里的这份
+  （`ollama::ollama_app_path` 已能找到 App）。这是让 Banager 运行一个不在 PATH 上的程序，属于作者拍板的事，没有做。
 - **`OLLAMA_HOST` 写成本机的局域网地址或 `.local` 名字时，算作「其他地址」。** `host_is_this_mac` 只认 `localhost`、回环地址、
   IPv4 回环的 IPv6 写法与「所有网卡」地址；查本机网卡地址要多读系统信息，没有做。文案因此只说「Ollama使用的是其他地址」，不说「另一台电脑」。
+- **清单与窗口的快照可能差一轮。** `get_catalog` 按后端当时的快照算（`src-tauri/src/ipc.rs`），窗口拿来比较的是发请求时自己的快照
+  （`CatalogView::madeFrom`）。请求途中又提交了一轮时，清单比 `madeFrom` 新：刚装好又在终端里卸掉的工具，可能短暂显示「已安装」，
+  窗口的快照跟上后自行纠正。稳妥的改法是 `get_catalog` 一并返回它用的 generation/round 与各来源的 `answered_at`（改线格式），没有做。
 - **磁盘空间读的是主目录所在卷当前可用的空间**（`statfs` 的 `f_bavail`），不含 macOS 可自动清理的部分（访达的「可用」含这部分），
   也不看 `OLLAMA_MODELS`（那是 Ollama 服务的环境，Banager 读不到）。只用来提醒，不阻止下载。
 
