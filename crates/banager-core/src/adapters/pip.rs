@@ -311,27 +311,6 @@ fn not_there_words(status: u16, then: &str) -> String {
     format!("the package index answered HTTP {status} ({name}), and {then}")
 }
 
-/// How many places pip searched for each project it looked up, by
-/// project, from the `<n> location(s) to search for versions of
-/// <project>:` line it logs at DEBUG before each lookup (pip 26.2.1
-/// `index/collector.py:495-505`, `collect_sources`): every index address
-/// and every `--find-links` address, though not a `--find-links` folder
-/// on this Mac, which has no address (`index/sources.py`,
-/// `_FlatDirectorySource.link`). The runner keeps that line and drops
-/// the addresses pip lists after it (`OutputUse::PipLookup`).
-fn locations_searched(stdout: &str) -> HashMap<String, usize> {
-    const SAID: &str = " location(s) to search for versions of ";
-    stdout
-        .lines()
-        .filter_map(|line| {
-            let (count, project) = line.split_once(SAID)?;
-            let count = count.split_whitespace().last()?.parse().ok()?;
-            let project = project.trim_end().strip_suffix(':')?;
-            Some((canonical_project(project), count))
-        })
-        .collect()
-}
-
 /// Why `pip list --uptodate` confirmed nothing (`confirm_up_to_date`):
 /// its words, and whether checking again can get past it -- it had no
 /// time left, ran out of it, or its words say the network failed.
@@ -1055,9 +1034,8 @@ impl PipAdapter {
         if gave_up.is_empty() {
             return Ok(checked.into());
         }
-        let searched = locations_searched(&output.stdout);
         Ok(self
-            .with_lookups_given_up(inst, checked, &gave_up, &searched, listed, deadline)
+            .with_lookups_given_up(inst, checked, &gave_up, listed, deadline)
             .await?
             .into())
     }
@@ -1109,17 +1087,16 @@ impl PipAdapter {
     /// no other failure for it (`confirm_up_to_date`); any other failure,
     /// in either lookup and in whatever order, keeps its row. Where that
     /// lookup confirmed nothing, the row says so (`Unconfirmed`), not
-    /// that no index gave its latest version: another may have. Not asked
-    /// for a package pip searched one place for (`searched`): no other
-    /// index could have it, and `--uptodate`, looking every package up
-    /// again one at a time, would hold every source's results back for
-    /// nothing (b2/t5 skeptic, problem 2).
+    /// that no index gave its latest version: another may have. Asked for
+    /// every such package, even where pip searched only the index that
+    /// answered: its count of the places it searched leaves out a
+    /// `find-links` folder on this Mac, which may hold the package (review
+    /// of b2/t5's skeptic fix, problem 2).
     async fn with_lookups_given_up(
         &self,
         inst: &ManagerInstance,
         mut checked: Vec<UpdateCandidate>,
         gave_up: &[GaveUp],
-        searched: &HashMap<String, usize>,
         listed: Option<Vec<PipPackage>>,
         deadline: tokio::time::Instant,
     ) -> Result<Vec<UpdateCandidate>, AdapterError> {
@@ -1163,11 +1140,7 @@ impl PipAdapter {
             if let Some(other) = failures.iter().find(|g| g.kind == Unanswered::Failed) {
                 checked.push(row(package, failed(other)));
             } else if let Some(first) = failures.first() {
-                if searched.get(&project) == Some(&1) {
-                    checked.push(row(package, failed(first)));
-                } else {
-                    not_there.push((package, (*first).clone()));
-                }
+                not_there.push((package, (*first).clone()));
             }
         }
         if not_there.is_empty() {
@@ -1823,57 +1796,24 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn regression_r70_1_no_confirmation_where_pip_searched_only_the_index_that_answered() {
-        // The b2/t5 skeptic's problem 2: with one index, a package it does
-        // not host (an editable install, an Anaconda-only one) gets a 404,
-        // and `pip list --uptodate` can never list it -- there is nowhere
-        // else to look. pip says how many places it searched for each
-        // package; where that is one, the row stays without a second
-        // lookup, which held every source's results back.
+    async fn regression_r70_1_a_package_a_find_links_folder_may_hold_is_confirmed_too() {
+        // pip's count of the places it searched leaves a `find-links`
+        // folder on this Mac out (it has no address): a private wheel
+        // installed from `/opt/wheels`, which PyPI answers 404 for, is
+        // searched in "1 location" and found in the folder at its
+        // installed version. Asked once more, `pip list --uptodate` lists
+        // it, and no "could not check" row is left (review of b2/t5).
         let outdated = r#"[{"name": "cowsay", "version": "5.0", "latest_version": "6.1", "latest_filetype": "wheel"}]"#;
-        let list = r#"[{"name":"cowsay","version":"5.0"},{"name":"my-tool","version":"0.1"},{"name":"six","version":"1.17.0"}]"#;
-        let not_found = |project: &str| {
-            format!(
-                "{}\n{}",
-                locations_line(1, project),
-                http_status_failure(&format!("https://pypi.org/simple/{project}/"), "404")
-            )
-        };
-        // Only my-tool, searched in one place: no confirmation.
-        let runner = Arc::new(MockRunner::new());
-        runner.respond(
-            OUTDATED_ARGV.to_vec(),
-            exited_with(0, &format!("{}\n{outdated}", not_found("my-tool")), ""),
-        );
-        runner.respond(NOT_REQUIRED_ARGV.to_vec(), exited_with(0, list, ""));
-        let rows = PipAdapter::new(runner.clone())
-            .check_updates(&test_instance(), &CheckOptions::default())
-            .await
-            .unwrap()
-            .candidates;
-        let mine = rows
-            .iter()
-            .find(|r| r.key.name == "my-tool")
-            .expect("my-tool's row");
-        assert!(!mine.checkable);
-        let words = format!("{:?}", mine.warnings);
-        assert!(
-            words.contains("HTTP 404") && words.contains("no index gave"),
-            "{words}"
-        );
-        assert!(runner.calls().iter().all(|c| *c != UPTODATE_ARGV.to_vec()));
-        // With six searched in two places as well, one confirmation, and
-        // it decides six alone.
+        let list = r#"[{"name":"acme-tool","version":"1.2"},{"name":"cowsay","version":"5.0"}]"#;
         let runner = Arc::new(MockRunner::new());
         runner.respond(
             OUTDATED_ARGV.to_vec(),
             exited_with(
                 0,
                 &format!(
-                    "{}\n{}\n{}\n{outdated}",
-                    not_found("my-tool"),
-                    locations_line(2, "six"),
-                    http_status_failure("https://download.pytorch.org/whl/cpu/six/", "403")
+                    "{}\n{}\n{outdated}",
+                    locations_line(1, "acme-tool"),
+                    http_status_failure("https://pypi.org/simple/acme-tool/", "404")
                 ),
                 "",
             ),
@@ -1881,36 +1821,15 @@ mod tests {
         runner.respond(NOT_REQUIRED_ARGV.to_vec(), exited_with(0, list, ""));
         runner.respond(
             UPTODATE_ARGV.to_vec(),
-            exited_with(0, r#"[{"name": "six", "version": "1.17.0"}]"#, ""),
+            exited_with(0, r#"[{"name": "acme-tool", "version": "1.2"}]"#, ""),
         );
         let rows = PipAdapter::new(runner.clone())
             .check_updates(&test_instance(), &CheckOptions::default())
             .await
             .unwrap()
             .candidates;
-        assert!(rows.iter().all(|r| r.key.name != "six"), "{rows:?}");
-        assert!(rows.iter().any(|r| r.key.name == "my-tool" && !r.checkable));
-        assert_eq!(
-            runner
-                .calls()
-                .iter()
-                .filter(|c| **c == UPTODATE_ARGV.to_vec())
-                .count(),
-            1
-        );
-    }
-
-    #[test]
-    fn test_locations_searched_reads_pips_count_by_project() {
-        let stdout = format!(
-            "{}\n{}\nSkipping link: none of the wheel's tags match\n[]",
-            locations_line(1, "My_Tool"),
-            locations_line(3, "six")
-        );
-        let searched = locations_searched(&stdout);
-        assert_eq!(searched.get("my-tool"), Some(&1));
-        assert_eq!(searched.get("six"), Some(&3));
-        assert_eq!(searched.len(), 2);
+        assert!(rows.iter().all(|r| r.key.name != "acme-tool"), "{rows:?}");
+        assert!(runner.calls().iter().any(|c| *c == UPTODATE_ARGV.to_vec()));
     }
 
     #[tokio::test]
