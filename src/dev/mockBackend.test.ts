@@ -166,7 +166,12 @@ describe("the browser preview's mock backend", () => {
     const run = { last_op: 3, kind: "Upgrade", succeeded: 2, failed: 1, attention: 0 };
     await expect(backend.invoke("report_finished_run", { run })).resolves.toBeUndefined();
     await expect(backend.invoke("report_finished_run", {})).rejects.toMatch(/^invalid args/);
-    await expect(backend.invoke("report_finished_run", { run: { ...run, kind: "Install" } })).rejects.toMatch(
+    // Every kind `RunKind` takes, Discover's installs and downloads among
+    // them (from the review of e0bcd0f0), and no other.
+    for (const kind of ["Uninstall", "Install", "ModelDownload", "Other"]) {
+      await expect(backend.invoke("report_finished_run", { run: { ...run, kind } })).resolves.toBeUndefined();
+    }
+    await expect(backend.invoke("report_finished_run", { run: { ...run, kind: "Download" } })).rejects.toMatch(
       /^invalid args/,
     );
   });

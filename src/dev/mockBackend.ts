@@ -1247,7 +1247,7 @@ export function createMockBackend(scenario: Scenario): MockBackend {
         typeof run !== "object" ||
         run === null ||
         !counts.every((field) => typeof run[field] === "number") ||
-        !["Upgrade", "Uninstall", "Other"].includes(run.kind as string) ||
+        !["Upgrade", "Uninstall", "Install", "ModelDownload", "Other"].includes(run.kind as string) ||
         (args.watched !== undefined && typeof args.watched !== "boolean")
       ) {
         throw `invalid args for command \`report_finished_run\`: ${JSON.stringify(args)}`;
