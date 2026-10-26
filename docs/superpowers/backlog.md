@@ -439,6 +439,20 @@ brew 7.0.6 `receipts/` 里不是录制的 27 份收据（25 份按 cask 目录�
 - ~~阶段 2 的更新页（`src/pages/UpdatesPage.tsx`，Task 12）直接遍历渲染，没接 `useVirtualizer`：只有 Homebrew 一个来源时更新通常只有几条到几十条，虚拟化收益极低而改动不小（每行的 `snapshot.artifacts.find` 已改为 `useMemo` 建 `Map` 的 O(1) 查找，真正的 O(n²) 已除）。接入更多来源后若更新列表可能变长，按已安装页（`InstalledPage`）的写法补 `useVirtualizer`。~~
   —— **已于 2026-09-22 解决**（`7a3ab59`）：更新页的列表是 `VirtualList`（`src/pages/UpdatesPage.tsx:1239`），它内部用 `useVirtualizer`（`src/components/VirtualList.tsx:302`），与已安装页同一个组件。
 
+## 阶段 5（发现页）已知限制（2026-10-27，分支 feat/post-v0.1，复审后有意留下）
+
+- **来源只回答了一半时，刚装好的工具可能闪回「安装」一轮。** `endedAfterCheck`（`src/lib/catalog.ts`）按装它的来源的
+  `answered_at` 判断清单是否已读到安装之后；清单回答了而更新检查没回答时 `answered_at` 为空（`session/refresh.rs` 约 955 行），
+  只能退回快照时间 `refreshed_at`，它晚于实际读取，所以检查进行中装好的工具在那一轮会按旧清单显示「安装」，下一次完整回答后恢复。
+  Homebrew 极少出现；Ollama 离线时更新检查会失败，但它的清单（本机 `/api/tags`）照样准确，所以这里不改成「一律相信安装」。
+- **Ollama.app 自带的命令不被识别。** 只拖了 Ollama.app、没让它装 `ollama` 命令时，Banager 找不到来源（`OllamaAdapter::detect`
+  只沿 PATH 找 `ollama`），模型那一行给「打开 Ollama」并说明要同意 App 安装命令。较新的 Ollama.app 可能在包里带着命令
+  （`Contents/Resources/ollama`），本机没有 Ollama.app，未核实，所以没有加这个位置。
+- **`OLLAMA_HOST` 写成本机的局域网地址或 `.local` 名字时，算作「其他地址」。** `host_is_this_mac` 只认 `localhost`、回环地址、
+  IPv4 回环的 IPv6 写法与「所有网卡」地址；查本机网卡地址要多读系统信息，没有做。文案因此只说「Ollama使用的是其他地址」，不说「另一台电脑」。
+- **磁盘空间读的是主目录所在卷当前可用的空间**（`statfs` 的 `f_bavail`），不含 macOS 可自动清理的部分（访达的「可用」含这部分），
+  也不看 `OLLAMA_MODELS`（那是 Ollama 服务的环境，Banager 读不到）。只用来提醒，不阻止下载。
+
 ## Runner 打磨（任意时机）
 
 - ~~`runner/real.rs`：最后的 `child.wait()` 未受剩余超时约束；末尾无换行的半行不会推给 `on_line`；kill 后不排空已缓冲的管道数据；每个字节被复制两次。~~
