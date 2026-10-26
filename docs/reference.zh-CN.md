@@ -215,7 +215,8 @@ Banager 以前叫 Canager，用这个名字构建的版本把设置——包括�
 不要替换它。要改用旧的设置代替 Banager 自己的，先把 Banager 的 `settings.json` 移到别处一个新建的空文件夹里，
 以便需要时放回，再粘贴。“常见问题”里有同样的步骤。Canager 没有更新记录，所以没有别的要带过来。
 
-Banager 把设置、更新和卸载记录、窗口的大小和位置保存在 `~/Library/Application Support/com.brulek.banager`。
+Banager 把设置、更新和卸载记录、窗口是否缩放或全屏保存在 `~/Library/Application Support/com.brulek.banager`；
+窗口的大小和位置像其他 Mac 应用一样由 macOS 保存在 Banager 的偏好设置里（在终端运行 `defaults delete com.brulek.banager` 可移除）。
 显示它窗口的 macOS 组件 WebKit 还可能把数据保存在 `~/Library/WebKit/com.brulek.banager`，把缓存保存在
 `~/Library/Caches/com.brulek.banager`。不再使用 Banager 后要把这些都移除，先退出它，再在访达里用“前往文件夹”
 分别打开这三个文件夹，把它们移到废纸篓，不存在的跳过——只移这三个文件夹，不要动它们所在的 Library 文件夹；

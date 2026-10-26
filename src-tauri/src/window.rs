@@ -249,6 +249,49 @@ pub fn observe_activation<R: Runtime>(app: &AppHandle<R>) {
 #[cfg(not(target_os = "macos"))]
 pub fn observe_activation<R: Runtime>(_app: &AppHandle<R>) {}
 
+/// The name AppKit keeps the window's frame under in Banager's defaults:
+/// `NSWindow Frame main` (`keep_frame`).
+#[cfg(target_os = "macos")]
+const FRAME_NAME: &str = MAIN_WINDOW;
+
+/// The window's size and place, kept by AppKit as a Mac app's are: put
+/// back from Banager's defaults if they hold them
+/// (`-[NSWindow setFrameUsingName:]`, which moves a frame whose display is
+/// gone onto one that is there), then saved there each time the window
+/// moves or is resized (`setFrameAutosaveName:`). In points, the unit
+/// macOS places windows in on every display. The window-state plugin kept
+/// them in pixels with no scale, so a window saved on a Retina display
+/// opened twice its size on a standard one (TAURI-02); it now keeps only
+/// whether the window was zoomed or in full screen (`run()` in lib.rs).
+/// Called once, from `run()`'s setup, on the main thread.
+#[cfg(target_os = "macos")]
+pub fn keep_frame<R: Runtime>(app: &AppHandle<R>) {
+    use objc2::{msg_send, runtime::AnyObject};
+    use objc2_foundation::NSString;
+
+    let Some(window) = app.get_webview_window(MAIN_WINDOW) else {
+        return;
+    };
+    let Ok(ns_window) = window.ns_window() else {
+        return;
+    };
+    let name = NSString::from_str(FRAME_NAME);
+    // SAFETY: `ns_window` is the window's `NSWindow`, alive while `window`
+    // is; both methods take an `NSString` and answer a `BOOL`, and setup
+    // runs on the main thread, where AppKit is called.
+    let kept: bool = unsafe {
+        let ns_window = &*(ns_window as *mut AnyObject);
+        let _: bool = msg_send![ns_window, setFrameUsingName: &*name];
+        msg_send![ns_window, setFrameAutosaveName: &*name]
+    };
+    if !kept {
+        eprintln!("[banager] macOS will not keep the window's size and place: another window has the name");
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn keep_frame<R: Runtime>(_app: &AppHandle<R>) {}
+
 /// Runs `on_notice` each time `name` is posted to Foundation's default
 /// notification center, from any object, on the thread that posts it and
 /// before the post returns, for as long as the process runs: the observer

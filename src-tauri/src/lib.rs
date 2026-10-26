@@ -26,6 +26,11 @@ use state::AppState;
 use tauri::Manager;
 use tauri_plugin_window_state::StateFlags;
 
+/// What the window-state plugin keeps of the window: whether it was zoomed
+/// or in full screen. Not its size or place, which it keeps in pixels with
+/// no scale (TAURI-02): AppKit keeps those (`window::keep_frame`).
+const WINDOW_STATE_FLAGS: StateFlags = StateFlags::MAXIMIZED.union(StateFlags::FULLSCREEN);
+
 // These window/session commands have one registration list in production
 // and the mock-runtime dispatch test. Native-only commands follow them at
 // the call site; the test never calls startup or creates a native window.
@@ -56,27 +61,24 @@ pub fn run() {
         // as the page loads (capabilities/default.json); Banager's
         // commands in notify.rs do the rest.
         .plugin(tauri_plugin_notification::init())
-        // The window opens as big as it was when Banager last quit, and
-        // where it was if a display is still there -- zoomed or in full
-        // screen, if it was -- as a Mac app's does; with nothing saved yet,
-        // at tauri.conf.json's size, centred. Saved as the app quits, to
+        // The window opens zoomed or in full screen if it was when Banager
+        // last quit, as a Mac app's does. Saved as the app quits, to
         // `.window-state.json` in the app's config folder, on macOS the
         // folder `settings.json` is in (docs/what-we-run.md, "Files
         // Banager writes"). A window closed before then was only hidden
-        // (window.rs), so it is still there to be saved, with the size and
-        // position it had. Not whether the window is shown, or its title
-        // bar: it always opens shown, with the title bar tauri.conf.json
-        // gives it. All in Rust -- restored as the window is created, saved
-        // on quit -- so the page is given none of the plugin's commands:
-        // capabilities/default.json has no `window-state:` permission.
+        // (window.rs), so it is still there to be saved. Its size and
+        // place are not the plugin's: it keeps them in pixels, with no
+        // scale, and a window saved on a Retina display opened twice its
+        // size on a standard one (TAURI-02); AppKit keeps them, in points
+        // (`window::keep_frame`, in setup below). Not whether the window
+        // is shown, or its title bar: it always opens shown, with the
+        // title bar tauri.conf.json gives it. All in Rust -- restored as
+        // the window is created, saved on quit -- so the page is given none
+        // of the plugin's commands: capabilities/default.json has no
+        // `window-state:` permission.
         .plugin(
             tauri_plugin_window_state::Builder::new()
-                .with_state_flags(
-                    StateFlags::SIZE
-                        | StateFlags::POSITION
-                        | StateFlags::MAXIMIZED
-                        | StateFlags::FULLSCREEN,
-                )
+                .with_state_flags(WINDOW_STATE_FLAGS)
                 .build(),
         )
         // The cask icons `ipc::artifact_icon` hands the window, drawn by
@@ -153,6 +155,9 @@ pub fn run() {
             // a notification waits on the window brings the window back on
             // the Updates page (window.rs).
             window::observe_activation(app.handle());
+            // The window's size and place as it last had them, kept by
+            // AppKit from now on (window.rs).
+            window::keep_frame(app.handle());
             // Every way of quitting -- ⌘Q, the Dock's Quit, a logout --
             // asks first while an operation is not done, and the page
             // asks the user (quit.rs). After `AppState`, which it reads.
@@ -408,5 +413,24 @@ mod window_rights {
             "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; \
              img-src 'self' data: asset: https://asset.localhost; connect-src 'self'"
         );
+    }
+}
+
+#[cfg(test)]
+mod window_state {
+    use super::WINDOW_STATE_FLAGS;
+    use tauri_plugin_window_state::StateFlags;
+
+    /// TAURI-02: the plugin keeps the window's size and place in pixels
+    /// with no scale, so a window saved on a Retina display opened twice
+    /// its size on a standard one. It keeps only zoom and full screen;
+    /// AppKit keeps the frame, in points (`window::keep_frame`).
+    #[test]
+    fn regression_tauri_02_the_plugin_keeps_no_size_or_place() {
+        assert_eq!(
+            WINDOW_STATE_FLAGS.bits(),
+            (StateFlags::MAXIMIZED | StateFlags::FULLSCREEN).bits()
+        );
+        assert!(!WINDOW_STATE_FLAGS.intersects(StateFlags::SIZE | StateFlags::POSITION));
     }
 }

@@ -266,8 +266,10 @@ settings, so don't replace it. To use the old settings in place of Banager's own
 **Common Questions** has the same steps. Canager kept no update history, so there is nothing else to
 bring over.
 
-Banager saves its settings, its history of updates and uninstalls and its window's size and position in
-`~/Library/Application Support/com.brulek.banager`. WebKit, the part of macOS that draws its window, can
+Banager saves its settings, its history of updates and uninstalls and whether its window was zoomed or
+in full screen in `~/Library/Application Support/com.brulek.banager`; macOS keeps the window's size and
+position in Banager's preferences, as it does for any Mac app (`defaults delete com.brulek.banager` in
+Terminal removes them). WebKit, the part of macOS that draws its window, can
 also keep data for it in `~/Library/WebKit/com.brulek.banager` and a cache in
 `~/Library/Caches/com.brulek.banager`. To remove all of this once you stop using Banager, quit it, then
 open each of those three folders with Go to Folder and move it to the Trash, skipping any that isn't there
@@ -349,7 +351,8 @@ This app runs package managers on your behalf, so the boundary matters more than
   CLI, Grok Build and Codex's own installer publish no removal instructions at all, so their lists
   are Banager's own reading of how each was installed, and their paths go to the Trash the same way. Moving files to
   the Trash is the only change Banager makes to a file itself besides saving its own settings, its
-  history of the updates and uninstalls it ran (`history.json`), and its window's size and position;
+  history of the updates and uninstalls it ran (`history.json`), and whether its window was zoomed or in full
+  screen (macOS keeps its size and position);
   `docs/what-we-run.md` says how, and names every path each list moves or keeps and where it
   comes from.
 - **Only the paths you were shown are moved.** Each path must be inside your home folder — never

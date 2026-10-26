@@ -5091,13 +5091,17 @@ hears that it moved through the event `SizesChanged`.
 
 ## Data an uninstall leaves behind: read-only, no command runs
 
-No source's uninstall, as Banager runs it, removes the folders an AI
-coding tool keeps its settings and data in, nor the models Ollama
-downloaded. That holds because Banager never runs `brew uninstall --zap`
+Banager never runs `brew uninstall --zap`
 (`test_plan_never_passes_zap_force_or_ignore_dependencies` in
-`crates/banager-core/src/adapters/brew/mod.rs`): a cask's `zap` stanza
-may name such a folder, and it runs only with `--zap`. So the uninstall
-preview names them (「卸载后会保留」, "Stays after uninstalling"):
+`crates/banager-core/src/adapters/brew/mod.rs`, which checks the
+command's arguments): a cask's `zap` stanza, which may name the folders an
+AI coding tool keeps its settings and data in, never runs. That alone
+does not keep them: a cask's ordinary `uninstall` stanza can delete or
+trash paths too -- GPT4All's deletes its folder in Application Support,
+apart from its `zap` (`adapters/fixtures-derived/brew/7.0.6/receipts/gpt4all.json`)
+-- and so can a package's own uninstall. So the uninstall preview says a
+folder, or Ollama's models, stays only where what the uninstall removes
+is known (「卸载后会保留」, "Stays after uninstalling"):
 `Session::issue_plan` (`crates/banager-core/src/session/kept.rs`) adds a
 line for each of these that is there, for an uninstall of a tool of that
 family whose removal is known (`crates/banager-core/src/kept_data.rs`,
@@ -6201,16 +6205,23 @@ file a newer Banager wrote is left exactly as it is. To
 remove the history, quit Banager and delete `history.json`; it starts
 empty at the next launch. Clear does not delete it.
 
-And `.window-state.json`: the
-window's size and position, and whether it was zoomed or in full screen,
-written as Banager quits so that the window opens the same way next time
-(the Tauri window-state plugin, registered in `run()` in
+And `.window-state.json`: whether the window was zoomed or in full
+screen, written as Banager quits so that the window opens the same way
+next time (the Tauri window-state plugin, registered in `run()` in
 `src-tauri/src/lib.rs`, which keeps it in Tauri's config directory for the
 app — on macOS the same folder). That one is written in place, not renamed
 into place: a file a crash cut short is ignored at the next launch, and
-the window opens at its default size. Banager's own code writes no other
-file on the Mac and deletes none; what WebKit and macOS keep for the app
-is theirs (below). It moves files in one case: a
+the window opens as it does the first time. The window's size and place
+are not in it any more: the plugin kept them in pixels with no scale, so a
+window saved on a Retina display opened twice its size on a standard one.
+AppKit keeps them, in points, as it does any Mac app's that asks
+(`-[NSWindow setFrameAutosaveName:]`, `window::keep_frame` in
+`src-tauri/src/window.rs`): in Banager's defaults, under `NSWindow Frame
+main`, saved as the window moves or is resized and put back when it opens,
+on a display that is still there. A `.window-state.json` an older Banager
+wrote still holds a size and position; they are no longer read. Banager's
+own code writes no other file on the Mac and deletes none; what WebKit
+and macOS keep for the app is theirs (below). It moves files in one case: a
 confirmed uninstall of a tool that has no uninstall command (Claude Code,
 Antigravity CLI or Grok Build) moves the paths its preview listed to the
 Trash (next section). The programs Banager runs write their own files as
@@ -6254,15 +6265,20 @@ that store's data in `~/Library/WebKit/com.brulek.banager` and its cache
 in `~/Library/Caches/com.brulek.banager`, outside Application Support;
 what is in them is WebKit's, and Banager neither reads nor clears them.
 macOS keeps its own records of the app too, such as whether it may send
-notifications. These places are read from the code of wry and WebKit, not
-an inventory of every trace a Mac keeps of an app. To remove Banager's
+notifications, and the app's defaults, where AppKit keeps the window's
+size and place (`~/Library/Preferences/com.brulek.banager.plist`, which
+macOS caches: remove it with `defaults delete com.brulek.banager` in
+Terminal rather than in Finder). These places are read from the code of
+wry, WebKit and AppKit, not an inventory of every trace a Mac keeps of an
+app. To remove Banager's
 saved data, quit Banager, then move
 `~/Library/Application Support/com.brulek.banager`,
 `~/Library/WebKit/com.brulek.banager` and
 `~/Library/Caches/com.brulek.banager` to the Trash -- those three folders
 only, never the Library folders they are in -- skipping any that is not
 there; the settings and history go with them, and the next launch starts
-with the defaults. Canager's folders, the same three ending in
+with the defaults; the window opens at its last size until the defaults
+are removed too. Canager's folders, the same three ending in
 `com.brulek.canager`, are left for last: move them to the Trash only
 after bringing its settings over (above), or once they are not wanted.
 
