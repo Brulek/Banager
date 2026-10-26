@@ -187,6 +187,12 @@ describe("warningKey", () => {
     expect(i18n.getFixedT("zh-Hant")(warningKey(system) as string, warningArgs(system))).toBe(
       "解除安裝後，「unbound」的brew services服務定義仍會保留。解除安裝不會停止已在執行的服務。如果該服務仍處於載入狀態，macOS可能會嘗試再次啟動它。要先停止它，請在終端機執行sudo brew services stop unbound。",
     );
+    // R92-1: by its own Homebrew's brew, by full path, quoted where it has
+    // a space: Terminal's bare `brew` may be another Homebrew's, or none.
+    const found: Warning = { HomebrewServiceStays: { name: "ollama", system: false, brew: "/opt/homebrew/bin/brew" } };
+    expect(warningArgs(found)).toEqual({ name: "ollama", command: "/opt/homebrew/bin/brew services stop ollama" });
+    const spaced: Warning = { HomebrewServiceStays: { name: "unbound", system: true, brew: "/Users/a/My Brew/bin/brew" } };
+    expect(warningArgs(spaced)).toEqual({ name: "unbound", command: "sudo '/Users/a/My Brew/bin/brew' services stop unbound" });
     expect(warningDetailKey(user)).toBeNull();
     expect(warningGroup(user)).toBe("note");
     expect(deletesForGood(user)).toBe(false);

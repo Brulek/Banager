@@ -3334,6 +3334,7 @@ impl BrewAdapter {
                         warnings.push(Warning::HomebrewServiceStays {
                             name: req.name.rsplit('/').next().unwrap_or(&req.name).to_string(),
                             system: service.system,
+                            brew: inst.exe_path.to_string_lossy().into_owned(),
                         });
                     }
                 }
@@ -6366,6 +6367,8 @@ mod plan_execute_tests {
             ollama.warnings.contains(&Warning::HomebrewServiceStays {
                 name: "ollama".to_string(),
                 system: false,
+                // This Homebrew's own brew, by full path (R92-1).
+                brew: "/opt/homebrew/bin/brew".to_string(),
             }),
             "got {:?}",
             ollama.warnings

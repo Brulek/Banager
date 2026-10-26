@@ -7,7 +7,7 @@
  */
 import type { CaskStep, KeptData, KeptWhat, RemoveCheck, RemovedWhat, UninstallScope, Warning } from "./types";
 import { modelDownloadNote } from "./modelDownload";
-import { namesInSentence } from "./format";
+import { displayToken, namesInSentence } from "./format";
 
 /** The sentence for each kind of path a path-list uninstall moves; a
  *  `Record` over `RemovedWhat`, so a kind without copy fails `tsc`. */
@@ -402,9 +402,13 @@ export function warningArgs(warning: Warning, separator = ", "): Record<string, 
   if ("HomebrewServiceMayNeedRestart" in warning) return { name: warning.HomebrewServiceMayNeedRestart.name };
   if ("HomebrewServiceStays" in warning) {
     // One started with `sudo` is stopped with `sudo` (`brew services`'s own
-    // advice for a service in `/Library/LaunchDaemons`).
-    const { name, system } = warning.HomebrewServiceStays;
-    return { name, command: `${system ? "sudo " : ""}brew services stop ${name}` };
+    // advice for a service in `/Library/LaunchDaemons`), by its own
+    // Homebrew's brew, by full path: Terminal's bare `brew` may be
+    // another's, or none (R92-1). A warning saved before the path was
+    // carried says `brew`.
+    const { name, system, brew } = warning.HomebrewServiceStays;
+    const program = brew ? displayToken(brew) : "brew";
+    return { name, command: `${system ? "sudo " : ""}${program} services stop ${displayToken(name)}` };
   }
   if ("HomebrewCleansUpOldVersions" in warning) {
     const versions = warning.HomebrewCleansUpOldVersions.versions;

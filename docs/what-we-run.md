@@ -2115,10 +2115,13 @@ Homebrew 7.0.9): the program keeps running from the deleted version, and
 macOS keeps trying to start it at login. So a formula's uninstall preview
 looks for those four files (`lstat` only, `brew::kegs::read_service`) and,
 when one is there, says the formula is set to run in the background with
-brew services and that uninstalling doesn't stop it, with `brew services
-stop <name>` -- `sudo brew services stop <name>` for one in
-`/Library/LaunchDaemons` -- to run in Terminal first
-(`Warning::HomebrewServiceStays`). Banager runs neither. A service file
+brew services and that uninstalling doesn't stop it, with `<brew> services
+stop <name>` -- `sudo <brew> services stop <name>` for one in
+`/Library/LaunchDaemons` -- to run in Terminal first, `<brew>` this
+Homebrew's own brew by its full path, quoted if it has a space, since
+Terminal's bare `brew` may be another Homebrew's, or none where its
+folder is not on Terminal's `PATH` (`Warning::HomebrewServiceStays`,
+R92-1). Banager runs neither. A service file
 the formula names some other way is not looked for. A formula update
 uses the same service-file reader and, when a file is found, says
 conditionally that a running service needs restarting with brew services

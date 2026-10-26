@@ -1435,10 +1435,19 @@ pub enum Warning {
     /// service nor removes that file (`uninstall.rb:24-110` in Homebrew
     /// 7.0.9), so the program keeps running from the deleted version, and
     /// macOS keeps trying to start it at login. `name` is the formula's
-    /// name in the Cellar, for `brew services stop <name>` (r18 R46-3).
-    /// Produced by `BrewAdapter::plan` for a formula's `Uninstall`; read by
+    /// name in the Cellar, for `brew services stop <name>` (r18 R46-3);
+    /// `brew`, the brew of the Homebrew it belongs to, by its full path, as
+    /// that command must be run: Terminal's bare `brew` may be another
+    /// Homebrew's, or none, where its folder is not on Terminal's `PATH`
+    /// (R92-1). Empty in a warning saved before it was carried. Produced by
+    /// `BrewAdapter::plan` for a formula's `Uninstall`; read by
     /// `warningKey` and `warningArgs` in src/lib/warnings.ts.
-    HomebrewServiceStays { name: String, system: bool },
+    HomebrewServiceStays {
+        name: String,
+        system: bool,
+        #[serde(default)]
+        brew: String,
+    },
     /// `brew services start` set this formula up to run in the background
     /// -- its service file is where `HomebrewServiceStays` says -- and
     /// `brew upgrade` replaces its files without restarting a service
@@ -3681,9 +3690,22 @@ mod tests {
             serde_json::to_string(&Warning::HomebrewServiceStays {
                 name: "ollama".to_string(),
                 system: false,
+                brew: "/opt/homebrew/bin/brew".to_string(),
             })
             .unwrap(),
-            r#"{"HomebrewServiceStays":{"name":"ollama","system":false}}"#
+            r#"{"HomebrewServiceStays":{"name":"ollama","system":false,"brew":"/opt/homebrew/bin/brew"}}"#
+        );
+        // One saved before the path was carried reads with none.
+        assert_eq!(
+            serde_json::from_str::<Warning>(
+                r#"{"HomebrewServiceStays":{"name":"ollama","system":false}}"#
+            )
+            .unwrap(),
+            Warning::HomebrewServiceStays {
+                name: "ollama".to_string(),
+                system: false,
+                brew: String::new(),
+            }
         );
         assert_eq!(
             serde_json::to_string(&Warning::HomebrewServiceMayNeedRestart {

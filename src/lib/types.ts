@@ -523,9 +523,11 @@ export type Warning =
   /**
    * r18 R46-3: `brew services start` set this formula up to run in the
    * background (`system`: with `sudo`), and `brew uninstall` neither stops
-   * it nor removes its service file. `name` is its name in the Cellar.
+   * it nor removes its service file. `name` is its name in the Cellar;
+   * `brew`, its Homebrew's brew by full path (R92-1), empty in a warning
+   * saved before it was carried.
    */
-  | { HomebrewServiceStays: { name: string; system: boolean } }
+  | { HomebrewServiceStays: { name: string; system: boolean; brew?: string } }
   /**
    * R77-2: `brew services start` set this formula up to run in the
    * background, and `brew upgrade` restarts no service already running it,
