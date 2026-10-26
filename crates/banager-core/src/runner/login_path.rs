@@ -203,22 +203,27 @@ fn with_added(path: String) -> String {
 }
 
 /// The process's own `PATH` with the folders added since
-/// (`add_folder`), for where no read of the login shell has worked; `None`
-/// where it has no `PATH` and none was added, or it is not UTF-8 and none
-/// was added.
+/// (`add_folder`), for where no read of the login shell has worked. Where
+/// the process has none, `None` until a folder is added, and then macOS's
+/// own default for an app (`SYSTEM_PATH`) with the folders after it, so a
+/// command still finds `/usr/bin`; one that is not UTF-8 is kept as it is,
+/// without them.
 fn process_path() -> Option<OsString> {
     let own = std::env::var_os("PATH");
     if ADDED.read().unwrap_or_else(|e| e.into_inner()).is_empty() {
         return own;
     }
     match own {
-        None => Some(OsString::from(with_added(String::new()))),
+        None => Some(OsString::from(with_added(SYSTEM_PATH.to_string()))),
         Some(own) => match own.into_string() {
             Ok(own) => Some(OsString::from(with_added(own))),
             Err(own) => Some(own),
         },
     }
 }
+
+/// The `PATH` launchd gives an app opened from the Finder.
+const SYSTEM_PATH: &str = "/usr/bin:/bin:/usr/sbin:/sbin";
 
 /// The login shell's `PATH`, once a read found it (`accept`), with the
 /// folders added since (`add_folder`).

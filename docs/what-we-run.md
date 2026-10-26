@@ -91,8 +91,10 @@ read Terminal's settings", with Check Again): sources found only through Termina
 next refresh — Check Again, or any later one — reads the shell once more;
 after a read that worked, none runs again. One folder can be put at the
 end of that `PATH` later in a run, and only one: `/opt/homebrew/bin`,
-once the Homebrew sheet has seen Homebrew installed (see "Homebrew
-itself"). Each refresh takes the `PATH`
+once the Homebrew sheet has seen Homebrew there with no update running
+(see "Homebrew itself"). Where Banager was started with no `PATH` at
+all, macOS's own for an app, `/usr/bin:/bin:/usr/sbin:/sbin`, comes
+before it. Each refresh takes the `PATH`
 and whether it is the login shell's together, as one value, as it starts
 (`login_path::round_env`), and keeps it: a read that works while an older
 round is still running changes neither for that round, which says which
@@ -5713,9 +5715,10 @@ From the sheet Banager does three things, each only while it is open:
   running mean it is installed: the sheet says so and checks again, which
   finds Homebrew where it always looks for it. Closed before then, the
   next check finds it all the same.
-- **Once it is installed, `/opt/homebrew/bin` is put at the end of the
-  `PATH`** every later check of this launch looks along and every
-  command gets (`login_path::add_folder`), where it is not there already:
+- **Once a look finds it there and no update running,
+  `/opt/homebrew/bin` is put at the end of the `PATH`** every later check
+  of this launch looks along and every command gets
+  (`login_path::add_folder`), where it is not there already:
   the login shell was read as Banager opened, before the installer wrote
   `/etc/paths.d/homebrew`, and Terminal windows opened since find what
   Homebrew installs there. Nothing is written for it, and the next

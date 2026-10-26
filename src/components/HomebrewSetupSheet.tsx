@@ -83,11 +83,26 @@ export function HomebrewSetupSheet({ open, onClose }: HomebrewSetupSheetProps) {
     queryFn: lookForHomebrew,
     enabled: open && sure < LOOKS_TO_BE_SURE,
     refetchInterval: open && sure < LOOKS_TO_BE_SURE ? LOOK_EVERY_MS : false,
+    // On the interval alone, Terminal in front or not: a look the window's
+    // coming back adds could land just after the last, and two looks are
+    // to be two seconds apart.
+    refetchIntervalInBackground: true,
+    refetchOnWindowFocus: false,
     gcTime: 0,
   });
+  // When the last look that counted was answered, so that a second one
+  // counts only a look's interval after it.
+  const counted = useRef(0);
   useEffect(() => {
-    if (look.data === undefined) return;
-    setSure((was) => (look.data.there && !look.data.updating ? was + 1 : 0));
+    // A look answered after the sheet closed is no look of this sheet's.
+    if (look.data === undefined || !open) return;
+    const at = look.dataUpdatedAt;
+    if (!(look.data.there && !look.data.updating)) {
+      setSure(0);
+    } else if (at - counted.current >= LOOK_EVERY_MS / 2) {
+      counted.current = at;
+      setSure((was) => was + 1);
+    }
     // Each look, once: `dataUpdatedAt` moves with every answer, the same or not.
   }, [look.dataUpdatedAt]);
   const installed = sure >= LOOKS_TO_BE_SURE;
@@ -97,15 +112,16 @@ export function HomebrewSetupSheet({ open, onClose }: HomebrewSetupSheetProps) {
     if (installed) checkAgain();
   }, [installed]);
 
-  // Each time it opens, from the start.
+  // Each time it opens, from the start: as it opens, so that nothing a
+  // look answered while it was closed counts.
   useEffect(() => {
-    if (open) return;
     setWhatOpen(null);
     setCommandOpen(null);
     setOpened(false);
     setCopyFailed(false);
     setOpenFailed(false);
     setSure(0);
+    counted.current = 0;
   }, [open]);
 
   async function openTerminalWithCommand() {

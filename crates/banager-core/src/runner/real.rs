@@ -1009,9 +1009,11 @@ impl CommandRunner for RealRunner {
         if let Some(found) = &accepted {
             cmd.env("PATH", &found.path);
             cmd.envs(found.imported.iter().map(|(name, value)| (name, value)));
-        } else if let Some(path) = super::login_path::path() {
+        } else if let Some(path) = &child_path {
             // No read has worked: the process's own, with any folder added
-            // since (`login_path::add_folder`).
+            // since (`login_path::add_folder`) -- the very `PATH` checked
+            // above, read once, so a read or a folder that lands in between
+            // never hands the command one that was not checked.
             cmd.env("PATH", path);
         }
         // Those settings can hold a login, and tools print them back
