@@ -1793,6 +1793,7 @@
     "introNoHomebrew": "這台Mac上還沒有Homebrew。先安裝好它，下面的工具就能在這裡一鍵安裝。",
     "introHomebrewNotReady": "這台Mac上有Homebrew，但現在無法用它安裝：側邊欄「來源」下的Homebrew頁面會說明原因。",
     "footnote": "這裡的工具都用Homebrew安裝，模型用Ollama下載；安裝前都會先顯示要執行的指令。",
+    "ollamaNoCommand": "Ollama已打開，但這台Mac上仍然沒有ollama命令，下載模型需要它。",
     "install": "安裝",
     "installLabel": "安裝{{name}}",
     "copyCommand": "拷貝「{{command}}」",

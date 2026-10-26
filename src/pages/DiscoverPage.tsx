@@ -91,17 +91,25 @@ export function DiscoverPage() {
   // Or no Ollama source at all while the model waits for Ollama
   // (`OllamaNotReady`): its app is there with no `ollama` command yet,
   // which its first run offers to put in place.
+  const noOllamaSource = !(snapshot?.instances.some((instance) => instance.adapter_id === "ollama") ?? true);
   const ollamaStopped =
     snapshot?.instances.some(
       (instance) => instance.adapter_id === "ollama" && instance.status.unavailable === "NotRunning",
-    ) || !(snapshot?.instances.some((instance) => instance.adapter_id === "ollama") ?? true);
+    ) || noOllamaSource;
   // Where `open -a Ollama` failed, why, beside the button, as Ollama's
-  // notice says it: a press that does nothing would say nothing.
+  // notice says it: a press that does nothing would say nothing. Nor one
+  // that opened it and found no `ollama` command still -- the app was
+  // running, or its offer to put the command in place was turned down
+  // (from the review of 8f7a680b).
   const openOllamaButton = (
     <span className="flex items-center gap-2">
       {openOllama.isError ? (
         <span role="alert" className={`text-danger-text ${SMALL_WRAPPING}`}>
           {openOllamaErrorMessage(t, openOllama.error.message, settings?.show_technical_details ?? false)}
+        </span>
+      ) : openOllama.isSuccess && noOllamaSource ? (
+        <span role="status" className={`text-muted ${SMALL_WRAPPING}`}>
+          {t("discover.ollamaNoCommand")}
         </span>
       ) : null}
       <button

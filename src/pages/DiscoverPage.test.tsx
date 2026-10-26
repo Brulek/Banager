@@ -560,7 +560,20 @@ describe("the Discover page", () => {
     ];
     renderWithProviders(<DiscoverPage />);
     await waitFor(() => expect(rows()).toEqual([["Gemma 3", "Open Ollama"]]));
-  });
+    // Opened, and the checks after it still find no `ollama` command (the
+    // app was running, or its offer of the command was turned down): the
+    // row says so, not a press that did nothing (from the review of
+    // 8f7a680b).
+    fireEvent.click(within(row("model")).getByRole("button", { name: "Open Ollama" }));
+    await waitFor(() => expect(calls("open_ollama_app")).toHaveLength(1));
+    expect(
+      await within(row("model")).findByText(
+        "Ollama is open, and this Mac still has no ollama command, which downloading the model needs.",
+        {},
+        { timeout: 8000 },
+      ),
+    ).toHaveAttribute("role", "status");
+  }, 15_000);
 
   it("says it in Chinese and in Taiwan's words", async () => {
     await i18n.changeLanguage("zh-CN");
