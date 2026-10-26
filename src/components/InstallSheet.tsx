@@ -54,6 +54,9 @@ export function InstallSheet({ entry, found = null, iconKey, description = null,
   const submitMutation = useSubmitOperation();
   const installRef = useRef<HTMLButtonElement>(null);
   const textId = useId();
+  // A search result's "not one of the suggestions", where Homebrew's
+  // description is the text before it: the alert reads both.
+  const warningId = useId();
   const open = entry !== null || found !== null;
   // What the plan is asked for by: the entry's id, or the result's.
   const id = found?.id ?? entry?.id ?? null;
@@ -200,7 +203,9 @@ export function InstallSheet({ entry, found = null, iconKey, description = null,
         target === null ? undefined : <SheetIcon adapterId={target.adapterId} sourceLabel={sourceLabel} iconKey={iconKey} />
       }
       subtitle={open ? sheetMeta(name, sourceLabel, target?.adapterId === "ollama" ? target.name : null) : undefined}
-      describedBy={textId}
+      describedBy={
+        found !== null && found.catalog_id === null && description !== null ? `${textId} ${warningId}` : textId
+      }
       initialFocus={installRef}
       footer={
         <>
@@ -231,7 +236,7 @@ export function InstallSheet({ entry, found = null, iconKey, description = null,
         // branch).
         <>
           {description === null ? null : <SheetText id={textId}>{description}</SheetText>}
-          <SheetText id={description === null ? textId : undefined} className={description === null ? undefined : "mt-2"}>
+          <SheetText id={description === null ? textId : warningId} className={description === null ? undefined : "mt-2"}>
             {t("discover.search.notSuggested")}
           </SheetText>
         </>

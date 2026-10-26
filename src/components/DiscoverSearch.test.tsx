@@ -204,6 +204,9 @@ describe("Discover's search of Homebrew", () => {
     // Homebrew's description a line of its own: it ends in no stop (from
     // the independent review of the branch).
     expect(within(sheet).getByText("Jq language server").tagName).toBe("P");
+    // And the alert reads both, the warning not lost to a screen reader
+    // (from the review of 02041f8a).
+    expect(sheet).toHaveAccessibleDescription(/Jq language server.*isn't one of the tools suggested here/);
     // A formula's download is checked.
     expect(sheet).toHaveTextContent("checks the download before installing it");
     await waitFor(() => expect(within(sheet).getByRole("button", { name: "Install" })).toBeEnabled());
