@@ -229,9 +229,11 @@ pub(crate) fn own_file(path: &Path) -> std::io::Result<Vec<u8>> {
 /// window is up -- and writes with `std::fs::write`, through a link onto
 /// whatever it leads to (R91-2; from the independent review of the
 /// branch). Anything else there, a pipe, a link, a folder, is moved aside
-/// to `<name>.not-a-file` beside it, never opened; where that fails, a pipe
-/// or link is removed (a link's own file, never what it leads to). A plain
-/// file, or nothing, is left as it is.
+/// beside it, never opened: to `<name>.not-a-file`, or where that is taken,
+/// `<name>.not-a-file-2` and on, never over one moved aside before (from the
+/// review of the fix batch); where that fails, a pipe or link is removed (a
+/// link's own file, never what it leads to). A plain file, or nothing, is
+/// left as it is.
 pub fn keep_plain_file(path: &Path) {
     let Ok(meta) = std::fs::symlink_metadata(path) else {
         return;
@@ -239,9 +241,20 @@ pub fn keep_plain_file(path: &Path) {
     if meta.file_type().is_file() {
         return;
     }
-    let mut aside = path.as_os_str().to_owned();
-    aside.push(".not-a-file");
-    if std::fs::rename(path, &aside).is_err() && !meta.is_dir() {
+    let free = (1..=100u32).find_map(|n| {
+        let mut name = path.as_os_str().to_owned();
+        name.push(if n == 1 {
+            ".not-a-file".to_string()
+        } else {
+            format!(".not-a-file-{n}")
+        });
+        let candidate = std::path::PathBuf::from(name);
+        std::fs::symlink_metadata(&candidate)
+            .is_err()
+            .then_some(candidate)
+    });
+    let moved = free.is_some_and(|aside| std::fs::rename(path, &aside).is_ok());
+    if !moved && !meta.is_dir() {
         let _ = std::fs::remove_file(path);
     }
 }
@@ -450,6 +463,16 @@ mod tests {
             .unwrap()
             .file_type()
             .is_symlink());
+        // Another, with the first one's still aside: beside it, never over
+        // it.
+        make_fifo(&pipe);
+        keep_plain_file(&pipe);
+        assert!(std::fs::symlink_metadata(&aside)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        let second = dir.join(".window-state.json.not-a-file-2");
+        assert!(std::fs::symlink_metadata(&second).is_ok());
         // A plain file, or nothing: left as it is.
         std::fs::write(&pipe, b"{}").unwrap();
         keep_plain_file(&pipe);

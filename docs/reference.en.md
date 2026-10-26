@@ -369,7 +369,8 @@ This app runs package managers on your behalf, so the boundary matters more than
   are Banager's own reading of how each was installed, and their paths go to the Trash the same way. Moving files to
   the Trash is the only change Banager makes to a file itself besides saving its own settings, its
   history of the updates and uninstalls it ran (`history.json`), and whether its window was zoomed or in full
-  screen (macOS keeps its size and position);
+  screen (macOS keeps its size and position) -- and, should anything but a plain file be found where
+  that last one goes, moving it aside so that the app never waits on it or writes through it;
   `docs/what-we-run.md` says how, and names every path each list moves or keeps and where it
   comes from.
 - **Only the paths you were shown are moved.** Each path must be inside your home folder — never

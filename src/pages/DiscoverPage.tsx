@@ -88,8 +88,10 @@ export function DiscoverPage() {
   // Homebrew is there, and cannot install: the page says where to see why.
   const homebrewNotReady = checked && brew !== undefined && brewCanInstall !== true;
   // No Homebrew: it comes first, and the page says so -- or, on a Mac its
-  // installer no longer supports, that the tools below cannot be installed
-  // from here, though each row says it needs Homebrew.
+  // installer no longer supports, that the tools below that install with
+  // Homebrew cannot be installed from here, though each row says it needs
+  // Homebrew. Not the model, which Ollama downloads, an Intel Mac's
+  // included (from the review of the fix batch).
   const homebrewState = checked ? catalog?.find((entry) => entry.id === "homebrew")?.state : undefined;
   const homebrewFirst = homebrewState === "NotInstalled";
   const homebrewUnsupported = homebrewState === "HomebrewUnsupported";

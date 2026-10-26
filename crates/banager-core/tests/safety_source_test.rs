@@ -694,7 +694,12 @@ fn test_an_opens_flags_are_read_from_its_own_statement() {
 /// round 5 review found the Codex version read and the standalone launcher
 /// check following `~/.codex` and `~/.local/bin/claude` with plain
 /// `read_link`/`realpath`, which this list now rules out.
-const PATH_LOOKUPS_ALLOWED: [(&str, &str, &str); 21] = [
+const PATH_LOOKUPS_ALLOWED: [(&str, &str, &str); 22] = [
+    (
+        "crates/banager-core/src/settings.rs:",
+        "std::fs::symlink_metadata(&candidate)",
+        "the name beside `.window-state.json` a pipe or link is moved aside to, looked at so as never to move one over another (`settings::keep_plain_file`)",
+    ),
     (
         "crates/banager-core/src/settings.rs:",
         "let Ok(meta) = std::fs::symlink_metadata(path) else {",

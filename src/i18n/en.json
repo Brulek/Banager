@@ -1942,7 +1942,7 @@
     "intro": "Tools to start with, and which of them this Mac already has.",
     "introNoHomebrew": "This Mac doesn't have Homebrew yet. Install it first, and then the tools below install here in one click.",
     "introHomebrewNotReady": "Homebrew is on this Mac but can't install anything right now: its page under Sources says why.",
-    "introHomebrewUnsupported": "Homebrew's installer no longer supports Intel Macs, so the tools below can't be installed from here.",
+    "introHomebrewUnsupported": "Homebrew's installer no longer supports Intel Macs, so the tools below that install with Homebrew can't be installed from here.",
     "footnote": "Tools here install with Homebrew, and the model with Ollama; each install shows its command before it runs.",
     "ollamaNoCommand": "No ollama command was found after Ollama opened, and downloading the model needs one. If Ollama offers to install it, accept, then click Check Again.",
     "install": "Install",

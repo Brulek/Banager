@@ -5673,8 +5673,9 @@ there, "Homebrew can't install now" where Homebrew is there and none can
 an older macOS (its cask's `depends_on`). Homebrew itself, missing on a
 Mac that is not Apple silicon, is "Not supported on this Mac": its
 official installer no longer installs there, and the line over the list
-says the tools below cannot be installed from here, though each row says
-it needs Homebrew. The model is "Not
+says the tools below that install with Homebrew cannot be installed from
+here, though each row says it needs Homebrew; the model, which Ollama
+downloads, still can be where an Ollama can pull it. The model is "Not
 installed" where an Ollama that answered and can be written to is
 there, "Needs Ollama" where there is no Ollama at all -- "Needs macOS 14"
 where this Mac is too old for Ollama, as Ollama's own row says --
@@ -6327,8 +6328,9 @@ not read (`protected::look`; How Banager runs anything, above):
   there without opening it (`window::keep_state_file_plain`, registered
   just before the plugin; `settings::keep_plain_file`): anything but a
   plain file -- a named pipe, a link, a folder -- is moved aside to
-  `.window-state.json.not-a-file`, and a launch never waits on a pipe
-  there (R91-2).
+  `.window-state.json.not-a-file` (or `.not-a-file-2` and on, never over
+  one moved aside before), and a launch never waits on a pipe there
+  (R91-2).
   Its size and place are AppKit's, in Banager's defaults (`NSWindow Frame
   main`, `window::keep_frame`; "Files Banager writes", below).
 
@@ -7110,7 +7112,10 @@ configured, `index.crates.io`, and cargo still follows a
   tells the user how, and Banager runs nothing.
 - Never asks for, stores or types a password; `SUDO_ASKPASS` is passed
   through to Homebrew only when it was already set.
-- Never deletes a file and never empties the Trash. Never writes a file
+- Never deletes a file and never empties the Trash -- but for a named pipe
+  or a link at its own `.window-state.json` that cannot be moved aside,
+  whose own entry is removed, never what a link leads to ("Files Banager
+  writes"). Never writes a file
   on the Mac itself other than its own `settings.json`, `history.json` and
   `.window-state.json` (the programs it
   runs write their own files — Grok Build's update check writes inside
@@ -7118,7 +7123,8 @@ configured, `index.crates.io`, and cargo still follows a
   rewrites Homebrew and its index and can install, move, uninstall and
   clean up Homebrew packages, as their sections say), and moves files
   only to the Trash, only for an uninstall the user confirmed, and only
-  the paths its preview listed; never edits a shell startup file — rustup's
+  the paths its preview listed -- and, in its own folder, anything but a
+  plain file at `.window-state.json` to a name beside it; never edits a shell startup file — rustup's
   own uninstall edits its startup line and deletes its two folders
   permanently, and the preview says so.
 - Never moves anything outside the home folder, anything directly in the

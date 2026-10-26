@@ -534,7 +534,9 @@ describe("the Discover page", () => {
     // The rows each need Homebrew; the line over them says why none can be
     // had here (from the independent review of the branch).
     expect(
-      screen.getByText("Homebrew's installer no longer supports Intel Macs, so the tools below can't be installed from here."),
+      screen.getByText(
+        "Homebrew's installer no longer supports Intel Macs, so the tools below that install with Homebrew can't be installed from here.",
+      ),
     ).toBeInTheDocument();
   });
 
