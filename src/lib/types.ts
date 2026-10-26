@@ -1414,6 +1414,16 @@ export type CatalogState =
   | "NeedsHomebrew"
   | { NeedsMacOS: { major: number } }
   | "HomebrewUnsupported";
+/**
+ * What the Homebrew hand-off sees of /opt/homebrew (Rust `InstallerLook`,
+ * `look_for_homebrew` in src-tauri/src/ipc.rs): whether Homebrew's
+ * installer has put `bin/brew` there, and whether its last step, a `brew
+ * update`, still runs.
+ */
+export interface InstallerLook {
+  there: boolean;
+  updating: boolean;
+}
 export interface CatalogEntry {
   /** What the window keys the entry's words by (`discover.items.<id>`). */
   id: string;

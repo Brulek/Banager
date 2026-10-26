@@ -687,6 +687,15 @@ function fullWorld(): World {
   };
 }
 
+/**
+ * The Homebrew the pretend installer leaves on the empty Mac
+ * (`look_for_homebrew` in ./mockBackend.ts): `/opt/homebrew`, answering,
+ * with nothing installed, as `?state=nothing` has it.
+ */
+export function freshHomebrew(): ManagerInstance {
+  return findInstance(fullWorld(), IDS.brew);
+}
+
 function findInstance(world: World, id: string): ManagerInstance {
   const found = world.instances.find((i) => i.id === id);
   if (found === undefined) throw new Error(`mock data has no instance ${id}`);

@@ -1808,7 +1808,8 @@
       "title": "No installed tools found",
       "description": "Tools you install with Homebrew, npm and the like show up here."
     },
-    "supportedList": "Supports Homebrew, npm, pipx, uv, pip, Cargo and Ollama, and Claude Code, Antigravity CLI, Grok Build, Codex, opencode and rustup in their default locations."
+    "supportedList": "Supports Homebrew, npm, pipx, uv, pip, Cargo and Ollama, and Claude Code, Antigravity CLI, Grok Build, Codex, opencode and rustup in their default locations.",
+    "toDiscover": "Go to Discover"
   },
   "failure": {
     "cause": {
@@ -1933,7 +1934,8 @@
   },
   "discover": {
     "intro": "Tools to start with, and which of them this Mac already has.",
-    "footnote": "Homebrew and Ollama can't be installed from here yet.",
+    "introNoHomebrew": "This Mac doesn't have Homebrew yet. Install it first, and then the tools below install here in one click.",
+    "footnote": "Ollama can't be installed from here yet.",
     "install": "Install",
     "installLabel": "Install {{name}}",
     "copyCommand": "Copy “{{command}}”",
@@ -1969,6 +1971,34 @@
       "installed": "It's already installed.",
       "needsHomebrew": "No Homebrew on this Mac can install it right now.",
       "needsMacOS": "It needs macOS {{major}} or later."
+    },
+    "homebrew": {
+      "title": "Install Homebrew",
+      "text": "Homebrew is installed in Terminal, where you run its installer and type your password. Nothing here runs it or sees the password.",
+      "olderMacOS": "Homebrew supports macOS 15 and later. It can install on macOS {{version}}, but some things may not work.",
+      "steps": {
+        "open": "Click Open Terminal. The install command is copied first.",
+        "paste": "In Terminal, press Command-V, then press Return.",
+        "password": "When it asks for your “Password”, type this Mac's login password and press Return. Nothing appears as you type.",
+        "return": "When it says “Press RETURN”, press Return again, then wait. If it installs the Command Line Tools first, that can take several minutes.",
+        "done": "“Installation successful!” means it's done, and this window notices by itself."
+      },
+      "whatTitle": "What the Command Does",
+      "what": {
+        "script": "Downloads Homebrew's official install script from GitHub and runs it. There's no checksum to compare the script with.",
+        "admin": "Makes sure you're an administrator, lists what it will install, and waits for you to press Return.",
+        "tools": "Installs Apple's Command Line Tools first, if this Mac doesn't have them.",
+        "place": "Puts Homebrew in /opt/homebrew, and lets new Terminal windows find it.",
+        "update": "Has Homebrew check online for new versions once. Homebrew turns on anonymous analytics, which you can turn off later."
+      },
+      "commandLabel": "Homebrew's install command",
+      "openTerminal": "Open Terminal",
+      "waiting": "Waiting for Homebrew to be installed…",
+      "updating": "Homebrew is installed and finishing its first update…",
+      "installed": "Homebrew is installed.",
+      "continue": "Continue",
+      "copyFailed": "Couldn't copy the command. Copy it from Show Command instead.",
+      "openFailed": "Couldn't open Terminal. Open it from Applications › Utilities."
     },
     "items": {
       "homebrew": {

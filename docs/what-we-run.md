@@ -89,7 +89,10 @@ that login PATH discovery failed, and the Overview says so ("Couldn't
 read Terminal's settings", with Check Again): sources found only through Terminal's
 `PATH` — npm, pipx, uv, Cargo and the rest — may then be missing. The
 next refresh — Check Again, or any later one — reads the shell once more;
-after a read that worked, none runs again. Each refresh takes the `PATH`
+after a read that worked, none runs again. One folder can be put at the
+end of that `PATH` later in a run, and only one: `/opt/homebrew/bin`,
+once the Homebrew sheet has seen Homebrew installed (see "Homebrew
+itself"). Each refresh takes the `PATH`
 and whether it is the login shell's together, as one value, as it starts
 (`login_path::round_env`), and keeps it: a read that works while an older
 round is still running changes neither for that round, which says which
@@ -3696,10 +3699,12 @@ only the warning.
 (`open_ollama_app_argv` in `src-tauri/src/ipc.rs`), with its stdin,
 stdout and stderr pointed at `/dev/null`, only when the user presses it and only when
 Ollama.app was found; it waits up to 20 seconds for `open` to report
-whether LaunchServices accepted the request. It and the homepage link in
+whether LaunchServices accepted the request. It, Open Terminal on the
+Homebrew sheet, which runs `/usr/bin/open -a Terminal` the same way
+(`open_terminal_argv`; see "Homebrew itself"), and the homepage link in
 the Installed page's details, which can start the default browser
 (Network), are the only launches in the app that are not package-manager
-commands, and neither happens during a refresh. Apart from them, a second
+commands, and none happens during a refresh. Apart from them, a second
 launch of Banager that finds one already running asks macOS to open that
 running copy again (Files Banager writes), which sends it the event a
 click on its Dock icon sends and starts nothing — unless that copy quits
@@ -5668,6 +5673,56 @@ it is there, and the row says "Installed" where it is -- with what to
 type to use it, and Copy, which only copies those words -- until the
 check after the operation, from which on the row says what that check
 found, an uninstall since included.
+
+## Homebrew itself: installed in Terminal, by the person
+
+Banager does not install Homebrew. Where a check finds none, Discover's
+Homebrew row has Install, and the sheet it opens says what to do in
+Terminal: paste Homebrew's own command, type the Mac's password where it
+asks, press Return where it asks, and wait. The command is Homebrew's,
+exactly as brew.sh gives it (`HOMEBREW_INSTALL_COMMAND` in
+`src/lib/homebrewSetup.ts`):
+
+    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+Read at Homebrew/install `85d1a3f` (2026-10-23), its `install.sh` stops
+on a Mac that is not Apple silicon; checks for administrator rights with
+`sudo`, which asks for the password in Terminal; lists what it will do
+and waits for Return; installs the Command Line Tools where they are
+missing; puts Homebrew in `/opt/homebrew` and writes `/opt/homebrew/bin`
+to `/etc/paths.d/homebrew`, so Terminal windows opened after it find
+`brew`; runs `brew update --force --quiet`; and leaves Homebrew's
+anonymous analytics on. On a macOS older than 15 it warns that it is
+unsupported and goes on; the sheet says so too. The script is
+`HEAD`'s, with no checksum to compare it with, and the sheet says that
+as well.
+
+From the sheet Banager does three things, each only while it is open:
+
+- **Open Terminal** puts that command on the clipboard and runs
+  `/usr/bin/open -a Terminal` (`open_terminal` in `src-tauri/src/ipc.rs`),
+  with nothing shared with it and nothing typed into Terminal. Where the
+  clipboard could not take it, the sheet shows the command to copy by
+  hand.
+- **It looks for Homebrew every 2 seconds** (`look_for_homebrew`,
+  `brew::installer_look`), running nothing: whether
+  `/opt/homebrew/bin/brew` is a regular file -- looked up one step at a
+  time, never into a protected place -- and whether a `brew update`
+  holds Homebrew's update lock, looked at as Homebrew's section says,
+  never taken. Two looks in a row that find it there and no update
+  running mean it is installed: the sheet says so and checks again, which
+  finds Homebrew where it always looks for it. Closed before then, the
+  next check finds it all the same.
+- **Once it is installed, `/opt/homebrew/bin` is put at the end of the
+  `PATH`** every later check of this launch looks along and every
+  command gets (`login_path::add_folder`), where it is not there already:
+  the login shell was read as Banager opened, before the installer wrote
+  `/etc/paths.d/homebrew`, and Terminal windows opened since find what
+  Homebrew installs there. Nothing is written for it, and the next
+  launch's read of the login shell has it.
+
+Banager never runs the script, never sees or keeps the password, and
+never changes Homebrew's settings, analytics included.
 
 ## Diagnostic info: read-only, no command runs
 

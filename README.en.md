@@ -76,7 +76,7 @@ The items below are planned directions. They are not yet supported, and no relea
 | Reading, updating, and uninstalling for Homebrew, npm, pipx, uv, cargo, Ollama, and other sources | Implemented |
 | Installed, Updates, Overview, Other Programs, and Settings pages, in three languages | Implemented |
 | Menu bar, background checks and notifications, recent activity, AI tool filter | Implemented |
-| Discover page and install entry point | Partly done: Discover installs six common tools with Homebrew; installing Homebrew itself is planned |
+| Discover page and install entry point | Partly done: Discover installs six common tools with Homebrew and walks you through installing Homebrew in Terminal; Ollama and search are planned |
 | Signing, notarization, formal release, and self-update | Pending |
 
 ## Contributing

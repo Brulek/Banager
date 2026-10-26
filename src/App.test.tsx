@@ -780,10 +780,30 @@ describe("App", () => {
     }
   });
 
+  it("opens on Discover when the first check finds nothing to manage, and only then", async () => {
+    // No source at all: Discover, once checked (`useFrontDoor`).
+    mockBackend({ ...snapshot, detect: "Missing", instances: [], artifacts: [] });
+    const { findByRole, unmount } = renderWithProviders(<App />);
+    expect(await findByRole("heading", { level: 1, name: "Discover" })).toBeInTheDocument();
+    unmount();
+    useUiStore.setState({ page: "overview" });
+    // A Mac with tools stays on the Overview.
+    mockBackend(snapshot);
+    const second = renderWithProviders(<App />);
+    expect(await second.findByRole("heading", { level: 1, name: "Overview" })).toBeInTheDocument();
+    await waitFor(() => expect(mockInvoke.mock.calls.some(([cmd]) => cmd === "refresh")).toBe(true));
+    expect(second.queryByRole("heading", { level: 1, name: "Discover" })).toBeNull();
+  });
+
   it("keeps Settings reachable when no source is installed", async () => {
     mockBackend({ ...snapshot, detect: "Missing", instances: [], artifacts: [] });
     const { getByRole, findByText, findByRole } = renderWithProviders(<App />);
+    // Opened on Discover (`useFrontDoor`); the Installed page says there
+    // is nothing, and where to start.
+    await findByRole("heading", { level: 1, name: "Discover" });
+    fireEvent.click(getByRole("button", { name: "Installed" }));
     await findByText("No tools to manage");
+    expect(getByRole("button", { name: "Go to Discover" })).toBeInTheDocument();
 
     fireEvent.click(getByRole("button", { name: "Settings" }));
 
@@ -797,7 +817,7 @@ describe("App", () => {
     // page must not be behind that gate -- nor its row behind the sources'.
     mockBackend({ ...snapshot, detect: "Missing", instances: [], artifacts: [] });
     const { getByRole, findByText, findByRole } = renderWithProviders(<App />);
-    await findByText("No tools to manage");
+    await findByRole("heading", { level: 1, name: "Discover" });
     const sources = getByRole("list", { name: "Sources" });
 
     fireEvent.click(within(sources).getByRole("button", { name: "Other Programs" }));

@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { CopyButton } from "../components/CopyButton";
 import { CheckIcon, InfoIcon, SpinnerIcon, WarningFilledIcon } from "../components/icons";
 import { TextWithInfo } from "../components/InfoDetail";
+import { HomebrewSetupSheet } from "../components/HomebrewSetupSheet";
 import { InstallSheet } from "../components/InstallSheet";
 import { SourceAvatar } from "../components/SourceAvatar";
 import { ToolAvatar } from "../components/ToolAvatar";
@@ -85,8 +86,10 @@ function EndedWithout({ progress, name }: { progress: InstallProgress; name: str
  * 「正在安装…」 with a spinner -- and how it ended: installed, the check
  * after it having found it, with how to use it in place of its line and
  * Copy for what to type; or not, in a word that opens its log, with
- * Install to try again. Homebrew and Ollama are not installed from here
- * yet, and the footnote says so.
+ * Install to try again. Homebrew's own Install, where it is not there,
+ * opens the Terminal hand-off (`HomebrewSetupSheet`, step C), and the
+ * line over the list says to start with it. Ollama is not installed from
+ * here yet, and the footnote says so.
  */
 export function DiscoverPage() {
   const { t } = useTranslation();
@@ -96,8 +99,11 @@ export function DiscoverPage() {
   const pending = usePendingOperations();
   const opFinishedAt = useUiStore((s) => s.opFinishedAt);
   const [installing, setInstalling] = useState<CatalogEntry | null>(null);
+  const [settingUpHomebrew, setSettingUpHomebrew] = useState(false);
   const checked = snapshot?.refreshed_at != null;
   const brew = snapshot?.instances.find((instance) => instance.adapter_id === "brew");
+  // No Homebrew: it comes first, and the page says so.
+  const homebrewFirst = checked && catalog?.find((entry) => entry.id === "homebrew")?.state === "NotInstalled";
   const sourceLabel = t("adapters.brew");
 
   const right = (entry: CatalogEntry, name: string, progress: InstallProgress | null, installed: boolean): ReactNode => {
@@ -125,11 +131,13 @@ export function DiscoverPage() {
         </span>
       );
     }
+    // Homebrew itself is installed in Terminal (`HomebrewSetupSheet`);
+    // the rest from here (`InstallSheet`).
     const install =
-      entry.state === "NotInstalled" && entry.installs_here ? (
+      entry.state === "NotInstalled" && (entry.installs_here || entry.install === "HomebrewItself") ? (
         <button
           type="button"
-          onClick={() => setInstalling(entry)}
+          onClick={() => (entry.install === "HomebrewItself" ? setSettingUpHomebrew(true) : setInstalling(entry))}
           aria-label={t("discover.installLabel", { name })}
           className={BUTTON.small.grey}
         >
@@ -162,7 +170,7 @@ export function DiscoverPage() {
 
   return (
     <div className={FORM_COLUMN}>
-      <p className="px-2.5 text-muted">{t("discover.intro")}</p>
+      <p className="px-2.5 text-muted">{t(homebrewFirst ? "discover.introNoHomebrew" : "discover.intro")}</p>
       {CATEGORIES.map(([category, titleKey]) => {
         const entries = (catalog ?? []).filter((entry) => entry.category === category);
         if (entries.length === 0) return null;
@@ -227,6 +235,7 @@ export function DiscoverPage() {
         );
       })}
       <p className={GROUP_FOOTNOTE}>{t("discover.footnote")}</p>
+      <HomebrewSetupSheet open={settingUpHomebrew} onClose={() => setSettingUpHomebrew(false)} />
       <InstallSheet
         entry={installing}
         iconKey={installing === null ? undefined : iconKeyOf(installing, brew)}

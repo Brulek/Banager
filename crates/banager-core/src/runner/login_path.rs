@@ -146,18 +146,84 @@ pub fn accept(found: &LoginEnv) {
     *ACCEPTED.write().unwrap_or_else(|e| e.into_inner()) = Some(found.clone());
 }
 
-/// What a read of the login shell found, once one has (`accept`).
+/// What a read of the login shell found, once one has (`accept`), its
+/// `PATH` with the folders added since (`add_folder`) at its end.
 pub fn accepted_env() -> Option<LoginEnv> {
-    ACCEPTED.read().unwrap_or_else(|e| e.into_inner()).clone()
-}
-
-/// The login shell's `PATH`, once a read found it (`accept`).
-pub fn accepted() -> Option<OsString> {
     ACCEPTED
         .read()
         .unwrap_or_else(|e| e.into_inner())
-        .as_ref()
-        .map(|found| OsString::from(&found.path))
+        .clone()
+        .map(|found| LoginEnv {
+            path: with_added(found.path),
+            ..found
+        })
+}
+
+/// Folders put at the end of the `PATH` this launch (`add_folder`), in the
+/// order they were added.
+static ADDED: RwLock<Vec<String>> = RwLock::new(Vec::new());
+
+/// Puts `folder` at the end of the `PATH` Banager looks along and hands
+/// every command from now on -- the login shell's, or the process's own
+/// where no read has worked -- where it is not in it already. For
+/// `/opt/homebrew/bin` once the Homebrew hand-off has seen Homebrew
+/// installed (`look_for_homebrew` in src-tauri/src/ipc.rs): its installer
+/// puts that folder in `/etc/paths.d/homebrew`, which macOS's `path_helper`
+/// adds after the folders of `/etc/paths` for every Terminal window opened
+/// after it, but the login shell was read as Banager opened, before it. A
+/// folder that is not absolute, or whose name has a `:` in it, is never
+/// added.
+pub fn add_folder(folder: &std::path::Path) {
+    let Some(folder) = folder.to_str() else {
+        return;
+    };
+    if !folder.starts_with('/') || folder.contains(':') {
+        return;
+    }
+    let mut added = ADDED.write().unwrap_or_else(|e| e.into_inner());
+    if !added.iter().any(|known| known == folder) {
+        added.push(folder.to_string());
+    }
+}
+
+/// `path` with each folder `add_folder` added that it does not already
+/// list at its end, in the order they were added.
+fn with_added(path: String) -> String {
+    let added = ADDED.read().unwrap_or_else(|e| e.into_inner());
+    let mut path = path;
+    for folder in added.iter() {
+        if !path.split(':').any(|entry| entry == folder) {
+            if !path.is_empty() {
+                path.push(':');
+            }
+            path.push_str(folder);
+        }
+    }
+    path
+}
+
+/// The process's own `PATH` with the folders added since
+/// (`add_folder`), for where no read of the login shell has worked; `None`
+/// where it has no `PATH` and none was added, or it is not UTF-8 and none
+/// was added.
+fn process_path() -> Option<OsString> {
+    let own = std::env::var_os("PATH");
+    if ADDED.read().unwrap_or_else(|e| e.into_inner()).is_empty() {
+        return own;
+    }
+    match own {
+        None => Some(OsString::from(with_added(String::new()))),
+        Some(own) => match own.into_string() {
+            Ok(own) => Some(OsString::from(with_added(own))),
+            Err(own) => Some(own),
+        },
+    }
+}
+
+/// The login shell's `PATH`, once a read found it (`accept`), with the
+/// folders added since (`add_folder`).
+pub fn accepted() -> Option<OsString> {
+    accepted_env().map(|found| OsString::from(found.path))
 }
 
 /// The value `name`, one of `IMPORTED`, has for a command Banager runs:
@@ -211,9 +277,10 @@ pub fn command_setting(
 }
 
 /// The `PATH` Banager looks for programs along and hands every command it
-/// runs: the login shell's, once read, else the process's own.
+/// runs: the login shell's, once read, else the process's own -- either
+/// with the folders added since (`add_folder`).
 pub fn path() -> Option<OsString> {
-    accepted().or_else(|| std::env::var_os("PATH"))
+    accepted().or_else(process_path)
 }
 
 /// What a refresh round looks along, and whether its `PATH` is the login
@@ -230,7 +297,7 @@ pub fn round_env() -> (super::HostEnv, bool) {
         Some(found) => {
             super::HostEnv::discover_along(Some(OsString::from(found.path)), found.tilde_is_home)
         }
-        None => super::HostEnv::discover_along(std::env::var_os("PATH"), false),
+        None => super::HostEnv::discover_along(process_path(), false),
     };
     (env, known)
 }

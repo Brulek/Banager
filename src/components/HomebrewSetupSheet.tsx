@@ -1,0 +1,227 @@
+import { useEffect, useId, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
+import { lookForHomebrew, openTerminal } from "../lib/api";
+import { useSystemFacts } from "../lib/diagnostics";
+import { HOMEBREW_INSTALL_COMMAND, LOOK_EVERY_MS, olderThanHomebrewSupports } from "../lib/homebrewSetup";
+import { useCheckAgain, useSettings } from "../lib/queries";
+import { DisclosureButton } from "./DisclosureButton";
+import { CheckIcon } from "./icons";
+import { Refusal, SheetPending, SheetText } from "./SheetParts";
+import { SourceAvatar } from "./SourceAvatar";
+import { Dialog } from "./ui/Dialog";
+import { BUTTON } from "./ui/controls";
+
+/** The steps the sheet lists, in order: what the person does in Terminal. */
+const STEP_KEYS = [
+  "discover.homebrew.steps.open",
+  "discover.homebrew.steps.paste",
+  "discover.homebrew.steps.password",
+  "discover.homebrew.steps.return",
+  "discover.homebrew.steps.done",
+] as const;
+
+/**
+ * What Homebrew's installer does, in five plain lines (phase 5 proposal
+ * §3.1, read from Homebrew/install's install.sh, docs/what-we-run.md
+ * "Homebrew itself"): behind What It Does.
+ */
+const WHAT_KEYS = [
+  "discover.homebrew.what.script",
+  "discover.homebrew.what.admin",
+  "discover.homebrew.what.tools",
+  "discover.homebrew.what.place",
+  "discover.homebrew.what.update",
+] as const;
+
+/** How many looks in a row must find Homebrew there and not updating. */
+const LOOKS_TO_BE_SURE = 2;
+
+export interface HomebrewSetupSheetProps {
+  open: boolean;
+  onClose: () => void;
+}
+
+/**
+ * Install on Discover's Homebrew row (phase 5 step C): Homebrew is
+ * installed in Terminal, and Banager neither runs its installer nor sees
+ * the password. The sheet says what to do there, step by step; Open
+ * Terminal puts Homebrew's own command on the clipboard
+ * (`HOMEBREW_INSTALL_COMMAND`) and opens Terminal (`open_terminal`),
+ * typing nothing into it. What the command does, and the command itself,
+ * are a click away -- open from the start where Settings' Show technical
+ * details is on. On a macOS older than Homebrew supports, it says so.
+ *
+ * While it is open it looks for Homebrew every two seconds
+ * (`look_for_homebrew`, which runs nothing): Homebrew is installed once two
+ * looks in a row find `/opt/homebrew/bin/brew` there and no `brew update`
+ * running -- the installer's last step. Then it says so, and checks again,
+ * which finds Homebrew and lights up the rows that install with it; closed
+ * before then, the next check finds it all the same.
+ */
+export function HomebrewSetupSheet({ open, onClose }: HomebrewSetupSheetProps) {
+  const { t } = useTranslation();
+  const { data: settings } = useSettings();
+  const { data: facts } = useSystemFacts();
+  const { checkAgain } = useCheckAgain();
+  const openRef = useRef<HTMLButtonElement>(null);
+  const textId = useId();
+  const whatId = useId();
+  const commandId = useId();
+  const technical = settings?.show_technical_details ?? false;
+  const [whatOpen, setWhatOpen] = useState<boolean | null>(null);
+  const [commandOpen, setCommandOpen] = useState<boolean | null>(null);
+  const [opened, setOpened] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
+  const [openFailed, setOpenFailed] = useState(false);
+  // Looks in a row that found Homebrew there and not updating.
+  const [sure, setSure] = useState(0);
+  const older = olderThanHomebrewSupports(facts?.macos_version);
+
+  const look = useQuery({
+    queryKey: ["lookForHomebrew"],
+    queryFn: lookForHomebrew,
+    enabled: open && sure < LOOKS_TO_BE_SURE,
+    refetchInterval: open && sure < LOOKS_TO_BE_SURE ? LOOK_EVERY_MS : false,
+    gcTime: 0,
+  });
+  useEffect(() => {
+    if (look.data === undefined) return;
+    setSure((was) => (look.data.there && !look.data.updating ? was + 1 : 0));
+    // Each look, once: `dataUpdatedAt` moves with every answer, the same or not.
+  }, [look.dataUpdatedAt]);
+  const installed = sure >= LOOKS_TO_BE_SURE;
+
+  // Installed: check again, which finds it and lights the rows up.
+  useEffect(() => {
+    if (installed) checkAgain();
+  }, [installed]);
+
+  // Each time it opens, from the start.
+  useEffect(() => {
+    if (open) return;
+    setWhatOpen(null);
+    setCommandOpen(null);
+    setOpened(false);
+    setCopyFailed(false);
+    setOpenFailed(false);
+    setSure(0);
+  }, [open]);
+
+  async function openTerminalWithCommand() {
+    setCopyFailed(false);
+    setOpenFailed(false);
+    let copied = false;
+    try {
+      if (navigator.clipboard !== undefined) {
+        await navigator.clipboard.writeText(HOMEBREW_INSTALL_COMMAND);
+        copied = true;
+      }
+    } catch {
+      copied = false;
+    }
+    // Not copied: the command is shown, to copy by hand.
+    if (!copied) {
+      setCopyFailed(true);
+      setCommandOpen(true);
+    }
+    try {
+      await openTerminal();
+    } catch {
+      setOpenFailed(true);
+    }
+    setOpened(true);
+  }
+
+  const showWhat = whatOpen ?? technical;
+  const showCommand = commandOpen ?? technical;
+  const updating = !installed && look.data?.there === true && look.data.updating;
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+      title={t("discover.homebrew.title")}
+      // Five steps, each a sentence or two: the alert's width would wrap
+      // nearly every one.
+      width="several"
+      icon={<SourceAvatar adapterId="brew" label={t("adapters.brew")} size="lg" />}
+      describedBy={installed ? undefined : textId}
+      initialFocus={openRef}
+      footer={
+        installed ? (
+          <button ref={openRef} type="button" onClick={onClose} className={BUTTON.large.default}>
+            {t("discover.homebrew.continue")}
+          </button>
+        ) : (
+          <>
+            <button type="button" onClick={onClose} className={BUTTON.large.grey}>
+              {t("common.cancel")}
+            </button>
+            <button ref={openRef} type="button" onClick={() => void openTerminalWithCommand()} className={BUTTON.large.default}>
+              {t("discover.homebrew.openTerminal")}
+            </button>
+          </>
+        )
+      }
+    >
+      {installed ? (
+        <p role="status" className="flex items-center gap-1.5 text-body text-foreground">
+          <CheckIcon size={14} className="shrink-0 text-success" />
+          {t("discover.homebrew.installed")}
+        </p>
+      ) : (
+        <>
+          <SheetText id={textId}>{t("discover.homebrew.text")}</SheetText>
+          {older === null ? null : (
+            <SheetText className="mt-2">{t("discover.homebrew.olderMacOS", { version: facts?.macos_version ?? "" })}</SheetText>
+          )}
+          <ol className="mt-3 flex list-decimal flex-col gap-1.5 pl-5 text-body text-foreground">
+            {STEP_KEYS.map((key) => (
+              <li key={key} className="break-words">
+                {t(key)}
+              </li>
+            ))}
+          </ol>
+
+          <div className="mt-3">
+            <DisclosureButton open={showWhat} panelId={whatId} onToggle={() => setWhatOpen(!showWhat)}>
+              {t("discover.homebrew.whatTitle")}
+            </DisclosureButton>
+            {showWhat ? (
+              <ul id={whatId} className="mt-1 flex list-disc flex-col gap-1 pl-5 text-small text-muted">
+                {WHAT_KEYS.map((key) => (
+                  <li key={key} className="break-words">
+                    {t(key)}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+          <div className="mt-1">
+            <DisclosureButton open={showCommand} panelId={commandId} onToggle={() => setCommandOpen(!showCommand)}>
+              {t("commandPreview.show", { count: 1 })}
+            </DisclosureButton>
+            {showCommand ? (
+              <code
+                id={commandId}
+                aria-label={t("discover.homebrew.commandLabel")}
+                className="mt-1 block select-all whitespace-pre-wrap break-all rounded-control bg-group px-2.5 py-2 font-mono text-small text-foreground"
+              >
+                {HOMEBREW_INSTALL_COMMAND}
+              </code>
+            ) : null}
+          </div>
+
+          {copyFailed ? <Refusal className="mt-3" text={t("discover.homebrew.copyFailed")} detail={null} detailTitle="" /> : null}
+          {openFailed ? <Refusal className="mt-3" text={t("discover.homebrew.openFailed")} detail={null} detailTitle="" /> : null}
+          {opened || updating ? (
+            <SheetPending text={updating ? t("discover.homebrew.updating") : t("discover.homebrew.waiting")} />
+          ) : null}
+        </>
+      )}
+    </Dialog>
+  );
+}

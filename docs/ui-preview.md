@@ -187,6 +187,12 @@ Paths are under a generic home folder, `/Users/you`.
   the entry's own name (`plan_install` in `mockBackend.ts`), the
   operation plays out as `?outcome=` says, and a succeeded one leaves the
   formula or cask for the check after it, which says "Installed".
+  On `empty`, the app opens on Discover once the first check is done
+  (`useFrontDoor`), Homebrew's row has Install, and its sheet's Open
+  Terminal opens nothing (the console says so): a few looks later the
+  pretend installer is "there", then "updating", then done, and the
+  check after it finds Homebrew with nothing installed, as on `nothing`
+  (`look_for_homebrew` in `mockBackend.ts`).
 
 ## What it does
 

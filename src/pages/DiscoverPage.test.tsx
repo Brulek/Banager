@@ -140,9 +140,18 @@ beforeEach(() => {
     if (cmd === "list_operations") return operations;
     if (cmd === "plan_install") return planInstall((args as { catalogId: string }).catalogId);
     if (cmd === "submit_operation") return 7;
+    if (cmd === "look_for_homebrew") return lookForHomebrew();
     return null;
   });
 });
+
+let lookForHomebrew: () => { there: boolean; updating: boolean } = () => ({ there: false, updating: false });
+
+/** The catalog of a Mac with no Homebrew on Apple silicon. */
+const noHomebrew: CatalogEntry[] = catalog.map((entry) => ({
+  ...entry,
+  state: entry.id === "homebrew" ? "NotInstalled" : "NeedsHomebrew",
+}));
 
 afterEach(async () => {
   await i18n.changeLanguage("en");
@@ -192,7 +201,8 @@ describe("the Discover page", () => {
     // Who needs it and how it is used, behind the line's ⓘ.
     fireEvent.click(within(codex).getByRole("button", { name: "Details: Codex" }));
     expect(codex).toHaveTextContent("Once installed, type codex in a new Terminal window.");
-    expect(screen.getByText("Homebrew and Ollama can't be installed from here yet.")).toBeInTheDocument();
+    expect(screen.getByText("Ollama can't be installed from here yet.")).toBeInTheDocument();
+    expect(screen.getByText("Tools to start with, and which of them this Mac already has.")).toBeInTheDocument();
     // Nothing is planned until Install is pressed.
     expect(calls("plan_install")).toEqual([]);
     expect(calls("plan_operation")).toEqual([]);
@@ -321,6 +331,61 @@ describe("the Discover page", () => {
     renderWithProviders(<DiscoverPage />);
     await waitFor(() => expect(rows()[6]).toEqual(["uv", "Couldn't installNeeds Homebrew"]));
     expect(within(row("uv")).queryByRole("button", { name: "Install uv" })).toBeNull();
+  });
+
+  it("starts with Homebrew where there is none, installed in Terminal by the person, with the command copied", async () => {
+    entries = noHomebrew;
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    let looks = 0;
+    lookForHomebrew = () => {
+      looks += 1;
+      return { there: looks > 1, updating: looks === 2 };
+    };
+    try {
+      renderWithProviders(<DiscoverPage />);
+      await waitFor(() => expect(rows()).toHaveLength(8));
+      expect(
+        screen.getByText("This Mac doesn't have Homebrew yet. Install it first, and then the tools below install here in one click."),
+      ).toBeInTheDocument();
+      expect(rows()[0]).toEqual(["Homebrew", "Install"]);
+      expect(rows()[3]).toEqual(["Gemini CLI", "Needs Homebrew"]);
+      fireEvent.click(within(row("homebrew")).getByRole("button", { name: "Install Homebrew" }));
+
+      const sheet = await screen.findByRole("dialog", { name: "Install Homebrew" });
+      expect(sheet).toHaveTextContent("Homebrew is installed in Terminal, where you run its installer and type your password.");
+      expect(sheet).toHaveTextContent("When it asks for your “Password”, type this Mac's login password and press Return.");
+      // Nothing is planned or run for it: no plan, no operation.
+      expect(calls("plan_install")).toEqual([]);
+      fireEvent.click(within(sheet).getByRole("button", { name: "Show Command" }));
+      expect(within(sheet).getByLabelText("Homebrew's install command")).toHaveTextContent(
+        '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"',
+      );
+      fireEvent.click(within(sheet).getByRole("button", { name: "Open Terminal" }));
+      await waitFor(() => expect(calls("open_terminal")).toHaveLength(1));
+      expect(writeText).toHaveBeenCalledWith(
+        '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"',
+      );
+      expect(calls("open_terminal")[0][1]).toBeUndefined();
+      // Two looks in a row find it there and not updating: installed, and
+      // checked again.
+      expect(await within(sheet).findByText("Homebrew is installed.", {}, { timeout: 8000 })).toBeInTheDocument();
+      await waitFor(() => expect(calls("refresh")).toHaveLength(1));
+      expect(looks).toBeGreaterThanOrEqual(4);
+      fireEvent.click(within(sheet).getByRole("button", { name: "Continue" }));
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    } finally {
+      lookForHomebrew = () => ({ there: false, updating: false });
+      Reflect.deleteProperty(navigator, "clipboard");
+    }
+  }, 15_000);
+
+  it("says Homebrew no longer installs on an Intel Mac, with nothing to press", async () => {
+    entries = noHomebrew.map((entry) => (entry.id === "homebrew" ? { ...entry, state: "HomebrewUnsupported" } : entry));
+    renderWithProviders(<DiscoverPage />);
+    await waitFor(() => expect(rows()).toHaveLength(8));
+    expect(rows()[0]).toEqual(["Homebrew", "Not supported on this Mac"]);
+    expect(screen.queryByRole("button", { name: "Install Homebrew" })).toBeNull();
   });
 
   it("says it in Chinese and in Taiwan's words", async () => {

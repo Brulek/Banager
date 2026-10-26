@@ -371,7 +371,8 @@ Being honest about this is part of the point:
 - **No search for new tools, and a short catalogue only.** The Installed page searches the
   tools you already have by name, command or description. The Discover page suggests eight
   tools and installs six of them with Homebrew (Claude Code, Codex, Gemini CLI, Node.js, uv and
-  ffmpeg); it does not install Homebrew itself or Ollama yet, and nothing beyond its list.
+  ffmpeg); Homebrew itself you install in Terminal, as its sheet walks you through, and it does
+  not install Ollama yet, nor anything beyond its list.
 - **macOS only.** The core crate is portable and the architecture is cross-platform, but
   everything below the trait boundary assumes Unix today, and only macOS is tested. Windows and
   Linux are roadmap, not "nearly working".

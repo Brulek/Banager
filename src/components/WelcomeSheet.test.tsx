@@ -365,12 +365,15 @@ describe("Help's Welcome to Banager", () => {
     renderWithProviders(<App />);
     await screen.findByRole("heading", { level: 1, name: "Overview" });
     await settle();
+    // This pretend Mac has nothing to manage: once checked, it is on
+    // Discover (`useFrontDoor`).
+    await screen.findByRole("heading", { level: 1, name: "Discover" });
     expect(screen.queryByRole("dialog", { name: "Welcome to Banager" })).not.toBeInTheDocument();
 
     menu.choose("welcome");
 
     expect(await findSheet()).toBeInTheDocument();
     // Still behind it, hidden from VoiceOver while the sheet is up.
-    expect(screen.getByRole("heading", { level: 1, name: "Overview", hidden: true })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Discover", hidden: true })).toBeInTheDocument();
   });
 });

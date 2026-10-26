@@ -981,7 +981,7 @@ impl CommandRunner for RealRunner {
             .find(|(name, _)| name == "PATH")
             .map(|(_, value)| std::ffi::OsString::from(value))
             .or_else(|| accepted.as_ref().map(|found| found.path.clone().into()))
-            .or_else(|| std::env::var_os("PATH"));
+            .or_else(super::login_path::path);
         // A relative `PATH` folder is looked in from where the command
         // runs (BNG-001): the folder its spec names, or `/`
         // (`DEFAULT_CWD`), never Banager's own, which is not asked for.
@@ -1009,6 +1009,10 @@ impl CommandRunner for RealRunner {
         if let Some(found) = &accepted {
             cmd.env("PATH", &found.path);
             cmd.envs(found.imported.iter().map(|(name, value)| (name, value)));
+        } else if let Some(path) = super::login_path::path() {
+            // No read has worked: the process's own, with any folder added
+            // since (`login_path::add_folder`).
+            cmd.env("PATH", path);
         }
         // Those settings can hold a login, and tools print them back
         // whole (curl's "Unsupported proxy syntax in 'http://user:pw@…'"):

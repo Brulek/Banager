@@ -7,6 +7,7 @@ import type {
   CatalogEntry,
   FinishedRun,
   HistoryView,
+  InstallerLook,
   IssuedPlan,
   OpRequest,
   OpSummary,
@@ -239,6 +240,25 @@ export function getCatalog(): Promise<CatalogEntry[]> {
  */
 export function planInstall(catalogId: string): Promise<IssuedPlan> {
   return call<IssuedPlan>("plan_install", { catalogId });
+}
+
+/**
+ * Opens Terminal for the Homebrew hand-off (`open_terminal` in
+ * src-tauri/src/ipc.rs): `/usr/bin/open -a Terminal`, nothing typed into
+ * it. Takes nothing.
+ */
+export function openTerminal(): Promise<void> {
+  return call<void>("open_terminal");
+}
+
+/**
+ * What the Homebrew hand-off sees of /opt/homebrew while it waits
+ * (`look_for_homebrew` in src-tauri/src/ipc.rs). Runs nothing; once
+ * Homebrew is there and no update runs, the checks after it look along
+ * its `bin` folder too.
+ */
+export function lookForHomebrew(): Promise<InstallerLook> {
+  return call<InstallerLook>("look_for_homebrew");
 }
 
 /**

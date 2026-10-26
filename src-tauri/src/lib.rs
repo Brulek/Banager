@@ -203,6 +203,8 @@ pub fn run() {
             ipc::get_system_facts,
             ipc::get_catalog,
             ipc::plan_install,
+            ipc::open_terminal,
+            ipc::look_for_homebrew,
             history::get_history,
             history::clear_history,
             menu::set_menu_language,

@@ -139,11 +139,14 @@ export function SnapshotStatus({
   const found = nothingFound(t, snapshot);
   if (found !== null && !showsNothingFound) {
     const title = t(NOTHING_FOUND_KEYS[found].title);
+    // Where to start: Discover, which suggests tools and installs them
+    // (phase 5 proposal §1.1).
     return (
       <EmptyState
         title={title}
         description={t(NOTHING_FOUND_KEYS[found].description)}
         detail={supportedList(title)}
+        action={{ label: t("emptyStates.toDiscover"), onClick: () => useUiStore.getState().setPage("discover") }}
       />
     );
   }

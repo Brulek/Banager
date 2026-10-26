@@ -41,6 +41,7 @@ import {
   withNpmPrefixProtected,
   withUnavailableCommands,
   type World,
+  freshHomebrew,
   installedFromCatalog,
 } from "./mockData";
 import { appIcon } from "./mockIcons";
@@ -77,6 +78,8 @@ export const MOCK_COMMANDS = [
   "get_system_facts",
   "get_catalog",
   "plan_install",
+  "open_terminal",
+  "look_for_homebrew",
   "get_history",
   "clear_history",
   "set_menu_language",
@@ -296,6 +299,9 @@ export function createMockBackend(scenario: Scenario): MockBackend {
   const channels = new Set<EventChannel>();
   const plans = new Map<PlanId, { issued: IssuedPlan; issuedAtMs: number }>();
   let planCount = 0;
+  // The pretend Homebrew install: looks since Open Terminal was pressed,
+  // or null before it was (`look_for_homebrew`).
+  let homebrewLooks: number | null = null;
   const operations = new Map<number, Operation>();
   const waiting: number[] = [];
   const held = new Set<string>();
@@ -1087,6 +1093,27 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       // `catalog::entries`, over the committed snapshot: an empty one before
       // the first refresh, as Rust's.
       return mockCatalog(committed?.instances ?? [], committed?.artifacts ?? []);
+    },
+    async open_terminal() {
+      // `open_terminal`: the preview opens no Terminal, and says so in the
+      // console (with ./mockTauri.ts's marker, `MOCK_MARKER`). The pretend
+      // install starts: Homebrew appears a few looks later.
+      console.info("[banager-ui-preview-mock] Open Terminal, not done in the preview");
+      if (homebrewLooks === null) homebrewLooks = 0;
+    },
+    async look_for_homebrew() {
+      // `look_for_homebrew`: Homebrew there wherever the pretend Mac has
+      // one; on one without, after Open Terminal, the installer's files a
+      // few looks later and its `brew update` two looks after that -- then
+      // the Homebrew the next check finds.
+      if (world.instances.some((i) => i.adapter_id === "brew")) return { there: true, updating: false };
+      if (homebrewLooks === null) return { there: false, updating: false };
+      homebrewLooks += 1;
+      if (homebrewLooks < 3) return { there: false, updating: false };
+      if (homebrewLooks < 5) return { there: true, updating: true };
+      world.detect = "Found";
+      world.instances.push(freshHomebrew());
+      return { there: true, updating: false };
     },
     async plan_install(args) {
       // `catalog::install_request` over the committed snapshot, then the

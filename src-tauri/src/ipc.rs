@@ -710,6 +710,15 @@ fn open_ollama_failed_json(reason: &str) -> String {
 /// app on both.
 fn open_ollama_app_impl_with(program: &std::path::Path) -> Result<(), String> {
     let (_default_program, args) = open_ollama_app_argv();
+    open_app_with(program, &args).map_err(|()| open_ollama_failed_json("launch_failed"))
+}
+
+/// `program` with `args` -- `/usr/bin/open -a <app>` -- for the two
+/// buttons that open an app (`open_ollama_app`, `open_terminal`): nothing
+/// shared with it, and its exit status waited for up to
+/// `OPEN_ANSWER_TIMEOUT`. `Err` where it could not be started or said it
+/// failed.
+fn open_app_with(program: &std::path::Path, args: &[String]) -> Result<(), ()> {
     // `spawn()` inherits the parent's stdin/stdout/stderr by default, which
     // hands this child Banager's own console and pipes for no reason -- it
     // takes no input and nothing here ever reads its output. Nulling all
@@ -717,12 +726,12 @@ fn open_ollama_app_impl_with(program: &std::path::Path) -> Result<(), String> {
     // already applies to every package-manager command; this is the one
     // launch in the app that bypasses `run_plan` and so had been missed.
     let mut child = std::process::Command::new(program)
-        .args(&args)
+        .args(args)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .spawn()
-        .map_err(|_| open_ollama_failed_json("launch_failed"))?;
+        .map_err(|_| ())?;
     // Waited for on a background thread rather than inline, so the bound
     // above is a bound: `recv_timeout` returns whether or not the child
     // ever does, and the thread still reaps it either way instead of
@@ -733,7 +742,7 @@ fn open_ollama_app_impl_with(program: &std::path::Path) -> Result<(), String> {
     });
     match rx.recv_timeout(OPEN_ANSWER_TIMEOUT) {
         Ok(Ok(true)) => Ok(()),
-        Ok(Ok(false)) | Ok(Err(_)) => Err(open_ollama_failed_json("launch_failed")),
+        Ok(Ok(false)) | Ok(Err(_)) => Err(()),
         // No answer within the bound. Reported as success, on purpose,
         // and this is the reasoning rather than a default:
         //
@@ -798,8 +807,65 @@ pub async fn open_ollama_app() -> Result<(), String> {
         .unwrap_or_else(|_| Err(open_ollama_failed_json("launch_failed")))
 }
 
-/// Whose turn it is to launch Ollama.app (`open_ollama_app`).
+/// Whose turn it is to open an app (`open_ollama_app`, `open_terminal`).
 static OPEN_TURN: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+/// The exact program and argv `open_terminal` runs: Terminal, nothing else,
+/// and nothing typed into it.
+fn open_terminal_argv() -> (&'static std::path::Path, Vec<String>) {
+    (
+        std::path::Path::new("/usr/bin/open"),
+        vec!["-a".to_string(), "Terminal".to_string()],
+    )
+}
+
+/// Opens (or brings forward) Terminal for the Homebrew hand-off's Open
+/// Terminal (phase 5 step C), after the window has put Homebrew's install
+/// command on the clipboard: `/usr/bin/open -a Terminal`, as Open Ollama
+/// runs `open -a Ollama`. It takes no input, and types nothing into
+/// Terminal: the person pastes the command and runs it, and the password
+/// is theirs to type there. Refused as `{"kind":"terminal_open_failed"}`.
+pub(crate) fn open_terminal_impl() -> Result<(), String> {
+    let (program, args) = open_terminal_argv();
+    open_app_with(program, &args)
+        .map_err(|()| serde_json::json!({ "kind": "terminal_open_failed" }).to_string())
+}
+
+#[tauri::command]
+pub async fn open_terminal() -> Result<(), String> {
+    in_turn(&OPEN_TURN, open_terminal_impl)
+        .await
+        .unwrap_or_else(|_| Err(serde_json::json!({ "kind": "terminal_open_failed" }).to_string()))
+}
+
+/// What the Homebrew hand-off sees of `prefix` (`brew::installer_look`):
+/// whether Homebrew's installer has put `bin/brew` there, and whether its
+/// last step, a `brew update`, still runs. Runs nothing. Once Homebrew is
+/// there and no update runs, `<prefix>/bin` is put at the end of the `PATH`
+/// later checks look along (`add`, `login_path::add_folder` outside a
+/// test): the installer put it in `/etc/paths.d/homebrew` for new Terminal
+/// windows, and the login shell was read before.
+pub(crate) fn look_for_homebrew_impl(
+    prefix: &std::path::Path,
+    add: impl FnOnce(&std::path::Path),
+) -> banager_core::adapters::brew::InstallerLook {
+    let look = banager_core::adapters::brew::installer_look(prefix);
+    if look.there && !look.updating {
+        add(&prefix.join("bin"));
+    }
+    look
+}
+
+/// `look_for_homebrew_impl` at `/opt/homebrew`, the one place Homebrew's
+/// installer installs on macOS, asked every two seconds while the Homebrew
+/// hand-off waits.
+#[tauri::command]
+pub async fn look_for_homebrew() -> Result<banager_core::adapters::brew::InstallerLook, String> {
+    Ok(look_for_homebrew_impl(
+        std::path::Path::new(banager_core::adapters::brew::INSTALLER_PREFIX),
+        banager_core::runner::login_path::add_folder,
+    ))
+}
 
 /// The scan for programs of unknown source under way, if any, keyed by the
 /// snapshot generation it is judged against (`scan_unknown`).
@@ -3315,6 +3381,41 @@ mod tests {
         assert!(facts.login_path);
         state.session.note_login_path(false);
         assert!(!facts_for().login_path);
+    }
+
+    #[test]
+    fn test_open_terminal_argv_is_exactly_open_dash_a_terminal() {
+        let (program, args) = open_terminal_argv();
+        assert_eq!(program, std::path::Path::new("/usr/bin/open"));
+        assert_eq!(args, vec!["-a".to_string(), "Terminal".to_string()]);
+    }
+
+    #[test]
+    fn test_look_for_homebrew_adds_its_bin_to_path_only_once_it_is_there_and_not_updating() {
+        let prefix =
+            std::env::temp_dir().join(format!("banager-look-for-homebrew-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&prefix);
+        std::fs::create_dir_all(prefix.join("bin")).unwrap();
+        let added = std::cell::RefCell::new(Vec::new());
+        let look = look_for_homebrew_impl(&prefix, |folder| {
+            added.borrow_mut().push(folder.to_path_buf())
+        });
+        assert!(!look.there && !look.updating);
+        assert!(added.borrow().is_empty(), "nothing there yet");
+        // A folder named brew is not Homebrew.
+        std::fs::create_dir_all(prefix.join("bin/brew")).unwrap();
+        assert!(!look_for_homebrew_impl(&prefix, |_| panic!("not there")).there);
+        std::fs::remove_dir(prefix.join("bin/brew")).unwrap();
+        std::fs::write(prefix.join("bin/brew"), "#!/bin/bash\n").unwrap();
+        let look = look_for_homebrew_impl(&prefix, |folder| {
+            added.borrow_mut().push(folder.to_path_buf())
+        });
+        assert_eq!(
+            serde_json::to_value(look).unwrap(),
+            serde_json::json!({ "there": true, "updating": false })
+        );
+        assert_eq!(*added.borrow(), vec![prefix.join("bin")]);
+        let _ = std::fs::remove_dir_all(&prefix);
     }
 
     #[test]

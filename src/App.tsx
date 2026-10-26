@@ -36,6 +36,7 @@ import { useUpdateNotification } from "./lib/updateNotification";
 import { useOperationsNotification } from "./lib/operationsNotification";
 import { useSnoozeExpiry } from "./lib/snoozeExpiry";
 import { useFocusOnPageChange } from "./lib/pageFocus";
+import { useFrontDoor } from "./lib/homebrewSetup";
 import { searchMatch, searchNeedle } from "./lib/searchMatch";
 import { useSearchTexts } from "./lib/useSearchTexts";
 import { artifactKeyId, useUiStore, type Page } from "./store/ui";
@@ -279,6 +280,8 @@ function App() {
   const installedFilter = useUiStore((s) => s.installedFilter);
   useOperationEvents();
   useStartupRefresh();
+  // An empty Mac opens on Discover (`useFrontDoor`).
+  useFrontDoor();
   useMenuCommands();
   useFocusOnPageChange(page);
   // The toolbar's box for the page's own actions (`ToolbarItems`), once

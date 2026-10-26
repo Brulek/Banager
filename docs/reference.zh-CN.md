@@ -65,7 +65,7 @@ formula 与 cask，以及 npm、PyPI、crates.io 上的包，每条都译自该�
 繁体中文还会读取简体中文和英文作为缺少条目时的备用。显示时不发任何网络请求。软件详情里也只显示这一行，不再附上来源的原文；当前语言下没有
 说明的软件，照旧显示原来那一行。
 
-“已安装”页可以按名称、命令或说明搜索已有工具。“发现”页推荐八个工具，其中六个（Claude Code、Codex、Gemini CLI、Node.js、uv、ffmpeg）可以通过 Homebrew 直接安装。尚未支持：搜索新工具、安装清单以外的东西、在 Banager 里安装 Homebrew 本身与 Ollama、macOS 以外的平台。
+“已安装”页可以按名称、命令或说明搜索已有工具。“发现”页推荐八个工具，其中六个（Claude Code、Codex、Gemini CLI、Node.js、uv、ffmpeg）可以通过 Homebrew 直接安装；Homebrew 本身按页面上的步骤在“终端”里安装。尚未支持：搜索新工具、安装清单以外的东西、在 Banager 里安装 Ollama、macOS 以外的平台。
 
 它还会告诉你每个工具的这些事：
 

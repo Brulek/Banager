@@ -360,8 +360,9 @@ fn test_readme_source_table_offers_no_install() {
     let folded = english.split_whitespace().collect::<Vec<_>>().join(" ");
     assert!(folded.contains(
         "The Discover page suggests eight tools and installs six of them with Homebrew (Claude \
-         Code, Codex, Gemini CLI, Node.js, uv and ffmpeg); it does not install Homebrew itself \
-         or Ollama yet, and nothing beyond its list."
+         Code, Codex, Gemini CLI, Node.js, uv and ffmpeg); Homebrew itself you install in \
+         Terminal, as its sheet walks you through, and it does not install Ollama yet, nor \
+         anything beyond its list."
     ));
 }
 
