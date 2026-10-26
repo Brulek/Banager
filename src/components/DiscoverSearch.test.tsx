@@ -174,6 +174,11 @@ describe("Discover's search of Homebrew", () => {
     const sheet = await screen.findByRole("alertdialog", { name: "Install “claude-code”?" });
     expect(sheet).toHaveTextContent("Once installed, type claude in a new Terminal window.");
     expect(sheet).not.toHaveTextContent("isn't one of the tools suggested here");
+    // Installed, the operation bar keeps the suggestion's own name.
+    useUiStore.setState({ opNames: {} });
+    await waitFor(() => expect(within(sheet).getByRole("button", { name: "Install" })).toBeEnabled());
+    fireEvent.click(within(sheet).getByRole("button", { name: "Install" }));
+    await waitFor(() => expect(useUiStore.getState().opNames[7]).toBe("Claude Code"));
   });
 
   it("lists what Homebrew has in the list's place, marked suggested or not, and installs a result by its id", async () => {
@@ -199,8 +204,13 @@ describe("Discover's search of Homebrew", () => {
     await waitFor(() => expect(within(sheet).getByRole("button", { name: "Install" })).toBeEnabled());
     fireEvent.click(within(sheet).getByRole("button", { name: "Show Command" }));
     expect(within(sheet).getByText(command("/opt/homebrew/bin/brew install --formula jq-lsp"))).toBeInTheDocument();
+    useUiStore.setState({ opNames: {} });
     fireEvent.click(within(sheet).getByRole("button", { name: "Install" }));
     await waitFor(() => expect(calls("submit_operation")[0][1]).toEqual({ planId: "plan-jq-lsp" }));
+    // Not one of the suggestions: no name kept for it, so the bar goes by
+    // Homebrew's, as for any other operation.
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(useUiStore.getState().opNames).toEqual({});
     // Never a package's name by any other way.
     expect(calls("plan_install")).toEqual([]);
     expect(calls("plan_operation")).toEqual([]);

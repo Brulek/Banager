@@ -109,6 +109,11 @@ export function InstallSheet({ entry, found = null, iconKey, description = null,
         }
       : null;
   const name = found !== null ? found.name : entry === null ? "" : entryName(t, entry.id);
+  // The name the operation bar keeps for it (`useOperationName`): a
+  // suggestion's own, from the list or found by searching; a result that
+  // is not one goes by Homebrew's -- its package's, then its row's once
+  // listed (「Visual Studio Code」, not `visual-studio-code`).
+  const barName = found === null ? name : found.catalog_id !== null ? entryName(t, found.catalog_id) : null;
 
   function refusal(raw: string, framed: "discover.sheet.planError" | "discover.sheet.submitError"): ReactNode {
     // This Mac cannot install it now: said in the row's own terms, alone.
@@ -126,10 +131,10 @@ export function InstallSheet({ entry, found = null, iconKey, description = null,
     const session = sessionRef.current;
     submitMutation.mutate(issued.id, {
       onSuccess: (opId) => {
-        // The operation bar names it as the row does -- 「Gemma 3」, not
-        // `gemma3:4b`; 「Ollama」, not `ollama-app` -- until the check after it
-        // lists the tool by its own name.
-        useUiStore.getState().rememberOpNames({ [opId]: name });
+        // The operation bar names it as the suggestion does -- 「Gemma 3」,
+        // not `gemma3:4b`; 「Ollama」, not `ollama-app` -- before the check
+        // after it and after.
+        if (barName !== null) useUiStore.getState().rememberOpNames({ [opId]: barName });
         if (sessionRef.current !== session) return;
         onClose();
       },
