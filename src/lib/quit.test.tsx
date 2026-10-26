@@ -95,6 +95,10 @@ describe("what the question says under its title", () => {
       "quit.body.Uninstall",
     );
     expect(quitBodyKey([op(1, "Install", "CancelRequested")])).toBe("quit.body.Install");
+    // A model's download: no half model is left, and it is no tool.
+    const download = { ...op(2, "Install", "Running"), artifact_kind: "Model" as const };
+    expect(quitBodyKey([download])).toBe("quit.body.ModelDownload");
+    expect(quitBodyKey([download, op(3, "Install", "Running")])).toBe("quit.body.Install");
     // Two updates running, one queued: still one kind under way.
     expect(
       quitBodyKey([op(1, "Upgrade", "Running"), op(2, "Upgrade", "Running"), op(3, "Uninstall", "Queued")]),

@@ -683,6 +683,30 @@ describe("the Discover page", () => {
     ).toHaveAttribute("role", "status");
   }, 15_000);
 
+  it("keeps Open Ollama beside a model download that failed, while Ollama is stopped", async () => {
+    // From the review of the areas earlier reviews left: Ollama quit during
+    // the pull, which failed; the row had neither Open Ollama nor Install.
+    entries = [
+      {
+        id: "model",
+        category: "LocalModels",
+        install: { OllamaModel: { name: "gemma3:4b", download_bytes: 3_350_272_403 } },
+        state: "OllamaNotReady",
+        installs_here: true,
+      },
+    ];
+    operations = [
+      {
+        ...installOp(5, "gemma3:4b", "Done", { Failed: { exit_code: 1, summary: "unexpected EOF", cause: null } }),
+        instance_id: "ollama:http://127.0.0.1:11434",
+        artifact_kind: "Model",
+      },
+    ];
+    renderWithProviders(<DiscoverPage />);
+    await waitFor(() => expect(within(row("model")).getByRole("button", { name: "Open Ollama" })).toBeInTheDocument());
+    expect(row("model")).toHaveTextContent("Couldn't install");
+  });
+
   it("says it in Chinese and in Taiwan's words", async () => {
     await i18n.changeLanguage("zh-CN");
     const { unmount } = renderWithProviders(<DiscoverPage />);

@@ -190,10 +190,13 @@ export function DiscoverPage() {
         <EndedWithout progress={progress} name={name} />
       );
     const state = install ?? <span className="text-muted">{stateText(t, entry.state)}</span>;
-    // The model, waiting for an Ollama that is installed and not running.
-    if (entry.state === "OllamaNotReady" && ollamaStopped && ended === null) {
+    // The model, waiting for an Ollama that is installed and not running --
+    // after a download that failed or was stopped too, beside how it ended
+    // (from the review of the areas earlier reviews left).
+    if (entry.state === "OllamaNotReady" && ollamaStopped) {
       return (
         <span data-catalog-state="" className="flex shrink-0 items-center gap-2">
+          {ended}
           {openOllamaButton("end")}
         </span>
       );

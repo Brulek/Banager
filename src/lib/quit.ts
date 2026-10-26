@@ -95,6 +95,12 @@ export function quitBodyKey(active: OpSummary[]): string | null {
   if (kinds.size === 0) return "quit.body.stops";
   if (kinds.size > 1) return "quit.body.mixed";
   const [kind] = kinds;
+  // Downloads of a model: Ollama writes it only once it is whole, so a
+  // stopped one leaves no half model, and is not called a tool (decision
+  // E25; from the review of the areas earlier reviews left).
+  if (kind === "Install" && stops.filter(commandUnderWay).every((op) => op.artifact_kind === "Model")) {
+    return "quit.body.ModelDownload";
+  }
   return HALF_DONE_KEYS[kind];
 }
 
