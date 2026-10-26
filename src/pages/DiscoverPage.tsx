@@ -88,9 +88,13 @@ export function DiscoverPage() {
   // Ollama's app is here and not running: Open Ollama, as its source's
   // notice has it.
   const openOllama = useOpenOllamaApp();
-  const ollamaStopped = snapshot?.instances.some(
-    (instance) => instance.adapter_id === "ollama" && instance.status.unavailable === "NotRunning",
-  );
+  // Or no Ollama source at all while the model waits for Ollama
+  // (`OllamaNotReady`): its app is there with no `ollama` command yet,
+  // which its first run offers to put in place.
+  const ollamaStopped =
+    snapshot?.instances.some(
+      (instance) => instance.adapter_id === "ollama" && instance.status.unavailable === "NotRunning",
+    ) || !(snapshot?.instances.some((instance) => instance.adapter_id === "ollama") ?? true);
   // Where `open -a Ollama` failed, why, beside the button, as Ollama's
   // notice says it: a press that does nothing would say nothing.
   const openOllamaButton = (

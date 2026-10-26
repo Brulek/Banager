@@ -94,6 +94,9 @@ enum Recognizer {
     /// Any model this Mac's own Ollama lists: a Mac with one has a model to
     /// start with.
     AnyModel,
+    /// Ollama.app in Applications (`Host::ollama_app`), its `ollama` command
+    /// set up or not: dragged in from ollama.com and never opened, say.
+    OllamaApp,
 }
 
 /// One entry of the catalog.
@@ -168,7 +171,11 @@ pub const CATALOG: [CatalogItem; 9] = [
             kind: ArtifactKind::Cask,
             name: "ollama-app",
         },
-        recognized_by: &[Recognizer::Family("ollama"), Recognizer::Source("ollama")],
+        recognized_by: &[
+            Recognizer::Family("ollama"),
+            Recognizer::Source("ollama"),
+            Recognizer::OllamaApp,
+        ],
         needs_macos: Some(14),
         installs_here: true,
     },
@@ -277,13 +284,18 @@ pub struct Host {
     /// starter model's sheet (`CatalogEntry::free_bytes`); `None` where it
     /// could not be read.
     pub free_bytes: Option<u64>,
+    /// Whether Ollama.app is in /Applications or ~/Applications
+    /// (`ollama::ollama_app_path`), for `Recognizer::OllamaApp`.
+    pub ollama_app: bool,
 }
 
 impl Host {
     /// This Mac, from the kernel: `kern.osproductversion`,
     /// `hw.optional.arm64`, which is 1 on Apple silicon under Rosetta too,
     /// and `hw.memsize` (`sysctlbyname`); and the free room of the home
-    /// folder's volume (`statfs`). Runs nothing and opens nothing.
+    /// folder's volume (`statfs`); and whether Ollama.app is in
+    /// Applications, looked up as Open Ollama looks it up. Runs nothing and
+    /// opens nothing.
     pub fn of_this_mac() -> Host {
         let version = crate::diagnostics::read_os().macos_version;
         Host {
@@ -292,6 +304,9 @@ impl Host {
             memory_bytes: memory_bytes(),
             free_bytes: std::env::var_os("HOME")
                 .and_then(|home| free_bytes(std::path::Path::new(&home))),
+            ollama_app: std::env::var_os("HOME").is_some_and(|home| {
+                crate::adapters::ollama::ollama_app_path(std::path::Path::new(&home)).is_some()
+            }),
         }
     }
 }
@@ -480,7 +495,7 @@ fn state_of(
     let installed = item
         .recognized_by
         .iter()
-        .any(|way| has(way, &snapshot.instances, &snapshot.artifacts));
+        .any(|way| has(way, &snapshot.instances, &snapshot.artifacts, host));
     if installed {
         return CatalogState::Installed;
     }
@@ -498,7 +513,11 @@ fn state_of(
         CatalogInstall::OllamaModel { .. } => {
             if snapshot.instances.iter().any(ollama_can_pull) {
                 CatalogState::NotInstalled
-            } else if snapshot.instances.iter().any(|i| i.adapter_id == "ollama") {
+            } else if snapshot.instances.iter().any(|i| i.adapter_id == "ollama") || host.ollama_app
+            {
+                // An Ollama source that cannot pull, or the app with no
+                // `ollama` command yet, whose first run offers to put it
+                // in place.
                 CatalogState::OllamaNotReady
             } else {
                 CatalogState::NeedsOllama
@@ -533,12 +552,18 @@ pub(crate) fn homebrew_can_install(instance: &ManagerInstance) -> bool {
         && instance.read_only_reason.is_none()
 }
 
-fn has(way: &Recognizer, instances: &[ManagerInstance], artifacts: &[InstalledArtifact]) -> bool {
+fn has(
+    way: &Recognizer,
+    instances: &[ManagerInstance],
+    artifacts: &[InstalledArtifact],
+    host: &Host,
+) -> bool {
     match *way {
         Recognizer::Family(family) => artifacts
             .iter()
             .any(|a| a.facts.family.as_deref() == Some(family)),
         Recognizer::Source(adapter) => instances.iter().any(|i| i.adapter_id == adapter),
+        Recognizer::OllamaApp => host.ollama_app,
         Recognizer::AnyModel => artifacts
             .iter()
             .any(|a| a.key.kind == ArtifactKind::Model && this_macs_ollama(&a.key.instance_id)),
@@ -608,6 +633,7 @@ mod tests {
         apple_silicon: true,
         memory_bytes: Some(16 * GIB),
         free_bytes: Some(100 * GIB),
+        ollama_app: false,
     };
 
     fn states(snapshot: &Snapshot, host: &Host) -> Vec<(&'static str, CatalogState)> {
@@ -680,6 +706,7 @@ mod tests {
             apple_silicon: false,
             memory_bytes: Some(16 * GIB),
             free_bytes: Some(100 * GIB),
+            ollama_app: false,
         };
         let on_intel = states(&empty, &intel_13);
         assert_eq!(on_intel[0], ("homebrew", CatalogState::HomebrewUnsupported));
@@ -867,6 +894,7 @@ mod tests {
             apple_silicon: true,
             memory_bytes: Some(16 * GIB),
             free_bytes: Some(100 * GIB),
+            ollama_app: false,
         };
         assert_eq!(
             serde_json::to_value(entries(&empty, &old)).unwrap()[4]["state"],
@@ -961,6 +989,21 @@ mod tests {
         );
         assert_eq!(
             states(&elsewhere, &SILICON_15)[5],
+            ("model", CatalogState::OllamaNotReady)
+        );
+        // Ollama.app dragged in and never opened: no source, no `ollama`.
+        // Ollama is there; the model waits for it to be opened.
+        let app_only = Host {
+            ollama_app: true,
+            ..SILICON_15
+        };
+        let none = snapshot(vec![instance("brew", "brew:/opt/homebrew")], Vec::new());
+        assert_eq!(
+            states(&none, &app_only)[4],
+            ("ollama", CatalogState::Installed)
+        );
+        assert_eq!(
+            states(&none, &app_only)[5],
             ("model", CatalogState::OllamaNotReady)
         );
         // Any model at all: a Mac with one has a model to start with.

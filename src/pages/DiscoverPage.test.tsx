@@ -527,6 +527,22 @@ describe("the Discover page", () => {
     expect(within(row("model")).getByRole("button", { name: "Copy “ollama run gemma3:4b”" })).toBeInTheDocument();
   });
 
+  it("offers Open Ollama where Ollama.app is there with no ollama command yet", async () => {
+    // No Ollama source: the app was dragged in and never opened. The
+    // catalog says Ollama is there and the model waits for it.
+    entries = [
+      {
+        id: "model",
+        category: "LocalModels",
+        install: { OllamaModel: { name: "gemma3:4b", download_bytes: 3_350_272_403 } },
+        state: "OllamaNotReady",
+        installs_here: true,
+      },
+    ];
+    renderWithProviders(<DiscoverPage />);
+    await waitFor(() => expect(rows()).toEqual([["Gemma 3", "Open Ollama"]]));
+  });
+
   it("says it in Chinese and in Taiwan's words", async () => {
     await i18n.changeLanguage("zh-CN");
     const { unmount } = renderWithProviders(<DiscoverPage />);

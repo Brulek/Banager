@@ -5643,8 +5643,11 @@ an AI tool by its family in `data/ai-tools.json` (Claude Code's npm
 package, its two casks and its own installer alike), Homebrew by any
 Homebrew source, Node.js by Homebrew's `node` or a versioned `node@N` or
 by any npm source, uv by the `uv` formula or a uv source, ffmpeg by its
-formula or a versioned one, Ollama by its family or an Ollama source,
-the model by any model an Ollama source lists; otherwise "Not
+formula or a versioned one, Ollama by its family, an Ollama source, or
+Ollama.app in /Applications or ~/Applications (looked up as Open Ollama
+looks it up, `ollama::ollama_app_path`: an app dragged in and never
+opened has no `ollama` command yet, and no source), the model by any
+model an Ollama source lists; otherwise "Not
 installed" where a Homebrew that answered and can be written to is
 there, "Homebrew can't install now" where Homebrew is there and none can
 -- the line over the list then says its page under Sources says why --
@@ -5653,9 +5656,11 @@ an older macOS (its cask's `depends_on`). Homebrew itself, missing on a
 Mac that is not Apple silicon, is "Not supported on this Mac": its
 official installer no longer installs there. The model is "Not
 installed" where an Ollama that answered and can be written to is
-there, "Needs Ollama" where there is no Ollama source, and otherwise
+there, "Needs Ollama" where there is no Ollama at all, and otherwise
 "Ollama can't download now" -- with Open Ollama where its app is not
-running, as its source's notice has it. The model is Gemma 3 in the size
+running, as its source's notice has it, or is there with no source yet:
+the app's first run offers to put its `ollama` command in place, and
+the check after that finds the source. The model is Gemma 3 in the size
 that suits the Mac's memory (`catalog::starter_model`): the largest whose
 download is at most about two-fifths of the least memory it is chosen
 for -- `gemma3:1b` (about 0.81 GB)
