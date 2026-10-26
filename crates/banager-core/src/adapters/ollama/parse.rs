@@ -13,8 +13,21 @@ pub fn parse_version(text: &str) -> Option<String> {
 
 #[derive(Debug, Deserialize)]
 struct TagsRoot {
-    #[serde(default)]
+    /// Required: a body without it (`{}`, `{"error": ...}`) says nothing
+    /// about the models, and is a failed read that keeps the last
+    /// inventory, not an empty one (PARSER-003). `null`, how Go writes an
+    /// empty slice it never made, is none.
+    #[serde(deserialize_with = "list_or_null")]
     models: Vec<TagsModel>,
+}
+
+/// A JSON list, or `null` as an empty one.
+fn list_or_null<'de, D, T>(deserializer: D) -> Result<Vec<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Ok(Option::<Vec<T>>::deserialize(deserializer)?.unwrap_or_default())
 }
 
 #[derive(Debug, Deserialize)]
@@ -244,6 +257,28 @@ mod tests {
         assert_eq!(artifacts.len(), 1);
         assert_eq!(artifacts[0].key.name, "llama:1b");
         assert_eq!(artifacts[0].version, "");
+    }
+
+    #[test]
+    fn regression_parser_003_a_body_without_its_models_list_is_no_inventory() {
+        // A 200 whose body has no `models` -- `{}`, a proxy's or a broken
+        // daemon's `{"error": ...}` -- said nothing about the models, and
+        // read as none pulled: the refresh took that as the inventory, not
+        // as a failed read that keeps the last one.
+        for body in [
+            "{}",
+            r#"{"error":"backend unavailable"}"#,
+            r#"{"models":{}}"#,
+        ] {
+            assert!(
+                matches!(parse_tags(body, "ollama:x"), Err(AdapterError::Parse(_))),
+                "{body}"
+            );
+        }
+        // An empty list is no models; so is Go's nil slice, `null`.
+        for body in [r#"{"models":[]}"#, r#"{"models":null}"#] {
+            assert_eq!(parse_tags(body, "ollama:x").unwrap(), Vec::new(), "{body}");
+        }
     }
 
     #[test]
