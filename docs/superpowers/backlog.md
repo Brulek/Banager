@@ -458,6 +458,10 @@ brew 7.0.6 `receipts/` 里不是录制的 27 份收据（25 份按 cask 目录�
 - **清单与窗口的快照可能差一轮。** `get_catalog` 按后端当时的快照算（`src-tauri/src/ipc.rs`），窗口拿来比较的是发请求时自己的快照
   （`CatalogView::madeFrom`）。请求途中又提交了一轮时，清单比 `madeFrom` 新：刚装好又在终端里卸掉的工具，可能短暂显示「已安装」，
   窗口的快照跟上后自行纠正。稳妥的改法是 `get_catalog` 一并返回它用的 generation/round 与各来源的 `answered_at`（改线格式），没有做。
+- **Homebrew 6.0.0、6.0.1 不认第三方 tap（自定义 remote）里只写了 cask 的信任条目**（`trust.rb:147`，6.0.2 修好）。
+  Banager 看不到 tap 的 remote，把这样的条目当作信任，那个 cask 会说「已是最新」而不是「不检查」。只涉及两个补丁版本，没有改。
+- **搜索会列出相近的拼写。** Homebrew 的搜索除了名字含搜索词的，还有别名和相近拼写（搜 `npm` 会列出 `nvm`、`npq`），
+  都照 Homebrew 的结果列出，没有再按"名字里含搜索词"过滤。
 - **磁盘空间读的是主目录所在卷当前可用的空间**（`statfs` 的 `f_bavail`），不含 macOS 可自动清理的部分（访达的「可用」含这部分），
   也不看 `OLLAMA_MODELS`（那是 Ollama 服务的环境，Banager 读不到）。只用来提醒，不阻止下载。
 
@@ -648,7 +652,7 @@ Opus max 全分支终审：3 项必修（已修），其余推迟。按主题分
 - ~~第三方 tap 的 cask 装好后 tap 被取消信任：Homebrew 只按记录卸载放置的文件，不执行记下的卸载步骤
   （`cask/installer.rb:999-1031`），确认框却说"并执行它记下的卸载步骤"。~~ —— **已于 2026-10-02 做了**
   （`UninstallScope::HomebrewCaskStepsIfTrusted` / `HomebrewCaskStepsOnlyIfTrusted`，`adapters/brew/trust.rs`）：
-  Homebrew 7.0.7 起默认要求信任，只有存成 `.rb` 的记录才会因为不信任而整个不加载（`installer.rb:1010-1043`）；
+  Homebrew 6.0.0 起默认要求信任（2026-10-27 读源码核对；此处原写 7.0.7），只有存成 `.rb` 的记录才会因为不信任而整个不加载（`installer.rb:1010-1043`）；
   这种 cask 来自非 Homebrew 自己的 tap、信任列表里既没写它也没写它的 tap（或读不了列表）时，句子改说「它的卸载步骤，
   只在Homebrew信任它的来源时才执行」。设了 `HOMEBREW_NO_REQUIRE_TAP_TRUST` 时照旧。
 - ~~旧 `.rb` caskfile 读不出来时 Homebrew 改用当前定义（`installer.rb:1040-1042`），执行的是今天的卸载步骤，

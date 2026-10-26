@@ -426,12 +426,15 @@ impl TrustLook {
 }
 
 /// Whether a Homebrew of `version` (`5.1.0`, `7.0.10-37-g1ef73bb`) is one
-/// from before 6.0.0, which had no tap trust: its `env_config.rb` has no
-/// `HOMEBREW_REQUIRE_TAP_TRUST`, and `Caskroom.casks` no fallback to the
-/// copy saved at install. From 6.0.0 on, trust is required by default
-/// (`default: true`, read at the 6.0.0, 7.0.3 and 7.0.7 tags; from the
-/// independent review of the branch -- the cutoff was 7.0.7). `false` for a
-/// version that does not read as numbers: taken as a newer one.
+/// from before 6.0.0, whose `Caskroom.casks` has no fallback to the copy
+/// saved at install, so every cask is checked from its tap -- trust was an
+/// opt-in from 5.1.15 (`HOMEBREW_REQUIRE_TAP_TRUST`) and none before. From
+/// 6.0.0 on, trust is required by default (`default: true`, read at the
+/// 6.0.0, 7.0.3 and 7.0.7 tags; from the independent review of the branch
+/// -- the cutoff was 7.0.7). 6.0.0 and 6.0.1 ignored a trust entry for a
+/// cask of a tap with a custom remote, which Banager cannot see: such an
+/// entry is taken as trust (what-we-run.md). `false` for a version that
+/// does not read as numbers: taken as a newer one.
 fn trust_not_default(version: &str) -> bool {
     let numbers: Vec<u64> = version
         .split(|c: char| !c.is_ascii_digit() && c != '.')
@@ -2345,9 +2348,9 @@ impl BrewAdapter {
     /// uninstall preview: the `brew.env` files (`brew_env::after_brew_env`)
     /// and the trust list in the folder they choose (`trust_list_fn`).
     fn trust_look(&self, inst: &ManagerInstance) -> TrustLook {
-        // Before 6.0.0 Homebrew had no tap trust: a cask was loaded from its
-        // tap (backlog, "卸载说明的残留边角"). A version not read is taken as
-        // a newer one.
+        // Before 6.0.0 no untrusted cask fell back to its saved copy (trust
+        // an opt-in from 5.1.15): a cask was loaded from its tap (backlog,
+        // "卸载说明的残留边角"). A version not read is taken as a newer one.
         if inst.version.as_deref().is_some_and(trust_not_default) {
             return TrustLook::NotRequired;
         }
@@ -2629,8 +2632,9 @@ impl BrewAdapter {
         Ok(CheckOutcome { candidates, notes })
     }
 
-    /// Homebrew's own formulae and casks whose name has `query` in it --
-    /// for the Discover page's search (phase 5 step E). Read-only
+    /// What Homebrew's own search lists for `query` among its formulae and
+    /// casks -- names with the text in them, aliases, and close spellings
+    /// (`npm` finds `nvm`) -- for the Discover page's search (phase 5 step E). Read-only
     /// commands: `brew search --formula {query}` and `brew search --cask
     /// {query}`, each a list of names of one kind, so that no result's kind
     /// is guessed; then `brew search --desc {query}`, whose lines give the
@@ -2647,9 +2651,9 @@ impl BrewAdapter {
     /// as Homebrew listed them; at most `SEARCH_HITS_MAX`. The text is
     /// checked first (`validate_search_query`).
     ///
-    /// `brew search --formula` lists a formula's aliases and old names as
-    /// names of their own (`gpg`, `npm`, `python3`), which no list, install
-    /// or check knows them by: so the formulae found are named as Homebrew
+    /// `brew search --formula` lists a formula's aliases as names of their
+    /// own (`gpg`, `npm`, `python3`), which no list, install or check knows
+    /// them by: so the formulae found are named as Homebrew
     /// names them, with one more read-only command over at most
     /// `SEARCH_HITS_MAX` of them, `brew info --json=v2 --formula {names}`
     /// (`canonical_formulae`) -- `gpg` is `gnupg`, listed once, where its
@@ -2760,7 +2764,8 @@ impl BrewAdapter {
     /// Each of `printed`, formula names as `brew search --formula` printed
     /// them, with the name Homebrew gives that formula and its description:
     /// `brew info --json=v2 --formula {printed}`, read-only. A formula's own
-    /// name, each of its aliases and each of its old names lead to its name;
+    /// name, each of its aliases and each of its old names lead to its name
+    /// (old names to be safe: Homebrew 7.0.10's search prints none);
     /// a third-party tap's formula (its `full_name` tap-qualified) leads
     /// nowhere, nor does a name the answer does not have.
     async fn canonical_formulae(

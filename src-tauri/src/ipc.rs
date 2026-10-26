@@ -1080,8 +1080,9 @@ pub async fn plan_install(
 }
 
 /// The Discover page's search of Homebrew (phase 5 step E,
-/// `Session::search_homebrew`): Homebrew's own formulae and casks whose
-/// name has `query` in it, each under an id Install sends back
+/// `Session::search_homebrew`): what Homebrew's own search lists for
+/// `query` among its formulae and casks (names, aliases named as their
+/// formula, close spellings), each under an id Install sends back
 /// (`plan_install_found`). Runs `brew search --formula`, `--cask` and
 /// `--desc`, and `brew info --json=v2 --formula` over the formulae found,
 /// read-only. Refused as `invalid_query` for a text `brew search`

@@ -2106,15 +2106,19 @@ preview says it couldn't check what else needs it
 count a formula it dropped (`BrewAdapter::may_have_unlisted_racks`).
 
 **Casks Homebrew checks against their saved copy** (r83 R83-1). A cask
-from a tap Homebrew 7 does not trust is still listed: `Caskroom.casks`
+from a tap Homebrew 6.0.0 or later does not trust is still listed: `Caskroom.casks`
 loads it from the copy Homebrew saved at install when its tap refuses it
 (`cask/caskroom.rb`, Homebrew 7.0.10), and that copy carries the
 installed version, so `brew outdated` compares the version with itself
 and lists no update whatever the tap holds (`Cask#outdated_version`).
 Homebrew requires that trust by default from 6.0.0 (its `env_config.rb`,
-`HOMEBREW_REQUIRE_TAP_TRUST`, `default: true`), and had none before, so a
-Homebrew whose version reads older than 6.0.0 is taken to check every
-cask. So every inventory reads Homebrew's settings -- the `brew.env`
+`HOMEBREW_REQUIRE_TAP_TRUST`, `default: true`); from 5.1.15 it was an
+opt-in, and before 6.0.0 no untrusted cask fell back to its saved copy,
+so a Homebrew whose version reads older than 6.0.0 is taken to check every
+cask. One corner is not seen: Homebrew 6.0.0 and 6.0.1 ignored a trust
+list's entry for a cask of a tap with a custom remote (`trust.rb`, fixed
+in 6.0.2), and Banager, which cannot see a tap's remote, takes such an
+entry as trust. So every inventory reads Homebrew's settings -- the `brew.env`
 files and the trust list, as an uninstall preview reads them (below) --
 once before its `brew info` and once after, and a cask from a
 third-party tap is marked as one no check looks up
@@ -5773,9 +5777,11 @@ is guessed, and the third only for the descriptions of those: a package
 only a description matched is not listed, since `brew search --desc`
 prints a third-party tap's package under its short name where that name
 is unique among its lines, and installing that name would install
-another package. The last names the formulae listed as Homebrew names
-them: `brew search --formula` prints a formula's aliases and old names as
-names of their own -- `gpg`, `gpg2` (gnupg's), `npm` (node's) -- which no
+another package. Homebrew's search lists names, aliases and close
+spellings of the text (`npm` finds `nvm` and `npq` too), not only names
+with the text in them. The last command names the formulae listed as
+Homebrew names them: `brew search --formula` prints a formula's aliases
+as names of their own -- `gpg`, `gpg2` (gnupg's), `npm` (node's) -- which no
 list, install or check knows them by, so each is listed once, by
 Homebrew's name, where the name it printed first ranks it; a formula
 that answer does not give as Homebrew's own is left out, and where it

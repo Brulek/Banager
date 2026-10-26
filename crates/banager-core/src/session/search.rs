@@ -1,5 +1,6 @@
 //! The Discover page's search of Homebrew (phase 5 step E): what Homebrew
-//! has whose name has a text in it, each result kept here
+//! lists for a text -- names with it in them, aliases, close spellings --
+//! each result kept here
 //! under an id of its own, so that Install names a result, never a package
 //! (phase 5 proposal §3.4), as Install on a catalog entry names the entry.
 
@@ -74,8 +75,8 @@ pub enum FoundError {
 }
 
 impl Session {
-    /// Homebrew's formulae and casks whose name has `query` in it
-    /// (`BrewAdapter::search`), from the first Homebrew of the
+    /// What Homebrew's search lists for `query` among its formulae and
+    /// casks (`BrewAdapter::search`), from the first Homebrew of the
     /// snapshot that answered and can be written to -- the one a catalog
     /// entry installs into -- each kept under a fresh id for
     /// `plan_found`. Every search also forgets the results older than
@@ -458,9 +459,31 @@ mod tests {
             Err(FoundError::Unknown)
         ));
         assert_eq!(brew.plans.load(Ordering::SeqCst), 0);
-        // And the next search forgets them.
+        // And a search forgets those past their lifetime, of its own accord:
+        // expired ones put in after plan_found, which forgot the others
+        // (from the review of the fix batch: the search's own sweep was
+        // untested).
+        {
+            let mut kept = session.found.lock().unwrap();
+            for n in 0..3 {
+                kept.insert(
+                    format!("expired-{n}"),
+                    FoundEntry {
+                        request: OpRequest {
+                            kind: OpKind::Install,
+                            instance_id: "brew:/opt/homebrew".to_string(),
+                            artifact_kind: ArtifactKind::Formula,
+                            name: format!("expired{n}"),
+                        },
+                        found_at: past,
+                    },
+                );
+            }
+        }
         session.search_homebrew("jq").await.expect("search");
-        assert_eq!(session.found.lock().unwrap().len(), found.len());
+        let kept = session.found.lock().unwrap();
+        assert!(!kept.keys().any(|id| id.starts_with("expired-")));
+        assert_eq!(kept.len(), found.len());
     }
 
     #[tokio::test]

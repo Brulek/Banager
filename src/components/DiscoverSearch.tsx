@@ -76,7 +76,8 @@ export function DiscoverSearchField({ query, onChange }: { query: string; onChan
 
 /**
  * What Homebrew has for `query` (step E), in the list's place while there
- * is a text: Homebrew's own formulae and casks whose name has it in it
+ * is a text: what Homebrew's own search lists for it among its formulae
+ * and casks -- names with it in them, aliases, close spellings
  * (`search_homebrew`; a description only fills in what each is, since
  * `--desc` names a third-party tap's package by its short name), each
  * with what it is, in the window's
