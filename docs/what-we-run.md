@@ -3024,7 +3024,9 @@ only at debug level, exits 0 and leaves the package out, so it read as up
 to date (r25 R70-1; pip 26.2.1 `index/collector.py`). Debug verbosity also
 prints a line for every file pip skips, thousands for one project; Banager
 keeps only the JSON list (at most 64 MiB), pip's `Could not fetch URL`
-lines and urllib3's retry warnings (at most 1 MiB of those, each line at
+lines, its count of the places it searches for each package (not the
+addresses it lists after that) and urllib3's retry warnings (at most 1
+MiB of those, each line at
 most 64 KiB) and drops the rest as it is read, in memory, without writing
 anything (`OutputUse::PipLookup`). A kept line past its limit, or output
 that could not be read to its end, fails the check rather than reading as
@@ -3112,7 +3114,7 @@ is asked as above.
 | List packages nothing else depends on (`inventory`, to tell dependencies apart) | `<python> -m pip list --format=json --not-required` with `PIP_QUIET=0` and `PIP_VERBOSE=0` | 60 s |
 | List packages nothing else depends on, to count them (`check_updates`, before the next row) | `<python> -m pip list --format=json --not-required` with `PIP_QUIET=0` and `PIP_VERBOSE=0` | 60 s |
 | List outdated packages nothing else depends on (`check_updates`) | `<python> -m pip list --outdated --not-required --format=json` with `PIP_QUIET=0`, `PIP_VERBOSE=2` and `PIP_RETRIES=5` | 60 s, plus 1.5 s for each package the row above listed, at most 180 s |
-| Confirm up-to-date packages an index answered 403, 404 or 410 for (`check_updates`, only then, at most once) | `<python> -m pip list --uptodate --not-required --format=json` with `PIP_QUIET=0`, `PIP_VERBOSE=2` and `PIP_RETRIES=5` | What is left of the row above's timeout, which both share |
+| Confirm up-to-date packages an index answered 403, 404 or 410 for, where pip searched more than one place for them (`check_updates`, only then, at most once) | `<python> -m pip list --uptodate --not-required --format=json` with `PIP_QUIET=0`, `PIP_VERBOSE=2` and `PIP_RETRIES=5` | What is left of the row above's timeout, which both share |
 
 If `pip list --outdated` exits non-zero, every package that list named is
 listed as "could not check", with the reason; if that list itself failed,
@@ -3153,7 +3155,15 @@ it; otherwise it is "could not check", with the HTTP status. Any other
 failure — a certificate, a proxy, a 401 or a server error, in either run
 and in whatever order — keeps the package "could not check" whatever
 else answered. If the `--uptodate` run fails, times out or prints no
-list, nothing is confirmed. The words saved for a row never include an
+list, nothing is confirmed, and the row says that whether another index
+has the package is not known; where that run had no time left or ran out
+of it, the package is counted among the tools to check again. pip's
+debug output says how many places it searched for each package (its
+index addresses and `find-links` addresses, though not a `find-links`
+folder on this Mac); where that is one, no other index could have the
+package, so Banager does not run `--uptodate` for it and the row stays
+"could not check" — a second lookup of every package would hold back
+every source's results for nothing. The words saved for a row never include an
 address: pip's own words have every `scheme://…` address replaced with
 `<address>`, which removes an index's login and any token in its query,
 and the HTTP and network reasons are fixed sentences

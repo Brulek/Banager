@@ -49,9 +49,11 @@ export function detailLines(lines: ReactNode[]): ReactNode {
  * such thing. Its `Message`s, distinct, can be copied (Copy Error
  * Details) whatever "Show technical details" says, to send to someone who
  * can help: a pip index that refused the check says why only there (r25
- * R70-1). They are the words the row shows with technical details on; an
- * adapter keeps an address's login and token out of them (pip's
- * `without_addresses`).
+ * R70-1). Not on a row Banager does not look up on this Mac
+ * (`NotLookedUpHere`): nothing failed there. They are the words the row
+ * shows with technical details on: pip's carry no address
+ * (`without_addresses`); elsewhere, the runner masks an address's login
+ * in a command's output (`runner/redact.rs`), and nothing more.
  */
 export function cannotCheckDetail(
   t: TFunction,
@@ -98,7 +100,7 @@ export function cannotCheckDetail(
     ...reasons,
     ...(tryLater ? [t("warnings.transientLookupFailure")] : []),
   ]);
-  if (details.size === 0) return lines;
+  if (details.size === 0 || notLookedUp) return lines;
   return (
     <>
       {lines}

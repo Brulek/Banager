@@ -1876,8 +1876,9 @@ pub enum UpdateBlocked {
     /// generic over this enum), by `updateStateOf` in
     /// src/lib/updateState.ts (no button, no checkbox) and by
     /// `UPDATE_BLOCKED_KEYS.SelfUpdatesOnly` in src/lib/sources.ts, whose
-    /// sentence tells the user to open the tool once and that it checks at
-    /// most every 15 minutes.
+    /// sentence says that, if its automatic updates are on, the tool can
+    /// check for a new version when it is opened, though not always right
+    /// away (r25 R75-4).
     SelfUpdatesOnly,
     /// Homebrew disabled this formula or cask (`disable!` in its tap), so
     /// it installs no newer version of it, although `brew outdated` still

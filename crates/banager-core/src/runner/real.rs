@@ -233,9 +233,15 @@ fn is_json_line(line: &[u8]) -> bool {
 }
 
 /// Whether `line` is one of the lines pip's lookup is read by: pip's
-/// `Could not fetch URL` (`index/collector.py`) or urllib3's retry warning.
+/// `Could not fetch URL` and its count of the places it searches for a
+/// project (`index/collector.py`), or urllib3's retry warning. Not the
+/// addresses pip lists after that count, each on a line of its own.
 fn is_pip_diagnostic(line: &[u8]) -> bool {
-    const SAID: [&[u8]; 2] = [b"Could not fetch URL ", b"Retrying (Retry("];
+    const SAID: [&[u8]; 3] = [
+        b"Could not fetch URL ",
+        b"Retrying (Retry(",
+        b" location(s) to search for versions of ",
+    ];
     SAID.iter()
         .any(|said| line.windows(said.len()).any(|window| window == *said))
 }
@@ -1574,6 +1580,11 @@ mod tests {
                 stream.extend_from_slice(long_chatter.as_bytes());
             }
         }
+        // How many places pip searched for a project is held; the
+        // addresses listed after it are not.
+        let located = "2 location(s) to search for versions of caf\u{e9}:\n";
+        stream.extend_from_slice(located.as_bytes());
+        stream.extend_from_slice(b"* https://user:pw@corp.example/simple/caf\xc3\xa9/\n");
         stream.extend_from_slice(diagnostic.as_bytes());
         stream.extend_from_slice(chatter.as_bytes());
         // A JSON line longer than a line of chatter may be: the JSON's own
@@ -1592,7 +1603,7 @@ mod tests {
         assert_eq!(
             buffer.into_transcript(),
             format!(
-                "{diagnostic}{json}\nWARNING: Retrying (Retry(total=0, connect=None)) after x\n"
+                "{located}{diagnostic}{json}\nWARNING: Retrying (Retry(total=0, connect=None)) after x\n"
             )
         );
 

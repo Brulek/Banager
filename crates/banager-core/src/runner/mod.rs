@@ -48,7 +48,8 @@ pub enum OutputUse {
     /// (`PipAdapter::LOOKUP_ENV`, r25 R70-1): one JSON line for a parser
     /// among a line of pip's chatter per file it skips, thousands for one
     /// project. Only the lines the adapter reads are held -- the JSON line,
-    /// pip's `Could not fetch URL` lines and urllib3's retry warnings --
+    /// pip's `Could not fetch URL` lines, its count of the places it
+    /// searches for each project and urllib3's retry warnings --
     /// each within its own bound; every other line is dropped as it
     /// arrives and handed to no callback. A held line past its bound fails
     /// the run ([`RunnerError::OutputTooLarge`]), and so does a stdout that

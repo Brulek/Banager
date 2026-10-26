@@ -61,6 +61,15 @@ describe("cannotCheckDetail", () => {
     );
     expect(said("zh-CN")).toBe("rustup设为从另一个地址获取更新。这里没有检查该地址，因此无法在这里更新rustup。");
     expect(said("zh-Hant")).toBe("rustup設為從另一個位址取得更新。這裡沒有檢查該位址，因此無法在這裡更新rustup。");
+    // Nothing failed, here or on any row Banager doesn't look up on this
+    // Mac (`NotLookedUpHere`): there are no error details to copy.
+    for (const row of [candidate, { ...candidate, blocked: null }]) {
+      for (const technical of [false, true]) {
+        const { queryByRole, unmount } = render(<>{cannotCheckDetail(i18n.getFixedT("en"), row, technical)}</>);
+        expect(queryByRole("button")).toBeNull();
+        unmount();
+      }
+    }
   });
 
   it("lets a pip package whose index refused the check be copied, with or without technical details (r25 R70-1)", async () => {

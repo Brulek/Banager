@@ -14,7 +14,7 @@ use crate::runner::{
 };
 use async_trait::async_trait;
 use serde::Deserialize;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -266,14 +266,7 @@ fn final_fetch_failures(text: &str) -> Vec<GaveUp> {
             let (kind, words) = match status {
                 Some(status) if index_lacks_project(reason) => (
                     Unanswered::NotThere(status),
-                    format!(
-                        "the package index answered HTTP {status} ({}), and no index gave its latest version",
-                        match status {
-                            403 => "Forbidden",
-                            404 => "Not Found",
-                            _ => "Gone",
-                        }
-                    ),
+                    not_there_words(status, "no index gave its latest version"),
                 ),
                 Some(status) => (
                     Unanswered::Failed,
@@ -305,6 +298,47 @@ fn final_fetch_failures(text: &str) -> Vec<GaveUp> {
             })
         })
         .collect()
+}
+
+/// The words for a package an index answered `status` (403, 404 or 410)
+/// for, and `then`: what came of the other places pip searched.
+fn not_there_words(status: u16, then: &str) -> String {
+    let name = match status {
+        403 => "Forbidden",
+        404 => "Not Found",
+        _ => "Gone",
+    };
+    format!("the package index answered HTTP {status} ({name}), and {then}")
+}
+
+/// How many places pip searched for each project it looked up, by
+/// project, from the `<n> location(s) to search for versions of
+/// <project>:` line it logs at DEBUG before each lookup (pip 26.2.1
+/// `index/collector.py:495-505`, `collect_sources`): every index address
+/// and every `--find-links` address, though not a `--find-links` folder
+/// on this Mac, which has no address (`index/sources.py`,
+/// `_FlatDirectorySource.link`). The runner keeps that line and drops
+/// the addresses pip lists after it (`OutputUse::PipLookup`).
+fn locations_searched(stdout: &str) -> HashMap<String, usize> {
+    const SAID: &str = " location(s) to search for versions of ";
+    stdout
+        .lines()
+        .filter_map(|line| {
+            let (count, project) = line.split_once(SAID)?;
+            let count = count.split_whitespace().last()?.parse().ok()?;
+            let project = project.trim_end().strip_suffix(':')?;
+            Some((canonical_project(project), count))
+        })
+        .collect()
+}
+
+/// Why `pip list --uptodate` confirmed nothing (`confirm_up_to_date`):
+/// its words, and whether checking again can get past it -- it had no
+/// time left, ran out of it, or its words say the network failed.
+#[derive(Debug)]
+struct Unconfirmed {
+    words: String,
+    transient: bool,
 }
 
 /// The status of a `Could not fetch URL` reason that is pip's wording of
@@ -1021,8 +1055,9 @@ impl PipAdapter {
         if gave_up.is_empty() {
             return Ok(checked.into());
         }
+        let searched = locations_searched(&output.stdout);
         Ok(self
-            .with_lookups_given_up(inst, checked, &gave_up, listed, deadline)
+            .with_lookups_given_up(inst, checked, &gave_up, &searched, listed, deadline)
             .await?
             .into())
     }
@@ -1072,12 +1107,19 @@ impl PipAdapter {
     /// (`Unanswered::NotThere`) is up to date only if `pip list
     /// --uptodate` lists it at its installed version, and that lookup met
     /// no other failure for it (`confirm_up_to_date`); any other failure,
-    /// in either lookup and in whatever order, keeps its row.
+    /// in either lookup and in whatever order, keeps its row. Where that
+    /// lookup confirmed nothing, the row says so (`Unconfirmed`), not
+    /// that no index gave its latest version: another may have. Not asked
+    /// for a package pip searched one place for (`searched`): no other
+    /// index could have it, and `--uptodate`, looking every package up
+    /// again one at a time, would hold every source's results back for
+    /// nothing (b2/t5 skeptic, problem 2).
     async fn with_lookups_given_up(
         &self,
         inst: &ManagerInstance,
         mut checked: Vec<UpdateCandidate>,
         gave_up: &[GaveUp],
+        searched: &HashMap<String, usize>,
         listed: Option<Vec<PipPackage>>,
         deadline: tokio::time::Instant,
     ) -> Result<Vec<UpdateCandidate>, AdapterError> {
@@ -1097,7 +1139,8 @@ impl PipAdapter {
         // package here.
         let concerns =
             |g: &GaveUp, project: &str| g.project == project || !projects.contains(&g.project);
-        let row = |package: PipPackage, lookup: &GaveUp| {
+        let reason = |words: &str| lookup_failure_reason("pip list --outdated", Some(0), words);
+        let row = |package: PipPackage, failure: LookupFailure| {
             uncheckable_candidate(
                 ArtifactKey {
                     instance_id: inst.id.clone(),
@@ -1106,12 +1149,10 @@ impl PipAdapter {
                 },
                 package.version,
                 UpdateChannel::Native,
-                LookupFailure::words(
-                    lookup_failure_reason("pip list --outdated", Some(0), &lookup.words),
-                    &lookup.words,
-                ),
+                failure,
             )
         };
+        let failed = |lookup: &GaveUp| LookupFailure::words(reason(&lookup.words), &lookup.words);
         let mut not_there = Vec::new();
         for package in installed {
             let project = canonical_project(&package.name);
@@ -1119,10 +1160,14 @@ impl PipAdapter {
                 continue;
             }
             let failures: Vec<&GaveUp> = gave_up.iter().filter(|g| concerns(g, &project)).collect();
-            if let Some(failed) = failures.iter().find(|g| g.kind == Unanswered::Failed) {
-                checked.push(row(package, failed));
+            if let Some(other) = failures.iter().find(|g| g.kind == Unanswered::Failed) {
+                checked.push(row(package, failed(other)));
             } else if let Some(first) = failures.first() {
-                not_there.push((package, (*first).clone()));
+                if searched.get(&project) == Some(&1) {
+                    checked.push(row(package, failed(first)));
+                } else {
+                    not_there.push((package, (*first).clone()));
+                }
             }
         }
         if not_there.is_empty() {
@@ -1132,24 +1177,39 @@ impl PipAdapter {
         for (package, lookup) in not_there {
             let project = canonical_project(&package.name);
             let failure = match &confirmed {
-                None => Some(lookup),
-                Some((rows, later)) => {
-                    if let Some(failed) = later
+                Err(unconfirmed) => {
+                    let Unanswered::NotThere(status) = lookup.kind else {
+                        unreachable!("only 403, 404 and 410 answers wait for --uptodate")
+                    };
+                    let words = not_there_words(
+                        status,
+                        &format!(
+                            "whether another index has it is not known: {}",
+                            unconfirmed.words
+                        ),
+                    );
+                    Some(LookupFailure {
+                        transient: unconfirmed.transient,
+                        ..LookupFailure::from(reason(&words))
+                    })
+                }
+                Ok((rows, later)) => {
+                    if let Some(other) = later
                         .iter()
                         .find(|g| g.kind == Unanswered::Failed && concerns(g, &project))
                     {
-                        Some(failed.clone())
+                        Some(failed(other))
                     } else if rows.get(&project).is_some_and(|version| {
                         !version.trim().is_empty() && *version == package.version
                     }) {
                         None
                     } else {
-                        Some(lookup)
+                        Some(failed(&lookup))
                     }
                 }
             };
             if let Some(failure) = failure {
-                checked.push(row(package, &failure));
+                checked.push(row(package, failure));
             }
         }
         Ok(checked)
@@ -1158,16 +1218,23 @@ impl PipAdapter {
     /// `pip list --uptodate`, once, in what is left of the check's
     /// `deadline`: the packages it lists at their installed version, by
     /// project, and the lookups it did not get (`unanswered_lookups`).
-    /// `None` when there is no time left, or it did not finish, exited
-    /// non-zero or printed no JSON list: nothing is confirmed then.
+    /// Nothing is confirmed (`Unconfirmed`) when there is no time left, or
+    /// it did not finish, exited non-zero or printed no JSON list. Running
+    /// out of time is worth checking again for: pip looks each package up
+    /// again, one at a time, in what is left of one deadline (b2/t5
+    /// skeptic, problem 1).
     async fn confirm_up_to_date(
         &self,
         inst: &ManagerInstance,
         deadline: tokio::time::Instant,
-    ) -> Option<(std::collections::HashMap<String, String>, Vec<GaveUp>)> {
+    ) -> Result<(HashMap<String, String>, Vec<GaveUp>), Unconfirmed> {
+        let unconfirmed = |words: &str, transient: bool| Unconfirmed {
+            words: words.to_string(),
+            transient,
+        };
         let left = deadline.saturating_duration_since(tokio::time::Instant::now());
         if left.is_zero() {
-            return None;
+            return Err(unconfirmed("`pip list --uptodate` had no time left", true));
         }
         let output = self
             .runner
@@ -1177,17 +1244,31 @@ impl PipAdapter {
                 CancellationToken::new(),
             )
             .await
-            .ok()?;
-        if output.exit_code != Some(0) || output.timed_out || output.cancelled {
-            return None;
+            .map_err(|_| unconfirmed("`pip list --uptodate` did not finish", false))?;
+        if output.timed_out {
+            return Err(unconfirmed("`pip list --uptodate` ran out of time", true));
+        }
+        if output.cancelled {
+            return Err(unconfirmed("`pip list --uptodate` did not finish", false));
+        }
+        if output.exit_code != Some(0) {
+            return Err(unconfirmed(
+                &lookup_failure_reason(
+                    "pip list --uptodate",
+                    output.exit_code,
+                    &without_addresses(&output.stderr),
+                ),
+                super::says_network_failed(&output.stderr),
+            ));
         }
         let rows = output
             .stdout
             .lines()
             .rev()
             .filter(|line| line.trim_start().starts_with('['))
-            .find_map(|line| serde_json::from_str::<Vec<PipPackage>>(line).ok())?;
-        Some((
+            .find_map(|line| serde_json::from_str::<Vec<PipPackage>>(line).ok())
+            .ok_or_else(|| unconfirmed("`pip list --uptodate` did not return its list", false))?;
+        Ok((
             rows.into_iter()
                 .map(|p| (canonical_project(&p.name), p.version))
                 .collect(),
@@ -1651,6 +1732,165 @@ mod tests {
                     <= 1
             );
         }
+    }
+
+    /// The DEBUG line pip 26.2.1 logs before it looks a project up, at
+    /// `-vv` (`index/collector.py:495-505`); the addresses follow on lines
+    /// of their own.
+    fn locations_line(count: usize, project: &str) -> String {
+        format!("{count} location(s) to search for versions of {project}:\n* https://corp.example/simple/{project}/")
+    }
+
+    #[tokio::test]
+    async fn regression_r70_1_a_confirmation_that_did_not_finish_says_so() {
+        // The b2/t5 skeptic's problem 1: with PyTorch's extra index every
+        // package needs confirming, and `pip list --uptodate`, looking each
+        // up again one at a time, can run out of what is left of the
+        // check's time. six's row then says the confirmation did not
+        // finish -- not that no index gave its latest version, which PyPI
+        // did -- and, where time ran out, that checking again can help.
+        let outdated = r#"[{"name": "cowsay", "version": "5.0", "latest_version": "6.1", "latest_filetype": "wheel"}]"#;
+        let first = format!(
+            "{}\n{}\n{outdated}",
+            locations_line(2, "six"),
+            http_status_failure("https://download.pytorch.org/whl/cpu/six/", "403")
+        );
+        let timed_out = CommandOutput {
+            exit_code: None,
+            timed_out: true,
+            ..exited_with(0, "", "")
+        };
+        // (the confirmation's answer, transient, what the row says)
+        let cases = [
+            (Some(timed_out), true, "ran out of time"),
+            (Some(exited_with(1, "", "ERROR: Exception")), false, "pip list --uptodate: ERROR: Exception"),
+            (Some(exited_with(0, "no list", "")), false, "did not return"),
+            (None, false, "did not finish"),
+        ];
+        for (confirmation, transient, says) in cases {
+            let runner = Arc::new(MockRunner::new());
+            runner.respond(OUTDATED_ARGV.to_vec(), exited_with(0, &first, ""));
+            runner.respond(
+                NOT_REQUIRED_ARGV.to_vec(),
+                exited_with(
+                    0,
+                    r#"[{"name":"cowsay","version":"5.0"},{"name":"six","version":"1.17.0"}]"#,
+                    "",
+                ),
+            );
+            if let Some(output) = &confirmation {
+                runner.respond(UPTODATE_ARGV.to_vec(), output.clone());
+            }
+            let rows = PipAdapter::new(runner)
+                .check_updates(&test_instance(), &CheckOptions::default())
+                .await
+                .unwrap()
+                .candidates;
+            let six = rows.iter().find(|r| r.key.name == "six").expect("six's row");
+            let words = format!("{:?}", six.warnings);
+            assert!(!six.checkable, "{words}");
+            assert!(words.contains("HTTP 403") && words.contains(says), "{says}: {words}");
+            assert!(!words.contains("no index gave"), "{words}");
+            assert_eq!(
+                six.warnings.contains(&Warning::TransientLookupFailure),
+                transient,
+                "{words}"
+            );
+        }
+        // No time left at all: not run, and said the same way.
+        let runner = Arc::new(MockRunner::new());
+        let adapter = PipAdapter::new(runner);
+        let unconfirmed = adapter
+            .confirm_up_to_date(&test_instance(), tokio::time::Instant::now())
+            .await
+            .expect_err("nothing confirmed");
+        assert!(unconfirmed.transient);
+        assert!(unconfirmed.words.contains("no time left"), "{}", unconfirmed.words);
+    }
+
+    #[tokio::test]
+    async fn regression_r70_1_no_confirmation_where_pip_searched_only_the_index_that_answered() {
+        // The b2/t5 skeptic's problem 2: with one index, a package it does
+        // not host (an editable install, an Anaconda-only one) gets a 404,
+        // and `pip list --uptodate` can never list it -- there is nowhere
+        // else to look. pip says how many places it searched for each
+        // package; where that is one, the row stays without a second
+        // lookup, which held every source's results back.
+        let outdated = r#"[{"name": "cowsay", "version": "5.0", "latest_version": "6.1", "latest_filetype": "wheel"}]"#;
+        let list = r#"[{"name":"cowsay","version":"5.0"},{"name":"my-tool","version":"0.1"},{"name":"six","version":"1.17.0"}]"#;
+        let not_found = |project: &str| {
+            format!(
+                "{}\n{}",
+                locations_line(1, project),
+                http_status_failure(&format!("https://pypi.org/simple/{project}/"), "404")
+            )
+        };
+        // Only my-tool, searched in one place: no confirmation.
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            OUTDATED_ARGV.to_vec(),
+            exited_with(0, &format!("{}\n{outdated}", not_found("my-tool")), ""),
+        );
+        runner.respond(NOT_REQUIRED_ARGV.to_vec(), exited_with(0, list, ""));
+        let rows = PipAdapter::new(runner.clone())
+            .check_updates(&test_instance(), &CheckOptions::default())
+            .await
+            .unwrap()
+            .candidates;
+        let mine = rows.iter().find(|r| r.key.name == "my-tool").expect("my-tool's row");
+        assert!(!mine.checkable);
+        let words = format!("{:?}", mine.warnings);
+        assert!(words.contains("HTTP 404") && words.contains("no index gave"), "{words}");
+        assert!(runner.calls().iter().all(|c| *c != UPTODATE_ARGV.to_vec()));
+        // With six searched in two places as well, one confirmation, and
+        // it decides six alone.
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            OUTDATED_ARGV.to_vec(),
+            exited_with(
+                0,
+                &format!(
+                    "{}\n{}\n{}\n{outdated}",
+                    not_found("my-tool"),
+                    locations_line(2, "six"),
+                    http_status_failure("https://download.pytorch.org/whl/cpu/six/", "403")
+                ),
+                "",
+            ),
+        );
+        runner.respond(NOT_REQUIRED_ARGV.to_vec(), exited_with(0, list, ""));
+        runner.respond(
+            UPTODATE_ARGV.to_vec(),
+            exited_with(0, r#"[{"name": "six", "version": "1.17.0"}]"#, ""),
+        );
+        let rows = PipAdapter::new(runner.clone())
+            .check_updates(&test_instance(), &CheckOptions::default())
+            .await
+            .unwrap()
+            .candidates;
+        assert!(rows.iter().all(|r| r.key.name != "six"), "{rows:?}");
+        assert!(rows.iter().any(|r| r.key.name == "my-tool" && !r.checkable));
+        assert_eq!(
+            runner
+                .calls()
+                .iter()
+                .filter(|c| **c == UPTODATE_ARGV.to_vec())
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn test_locations_searched_reads_pips_count_by_project() {
+        let stdout = format!(
+            "{}\n{}\nSkipping link: none of the wheel's tags match\n[]",
+            locations_line(1, "My_Tool"),
+            locations_line(3, "six")
+        );
+        let searched = locations_searched(&stdout);
+        assert_eq!(searched.get("my-tool"), Some(&1));
+        assert_eq!(searched.get("six"), Some(&3));
+        assert_eq!(searched.len(), 2);
     }
 
     #[tokio::test]
