@@ -11,6 +11,8 @@ interface MockPackage {
   kind: Found["kind"];
   name: string;
   description: string;
+  /** Why Homebrew would refuse it on the pretend Mac, as `Found::blocked`. */
+  blocked?: Found["blocked"];
 }
 
 /** The pretend Homebrew's formulae and casks: every suggestion's own among them. */
@@ -37,12 +39,13 @@ export const MOCK_HOMEBREW: MockPackage[] = [
   { kind: "Cask", name: "iina", description: "Free and open-source media player" },
   { kind: "Cask", name: "handbrake-app", description: "Open-source video transcoder" },
   { kind: "Cask", name: "jquake", description: "Real-time earthquake monitoring software for Japan" },
+  { kind: "Cask", name: "alacritty", description: "GPU-accelerated terminal emulator", blocked: "Disabled" },
 ];
 
 /** At most this many results, as `brew::SEARCH_HITS_MAX`. */
 const SEARCH_HITS_MAX = 40;
 
-export function mockSearch(query: string): Array<{ kind: Found["kind"]; name: string; description: string }> {
+export function mockSearch(query: string): MockPackage[] {
   const wanted = query.toLowerCase();
   const rank = (name: string) => (name === wanted ? 0 : name.startsWith(wanted) ? 1 : 2);
   const named = MOCK_HOMEBREW.filter((p) => p.name.toLowerCase().includes(wanted)).sort(

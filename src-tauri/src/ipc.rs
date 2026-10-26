@@ -1125,7 +1125,9 @@ pub async fn search_homebrew(
 /// adapter is asked as `search_expired` where no result has that id any
 /// more -- ten minutes on, or forgotten for newer ones -- and as
 /// `catalog_state` with its state where the check since lists it installed,
-/// or where it is a suggestion whose entry is not "Not installed".
+/// or where it is a suggestion whose entry is not "Not installed", and as
+/// `search_blocked` with why where Homebrew would refuse it on this Mac
+/// (`Found::blocked`).
 pub(crate) async fn plan_install_found_impl(
     state: &AppState,
     found_id: &str,
@@ -1142,6 +1144,9 @@ pub(crate) async fn plan_install_found_impl(
             }
             FoundError::State(state) => {
                 serde_json::json!({ "kind": "catalog_state", "state": state }).to_string()
+            }
+            FoundError::Blocked(blocked) => {
+                serde_json::json!({ "kind": "search_blocked", "blocked": blocked }).to_string()
             }
             FoundError::Adapter(e) => plan_operation_error(e),
         })

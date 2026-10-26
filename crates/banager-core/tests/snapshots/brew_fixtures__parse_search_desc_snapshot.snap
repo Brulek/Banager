@@ -7,90 +7,180 @@ expression: result
     "adapter_id": "brew",
     "kind": "Formula",
     "name": "gojq",
-    "description": "Pure Go implementation of jq"
+    "description": "Pure Go implementation of jq",
+    "needs": {
+      "disabled": false,
+      "macos": null,
+      "chip": null,
+      "app_there": false
+    }
   },
   {
     "adapter_id": "brew",
     "kind": "Formula",
     "name": "hq",
-    "description": "Jq, but for HTML"
+    "description": "Jq, but for HTML",
+    "needs": {
+      "disabled": false,
+      "macos": null,
+      "chip": null,
+      "app_there": false
+    }
   },
   {
     "adapter_id": "brew",
     "kind": "Formula",
     "name": "ijq",
-    "description": "Interactive jq"
+    "description": "Interactive jq",
+    "needs": {
+      "disabled": false,
+      "macos": null,
+      "chip": null,
+      "app_there": false
+    }
   },
   {
     "adapter_id": "brew",
     "kind": "Formula",
     "name": "jaq",
-    "description": "JQ clone focussed on correctness, speed, and simplicity"
+    "description": "JQ clone focussed on correctness, speed, and simplicity",
+    "needs": {
+      "disabled": false,
+      "macos": null,
+      "chip": null,
+      "app_there": false
+    }
   },
   {
     "adapter_id": "brew",
     "kind": "Formula",
     "name": "jnv",
-    "description": "Interactive JSON filter using jq"
+    "description": "Interactive JSON filter using jq",
+    "needs": {
+      "disabled": false,
+      "macos": null,
+      "chip": null,
+      "app_there": false
+    }
   },
   {
     "adapter_id": "brew",
     "kind": "Formula",
     "name": "jq-lsp",
-    "description": "Jq language server"
+    "description": "Jq language server",
+    "needs": {
+      "disabled": false,
+      "macos": null,
+      "chip": null,
+      "app_there": false
+    }
   },
   {
     "adapter_id": "brew",
     "kind": "Formula",
     "name": "jqfmt",
-    "description": "Opinionated formatter for jq"
+    "description": "Opinionated formatter for jq",
+    "needs": {
+      "disabled": false,
+      "macos": null,
+      "chip": null,
+      "app_there": false
+    }
   },
   {
     "adapter_id": "brew",
     "kind": "Formula",
     "name": "jqp",
-    "description": "TUI playground to experiment and play with jq"
+    "description": "TUI playground to experiment and play with jq",
+    "needs": {
+      "disabled": false,
+      "macos": null,
+      "chip": null,
+      "app_there": false
+    }
   },
   {
     "adapter_id": "brew",
     "kind": "Formula",
     "name": "mdq",
-    "description": "Like jq but for Markdown"
+    "description": "Like jq but for Markdown",
+    "needs": {
+      "disabled": false,
+      "macos": null,
+      "chip": null,
+      "app_there": false
+    }
   },
   {
     "adapter_id": "brew",
     "kind": "Formula",
     "name": "mq",
-    "description": "Jq-like command-line tool for markdown processing"
+    "description": "Jq-like command-line tool for markdown processing",
+    "needs": {
+      "disabled": false,
+      "macos": null,
+      "chip": null,
+      "app_there": false
+    }
   },
   {
     "adapter_id": "brew",
     "kind": "Formula",
     "name": "oq",
-    "description": "Performant, and portable jq wrapper to support formats other than JSON"
+    "description": "Performant, and portable jq wrapper to support formats other than JSON",
+    "needs": {
+      "disabled": false,
+      "macos": null,
+      "chip": null,
+      "app_there": false
+    }
   },
   {
     "adapter_id": "brew",
     "kind": "Formula",
     "name": "python-yq",
-    "description": "Command-line YAML and XML processor that wraps jq"
+    "description": "Command-line YAML and XML processor that wraps jq",
+    "needs": {
+      "disabled": false,
+      "macos": null,
+      "chip": null,
+      "app_there": false
+    }
   },
   {
     "adapter_id": "brew",
     "kind": "Formula",
     "name": "sq",
-    "description": "Data wrangler with jq-like query language"
+    "description": "Data wrangler with jq-like query language",
+    "needs": {
+      "disabled": false,
+      "macos": null,
+      "chip": null,
+      "app_there": false
+    }
   },
   {
     "adapter_id": "brew",
     "kind": "Formula",
     "name": "yh",
-    "description": "YAML syntax highlighter to bring colours where only jq could"
+    "description": "YAML syntax highlighter to bring colours where only jq could",
+    "needs": {
+      "disabled": false,
+      "macos": null,
+      "chip": null,
+      "app_there": false
+    }
   },
   {
     "adapter_id": "brew",
     "kind": "Cask",
     "name": "jquake",
-    "description": "(JQuake) Real-time earthquake monitoring software for Japan"
+    "description": "(JQuake) Real-time earthquake monitoring software for Japan",
+    "needs": {
+      "disabled": false,
+      "macos": null,
+      "chip": null,
+      "app_there": false
+    }
   }
 ]

@@ -6,7 +6,7 @@
 
 use super::{IssuedPlan, Session};
 use crate::adapters::AdapterError;
-use crate::model::{ArtifactKind, OpKind, OpRequest};
+use crate::model::{ArtifactKind, Chip, HitNeeds, OpKind, OpRequest};
 use serde::Serialize;
 use std::time::{Duration, Instant};
 
@@ -29,6 +29,7 @@ pub(crate) const SEARCHES_AT_ONCE: usize = 2;
 /// What installs a result, kept under its id.
 pub(crate) struct FoundEntry {
     request: OpRequest,
+    blocked: Option<FoundBlock>,
     found_at: Instant,
 }
 
@@ -50,6 +51,50 @@ pub struct Found {
     /// (`catalog::id_installing`): the row then says it is one of the
     /// suggestions.
     pub catalog_id: Option<&'static str>,
+    /// Why Homebrew would refuse to install it on this Mac, from what its
+    /// own `brew info` says it needs (`blocked_on`); the row then says so
+    /// in place of Install, and `plan_found` refuses it.
+    pub blocked: Option<FoundBlock>,
+}
+
+/// Why Homebrew would refuse to install a result on this Mac, before
+/// downloading anything (from the review of the areas earlier reviews
+/// left: the row offered Install, and the run ended in Homebrew's own
+/// refusal).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+pub enum FoundBlock {
+    /// Something is already where it puts its app, put there another way:
+    /// Homebrew would download it, then stop rather than replace it.
+    AppThere,
+    /// Homebrew disabled it, and installs it no more.
+    Disabled,
+    /// It installs on this macOS major version or later only.
+    NeedsMacOS { major: u32 },
+    /// It installs on the other kind of chip only.
+    OtherChip,
+}
+
+/// What of `needs` this Mac does not meet, the first of them: its app
+/// already there, then disabled, then macOS, then the chip. Nothing where
+/// this Mac's macOS could not be read, as Homebrew's own refusal then
+/// still says it.
+pub(crate) fn blocked_on(needs: &HitNeeds, host: &crate::catalog::Host) -> Option<FoundBlock> {
+    if needs.app_there {
+        return Some(FoundBlock::AppThere);
+    }
+    if needs.disabled {
+        return Some(FoundBlock::Disabled);
+    }
+    if let (Some(major), Some(here)) = (needs.macos, host.macos_major) {
+        if here < major {
+            return Some(FoundBlock::NeedsMacOS { major });
+        }
+    }
+    match needs.chip {
+        Some(Chip::AppleSilicon) if !host.apple_silicon => Some(FoundBlock::OtherChip),
+        Some(Chip::Intel) if host.apple_silicon => Some(FoundBlock::OtherChip),
+        _ => None,
+    }
 }
 
 /// Why a search gave nothing to list.
@@ -73,6 +118,8 @@ pub enum FoundError {
     /// this Mac: installed another way (Claude Code from npm, Node.js as
     /// `node@22`), or one this Mac cannot install (Ollama before macOS 14).
     State(crate::catalog::CatalogState),
+    /// Homebrew would refuse it on this Mac (`Found::blocked`).
+    Blocked(FoundBlock),
     /// The plan was refused (`Session::issue_plan`).
     Adapter(AdapterError),
 }
@@ -110,6 +157,7 @@ impl Session {
             .await
             .map_err(SearchError::Adapter)?;
         let artifacts = self.snapshot.lock().unwrap().artifacts.clone();
+        let host = crate::catalog::Host::of_this_mac();
         let mut found = self.found.lock().unwrap();
         found.retain(|_, entry| entry.found_at.elapsed() <= FOUND_LIFETIME);
         let now = Instant::now();
@@ -122,6 +170,7 @@ impl Session {
                         && artifact.key.kind == hit.kind
                         && artifact.key.name == hit.name
                 });
+                let blocked = blocked_on(&hit.needs, &host);
                 found.insert(
                     id.clone(),
                     FoundEntry {
@@ -131,6 +180,7 @@ impl Session {
                             artifact_kind: hit.kind,
                             name: hit.name.clone(),
                         },
+                        blocked,
                         found_at: now,
                     },
                 );
@@ -141,6 +191,7 @@ impl Session {
                     name: hit.name,
                     description: hit.description,
                     installed,
+                    blocked,
                 }
             })
             .collect();
@@ -162,12 +213,15 @@ impl Session {
     /// Homebrew gave, into the Homebrew it was found in. Refused before
     /// any adapter is asked where no result has that id any more, where
     /// the snapshot now lists it installed there, and, for a suggestion,
-    /// where its catalog entry is not "Not installed" (`FoundError::State`).
+    /// where its catalog entry is not "Not installed" (`FoundError::State`),
+    /// and where Homebrew would refuse it on this Mac (`FoundError::Blocked`).
     pub async fn plan_found(&self, id: &str) -> Result<IssuedPlan, FoundError> {
-        let request = {
+        let (request, blocked) = {
             let mut found = self.found.lock().unwrap();
             found.retain(|_, entry| entry.found_at.elapsed() <= FOUND_LIFETIME);
-            found.get(id).map(|entry| entry.request.clone())
+            found
+                .get(id)
+                .map(|entry| (entry.request.clone(), entry.blocked))
         }
         .ok_or(FoundError::Unknown)?;
         let installed = self
@@ -183,6 +237,9 @@ impl Session {
             });
         if installed {
             return Err(FoundError::Installed);
+        }
+        if let Some(block) = blocked {
+            return Err(FoundError::Blocked(block));
         }
         // A suggestion, found by searching, is installed only where its
         // entry would be: not a second copy of a tool the Mac has another
@@ -223,7 +280,7 @@ mod tests {
         instance: ManagerInstance,
         /// What it lists installed.
         listed: Vec<(ArtifactKind, &'static str)>,
-        hits: Vec<SearchHit>,
+        hits: Mutex<Vec<SearchHit>>,
         searched: Mutex<Vec<String>>,
         plans: AtomicUsize,
         /// How long each search takes, and how many were under way at once
@@ -272,7 +329,7 @@ mod tests {
             self.most_searching.fetch_max(now, Ordering::SeqCst);
             tokio::time::sleep(self.search_delay).await;
             self.searching.fetch_sub(1, Ordering::SeqCst);
-            Ok(self.hits.clone())
+            Ok(self.hits.lock().unwrap().clone())
         }
 
         async fn plan(
@@ -309,6 +366,7 @@ mod tests {
             kind,
             name: name.to_string(),
             description: Some(format!("{name}, described")),
+            needs: Default::default(),
         }
     }
 
@@ -324,11 +382,11 @@ mod tests {
             meta: test_support::fake_adapter_meta("brew"),
             instance,
             listed,
-            hits: vec![
+            hits: Mutex::new(vec![
                 hit(ArtifactKind::Formula, "jq"),
                 hit(ArtifactKind::Formula, "jq-lsp"),
                 hit(ArtifactKind::Cask, "claude-code"),
-            ],
+            ]),
             searched: Mutex::new(Vec::new()),
             plans: AtomicUsize::new(0),
             search_delay: Duration::ZERO,
@@ -377,7 +435,8 @@ mod tests {
                 "name": "claude-code",
                 "description": "claude-code, described",
                 "installed": false,
-                "catalog_id": "claude-code"
+                "catalog_id": "claude-code",
+                "blocked": null
             })
         );
 
@@ -478,6 +537,7 @@ mod tests {
                             artifact_kind: ArtifactKind::Formula,
                             name: format!("expired{n}"),
                         },
+                        blocked: None,
                         found_at: past,
                     },
                 );
@@ -487,6 +547,99 @@ mod tests {
         let kept = session.found.lock().unwrap();
         assert!(!kept.keys().any(|id| id.starts_with("expired-")));
         assert_eq!(kept.len(), found.len());
+    }
+
+    #[tokio::test]
+    async fn test_a_result_homebrew_would_refuse_says_why_and_is_not_planned() {
+        // From the review of the areas earlier reviews left: a disabled
+        // cask was offered Install, and the run ended in Homebrew's refusal.
+        let (session, brew) = session_with(crate::testing::manager_instance(
+            "brew",
+            "brew:/opt/homebrew",
+        ))
+        .await;
+        let mut alacritty = hit(ArtifactKind::Cask, "alacritty");
+        alacritty.needs.disabled = true;
+        *brew.hits.lock().unwrap() = vec![alacritty, hit(ArtifactKind::Formula, "jq-lsp")];
+        let found = session.search_homebrew("ala").await.expect("search");
+        assert_eq!(found[0].blocked, Some(FoundBlock::Disabled));
+        assert_eq!(found[1].blocked, None);
+        assert_eq!(
+            serde_json::to_value(found[0].blocked).unwrap(),
+            serde_json::json!("Disabled")
+        );
+        assert!(matches!(
+            session.plan_found(&found[0].id).await,
+            Err(FoundError::Blocked(FoundBlock::Disabled))
+        ));
+        assert_eq!(brew.plans.load(Ordering::SeqCst), 0);
+        session.plan_found(&found[1].id).await.expect("plan");
+    }
+
+    #[test]
+    fn test_what_a_result_needs_blocks_it_only_where_this_mac_lacks_it() {
+        fn host(macos_major: Option<u32>, apple_silicon: bool) -> crate::catalog::Host {
+            crate::catalog::Host {
+                macos_major,
+                apple_silicon,
+                memory_bytes: None,
+                free_bytes: None,
+                ollama_app: false,
+            }
+        }
+        let needs = |macos, chip| HitNeeds {
+            disabled: false,
+            macos,
+            chip,
+            app_there: false,
+        };
+        let tahoe_arm = host(Some(26), true);
+        assert_eq!(blocked_on(&HitNeeds::default(), &tahoe_arm), None);
+        assert_eq!(blocked_on(&needs(Some(26), None), &tahoe_arm), None);
+        assert_eq!(
+            blocked_on(&needs(Some(15), None), &host(Some(14), true)),
+            Some(FoundBlock::NeedsMacOS { major: 15 })
+        );
+        // macOS unread: Homebrew's own refusal says it.
+        assert_eq!(blocked_on(&needs(Some(15), None), &host(None, true)), None);
+        assert_eq!(
+            blocked_on(
+                &needs(None, Some(Chip::AppleSilicon)),
+                &host(Some(15), false)
+            ),
+            Some(FoundBlock::OtherChip)
+        );
+        assert_eq!(
+            blocked_on(&needs(None, Some(Chip::Intel)), &tahoe_arm),
+            Some(FoundBlock::OtherChip)
+        );
+        assert_eq!(
+            blocked_on(&needs(None, Some(Chip::AppleSilicon)), &tahoe_arm),
+            None
+        );
+        // Its app there first, then disabled, then macOS, then the chip.
+        let all = HitNeeds {
+            disabled: true,
+            macos: Some(30),
+            chip: Some(Chip::Intel),
+            app_there: true,
+        };
+        assert_eq!(blocked_on(&all, &tahoe_arm), Some(FoundBlock::AppThere));
+        let all = HitNeeds {
+            app_there: false,
+            ..all
+        };
+        assert_eq!(blocked_on(&all, &tahoe_arm), Some(FoundBlock::Disabled));
+        assert_eq!(
+            blocked_on(
+                &HitNeeds {
+                    disabled: false,
+                    ..all
+                },
+                &tahoe_arm
+            ),
+            Some(FoundBlock::NeedsMacOS { major: 30 })
+        );
     }
 
     #[tokio::test]
@@ -513,6 +666,7 @@ mod tests {
                             artifact_kind: ArtifactKind::Formula,
                             name: format!("old{n}"),
                         },
+                        blocked: None,
                         found_at: start + Duration::from_millis(n as u64),
                     },
                 );
@@ -535,7 +689,7 @@ mod tests {
             meta: test_support::fake_adapter_meta("brew"),
             instance: crate::testing::manager_instance("brew", "brew:/opt/homebrew"),
             listed: Vec::new(),
-            hits: vec![hit(ArtifactKind::Formula, "jq")],
+            hits: Mutex::new(vec![hit(ArtifactKind::Formula, "jq")]),
             searched: Mutex::new(Vec::new()),
             plans: AtomicUsize::new(0),
             search_delay: Duration::from_millis(40),

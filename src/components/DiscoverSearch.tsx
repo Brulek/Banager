@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  blockedText,
   commandOf,
   endedAfterCheck,
   installOperationFor,
@@ -206,6 +207,11 @@ export function DiscoverResults({ query }: { query: string }) {
               );
             } else if (notHere) {
               right = <span className="text-muted">{stateText(t, entry.state)}</span>;
+            } else if (found.blocked !== null) {
+              // Homebrew would refuse it here: its app already there, put
+              // there another way; disabled; a newer macOS; the other chip
+              // (`plan_found` refuses it too).
+              right = <span className="text-muted">{blockedText(t, found.blocked)}</span>;
             } else {
               right = (
                 <span className="flex items-center gap-2">

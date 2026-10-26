@@ -1817,7 +1817,9 @@
       "needsOllama": "需先安装Ollama",
       "ollamaNotReady": "Ollama现在无法下载模型",
       "ollamaElsewhere": "Ollama使用的是其他地址",
-      "homebrewNotReady": "Homebrew现在无法安装工具"
+      "homebrewNotReady": "Homebrew现在无法安装工具",
+      "noLongerOffered": "已停止提供",
+      "appThere": "已在这台Mac上"
     },
     "progress": {
       "queued": "排队中",
@@ -1842,6 +1844,9 @@
       "fromOllama": "Ollama会从它的模型库下载{{model}}，约{{size}}。",
       "needsOllama": "这台Mac上的Ollama现在无法下载它。",
       "ollamaElsewhere": "这台Mac上的Ollama由OLLAMA_HOST设为了其他地址，不是这台Mac自己的地址，所以不在这里下载模型。",
+      "disabled": "Homebrew已停止提供它。",
+      "otherChip": "它不支持这台Mac的芯片。",
+      "appThere": "它的App已经在这台Mac上，是用其他方式安装的。",
       "noOllama": "这台Mac上没有Ollama，无法下载它。",
       "room": "这台Mac还有{{free}}可用空间。",
       "roomShort": "这台Mac只剩{{free}}可用空间，不够下载它。请先腾出一些空间。",

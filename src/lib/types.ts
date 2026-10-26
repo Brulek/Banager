@@ -1430,8 +1430,9 @@ export type CatalogState =
  * One result of the Discover page's search of Homebrew (Rust `Found`,
  * crates/banager-core/src/session/search.rs): its id, which Install sends
  * back (`plan_install_found`) and which is good for ten minutes; what it
- * is; whether the Homebrew it would go into lists it installed; and the
- * catalog entry it is, where it is one.
+ * is; whether the Homebrew it would go into lists it installed; the
+ * catalog entry it is, where it is one; and why Homebrew would refuse it on
+ * this Mac, where it would.
  */
 export interface Found {
   id: string;
@@ -1440,7 +1441,15 @@ export interface Found {
   description: string | null;
   installed: boolean;
   catalog_id: string | null;
+  blocked: FoundBlock | null;
 }
+/**
+ * Why Homebrew would refuse a search result on this Mac, from what its own
+ * `brew info` says it needs (Rust `FoundBlock`): its app already in
+ * /Applications, put there another way; disabled; a newer macOS; or the
+ * other kind of chip.
+ */
+export type FoundBlock = "AppThere" | "Disabled" | "OtherChip" | { NeedsMacOS: { major: number } };
 /**
  * What the Homebrew hand-off sees of /opt/homebrew (Rust `InstallerLook`,
  * `look_for_homebrew` in src-tauri/src/ipc.rs): whether Homebrew's

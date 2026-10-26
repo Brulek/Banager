@@ -13,7 +13,7 @@ mod plans;
 mod refresh;
 mod scan;
 mod search;
-pub use search::{Found, FoundError, SearchError};
+pub use search::{Found, FoundBlock, FoundError, SearchError};
 mod sizes;
 /// Re-exported for `crate::testing::expire_issued_plans` alone: how long
 /// an issued plan stays submittable, so that helper can age one past it

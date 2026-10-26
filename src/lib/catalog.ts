@@ -5,7 +5,7 @@
  * (crates/banager-core/src/catalog.rs), sent with `get_catalog`.
  */
 import { formatBytesRoundedUp } from "./modelDownload";
-import type { ArtifactKey, CatalogEntry, CatalogState, ManagerInstance, OpSummary, Snapshot } from "./types";
+import type { ArtifactKey, CatalogEntry, CatalogState, FoundBlock, ManagerInstance, OpSummary, Snapshot } from "./types";
 
 /** Whatever `useTranslation()`'s `t` needs here; the same convention as `Translate` in src/lib/sources.ts. */
 type Translate = (key: string, options?: Record<string, string | number>) => string;
@@ -129,6 +129,19 @@ export function stateText(t: Translate, state: CatalogState): string {
   }
 }
 
+/** Why a search result can't be installed here, as its row says it in place of Install. */
+export function blockedText(t: Translate, blocked: FoundBlock): string {
+  if (typeof blocked === "object") return t("discover.state.needsMacOS", { major: blocked.NeedsMacOS.major });
+  switch (blocked) {
+    case "AppThere":
+      return t("discover.state.appThere");
+    case "Disabled":
+      return t("discover.state.noLongerOffered");
+    case "OtherChip":
+      return t("discover.state.homebrewUnsupported");
+  }
+}
+
 /**
  * The values an entry's words name: for the starter model, which model
  * and about how much it downloads (`formatBytesRoundedUp`); nothing for the
@@ -187,6 +200,18 @@ export function catalogRefusal(t: Translate, raw: string): string | null {
   const { kind, state } = parsed as { kind?: unknown; state?: unknown };
   // A search result kept longer than its id is good for (step E).
   if (kind === "search_expired") return t("discover.search.expired");
+  // One Homebrew would refuse on this Mac (`search_blocked`).
+  if (kind === "search_blocked") {
+    const { blocked } = parsed as { blocked?: unknown };
+    if (blocked === "AppThere") return t("discover.sheet.appThere");
+    if (blocked === "Disabled") return t("discover.sheet.disabled");
+    if (blocked === "OtherChip") return t("discover.sheet.otherChip");
+    if (typeof blocked === "object" && blocked !== null && "NeedsMacOS" in blocked) {
+      const major = (blocked as { NeedsMacOS: { major?: unknown } }).NeedsMacOS.major;
+      return typeof major === "number" ? t("discover.sheet.needsMacOS", { major }) : null;
+    }
+    return null;
+  }
   if (kind !== "catalog_state") return null;
   if (typeof state === "object" && state !== null && "NeedsMacOS" in state) {
     const major = (state as { NeedsMacOS: { major?: unknown } }).NeedsMacOS.major;

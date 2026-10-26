@@ -1965,7 +1965,9 @@
       "needsOllama": "Needs Ollama",
       "ollamaNotReady": "Ollama can't download now",
       "ollamaElsewhere": "Ollama uses another address",
-      "homebrewNotReady": "Homebrew can't install now"
+      "homebrewNotReady": "Homebrew can't install now",
+      "noLongerOffered": "No longer offered",
+      "appThere": "Already on this Mac"
     },
     "progress": {
       "queued": "Queued",
@@ -1990,6 +1992,9 @@
       "fromOllama": "Ollama downloads {{model}} from its library, about {{size}}.",
       "needsOllama": "Ollama on this Mac can't download it right now.",
       "ollamaElsewhere": "OLLAMA_HOST points this Mac's Ollama to an address other than this Mac's own, so the model can't be downloaded here.",
+      "disabled": "Homebrew no longer offers it.",
+      "otherChip": "It doesn't run on this Mac's kind of chip.",
+      "appThere": "Its app is already on this Mac, installed another way.",
       "noOllama": "There's no Ollama on this Mac to download it with.",
       "room": "This Mac has {{free}} free.",
       "roomShort": "This Mac has only {{free}} free, less than the download needs. Free up some space first.",

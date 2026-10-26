@@ -7,54 +7,108 @@ expression: result
     "adapter_id": "brew",
     "kind": "Formula",
     "name": "gojq",
-    "description": null
+    "description": null,
+    "needs": {
+      "disabled": false,
+      "macos": null,
+      "chip": null,
+      "app_there": false
+    }
   },
   {
     "adapter_id": "brew",
     "kind": "Formula",
     "name": "ijq",
-    "description": null
+    "description": null,
+    "needs": {
+      "disabled": false,
+      "macos": null,
+      "chip": null,
+      "app_there": false
+    }
   },
   {
     "adapter_id": "brew",
     "kind": "Formula",
     "name": "jq",
-    "description": null
+    "description": null,
+    "needs": {
+      "disabled": false,
+      "macos": null,
+      "chip": null,
+      "app_there": false
+    }
   },
   {
     "adapter_id": "brew",
     "kind": "Formula",
     "name": "jq-lsp",
-    "description": null
+    "description": null,
+    "needs": {
+      "disabled": false,
+      "macos": null,
+      "chip": null,
+      "app_there": false
+    }
   },
   {
     "adapter_id": "brew",
     "kind": "Formula",
     "name": "jqfmt",
-    "description": null
+    "description": null,
+    "needs": {
+      "disabled": false,
+      "macos": null,
+      "chip": null,
+      "app_there": false
+    }
   },
   {
     "adapter_id": "brew",
     "kind": "Formula",
     "name": "jql",
-    "description": null
+    "description": null,
+    "needs": {
+      "disabled": false,
+      "macos": null,
+      "chip": null,
+      "app_there": false
+    }
   },
   {
     "adapter_id": "brew",
     "kind": "Formula",
     "name": "jqp",
-    "description": null
+    "description": null,
+    "needs": {
+      "disabled": false,
+      "macos": null,
+      "chip": null,
+      "app_there": false
+    }
   },
   {
     "adapter_id": "brew",
     "kind": "Cask",
     "name": "j",
-    "description": null
+    "description": null,
+    "needs": {
+      "disabled": false,
+      "macos": null,
+      "chip": null,
+      "app_there": false
+    }
   },
   {
     "adapter_id": "brew",
     "kind": "Cask",
     "name": "jquake",
-    "description": null
+    "description": null,
+    "needs": {
+      "disabled": false,
+      "macos": null,
+      "chip": null,
+      "app_there": false
+    }
   }
 ]

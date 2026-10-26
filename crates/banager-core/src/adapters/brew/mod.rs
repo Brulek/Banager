@@ -16,7 +16,7 @@ use crate::adapters::{
 use crate::dirfd::Stat;
 use crate::events::{EventSink, LogNote, OpId, OperationEvent};
 use crate::model::{
-    observed_app_version, ArtifactKey, ArtifactKind, CancelPolicy, CaskStep, Fault,
+    observed_app_version, ArtifactKey, ArtifactKind, CancelPolicy, CaskStep, Chip, Fault, HitNeeds,
     InstalledArtifact, InstanceId, InstanceNote, InstanceStatus, ManagerInstance, OpKind,
     OpRequest, Outcome, Plan, PlanAction, ReadOnlyReason, Reconciled, ResourceLock, Scope,
     SearchHit, Unavailable, UninstallScope, UpdateBlocked, Warning,
@@ -2687,6 +2687,7 @@ impl BrewAdapter {
                     kind,
                     name,
                     description: None,
+                    needs: HitNeeds::default(),
                 });
             }
         }
@@ -2745,7 +2746,7 @@ impl BrewAdapter {
                 if hit.kind != ArtifactKind::Formula {
                     return true;
                 }
-                let Some((name, description)) = named.get(&hit.name) else {
+                let Some((name, description, disabled)) = named.get(&hit.name) else {
                     return false;
                 };
                 if *name != hit.name {
@@ -2756,12 +2757,123 @@ impl BrewAdapter {
                 if hit.description.is_none() {
                     hit.description = description.clone();
                 }
+                hit.needs.disabled = *disabled;
                 true
             });
             let mut seen = HashSet::new();
             hits.retain(|hit| seen.insert((hit.kind, hit.name.clone())));
         }
+        // What each cask needs, from Homebrew's own answer: one more
+        // read-only ask, `brew info --json=v2 --cask {names}`. Where it
+        // fails, none is said, and Homebrew's own refusal is the word, as
+        // before (from the review of the areas earlier reviews left).
+        let casks: Vec<String> = hits
+            .iter()
+            .filter(|hit| hit.kind == ArtifactKind::Cask)
+            .map(|hit| hit.name.clone())
+            .collect();
+        if !casks.is_empty() {
+            let needs = self.cask_needs(inst, &casks).await;
+            for hit in hits.iter_mut().filter(|hit| hit.kind == ArtifactKind::Cask) {
+                if let Some(found) = needs.get(&hit.name) {
+                    hit.needs = found.clone();
+                }
+            }
+        }
         Ok(hits)
+    }
+
+    /// What each of `tokens` needs before Homebrew installs it, from one
+    /// `brew info --json=v2 --cask {tokens}`, read-only: whether it is
+    /// disabled, the oldest macOS it installs on (`depends_on macos` with
+    /// `>=`), the one kind of chip it installs on (`depends_on arch`, every
+    /// entry `arm` or every entry `intel`), and whether anything is already
+    /// where it puts its app (`app_targets_of`) in `/Applications`,
+    /// Homebrew's default `appdir`, looked up one step at a time and never
+    /// into a protected place. Nothing where the ask fails or its answer
+    /// does not read.
+    async fn cask_needs(
+        &self,
+        inst: &ManagerInstance,
+        tokens: &[String],
+    ) -> HashMap<String, HitNeeds> {
+        #[derive(serde::Deserialize)]
+        struct Info {
+            casks: Vec<Cask>,
+        }
+        #[derive(serde::Deserialize)]
+        struct Cask {
+            token: String,
+            #[serde(default)]
+            disabled: bool,
+            #[serde(default)]
+            depends_on: DependsOn,
+            #[serde(default)]
+            artifacts: Vec<serde_json::Value>,
+        }
+        #[derive(serde::Deserialize, Default)]
+        struct DependsOn {
+            #[serde(default)]
+            macos: Option<HashMap<String, Vec<String>>>,
+            #[serde(default)]
+            arch: Option<Vec<Arch>>,
+        }
+        #[derive(serde::Deserialize)]
+        struct Arch {
+            #[serde(rename = "type")]
+            kind: String,
+        }
+        let mut args = vec![
+            "info".to_string(),
+            "--json=v2".to_string(),
+            "--cask".to_string(),
+        ];
+        args.extend(tokens.iter().cloned());
+        let Ok(output) = self.run_brew(inst, args, Duration::from_secs(30)).await else {
+            return HashMap::new();
+        };
+        if output.exit_code != Some(0) {
+            return HashMap::new();
+        }
+        let Ok(info) = serde_json::from_str::<Info>(&output.stdout) else {
+            return HashMap::new();
+        };
+        info.casks
+            .into_iter()
+            .map(|cask| {
+                let macos = cask
+                    .depends_on
+                    .macos
+                    .as_ref()
+                    .and_then(|macos| macos.get(">="))
+                    .and_then(|versions| versions.first())
+                    .and_then(|version| version.split('.').next()?.parse().ok());
+                let chip = cask.depends_on.arch.as_ref().and_then(|arches| {
+                    if arches.is_empty() {
+                        None
+                    } else if arches.iter().all(|a| a.kind == "arm") {
+                        Some(Chip::AppleSilicon)
+                    } else if arches.iter().all(|a| a.kind == "intel") {
+                        Some(Chip::Intel)
+                    } else {
+                        None
+                    }
+                });
+                let app_there = app_targets_of(&cask.artifacts).iter().any(|app| {
+                    look::target(&self.applications.join(app), &Protected::of_this_process())
+                        .is_ok()
+                });
+                (
+                    cask.token,
+                    HitNeeds {
+                        disabled: cask.disabled,
+                        macos,
+                        chip,
+                        app_there,
+                    },
+                )
+            })
+            .collect()
     }
 
     /// Each of `printed`, formula names as `brew search --formula` printed
@@ -2786,7 +2898,7 @@ impl BrewAdapter {
         &self,
         inst: &ManagerInstance,
         printed: &[String],
-    ) -> Result<HashMap<String, (String, Option<String>)>, AdapterError> {
+    ) -> Result<HashMap<String, (String, Option<String>, bool)>, AdapterError> {
         let mut named = HashMap::new();
         let mut answered = false;
         let mut first_failure = None;
@@ -2825,7 +2937,7 @@ impl BrewAdapter {
         &self,
         inst: &ManagerInstance,
         printed: &[String],
-    ) -> Result<HashMap<String, (String, Option<String>)>, AdapterError> {
+    ) -> Result<HashMap<String, (String, Option<String>, bool)>, AdapterError> {
         #[derive(serde::Deserialize)]
         struct Info {
             formulae: Vec<Named>,
@@ -2840,6 +2952,8 @@ impl BrewAdapter {
             oldnames: Vec<String>,
             #[serde(default)]
             desc: Option<String>,
+            #[serde(default)]
+            disabled: bool,
         }
         let mut args = vec![
             "info".to_string(),
@@ -2861,7 +2975,7 @@ impl BrewAdapter {
             if formula.full_name != formula.name || validate_package_name(&formula.name).is_err() {
                 continue;
             }
-            let found = (formula.name.clone(), formula.desc);
+            let found = (formula.name.clone(), formula.desc, formula.disabled);
             for way in std::iter::once(&formula.name)
                 .chain(&formula.aliases)
                 .chain(&formula.oldnames)
@@ -3056,6 +3170,33 @@ impl FileId {
             ctime: meta.ctime(),
         }
     }
+}
+
+/// The names of the apps a cask puts in its `appdir`, from the `app`
+/// artifacts of its `brew info --json=v2` answer: each app's own name, or
+/// the `target` given after it. Only plain names ending in `.app` -- not a
+/// path, not hidden -- since one with a folder of its own, or absolute, is
+/// not looked for (from the review of the areas earlier reviews left).
+fn app_targets_of(artifacts: &[serde_json::Value]) -> Vec<String> {
+    let mut targets: Vec<String> = Vec::new();
+    for apps in artifacts
+        .iter()
+        .filter_map(|artifact| artifact.get("app")?.as_array())
+    {
+        let mut named: Option<String> = None;
+        for app in apps {
+            if let Some(name) = app.as_str() {
+                targets.extend(named.replace(name.to_string()));
+            } else if let Some(target) = app.get("target").and_then(|t| t.as_str()) {
+                named = Some(target.to_string());
+            }
+        }
+        targets.extend(named);
+    }
+    targets
+        .into_iter()
+        .filter(|name| name.ends_with(".app") && !name.contains('/') && !name.starts_with('.'))
+        .collect()
 }
 
 /// Whether a candidate `brew` path leads to anything, as `exists` answers
@@ -6084,6 +6225,8 @@ mod tests {
                 vec![brew, "search", "--cask", "jq"],
                 vec![brew, "search", "--desc", "jq"],
                 info,
+                // What the casks need (`cask_needs`).
+                vec![brew, "info", "--json=v2", "--cask", "jquake", "j"],
             ]
             .map(|c| c.iter().map(|s| s.to_string()).collect::<Vec<_>>())
         );
@@ -6202,6 +6345,165 @@ mod tests {
             .expect("search");
         let names: Vec<&str> = hits.iter().map(|h| h.name.as_str()).collect();
         assert_eq!(names, ["fdupes", "fdclone", "fdk-aac"]);
+    }
+
+    #[tokio::test]
+    async fn test_search_says_what_homebrew_says_each_result_needs() {
+        // From the review of the areas earlier reviews left: a disabled
+        // formula, or a cask for a newer macOS or the other chip, was
+        // offered Install, and the run ended in Homebrew's refusal. The
+        // shapes are `brew info --json=v2`'s own, read on 2026-10-27.
+        let runner = Arc::new(MockRunner::new());
+        let brew = "/opt/homebrew/bin/brew";
+        runner.respond(
+            vec![brew, "search", "--formula", "ans"],
+            search_output("ansible@9\n"),
+        );
+        runner.respond(
+            vec![brew, "search", "--cask", "ans"],
+            search_output("google-gemini\nalacritty\nollama-app\nsogouinput\n"),
+        );
+        runner.respond(vec![brew, "search", "--desc", "ans"], search_output(""));
+        runner.respond(
+            vec![brew, "info", "--json=v2", "--formula", "ansible@9"],
+            search_output(
+                r#"{"formulae":[{"name":"ansible@9","full_name":"ansible@9","aliases":[],"oldnames":[],"desc":"Automate deployment","disabled":true,"disable_date":"2025-11-30"}],"casks":[]}"#,
+            ),
+        );
+        runner.respond(
+            vec![
+                brew,
+                "info",
+                "--json=v2",
+                "--cask",
+                "google-gemini",
+                "alacritty",
+                "ollama-app",
+                "sogouinput",
+            ],
+            search_output(
+                r#"{"formulae":[],"casks":[
+                    {"token":"google-gemini","disabled":false,"depends_on":{"arch":[{"type":"arm","bits":64}],"macos":{">=":["15"]}}},
+                    {"token":"alacritty","disabled":true,"depends_on":{}},
+                    {"token":"ollama-app","disabled":false,"depends_on":{"macos":{">=":["14"]}}},
+                    {"token":"sogouinput","disabled":false,"depends_on":{"arch":[{"type":"intel","bits":64},{"type":"arm","bits":64}]}}
+                ]}"#,
+            ),
+        );
+        let adapter = BrewAdapter::new(runner);
+        let hits = adapter
+            .search(&test_instance(), "ans")
+            .await
+            .expect("search");
+        let needs = |name: &str| {
+            hits.iter()
+                .find(|h| h.name == name)
+                .unwrap_or_else(|| panic!("{name} listed"))
+                .needs
+                .clone()
+        };
+        assert!(needs("ansible@9").disabled);
+        assert_eq!(
+            needs("google-gemini"),
+            HitNeeds {
+                disabled: false,
+                macos: Some(15),
+                chip: Some(Chip::AppleSilicon),
+                app_there: false,
+            }
+        );
+        assert!(needs("alacritty").disabled);
+        assert_eq!(needs("ollama-app").macos, Some(14));
+        // Both chips: no chip needed.
+        assert_eq!(needs("sogouinput"), HitNeeds::default());
+    }
+
+    #[tokio::test]
+    async fn test_search_lists_the_casks_where_what_they_need_cannot_be_read() {
+        // Fail-open: where the casks' `brew info` fails, they are listed as
+        // before, needing nothing said, and Homebrew's refusal is the word.
+        let runner = Arc::new(MockRunner::new());
+        let brew = "/opt/homebrew/bin/brew";
+        runner.respond(vec![brew, "search", "--formula", "ala"], found_nothing());
+        runner.respond(
+            vec![brew, "search", "--cask", "ala"],
+            search_output("alacritty\n"),
+        );
+        runner.respond(vec![brew, "search", "--desc", "ala"], search_output(""));
+        runner.respond(
+            vec![brew, "info", "--json=v2", "--cask", "alacritty"],
+            CommandOutput {
+                exit_code: Some(1),
+                stderr: "Error: something went wrong".to_string(),
+                ..search_output("")
+            },
+        );
+        let adapter = BrewAdapter::new(runner);
+        let hits = adapter
+            .search(&test_instance(), "ala")
+            .await
+            .expect("search");
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].name, "alacritty");
+        assert_eq!(hits[0].needs, HitNeeds::default());
+    }
+
+    #[tokio::test]
+    async fn test_search_says_where_a_casks_app_is_already_in_applications() {
+        // From the review of the areas earlier reviews left: Google Chrome
+        // from Google's site, and `brew install --cask google-chrome`
+        // downloaded it all, then stopped at "there is already an App".
+        let applications = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir(applications.path().join("Google Chrome.app")).unwrap();
+        std::fs::create_dir(applications.path().join("Renamed.app")).unwrap();
+        let runner = Arc::new(MockRunner::new());
+        let brew = "/opt/homebrew/bin/brew";
+        runner.respond(vec![brew, "search", "--formula", "chr"], found_nothing());
+        runner.respond(
+            vec![brew, "search", "--cask", "chr"],
+            search_output("google-chrome\nchromium\nrenamer\nnested\n"),
+        );
+        runner.respond(vec![brew, "search", "--desc", "chr"], search_output(""));
+        runner.respond(
+            vec![
+                brew,
+                "info",
+                "--json=v2",
+                "--cask",
+                // In the order listed: the names the text starts first.
+                "chromium",
+                "google-chrome",
+                "renamer",
+                "nested",
+            ],
+            search_output(
+                r#"{"formulae":[],"casks":[
+                    {"token":"google-chrome","artifacts":[{"app":["Google Chrome.app"]},{"zap":[{"trash":["~/Library/Caches/Google"]}]}]},
+                    {"token":"chromium","artifacts":[{"app":["Chromium.app"]}]},
+                    {"token":"renamer","artifacts":[{"app":["Original.app",{"target":"Renamed.app"}]}]},
+                    {"token":"nested","artifacts":[{"app":["Google Chrome.app",{"target":"Sub/Google Chrome.app"}]}]}
+                ]}"#,
+            ),
+        );
+        let mut adapter = BrewAdapter::new(runner);
+        adapter.applications = applications.path().to_path_buf();
+        let hits = adapter
+            .search(&test_instance(), "chr")
+            .await
+            .expect("search");
+        let there = |name: &str| {
+            hits.iter()
+                .find(|h| h.name == name)
+                .unwrap()
+                .needs
+                .app_there
+        };
+        assert!(there("google-chrome"));
+        assert!(!there("chromium"));
+        // By the target given after the app, where one is.
+        assert!(there("renamer"));
+        // A target in a folder of its own is not looked for.
+        assert!(!there("nested"));
     }
 
     /// A search for `fz` finding `fz00` to `fz39`, `brew info` failing for

@@ -1130,6 +1130,7 @@ pub(crate) fn parse_search(
                 kind: ArtifactKind::Package,
                 name: e.name,
                 description: e.description,
+                needs: Default::default(),
             })
             .collect(),
     ))

@@ -2080,6 +2080,40 @@ pub struct SearchHit {
     pub kind: ArtifactKind,
     pub name: String,
     pub description: Option<String>,
+    /// What its source says it needs that a Mac may not have (Homebrew's
+    /// own `brew info`; none where nothing was read).
+    #[serde(default)]
+    pub needs: HitNeeds,
+}
+
+/// What Homebrew says a search result needs before it installs it, from
+/// its own `brew info --json=v2` (`BrewAdapter::search`): Homebrew refuses
+/// it where any is not met, before downloading anything (from the review
+/// of the areas earlier reviews left).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HitNeeds {
+    /// Homebrew disabled it, and installs it no more.
+    #[serde(default)]
+    pub disabled: bool,
+    /// The oldest macOS it installs on, its major version (a cask's
+    /// `depends_on macos: >=`).
+    #[serde(default)]
+    pub macos: Option<u32>,
+    /// The one kind of chip it installs on (a cask's `depends_on arch`).
+    #[serde(default)]
+    pub chip: Option<Chip>,
+    /// Something is already where it puts its app -- `/Applications/<app>`,
+    /// from the vendor's site or the App Store, say -- and Homebrew stops
+    /// there, after downloading it, rather than move one over another.
+    #[serde(default)]
+    pub app_there: bool,
+}
+
+/// A Mac's kind of chip.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Chip {
+    AppleSilicon,
+    Intel,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

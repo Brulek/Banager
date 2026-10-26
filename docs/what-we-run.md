@@ -1972,6 +1972,7 @@ required (`BrewAdapter::update_steps`).
 | Search the casks by name (Discover's search) | `<brew> search --cask {query}` | 30 s |
 | Search by description (Discover's search) | `<brew> search --desc {query}` | 30 s |
 | Name the formulae a search found as Homebrew names them (Discover's search) | `<brew> info --json=v2 --formula {names}`, the at most 40 formula names listed | 30 s |
+| Read what the casks a search found need (Discover's search) | `<brew> info --json=v2 --cask {names}`, the cask names listed | 30 s |
 | List installed formulae depending on a formula (uninstall preview) | `<brew> uses --installed {name}` | 120 s |
 
 Never `--greedy` or `--greedy-latest` (R47-2, r18): with either, Homebrew
@@ -5765,13 +5766,14 @@ and can be written to is there, Discover has a search field. What is
 typed in it -- once it has stayed the same for 0.6 seconds, and is two
 characters or more -- is searched for with `search_homebrew`
 (`Session::search_homebrew`, `BrewAdapter::search`), in that Homebrew,
-with four of its read-only commands (their rows are in "Homebrew"
+with five of its read-only commands (their rows are in "Homebrew"
 above):
 
     <brew> search --formula {query}
     <brew> search --cask {query}
     <brew> search --desc {query}
     <brew> info --json=v2 --formula {names}
+    <brew> info --json=v2 --cask {names}
 
 the first two each a list of names of one kind, so that no result's kind
 is guessed, and the third only for the descriptions of those: a package
@@ -5793,6 +5795,27 @@ at most sixteen asks in all -- enough to find one such name among forty;
 with two or more, some names Homebrew could answer for may be left out
 unasked -- so that only the names Homebrew cannot answer for are left
 out; where no ask is answered, the search fails.
+The fourth command's answer also says which formulae Homebrew disabled,
+and the fifth, asked once for the casks listed, which casks it disabled,
+which need a newer macOS (`depends_on macos` with `>=`), which run on
+one kind of chip only (`depends_on arch`), and the names of the apps each
+puts in `/Applications` (its `app` artifacts: an app's name, or the
+`target` given after it; a name with a folder in it is not looked for).
+Whether anything is at `/Applications/<app>` is looked up one step at a
+time, never into a protected place, and nothing there is opened. A
+result this Mac does not meet -- its app already there, put there another
+way (from the vendor's site or the App Store); disabled; a macOS newer
+than this Mac's, where this Mac's could be read; or the other kind of
+chip -- says so in place of Install ("Already on this Mac", "No longer
+offered", "Needs macOS 15", "Not supported on this Mac"), and
+`plan_found` refuses it (`search_blocked`): Homebrew refuses each of
+these, the last three before downloading anything, the first after
+downloading it all, since it never moves one app over another unless
+told to (`--adopt`, `--force`, which Banager does not pass). An app kept
+in an `appdir` of its own (`--appdir` in `HOMEBREW_CASK_OPTS`) is not
+looked for. Where the fifth command fails, or its answer does not read,
+the casks are listed as before, with Install, and Homebrew's own refusal
+is the word.
 The text is given to Homebrew as one argument, and refused first, before
 anything runs, where it starts with `-` (`brew search --macports` and
 its like open a web page), has a `/` in it (a regular expression, or a

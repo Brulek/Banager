@@ -803,6 +803,7 @@ pub fn parse_search(text: &str, adapter_id: &str) -> Vec<SearchHit> {
             kind,
             name,
             description,
+            needs: Default::default(),
         });
     }
 

@@ -4,7 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { command } from "../test/command";
 import { DiscoverPage } from "../pages/DiscoverPage";
-import { searchable } from "../lib/catalog";
+import { catalogRefusal, searchable } from "../lib/catalog";
 import i18n from "../i18n";
 import { useUiStore } from "../store/ui";
 import { NO_FACTS, type CatalogEntry, type Found, type IssuedPlan, type ManagerInstance, type Snapshot } from "../lib/types";
@@ -57,9 +57,9 @@ const catalog: CatalogEntry[] = [
 ];
 
 const results: Found[] = [
-  { id: "a".repeat(32), kind: "Formula", name: "jq", description: "Lightweight and flexible command-line JSON processor", installed: true, catalog_id: null },
-  { id: "b".repeat(32), kind: "Formula", name: "jq-lsp", description: "Jq language server", installed: false, catalog_id: null },
-  { id: "c".repeat(32), kind: "Cask", name: "claude-code", description: null, installed: false, catalog_id: "claude-code" },
+  { id: "a".repeat(32), kind: "Formula", name: "jq", description: "Lightweight and flexible command-line JSON processor", installed: true, catalog_id: null, blocked: null },
+  { id: "b".repeat(32), kind: "Formula", name: "jq-lsp", description: "Jq language server", installed: false, catalog_id: null, blocked: null },
+  { id: "c".repeat(32), kind: "Cask", name: "claude-code", description: null, installed: false, catalog_id: "claude-code", blocked: null },
 ];
 
 function plan(found: Found): IssuedPlan {
@@ -260,7 +260,7 @@ describe("Discover's search of Homebrew", () => {
     };
     search = async () => [
       ...results,
-      { id: "d".repeat(32), kind: "Cask", name: "ollama-app", description: "Get up and running with large language models locally", installed: false, catalog_id: "ollama" },
+      { id: "d".repeat(32), kind: "Cask", name: "ollama-app", description: "Get up and running with large language models locally", installed: false, catalog_id: "ollama", blocked: null },
     ];
     mockInvoke.mockImplementation(async (cmd: string, args?: unknown) => {
       if (cmd === "get_snapshot") return snapshot;
@@ -293,7 +293,7 @@ describe("Discover's search of Homebrew", () => {
     // From the independent review of the branch: google-chrome, and a
     // third of the casks, are `sha256 :no_check`.
     search = async () => [
-      { id: "e".repeat(32), kind: "Cask", name: "iina", description: "Free and open-source media player", installed: false, catalog_id: null },
+      { id: "e".repeat(32), kind: "Cask", name: "iina", description: "Free and open-source media player", installed: false, catalog_id: null, blocked: null },
     ];
     mockInvoke.mockImplementation(async (cmd: string, args?: unknown) => {
       if (cmd === "get_snapshot") return snapshot;
@@ -301,7 +301,7 @@ describe("Discover's search of Homebrew", () => {
       if (cmd === "list_operations") return [];
       if (cmd === "search_homebrew") return search((args as { query: string }).query);
       if (cmd === "plan_install_found")
-        return plan({ id: "e".repeat(32), kind: "Cask", name: "iina", description: null, installed: false, catalog_id: null });
+        return plan({ id: "e".repeat(32), kind: "Cask", name: "iina", description: null, installed: false, catalog_id: null, blocked: null });
       return null;
     });
     renderWithProviders(<DiscoverPage />);
@@ -578,5 +578,42 @@ describe("Discover's search of Homebrew", () => {
       expect(screen.queryByRole("searchbox")).toBeNull();
       unmount();
     }
+  });
+});
+
+describe("a search result Homebrew would refuse on this Mac", () => {
+  it("says why in place of Install: no longer offered, a newer macOS, the other chip, its app already there", async () => {
+    // From the review of the areas earlier reviews left: such a row
+    // offered Install, and the run ended in Homebrew's own refusal.
+    search = async () => [
+      { id: "f".repeat(32), kind: "Cask", name: "alacritty", description: "GPU-accelerated terminal emulator", installed: false, catalog_id: null, blocked: "Disabled" },
+      { id: "1".repeat(32), kind: "Cask", name: "google-gemini", description: "Desktop app for Gemini", installed: false, catalog_id: null, blocked: { NeedsMacOS: { major: 15 } } },
+      { id: "2".repeat(32), kind: "Cask", name: "armonly", description: "An app for Apple silicon", installed: false, catalog_id: null, blocked: "OtherChip" },
+      { id: "3".repeat(32), kind: "Formula", name: "ansible", description: "Automate deployment", installed: false, catalog_id: null, blocked: null },
+      { id: "4".repeat(32), kind: "Cask", name: "google-chrome", description: "Web browser", installed: false, catalog_id: null, blocked: "AppThere" },
+    ];
+    const { unmount } = renderWithProviders(<DiscoverPage />);
+    await typeSearch("al");
+    await waitFor(() => expect(results_()).toHaveLength(5), { timeout: 3000 });
+    expect(results_().map(([name, , state]) => [name, state])).toEqual([
+      ["alacritty", "No longer offered"],
+      ["google-gemini", "Needs macOS 15"],
+      ["armonly", "Not supported on this Mac"],
+      ["ansible", "Install"],
+      ["google-chrome", "Already on this Mac"],
+    ]);
+    expect(screen.queryByRole("button", { name: "Install alacritty" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Install ansible" })).toBeInTheDocument();
+    unmount();
+  });
+
+  it("is refused in those words where its install was asked for anyway", () => {
+    const t = i18n.getFixedT("en");
+    const said = (blocked: unknown) => catalogRefusal(t, JSON.stringify({ kind: "search_blocked", blocked }));
+    expect(said("Disabled")).toBe("Homebrew no longer offers it.");
+    expect(said({ NeedsMacOS: { major: 15 } })).toBe("It needs macOS 15 or later.");
+    expect(said("OtherChip")).toBe("It doesn't run on this Mac's kind of chip.");
+    expect(said("AppThere")).toBe("Its app is already on this Mac, installed another way.");
+    expect(said("Something")).toBeNull();
   });
 });

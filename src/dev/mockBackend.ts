@@ -313,6 +313,8 @@ export function createMockBackend(scenario: Scenario): MockBackend {
   let homebrewLooks: number | null = null;
   // The search's results by id, as `Session::search_homebrew` keeps them.
   const found = new Map<string, OpRequest>();
+  /** Why Homebrew would refuse each result, where it would (`Found::blocked`). */
+  const blockedFound = new Map<string, NonNullable<Found["blocked"]>>();
   let foundCount = 0;
   const operations = new Map<number, Operation>();
   const waiting: number[] = [];
@@ -1147,6 +1149,7 @@ export function createMockBackend(scenario: Scenario): MockBackend {
         foundCount += 1;
         const id = foundCount.toString(16).padStart(32, "f");
         found.set(id, { kind: "Install", instance_id: brew.id, artifact_kind: hit.kind, name: hit.name });
+        if (hit.blocked !== undefined && hit.blocked !== null) blockedFound.set(id, hit.blocked);
         return {
           id,
           kind: hit.kind,
@@ -1156,6 +1159,7 @@ export function createMockBackend(scenario: Scenario): MockBackend {
             (a) => a.key.instance_id === brew.id && a.key.kind === hit.kind && a.key.name === hit.name,
           ),
           catalog_id: catalogIdInstalling(hit.kind, hit.name),
+          blocked: hit.blocked ?? null,
         };
       });
     },
@@ -1167,6 +1171,8 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       if ((committed?.artifacts ?? []).some((a) => sameKey(a.key, requestKey(request)))) {
         throw refusal({ kind: "catalog_state", state: "Installed" });
       }
+      const blocked = blockedFound.get(String(args.foundId));
+      if (blocked !== undefined) throw refusal({ kind: "search_blocked", blocked });
       const inst = gate(request);
       await wait(TIMING.plan);
       planCount += 1;
