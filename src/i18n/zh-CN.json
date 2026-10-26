@@ -1187,6 +1187,7 @@
     "viewLogOf": "查看“{{name}}”的日志",
     "bar": {
       "allUninstalled_other": "已卸载{{count}}个工具",
+      "allUninstalledModels_other": "已卸载{{count}}个模型",
       "notUninstalled_other": "{{count}}个没有卸载"
     },
     "uninstallSelectedShort": "卸载（{{number}}）…"

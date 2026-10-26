@@ -1248,6 +1248,20 @@ describe("OperationBar, after a batch uninstall", () => {
     });
   });
 
+  it("says a run of uninstalls of models as models, as the notification does", async () => {
+    const model = (id: number, name: string, status: OpStatus, outcome: Outcome | null = null) => ({
+      ...uninstall(id, name, status, outcome),
+      instance_id: "ollama:http://127.0.0.1:11434",
+      artifact_kind: "Model" as const,
+    });
+    const { findByText, queryClient } = renderWithProviders(<OperationBar />);
+    await waitFor(() => expect(queryClient.getQueryData(queryKeys.operations)).toEqual([]));
+    await listNow(queryClient, [model(2, "qwen3:8b", "Queued"), model(1, "gemma3:4b", "Running")]);
+    await findByText("Working on 1 of 2");
+    await listNow(queryClient, [model(2, "qwen3:8b", "Done", "Succeeded"), model(1, "gemma3:4b", "Done", "Succeeded")]);
+    await findByText("Uninstalled 2 models");
+  });
+
   it("says a run with a cancelled and a failed uninstall as the result block above the list says it", async () => {
     // The same batch, as the Installed page records it for its result block.
     const key = (name: string) => ({ instance_id: "brew:/opt/homebrew", kind: "Formula" as const, name });

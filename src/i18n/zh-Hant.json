@@ -1187,6 +1187,7 @@
     "viewLogOf": "查看「{{name}}」的記錄",
     "bar": {
       "allUninstalled_other": "已解除安裝{{count}}個工具",
+      "allUninstalledModels_other": "已解除安裝{{count}}個模型",
       "notUninstalled_other": "{{count}}個沒有解除安裝"
     },
     "uninstallSelectedShort": "解除安裝（{{number}}）…"

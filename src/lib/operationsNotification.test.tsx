@@ -96,6 +96,12 @@ describe("finishedRunOf", () => {
 
   it("names a run of uninstalls as one, and a mixed run as other", () => {
     expect(finishedRunOf([op(1, "Done", "Succeeded", "Uninstall")])?.kind).toBe("Uninstall");
+    // Uninstalls of models, every one, as Rust names them; with a tool, of tools.
+    const models = { artifact_kind: "Model" } as const;
+    expect(finishedRunOf([op(1, "Done", "Succeeded", "Uninstall", models)])?.kind).toBe("ModelUninstall");
+    expect(finishedRunOf([op(1, "Done", "Succeeded", "Uninstall", models), op(2, "Done", "Succeeded", "Uninstall")])?.kind).toBe(
+      "Uninstall",
+    );
     // Discover's installs, as Rust names them (`RunKind::Install`).
     expect(finishedRunOf([op(1, "Done", "Succeeded", "Install"), op(2, "Done", failed, "Install")])?.kind).toBe(
       "Install",

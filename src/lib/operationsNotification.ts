@@ -18,8 +18,9 @@ import type { FinishedRun, OpSummary, RunKind } from "./types";
 /**
  * How the finished operations `ran` went, as the report says it: the
  * newest one's id, what they did -- every one an update, every one an
- * uninstall, every one an install of a tool, every one an install of a
- * model, or anything else -- and how many ended each way
+ * uninstall (of a model, every one, or not), every one an install of a
+ * tool, every one an install of a model, or anything else -- and how many
+ * ended each way
  * (`operationTone`: a success that left a follow-up warning needs
  * attention, as Rust counts it, `Ended::of`), the cancelled ones in none.
  * Null for no operation.
@@ -31,7 +32,9 @@ export function finishedRunOf(ran: OpSummary[]): FinishedRun | null {
   const kind: RunKind = ran.every((op) => op.kind === "Upgrade")
     ? "Upgrade"
     : ran.every((op) => op.kind === "Uninstall")
-      ? "Uninstall"
+      ? ran.every((op) => op.artifact_kind === "Model")
+        ? "ModelUninstall"
+        : "Uninstall"
       : installsOf(false)
         ? "Install"
         : installsOf(true)

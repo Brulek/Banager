@@ -357,6 +357,8 @@ pub fn body(language: MenuLanguage, run: &FinishedRun, password: u32) -> String 
             (MenuLanguage::ZhHant, RunKind::Upgrade) => format!("已更新{n}個工具"),
             (MenuLanguage::ZhCn, RunKind::Uninstall) => format!("已卸载{n}个工具"),
             (MenuLanguage::ZhHant, RunKind::Uninstall) => format!("已解除安裝{n}個工具"),
+            (MenuLanguage::ZhCn, RunKind::ModelUninstall) => format!("已卸载{n}个模型"),
+            (MenuLanguage::ZhHant, RunKind::ModelUninstall) => format!("已解除安裝{n}個模型"),
             (MenuLanguage::ZhCn, RunKind::Install) => format!("已安装{n}个工具"),
             (MenuLanguage::ZhHant, RunKind::Install) => format!("已安裝{n}個工具"),
             (MenuLanguage::ZhCn, RunKind::ModelDownload) => format!("已下载{n}个模型"),
@@ -365,6 +367,10 @@ pub fn body(language: MenuLanguage, run: &FinishedRun, password: u32) -> String 
             (MenuLanguage::ZhHant, RunKind::Other) => format!("已完成{n}項操作"),
             (MenuLanguage::En, RunKind::Upgrade) => format!("Updated {n} {}", tools(n)),
             (MenuLanguage::En, RunKind::Uninstall) => format!("Uninstalled {n} {}", tools(n)),
+            (MenuLanguage::En, RunKind::ModelUninstall) => format!(
+                "Uninstalled {n} {}",
+                if n == 1 { "model" } else { "models" }
+            ),
             (MenuLanguage::En, RunKind::Install) => format!("Installed {n} {}", tools(n)),
             (MenuLanguage::En, RunKind::ModelDownload) => {
                 format!("Downloaded {n} {}", if n == 1 { "model" } else { "models" })
@@ -383,8 +389,12 @@ pub fn body(language: MenuLanguage, run: &FinishedRun, password: u32) -> String 
         parts.push(match (language, run.kind) {
             (MenuLanguage::ZhCn, RunKind::Upgrade) => format!("{n}个已更新"),
             (MenuLanguage::ZhHant, RunKind::Upgrade) => format!("{n}個已更新"),
-            (MenuLanguage::ZhCn, RunKind::Uninstall) => format!("{n}个已卸载"),
-            (MenuLanguage::ZhHant, RunKind::Uninstall) => format!("{n}個已解除安裝"),
+            (MenuLanguage::ZhCn, RunKind::Uninstall | RunKind::ModelUninstall) => {
+                format!("{n}个已卸载")
+            }
+            (MenuLanguage::ZhHant, RunKind::Uninstall | RunKind::ModelUninstall) => {
+                format!("{n}個已解除安裝")
+            }
             (MenuLanguage::ZhCn, RunKind::Install) => format!("{n}个已安装"),
             (MenuLanguage::ZhHant, RunKind::Install) => format!("{n}個已安裝"),
             (MenuLanguage::ZhCn, RunKind::ModelDownload) => format!("{n}个已下载"),
@@ -392,7 +402,9 @@ pub fn body(language: MenuLanguage, run: &FinishedRun, password: u32) -> String 
             (MenuLanguage::ZhCn, RunKind::Other) => format!("{n}项已完成"),
             (MenuLanguage::ZhHant, RunKind::Other) => format!("{n}項已完成"),
             (MenuLanguage::En, RunKind::Upgrade) => format!("{n} updated"),
-            (MenuLanguage::En, RunKind::Uninstall) => format!("{n} uninstalled"),
+            (MenuLanguage::En, RunKind::Uninstall | RunKind::ModelUninstall) => {
+                format!("{n} uninstalled")
+            }
             (MenuLanguage::En, RunKind::Install) => format!("{n} installed"),
             (MenuLanguage::En, RunKind::ModelDownload) => format!("{n} downloaded"),
             (MenuLanguage::En, RunKind::Other) => format!("{n} completed"),
@@ -403,8 +415,12 @@ pub fn body(language: MenuLanguage, run: &FinishedRun, password: u32) -> String 
         parts.push(match (language, run.kind) {
             (MenuLanguage::ZhCn, RunKind::Upgrade) => format!("{n}个未能更新"),
             (MenuLanguage::ZhHant, RunKind::Upgrade) => format!("{n}個未能更新"),
-            (MenuLanguage::ZhCn, RunKind::Uninstall) => format!("{n}个未能卸载"),
-            (MenuLanguage::ZhHant, RunKind::Uninstall) => format!("{n}個未能解除安裝"),
+            (MenuLanguage::ZhCn, RunKind::Uninstall | RunKind::ModelUninstall) => {
+                format!("{n}个未能卸载")
+            }
+            (MenuLanguage::ZhHant, RunKind::Uninstall | RunKind::ModelUninstall) => {
+                format!("{n}個未能解除安裝")
+            }
             (MenuLanguage::ZhCn, RunKind::Install) => format!("{n}个未能安装"),
             (MenuLanguage::ZhHant, RunKind::Install) => format!("{n}個未能安裝"),
             (MenuLanguage::ZhCn, RunKind::ModelDownload) => format!("{n}个未能下载"),
@@ -412,7 +428,9 @@ pub fn body(language: MenuLanguage, run: &FinishedRun, password: u32) -> String 
             (MenuLanguage::ZhCn, RunKind::Other) => format!("{n}项未能完成"),
             (MenuLanguage::ZhHant, RunKind::Other) => format!("{n}項未能完成"),
             (MenuLanguage::En, RunKind::Upgrade) => format!("{n} couldn't be updated"),
-            (MenuLanguage::En, RunKind::Uninstall) => format!("{n} couldn't be uninstalled"),
+            (MenuLanguage::En, RunKind::Uninstall | RunKind::ModelUninstall) => {
+                format!("{n} couldn't be uninstalled")
+            }
             (MenuLanguage::En, RunKind::Install) => format!("{n} couldn't be installed"),
             (MenuLanguage::En, RunKind::ModelDownload) => format!("{n} couldn't be downloaded"),
             (MenuLanguage::En, RunKind::Other) => format!("{n} couldn't be completed"),
@@ -727,6 +745,16 @@ mod tests {
                 "1 downloaded, 1 couldn't be downloaded, 1 needs attention",
             ),
             (
+                run(RunKind::ModelUninstall, 2, 0, 0),
+                "已卸载2个模型",
+                "Uninstalled 2 models",
+            ),
+            (
+                run(RunKind::ModelUninstall, 1, 1, 0),
+                "1个已卸载，1个未能卸载",
+                "1 uninstalled, 1 couldn't be uninstalled",
+            ),
+            (
                 run(RunKind::Other, 3, 0, 0),
                 "已完成3项操作",
                 "Completed 3 operations",
@@ -759,6 +787,7 @@ mod tests {
             (run(RunKind::Install, 2, 0, 0), "已安裝2個工具"),
             (run(RunKind::Install, 1, 1, 0), "1個已安裝，1個未能安裝"),
             (run(RunKind::ModelDownload, 1, 0, 0), "已下載1個模型"),
+            (run(RunKind::ModelUninstall, 1, 0, 0), "已解除安裝1個模型"),
             (
                 run(RunKind::ModelDownload, 1, 1, 0),
                 "1個已下載，1個未能下載",

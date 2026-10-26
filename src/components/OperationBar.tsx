@@ -229,9 +229,11 @@ export function OperationBar() {
     );
     // Every one of it an update: said as updates, 「已更新3个工具」; every
     // one an uninstall -- a batch from the Installed page -- as uninstalls,
-    // 「已卸载3个工具」.
+    // 「已卸载3个工具」, or of models, 「已卸载3个模型」, as the notification
+    // says them (`RunKind::ModelUninstall`).
     const updates = inRun.every((op) => op.kind === "Upgrade");
     const uninstalls = inRun.every((op) => op.kind === "Uninstall");
+    const models = inRun.every((op) => op.artifact_kind === "Model");
     let tone: OutcomeTone;
     let words: string;
     let logOf: OpSummary | undefined;
@@ -265,7 +267,7 @@ export function OperationBar() {
       words = updates
         ? t("operations.batch.allUpdated", { count: total })
         : uninstalls
-          ? t("batchUninstall.bar.allUninstalled", { count: total })
+          ? t(models ? "batchUninstall.bar.allUninstalledModels" : "batchUninstall.bar.allUninstalled", { count: total })
           : t("operations.batch.allSucceeded", { count: total });
     } else {
       tone = "cancelled";

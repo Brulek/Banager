@@ -24,8 +24,12 @@ use serde::Deserialize;
 pub enum RunKind {
     /// Every one an update: 「已更新3个工具」.
     Upgrade,
-    /// Every one an uninstall: 「已卸载2个工具」.
+    /// Every one an uninstall, and not every one of a model:
+    /// 「已卸载2个工具」.
     Uninstall,
+    /// Every one an uninstall of a model: 「已卸载2个模型」, as the
+    /// operation bar says it.
+    ModelUninstall,
     /// Every one an install, from Discover, and none of a model:
     /// 「已安装2个工具」.
     Install,
@@ -188,10 +192,17 @@ impl ReportedRuns {
                 *kind == OpKind::Install && (*artifact == ArtifactKind::Model) == model
             })
         };
+        let models = ended
+            .iter()
+            .all(|(_, _, artifact, _)| *artifact == ArtifactKind::Model);
         if ended.iter().all(|(_, kind, ..)| *kind == OpKind::Upgrade) {
             run.kind = RunKind::Upgrade;
         } else if ended.iter().all(|(_, kind, ..)| *kind == OpKind::Uninstall) {
-            run.kind = RunKind::Uninstall;
+            run.kind = if models {
+                RunKind::ModelUninstall
+            } else {
+                RunKind::Uninstall
+            };
         } else if installs_of(false) {
             run.kind = RunKind::Install;
         } else if installs_of(true) {
@@ -403,7 +414,7 @@ mod tests {
     }
 
     #[test]
-    fn test_a_run_of_model_installs_is_told_of_as_downloads_and_with_a_tool_as_other() {
+    fn test_a_run_of_model_installs_is_told_of_as_downloads_and_uninstalls_of_models_as_such() {
         let mut model = summary(1, OpKind::Install, Some(Outcome::Succeeded));
         model.artifact_kind = ArtifactKind::Model;
         let tool = summary(2, OpKind::Install, Some(Outcome::Succeeded));
@@ -415,6 +426,18 @@ mod tests {
         assert_eq!(
             reported.completed(2, &records(&[tool, model])),
             Some(run(2, RunKind::Other, 2, 0, 0))
+        );
+        // Uninstalls of models alone, and with a tool.
+        let mut gone = summary(1, OpKind::Uninstall, Some(Outcome::Succeeded));
+        gone.artifact_kind = ArtifactKind::Model;
+        let tool_gone = summary(2, OpKind::Uninstall, Some(Outcome::Succeeded));
+        assert_eq!(
+            reported.completed(1, &records(&[gone.clone()])),
+            Some(run(1, RunKind::ModelUninstall, 1, 0, 0))
+        );
+        assert_eq!(
+            reported.completed(2, &records(&[tool_gone, gone])),
+            Some(run(2, RunKind::Uninstall, 2, 0, 0))
         );
         // Evicted before its run is reported, it is told of as it ended.
         let mut known = Completions::default();
@@ -742,6 +765,7 @@ mod tests {
             (r#""Uninstall""#, RunKind::Uninstall),
             (r#""Install""#, RunKind::Install),
             (r#""ModelDownload""#, RunKind::ModelDownload),
+            (r#""ModelUninstall""#, RunKind::ModelUninstall),
             (r#""Other""#, RunKind::Other),
         ] {
             assert_eq!(serde_json::from_str::<RunKind>(wire).unwrap(), kind);

@@ -1299,6 +1299,8 @@
     "bar": {
       "allUninstalled_one": "Uninstalled {{count}} tool",
       "allUninstalled_other": "Uninstalled {{count}} tools",
+      "allUninstalledModels_one": "Uninstalled {{count}} model",
+      "allUninstalledModels_other": "Uninstalled {{count}} models",
       "notUninstalled_one": "{{count}} wasn't uninstalled",
       "notUninstalled_other": "{{count}} weren't uninstalled"
     },

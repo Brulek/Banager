@@ -1154,7 +1154,9 @@ same records the run is counted from
 what Banager keeps of an operation whose record it no longer holds keeps
 that cause too (`ops::Ended::NeedsPassword`). Uninstalls say
 "Uninstalled" and "couldn't be uninstalled" (「已卸载」, 「未能卸载」;
-「已解除安裝」, 「未能解除安裝」).
+「已解除安裝」, 「未能解除安裝」), and a run of uninstalls of models alone
+"Uninstalled N models" (「已卸载N个模型」; 「已解除安裝N個模型」), as the
+operation bar says it.
 It is handed to macOS the way the update notification is (`notify::post`):
 no command runs, nothing connects, and Banager writes no file for it. A
 click on it brings Banager to the front, and with the window closed or in
