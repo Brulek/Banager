@@ -168,7 +168,7 @@ export type ScenarioHistory = (typeof SCENARIO_HISTORIES)[number];
 export const SCENARIO_SETTINGS = ["saved", "unreadable"] as const;
 export type ScenarioSettings = (typeof SCENARIO_SETTINGS)[number];
 
-const PAGES: readonly Page[] = ["overview", "updates", "installed", "unknown", "settings"];
+const PAGES: readonly Page[] = ["overview", "updates", "installed", "discover", "unknown", "settings"];
 
 /** `?lang=`: the Settings language the preview starts with. */
 const LANGUAGES: Record<string, Language> = {
