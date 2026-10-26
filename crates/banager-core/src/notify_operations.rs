@@ -75,14 +75,17 @@ impl FinishedRun {
 
     /// This run and `later` told of in one notification: the newer of the
     /// two newest operations, each way they ended added up, and `Other`
-    /// unless both did the same.
+    /// unless both did the same -- or both uninstalled, models in one,
+    /// which is uninstalls, as one run of them is
+    /// ([`ReportedRuns::accepted`]; from the review of aa4f2457).
     pub fn and(&self, later: &FinishedRun) -> FinishedRun {
+        use RunKind::{ModelUninstall, Uninstall};
         FinishedRun {
             last_op: self.last_op.max(later.last_op),
-            kind: if self.kind == later.kind {
-                self.kind
-            } else {
-                RunKind::Other
+            kind: match (self.kind, later.kind) {
+                (same, again) if same == again => same,
+                (Uninstall | ModelUninstall, Uninstall | ModelUninstall) => Uninstall,
+                _ => RunKind::Other,
             },
             succeeded: self.succeeded.saturating_add(later.succeeded),
             failed: self.failed.saturating_add(later.failed),
@@ -399,6 +402,22 @@ mod tests {
             artifact_kind: ArtifactKind::Formula,
             ended,
         }
+    }
+
+    #[test]
+    fn test_runs_told_of_together_keep_what_they_did_where_both_did_it() {
+        let models = run(1, RunKind::ModelUninstall, 1, 0, 0);
+        let tools = run(2, RunKind::Uninstall, 2, 0, 0);
+        assert_eq!(models.and(&tools), run(2, RunKind::Uninstall, 3, 0, 0));
+        assert_eq!(tools.and(&models), run(2, RunKind::Uninstall, 3, 0, 0));
+        assert_eq!(
+            models.and(&models),
+            run(1, RunKind::ModelUninstall, 2, 0, 0)
+        );
+        let download = run(3, RunKind::ModelDownload, 1, 0, 0);
+        let install = run(4, RunKind::Install, 1, 0, 0);
+        assert_eq!(download.and(&install), run(4, RunKind::Other, 2, 0, 0));
+        assert_eq!(models.and(&download), run(3, RunKind::Other, 2, 0, 0));
     }
 
     #[test]
