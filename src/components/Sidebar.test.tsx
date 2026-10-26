@@ -199,14 +199,16 @@ describe("Sidebar", () => {
     expect(otherButton).not.toHaveAttribute("aria-current");
     expect(settingsButton).not.toHaveAttribute("aria-current");
     // The Overview first, then the pages about the machine, Updates
-    // leading; Settings fourth, in the same list, with no line above it.
-    // Other Programs is no page of that list: it is under 「来源」.
+    // leading, Discover after them; Settings last, in the same list, with
+    // no line above it. Other Programs is no page of that list: it is
+    // under 「来源」.
     const lists = getAllByRole("list");
     expect(lists).toHaveLength(2);
     expect(within(lists[0]).getAllByRole("button").map((b) => b.querySelector(".truncate")?.textContent)).toEqual([
       "Overview",
       "Updates",
       "Installed",
+      "Discover",
       "Settings",
     ]);
     expect(settingsButton.closest("li")?.parentElement).toBe(lists[0]);
@@ -639,8 +641,8 @@ describe("Sidebar", () => {
           <Sidebar page="updates" onSelectPage={vi.fn()} />,
         );
         await listedSources(findByRole);
-        // Four pages, three sources and Other Programs.
-        expect(getAllByRole("button")).toHaveLength(8);
+        // Five pages, three sources and Other Programs.
+        expect(getAllByRole("button")).toHaveLength(9);
         expect(tabbable()).toEqual(["Updates"]);
         for (const row of getAllByRole("button")) {
           if (row.textContent?.startsWith("Updates")) continue;
@@ -908,7 +910,7 @@ describe("Sidebar", () => {
         expect(queryByRole("button", { name: "Other Programs" })).toBeNull();
         // The pages' rows alone, the Overview's the one Tab reaches.
         const rows = getAllByRole("button");
-        expect(rows.map((row) => row.textContent)).toEqual(["Overview", "Updates", "Installed", "Settings"]);
+        expect(rows.map((row) => row.textContent)).toEqual(["Overview", "Updates", "Installed", "Discover", "Settings"]);
         expect(rows.filter((row) => row.tabIndex === 0).map((row) => row.textContent)).toEqual(["Overview"]);
       });
 
@@ -986,6 +988,7 @@ describe("Sidebar", () => {
           "概览",
           "更新",
           "已安装",
+          "发现",
           "设置",
         ]);
         expect(getByRole("button", { name: "其他程序" })).not.toHaveAttribute("aria-describedby");

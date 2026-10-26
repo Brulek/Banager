@@ -1398,3 +1398,27 @@ export type FollowUpWarning = Extract<
   LogNote,
   { OldVersionsNotCleanedUp: unknown } | { NoLongerLinked: unknown } | { ServiceMayNeedRestart: unknown }
 >;
+
+/**
+ * The Discover page's catalog (phase 5 step A). Mirrors `catalog.rs` in
+ * crates/banager-core/src: where an entry is grouped, what installs it --
+ * Homebrew itself, which Banager does not install, or a Homebrew formula
+ * or cask by name, never a command -- and its state on this Mac, from the
+ * snapshot (`get_catalog`).
+ */
+export type CatalogCategory = "Basics" | "AiAssistants" | "LocalModels" | "CommonTools";
+export type CatalogInstall = "HomebrewItself" | { Homebrew: { kind: "Formula" | "Cask"; name: string } };
+export type CatalogState =
+  | "Installed"
+  | "NotInstalled"
+  | "NeedsHomebrew"
+  | { NeedsMacOS: { major: number } }
+  | "HomebrewUnsupported";
+export interface CatalogEntry {
+  /** What the window keys the entry's words by (`discover.items.<id>`). */
+  id: string;
+  category: CatalogCategory;
+  install: CatalogInstall;
+  state: CatalogState;
+}
+

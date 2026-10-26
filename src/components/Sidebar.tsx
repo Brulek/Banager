@@ -8,7 +8,7 @@ import { useInventoryPreview } from "../lib/inventoryPreview";
 import { installedCountByInstance, instanceLabels, instanceNames, sourceWarningOf } from "../lib/sources";
 import { useUpdateCount } from "./UpdateProgress";
 import { SourceAvatar } from "./SourceAvatar";
-import { InstalledIcon, OverviewIcon, SettingsIcon, TerminalIcon, UpdatesIcon, WarningFilledIcon } from "./icons";
+import { DiscoverIcon, InstalledIcon, OverviewIcon, SettingsIcon, TerminalIcon, UpdatesIcon, WarningFilledIcon } from "./icons";
 
 interface SidebarProps {
   page: Page;
@@ -33,6 +33,7 @@ export const PAGE_LABEL_KEYS: Record<Page, string> = {
   overview: "nav.overview",
   updates: "nav.updates",
   installed: "nav.installed",
+  discover: "nav.discover",
   unknown: "nav.unknown",
   settings: "nav.settings",
 };
@@ -44,18 +45,20 @@ const PAGE_ICONS: Record<ListedPage, ComponentType<{ size?: number; className?: 
   overview: OverviewIcon,
   updates: UpdatesIcon,
   installed: InstalledIcon,
+  discover: DiscoverIcon,
   settings: SettingsIcon,
 };
 
 /**
- * The entries, in order: the Overview, the pages about the Mac, and
- * Settings fourth, in the same group (spec §3.1) -- until it has a window
+ * The entries, in order: the Overview, the pages about the Mac, Discover
+ * after them (spec §7: what this Mac could have, after what it has), and
+ * Settings last, in the same group (spec §3.1) -- until it has a window
  * of its own, opened with ⌘, as a Mac app's settings are. Not Other
  * Programs: what no source installed is the last row under 「来源」,
  * after every source (`OtherProgramsMark`'s row), as CleanMyMac lists the
  * apps it cannot place last, as "Other", under where the rest came from.
  */
-const PAGES: ListedPage[] = ["overview", "updates", "installed", "settings"];
+const PAGES: ListedPage[] = ["overview", "updates", "installed", "discover", "settings"];
 
 /**
  * What an entry's count means, as a screen reader says it after the

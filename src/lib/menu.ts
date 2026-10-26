@@ -62,6 +62,7 @@ export function useMenuCommands(): void {
       updates: () => openPage("updates"),
       installed: () => openPage("installed"),
       unknown: () => openPage("unknown"),
+      discover: () => openPage("discover"),
       checkAgain,
       search: searchInstalled,
       welcome: openWelcomeSheet,

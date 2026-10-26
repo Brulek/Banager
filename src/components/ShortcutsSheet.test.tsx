@@ -46,6 +46,7 @@ describe("ShortcutsSheet", () => {
         "Go to Updates | ⌘2",
         "Go to Installed | ⌘3",
         "Go to Other Programs | ⌘4",
+        "Go to Discover | ⌘5",
         "Check installed tools and updates again | ⌘R",
         "Search Installed | ⌘F",
         "Close the window; operations keep running, and clicking the Dock icon brings it back | ⌘W",
@@ -120,7 +121,8 @@ describe("ShortcutsSheet", () => {
       ]);
       const shown = rows(dialog);
       expect(shown[0][0]).toBe("打开设置 | ⌘,");
-      expect(shown[0][8]).toBe("退出；有操作没有完成时会先询问 | ⌘Q");
+      expect(shown[0][5]).toBe("前往“发现” | ⌘5");
+      expect(shown[0][9]).toBe("退出；有操作没有完成时会先询问 | ⌘Q");
       expect(shown[1][3]).toBe("勾选或取消勾选这一行；在“已安装”中，没有复选框的行会显示或隐藏详细信息 | 空格键");
       expect(shown[2]).toEqual([
         "按下有焦点的按钮；卸载前的确认打开时，焦点在“取消”上 | ↩",

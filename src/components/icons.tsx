@@ -67,6 +67,19 @@ export function InstalledIcon(props: IconProps) {
   );
 }
 
+/**
+ * Discover: a compass, its needle pointing up and to the right -- SF
+ * Symbols' safari, drawn to the same proportions.
+ */
+export function DiscoverIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M15.5 8.5L13.5 13.5L8.5 15.5L10.5 10.5Z" />
+    </Icon>
+  );
+}
+
 /** A command-line program: a prompt and its cursor. */
 export function TerminalIcon(props: IconProps) {
   return (

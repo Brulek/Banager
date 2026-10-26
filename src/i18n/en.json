@@ -26,6 +26,7 @@
     "overview": "Overview",
     "updates": "Updates",
     "installed": "Installed",
+    "discover": "Discover",
     "unknown": "Other Programs",
     "settings": "Settings",
     "count": {
@@ -1584,6 +1585,7 @@
       "updates": "Go to Updates",
       "installed": "Go to Installed",
       "unknown": "Go to Other Programs",
+      "discover": "Go to Discover",
       "checkAgain": "Check installed tools and updates again",
       "search": "Search Installed",
       "closeWindow": "Close the window; operations keep running, and clicking the Dock icon brings it back",
@@ -1604,6 +1606,7 @@
       "updates": "Command-2",
       "installed": "Command-3",
       "unknown": "Command-4",
+      "discover": "Command-5",
       "checkAgain": "Command-R",
       "search": "Command-F",
       "closeWindow": "Command-W",
@@ -1927,5 +1930,64 @@
   },
   "a11y": {
     "updateList": "Tools to update"
+  },
+  "discover": {
+    "intro": "Tools to start with, and which of them this Mac already has.",
+    "footnote": "This page lists these tools; installing them from here isn't available yet.",
+    "categories": {
+      "basics": "Basics",
+      "aiAssistants": "AI Assistants",
+      "localModels": "Local Models",
+      "commonTools": "Common Tools"
+    },
+    "state": {
+      "installed": "Installed",
+      "notInstalled": "Not installed",
+      "needsHomebrew": "Needs Homebrew",
+      "needsMacOS": "Needs macOS {{major}}",
+      "homebrewUnsupported": "Not supported on this Mac"
+    },
+    "items": {
+      "homebrew": {
+        "name": "Homebrew",
+        "what": "The most widely used way to install command-line tools on a Mac",
+        "more": "Every other tool on this page is installed and updated with it. It's installed in Terminal and needs this Mac's login password."
+      },
+      "claude-code": {
+        "name": "Claude Code",
+        "what": "Anthropic's AI coding assistant for Terminal",
+        "more": "Writes and changes code when you say in plain words what you want. Once installed, type claude in a new Terminal window."
+      },
+      "codex": {
+        "name": "Codex",
+        "what": "OpenAI's AI coding assistant for Terminal",
+        "more": "Reads your project and writes or changes code as you ask. Once installed, type codex in a new Terminal window."
+      },
+      "gemini-cli": {
+        "name": "Gemini CLI",
+        "what": "Google's AI assistant for Terminal",
+        "more": "Answers questions and works on code in Terminal, and installs Node.js with it. Once installed, type gemini in a new Terminal window."
+      },
+      "ollama": {
+        "name": "Ollama",
+        "what": "Runs AI models on this Mac",
+        "more": "The models you download run without an internet connection, and they're listed and updated here. Once installed, open Ollama from Applications."
+      },
+      "node": {
+        "name": "Node.js",
+        "what": "Runs JavaScript programs, as many AI tools are",
+        "more": "Tools installed with npm need it, and npm comes with it. Once installed, type node or npm in a new Terminal window."
+      },
+      "uv": {
+        "name": "uv",
+        "what": "Installs and runs tools written in Python",
+        "more": "It keeps each Python tool in a place of its own so they don't clash, and they're listed and updated here. Once installed, type uv in a new Terminal window."
+      },
+      "ffmpeg": {
+        "name": "ffmpeg",
+        "what": "Converts and cuts audio and video",
+        "more": "Changes a video's format, takes its sound out or cuts a clip with one command. Once installed, type ffmpeg in a new Terminal window."
+      }
+    }
   }
 }

@@ -2,7 +2,7 @@ import { create } from "zustand";
 import type { InstalledShow, ToolShow } from "../lib/families";
 import type { ArtifactKey, LogNote, Stream } from "../lib/types";
 
-export type Page = "overview" | "updates" | "installed" | "unknown" | "settings";
+export type Page = "overview" | "updates" | "installed" | "discover" | "unknown" | "settings";
 
 /**
  * How the Installed page orders its list: by the tools' names, by source

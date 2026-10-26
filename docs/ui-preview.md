@@ -176,6 +176,13 @@ Paths are under a generic home folder, `/Users/you`.
   because they are in protected places; with Show technical details on,
   its ⓘ names them.
 
+- **Discover**: the catalog's eight entries, worked out from the pretend
+  Mac by the rules of `catalog.rs`, copied in `src/dev/mockCatalog.ts`
+  (Apple silicon, macOS 15): Homebrew, Claude Code, Codex, Gemini CLI,
+  Ollama, Node.js, uv and ffmpeg are all "Installed" in `full`; on
+  `empty` every one but Homebrew "Needs Homebrew". A test holds the copy
+  to catalog.rs's ids and names.
+
 ## What it does
 
 - A refresh takes about a second; the first one runs at startup, as in the

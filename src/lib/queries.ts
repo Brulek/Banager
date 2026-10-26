@@ -20,6 +20,7 @@ import {
   revealInFinder,
   artifactIcon,
   getSizes,
+  getCatalog,
   type BatchSubmission,
 } from "./api";
 import { checkEvery } from "./checkFrequency";
@@ -29,6 +30,7 @@ import { queryKeys } from "./queryKeys";
 import { isAvailable } from "./sources";
 import type {
   ArtifactKey,
+  CatalogEntry,
   IssuedPlan,
   OpRequest,
   OpSummary,
@@ -73,6 +75,21 @@ export function useSizes(): UseQueryResult<Sizes> {
   return useQuery({
     queryKey: queryKeys.sizes,
     queryFn: async () => (await getSizes()) ?? NO_SIZES,
+  });
+}
+
+/**
+ * The Discover page's catalog with each entry's state (`getCatalog`),
+ * asked for again as each snapshot comes, since the states are the
+ * snapshot's: what it lists, which Homebrew can install.
+ */
+export function useCatalog(): UseQueryResult<CatalogEntry[]> {
+  const { data: snapshot } = useSnapshot();
+  return useQuery({
+    queryKey: ["catalog", snapshot?.generation ?? 0, snapshot?.round ?? 0] as const,
+    queryFn: async () => (await getCatalog()) ?? [],
+    placeholderData: (previous) => previous,
+    staleTime: Infinity,
   });
 }
 

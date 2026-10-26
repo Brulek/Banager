@@ -926,6 +926,20 @@ pub async fn get_system_facts(
     Ok(get_system_facts_impl(&state))
 }
 
+/// The Discover page's catalog, each entry with its state on this Mac
+/// (`catalog::entries`), from the snapshot as it is now and two values the
+/// kernel keeps (`catalog::Host::of_this_mac`). Runs nothing, opens no
+/// file and connects nowhere; installs nothing (phase 5 step A).
+#[tauri::command]
+pub async fn get_catalog(
+    state: State<'_, AppState>,
+) -> Result<Vec<banager_core::catalog::CatalogEntry>, String> {
+    Ok(banager_core::catalog::entries(
+        &state.session.snapshot(),
+        &banager_core::catalog::Host::of_this_mac(),
+    ))
+}
+
 /// The icon Finder shows for the app a Homebrew cask installed, for that
 /// cask's row: a `data:image/png;base64,...` URL, or `None` for any other
 /// row and whenever there is no icon to show (`Session::artifact_icon`).

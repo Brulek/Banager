@@ -24,6 +24,7 @@
     "overview": "概览",
     "updates": "更新",
     "installed": "已安装",
+    "discover": "发现",
     "unknown": "其他程序",
     "settings": "设置",
     "count": {
@@ -1458,6 +1459,7 @@
       "updates": "前往“更新”",
       "installed": "前往“已安装”",
       "unknown": "前往“其他程序”",
+      "discover": "前往“发现”",
       "checkAgain": "重新检查已安装的工具和更新",
       "search": "在“已安装”中搜索",
       "closeWindow": "关闭窗口；进行中的操作会继续，点按程序坞中的图标可以再次打开",
@@ -1478,6 +1480,7 @@
       "updates": "Command-2",
       "installed": "Command-3",
       "unknown": "Command-4",
+      "discover": "Command-5",
       "checkAgain": "Command-R",
       "search": "Command-F",
       "closeWindow": "Command-W",
@@ -1783,5 +1786,64 @@
   },
   "a11y": {
     "updateList": "要更新的工具"
+  },
+  "discover": {
+    "intro": "可以从这些工具开始，也能看到这台Mac已经有了哪些。",
+    "footnote": "这里暂时只列出这些工具，还不能直接安装。",
+    "categories": {
+      "basics": "基础",
+      "aiAssistants": "AI助手",
+      "localModels": "本地模型",
+      "commonTools": "常用工具"
+    },
+    "state": {
+      "installed": "已安装",
+      "notInstalled": "未安装",
+      "needsHomebrew": "需先装Homebrew",
+      "needsMacOS": "需要macOS {{major}}",
+      "homebrewUnsupported": "不支持这台Mac"
+    },
+    "items": {
+      "homebrew": {
+        "name": "Homebrew",
+        "what": "Mac上最常用的命令行软件安装工具",
+        "more": "这页的其他工具都靠它安装和更新。要在“终端”里安装，需要这台Mac的登录密码。"
+      },
+      "claude-code": {
+        "name": "Claude Code",
+        "what": "Anthropic出品、在终端里用的AI编程助手",
+        "more": "用日常语言说要做什么，它就能写代码、改代码。装好后，在新的终端窗口里输入claude。"
+      },
+      "codex": {
+        "name": "Codex",
+        "what": "OpenAI出品、在终端里用的AI编程助手",
+        "more": "它会读你的项目，按你的要求写代码、改代码。装好后，在新的终端窗口里输入codex。"
+      },
+      "gemini-cli": {
+        "name": "Gemini CLI",
+        "what": "Google出品、在终端里用的AI助手",
+        "more": "在终端里回答问题、处理代码，安装时会一起装上Node.js。装好后，在新的终端窗口里输入gemini。"
+      },
+      "ollama": {
+        "name": "Ollama",
+        "what": "在这台Mac上运行AI模型",
+        "more": "下载的模型不联网也能运行，也能在这里列出和更新。装好后，从“应用程序”里打开Ollama。"
+      },
+      "node": {
+        "name": "Node.js",
+        "what": "运行JavaScript程序，很多AI工具就是这类程序",
+        "more": "用npm安装的工具都需要它，npm也随它一起装上。装好后，在新的终端窗口里输入node或npm。"
+      },
+      "uv": {
+        "name": "uv",
+        "what": "安装和运行用Python写的工具",
+        "more": "它把每个Python工具装在各自的位置，互不干扰，也能在这里列出和更新。装好后，在新的终端窗口里输入uv。"
+      },
+      "ffmpeg": {
+        "name": "ffmpeg",
+        "what": "转换、剪切音频和视频",
+        "more": "输入一条命令就能转换视频格式、提取声音或截取片段。装好后，在新的终端窗口里输入ffmpeg。"
+      }
+    }
   }
 }

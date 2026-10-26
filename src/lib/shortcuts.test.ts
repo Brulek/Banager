@@ -46,9 +46,9 @@ describe("the shortcuts sheet's rows of the menu bar", () => {
   const ids = arms("id", /"([a-z-]+)"/);
   const accelerators = arms("shortcut", /Some\("([^"]+)"\)/);
 
-  it("read menu.rs: twelve items, seven with a shortcut", () => {
-    expect(ids.size).toBe(12);
-    expect(accelerators.size).toBe(7);
+  it("read menu.rs: thirteen items, eight with a shortcut", () => {
+    expect(ids.size).toBe(13);
+    expect(accelerators.size).toBe(8);
   });
 
   it("give each of Banager's items the keys menu.rs gives it", () => {
@@ -107,7 +107,7 @@ interface Pressed {
  */
 type KeyRowId = Exclude<
   ShortcutId,
-  "settings" | "overview" | "updates" | "installed" | "unknown" | "checkAgain" | "search" | "closeWindow" | "quit"
+  "settings" | "overview" | "updates" | "installed" | "unknown" | "discover" | "checkAgain" | "search" | "closeWindow" | "quit"
 >;
 const KEY_ROWS: Record<KeyRowId, { handlers: Handler[]; pressed: Pressed[] }> = {
   move: {

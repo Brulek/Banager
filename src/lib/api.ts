@@ -4,19 +4,20 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type {
   ArtifactKey,
+  CatalogEntry,
+  FinishedRun,
   HistoryView,
   IssuedPlan,
   OpRequest,
+  OpSummary,
   PlanId,
   Settings,
-  Snapshot,
   Sizes,
+  Snapshot,
   SystemFacts,
-  OpSummary,
   UiEvent,
   UnknownScan,
   UpdatePair,
-  FinishedRun,
 } from "./types";
 
 /**
@@ -221,6 +222,15 @@ export function getSystemFacts(): Promise<SystemFacts> {
 }
 
 /**
+ * The Discover page's catalog, each entry with its state on this Mac
+ * (`get_catalog` in src-tauri/src/ipc.rs): from the snapshot as it is now.
+ * Takes nothing; runs no command. `useCatalog` is the caller.
+ */
+export function getCatalog(): Promise<CatalogEntry[]> {
+  return call<CatalogEntry[]>("get_catalog");
+}
+
+/**
  * The finished updates and uninstalls Banager kept across launches
  * (`get_history` in src-tauri/src/history.rs): this launch's id, when the
  * Updates page's Clear was last pressed, and every record, newest first.
@@ -269,6 +279,7 @@ export const MENU_EVENTS = {
   updates: "menu://updates",
   installed: "menu://installed",
   unknown: "menu://unknown",
+  discover: "menu://discover",
   checkAgain: "menu://check-again",
   search: "menu://search",
   welcome: "menu://welcome",

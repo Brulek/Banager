@@ -56,6 +56,9 @@ mod atomic_file;
 /// and the record of who asked for each round. Pure: the shell runs the
 /// task and the round.
 pub mod auto_check;
+/// The Discover page's catalog: the tools Banager suggests, what installs
+/// each, and which state each is in on this Mac (phase 5 step A).
+pub mod catalog;
 /// Which copy of each command runs when the user types its name in
 /// Terminal, judged against `PATH` after each refresh's inventory --
 /// read-only, behind a budget, like `scan`.

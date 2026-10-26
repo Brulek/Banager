@@ -7,6 +7,7 @@
  * `vite --mode mock` puts that in a page. Deterministic apart from the
  * clock: timings are fixed, and nothing is random.
  */
+import { mockCatalog } from "./mockCatalog";
 import type {
   AlreadyUpdated,
   ArtifactKey,
@@ -73,6 +74,7 @@ export const MOCK_COMMANDS = [
   "artifact_icon",
   "get_sizes",
   "get_system_facts",
+  "get_catalog",
   "get_history",
   "clear_history",
   "set_menu_language",
@@ -1070,6 +1072,11 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       // `diagnostics::current`: the committed snapshot's sources, none
       // before the first refresh.
       return mockSystemFacts(committed?.instances ?? [], scenario.path, committed !== null);
+    },
+    async get_catalog() {
+      // `catalog::entries`, over the committed snapshot: an empty one before
+      // the first refresh, as Rust's.
+      return mockCatalog(committed?.instances ?? [], committed?.artifacts ?? []);
     },
     async get_history() {
       // `Session::history`: every record, the last kept first.

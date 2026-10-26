@@ -180,7 +180,7 @@ pub struct Snapshot {
 }
 
 impl Snapshot {
-    fn empty() -> Snapshot {
+    pub(crate) fn empty() -> Snapshot {
         Snapshot {
             generation: 0,
             round: 0,

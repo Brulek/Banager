@@ -5612,6 +5612,36 @@ doubt alone refuses nothing. A preview confirmed after a refresh listed such a
 source that the preview did not know as one is spent, as above; once a
 refresh reads its packages, its tools are looked at like any other's.
 
+## Discover: read-only, no command runs
+
+The Discover page (「发现」, Taiwan's 「探索」; phase 5 step A) lists the
+tools Banager suggests: Homebrew; Claude Code, Codex and Gemini CLI;
+Ollama; Node.js, uv and ffmpeg. The list is compiled into the app
+(`CATALOG` in `crates/banager-core/src/catalog.rs`): nothing is downloaded
+to show it, and it names no command -- what would install an entry is
+Homebrew itself, which Banager does not install, or a Homebrew formula or
+cask by name, as the source's own adapter would turn into a command.
+This step installs nothing: the page has no install button, and says so.
+
+Each entry's state comes from the snapshot the window already has, asked
+for with `get_catalog` (`src-tauri/src/ipc.rs`, `catalog::entries`):
+"Installed" when any way of having it the catalog knows of is listed --
+an AI tool by its family in `data/ai-tools.json` (Claude Code's npm
+package, its two casks and its own installer alike), Homebrew by any
+Homebrew source, Node.js by Homebrew's `node` or a versioned `node@N` or
+by any npm source, uv by the `uv` formula or a uv source, ffmpeg by its
+formula or a versioned one, Ollama by its family or an Ollama source;
+otherwise "Not installed" where a Homebrew that answered and can be
+written to is there, "Needs Homebrew" where none is, and for Ollama
+"Needs macOS 14" on an older macOS (its cask's `depends_on`). Homebrew
+itself, missing on a Mac that is not Apple silicon, is "Not supported on
+this Mac": its official installer no longer installs there. Two values
+the kernel keeps are read for this, with `sysctlbyname`:
+`kern.osproductversion` and `hw.optional.arm64`, which is 1 on Apple
+silicon under Rosetta too. Nothing else is read, nothing runs, nothing
+is written, and no connection is made for it. Until a check has
+finished, the page says nothing of any entry.
+
 ## Diagnostic info: read-only, no command runs
 
 Settings' Diagnostics group (「诊断」) has Copy Diagnostic Info (「拷贝诊断信息」); the Help menu's

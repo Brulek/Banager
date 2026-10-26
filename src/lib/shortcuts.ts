@@ -21,6 +21,7 @@ export type ShortcutId =
   | "updates"
   | "installed"
   | "unknown"
+  | "discover"
   | "checkAgain"
   | "search"
   | "closeWindow"
@@ -69,6 +70,7 @@ export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
       { id: "updates", keys: "⌘2", menu: "updates" },
       { id: "installed", keys: "⌘3", menu: "installed" },
       { id: "unknown", keys: "⌘4", menu: "unknown" },
+      { id: "discover", keys: "⌘5", menu: "discover" },
       { id: "checkAgain", keys: "⌘R", menu: "checkAgain" },
       { id: "search", keys: "⌘F", menu: "search" },
       { id: "closeWindow", keys: "⌘W", macItem: "CloseWindow" },

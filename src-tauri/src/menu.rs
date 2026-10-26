@@ -62,6 +62,10 @@ pub enum PageCommand {
     Updates,
     Installed,
     Unknown,
+    /// Discover (⌘5): the Discover page (phase 5 step A). After Other
+    /// Programs, so that the View menu lists ⌘1 to ⌘5 in order; the
+    /// sidebar lists it after Installed.
+    Discover,
     /// Check Again (⌘R): the refresh the page header's Check again runs,
     /// and nothing while one runs.
     CheckAgain,
@@ -98,12 +102,13 @@ pub enum PageCommand {
 impl PageCommand {
     /// In the menu bar's order: Settings… in the app's menu, then View's,
     /// then Help's.
-    pub const ALL: [PageCommand; 12] = [
+    pub const ALL: [PageCommand; 13] = [
         PageCommand::Settings,
         PageCommand::Overview,
         PageCommand::Updates,
         PageCommand::Installed,
         PageCommand::Unknown,
+        PageCommand::Discover,
         PageCommand::CheckAgain,
         PageCommand::Search,
         PageCommand::Welcome,
@@ -121,6 +126,7 @@ impl PageCommand {
             PageCommand::Updates => "updates",
             PageCommand::Installed => "installed",
             PageCommand::Unknown => "unknown",
+            PageCommand::Discover => "discover",
             PageCommand::CheckAgain => "check-again",
             PageCommand::Search => "search",
             PageCommand::Welcome => "welcome",
@@ -132,7 +138,7 @@ impl PageCommand {
     }
 
     /// The event the window hears; src/lib/api.ts's `MENU_EVENTS` spells
-    /// the same twelve.
+    /// the same thirteen.
     pub fn event(self) -> &'static str {
         match self {
             PageCommand::Settings => "menu://settings",
@@ -140,6 +146,7 @@ impl PageCommand {
             PageCommand::Updates => "menu://updates",
             PageCommand::Installed => "menu://installed",
             PageCommand::Unknown => "menu://unknown",
+            PageCommand::Discover => "menu://discover",
             PageCommand::CheckAgain => "menu://check-again",
             PageCommand::Search => "menu://search",
             PageCommand::Welcome => "menu://welcome",
@@ -150,7 +157,7 @@ impl PageCommand {
         }
     }
 
-    /// Its shortcut, as tauri writes one: ⌘, ⌘1 ⌘2 ⌘3 ⌘4 ⌘R ⌘F on a Mac;
+    /// Its shortcut, as tauri writes one: ⌘, ⌘1 ⌘2 ⌘3 ⌘4 ⌘5 ⌘R ⌘F on a Mac;
     /// none for Help's five.
     pub fn shortcut(self) -> Option<&'static str> {
         match self {
@@ -159,6 +166,7 @@ impl PageCommand {
             PageCommand::Updates => Some("CmdOrCtrl+2"),
             PageCommand::Installed => Some("CmdOrCtrl+3"),
             PageCommand::Unknown => Some("CmdOrCtrl+4"),
+            PageCommand::Discover => Some("CmdOrCtrl+5"),
             PageCommand::CheckAgain => Some("CmdOrCtrl+R"),
             PageCommand::Search => Some("CmdOrCtrl+F"),
             PageCommand::Welcome
@@ -258,6 +266,7 @@ struct Words {
     updates: &'static str,
     installed: &'static str,
     unknown: &'static str,
+    discover: &'static str,
     /// The page header's Check again, in its menu's title case.
     check_again: &'static str,
     search: &'static str,
@@ -307,6 +316,7 @@ const ENGLISH: Words = Words {
     updates: "Updates",
     installed: "Installed",
     unknown: "Other Programs",
+    discover: "Discover",
     check_again: "Check Again",
     search: "Search",
     window: "Window",
@@ -343,6 +353,7 @@ const SIMPLIFIED_CHINESE: Words = Words {
     updates: "更新",
     installed: "已安装",
     unknown: "其他程序",
+    discover: "发现",
     check_again: "重新检查",
     search: "搜索",
     window: "窗口",
@@ -380,6 +391,7 @@ const TRADITIONAL_CHINESE: Words = Words {
     updates: "更新",
     installed: "已安裝",
     unknown: "其他程式",
+    discover: "探索",
     check_again: "重新檢查",
     search: "搜尋",
     window: "視窗",
@@ -455,6 +467,7 @@ pub fn menu_bar(language: MenuLanguage, app_name: &str) -> Vec<TopMenu> {
                 page(PageCommand::Updates, words.updates),
                 page(PageCommand::Installed, words.installed),
                 page(PageCommand::Unknown, words.unknown),
+                page(PageCommand::Discover, words.discover),
                 Item::Separator,
                 page(PageCommand::CheckAgain, words.check_again),
                 page(PageCommand::Search, words.search),
@@ -751,6 +764,7 @@ mod tests {
                         "Updates",
                         "Installed",
                         "Other Programs",
+                        "Discover",
                         "—",
                         "Check Again",
                         "Search",
@@ -806,6 +820,7 @@ mod tests {
                         "更新",
                         "已安装",
                         "其他程序",
+                        "发现",
                         "—",
                         "重新检查",
                         "搜索"
@@ -1055,6 +1070,7 @@ mod tests {
                 ("updates", "menu://updates", Some("CmdOrCtrl+2")),
                 ("installed", "menu://installed", Some("CmdOrCtrl+3")),
                 ("unknown", "menu://unknown", Some("CmdOrCtrl+4")),
+                ("discover", "menu://discover", Some("CmdOrCtrl+5")),
                 ("check-again", "menu://check-again", Some("CmdOrCtrl+R")),
                 ("search", "menu://search", Some("CmdOrCtrl+F")),
                 ("welcome", "menu://welcome", None),
@@ -1084,6 +1100,7 @@ mod tests {
             Some(Code::Digit2),
             Some(Code::Digit3),
             Some(Code::Digit4),
+            Some(Code::Digit5),
             Some(Code::KeyR),
             Some(Code::KeyF),
             None,

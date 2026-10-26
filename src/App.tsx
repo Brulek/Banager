@@ -5,6 +5,7 @@ import { PAGE_LABEL_KEYS, Sidebar } from "./components/Sidebar";
 import { CheckAgain, PageHeader, type PageSubtitle } from "./components/PageHeader";
 import { ToolbarSlotProvider, useScrollEdge } from "./components/Toolbar";
 import { OverviewPage } from "./pages/OverviewPage";
+import { DiscoverPage } from "./pages/DiscoverPage";
 import { InstalledPage } from "./pages/InstalledPage";
 import { UpdatesPage, useUpdatesHeadline } from "./pages/UpdatesPage";
 import { ScanAgain, UnknownPage } from "./pages/UnknownPage";
@@ -51,6 +52,8 @@ function headerActions(page: Page): ReactNode {
     case "overview":
     case "updates":
     case "installed":
+    // What Discover says of each entry is the last check's.
+    case "discover":
       return <CheckAgain />;
     case "unknown":
       return <ScanAgain />;
@@ -122,6 +125,7 @@ function usePageSubtitle(page: Page): PageSubtitle | null {
   };
   switch (page) {
     case "overview":
+    case "discover":
     case "settings":
       return null;
     case "updates":
@@ -320,6 +324,11 @@ function App() {
                   the machine belongs on it. */}
               {page === "settings" ? (
                 <SettingsPage />
+              ) : page === "discover" ? (
+                // Not inside SnapshotStatus: Discover is for a Mac with
+                // nothing on it too, which SnapshotStatus would replace
+                // with "Banager found nothing it can manage".
+                <DiscoverPage />
               ) : page === "unknown" ? (
                 <UnknownPage />
               ) : page === "overview" ? (

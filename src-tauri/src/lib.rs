@@ -201,6 +201,7 @@ pub fn run() {
             ipc::artifact_icon,
             ipc::get_sizes,
             ipc::get_system_facts,
+            ipc::get_catalog,
             history::get_history,
             history::clear_history,
             menu::set_menu_language,
