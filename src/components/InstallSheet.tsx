@@ -173,7 +173,10 @@ export function InstallSheet({ entry, found = null, iconKey, description = null,
       {/* Who needs it and how it is used once installed: the alert's text.
           A search result: what it is, where anything says, and that it is
           none of the suggestions. */}
-      {found !== null ? (
+      {found !== null && found.catalog_id !== null && ITEM_KEYS[found.catalog_id] !== undefined ? (
+        // One of the suggestions, found by searching: its own words.
+        <SheetText id={textId}>{t(ITEM_KEYS[found.catalog_id].more)}</SheetText>
+      ) : found !== null ? (
         <SheetText id={textId}>
           {description === null
             ? t("discover.search.notSuggested")

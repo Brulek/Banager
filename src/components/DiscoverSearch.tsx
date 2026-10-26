@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { endedAfterCheck, installOperationFor, installProgressOf, isUnderway } from "../lib/catalog";
+import { endedAfterCheck, installOperationFor, installProgressOf, isUnderway, searchable } from "../lib/catalog";
 import { useOperations, usePendingOperations, useSearchHomebrew, useSettings, useSnapshot } from "../lib/queries";
 import { useSettled } from "../lib/settled";
 import { planErrorMessage } from "../lib/sources";
@@ -17,14 +17,6 @@ import { GROUP, GROUP_FOOTNOTE, GROUP_ROW_TWO_LINES, GROUP_TITLE, SMALL_WRAPPING
 
 /** How long the text has to stay the same before it is searched for, in ms: Homebrew takes a second or more a search. */
 export const SEARCH_AFTER_MS = 600;
-
-/**
- * Whether `query` is a text the search takes, as `brew::validate_search_query`
- * does: two characters or more, none of them `/`, not starting with `-`.
- */
-export function searchable(query: string): boolean {
-  return query.length >= 2 && !query.startsWith("-") && !query.includes("/");
-}
 
 /** Why a search listed nothing, in the page's words. */
 function searchError(t: (key: string, options?: Record<string, string | number>) => string, raw: string): string {
@@ -188,8 +180,16 @@ export function DiscoverResults({ query }: { query: string }) {
     );
   }
 
+  // What a screen reader hears as the results come: how many, none
+  // included. Always there, empty meanwhile: a status put in the page with
+  // its words may never be read.
+  const said =
+    asked === "" || search.isPending || search.isError ? "" : t("discover.search.count", { count: search.data.length });
   return (
     <>
+      <p role="status" className="sr-only">
+        {said}
+      </p>
       {body}
       <InstallSheet
         entry={null}

@@ -336,7 +336,12 @@ export function useSearchHomebrew(query: string): UseQueryResult<Found[]> {
   });
 }
 
-/** `usePlanInstall` for a search result, by its id (`planInstallFound`). */
+/**
+ * `usePlanInstall` for a search result, by its id (`planInstallFound`).
+ * Where the id is no longer good (`search_expired`: kept past ten minutes,
+ * or forgotten for newer ones), every search kept here is dropped, so the
+ * list on the page is searched again and its ids are new.
+ */
 export function usePlanInstallFound(): UseMutationResult<IssuedPlan, Error, string> {
   const queryClient = useQueryClient();
   return useMutation({
@@ -344,6 +349,11 @@ export function usePlanInstallFound(): UseMutationResult<IssuedPlan, Error, stri
       const issued = await planInstallFound(foundId);
       plansFor(queryClient).set(issued.id, issued);
       return issued;
+    },
+    onError: (error) => {
+      if (error.message.includes('"search_expired"')) {
+        void queryClient.invalidateQueries({ queryKey: ["searchHomebrew"] });
+      }
     },
   });
 }

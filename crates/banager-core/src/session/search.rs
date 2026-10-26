@@ -14,9 +14,9 @@ use std::time::{Duration, Instant};
 pub(crate) const FOUND_LIFETIME: Duration = Duration::from_secs(600);
 
 /// How many results are kept at most; past it, the oldest go first. A
-/// search gives at most `brew::SEARCH_HITS_MAX`, so this is several
-/// searches' worth.
-pub(crate) const FOUND_KEPT: usize = 400;
+/// search gives at most `brew::SEARCH_HITS_MAX`, so this is fifty
+/// searches' worth: more than ten minutes of typing.
+pub(crate) const FOUND_KEPT: usize = 2000;
 
 /// What installs a result, kept under its id.
 pub(crate) struct FoundEntry {

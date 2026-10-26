@@ -9,6 +9,7 @@
  */
 import { catalogIdInstalling, mockCatalog } from "./mockCatalog";
 import { mockSearch } from "./mockSearch";
+import { searchable } from "../lib/catalog";
 import type {
   AlreadyUpdated,
   ArtifactKey,
@@ -1133,9 +1134,7 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       // order -- the name itself, those it starts, the rest, then those
       // only a description matched.
       const query = String(args.query ?? "").trim();
-      if (query.length === 0 || query.length > 64 || query.startsWith("-") || query.includes("/")) {
-        throw refusal({ kind: "invalid_query" });
-      }
+      if (!searchable(query)) throw refusal({ kind: "invalid_query" });
       const brew = (committed?.instances ?? []).find(
         (i) => i.adapter_id === "brew" && i.status.unavailable === null && i.read_only_reason === null,
       );

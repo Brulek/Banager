@@ -1981,7 +1981,7 @@
       "placeholder": "Search Homebrew",
       "label": "Search Homebrew for a tool",
       "searching": "Searching Homebrew…",
-      "invalid": "Type at least two characters, without “/” or a leading “-”.",
+      "invalid": "Type a tool's name in English letters, at least two, without “/” or a leading “-”.",
       "needsHomebrew": "Install Homebrew first to search it.",
       "failed": "Couldn't search Homebrew: {{message}}",
       "failedPlain": "Couldn't search Homebrew.",
@@ -1991,7 +1991,9 @@
       "suggestedMark": "Suggested",
       "notSuggested": "It isn't one of the tools suggested here, so check that it's the one you want.",
       "expired": "This result is out of date. Search again.",
-      "footnote": "Only Homebrew's own tools and apps are listed, not ones other sources added to it."
+      "footnote": "Only Homebrew's own tools and apps are listed, not ones other sources added to it.",
+      "count_one": "{{count}} result",
+      "count_other": "{{count}} results"
     },
     "homebrew": {
       "title": "Install Homebrew",

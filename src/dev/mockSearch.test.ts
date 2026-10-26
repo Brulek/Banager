@@ -21,9 +21,10 @@ describe("the browser preview's search of Homebrew", () => {
       await refusal(backend.invoke("search_homebrew", { query: "jq" }), JSON.stringify({ kind: "catalog_state", state: "NeedsHomebrew" }));
       await settle(backend.invoke("refresh"));
       const found = await settle<Found[]>(backend.invoke("search_homebrew", { query: "jq" }));
-      expect(found.map((f) => f.name)).toEqual(["jq", "jq-lsp", "jquake", "gojq", "jaq"]);
+      // By name only: jaq, whose description has "JQ", is not listed.
+      expect(found.map((f) => f.name)).toEqual(["jq", "jq-lsp", "jquake", "gojq"]);
       expect(found.find((f) => f.name === "jquake")?.kind).toBe("Cask");
-      for (const query of ["--macports", "a/b", " "]) {
+      for (const query of ["--macports", "a/b", " ", "视频"]) {
         await refusal(backend.invoke("search_homebrew", { query }), JSON.stringify({ kind: "invalid_query" }));
       }
       const codex = await settle<Found[]>(backend.invoke("search_homebrew", { query: "codex" }));

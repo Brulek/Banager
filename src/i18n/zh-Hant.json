@@ -1837,7 +1837,7 @@
       "placeholder": "搜尋Homebrew",
       "label": "在Homebrew裡搜尋工具",
       "searching": "正在搜尋Homebrew…",
-      "invalid": "請輸入至少兩個字元，不要包含「/」，也不要以「-」開頭。",
+      "invalid": "請輸入工具的英文名稱，至少兩個字母，不要包含「/」，也不要以「-」開頭。",
       "needsHomebrew": "先安裝好Homebrew才能搜尋。",
       "failed": "無法搜尋Homebrew：{{message}}",
       "failedPlain": "無法搜尋Homebrew。",
@@ -1847,7 +1847,8 @@
       "suggestedMark": "精選",
       "notSuggested": "它不在這裡的精選裡，請確認這就是你要的那個。",
       "expired": "這個搜尋結果已過期，請重新搜尋。",
-      "footnote": "這裡只列出Homebrew自己的工具和App，不包括其他來源加入給它的。"
+      "footnote": "這裡只列出Homebrew自己的工具和App，不包括其他來源加入給它的。",
+      "count_other": "{{count}}個結果"
     },
     "homebrew": {
       "title": "安裝Homebrew",

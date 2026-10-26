@@ -74,6 +74,10 @@ export function DiscoverPage() {
   const searching = query.trim().length > 0;
   const checked = snapshot?.refreshed_at != null;
   const brew = snapshot?.instances.find((instance) => instance.adapter_id === "brew");
+  const brewCanInstall = snapshot?.instances.some(
+    (instance) =>
+      instance.adapter_id === "brew" && instance.status.unavailable === null && instance.read_only_reason === null,
+  );
   // No Homebrew: it comes first, and the page says so.
   const homebrewFirst = checked && catalog?.find((entry) => entry.id === "homebrew")?.state === "NotInstalled";
   const sourceLabel = t("adapters.brew");
@@ -176,8 +180,9 @@ export function DiscoverPage() {
   return (
     <div className={FORM_COLUMN}>
       <p className="px-2.5 text-muted">{t(homebrewFirst ? "discover.introNoHomebrew" : "discover.intro")}</p>
-      {/* Searching takes a Homebrew to search with. */}
-      {checked && brew !== undefined ? <DiscoverSearchField query={query} onChange={setQuery} /> : null}
+      {/* Searching takes a Homebrew to search with, and to install into:
+          one that answered and can be written to. */}
+      {checked && brewCanInstall ? <DiscoverSearchField query={query} onChange={setQuery} /> : null}
       {searching ? <DiscoverResults query={query} /> : null}
       {searching ? null : CATEGORIES.map(([category, titleKey]) => {
         const entries = (catalog ?? []).filter((entry) => entry.category === category);

@@ -4,7 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { command } from "../test/command";
 import { DiscoverPage } from "../pages/DiscoverPage";
-import { searchable } from "./DiscoverSearch";
+import { searchable } from "../lib/catalog";
 import i18n from "../i18n";
 import { NO_FACTS, type CatalogEntry, type Found, type IssuedPlan, type ManagerInstance, type Snapshot } from "../lib/types";
 
@@ -123,9 +123,23 @@ describe("Discover's search of Homebrew", () => {
   it("takes the texts brew search may be given, as Rust does", () => {
     expect(searchable("jq")).toBe(true);
     expect(searchable("video editor")).toBe(true);
+    expect(searchable("node@22")).toBe(true);
+    expect(searchable("视频 ffmpeg")).toBe(true);
     expect(searchable("j")).toBe(false);
+    expect(searchable("视频")).toBe(false);
+    expect(searchable("视a")).toBe(false);
     expect(searchable("--macports")).toBe(false);
     expect(searchable("user/tap/jq")).toBe(false);
+  });
+
+  it("says a suggestion found by searching in its own words", async () => {
+    renderWithProviders(<DiscoverPage />);
+    await typeSearch("claude");
+    await waitFor(() => expect(results_()).toHaveLength(3), { timeout: 3000 });
+    fireEvent.click(screen.getByRole("button", { name: "Install claude-code" }));
+    const sheet = await screen.findByRole("alertdialog", { name: "Install “claude-code”?" });
+    expect(sheet).toHaveTextContent("Once installed, type claude in a new Terminal window.");
+    expect(sheet).not.toHaveTextContent("isn't one of the tools suggested here");
   });
 
   it("lists what Homebrew has in the list's place, marked suggested or not, and installs a result by its id", async () => {
@@ -141,6 +155,8 @@ describe("Discover's search of Homebrew", () => {
       ["claude-code", "Suggested", "Install"],
     ]);
     expect(document.querySelector('[data-found="jq-lsp"]')).toHaveTextContent("Jq language server");
+    // Said to a screen reader as they come.
+    expect(screen.getByRole("status")).toHaveTextContent("3 results");
 
     fireEvent.click(screen.getByRole("button", { name: "Install jq-lsp" }));
     const sheet = await screen.findByRole("alertdialog", { name: "Install “jq-lsp”?" });
@@ -165,8 +181,13 @@ describe("Discover's search of Homebrew", () => {
     renderWithProviders(<DiscoverPage />);
     await typeSearch("zzzz");
     expect(await screen.findByText("Homebrew has nothing matching “zzzz”.", {}, { timeout: 3000 })).toBeInTheDocument();
+    const refused = "Type a tool's name in English letters, at least two, without “/” or a leading “-”.";
     await typeSearch("--macports");
-    expect(await screen.findByText("Type at least two characters, without “/” or a leading “-”.")).toBeInTheDocument();
+    expect(await screen.findByText(refused)).toBeInTheDocument();
+    // Homebrew matches names by letters and digits only: a text with none
+    // would match every package.
+    await typeSearch("视频");
+    expect(await screen.findByText(refused)).toBeInTheDocument();
     await new Promise((resolve) => setTimeout(resolve, 800));
     expect(calls("search_homebrew").map(([, args]) => args)).toEqual([{ query: "zzzz" }]);
   });
@@ -180,14 +201,17 @@ describe("Discover's search of Homebrew", () => {
     expect(await screen.findByRole("alert", {}, { timeout: 3000 })).toHaveTextContent("Install Homebrew first to search it.");
   });
 
-  it("has no search field before a check, nor without a Homebrew", async () => {
-    mockInvoke.mockImplementation(async (cmd: string) => {
-      if (cmd === "get_snapshot") return { ...snapshot, instances: [] };
-      if (cmd === "get_catalog") return catalog;
-      return null;
-    });
-    renderWithProviders(<DiscoverPage />);
-    await screen.findByText("Tools to start with, and which of them this Mac already has.");
-    expect(screen.queryByRole("searchbox")).toBeNull();
+  it("has no search field before a check, nor without a Homebrew that can install", async () => {
+    for (const instances of [[], [{ ...brew, read_only_reason: "PrefixNotWritable" as const }]]) {
+      mockInvoke.mockImplementation(async (cmd: string) => {
+        if (cmd === "get_snapshot") return { ...snapshot, instances };
+        if (cmd === "get_catalog") return catalog;
+        return null;
+      });
+      const { unmount } = renderWithProviders(<DiscoverPage />);
+      await screen.findByText("Tools to start with, and which of them this Mac already has.");
+      expect(screen.queryByRole("searchbox")).toBeNull();
+      unmount();
+    }
   });
 });

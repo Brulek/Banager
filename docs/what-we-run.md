@@ -5713,20 +5713,24 @@ above):
     <brew> search --desc {query}
 
 each a list of names of one kind, so that no result's kind is guessed,
-and the last the descriptions of those and the packages only a
-description matched. The text is given to Homebrew as one argument, and
-refused first, before anything runs, where it starts with `-` (`brew
-search --macports` and its like open a web page), has a `/` in it (a
-regular expression, or a tap-qualified name, whose formula Homebrew would
-load), has a control character in it, or is longer than 64 characters
-(`brew::validate_search_query`). Homebrew reads its own copy of its
+and the last only for the descriptions of those: a package only a
+description matched is not listed, since `brew search --desc` prints a
+third-party tap's package under its short name where that name is unique
+among its lines, and installing that name would install another package.
+The text is given to Homebrew as one argument, and refused first, before
+anything runs, where it starts with `-` (`brew search --macports` and
+its like open a web page), has a `/` in it (a regular expression, or a
+tap-qualified name, whose formula Homebrew would load), has a control
+character in it, is longer than 64 characters, or has fewer than two of
+the characters Homebrew matches names by -- letters, digits, `@` and `+`;
+it drops every other one, so that a text such as `视频` would match every
+package (`brew::validate_search_query`). Homebrew reads its own copy of its
 catalogue for these, and downloads a new one from its API host where it
 has none or finds it too old, as any of its commands may. A name of
 another tap (`user/tap/name`) is left out, and so is any name
 `validate_package_name` refuses; at most 40 are listed, the one the text
-is first, then those it starts, then the rest, then those only a
-description matched. Each result is kept in the session under a random
-id for ten minutes, at most 400 of them, and the window gets the id, the
+is first, then those it starts, then the rest. Each result is kept in the session under a random
+id for ten minutes, at most 2,000 of them, and the window gets the id, the
 kind, the name, the description, whether that Homebrew lists it
 installed, and the catalog entry it is, if it is one. Install on a
 result asks for the plan with `plan_install_found`, naming the result's
@@ -5735,8 +5739,10 @@ Homebrew gave, into the Homebrew it was found in, planned as every
 operation is -- the same `<brew> install --formula` or `--cask` as above.
 An id no search gave, or one older than ten minutes, is refused, and so
 is a result the snapshot since lists installed, before any source is
-asked. The sheet says the result is not one of the suggestions where it
-is none.
+asked; where the window's install is refused for an id no longer kept,
+it searches again, for ids that are. The sheet says a suggestion found
+by searching in the suggestion's own words, and of any other result that
+it is not one of the suggestions.
 
 ## Homebrew itself: installed in Terminal, by the person
 

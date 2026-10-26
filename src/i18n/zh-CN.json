@@ -1837,7 +1837,7 @@
       "placeholder": "搜索Homebrew",
       "label": "在Homebrew里搜索工具",
       "searching": "正在搜索Homebrew…",
-      "invalid": "请输入至少两个字符，不要包含“/”，也不要以“-”开头。",
+      "invalid": "请输入工具的英文名，至少两个字母，不要包含“/”，也不要以“-”开头。",
       "needsHomebrew": "先装好Homebrew才能搜索。",
       "failed": "无法搜索Homebrew：{{message}}",
       "failedPlain": "无法搜索Homebrew。",
@@ -1847,7 +1847,8 @@
       "suggestedMark": "精选",
       "notSuggested": "它不在这里的精选里，请确认这就是你要的那个。",
       "expired": "这个搜索结果已过期，请重新搜索。",
-      "footnote": "这里只列出Homebrew自己的工具和App，不包括其他来源添加给它的。"
+      "footnote": "这里只列出Homebrew自己的工具和App，不包括其他来源添加给它的。",
+      "count_other": "{{count}}个结果"
     },
     "homebrew": {
       "title": "安装Homebrew",

@@ -317,3 +317,18 @@ export function installProgressOf(op: OpSummary): InstallProgress {
 export function isUnderway(progress: InstallProgress): boolean {
   return progress.kind === "queued" || progress.kind === "running" || progress.kind === "cancelling";
 }
+
+/**
+ * Whether `query` is a text the search takes, as `brew::validate_search_query`
+ * does: two or more of the characters Homebrew matches names by (letters,
+ * digits, `@`, `+`: a text of none, `视频`, would match every package),
+ * none of them `/`, not starting with `-`.
+ */
+export function searchable(query: string): boolean {
+  return (
+    (query.match(/[A-Za-z0-9@+]/g) ?? []).length >= 2 &&
+    query.length <= 64 &&
+    !query.startsWith("-") &&
+    !query.includes("/")
+  );
+}

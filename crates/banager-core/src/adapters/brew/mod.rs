@@ -2626,20 +2626,23 @@ impl BrewAdapter {
         Ok(CheckOutcome { candidates, notes })
     }
 
-    /// Homebrew's own formulae and casks whose name, or whose description,
-    /// has `query` in it -- for the Discover page's search (phase 5 step E).
-    /// Three read-only commands: `brew search --formula {query}` and `brew
-    /// search --cask {query}`, each a list of names of one kind, so that no
-    /// result's kind is guessed; then `brew search --desc {query}`, whose
-    /// lines give the descriptions of those and add the packages only a
-    /// description matched. A name search that finds nothing exits 1,
+    /// Homebrew's own formulae and casks whose name has `query` in it --
+    /// for the Discover page's search (phase 5 step E). Three read-only
+    /// commands: `brew search --formula {query}` and `brew search --cask
+    /// {query}`, each a list of names of one kind, so that no result's kind
+    /// is guessed; then `brew search --desc {query}`, whose lines give the
+    /// descriptions of those. A name search that finds nothing exits 1,
     /// saying so on stderr, which is no failure. A tap-qualified name
     /// (`user/tap/name`) -- a third-party tap's -- is left out, as is any
-    /// name `validate_package_name` refuses. Names first: the one the text
-    /// is exactly, then those it starts, then the rest as Homebrew listed
-    /// them, then those only a description matched; at most
-    /// `SEARCH_HITS_MAX`. The text is checked first
-    /// (`validate_search_query`).
+    /// name `validate_package_name` refuses. A package only a description
+    /// matched is not listed: `brew search --desc` prints a tap's package
+    /// under its short name wherever that name is unique among its lines
+    /// (`Descriptions#print`), so a third-party `user/tap/claudebar`
+    /// reads as `claudebar` there, and installing that name would install
+    /// Homebrew's own `claudebar`, or the tap's where Homebrew has none. The
+    /// one the text is exactly first, then those it starts, then the rest
+    /// as Homebrew listed them; at most `SEARCH_HITS_MAX`. The text is
+    /// checked first (`validate_search_query`).
     pub async fn search(
         &self,
         inst: &ManagerInstance,
@@ -2684,14 +2687,13 @@ impl BrewAdapter {
                 stderr: desc_output.stderr,
             });
         }
-        let mut described = Vec::new();
+        // Descriptions for the names found, and nothing more.
         for hit in parse_search(&desc_output.stdout, &self.meta.id) {
-            match hits
+            if let Some(known) = hits
                 .iter_mut()
                 .find(|known| known.kind == hit.kind && known.name == hit.name)
             {
-                Some(known) => known.description = hit.description,
-                None => described.push(hit),
+                known.description = hit.description;
             }
         }
         let wanted = query.to_lowercase();
@@ -2707,7 +2709,6 @@ impl BrewAdapter {
         };
         // Stable: Homebrew's own order within each rank.
         hits.sort_by_key(rank);
-        hits.extend(described);
         hits.retain(|hit| !hit.name.contains('/') && validate_package_name(&hit.name).is_ok());
         let mut seen = HashSet::new();
         hits.retain(|hit| seen.insert((hit.kind, hit.name.clone())));
@@ -2722,14 +2723,22 @@ pub const SEARCH_HITS_MAX: usize = 40;
 /// The longest text a search looks for, in characters.
 pub const SEARCH_QUERY_MAX: usize = 64;
 
-/// Whether `query` is a text `brew search` may be given: not empty, at most
-/// `SEARCH_QUERY_MAX` characters, words with spaces between them allowed.
-/// Refused: one starting with `-`, which `brew search` would read as an
-/// option -- `--macports` and its like open a web page; one with a `/`,
-/// which it reads as a regular expression (`/text/`) or a tap-qualified
-/// name, whose formula it loads; and any control character.
+/// Whether `query` is a text `brew search` may be given: at most
+/// `SEARCH_QUERY_MAX` characters, words with spaces between them allowed,
+/// and two or more of the characters Homebrew matches names by --
+/// letters, digits, `@` and `+` (`Search.simplify_string`, which drops
+/// every other character, so that a text with none, `视频` say, matches
+/// every package there is). Refused: one starting with `-`, which `brew
+/// search` would read as an option -- `--macports` and its like open a
+/// web page; one with a `/`, which it reads as a regular expression
+/// (`/text/`) or a tap-qualified name, whose formula it loads; and any
+/// control character.
 pub fn validate_search_query(query: &str) -> Result<(), AdapterError> {
-    let refused = query.trim().is_empty()
+    let matched = query
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '@' || *c == '+')
+        .count();
+    let refused = matched < 2
         || query.chars().count() > SEARCH_QUERY_MAX
         || query.trim_start().starts_with('-')
         || query.contains('/')
@@ -5875,18 +5884,16 @@ mod tests {
             ]
         );
         assert!(listed.contains(&(ArtifactKind::Cask, "j")));
-        // A description for a name both searches found; one only a
-        // description matched, after every name.
+        // A description for a name both searches found; none listed that
+        // only a description matched (hq, "Jq, but for HTML"): `--desc`
+        // prints a third-party tap's package under its short name.
         let gojq = hits.iter().find(|h| h.name == "gojq").unwrap();
         assert_eq!(
             gojq.description.as_deref(),
             Some("Pure Go implementation of jq")
         );
-        let hq = hits
-            .iter()
-            .position(|h| h.name == "hq")
-            .expect("hq, by its description");
-        assert!(hits[..hq].iter().all(|h| h.name.contains('j')));
+        assert!(hits.iter().all(|h| h.name.contains('j')), "{listed:?}");
+        assert!(!hits.iter().any(|h| h.name == "hq"));
         assert_eq!(hits.iter().filter(|h| h.name == "jquake").count(), 1);
         assert_eq!(
             runner.calls(),
@@ -5960,6 +5967,11 @@ mod tests {
             "user/tap/jq",
             "jq\n--desc",
             &"j".repeat(SEARCH_QUERY_MAX + 1),
+            // Nothing Homebrew matches names by, or one such character:
+            // every package, or nearly, would match.
+            "视频",
+            "!!",
+            "视a",
         ] {
             assert!(
                 matches!(
@@ -5973,6 +5985,7 @@ mod tests {
         // Words with spaces between them are a text Homebrew takes whole.
         assert!(validate_search_query("video editor").is_ok());
         assert!(validate_search_query("node@22").is_ok());
+        assert!(validate_search_query("视频 ffmpeg").is_ok());
     }
 }
 

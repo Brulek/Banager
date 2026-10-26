@@ -1,9 +1,9 @@
 /**
  * The browser preview's Homebrew search (`search_homebrew` in
  * ./mockBackend.ts): a pretend Homebrew's names and descriptions, searched
- * as `BrewAdapter::search` searches the real one's -- names first (the
- * one the text is, those it starts, the rest), then those only a
- * description matched, at most `SEARCH_HITS_MAX`.
+ * as `BrewAdapter::search` searches the real one's -- by name only (the
+ * one the text is, those it starts, the rest), each with its description,
+ * at most `SEARCH_HITS_MAX`.
  */
 import type { Found } from "../lib/types";
 
@@ -44,8 +44,5 @@ export function mockSearch(query: string): Array<{ kind: Found["kind"]; name: st
   const named = MOCK_HOMEBREW.filter((p) => p.name.toLowerCase().includes(wanted)).sort(
     (a, b) => rank(a.name.toLowerCase()) - rank(b.name.toLowerCase()),
   );
-  const described = MOCK_HOMEBREW.filter(
-    (p) => !p.name.toLowerCase().includes(wanted) && p.description.toLowerCase().includes(wanted),
-  );
-  return [...named, ...described].slice(0, SEARCH_HITS_MAX);
+  return named.slice(0, SEARCH_HITS_MAX);
 }

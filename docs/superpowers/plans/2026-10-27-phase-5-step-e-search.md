@@ -23,16 +23,20 @@ way a catalog entry's does, by an id, never a package name.
 
 - The backlog's fix to `BrewAdapter::search` comes first: `brew search
   --formula`, `--cask` (each a list of one kind, no guessing which group
-  is which), and `--desc` for descriptions and description-only matches;
-  the name itself first; a search that finds nothing (exit 1, "No
+  is which), and `--desc` for the descriptions of those only -- a package
+  only a description matched is not listed, since `--desc` prints a
+  third-party tap's package under its short name (from the review of
+  95555b8d); the name itself first; a search that finds nothing (exit 1, "No
   formulae or casks found") is no failure. Recorded output of Homebrew
   7.0.10 in `adapters/fixtures/brew/7.0.10/`.
 - `validate_search_query`: spaces allowed (the old check refused them);
   refused before anything runs: a leading `-` (`brew search --macports`
   opens a web page), a `/` (a regex, or a tap-qualified name whose
-  formula Homebrew loads), control characters, over 64 characters.
+  formula Homebrew loads), control characters, over 64 characters, and
+  fewer than two letters, digits, `@` or `+` (Homebrew drops the rest, so
+  `视频` matched all 16,000 packages).
 - `Session::search_homebrew` keeps each result under a random id for ten
-  minutes (at most 400); `plan_found` plans an install of exactly that,
+  minutes (at most 2,000); `plan_found` plans an install of exactly that,
   through `issue_plan`. IPC: `search_homebrew`, `plan_install_found`.
 
 ## Decisions taken on the author's behalf (2026-10-27)
