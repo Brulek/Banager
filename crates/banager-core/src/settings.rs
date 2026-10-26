@@ -228,12 +228,12 @@ pub(crate) fn own_file(path: &Path) -> std::io::Result<Vec<u8>> {
 /// opens with a plain open -- waiting for ever on a named pipe, before any
 /// window is up -- and writes with `std::fs::write`, through a link onto
 /// whatever it leads to (R91-2; from the independent review of the
-/// branch). Anything else there, a pipe, a link, a folder, is moved aside
-/// beside it, never opened: to `<name>.not-a-file`, or where that is taken,
-/// `<name>.not-a-file-2` and on, never over one moved aside before (from the
-/// review of the fix batch); where that fails, a pipe or link is removed (a
-/// link's own file, never what it leads to). A plain file, or nothing, is
-/// left as it is.
+/// branch). Anything else there, a pipe, a link, a socket, a folder, is
+/// moved aside beside it, never opened: to `<name>.not-a-file`, or where
+/// that is taken, `<name>.not-a-file-2` and on, never over one moved aside
+/// before (from the review of the fix batch); where that fails, anything
+/// but a folder is removed (a link's own entry, never what it leads to). A
+/// plain file, or nothing, is left as it is.
 pub fn keep_plain_file(path: &Path) {
     let Ok(meta) = std::fs::symlink_metadata(path) else {
         return;

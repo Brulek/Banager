@@ -2115,7 +2115,8 @@ Homebrew requires that trust by default from 6.0.0 (its `env_config.rb`,
 `HOMEBREW_REQUIRE_TAP_TRUST`, `default: true`); from 5.1.15 it was an
 opt-in, and before 6.0.0 no untrusted cask fell back to its saved copy,
 so a Homebrew whose version reads older than 6.0.0 is taken to check every
-cask. One corner is not seen: Homebrew 6.0.0 and 6.0.1 ignored a trust
+cask it lists -- under 5.1.15's opt-in, an untrusted tap's cask is left out
+of Homebrew's list, and so of Banager's. One corner is not seen: Homebrew 6.0.0 and 6.0.1 ignored a trust
 list's entry for a cask of a tap with a custom remote (`trust.rb`, fixed
 in 6.0.2), and Banager, which cannot see a tap's remote, takes such an
 entry as trust. So every inventory reads Homebrew's settings -- the `brew.env`
@@ -5787,9 +5788,11 @@ Homebrew's name, where the name it printed first ranks it; a formula
 that answer does not give as Homebrew's own is left out. Where it fails
 for the whole list -- one formula of them installed from a third-party
 tap Homebrew does not trust stops `brew info` with an error -- the list is
-asked again in halves, and so on, at most twelve asks in all, so that only
-the names Homebrew cannot answer for are left out; where no ask is
-answered, the search fails.
+asked again in halves, and so on, halves of one size before any smaller,
+at most sixteen asks in all -- enough to find one such name among forty;
+with two or more, some names Homebrew could answer for may be left out
+unasked -- so that only the names Homebrew cannot answer for are left
+out; where no ask is answered, the search fails.
 The text is given to Homebrew as one argument, and refused first, before
 anything runs, where it starts with `-` (`brew search --macports` and
 its like open a web page), has a `/` in it (a regular expression, or a
@@ -6339,10 +6342,11 @@ not read (`protected::look`; How Banager runs anything, above):
   The plugin opens it with a plain open, so first Banager looks at what is
   there without opening it (`window::keep_state_file_plain`, registered
   just before the plugin; `settings::keep_plain_file`): anything but a
-  plain file -- a named pipe, a link, a folder -- is moved aside to
-  `.window-state.json.not-a-file` (or `.not-a-file-2` and on, never over
+  plain file -- a named pipe, a link, a socket, a folder -- is moved aside
+  to `.window-state.json.not-a-file` (or `.not-a-file-2` and on, never over
   one moved aside before), and a launch never waits on a pipe there
-  (R91-2).
+  (R91-2). Where it cannot be moved, anything but a folder is removed: a
+  link's own entry, never what it leads to.
   Its size and place are AppKit's, in Banager's defaults (`NSWindow Frame
   main`, `window::keep_frame`; "Files Banager writes", below).
 

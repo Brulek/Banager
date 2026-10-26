@@ -19,9 +19,11 @@ pub(crate) const FOUND_LIFETIME: Duration = Duration::from_secs(600);
 /// searches' worth: more than ten minutes of typing.
 pub(crate) const FOUND_KEPT: usize = 2000;
 
-/// How many searches run at once; the others wait their turn. Each runs up
-/// to four `brew` processes (`BrewAdapter::search`), and the window can ask
-/// for as many as it likes (from the independent review of the branch).
+/// How many searches run at once; the others wait their turn. Each runs
+/// three `brew search` commands and up to `CANONICAL_ASKS_MAX` `brew info`
+/// asks, one after another (`BrewAdapter::search`), and the window can ask
+/// for as many searches as it likes (from the independent review of the
+/// branch).
 pub(crate) const SEARCHES_AT_ONCE: usize = 2;
 
 /// What installs a result, kept under its id.

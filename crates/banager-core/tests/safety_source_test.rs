@@ -489,8 +489,8 @@ fn test_nothing_writes_a_file_but_banagers_own_two_and_the_move_to_the_trash() {
     let allowed: [(&str, &[&str]); 4] = [
         // Only settings and history may call the shared atomic writer. And
         // the window-state plugin's file kept a plain one: anything else
-        // there moved aside, or, a pipe or link that cannot be, its own
-        // entry removed (`keep_plain_file`; R91-2).
+        // there moved aside, or, anything but a folder that cannot be, its
+        // own entry removed (`keep_plain_file`; R91-2).
         (
             "crates/banager-core/src/settings.rs:",
             &[
@@ -698,7 +698,7 @@ const PATH_LOOKUPS_ALLOWED: [(&str, &str, &str); 22] = [
     (
         "crates/banager-core/src/settings.rs:",
         "std::fs::symlink_metadata(&candidate)",
-        "the name beside `.window-state.json` a pipe or link is moved aside to, looked at so as never to move one over another (`settings::keep_plain_file`)",
+        "the name beside `.window-state.json` anything but a plain file is moved aside to, looked at so as never to move one over another (`settings::keep_plain_file`)",
     ),
     (
         "crates/banager-core/src/settings.rs:",

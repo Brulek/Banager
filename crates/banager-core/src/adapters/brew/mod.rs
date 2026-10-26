@@ -2657,8 +2657,9 @@ impl BrewAdapter {
     /// own (`gpg`, `npm`, `python3`), which no list, install or check knows
     /// them by: so the formulae found are named as Homebrew
     /// names them, with one more read-only command over at most
-    /// `SEARCH_HITS_MAX` of them, `brew info --json=v2 --formula {names}`
-    /// (`canonical_formulae`) -- `gpg` is `gnupg`, listed once, where its
+    /// `SEARCH_HITS_MAX` of them, `brew info --json=v2 --formula {names}`,
+    /// asked again in halves where it fails (`canonical_formulae`) -- `gpg`
+    /// is `gnupg`, listed once, where its
     /// own name or an alias first ranks it (from the independent review of
     /// the branch). A name that answer does not give as Homebrew's own is
     /// left out.
@@ -2775,10 +2776,11 @@ impl BrewAdapter {
     /// third-party tap Homebrew does not trust makes `brew info` stop with
     /// an error for the whole list (`UntrustedTapError`, from the review of
     /// the fix batch) -- the list is asked again in halves, and so on, so
-    /// that only the names Homebrew cannot answer for are left out; at most
-    /// `CANONICAL_ASKS_MAX` asks, past which what is not yet answered is
-    /// left out too. Where no ask is answered, the first one's failure is
-    /// the search's.
+    /// that only the names Homebrew cannot answer for are left out: halves
+    /// of one size before any smaller (breadth first), so that should the
+    /// asks run out (`CANONICAL_ASKS_MAX`) what is left out unasked is the
+    /// least. Where no ask is answered, the first one's failure is the
+    /// search's.
     async fn canonical_formulae(
         &self,
         inst: &ManagerInstance,
@@ -2787,9 +2789,10 @@ impl BrewAdapter {
         let mut named = HashMap::new();
         let mut answered = false;
         let mut first_failure = None;
-        let mut pending: Vec<&[String]> = vec![printed];
+        let mut pending: std::collections::VecDeque<&[String]> =
+            std::collections::VecDeque::from([printed]);
         let mut asks = 0;
-        while let Some(names) = pending.pop() {
+        while let Some(names) = pending.pop_front() {
             if asks == CANONICAL_ASKS_MAX {
                 break;
             }
@@ -2802,8 +2805,8 @@ impl BrewAdapter {
                 Err(e) => {
                     if names.len() > 1 {
                         let (front, back) = names.split_at(names.len() / 2);
-                        pending.push(back);
-                        pending.push(front);
+                        pending.push_back(front);
+                        pending.push_back(back);
                     }
                     first_failure.get_or_insert(e);
                 }
@@ -2874,9 +2877,11 @@ pub const SEARCH_HITS_MAX: usize = 40;
 
 /// The most `brew info` asks a search makes to name its formulae as
 /// Homebrew does (`BrewAdapter::canonical_formulae`): one where all goes
-/// well; enough, halving, to find two or three names Homebrew cannot answer
-/// for among forty.
-const CANONICAL_ASKS_MAX: usize = 12;
+/// well; halving, enough to find one name Homebrew cannot answer for among
+/// `SEARCH_HITS_MAX`, which takes `1 + 2 * ceil(log2 40)` = 13 (from the
+/// review of the fix batch: 12 left answerable names out). With two or
+/// more such names, some answerable ones can be left out unasked.
+const CANONICAL_ASKS_MAX: usize = 16;
 
 /// The longest text a search looks for, in characters.
 pub const SEARCH_QUERY_MAX: usize = 64;
@@ -6187,6 +6192,70 @@ mod tests {
             .expect("search");
         let names: Vec<&str> = hits.iter().map(|h| h.name.as_str()).collect();
         assert_eq!(names, ["fdupes", "fdclone", "fdk-aac"]);
+    }
+
+    #[tokio::test]
+    async fn test_one_name_homebrew_cannot_answer_for_among_forty_leaves_out_that_one_alone() {
+        // From the review of the fix batch: with twelve asks, one such name
+        // at the front of forty left half of them out unasked.
+        let names: Vec<String> = (0..40).map(|n| format!("fz{n:02}")).collect();
+        let runner = Arc::new(MockRunner::new());
+        let brew = "/opt/homebrew/bin/brew";
+        runner.respond(
+            vec![brew, "search", "--formula", "fz"],
+            search_output(&(names.join("\n") + "\n")),
+        );
+        runner.respond(vec![brew, "search", "--cask", "fz"], found_nothing());
+        runner.respond(vec![brew, "search", "--desc", "fz"], search_output(""));
+        let bad = "fz03";
+        // Every half: answered, but for any holding the bad name.
+        let mut halves: Vec<Vec<String>> = vec![names.clone()];
+        while let Some(part) = halves.pop() {
+            let mut argv = vec![brew, "info", "--json=v2", "--formula"];
+            argv.extend(part.iter().map(String::as_str));
+            if part.iter().any(|n| n == bad) {
+                runner.respond(
+                    argv,
+                    CommandOutput {
+                        exit_code: Some(1),
+                        stderr: "Error: tap is not trusted".to_string(),
+                        ..search_output("")
+                    },
+                );
+                if part.len() > 1 {
+                    let (front, back) = part.split_at(part.len() / 2);
+                    halves.push(front.to_vec());
+                    halves.push(back.to_vec());
+                }
+            } else {
+                let formulae: Vec<String> = part
+                    .iter()
+                    .map(|n| {
+                        format!(r#"{{"name":"{n}","full_name":"{n}","aliases":[],"oldnames":[]}}"#)
+                    })
+                    .collect();
+                runner.respond(
+                    argv,
+                    search_output(&format!(
+                        r#"{{"formulae":[{}],"casks":[]}}"#,
+                        formulae.join(",")
+                    )),
+                );
+            }
+        }
+        let adapter = BrewAdapter::new(runner.clone());
+        let hits = adapter
+            .search(&test_instance(), "fz")
+            .await
+            .expect("search");
+        assert_eq!(hits.len(), 39);
+        assert!(!hits.iter().any(|h| h.name == bad));
+        let asks = runner
+            .calls()
+            .iter()
+            .filter(|call| call.get(1).map(String::as_str) == Some("info"))
+            .count();
+        assert!(asks <= CANONICAL_ASKS_MAX, "{asks} asks");
     }
 
     #[tokio::test]
