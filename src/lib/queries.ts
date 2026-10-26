@@ -83,15 +83,23 @@ export function useSizes(): UseQueryResult<Sizes> {
 }
 
 /**
- * The Discover page's catalog with each entry's state (`getCatalog`),
- * asked for again as each snapshot comes, since the states are the
- * snapshot's: what it lists, which Homebrew can install.
+ * The Discover page's catalog with each entry's state (`getCatalog`), and
+ * the snapshot it was asked for with (`madeFrom`): asked for again as each
+ * snapshot comes, since the states are the snapshot's -- what it lists,
+ * which Homebrew can install. Until the new one answers, the last one
+ * stands, with the snapshot it was made from, not the newer one (from the
+ * review of 4e81b8f6's fix).
  */
-export function useCatalog(): UseQueryResult<CatalogEntry[]> {
+export interface CatalogView {
+  entries: CatalogEntry[];
+  madeFrom: Snapshot | null;
+}
+
+export function useCatalog(): UseQueryResult<CatalogView> {
   const { data: snapshot } = useSnapshot();
   return useQuery({
     queryKey: ["catalog", snapshot?.generation ?? 0, snapshot?.round ?? 0] as const,
-    queryFn: async () => (await getCatalog()) ?? [],
+    queryFn: async () => ({ entries: (await getCatalog()) ?? [], madeFrom: snapshot ?? null }),
     placeholderData: (previous) => previous,
     staleTime: Infinity,
   });

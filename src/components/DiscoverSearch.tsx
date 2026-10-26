@@ -72,7 +72,7 @@ export function DiscoverResults({ query }: { query: string }) {
   const asked = searchable(settled) ? settled : "";
   const search = useSearchHomebrew(asked);
   const { data: snapshot } = useSnapshot();
-  const { data: catalog } = useCatalog();
+  const catalog = useCatalog().data?.entries;
   const { data: operations } = useOperations();
   const { data: settings } = useSettings();
   const pending = usePendingOperations();

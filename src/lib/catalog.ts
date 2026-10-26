@@ -271,9 +271,9 @@ export function installOperationFor(
  * Unix seconds; when its refresh task began asking), or where it has none,
  * when the snapshot was made (`refreshed_at`) -- which is later than the
  * read: a check under way when the install ended commits after it without
- * it (from the review of 44674745). `checked` null is a catalog older than
- * any install this window heard end (the one before the snapshot's, shown
- * while the snapshot's is asked for). When it ended is what this window
+ * it (from the review of 44674745). `checked` null is a catalog asked for
+ * before any snapshot, older than any install this window heard end. When
+ * it ended is what this window
  * heard (`opFinishedAt`, from the operation's `Finished` event); one it
  * did not hear end -- before the window was reloaded -- is older than any
  * snapshot.

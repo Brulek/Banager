@@ -60,7 +60,8 @@ const CATEGORIES: [CatalogCategory, string][] = [
  */
 export function DiscoverPage() {
   const { t } = useTranslation();
-  const { data: catalog, isPlaceholderData: catalogBehind } = useCatalog();
+  const { data: catalogView } = useCatalog();
+  const catalog = catalogView?.entries;
   const { data: snapshot } = useSnapshot();
   const { data: settings } = useSettings();
   const { data: operations } = useOperations();
@@ -230,13 +231,14 @@ export function DiscoverPage() {
                 const progress = op === null ? null : installProgressOf(op);
                 // What the install that just ended says is newer than the
                 // catalog until the check after it comes; after that, the
-                // catalog says what there is. A catalog still the last
-                // snapshot's, while the new one's is asked for, is older
-                // (from the review of 44674745).
+                // catalog says what there is. Measured against the
+                // snapshot the catalog was made from, which is the last
+                // one while the new one's is asked for (from the review of
+                // 44674745).
                 const justInstalled =
                   progress?.kind === "installed" &&
                   op !== null &&
-                  endedAfterCheck(op, opFinishedAt, catalogBehind ? null : (snapshot ?? null));
+                  endedAfterCheck(op, opFinishedAt, catalogView?.madeFrom ?? null);
                 const installed = entry.state === "Installed" || justInstalled;
                 // Installed from here: how to use it, in place of what it is.
                 const use = installed && progress?.kind === "installed" ? keys?.use : undefined;

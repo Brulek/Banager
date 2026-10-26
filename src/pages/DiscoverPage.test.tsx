@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { command } from "../test/command";
@@ -7,6 +7,7 @@ import { DiscoverPage } from "./DiscoverPage";
 import { useUiStore } from "../store/ui";
 import i18n from "../i18n";
 import type { CatalogEntry, IssuedPlan, ManagerInstance, OpSummary, Outcome, Snapshot } from "../lib/types";
+import { queryKeys } from "../lib/queryKeys";
 
 const mockInvoke = vi.mocked(invoke);
 
@@ -337,6 +338,38 @@ describe("the Discover page", () => {
     snapshot = { ...snapshot, instances: [{ id: "brew:/opt/homebrew", answered_at: made } as ManagerInstance] };
     renderWithProviders(<DiscoverPage />);
     await waitFor(() => expect(rows()[7]).toEqual(["ffmpeg", "Install"]));
+  });
+
+  it("measures an install against the snapshot the catalog shown was made from, while the next one's is asked for", async () => {
+    // ffmpeg installed from here, then uninstalled in Terminal: a check
+    // that read Homebrew after the install says Install.
+    const made = snapshot.refreshed_at!;
+    const brewAt = (answered_at: number) => [{ id: "brew:/opt/homebrew", answered_at } as ManagerInstance];
+    snapshot = { ...snapshot, instances: brewAt(made) };
+    operations = [installOp(3, "ffmpeg", "Done", "Succeeded")];
+    useUiStore.getState().rememberOpFinished(3, (made - 10) * 1000);
+    const { queryClient } = renderWithProviders(<DiscoverPage />);
+    await waitFor(() => expect(rows()[7]).toEqual(["ffmpeg", "Install"]));
+    // The next snapshot comes, and its catalog is slow to answer: the last
+    // catalog stands, and it is still newer than the install (from the
+    // review of the fix to 44674745).
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === "get_snapshot") return snapshot;
+      if (cmd === "get_catalog") return new Promise(() => {});
+      if (cmd === "list_operations") return operations;
+      return null;
+    });
+    act(() => {
+      queryClient.setQueryData<Snapshot>(queryKeys.snapshot, {
+        ...snapshot,
+        generation: 2,
+        round: 2,
+        refreshed_at: made + 60,
+        instances: brewAt(made + 50),
+      });
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(rows()[7]).toEqual(["ffmpeg", "Install"]);
   });
 
   it("says an install that ended without the tool, opening its log, with Install to try again", async () => {
