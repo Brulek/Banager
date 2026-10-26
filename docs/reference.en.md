@@ -10,9 +10,9 @@ Removing them needs a third. Most people never do either, and the tools quietly 
 
 Banager puts all of it in one window: what you have, what has an update, and a button for each.
 
-> **Status: pre-release.** The core and the UI work and are covered by 2432 Rust tests (plus 11 more
+> **Status: pre-release.** The core and the UI work and are covered by 2478 Rust tests (plus 12 more
 > that only run with `--ignored`: they touch a real Homebrew, the real Trash, AppKit or this Mac's
-> disk, or time a large run) and 3351 front-end tests, but there is no downloadable build yet — v0.1 is being prepared. Nothing here is
+> disk, or time a large run) and 3414 front-end tests, but there is no downloadable build yet — v0.1 is being prepared. Nothing here is
 > ready to rely on. Banager can't update itself yet: a release build makes no updater files and
 > publishes no `latest.json`.
 
@@ -414,7 +414,7 @@ through `node:fs`; `tsconfig.node.json` checks `vite.config.ts` (`--composite fa
 
 Apart from the ignored tests below, the tests work in folders of their own, with stand-ins for the home folders, and never look in the tester's.
 
-`cargo test --workspace` has eleven `#[ignore]`d tests, all skipped by a plain `cargo test`:
+`cargo test --workspace` has twelve `#[ignore]`d tests, all skipped by a plain `cargo test`:
 
 - Two in `crates/banager-core/tests/brew_live.rs`: one reads the real Homebrew; the other installs
   and removes the `hello` formula.
@@ -423,6 +423,9 @@ Apart from the ignored tests below, the tests work in folders of their own, with
 - One in `crates/banager-core/src/icon/real.rs` has AppKit draw Calculator's icon and only reads.
 - One in `crates/banager-core/src/protected.rs` probes this Mac's filesystem using temporary
   files and about a million lookups.
+- One in `crates/banager-core/src/commands.rs` mounts a small case-sensitive disk image with
+  `hdiutil`, checks that two `PATH` folders differing only in case are counted as two, and
+  unmounts it.
 - Six benchmarks: one in `crates/banager-core/src/commands/round_tests.rs` and five in
   `crates/banager-core/tests/scale_test.rs`, for command matching, family assignment, sizes and
   refreshes with large inventories.
