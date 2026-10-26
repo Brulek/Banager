@@ -731,8 +731,8 @@ const PATH_LOOKUPS_ALLOWED: [(&str, &str, &str); 20] = [
     ),
     (
         "crates/banager-core/src/runner/real.rs:",
-        "cmd.current_dir(cwd);",
-        "a plan's working folder: no plan names one (`CommandSpec.cwd` is always `None`)",
+        "cmd.current_dir(&child_cwd);",
+        "the folder a command runs in, entered by the child, never looked in here: `/` unless its spec names one (only the login shell's read does, the home folder)",
     ),
     (
         "crates/banager-core/src/trash/real.rs:",

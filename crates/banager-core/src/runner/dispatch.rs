@@ -38,15 +38,20 @@ pub(crate) fn is_dispatcher(path: &Path, real: Option<&Path>) -> bool {
 /// `PATH` the command is given) or the folders its line names -- or whose
 /// `env` name may be found in a `PATH` folder in a protected place, before
 /// any that holds it, or along a `PATH` Banager cannot know. A relative
-/// `PATH` folder is passed over, as `resolve_exe` passes it over (one
-/// written `~/...`, which bash expands but `env` does not, among them); so
-/// is one with no such file, one that is not an executable file, and one
-/// that cannot be looked in for another reason (an entry that is a file, a
-/// folder that may not be searched), as `env` passes over it.
+/// `PATH` folder (one written `~/...`, which bash expands but `env` does
+/// not, among them) and an empty one, the folder itself, are looked in
+/// from `cwd`, the folder the command runs in, as `env` looks in them
+/// (`execvp`); so are a relative name after `env` and a `#!` line's
+/// relative program. Where `cwd` is not known, such a folder or name may
+/// lead anywhere, and the script is refused (BNG-001). A folder with no
+/// such file, one that is not an executable file, and one that cannot be
+/// looked in for another reason (an entry that is a file, a folder that
+/// may not be searched) are passed over, as `env` passes over them.
 pub(crate) fn refusal(
     program: &Path,
     real: &Path,
     path_var: Option<&OsStr>,
+    cwd: Option<&Path>,
     protected: &Protected,
 ) -> Option<std::io::Error> {
     if is_dispatcher(program, Some(real)) {
@@ -62,16 +67,21 @@ pub(crate) fn refusal(
             ))
         }
         Interpreter::Named(path) => {
+            let Some(path) = from(cwd, &path) else {
+                return Some(refused(
+                    "the program it runs with is named from a folder that is not known",
+                ));
+            };
             let real = look::real_path(&path, protected).ok();
             return is_dispatcher(&path, real.as_deref()).then(|| {
                 refused("it runs with a version manager's shim, which may install what it runs")
             });
         }
         Interpreter::OnPath(name, search) => match search {
-            Search::Given => first_on_path(&name, path_var, protected),
-            Search::Default => first_on_path(&name, None, protected),
+            Search::Given => first_on_path(&name, path_var, cwd, protected),
+            Search::Default => first_on_path(&name, None, cwd, protected),
             Search::Folders(path) => {
-                first_on_path(&name, Some(OsStr::from_bytes(&path)), protected)
+                first_on_path(&name, Some(OsStr::from_bytes(&path)), cwd, protected)
             }
             Search::Unknown => {
                 return Some(refused(
@@ -216,23 +226,47 @@ enum OnPath {
     /// None of the folders holds one.
     Nowhere,
     /// A folder before any that holds one is in a protected place, never
-    /// looked in.
+    /// looked in, or relative to a folder that is not known.
     Unknown,
 }
 
-fn first_on_path(name: &[u8], path_var: Option<&OsStr>, protected: &Protected) -> OnPath {
+/// `path` as the command, running in `cwd`, finds it: as it is when
+/// absolute, from `cwd` when relative (an empty one is `cwd` itself);
+/// `None` when it is relative and `cwd` is not known.
+fn from(cwd: Option<&Path>, path: &Path) -> Option<PathBuf> {
+    if path.is_absolute() {
+        Some(path.to_path_buf())
+    } else {
+        cwd.map(|cwd| cwd.join(path))
+    }
+}
+
+fn first_on_path(
+    name: &[u8],
+    path_var: Option<&OsStr>,
+    cwd: Option<&Path>,
+    protected: &Protected,
+) -> OnPath {
     // `env`'s own default when no `PATH` is set (`_PATH_DEFPATH`).
     let path_var = path_var.unwrap_or(OsStr::new("/usr/bin:/bin"));
     let name = OsStr::from_bytes(name);
     if name.as_bytes().contains(&b'/') {
         // A name with a slash is run as it is, from the command's folder.
-        let path = Path::new(name);
-        return match look::real_path(path, protected) {
-            Ok(real) if path.is_absolute() => OnPath::Found(path.to_path_buf(), real),
-            _ => OnPath::Nowhere,
+        let Some(path) = from(cwd, Path::new(name)) else {
+            return OnPath::Unknown;
+        };
+        return match look::real_path(&path, protected) {
+            Ok(real) => OnPath::Found(path, real),
+            Err(error) if look::is_protected(&error) => OnPath::Unknown,
+            Err(_) => OnPath::Nowhere,
         };
     }
-    for dir in std::env::split_paths(path_var).filter(|dir| dir.is_absolute()) {
+    for dir in std::env::split_paths(path_var) {
+        // A relative folder, or an empty one, is looked in from where the
+        // command runs (BNG-001); it may hold one wherever that is.
+        let Some(dir) = from(cwd, &dir) else {
+            return OnPath::Unknown;
+        };
         let candidate = dir.join(name);
         match look::target(&candidate, protected) {
             Ok((real, stat)) if stat.is_file() && stat.mode() & 0o111 != 0 => {
@@ -300,7 +334,7 @@ mod tests {
         ] {
             assert_eq!(parse_shebang(line.as_bytes()), Some(Interpreter::Unknown));
             let script = temp.file("script", &format!("{line}\n"), 0o755);
-            let error = refusal(&script, &script, Some(&path), &protected).unwrap();
+            let error = refusal(&script, &script, Some(&path), Some(&temp.0), &protected).unwrap();
             assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied, "{line}");
         }
     }
@@ -394,7 +428,7 @@ mod tests {
             (relative_first.as_os_str(), false),
         ] {
             assert_eq!(
-                refusal(&script, &script, Some(path_var), &protected).is_some(),
+                refusal(&script, &script, Some(path_var), Some(&temp.0), &protected).is_some(),
                 refused,
                 "{path_var:?}"
             );
@@ -404,8 +438,8 @@ mod tests {
             &format!("#!{}\n", shims.join("node").display()),
             0o755,
         );
-        assert!(refusal(&named, &named, None, &protected).is_some());
-        let error = refusal(&shims.join("node"), &mise, None, &protected).unwrap();
+        assert!(refusal(&named, &named, None, Some(&temp.0), &protected).is_some());
+        let error = refusal(&shims.join("node"), &mise, None, Some(&temp.0), &protected).unwrap();
         assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied);
     }
 
@@ -437,11 +471,88 @@ mod tests {
         ] {
             let script = temp.file("script", &format!("#!/usr/bin/env {line}\n"), 0o755);
             assert_eq!(
-                refusal(&script, &script, Some(path_var.as_os_str()), &protected).is_some(),
+                refusal(
+                    &script,
+                    &script,
+                    Some(path_var.as_os_str()),
+                    Some(&temp.0),
+                    &protected
+                )
+                .is_some(),
                 refused,
                 "{line}"
             );
         }
+    }
+
+    #[test]
+    fn regression_bng_001_relative_path_entries_are_looked_in_from_the_commands_folder() {
+        // `env` (execvp) looks in a relative `PATH` entry, and an empty one
+        // (the folder itself), from the folder the command runs in: from
+        // the home folder, `.local/share/mise/shims` is mise's shims.
+        let temp = Temp::new("relative");
+        let script = temp.file("npm/bin/npm", "#!/usr/bin/env node\n", 0o755);
+        let mise = temp.file("bin/mise", "", 0o755);
+        let shims = temp.0.join(".local/share/mise/shims");
+        std::fs::create_dir_all(&shims).unwrap();
+        symlink(&mise, shims.join("node")).unwrap();
+        let direct = temp.file("node/bin/node", "", 0o755);
+        let direct_at = direct.parent().unwrap().display().to_string();
+        let protected = Protected::default();
+        let home = Some(temp.0.as_path());
+        for (path_var, cwd, refused) in [
+            (format!(".local/share/mise/shims:{direct_at}"), home, true),
+            (format!("./.local/share/mise/shims:{direct_at}"), home, true),
+            (format!(":{direct_at}"), Some(shims.as_path()), true),
+            (format!("{direct_at}::"), Some(shims.as_path()), false),
+            (format!("{direct_at}:.local/share/mise/shims"), home, false),
+            // Not there from where the command runs: passed over.
+            (
+                format!(".local/share/mise/shims:{direct_at}"),
+                Some(direct.parent().unwrap()),
+                false,
+            ),
+            // Where the command runs is not known: it may be there.
+            (format!(".local/share/mise/shims:{direct_at}"), None, true),
+            (format!(":{direct_at}"), None, true),
+            (direct_at.clone(), None, false),
+        ] {
+            assert_eq!(
+                refusal(
+                    &script,
+                    &script,
+                    Some(OsStr::new(&path_var)),
+                    cwd,
+                    &protected
+                )
+                .is_some(),
+                refused,
+                "{path_var} from {cwd:?}"
+            );
+        }
+        // A name with a slash, `env` runs from the command's folder; so
+        // does the kernel a `#!` line's relative program.
+        let path_var = OsStr::new(&direct_at);
+        for line in [
+            "#!/usr/bin/env .local/share/mise/shims/node\n",
+            "#!.local/share/mise/shims/node\n",
+            "#!./bin/mise\n",
+        ] {
+            let script = temp.file("script", line, 0o755);
+            assert!(
+                refusal(&script, &script, Some(path_var), home, &protected).is_some(),
+                "{line}"
+            );
+            assert!(
+                refusal(&script, &script, Some(path_var), None, &protected).is_some(),
+                "{line}"
+            );
+        }
+        // Not there from where the command runs, `env` finds nothing.
+        let script = temp.file("script", "#!/usr/bin/env bin/mise\n", 0o755);
+        let elsewhere = Some(direct.parent().unwrap());
+        assert!(refusal(&script, &script, Some(path_var), elsewhere, &protected).is_none());
+        assert!(refusal(&script, &script, Some(path_var), home, &protected).is_some());
     }
 
     #[test]
@@ -458,7 +569,14 @@ mod tests {
         let file_first = path(&[&file, direct.parent().unwrap()]);
         let locked_first = path(&[&locked, direct.parent().unwrap()]);
         let results = [&file_first, &locked_first].map(|path_var| {
-            refusal(&script, &script, Some(path_var.as_os_str()), &protected).map(|e| e.to_string())
+            refusal(
+                &script,
+                &script,
+                Some(path_var.as_os_str()),
+                Some(&temp.0),
+                &protected,
+            )
+            .map(|e| e.to_string())
         });
         std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
         assert_eq!(results, [None, None]);

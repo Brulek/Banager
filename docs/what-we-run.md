@@ -59,7 +59,11 @@ command can carry.
 array run directly against an absolute program path by `RealRunner::run`
 (`crates/banager-core/src/runner/real.rs`): `Command::new(program)` with
 the arguments appended one by one. No string is ever handed to `sh`, and
-nothing Banager downloads is ever piped into one.
+nothing Banager downloads is ever piped into one. Each runs in `/`, where
+macOS starts an app opened from the Finder, whichever folder Banager
+itself was started in -- so a tool reads no project's settings there
+(an `.npmrc`, a `uv.toml`) -- except the login shell read below, which
+runs in the home folder (`DEFAULT_CWD`).
 
 **One shell run, at launch, to read PATH — and again only when that
 failed.** An app opened from Finder starts with a minimal `PATH`. As it
@@ -337,10 +341,14 @@ default `/usr/bin:/bin`, are looked along instead; a line that takes a
 refused. An `env` shebang containing quotes, escapes or variable expansion
 is also refused: Banager cannot yet resolve that syntax safely, including
 `env -S "node"`, and never looks up the quoted text as a literal filename.
-A relative `PATH` folder, one written `~/...` among them, is
-passed over there, as `env` finds nothing in it from the command's
-folder; so is an entry that is a file, or a folder that may not be
-searched, as `env` passes over them. Such a command is not
+A relative `PATH` folder, one written `~/...` among them (bash expands
+it, `env` does not), and an empty one, which is the folder itself, are
+looked in from the folder the command runs in -- Banager's own, which
+is `/` when it is opened from the Finder -- as `env` looks in them; so
+are a relative name after `env` and a `#!` line's relative program. Where
+that folder is not known, the script is refused. An entry that is a
+file, or a folder that may not be searched, is passed over, as `env`
+passes over them. Such a command is not
 started and fails as a program that could not start; a source found only
 through a shim is listed as one whose program could not start, and keeps
 what it listed when it last answered. Ollama can still list models over

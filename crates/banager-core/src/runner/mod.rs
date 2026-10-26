@@ -63,6 +63,8 @@ pub struct CommandSpec {
     pub program: PathBuf,
     pub args: Vec<String>,
     pub env: Vec<(String, String)>,
+    /// The folder the command runs in; `None` runs it in `/`, as an app
+    /// opened from the Finder is (`RealRunner`), not in Banager's own.
     pub cwd: Option<PathBuf>,
     pub timeout: Duration,
     /// See [`OutputUse`]. Decides whether a stdout too large to hold is

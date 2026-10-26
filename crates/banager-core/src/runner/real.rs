@@ -246,6 +246,13 @@ fn is_pip_diagnostic(line: &[u8]) -> bool {
         .any(|said| line.windows(said.len()).any(|window| window == *said))
 }
 
+/// The folder a command runs in when its spec names none: `/`, where
+/// macOS starts an app opened from the Finder, so a command started from
+/// `pnpm tauri dev` in a project folder runs as it does there -- reading
+/// no project's `.npmrc` or `uv.toml` -- and a relative `PATH` folder
+/// leads where the shim check looked (`dispatch::refusal`, BNG-001).
+const DEFAULT_CWD: &str = "/";
+
 /// What stands in a transcript for the middle [`StreamBuffer`] dropped.
 /// See `StreamBuffer::into_transcript`.
 pub(crate) const ELISION_MARK: &str = "\n[…]\n";
@@ -981,9 +988,20 @@ impl CommandRunner for RealRunner {
             .map(|(_, value)| std::ffi::OsString::from(value))
             .or_else(|| accepted.as_ref().map(|found| found.path.clone().into()))
             .or_else(|| std::env::var_os("PATH"));
-        if let Some(why) =
-            super::dispatch::refusal(&spec.program, &real, child_path.as_deref(), &protected)
-        {
+        // A relative `PATH` folder is looked in from where the command
+        // runs (BNG-001): the folder its spec names, or `/`
+        // (`DEFAULT_CWD`), never Banager's own, which is not asked for.
+        let child_cwd = spec
+            .cwd
+            .clone()
+            .unwrap_or_else(|| std::path::PathBuf::from(DEFAULT_CWD));
+        if let Some(why) = super::dispatch::refusal(
+            &spec.program,
+            &real,
+            child_path.as_deref(),
+            Some(&child_cwd),
+            &protected,
+        ) {
             return Err(RunnerError::Spawn(why));
         }
 
@@ -1014,9 +1032,7 @@ impl CommandRunner for RealRunner {
         ));
         cmd.envs(Self::EVERY_COMMAND_ENV);
         cmd.envs(spec.env.iter().cloned());
-        if let Some(cwd) = &spec.cwd {
-            cmd.current_dir(cwd);
-        }
+        cmd.current_dir(&child_cwd);
         cmd.stdin(std::process::Stdio::null());
         cmd.stdout(std::process::Stdio::piped());
         cmd.stderr(std::process::Stdio::piped());
