@@ -1763,7 +1763,11 @@ mod tests {
         // (the confirmation's answer, transient, what the row says)
         let cases = [
             (Some(timed_out), true, "ran out of time"),
-            (Some(exited_with(1, "", "ERROR: Exception")), false, "pip list --uptodate: ERROR: Exception"),
+            (
+                Some(exited_with(1, "", "ERROR: Exception")),
+                false,
+                "pip list --uptodate: ERROR: Exception",
+            ),
             (Some(exited_with(0, "no list", "")), false, "did not return"),
             (None, false, "did not finish"),
         ];
@@ -1786,10 +1790,16 @@ mod tests {
                 .await
                 .unwrap()
                 .candidates;
-            let six = rows.iter().find(|r| r.key.name == "six").expect("six's row");
+            let six = rows
+                .iter()
+                .find(|r| r.key.name == "six")
+                .expect("six's row");
             let words = format!("{:?}", six.warnings);
             assert!(!six.checkable, "{words}");
-            assert!(words.contains("HTTP 403") && words.contains(says), "{says}: {words}");
+            assert!(
+                words.contains("HTTP 403") && words.contains(says),
+                "{says}: {words}"
+            );
             assert!(!words.contains("no index gave"), "{words}");
             assert_eq!(
                 six.warnings.contains(&Warning::TransientLookupFailure),
@@ -1805,7 +1815,11 @@ mod tests {
             .await
             .expect_err("nothing confirmed");
         assert!(unconfirmed.transient);
-        assert!(unconfirmed.words.contains("no time left"), "{}", unconfirmed.words);
+        assert!(
+            unconfirmed.words.contains("no time left"),
+            "{}",
+            unconfirmed.words
+        );
     }
 
     #[tokio::test]
@@ -1837,10 +1851,16 @@ mod tests {
             .await
             .unwrap()
             .candidates;
-        let mine = rows.iter().find(|r| r.key.name == "my-tool").expect("my-tool's row");
+        let mine = rows
+            .iter()
+            .find(|r| r.key.name == "my-tool")
+            .expect("my-tool's row");
         assert!(!mine.checkable);
         let words = format!("{:?}", mine.warnings);
-        assert!(words.contains("HTTP 404") && words.contains("no index gave"), "{words}");
+        assert!(
+            words.contains("HTTP 404") && words.contains("no index gave"),
+            "{words}"
+        );
         assert!(runner.calls().iter().all(|c| *c != UPTODATE_ARGV.to_vec()));
         // With six searched in two places as well, one confirmation, and
         // it decides six alone.

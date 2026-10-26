@@ -961,6 +961,12 @@ fn uv_parsers_survive_any_input() {
         .map(|i| format!("t{i} v1.{i} (/u/t{i})\n- b{i} (/u/bin/b{i})\n"))
         .collect();
     show_paths.push(("100k tools".into(), many));
+    // One tool named again and again: each header once copied every
+    // command its name had gathered (PARSER-001).
+    show_paths.push((
+        "one tool 100k times".into(),
+        "ruff v1.0 (/u/ruff)\n- ruff (/u/bin/ruff)\n".repeat(100_000),
+    ));
     let mut problems = run(
         "uv parse_tool_list_show_paths",
         &show_paths,

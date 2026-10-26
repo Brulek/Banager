@@ -13,7 +13,7 @@ use crate::model::{
 use crate::protected::{self, Protected, Resolution};
 use crate::runner::{resolve_exe, CommandOutput, CommandRunner, CommandSpec, HostEnv, OutputUse};
 use async_trait::async_trait;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -75,12 +75,21 @@ pub(crate) fn parse_tool_list_show_paths(text: &str, instance_id: &str) -> Vec<I
     }
     // Each tool's binaries, in order, looked up by name: filtering the
     // whole list for every tool was quadratic, 56 s over 100,000 tools in
-    // a debug build.
+    // a debug build. A binary line repeated under its tool is one command.
     let mut binaries_of: HashMap<&str, Vec<(&str, &str)>> = HashMap::new();
+    let mut seen = HashSet::new();
     for (tool, command, link) in binaries {
-        binaries_of.entry(tool).or_default().push((command, link));
+        if seen.insert((tool, command, link)) {
+            binaries_of.entry(tool).or_default().push((command, link));
+        }
     }
+    // uv names each tool once. Output that names one again is read as the
+    // first header of that name: every header copies its name's whole
+    // list, so 10,000 copies of one tool's two lines made 100 million
+    // commands (PARSER-001).
+    let mut named = HashSet::new();
     let artifacts = tool_list_header_lines(text)
+        .filter(|(name, _)| named.insert(*name))
         .filter_map(|(name, rest)| {
             let (version, path_part) = rest.split_once(" (")?;
             let path = path_part.trim_end_matches(')');
@@ -1524,6 +1533,39 @@ mod tests {
                 within: vec![PathBuf::from("/Users/brulek/.local/share/uv/tools/ruff")],
             }]
         );
+    }
+
+    #[test]
+    fn regression_parser_001_a_repeated_header_is_one_tool() {
+        // uv never names a tool twice; output that does -- 10,000 copies
+        // of one tool's lines, 410 KB -- is one tool with one command.
+        // Each header once copied every command its name had gathered:
+        // 100 million commands for this input.
+        let text = "ruff v1.0 (/u/ruff)\n- ruff (/u/bin/ruff)\n".repeat(10_000);
+        let artifacts = parse_tool_list_show_paths(&text, "uv");
+        assert_eq!(artifacts.len(), 1);
+        assert_eq!(
+            artifacts[0].facts.command_inputs.provided,
+            vec![ProvidedCommand {
+                name: "ruff".to_string(),
+                path: PathBuf::from("/u/bin/ruff"),
+                within: vec![PathBuf::from("/u/ruff")],
+            }]
+        );
+        // The first header of a name is the tool; a later one's commands
+        // are still the tool's.
+        let text = "ruff v1.0 (/u/ruff)\n- ruff (/u/bin/ruff)\nruff v2.0 (/v/ruff)\n- ruff-lsp (/u/bin/ruff-lsp)\n";
+        let artifacts = parse_tool_list_show_paths(text, "uv");
+        assert_eq!(artifacts.len(), 1);
+        assert_eq!(artifacts[0].version, "1.0");
+        let names: Vec<&str> = artifacts[0]
+            .facts
+            .command_inputs
+            .provided
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect();
+        assert_eq!(names, ["ruff", "ruff-lsp"]);
     }
 
     #[test]
