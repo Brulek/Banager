@@ -19,8 +19,8 @@ Banager puts all of it in one window: what you have, what has an update, and a b
 
 ## What it manages
 
-Banager updates and uninstalls what you already have; it can't install anything new
-(see "What it deliberately does not do yet").
+Banager updates and uninstalls what you already have, and installs new tools from its
+Discover page (below; see also "What it deliberately does not do yet").
 
 | Source | Reads | Updates / removes |
 |---|---|---|
@@ -53,6 +53,20 @@ home folder is on is read, unless it is mounted under `/Volumes`. A folder to sc
 is not read, and a line under the list says how many were left out (with Show technical details on,
 its ⓘ names them); a program that is a link into one is listed by its own name, marked **Points into
 a protected place**, and the link is not followed.
+
+## Discover: new tools
+
+The **Discover** page (⌘5) suggests nine things to start with — Homebrew; Claude Code, Codex and
+Gemini CLI; Ollama and a Gemma 3 model sized for your Mac's memory; Node.js, uv and ffmpeg — and
+says which this Mac already has, by any way of having it (Claude Code from npm counts). Each of the
+rest installs with one click: a sheet says where it comes from, how much the model downloads and how
+much room there is, and shows the exact command; then Homebrew installs it, or Ollama downloads the
+model, and its row says how to use it. Homebrew itself you install in Terminal: the sheet copies
+Homebrew's own command, opens Terminal, and notices by itself when it is done — Banager never runs
+the installer and never sees your password. A Mac with nothing to manage yet opens on Discover. Its
+search field finds anything else among Homebrew's own formulae and casks, by name; a third-party
+tap's packages are not listed. [Discover](what-we-run.md#discover-the-catalog-and-installing-from-it)
+in `what-we-run.md` says exactly what each step runs and reads.
 
 ## What it tells you about each tool
 
@@ -226,8 +240,8 @@ that page last scanned: it re-runs only that page's scan of your bin folders, ag
 last known state — it does not refresh the sources. Settings' header has neither.
 
 The menu bar's View menu opens the sidebar's pages, as Finder's and Mail's open theirs: Overview
-(⌘1), Updates (⌘2), Installed (⌘3 — on everything installed, as the sidebar's Installed opens it)
-and Other Programs (⌘4). Below them are Check Again (⌘R) and Search (⌘F), which opens the Installed
+(⌘1), Updates (⌘2), Installed (⌘3 — on everything installed, as the sidebar's Installed opens it),
+Other Programs (⌘4) and Discover (⌘5). Below them are Check Again (⌘R) and Search (⌘F), which opens the Installed
 page with its search box focused, and Settings… (⌘,) is in the Banager menu. With the window closed
 or minimized, each of these brings it back first. **Keyboard Shortcuts** in the Help menu lists the
 keys Banager answers to, in three groups: the window's (these, Close Window and Quit), the lists' (↑ ↓
@@ -306,6 +320,9 @@ This app runs package managers on your behalf, so the boundary matters more than
 - **The window cannot ask for a command.** The UI sends an operation kind and a single-use,
   expiring identifier for a plan the Rust side built itself. There is no general "run this" path,
   so a compromised web view cannot invent one.
+- **The window cannot name a package to install.** Discover sends a suggestion's id, or a search
+  result's random, expiring id, and the Rust side looks up which formula, cask or model that is; a
+  search refuses text Homebrew would read as an option or a pattern before anything runs.
 - **A homepage opens only in your default browser.** A tool's `https` homepage in the Installed
   page's details opens only when it is exactly the one the tool's source lists, and Banager names
   the browser — the one macOS has as the default for `https:` — rather than letting the address

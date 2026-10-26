@@ -32,9 +32,10 @@ This version is not yet notarised by Apple. The source code is public, so you ca
 - **Clear impact before uninstalling**: the uninstall preview lists the commands that will run, what will be deleted, what settings and data are kept, and any other software that depends on the item.
 - **Verified results**: after each operation, Banager reads the state again and distinguishes success, partial success, and unconfirmed results.
 - **Background checks and notifications**: optional daily or weekly checks notify you when updates are found or an operation finishes.
+- **Discover new tools**: the Discover page suggests AI assistants, a local model and everyday tools, and installs each in one click after showing where it comes from and the exact command; without Homebrew yet, it walks you through installing it in Terminal, and it can search Homebrew's own tools and apps by name.
 - **Read-only other programs**: the Other Programs page lists programs that these sources did not install. Banager does not run, move, or delete any of them.
 - **Recent activity**: updates and uninstalls from the last 30 days are kept, including failures and results that need attention.
-- **Menu bar shortcuts**: Command-1 to Command-4 switch pages, Command-R checks again, Command-F searches, and Command-comma opens Settings.
+- **Menu bar shortcuts**: Command-1 to Command-5 switch pages, Command-R checks again, Command-F searches, and Command-comma opens Settings.
 
 For the full feature list and the support scope of each source, see the [full reference (English)](docs/reference.en.md). For the commands each source runs, see [What Banager Runs](docs/what-we-run.md).
 

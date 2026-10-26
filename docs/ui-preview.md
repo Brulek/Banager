@@ -57,7 +57,7 @@ it: About, Hide, Quit, Close Window, the Edit and Window menus. But the
 page never talks to Rust, so it never says which language it uses -- the
 menu bar stays in the one it was built in, which follows macOS's
 language here, this identifier having no settings of its own -- and it
-never hears Settings…, the View menu's four pages (⌘1 to ⌘4), Check
+never hears Settings…, the View menu's five pages (⌘1 to ⌘5), Check
 Again, Search or Help's Welcome to Banager, Common Questions, Keyboard Shortcuts, Check Tool Setup… and Copy Diagnostic Info…, which Rust sends only to a
 page that asked it to listen:
 in this window those items do nothing but bring the window back when it
