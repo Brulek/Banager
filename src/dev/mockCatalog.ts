@@ -88,8 +88,10 @@ const HOST = { macosMajor: 15, appleSilicon: true };
 function thisMacsOllama(instanceId: string): boolean {
   if (!instanceId.startsWith("ollama:")) return false;
   try {
-    const host = new URL(instanceId.slice("ollama:".length)).hostname;
-    return ["localhost", "127.0.0.1", "[::1]", "0.0.0.0", "[::]"].includes(host.toLowerCase());
+    const host = new URL(instanceId.slice("ollama:".length)).hostname.toLowerCase();
+    // As `host_is_this_mac`: localhost, any loopback address, and the
+    // "every interface" ones, which land on the loopback.
+    return ["localhost", "[::1]", "0.0.0.0", "[::]"].includes(host) || /^127(\.\d{1,3}){3}$/.test(host);
   } catch {
     return false;
   }
