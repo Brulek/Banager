@@ -59,11 +59,12 @@ command can carry.
 array run directly against an absolute program path by `RealRunner::run`
 (`crates/banager-core/src/runner/real.rs`): `Command::new(program)` with
 the arguments appended one by one. No string is ever handed to `sh`, and
-nothing Banager downloads is ever piped into one. Each runs in `/`, where
-macOS starts an app opened from the Finder, whichever folder Banager
-itself was started in -- so a tool reads no project's settings there
-(an `.npmrc`, a `uv.toml`) -- except the login shell read below, which
-runs in the home folder (`DEFAULT_CWD`).
+nothing Banager downloads is ever piped into one. Each runs in `/`
+(`DEFAULT_CWD`), where macOS starts an app opened from the Finder,
+whichever folder Banager itself was started in -- so a tool reads no
+project's settings there (an `.npmrc`, a `uv.toml`) -- except the login
+shell read below, which runs in the home folder
+(`runner::login_path::read`).
 
 **One shell run, at launch, to read PATH — and again only when that
 failed.** An app opened from Finder starts with a minimal `PATH`. As it
@@ -480,13 +481,15 @@ runs at launch reads your startup files, and `brew`, `npm`, `pip` and
 argv only after `validate_package_name`
 (`crates/banager-core/src/adapters/mod.rs`): `^[A-Za-z0-9@._+/-]+$`, not
 starting with `-`, `/` or `.`, no `..` segment, no `.rb` suffix. Two
-sources have their own rule for their own shape of input: npm's search
+sources, and Discover's search, have their own rule for their own shape
+of input: npm's search
 box (`validate_search_query`: once surrounding whitespace is trimmed,
 non-empty, not starting with `-`, and at most 200 bytes of UTF-8 — a CJK
-character is three of those; npm receives the query untrimmed) and
+character is three of those; npm receives the query untrimmed),
 Ollama's model references, which contain a colon
-(`validate_model_reference`). Every other token in every argv below is a
-fixed string.
+(`validate_model_reference`), and Discover's search of Homebrew
+(`brew::validate_search_query`; "Searching Homebrew", below). Every other
+token in every argv below is a fixed string.
 
 **Root.** Homebrew refuses to run as root, so Banager never runs a `brew`
 command when its effective user ID is 0 (`refuse_if_root`); a Homebrew
@@ -648,10 +651,13 @@ confirmation asked for its first plan. That age is checked again once the
 new plan is back, just before it is submitted, so a slow re-planning
 cannot stretch the ten minutes. Otherwise it is refused and
 nothing runs (`startShown` in `src/lib/heldPlans.ts`). Only an upgrade's
-command is planned again this way. The window can ask for the
-preview of an upgrade or an uninstall, never of an install: no page
-offers one, and `plan_operation_impl` in `src-tauri/src/ipc.rs` refuses
-an install before any source is asked. Before a plan is built,
+command is planned again this way. Through `plan_operation` the window
+can ask for the preview of an upgrade or an uninstall, never of an
+install: `plan_operation_impl` in `src-tauri/src/ipc.rs` refuses an
+install before any source is asked. Discover's installs are previewed
+only through `plan_install` and `plan_install_found`, which take a
+catalog entry's id or a search result's, never a package (Discover,
+below). Before a plan is built,
 `Session::issue_plan` refuses an operation on a source that is read-only
 or not answering, an upgrade or uninstall the tool itself reports it will
 refuse (a pinned package), an upgrade of a package Homebrew disabled
@@ -2233,8 +2239,11 @@ checks keep running `brew update`; the daily check spaces its own out
 when every source fails ("The daily check"). A `brew update` that failed
 is reported as a note on the source (the list may be out of date), not as
 a failed source; only the daily check counts that Homebrew as failed,
-when it decides whether it has checked ("The daily check"). The search
-query passes `validate_package_name`.
+when it decides whether it has checked ("The daily check"). Discover's
+search text passes `validate_search_query`, not `validate_package_name`:
+words with spaces between them are taken, and a `/`, a leading `-`, a
+control character, more than 64 characters or fewer than two letters,
+digits, `@` or `+` are refused ("Searching Homebrew", below).
 
 **Write commands** (only run after the user reviews and confirms a plan
 preview):
@@ -5679,7 +5688,8 @@ answers, and otherwise "Ollama can't download now" -- with Open Ollama
 where its app is not running, as its source's notice has it, or is there
 with no source yet: the app's first run offers to put its `ollama`
 command in place, and the check after that finds the source. Where the
-checks Open Ollama starts (one and three seconds after it) still find no
+checks Open Ollama starts (one second after it, then three seconds after
+that check has finished) still find no
 source -- the app was running, its offer was turned down, or it is still
 waiting for the Mac's password -- the row says so beside the button, and
 what to do: "No ollama command was found after Ollama opened, and
@@ -6027,7 +6037,9 @@ not read (`protected::look`; How Banager runs anything, above):
 
 - Homebrew: whether the three candidate `brew` paths exist;
   `<prefix>/var/homebrew/locks` and the `update` lock file in it, during
-  the uninstall preview; its `brew.env` files, during every install,
+  the uninstall preview, and every two seconds while Discover's Homebrew
+  sheet is open, with whether `/opt/homebrew/bin/brew` is there
+  (`look_for_homebrew`; "Homebrew itself"); its `brew.env` files, during every install,
   uninstall and upgrade preview, again right before an install, upgrade
   or uninstall runs, and right before the cleanup that follows an update;
   during a cask's uninstall preview and again before it runs, the
@@ -6118,6 +6130,11 @@ not read (`protected::look`; How Banager runs anything, above):
   protected-place, regular-file and 16 MiB limits; downgrade anchors and
   manifest lists are not compared, and nothing in the model store is
   written (Ollama's section).
+- The home folder's volume: how much room it has free, with `statfs`,
+  which opens nothing in it, each time Discover's catalog is asked for and
+  each time an install from it, or from its search, is planned
+  (`catalog::free_bytes`; "Discover"). And whether Ollama.app is in
+  `/Applications` or `~/Applications` then too (`Host::of_this_mac`).
 - Claude Code: whether `~/.local/bin/claude` exists and where it links to
   (`lstat`, `readlink`, `realpath`, also for the folder the link is in
   and for `~/.local/share/claude`); for the notice under the source, each
@@ -7152,7 +7169,7 @@ that has been set up.
 ## 简体中文：运行与隐私要点
 
 - 软件包管理操作直接传入参数，不经过 shell。启动时会另行运行登录 shell，读取环境设置；启动文件也会执行。读取失败后，后续刷新会重试。原生模拟窗口也有这一步，浏览器模拟没有。
-- 普通测试跳过 11 项：2 项真实 Homebrew 测试、1 项废纸篓测试、1 项 AppKit 测试、1 项磁盘探测和 6 项性能测试。安装卸载与废纸篓测试需要显式启用，详见 README。
+- 普通测试跳过 12 项：2 项真实 Homebrew 测试、1 项废纸篓测试、1 项 AppKit 测试、1 项磁盘探测、1 项挂载区分大小写的磁盘映像的测试和 6 项性能测试。安装卸载与废纸篓测试需要显式启用，详见 README。
 - Homebrew 公式更新通常会预览并在成功后运行指定名称的清理，删除该公式的旧版本、过期缓存下载及缓存中所有未引用的下载。固定版本、无法读取版本或固定记录、用户关闭清理、`brew.env` 启用自动清理或无法确定其影响时，不安排这一步。`brew.env` 启用的自动清理范围更广，预览会另行说明。
 - 未固定且装有多个版本的公式，卸载会移除所有已安装版本及链接，确认框会列出版本。保存在其他位置的设置和数据保留；启用自动移除依赖时，会另行说明。
 - Homebrew 卸载开始前会重新读取 `brew.env`。若现在会或可能自动移除依赖，而预览没有说明，或预览承诺保留的公式不再排除，则不运行命令，并提示重新打开确认窗口。
@@ -7170,7 +7187,7 @@ that has been set up.
 ## 繁體中文：執行與隱私要點
 
 - 套件管理操作直接傳入參數，不透過 shell。啟動時會另外執行登入 shell，讀取環境設定；啟動檔也會執行。讀取失敗後，後續重新整理會重試。原生模擬視窗也有這一步，瀏覽器模擬沒有。
-- 一般測試略過 11 項：2 項實際 Homebrew 測試、1 項垃圾桶測試、1 項 AppKit 測試、1 項磁碟探測及 6 項效能測試。安裝、解除安裝與垃圾桶測試需要明確啟用，詳見 README。
+- 一般測試略過 12 項：2 項實際 Homebrew 測試、1 項垃圾桶測試、1 項 AppKit 測試、1 項磁碟探測、1 項掛載區分大小寫的磁碟映像的測試及 6 項效能測試。安裝、解除安裝與垃圾桶測試需要明確啟用，詳見 README。
 - Homebrew 公式更新通常會預覽並在成功後執行指定名稱的清理，刪除該公式的舊版本、過期快取下載及快取中所有未參照的下載。固定版本、無法讀取版本或固定記錄、使用者關閉清理、`brew.env` 啟用自動清理或無法確定其影響時，不安排這一步。`brew.env` 啟用的自動清理範圍更廣，預覽會另外說明。
 - 未固定且裝有多個版本的公式，解除安裝時會移除所有已安裝版本及連結，確認視窗會列出版本。儲存在其他位置的設定和資料保留；啟用自動移除相依套件時，會另外說明。
 - Homebrew 解除安裝開始前會重新讀取 `brew.env`。若現在會或可能自動移除相依套件，而預覽沒有說明，或預覽承諾保留的公式不再排除，則不執行指令，並提示重新開啟確認視窗。
