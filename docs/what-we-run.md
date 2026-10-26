@@ -5663,9 +5663,13 @@ there, "Homebrew can't install now" where Homebrew is there and none can
 "Needs Homebrew" where there is none, and for Ollama "Needs macOS 14" on
 an older macOS (its cask's `depends_on`). Homebrew itself, missing on a
 Mac that is not Apple silicon, is "Not supported on this Mac": its
-official installer no longer installs there. The model is "Not
+official installer no longer installs there, and the line over the list
+says the tools below cannot be installed from here, though each row says
+it needs Homebrew. The model is "Not
 installed" where an Ollama that answered and can be written to is
-there, "Needs Ollama" where there is no Ollama at all, "Ollama uses
+there, "Needs Ollama" where there is no Ollama at all -- "Needs macOS 14"
+where this Mac is too old for Ollama, as Ollama's own row says --
+"Ollama uses
 another address" where every Ollama source is at an address `OLLAMA_HOST`
 sets that is not this Mac's own (`host_is_this_mac`: `localhost`, a
 loopback address, an IPv4 loopback written as IPv6, or the every-interface

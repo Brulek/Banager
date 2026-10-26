@@ -537,6 +537,17 @@ fn state_of(
                 // `ollama` command yet, whose first run offers to put it
                 // in place.
                 CatalogState::OllamaNotReady
+            } else if let Some(major) = CATALOG
+                .iter()
+                .find(|item| item.id == "ollama")
+                .and_then(|ollama| ollama.needs_macos)
+                .filter(|major| host.macos_major.is_some_and(|mac| mac < *major))
+            {
+                // No Ollama, and this Mac cannot have one: the macOS
+                // Ollama needs, not "Needs Ollama" beside Ollama's own
+                // "Needs macOS 14" (from the independent review of the
+                // branch).
+                CatalogState::NeedsMacOS { major }
             } else {
                 CatalogState::NeedsOllama
             }
@@ -796,6 +807,33 @@ mod tests {
         assert_eq!(
             states(&ollama, &SILICON_15)[4],
             ("ollama", CatalogState::Installed)
+        );
+    }
+
+    #[test]
+    fn test_the_model_on_a_mac_too_old_for_ollama_needs_the_macos_ollama_needs() {
+        let old = Host {
+            macos_major: Some(13),
+            ..SILICON_15
+        };
+        let none = snapshot(vec![instance("brew", "brew:/opt/homebrew")], Vec::new());
+        let states = states(&none, &old);
+        assert_eq!(
+            states[4],
+            ("ollama", CatalogState::NeedsMacOS { major: 14 })
+        );
+        assert_eq!(states[5], ("model", CatalogState::NeedsMacOS { major: 14 }));
+        // macOS unknown: as before, it needs Ollama.
+        let unknown = Host {
+            macos_major: None,
+            ..SILICON_15
+        };
+        assert_eq!(
+            entries(&none, &unknown)
+                .iter()
+                .find(|e| e.id == "model")
+                .map(|e| e.state),
+            Some(CatalogState::NeedsOllama)
         );
     }
 

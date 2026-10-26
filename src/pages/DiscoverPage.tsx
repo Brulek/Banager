@@ -72,7 +72,11 @@ export function DiscoverPage() {
   // What the search field has (step E): while it has a text, and the field
   // is there, the results are in the list's place.
   const [query, setQuery] = useState("");
-  const checked = snapshot?.refreshed_at != null;
+  // Checked: the snapshot, and the one the catalog shown was made from --
+  // not the empty one of before the first check, shown while the first
+  // check's catalog is asked for (from the independent review of the
+  // branch).
+  const checked = snapshot?.refreshed_at != null && catalogView?.madeFrom?.refreshed_at != null;
   const brew = snapshot?.instances.find((instance) => instance.adapter_id === "brew");
   const brewCanInstall = snapshot?.instances.some(
     (instance) =>
@@ -83,8 +87,12 @@ export function DiscoverPage() {
   const searching = checked && brewCanInstall === true && query.trim().length > 0;
   // Homebrew is there, and cannot install: the page says where to see why.
   const homebrewNotReady = checked && brew !== undefined && brewCanInstall !== true;
-  // No Homebrew: it comes first, and the page says so.
-  const homebrewFirst = checked && catalog?.find((entry) => entry.id === "homebrew")?.state === "NotInstalled";
+  // No Homebrew: it comes first, and the page says so -- or, on a Mac its
+  // installer no longer supports, that the tools below cannot be installed
+  // from here, though each row says it needs Homebrew.
+  const homebrewState = checked ? catalog?.find((entry) => entry.id === "homebrew")?.state : undefined;
+  const homebrewFirst = homebrewState === "NotInstalled";
+  const homebrewUnsupported = homebrewState === "HomebrewUnsupported";
   const sourceLabel = t("adapters.brew");
   // Ollama's app is here and not running: Open Ollama, as its source's
   // notice has it.
@@ -209,9 +217,11 @@ export function DiscoverPage() {
         {t(
           homebrewFirst
             ? "discover.introNoHomebrew"
-            : homebrewNotReady
-              ? "discover.introHomebrewNotReady"
-              : "discover.intro",
+            : homebrewUnsupported
+              ? "discover.introHomebrewUnsupported"
+              : homebrewNotReady
+                ? "discover.introHomebrewNotReady"
+                : "discover.intro",
         )}
       </p>
       {/* Searching takes a Homebrew to search with, and to install into:

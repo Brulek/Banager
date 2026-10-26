@@ -223,6 +223,29 @@ describe("the Discover page", () => {
     expect(screen.queryByRole("button", { name: /^Install / })).toBeNull();
   });
 
+  it("says nothing either from a catalog made before the first check, while the first check's is asked for", async () => {
+    // Discover open as Banager starts: its catalog is the empty snapshot's,
+    // with no Homebrew (from the independent review of the branch).
+    snapshot = snapshotAt(null);
+    entries = noHomebrew;
+    const { queryClient } = renderWithProviders(<DiscoverPage />);
+    await waitFor(() => expect(rows()).toHaveLength(8));
+    // The first check commits; its catalog is slow to answer.
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === "get_snapshot") return snapshot;
+      if (cmd === "get_catalog") return new Promise(() => {});
+      if (cmd === "list_operations") return operations;
+      return null;
+    });
+    act(() => {
+      queryClient.setQueryData<Snapshot>(queryKeys.snapshot, { ...snapshotAt(1_789_700_000), generation: 2, round: 2 });
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(rows().map(([, state]) => state)).toEqual(Array(8).fill(""));
+    expect(screen.queryByText(/doesn't have Homebrew yet/)).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Install / })).toBeNull();
+  });
+
   it("previews the install of the entry by its id, and runs that plan only once Install is pressed", async () => {
     renderWithProviders(<DiscoverPage />);
     await waitFor(() => expect(rows()).toHaveLength(8));
@@ -477,6 +500,11 @@ describe("the Discover page", () => {
     await waitFor(() => expect(rows()).toHaveLength(8));
     expect(rows()[0]).toEqual(["Homebrew", "Not supported on this Mac"]);
     expect(screen.queryByRole("button", { name: "Install Homebrew" })).toBeNull();
+    // The rows each need Homebrew; the line over them says why none can be
+    // had here (from the independent review of the branch).
+    expect(
+      screen.getByText("Homebrew's installer no longer supports Intel Macs, so the tools below can't be installed from here."),
+    ).toBeInTheDocument();
   });
 
   it("offers the model this Mac's memory suits through Ollama, and Open Ollama where Ollama is not running", async () => {

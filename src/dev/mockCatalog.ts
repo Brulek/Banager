@@ -162,7 +162,9 @@ export function mockCatalog(
           ? "OllamaElsewhere"
           : instances.some((i) => i.adapter_id === "ollama") || host.ollamaApp
             ? "OllamaNotReady"
-            : "NeedsOllama";
+            : HOST.macosMajor < 14
+              ? { NeedsMacOS: { major: 14 } }
+              : "NeedsOllama";
     else if (item.needsMacOS !== undefined && HOST.macosMajor < item.needsMacOS) state = { NeedsMacOS: { major: item.needsMacOS } };
     else
       state = canInstall

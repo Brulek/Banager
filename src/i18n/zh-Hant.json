@@ -1793,6 +1793,7 @@
     "intro": "可以從這些工具開始，也能看到這台Mac已經有了哪些。",
     "introNoHomebrew": "這台Mac上還沒有Homebrew。先安裝好它，下面的工具就能在這裡一鍵安裝。",
     "introHomebrewNotReady": "這台Mac上有Homebrew，但現在無法用它安裝：側邊欄「來源」下的Homebrew頁面會說明原因。",
+    "introHomebrewUnsupported": "Homebrew的安裝程式已不再支援Intel晶片的Mac，所以下面的工具無法在這裡安裝。",
     "footnote": "這裡的工具都用Homebrew安裝，模型用Ollama下載；安裝前都會先顯示要執行的指令。",
     "ollamaNoCommand": "Ollama開啟後仍未找到ollama指令，下載模型需要它。如果Ollama提議安裝這個指令，請同意，然後點按「重新檢查」。",
     "install": "安裝",
