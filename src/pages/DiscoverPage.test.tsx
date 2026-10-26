@@ -241,6 +241,8 @@ describe("the Discover page", () => {
     await waitFor(() => expect(calls("submit_operation")).toHaveLength(1));
     expect(calls("submit_operation")[0][1]).toEqual({ planId: "plan-gemini-cli" });
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    // The operation bar names it as the row does.
+    expect(useUiStore.getState().opNames[7]).toBe("Gemini CLI");
   });
 
   it("says a cask may ask for the Mac's password", async () => {

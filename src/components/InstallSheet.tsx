@@ -4,6 +4,7 @@ import { catalogRefusal, entryName, installTargetOf, ITEM_KEYS, wordsOf } from "
 import { usePlanInstall, usePlanInstallFound, useSettings, useSubmitOperation } from "../lib/queries";
 import { planErrorDetail, planErrorMessage } from "../lib/sources";
 import { warningLines } from "../lib/warnings";
+import { useUiStore } from "../store/ui";
 import type { ArtifactKey, CatalogEntry, Found } from "../lib/types";
 import { CommandPreview } from "./CommandPreview";
 import { Refusal, SheetIcon, SheetLines, SheetPending, SheetText, sheetMeta } from "./SheetParts";
@@ -104,7 +105,11 @@ export function InstallSheet({ entry, found = null, iconKey, description = null,
     submitLatch.current = true;
     const session = sessionRef.current;
     submitMutation.mutate(issued.id, {
-      onSuccess: () => {
+      onSuccess: (opId) => {
+        // The operation bar names it as the row does -- 「Gemma 3」, not
+        // `gemma3:4b`; 「Ollama」, not `ollama-app` -- until the check after it
+        // lists the tool by its own name.
+        useUiStore.getState().rememberOpNames({ [opId]: name });
         if (sessionRef.current !== session) return;
         onClose();
       },
