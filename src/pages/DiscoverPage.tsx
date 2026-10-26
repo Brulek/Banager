@@ -100,28 +100,33 @@ export function DiscoverPage() {
   // notice says it: a press that does nothing would say nothing. Nor one
   // that opened it and found no `ollama` command still -- the app was
   // running, or its offer to put the command in place was turned down
-  // (from the review of 8f7a680b).
-  const openOllamaButton = (
-    <span className="flex items-center gap-2">
-      {openOllama.isError ? (
-        <span role="alert" className={`text-danger-text ${SMALL_WRAPPING}`}>
-          {openOllamaErrorMessage(t, openOllama.error.message, settings?.show_technical_details ?? false)}
-        </span>
-      ) : openOllama.isSuccess && noOllamaSource ? (
-        <span role="status" className={`text-muted ${SMALL_WRAPPING}`}>
-          {t("discover.ollamaNoCommand")}
-        </span>
-      ) : null}
-      <button
-        type="button"
-        onClick={() => openOllama.mutate()}
-        disabled={openOllama.isPending}
-        className={BUTTON.small.grey}
-      >
-        {t("sourceNotice.openOllama")}
-      </button>
-    </span>
-  );
+  // (from the review of 8f7a680b). On the row's right (`end`), the words
+  // wrap within a column of their own, so the row's name and what it is
+  // keep their room; under its name, in the line's own flow.
+  const openOllamaButton = (where: "end" | "line") => {
+    const width = where === "end" ? "max-w-56 text-right" : "";
+    return (
+      <span className="flex items-center gap-2">
+        {openOllama.isError ? (
+          <span role="alert" className={`text-danger-text ${SMALL_WRAPPING} ${width}`}>
+            {openOllamaErrorMessage(t, openOllama.error.message, settings?.show_technical_details ?? false)}
+          </span>
+        ) : openOllama.isSuccess && noOllamaSource ? (
+          <span role="status" className={`text-muted ${SMALL_WRAPPING} ${width}`}>
+            {t("discover.ollamaNoCommand")}
+          </span>
+        ) : null}
+        <button
+          type="button"
+          onClick={() => openOllama.mutate()}
+          disabled={openOllama.isPending}
+          className={BUTTON.small.grey}
+        >
+          {t("sourceNotice.openOllama")}
+        </button>
+      </span>
+    );
+  };
 
   const right = (entry: CatalogEntry, name: string, progress: InstallProgress | null, installed: boolean): ReactNode => {
     if (progress !== null && isUnderway(progress)) {
@@ -174,7 +179,7 @@ export function DiscoverPage() {
     if (entry.state === "OllamaNotReady" && ollamaStopped && ended === null) {
       return (
         <span data-catalog-state="" className="flex shrink-0 items-center gap-2">
-          {openOllamaButton}
+          {openOllamaButton("end")}
         </span>
       );
     }
@@ -265,7 +270,7 @@ export function DiscoverPage() {
                               <CopyButton text={command} label={t("discover.copyCommand", { command })} />
                             ) : ollamaStopped ? (
                               // Ollama's app, until it runs.
-                              openOllamaButton
+                              openOllamaButton("line")
                             ) : null}
                           </span>
                         ) : (
