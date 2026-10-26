@@ -1007,8 +1007,9 @@ pub async fn get_system_facts(
 }
 
 /// The Discover page's catalog, each entry with its state on this Mac
-/// (`catalog::entries`), from the snapshot as it is now and two values the
-/// kernel keeps (`catalog::Host::of_this_mac`). Runs nothing, opens no
+/// (`catalog::entries`), from the snapshot as it is now and this Mac
+/// (`catalog::Host::of_this_mac`: three values the kernel keeps, the home
+/// folder's free room, whether Ollama.app is there). Runs nothing, opens no
 /// file and connects nowhere; installs nothing (phase 5 step A).
 #[tauri::command]
 pub async fn get_catalog(
@@ -1039,16 +1040,23 @@ pub async fn get_catalog(
 /// check that lands between them and lists the tool installed makes it
 /// plan an install of what is there, which Homebrew answers by saying so,
 /// and the check after it says Installed either way.
+///
+/// `host` is this Mac (`Host::of_this_mac`); tests give one of their own,
+/// so that they do not depend on the Mac they run on (from the independent
+/// review of the branch: Ollama.app there, or macOS 13, failed them).
 pub(crate) async fn plan_install_impl(
     state: &AppState,
+    host: &banager_core::catalog::Host,
     catalog_id: &str,
 ) -> Result<IssuedPlan, String> {
-    use banager_core::catalog::{install_request, Host, InstallRefusal};
-    let request = install_request(&state.session.snapshot(), &Host::of_this_mac(), catalog_id)
-        .map_err(|refusal| match refusal {
-            InstallRefusal::NotOffered => serde_json::json!({ "kind": "refused" }).to_string(),
-            InstallRefusal::State(state) => {
-                serde_json::json!({ "kind": "catalog_state", "state": state }).to_string()
+    use banager_core::catalog::{install_request, InstallRefusal};
+    let request =
+        install_request(&state.session.snapshot(), host, catalog_id).map_err(|refusal| {
+            match refusal {
+                InstallRefusal::NotOffered => serde_json::json!({ "kind": "refused" }).to_string(),
+                InstallRefusal::State(state) => {
+                    serde_json::json!({ "kind": "catalog_state", "state": state }).to_string()
+                }
             }
         })?;
     state
@@ -1063,14 +1071,20 @@ pub async fn plan_install(
     state: State<'_, AppState>,
     catalog_id: String,
 ) -> Result<IssuedPlan, String> {
-    plan_install_impl(&state, &catalog_id).await
+    plan_install_impl(
+        &state,
+        &banager_core::catalog::Host::of_this_mac(),
+        &catalog_id,
+    )
+    .await
 }
 
 /// The Discover page's search of Homebrew (phase 5 step E,
 /// `Session::search_homebrew`): Homebrew's own formulae and casks whose
-/// name or description has `query` in it, each under an id Install sends
-/// back (`plan_install_found`). Runs `brew search --formula`, `--cask` and
-/// `--desc`, read-only. Refused as `invalid_query` for a text `brew search`
+/// name has `query` in it, each under an id Install sends back
+/// (`plan_install_found`). Runs `brew search --formula`, `--cask` and
+/// `--desc`, and `brew info --json=v2 --formula` over the formulae found,
+/// read-only. Refused as `invalid_query` for a text `brew search`
 /// may not be given (`brew::validate_search_query`), and as `catalog_state`
 /// `NeedsHomebrew` where no Homebrew can install; a search Homebrew could
 /// not do goes out as a plan's failure would (`plan_operation_error`).
@@ -2337,6 +2351,16 @@ mod tests {
         );
     }
 
+    /// A Mac of the tests' own for `plan_install_impl`: Apple silicon on
+    /// macOS 15, 16 GiB, no Ollama.app -- whatever Mac runs them.
+    const TEST_HOST: banager_core::catalog::Host = banager_core::catalog::Host {
+        macos_major: Some(15),
+        apple_silicon: true,
+        memory_bytes: Some(16 << 30),
+        free_bytes: None,
+        ollama_app: false,
+    };
+
     #[tokio::test]
     async fn test_plan_install_impl_plans_the_catalogs_own_name_under_homebrew() {
         // The window names an entry; the plan installs that entry's own
@@ -2355,7 +2379,7 @@ mod tests {
         .into_iter()
         .enumerate()
         {
-            let issued = plan_install_impl(&state, id)
+            let issued = plan_install_impl(&state, &TEST_HOST, id)
                 .await
                 .unwrap_or_else(|e| panic!("{id} must be planned: {e}"));
             assert_eq!(
@@ -2383,26 +2407,32 @@ mod tests {
         );
         // Before the first check nothing can install: the snapshot is empty.
         assert_eq!(
-            plan_install_impl(&state, "node").await.unwrap_err(),
+            plan_install_impl(&state, &TEST_HOST, "node")
+                .await
+                .unwrap_err(),
             r#"{"kind":"catalog_state","state":"NeedsHomebrew"}"#
         );
         refresh_impl(&state).await.expect("refresh_impl");
         assert_eq!(
-            plan_install_impl(&state, "uv").await.unwrap_err(),
+            plan_install_impl(&state, &TEST_HOST, "uv")
+                .await
+                .unwrap_err(),
             r#"{"kind":"catalog_state","state":"Installed"}"#
         );
         // Not offered from here, and names that are no entry: a package's
         // own name included.
         for id in ["homebrew", "jq", "ollama-app", "gemma3:4b", "../uv", ""] {
             assert_eq!(
-                plan_install_impl(&state, id).await.unwrap_err(),
+                plan_install_impl(&state, &TEST_HOST, id).await.unwrap_err(),
                 r#"{"kind":"refused"}"#,
                 "{id}"
             );
         }
         // Nor does the starter model, with no Ollama to pull it.
         assert_eq!(
-            plan_install_impl(&state, "model").await.unwrap_err(),
+            plan_install_impl(&state, &TEST_HOST, "model")
+                .await
+                .unwrap_err(),
             r#"{"kind":"catalog_state","state":"NeedsOllama"}"#
         );
         assert_eq!(
@@ -2417,7 +2447,9 @@ mod tests {
         );
         refresh_impl(&other).await.expect("refresh_impl");
         assert_eq!(
-            plan_install_impl(&other, "node").await.unwrap_err(),
+            plan_install_impl(&other, &TEST_HOST, "node")
+                .await
+                .unwrap_err(),
             r#"{"kind":"catalog_state","state":"NeedsHomebrew"}"#
         );
         assert_eq!(other_calls.load(Ordering::SeqCst), 0);

@@ -308,7 +308,7 @@ impl Host {
     /// Applications, looked up as Open Ollama looks it up. Runs nothing and
     /// opens nothing.
     pub fn of_this_mac() -> Host {
-        let version = crate::diagnostics::read_os().macos_version;
+        let version = crate::diagnostics::read_macos_version();
         Host {
             macos_major: version.as_deref().and_then(major_of),
             apple_silicon: apple_silicon(),
@@ -797,6 +797,38 @@ mod tests {
             states(&ollama, &SILICON_15)[4],
             ("ollama", CatalogState::Installed)
         );
+    }
+
+    #[test]
+    fn test_the_model_planned_is_the_one_the_row_shows_for_this_macs_memory() {
+        // From the independent review of the branch: install_request
+        // reading the catalog's fixed model, not this Mac's, passed every
+        // test, since the one model test was on 16 GiB.
+        let o = "ollama:http://127.0.0.1:11434";
+        let running = snapshot(vec![instance("ollama", o)], Vec::new());
+        for (memory, model) in [
+            (Some(4u64 << 30), "gemma3:1b"),
+            (Some(16 << 30), "gemma3:4b"),
+            (Some(32 << 30), "gemma3:12b"),
+            (Some(64 << 30), "gemma3:27b"),
+            (None, "gemma3:4b"),
+        ] {
+            let host = Host {
+                memory_bytes: memory,
+                ..SILICON_15
+            };
+            let shown = entries(&running, &host)
+                .into_iter()
+                .find(|entry| entry.id == "model")
+                .expect("the model's row");
+            assert!(
+                matches!(&shown.install, CatalogInstall::OllamaModel { name, .. } if *name == model),
+                "{memory:?}: {:?}",
+                shown.install
+            );
+            let planned = install_request(&running, &host, "model").expect("planned");
+            assert_eq!(planned.name, model, "{memory:?}");
+        }
     }
 
     #[test]

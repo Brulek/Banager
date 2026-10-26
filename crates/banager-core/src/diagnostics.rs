@@ -177,6 +177,20 @@ pub fn read_os() -> OsFacts {
     OsFacts::default()
 }
 
+/// The macOS version alone (`kern.osproductversion`): `read_os` without the
+/// chip, for what needs no more (`catalog::Host::of_this_mac`; from the
+/// independent review of the branch -- it read the chip too and threw it
+/// away).
+#[cfg(target_os = "macos")]
+pub fn read_macos_version() -> Option<String> {
+    sysctl_string("kern.osproductversion")
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn read_macos_version() -> Option<String> {
+    None
+}
+
 /// One string the kernel keeps under `name`, trimmed; `None` when it has
 /// none or it is empty.
 #[cfg(target_os = "macos")]
