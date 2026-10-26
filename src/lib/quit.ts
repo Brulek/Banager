@@ -82,26 +82,41 @@ export function quitStops(active: OpSummary[]): OpSummary[] {
  * only while one of their commands is under way (`commandUnderWay`), that
  * the tool it works on can be left half done: in the words of its kind
  * when every command under way is of one kind (updated, uninstalled), and
- * in words for any kind when they are of more than one. Beside one that
- * nothing can stop, or one checking its result -- each has a line of its
- * own -- it says "the others"; with nothing but such ones, there is no
- * line.
+ * in words for any kind when they are of more than one. A model's download
+ * -- its install or update -- leaves no half model, and has words of its
+ * own. Beside one that nothing can stop, or one checking its result --
+ * each has a line of its own -- it says "the others"; with nothing but
+ * such ones, there is no line.
  */
 export function quitBodyKey(active: OpSummary[]): string | null {
   const stops = quitStops(active);
   if (stops.length === 0) return null;
-  const kinds = new Set(stops.filter(commandUnderWay).map((op) => op.kind));
-  if (stops.length < active.length) return kinds.size === 0 ? "quit.body.othersStop" : "quit.body.othersHalfDone";
+  const underWay = stops.filter(commandUnderWay);
+  const kinds = new Set(underWay.map((op) => op.kind));
+  // Downloads of models only, queued ones too: Ollama writes a model only
+  // once its download is whole, so a stopped one leaves no half model, and
+  // a model is not called a tool (decision E25; from the review of the
+  // areas earlier reviews left, and of its fix: an update is a download
+  // too, and a queued uninstall is none).
+  const downloadsUnderWay = underWay.length > 0 && underWay.every(isModelDownload);
+  if (stops.length < active.length) {
+    if (kinds.size === 0) return "quit.body.othersStop";
+    return downloadsUnderWay ? "quit.body.othersModelDownload" : "quit.body.othersHalfDone";
+  }
   if (kinds.size === 0) return "quit.body.stops";
+  if (downloadsUnderWay) {
+    if (!stops.every(isModelDownload)) return "quit.body.stopsModelDownload";
+    return kinds.has("Install") ? "quit.body.ModelDownload" : "quit.body.ModelUpdate";
+  }
   if (kinds.size > 1) return "quit.body.mixed";
   const [kind] = kinds;
-  // Downloads of a model: Ollama writes it only once it is whole, so a
-  // stopped one leaves no half model, and is not called a tool (decision
-  // E25; from the review of the areas earlier reviews left).
-  if (kind === "Install" && stops.filter(commandUnderWay).every((op) => op.artifact_kind === "Model")) {
-    return "quit.body.ModelDownload";
-  }
+  if (kind === "Uninstall" && underWay.every((op) => op.artifact_kind === "Model")) return "quit.body.ModelUninstall";
   return HALF_DONE_KEYS[kind];
+}
+
+/** A model's install or update: both are Ollama's download of it (`ollama pull`). */
+function isModelDownload(op: OpSummary): boolean {
+  return op.artifact_kind === "Model" && (op.kind === "Install" || op.kind === "Upgrade");
 }
 
 /**

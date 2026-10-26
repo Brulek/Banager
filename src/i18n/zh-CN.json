@@ -1061,6 +1061,10 @@
       "Uninstall_other": "现在退出会中断操作，正在卸载的工具有只卸载一半的风险。",
       "Install_other": "现在退出会中断操作，正在安装的工具有只安装一半的风险。",
       "ModelDownload_other": "现在退出会中断下载。模型要下载完才会安装，下次下载可以从中断处继续。",
+      "ModelUpdate_other": "现在退出会中断更新。模型要下载完才会更新，在此之前保持原样，下次更新可以从中断处继续。",
+      "ModelUninstall_other": "现在退出会中断操作，正在卸载的模型有只卸载一半的风险。",
+      "othersModelDownload_other": "现在退出会中断其余操作。模型要下载完才会装上或更新，下次下载可以从中断处继续。",
+      "stopsModelDownload_other": "现在退出会中断操作。模型要下载完才会装上或更新，下次下载可以从中断处继续。",
       "mixed_other": "现在退出会中断操作，正在处理的工具有只完成一半的风险。",
       "othersStop_other": "现在退出会中断其余操作。",
       "othersHalfDone_other": "现在退出会中断其余操作，正在处理的工具有只完成一半的风险。"

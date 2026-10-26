@@ -99,6 +99,17 @@ describe("what the question says under its title", () => {
     const download = { ...op(2, "Install", "Running"), artifact_kind: "Model" as const };
     expect(quitBodyKey([download])).toBe("quit.body.ModelDownload");
     expect(quitBodyKey([download, op(3, "Install", "Running")])).toBe("quit.body.Install");
+    // A model's update is its download too; an uninstall of one is not.
+    const update = { ...op(4, "Upgrade", "Running"), artifact_kind: "Model" as const };
+    expect(quitBodyKey([update])).toBe("quit.body.ModelUpdate");
+    expect(quitBodyKey([download, update])).toBe("quit.body.ModelDownload");
+    const removal = { ...op(5, "Uninstall", "Running"), artifact_kind: "Model" as const };
+    expect(quitBodyKey([removal])).toBe("quit.body.ModelUninstall");
+    // A queued uninstall beside a download: not "the downloads" (from the
+    // review of the fix batch).
+    expect(quitBodyKey([download, { ...op(6, "Uninstall", "Queued"), artifact_kind: "Model" as const }])).toBe(
+      "quit.body.stopsModelDownload",
+    );
     // Two updates running, one queued: still one kind under way.
     expect(
       quitBodyKey([op(1, "Upgrade", "Running"), op(2, "Upgrade", "Running"), op(3, "Uninstall", "Queued")]),
@@ -113,6 +124,10 @@ describe("what the question says under its title", () => {
     expect(quitBodyKey([rustup(1, "Running")])).toBeNull();
     expect(quitBodyKey([rustup(1, "Running"), op(2, "Upgrade", "Queued")])).toBe("quit.body.othersStop");
     expect(quitBodyKey([rustup(1, "Running"), op(2, "Uninstall", "Running")])).toBe("quit.body.othersHalfDone");
+    // Beside a model's download, one checking its result: no tool is left
+    // half done by what quitting stops (from the review of the fix batch).
+    const download = { ...op(3, "Install", "Running"), artifact_kind: "Model" as const };
+    expect(quitBodyKey([op(4, "Install", "Verifying"), download])).toBe("quit.body.othersModelDownload");
     expect(quitStops([rustup(1, "Running"), op(2, "Upgrade", "Queued")]).map((each) => each.id)).toEqual([2]);
     // Queued, rustup's update has started nothing, and quitting stops it.
     expect(quitBodyKey([rustup(1, "Queued")])).toBe("quit.body.stops");
