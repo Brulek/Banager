@@ -1115,7 +1115,10 @@ pub fn scan_dirs(
     let mut attributed = 0u32;
     let mut stopped = None;
     let mut examined = 0usize;
-    let mut seen: Vec<PathBuf> = Vec::new();
+    // Each folder once, a found one by what the disk says it is, not its
+    // name: `~/bin` and `~/Bin` on a case-sensitive volume are two
+    // (`commands::FoldersMet`, R90-2).
+    let mut seen = crate::commands::FoldersMet::default();
     for dir in dirs {
         let (canonical, stat) = match protected::resolve(dir, &protected, true) {
             Resolution::Found(canonical, stat) if stat.is_dir() => (canonical, stat),
@@ -1123,17 +1126,15 @@ pub fn scan_dirs(
             Resolution::Protected(leads) => {
                 // Named once, by the name it was looked for under, however
                 // many entries lead there.
-                if !seen.iter().any(|seen| same_place(seen, &leads)) {
-                    seen.push(leads);
+                if seen.first_protected(&protected::without_data_volume(&leads)) {
                     protected_dirs.push(display_path(dir, &env.home));
                 }
                 continue;
             }
         };
-        if seen.iter().any(|seen| same_place(seen, &canonical)) {
+        if !seen.first_folder(&stat) {
             continue;
         }
-        seen.push(canonical.clone());
         if started.elapsed() >= budget.max_duration {
             stopped = Some(time_stop.clone());
             break;

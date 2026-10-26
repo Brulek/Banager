@@ -242,6 +242,42 @@ pub fn bin_folders(instances: &[ManagerInstance]) -> Vec<PathBuf> {
 
 /// Why a read stopped: one of the budget's two limits.
 struct Stopped;
+/// The folders `read_folders` has met. One it found is told apart by
+/// what the disk says it is (device and inode, `Stat`), not by its
+/// name: on a case-sensitive volume `~/bin` and `~/Bin` are two
+/// folders, which names compared as the usual Mac disk compares them
+/// (`protected::same_path`) took for one, and the second was dropped --
+/// a command in it read as not there, and Terminal's verdict taken from a
+/// later folder (R90-2). Two names for one folder -- a link, the data
+/// volume's own spelling -- are still one. One in a protected place,
+/// never looked at, is known only by where it leads, compared by name.
+#[derive(Default)]
+pub(crate) struct FoldersMet {
+    folders: HashSet<(u64, u64)>,
+    protected: Vec<PathBuf>,
+}
+
+impl FoldersMet {
+    /// Whether the folder `stat` says this is was not met before; it is
+    /// from now on.
+    pub(crate) fn first_folder(&mut self, stat: &crate::dirfd::Stat) -> bool {
+        self.folders.insert((stat.dev(), stat.ino()))
+    }
+
+    /// Whether `leads_to`, a protected place, was not met before; it is
+    /// from now on.
+    pub(crate) fn first_protected(&mut self, leads_to: &Path) -> bool {
+        if self
+            .protected
+            .iter()
+            .any(|seen| protected::same_path(seen, leads_to))
+        {
+            return false;
+        }
+        self.protected.push(leads_to.to_path_buf());
+        true
+    }
+}
 
 /// Reads each folder once: the names in every `PATH` entry, in order, and
 /// in every `bin_dirs` folder not already on `PATH`. Skips an empty or a
@@ -264,7 +300,7 @@ pub fn read_folders(
     let started = Instant::now();
     let mut examined = 0usize;
     let mut folders = Folders::default();
-    let mut seen: Vec<PathBuf> = Vec::new();
+    let mut seen = FoldersMet::default();
     let protected = Protected::new(home);
     for dir in path_dirs {
         if dir.as_os_str().is_empty() || !dir.is_absolute() {
@@ -298,7 +334,7 @@ pub fn read_folders(
 fn read_one(
     dir: &Path,
     protected: &Protected,
-    seen: &mut Vec<PathBuf>,
+    seen: &mut FoldersMet,
     budget: CommandBudget,
     started: Instant,
     examined: &mut usize,
@@ -317,23 +353,15 @@ fn read_one(
         Resolution::Found(canonical, meta) if meta.is_dir() => (canonical, meta),
         Resolution::Found(..) | Resolution::Missing | Resolution::Refused => return Ok(None),
         Resolution::Protected(leads_to) => {
-            if seen
-                .iter()
-                .any(|seen| protected::same_path(seen, &leads_to))
-            {
+            if !seen.first_protected(&leads_to) {
                 return Ok(None);
             }
-            seen.push(leads_to.clone());
             return Ok(Some(unread(leads_to)));
         }
     };
-    if seen
-        .iter()
-        .any(|seen| protected::same_path(seen, &canonical))
-    {
+    if !seen.first_folder(&meta) {
         return Ok(None);
     }
-    seen.push(canonical.clone());
     // Listed from `/` with no link followed on the way (`dirfd`), and only
     // when it is still the folder `resolve` found: one replaced by a link
     // since is not listed through it.
@@ -1429,6 +1457,79 @@ async fn judged_in_background(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// R90-2, on a real case-sensitive APFS volume (`hdiutil`, a disk
+    /// image of the test's own, attached and detached here): `bin` and
+    /// `Bin` are two folders, and both are read. Ignored: it mounts a disk
+    /// image. `cargo test -p banager-core --lib -- --ignored
+    /// live_case_sensitive`.
+    #[test]
+    #[ignore = "mounts a case-sensitive disk image with hdiutil"]
+    fn live_case_sensitive_path_folders_that_differ_in_case_are_two() {
+        use std::os::unix::fs::PermissionsExt;
+        use std::process::Command;
+        let dir = std::env::temp_dir().join(format!("banager-r90-2-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let image = dir.join("cs.dmg");
+        let mount = dir.join("mnt");
+        std::fs::create_dir_all(&mount).unwrap();
+        let ok = |out: std::process::Output| assert!(out.status.success(), "{out:?}");
+        ok(Command::new("hdiutil")
+            .args([
+                "create",
+                "-quiet",
+                "-size",
+                "8m",
+                "-fs",
+                "Case-sensitive APFS",
+                "-volname",
+                "BanagerR90",
+            ])
+            .arg(&image)
+            .output()
+            .unwrap());
+        ok(Command::new("hdiutil")
+            .args(["attach", "-quiet", "-nobrowse", "-mountpoint"])
+            .arg(&mount)
+            .arg(&image)
+            .output()
+            .unwrap());
+        let mount = std::fs::canonicalize(&mount).unwrap();
+        std::fs::create_dir_all(mount.join("bin")).unwrap();
+        std::fs::create_dir_all(mount.join("Bin")).unwrap();
+        let jq = mount.join("Bin/jq");
+        std::fs::write(&jq, "#!/bin/sh\n").unwrap();
+        std::fs::set_permissions(&jq, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let folders = read_folders(
+            &[mount.join("bin"), mount.join("Bin")],
+            &[],
+            Path::new("/nonexistent-home"),
+            CommandBudget::default(),
+        );
+        let detached = Command::new("hdiutil")
+            .args(["detach", "-quiet"])
+            .arg(&mount)
+            .output();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(detached.unwrap().status.success());
+        let read: Vec<(&Path, bool)> = folders
+            .path
+            .iter()
+            .map(|f| {
+                (
+                    f.given.as_path(),
+                    f.names.contains(std::ffi::OsStr::new("jq")),
+                )
+            })
+            .collect();
+        assert_eq!(
+            read,
+            [
+                (mount.join("bin").as_path(), false),
+                (mount.join("Bin").as_path(), true)
+            ]
+        );
+    }
     use std::os::unix::fs::PermissionsExt;
 
     #[test]
