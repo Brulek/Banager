@@ -763,18 +763,31 @@ impl PipxAdapter {
                     lookup_failure_reason("pipx list --outdated", output.exit_code, &output.stderr),
                     &output.stderr,
                 );
+                // Where only the middle of stderr was cut, pipx finished and
+                // its stdout lines stand: those updates are offered, and only
+                // the other tools are "could not check" (review of PARSER-002).
+                let printed: Vec<UpdateCandidate> = if output.exit_code == Some(1)
+                    && crate::runner::stderr_was_cut(&output.stderr)
+                {
+                    parse_outdated(&output.stdout, &inst.id)
+                } else {
+                    Vec::new()
+                };
                 let looked_up: Vec<InstalledArtifact> = list
                     .artifacts
                     .iter()
                     .filter(|a| !a.facts.not_looked_up)
+                    .filter(|a| !printed.iter().any(|c| c.key.name == a.key.name))
                     .cloned()
                     .collect();
+                let mut candidates = printed;
+                candidates.extend(uncheckable_from_inventory(
+                    &looked_up,
+                    UpdateChannel::Native,
+                    &failure,
+                ));
                 return Ok(CheckOutcome {
-                    candidates: uncheckable_from_inventory(
-                        &looked_up,
-                        UpdateChannel::Native,
-                        &failure,
-                    ),
+                    candidates,
                     notes: list.notes(),
                 });
             }
@@ -2167,7 +2180,8 @@ mod tests {
     async fn regression_parser_002_a_cut_failure_list_is_no_answer() {
         // Past 2 MiB the runner keeps stderr's first and last MiB: a tool
         // whose failure was in the middle is not named, and read as
-        // checked and up to date. With the cut, no tool's check stands.
+        // checked and up to date. With the cut, only the updates pipx
+        // printed stand; every other tool is "could not check".
         let runner = Arc::new(MockRunner::new());
         runner.respond(
             vec!["/opt/homebrew/bin/pipx", "list", "--json"],
@@ -2197,7 +2211,8 @@ mod tests {
             .iter()
             .map(|c| (c.key.name.as_str(), c.checkable))
             .collect();
-        assert_eq!(rows, [("cowsay", false), ("ruff", false)]);
+        assert_eq!(rows, [("cowsay", true), ("ruff", false)]);
+        assert_eq!(outcome.candidates[0].target, "6.1");
     }
 
     #[test]
