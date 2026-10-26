@@ -2580,6 +2580,31 @@ describe("UNINSTALL_BLOCKED_KEYS", () => {
     }
   });
 
+  it("says why a crate whose Cargo record names a file outside Cargo's programs has no Uninstall (R91-1)", () => {
+    // `UninstallBlocked::CargoRecordUnsafe`: `cargo uninstall` deletes
+    // every name the crate's receipt lists, joined onto Cargo's `bin`
+    // folder, so `../../.ssh/id_ed25519` there would go too. Nothing to
+    // run fixes it, so no command; the same word as the other rows
+    // nothing here can uninstall.
+    const cargo = instance({ id: "cargo:/Users/you/.cargo", adapter_id: "cargo", exe_path: "/Users/you/.cargo/bin/cargo" });
+    const key: ArtifactKey = { instance_id: cargo.id, kind: "Binary", name: "ripgrep" };
+    expect(UNINSTALL_BLOCKED_KEYS.CargoRecordUnsafe.command(key, cargo)).toBe("");
+    expect(uninstallBlockedCopy("CargoRecordUnsafe", "cargo")).toBe(UNINSTALL_BLOCKED_KEYS.CargoRecordUnsafe);
+    expect(UNINSTALL_BLOCKED_KEYS.CargoRecordUnsafe.badge).toBe("installed.blocked.UvToolDirSet.badge");
+    for (const locale of [en, zhCN, zhHant]) {
+      const { description, refused } = locale.installed.blocked.CargoRecordUnsafe;
+      for (const copy of [description, refused]) {
+        expect(copy).toContain("Cargo");
+        expect(copy).not.toContain("{{");
+        expect(copy).not.toMatch(/\bmay\b|\bmight\b|可能/);
+      }
+      expect(description).toContain("cargo uninstall");
+    }
+    expect(en.installed.blocked.CargoRecordUnsafe.refused).toMatch(/^Couldn't uninstall because /);
+    expect(zhCN.installed.blocked.CargoRecordUnsafe.refused).toMatch(/^无法卸载，因为/);
+    expect(zhHant.installed.blocked.CargoRecordUnsafe.refused).toMatch(/^無法解除安裝，因為/);
+  });
+
   it("says why a uv tool has no Uninstall while UV_TOOL_DIR is set, and hands over no command to copy", () => {
     // `UninstallBlocked::UvToolDirSet`: `uv tool uninstall` of the last
     // tool deletes the folder above the one UV_TOOL_DIR names when that

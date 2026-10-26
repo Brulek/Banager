@@ -9,12 +9,12 @@ use crate::model::{
     ArtifactFacts, ArtifactKey, ArtifactKind, CancelPolicy, CommandInputs, InstallReason,
     InstalledArtifact, InstanceStatus, ManagerInstance, OpKind, OpRequest, Outcome, Plan,
     PlanAction, ProvidedCommand, Reconciled, ResourceLock, Scope, SearchHit, Unavailable,
-    UninstallScope, UpdateCandidate, UpdateChannel, Warning,
+    UninstallBlocked, UninstallScope, UpdateCandidate, UpdateChannel, Warning,
 };
 use crate::runner::{resolve_exe, CommandRunner, CommandSpec, HostEnv, OutputUse};
 use async_trait::async_trait;
 use serde::Deserialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -394,6 +394,66 @@ fn plain_bin(bin: &str) -> bool {
     crate::adapters::sanity::is_name(bin) && bin != "." && bin != ".." && !bin.contains('/')
 }
 
+/// The crates a record of which lists a program by something that is not
+/// a plain file name (`plain_bin`): `parse_crates2_bins` leaves it out of
+/// what Banager shows, but `cargo uninstall` would join it onto
+/// `<root>/bin` and delete it, so their uninstall is refused
+/// (`UninstallBlocked::CargoRecordUnsafe`, R91-1).
+fn crates_with_unsafe_bins(json: &str) -> Result<HashSet<String>, AdapterError> {
+    let root: Crates2Bins =
+        serde_json::from_str(json).map_err(|e| AdapterError::Parse(e.to_string()))?;
+    Ok(root
+        .installs
+        .into_iter()
+        .filter(|(_, install)| install.bins.iter().any(|b| !plain_bin(b)))
+        .filter_map(|(key, _)| parse_install_key(&key).map(|(name, _, _)| name))
+        .collect())
+}
+
+/// What `cargo uninstall --root <root> <name>` would delete, from
+/// `<root>/.crates.toml` (`crates_toml`, `None` when there is none): the
+/// one entry for `name`, by its key, and the programs it lists, sorted and
+/// each once. Cargo deletes by that receipt -- each name its entry lists,
+/// joined onto `<root>/bin` (cargo 1.98.1 `ops/cargo_uninstall.rs`,
+/// `InstallTracker`, which brings `.crates2.json` in line with it first)
+/// -- so this is the scope a preview may name, and the plan passes each
+/// program as `--bin=<name>`, so that cargo deletes those and no other
+/// (R91-1). `Err` with why there is no safe scope: no receipt (Cargo then
+/// finds nothing installed), no entry or two for the name, an entry with
+/// no program, or one naming a program by something that is not a plain
+/// file name (`UninstallBlocked::CargoRecordUnsafe`).
+fn uninstall_scope(
+    crates_toml: Option<&str>,
+    name: &str,
+) -> Result<(String, Vec<String>), AdapterError> {
+    let refused = |why: &str| AdapterError::Refused(why.to_string());
+    let text = crates_toml
+        .ok_or_else(|| refused("Cargo has no record (.crates.toml) of what it installed here"))?;
+    let v1: CratesV1 = toml::from_str(text)
+        .map_err(|e| AdapterError::Parse(format!("parsing .crates.toml: {e}")))?;
+    let mut entries = v1.v1.into_iter().filter(|(key, _)| {
+        parse_install_key(key).is_some_and(|(installed, _, _)| installed == name)
+    });
+    let (key, bins) = entries
+        .next()
+        .ok_or_else(|| refused("Cargo has no record of installing this crate here"))?;
+    if entries.next().is_some() {
+        return Err(refused("ambiguous Cargo install records"));
+    }
+    if bins.iter().any(|bin| !plain_bin(bin)) {
+        return Err(AdapterError::UninstallBlocked {
+            reason: UninstallBlocked::CargoRecordUnsafe,
+        });
+    }
+    let mut bins = bins;
+    bins.sort();
+    bins.dedup();
+    if bins.is_empty() {
+        return Err(refused("Cargo's record lists no program for this crate"));
+    }
+    Ok((key, bins))
+}
+
 /// One artifact per crate. `path` is the program the crate installed
 /// under `<cargo_home>/bin`: the binary named after the crate when the
 /// record lists one, else the first it lists, else `None` for a crate
@@ -412,6 +472,7 @@ pub(crate) fn parse_crates2(
 ) -> Result<Vec<InstalledArtifact>, AdapterError> {
     let entries = parse_crates2_entries(json)?;
     let bins = parse_crates2_bins(json)?;
+    let unsafe_records = crates_with_unsafe_bins(json)?;
     // Each crate's programs by name, the first record of a name winning
     // as it does in the sorted list. A lookup per crate, not a search of
     // the list per crate: that was quadratic, 16 s over a record of 60,000
@@ -433,6 +494,9 @@ pub(crate) fn parse_crates2(
                     .find(|b| **b == name)
                     .or_else(|| crate_bins.first())
                     .map(|bin| bin_dir.join(bin));
+                let uninstall_blocked = unsafe_records
+                    .contains(&name)
+                    .then_some(UninstallBlocked::CargoRecordUnsafe);
                 let provided = crate_bins
                     .iter()
                     .map(|bin| ProvidedCommand {
@@ -456,7 +520,7 @@ pub(crate) fn parse_crates2(
                     installed_at: None,
                     path,
                     auto_updates: false,
-                    uninstall_blocked: None,
+                    uninstall_blocked,
                     facts: ArtifactFacts {
                         command_inputs: CommandInputs {
                             provided,
@@ -761,6 +825,19 @@ impl CargoAdapter {
         })))
     }
 
+    /// What an uninstall's preview was worked out from (`Plan::basis`):
+    /// the root, the crate's receipt entry by its key -- name, version and
+    /// source -- and the programs it lists (`uninstall_scope`). Read again
+    /// just before the command runs: any change to them is changed since
+    /// shown (R91-1).
+    fn uninstall_basis(root: &Path, key: &str, bins: &[String]) -> String {
+        super::plan_basis(serde_json::json!({
+            "root": root,
+            "entry": key,
+            "bins": bins,
+        }))
+    }
+
     pub async fn inventory(
         &self,
         inst: &ManagerInstance,
@@ -953,6 +1030,13 @@ impl CargoAdapter {
             basis = Some(Self::upgrade_basis(&json, &inst.prefix, &req.name)?);
             installs = Some(json);
         }
+        let mut uninstall_bins = Vec::new();
+        if req.kind == OpKind::Uninstall {
+            let (key, bins) =
+                uninstall_scope(self.read_crates_toml(&inst.prefix)?.as_deref(), &req.name)?;
+            basis = Some(Self::uninstall_basis(&inst.prefix, &key, &bins));
+            uninstall_bins = bins;
+        }
         match req.kind {
             OpKind::Link => Err(super::links_nothing(&self.meta.id)),
             OpKind::Install | OpKind::Upgrade => {
@@ -1029,12 +1113,16 @@ impl CargoAdapter {
                 request: req.clone(),
                 action: PlanAction::Command {
                     program: inst.exe_path.clone(),
-                    args: vec![
-                        "uninstall".to_string(),
-                        "--root".to_string(),
-                        root.to_string(),
-                        req.name.clone(),
-                    ],
+                    // Each program the receipt lists, by name, so that
+                    // cargo deletes those and no other (`uninstall_scope`,
+                    // R91-1); the same read is the plan's basis, read
+                    // again before it runs (`execute`).
+                    args: ["uninstall", "--root", root]
+                        .into_iter()
+                        .map(str::to_string)
+                        .chain(uninstall_bins.iter().map(|bin| format!("--bin={bin}")))
+                        .chain([req.name.clone()])
+                        .collect(),
                     // Removing one program must not start with a toolchain
                     // download (RUSTUP_AUTO_INSTALL_OFF).
                     env: self.env_vec(),
@@ -1049,7 +1137,7 @@ impl CargoAdapter {
                     what: UninstallScope::Cargo,
                 }],
                 affected: Vec::new(),
-                basis: None,
+                basis,
                 timeout_secs: 300,
             }),
         }
@@ -1063,19 +1151,25 @@ impl CargoAdapter {
         cancel: CancellationToken,
     ) -> Result<Outcome, AdapterError> {
         if plan.request.kind == OpKind::Upgrade {
-            let current = match &plan.action {
-                PlanAction::Command { args, .. } => args
-                    .windows(2)
-                    .find(|pair| pair[0] == "--root")
-                    .map(|pair| Path::new(&pair[1]))
-                    .filter(|root| root.is_absolute())
-                    .and_then(|root| {
-                        self.read_installs_at(root).ok().and_then(|json| {
-                            Self::upgrade_basis(&json, root, &plan.request.name).ok()
-                        })
-                    }),
-                _ => None,
-            };
+            let current = Self::root_of(plan).and_then(|root| {
+                self.read_installs_at(root)
+                    .ok()
+                    .and_then(|json| Self::upgrade_basis(&json, root, &plan.request.name).ok())
+            });
+            if current.is_none() || current != plan.basis {
+                return Ok(Outcome::BanagerFailed(
+                    crate::model::Fault::ChangedSinceShown,
+                ));
+            }
+        }
+        // The receipt read again: the programs the preview named are still
+        // the crate's whole entry, every one a plain name (R91-1).
+        if plan.request.kind == OpKind::Uninstall {
+            let current = Self::root_of(plan).and_then(|root| {
+                let toml = self.read_crates_toml(root).ok()?;
+                let (key, bins) = uninstall_scope(toml.as_deref(), &plan.request.name).ok()?;
+                Some(Self::uninstall_basis(root, &key, &bins))
+            });
             if current.is_none() || current != plan.basis {
                 return Ok(Outcome::BanagerFailed(
                     crate::model::Fault::ChangedSinceShown,
@@ -1084,6 +1178,19 @@ impl CargoAdapter {
         }
         // Never substitute a new plan's argv, even when revalidation succeeds.
         run_plan(&self.runner, plan, sink, op_id, cancel).await
+    }
+
+    /// The absolute `--root` a plan's command names: the root it was
+    /// worked out for, read again by `execute`.
+    fn root_of(plan: &Plan) -> Option<&Path> {
+        match &plan.action {
+            PlanAction::Command { args, .. } => args
+                .windows(2)
+                .find(|pair| pair[0] == "--root")
+                .map(|pair| Path::new(&pair[1]))
+                .filter(|root| root.is_absolute()),
+            _ => None,
+        }
     }
 
     pub async fn reconcile(
@@ -2845,7 +2952,11 @@ mod tests {
                 .with_binstall(Some(PathBuf::from(
                     "/Users/brulek/.cargo/bin/cargo-binstall",
                 )));
-        let inst = test_instance(PathBuf::from("/Users/brulek/.cargo"));
+        let home = cargo_root(
+            "never-binstall",
+            &format!("[v1]\n\"{HEXYL}\" = [\"hexyl\"]\n"),
+        );
+        let inst = test_instance(home.clone());
         let req = OpRequest {
             kind: OpKind::Uninstall,
             instance_id: inst.id.clone(),
@@ -2861,7 +2972,13 @@ mod tests {
         );
         assert_eq!(
             command_args(&plan),
-            vec!["uninstall", "--root", "/Users/brulek/.cargo", "hexyl"]
+            vec![
+                "uninstall",
+                "--root",
+                home.to_str().unwrap(),
+                "--bin=hexyl",
+                "hexyl"
+            ]
         );
         // Said under the tool: cargo deletes the binaries its install
         // record lists for the crate, and nothing else.
@@ -2871,6 +2988,7 @@ mod tests {
                 what: UninstallScope::Cargo
             }]
         );
+        std::fs::remove_dir_all(home).unwrap();
     }
 
     #[tokio::test]
@@ -2890,6 +3008,12 @@ mod tests {
         // The recorded record, so that with cargo-binstall the upgrade is
         // binstall's (it holds no build choice) and both programs are seen.
         std::fs::write(home.join(".crates2.json"), recorded_crates2()).unwrap();
+        // Cargo's receipt of hexyl's program, which an uninstall names.
+        std::fs::write(
+            home.join(".crates.toml"),
+            format!("[v1]\n\"{HEXYL_RECORDED}\" = [\"hexyl\"]\n"),
+        )
+        .unwrap();
         let inst = test_instance(home.clone());
         for binstall in [None, Some(PathBuf::from(BINSTALL))] {
             let adapter =
@@ -2925,7 +3049,11 @@ mod tests {
         });
         let adapter =
             CargoAdapter::new(runner.clone(), Arc::new(MockHttpClient::new())).with_binstall(None);
-        let inst = test_instance(PathBuf::from("/Users/brulek/.cargo"));
+        let home = cargo_root(
+            "execute-uninstall",
+            &format!("[v1]\n\"{HEXYL}\" = [\"hexyl\"]\n"),
+        );
+        let inst = test_instance(home.clone());
         let req = OpRequest {
             kind: OpKind::Uninstall,
             instance_id: inst.id.clone(),
@@ -2953,7 +3081,13 @@ mod tests {
         );
         assert_eq!(
             specs[0].args,
-            vec!["uninstall", "--root", "/Users/brulek/.cargo", "hexyl"]
+            vec![
+                "uninstall",
+                "--root",
+                home.to_str().unwrap(),
+                "--bin=hexyl",
+                "hexyl"
+            ]
         );
         assert_eq!(
             specs[0].env,
@@ -3578,5 +3712,239 @@ mod tests {
             .await;
         assert_eq!(result.unwrap(), Outcome::Succeeded);
         assert_eq!(runner.calls(), [argv], "exactly the previewed command");
+    }
+
+    /// R91-1: a Cargo root of the test's own, with `.crates.toml` (the
+    /// receipt `cargo uninstall` deletes by) and `.crates2.json`.
+    fn cargo_root(tag: &str, crates_toml: &str) -> PathBuf {
+        let home = temp_cargo_home(tag);
+        std::fs::create_dir_all(home.join("bin")).unwrap();
+        std::fs::write(home.join(".crates.toml"), crates_toml).unwrap();
+        std::fs::write(home.join(".crates2.json"), r#"{"installs":{}}"#).unwrap();
+        home
+    }
+
+    const RG: &str = "ripgrep 15.1.0 (registry+https://github.com/rust-lang/crates.io-index)";
+    const HEXYL: &str = "hexyl 0.18.0 (registry+https://github.com/rust-lang/crates.io-index)";
+    /// The key of the recorded fixture's one record (`recorded_crates2`).
+    const HEXYL_RECORDED: &str =
+        "hexyl 0.17.0 (registry+https://github.com/rust-lang/crates.io-index)";
+
+    fn uninstall(inst: &ManagerInstance, name: &str) -> OpRequest {
+        OpRequest {
+            kind: OpKind::Uninstall,
+            instance_id: inst.id.clone(),
+            artifact_kind: ArtifactKind::Binary,
+            name: name.to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn regression_r91_1_an_unsafe_recorded_program_blocks_the_crates_uninstall() {
+        // A tool added `../../.ssh/id_ed25519` beside `rg` in ripgrep's
+        // entry: `cargo uninstall ripgrep` would join it onto `<root>/bin`
+        // and delete the key with rg. ripgrep is still listed, with rg
+        // alone, but its uninstall is refused, at the row and at the
+        // preview, and nothing runs. hexyl beside it is unaffected.
+        let home = cargo_root(
+            "r91-unsafe",
+            &format!(
+                "[v1]\n\"{RG}\" = [\"rg\", \"../../.ssh/id_ed25519\"]\n\"{HEXYL}\" = [\"hexyl\"]\n"
+            ),
+        );
+        let runner = Arc::new(MockRunner::new());
+        let adapter = CargoAdapter::new(runner.clone(), Arc::new(MockHttpClient::new()));
+        let inst = test_instance(home.clone());
+        let listed = adapter.inventory(&inst).await.unwrap();
+        let row = |name: &str| listed.iter().find(|a| a.key.name == name).unwrap();
+        assert_eq!(
+            row("ripgrep").uninstall_blocked,
+            Some(UninstallBlocked::CargoRecordUnsafe)
+        );
+        let commands: Vec<&str> = row("ripgrep")
+            .facts
+            .command_inputs
+            .provided
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect();
+        assert_eq!(commands, ["rg"]);
+        assert_eq!(row("hexyl").uninstall_blocked, None);
+        assert!(matches!(
+            adapter.plan(&inst, &uninstall(&inst, "ripgrep")).await,
+            Err(AdapterError::UninstallBlocked {
+                reason: UninstallBlocked::CargoRecordUnsafe
+            })
+        ));
+        let plan = adapter
+            .plan(&inst, &uninstall(&inst, "hexyl"))
+            .await
+            .unwrap();
+        let root = home.to_str().unwrap();
+        assert_eq!(
+            command_args(&plan),
+            ["uninstall", "--root", root, "--bin=hexyl", "hexyl"]
+        );
+        assert!(runner.calls().is_empty());
+        std::fs::remove_dir_all(home).unwrap();
+    }
+
+    #[tokio::test]
+    async fn regression_r91_1_an_uninstall_names_its_programs_and_rechecks_them_before_it_runs() {
+        // The preview names each program its entry lists (`--bin=`), so
+        // cargo deletes those and no other, and the entry is read again
+        // just before the command runs: a program added, taken away or
+        // made unsafe, another version, or no receipt, is changed since
+        // shown, and nothing runs. The same programs in another order, or
+        // another crate changing, is not.
+        let two = format!("[v1]\n\"{RG}\" = [\"rg\", \"rg-lsp\"]\n\"{HEXYL}\" = [\"hexyl\"]\n");
+        for (case, after, runs) in [
+            ("unchanged", Some(two.clone()), true),
+            (
+                "reordered",
+                Some(format!(
+                    "[v1]\n\"{HEXYL}\" = [\"hexyl\"]\n\"{RG}\" = [\"rg-lsp\", \"rg\"]\n"
+                )),
+                true,
+            ),
+            (
+                "another crate",
+                Some(format!("[v1]\n\"{RG}\" = [\"rg\", \"rg-lsp\"]\n")),
+                true,
+            ),
+            (
+                "added",
+                Some(format!("[v1]\n\"{RG}\" = [\"rg\", \"rg-lsp\", \"rga\"]\n")),
+                false,
+            ),
+            (
+                "taken away",
+                Some(format!("[v1]\n\"{RG}\" = [\"rg\"]\n")),
+                false,
+            ),
+            (
+                "unsafe",
+                Some(format!(
+                    "[v1]\n\"{RG}\" = [\"rg\", \"rg-lsp\", \"/etc/hosts\"]\n"
+                )),
+                false,
+            ),
+            (
+                "another version",
+                Some(format!(
+                    "[v1]\n\"{}\" = [\"rg\", \"rg-lsp\"]\n",
+                    RG.replace("15.1.0", "15.2.0")
+                )),
+                false,
+            ),
+            ("no receipt", None, false),
+            ("not toml", Some("[v1\n".to_string()), false),
+        ] {
+            let home = cargo_root("r91-recheck", &two);
+            let runner = Arc::new(MockRunner::new());
+            let adapter = CargoAdapter::new(runner.clone(), Arc::new(MockHttpClient::new()));
+            let inst = test_instance(home.clone());
+            let plan = adapter
+                .plan(&inst, &uninstall(&inst, "ripgrep"))
+                .await
+                .unwrap();
+            let root = home.to_str().unwrap().to_string();
+            let argv = [
+                "uninstall",
+                "--root",
+                &root,
+                "--bin=rg",
+                "--bin=rg-lsp",
+                "ripgrep",
+            ];
+            assert_eq!(command_args(&plan), argv, "{case}");
+            let program = inst.exe_path.to_str().unwrap();
+            let mut expected = vec![program];
+            expected.extend(argv);
+            runner.respond(
+                expected.clone(),
+                CommandOutput {
+                    exit_code: Some(0),
+                    stdout: String::new(),
+                    stderr: String::new(),
+                    timed_out: false,
+                    cancelled: false,
+                    stderr_cause: Default::default(),
+                },
+            );
+            match &after {
+                Some(text) => std::fs::write(home.join(".crates.toml"), text).unwrap(),
+                None => std::fs::remove_file(home.join(".crates.toml")).unwrap(),
+            }
+            let outcome = adapter
+                .execute(&plan, Arc::new(VecSink::new()), 1, CancellationToken::new())
+                .await
+                .unwrap();
+            if runs {
+                assert_eq!(outcome, Outcome::Succeeded, "{case}");
+                assert_eq!(runner.calls(), [expected], "{case}");
+            } else {
+                assert_eq!(
+                    outcome,
+                    Outcome::BanagerFailed(crate::model::Fault::ChangedSinceShown),
+                    "{case}"
+                );
+                assert!(runner.calls().is_empty(), "{case}");
+            }
+            std::fs::remove_dir_all(home).unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn regression_r91_1_an_uninstall_needs_cargos_own_record_of_its_programs() {
+        // No `.crates.toml` (Cargo then finds nothing installed), no entry
+        // or two for the name, or an entry with no program: no scope to
+        // name, so no command that would remove whatever cargo finds.
+        let only_v2 = temp_cargo_home("r91-v2");
+        std::fs::create_dir_all(&only_v2).unwrap();
+        std::fs::write(only_v2.join(".crates2.json"), recorded_crates2()).unwrap();
+        let none = cargo_root("r91-none", &format!("[v1]\n\"{RG}\" = []\n"));
+        let twice = cargo_root(
+            "r91-twice",
+            &format!("[v1]\n\"{RG}\" = [\"rg\"]\n\"ripgrep 15.1.0 (git+https://github.com/BurntSushi/ripgrep#abc)\" = [\"rg\"]\n"),
+        );
+        for (home, name) in [
+            (&only_v2, "hexyl"),
+            (&none, "ripgrep"),
+            (&twice, "ripgrep"),
+            (&none, "hexyl"),
+        ] {
+            let runner = Arc::new(MockRunner::new());
+            let adapter = CargoAdapter::new(runner.clone(), Arc::new(MockHttpClient::new()));
+            let inst = test_instance(home.clone());
+            let refused = adapter.plan(&inst, &uninstall(&inst, name)).await;
+            assert!(
+                matches!(refused, Err(AdapterError::Refused(_))),
+                "{home:?} {name}: {refused:?}"
+            );
+            assert!(runner.calls().is_empty());
+        }
+        // A plan with no basis is not run either.
+        let home = cargo_root("r91-nobasis", &format!("[v1]\n\"{HEXYL}\" = [\"hexyl\"]\n"));
+        let runner = Arc::new(MockRunner::new());
+        let adapter = CargoAdapter::new(runner.clone(), Arc::new(MockHttpClient::new()));
+        let inst = test_instance(home.clone());
+        let mut plan = adapter
+            .plan(&inst, &uninstall(&inst, "hexyl"))
+            .await
+            .unwrap();
+        plan.basis = None;
+        let outcome = adapter
+            .execute(&plan, Arc::new(VecSink::new()), 1, CancellationToken::new())
+            .await
+            .unwrap();
+        assert_eq!(
+            outcome,
+            Outcome::BanagerFailed(crate::model::Fault::ChangedSinceShown)
+        );
+        assert!(runner.calls().is_empty());
+        for home in [only_v2, none, twice, home] {
+            std::fs::remove_dir_all(home).unwrap();
+        }
     }
 }

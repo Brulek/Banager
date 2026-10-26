@@ -1274,6 +1274,16 @@ export const UNINSTALL_BLOCKED_KEYS: Record<UninstallBlocked, UninstallBlockedCo
     command: () => "",
     refused: "runtimeGuard.neededByRefused",
   },
+  CargoRecordUnsafe: {
+    // A crate whose Cargo receipt names a program by a path that leads out
+    // of Cargo's `bin` folder (R91-1): `cargo uninstall` would delete that
+    // file as well. Nothing Banager can run fixes the receipt, so no
+    // command; the same word as the other rows nothing here can uninstall.
+    badge: "installed.blocked.UvToolDirSet.badge",
+    description: "installed.blocked.CargoRecordUnsafe.description",
+    command: () => "",
+    refused: "installed.blocked.CargoRecordUnsafe.refused",
+  },
 };
 
 /**

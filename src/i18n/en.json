@@ -305,6 +305,10 @@
         "badge": "Can't uninstall here",
         "description": "With UV_TOOL_DIR set, when uv uninstalls its last tool it also deletes the folder above UV_TOOL_DIR and everything in it, if that folder holds no other folder. So no uv tool can be uninstalled here while it's set.",
         "refused": "Couldn't uninstall because UV_TOOL_DIR is set."
+      },
+      "CargoRecordUnsafe": {
+        "description": "Cargo's install record for it names a file outside Cargo's folder of programs, and cargo uninstall would delete that file too. So it can't be uninstalled here.",
+        "refused": "Couldn't uninstall because Cargo's install record for it names a file outside Cargo's folder of programs."
       }
     },
     "sourceEmpty": {

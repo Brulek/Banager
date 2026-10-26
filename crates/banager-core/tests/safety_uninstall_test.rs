@@ -76,7 +76,7 @@ fn instance(adapter_id: &str, exe: &str, prefix: &str) -> ManagerInstance {
 /// its environment, and Homebrew reads only what is under `brew_prefix`,
 /// with `applications` standing for `/Applications` (the adapters'
 /// `test-support` hooks; this crate is built here without `cfg(test)`).
-fn cases(npm_prefix: &str, brew_prefix: &str, applications: &Path) -> Vec<Case> {
+fn cases(npm_prefix: &str, brew_prefix: &str, applications: &Path, cargo_root: &str) -> Vec<Case> {
     let mut cases = Vec::new();
     let mut add =
         |what, adapter: &dyn Fn(Arc<MockRunner>) -> Arc<dyn Adapter>, inst, kind, name| {
@@ -124,7 +124,7 @@ fn cases(npm_prefix: &str, brew_prefix: &str, applications: &Path) -> Vec<Case> 
     add(
         "cargo",
         &|r| Arc::new(CargoAdapter::new(r, Arc::new(MockHttpClient::new()))),
-        instance("cargo", "/Users/you/.cargo/bin/cargo", "/Users/you/.cargo"),
+        instance("cargo", "/Users/you/.cargo/bin/cargo", cargo_root),
         ArtifactKind::Binary,
         "ripgrep",
     );
@@ -215,14 +215,19 @@ fn commands_in(section: &str, program: &str) -> (Vec<String>, Vec<String>) {
     (reads, writes)
 }
 
-/// Whether `argv` is `written`, a `{...}` there standing for one argument.
+/// Whether `argv` is `written`, a `{...}` there standing for one argument
+/// or, after an option's `=` (`--bin={program}`), for its value.
 fn is(argv: &[String], written: &str) -> bool {
     let words: Vec<&str> = written.split_whitespace().collect();
+    let stands_for = |word: &str, arg: &str| match word.find('{') {
+        Some(at) if word.ends_with('}') => arg.starts_with(&word[..at]) && arg.len() > at,
+        _ => false,
+    };
     words.len() == argv.len()
         && words
             .iter()
             .zip(argv)
-            .all(|(word, arg)| word == arg || (word.starts_with('{') && word.ends_with('}')))
+            .all(|(word, arg)| word == arg || stands_for(word, arg))
 }
 
 #[tokio::test]
@@ -252,10 +257,19 @@ async fn test_an_uninstall_runs_exactly_the_command_its_preview_showed_and_nothi
         uv_root.path().join("tools/ruff").display(),
         uv_root.path().join("bin/ruff").display()
     );
+    // Cargo's receipt, which its preview names the programs from and its
+    // run reads again (R91-1), in a root of the test's own.
+    let cargo_root = tempfile::tempdir().unwrap();
+    std::fs::write(
+        cargo_root.path().join(".crates.toml"),
+        "[v1]\n\"ripgrep 15.1.0 (registry+https://github.com/rust-lang/crates.io-index)\" = [\"rg\"]\n",
+    )
+    .unwrap();
     for case in cases(
         npm_root.path().to_str().unwrap(),
         brew_root.path().to_str().unwrap(),
         &brew_root.path().join("Applications"),
+        cargo_root.path().to_str().unwrap(),
     ) {
         let Case {
             what,

@@ -320,9 +320,10 @@ describe("types", () => {
       "SourceProgram",
       "ComesWithFormula",
       "NeededBySource",
+      "CargoRecordUnsafe",
     ];
     expect(JSON.stringify(reasons)).toBe(
-      '["Pinned","NoSafeMethod","UvToolDirSet","SourceProgram","ComesWithFormula","NeededBySource"]',
+      '["Pinned","NoSafeMethod","UvToolDirSet","SourceProgram","ComesWithFormula","NeededBySource","CargoRecordUnsafe"]',
     );
     expect(roundTrip(reasons)).toEqual(reasons);
     const removable: UninstallBlocked | null = null;

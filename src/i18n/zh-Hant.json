@@ -276,6 +276,10 @@
         "badge": "手動解除安裝",
         "description": "設定了UV_TOOL_DIR時，uv解除安裝最後一個工具會連帶刪除UV_TOOL_DIR的上一層檔案夾及其中的所有檔案，只要那一層中沒有其他檔案夾。因此這時無法在這裡解除安裝任何uv工具。",
         "refused": "無法解除安裝，因為設定了UV_TOOL_DIR。"
+      },
+      "CargoRecordUnsafe": {
+        "description": "Cargo的安裝紀錄中，它的程式指向Cargo程式檔案夾以外的檔案，cargo uninstall會把那個檔案一起刪除，所以無法在這裡解除安裝。",
+        "refused": "無法解除安裝，因為Cargo的安裝紀錄中它的程式指向Cargo程式檔案夾以外的檔案。"
       }
     },
     "sourceEmpty": {

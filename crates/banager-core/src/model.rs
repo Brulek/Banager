@@ -819,6 +819,18 @@ pub enum UninstallBlocked {
     /// preview carries one -- no inventory row carries it -- so only a page
     /// that asks for what it was not offered reaches it.
     NeededBySource,
+    /// Cargo's receipt for the crate, `<root>/.crates.toml`, lists a
+    /// program by something that is not a file name in `<root>/bin` --
+    /// `../../.ssh/id_ed25519` beside `rg`. `cargo uninstall` joins every
+    /// name its entry lists onto `<root>/bin` and deletes it (cargo 1.98.1
+    /// `ops/cargo_uninstall.rs`), so it would delete that file too.
+    /// Produced by `CargoAdapter::inventory` (`parse_crates2`), which lists
+    /// the crate with its usable names only, and refused by
+    /// `CargoAdapter::plan` as well; the gate refuses it
+    /// (`blocked_uninstall` in session/plans.rs), and the Installed page
+    /// says why where the button would be (`UNINSTALL_BLOCKED_KEYS` in
+    /// src/lib/sources.ts) (R91-1).
+    CargoRecordUnsafe,
 }
 
 /// Why a path-list uninstall's preview refused one of the paths its
@@ -3240,6 +3252,11 @@ mod tests {
             (UninstallBlocked::NeededBySource, r#""NeededBySource""#),
             // R42-2: corepack that a Homebrew formula linked.
             (UninstallBlocked::ComesWithFormula, r#""ComesWithFormula""#),
+            // R91-1: a crate whose Cargo receipt names a program unsafely.
+            (
+                UninstallBlocked::CargoRecordUnsafe,
+                r#""CargoRecordUnsafe""#,
+            ),
         ] {
             assert_eq!(serde_json::to_string(&reason).unwrap(), wire);
             assert_eq!(

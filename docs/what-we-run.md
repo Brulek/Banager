@@ -3369,6 +3369,24 @@ if there is one and otherwise builds for this Mac; cargo-binstall is not
 used for it. A record that names no compiler host is treated as cargo's
 default. An ambiguous or malformed install record is refused.
 
+**What an uninstall deletes** (R91-1). `cargo uninstall` deletes every
+name the crate's `.crates.toml` entry lists, joined onto `<root>/bin`
+(cargo 1.98.1 `ops/cargo_uninstall.rs`, `InstallTracker`, which brings
+`.crates2.json` in line with that file first), so a name there that is
+not a plain file name -- `../../.ssh/id_ed25519` beside `rg` -- names a
+file outside the folder, and cargo would delete it. Banager lists such a
+crate with its plain names only and offers no Uninstall for it
+(`UninstallBlocked::CargoRecordUnsafe`, said on its row); its preview is
+refused too. For any other crate the preview reads `.crates.toml` and
+names each program its one entry lists as `--bin=<program>`, so that
+cargo deletes those and no other; with no `.crates.toml` (Cargo then
+finds nothing installed), no entry or two for the name, or an entry with
+no program, there is no preview. Just before the command runs,
+`.crates.toml` is read again: the entry must still be the same crate,
+version and source, with the same programs, all plain names, in any
+order -- otherwise nothing runs and the uninstall reads as changed since
+shown. The command run is the one the preview showed.
+
 **Write commands:**
 
 | Purpose | Argv | Timeout | Needs a password |
@@ -3377,7 +3395,7 @@ default. An ambiguous or malformed install record is refused.
 | Install, otherwise | `<cargo> install --root {root} --index https://github.com/rust-lang/crates.io-index {name}` (previewed with a "compiles locally" warning) | 1800 s | No |
 | Upgrade, a usable cargo-binstall found, no saved build choices and no other target | `<cargo-binstall> -y --force --root {root} --index sparse+https://index.crates.io/ {name}` | 1800 s | No |
 | Upgrade, otherwise | `<cargo> install --force --root {root} --index https://github.com/rust-lang/crates.io-index [saved build flags] {name}` (same warning) | 1800 s | No |
-| Uninstall | `<cargo> uninstall --root {root} {name}` | 300 s | No |
+| Uninstall | `<cargo> uninstall --root {root} --bin={program} {name}`, one `--bin=` for each program the crate's `.crates.toml` entry lists | 300 s | No |
 
 The explicit index binds installation to the crates.io identity checked
 above even when `registry.default` selects another registry. Each program

@@ -276,6 +276,10 @@
         "badge": "无法在此卸载",
         "description": "设置了UV_TOOL_DIR时，uv卸载最后一个工具会连带删除UV_TOOL_DIR的上一层文件夹及其中的所有文件，只要那一层中没有其他文件夹。因此这时无法在这里卸载任何uv工具。",
         "refused": "无法卸载，因为设置了UV_TOOL_DIR。"
+      },
+      "CargoRecordUnsafe": {
+        "description": "Cargo的安装记录中，它的程序指向Cargo程序文件夹以外的文件，cargo uninstall会把那个文件一起删除，所以无法在这里卸载。",
+        "refused": "无法卸载，因为Cargo的安装记录中它的程序指向Cargo程序文件夹以外的文件。"
       }
     },
     "sourceEmpty": {

@@ -230,7 +230,10 @@ export type CommandState = "Runs" | { ShadowedBy: { by: ArtifactKey | null } } |
  * a Homebrew formula's link, which uninstalling it would delete;
  * `NeededBySource` only by `Session::submit`, for a plan whose preview
  * named another source that runs on the package (`Warning.NeededBySource`),
- * so no row carries it. Read through `UNINSTALL_BLOCKED_KEYS` in
+ * so no row carries it; `CargoRecordUnsafe` by Cargo's inventory for a
+ * crate whose receipt names a program by something that is not a file
+ * name in Cargo's `bin` folder, which `cargo uninstall` would delete too
+ * (R91-1). Read through `UNINSTALL_BLOCKED_KEYS` in
  * src/lib/sources.ts, a `Record` over this union, so a variant added here
  * without copy fails `tsc`.
  */
@@ -240,7 +243,8 @@ export type UninstallBlocked =
   | "UvToolDirSet"
   | "SourceProgram"
   | "ComesWithFormula"
-  | "NeededBySource";
+  | "NeededBySource"
+  | "CargoRecordUnsafe";
 /**
  * What one path a path-list uninstall moves to the Trash is. Mirrors
  * `RemovedWhat` in crates/banager-core/src/model.rs: bare-string unit
