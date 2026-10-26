@@ -276,6 +276,7 @@
   "brew:codeburn": "AI编程Token用量分析工具",
   "brew:coder": "用Terraform搭建自托管开发环境",
   "brew:codespell": "修正源码与文本中的常见拼写错误",
+  "brew:codex": "OpenAI的终端编程智能体",
   "brew:codex-acp": "为ACP兼容客户端提供Codex命令行功能的ACP服务器",
   "brew:cog": "机器学习容器工具",
   "brew:colima": "macOS与Linux容器运行时",

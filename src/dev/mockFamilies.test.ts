@@ -51,7 +51,9 @@ describe("the preview's AI tool families", () => {
     expect(mockFamilyOf("npm", key("Package", "@openai/codex"))).toBe("codex");
     expect(mockFamilyOf("npm", key("Package", "codex"))).toBeNull();
     expect(mockFamilyOf("brew", key("Cask", "codex"))).toBe("codex");
-    expect(mockFamilyOf("brew", key("Formula", "codex"))).toBeNull();
+    // homebrew-core's codex formula, removed for the cask on 2025-10-17.
+    expect(mockFamilyOf("brew", key("Formula", "codex"))).toBe("codex");
+    expect(mockFamilyOf("brew", key("Formula", "claude-code"))).toBeNull();
     expect(mockFamilyOf("brew", key("Formula", "goose"))).toBeNull();
     expect(mockFamilyOf("brew", key("Cask", "ollama-app"))).toBe("ollama");
     expect(mockFamilyOf("uv", key("Tool", "Aider_Chat"))).toBe("aider");

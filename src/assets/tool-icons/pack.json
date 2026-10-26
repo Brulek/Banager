@@ -5181,6 +5181,7 @@
     "brew:codecrafters-io/tap/codecrafters": "si-codecrafters",
     "brew:coder": "si-coder",
     "brew:coder/coder/coder": "si-coder",
+    "brew:codex": "gh-openai",
     "brew:codex-acp": "gh-agentclientprotocol",
     "brew:commitizen": "gh-commitizen-tools",
     "brew:commitlint": "si-commitlint",

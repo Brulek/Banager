@@ -554,7 +554,7 @@ thing that source lists ("npm package"); and for a tool with its own installer, 
 own, in all three languages. npm, pip, pipx, uv and Cargo give none, so in English a row for an npm, PyPI
 or crates.io package says a line in English instead wherever Banager has one: 641 of them,
 each rewritten, shorter, from the description the package's own registry gives it. In Chinese, a
-row says a line in Chinese instead wherever Banager has one: 3,395 in each Chinese language, for Homebrew's
+row says a line in Chinese instead wherever Banager has one: 3,396 in each Chinese language, for Homebrew's
 formulae and casks and for npm, PyPI and crates.io packages, each translated from the description
 the tool's own source gives it. The three tables are built into the app, in
 `src/assets/tool-descriptions/en.json`, `zh-CN.json` and `zh-Hant.json`. A table loads when needed

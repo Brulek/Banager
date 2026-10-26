@@ -524,6 +524,10 @@ mod tests {
         (MemberSource::Formula, "anomalyco/tap/opencode-v2"),
         (MemberSource::Npm, "@opencode/cli"),
         (MemberSource::Formula, "charmbracelet/tap/crush"),
+        // Not in appendix B: homebrew-core's codex formula, removed on
+        // 2025-10-17 for the cask, which a Mac that installed it before
+        // keeps (module doc; review of the areas earlier reviews left).
+        (MemberSource::Formula, "codex"),
     ];
 
     #[test]
@@ -852,7 +856,13 @@ mod tests {
     #[test]
     fn test_tells_a_formula_from_a_cask_of_the_same_name() {
         assert_eq!(id_for("brew", ArtifactKind::Cask, "codex"), Some("codex"));
-        assert_eq!(id_for("brew", ArtifactKind::Formula, "codex"), None);
+        assert_eq!(id_for("brew", ArtifactKind::Formula, "claude-code"), None);
+        // homebrew-core's codex formula, removed for the cask on 2025-10-17
+        // and kept by a Mac that installed it before, is Codex too.
+        assert_eq!(
+            id_for("brew", ArtifactKind::Formula, "codex"),
+            Some("codex")
+        );
         assert_eq!(
             id_for("brew", ArtifactKind::Formula, "gemini-cli"),
             Some("gemini-cli")
