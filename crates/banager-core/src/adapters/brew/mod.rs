@@ -2768,7 +2768,54 @@ impl BrewAdapter {
     /// (old names to be safe: Homebrew 7.0.10's search prints none);
     /// a third-party tap's formula (its `full_name` tap-qualified) leads
     /// nowhere, nor does a name the answer does not have.
+    ///
+    /// One ask for them all; where it fails -- one of them installed from a
+    /// third-party tap Homebrew does not trust makes `brew info` stop with
+    /// an error for the whole list (`UntrustedTapError`, from the review of
+    /// the fix batch) -- the list is asked again in halves, and so on, so
+    /// that only the names Homebrew cannot answer for are left out; at most
+    /// `CANONICAL_ASKS_MAX` asks, past which what is not yet answered is
+    /// left out too. Where no ask is answered, the first one's failure is
+    /// the search's.
     async fn canonical_formulae(
+        &self,
+        inst: &ManagerInstance,
+        printed: &[String],
+    ) -> Result<HashMap<String, (String, Option<String>)>, AdapterError> {
+        let mut named = HashMap::new();
+        let mut answered = false;
+        let mut first_failure = None;
+        let mut pending: Vec<&[String]> = vec![printed];
+        let mut asks = 0;
+        while let Some(names) = pending.pop() {
+            if asks == CANONICAL_ASKS_MAX {
+                break;
+            }
+            asks += 1;
+            match self.canonical_formulae_of(inst, names).await {
+                Ok(found) => {
+                    answered = true;
+                    named.extend(found);
+                }
+                Err(e) => {
+                    if names.len() > 1 {
+                        let (front, back) = names.split_at(names.len() / 2);
+                        pending.push(back);
+                        pending.push(front);
+                    }
+                    first_failure.get_or_insert(e);
+                }
+            }
+        }
+        match first_failure {
+            Some(e) if !answered => Err(e),
+            _ => Ok(named),
+        }
+    }
+
+    /// `canonical_formulae` for `names`, in one `brew info --json=v2
+    /// --formula {names}`.
+    async fn canonical_formulae_of(
         &self,
         inst: &ManagerInstance,
         printed: &[String],
@@ -2822,6 +2869,12 @@ impl BrewAdapter {
 
 /// The most results a search gives (`BrewAdapter::search`).
 pub const SEARCH_HITS_MAX: usize = 40;
+
+/// The most `brew info` asks a search makes to name its formulae as
+/// Homebrew does (`BrewAdapter::canonical_formulae`): one where all goes
+/// well; enough, halving, to find two or three names Homebrew cannot answer
+/// for among forty.
+const CANONICAL_ASKS_MAX: usize = 12;
 
 /// The longest text a search looks for, in characters.
 pub const SEARCH_QUERY_MAX: usize = 64;
@@ -6084,6 +6137,54 @@ mod tests {
         );
         // Casks keep the names Homebrew printed.
         assert!(listed.contains(&(ArtifactKind::Cask, "gpg-suite")));
+    }
+
+    #[tokio::test]
+    async fn test_search_leaves_out_only_a_formula_homebrew_cannot_answer_for() {
+        // From the review of the fix batch: a formula installed from a
+        // third-party tap Homebrew does not trust made `brew info` fail for
+        // the whole list, and every search with it failed.
+        fn info(names: &[&str]) -> String {
+            let formulae: Vec<String> = names
+                .iter()
+                .map(|n| format!(r#"{{"name":"{n}","full_name":"{n}","aliases":[],"oldnames":[],"desc":"{n} it is"}}"#))
+                .collect();
+            format!(r#"{{"formulae":[{}],"casks":[]}}"#, formulae.join(","))
+        }
+        let untrusted = || CommandOutput {
+            exit_code: Some(1),
+            stderr: "Error: Refusing to load formula someone/tap/fd: tap is not trusted"
+                .to_string(),
+            ..search_output("")
+        };
+        let runner = Arc::new(MockRunner::new());
+        let brew = "/opt/homebrew/bin/brew";
+        runner.respond(
+            vec![brew, "search", "--formula", "fdx"],
+            search_output("fd\nfdupes\nfdclone\nfdk-aac\n"),
+        );
+        runner.respond(vec![brew, "search", "--cask", "fdx"], found_nothing());
+        runner.respond(vec![brew, "search", "--desc", "fdx"], search_output(""));
+        let ask = |names: &[&'static str]| {
+            let mut argv = vec![brew, "info", "--json=v2", "--formula"];
+            argv.extend(names);
+            argv
+        };
+        runner.respond(ask(&["fd", "fdupes", "fdclone", "fdk-aac"]), untrusted());
+        runner.respond(ask(&["fd", "fdupes"]), untrusted());
+        runner.respond(ask(&["fd"]), untrusted());
+        runner.respond(ask(&["fdupes"]), search_output(&info(&["fdupes"])));
+        runner.respond(
+            ask(&["fdclone", "fdk-aac"]),
+            search_output(&info(&["fdclone", "fdk-aac"])),
+        );
+        let adapter = BrewAdapter::new(runner);
+        let hits = adapter
+            .search(&test_instance(), "fdx")
+            .await
+            .expect("search");
+        let names: Vec<&str> = hits.iter().map(|h| h.name.as_str()).collect();
+        assert_eq!(names, ["fdupes", "fdclone", "fdk-aac"]);
     }
 
     #[tokio::test]

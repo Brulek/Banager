@@ -5784,8 +5784,12 @@ Homebrew names them: `brew search --formula` prints a formula's aliases
 as names of their own -- `gpg`, `gpg2` (gnupg's), `npm` (node's) -- which no
 list, install or check knows them by, so each is listed once, by
 Homebrew's name, where the name it printed first ranks it; a formula
-that answer does not give as Homebrew's own is left out, and where it
-fails, the search fails.
+that answer does not give as Homebrew's own is left out. Where it fails
+for the whole list -- one formula of them installed from a third-party
+tap Homebrew does not trust stops `brew info` with an error -- the list is
+asked again in halves, and so on, at most twelve asks in all, so that only
+the names Homebrew cannot answer for are left out; where no ask is
+answered, the search fails.
 The text is given to Homebrew as one argument, and refused first, before
 anything runs, where it starts with `-` (`brew search --macports` and
 its like open a web page), has a `/` in it (a regular expression, or a
