@@ -6011,7 +6011,11 @@ not read (`protected::look`; How Banager runs anything, above):
   path; never into a protected place) — never a file's contents (Which
   copy a command runs, above).
 - Banager's own `settings.json` in its application data directory
-  (`settings::load_with_status`; a missing file, or an empty one such as a
+  (`settings::load_with_status`, through `settings::own_file`: opened
+  without waiting and read only when it is a regular file of at most 16
+  MiB, so a named pipe or a link to a device put there is a file that
+  cannot be read, at once, never a launch that waits on it -- R91-2; a
+  missing file, or an empty one such as a
   write cut short by a power loss can leave, means defaults. Known fields
   and collection entries in valid JSON are recovered independently: only
   invalid fields or entries fall back or are dropped. A file that is there
@@ -6025,7 +6029,8 @@ not read (`protected::look`; How Banager runs anything, above):
   valid settings file — or move `settings.json` to the Trash to start
   fresh — then reopen it. Such a file does not bring up the welcome sheet).
 - Banager's own `history.json` beside it, once, as Banager starts
-  (`HistoryStore::open` in `crates/banager-core/src/history/mod.rs`; a
+  (`HistoryStore::open` in `crates/banager-core/src/history/mod.rs`, read
+  as `settings.json` is; a
   missing or empty file starts an empty history. Any other file that cannot be
   read, is not a history, or was written by a newer Banager is left exactly
   as it is for the whole launch: new records stay in memory until Banager
@@ -6033,10 +6038,11 @@ not read (`protected::look`; How Banager runs anything, above):
   below shows. Quit Banager before repairing access or putting back a good
   copy, then reopen it; this launch's records in memory are not kept).
 - Banager's own `.window-state.json` beside it, once, as the window opens:
-  the size and position the window had when Banager last quit, the
-  position used only if a display is still there (the Tauri window-state
-  plugin, registered in `run()` in `src-tauri/src/lib.rs`; a missing or
-  unreadable file means the window opens at its default size, centred).
+  whether the window was zoomed or in full screen when Banager last quit
+  (the Tauri window-state plugin, registered in `run()` in
+  `src-tauri/src/lib.rs`; a missing or unreadable file means neither).
+  Its size and place are AppKit's, in Banager's defaults (`NSWindow Frame
+  main`, `window::keep_frame`; "Files Banager writes", below).
 
 How many names one check reads from a folder, where it needs every name
 there -- a keg's `bin` and `sbin` and a formula's folder in the Cellar, a

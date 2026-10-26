@@ -873,8 +873,9 @@ fn persistence(state: &State) -> HistoryPersistence {
     }
 }
 
-/// How the file is read and written: `std::fs::read` and
-/// `write_atomically`, or a test's own (`HistoryIo`).
+/// How the file is read and written: `settings::own_file`, bounded as
+/// settings.json is (R91-2), and `write_atomically`, or a test's own
+/// (`HistoryIo`).
 type ReadFn = Arc<dyn Fn(&Path) -> std::io::Result<Vec<u8>> + Send + Sync>;
 type WriteFn = Arc<dyn Fn(&Path, &[u8]) -> std::io::Result<()> + Send + Sync>;
 
@@ -890,7 +891,7 @@ pub struct HistoryIo {
 impl HistoryIo {
     fn real() -> HistoryIo {
         HistoryIo {
-            read: Arc::new(|path| std::fs::read(path)),
+            read: Arc::new(crate::settings::own_file),
             write: Arc::new(write_atomically),
         }
     }
@@ -1187,6 +1188,32 @@ impl HistoryStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// R91-2: history.json is read as settings.json is, without waiting
+    /// and bounded: a named pipe, a link to an endless device or a file
+    /// past 16 MiB is a history kept as it is, read at once.
+    #[test]
+    fn regression_r91_2_a_pipe_a_device_or_a_huge_history_is_unreadable_at_once() {
+        use crate::adapters::read_file::tests::{finishes, make_fifo, temp_dir};
+        let dir = temp_dir("history-r91-2");
+        let pipe = dir.join("pipe.json");
+        make_fifo(&pipe);
+        let device = dir.join("device.json");
+        std::os::unix::fs::symlink("/dev/zero", &device).unwrap();
+        let huge = dir.join("huge.json");
+        std::fs::write(&huge, vec![b' '; 16 * 1024 * 1024 + 1]).unwrap();
+        for path in [pipe, device, huge] {
+            let read = path.clone();
+            let loaded = finishes(move || load(&read, 0, &HistoryIo::real().read));
+            assert_eq!(
+                loaded,
+                Loaded::Blocked(HistoryPersistence::Unreadable),
+                "{}",
+                path.display()
+            );
+        }
+        std::fs::remove_dir_all(dir).unwrap();
+    }
     use crate::model::ArtifactKind;
 
     const DAY: i64 = 24 * 60 * 60 * 1_000;

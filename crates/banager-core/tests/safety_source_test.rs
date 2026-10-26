@@ -610,23 +610,15 @@ fn test_every_file_opened_is_opened_without_waiting_or_as_a_folder() {
     );
     assert!(opens >= 4, "the opens were found: {opens}");
 
-    // The plain reads that remain, each by its text, with why it cannot
-    // wait: Banager's own settings.json and history.json, in its own
-    // Application Support folder, read as it starts, never in a refresh.
+    // No plain read remains: Banager's own settings.json and history.json,
+    // read as it starts, go through the same bounded reader (R91-2,
+    // `settings::own_file`), so a named pipe put there cannot hold the
+    // launch.
     let plain = holding(
         lines.iter(),
         &["File::open(", "fs::read(", "fs::read_to_string("],
     );
-    let allowed = [
-        (
-            "crates/banager-core/src/settings.rs:",
-            "std::fs::read(path)",
-        ),
-        (
-            "crates/banager-core/src/history/mod.rs:",
-            "read: Arc::new(|path| std::fs::read(path)),",
-        ),
-    ];
+    let allowed: [(&str, &str); 0] = [];
     let others: Vec<&String> = plain
         .iter()
         .filter(|entry| {
@@ -693,7 +685,7 @@ fn test_an_opens_flags_are_read_from_its_own_statement() {
 /// round 5 review found the Codex version read and the standalone launcher
 /// check following `~/.codex` and `~/.local/bin/claude` with plain
 /// `read_link`/`realpath`, which this list now rules out.
-const PATH_LOOKUPS_ALLOWED: [(&str, &str, &str); 20] = [
+const PATH_LOOKUPS_ALLOWED: [(&str, &str, &str); 18] = [
     (
         "crates/banager-core/src/atomic_file.rs:",
         "use std::os::unix::fs::OpenOptionsExt;",
@@ -748,16 +740,6 @@ const PATH_LOOKUPS_ALLOWED: [(&str, &str, &str); 20] = [
         "crates/banager-core/src/icon/real.rs:",
         "let icon = NSWorkspace::sharedWorkspace().iconForFile(&NSString::from_str(utf8));",
         "draws only a folder `AppIcons::bundle_icon` found outside every protected place (`folder_stamp`)",
-    ),
-    (
-        "crates/banager-core/src/settings.rs:",
-        "std::fs::read(path)",
-        "Banager's own settings.json, in its application data folder",
-    ),
-    (
-        "crates/banager-core/src/history/mod.rs:",
-        "read: Arc::new(|path| std::fs::read(path)),",
-        "Banager's own history.json, beside settings.json",
     ),
     (
         "crates/banager-core/src/adapters/brew/kegs.rs:",

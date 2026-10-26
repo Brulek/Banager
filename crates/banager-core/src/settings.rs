@@ -200,12 +200,22 @@ pub enum LoadStatus {
     Unreadable,
 }
 
-/// How settings.json is read: `std::fs::read`, but for the tests that
-/// stand in a read that fails as no temp file can be made to.
+/// How settings.json is read: `own_file`, but for the tests that stand in
+/// a read that fails as no temp file can be made to.
 type ReadFn<'a> = &'a dyn Fn(&Path) -> std::io::Result<Vec<u8>>;
 
 fn fs_read(path: &Path) -> std::io::Result<Vec<u8>> {
-    std::fs::read(path)
+    own_file(path)
+}
+
+/// One of Banager's own files, `settings.json` or `history.json`, read as
+/// a file a tool wrote is (`read_file::read_bytes`): opened without
+/// waiting and read only when it is a regular file of at most 16 MiB, so a
+/// named pipe put there, or a link to an endless device, is unreadable at
+/// once rather than a launch that waits on it or reads without end
+/// (R91-2). Read at every launch, before the window opens.
+pub(crate) fn own_file(path: &Path) -> std::io::Result<Vec<u8>> {
+    crate::adapters::read_file::read_bytes(path, &crate::protected::Protected::of_this_process())
 }
 
 /// Missing or unreadable JSON uses defaults without preventing startup.
@@ -369,6 +379,35 @@ fn save_with(path: &Path, settings: &Settings, read: ReadFn) -> std::io::Result<
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// R91-2: settings.json is read without waiting and bounded: a named
+    /// pipe there, a link to an endless device or a file past 16 MiB is
+    /// unreadable -- defaults this launch, the file kept as it is, never
+    /// a launch that waits on it or reads without end.
+    #[test]
+    fn regression_r91_2_a_pipe_a_device_or_a_huge_file_is_unreadable_at_once() {
+        use crate::adapters::read_file::tests::{finishes, make_fifo, temp_dir};
+        let dir = temp_dir("settings-r91-2");
+        let pipe = dir.join("pipe.json");
+        make_fifo(&pipe);
+        let device = dir.join("device.json");
+        std::os::unix::fs::symlink("/dev/zero", &device).unwrap();
+        let huge = dir.join("huge.json");
+        std::fs::write(&huge, vec![b' '; 16 * 1024 * 1024 + 1]).unwrap();
+        for path in [pipe, device, huge] {
+            let read = path.clone();
+            let (settings, status) = finishes(move || load_with_status(&read));
+            assert_eq!(status, LoadStatus::Unreadable, "{}", path.display());
+            assert_eq!(settings, Settings::default());
+            // Nor written over.
+            assert!(
+                save(&path, &Settings::default()).is_err(),
+                "{}",
+                path.display()
+            );
+        }
+        std::fs::remove_dir_all(dir).unwrap();
+    }
     use crate::model::ArtifactKind;
     use std::path::PathBuf;
 
