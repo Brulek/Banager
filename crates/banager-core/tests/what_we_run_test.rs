@@ -2717,7 +2717,9 @@ fn test_what_we_run_says_a_formulas_uninstall_leaves_its_service_running() {
         "**A formula's background service**",
         "`uninstall.rb:24-110`",
         "`Warning::HomebrewServiceStays`",
-        "`sudo brew services stop <name>`",
+        // By this Homebrew's own brew, by full path (R92-1).
+        "`sudo <brew> services stop <name>`",
+        "this Homebrew's own brew by its full path",
     ] {
         assert!(
             folded.contains(words),
