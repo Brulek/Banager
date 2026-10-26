@@ -1622,7 +1622,8 @@ Banager's environment or one of the first two files sets that, else
 `HOMEBREW_SYSTEM_ENV_TAKES_PRIORITY` is set once that file has been read.
 To find them it reads `HOME`, `XDG_CONFIG_HOME`,
 `HOMEBREW_XDG_CONFIG_HOME` and `HOMEBREW_SYSTEM_ENV_TAKES_PRIORITY` from
-Banager's environment (`env_var_fn`, per preview), and it follows
+Banager's environment (`env_var_fn`, per preview, and per Discover search
+that lists a cask), and it follows
 `HOMEBREW_NO_CLEANUP_FORMULAE`, `HOMEBREW_NO_REQUIRE_TAP_TRUST` and
 `HOMEBREW_CASK_OPTS` (for an `--appdir` in it: Searching Homebrew, below)
 there and in the files too. It also reads `HOMEBREW_NO_AUTO_UPDATE` from the
@@ -5816,7 +5817,11 @@ these, the last three before downloading anything, the first after
 downloading it all, since it never moves one app over another unless
 told to (`--adopt`, `--force`, which Banager does not pass). No app is
 looked for where `HOMEBREW_CASK_OPTS` -- in Banager's environment or a
-`brew.env` file, as above -- may give an `appdir` of its own (`--appdir`),
+`brew.env` file, as above -- may give an `appdir` of its own: a word of it,
+split at spaces with its quotes dropped, whose name before `=` is `appdir`
+or `--appdir`, as Homebrew reads it (`Shellwords.shellsplit`, then only
+the words with `=` in them, `cask/config.rb`; `--appdir ~/Applications`,
+with a space, is ignored there and here),
 nor said to be in the way for a cask Homebrew lists installed, whose app
 it put there itself. Where the fifth command fails, or its answer does not read,
 the casks are listed as before, with Install, and Homebrew's own refusal
@@ -6090,7 +6095,10 @@ not read (`protected::look`; How Banager runs anything, above):
   `/etc/paths.d/homebrew` are there
   (`look_for_homebrew`; "Homebrew itself"); its `brew.env` files, during every install,
   uninstall and upgrade preview, again right before an install, upgrade
-  or uninstall runs, and right before the cleanup that follows an update;
+  or uninstall runs, right before the cleanup that follows an update, and
+  during each Discover search that lists a cask, for `HOMEBREW_CASK_OPTS`;
+  during each such search, whether anything is at `/Applications/<app>`
+  for each app the casks found put there ("Searching Homebrew");
   during a cask's uninstall preview and again before it runs, the
   names in its `<prefix>/Caskroom/<token>/.metadata` folder and in the
   folders there, the caskfile Homebrew saved when it is JSON, and

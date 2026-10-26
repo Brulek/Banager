@@ -92,30 +92,28 @@ export function quitBodyKey(active: OpSummary[]): string | null {
   const stops = quitStops(active);
   if (stops.length === 0) return null;
   const underWay = stops.filter(commandUnderWay);
-  const kinds = new Set(underWay.map((op) => op.kind));
-  // Downloads of models only, queued ones too: Ollama writes a model only
-  // once its download is whole, so a stopped one leaves no half model, and
-  // a model is not called a tool (decision E25; from the review of the
-  // areas earlier reviews left, and of its fix: an update is a download
-  // too, and a queued uninstall is none).
-  const downloadsUnderWay = underWay.length > 0 && underWay.every(isModelDownload);
+  // What a stopped command can leave half done: a tool. A model cannot be:
+  // Ollama writes a downloaded one only once it is whole, and removes one
+  // in its own server, which stopping `ollama rm` does not stop (decision
+  // E25; from the reviews of the areas earlier reviews left and of their
+  // fixes).
+  const kinds = new Set(underWay.filter((op) => op.artifact_kind !== "Model").map((op) => op.kind));
+  const downloads = underWay.some(isModelDownload);
   if (stops.length < active.length) {
-    if (kinds.size === 0) return "quit.body.othersStop";
-    return downloadsUnderWay ? "quit.body.othersModelDownload" : "quit.body.othersHalfDone";
-  }
-  if (kinds.size === 0) return "quit.body.stops";
-  if (downloadsUnderWay) {
-    // Installs only, or updates only, queued ones too; any other mix in
-    // words for both (from the review of the fix: a queued install beside
-    // an update was "the updates").
-    if (stops.every((op) => isModelDownload(op) && op.kind === "Install")) return "quit.body.ModelDownload";
-    if (stops.every((op) => isModelDownload(op) && op.kind === "Upgrade")) return "quit.body.ModelUpdate";
-    return "quit.body.stopsModelDownload";
+    if (kinds.size > 0) return "quit.body.othersHalfDone";
+    return downloads ? "quit.body.othersModelDownload" : "quit.body.othersStop";
   }
   if (kinds.size > 1) return "quit.body.mixed";
-  const [kind] = kinds;
-  if (kind === "Uninstall" && underWay.every((op) => op.artifact_kind === "Model")) return "quit.body.ModelUninstall";
-  return HALF_DONE_KEYS[kind];
+  if (kinds.size === 1) {
+    const [kind] = kinds;
+    return HALF_DONE_KEYS[kind];
+  }
+  if (!downloads) return "quit.body.stops";
+  // Installs only, or updates only, queued ones too; any other mix in
+  // words for both (a queued install beside an update is no update).
+  if (stops.every((op) => isModelDownload(op) && op.kind === "Install")) return "quit.body.ModelDownload";
+  if (stops.every((op) => isModelDownload(op) && op.kind === "Upgrade")) return "quit.body.ModelUpdate";
+  return "quit.body.stopsModelDownload";
 }
 
 /** A model's install or update: both are Ollama's download of it (`ollama pull`). */

@@ -108,8 +108,13 @@ describe("what the question says under its title", () => {
     expect(quitBodyKey([update, { ...op(7, "Install", "Queued"), artifact_kind: "Model" as const }])).toBe(
       "quit.body.stopsModelDownload",
     );
+    // Removing a model is Ollama's own server's work, which stopping the
+    // command does not stop: nothing is left half done (from the review
+    // of the fix batch).
     const removal = { ...op(5, "Uninstall", "Running"), artifact_kind: "Model" as const };
-    expect(quitBodyKey([removal])).toBe("quit.body.ModelUninstall");
+    expect(quitBodyKey([removal])).toBe("quit.body.stops");
+    // A tool's command beside a model's: only the tool's is half done.
+    expect(quitBodyKey([download, op(8, "Upgrade", "Running")])).toBe("quit.body.Upgrade");
     // A queued uninstall beside a download: not "the downloads" (from the
     // review of the fix batch).
     expect(quitBodyKey([download, { ...op(6, "Uninstall", "Queued"), artifact_kind: "Model" as const }])).toBe(
@@ -133,6 +138,8 @@ describe("what the question says under its title", () => {
     // half done by what quitting stops (from the review of the fix batch).
     const download = { ...op(3, "Install", "Running"), artifact_kind: "Model" as const };
     expect(quitBodyKey([op(4, "Install", "Verifying"), download])).toBe("quit.body.othersModelDownload");
+    const removal = { ...op(5, "Uninstall", "Running"), artifact_kind: "Model" as const };
+    expect(quitBodyKey([op(4, "Install", "Verifying"), removal])).toBe("quit.body.othersStop");
     expect(quitStops([rustup(1, "Running"), op(2, "Upgrade", "Queued")]).map((each) => each.id)).toEqual([2]);
     // Queued, rustup's update has started nothing, and quitting stops it.
     expect(quitBodyKey([rustup(1, "Queued")])).toBe("quit.body.stops");

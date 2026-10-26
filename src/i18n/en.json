@@ -1151,8 +1151,6 @@
       "ModelDownload_other": "Quitting now stops the downloads. A model isn't installed until its download finishes, and one started again soon can pick up where it stopped.",
       "ModelUpdate_one": "Quitting now stops the update. The model stays as it was until its download finishes, and an update started again soon can pick up where it stopped.",
       "ModelUpdate_other": "Quitting now stops the updates. A model stays as it was until its download finishes, and an update started again soon can pick up where it stopped.",
-      "ModelUninstall_one": "Quitting now stops it, and the model it's uninstalling can be left half-removed.",
-      "ModelUninstall_other": "Quitting now stops them, and a model that's being uninstalled can be left half-removed.",
       "othersModelDownload_one": "Quitting now stops the other one. A model is installed or updated only once its download finishes, and a download started again soon can pick up where it stopped.",
       "othersModelDownload_other": "Quitting now stops the others. A model is installed or updated only once its download finishes, and a download started again soon can pick up where it stopped.",
       "stopsModelDownload_one": "Quitting now stops it. A model is installed or updated only once its download finishes, and a download started again soon can pick up where it stopped.",

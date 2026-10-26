@@ -250,10 +250,7 @@ pub(crate) fn after_brew_env(
         install_cleanup_unknown: !known(NO_INSTALL_CLEANUP),
         user_config_home,
         user_config_home_known: !user_file_unknown,
-        cask_appdir_may_differ: !known(CASK_OPTS)
-            || vars
-                .get(CASK_OPTS)
-                .is_some_and(|opts| opts.windows(8).any(|word| word == b"--appdir")),
+        cask_appdir_may_differ: !known(CASK_OPTS) || vars.get(CASK_OPTS).is_some_and(gives_appdir),
     }
 }
 
@@ -288,6 +285,28 @@ fn comma_list(value: Option<&[u8]>) -> Vec<String> {
         .filter(|name| !name.is_empty())
         .map(str::to_string)
         .collect()
+}
+
+/// Whether `HOMEBREW_CASK_OPTS` gives an `appdir`, as Homebrew reads it:
+/// split as a shell would (`Shellwords.shellsplit`, `env_config.rb`), only
+/// the words with `=` in them, each named by what comes before its first
+/// `=`, without one leading `--` (`cask/config.rb`). The split here is at
+/// spaces and tabs, with every quote dropped: close enough for a name,
+/// which holds no space, and `--appdir ~/Applications`, with a space, is
+/// ignored by Homebrew and here alike (from the review of the check).
+fn gives_appdir(opts: &[u8]) -> bool {
+    opts.split(|byte| byte.is_ascii_whitespace()).any(|word| {
+        let word: Vec<u8> = word
+            .iter()
+            .copied()
+            .filter(|b| *b != b'"' && *b != b'\'')
+            .collect();
+        let Some(at) = word.iter().position(|b| *b == b'=') else {
+            return false;
+        };
+        let name = &word[..at];
+        name.strip_prefix(b"--").unwrap_or(name) == b"appdir"
+    })
 }
 
 /// `"${head}${tail}"`, as bash joins them: no separator added or removed.
@@ -651,6 +670,15 @@ mod tests {
             !switches(&[(HOME_FILE, "HOMEBREW_CASK_OPTS=--no-quarantine\n")], &[])
                 .cask_appdir_may_differ
         );
+        // As Homebrew reads it (from the review of the check): a name
+        // before `=`, with or without `--`; a value after a space is no
+        // value, and Homebrew keeps /Applications.
+        assert!(gives_appdir(b"appdir=/Users/someone/Applications"));
+        assert!(gives_appdir(
+            b"--fontdir=/Library/Fonts \"--appdir=/Users/someone/My Apps\""
+        ));
+        assert!(!gives_appdir(b"--appdir ~/Applications"));
+        assert!(!gives_appdir(b"--appdirs=x --no-binaries"));
         assert!(
             switches(&[], &[("HOMEBREW_CASK_OPTS", "--appdir=/Volumes/Apps")])
                 .cask_appdir_may_differ
