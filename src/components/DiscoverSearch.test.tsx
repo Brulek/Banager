@@ -494,6 +494,38 @@ describe("Discover's search of Homebrew", () => {
     }
   });
 
+  it("looks at the clock again when the ten minutes are up, with nothing else drawing the page, and again where the clock was behind", async () => {
+    // From the reviews of the fix batch: an idle page has nothing but this
+    // timer to look again, and a timer that fires before the wall clock
+    // agrees must be set again.
+    const { queryClient } = renderWithProviders(<DiscoverPage />);
+    await typeSearch("jq");
+    await waitFor(() => expect(results_()).toHaveLength(3), { timeout: 3000 });
+    const answeredAt = queryClient.getQueryState(["searchHomebrew", "jq"])!.dataUpdatedAt;
+    search = async () => {
+      throw JSON.stringify({ kind: "not_answered" });
+    };
+    // A failure 50 ms before the ten minutes are up: kept, and a timer set.
+    const clock = vi.spyOn(Date, "now").mockReturnValue(answeredAt + 10 * 60 * 1000 - 50);
+    try {
+      await act(async () => {
+        await queryClient.refetchQueries({ queryKey: ["searchHomebrew"] });
+      });
+      expect(results_()).toHaveLength(3);
+      // The timer fires with the clock still behind: kept, and set again.
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 150));
+      });
+      expect(results_()).toHaveLength(3);
+      // The clock catches up: the next firing shows why it could not search.
+      clock.mockReturnValue(answeredAt + 10 * 60 * 1000 + 1000);
+      expect(await screen.findByRole("alert", {}, { timeout: 2000 })).toHaveTextContent(/Couldn't search Homebrew/);
+      expect(results_()).toHaveLength(0);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
   it("says nothing of how many it found while the text is one it does not take", async () => {
     // From the review of the fix batch: the status kept "3 results" for the
     // 0.6 s the text takes to settle.

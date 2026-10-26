@@ -115,13 +115,16 @@ export function DiscoverResults({ query }: { query: string }) {
   // each failure, and by the clock, looked at once more when the ten
   // minutes are up (the timer below) -- a failure a minute before then
   // must not keep the list past them (from the reviews of the fix batch).
-  const [, lookAgain] = useState(0);
+  const [looks, lookAgain] = useState(0);
   const expiresIn = search.isError && search.data !== undefined ? search.dataUpdatedAt + FOUND_LIFETIME_MS - Date.now() : null;
   useEffect(() => {
     if (expiresIn === null || expiresIn <= 0) return;
     const timer = setTimeout(() => lookAgain((n) => n + 1), expiresIn);
     return () => clearTimeout(timer);
-  }, [expiresIn === null, search.dataUpdatedAt]);
+    // Set again after each look (`looks`): a timer that fires before the
+    // wall clock agrees -- a clock set back -- looks once more when it does
+    // (from the review of ff95578f).
+  }, [expiresIn === null, search.dataUpdatedAt, looks]);
   const expired =
     search.isError &&
     (search.errorUpdatedAt - search.dataUpdatedAt >= FOUND_LIFETIME_MS ||
