@@ -89,8 +89,9 @@ export function InstallSheet({ entry, found = null, iconKey, description = null,
       : undefined;
   const plan = issued?.plan;
   const keys = entry === null || found !== null ? undefined : ITEM_KEYS[entry.id];
-  // For the model: the room free, and whether its download would not fit,
-  // with a tenth to spare for what Ollama writes beside it.
+  // For the model: the room free, and whether its download would not fit
+  // (`short`), or would, without a tenth to spare for what Ollama writes
+  // beside it (`tight`; from the review of 9ba6981e).
   const room =
     found === null &&
     entry !== null &&
@@ -99,7 +100,12 @@ export function InstallSheet({ entry, found = null, iconKey, description = null,
     typeof entry.free_bytes === "number"
       ? {
           free: formatBytes(entry.free_bytes),
-          short: entry.free_bytes < entry.install.OllamaModel.download_bytes * 1.1,
+          fit:
+            entry.free_bytes < entry.install.OllamaModel.download_bytes
+              ? ("short" as const)
+              : entry.free_bytes < entry.install.OllamaModel.download_bytes * 1.1
+                ? ("tight" as const)
+                : ("room" as const),
         }
       : null;
   const name = found !== null ? found.name : entry === null ? "" : entryName(t, entry.id);
@@ -214,9 +220,13 @@ export function InstallSheet({ entry, found = null, iconKey, description = null,
         <div className="mt-3">
           <SheetLines
             lines={[
-              room.short
-                ? { text: t("discover.sheet.roomShort", { free: room.free }), detail: null, caution: true }
-                : { text: t("discover.sheet.room", { free: room.free }), detail: null, caution: false },
+              room.fit === "room"
+                ? { text: t("discover.sheet.room", { free: room.free }), detail: null, caution: false }
+                : {
+                    text: t(room.fit === "short" ? "discover.sheet.roomShort" : "discover.sheet.roomTight", { free: room.free }),
+                    detail: null,
+                    caution: true,
+                  },
             ]}
           />
         </div>

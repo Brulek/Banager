@@ -1838,7 +1838,8 @@
       "ollamaElsewhere": "这台Mac使用的Ollama在另一台电脑上，用它下载的模型会存在那台电脑上，不在这台Mac上。",
       "noOllama": "这台Mac上没有Ollama，无法下载它。",
       "room": "这台Mac还有{{free}}可用空间。",
-      "roomShort": "这台Mac只剩{{free}}可用空间，不够下载它。请先腾出一些空间。"
+      "roomShort": "这台Mac只剩{{free}}可用空间，不够下载它。请先腾出一些空间。",
+      "roomTight": "这台Mac只剩{{free}}可用空间，下载它之后所剩无几。请先腾出一些空间。"
     },
     "search": {
       "placeholder": "搜索Homebrew",

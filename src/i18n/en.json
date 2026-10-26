@@ -1982,7 +1982,8 @@
       "ollamaElsewhere": "The Ollama this Mac uses is on another computer, so a model it downloads would be there, not on this Mac.",
       "noOllama": "There's no Ollama on this Mac to download it with.",
       "room": "This Mac has {{free}} free.",
-      "roomShort": "This Mac has only {{free}} free, less than the download needs. Free up some space first."
+      "roomShort": "This Mac has only {{free}} free, less than the download needs. Free up some space first.",
+      "roomTight": "This Mac has only {{free}} free, which leaves little room once it's downloaded. Free up some space first."
     },
     "search": {
       "placeholder": "Search Homebrew",

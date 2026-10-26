@@ -504,6 +504,20 @@ describe("the Discover page", () => {
     expect(within(sheet).getByText(command(/\/opt\/homebrew\/bin\/ollama pull gemma3:4b$/))).toBeInTheDocument();
     unmount();
 
+    // Room for the download, without a tenth to spare: not "less than it
+    // needs" (from the review of 9ba6981e); and plenty, said plainly.
+    for (const [free_bytes, said] of [
+      [3_600_000_000, "This Mac has only 3.6 GB free, which leaves little room once it's downloaded. Free up some space first."],
+      [50_000_000_000, "This Mac has 50 GB free."],
+    ] as const) {
+      entries = [{ ...model, free_bytes }];
+      const { unmount: room } = renderWithProviders(<DiscoverPage />);
+      await waitFor(() => expect(rows()).toEqual([["Gemma 3", "Install"]]));
+      fireEvent.click(within(row("model")).getByRole("button", { name: "Install Gemma 3" }));
+      expect(await screen.findByRole("alertdialog", { name: "Install “Gemma 3”?" })).toHaveTextContent(said);
+      room();
+    }
+
     // Ollama is here and not running: Open Ollama, which opens it.
     snapshot = { ...snapshot, instances: [{ ...ollama, status: { unavailable: "NotRunning", notes: [] } }] };
     entries = [{ ...model, state: "OllamaNotReady" }];

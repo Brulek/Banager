@@ -5682,8 +5682,12 @@ with `sysctlbyname`: `kern.osproductversion`, `hw.optional.arm64`, which
 is 1 on Apple silicon under Rosetta too, and `hw.memsize`; and, with
 `statfs` on the home folder, how much room its volume has free
 (`catalog::free_bytes`), which the model's sheet says beside its
-download, as a caution where the download, with a tenth to spare, would
-not fit. Nothing else is read, nothing runs, nothing is written, and no
+download, as a caution where the download would not fit, or would with
+less than a tenth to spare. That is the room `statfs` gives a user now
+(`f_bavail`): it leaves out space macOS can free on its own (purgeable
+space, which Finder's "Available" counts), and it is the home folder's
+volume, where Ollama keeps its models unless `OLLAMA_MODELS` says
+otherwise. Nothing else is read, nothing runs, nothing is written, and no
 connection is made for it. Until a check has finished, the page says nothing of any entry.
 
 Every entry but Homebrew installs from here (phase 5 steps B and D):
