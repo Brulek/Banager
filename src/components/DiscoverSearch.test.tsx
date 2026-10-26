@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { command } from "../test/command";
@@ -422,6 +422,24 @@ describe("Discover's search of Homebrew", () => {
     renderWithProviders(<DiscoverPage />);
     await typeSearch("jq");
     expect(await screen.findByRole("alert", {}, { timeout: 3000 })).toHaveTextContent("Install Homebrew first to search it.");
+  });
+
+  it("keeps the list it has where a search asked again in the background fails", async () => {
+    // From the review of the fix batch: the five-minute search again that
+    // failed replaced every row with an alert.
+    const { queryClient } = renderWithProviders(<DiscoverPage />);
+    await typeSearch("jq");
+    await waitFor(() => expect(results_()).toHaveLength(3), { timeout: 3000 });
+    search = async () => {
+      throw JSON.stringify({ kind: "not_answered" });
+    };
+    await act(async () => {
+      await queryClient.refetchQueries({ queryKey: ["searchHomebrew"] });
+    });
+    expect(calls("search_homebrew")).toHaveLength(2);
+    expect(results_()).toHaveLength(3);
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByRole("button", { name: "Install jq-lsp" })).toBeInTheDocument();
   });
 
   it("says why it could not search in words with technical details on too, not as the refusal's JSON", async () => {

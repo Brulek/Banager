@@ -111,11 +111,17 @@ export function DiscoverResults({ query }: { query: string }) {
     body = <p className="px-2.5 text-muted">{t("discover.search.invalid")}</p>;
   } else if (asked === "" || search.isPending) {
     body = <SheetPending text={t("discover.search.searching")} />;
-  } else if (search.isError) {
-    body = (
+  } else if (search.data === undefined) {
+    // Why it could not search -- only where it has nothing to show: a
+    // search asked again in the background (every five minutes) that
+    // fails leaves the list it had, whose ids are still kept (from the
+    // review of the fix batch).
+    body = search.isError ? (
       <p role="alert" className="px-2.5 text-danger-text">
         {searchError(t, search.error.message, settings?.show_technical_details ?? false)}
       </p>
+    ) : (
+      <SheetPending text={t("discover.search.searching")} />
     );
   } else if (search.data.length === 0) {
     body = <p className="px-2.5 text-muted">{t("discover.search.none", { query: asked })}</p>;
@@ -235,7 +241,7 @@ export function DiscoverResults({ query }: { query: string }) {
   // included. Always there, empty meanwhile: a status put in the page with
   // its words may never be read.
   const said =
-    asked === "" || search.isPending || search.isError ? "" : t("discover.search.count", { count: search.data.length });
+    asked === "" || search.data === undefined ? "" : t("discover.search.count", { count: search.data.length });
   return (
     <>
       <p role="status" className="sr-only">
