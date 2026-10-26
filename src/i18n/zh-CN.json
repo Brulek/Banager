@@ -1841,6 +1841,7 @@
       "noOllama": "这台Mac上没有Ollama，无法下载它。",
       "room": "这台Mac还有{{free}}可用空间。",
       "roomShort": "这台Mac只剩{{free}}可用空间，不够下载它。请先腾出一些空间。",
+      "reissued": "刚才未能开始，已重新检查。请再点按一次“安装”。",
       "roomTight": "这台Mac只剩{{free}}可用空间，下载它之后所剩无几。请先腾出一些空间。"
     },
     "search": {

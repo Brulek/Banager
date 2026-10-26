@@ -5796,8 +5796,10 @@ An id no search gave, or one older than ten minutes, is refused, and so
 is a result the snapshot since lists installed, and a result that is a
 suggestion whose catalog entry is not "Not installed" -- Claude Code had
 another way, Ollama before macOS 14 -- before any source is asked; its
-row says that entry's state, as the suggestions' list does; where the window's install is refused for an id no longer kept,
-it searches again, for ids that are. The sheet says a suggestion found
+row says that entry's state, as the suggestions' list does. The page
+searches again every five minutes while it shows results, so that what it
+lists has ids still kept; where the window's install is refused for an id
+no longer kept all the same, it searches again, for ids that are. The sheet says a suggestion found
 by searching in the suggestion's own words, and of any other result that
 it is not one of the suggestions.
 

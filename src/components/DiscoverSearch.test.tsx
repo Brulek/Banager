@@ -281,6 +281,93 @@ describe("Discover's search of Homebrew", () => {
     }
   });
 
+  it("searches again where a result's id is out of date, and says so in the sheet", async () => {
+    // From the independent review of the branch: no test reached this.
+    let expired = true;
+    mockInvoke.mockImplementation(async (cmd: string, args?: unknown) => {
+      if (cmd === "get_snapshot") return snapshot;
+      if (cmd === "get_catalog") return catalog;
+      if (cmd === "list_operations") return [];
+      if (cmd === "search_homebrew") return search((args as { query: string }).query);
+      if (cmd === "plan_install_found") {
+        if (expired) {
+          expired = false;
+          throw JSON.stringify({ kind: "search_expired" });
+        }
+        return plan(results.find((r) => r.id === (args as { foundId: string }).foundId)!);
+      }
+      return null;
+    });
+    renderWithProviders(<DiscoverPage />);
+    await typeSearch("jq");
+    await waitFor(() => expect(results_()).toHaveLength(3), { timeout: 3000 });
+    fireEvent.click(screen.getByRole("button", { name: "Install jq-lsp" }));
+    const sheet = await screen.findByRole("alertdialog", { name: "Install “jq-lsp”?" });
+    expect(await within(sheet).findByText("This result is out of date. Search again.")).toBeInTheDocument();
+    // The list is searched again, for ids that are good.
+    await waitFor(() => expect(calls("search_homebrew")).toHaveLength(2));
+  });
+
+  it("says a press that did not start the install, beside the fresh preview, not as an error", async () => {
+    // From the independent review of the branch: the submit's error stayed
+    // under a preview that worked.
+    let refused = true;
+    mockInvoke.mockImplementation(async (cmd: string, args?: unknown) => {
+      if (cmd === "get_snapshot") return snapshot;
+      if (cmd === "get_catalog") return catalog;
+      if (cmd === "list_operations") return [];
+      if (cmd === "search_homebrew") return search((args as { query: string }).query);
+      if (cmd === "plan_install_found") return plan(results.find((r) => r.id === (args as { foundId: string }).foundId)!);
+      if (cmd === "submit_operation") {
+        if (refused) {
+          refused = false;
+          throw JSON.stringify({ kind: "plan_expired" });
+        }
+        return 7;
+      }
+      return null;
+    });
+    renderWithProviders(<DiscoverPage />);
+    await typeSearch("jq");
+    await waitFor(() => expect(results_()).toHaveLength(3), { timeout: 3000 });
+    fireEvent.click(screen.getByRole("button", { name: "Install jq-lsp" }));
+    const sheet = await screen.findByRole("alertdialog", { name: "Install “jq-lsp”?" });
+    await waitFor(() => expect(within(sheet).getByRole("button", { name: "Install" })).toBeEnabled());
+    fireEvent.click(within(sheet).getByRole("button", { name: "Install" }));
+    expect(await within(sheet).findByText("That didn't start, so it was checked again. Install once more.")).toBeInTheDocument();
+    expect(calls("plan_install_found")).toHaveLength(2);
+    expect(within(sheet).queryByText(/Couldn't start the install/)).toBeNull();
+    await waitFor(() => expect(within(sheet).getByRole("button", { name: "Install" })).toBeEnabled());
+  });
+
+  it("keeps a suggestion's name for the bar where the sheet was closed before the install's answer came", async () => {
+    // From the independent review of the branch: closing the sheet dropped
+    // the submit's own callback, and the install still started.
+    let answer: (opId: number) => void = () => {};
+    mockInvoke.mockImplementation(async (cmd: string, args?: unknown) => {
+      if (cmd === "get_snapshot") return snapshot;
+      if (cmd === "get_catalog") return catalog;
+      if (cmd === "list_operations") return [];
+      if (cmd === "search_homebrew") return search((args as { query: string }).query);
+      if (cmd === "plan_install_found") return plan(results.find((r) => r.id === (args as { foundId: string }).foundId)!);
+      if (cmd === "submit_operation") return new Promise<number>((resolve) => (answer = resolve));
+      return null;
+    });
+    useUiStore.setState({ opNames: {} });
+    renderWithProviders(<DiscoverPage />);
+    await typeSearch("claude");
+    await waitFor(() => expect(results_()).toHaveLength(3), { timeout: 3000 });
+    fireEvent.click(screen.getByRole("button", { name: "Install claude-code" }));
+    const sheet = await screen.findByRole("alertdialog", { name: "Install “claude-code”?" });
+    await waitFor(() => expect(within(sheet).getByRole("button", { name: "Install" })).toBeEnabled());
+    fireEvent.click(within(sheet).getByRole("button", { name: "Install" }));
+    await waitFor(() => expect(calls("submit_operation")).toHaveLength(1));
+    fireEvent.click(within(sheet).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    answer(7);
+    await waitFor(() => expect(useUiStore.getState().opNames[7]).toBe("Claude Code"));
+  });
+
   it("says what it found nothing for, and what text it does not take, without asking", async () => {
     search = async () => [];
     renderWithProviders(<DiscoverPage />);

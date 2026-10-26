@@ -1986,6 +1986,7 @@
       "noOllama": "There's no Ollama on this Mac to download it with.",
       "room": "This Mac has {{free}} free.",
       "roomShort": "This Mac has only {{free}} free, less than the download needs. Free up some space first.",
+      "reissued": "That didn't start, so it was checked again. Install once more.",
       "roomTight": "This Mac has only {{free}} free, which leaves little room once it's downloaded. Free up some space first."
     },
     "search": {

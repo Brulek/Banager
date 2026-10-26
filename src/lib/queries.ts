@@ -340,6 +340,12 @@ export function useSearchHomebrew(query: string): UseQueryResult<Found[]> {
     enabled: query.length >= 2,
     staleTime: 5 * 60 * 1000,
     gcTime: 5 * 60 * 1000,
+    // Searched again every five minutes while it is on the page, so that
+    // what it lists has ids Install can still send (ten minutes,
+    // FOUND_LIFETIME): a window left open does not ask its query cache, and
+    // macOS sends no visibility change while it stays on screen (from the
+    // independent review of the branch). Not while the window is closed.
+    refetchInterval: 5 * 60 * 1000,
     retry: false,
   });
 }

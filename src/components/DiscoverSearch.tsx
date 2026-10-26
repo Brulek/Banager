@@ -185,7 +185,9 @@ export function DiscoverResults({ query }: { query: string }) {
               );
             }
             return (
-              <li key={found.id} data-found={found.name} className={GROUP_ROW_TWO_LINES}>
+              // By what it is, not its id, which every search renews: a row
+              // searched again keeps its place and the focus in it.
+              <li key={`${found.kind}:${found.name}`} data-found={found.name} className={GROUP_ROW_TWO_LINES}>
                 <span className="flex min-w-0 items-center gap-2.5">
                   <ToolAvatar size="sm" adapterId="brew" sourceLabel={t("adapters.brew")} iconKey={keyOf(found)} />
                   <span className="min-w-0">

@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { catalogRefusal, entryName, installTargetOf, ITEM_KEYS, wordsOf } from "../lib/catalog";
 import { usePlanInstall, usePlanInstallFound, useSettings, useSubmitOperation } from "../lib/queries";
@@ -68,10 +68,14 @@ export function InstallSheet({ entry, found = null, iconKey, description = null,
   // As the uninstall's: "the sheet as it is open now, for this entry".
   const sessionRef = useRef(0);
   const submitLatch = useRef(false);
+  // A submit that did not start, and the fresh preview made after it: said
+  // beside it, as the uninstall's sheet says it.
+  const [reissued, setReissued] = useState(false);
 
   useEffect(() => {
     sessionRef.current += 1;
     submitLatch.current = false;
+    setReissued(false);
     planEntry.reset();
     planFound.reset();
     submitMutation.reset();
@@ -128,26 +132,41 @@ export function InstallSheet({ entry, found = null, iconKey, description = null,
   function handleConfirm() {
     if (!issued || submitLatch.current) return;
     submitLatch.current = true;
+    setReissued(false);
     const session = sessionRef.current;
-    submitMutation.mutate(issued.id, {
-      onSuccess: (opId) => {
-        // The operation bar names it as the suggestion does -- 「Gemma 3」,
-        // not `gemma3:4b`; 「Ollama」, not `ollama-app` -- before the check
-        // after it and after.
-        if (barName !== null) useUiStore.getState().rememberOpNames({ [opId]: barName });
-        if (sessionRef.current !== session) return;
-        onClose();
-      },
-      onError: () => {
-        // A plan id is spent once submitted, whatever the answer: a fresh
-        // preview, so Install does not send a dead one.
-        if (sessionRef.current !== session || id === null) return;
-        planMutation.mutate(id);
-      },
-      onSettled: () => {
+    // `mutateAsync`, not `mutate`'s own callbacks: those are dropped when the
+    // sheet is closed before the answer comes, and the install still starts
+    // (from the independent review of the branch).
+    submitMutation
+      .mutateAsync(issued.id)
+      .then(
+        (opId) => {
+          // The operation bar names it as the suggestion does -- 「Gemma 3」,
+          // not `gemma3:4b`; 「Ollama」, not `ollama-app` -- before the check
+          // after it and after, the sheet closed meanwhile or not.
+          if (barName !== null) useUiStore.getState().rememberOpNames({ [opId]: barName });
+          if (sessionRef.current !== session) return;
+          onClose();
+        },
+        () => {
+          // A plan id is spent once submitted, whatever the answer: a fresh
+          // preview, so Install does not send a dead one. The error stays
+          // while it is made, then gives way to it, with a line that says
+          // the last press did not start the install (as the uninstall's
+          // sheet does; from the independent review of the branch).
+          if (sessionRef.current !== session || id === null) return;
+          planMutation.mutate(id, {
+            onSettled: (fresh) => {
+              if (sessionRef.current !== session) return;
+              submitMutation.reset();
+              if (fresh !== undefined) setReissued(true);
+            },
+          });
+        },
+      )
+      .finally(() => {
         submitLatch.current = false;
-      },
-    });
+      });
   }
 
   // What the plan says, in the confirmations' words, and a cask's password:
@@ -237,6 +256,11 @@ export function InstallSheet({ entry, found = null, iconKey, description = null,
         </div>
       )}
 
+      {/* `status`, there from the time the sheet opens, and empty: one put
+          in the page with its words may never be read. */}
+      <p role="status" className={reissued && plan ? "mt-3 text-body text-muted" : "sr-only"}>
+        {reissued && plan ? t("discover.sheet.reissued") : null}
+      </p>
       {planMutation.isPending ? <SheetPending text={t("discover.sheet.checking")} /> : null}
       {planMutation.isError ? <div className="mt-3">{refusal(planMutation.error.message, "discover.sheet.planError")}</div> : null}
       {submitMutation.isError ? (
