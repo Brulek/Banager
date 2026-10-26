@@ -5650,7 +5650,7 @@ formula or a versioned one, Ollama by its family, an Ollama source, or
 Ollama.app in /Applications or ~/Applications (looked up as Open Ollama
 looks it up, `ollama::ollama_app_path`: an app dragged in and never
 opened has no `ollama` command yet, and no source), the model by any
-model an Ollama source lists; otherwise "Not
+model this Mac's own Ollama source lists (see below); otherwise "Not
 installed" where a Homebrew that answered and can be written to is
 there, "Homebrew can't install now" where Homebrew is there and none can
 -- the line over the list then says its page under Sources says why --
@@ -5659,11 +5659,17 @@ an older macOS (its cask's `depends_on`). Homebrew itself, missing on a
 Mac that is not Apple silicon, is "Not supported on this Mac": its
 official installer no longer installs there. The model is "Not
 installed" where an Ollama that answered and can be written to is
-there, "Needs Ollama" where there is no Ollama at all, and otherwise
-"Ollama can't download now" -- with Open Ollama where its app is not
-running, as its source's notice has it, or is there with no source yet:
-the app's first run offers to put its `ollama` command in place, and
-the check after that finds the source. The model is Gemma 3 in the size
+there, "Needs Ollama" where there is no Ollama at all, "Ollama is on
+another computer" where every Ollama source is at another machine's
+address (`OLLAMA_HOST`), whose notice says nothing of it since it
+answers, and otherwise "Ollama can't download now" -- with Open Ollama
+where its app is not running, as its source's notice has it, or is there
+with no source yet: the app's first run offers to put its `ollama`
+command in place, and the check after that finds the source. Where the
+checks Open Ollama starts still find no source (the app was running, or
+its offer was turned down), the row says so beside the button: "Ollama
+is open, and this Mac still has no ollama command, which downloading the
+model needs." The model is Gemma 3 in the size
 that suits the Mac's memory (`catalog::starter_model`): the largest whose
 download is at most about two-fifths of the least memory it is chosen
 for -- `gemma3:1b` (about 0.81 GB)
@@ -5711,8 +5717,10 @@ and nothing else. As after any install, Banager then asks the source --
 Homebrew, or Ollama for the model -- whether it is there, and the row
 says "Installed" where it is -- with what to type to use it, and Copy,
 which only copies those words; for Ollama's app, Open Ollama while it is
-not running -- until the check after the operation, from which on the
-row says what that check found, an uninstall since included. The model
+not running -- until a check has read the source after the install
+ended (its `answered_at`, when that check began asking it; the
+snapshot's time where the source has none), from which on the row says
+what that check found, an uninstall since included. The model
 is pulled, and counted, only through this Mac's own Ollama: an Ollama
 source at another machine's address (`OLLAMA_HOST`) neither pulls it nor
 makes it "Installed" (`catalog::this_macs_ollama`).

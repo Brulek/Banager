@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import i18n from "../i18n";
-import { catalogRefusal, endedAfterCheck, installOperationOf, installProgressOf, ITEM_KEYS } from "./catalog";
+import { catalogRefusal, endedAfterCheck, installOperationOf, installProgressOf, ITEM_KEYS, stateText } from "./catalog";
 import type { CatalogEntry, ManagerInstance, OpSummary } from "./types";
 
 const t = i18n.getFixedT("en");
@@ -115,6 +115,12 @@ describe("a refusal of plan_install", () => {
       "No Homebrew on this Mac can install it right now.",
     );
     expect(said({ kind: "catalog_state", state: { NeedsMacOS: { major: 14 } } })).toBe("It needs macOS 14 or later.");
+    // The model, with every Ollama at another machine's address (from
+    // the review of abba6f7e).
+    expect(said({ kind: "catalog_state", state: "OllamaElsewhere" })).toBe(
+      "The Ollama this Mac uses is on another computer, so a model it downloads would be there, not on this Mac.",
+    );
+    expect(stateText(t, "OllamaElsewhere")).toBe("Ollama is on another computer");
     // Anything else is `planErrorMessage`'s.
     expect(said({ kind: "refused" })).toBeNull();
     expect(said({ kind: "catalog_state", state: { NeedsMacOS: {} } })).toBeNull();

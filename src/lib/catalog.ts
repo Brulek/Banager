@@ -124,6 +124,8 @@ export function stateText(t: Translate, state: CatalogState): string {
       return t("discover.state.needsOllama");
     case "OllamaNotReady":
       return t("discover.state.ollamaNotReady");
+    case "OllamaElsewhere":
+      return t("discover.state.ollamaElsewhere");
   }
 }
 
@@ -201,6 +203,8 @@ export function catalogRefusal(t: Translate, raw: string): string | null {
       return t("discover.sheet.noOllama");
     case "OllamaNotReady":
       return t("discover.sheet.needsOllama");
+    case "OllamaElsewhere":
+      return t("discover.sheet.ollamaElsewhere");
     default:
       return null;
   }

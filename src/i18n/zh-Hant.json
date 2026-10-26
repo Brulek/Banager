@@ -1811,6 +1811,7 @@
       "homebrewUnsupported": "不支援這台Mac",
       "needsOllama": "需先安裝Ollama",
       "ollamaNotReady": "Ollama現在無法下載模型",
+      "ollamaElsewhere": "Ollama在另一台電腦上",
       "homebrewNotReady": "Homebrew現在無法安裝工具"
     },
     "progress": {
@@ -1834,6 +1835,7 @@
       "needsMacOS": "它需要macOS {{major}}或以上版本。",
       "fromOllama": "Ollama會從它的模型庫下載{{model}}，約{{size}}。",
       "needsOllama": "這台Mac上的Ollama現在無法下載它。",
+      "ollamaElsewhere": "這台Mac使用的Ollama在另一台電腦上，用它下載的模型會存在那台電腦上，不在這台Mac上。",
       "noOllama": "這台Mac上沒有Ollama，無法下載它。",
       "room": "這台Mac還有{{free}}可用空間。",
       "roomShort": "這台Mac只剩{{free}}可用空間，不夠下載它。請先騰出一些空間。"

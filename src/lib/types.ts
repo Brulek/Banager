@@ -1420,10 +1420,12 @@ export type CatalogState =
   | "HomebrewUnsupported"
   /** Not installed, and Homebrew is there but none can install now: its notice says why. */
   | "HomebrewNotReady"
-  /** The starter model, with no Ollama source. */
+  /** The starter model, with no Ollama source and no Ollama.app. */
   | "NeedsOllama"
-  /** The starter model, with an Ollama that cannot pull now: not running, not answering, view only. */
-  | "OllamaNotReady";
+  /** The starter model, with an Ollama that cannot pull now (not running, not answering, view only), or Ollama.app with no `ollama` command yet. */
+  | "OllamaNotReady"
+  /** The starter model, with every Ollama at another machine's address (`OLLAMA_HOST`). */
+  | "OllamaElsewhere";
 /**
  * One result of the Discover page's search of Homebrew (Rust `Found`,
  * crates/banager-core/src/session/search.rs): its id, which Install sends

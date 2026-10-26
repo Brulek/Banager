@@ -245,13 +245,18 @@ pub enum CatalogState {
     /// Homebrew's official installer no longer installs on Intel Macs
     /// (phase 5 proposal §1.1).
     HomebrewUnsupported,
-    /// The starter model, on a Mac with no Ollama source.
+    /// The starter model, on a Mac with no Ollama source and no Ollama.app.
     NeedsOllama,
     /// The starter model, where Ollama is there but cannot pull now onto
-    /// this Mac: not running, not answering, view only, or at another
-    /// machine's address. The source's own notice says which, and Open
-    /// Ollama is the window's where the app is not running.
+    /// this Mac: not running, not answering, or view only -- the source's
+    /// own notice says which -- or Ollama.app with no `ollama` command
+    /// yet. Open Ollama is the window's where the app is not running.
     OllamaNotReady,
+    /// The starter model, where every Ollama source is at another
+    /// machine's address (`OLLAMA_HOST`): a model it pulls would be on
+    /// that machine, and nothing in its notice says so, since it answers
+    /// (from the review of abba6f7e).
+    OllamaElsewhere,
 }
 
 /// One entry as the window lists it (`get_catalog` in
@@ -511,10 +516,17 @@ fn state_of(
             _ => CatalogState::NeedsHomebrew,
         },
         CatalogInstall::OllamaModel { .. } => {
-            if snapshot.instances.iter().any(ollama_can_pull) {
+            let ollamas = || {
+                snapshot
+                    .instances
+                    .iter()
+                    .filter(|i| i.adapter_id == "ollama")
+            };
+            if ollamas().any(ollama_can_pull) {
                 CatalogState::NotInstalled
-            } else if snapshot.instances.iter().any(|i| i.adapter_id == "ollama") || host.ollama_app
-            {
+            } else if ollamas().next().is_some() && ollamas().all(ollama_elsewhere) {
+                CatalogState::OllamaElsewhere
+            } else if ollamas().next().is_some() || host.ollama_app {
                 // An Ollama source that cannot pull, or the app with no
                 // `ollama` command yet, whose first run offers to put it
                 // in place.
@@ -533,6 +545,16 @@ fn ollama_can_pull(instance: &ManagerInstance) -> bool {
     this_macs_ollama(&instance.id)
         && instance.status.unavailable.is_none()
         && instance.read_only_reason.is_none()
+}
+
+/// Whether `instance` is an Ollama at another machine's address: one whose
+/// id names an address (`ollama:<OLLAMA_HOST>`; one Banager cannot use has
+/// none) that is not this Mac's.
+fn ollama_elsewhere(instance: &ManagerInstance) -> bool {
+    instance
+        .id
+        .strip_prefix("ollama:")
+        .is_some_and(|host| !crate::adapters::ollama::host_is_this_mac(host))
 }
 
 /// Whether the Ollama source `instance_id` (`ollama:<OLLAMA_HOST>`) is this
@@ -981,7 +1003,8 @@ mod tests {
             })
         );
         // An Ollama at another machine's address pulls onto that machine,
-        // and its models are not this Mac's.
+        // and its models are not this Mac's: the row says where it is, as
+        // its notice does not (from the review of abba6f7e).
         let remote = "ollama:http://studio.local:11434";
         let elsewhere = snapshot(
             vec![instance("ollama", remote)],
@@ -989,6 +1012,24 @@ mod tests {
         );
         assert_eq!(
             states(&elsewhere, &SILICON_15)[5],
+            ("model", CatalogState::OllamaElsewhere)
+        );
+        assert_eq!(
+            install_request(&elsewhere, &SILICON_15, "model"),
+            Err(InstallRefusal::State(CatalogState::OllamaElsewhere))
+        );
+        // An `OLLAMA_HOST` Banager cannot use names no address: not
+        // elsewhere, and its notice says why.
+        let unusable = ManagerInstance {
+            status: InstanceStatus {
+                unavailable: Some(Unavailable::InvalidOllamaHost),
+                notes: Vec::new(),
+                no_answer: None,
+            },
+            ..instance("ollama", "ollama")
+        };
+        assert_eq!(
+            states(&snapshot(vec![unusable], Vec::new()), &SILICON_15)[5],
             ("model", CatalogState::OllamaNotReady)
         );
         // Ollama.app dragged in and never opened: no source, no `ollama`.

@@ -137,7 +137,14 @@ export function mockCatalog(instances: ManagerInstance[], artifacts: InstalledAr
     if (item.recognizedBy.some((way) => has(way, instances, artifacts))) state = "Installed";
     else if (item.install === "HomebrewItself") state = HOST.appleSilicon ? "NotInstalled" : "HomebrewUnsupported";
     else if ("OllamaModel" in item.install)
-      state = canPull ? "NotInstalled" : instances.some((i) => i.adapter_id === "ollama") ? "OllamaNotReady" : "NeedsOllama";
+      state = canPull
+        ? "NotInstalled"
+        : instances.some((i) => i.adapter_id === "ollama") &&
+            instances.every((i) => i.adapter_id !== "ollama" || (i.id.startsWith("ollama:") && !thisMacsOllama(i.id)))
+          ? "OllamaElsewhere"
+          : instances.some((i) => i.adapter_id === "ollama")
+            ? "OllamaNotReady"
+            : "NeedsOllama";
     else if (item.needsMacOS !== undefined && HOST.macosMajor < item.needsMacOS) state = { NeedsMacOS: { major: item.needsMacOS } };
     else
       state = canInstall
