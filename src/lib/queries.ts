@@ -331,7 +331,9 @@ export function usePlanOperation(): UseMutationResult<IssuedPlan, Error, OpReque
  * The Discover page's search of Homebrew for `query` (`searchHomebrew`),
  * once it is two characters or more. Kept five minutes, half the time its
  * results' ids can still be installed by (`FOUND_LIFETIME`), so that what
- * is listed can always be installed.
+ * is listed can be installed -- while a search again answers: a list kept
+ * through failed ones is shown only while its ids are kept
+ * (`DiscoverResults`).
  */
 export function useSearchHomebrew(query: string): UseQueryResult<Found[]> {
   return useQuery({
@@ -340,9 +342,9 @@ export function useSearchHomebrew(query: string): UseQueryResult<Found[]> {
     enabled: query.length >= 2,
     staleTime: 5 * 60 * 1000,
     gcTime: 5 * 60 * 1000,
-    // Searched again every five minutes while it is on the page, so that
-    // what it lists has ids Install can still send (ten minutes,
-    // FOUND_LIFETIME): a window left open does not ask its query cache, and
+    // Searched again every five minutes while it is on the page, so that,
+    // where that answers, what it lists has ids Install can still send (ten
+    // minutes, FOUND_LIFETIME): a window left open does not ask its query cache, and
     // macOS sends no visibility change while it stays on screen (from the
     // independent review of the branch). Not while the window is closed.
     refetchInterval: 5 * 60 * 1000,

@@ -440,6 +440,19 @@ describe("Discover's search of Homebrew", () => {
     expect(results_()).toHaveLength(3);
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.getByRole("button", { name: "Install jq-lsp" })).toBeInTheDocument();
+    // Past its ids' ten minutes, and failing again: not a list whose
+    // Install can only say "out of date", but why it could not search.
+    const now = Date.now();
+    const later = vi.spyOn(Date, "now").mockReturnValue(now + 11 * 60 * 1000);
+    try {
+      await act(async () => {
+        await queryClient.refetchQueries({ queryKey: ["searchHomebrew"] });
+      });
+      expect(await screen.findByRole("alert")).toHaveTextContent(/Couldn't search Homebrew/);
+      expect(results_()).toHaveLength(0);
+    } finally {
+      later.mockRestore();
+    }
   });
 
   it("says why it could not search in words with technical details on too, not as the refusal's JSON", async () => {

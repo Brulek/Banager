@@ -29,6 +29,9 @@ import { GROUP, GROUP_FOOTNOTE, GROUP_ROW_TWO_LINES, GROUP_TITLE, SMALL_WRAPPING
 /** How long the text has to stay the same before it is searched for, in ms: Homebrew takes a second or more a search. */
 export const SEARCH_AFTER_MS = 600;
 
+/** How long a search's results can be installed by their ids (Rust `FOUND_LIFETIME`), in ms. */
+const FOUND_LIFETIME_MS = 10 * 60 * 1000;
+
 /**
  * Why a search listed nothing, in the page's words -- with technical
  * details on too, where the refusal is one of the window's own kinds: not
@@ -112,11 +115,15 @@ export function DiscoverResults({ query }: { query: string }) {
     body = <p className="px-2.5 text-muted">{t("discover.search.invalid")}</p>;
   } else if (asked === "" || search.isPending) {
     body = <SheetPending text={t("discover.search.searching")} />;
-  } else if (search.data === undefined) {
-    // Why it could not search -- only where it has nothing to show: a
-    // search asked again in the background (every five minutes) that
-    // fails leaves the list it had, whose ids are still kept (from the
-    // review of the fix batch).
+  } else if (
+    search.data === undefined ||
+    (search.isError && Date.now() - search.dataUpdatedAt >= FOUND_LIFETIME_MS)
+  ) {
+    // Why it could not search -- where it has nothing to show, or what it
+    // has is past its ids' ten minutes: a search asked again in the
+    // background (every five minutes) that fails leaves the list it had
+    // while its ids are kept, and no longer (from the reviews of the fix
+    // batch).
     body = search.isError ? (
       <p role="alert" className="px-2.5 text-danger-text">
         {searchError(t, search.error.message, settings?.show_technical_details ?? false)}

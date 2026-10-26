@@ -5819,8 +5819,10 @@ suggestion whose catalog entry is not "Not installed" -- Claude Code had
 another way, Ollama before macOS 14 -- before any source is asked; its
 row says that entry's state, as the suggestions' list does. The page
 searches again every five minutes while it shows results, so that what it
-lists has ids still kept; where the window's install is refused for an id
-no longer kept all the same, it searches again, for ids that are. The sheet says a suggestion found
+lists has ids still kept; where that fails, it keeps the list it had for
+as long as its ids are kept, ten minutes, and then says why it could not
+search. Where the window's install is refused for an id no longer kept all
+the same, it searches again, for ids that are. The sheet says a suggestion found
 by searching in the suggestion's own words, and of any other result its
 description, on a line of its own, and that it is not one of the
 suggestions; for an app (a cask) that is not one, it promises no check of
