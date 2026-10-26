@@ -626,7 +626,10 @@ export type UpdateBlocked =
   | "UpdatesTurnedOff"
   // rustup set to get its updates from another address than the one
   // Banager checks: on a `checkable: false` row, and the plan's refusal.
-  | "UpdateSourceMismatch";
+  | "UpdateSourceMismatch"
+  // A crate whose Cargo receipt names a program outside Cargo's `bin`
+  // folder, which its update would delete (R91-1).
+  | "CargoRecordUnsafe";
 export interface UpdateCandidate {
   key: ArtifactKey;
   current: string;

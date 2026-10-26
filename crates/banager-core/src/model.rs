@@ -2003,6 +2003,19 @@ pub enum UpdateBlocked {
     /// src/components/updateDetails.tsx for the row's words, and by
     /// `UPDATE_BLOCKED_KEYS.UpdateSourceMismatch` in src/lib/sources.ts.
     UpdateSourceMismatch,
+    /// Cargo's receipt for the crate lists a program by something that is
+    /// not a file name in `<root>/bin` (`UninstallBlocked::CargoRecordUnsafe`,
+    /// R91-1). An update is `cargo install --force` (or cargo-binstall's),
+    /// which removes the old version's programs the new one does not have
+    /// -- each name the receipt lists, joined onto `<root>/bin` (cargo
+    /// 1.98.1 `ops/cargo_install.rs`, `remove_orphaned_bins`) -- so it
+    /// would delete that file too. Produced by `CargoAdapter::check_updates`
+    /// on the crate's candidate, refused by its `plan(Upgrade)`, and read
+    /// again just before the command runs (`ChangedSinceShown`). Read by
+    /// the gate (`blocked_upgrade`), by `updateStateOf` (no button, no
+    /// checkbox) and by `UPDATE_BLOCKED_KEYS.CargoRecordUnsafe` in
+    /// src/lib/sources.ts.
+    CargoRecordUnsafe,
 }
 
 /// The version read from a self-updating cask's app where it is not

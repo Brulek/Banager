@@ -3393,7 +3393,14 @@ no program, there is no preview. Just before the command runs,
 `.crates.toml` is read again: the entry must still be the same crate,
 version and source, with the same programs, all plain names, in any
 order -- otherwise nothing runs and the uninstall reads as changed since
-shown. The command run is the one the preview showed.
+shown. The command run is the one the preview showed. An update is
+blocked the same way: `cargo install --force`, and cargo-binstall's
+`--force`, remove the old version's programs the new one does not have,
+by the names the receipt lists (`remove_orphaned_bins` in cargo's
+`ops/cargo_install.rs`), so such a crate's update is offered with no
+button and "Can't update here" (`UpdateBlocked::CargoRecordUnsafe`), its
+preview is refused, and the receipt is read again just before an update
+confirmed earlier runs.
 
 **Write commands:**
 

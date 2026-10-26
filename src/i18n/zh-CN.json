@@ -400,6 +400,11 @@
       "UpdateSourceMismatch": {
         "detail": "rustup设为从另一个地址获取更新。这里没有检查该地址，因此无法在这里更新rustup。",
         "refused": "无法更新rustup，因为它的更新地址与这里检查的地址不同。"
+      },
+      "CargoRecordUnsafe": {
+        "badge": "无法在此更新",
+        "detail": "Cargo的安装记录中，它的程序指向Cargo程序文件夹以外的文件，更新时会把那个文件一起删除，所以无法在这里更新。",
+        "refused": "无法更新，因为Cargo的安装记录中它的程序指向Cargo程序文件夹以外的文件。"
       }
     },
     "allHiddenTitle": "没有要安装的更新",

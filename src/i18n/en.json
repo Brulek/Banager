@@ -436,6 +436,11 @@
       "UpdateSourceMismatch": {
         "detail": "rustup is set to get updates from a different address, which Banager hasn't checked, so it can't update rustup here.",
         "refused": "Couldn't update rustup because its update address differs from the one Banager checks."
+      },
+      "CargoRecordUnsafe": {
+        "badge": "Can't update here",
+        "detail": "Cargo's install record for it names a file outside Cargo's folder of programs, and updating it would delete that file too. So it can't be updated here.",
+        "refused": "Couldn't update because Cargo's install record for it names a file outside Cargo's folder of programs."
       }
     },
     "allHiddenTitle": "No updates to install",

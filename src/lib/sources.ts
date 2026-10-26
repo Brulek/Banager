@@ -1113,6 +1113,19 @@ export const UPDATE_BLOCKED_KEYS: Record<UpdateBlocked, UpdateBlockedCopy> = {
     note: () => null,
     refused: "updates.blocked.UpdateSourceMismatch.refused",
   },
+  CargoRecordUnsafe: {
+    // A crate whose Cargo receipt names a program by a path out of Cargo's
+    // `bin` folder (R91-1): `cargo install --force` removes the old
+    // version's programs by those names, so it would delete that file.
+    // Nothing Banager can run fixes the receipt.
+    badge: "updates.blocked.CargoRecordUnsafe.badge",
+    detail: "updates.blocked.CargoRecordUnsafe.detail",
+    commandInDetail: false,
+    command: () => "",
+    typed: null,
+    note: () => null,
+    refused: "updates.blocked.CargoRecordUnsafe.refused",
+  },
 };
 
 /**

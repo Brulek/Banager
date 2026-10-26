@@ -9,7 +9,7 @@ use crate::model::{
     ArtifactFacts, ArtifactKey, ArtifactKind, CancelPolicy, CommandInputs, InstallReason,
     InstalledArtifact, InstanceStatus, ManagerInstance, OpKind, OpRequest, Outcome, Plan,
     PlanAction, ProvidedCommand, Reconciled, ResourceLock, Scope, SearchHit, Unavailable,
-    UninstallBlocked, UninstallScope, UpdateCandidate, UpdateChannel, Warning,
+    UninstallBlocked, UninstallScope, UpdateBlocked, UpdateCandidate, UpdateChannel, Warning,
 };
 use crate::runner::{resolve_exe, CommandRunner, CommandSpec, HostEnv, OutputUse};
 use async_trait::async_trait;
@@ -960,6 +960,14 @@ impl CargoAdapter {
                 )),
             }
         }
+        // A crate whose receipt names a program unsafely: its update would
+        // delete that file, as its uninstall would (R91-1's update half).
+        let unsafe_records = crates_with_unsafe_bins(&json)?;
+        for candidate in &mut out {
+            if unsafe_records.contains(&candidate.key.name) {
+                candidate.blocked = Some(UpdateBlocked::CargoRecordUnsafe);
+            }
+        }
         Ok(out.into())
     }
 
@@ -1027,6 +1035,14 @@ impl CargoAdapter {
                     .map_err(|e| AdapterError::Parse(e.to_string()))?;
             build_args = choices.args();
             from_source = choices.builds_from_source();
+            // `cargo install --force` removes the old version's programs
+            // the new one lacks, by the receipt's names: an unsafe one
+            // there would go too (`UpdateBlocked::CargoRecordUnsafe`).
+            if crates_with_unsafe_bins(&json)?.contains(&req.name) {
+                return Err(AdapterError::UpdateBlocked {
+                    reason: UpdateBlocked::CargoRecordUnsafe,
+                });
+            }
             basis = Some(Self::upgrade_basis(&json, &inst.prefix, &req.name)?);
             installs = Some(json);
         }
@@ -1151,10 +1167,15 @@ impl CargoAdapter {
         cancel: CancellationToken,
     ) -> Result<Outcome, AdapterError> {
         if plan.request.kind == OpKind::Upgrade {
+            // The receipt read again: the same record, and still no program
+            // of it named unsafely (`UpdateBlocked::CargoRecordUnsafe`).
             let current = Self::root_of(plan).and_then(|root| {
-                self.read_installs_at(root)
-                    .ok()
-                    .and_then(|json| Self::upgrade_basis(&json, root, &plan.request.name).ok())
+                let json = self.read_installs_at(root).ok()?;
+                let unsafe_now = crates_with_unsafe_bins(&json).ok()?;
+                if unsafe_now.contains(&plan.request.name) {
+                    return None;
+                }
+                Self::upgrade_basis(&json, root, &plan.request.name).ok()
             });
             if current.is_none() || current != plan.basis {
                 return Ok(Outcome::BanagerFailed(
@@ -3893,6 +3914,71 @@ mod tests {
             }
             std::fs::remove_dir_all(home).unwrap();
         }
+    }
+
+    #[tokio::test]
+    async fn regression_r91_1_an_unsafe_recorded_program_blocks_the_crates_update_too() {
+        // `cargo install --force` removes the old version's programs the
+        // new one lacks, by the receipt's names: `../../.ssh/id_ed25519`
+        // there would go with an update as with an uninstall. The update
+        // is offered blocked, its preview refused, and a receipt made
+        // unsafe after the preview stops it before it runs.
+        let unsafe_toml =
+            format!("[v1]\n\"{HEXYL_RECORDED}\" = [\"hexyl\", \"../../.ssh/id_ed25519\"]\n");
+        let safe_toml = format!("[v1]\n\"{HEXYL_RECORDED}\" = [\"hexyl\"]\n");
+        let home = cargo_root("r91-update", &unsafe_toml);
+        std::fs::write(home.join(".crates2.json"), recorded_crates2()).unwrap();
+        let http = Arc::new(MockHttpClient::new());
+        http.respond(
+            "https://crates.io/api/v1/crates/hexyl",
+            HttpResponse {
+                status: 200,
+                body: r#"{"crate":{"max_stable_version":"0.18.0"}}"#.to_string(),
+            },
+        );
+        let runner = Arc::new(MockRunner::new());
+        let adapter = CargoAdapter::new(runner.clone(), http).with_binstall(None);
+        let inst = test_instance(home.clone());
+        let candidates = adapter
+            .check_updates(&inst, &CheckOptions::default())
+            .await
+            .unwrap()
+            .candidates;
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].target, "0.18.0");
+        assert_eq!(
+            candidates[0].blocked,
+            Some(UpdateBlocked::CargoRecordUnsafe)
+        );
+        let upgrade = OpRequest {
+            kind: OpKind::Upgrade,
+            instance_id: inst.id.clone(),
+            artifact_kind: ArtifactKind::Binary,
+            name: "hexyl".to_string(),
+        };
+        assert!(matches!(
+            adapter.plan(&inst, &upgrade).await,
+            Err(AdapterError::UpdateBlocked {
+                reason: UpdateBlocked::CargoRecordUnsafe
+            })
+        ));
+        // Planned while the receipt was safe, made unsafe before it runs.
+        std::fs::write(home.join(".crates.toml"), &safe_toml).unwrap();
+        let plan = adapter
+            .plan(&inst, &upgrade)
+            .await
+            .expect("a safe receipt plans");
+        std::fs::write(home.join(".crates.toml"), &unsafe_toml).unwrap();
+        let outcome = adapter
+            .execute(&plan, Arc::new(VecSink::new()), 1, CancellationToken::new())
+            .await
+            .unwrap();
+        assert_eq!(
+            outcome,
+            Outcome::BanagerFailed(crate::model::Fault::ChangedSinceShown)
+        );
+        assert!(runner.calls().is_empty());
+        std::fs::remove_dir_all(home).unwrap();
     }
 
     #[tokio::test]
