@@ -105,7 +105,9 @@ export function DiscoverPage() {
   // wrap within a column of their own, so the row's name and what it is
   // keep their room; under its name, in the line's own flow.
   const openOllamaButton = (where: "end" | "line") => {
-    const width = where === "end" ? "max-w-56 text-right" : "";
+    // A word too long for the column, a raw error with technical details
+    // on, breaks rather than spilling over the button.
+    const width = where === "end" ? "max-w-56 text-right break-words" : "";
     return (
       <span className="flex items-center gap-2">
         {openOllama.isError ? (
