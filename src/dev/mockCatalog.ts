@@ -3,6 +3,8 @@
  * crates/banager-core/src/catalog.rs, with each entry's state worked out
  * from the pretend Mac's snapshot by the same rules -- a copy of them, for
  * a preview with no Rust. The pretend Mac is Apple silicon on macOS 15.
+ * Ollama.app on its own, with no Ollama source (`Recognizer::OllamaApp`),
+ * is not modelled: the pretend Mac's Ollama is always a source.
  */
 import type { CatalogEntry, CatalogInstall, CatalogState, InstalledArtifact, ManagerInstance } from "../lib/types";
 
