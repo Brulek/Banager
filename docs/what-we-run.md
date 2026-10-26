@@ -7020,9 +7020,14 @@ configured, `index.crates.io`, and cargo still follows a
   link only of a formula a source's reason offers
   (`Session::issue_listed_plan`), since npm, Cargo and Ollama would
   install a name they were asked to upgrade.
-- Never launches an application from a refresh; `open -a Ollama` runs
-  only when the button is pressed, and the default browser is started
-  only by a click on a tool's homepage.
+- Never launches an application from a refresh; `open -a Ollama` and
+  `open -a Terminal` run only when their buttons are pressed (Open
+  Ollama; Open Terminal on the Homebrew sheet, which types nothing into
+  it), and the default browser is started only by a click on a tool's
+  homepage.
+- Never asks for, sees or keeps a password: Homebrew itself, whose
+  installer needs one, is installed by the person, in Terminal
+  ("Homebrew itself").
 - Never opens just any web address the window names: a click on a tool's
   homepage opens, in the default browser, only an `https` homepage a
   tool in the current snapshot lists (Network).
