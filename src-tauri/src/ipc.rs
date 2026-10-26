@@ -127,6 +127,21 @@ async fn refresh_for(state: &AppState, asker: Asker) -> Result<Snapshot, String>
             },
         )
         .await;
+    // Homebrew installed while Banager runs, the Homebrew sheet open or not
+    // (`login_path::note_homebrew`): its `bin` goes on the `PATH` later
+    // checks look along, so an Ollama or npm it installs is found. Not in
+    // a test, whose `PATH` is the process's own for every test.
+    #[cfg(not(test))]
+    if snapshot.refreshed_at.is_some() {
+        let prefix = std::path::Path::new(banager_core::adapters::brew::INSTALLER_PREFIX);
+        banager_core::runner::login_path::note_homebrew(
+            snapshot
+                .instances
+                .iter()
+                .any(|i| i.adapter_id == "brew" && i.prefix == prefix),
+            &prefix.join("bin"),
+        );
+    }
     Ok(with_next_auto_check(
         state,
         announce(state, snapshot, trigger),
@@ -1092,7 +1107,8 @@ pub async fn search_homebrew(
 /// window sends the result's id, never a package name. Refused before any
 /// adapter is asked as `search_expired` where no result has that id any
 /// more -- ten minutes on, or forgotten for newer ones -- and as
-/// `catalog_state` `Installed` where the check since lists it installed.
+/// `catalog_state` with its state where the check since lists it installed,
+/// or where it is a suggestion whose entry is not "Not installed".
 pub(crate) async fn plan_install_found_impl(
     state: &AppState,
     found_id: &str,
@@ -1106,6 +1122,9 @@ pub(crate) async fn plan_install_found_impl(
             FoundError::Unknown => serde_json::json!({ "kind": "search_expired" }).to_string(),
             FoundError::Installed => {
                 serde_json::json!({ "kind": "catalog_state", "state": "Installed" }).to_string()
+            }
+            FoundError::State(state) => {
+                serde_json::json!({ "kind": "catalog_state", "state": state }).to_string()
             }
             FoundError::Adapter(e) => plan_operation_error(e),
         })

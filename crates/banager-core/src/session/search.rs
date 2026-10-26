@@ -60,6 +60,10 @@ pub enum FoundError {
     Unknown,
     /// The check since lists it installed.
     Installed,
+    /// It is a suggestion whose catalog entry is not "Not installed" on
+    /// this Mac: installed another way (Claude Code from npm, Node.js as
+    /// `node@22`), or one this Mac cannot install (Ollama before macOS 14).
+    State(crate::catalog::CatalogState),
     /// The plan was refused (`Session::issue_plan`).
     Adapter(AdapterError),
 }
@@ -142,8 +146,9 @@ impl Session {
     /// The install of the result `id` (`search_homebrew`), planned as every
     /// operation is (`issue_plan`): its formula or cask, by the name
     /// Homebrew gave, into the Homebrew it was found in. Refused before
-    /// any adapter is asked where no result has that id any more, and where
-    /// the snapshot now lists it installed there.
+    /// any adapter is asked where no result has that id any more, where
+    /// the snapshot now lists it installed there, and, for a suggestion,
+    /// where its catalog entry is not "Not installed" (`FoundError::State`).
     pub async fn plan_found(&self, id: &str) -> Result<IssuedPlan, FoundError> {
         let request = {
             let mut found = self.found.lock().unwrap();
@@ -164,6 +169,20 @@ impl Session {
             });
         if installed {
             return Err(FoundError::Installed);
+        }
+        // A suggestion, found by searching, is installed only where its
+        // entry would be: not a second copy of a tool the Mac has another
+        // way, nor one this Mac cannot install (`catalog::install_request`).
+        let state = crate::catalog::state_installing(
+            &self.snapshot(),
+            &crate::catalog::Host::of_this_mac(),
+            request.artifact_kind,
+            &request.name,
+        );
+        if let Some(state) =
+            state.filter(|state| *state != crate::catalog::CatalogState::NotInstalled)
+        {
+            return Err(FoundError::State(state));
         }
         self.issue_plan(&request).await.map_err(FoundError::Adapter)
     }
@@ -188,6 +207,8 @@ mod tests {
     struct FakeBrew {
         meta: AdapterMeta,
         instance: ManagerInstance,
+        /// What it lists installed.
+        listed: Vec<(ArtifactKind, &'static str)>,
         hits: Vec<SearchHit>,
         searched: Mutex<Vec<String>>,
         plans: AtomicUsize,
@@ -207,11 +228,11 @@ mod tests {
             &self,
             inst: &ManagerInstance,
         ) -> Result<Vec<InstalledArtifact>, AdapterError> {
-            Ok(vec![crate::testing::installed_artifact(
-                &inst.id,
-                ArtifactKind::Formula,
-                "jq",
-            )])
+            Ok(self
+                .listed
+                .iter()
+                .map(|(kind, name)| crate::testing::installed_artifact(&inst.id, *kind, name))
+                .collect())
         }
 
         async fn check_updates(
@@ -269,9 +290,17 @@ mod tests {
     }
 
     async fn session_with(instance: ManagerInstance) -> (Arc<Session>, Arc<FakeBrew>) {
+        session_listing(instance, vec![(ArtifactKind::Formula, "jq")]).await
+    }
+
+    async fn session_listing(
+        instance: ManagerInstance,
+        listed: Vec<(ArtifactKind, &'static str)>,
+    ) -> (Arc<Session>, Arc<FakeBrew>) {
         let brew = Arc::new(FakeBrew {
             meta: test_support::fake_adapter_meta("brew"),
             instance,
+            listed,
             hits: vec![
                 hit(ArtifactKind::Formula, "jq"),
                 hit(ArtifactKind::Formula, "jq-lsp"),
@@ -343,13 +372,17 @@ mod tests {
             session.plan_found(&found[0].id).await,
             Err(FoundError::Installed)
         ));
+        // claude-code is a suggestion: where the Mac has Claude Code another
+        // way, it is not installed again (here, the fake's jq is no such
+        // thing, so the cask is still planned).
+        assert!(session.plan_found(&found[2].id).await.is_ok());
         for id in ["", "jq-lsp", "00000000000000000000000000000000"] {
             assert!(
                 matches!(session.plan_found(id).await, Err(FoundError::Unknown)),
                 "{id:?}"
             );
         }
-        assert_eq!(brew.plans.load(Ordering::SeqCst), 1);
+        assert_eq!(brew.plans.load(Ordering::SeqCst), 2);
     }
 
     #[tokio::test]
@@ -379,5 +412,26 @@ mod tests {
             );
         }
         assert!(brew.searched.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_a_suggestion_found_by_searching_is_installed_only_where_its_entry_would_be() {
+        // Claude Code from its `claude-code@latest` cask: the catalog says
+        // Installed, so the search's `claude-code` is not a second copy.
+        let (session, brew) = session_listing(
+            crate::testing::manager_instance("brew", "brew:/opt/homebrew"),
+            vec![(ArtifactKind::Cask, "claude-code@latest")],
+        )
+        .await;
+        let found = session.search_homebrew("claude").await.expect("search");
+        let cask = found.iter().find(|f| f.name == "claude-code").unwrap();
+        assert!(matches!(
+            session.plan_found(&cask.id).await,
+            Err(FoundError::State(crate::catalog::CatalogState::Installed))
+        ));
+        // Not a suggestion: planned.
+        let other = found.iter().find(|f| f.name == "jq-lsp").unwrap();
+        assert!(session.plan_found(&other.id).await.is_ok());
+        assert_eq!(brew.plans.load(Ordering::SeqCst), 1);
     }
 }

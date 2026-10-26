@@ -1935,6 +1935,7 @@
   "discover": {
     "intro": "Tools to start with, and which of them this Mac already has.",
     "introNoHomebrew": "This Mac doesn't have Homebrew yet. Install it first, and then the tools below install here in one click.",
+    "introHomebrewNotReady": "Homebrew is on this Mac but can't install anything right now: its page under Sources says why.",
     "footnote": "Tools here install with Homebrew, and the model with Ollama; each install shows the command it runs first.",
     "install": "Install",
     "installLabel": "Install {{name}}",
@@ -1952,7 +1953,8 @@
       "needsMacOS": "Needs macOS {{major}}",
       "homebrewUnsupported": "Not supported on this Mac",
       "needsOllama": "Needs Ollama",
-      "ollamaNotReady": "Ollama can't download now"
+      "ollamaNotReady": "Ollama can't download now",
+      "homebrewNotReady": "Homebrew can't install now"
     },
     "progress": {
       "queued": "Queued",

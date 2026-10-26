@@ -1418,6 +1418,8 @@ export type CatalogState =
   | "NeedsHomebrew"
   | { NeedsMacOS: { major: number } }
   | "HomebrewUnsupported"
+  /** Not installed, and Homebrew is there but none can install now: its notice says why. */
+  | "HomebrewNotReady"
   /** The starter model, with no Ollama source. */
   | "NeedsOllama"
   /** The starter model, with an Ollama that cannot pull now: not running, not answering, view only. */

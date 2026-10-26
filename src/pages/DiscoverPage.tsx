@@ -68,16 +68,20 @@ export function DiscoverPage() {
   const opFinishedAt = useUiStore((s) => s.opFinishedAt);
   const [installing, setInstalling] = useState<CatalogEntry | null>(null);
   const [settingUpHomebrew, setSettingUpHomebrew] = useState(false);
-  // What the search field has (step E): while it has a text, the results
-  // are in the list's place.
+  // What the search field has (step E): while it has a text, and the field
+  // is there, the results are in the list's place.
   const [query, setQuery] = useState("");
-  const searching = query.trim().length > 0;
   const checked = snapshot?.refreshed_at != null;
   const brew = snapshot?.instances.find((instance) => instance.adapter_id === "brew");
   const brewCanInstall = snapshot?.instances.some(
     (instance) =>
       instance.adapter_id === "brew" && instance.status.unavailable === null && instance.read_only_reason === null,
   );
+  // A field that went -- Homebrew stopped answering -- takes its results
+  // with it: the suggestions are back.
+  const searching = checked && brewCanInstall === true && query.trim().length > 0;
+  // Homebrew is there, and cannot install: the page says where to see why.
+  const homebrewNotReady = checked && brew !== undefined && brewCanInstall !== true;
   // No Homebrew: it comes first, and the page says so.
   const homebrewFirst = checked && catalog?.find((entry) => entry.id === "homebrew")?.state === "NotInstalled";
   const sourceLabel = t("adapters.brew");
@@ -179,7 +183,15 @@ export function DiscoverPage() {
 
   return (
     <div className={FORM_COLUMN}>
-      <p className="px-2.5 text-muted">{t(homebrewFirst ? "discover.introNoHomebrew" : "discover.intro")}</p>
+      <p className="px-2.5 text-muted">
+        {t(
+          homebrewFirst
+            ? "discover.introNoHomebrew"
+            : homebrewNotReady
+              ? "discover.introHomebrewNotReady"
+              : "discover.intro",
+        )}
+      </p>
       {/* Searching takes a Homebrew to search with, and to install into:
           one that answered and can be written to. */}
       {checked && brewCanInstall ? <DiscoverSearchField query={query} onChange={setQuery} /> : null}

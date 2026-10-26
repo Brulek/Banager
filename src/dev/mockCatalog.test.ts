@@ -74,9 +74,10 @@ describe("the browser preview's catalog", () => {
       ffmpeg: "Installed",
       uv: "NotInstalled",
     });
+    // Homebrew there, and unable to install: its notice says why.
     expect(states([instance("brew", brew, { read_only_reason: "PrefixNotWritable" })], [])).toMatchObject({
       homebrew: "Installed",
-      codex: "NeedsHomebrew",
+      codex: "HomebrewNotReady",
     });
   });
 

@@ -186,6 +186,37 @@ pub fn add_folder(folder: &std::path::Path) {
     }
 }
 
+/// Whether a finished check of this launch found no Homebrew at the
+/// installer's prefix (`note_homebrew`).
+static HOMEBREW_ABSENT_SEEN: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// After each finished check: whether it found Homebrew at the installer's
+/// prefix (`present`), whose `bin` is `bin`. Where it does and an earlier
+/// check of this launch did not, Homebrew was installed while Banager ran
+/// -- the Homebrew sheet open or not -- and `bin` is added to the `PATH`
+/// (`add_folder`): the installer put it in `/etc/paths.d/homebrew` for
+/// Terminal windows opened since, and the login shell was read before. A
+/// Homebrew there since before Banager opened is left as the login shell
+/// has it.
+pub fn note_homebrew(present: bool, bin: &std::path::Path) {
+    if newly_present(&HOMEBREW_ABSENT_SEEN, present) {
+        add_folder(bin);
+    }
+}
+
+/// `note_homebrew`'s rule over `absent_seen`: true once, the first time
+/// `present` follows a check that found none.
+fn newly_present(absent_seen: &std::sync::atomic::AtomicBool, present: bool) -> bool {
+    use std::sync::atomic::Ordering;
+    if present {
+        absent_seen.swap(false, Ordering::SeqCst)
+    } else {
+        absent_seen.store(true, Ordering::SeqCst);
+        false
+    }
+}
+
 /// `path` with each folder `add_folder` added that it does not already
 /// list at its end, in the order they were added.
 fn with_added(path: String) -> String {
@@ -486,6 +517,20 @@ pub async fn read(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn test_homebrew_counts_as_newly_installed_once_after_a_check_that_found_none() {
+        use std::sync::atomic::AtomicBool;
+        let absent_seen = AtomicBool::new(false);
+        // There since before Banager opened: never.
+        assert!(!super::newly_present(&absent_seen, true));
+        assert!(!super::newly_present(&absent_seen, true));
+        // Missing, then there: once.
+        assert!(!super::newly_present(&absent_seen, false));
+        assert!(!super::newly_present(&absent_seen, false));
+        assert!(super::newly_present(&absent_seen, true));
+        assert!(!super::newly_present(&absent_seen, true));
+    }
+
     use super::*;
     use crate::runner::{CommandOutput, MockRunner, RealRunner};
 

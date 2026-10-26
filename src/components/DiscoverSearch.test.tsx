@@ -132,6 +132,39 @@ describe("Discover's search of Homebrew", () => {
     expect(searchable("user/tap/jq")).toBe(false);
   });
 
+  it("goes by a suggestion's own state: installed another way, or one this Mac cannot install", async () => {
+    const entries: CatalogEntry[] = [
+      ...catalog,
+      {
+        id: "claude-code",
+        category: "AiAssistants",
+        install: { Homebrew: { kind: "Cask", name: "claude-code" } },
+        state: "Installed",
+        installs_here: true,
+      },
+    ];
+    mockInvoke.mockImplementation(async (cmd: string, args?: unknown) => {
+      if (cmd === "get_snapshot") return snapshot;
+      if (cmd === "get_catalog") return entries;
+      if (cmd === "list_operations") return [];
+      if (cmd === "search_homebrew") return search((args as { query: string }).query);
+      return null;
+    });
+    const { unmount } = renderWithProviders(<DiscoverPage />);
+    await typeSearch("claude");
+    await waitFor(() => expect(results_()).toHaveLength(3), { timeout: 3000 });
+    // Claude Code from npm, say: the catalog says Installed, and so does
+    // its search row -- no second copy.
+    expect(results_()[2]).toEqual(["claude-code", "Suggested", "Installed"]);
+    unmount();
+    entries[entries.length - 1] = { ...entries[entries.length - 1], state: { NeedsMacOS: { major: 14 } } };
+    renderWithProviders(<DiscoverPage />);
+    await typeSearch("claude");
+    await waitFor(() => expect(results_()).toHaveLength(3), { timeout: 3000 });
+    expect(results_()[2]).toEqual(["claude-code", "Suggested", "Needs macOS 14"]);
+    expect(screen.queryByRole("button", { name: "Install claude-code" })).toBeNull();
+  });
+
   it("says a suggestion found by searching in its own words", async () => {
     renderWithProviders(<DiscoverPage />);
     await typeSearch("claude");

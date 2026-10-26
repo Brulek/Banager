@@ -139,7 +139,11 @@ beforeEach(() => {
     if (cmd === "get_catalog") return entries;
     if (cmd === "list_operations") return operations;
     if (cmd === "plan_install") return planInstall((args as { catalogId: string }).catalogId);
-    if (cmd === "submit_operation") return 7;
+    if (cmd === "submit_operation") {
+      // Listed from then on, as the backend lists what it was given.
+      operations = [...operations, installOp(7, "gemini-cli", "Queued")];
+      return 7;
+    }
     if (cmd === "look_for_homebrew") return lookForHomebrew();
     return null;
   });
@@ -242,7 +246,7 @@ describe("the Discover page", () => {
     expect(calls("submit_operation")[0][1]).toEqual({ planId: "plan-gemini-cli" });
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     // The operation bar names it as the row does.
-    expect(useUiStore.getState().opNames[7]).toBe("Gemini CLI");
+    await waitFor(() => expect(useUiStore.getState().opNames[7]).toBe("Gemini CLI"));
   });
 
   it("says a cask may ask for the Mac's password", async () => {
@@ -383,6 +387,37 @@ describe("the Discover page", () => {
       Reflect.deleteProperty(navigator, "clipboard");
     }
   }, 15_000);
+
+  it("says where to see why where Homebrew is there and cannot install", async () => {
+    snapshot = {
+      ...snapshotAt(1_789_700_000),
+      instances: [
+        {
+          id: "brew:/opt/homebrew",
+          adapter_id: "brew",
+          exe_path: "/opt/homebrew/bin/brew",
+          prefix: "/opt/homebrew",
+          scope: "User",
+          version: "7.0.10",
+          answered_at: null,
+          unverified_version: null,
+          read_only_reason: "PrefixNotWritable",
+          status: { unavailable: null, notes: [] },
+        },
+      ],
+    };
+    entries = catalog.map((entry) =>
+      entry.id === "homebrew" ? entry : { ...entry, state: entry.state === "NotInstalled" ? "HomebrewNotReady" : entry.state },
+    );
+    renderWithProviders(<DiscoverPage />);
+    await waitFor(() => expect(rows()).toHaveLength(8));
+    expect(
+      screen.getByText("Homebrew is on this Mac but can't install anything right now: its page under Sources says why."),
+    ).toBeInTheDocument();
+    expect(rows()[2]).toEqual(["Codex", "Homebrew can't install now"]);
+    // No search: there is nothing to install it with.
+    expect(screen.queryByRole("searchbox")).toBeNull();
+  });
 
   it("says Homebrew no longer installs on an Intel Mac, with nothing to press", async () => {
     entries = noHomebrew.map((entry) => (entry.id === "homebrew" ? { ...entry, state: "HomebrewUnsupported" } : entry));

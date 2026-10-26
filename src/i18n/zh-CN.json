@@ -1791,6 +1791,7 @@
   "discover": {
     "intro": "可以从这些工具开始，也能看到这台Mac已经有了哪些。",
     "introNoHomebrew": "这台Mac上还没有Homebrew。先装好它，下面的工具就能在这里一键安装。",
+    "introHomebrewNotReady": "这台Mac上有Homebrew，但现在无法用它安装：侧栏“来源”下的Homebrew页面会说明原因。",
     "footnote": "这里的工具都用Homebrew安装，模型用Ollama下载；安装前都会先显示要运行的命令。",
     "install": "安装",
     "installLabel": "安装{{name}}",
@@ -1808,7 +1809,8 @@
       "needsMacOS": "需要macOS {{major}}",
       "homebrewUnsupported": "不支持这台Mac",
       "needsOllama": "需先装Ollama",
-      "ollamaNotReady": "Ollama现在无法下载"
+      "ollamaNotReady": "Ollama现在无法下载",
+      "homebrewNotReady": "Homebrew现在无法安装"
     },
     "progress": {
       "queued": "排队中",

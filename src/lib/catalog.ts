@@ -118,6 +118,8 @@ export function stateText(t: Translate, state: CatalogState): string {
       return t("discover.state.needsHomebrew");
     case "HomebrewUnsupported":
       return t("discover.state.homebrewUnsupported");
+    case "HomebrewNotReady":
+      return t("discover.state.homebrewNotReady");
     case "NeedsOllama":
       return t("discover.state.needsOllama");
     case "OllamaNotReady":
@@ -193,6 +195,7 @@ export function catalogRefusal(t: Translate, raw: string): string | null {
       return t("discover.sheet.installed");
     case "NeedsHomebrew":
     case "HomebrewUnsupported":
+    case "HomebrewNotReady":
       return t("discover.sheet.needsHomebrew");
     case "NeedsOllama":
       return t("discover.sheet.noOllama");

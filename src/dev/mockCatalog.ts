@@ -135,7 +135,12 @@ export function mockCatalog(instances: ManagerInstance[], artifacts: InstalledAr
     else if ("OllamaModel" in item.install)
       state = canPull ? "NotInstalled" : instances.some((i) => i.adapter_id === "ollama") ? "OllamaNotReady" : "NeedsOllama";
     else if (item.needsMacOS !== undefined && HOST.macosMajor < item.needsMacOS) state = { NeedsMacOS: { major: item.needsMacOS } };
-    else state = canInstall ? "NotInstalled" : "NeedsHomebrew";
+    else
+      state = canInstall
+        ? "NotInstalled"
+        : instances.some((i) => i.adapter_id === "brew")
+          ? "HomebrewNotReady"
+          : "NeedsHomebrew";
     return { id: item.id, category: item.category, install: item.install, state, installs_here: item.installsHere };
   });
 }

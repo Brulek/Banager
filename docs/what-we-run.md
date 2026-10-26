@@ -91,8 +91,9 @@ read Terminal's settings", with Check Again): sources found only through Termina
 next refresh — Check Again, or any later one — reads the shell once more;
 after a read that worked, none runs again. One folder can be put at the
 end of that `PATH` later in a run, and only one: `/opt/homebrew/bin`,
-once the Homebrew sheet has seen Homebrew there with no update running
-(see "Homebrew itself"). Where Banager was started with no `PATH` at
+once the Homebrew sheet has seen Homebrew there with no update running,
+or a check has found Homebrew there where an earlier check of the launch
+found none (see "Homebrew itself"). Where Banager was started with no `PATH` at
 all, macOS's own for an app, `/usr/bin:/bin:/usr/sbin:/sbin`, comes
 before it. Each refresh takes the `PATH`
 and whether it is the login shell's together, as one value, as it starts
@@ -5645,7 +5646,9 @@ by any npm source, uv by the `uv` formula or a uv source, ffmpeg by its
 formula or a versioned one, Ollama by its family or an Ollama source,
 the model by any model an Ollama source lists; otherwise "Not
 installed" where a Homebrew that answered and can be written to is
-there, "Needs Homebrew" where none is, and for Ollama "Needs macOS 14" on
+there, "Homebrew can't install now" where Homebrew is there and none can
+-- the line over the list then says its page under Sources says why --
+"Needs Homebrew" where there is none, and for Ollama "Needs macOS 14" on
 an older macOS (its cask's `depends_on`). Homebrew itself, missing on a
 Mac that is not Apple silicon, is "Not supported on this Mac": its
 official installer no longer installs there. The model is "Not
@@ -5741,8 +5744,10 @@ id and never a package: the install of that formula or cask, by the name
 Homebrew gave, into the Homebrew it was found in, planned as every
 operation is -- the same `<brew> install --formula` or `--cask` as above.
 An id no search gave, or one older than ten minutes, is refused, and so
-is a result the snapshot since lists installed, before any source is
-asked; where the window's install is refused for an id no longer kept,
+is a result the snapshot since lists installed, and a result that is a
+suggestion whose catalog entry is not "Not installed" -- Claude Code had
+another way, Ollama before macOS 14 -- before any source is asked; its
+row says that entry's state, as the suggestions' list does; where the window's install is refused for an id no longer kept,
 it searches again, for ids that are. The sheet says a suggestion found
 by searching in the suggestion's own words, and of any other result that
 it is not one of the suggestions.
@@ -5789,7 +5794,10 @@ From the sheet Banager does three things, each only while it is open:
 - **Once a look finds it there and no update running,
   `/opt/homebrew/bin` is put at the end of the `PATH`** every later check
   of this launch looks along and every command gets
-  (`login_path::add_folder`), where it is not there already:
+  (`login_path::add_folder`), where it is not there already -- and so it
+  is, the sheet closed or not, once a check finds Homebrew in
+  `/opt/homebrew` where an earlier check of this launch found none
+  (`login_path::note_homebrew`, after each check, `ipc::refresh_for`):
   the login shell was read as Banager opened, before the installer wrote
   `/etc/paths.d/homebrew`, and Terminal windows opened since find what
   Homebrew installs there. Nothing is written for it, and the next

@@ -227,9 +227,11 @@ pub enum CatalogState {
     Installed,
     /// Not installed, and a Homebrew that can install it is there.
     NotInstalled,
-    /// Not installed, and no Homebrew that can install it is there: none,
-    /// or none that answered and can be written to.
+    /// Not installed, and there is no Homebrew.
     NeedsHomebrew,
+    /// Not installed, and Homebrew is there but none can install now: none
+    /// answered, or none can be written to. Its source's notice says why.
+    HomebrewNotReady,
     /// Not installed, and this Mac's macOS is older than it needs.
     NeedsMacOS { major: u32 },
     /// Homebrew itself, on a Mac that is not Apple silicon and has none:
@@ -359,6 +361,22 @@ fn install_on(item: &CatalogItem, host: &Host) -> CatalogInstall {
     }
 }
 
+/// The state on this Mac of the catalog entry that installs this Homebrew
+/// formula or cask, if one does: a search result that is a suggestion is
+/// installed only where its entry would be (`Session::plan_found`).
+pub fn state_installing(
+    snapshot: &Snapshot,
+    host: &Host,
+    kind: ArtifactKind,
+    name: &str,
+) -> Option<CatalogState> {
+    let id = id_installing(kind, name)?;
+    entries(snapshot, host)
+        .into_iter()
+        .find(|entry| entry.id == id)
+        .map(|entry| entry.state)
+}
+
 /// The catalog entry that installs this Homebrew formula or cask, if one
 /// does: what the Discover search marks as one of the suggestions.
 pub fn id_installing(kind: ArtifactKind, name: &str) -> Option<&'static str> {
@@ -444,6 +462,9 @@ fn state_of(
         CatalogInstall::Homebrew { .. } => match (item.needs_macos, host.macos_major) {
             (Some(major), Some(mac)) if mac < major => CatalogState::NeedsMacOS { major },
             _ if can_install => CatalogState::NotInstalled,
+            _ if snapshot.instances.iter().any(|i| i.adapter_id == "brew") => {
+                CatalogState::HomebrewNotReady
+            }
             _ => CatalogState::NeedsHomebrew,
         },
         CatalogInstall::OllamaModel { .. } => {
@@ -743,8 +764,9 @@ mod tests {
         };
         for (brews, state) in [
             (vec![answering.clone()], CatalogState::NotInstalled),
-            (vec![stopped.clone()], CatalogState::NeedsHomebrew),
-            (vec![view_only], CatalogState::NeedsHomebrew),
+            // Homebrew is there and cannot install: its notice says why.
+            (vec![stopped.clone()], CatalogState::HomebrewNotReady),
+            (vec![view_only], CatalogState::HomebrewNotReady),
             (vec![stopped, answering], CatalogState::NotInstalled),
         ] {
             let mac = snapshot(brews, Vec::new());
@@ -1012,7 +1034,7 @@ mod tests {
         };
         assert_eq!(
             install_request(&snapshot(vec![view_only], Vec::new()), &SILICON_15, "node"),
-            Err(InstallRefusal::State(CatalogState::NeedsHomebrew))
+            Err(InstallRefusal::State(CatalogState::HomebrewNotReady))
         );
     }
 }

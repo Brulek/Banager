@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { endedAfterCheck, installOperationFor, installProgressOf, isUnderway, searchable } from "../lib/catalog";
-import { useOperations, usePendingOperations, useSearchHomebrew, useSettings, useSnapshot } from "../lib/queries";
+import { endedAfterCheck, installOperationFor, installProgressOf, isUnderway, searchable, stateText } from "../lib/catalog";
+import { useCatalog, useOperations, usePendingOperations, useSearchHomebrew, useSettings, useSnapshot } from "../lib/queries";
 import { useSettled } from "../lib/settled";
 import { planErrorMessage } from "../lib/sources";
 import { useTranslatedDescription } from "../lib/toolDescriptions";
@@ -70,6 +70,7 @@ export function DiscoverResults({ query }: { query: string }) {
   const asked = searchable(settled) ? settled : "";
   const search = useSearchHomebrew(asked);
   const { data: snapshot } = useSnapshot();
+  const { data: catalog } = useCatalog();
   const { data: operations } = useOperations();
   const { data: settings } = useSettings();
   const pending = usePendingOperations();
@@ -113,9 +114,16 @@ export function DiscoverResults({ query }: { query: string }) {
             // What the last check lists, or the search said where there is
             // no snapshot; or the install that just ended, before the check
             // after it.
+            // A suggestion goes by its entry, as its row on the list does:
+            // installed another way (Claude Code from npm), or one this Mac
+            // cannot install (Ollama before macOS 14) -- `plan_found`
+            // refuses either.
+            const entry = found.catalog_id === null ? undefined : catalog?.find((e) => e.id === found.catalog_id);
             const installed =
               (listed ?? found.installed) ||
+              entry?.state === "Installed" ||
               (progress?.kind === "installed" && op !== null && endedAfterCheck(op, opFinishedAt, snapshot?.refreshed_at ?? null));
+            const notHere = entry !== undefined && entry.state !== "NotInstalled" && entry.state !== "Installed";
             const description = descriptionOf(found);
             let right: ReactNode;
             if (progress !== null && isUnderway(progress)) {
@@ -132,6 +140,8 @@ export function DiscoverResults({ query }: { query: string }) {
                   {t("discover.state.installed")}
                 </span>
               );
+            } else if (notHere) {
+              right = <span className="text-muted">{stateText(t, entry.state)}</span>;
             } else {
               right = (
                 <span className="flex items-center gap-2">
