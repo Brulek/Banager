@@ -425,9 +425,13 @@ impl TrustLook {
     }
 }
 
-/// Whether a Homebrew of `version` (`7.0.3`, `7.0.10-37-g1ef73bb`) is one
-/// from before 7.0.7, which did not require tap trust by default. `false`
-/// for a version that does not read as numbers: taken as a newer one.
+/// Whether a Homebrew of `version` (`5.1.0`, `7.0.10-37-g1ef73bb`) is one
+/// from before 6.0.0, which had no tap trust: its `env_config.rb` has no
+/// `HOMEBREW_REQUIRE_TAP_TRUST`, and `Caskroom.casks` no fallback to the
+/// copy saved at install. From 6.0.0 on, trust is required by default
+/// (`default: true`, read at the 6.0.0, 7.0.3 and 7.0.7 tags; from the
+/// independent review of the branch -- the cutoff was 7.0.7). `false` for a
+/// version that does not read as numbers: taken as a newer one.
 fn trust_not_default(version: &str) -> bool {
     let numbers: Vec<u64> = version
         .split(|c: char| !c.is_ascii_digit() && c != '.')
@@ -437,9 +441,9 @@ fn trust_not_default(version: &str) -> bool {
         .map_while(|part| part.parse().ok())
         .collect();
     match numbers.as_slice() {
-        [major, minor, patch, ..] => (*major, *minor, *patch) < (7, 0, 7),
-        [major, minor] => (*major, *minor) < (7, 0),
-        [major] => *major < 7,
+        [major, minor, patch, ..] => (*major, *minor, *patch) < (6, 0, 0),
+        [major, minor] => (*major, *minor) < (6, 0),
+        [major] => *major < 6,
         [] => false,
     }
 }
@@ -2341,10 +2345,9 @@ impl BrewAdapter {
     /// uninstall preview: the `brew.env` files (`brew_env::after_brew_env`)
     /// and the trust list in the folder they choose (`trust_list_fn`).
     fn trust_look(&self, inst: &ManagerInstance) -> TrustLook {
-        // Before 7.0.7 Homebrew required trust only when asked to
-        // (`HOMEBREW_REQUIRE_TAP_TRUST`, an opt-in then): a cask was loaded
-        // from its tap (backlog, "卸载说明的残留边角"). A version not read is
-        // taken as a newer one.
+        // Before 6.0.0 Homebrew had no tap trust: a cask was loaded from its
+        // tap (backlog, "卸载说明的残留边角"). A version not read is taken as
+        // a newer one.
         if inst.version.as_deref().is_some_and(trust_not_default) {
             return TrustLook::NotRequired;
         }
@@ -8180,7 +8183,7 @@ mod plan_execute_tests {
     impl Aerospace {
         fn new(label: &str) -> Aerospace {
             let prefix = crate::testing::unique_temp_path(label);
-            // A Homebrew that requires tap trust by default (7.0.7 on).
+            // A Homebrew that requires tap trust by default (6.0.0 on).
             let inst = ManagerInstance {
                 exe_path: prefix.join("bin/brew"),
                 prefix: prefix.clone(),
@@ -8279,11 +8282,16 @@ mod plan_execute_tests {
     /// Banager cannot read, a tap named only by its remote, or a list in a
     /// folder `bin/brew` may not have chosen.
     #[test]
-    fn test_trust_is_required_by_default_from_homebrew_7_0_7() {
+    fn test_trust_is_required_by_default_from_homebrew_6_0_0() {
         for (version, before) in [
-            ("7.0.3", true),
-            ("7.0.6", true),
-            ("6.9.9", true),
+            ("5.1.0", true),
+            ("5.9.9", true),
+            ("5", true),
+            ("5.1", true),
+            ("6.0.0", false),
+            ("6.0", false),
+            ("7.0.3", false),
+            ("7.0.6", false),
             ("7.0.7", false),
             ("7.0.10-37-g1ef73bb", false),
             ("7.1.0", false),
@@ -8296,12 +8304,12 @@ mod plan_execute_tests {
     }
 
     #[tokio::test]
-    async fn regression_r83_1_a_homebrew_before_7_0_7_checks_every_cask() {
-        // Trust was an opt-in before 7.0.7: an untrusted tap's cask was
+    async fn regression_r83_1_a_homebrew_before_6_0_0_checks_every_cask() {
+        // Before 6.0.0 there was no tap trust: an untrusted tap's cask was
         // still loaded from its tap, and checked.
         let aerospace = Aerospace::new("brew-r83-1-old");
         let old = ManagerInstance {
-            version: Some("7.0.3".to_string()),
+            version: Some("5.1.0".to_string()),
             ..aerospace.inst.clone()
         };
         let adapter = BrewAdapter::new(aerospace.runner.clone())

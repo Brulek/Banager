@@ -2105,8 +2105,9 @@ loads it from the copy Homebrew saved at install when its tap refuses it
 (`cask/caskroom.rb`, Homebrew 7.0.10), and that copy carries the
 installed version, so `brew outdated` compares the version with itself
 and lists no update whatever the tap holds (`Cask#outdated_version`).
-Homebrew requires that trust by default from 7.0.7; before, only when
-asked to, so a Homebrew whose version reads older is taken to check every
+Homebrew requires that trust by default from 6.0.0 (its `env_config.rb`,
+`HOMEBREW_REQUIRE_TAP_TRUST`, `default: true`), and had none before, so a
+Homebrew whose version reads older than 6.0.0 is taken to check every
 cask. So every inventory reads Homebrew's settings -- the `brew.env`
 files and the trust list, as an uninstall preview reads them (below) --
 once before its `brew info` and once after, and a cask from a
