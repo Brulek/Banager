@@ -248,7 +248,7 @@ fn is_pip_diagnostic(line: &[u8]) -> bool {
 
 /// What stands in a transcript for the middle [`StreamBuffer`] dropped.
 /// See `StreamBuffer::into_transcript`.
-const ELISION_MARK: &str = "\n[…]\n";
+pub(crate) const ELISION_MARK: &str = "\n[…]\n";
 
 impl StreamBuffer {
     /// Records one chunk and hands `on_line` every line that chunk
@@ -1048,8 +1048,10 @@ impl CommandRunner for RealRunner {
         let mut stderr = child.child.stderr.take().expect("stderr was piped");
 
         // stdout follows what the caller said it would do with the bytes;
-        // stderr is a message for a person on every path there is, so it
-        // always elides. See `CapPolicy`.
+        // stderr always elides: it is mostly a message for a person, and a
+        // reader that takes it for a full account -- pipx's list of the
+        // environments it could not check -- asks `stderr_was_cut` first
+        // (PARSER-002). See `CapPolicy`.
         let mut out = StreamBuffer::new(match spec.output_use {
             OutputUse::Transcript => CapPolicy::ElideMiddle,
             OutputUse::Parsed => CapPolicy::Refuse,

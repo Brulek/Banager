@@ -428,11 +428,14 @@ fn left_out_failure_head(line: &str) -> bool {
 /// environments it could not check, rather than dying before it printed
 /// anything: pipx 1.17 doesn't catch the FileNotFoundError a pip-backend
 /// environment whose Python is gone raises, so `cli()` ends in a traceback
-/// with nothing on stdout (`main.py` `cli`).
+/// with nothing on stdout (`main.py` `cli`). Nor when the runner cut the
+/// middle out of stderr: a failure there is gone, and its tool would read
+/// as checked and up to date (`runner::stderr_was_cut`, PARSER-002).
 fn named_its_failures(stderr: &str, failures: &HashMap<String, String>) -> bool {
-    !stderr
-        .lines()
-        .any(|line| line.starts_with("Traceback (most recent call last):"))
+    !crate::runner::stderr_was_cut(stderr)
+        && !stderr
+            .lines()
+            .any(|line| line.starts_with("Traceback (most recent call last):"))
         && (!failures.is_empty() || stderr.lines().any(left_out_failure_head))
 }
 
@@ -2158,6 +2161,43 @@ mod tests {
             .collect();
         assert_eq!(rows, [("cowsay", false), ("ruff", false)]);
         assert_eq!(outcome.notes, [InstanceNote::SomeNotListed]);
+    }
+
+    #[tokio::test]
+    async fn regression_parser_002_a_cut_failure_list_is_no_answer() {
+        // Past 2 MiB the runner keeps stderr's first and last MiB: a tool
+        // whose failure was in the middle is not named, and read as
+        // checked and up to date. With the cut, no tool's check stands.
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec!["/opt/homebrew/bin/pipx", "list", "--json"],
+            list_without_a_broken_venv(),
+        );
+        runner.respond(
+            vec!["/opt/homebrew/bin/pipx", "list", "--outdated"],
+            CommandOutput {
+                stderr_cause: Default::default(),
+                exit_code: Some(1),
+                stdout: "cowsay: 5.0 -> 6.1\n".to_string(),
+                stderr: format!(
+                    "black: Package backend exited with code 1.{}ruff: Could not reach pypi.org\n",
+                    crate::runner::real::ELISION_MARK
+                ),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let adapter = PipxAdapter::new(runner, Arc::new(MockHttpClient::new()));
+        let outcome = adapter
+            .check_updates(&test_instance(), &CheckOptions::default())
+            .await
+            .unwrap();
+        let rows: Vec<_> = outcome
+            .candidates
+            .iter()
+            .map(|c| (c.key.name.as_str(), c.checkable))
+            .collect();
+        assert_eq!(rows, [("cowsay", false), ("ruff", false)]);
     }
 
     #[test]

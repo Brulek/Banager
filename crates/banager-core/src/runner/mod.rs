@@ -115,6 +115,15 @@ pub fn failure_summary(stderr: &str) -> String {
     lines[start..].join("\n")
 }
 
+/// Whether the runner cut the middle out of `stderr` (`RealRunner` keeps
+/// its first and last MiB, `StreamBuffer`): what is left is not all the
+/// command said, so a reader that takes it for a full account of what
+/// failed -- pipx's list of the environments it could not check -- must
+/// not (PARSER-002).
+pub fn stderr_was_cut(stderr: &str) -> bool {
+    stderr.contains(real::ELISION_MARK)
+}
+
 /// Where a command's failure cause is: see [`CommandOutput::stderr_cause`].
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum StderrCause {
