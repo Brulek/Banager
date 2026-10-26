@@ -47,6 +47,7 @@ import {
   freshHomebrew,
   freshOllama,
   installedFromCatalog,
+  withOllama,
 } from "./mockData";
 import { appIcon } from "./mockIcons";
 import { withFamilies } from "./mockFamilies";
@@ -293,7 +294,9 @@ function placedFor(path: ScenarioPath, instances: ManagerInstance[]): ManagerIns
 }
 
 export function createMockBackend(scenario: Scenario): MockBackend {
-  const world: World = buildWorld(scenario.state);
+  const world: World = withOllama(buildWorld(scenario.state), scenario.ollama);
+  // Ollama.app in Applications, which the catalog is told of (`?ollama=app`).
+  const host = { ollamaApp: scenario.ollama === "app" };
   // The protected places' Mac: npm's folder is in one too.
   if (scenario.path === "unread") withNpmPrefixProtected(world);
   let settings: Settings = initialSettings(scenario);
@@ -1105,7 +1108,7 @@ export function createMockBackend(scenario: Scenario): MockBackend {
     async get_catalog() {
       // `catalog::entries`, over the committed snapshot: an empty one before
       // the first refresh, as Rust's.
-      return mockCatalog(committed?.instances ?? [], committed?.artifacts ?? []);
+      return mockCatalog(committed?.instances ?? [], committed?.artifacts ?? [], host);
     },
     async open_terminal() {
       // `open_terminal`: the preview opens no Terminal, and says so in the
@@ -1181,7 +1184,7 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       // first Homebrew that can install it. Refused, before any plan, for
       // an entry not offered from here and one not "Not installed" now.
       const instances = committed?.instances ?? [];
-      const entry = mockCatalog(instances, committed?.artifacts ?? []).find(
+      const entry = mockCatalog(instances, committed?.artifacts ?? [], host).find(
         (candidate) => candidate.id === args.catalogId && candidate.installs_here,
       );
       if (entry === undefined || entry.install === "HomebrewItself") throw refusal({ kind: "refused" });

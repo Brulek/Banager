@@ -2,13 +2,13 @@
  * The browser preview's `get_catalog` (docs/ui-preview.md): the catalog of
  * crates/banager-core/src/catalog.rs, with each entry's state worked out
  * from the pretend Mac's snapshot by the same rules -- a copy of them, for
- * a preview with no Rust. The pretend Mac is Apple silicon on macOS 15.
- * Ollama.app on its own, with no Ollama source (`Recognizer::OllamaApp`),
- * is not modelled: the pretend Mac's Ollama is always a source.
+ * a preview with no Rust. The pretend Mac is Apple silicon on macOS 15,
+ * with Ollama.app in Applications only where `?ollama=app` says so
+ * (`Recognizer::OllamaApp`).
  */
 import type { CatalogEntry, CatalogInstall, CatalogState, InstalledArtifact, ManagerInstance } from "../lib/types";
 
-type Recognizer = { family: string } | { source: string } | { formula: string } | "anyModel";
+type Recognizer = { family: string } | { source: string } | { formula: string } | "anyModel" | "ollamaApp";
 
 interface Item {
   id: string;
@@ -48,7 +48,7 @@ const CATALOG: Item[] = [
     id: "ollama",
     category: "LocalModels",
     install: { Homebrew: { kind: "Cask", name: "ollama-app" } },
-    recognizedBy: [{ family: "ollama" }, { source: "ollama" }],
+    recognizedBy: [{ family: "ollama" }, { source: "ollama" }, "ollamaApp"],
     needsMacOS: 14,
     installsHere: true,
   },
@@ -86,6 +86,11 @@ const CATALOG: Item[] = [
 /** The pretend Mac. */
 const HOST = { macosMajor: 15, appleSilicon: true, freeBytes: 182_400_000_000 };
 
+/** What the catalog is told of the pretend Mac beyond its snapshot: `Host::ollama_app`. */
+export interface MockHost {
+  ollamaApp: boolean;
+}
+
 /** `catalog::this_macs_ollama`: an Ollama source at this Mac's own address. */
 function thisMacsOllama(instanceId: string): boolean {
   if (!instanceId.startsWith("ollama:")) return false;
@@ -99,7 +104,8 @@ function thisMacsOllama(instanceId: string): boolean {
   }
 }
 
-function has(way: Recognizer, instances: ManagerInstance[], artifacts: InstalledArtifact[]): boolean {
+function has(way: Recognizer, instances: ManagerInstance[], artifacts: InstalledArtifact[], host: MockHost): boolean {
+  if (way === "ollamaApp") return host.ollamaApp;
   if (way === "anyModel") return artifacts.some((a) => a.key.kind === "Model" && thisMacsOllama(a.key.instance_id));
   if ("family" in way) return artifacts.some((a) => a.facts.family === way.family);
   if ("source" in way) return instances.some((i) => i.adapter_id === way.source);
@@ -125,7 +131,11 @@ export function catalogIdInstalling(kind: "Formula" | "Cask", name: string): str
 }
 
 /** `catalog::entries`. */
-export function mockCatalog(instances: ManagerInstance[], artifacts: InstalledArtifact[]): CatalogEntry[] {
+export function mockCatalog(
+  instances: ManagerInstance[],
+  artifacts: InstalledArtifact[],
+  host: MockHost = { ollamaApp: false },
+): CatalogEntry[] {
   const canInstall = instances.some(
     (i) => i.adapter_id === "brew" && i.status.unavailable === null && i.read_only_reason === null,
   );
@@ -134,7 +144,7 @@ export function mockCatalog(instances: ManagerInstance[], artifacts: InstalledAr
   );
   return CATALOG.map((item) => {
     let state: CatalogState;
-    if (item.recognizedBy.some((way) => has(way, instances, artifacts))) state = "Installed";
+    if (item.recognizedBy.some((way) => has(way, instances, artifacts, host))) state = "Installed";
     else if (item.install === "HomebrewItself") state = HOST.appleSilicon ? "NotInstalled" : "HomebrewUnsupported";
     else if ("OllamaModel" in item.install)
       state = canPull
@@ -142,7 +152,7 @@ export function mockCatalog(instances: ManagerInstance[], artifacts: InstalledAr
         : instances.some((i) => i.adapter_id === "ollama") &&
             instances.every((i) => i.adapter_id !== "ollama" || (i.id.startsWith("ollama:") && !thisMacsOllama(i.id)))
           ? "OllamaElsewhere"
-          : instances.some((i) => i.adapter_id === "ollama")
+          : instances.some((i) => i.adapter_id === "ollama") || host.ollamaApp
             ? "OllamaNotReady"
             : "NeedsOllama";
     else if (item.needsMacOS !== undefined && HOST.macosMajor < item.needsMacOS) state = { NeedsMacOS: { major: item.needsMacOS } };

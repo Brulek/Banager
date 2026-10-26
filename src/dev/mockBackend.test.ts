@@ -1605,7 +1605,7 @@ describe("the preview's URL switches", () => {
   it("reads every switch", () => {
     expect(parseScenario("?outcome=mixed").scenario.outcome).toBe("mixed");
     const { scenario, problems } = parseScenario(
-      "?state=offline&lang=zh-CN&tech=1&page=updates&outcome=failed&scan=stopped&sizes=pending&path=unread&history=unreadable&settings=unreadable&welcome=1",
+      "?state=offline&lang=zh-CN&tech=1&page=updates&outcome=failed&scan=stopped&sizes=pending&path=unread&history=unreadable&settings=unreadable&ollama=app&welcome=1",
     );
     expect(problems).toEqual([]);
     expect(scenario).toEqual({
@@ -1619,6 +1619,7 @@ describe("the preview's URL switches", () => {
       path: "unread",
       history: "unreadable",
       settings: "unreadable",
+      ollama: "app",
       welcome: true,
     });
   });

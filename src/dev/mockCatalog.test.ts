@@ -106,6 +106,28 @@ describe("the browser preview's catalog", () => {
     }
   });
 
+  it("puts the pretend Mac's Ollama where ?ollama= says, as docs/ui-preview.md says", async () => {
+    vi.useFakeTimers();
+    try {
+      const look = async (state: "full" | "nothing", ollama: "elsewhere" | "app") => {
+        const backend = createMockBackend({ ...DEFAULT_SCENARIO, state, ollama });
+        const refreshed = backend.invoke("refresh");
+        await vi.runOnlyPendingTimersAsync();
+        await refreshed;
+        const entries = (await backend.invoke("get_catalog")) as CatalogEntry[];
+        return Object.fromEntries(entries.map((entry) => [entry.id, entry.state]));
+      };
+      // At another machine's address: its models are not this Mac's.
+      expect(await look("full", "elsewhere")).toMatchObject({ ollama: "Installed", model: "OllamaElsewhere" });
+      expect(await look("nothing", "elsewhere")).toMatchObject({ ollama: "Installed", model: "OllamaElsewhere" });
+      // Ollama.app with no command: no source, the app there.
+      expect(await look("full", "app")).toMatchObject({ ollama: "Installed", model: "OllamaNotReady" });
+      expect(await look("nothing", "app")).toMatchObject({ ollama: "Installed", model: "OllamaNotReady" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("installs an entry from Discover by its id, and the check after it finds the tool", async () => {
     // docs/ui-preview.md: `?state=nothing`, Homebrew with nothing installed.
     vi.useFakeTimers();

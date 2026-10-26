@@ -168,6 +168,16 @@ export type ScenarioHistory = (typeof SCENARIO_HISTORIES)[number];
 export const SCENARIO_SETTINGS = ["saved", "unreadable"] as const;
 export type ScenarioSettings = (typeof SCENARIO_SETTINGS)[number];
 
+/**
+ * `?ollama=`: where the pretend Mac's Ollama is, for Discover's model row.
+ * `here` (the default): as the state has it; `elsewhere`: answering at
+ * another machine's address (`OLLAMA_HOST`), its models listed there --
+ * one with none where the state has no Ollama; `app`: Ollama.app in
+ * Applications with no `ollama` command, so no Ollama source at all.
+ */
+export const SCENARIO_OLLAMAS = ["here", "elsewhere", "app"] as const;
+export type ScenarioOllama = (typeof SCENARIO_OLLAMAS)[number];
+
 const PAGES: readonly Page[] = ["overview", "updates", "installed", "discover", "unknown", "settings"];
 
 /** `?lang=`: the Settings language the preview starts with. */
@@ -192,6 +202,7 @@ export interface Scenario {
   path: ScenarioPath;
   history: ScenarioHistory;
   settings: ScenarioSettings;
+  ollama: ScenarioOllama;
   /**
    * `?welcome=1`: the settings say the welcome sheet has not been shown,
    * so it opens over the first page, as at a first launch. Off by default,
@@ -211,6 +222,7 @@ export const DEFAULT_SCENARIO: Scenario = {
   path: "read",
   history: "saved",
   settings: "saved",
+  ollama: "here",
   welcome: false,
 };
 
@@ -263,6 +275,7 @@ export function parseScenario(search: string): { scenario: Scenario; problems: s
       path: pick(params, "path", SCENARIO_PATHS, DEFAULT_SCENARIO.path, problems),
       history: pick(params, "history", SCENARIO_HISTORIES, DEFAULT_SCENARIO.history, problems),
       settings: pick(params, "settings", SCENARIO_SETTINGS, DEFAULT_SCENARIO.settings, problems),
+      ollama: pick(params, "ollama", SCENARIO_OLLAMAS, DEFAULT_SCENARIO.ollama, problems),
       welcome: welcome === "1" || welcome === "true",
     },
     problems,

@@ -39,7 +39,7 @@ import {
   MANY_UV,
 } from "./mockManyNames";
 import { hugeNames } from "./mockHugeNames";
-import type { Scenario, ScenarioScan, ScenarioState } from "./scenario";
+import type { Scenario, ScenarioOllama, ScenarioScan, ScenarioState } from "./scenario";
 
 /** The home folder every path in the preview is under. */
 export const HOME = "/Users/you";
@@ -701,6 +701,43 @@ export function freshHomebrew(): ManagerInstance {
  * there and not running yet, so its notice and the model's row offer Open
  * Ollama (`apply` in ./mockBackend.ts).
  */
+/** `?ollama=elsewhere`'s Ollama: at another machine's address. */
+export const ELSEWHERE_OLLAMA = "ollama:http://studio.local:11434";
+
+/**
+ * `world` with its Ollama where `?ollama=` puts it: as it is (`here`); at
+ * another machine's address, its models and their updates with it, or one
+ * with no models where it had none (`elsewhere`); or none, nor any of its
+ * models -- Ollama.app with no `ollama` command, which the catalog is told
+ * of (`app`; `mockCatalog`'s `ollamaApp`).
+ */
+export function withOllama(world: World, where: ScenarioOllama): World {
+  if (where === "here") return world;
+  const ollama = new Set(world.instances.filter((i) => i.adapter_id === "ollama").map((i) => i.id));
+  if (where === "app") {
+    return {
+      ...world,
+      instances: world.instances.filter((i) => !ollama.has(i.id)),
+      artifacts: world.artifacts.filter((a) => !ollama.has(a.key.instance_id)),
+      updates: world.updates.filter((u) => !ollama.has(u.key.instance_id)),
+      greedyUpdates: world.greedyUpdates.filter((u) => !ollama.has(u.key.instance_id)),
+    };
+  }
+  const moved = <T extends { key: ArtifactKey }>(row: T): T =>
+    ollama.has(row.key.instance_id) ? { ...row, key: { ...row.key, instance_id: ELSEWHERE_OLLAMA } } : row;
+  const answering = { ...freshOllama(), status: { unavailable: null, notes: [], no_answer: null } };
+  return {
+    ...world,
+    instances:
+      ollama.size === 0
+        ? [...world.instances, { ...answering, id: ELSEWHERE_OLLAMA }]
+        : world.instances.map((i) => (ollama.has(i.id) ? { ...i, id: ELSEWHERE_OLLAMA } : i)),
+    artifacts: world.artifacts.map(moved),
+    updates: world.updates.map(moved),
+    greedyUpdates: world.greedyUpdates.map(moved),
+  };
+}
+
 export function freshOllama(): ManagerInstance {
   const ollama = findInstance(fullWorld(), IDS.ollama);
   return { ...ollama, status: { ...ollama.status, unavailable: "NotRunning" } };
