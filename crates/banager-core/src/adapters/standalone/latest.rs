@@ -253,8 +253,9 @@ pub fn parse_release_stable_toml(body: &str) -> Result<String, String> {
     if is_dotted_version(version) {
         Ok(version.to_string())
     } else {
+        let shown: String = version.chars().take(40).collect();
         Err(format!(
-            "the release file's version is not a version (got {version:?})"
+            "the release file's version is not a version (got {shown:?})"
         ))
     }
 }
@@ -279,8 +280,9 @@ pub fn parse_json_field(body: &str, field: &str) -> Result<String, String> {
     if is_dotted_version(version) {
         Ok(version.to_string())
     } else {
+        let shown: String = version.chars().take(40).collect();
         Err(format!(
-            "the manifest's `{field}` is not a version (got {version:?})"
+            "the manifest's `{field}` is not a version (got {shown:?})"
         ))
     }
 }
@@ -388,6 +390,23 @@ pub fn manifest_arch_allowed(arch: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn regression_parser_004_a_long_version_is_quoted_short() {
+        // A reason is an uncheckable row's description and a source's
+        // warning: a version that is no version is quoted to 40
+        // characters, as the rest of the body is, not a whole megabyte.
+        let long = "x".repeat(1024 * 1024);
+        let toml = format!("schema-version = '1'\nversion = '{long}'\n");
+        let json = format!("{{\"version\":\"{long}\"}}");
+        for reason in [
+            parse_release_stable_toml(&toml).unwrap_err(),
+            parse_json_field(&json, "version").unwrap_err(),
+        ] {
+            assert!(reason.len() < 120, "{} bytes", reason.len());
+            assert!(reason.contains(&"x".repeat(40)), "{reason}");
+        }
+    }
 
     #[test]
     fn regression_claude_channel_does_not_wait_on_a_named_pipe() {
