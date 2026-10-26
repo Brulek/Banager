@@ -2789,7 +2789,7 @@ describe("UpdatesPage", () => {
         "Cargo isn't responding. Click Check Again later.",
       );
       expect(chipDetail(rowOf("glib"), "Can't update now")).toHaveTextContent(
-        "Homebrew doesn't work when this app runs as administrator. Quit, then open Banager again with a double-click.",
+        "Homebrew doesn't work when this app is started with sudo, as the root user. Quit, then open Banager again with a double-click.",
       );
     });
 
@@ -5428,7 +5428,7 @@ describe("UpdatesPage", () => {
     ];
     const { findByText, queryByText, getByRole } = renderPage();
 
-    await findByText("Couldn't reach Homebrew, so updates for its tools weren't fully checked");
+    await findByText("Homebrew's online check failed, so updates for its tools weren't fully checked");
     expect(queryByText("Everything is up to date")).not.toBeInTheDocument();
     fireEvent.click(getByRole("button", { name: "Check Again" }));
     await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("refresh"));

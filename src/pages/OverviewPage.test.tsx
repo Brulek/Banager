@@ -1467,7 +1467,7 @@ describe("OverviewPage", () => {
     const list = await findByRole("list", { name: "Needs attention" });
     const lines = within(list).getAllByRole("listitem");
     expect(lines).toHaveLength(1);
-    expect(within(lines[0]).getByText("Homebrew couldn't check online for new versions, so updates for its tools weren't fully checked")).toBeInTheDocument();
+    expect(within(lines[0]).getByText("Homebrew's online check failed, so updates for its tools weren't fully checked")).toBeInTheDocument();
     expect(within(list).queryByRole("button", { name: /more note/ })).toBeNull();
   });
 
@@ -1499,7 +1499,7 @@ describe("OverviewPage", () => {
     const lines = within(list).getAllByRole("listitem");
     expect(lines.map((line) => line.querySelector("p")?.textContent)).toEqual([
       "Homebrew (Apple silicon) isn't responding",
-      "Homebrew couldn't check online for new versions, so updates for its tools weren't fully checked",
+      "Homebrew's online check failed, so updates for its tools weren't fully checked",
       "Claude Code's program files are missing",
       "Ollama isn't running",
     ]);

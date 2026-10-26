@@ -330,7 +330,7 @@
     "unavailableDetail": {
       "NotRunning": "{{source}}沒有執行。請開啟它，然後點按「重新檢查」。",
       "NotResponding": "{{source}}沒有回應。請稍後點按「重新檢查」。",
-      "RefusesAsRoot": "以管理者身分執行此App時，{{source}}無法使用。請結束，然後連按兩次重新開啟。"
+      "RefusesAsRoot": "使用sudo以root使用者身分執行此App時，{{source}}無法使用。請結束，然後連按兩次重新開啟。"
     },
     "runInTerminal": "在終端機執行：{{command}}",
     "progress": {
@@ -718,8 +718,8 @@
       "detailOwn": "這次無法列出它。請稍後重新檢查。"
     },
     "refusesAsRoot": {
-      "title": "{{source}}無法以管理者身分執行",
-      "description": "以管理者身分執行此App時，{{source}}無法使用。請結束，然後連按兩次重新開啟。"
+      "title": "{{source}}無法以root使用者身分執行",
+      "description": "使用sudo以root使用者身分執行此App時，{{source}}無法使用。請結束，然後連按兩次重新開啟。"
     },
     "notRunning": {
       "title": "{{source}}沒有執行",
@@ -1339,7 +1339,7 @@
         "ok": "正常",
         "NotRunning": "沒有執行",
         "NotResponding": "沒有回應",
-        "RefusesAsRoot": "無法以管理者身分執行",
+        "RefusesAsRoot": "無法以root使用者身分執行",
         "readOnly": "僅供查看",
         "unverified": "未經測試的版本",
         "indexMayBeStale": "更新未能完整檢查",

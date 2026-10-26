@@ -42,7 +42,7 @@ describe("Homebrew's catalogue, in plain words", () => {
     expect(zhCN.sourceNotice.indexMayBeStale.title).toBe("Homebrew没能联网查找新版本，用它安装的工具的更新这次没能查全");
     expect(zhHant.sourceNotice.indexMayBeStale.title).toBe("Homebrew未能連線檢查新版本，用它安裝的工具的更新這次未能完整檢查");
     expect(en.sourceNotice.indexMayBeStale.title).toBe(
-      "Homebrew couldn't check online for new versions, so updates for its tools weren't fully checked",
+      "Homebrew's online check failed, so updates for its tools weren't fully checked",
     );
   });
 

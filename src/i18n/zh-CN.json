@@ -330,7 +330,7 @@
     "unavailableDetail": {
       "NotRunning": "{{source}}没有运行。请打开它，然后点按“重新检查”。",
       "NotResponding": "{{source}}没有响应。请稍后点按“重新检查”。",
-      "RefusesAsRoot": "以管理员身份运行此App时，{{source}}无法使用。请退出，然后连按两次重新打开。"
+      "RefusesAsRoot": "用sudo以root用户身份运行此App时，{{source}}无法使用。请退出，然后连按两次重新打开。"
     },
     "runInTerminal": "在终端运行：{{command}}",
     "progress": {
@@ -718,8 +718,8 @@
       "detailOwn": "这次无法列出它。请稍后重新检查。"
     },
     "refusesAsRoot": {
-      "title": "{{source}}无法以管理员身份运行",
-      "description": "以管理员身份运行此App时，{{source}}无法使用。请退出，然后连按两次重新打开。"
+      "title": "{{source}}无法以root用户身份运行",
+      "description": "用sudo以root用户身份运行此App时，{{source}}无法使用。请退出，然后连按两次重新打开。"
     },
     "notRunning": {
       "title": "{{source}}没有运行",
@@ -1339,7 +1339,7 @@
         "ok": "正常",
         "NotRunning": "没有运行",
         "NotResponding": "没有响应",
-        "RefusesAsRoot": "无法以管理员身份运行",
+        "RefusesAsRoot": "无法以root用户身份运行",
         "readOnly": "仅供查看",
         "unverified": "未经测试的版本",
         "indexMayBeStale": "更新没能查全",

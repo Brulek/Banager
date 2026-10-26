@@ -113,7 +113,7 @@ describe("SourceNotices, folded", () => {
     expect(more.querySelector("[data-notice-symbol] svg")).not.toBeNull();
     expect(more).toHaveAttribute("aria-expanded", "false");
     fireEvent.click(more);
-    expect(linesShown()).toEqual(["uv isn't responding", "Homebrew couldn't check online for new versions, so updates for its tools weren't fully checked", "Claude Code 2.1.290 not tested"]);
+    expect(linesShown()).toEqual(["uv isn't responding", "Homebrew's online check failed, so updates for its tools weren't fully checked", "Claude Code 2.1.290 not tested"]);
     expect(screen.getByRole("button", { name: "Show Fewer" })).toBeInTheDocument();
   });
 

@@ -364,7 +364,7 @@
     "unavailableDetail": {
       "NotRunning": "{{source}} isn't running. Open it, then click Check Again.",
       "NotResponding": "{{source}} isn't responding. Click Check Again later.",
-      "RefusesAsRoot": "{{source}} doesn't work when this app runs as administrator. Quit, then open Banager again with a double-click."
+      "RefusesAsRoot": "{{source}} doesn't work when this app is started with sudo, as the root user. Quit, then open Banager again with a double-click."
     },
     "runInTerminal": "In Terminal: {{command}}",
     "progress": {
@@ -779,8 +779,8 @@
       "detailOwn": "It can't be listed this time. Check again later."
     },
     "refusesAsRoot": {
-      "title": "{{source}} doesn't run as administrator",
-      "description": "{{source}} doesn't work when this app runs as administrator. Quit, then open Banager again with a double-click."
+      "title": "{{source}} doesn't run as the root user",
+      "description": "{{source}} doesn't work when this app is started with sudo, as the root user. Quit, then open Banager again with a double-click."
     },
     "notRunning": {
       "title": "{{source}} isn't running",
@@ -796,7 +796,7 @@
       "other": "Couldn't open Ollama. Open it yourself from Applications."
     },
     "indexMayBeStale": {
-      "title": "Homebrew couldn't check online for new versions, so updates for its tools weren't fully checked",
+      "title": "Homebrew's online check failed, so updates for its tools weren't fully checked",
       "description": "This check used what Homebrew found the last time it checked. Check again later."
     },
     "indexUpdating": {
@@ -1459,7 +1459,7 @@
         "ok": "OK",
         "NotRunning": "Not running",
         "NotResponding": "Not responding",
-        "RefusesAsRoot": "Can't run as administrator",
+        "RefusesAsRoot": "Can't run as the root user",
         "readOnly": "View only",
         "unverified": "Version not tested",
         "indexMayBeStale": "Updates not fully checked",
