@@ -135,19 +135,19 @@ and says in the console which address it was handed),
 
 Paths are under a generic home folder, `/Users/you`.
 
-- **Homebrew** (`/opt/homebrew`): 26 formulae, 14 of them folded away as
-  dependencies, and 4 casks, one of which (Visual Studio Code) updates
+- **Homebrew** (`/opt/homebrew`): 28 formulae, 14 of them folded away as
+  dependencies, and 7 casks, one of which (Visual Studio Code) updates
   itself. Updates: one formula and one cask to update, a pinned formula,
   one update the user asked never to be reminded about (ffmpeg), one
   version they skipped (gh 2.102.0) and one tool put off for 30 days,
-  12 of them left (wget; Settings lists it with its date). Two of the casks are apps (iTerm2
-  and Visual Studio Code): asked for their icon (`artifact_icon`), the
+  12 of them left (wget; Settings lists it with its date). Four of the casks are apps (iTerm2,
+  Visual Studio Code, Zed and DBeaver): asked for their icon (`artifact_icon`), the
   preview answers with a generated one -- a coloured square with the
   app's initial -- where the app answers with the icon macOS draws; the
-  font and the cask with no app have none.
-- **npm**: 4 global packages, one update. **pipx**: 2 tools, one update.
-  **uv**: 2 tools, but uv did not answer, so its rows and its one update
-  are last time's. **pip**: read-only, 5 packages, one update listed; its
+  font and the casks with no app have none.
+- **npm**: 6 global packages, 2 updates. **pipx**: 3 tools, 2 updates
+  and a pinned one (poetry). **uv**: 3 tools, but uv did not answer, so
+  its rows and its one update are last time's. **pip**: read-only, 5 packages, one update listed; its
   page says why over the list, where other pages have 「全选」.
   **Cargo**: one crate from crates.io with an update that compiles
   locally, one installed from git that can never be checked. **Ollama**:
@@ -244,7 +244,7 @@ Paths are under a generic home folder, `/Users/you`.
   was installed. The preview clears the day it gave any other source's
   row (`onlyHomebrewDates`), so the order is the app's.
   Sorted 「按来源」, each source's heading says what it takes after its
-  count, 「Homebrew · 33个 · 2.6 GB以上」 (the font has no size, so "or more"),
+  count, 「Homebrew · 35个 · 2.6 GB以上」 (the font has no size, so "or more"),
   「Ollama · 3个模型 · 约11.3 GB」 as its models' line says; pip has no number. The
   toolbar says the whole list's, 「62个工具 · 15.8 GB以上」, or one
   source's on its page. No number while the round measures, or while a
