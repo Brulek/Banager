@@ -741,9 +741,15 @@ reported as a success whenever the package is still present afterwards,
 whether or not its version moved. A command that was
 cancelled or timed out, or that a signal Banager did not send ended
 (killed from Activity Monitor, say), is reported as unconfirmed unless
-the reading after settles it: an install after which the package is
-present, or an uninstall after which it is gone, is reported as
-succeeded. An interrupted uninstall whose package still appears present
+the reading after settles it: a model's download after which the model
+is listed (Ollama writes one only once it is whole), or an uninstall
+after which the package is gone, is reported as succeeded. An
+interrupted install of a Homebrew formula or cask whose package appears
+present remains unconfirmed (the author's decision G5): Homebrew pours a
+keg before it links it, and saves a cask's record before it moves the
+app, so one stopped between reads as installed with no command in
+Terminal or no app -- as an upgrade stopped does; the next check shows
+what is there. An interrupted uninstall whose package still appears present
 remains unconfirmed: metadata or a launcher can survive partial removal.
 A Cancel pressed before the command started — the operation already
 running, its command not yet begun — is reported as cancelled whatever

@@ -1442,9 +1442,15 @@ impl OperationManager {
             // own Cancel, while it waits for a `brew update`, is
             // `Cancelled` before its command starts. The
             // reading after it tells us the artifact's *current* state,
-            // not whether this op caused it. Presence is proof enough for
-            // Install (wasn't there, now is) and Uninstall (was there, now
-            // isn't).
+            // not whether this op caused it. Absence is proof enough for
+            // Uninstall (was there, now isn't), and presence for a model's
+            // Install, which Ollama writes only once whole. A formula's or
+            // cask's Install found present is not: Homebrew pours the keg
+            // before it links it, and saves the caskfile before it moves
+            // the app (formula_installer.rb `finish`, cask/installer.rb
+            // `save_caskfile`), so one stopped between reads as installed
+            // with no command in Terminal or no app -- `Unconfirmed`, as an
+            // upgrade stopped is (the author's decision G5).
             //
             // When the run was stopped by the user's own Cancel (the token
             // is only ever fired by `cancel()`; neither a timeout nor a
@@ -1520,7 +1526,10 @@ impl OperationManager {
                     // own error, not on a stop.
                     OpKind::Upgrade | OpKind::Link => Outcome::Unconfirmed,
                     OpKind::Install => match reconciled {
-                        Ok(r) if r.present => Outcome::Succeeded,
+                        Ok(r) if r.present && plan.request.artifact_kind == ArtifactKind::Model => {
+                            Outcome::Succeeded
+                        }
+                        Ok(r) if r.present => Outcome::Unconfirmed,
                         Ok(_) if user_cancelled => Outcome::Cancelled,
                         _ => Outcome::Unconfirmed,
                     },

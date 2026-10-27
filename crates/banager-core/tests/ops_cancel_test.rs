@@ -281,6 +281,16 @@ async fn run_cancelled_mid_execute_with_readings(
     kind: OpKind,
     readings: Vec<Reconciled>,
 ) -> (Outcome, Vec<OpStatus>) {
+    run_cancelled_mid_execute_of(kind, ArtifactKind::Formula, readings).await
+}
+
+/// `run_cancelled_mid_execute_with_readings` of a request for an artifact
+/// of `artifact_kind`.
+async fn run_cancelled_mid_execute_of(
+    kind: OpKind,
+    artifact_kind: ArtifactKind,
+    readings: Vec<Reconciled>,
+) -> (Outcome, Vec<OpStatus>) {
     let sink = Arc::new(VecSink::new());
     let mut manager = OperationManager::new(sink.clone());
     let adapter = Arc::new(FakeAdapter::with_readings(
@@ -292,7 +302,10 @@ async fn run_cancelled_mid_execute_with_readings(
 
     let inst = make_instance("fake:/mid-execute");
     manager.register_instance(inst.clone());
-    let req = make_request(kind, &inst.id, "pkg");
+    let req = OpRequest {
+        artifact_kind,
+        ..make_request(kind, &inst.id, "pkg")
+    };
     let plan = adapter.plan(&inst, &req).await.expect("plan");
     let op_id = manager.submit(plan);
 
@@ -364,13 +377,31 @@ async fn test_cancel_mid_execute_emits_full_status_sequence() {
 
 // (b) Outcome mapping per OpKind after a cancelled execute.
 #[tokio::test]
-async fn test_cancelled_install_reports_succeeded_when_present() {
+async fn test_cancelled_install_of_a_formula_found_present_is_unconfirmed() {
+    // The author's decision G5: Homebrew pours a keg before it links it,
+    // so one stopped between reads as installed with no command in
+    // Terminal -- not known to have finished, as an upgrade stopped.
     let (outcome, _trace) = run_cancelled_mid_execute(
         OpKind::Install,
         Reconciled {
             present: true,
             version: None,
         },
+    )
+    .await;
+    assert_eq!(outcome, Outcome::Unconfirmed);
+}
+
+#[tokio::test]
+async fn test_cancelled_download_of_a_model_found_present_succeeded() {
+    // Ollama writes a model only once it is whole: there, it is all there.
+    let (outcome, _trace) = run_cancelled_mid_execute_of(
+        OpKind::Install,
+        ArtifactKind::Model,
+        vec![Reconciled {
+            present: true,
+            version: None,
+        }],
     )
     .await;
     assert_eq!(outcome, Outcome::Succeeded);
