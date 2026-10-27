@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
   blockedSaid,
@@ -14,7 +13,15 @@ import {
   stateText,
   wordsOf,
 } from "../lib/catalog";
-import { useCatalog, useOperations, usePendingOperations, useSearchHomebrew, useSettings, useSnapshot } from "../lib/queries";
+import {
+  useCatalog,
+  useOperations,
+  usePendingOperations,
+  useSearchesFollowChecks,
+  useSearchHomebrew,
+  useSettings,
+  useSnapshot,
+} from "../lib/queries";
 import { useSettled } from "../lib/settled";
 import { planErrorMessage } from "../lib/sources";
 import { useTranslatedDescription } from "../lib/toolDescriptions";
@@ -113,19 +120,10 @@ export function DiscoverResults({ query }: { query: string }) {
   });
   const descriptionOf = (found: Found) => describe(keyOf(found), "brew") ?? found.description;
 
-  // Searched again once a check after it lists something else: what each
-  // result's tool has installed another way is the search's word, and a
-  // tool installed from this list, or one gone, changes it (from the
-  // review of the author's decision G4).
-  const queryClient = useQueryClient();
-  const round = snapshot?.round;
-  const lastRound = useRef(round);
-  useEffect(() => {
-    if (round === undefined || lastRound.current === round) return;
-    const first = lastRound.current === undefined;
-    lastRound.current = round;
-    if (!first) void queryClient.invalidateQueries({ queryKey: ["searchHomebrew"] });
-  }, [round, queryClient]);
+  // Searched again after each check: what each result's tool has
+  // installed another way is the search's word, and a tool installed from
+  // the list, or gone, changes it (`useSearchesFollowChecks`).
+  useSearchesFollowChecks(snapshot?.round);
 
   // A list kept through a failed search again while its ids are kept, and
   // no longer: by the failure's own time, which re-renders the page with

@@ -5870,9 +5870,13 @@ catalog entry that counts that family "Installed" by any of its ways
 `claude-code@latest` cask beside Claude Code from npm or its
 `claude-code` cask, the `ollama-binary` cask beside the `ollama` formula
 or Ollama.app -- a second copy, or one Homebrew refuses as conflicting.
-`plan_found` looks at this again on the snapshot of the moment, and the
-page searches again once a check after the search lists something else,
-so a tool installed from the list, or gone since, counts. A suggestion
+`plan_found` looks at this again on the snapshot of the moment, and every
+search kept goes stale after each check -- one that found nothing new
+too, since whether Ollama.app is there is read at the search -- so the
+one on screen runs again, with its commands above, and one kept while
+the results were away runs again when they are next shown
+(`useSearchesFollowChecks` in `src/lib/queries.ts`): a tool installed
+from the list, or gone since, counts. A suggestion
 goes by its entry instead, which counts the same family (Discover's
 catalog, below). Each blocked row says why under its name, as its sheet
 would. Nothing more is read for this but whether Ollama.app is there. No app is

@@ -621,7 +621,7 @@ describe("a search result Homebrew would refuse on this Mac", () => {
     unmount();
   });
 
-  it("is searched again once a check after the search lists something else (from the review of decision G4)", async () => {
+  it("is searched again after each check, on screen or the next time it is shown (from the reviews of decision G4)", async () => {
     let searches = 0;
     search = async () => {
       searches += 1;
@@ -635,6 +635,16 @@ describe("a search result Homebrew would refuse on this Mac", () => {
       queryClient.setQueryData(queryKeys.snapshot, { ...snapshot, round: 2 });
     });
     await waitFor(() => expect(searches).toBe(2));
+    // A check while the results are off screen -- the field cleared, the
+    // list shown -- and the same text typed again within five minutes:
+    // searched again, not the kept answer.
+    await typeSearch("");
+    await waitFor(() => expect(results_()).toHaveLength(0));
+    act(() => {
+      queryClient.setQueryData(queryKeys.snapshot, { ...snapshot, round: 3 });
+    });
+    await typeSearch("jq");
+    await waitFor(() => expect(searches).toBe(3), { timeout: 3000 });
     unmount();
   });
 

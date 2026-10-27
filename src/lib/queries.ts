@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import {
   useMutation,
   useQuery,
@@ -350,6 +350,32 @@ export function useSearchHomebrew(query: string): UseQueryResult<Found[]> {
     refetchInterval: 5 * 60 * 1000,
     retry: false,
   });
+}
+
+/**
+ * The check round each query client last saw: one change to it, seen by
+ * any page while it is up or the next time one is, marks every search kept
+ * stale (`useSearchesFollowChecks`).
+ */
+const searchRounds = new WeakMap<QueryClient, number>();
+
+/**
+ * Searches of Homebrew go stale after each check, round `round` of the
+ * snapshot: the one on screen is searched again, and one kept while the
+ * page was away is searched again when it is next shown, not served from
+ * its five minutes (from the reviews of the author's decision G4: a result
+ * whose tool was installed from the list since still offered Install).
+ * Each round, a check that found nothing new too: whether Ollama.app is
+ * there is read at the search, not kept in the snapshot.
+ */
+export function useSearchesFollowChecks(round: number | undefined): void {
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    if (round === undefined) return;
+    const seen = searchRounds.get(queryClient);
+    searchRounds.set(queryClient, round);
+    if (seen !== undefined && seen !== round) void queryClient.invalidateQueries({ queryKey: ["searchHomebrew"] });
+  }, [round, queryClient]);
 }
 
 /**
