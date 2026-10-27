@@ -1976,7 +1976,7 @@ required (`BrewAdapter::update_steps`).
 | Search by description (Discover's search) | `<brew> search --desc {query}` | 30 s |
 | Name the formulae a search found as Homebrew names them (Discover's search) | `<brew> info --json=v2 --formula {names}`, the at most 40 formula names listed | 30 s |
 | Read what the casks a search found need (Discover's search) | `<brew> info --json=v2 --cask {names}`, the cask names listed | 30 s |
-| Whether a formula's install compiles on this Mac (its install preview; Formula updates that compile) | `<brew> info --json=v2 --formula {names}`, the formula, then each round of what it needs not yet installed, at most 8 rounds | 30 s each |
+| Whether a formula's install compiles on this Mac (its install preview; Formula updates that compile) | `<brew> info --json=v2 --formula {names}`, the formula, then each round of what it needs, at most 8 rounds | 30 s each |
 | List installed formulae depending on a formula (uninstall preview) | `<brew> uses --installed {name}` | 120 s |
 
 Never `--greedy` or `--greedy-latest` (R47-2, r18): with either, Homebrew
@@ -2077,8 +2077,10 @@ either -- on such a Mac, Discover's install of uv or Node.js (from the
 review of the areas earlier reviews left). A formula's install preview
 asks Homebrew about that formula, read-only, `<brew> info --json=v2
 --formula {names}` (30 s each), then the same way about what it needs
-(its `dependencies`) that is not installed yet, a round at a time, at
-most eight rounds, and reads each answer as above
+(its `dependencies`), a round at a time, at most eight rounds, and reads
+each answer as above -- a dependency installed and up to date is not
+judged, one installed but outdated is, as Homebrew may upgrade it on
+the way
 (`BrewAdapter::install_compiles`): where no bottle fits one of them --
 `http-server`'s bottle fits every Mac, but Node.js, which it needs, may
 have none -- the preview says
@@ -2281,7 +2283,7 @@ preview):
 | Purpose | Argv | Timeout | Needs a password |
 |---|---|---|---|
 | Install a formula | `<brew> install --formula {name}` | 1800 s | No |
-| Install a formula no bottle fits this Mac (Formula updates that compile, above; previewed with a "compiles on your Mac" warning) | `<brew> install --formula {name}` | 21600 s (6 hours) | No |
+| Install a formula no bottle fits this Mac, it or what it would build on the way (Formula updates that compile, above; previewed with a "compiles on your Mac" warning) | `<brew> install --formula {name}` | 21600 s (6 hours) | No |
 | Install a cask | `<brew> install --cask {name}` | 1800 s | Sometimes — some cask installers invoke `sudo`; `SUDO_ASKPASS` is passed through when set |
 | Uninstall a formula | `<brew> uninstall --formula {name}` | 1800 s | No |
 | Uninstall a formula with more than one version installed and no pin | `<brew> uninstall --formula --force {name}` | 1800 s | No |
@@ -5771,7 +5773,7 @@ plan store) and is exactly the install in "Homebrew" or "Ollama" above:
 with Homebrew's five variables, and `SUDO_ASKPASS` where it applies, or
 `OLLAMA_HOST`. To make a formula's preview, read-only commands run,
 `<brew> info --json=v2 --formula <names>` (30 s each) for the formula and
-then for what it needs that is not installed, for whether the install
+then for what it needs, for whether the install
 compiles on this Mac (`BrewAdapter::install_compiles`; "Formula updates
 that compile", in "Homebrew" above): where it does, the sheet says "This
 compiles on your Mac and takes a while." and the install may run for 6

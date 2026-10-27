@@ -1415,9 +1415,12 @@ impl BrewAdapter {
         }
     }
 
-    /// Whether installing the formula `name` compiles it on this Mac: one
-    /// read-only `brew info --json=v2 --formula {name}`, read as an
-    /// inventory is for updates (`bottles::formulae_built_from_source`).
+    /// Whether installing the formula `name` compiles on this Mac, it or
+    /// what it needs: read-only `brew info --json=v2 --formula {names}`,
+    /// for the formula, then round by round for its dependencies (at most
+    /// `INSTALL_DEPENDENCY_ROUNDS`), each answer read as an inventory is
+    /// for updates (`bottles::formulae_built_from_source`); a dependency
+    /// installed and up to date is not judged, an outdated one is.
     /// Only on a Mac Homebrew compiles a fresh install on -- Intel, or
     /// Apple silicon before `HOMEBREW_MACOS_OLDEST_SUPPORTED` (15,
     /// `brew.sh:347`): on any other, Homebrew refuses a core formula with no
@@ -1445,6 +1448,8 @@ impl BrewAdapter {
             dependencies: Vec<String>,
             #[serde(default)]
             installed: Vec<serde_json::Value>,
+            #[serde(default)]
+            outdated: bool,
         }
         // The formula, then, round by round, what it needs that is not
         // installed yet: one that compiles makes the install compile, as
@@ -1474,12 +1479,14 @@ impl BrewAdapter {
                 break;
             };
             for formula in info.formulae {
-                // Installed already, with what it needs: nothing to build.
-                if !formula.installed.is_empty() {
-                    continue;
-                }
+                // One installed and up to date is not built; an outdated
+                // one Homebrew may upgrade on the way, where the bottle
+                // needs a newer one; and Homebrew looks at what either
+                // needs now (`Dependency.expand`, `formula_installer.rb`;
+                // from the review of 8e228c36).
+                let built = formula.installed.is_empty() || formula.outdated;
                 let short = formula.name.rsplit('/').next().unwrap_or(&formula.name);
-                if compiles.contains(short) {
+                if built && compiles.contains(short) {
                     return true;
                 }
                 for dependency in formula.dependencies {
@@ -3781,9 +3788,10 @@ impl BrewAdapter {
                 // that has no bottle either: on an older Mac, longer than
                 // the half hour, every time. Said as an update that
                 // compiles is (r18 R46-2), and given its hours, where
-                // Homebrew's own answer for the formula has no bottle for
-                // this Mac (`install_compiles`; from the review of the
-                // areas earlier reviews left).
+                // Homebrew's own answers have no bottle for this Mac for
+                // the formula or what it would build on the way
+                // (`install_compiles`; from the review of the areas earlier
+                // reviews left).
                 let compiles = req.artifact_kind == ArtifactKind::Formula
                     && self.install_compiles(inst, &req.name).await;
                 if compiles {
@@ -7748,6 +7756,21 @@ mod plan_execute_tests {
         );
         let serve = adapter.plan(&inst, &install("serve")).await.expect("plan");
         assert!(serve.warnings.is_empty(), "got {:?}", serve.warnings);
+        // An outdated one Homebrew may upgrade on the way: judged (from
+        // the review of 8e228c36).
+        runner.respond(
+            vec![brew, "info", "--json=v2", "--formula", "prettier"],
+            answer(r#"{"formulae":[{"name":"prettier","tap":"homebrew/core","dependencies":["node@24"],"bottle":{"stable":{"files":{"all":{}}}}}],"casks":[]}"#),
+        );
+        runner.respond(
+            vec![brew, "info", "--json=v2", "--formula", "node@24"],
+            answer(r#"{"formulae":[{"name":"node@24","tap":"homebrew/core","dependencies":[],"installed":[{"version":"24.1.0"}],"outdated":true,"bottle":{}}],"casks":[]}"#),
+        );
+        let prettier = adapter
+            .plan(&inst, &install("prettier"))
+            .await
+            .expect("plan");
+        assert_eq!(prettier.warnings, [Warning::CompilesLocally]);
         // An ask that fails says nothing, as before.
         let fd = adapter.plan(&inst, &install("fd")).await.expect("plan");
         assert!(fd.warnings.is_empty(), "got {:?}", fd.warnings);
