@@ -1976,7 +1976,7 @@ required (`BrewAdapter::update_steps`).
 | Search by description (Discover's search) | `<brew> search --desc {query}` | 30 s |
 | Name the formulae a search found as Homebrew names them (Discover's search) | `<brew> info --json=v2 --formula {names}`, the at most 40 formula names listed | 30 s |
 | Read what the casks a search found need (Discover's search) | `<brew> info --json=v2 --cask {names}`, the cask names listed | 30 s |
-| Whether a formula's install compiles on this Mac (its install preview; Formula updates that compile) | `<brew> info --json=v2 --formula {name}` | 30 s |
+| Whether a formula's install compiles on this Mac (its install preview; Formula updates that compile) | `<brew> info --json=v2 --formula {names}`, the formula, then each round of what it needs not yet installed, at most 8 rounds | 30 s each |
 | List installed formulae depending on a formula (uninstall preview) | `<brew> uses --installed {name}` | 120 s |
 
 Never `--greedy` or `--greedy-latest` (R47-2, r18): with either, Homebrew
@@ -2075,19 +2075,22 @@ Banager knows, nor an inventory that did not answer changes anything. Nothing mo
 An install compiles the same way, with every dependency no bottle fits
 either -- on such a Mac, Discover's install of uv or Node.js (from the
 review of the areas earlier reviews left). A formula's install preview
-asks Homebrew about that one formula, read-only, `<brew> info --json=v2
---formula {name}` (30 s), and reads its answer as above
-(`BrewAdapter::install_compiles`): where no bottle fits, the preview says
+asks Homebrew about that formula, read-only, `<brew> info --json=v2
+--formula {names}` (30 s each), then the same way about what it needs
+(its `dependencies`) that is not installed yet, a round at a time, at
+most eight rounds, and reads each answer as above
+(`BrewAdapter::install_compiles`): where no bottle fits one of them --
+`http-server`'s bottle fits every Mac, but Node.js, which it needs, may
+have none -- the preview says
 "This compiles on your Mac and takes a while." and the install may run
 for 6 hours instead of 30 minutes. It asks only on a Mac Homebrew
 compiles a fresh install on -- Intel, or Apple silicon before macOS 15
 (`HOMEBREW_MACOS_OLDEST_SUPPORTED`, `brew.sh:347`): on any other, Homebrew
 refuses a core formula with no bottle instead (`fresh_install?`,
 `extend/os/mac/formula_installer.rb:11-16`), and its refusal is the word. Where this Mac's version is not known,
-or the ask fails or does not read, nothing is said and the install has
-its half hour, as before. Only the formula itself is judged: one whose
-own bottle fits but a dependency's does not still compiles that
-dependency within the half hour.
+or the first ask fails or does not read, nothing is said and the install
+has its half hour, as before; where a later round's fails, what the
+earlier rounds found stands.
 
 **Formulae Homebrew leaves out** (r18 R46-1). Homebrew 7 lists an
 installed formula only if it can load it, and silently drops one it
@@ -5766,8 +5769,9 @@ plan store) and is exactly the install in "Homebrew" or "Ollama" above:
     <ollama> pull <model>
 
 with Homebrew's five variables, and `SUDO_ASKPASS` where it applies, or
-`OLLAMA_HOST`. To make a formula's preview, one read-only command runs,
-`<brew> info --json=v2 --formula <name>` (30 s), for whether the install
+`OLLAMA_HOST`. To make a formula's preview, read-only commands run,
+`<brew> info --json=v2 --formula <names>` (30 s each) for the formula and
+then for what it needs that is not installed, for whether the install
 compiles on this Mac (`BrewAdapter::install_compiles`; "Formula updates
 that compile", in "Homebrew" above): where it does, the sheet says "This
 compiles on your Mac and takes a while." and the install may run for 6

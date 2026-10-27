@@ -1434,20 +1434,62 @@ impl BrewAdapter {
         if mac.arm && mac.macos.0 >= HOMEBREW_MACOS_OLDEST_SUPPORTED {
             return false;
         }
-        let args = vec![
-            "info".to_string(),
-            "--json=v2".to_string(),
-            "--formula".to_string(),
-            name.to_string(),
-        ];
-        let Ok(output) = self.run_brew(inst, args, Duration::from_secs(30)).await else {
-            return false;
-        };
-        if output.exit_code != Some(0) {
-            return false;
+        #[derive(serde::Deserialize)]
+        struct Info {
+            formulae: Vec<Formula>,
         }
-        let short = name.rsplit('/').next().unwrap_or(name);
-        bottles::formulae_built_from_source(&output.stdout, mac).contains(short)
+        #[derive(serde::Deserialize)]
+        struct Formula {
+            name: String,
+            #[serde(default)]
+            dependencies: Vec<String>,
+            #[serde(default)]
+            installed: Vec<serde_json::Value>,
+        }
+        // The formula, then, round by round, what it needs that is not
+        // installed yet: one that compiles makes the install compile, as
+        // `http-server`'s bottle for every Mac does not spare it Node.js's
+        // build (from the review of 17f32003).
+        let mut asked: HashSet<String> = HashSet::new();
+        let mut next = vec![name.to_string()];
+        for _ in 0..INSTALL_DEPENDENCY_ROUNDS {
+            if next.is_empty() {
+                break;
+            }
+            asked.extend(next.iter().cloned());
+            let mut args = vec![
+                "info".to_string(),
+                "--json=v2".to_string(),
+                "--formula".to_string(),
+            ];
+            args.append(&mut next);
+            let Ok(output) = self.run_brew(inst, args, Duration::from_secs(30)).await else {
+                break;
+            };
+            if output.exit_code != Some(0) {
+                break;
+            }
+            let compiles = bottles::formulae_built_from_source(&output.stdout, mac);
+            let Ok(info) = serde_json::from_str::<Info>(&output.stdout) else {
+                break;
+            };
+            for formula in info.formulae {
+                // Installed already, with what it needs: nothing to build.
+                if !formula.installed.is_empty() {
+                    continue;
+                }
+                let short = formula.name.rsplit('/').next().unwrap_or(&formula.name);
+                if compiles.contains(short) {
+                    return true;
+                }
+                for dependency in formula.dependencies {
+                    if !asked.contains(&dependency) && !next.contains(&dependency) {
+                        next.push(dependency);
+                    }
+                }
+            }
+        }
+        false
     }
 
     /// Whether the update of the formula `name` compiles, as the last
@@ -3240,6 +3282,11 @@ fn app_targets_of(artifacts: &[serde_json::Value]) -> Vec<String> {
         .filter(|name| name.ends_with(".app") && !name.contains('/') && !name.starts_with('.'))
         .collect()
 }
+
+/// How many rounds of a formula's dependencies an install preview asks
+/// about (`install_compiles`): deep enough for Node.js's, and a bound on
+/// the read-only asks one preview makes.
+const INSTALL_DEPENDENCY_ROUNDS: usize = 8;
 
 /// The oldest macOS Homebrew 7 installs fresh from bottles on Apple
 /// silicon (`HOMEBREW_MACOS_OLDEST_SUPPORTED`, `brew.sh:347`): on it and
@@ -7674,6 +7721,33 @@ mod plan_execute_tests {
         let jq = adapter.plan(&inst, &install("jq")).await.expect("plan");
         assert!(jq.warnings.is_empty(), "got {:?}", jq.warnings);
         assert_eq!(jq.timeout_secs, 1800);
+        // A bottle for every Mac, but a dependency not installed that
+        // compiles: the install compiles it (from the review of 17f32003).
+        // One installed already is not built.
+        runner.respond(
+            vec![brew, "info", "--json=v2", "--formula", "http-server"],
+            answer(r#"{"formulae":[{"name":"http-server","tap":"homebrew/core","dependencies":["node"],"bottle":{"stable":{"files":{"all":{}}}}}],"casks":[]}"#),
+        );
+        runner.respond(
+            vec![brew, "info", "--json=v2", "--formula", "node"],
+            answer(r#"{"formulae":[{"name":"node","tap":"homebrew/core","dependencies":[],"bottle":{}}],"casks":[]}"#),
+        );
+        let served = adapter
+            .plan(&inst, &install("http-server"))
+            .await
+            .expect("plan");
+        assert_eq!(served.warnings, [Warning::CompilesLocally]);
+        assert_eq!(served.timeout_secs, BrewAdapter::SOURCE_BUILD_TIMEOUT_SECS);
+        runner.respond(
+            vec![brew, "info", "--json=v2", "--formula", "serve"],
+            answer(r#"{"formulae":[{"name":"serve","tap":"homebrew/core","dependencies":["sqlite"],"bottle":{"stable":{"files":{"all":{}}}}}],"casks":[]}"#),
+        );
+        runner.respond(
+            vec![brew, "info", "--json=v2", "--formula", "sqlite"],
+            answer(r#"{"formulae":[{"name":"sqlite","tap":"homebrew/core","dependencies":[],"installed":[{"version":"3.50.0"}],"bottle":{}}],"casks":[]}"#),
+        );
+        let serve = adapter.plan(&inst, &install("serve")).await.expect("plan");
+        assert!(serve.warnings.is_empty(), "got {:?}", serve.warnings);
         // An ask that fails says nothing, as before.
         let fd = adapter.plan(&inst, &install("fd")).await.expect("plan");
         assert!(fd.warnings.is_empty(), "got {:?}", fd.warnings);
