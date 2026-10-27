@@ -5862,13 +5862,20 @@ downloading it all, since it never moves one app over another unless
 told to (`--adopt`, `--force`, which Banager does not pass). Before
 those, a result that is neither installed nor a suggestion, whose tool --
 by the AI tools' family table (`families::family_for`) -- the last check
-lists installed another way, says "Already on this Mac" too, and
-`plan_found` refuses it (`FoundBlock::ToolThere`, the author's decision
-G4): the `claude-code@latest` cask beside Claude Code from npm or its
+lists installed another way -- another member of its family, or the
+catalog entry that counts that family "Installed" by any of its ways
+(Ollama's by Ollama.app from ollama.com too, `catalog::family_entry_installed`)
+-- says "Already on this Mac" too, and `plan_found` refuses it
+(`FoundBlock::ToolThere`, the author's decision G4): the
+`claude-code@latest` cask beside Claude Code from npm or its
 `claude-code` cask, the `ollama-binary` cask beside the `ollama` formula
--- a second copy, or one Homebrew refuses as conflicting; its sheet names
-the tool. A suggestion goes by its entry instead, which counts the same
-family (Discover's catalog, below). Nothing more is read for this. No app is
+or Ollama.app -- a second copy, or one Homebrew refuses as conflicting.
+`plan_found` looks at this again on the snapshot of the moment, and the
+page searches again once a check after the search lists something else,
+so a tool installed from the list, or gone since, counts. A suggestion
+goes by its entry instead, which counts the same family (Discover's
+catalog, below). Each blocked row says why under its name, as its sheet
+would. Nothing more is read for this but whether Ollama.app is there. No app is
 looked for where `HOMEBREW_CASK_OPTS` -- in Banager's environment or a
 `brew.env` file, as above -- may give an `appdir` of its own: a word of it,
 split at spaces with its quotes dropped, whose name before `=` is `appdir`
@@ -6244,7 +6251,9 @@ not read (`protected::look`; How Banager runs anything, above):
   which opens nothing in it, each time Discover's catalog is asked for and
   each time an install from it, or from its search, is planned
   (`catalog::free_bytes`; "Discover"). And whether Ollama.app is in
-  `/Applications` or `~/Applications` then too (`Host::of_this_mac`).
+  `/Applications` or `~/Applications` then too (`Host::of_this_mac`), and
+  at each Discover search, for whether a result's tool is on this Mac
+  another way ("Searching Homebrew").
 - Claude Code: whether `~/.local/bin/claude` exists and where it links to
   (`lstat`, `readlink`, `realpath`, also for the folder the link is in
   and for `~/.local/share/claude`); for the notice under the source, each

@@ -10,9 +10,9 @@ Removing them needs a third. Most people never do either, and the tools quietly 
 
 Banager puts all of it in one window: what you have, what has an update, and a button for each.
 
-> **Status: pre-release.** The core and the UI work and are covered by 2504 Rust tests (plus 12 more
+> **Status: pre-release.** The core and the UI work and are covered by 2508 Rust tests (plus 12 more
 > that only run with `--ignored`: they touch a real Homebrew, the real Trash, AppKit or this Mac's
-> disk, or time a large run) and 3445 front-end tests, but there is no downloadable build yet — v0.1 is being prepared. Nothing here is
+> disk, or time a large run) and 3446 front-end tests, but there is no downloadable build yet — v0.1 is being prepared. Nothing here is
 > ready to rely on. Banager can't update itself yet: a release build makes no updater files and
 > publishes no `latest.json`.
 

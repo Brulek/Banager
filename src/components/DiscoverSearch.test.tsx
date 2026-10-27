@@ -5,6 +5,7 @@ import { renderWithProviders } from "../test/setup";
 import { command } from "../test/command";
 import { DiscoverPage } from "../pages/DiscoverPage";
 import { catalogRefusal, searchable } from "../lib/catalog";
+import { queryKeys } from "../lib/queryKeys";
 import i18n from "../i18n";
 import { useUiStore } from "../store/ui";
 import { NO_FACTS, type CatalogEntry, type Found, type IssuedPlan, type ManagerInstance, type Snapshot } from "../lib/types";
@@ -610,6 +611,30 @@ describe("a search result Homebrew would refuse on this Mac", () => {
     ]);
     expect(screen.queryByRole("button", { name: "Install alacritty" })).toBeNull();
     expect(screen.getByRole("button", { name: "Install ansible" })).toBeInTheDocument();
+    // Why, under its name: no sheet opens to say it (from the review of
+    // decision G2).
+    const why = document.querySelector('[data-found="sogouinput"] [data-found-why]');
+    expect(why?.textContent).toBe(
+      "Homebrew only downloads its installer and won't install it for you. Get it from its maker's website instead.",
+    );
+    expect(document.querySelector('[data-found="ansible"] [data-found-why]')).toBeNull();
+    unmount();
+  });
+
+  it("is searched again once a check after the search lists something else (from the review of decision G4)", async () => {
+    let searches = 0;
+    search = async () => {
+      searches += 1;
+      return results;
+    };
+    const { unmount, queryClient } = renderWithProviders(<DiscoverPage />);
+    await typeSearch("jq");
+    await waitFor(() => expect(results_()).toHaveLength(3), { timeout: 3000 });
+    expect(searches).toBe(1);
+    act(() => {
+      queryClient.setQueryData(queryKeys.snapshot, { ...snapshot, round: 2 });
+    });
+    await waitFor(() => expect(searches).toBe(2));
     unmount();
   });
 

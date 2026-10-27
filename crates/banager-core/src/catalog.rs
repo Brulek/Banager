@@ -452,6 +452,27 @@ pub fn state_installing(
         .map(|entry| entry.state)
 }
 
+/// Whether a catalog entry that counts the AI tool family `family_id`
+/// (`Recognizer::Family`) is "Installed" on this Mac, by any of its ways
+/// -- Ollama's by Ollama.app too, or an Ollama source: what a search
+/// result of that family goes by (`session::search::tool_there`; from the
+/// review of the author's decision G4).
+pub(crate) fn family_entry_installed(snapshot: &Snapshot, host: &Host, family_id: &str) -> bool {
+    let ids: Vec<&str> = CATALOG
+        .iter()
+        .filter(|item| {
+            item.recognized_by
+                .iter()
+                .any(|r| matches!(r, Recognizer::Family(f) if *f == family_id))
+        })
+        .map(|item| item.id)
+        .collect();
+    !ids.is_empty()
+        && entries(snapshot, host)
+            .iter()
+            .any(|entry| ids.contains(&entry.id) && entry.state == CatalogState::Installed)
+}
+
 /// The catalog entry that installs this Homebrew formula or cask, if one
 /// does: what the Discover search marks as one of the suggestions.
 pub fn id_installing(kind: ArtifactKind, name: &str) -> Option<&'static str> {

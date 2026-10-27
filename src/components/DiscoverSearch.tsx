@@ -1,6 +1,8 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
+  blockedSaid,
   blockedText,
   commandOf,
   endedAfterCheck,
@@ -111,6 +113,20 @@ export function DiscoverResults({ query }: { query: string }) {
   });
   const descriptionOf = (found: Found) => describe(keyOf(found), "brew") ?? found.description;
 
+  // Searched again once a check after it lists something else: what each
+  // result's tool has installed another way is the search's word, and a
+  // tool installed from this list, or one gone, changes it (from the
+  // review of the author's decision G4).
+  const queryClient = useQueryClient();
+  const round = snapshot?.round;
+  const lastRound = useRef(round);
+  useEffect(() => {
+    if (round === undefined || lastRound.current === round) return;
+    const first = lastRound.current === undefined;
+    lastRound.current = round;
+    if (!first) void queryClient.invalidateQueries({ queryKey: ["searchHomebrew"] });
+  }, [round, queryClient]);
+
   // A list kept through a failed search again while its ids are kept, and
   // no longer: by the failure's own time, which re-renders the page with
   // each failure, and by the clock, looked at once more when the ten
@@ -191,6 +207,10 @@ export function DiscoverResults({ query }: { query: string }) {
                 ? ITEM_KEYS[entry.id]?.use
                 : undefined;
             let right: ReactNode;
+            // Why it can't be installed, said in place of what it is: the
+            // row has no Install, so no sheet to say it in (from the review
+            // of the author's decision G2).
+            let blockedWhy: string | null = null;
             if (progress !== null && isUnderway(progress)) {
               right = (
                 <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-small text-muted">
@@ -208,6 +228,7 @@ export function DiscoverResults({ query }: { query: string }) {
             } else if (notHere) {
               right = <span className="text-muted">{stateText(t, entry.state)}</span>;
             } else if (found.blocked !== null) {
+              blockedWhy = blockedSaid(t, found.blocked);
               // Homebrew would refuse it here: its app already there, put
               // there another way; disabled; a newer macOS; the other chip
               // (`plan_found` refuses it too).
@@ -252,6 +273,10 @@ export function DiscoverResults({ query }: { query: string }) {
                       >
                         <span>{t(use, wordsOf(entry))}</span>
                         {command === undefined ? null : <CopyButton text={command} label={t("discover.copyCommand", { command })} />}
+                      </span>
+                    ) : blockedWhy !== null ? (
+                      <span data-found-why="" className={`block text-muted ${SMALL_WRAPPING}`}>
+                        {blockedWhy}
                       </span>
                     ) : description === null ? null : (
                       <span className={`block truncate text-muted ${SMALL_WRAPPING}`}>{description}</span>

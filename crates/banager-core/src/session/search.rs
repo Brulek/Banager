@@ -89,11 +89,15 @@ pub enum FoundBlock {
 }
 
 /// The tool the formula or cask `kind` `name` of `instance_id` is, where
-/// another of its family's members is in `artifacts` (`facts.family`, as
-/// `families::assign` set it): its product name. Not the result itself,
-/// which its own `installed` says.
+/// it is on this Mac another way: another of its family's members is in
+/// the snapshot (`facts.family`, as `families::assign` set it), or the
+/// catalog entry that counts that family says "Installed" -- Ollama from
+/// ollama.com, which no family member is (`catalog::family_entry_installed`;
+/// from the review of the author's decision G4). Its product name. Not the
+/// result itself, which its own `installed` says.
 pub(crate) fn tool_there(
-    artifacts: &[InstalledArtifact],
+    snapshot: &super::Snapshot,
+    host: &crate::catalog::Host,
     instance_id: &str,
     kind: ArtifactKind,
     name: &str,
@@ -104,11 +108,13 @@ pub(crate) fn tool_there(
         name: name.to_string(),
     };
     let family = crate::families::family_for("brew", &key)?;
-    artifacts
+    let member_there = snapshot
+        .artifacts
         .iter()
-        .any(|artifact| {
+        .any(|artifact: &InstalledArtifact| {
             artifact.key != key && artifact.facts.family.as_deref() == Some(family.id.as_str())
-        })
+        });
+    (member_there || crate::catalog::family_entry_installed(snapshot, host, &family.id))
         .then(|| family.name_en.clone())
 }
 
@@ -197,8 +203,14 @@ impl Session {
             .search(&instance, query)
             .await
             .map_err(SearchError::Adapter)?;
-        let artifacts = self.snapshot.lock().unwrap().artifacts.clone();
+        let snapshot = self.snapshot();
+        let artifacts = snapshot.artifacts.clone();
         let mut host = crate::catalog::Host::chip_and_macos();
+        // Whether Ollama.app is there, for the Ollama entry `tool_there`
+        // goes by, looked up as Open Ollama looks it up.
+        host.ollama_app = std::env::var_os("HOME").is_some_and(|home| {
+            crate::adapters::ollama::ollama_app_path(std::path::Path::new(&home)).is_some()
+        });
         // Its chip as this Homebrew runs: one in /usr/local runs as Intel,
         // under Rosetta on Apple silicon, and refuses an Apple silicon
         // cask (`brew::bottles::this_mac`; from the review of the check).
@@ -227,12 +239,17 @@ impl Session {
                 // A suggestion goes by its entry, which knows its tool's
                 // other copies already (`plan_found`, `FoundError::State`).
                 let suggestion = crate::catalog::id_installing(hit.kind, &hit.name).is_some();
+                // What Homebrew would refuse, kept with the result; its tool
+                // there another way is looked at again when it is planned,
+                // on the snapshot then (`plan_found`; from the review of
+                // the author's decision G4).
+                let refused = blocked_on(&needs, &host);
                 let blocked = if installed || suggestion {
-                    blocked_on(&needs, &host)
+                    refused.clone()
                 } else {
-                    tool_there(&artifacts, &instance.id, hit.kind, &hit.name)
+                    tool_there(&snapshot, &host, &instance.id, hit.kind, &hit.name)
                         .map(|tool| FoundBlock::ToolThere { tool })
-                        .or_else(|| blocked_on(&needs, &host))
+                        .or_else(|| refused.clone())
                 };
                 found.insert(
                     id.clone(),
@@ -243,7 +260,7 @@ impl Session {
                             artifact_kind: hit.kind,
                             name: hit.name.clone(),
                         },
-                        blocked: blocked.clone(),
+                        blocked: refused,
                         found_at: now,
                     },
                 );
@@ -304,6 +321,20 @@ impl Session {
         if let Some(block) = blocked {
             return Err(FoundError::Blocked(block));
         }
+        // Its tool there another way, on the snapshot now: an install from
+        // the list since, or one gone since (from the review of the author's
+        // decision G4). A suggestion's entry says it below.
+        if crate::catalog::id_installing(request.artifact_kind, &request.name).is_none() {
+            if let Some(tool) = tool_there(
+                &self.snapshot(),
+                &crate::catalog::Host::of_this_mac(),
+                &request.instance_id,
+                request.artifact_kind,
+                &request.name,
+            ) {
+                return Err(FoundError::Blocked(FoundBlock::ToolThere { tool }));
+            }
+        }
         // A suggestion, found by searching, is installed only where its
         // entry would be: not a second copy of a tool the Mac has another
         // way, nor one this Mac cannot install (`catalog::install_request`).
@@ -342,7 +373,7 @@ mod tests {
         meta: AdapterMeta,
         instance: ManagerInstance,
         /// What it lists installed.
-        listed: Vec<(ArtifactKind, &'static str)>,
+        listed: Mutex<Vec<(ArtifactKind, &'static str)>>,
         hits: Mutex<Vec<SearchHit>>,
         searched: Mutex<Vec<String>>,
         plans: AtomicUsize,
@@ -369,6 +400,8 @@ mod tests {
         ) -> Result<Vec<InstalledArtifact>, AdapterError> {
             Ok(self
                 .listed
+                .lock()
+                .unwrap()
                 .iter()
                 .map(|(kind, name)| crate::testing::installed_artifact(&inst.id, *kind, name))
                 .collect())
@@ -444,7 +477,7 @@ mod tests {
         let brew = Arc::new(FakeBrew {
             meta: test_support::fake_adapter_meta("brew"),
             instance,
-            listed,
+            listed: Mutex::new(listed),
             hits: Mutex::new(vec![
                 hit(ArtifactKind::Formula, "jq"),
                 hit(ArtifactKind::Formula, "jq-lsp"),
@@ -715,6 +748,63 @@ mod tests {
         assert_eq!(brew.plans.load(Ordering::SeqCst), 0);
     }
 
+    #[tokio::test]
+    async fn test_a_tool_installed_since_the_search_is_looked_at_again_when_planned() {
+        // From the review of the author's decision G4: Claude Code installed
+        // from the list after searching left claude-code@latest's row with
+        // Install, and its plan went to a Homebrew that refuses it.
+        let (session, brew) = session_listing(
+            crate::testing::manager_instance("brew", "brew:/opt/homebrew"),
+            Vec::new(),
+        )
+        .await;
+        *brew.hits.lock().unwrap() = vec![
+            hit(ArtifactKind::Cask, "claude-code"),
+            hit(ArtifactKind::Cask, "claude-code@latest"),
+        ];
+        let found = session.search_homebrew("claude").await.expect("search");
+        assert_eq!(found[1].blocked, None);
+        *brew.listed.lock().unwrap() = vec![(ArtifactKind::Cask, "claude-code")];
+        session
+            .refresh(&test_support::non_root_env(), &CheckOptions::default())
+            .await;
+        assert!(matches!(
+            session.plan_found(&found[1].id).await,
+            Err(FoundError::Blocked(FoundBlock::ToolThere { .. }))
+        ));
+        // And gone again: planned.
+        brew.listed.lock().unwrap().clear();
+        session
+            .refresh(&test_support::non_root_env(), &CheckOptions::default())
+            .await;
+        session.plan_found(&found[1].id).await.expect("plan");
+    }
+
+    #[test]
+    fn test_a_tool_counted_by_its_catalog_entry_another_way_is_there() {
+        // Ollama from ollama.com is no family member: its catalog entry
+        // counts Ollama.app (from the review of the author's decision G4).
+        let snapshot = super::super::Snapshot::empty();
+        let host = |ollama_app| crate::catalog::Host {
+            macos_major: Some(15),
+            apple_silicon: true,
+            memory_bytes: None,
+            free_bytes: None,
+            ollama_app,
+        };
+        let there = |ollama_app| {
+            tool_there(
+                &snapshot,
+                &host(ollama_app),
+                "brew:/opt/homebrew",
+                ArtifactKind::Cask,
+                "ollama-binary",
+            )
+        };
+        assert_eq!(there(true), Some("Ollama".to_string()));
+        assert_eq!(there(false), None);
+    }
+
     #[test]
     fn test_what_a_result_needs_blocks_it_only_where_this_mac_lacks_it() {
         fn host(macos_major: Option<u32>, apple_silicon: bool) -> crate::catalog::Host {
@@ -837,7 +927,7 @@ mod tests {
         let brew = Arc::new(FakeBrew {
             meta: test_support::fake_adapter_meta("brew"),
             instance: crate::testing::manager_instance("brew", "brew:/opt/homebrew"),
-            listed: Vec::new(),
+            listed: Mutex::new(Vec::new()),
             hits: Mutex::new(vec![hit(ArtifactKind::Formula, "jq")]),
             searched: Mutex::new(Vec::new()),
             plans: AtomicUsize::new(0),

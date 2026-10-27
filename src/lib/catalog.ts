@@ -129,6 +129,27 @@ export function stateText(t: Translate, state: CatalogState): string {
   }
 }
 
+/**
+ * Why a search result can't be installed here, in a sentence: what its
+ * row says under its name, and its refusal (`search_blocked`). Null for
+ * anything else.
+ */
+export function blockedSaid(t: Translate, blocked: unknown): string | null {
+  if (blocked === "AppThere") return t("discover.sheet.appThere");
+  if (blocked === "Disabled") return t("discover.sheet.disabled");
+  if (blocked === "ManualInstaller") return t("discover.sheet.manualInstaller");
+  if (blocked === "OtherChip") return t("discover.sheet.otherChip");
+  if (typeof blocked === "object" && blocked !== null && "ToolThere" in blocked) {
+    const tool = (blocked as { ToolThere: { tool?: unknown } }).ToolThere.tool;
+    return typeof tool === "string" ? t("discover.sheet.toolThere", { tool }) : null;
+  }
+  if (typeof blocked === "object" && blocked !== null && "NeedsMacOS" in blocked) {
+    const major = (blocked as { NeedsMacOS: { major?: unknown } }).NeedsMacOS.major;
+    return typeof major === "number" ? t("discover.sheet.needsMacOS", { major }) : null;
+  }
+  return null;
+}
+
 /** Why a search result can't be installed here, as its row says it in place of Install. */
 export function blockedText(t: Translate, blocked: FoundBlock): string {
   if (typeof blocked === "object") {
@@ -207,22 +228,7 @@ export function catalogRefusal(t: Translate, raw: string): string | null {
   // A search result kept longer than its id is good for (step E).
   if (kind === "search_expired") return t("discover.search.expired");
   // One Homebrew would refuse on this Mac (`search_blocked`).
-  if (kind === "search_blocked") {
-    const { blocked } = parsed as { blocked?: unknown };
-    if (blocked === "AppThere") return t("discover.sheet.appThere");
-    if (typeof blocked === "object" && blocked !== null && "ToolThere" in blocked) {
-      const tool = (blocked as { ToolThere: { tool?: unknown } }).ToolThere.tool;
-      return typeof tool === "string" ? t("discover.sheet.toolThere", { tool }) : null;
-    }
-    if (blocked === "Disabled") return t("discover.sheet.disabled");
-    if (blocked === "ManualInstaller") return t("discover.sheet.manualInstaller");
-    if (blocked === "OtherChip") return t("discover.sheet.otherChip");
-    if (typeof blocked === "object" && blocked !== null && "NeedsMacOS" in blocked) {
-      const major = (blocked as { NeedsMacOS: { major?: unknown } }).NeedsMacOS.major;
-      return typeof major === "number" ? t("discover.sheet.needsMacOS", { major }) : null;
-    }
-    return null;
-  }
+  if (kind === "search_blocked") return blockedSaid(t, (parsed as { blocked?: unknown }).blocked);
   if (kind !== "catalog_state") return null;
   if (typeof state === "object" && state !== null && "NeedsMacOS" in state) {
     const major = (state as { NeedsMacOS: { major?: unknown } }).NeedsMacOS.major;
