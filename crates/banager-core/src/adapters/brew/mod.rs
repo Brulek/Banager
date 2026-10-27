@@ -1418,12 +1418,22 @@ impl BrewAdapter {
     /// Whether installing the formula `name` compiles it on this Mac: one
     /// read-only `brew info --json=v2 --formula {name}`, read as an
     /// inventory is for updates (`bottles::formulae_built_from_source`).
-    /// False where this Mac's tag is not known, and where the ask fails or
-    /// its answer does not read: nothing is said of what was not read.
+    /// Only on a Mac Homebrew compiles a fresh install on -- Intel, or
+    /// Apple silicon before `HOMEBREW_MACOS_OLDEST_SUPPORTED` (15,
+    /// `brew.sh:347`): on any other, Homebrew refuses a core formula with no
+    /// bottle rather than compile it (`fresh_install?`,
+    /// `extend/os/mac/formula_installer.rb:11-16`; `check_install_sanity`,
+    /// `formula_installer.rb:417-449`), and its refusal is the word (from
+    /// the review of 17f32003). False where this Mac's tag is not known,
+    /// and where the ask fails or its answer does not read: nothing is said
+    /// of what was not read.
     async fn install_compiles(&self, inst: &ManagerInstance, name: &str) -> bool {
         let Some(mac) = (self.mac_tag_fn)(&inst.prefix) else {
             return false;
         };
+        if mac.arm && mac.macos.0 >= HOMEBREW_MACOS_OLDEST_SUPPORTED {
+            return false;
+        }
         let args = vec![
             "info".to_string(),
             "--json=v2".to_string(),
@@ -3230,6 +3240,11 @@ fn app_targets_of(artifacts: &[serde_json::Value]) -> Vec<String> {
         .filter(|name| name.ends_with(".app") && !name.contains('/') && !name.starts_with('.'))
         .collect()
 }
+
+/// The oldest macOS Homebrew 7 installs fresh from bottles on Apple
+/// silicon (`HOMEBREW_MACOS_OLDEST_SUPPORTED`, `brew.sh:347`): on it and
+/// later, a core formula with no bottle is refused, not compiled.
+const HOMEBREW_MACOS_OLDEST_SUPPORTED: u32 = 15;
 
 /// Whether a candidate `brew` path leads to anything, as `exists` answers
 /// but looked up one step at a time and never into or through a protected
@@ -7663,6 +7678,20 @@ mod plan_execute_tests {
         let fd = adapter.plan(&inst, &install("fd")).await.expect("plan");
         assert!(fd.warnings.is_empty(), "got {:?}", fd.warnings);
         assert_eq!(fd.timeout_secs, 1800);
+        // On a Mac Homebrew installs fresh from bottles, a core formula with
+        // no bottle is refused, not compiled: nothing said, nothing asked
+        // (from the review of 17f32003).
+        let supported = BrewAdapter::new(runner.clone()).with_mac_tag_fn(|_| {
+            Some(MacTag {
+                arm: true,
+                macos: (15, 1),
+            })
+        });
+        let before = runner.calls().len();
+        let uv_here = supported.plan(&inst, &install("uv")).await.expect("plan");
+        assert!(uv_here.warnings.is_empty(), "got {:?}", uv_here.warnings);
+        assert_eq!(uv_here.timeout_secs, 1800);
+        assert_eq!(runner.calls().len(), before);
         // A cask is not asked about.
         let asked = runner.calls().len();
         let cask = OpRequest {

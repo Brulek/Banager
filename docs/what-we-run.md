@@ -2079,7 +2079,11 @@ asks Homebrew about that one formula, read-only, `<brew> info --json=v2
 --formula {name}` (30 s), and reads its answer as above
 (`BrewAdapter::install_compiles`): where no bottle fits, the preview says
 "This compiles on your Mac and takes a while." and the install may run
-for 6 hours instead of 30 minutes. Where this Mac's version is not known,
+for 6 hours instead of 30 minutes. It asks only on a Mac Homebrew
+compiles a fresh install on -- Intel, or Apple silicon before macOS 15
+(`HOMEBREW_MACOS_OLDEST_SUPPORTED`, `brew.sh:347`): on any other, Homebrew
+refuses a core formula with no bottle instead (`fresh_install?`,
+`extend/os/mac/formula_installer.rb:11-16`), and its refusal is the word. Where this Mac's version is not known,
 or the ask fails or does not read, nothing is said and the install has
 its half hour, as before. Only the formula itself is judged: one whose
 own bottle fits but a dependency's does not still compiles that
@@ -5762,7 +5766,12 @@ plan store) and is exactly the install in "Homebrew" or "Ollama" above:
     <ollama> pull <model>
 
 with Homebrew's five variables, and `SUDO_ASKPASS` where it applies, or
-`OLLAMA_HOST`. Nothing else runs to make the preview: what Homebrew also
+`OLLAMA_HOST`. To make a formula's preview, one read-only command runs,
+`<brew> info --json=v2 --formula <name>` (30 s), for whether the install
+compiles on this Mac (`BrewAdapter::install_compiles`; "Formula updates
+that compile", in "Homebrew" above): where it does, the sheet says "This
+compiles on your Mac and takes a while." and the install may run for 6
+hours. Nothing else runs to make the preview: what Homebrew also
 installs, and what it may update on the way, is said in general, not
 listed; the model's sheet says about how much it downloads, from the
 size fixed in the app. The sheet

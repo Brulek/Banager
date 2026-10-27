@@ -2680,16 +2680,21 @@ fn test_what_we_run_says_which_formula_updates_compile_and_how_long_they_get() {
     // tells.
     let doc = read_doc();
     let homebrew = section_body(&doc, "Homebrew").expect("a `## Homebrew` section");
-    let row = homebrew
-        .lines()
-        .find(|line| line.starts_with("| Upgrade one formula no bottle fits this Mac"))
-        .unwrap_or_else(|| {
-            panic!("Homebrew's write-command table has no row for an update that compiles")
-        });
-    assert!(
-        row.contains(&format!("{} s", BrewAdapter::SOURCE_BUILD_TIMEOUT_SECS)),
-        "the row does not state its time limit: {row}"
-    );
+    // And an install that compiles, the same way (from the review of
+    // 17f32003).
+    for start in [
+        "| Upgrade one formula no bottle fits this Mac",
+        "| Install a formula no bottle fits this Mac",
+    ] {
+        let row = homebrew
+            .lines()
+            .find(|line| line.starts_with(start))
+            .unwrap_or_else(|| panic!("Homebrew's write-command table has no row {start:?}"));
+        assert!(
+            row.contains(&format!("{} s", BrewAdapter::SOURCE_BUILD_TIMEOUT_SECS)),
+            "the row does not state its time limit: {row}"
+        );
+    }
     let folded = homebrew.split_whitespace().collect::<Vec<_>>().join(" ");
     for words in [
         "**Formula updates that compile**",
@@ -2697,6 +2702,7 @@ fn test_what_we_run_says_which_formula_updates_compile_and_how_long_they_get() {
         "`kern.osproductversion`",
         "`Warning::CompilesLocally`",
         "`docs/Support-Tiers.md:143-159`",
+        "`BrewAdapter::install_compiles`",
     ] {
         assert!(
             folded.contains(words),
