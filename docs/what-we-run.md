@@ -1976,6 +1976,7 @@ required (`BrewAdapter::update_steps`).
 | Search by description (Discover's search) | `<brew> search --desc {query}` | 30 s |
 | Name the formulae a search found as Homebrew names them (Discover's search) | `<brew> info --json=v2 --formula {names}`, the at most 40 formula names listed | 30 s |
 | Read what the casks a search found need (Discover's search) | `<brew> info --json=v2 --cask {names}`, the cask names listed | 30 s |
+| Whether a formula's install compiles on this Mac (its install preview; Formula updates that compile) | `<brew> info --json=v2 --formula {name}` | 30 s |
 | List installed formulae depending on a formula (uninstall preview) | `<brew> uses --installed {name}` | 120 s |
 
 Never `--greedy` or `--greedy-latest` (R47-2, r18): with either, Homebrew
@@ -2070,6 +2071,19 @@ A formula from another tap with no bottle is not judged: it is often a
 ready-made program its tap only copies into place, which does not compile.
 Neither it, one whose entry says nothing of bottles, a macOS newer than
 Banager knows, nor an inventory that did not answer changes anything. Nothing more runs for this.
+
+An install compiles the same way, with every dependency no bottle fits
+either -- on such a Mac, Discover's install of uv or Node.js (from the
+review of the areas earlier reviews left). A formula's install preview
+asks Homebrew about that one formula, read-only, `<brew> info --json=v2
+--formula {name}` (30 s), and reads its answer as above
+(`BrewAdapter::install_compiles`): where no bottle fits, the preview says
+"This compiles on your Mac and takes a while." and the install may run
+for 6 hours instead of 30 minutes. Where this Mac's version is not known,
+or the ask fails or does not read, nothing is said and the install has
+its half hour, as before. Only the formula itself is judged: one whose
+own bottle fits but a dependency's does not still compiles that
+dependency within the half hour.
 
 **Formulae Homebrew leaves out** (r18 R46-1). Homebrew 7 lists an
 installed formula only if it can load it, and silently drops one it
@@ -2260,6 +2274,7 @@ preview):
 | Purpose | Argv | Timeout | Needs a password |
 |---|---|---|---|
 | Install a formula | `<brew> install --formula {name}` | 1800 s | No |
+| Install a formula no bottle fits this Mac (Formula updates that compile, above; previewed with a "compiles on your Mac" warning) | `<brew> install --formula {name}` | 21600 s (6 hours) | No |
 | Install a cask | `<brew> install --cask {name}` | 1800 s | Sometimes — some cask installers invoke `sudo`; `SUDO_ASKPASS` is passed through when set |
 | Uninstall a formula | `<brew> uninstall --formula {name}` | 1800 s | No |
 | Uninstall a formula with more than one version installed and no pin | `<brew> uninstall --formula --force {name}` | 1800 s | No |

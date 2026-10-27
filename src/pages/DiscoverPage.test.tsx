@@ -282,6 +282,19 @@ describe("the Discover page", () => {
     expect(dialog).toHaveTextContent(/password/);
   });
 
+  it("says an install that compiles on this Mac takes a while (from the review of the areas earlier reviews left)", async () => {
+    planInstall = async () => {
+      const issued = installPlan("Formula", "ffmpeg");
+      return { ...issued, plan: { ...issued.plan, warnings: ["CompilesLocally"], timeout_secs: 21_600 } };
+    };
+    renderWithProviders(<DiscoverPage />);
+    await waitFor(() => expect(rows()).toHaveLength(8));
+    fireEvent.click(within(row("ffmpeg")).getByRole("button", { name: "Install ffmpeg" }));
+    const dialog = await screen.findByRole("alertdialog", { name: "Install “ffmpeg”?" });
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: "Install" })).toBeEnabled());
+    expect(dialog).toHaveTextContent("This compiles on your Mac and takes a while.");
+  });
+
   it("says why it cannot install an entry this Mac no longer can, in the row's terms", async () => {
     planInstall = async () => {
       throw JSON.stringify({ kind: "catalog_state", state: "Installed" });

@@ -1415,6 +1415,31 @@ impl BrewAdapter {
         }
     }
 
+    /// Whether installing the formula `name` compiles it on this Mac: one
+    /// read-only `brew info --json=v2 --formula {name}`, read as an
+    /// inventory is for updates (`bottles::formulae_built_from_source`).
+    /// False where this Mac's tag is not known, and where the ask fails or
+    /// its answer does not read: nothing is said of what was not read.
+    async fn install_compiles(&self, inst: &ManagerInstance, name: &str) -> bool {
+        let Some(mac) = (self.mac_tag_fn)(&inst.prefix) else {
+            return false;
+        };
+        let args = vec![
+            "info".to_string(),
+            "--json=v2".to_string(),
+            "--formula".to_string(),
+            name.to_string(),
+        ];
+        let Ok(output) = self.run_brew(inst, args, Duration::from_secs(30)).await else {
+            return false;
+        };
+        if output.exit_code != Some(0) {
+            return false;
+        }
+        let short = name.rsplit('/').next().unwrap_or(name);
+        bottles::formulae_built_from_source(&output.stdout, mac).contains(short)
+    }
+
     /// Whether the update of the formula `name` compiles, as the last
     /// inventory of `instance_id` read it (`remember_source_builds`).
     fn builds_from_source(&self, instance_id: &str, name: &str) -> bool {
@@ -3687,7 +3712,21 @@ impl BrewAdapter {
                 if let Some(askpass) = (self.askpass_fn)() {
                     env.push(("SUDO_ASKPASS".to_string(), askpass));
                 }
-                let warnings = self.brew_env_warnings(inst, req.kind, &env);
+                let mut warnings = self.brew_env_warnings(inst, req.kind, &env);
+                // On a Mac Homebrew builds no bottle for -- every Intel
+                // Mac, and Apple silicon before macOS 15, from Homebrew 7
+                // -- a formula's install compiles it, and what it needs
+                // that has no bottle either: on an older Mac, longer than
+                // the half hour, every time. Said as an update that
+                // compiles is (r18 R46-2), and given its hours, where
+                // Homebrew's own answer for the formula has no bottle for
+                // this Mac (`install_compiles`; from the review of the
+                // areas earlier reviews left).
+                let compiles = req.artifact_kind == ArtifactKind::Formula
+                    && self.install_compiles(inst, &req.name).await;
+                if compiles {
+                    warnings.insert(0, Warning::CompilesLocally);
+                }
                 Ok(Plan {
                     request: req.clone(),
                     action: PlanAction::Command {
@@ -3701,7 +3740,11 @@ impl BrewAdapter {
                     warnings,
                     affected: Vec::new(),
                     basis: None,
-                    timeout_secs: 1800,
+                    timeout_secs: if compiles {
+                        Self::SOURCE_BUILD_TIMEOUT_SECS
+                    } else {
+                        1800
+                    },
                 })
             }
             OpKind::Uninstall => {
@@ -7571,6 +7614,65 @@ mod plan_execute_tests {
     /// for Apple silicon on Sequoia and Tahoe only, as Homebrew 7 builds
     /// them, and `jq`, with one bottle for every Mac: the reply names every
     /// Mac's bottles when `HOMEBREW_NO_INSTALL_FROM_API` is set.
+    /// From the review of the areas earlier reviews left: on a Mac
+    /// Homebrew 7 builds no bottle for, Discover's install of uv compiled
+    /// it and every dependency with no warning, and was stopped at the
+    /// half hour. Now said as an update that compiles is, with its hours.
+    #[tokio::test]
+    async fn test_an_install_no_bottle_fits_says_it_compiles_and_gets_hours() {
+        let install = |name: &str| OpRequest {
+            kind: OpKind::Install,
+            instance_id: test_instance().id,
+            artifact_kind: ArtifactKind::Formula,
+            name: name.to_string(),
+        };
+        let answer = |stdout: &str| CommandOutput {
+            stderr_cause: Default::default(),
+            exit_code: Some(0),
+            stdout: stdout.to_string(),
+            stderr: String::new(),
+            timed_out: false,
+            cancelled: false,
+        };
+        let brew = "/opt/homebrew/bin/brew";
+        let runner = Arc::new(MockRunner::new());
+        // Homebrew 7 on macOS 14: its catalogue for the Mac holds no
+        // bottle, so a core formula's is `{}`.
+        runner.respond(
+            vec![brew, "info", "--json=v2", "--formula", "uv"],
+            answer(r#"{"formulae":[{"name":"uv","tap":"homebrew/core","bottle":{}}],"casks":[]}"#),
+        );
+        runner.respond(
+            vec![brew, "info", "--json=v2", "--formula", "jq"],
+            answer(r#"{"formulae":[{"name":"jq","tap":"homebrew/core","bottle":{"stable":{"files":{"arm64_sonoma":{}}}}}],"casks":[]}"#),
+        );
+        let adapter = BrewAdapter::new(runner.clone()).with_mac_tag_fn(|_| {
+            Some(MacTag {
+                arm: true,
+                macos: (14, 7),
+            })
+        });
+        let inst = test_instance();
+        let uv = adapter.plan(&inst, &install("uv")).await.expect("plan");
+        assert_eq!(uv.warnings, [Warning::CompilesLocally]);
+        assert_eq!(uv.timeout_secs, BrewAdapter::SOURCE_BUILD_TIMEOUT_SECS);
+        let jq = adapter.plan(&inst, &install("jq")).await.expect("plan");
+        assert!(jq.warnings.is_empty(), "got {:?}", jq.warnings);
+        assert_eq!(jq.timeout_secs, 1800);
+        // An ask that fails says nothing, as before.
+        let fd = adapter.plan(&inst, &install("fd")).await.expect("plan");
+        assert!(fd.warnings.is_empty(), "got {:?}", fd.warnings);
+        assert_eq!(fd.timeout_secs, 1800);
+        // A cask is not asked about.
+        let asked = runner.calls().len();
+        let cask = OpRequest {
+            artifact_kind: ArtifactKind::Cask,
+            ..install("iterm2")
+        };
+        adapter.plan(&inst, &cask).await.expect("plan");
+        assert_eq!(runner.calls().len(), asked);
+    }
+
     fn runner_with_node_bottled_for_apple_silicon_only() -> Arc<MockRunner> {
         runner_answering_installed_info(
             r#"{"formulae":[{"name":"node","linked_keg":"25.1.0","installed":[{"version":"25.1.0","installed_on_request":true}],"bottle":{"stable":{"files":{"arm64_tahoe":{},"arm64_sequoia":{}}}}},{"name":"jq","linked_keg":"1.8.2","installed":[{"version":"1.8.2","installed_on_request":true}],"bottle":{"stable":{"files":{"all":{}}}}}],"casks":[]}"#,
