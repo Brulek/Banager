@@ -131,7 +131,11 @@ export function stateText(t: Translate, state: CatalogState): string {
 
 /** Why a search result can't be installed here, as its row says it in place of Install. */
 export function blockedText(t: Translate, blocked: FoundBlock): string {
-  if (typeof blocked === "object") return t("discover.state.needsMacOS", { major: blocked.NeedsMacOS.major });
+  if (typeof blocked === "object") {
+    // Its tool installed another way: on this Mac already, as its app.
+    if ("ToolThere" in blocked) return t("discover.state.appThere");
+    return t("discover.state.needsMacOS", { major: blocked.NeedsMacOS.major });
+  }
   switch (blocked) {
     case "AppThere":
       return t("discover.state.appThere");
@@ -204,6 +208,10 @@ export function catalogRefusal(t: Translate, raw: string): string | null {
   if (kind === "search_blocked") {
     const { blocked } = parsed as { blocked?: unknown };
     if (blocked === "AppThere") return t("discover.sheet.appThere");
+    if (typeof blocked === "object" && blocked !== null && "ToolThere" in blocked) {
+      const tool = (blocked as { ToolThere: { tool?: unknown } }).ToolThere.tool;
+      return typeof tool === "string" ? t("discover.sheet.toolThere", { tool }) : null;
+    }
     if (blocked === "Disabled") return t("discover.sheet.disabled");
     if (blocked === "OtherChip") return t("discover.sheet.otherChip");
     if (typeof blocked === "object" && blocked !== null && "NeedsMacOS" in blocked) {

@@ -5848,7 +5848,16 @@ offered", "Needs macOS 15", "Not supported on this Mac"), and
 `plan_found` refuses it (`search_blocked`): Homebrew refuses each of
 these, the last three before downloading anything, the first after
 downloading it all, since it never moves one app over another unless
-told to (`--adopt`, `--force`, which Banager does not pass). No app is
+told to (`--adopt`, `--force`, which Banager does not pass). Before
+those, a result that is neither installed nor a suggestion, whose tool --
+by the AI tools' family table (`families::family_for`) -- the last check
+lists installed another way, says "Already on this Mac" too, and
+`plan_found` refuses it (`FoundBlock::ToolThere`, the author's decision
+G4): the `claude-code@latest` cask beside Claude Code from npm or its
+`claude-code` cask, the `ollama-binary` cask beside the `ollama` formula
+-- a second copy, or one Homebrew refuses as conflicting; its sheet names
+the tool. A suggestion goes by its entry instead, which counts the same
+family (Discover's catalog, below). Nothing more is read for this. No app is
 looked for where `HOMEBREW_CASK_OPTS` -- in Banager's environment or a
 `brew.env` file, as above -- may give an `appdir` of its own: a word of it,
 split at spaces with its quotes dropped, whose name before `=` is `appdir`

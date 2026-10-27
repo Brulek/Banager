@@ -41,6 +41,11 @@ export function mockFamilyOf(adapterId: string, key: ArtifactKey): string | null
   return source === null ? null : (INDEX.get(`${source}|${normalise(source, key.name)}`) ?? null);
 }
 
+/** A family's product name, as `Family::name_en`, or null. */
+export function mockFamilyName(id: string): string | null {
+  return table.families.find((family) => family.id === id)?.name_en ?? null;
+}
+
 /** Every artifact with `facts.family` set from the table, by its instance's adapter. */
 export function withFamilies(instances: ManagerInstance[], artifacts: InstalledArtifact[]): InstalledArtifact[] {
   const adapters = new Map(instances.map((instance) => [instance.id, instance.adapter_id]));

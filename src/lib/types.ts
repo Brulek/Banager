@@ -1445,11 +1445,17 @@ export interface Found {
 }
 /**
  * Why Homebrew would refuse a search result on this Mac, from what its own
- * `brew info` says it needs (Rust `FoundBlock`): its app already in
+ * `brew info` says it needs, or what this Mac has (Rust `FoundBlock`): its
+ * tool installed another way (its product name); its app already in
  * /Applications, put there another way; disabled; a newer macOS; or the
  * other kind of chip.
  */
-export type FoundBlock = "AppThere" | "Disabled" | "OtherChip" | { NeedsMacOS: { major: number } };
+export type FoundBlock =
+  | "AppThere"
+  | "Disabled"
+  | "OtherChip"
+  | { NeedsMacOS: { major: number } }
+  | { ToolThere: { tool: string } };
 /**
  * What the Homebrew hand-off sees of /opt/homebrew (Rust `InstallerLook`,
  * `look_for_homebrew` in src-tauri/src/ipc.rs): whether Homebrew's

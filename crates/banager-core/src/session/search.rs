@@ -6,7 +6,9 @@
 
 use super::{IssuedPlan, Session};
 use crate::adapters::AdapterError;
-use crate::model::{ArtifactKind, Chip, HitNeeds, OpKind, OpRequest};
+use crate::model::{
+    ArtifactKey, ArtifactKind, Chip, HitNeeds, InstalledArtifact, OpKind, OpRequest,
+};
 use serde::Serialize;
 use std::time::{Duration, Instant};
 
@@ -62,8 +64,15 @@ pub struct Found {
 /// downloading anything (from the review of the areas earlier reviews
 /// left: the row offered Install, and the run ended in Homebrew's own
 /// refusal).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub enum FoundBlock {
+    /// The tool it is -- by the family table (`families::family_for`) --
+    /// is on this Mac already another way: Claude Code from npm or its
+    /// `claude-code` cask, beside the `claude-code@latest` cask; the
+    /// `ollama` formula beside the `ollama-binary` cask. A second copy, or
+    /// one Homebrew refuses (the author's decision G4). `tool`: its product
+    /// name, untranslated.
+    ToolThere { tool: String },
     /// Something is already where it puts its app, put there another way:
     /// Homebrew would download it, then stop rather than replace it.
     AppThere,
@@ -73,6 +82,30 @@ pub enum FoundBlock {
     NeedsMacOS { major: u32 },
     /// It installs on the other kind of chip only.
     OtherChip,
+}
+
+/// The tool the formula or cask `kind` `name` of `instance_id` is, where
+/// another of its family's members is in `artifacts` (`facts.family`, as
+/// `families::assign` set it): its product name. Not the result itself,
+/// which its own `installed` says.
+pub(crate) fn tool_there(
+    artifacts: &[InstalledArtifact],
+    instance_id: &str,
+    kind: ArtifactKind,
+    name: &str,
+) -> Option<String> {
+    let key = ArtifactKey {
+        instance_id: instance_id.to_string(),
+        kind,
+        name: name.to_string(),
+    };
+    let family = crate::families::family_for("brew", &key)?;
+    artifacts
+        .iter()
+        .any(|artifact| {
+            artifact.key != key && artifact.facts.family.as_deref() == Some(family.id.as_str())
+        })
+        .then(|| family.name_en.clone())
 }
 
 /// What of `needs` this Mac does not meet, the first of them: its app
@@ -184,7 +217,16 @@ impl Session {
                     app_there: hit.needs.app_there && !installed,
                     ..hit.needs.clone()
                 };
-                let blocked = blocked_on(&needs, &host);
+                // A suggestion goes by its entry, which knows its tool's
+                // other copies already (`plan_found`, `FoundError::State`).
+                let suggestion = crate::catalog::id_installing(hit.kind, &hit.name).is_some();
+                let blocked = if installed || suggestion {
+                    blocked_on(&needs, &host)
+                } else {
+                    tool_there(&artifacts, &instance.id, hit.kind, &hit.name)
+                        .map(|tool| FoundBlock::ToolThere { tool })
+                        .or_else(|| blocked_on(&needs, &host))
+                };
                 found.insert(
                     id.clone(),
                     FoundEntry {
@@ -194,7 +236,7 @@ impl Session {
                             artifact_kind: hit.kind,
                             name: hit.name.clone(),
                         },
-                        blocked,
+                        blocked: blocked.clone(),
                         found_at: now,
                     },
                 );
@@ -235,7 +277,7 @@ impl Session {
             found.retain(|_, entry| entry.found_at.elapsed() <= FOUND_LIFETIME);
             found
                 .get(id)
-                .map(|entry| (entry.request.clone(), entry.blocked))
+                .map(|entry| (entry.request.clone(), entry.blocked.clone()))
         }
         .ok_or(FoundError::Unknown)?;
         let installed = self
@@ -579,7 +621,7 @@ mod tests {
         assert_eq!(found[0].blocked, Some(FoundBlock::Disabled));
         assert_eq!(found[1].blocked, None);
         assert_eq!(
-            serde_json::to_value(found[0].blocked).unwrap(),
+            serde_json::to_value(&found[0].blocked).unwrap(),
             serde_json::json!("Disabled")
         );
         assert!(matches!(
@@ -627,6 +669,43 @@ mod tests {
         let found = session.search_homebrew("only").await.expect("search");
         assert_eq!(found[0].blocked, None);
         assert_eq!(found[1].blocked, Some(FoundBlock::OtherChip));
+    }
+
+    #[tokio::test]
+    async fn test_a_result_whose_tool_is_installed_another_way_says_so_and_is_not_planned() {
+        // The author's decision G4: with the claude-code cask installed,
+        // the claude-code@latest cask is a second Claude Code, which
+        // Homebrew refuses as conflicting.
+        let (session, brew) = session_listing(
+            crate::testing::manager_instance("brew", "brew:/opt/homebrew"),
+            vec![(ArtifactKind::Cask, "claude-code")],
+        )
+        .await;
+        *brew.hits.lock().unwrap() = vec![
+            hit(ArtifactKind::Cask, "claude-code"),
+            hit(ArtifactKind::Cask, "claude-code@latest"),
+            hit(ArtifactKind::Formula, "jq"),
+        ];
+        let found = session.search_homebrew("claude").await.expect("search");
+        // The one installed is that, not blocked.
+        assert!(found[0].installed);
+        assert_eq!(found[0].blocked, None);
+        assert_eq!(
+            found[1].blocked,
+            Some(FoundBlock::ToolThere {
+                tool: "Claude Code".to_string()
+            })
+        );
+        assert_eq!(
+            serde_json::to_value(&found[1].blocked).unwrap(),
+            serde_json::json!({ "ToolThere": { "tool": "Claude Code" } })
+        );
+        assert_eq!(found[2].blocked, None);
+        assert!(matches!(
+            session.plan_found(&found[1].id).await,
+            Err(FoundError::Blocked(FoundBlock::ToolThere { .. }))
+        ));
+        assert_eq!(brew.plans.load(Ordering::SeqCst), 0);
     }
 
     #[test]

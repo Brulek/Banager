@@ -1850,6 +1850,7 @@
       "disabled": "Homebrew已停止提供它。",
       "otherChip": "这台Mac上的Homebrew无法安装它：它是为另一种芯片做的。",
       "appThere": "它的App已经在这台Mac上，是用其他方式安装的。",
+      "toolThere": "{{tool}}已经在这台Mac上，是用其他方式安装的。",
       "noOllama": "这台Mac上没有Ollama，无法下载它。",
       "room": "这台Mac还有{{free}}可用空间。",
       "roomShort": "这台Mac只剩{{free}}可用空间，不够下载它。请先腾出一些空间。",

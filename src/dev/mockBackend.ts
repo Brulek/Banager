@@ -50,7 +50,7 @@ import {
   withOllama,
 } from "./mockData";
 import { appIcon } from "./mockIcons";
-import { withFamilies } from "./mockFamilies";
+import { mockFamilyName, mockFamilyOf, withFamilies } from "./mockFamilies";
 import { buildPlan, homebrewRefusal, playOutcome, refusal, type LogLine, type Subject } from "./mockPlans";
 import { withMockKeptData } from "./mockKeptData";
 import { namesASource, withMockNeededBy } from "./mockNeededBy";
@@ -1149,17 +1149,26 @@ export function createMockBackend(scenario: Scenario): MockBackend {
         foundCount += 1;
         const id = foundCount.toString(16).padStart(32, "f");
         found.set(id, { kind: "Install", instance_id: brew.id, artifact_kind: hit.kind, name: hit.name });
-        if (hit.blocked !== undefined && hit.blocked !== null) blockedFound.set(id, hit.blocked);
+        const key = { instance_id: brew.id, kind: hit.kind, name: hit.name };
+        const installed = (committed?.artifacts ?? []).some((a) => sameKey(a.key, key));
+        const catalogId = catalogIdInstalling(hit.kind, hit.name);
+        // `tool_there`: its tool installed another way, for a result that
+        // is neither installed nor a suggestion.
+        const family = installed || catalogId !== null ? null : mockFamilyOf("brew", key);
+        const tool =
+          family !== null && (committed?.artifacts ?? []).some((a) => a.facts.family === family && !sameKey(a.key, key))
+            ? mockFamilyName(family)
+            : null;
+        const blocked: Found["blocked"] = tool !== null ? { ToolThere: { tool } } : (hit.blocked ?? null);
+        if (blocked !== null) blockedFound.set(id, blocked);
         return {
           id,
           kind: hit.kind,
           name: hit.name,
           description: hit.description,
-          installed: (committed?.artifacts ?? []).some(
-            (a) => a.key.instance_id === brew.id && a.key.kind === hit.kind && a.key.name === hit.name,
-          ),
-          catalog_id: catalogIdInstalling(hit.kind, hit.name),
-          blocked: hit.blocked ?? null,
+          installed,
+          catalog_id: catalogId,
+          blocked,
         };
       });
     },
