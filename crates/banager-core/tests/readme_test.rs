@@ -360,7 +360,7 @@ fn test_readme_source_table_offers_no_install() {
     let folded = english.split_whitespace().collect::<Vec<_>>().join(" ");
     assert!(folded.contains(
         "The Discover page suggests nine entries and installs eight of them: seven with Homebrew \
-         (Claude Code, Codex, Gemini CLI, Ollama, Node.js, uv and ffmpeg) and a Gemma 3 model sized \
+         (Claude Code, Codex, Antigravity CLI, Ollama, Node.js, uv and ffmpeg) and a Gemma 3 model sized \
          for your Mac with Ollama; Homebrew itself you install in Terminal, as its sheet walks you \
          through. Its search finds anything else in Homebrew's own formulae and casks; it does not \
          search npm, PyPI, crates.io or third-party taps."

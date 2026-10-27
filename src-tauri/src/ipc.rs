@@ -2380,7 +2380,8 @@ mod tests {
         );
         refresh_impl(&state).await.expect("refresh_impl");
         for (asked, (id, kind, name)) in [
-            ("gemini-cli", ArtifactKind::Formula, "gemini-cli"),
+            ("uv", ArtifactKind::Formula, "uv"),
+            ("antigravity-cli", ArtifactKind::Cask, "antigravity-cli"),
             ("claude-code", ArtifactKind::Cask, "claude-code"),
             ("ollama", ArtifactKind::Cask, "ollama-app"),
         ]

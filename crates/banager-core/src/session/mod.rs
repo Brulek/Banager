@@ -933,7 +933,9 @@ mod tests {
         loop {
             if let Some(summary) = session.operations().into_iter().find(|o| o.id == op_id) {
                 if summary.status == OpStatus::Done {
-                    assert_eq!(summary.outcome, Some(Outcome::Succeeded));
+                    // Present after the cancel: a formula's install stopped
+                    // may not have linked it, so not known (decision G5).
+                    assert_eq!(summary.outcome, Some(Outcome::Unconfirmed));
                     break;
                 }
             }
