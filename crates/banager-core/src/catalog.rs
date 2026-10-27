@@ -158,13 +158,17 @@ pub const CATALOG: [CatalogItem; 9] = [
         installs_here: true,
     },
     CatalogItem {
-        id: "gemini-cli",
+        // Google's AI agent for Terminal, in place of Gemini CLI, whose
+        // formula Homebrew deprecated on 2026-06-18 and disables on
+        // 2026-12-18, naming this cask its replacement
+        // (`deprecation_replacement_cask`; the author's decision G3).
+        id: "antigravity-cli",
         category: CatalogCategory::AiAssistants,
         install: CatalogInstall::Homebrew {
-            kind: ArtifactKind::Formula,
-            name: "gemini-cli",
+            kind: ArtifactKind::Cask,
+            name: "antigravity-cli",
         },
-        recognized_by: &[Recognizer::Family("gemini-cli")],
+        recognized_by: &[Recognizer::Family("antigravity-cli")],
         needs_macos: None,
         installs_here: true,
     },
@@ -748,7 +752,7 @@ mod tests {
                 ("homebrew", CatalogState::NotInstalled),
                 ("claude-code", CatalogState::NeedsHomebrew),
                 ("codex", CatalogState::NeedsHomebrew),
-                ("gemini-cli", CatalogState::NeedsHomebrew),
+                ("antigravity-cli", CatalogState::NeedsHomebrew),
                 ("ollama", CatalogState::NeedsHomebrew),
                 ("model", CatalogState::NeedsOllama),
                 ("node", CatalogState::NeedsHomebrew),
@@ -807,7 +811,7 @@ mod tests {
                 ("homebrew", CatalogState::Installed),
                 ("claude-code", CatalogState::Installed),
                 ("codex", CatalogState::Installed),
-                ("gemini-cli", CatalogState::NotInstalled),
+                ("antigravity-cli", CatalogState::NotInstalled),
                 ("ollama", CatalogState::NotInstalled),
                 ("model", CatalogState::NeedsOllama),
                 // npm runs on a Node; a uv source is uv.
@@ -956,7 +960,7 @@ mod tests {
             let states = states(&mac, &SILICON_15);
             // Homebrew is there either way.
             assert_eq!(states[0], ("homebrew", CatalogState::Installed));
-            assert_eq!(states[3], ("gemini-cli", state));
+            assert_eq!(states[3], ("antigravity-cli", state));
         }
     }
 
@@ -1178,7 +1182,7 @@ mod tests {
             [
                 "claude-code",
                 "codex",
-                "gemini-cli",
+                "antigravity-cli",
                 "ollama",
                 "model",
                 "node",
@@ -1214,12 +1218,12 @@ mod tests {
             Vec::new(),
         );
         assert_eq!(
-            install_request(&mac, &SILICON_15, "gemini-cli"),
+            install_request(&mac, &SILICON_15, "uv"),
             Ok(OpRequest {
                 kind: OpKind::Install,
                 instance_id: "brew:/usr/local".to_string(),
                 artifact_kind: ArtifactKind::Formula,
-                name: "gemini-cli".to_string(),
+                name: "uv".to_string(),
             })
         );
         assert_eq!(

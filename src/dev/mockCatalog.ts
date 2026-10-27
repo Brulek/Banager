@@ -38,10 +38,10 @@ const CATALOG: Item[] = [
     installsHere: true,
   },
   {
-    id: "gemini-cli",
+    id: "antigravity-cli",
     category: "AiAssistants",
-    install: { Homebrew: { kind: "Formula", name: "gemini-cli" } },
-    recognizedBy: [{ family: "gemini-cli" }],
+    install: { Homebrew: { kind: "Cask", name: "antigravity-cli" } },
+    recognizedBy: [{ family: "antigravity-cli" }],
     installsHere: true,
   },
   {

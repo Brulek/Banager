@@ -179,7 +179,7 @@ Paths are under a generic home folder, `/Users/you`.
 - **Discover**: the catalog's nine entries, worked out from the pretend
   Mac by the rules of `catalog.rs`, copied in `src/dev/mockCatalog.ts`
   (Apple silicon, macOS 15, 16 GB, so the model is `gemma3:4b`): Homebrew,
-  Claude Code, Codex, Gemini CLI, Ollama, the model, Node.js, uv and ffmpeg
+  Claude Code, Codex, Antigravity CLI, Ollama, the model, Node.js, uv and ffmpeg
   are all "Installed" in `full`; on `empty` every one but Homebrew "Needs
   Homebrew", and the model "Needs Ollama". A test holds the copy
   to catalog.rs's ids and names. On `nothing`, Homebrew with nothing
@@ -194,7 +194,7 @@ Paths are under a generic home folder, `/Users/you`.
   pretend installer is "there", then "updating", then done, and the
   check after it finds Homebrew with nothing installed, as on `nothing`
   (`look_for_homebrew` in `mockBackend.ts`). Its search field searches a
-  pretend Homebrew of twenty-three formulae and casks, every suggestion's
+  pretend Homebrew of twenty-four formulae and casks, every suggestion's
   own among them, by name (`MOCK_HOMEBREW` in `mockSearch.ts`) -- `ollama`
   finds Homebrew's `ollama` formula, not suggested, beside the suggested
   `ollama-app` cask; `ala` finds `alacritty`, which Homebrew disabled, so

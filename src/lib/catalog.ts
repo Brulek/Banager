@@ -51,12 +51,12 @@ export const ITEM_KEYS: Record<string, ItemKeys> = {
     use: "discover.items.codex.use",
     command: "codex",
   },
-  "gemini-cli": {
-    name: "discover.items.gemini-cli.name",
-    what: "discover.items.gemini-cli.what",
-    more: "discover.items.gemini-cli.more",
-    use: "discover.items.gemini-cli.use",
-    command: "gemini",
+  "antigravity-cli": {
+    name: "discover.items.antigravity-cli.name",
+    what: "discover.items.antigravity-cli.what",
+    more: "discover.items.antigravity-cli.more",
+    use: "discover.items.antigravity-cli.use",
+    command: "agy",
   },
   ollama: {
     name: "discover.items.ollama.name",

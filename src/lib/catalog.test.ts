@@ -130,7 +130,7 @@ describe("a refusal of plan_install", () => {
 
 describe("the catalog's words", () => {
   it("give every entry installed from here how it is used and what to type", () => {
-    for (const id of ["claude-code", "codex", "gemini-cli", "node", "uv", "ffmpeg"]) {
+    for (const id of ["claude-code", "codex", "antigravity-cli", "node", "uv", "ffmpeg"]) {
       const keys = ITEM_KEYS[id];
       expect(keys.use, id).toBe(`discover.items.${id}.use`);
       expect(t(keys.use!), id).toContain(`Type ${keys.command}`);

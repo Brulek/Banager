@@ -98,7 +98,7 @@ describe("the browser preview's catalog", () => {
       expect((await states("full")).every(([, state]) => state === "Installed")).toBe(true);
       expect(await states("empty")).toEqual([
         ["homebrew", "NotInstalled"],
-        ...["claude-code", "codex", "gemini-cli", "ollama"].map((id) => [id, "NeedsHomebrew"]),
+        ...["claude-code", "codex", "antigravity-cli", "ollama"].map((id) => [id, "NeedsHomebrew"]),
         // The starter model needs Ollama, not Homebrew.
         ["model", "NeedsOllama"],
         ...["node", "uv", "ffmpeg"].map((id) => [id, "NeedsHomebrew"]),
@@ -172,7 +172,7 @@ describe("the browser preview's catalog", () => {
       expect(catalog.filter((entry) => entry.state === "NotInstalled" && entry.installs_here).map((entry) => entry.id)).toEqual([
         "claude-code",
         "codex",
-        "gemini-cli",
+        "antigravity-cli",
         "ollama",
         "node",
         "uv",
@@ -182,14 +182,14 @@ describe("the browser preview's catalog", () => {
       for (const catalogId of ["homebrew", "jq", "gemma3:4b"]) {
         await refusal(backend.invoke("plan_install", { catalogId }), JSON.stringify({ kind: "refused" }));
       }
-      const issued = await settle<IssuedPlan>(backend.invoke("plan_install", { catalogId: "gemini-cli" }));
+      const issued = await settle<IssuedPlan>(backend.invoke("plan_install", { catalogId: "antigravity-cli" }));
       expect(issued.plan.request).toEqual({
         kind: "Install",
         instance_id: "brew:/opt/homebrew",
-        artifact_kind: "Formula",
-        name: "gemini-cli",
+        artifact_kind: "Cask",
+        name: "antigravity-cli",
       });
-      expect(issued.plan.action).toMatchObject({ Command: { args: ["install", "--formula", "gemini-cli"] } });
+      expect(issued.plan.action).toMatchObject({ Command: { args: ["install", "--cask", "antigravity-cli"] } });
       const opId = (await backend.invoke("submit_operation", { planId: issued.id })) as number;
       for (let turn = 0; turn < 50; turn += 1) {
         const operations = await settle<OpSummary[]>(backend.invoke("list_operations"));
@@ -199,11 +199,11 @@ describe("the browser preview's catalog", () => {
       expect(done.find((op) => op.id === opId)).toMatchObject({ status: "Done", outcome: "Succeeded" });
       await settle(backend.invoke("refresh"));
       const after = await settle<CatalogEntry[]>(backend.invoke("get_catalog"));
-      expect(after.find((entry) => entry.id === "gemini-cli")?.state).toBe("Installed");
+      expect(after.find((entry) => entry.id === "antigravity-cli")?.state).toBe("Installed");
       // Installed now: refused in the row's terms. And the window still may
       // not plan an install by a package's name.
       await refusal(
-        backend.invoke("plan_install", { catalogId: "gemini-cli" }),
+        backend.invoke("plan_install", { catalogId: "antigravity-cli" }),
         JSON.stringify({ kind: "catalog_state", state: "Installed" }),
       );
       await refusal(

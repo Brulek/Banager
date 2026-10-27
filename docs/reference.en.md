@@ -57,7 +57,7 @@ a protected place**, and the link is not followed.
 ## Discover: new tools
 
 The **Discover** page (⌘5) suggests nine things to start with — Homebrew; Claude Code, Codex and
-Gemini CLI; Ollama and a Gemma 3 model sized for your Mac's memory; Node.js, uv and ffmpeg — and
+Antigravity CLI; Ollama and a Gemma 3 model sized for your Mac's memory; Node.js, uv and ffmpeg — and
 says which this Mac already has, by any way of having it (Claude Code from npm counts). Each of the
 rest installs with one click: a sheet says where it comes from, how much the model downloads and how
 much room there is, and shows the exact command; then Homebrew installs it, or Ollama downloads the
@@ -390,7 +390,7 @@ Being honest about this is part of the point:
 
 - **New tools come from Homebrew only.** The Installed page searches the tools you already
   have by name, command or description. The Discover page suggests nine entries and installs
-  eight of them: seven with Homebrew (Claude Code, Codex, Gemini CLI, Ollama, Node.js, uv and
+  eight of them: seven with Homebrew (Claude Code, Codex, Antigravity CLI, Ollama, Node.js, uv and
   ffmpeg) and a Gemma 3 model sized for your Mac with Ollama; Homebrew itself you install in
   Terminal, as its sheet walks you through. Its search finds anything else in Homebrew's own
   formulae and casks; it does not search npm, PyPI, crates.io or third-party taps.

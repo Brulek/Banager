@@ -5676,8 +5676,11 @@ refresh reads its packages, its tools are looked at like any other's.
 ## Discover: the catalog, and installing from it
 
 The Discover page (「发现」, Taiwan's 「探索」; phase 5) lists the
-tools Banager suggests: Homebrew; Claude Code, Codex and Gemini CLI;
-Ollama and a model to start with; Node.js, uv and ffmpeg. The list is
+tools Banager suggests: Homebrew; Claude Code, Codex and Antigravity CLI
+(Google's, the cask `antigravity-cli`, in place of Gemini CLI, whose
+formula Homebrew deprecated on 2026-06-18 and disables on 2026-12-18,
+naming this cask its replacement); Ollama and a model to start with;
+Node.js, uv and ffmpeg. The list is
 compiled into the app (`CATALOG` in `crates/banager-core/src/catalog.rs`):
 nothing is downloaded to show it, and it names no command -- what
 installs an entry is Homebrew itself, which Banager does not install, a
@@ -5750,7 +5753,7 @@ otherwise. Nothing else is read, nothing runs, nothing is written, and no
 connection is made for it. Until a check has finished, the page says nothing of any entry.
 
 Every entry but Homebrew installs from here (phase 5 steps B and D):
-Claude Code, Codex and Gemini CLI, Ollama's app, Node.js, uv and ffmpeg
+Claude Code, Codex and Antigravity CLI, Ollama's app, Node.js, uv and ffmpeg
 with Homebrew, the model with Ollama (`CatalogItem::installs_here`).
 Homebrew itself does not -- Banager does not run its installer; see
 "Homebrew itself". A "Not installed" row has Install, which opens a

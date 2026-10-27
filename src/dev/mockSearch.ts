@@ -29,6 +29,7 @@ export const MOCK_HOMEBREW: MockPackage[] = [
   { kind: "Formula", name: "ffmpeg", description: "Play, record, convert, and stream select audio and video codecs" },
   { kind: "Formula", name: "imagemagick", description: "Tools and libraries to manipulate images in select formats" },
   { kind: "Formula", name: "gemini-cli", description: "Interact with Google Gemini AI models from the command-line" },
+  { kind: "Cask", name: "antigravity-cli", description: "Terminal interface for Antigravity agents" },
   { kind: "Formula", name: "uv", description: "Extremely fast Python package installer and resolver, written in Rust" },
   { kind: "Formula", name: "node", description: "Open-source, cross-platform JavaScript runtime environment" },
   { kind: "Formula", name: "ollama", description: "Create, run, and share large language models (LLMs)" },

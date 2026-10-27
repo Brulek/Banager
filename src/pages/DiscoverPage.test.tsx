@@ -43,9 +43,9 @@ const catalog: CatalogEntry[] = [
     installs_here: true,
   },
   {
-    id: "gemini-cli",
+    id: "antigravity-cli",
     category: "AiAssistants",
-    install: { Homebrew: { kind: "Formula", name: "gemini-cli" } },
+    install: { Homebrew: { kind: "Cask", name: "antigravity-cli" } },
     state: "NotInstalled",
     installs_here: true,
   },
@@ -142,7 +142,7 @@ beforeEach(() => {
     if (cmd === "plan_install") return planInstall((args as { catalogId: string }).catalogId);
     if (cmd === "submit_operation") {
       // Listed from then on, as the backend lists what it was given.
-      operations = [...operations, installOp(7, "gemini-cli", "Queued")];
+      operations = [...operations, installOp(7, "node", "Queued")];
       return 7;
     }
     if (cmd === "look_for_homebrew") return lookForHomebrew();
@@ -194,7 +194,7 @@ describe("the Discover page", () => {
       ["Homebrew", "Installed"],
       ["Claude Code", "Installed"],
       ["Codex", "Install"],
-      ["Gemini CLI", "Install"],
+      ["Antigravity CLI", "Install"],
       ["Ollama", "Needs macOS 14"],
       ["Node.js", "Install"],
       ["uv", "Needs Homebrew"],
@@ -249,13 +249,13 @@ describe("the Discover page", () => {
   it("previews the install of the entry by its id, and runs that plan only once Install is pressed", async () => {
     renderWithProviders(<DiscoverPage />);
     await waitFor(() => expect(rows()).toHaveLength(8));
-    fireEvent.click(within(row("gemini-cli")).getByRole("button", { name: "Install Gemini CLI" }));
+    fireEvent.click(within(row("node")).getByRole("button", { name: "Install Node.js" }));
 
-    const dialog = await screen.findByRole("alertdialog", { name: "Install “Gemini CLI”?" });
+    const dialog = await screen.findByRole("alertdialog", { name: "Install “Node.js”?" });
     // The window names the entry, never a package.
     await waitFor(() => expect(calls("plan_install")).toHaveLength(1));
-    expect(calls("plan_install")[0][1]).toEqual({ catalogId: "gemini-cli" });
-    expect(dialog).toHaveTextContent("Once installed, type gemini in a new Terminal window.");
+    expect(calls("plan_install")[0][1]).toEqual({ catalogId: "node" });
+    expect(dialog).toHaveTextContent("Once installed, type node or npm in a new Terminal window.");
     expect(dialog).toHaveTextContent("Homebrew downloads it and checks the download before installing it.");
     expect(dialog).toHaveTextContent("Homebrew also installs what it needs, and may update some of what's already installed.");
     // A formula asks for no password.
@@ -263,14 +263,14 @@ describe("the Discover page", () => {
     const install = within(dialog).getByRole("button", { name: "Install" });
     await waitFor(() => expect(install).toBeEnabled());
     fireEvent.click(within(dialog).getByRole("button", { name: "Show Command" }));
-    expect(await within(dialog).findByText(command("/opt/homebrew/bin/brew install --formula gemini-cli"))).toBeInTheDocument();
+    expect(await within(dialog).findByText(command("/opt/homebrew/bin/brew install --formula node"))).toBeInTheDocument();
     expect(calls("submit_operation")).toHaveLength(0);
     fireEvent.click(install);
     await waitFor(() => expect(calls("submit_operation")).toHaveLength(1));
-    expect(calls("submit_operation")[0][1]).toEqual({ planId: "plan-gemini-cli" });
+    expect(calls("submit_operation")[0][1]).toEqual({ planId: "plan-node" });
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     // The operation bar names it as the row does.
-    await waitFor(() => expect(useUiStore.getState().opNames[7]).toBe("Gemini CLI"));
+    await waitFor(() => expect(useUiStore.getState().opNames[7]).toBe("Node.js"));
   });
 
   it("says a cask may ask for the Mac's password", async () => {
@@ -442,13 +442,13 @@ describe("the Discover page", () => {
   it("says an install that ended without the tool, opening its log, with Install to try again", async () => {
     operations = [
       installOp(4, "node", "Done", { Failed: { exit_code: 1, summary: "Error: node: no bottle", cause: null } }),
-      installOp(5, "gemini-cli", "Done", { NeedsAttention: "NotInstalledAfterInstall" }),
+      { ...installOp(5, "antigravity-cli", "Done", { NeedsAttention: "NotInstalledAfterInstall" }), artifact_kind: "Cask" },
     ];
     renderWithProviders(<DiscoverPage />);
     await waitFor(() => expect(rows()[5]).toEqual(["Node.js", "Couldn't installInstall"]));
     expect(within(row("node")).getByRole("button", { name: "View log: Node.js" })).toBeInTheDocument();
     expect(within(row("node")).getByRole("button", { name: "Install Node.js" })).toBeInTheDocument();
-    expect(rows()[3]).toEqual(["Gemini CLI", "Needs attentionInstall"]);
+    expect(rows()[3]).toEqual(["Antigravity CLI", "Needs attentionInstall"]);
   });
 
   it("says why it cannot install again beside an install that failed", async () => {
@@ -476,7 +476,7 @@ describe("the Discover page", () => {
         screen.getByText("This Mac doesn't have Homebrew yet. Install it first, and then the tools below install here in one click."),
       ).toBeInTheDocument();
       expect(rows()[0]).toEqual(["Homebrew", "Install"]);
-      expect(rows()[3]).toEqual(["Gemini CLI", "Needs Homebrew"]);
+      expect(rows()[3]).toEqual(["Antigravity CLI", "Needs Homebrew"]);
       fireEvent.click(within(row("homebrew")).getByRole("button", { name: "Install Homebrew" }));
 
       const sheet = await screen.findByRole("dialog", { name: "Install Homebrew" });

@@ -2072,11 +2072,11 @@
         "more": "Reads your project and writes or changes code as you ask. Once installed, type codex in a new Terminal window.",
         "use": "Type codex in a new Terminal window."
       },
-      "gemini-cli": {
-        "name": "Gemini CLI",
-        "what": "Google's AI assistant for Terminal",
-        "more": "Answers questions and works on code in Terminal; installing it also installs Node.js. Once installed, type gemini in a new Terminal window.",
-        "use": "Type gemini in a new Terminal window."
+      "antigravity-cli": {
+        "name": "Antigravity CLI",
+        "what": "Google's AI agent for Terminal",
+        "more": "Answers questions and works on code in Terminal. Once installed, type agy in a new Terminal window.",
+        "use": "Type agy in a new Terminal window."
       },
       "ollama": {
         "name": "Ollama",

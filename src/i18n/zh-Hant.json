@@ -1920,11 +1920,11 @@
         "more": "它會讀取你的專案，依你的要求寫程式碼、改程式碼。安裝好後，在新的終端機視窗裡輸入codex。",
         "use": "在新的終端機視窗裡輸入codex。"
       },
-      "gemini-cli": {
-        "name": "Gemini CLI",
+      "antigravity-cli": {
+        "name": "Antigravity CLI",
         "what": "Google推出、在終端機裡使用的AI助理",
-        "more": "在終端機裡回答問題、處理程式碼，安裝時會一起裝上Node.js。安裝好後，在新的終端機視窗裡輸入gemini。",
-        "use": "在新的終端機視窗裡輸入gemini。"
+        "more": "在終端機裡回答問題、處理程式碼。安裝好後，在新的終端機視窗裡輸入agy。",
+        "use": "在新的終端機視窗裡輸入agy。"
       },
       "ollama": {
         "name": "Ollama",
