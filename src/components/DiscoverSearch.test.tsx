@@ -592,10 +592,11 @@ describe("a search result Homebrew would refuse on this Mac", () => {
       { id: "3".repeat(32), kind: "Formula", name: "ansible", description: "Automate deployment", installed: false, catalog_id: null, blocked: null },
       { id: "4".repeat(32), kind: "Cask", name: "google-chrome", description: "Web browser", installed: false, catalog_id: null, blocked: "AppThere" },
       { id: "5".repeat(32), kind: "Cask", name: "claude-code@latest", description: "Terminal-based AI coding assistant", installed: false, catalog_id: null, blocked: { ToolThere: { tool: "Claude Code" } } },
+      { id: "6".repeat(32), kind: "Cask", name: "sogouinput", description: "Input method", installed: false, catalog_id: null, blocked: "ManualInstaller" },
     ];
     const { unmount } = renderWithProviders(<DiscoverPage />);
     await typeSearch("al");
-    await waitFor(() => expect(results_()).toHaveLength(6), { timeout: 3000 });
+    await waitFor(() => expect(results_()).toHaveLength(7), { timeout: 3000 });
     expect(results_().map(([name, , state]) => [name, state])).toEqual([
       ["alacritty", "No longer offered"],
       ["google-gemini", "Needs macOS 15"],
@@ -604,6 +605,8 @@ describe("a search result Homebrew would refuse on this Mac", () => {
       ["google-chrome", "Already on this Mac"],
       // Its tool, Claude Code, installed another way (decision G4).
       ["claude-code@latest", "Already on this Mac"],
+      // Only an installer to run by hand (decision G2).
+      ["sogouinput", "Manual install only"],
     ]);
     expect(screen.queryByRole("button", { name: "Install alacritty" })).toBeNull();
     expect(screen.getByRole("button", { name: "Install ansible" })).toBeInTheDocument();
@@ -618,6 +621,9 @@ describe("a search result Homebrew would refuse on this Mac", () => {
     expect(said("OtherChip")).toBe("This Mac's Homebrew can't install it: it's made for another kind of chip.");
     expect(said("AppThere")).toBe("Its app is already on this Mac, installed another way.");
     expect(said({ ToolThere: { tool: "Claude Code" } })).toBe("Claude Code is already on this Mac, installed another way.");
+    expect(said("ManualInstaller")).toBe(
+      "Homebrew only downloads its installer and won't install it for you. Get it from its maker's website instead.",
+    );
     expect(said("Something")).toBeNull();
   });
 });

@@ -1822,6 +1822,7 @@
       "ollamaElsewhere": "Ollama使用的是其他地址",
       "homebrewNotReady": "Homebrew现在无法安装工具",
       "noLongerOffered": "已停止提供",
+      "manualOnly": "只能手动安装",
       "appThere": "已在这台Mac上"
     },
     "progress": {
@@ -1851,6 +1852,7 @@
       "otherChip": "这台Mac上的Homebrew无法安装它：它是为另一种芯片做的。",
       "appThere": "它的App已经在这台Mac上，是用其他方式安装的。",
       "toolThere": "{{tool}}已经在这台Mac上，是用其他方式安装的。",
+      "manualInstaller": "Homebrew只会下载它的安装器，不会替你装好。请到它的官网下载安装。",
       "noOllama": "这台Mac上没有Ollama，无法下载它。",
       "room": "这台Mac还有{{free}}可用空间。",
       "roomShort": "这台Mac只剩{{free}}可用空间，不够下载它。请先腾出一些空间。",

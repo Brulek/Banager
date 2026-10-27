@@ -1973,6 +1973,7 @@
       "ollamaElsewhere": "Ollama uses another address",
       "homebrewNotReady": "Homebrew can't install now",
       "noLongerOffered": "No longer offered",
+      "manualOnly": "Manual install only",
       "appThere": "Already on this Mac"
     },
     "progress": {
@@ -2002,6 +2003,7 @@
       "otherChip": "This Mac's Homebrew can't install it: it's made for another kind of chip.",
       "appThere": "Its app is already on this Mac, installed another way.",
       "toolThere": "{{tool}} is already on this Mac, installed another way.",
+      "manualInstaller": "Homebrew only downloads its installer and won't install it for you. Get it from its maker's website instead.",
       "noOllama": "There's no Ollama on this Mac to download it with.",
       "room": "This Mac has {{free}} free.",
       "roomShort": "This Mac has only {{free}} free, less than the download needs. Free up some space first.",

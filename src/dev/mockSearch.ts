@@ -41,6 +41,7 @@ export const MOCK_HOMEBREW: MockPackage[] = [
   { kind: "Cask", name: "handbrake-app", description: "Open-source video transcoder" },
   { kind: "Cask", name: "jquake", description: "Real-time earthquake monitoring software for Japan" },
   { kind: "Cask", name: "alacritty", description: "GPU-accelerated terminal emulator", blocked: "Disabled" },
+  { kind: "Cask", name: "sogouinput", description: "Input method supporting full and double spell", blocked: "ManualInstaller" },
 ];
 
 /** At most this many results, as `brew::SEARCH_HITS_MAX`. */

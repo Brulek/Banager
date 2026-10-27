@@ -141,6 +141,8 @@ export function blockedText(t: Translate, blocked: FoundBlock): string {
       return t("discover.state.appThere");
     case "Disabled":
       return t("discover.state.noLongerOffered");
+    case "ManualInstaller":
+      return t("discover.state.manualOnly");
     case "OtherChip":
       return t("discover.state.homebrewUnsupported");
   }
@@ -213,6 +215,7 @@ export function catalogRefusal(t: Translate, raw: string): string | null {
       return typeof tool === "string" ? t("discover.sheet.toolThere", { tool }) : null;
     }
     if (blocked === "Disabled") return t("discover.sheet.disabled");
+    if (blocked === "ManualInstaller") return t("discover.sheet.manualInstaller");
     if (blocked === "OtherChip") return t("discover.sheet.otherChip");
     if (typeof blocked === "object" && blocked !== null && "NeedsMacOS" in blocked) {
       const major = (blocked as { NeedsMacOS: { major?: unknown } }).NeedsMacOS.major;

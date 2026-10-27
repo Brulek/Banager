@@ -78,6 +78,10 @@ pub enum FoundBlock {
     AppThere,
     /// Homebrew disabled it, and installs it no more.
     Disabled,
+    /// It only provides an installer for the person to run: Homebrew would
+    /// download it and count it installed, with nothing installed
+    /// (`HitNeeds::manual_installer`; the author's decision G2).
+    ManualInstaller,
     /// It installs on this macOS major version or later only.
     NeedsMacOS { major: u32 },
     /// It installs on the other kind of chip only.
@@ -118,6 +122,9 @@ pub(crate) fn blocked_on(needs: &HitNeeds, host: &crate::catalog::Host) -> Optio
     }
     if needs.disabled {
         return Some(FoundBlock::Disabled);
+    }
+    if needs.manual_installer {
+        return Some(FoundBlock::ManualInstaller);
     }
     if let (Some(major), Some(here)) = (needs.macos, host.macos_major) {
         if here < major {
@@ -724,6 +731,7 @@ mod tests {
             macos,
             chip,
             app_there: false,
+            manual_installer: false,
         };
         let tahoe_arm = host(Some(26), true);
         assert_eq!(blocked_on(&HitNeeds::default(), &tahoe_arm), None);
@@ -755,6 +763,7 @@ mod tests {
             macos: Some(30),
             chip: Some(Chip::Intel),
             app_there: true,
+            manual_installer: true,
         };
         assert_eq!(blocked_on(&all, &tahoe_arm), Some(FoundBlock::AppThere));
         let all = HitNeeds {
@@ -762,10 +771,18 @@ mod tests {
             ..all
         };
         assert_eq!(blocked_on(&all, &tahoe_arm), Some(FoundBlock::Disabled));
+        let all = HitNeeds {
+            disabled: false,
+            ..all
+        };
+        assert_eq!(
+            blocked_on(&all, &tahoe_arm),
+            Some(FoundBlock::ManualInstaller)
+        );
         assert_eq!(
             blocked_on(
                 &HitNeeds {
-                    disabled: false,
+                    manual_installer: false,
                     ..all
                 },
                 &tahoe_arm

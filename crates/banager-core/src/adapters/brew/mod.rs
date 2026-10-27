@@ -2949,6 +2949,14 @@ impl BrewAdapter {
                         None
                     }
                 });
+                let manual_installer = cask.artifacts.iter().any(|artifact| {
+                    artifact
+                        .get("installer")
+                        .and_then(|installers| installers.as_array())
+                        .is_some_and(|installers| {
+                            installers.iter().any(|i| i.get("manual").is_some())
+                        })
+                });
                 let app_there = look_for_apps
                     && app_targets_of(&cask.artifacts).iter().any(|app| {
                         look::target(&self.applications.join(app), &Protected::of_this_process())
@@ -2961,6 +2969,7 @@ impl BrewAdapter {
                         macos,
                         chip,
                         app_there,
+                        manual_installer,
                     },
                 )
             })
@@ -6506,7 +6515,7 @@ mod tests {
                     {"token":"google-gemini","disabled":false,"depends_on":{"arch":[{"type":"arm","bits":64}],"macos":{">=":["15"]}}},
                     {"token":"alacritty","disabled":true,"depends_on":{}},
                     {"token":"ollama-app","disabled":false,"depends_on":{"macos":{">=":["14"]}}},
-                    {"token":"sogouinput","disabled":false,"depends_on":{"arch":[{"type":"intel","bits":64},{"type":"arm","bits":64}]}}
+                    {"token":"sogouinput","disabled":false,"depends_on":{"arch":[{"type":"intel","bits":64},{"type":"arm","bits":64}]},"artifacts":[{"uninstall":[{"delete":"/Library/Input Methods/SogouInput.app"}]},{"installer":[{"manual":"sogou_mac_625b.app"}]}]}
                 ]}"#,
             ),
         );
@@ -6530,12 +6539,20 @@ mod tests {
                 macos: Some(15),
                 chip: Some(Chip::AppleSilicon),
                 app_there: false,
+                manual_installer: false,
             }
         );
         assert!(needs("alacritty").disabled);
         assert_eq!(needs("ollama-app").macos, Some(14));
-        // Both chips: no chip needed.
-        assert_eq!(needs("sogouinput"), HitNeeds::default());
+        // Both chips: no chip needed. Only an installer to run by hand
+        // (the author's decision G2).
+        assert_eq!(
+            needs("sogouinput"),
+            HitNeeds {
+                manual_installer: true,
+                ..HitNeeds::default()
+            }
+        );
     }
 
     #[tokio::test]

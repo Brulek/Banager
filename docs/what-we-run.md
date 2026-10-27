@@ -5834,7 +5834,12 @@ out; where no ask is answered, the search fails.
 The fourth command's answer also says which formulae Homebrew disabled,
 and the fifth, asked once for the casks listed, which casks it disabled,
 which need a newer macOS (`depends_on macos` with `>=`), which run on
-one kind of chip only (`depends_on arch`), and the names of the apps each
+one kind of chip only (`depends_on arch`), which only provide an
+installer for the person to run (an `installer` artifact with `manual`:
+Homebrew downloads it, prints where it is, and counts the cask
+installed with nothing installed, `cask/artifact/installer.rb`; the
+author's decision G2 -- its row says "Manual install only", and its sheet
+to get it from its maker's website), and the names of the apps each
 puts in `/Applications` (its `app` artifacts: an app's name, or the
 `target` given after it; a name with a folder in it is not looked for).
 Whether anything is at `/Applications/<app>` is looked up one step at a

@@ -194,11 +194,12 @@ Paths are under a generic home folder, `/Users/you`.
   pretend installer is "there", then "updating", then done, and the
   check after it finds Homebrew with nothing installed, as on `nothing`
   (`look_for_homebrew` in `mockBackend.ts`). Its search field searches a
-  pretend Homebrew of twenty-four formulae and casks, every suggestion's
+  pretend Homebrew of twenty-five formulae and casks, every suggestion's
   own among them, by name (`MOCK_HOMEBREW` in `mockSearch.ts`) -- `ollama`
   finds Homebrew's `ollama` formula, not suggested, beside the suggested
   `ollama-app` cask; `ala` finds `alacritty`, which Homebrew disabled, so
-  its row says "No longer offered" in place of Install -- with the real
+  its row says "No longer offered" in place of Install, and `sogou` finds
+  `sogouinput`, which only ships an installer: "Manual install only" -- with the real
   search's refusals and order, and installs a result by its id
   (`plan_install_found`).
 

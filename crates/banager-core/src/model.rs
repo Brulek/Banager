@@ -2107,6 +2107,12 @@ pub struct HitNeeds {
     /// there, after downloading it, rather than move one over another.
     #[serde(default)]
     pub app_there: bool,
+    /// It only provides an installer for the person to run themselves
+    /// (`installer manual:`): Homebrew downloads it, prints where it is,
+    /// and counts the cask installed, with nothing installed
+    /// (`cask/artifact/installer.rb`; the author's decision G2).
+    #[serde(default)]
+    pub manual_installer: bool,
 }
 
 /// A Mac's kind of chip.
